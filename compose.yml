@@ -1,5 +1,5 @@
 services:
-  cf-ai:
+  nextcloud-assistant:
     image: ghcr.io/schbenedikt/nextcloud-ai:latest
     environment:
       - ACCOUNTID=your_id  # The Cloudflare account ID to be used by the application
