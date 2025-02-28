@@ -1,6 +1,6 @@
 services:
   cf-ai:
-    image: cf-ai
+    image: ghcr.io/schbenedikt/nextcloud-ai:latest
     environment:
       - ACCOUNTID=XXXXXXXXXXXXXXXXXXXXXXXXXX  # The Cloudflare account ID to be used by the application
     ports:
