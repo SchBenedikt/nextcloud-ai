@@ -2,47 +2,59 @@
 
 I made this script mainly targeted for nextcloud assistant because cloudflare provides Ai endpoints as openai API format for a good number of requests (almost for free) so why not use it instead of hosting our own instance of AI.
 
+## Issue with directly using the cloudflare provided openai API
 
+When you try to use the Cloudflare provided OpenAI API directly, you might encounter an issue. For example, if you make the following request:
 
-### Issue with directly using the cloudflare provided openai API.
-Request:
 ```bash
 curl  https://api.cloudflare.com/client/v4/accounts/{accountid}/ai/v1/models \
   -H  "Authorization: Bearer XXXXXXXXXXXXXXXXXXXXXXXXXXX"
 ```
-Response:
+
+You might get a response like this:
+
 ```json
 {"result":null,"success":false,"errors":[{"code":7001,"message":"GET not supported for requested URI."}],"messages":[]}
 ```
-This is because cloudflare doesn't provide `/v1/models` in their API to solve this i created this script which returns the list of models from the list specified in `main.py` and rest requests are directly passed to the cloudflare API.
+
+This is because Cloudflare doesn't provide `/v1/models` in their API. To solve this, I created this script which returns the list of models from the list specified in `main.py` and forwards the rest of the requests directly to the Cloudflare API.
 
 ## How to use
 
-### 1. Make sure you installed Nextcloud assistant and openai integration in your nextcloud instance
-### 2. Get account id and API key from cloudflare [more info](https://developers.cloudflare.com/workers-ai/get-started/rest-api/#1-get-api-token-and-account-id)
-### 3. Docker run
+### 1. Install Nextcloud Assistant and OpenAI Integration
 
-```
+Make sure you have installed Nextcloud Assistant and OpenAI integration in your Nextcloud instance.
+
+### 2. Get Account ID and API Key from Cloudflare
+
+Obtain your account ID and API key from Cloudflare. You can find more information [here](https://developers.cloudflare.com/workers-ai/get-started/rest-api/#1-get-api-token-and-account-id).
+
+### 3. Run the Docker Container
+
+Run the following command to start the Docker container:
+
+```bash
 docker run -d -e ACCOUNTID=XXXXXXXXXXXX -p 5050:5050 ghcr.io/sai80082/cf-ai:main
 ```
-replace the `XXXXXXXXXXXX` with the account id obtained from cloudflare
-### 4. In nextcloud
+
+Replace `XXXXXXXXXXXX` with the account ID obtained from Cloudflare.
+
+### 4. Configure Nextcloud
 
 - Go to administration settings -> Artificial intelligence
-- Under OpenAI and LocalAI integration change
-  
-  - service url: `http://\<machine-ip>:5050`
-    
-    change machine-ip to your instance local ip address where this docker container is running.
-    ![Alt text](image.png)
-  - API key: paste the api key obtained from cloudflare.
+- Under OpenAI and LocalAI integration, change the following settings:
+  - **Service URL**: `http://<machine-ip>:5050`
+    - Replace `<machine-ip>` with the local IP address of the machine where the Docker container is running.
+  - **API Key**: Paste the API key obtained from Cloudflare.
 
- Congratulations now you have AI in your nextcloud instace.
+![Nextcloud AI Configuration](image.png)
 
-### Note 
-Beta models in cloudflare ai dont get counted towards your requests but cloudflare can move them to stable so be careful. you can find all the models [here](https://developers.cloudflare.com/workers-ai/models/#text-generation).
+Congratulations! Now you have AI integrated into your Nextcloud instance.
 
- ### Contributions are welcome!
+### Note
 
- Contributions are most welcome like improving the documentation, adding new models to the list,etc
+Beta models in Cloudflare AI don't count towards your request quota, but Cloudflare can move them to stable, so be careful. You can find all the models [here](https://developers.cloudflare.com/workers-ai/models/#text-generation).
 
+### Contributions are welcome!
+
+Contributions are most welcome, such as improving the documentation, adding new models to the list, etc.

@@ -2,6 +2,6 @@ services:
   cf-ai:
     image: cf-ai
     environment:
-      - ACCOUNTID=XXXXXXXXXXXXXXXXXXXXXXXXXX
+      - ACCOUNTID=XXXXXXXXXXXXXXXXXXXXXXXXXX  # The Cloudflare account ID to be used by the application
     ports:
-      - "5050:5050"
+      - "5050:5050"  # Map port 5050 on the host to port 5050 in the container
