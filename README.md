@@ -1,8 +1,8 @@
-# Cloudflare Ai Proxy
+# Cloudflare AI Workers 🔗 Nextcloud Assistant
 
 I made this script mainly targeted for nextcloud assistant because cloudflare provides Ai endpoints as openai API format for a good number of requests (almost for free) so why not use it instead of hosting our own instance of AI.
 
-## Issue with directly using the cloudflare provided openai API
+## Issue with directly using the cloudflare provided OpenAI API
 
 When you try to use the Cloudflare provided OpenAI API directly, you might encounter an issue. For example, if you make the following request:
 
@@ -34,7 +34,7 @@ Obtain your account ID and API key from Cloudflare. You can find more informatio
 Run the following command to start the Docker container:
 
 ```bash
-docker run -d -e ACCOUNTID=XXXXXXXXXXXX -p 5050:5050 ghcr.io/sai80082/cf-ai:main
+docker run -d -e ACCOUNTID=XXXXXXXXXXXX -p 5050:5050 ghcr.io/schBenedikt/nextcloud-assistant:main
 ```
 
 Replace `XXXXXXXXXXXX` with the account ID obtained from Cloudflare.
