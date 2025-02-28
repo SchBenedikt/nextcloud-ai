@@ -1,3 +1,9 @@
+# The `models` dictionary contains a list of AI models provided by Cloudflare.
+# Each model has an `id`, `object`, and `owned_by` attribute.
+# The `id` is a unique identifier for the model.
+# The `object` attribute indicates the type of object, which is "model" in this case.
+# The `owned_by` attribute indicates the owner of the model, which is "cloudflare-ai-beta".
+
 models = {
   "object": "list",
   "data": [
