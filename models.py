@@ -13,6 +13,11 @@ models = {
         "owned_by": "cloudflare-ai-beta",
     },
     {
+            "id": "@cf/meta/llama-4-scout-17b-16e-instruct",
+            "object": "model",
+            "owned_by": "cloudflare-ai-beta"
+    },
+    {
         "id": "@hf/thebloke/deepseek-coder-6.7b-instruct-awq",
         "object": "model",
         "owned_by": "cloudflare-ai-beta",
