@@ -1,0 +1,46 @@
+<?xml version="1.0"?>
+<info xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+      xsi:noNamespaceSchemaLocation="https://apps.nextcloud.com/schema/apps/info.xsd">
+    <id>ragchat</id>
+    <name>AI</name>
+    <summary>Local RAG assistant over your own files via Ollama</summary>
+    <description>
+        Indexen Sie Ihre eigenen Nextcloud-Dateien als Wissensbasis und chatten Sie darüber
+        mit einem lokal laufenden Large Language Model (Ollama). Das App liest die Dateien,
+        zerlegt sie in Textbausteine, erstellt Embeddings und macht sie per RAG durchsuchbar.
+        Antworten geben immer die Quelle (Dateipfad) aus der Ihr Modell die Informationen bezogen hat.
+
+        - Reines PHP, kein externer RAG-Dienst / keine Datenbank, keine Cloud.
+        - Textdateien (txt, md, code, csv, tsv, html, json, xml, yaml, toml, rtf, sql, ...), PDF,
+        Office (docx/xlsx/pptx inkl. Makro-/Template-Varianten), OpenDocument (odt, ods, odp), EPUB u.v.m.
+        - Hybrides Retrieval: Vektorsuche + lexikalische Suche (BM25), RRF-Fusion.
+        - Der Chat kann wahlweise Aktionen auf der Nextcloud ausführen (Dateien/Vorlagen anlegen,
+        umbenennen, durchsuchen) - auf dem ganzen Homespace, inkl. Notizen (Notes) und Kontakten (System-Tools).
+        - Konfigurationsfrei: Embedding- und Chat-Modell über die lokale Ollama-Instanz.
+    </description>
+    <version>1.2.0</version>
+    <licence>agpl</licence>
+    <author>YourSelf</author>
+    <namespace>RagChat</namespace>
+    <category>ai</category>
+    <category>tools</category>
+    <bugs>https://example.local/ragchat/issues</bugs>
+    <dependencies>
+        <nextcloud min-version="30" max-version="34"/>
+    </dependencies>
+    <background-jobs>
+        <job>OCA\RagChat\BackgroundJob\IndexJob</job>
+    </background-jobs>
+    <commands>
+        <command>OCA\RagChat\Command\Index</command>
+        <command>OCA\RagChat\Command\Tool</command>
+    </commands>
+    <navigations>
+        <navigation>
+            <name>AI</name>
+            <route>ragchat.page.index</route>
+            <icon>app.svg</icon>
+            <order>20</order>
+        </navigation>
+    </navigations>
+</info>

@@ -1,0 +1,414 @@
+<?php
+
+declare(strict_types=1);
+
+namespace OCA\RagChat\Service;
+
+use OCA\DAV\CalDAV\CalDavBackend;
+use OCP\IConfig;
+use Sabre\VObject\Component\VCalendar;
+use Sabre\VObject\Reader;
+
+/**
+ * Kalender-Zugriff für die KI: Kalender auflisten, Termine erstellen,
+ * ändern und Termine löschen über den CalDAV-Backend (eigener Benutzer).
+ */
+class CalendarService {
+    public function __construct(
+        private CalDavBackend $backend,
+        private IConfig $config
+    ) {
+    }
+
+    /** Zeitzone des Nutzers (Fallback: Europe/Berlin), als DateTimeZone. */
+    private function userTimeZone(string $userId): \DateTimeZone {
+        $tz = $this->config->getUserValue($userId, 'core', 'timezone', 'Europe/Berlin');
+        try {
+            return new \DateTimeZone($tz !== '' ? $tz : 'Europe/Berlin');
+        } catch (\Throwable $e) {
+            return new \DateTimeZone('Europe/Berlin');
+        }
+    }
+
+    private function principal(string $userId): string {
+        return 'principals/users/' . $userId;
+    }
+
+    /** @return array<int,array{id:int,uri:string,displayname:string,color?:string}> */
+    public function calendars(string $userId): array {
+        $out = [];
+        foreach ($this->backend->getCalendarsForUser($this->principal($userId)) as $cal) {
+            $out[] = [
+                'id' => (int)$cal['id'],
+                'uri' => (string)$cal['uri'],
+				'displayname' => (string)($cal['{DAV:}displayname'] ?? $cal['uri']),
+                'color' => (string)($cal['{http://apple.com/ns/ical/}calendar-color'] ?? ''),
+            ];
+        }
+        return $out;
+    }
+
+    /** @return array{id:int,uri:string,displayname:string,color?:string}|null */
+    private function resolveCalendar(string $userId, ?string $hint): ?array {
+        foreach ($this->calendars($userId) as $cal) {
+            if ($hint === null || $hint === '') {
+                return $cal;
+            }
+            if ($hint === (string)$cal['id'] || $hint === $cal['uri'] || strcasecmp($hint, (string)$cal['displayname']) === 0) {
+                return $cal;
+            }
+        }
+        return null;
+    }
+
+    private function parseTime(string $val, string $userId, bool &$allDay): ?\DateTimeImmutable {
+        $val = trim($val);
+        if ($val === '') {
+            return null;
+        }
+        $tz = $this->userTimeZone($userId);
+
+        // Nur Datum -> Ganztages-Termin
+        if (preg_match('/^\d{4}-\d{2}-\d{2}$/', $val)) {
+            $allDay = true;
+            return \DateTimeImmutable::createFromFormat('!Y-m-d', $val) ?: null;
+        }
+        if (preg_match('/^\d{1,2}\.\d{1,2}\.\d{4}$/', $val)) {
+            $allDay = true;
+            return \DateTimeImmutable::createFromFormat('!d.m.Y', $val) ?: null;
+        }
+        // ISO mit T und optional Z/Offset: DateTime versteht das direkt (UTC!)
+        if (preg_match('/^\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}(:\d{2})?(Z|[+-]\d{2}:?\d{2})?$/', $val)) {
+            $hasOffset = (bool)preg_match('/(Z|[+-]\d{2}:?\d{2})$/', $val);
+            // Modelle senden lokale Uhrzeiten gern mit "Z" (irrtümlich als UTC).
+            // Fuer Nicht-UTC-Nutzer: Z-Suffix als lokale Zeit interpretieren.
+            if (substr($val, -1) === 'Z' && $tz->getName() !== 'UTC') {
+                $d = \DateTimeImmutable::createFromFormat('!Y-m-d\TH:i:s', str_replace(' ', 'T', substr($val, 0, -1)), $tz);
+                if ($d !== false) {
+                    return $d;
+                }
+            }
+            if (!$hasOffset) {
+                $d = new \DateTimeImmutable(str_replace(' ', 'T', $val), $tz);
+                return $d ?? null;
+            }
+            $d = new \DateTimeImmutable($val);
+            return $d ?? null;
+        }
+        // Datum mit Uhrzeit: deutsche + ISO-Schreibweisen
+        $formats = [
+            '!d.m.Y H:i', '!d.m.Y H:i:s', '!d.m.Y-H:i', '!d.m.Y. H:i', '!d.m.Y., H:i',
+            '!Y-m-d H:i', '!Y-m-d H:i:s', '!d/m/Y H:i', '!d.m.Y G:i',
+        ];
+        foreach ($formats as $f) {
+            $d = \DateTimeImmutable::createFromFormat('!' . ltrim($f, '!'), $val, $tz);
+            if ($d !== false) {
+                $errs = \DateTimeImmutable::getLastErrors();
+                if ($errs === false || ($errs['warning_count'] ?? 0) === 0) {
+                    return $d;
+                }
+            }
+        }
+        // Relative Angaben wie "morgen 14:00", "nächste Woche Mittwoch 09:30", "in 2 Stunden"
+        // Wichtig: mit expliziter Zeitzone parsen, sonst gilt die Server-UTC-Zeitzone!
+        $rel = $this->germanToEnglish($val);
+        try {
+            $d = new \DateTimeImmutable($rel, $tz);
+            return $d;
+        } catch (\Throwable $e) {
+            // Fallback: strtotime (Default-Zeitzone des Servers)
+            $ts = @strtotime($rel);
+            if ($ts !== false) {
+                $d = \DateTimeImmutable::createFromFormat('U', (string)$ts);
+                if ($d !== false) {
+                    return $d->setTimezone($tz);
+                }
+            }
+        }
+        // Wochentag-Präfix wie "Dienstag, 25.08.2026 14:00" abstreifen
+        $val2 = preg_replace('/^[a-zA-ZäöüÄÖÜ]+\s*[,.]?\s*/', '', $val, 1);
+        if ($val2 !== $val) {
+            $d = $this->parseTime($val2, $userId, $allDay);
+            if ($d !== null) {
+                return $d;
+            }
+        }
+        return null;
+    }
+
+    /** Übersetzt deutsche Zeitangaben in Formate, die strtotime versteht. */
+    private function germanToEnglish(string $val): string {
+        $v = trim((string)preg_replace('/\s+/', ' ', $val));
+        if (preg_match('/^in (\d+) (minuten?|stunde(?:n)?|tag(?:e|en)?)(?:\s*um\s*(\d{1,2}:\d{2}))?$/i', $v, $m)) {
+            $parts = $m[2];
+            $suffix = isset($m[3]) ? ' ' . $m[3] : '';
+            if (str_starts_with($parts, 'm')) {
+                return '+' . (int)$m[1] . ' minutes' . $suffix;
+            }
+            if (str_starts_with($parts, 's')) {
+                return '+' . (int)$m[1] . ' hours' . $suffix;
+            }
+            return '+' . (int)$m[1] . ' days' . $suffix;
+        }
+        $words = [
+            'übermorgen' => '+2 days', 'uebermorgen' => '+2 days',
+            'gestern' => 'yesterday', 'heute' => 'today', 'morgen' => 'tomorrow',
+            'nächste woche' => 'next week', 'naechste woche' => 'next week',
+            'nächste' => 'next', 'naechste' => 'next',
+            'montag' => 'monday', 'dienstag' => 'tuesday', 'mittwoch' => 'wednesday',
+            'donnerstag' => 'thursday', 'freitag' => 'friday', 'samstag' => 'saturday', 'sonntag' => 'sunday',
+            'januar' => 'january', 'februar' => 'february', 'märz' => 'march', 'maerz' => 'march',
+            'juni' => 'june', 'juli' => 'july', 'august' => 'august', 'september' => 'september',
+            'oktober' => 'october', 'november' => 'november', 'dezember' => 'december',
+        ];
+        $res = '';
+        foreach (preg_split('/\s+/', $v) as $tok) {
+            $low = mb_strtolower($tok);
+            if (isset($words[$low])) {
+                $res .= ' ' . $words[$low];
+            } elseif ($low === 'um' || $low === 'uhr') {
+                continue;
+            } else {
+                $res .= ' ' . $tok;
+            }
+        }
+        return trim($res);
+    }
+
+    private function buildIcs(string $uid, array $args, ?\DateTimeImmutable $start, ?\DateTimeImmutable $end, bool $allDay): string {
+        $vc = new VCalendar();
+        $ve = $vc->add('VEVENT');
+        $ve->add('UID', $uid);
+        $ve->add('DTSTAMP', new \DateTimeImmutable('now'));
+        if ($start !== null) {
+            if ($allDay) {
+                $ve->add('DTSTART', $start->format('Ymd'));
+            } else {
+                $ve->add('DTSTART', $start->setTimezone(new \DateTimeZone('UTC'))->format('Ymd\THis\Z'));
+            }
+        }
+        if ($end !== null) {
+            if ($allDay) {
+                $ve->add('DTEND', $end->format('Ymd'));
+            } else {
+                $ve->add('DTEND', $end->setTimezone(new \DateTimeZone('UTC'))->format('Ymd\THis\Z'));
+            }
+        }
+        $ve->add('SUMMARY', (string)($args['summary'] ?? ''));
+        if (($args['location'] ?? '') !== '') {
+            $ve->add('LOCATION', (string)$args['location']);
+        }
+        if (($args['description'] ?? '') !== '') {
+            $ve->add('DESCRIPTION', (string)$args['description']);
+        }
+        $reminder = max(0, (int)($args['reminder_minutes'] ?? 0));
+        if ($reminder > 0) {
+            $alm = $ve->add('VALARM');
+            $alm->add('ACTION', 'DISPLAY');
+            $alm->add('TRIGGER', '-PT' . $reminder . 'M');
+            $alm->add('DESCRIPTION', (string)($args['summary'] ?? ''));
+        }
+        return $vc->serialize();
+    }
+
+    /** @return array{ok:true,result:array}|array{ok:false,error:string} */
+    public function listEvents(string $userId, array $args): array {
+        $cal = $this->resolveCalendar($userId, (string)($args['calendar'] ?? ''));
+        $cals = $cal !== null ? [$cal] : $this->calendars($userId);
+        if ($cals === []) {
+            return ['ok' => false, 'error' => 'No calendar found for this user'];
+        }
+
+        $allDay = false;
+        $start = $this->parseTime((string)($args['start_date'] ?? ''), $userId, $allDay);
+        $end = $this->parseTime((string)($args['end_date'] ?? ''), $userId, $allDay);
+        if ($start === null) {
+            $start = new \DateTimeImmutable('today');
+        }
+        if ($end === null) {
+            $end = $start->modify('+60 days');
+        }
+
+        $events = [];
+        foreach ($cals as $c) {
+            foreach ($this->backend->getCalendarObjects((int)$c['id']) as $obj) {
+                if (strtolower((string)($obj['component'] ?? '')) !== 'vevent') {
+                    continue;
+                }
+                $raw = $this->backend->getCalendarObject((int)$c['id'], (string)$obj['uri']);
+                if (!isset($raw['calendardata'])) {
+                    continue;
+                }
+                try {
+                    $v = Reader::read((string)$raw['calendardata']);
+                } catch (\Throwable $e) {
+                    continue;
+                }
+                foreach ($v->VEVENT as $ve) {
+                    $dtstart = $ve->DTSTART ? $ve->DTSTART->getDateTime() : null;
+                    if ($dtstart === null) {
+                        continue;
+                    }
+                    if ($dtstart < $start || $dtstart > $end->modify('+1 day')) {
+                        continue;
+                    }
+                    $dtend = $ve->DTEND ? $ve->DTEND->getDateTime() : null;
+                    $isAllDay = $ve->DTSTART && !$ve->DTSTART->hasTime();
+                    $events[] = [
+                        'id' => $c['uri'] . '/' . $obj['uri'],
+                        'calendar' => (string)$c['displayname'],
+                        'title' => (string)($ve->SUMMARY ?? ''),
+                        'start' => $dtstart->format('Y-m-d\TH:i:s') . ($isAllDay ? '' : 'Z'),
+                        'end' => $dtend ? $dtend->format('Y-m-d\TH:i:s') . ($isAllDay ? '' : 'Z') : null,
+                        'all_day' => $isAllDay,
+                        'location' => (string)($ve->LOCATION ?? ''),
+                        'description' => (string)($ve->DESCRIPTION ?? ''),
+                    ];
+                }
+            }
+        }
+        usort($events, static fn($a, $b) => strcmp((string)$a['start'], (string)$b['start']));
+        return ['ok' => true, 'result' => ['events' => $events]];
+    }
+
+    /** @return array{ok:true,result:array}|array{ok:false,error:string} */
+    public function createEvent(string $userId, array $args): array {
+        $summary = trim((string)($args['summary'] ?? ''));
+        if ($summary === '') {
+            return ['ok' => false, 'error' => 'Event summary required'];
+        }
+        $cal = $this->resolveCalendar($userId, (string)($args['calendar'] ?? ''));
+        if ($cal === null) {
+            return ['ok' => false, 'error' => 'Calendar not found'];
+        }
+        $allDay = false;
+        $start = $this->parseTime((string)($args['start'] ?? ''), $userId, $allDay);
+        if ($start === null) {
+            return ['ok' => false, 'error' => 'Start date/time required. Examples: "2026-08-09T16:00:00Z", "03.08.2026 15:00", "morgen 10:00", "2026-08-09" (all-day).'];
+        }
+        $end = $this->parseTime((string)($args['end'] ?? ''), $userId, $allDay);
+        if ($end === null) {
+            $end = $allDay ? $start->modify('+1 day') : $start->modify('+1 hour');
+        }
+        if ($end <= $start) {
+            $end = $allDay ? $start->modify('+1 day') : $start->modify('+1 hour');
+        }
+        $uid = 'ai-' . date('YmdHis') . '-' . bin2hex(random_bytes(4));
+        $ics = $this->buildIcs($uid, $args, $start, $end, $allDay);
+        try {
+            $this->backend->createCalendarObject((int)$cal['id'], $uid . '.ics', $ics);
+        } catch (\Throwable $e) {
+            return ['ok' => false, 'error' => 'Calendar write failed: ' . $e->getMessage()];
+        }
+        return [
+            'ok' => true,
+            'result' => [
+                'event' => ['id' => $cal['uri'] . '/' . $uid . '.ics', 'title' => $summary, 'calendar' => (string)$cal['displayname']],
+            ],
+        ];
+    }
+
+    /** @return array{ok:true,result:array}|array{ok:false,error:string} */
+    public function updateEvent(string $userId, array $args): array {
+        $id = trim((string)($args['event_id'] ?? ''));
+        if ($id === '') {
+            return ['ok' => false, 'error' => 'event_id required (use the id from list_calendar_events)'];
+        }
+        $parts = explode('/', $id, 2);
+        $cal = $this->resolveCalendar($userId, $parts[0] ?? '');
+        if ($cal === null) {
+            return ['ok' => false, 'error' => 'Calendar not found'];
+        }
+        $uri = $parts[1] ?? '';
+        $raw = $this->backend->getCalendarObject((int)$cal['id'], $uri);
+        if ($raw === null || !isset($raw['calendardata'])) {
+            return ['ok' => false, 'error' => 'Event not found'];
+        }
+        try {
+            $v = Reader::read((string)$raw['calendardata']);
+        } catch (\Throwable $e) {
+            return ['ok' => false, 'error' => 'Could not parse event: ' . $e->getMessage()];
+        }
+        $ve = $v->VEVENT ? $v->VEVENT[0] : null;
+        if ($ve === null) {
+            return ['ok' => false, 'error' => 'No VEVENT found'];
+        }
+        if (isset($args['summary']) && (string)$args['summary'] !== '') {
+            $ve->SUMMARY = (string)$args['summary'];
+        }
+        if (array_key_exists('location', $args)) {
+            if ((string)$args['location'] === '') {
+                unset($ve->LOCATION);
+            } else {
+                $ve->LOCATION = (string)$args['location'];
+            }
+        }
+        if (array_key_exists('description', $args)) {
+            if ((string)$args['description'] === '') {
+                unset($ve->DESCRIPTION);
+            } else {
+                $ve->DESCRIPTION = (string)$args['description'];
+            }
+        }
+        if (isset($args['start']) && (string)$args['start'] !== '') {
+            $allDay = false;
+            $start = $this->parseTime((string)$args['start'], $userId, $allDay);
+            if ($start === null) {
+                return ['ok' => false, 'error' => 'Invalid start time'];
+            }
+            $ve->remove('DTSTART');
+            $ve->add('DTSTART', $allDay ? $start->format('Ymd') : $start->setTimezone(new \DateTimeZone('UTC'))->format('Ymd\THis\Z'));
+        }
+        if (isset($args['end']) && (string)$args['end'] !== '') {
+            $allDay = false;
+            $end = $this->parseTime((string)$args['end'], $userId, $allDay);
+            if ($end === null) {
+                return ['ok' => false, 'error' => 'Invalid end time'];
+            }
+            $ve->remove('DTEND');
+            $ve->add('DTEND', $allDay ? $end->format('Ymd') : $end->setTimezone(new \DateTimeZone('UTC'))->format('Ymd\THis\Z'));
+        }
+        if (array_key_exists('reminder_minutes', $args)) {
+            while ($ve->VALARM) {
+                $ve->remove('VALARM');
+            }
+            $reminder = max(0, (int)$args['reminder_minutes']);
+            if ($reminder > 0) {
+                $alm = $ve->add('VALARM');
+                $alm->add('ACTION', 'DISPLAY');
+                $alm->add('TRIGGER', '-PT' . $reminder . 'M');
+                $alm->add('DESCRIPTION', (string)$ve->SUMMARY);
+            }
+        }
+        try {
+            $this->backend->updateCalendarObject((int)$cal['id'], $uri, $v->serialize());
+        } catch (\Throwable $e) {
+            return ['ok' => false, 'error' => 'Calendar update failed: ' . $e->getMessage()];
+        }
+        return ['ok' => true, 'result' => ['event' => ['id' => $id, 'title' => (string)$ve->SUMMARY]]];
+    }
+
+    /** @return array{ok:true,result:string}|array{ok:false,error:string} */
+    public function deleteEvent(string $userId, array $args): array {
+        $id = trim((string)($args['event_id'] ?? ''));
+        if ($id === '') {
+            return ['ok' => false, 'error' => 'event_id required'];
+        }
+        $parts = explode('/', $id, 2);
+        $cal = $this->resolveCalendar($userId, $parts[0] ?? '');
+        if ($cal === null) {
+            return ['ok' => false, 'error' => 'Calendar not found'];
+        }
+        $uri = $parts[1] ?? '';
+        $raw = $this->backend->getCalendarObject((int)$cal['id'], $uri);
+        if ($raw === null) {
+            return ['ok' => false, 'error' => 'Event not found'];
+        }
+        try {
+            $this->backend->deleteCalendarObject((int)$cal['id'], $uri);
+        } catch (\Throwable $e) {
+            return ['ok' => false, 'error' => 'Calendar delete failed: ' . $e->getMessage()];
+        }
+        return ['ok' => true, 'result' => 'Deleted event ' . $id];
+    }
+}
