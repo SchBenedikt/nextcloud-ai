@@ -5,18 +5,18 @@
     <name>AI</name>
     <summary>Local RAG assistant over your own files via Ollama</summary>
     <description>
-        Indexen Sie Ihre eigenen Nextcloud-Dateien als Wissensbasis und chatten Sie darüber
-        mit einem lokal laufenden Large Language Model (Ollama). Das App liest die Dateien,
-        zerlegt sie in Textbausteine, erstellt Embeddings und macht sie per RAG durchsuchbar.
-        Antworten geben immer die Quelle (Dateipfad) aus der Ihr Modell die Informationen bezogen hat.
+        Index your own Nextcloud files as a knowledge base and chat about them with a
+        locally running Large Language Model (Ollama). The app reads your files, splits
+        them into chunks, creates embeddings and makes them searchable via RAG.
+        Answers always name the source (file path) the model took the information from.
 
-        - Reines PHP, kein externer RAG-Dienst / keine Datenbank, keine Cloud.
-        - Textdateien (txt, md, code, csv, tsv, html, json, xml, yaml, toml, rtf, sql, ...), PDF,
-        Office (docx/xlsx/pptx inkl. Makro-/Template-Varianten), OpenDocument (odt, ods, odp), EPUB u.v.m.
-        - Hybrides Retrieval: Vektorsuche + lexikalische Suche (BM25), RRF-Fusion.
-        - Der Chat kann wahlweise Aktionen auf der Nextcloud ausführen (Dateien/Vorlagen anlegen,
-        umbenennen, durchsuchen) - auf dem ganzen Homespace, inkl. Notizen (Notes) und Kontakten (System-Tools).
-        - Konfigurationsfrei: Embedding- und Chat-Modell über die lokale Ollama-Instanz.
+        - Pure PHP, no external RAG service / no external database, no cloud.
+        - Text files (txt, md, code, csv, tsv, html, json, xml, yaml, toml, rtf, sql, ...), PDF,
+        Office (docx/xlsx/pptx incl. macro/template variants), OpenDocument (odt, ods, odp), EPUB and more.
+        - Hybrid retrieval: vector search + lexical search (BM25), RRF fusion.
+        - The chat can optionally perform actions on the Nextcloud (create, rename, search
+        files and templates) across the whole home space, incl. Notes and Contacts.
+        - No configuration required: embedding and chat model come from your local Ollama instance.
     </description>
     <version>1.2.0</version>
     <licence>agpl</licence>

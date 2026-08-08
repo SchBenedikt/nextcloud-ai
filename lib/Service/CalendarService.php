@@ -37,15 +37,36 @@ class CalendarService {
     /** @return array<int,array{id:int,uri:string,displayname:string,color?:string}> */
     public function calendars(string $userId): array {
         $out = [];
-        foreach ($this->backend->getCalendarsForUser($this->principal($userId)) as $cal) {
-            $out[] = [
-                'id' => (int)$cal['id'],
-                'uri' => (string)$cal['uri'],
-				'displayname' => (string)($cal['{DAV:}displayname'] ?? $cal['uri']),
-                'color' => (string)($cal['{http://apple.com/ns/ical/}calendar-color'] ?? ''),
-            ];
+        foreach ($this->allCalendarPrincipals($userId) as $principal) {
+            foreach ($this->backend->getCalendarsForUser($principal) as $cal) {
+                $out[] = [
+                    'id' => (int)$cal['id'],
+                    'uri' => (string)$cal['uri'],
+			        'displayname' => (string)($cal['{DAV:}displayname'] ?? $cal['uri']),
+                    'color' => (string)($cal['{http://apple.com/ns/ical/}calendar-color'] ?? ''),
+                ];
+            }
         }
         return $out;
+    }
+
+    /**
+     * Alle Kalender-Prinzipalen, auf die der Nutzer Zugriff hat:
+     * eigene, geteilte, Gruppen-Kalender sowie das System-Subskriptions-Ende.
+     * @return list<string>
+     */
+    private function allCalendarPrincipals(string $userId): array {
+        $principals = ['principals/users/' . $userId];
+        $user = \OCP\Server::get(\OCP\IUserManager::class)->get($userId);
+        if ($user !== null) {
+            foreach (\OCP\Server::get(\OCP\IGroupManager::class)->getUserGroupIds($user) as $gid) {
+                $principals[] = 'principals/groups/' . $gid;
+            }
+        }
+        if (\OCP\Server::get(\OCP\App\IAppManager::class)->isEnabledForUser('circles')) {
+            $principals[] = 'principals/circles/' . $userId;
+        }
+        return array_values(array_unique($principals));
     }
 
     /** @return array{id:int,uri:string,displayname:string,color?:string}|null */

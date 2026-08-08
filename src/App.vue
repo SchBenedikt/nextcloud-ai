@@ -4,7 +4,7 @@
 			<template #list>
 				<button class="new-chat-btn" :disabled="busy" @click="newChat">
 					<svg width="16" height="16" viewBox="0 0 24 24" aria-hidden="true"><path :d="mdiMessagePlus" fill="currentColor" /></svg>
-					<span>Neuer Chat</span>
+					<span>New chat</span>
 				</button>
 				<div class="chat-list">
 					<NcAppNavigationItem
@@ -32,6 +32,8 @@
 					</NcAppNavigationItem>
 					<div v-if="!chats.length" class="chat-list-empty">No chats yet — start a new one.</div>
 				</div>
+			</template>
+			<template #footer>
 				<NcAppNavigationItem
 					:name="'Documents'"
 					:active="view === 'docs'"
@@ -40,8 +42,6 @@
 						<svg width="16" height="16" viewBox="0 0 24 24"><path :d="mdiFileDocumentOutline" fill="currentColor" /></svg>
 					</template>
 				</NcAppNavigationItem>
-			</template>
-			<template #footer>
 				<NcAppNavigationItem
 					:name="'Settings'"
 					:active="view === 'settings'"

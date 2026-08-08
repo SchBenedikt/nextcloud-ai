@@ -114,7 +114,7 @@ export default {
 		const chunkCache = ref(new Map())
 
 		const askAbout = (d) => {
-			const prompt = 'Bitte fasse folgende Datei aus meinen Dateien zusammen und nenne mir die wichtigsten Punkte: „' + (d.path || '') + '" — lies die Datei dazu bitte über deine Tools ein.'
+			const prompt = 'Please summarize the following file from my files and list the most important points: "' + (d.path || '') + '" — please read the file using your tools.'
 			if (typeof window !== 'undefined' && window.dispatchEvent) {
 				window.dispatchEvent(new CustomEvent('ragchat:ask-about', { detail: { prompt } }))
 			}

@@ -672,7 +672,8 @@ class ActionExecutor {
     /** @return array{bookId:int,uri:string,carddata:string}|null */
     private function findContactCard(string $userId, string $query): ?array {
         $backend = Server::get(\OCA\DAV\CardDAV\CardDavBackend::class);
-        foreach ($backend->getAddressBooksForUser('principals/users/' . $userId) as $book) {
+        foreach ($this->allAddressBookPrincipals($userId) as $principal) {
+            foreach ($backend->getAddressBooksForUser($principal) as $book) {
             foreach ($backend->getCards((int)$book['id']) as $card) {
                 $carddata = (string)($card['carddata'] ?? '');
                 if ($carddata === '') {
@@ -697,8 +698,30 @@ class ActionExecutor {
                     return ['bookId' => (int)$book['id'], 'uri' => (string)($card['uri'] ?? ''), 'carddata' => $carddata];
                 }
             }
+            }
         }
         return null;
+    }
+
+    /**
+     * Alle Adressbuch-Prinzipalen, auf die der Nutzer Zugriff hat:
+     * eigene, geteilte (ueber Shares im eigenen Principal), Gruppen-Adressbuecher,
+     * Circles/Teams sowie das System-Adressbuch.
+     * @return list<string>
+     */
+    private function allAddressBookPrincipals(string $userId): array {
+        $principals = ['principals/users/' . $userId];
+        $user = Server::get(\OCP\IUserManager::class)->get($userId);
+        if ($user !== null) {
+            foreach (Server::get(\OCP\IGroupManager::class)->getUserGroupIds($user) as $gid) {
+                $principals[] = 'principals/groups/' . $gid;
+            }
+        }
+        if (Server::get(\OCP\App\IAppManager::class)->isEnabledForUser('circles')) {
+            $principals[] = 'principals/circles/' . $userId;
+        }
+        $principals[] = 'principals/system/system';
+        return array_values(array_unique($principals));
     }
 
     /** @return array{ok:true,result:string}|array{ok:false,error:string} */
@@ -935,28 +958,28 @@ class ActionExecutor {
         $lon = $g['results'][0]['longitude'] ?? null;
         $name = (string)($g['results'][0]['name'] ?? $loc);
         if ($lat === null || $lon === null) {
-            return ['ok' => false, 'error' => 'Ort nicht gefunden: ' . $loc];
+            return ['ok' => false, 'error' => 'Place not found: ' . $loc];
         }
         $f = $this->httpGet('https://api.open-meteo.com/v1/forecast?latitude=' . $lat . '&longitude=' . $lon . '&daily=temperature_2m_max,temperature_2m_min,weathercode&forecast_days=3&timezone=auto');
         if ($f === null) {
-            return ['ok' => false, 'error' => 'Wetterdienst nicht erreichbar.'];
+            return ['ok' => false, 'error' => 'Weather service unreachable.'];
         }
         $j = json_decode($f, true);
         $codes = [
-            0 => 'Klar', 1 => 'Überwiegend klar', 2 => 'Teilweise bewölkt', 3 => 'Bedeckt',
-            45 => 'Nebel', 48 => 'Reifnebel',
-            51 => 'Leichter Nieselregen', 53 => 'Nieselregen', 55 => 'Starker Nieselregen',
-            61 => 'Leichter Regen', 63 => 'Regen', 65 => 'Starker Regen',
-            71 => 'Leichter Schneefall', 73 => 'Schneefall', 75 => 'Starker Schneefall',
-            80 => 'Leichte Schauer', 81 => 'Schauer', 82 => 'Starke Schauer',
-            95 => 'Gewitter', 96 => 'Gewitter mit Hagel', 99 => 'Gewitter mit Hagel',
+            0 => 'Clear', 1 => 'Mostly clear', 2 => 'Partly cloudy', 3 => 'Overcast',
+            45 => 'Fog', 48 => 'Rime fog',
+            51 => 'Light drizzle', 53 => 'Drizzle', 55 => 'Heavy drizzle',
+            61 => 'Light rain', 63 => 'Rain', 65 => 'Heavy rain',
+            71 => 'Light snow', 73 => 'Snow', 75 => 'Heavy snow',
+            80 => 'Light showers', 81 => 'Showers', 82 => 'Heavy showers',
+            95 => 'Thunderstorm', 96 => 'Thunderstorm with hail', 99 => 'Thunderstorm with hail',
         ];
         $days = [];
         foreach (($j['daily']['time'] ?? []) as $i => $day) {
             $code = (int)($j['daily']['weathercode'][$i] ?? 0);
             $days[] = [
-                'datum' => (string)$day,
-                'forecast' => (string)($codes[$code] ?? 'Unbekannt'),
+                'date' => (string)$day,
+                'forecast' => (string)($codes[$code] ?? 'Unknown'),
                 'max' => ($j['daily']['temperature_2m_max'][$i] ?? null),
                 'min' => ($j['daily']['temperature_2m_min'][$i] ?? null),
             ];
