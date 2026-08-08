@@ -118,4 +118,17 @@ class DocumentMapper extends QBMapper {
             ->where($qb->expr()->in('id', $qb->createNamedParameter($ids, IQueryBuilder::PARAM_INT_ARRAY)));
         $qb->executeStatement();
     }
+
+    public function deleteByUser(string $userId): int {
+        $qb = $this->db->getQueryBuilder();
+        $qb->delete('ragchat_documents')
+            ->where($qb->expr()->eq('user_id', $qb->createNamedParameter($userId)));
+        return $qb->executeStatement();
+    }
+
+    public function deleteAll(): int {
+        $qb = $this->db->getQueryBuilder();
+        $qb->delete('ragchat_documents');
+        return $qb->executeStatement();
+    }
 }

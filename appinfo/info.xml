@@ -33,6 +33,8 @@
     </background-jobs>
     <commands>
         <command>OCA\RagChat\Command\Index</command>
+        <command>OCA\RagChat\Command\Reset</command>
+        <command>OCA\RagChat\Command\Mounts</command>
         <command>OCA\RagChat\Command\Tool</command>
     </commands>
     <navigations>

@@ -94,6 +94,20 @@ class ApiController extends OCSController {
     }
 
     #[NoAdminRequired]
+    public function resetIndex(): DataResponse {
+        $user = $this->requireUser();
+        if ($user === null) {
+            return new DataResponse(['error' => 'Not logged in'], 401);
+        }
+        $this->jobList->remove(\OCA\RagChat\BackgroundJob\IndexJob::class);
+        $deleted = $this->indexer->reset($user);
+        return new DataResponse([
+            'result' => $deleted,
+            'status' => $this->ragService->buildStatus($user),
+        ]);
+    }
+
+    #[NoAdminRequired]
     public function startIndex(): DataResponse {
         $user = $this->requireUser();
         if ($user === null) {

@@ -13,6 +13,7 @@ return [
         ['name' => 'api#settings', 'url' => '/api/settings', 'verb' => 'GET'],
         ['name' => 'api#saveSettings', 'url' => '/api/settings', 'verb' => 'PUT'],
         ['name' => 'api#startIndex', 'url' => '/api/index', 'verb' => 'POST'],
+        ['name' => 'api#resetIndex', 'url' => '/api/indexReset', 'verb' => 'POST'],
         ['name' => 'api#documents', 'url' => '/api/documents', 'verb' => 'GET'],
         ['name' => 'api#documentChunks', 'url' => '/api/documentChunks', 'verb' => 'POST'],
         ['name' => 'api#chat', 'url' => '/api/chat', 'verb' => 'POST'],

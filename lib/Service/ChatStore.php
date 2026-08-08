@@ -6,6 +6,8 @@ namespace OCA\RagChat\Service;
 
 use OCP\Files\AppData\IAppDataFactory;
 use OCP\Files\NotFoundException;
+use OCP\Files\NotPermittedException;
+use Psr\Log\LoggerInterface;
 
 /**
  * Persistiert Chats pro Benutzer als JSON im AppData-Verzeichnis.
@@ -16,7 +18,8 @@ class ChatStore {
     private const MAX_TITLE = 60;
 
     public function __construct(
-        private IAppDataFactory $appDataFactory
+        private IAppDataFactory $appDataFactory,
+        private LoggerInterface $logger
     ) {
     }
 
@@ -119,13 +122,23 @@ class ChatStore {
             $raw = $this->rootFor($user)->getContent();
         } catch (NotFoundException $e) {
             return [];
+        } catch (NotPermittedException $e) {
+            $this->logger->warning('ragchat: chat folder not readable (permissions?)', ['user' => $user]);
+            return [];
         }
         $data = json_decode($raw, true);
         return is_array($data) ? $data : [];
     }
 
     private function write(string $user, array $data): void {
-        $this->rootFor($user)->putContent(json_encode($data, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES));
+        try {
+            $this->rootFor($user)->putContent(json_encode($data, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES));
+        } catch (\Throwable $e) {
+            $this->logger->error('ragchat: chat save failed - chats may disappear after reload', [
+                'user' => $user,
+                'exception' => $e->getMessage(),
+            ]);
+        }
     }
 
     private function rootFor(string $user): \OCP\Files\SimpleFS\ISimpleFile {

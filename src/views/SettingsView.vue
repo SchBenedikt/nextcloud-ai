@@ -158,6 +158,9 @@
 					<NcButton type="primary" :loading="indexing" @click="startIndex">
 						Start indexing
 					</NcButton>
+					<NcButton type="tertiary-no-background" :loading="resetting" @click="resetIndex">
+						Delete index
+					</NcButton>
 				</div>
 				<p v-if="progress" class="progress-text">{{ progress }}</p>
 			</section>
@@ -193,6 +196,7 @@ export default {
 		const checkOut = ref('')
 		const checking = ref(false)
 		const indexing = ref(false)
+		const resetting = ref(false)
 		const progress = ref('')
 		const saved = ref(false)
 
@@ -254,6 +258,24 @@ export default {
 			}
 		}
 
+		async function resetIndex() {
+			if (!confirm('Delete index? All documents and vectors will be removed. The index has to be re-created afterwards.')) {
+				return
+			}
+			resetting.value = true
+			progress.value = 'Deleting index …'
+			try {
+				const r = await api('POST', 'indexReset')
+				const res = r.result || {}
+				progress.value = 'Index deleted: ' + res.documents + ' documents, ' + res.chunks + ' chunks removed.'
+				await loadStatus()
+			} catch (e) {
+				progress.value = 'Reset failed: ' + e
+			} finally {
+				resetting.value = false
+			}
+		}
+
 		async function startIndex() {
 			indexing.value = true
 			progress.value = 'Indexing running … (may take a while depending on your files)'
@@ -283,6 +305,7 @@ export default {
 			save,
 			checkOllama,
 			startIndex,
+			resetIndex,
 		}
 	},
 }

@@ -30,6 +30,28 @@ class ChunkMapper extends QBMapper {
         $qb->executeStatement();
     }
 
+    public function deleteForUser(string $userId): int {
+        $qb = $this->db->getQueryBuilder();
+        $qb->select('id')->from('ragchat_documents')
+            ->where($qb->expr()->eq('user_id', $qb->createNamedParameter($userId)));
+        $result = $qb->executeQuery();
+        $ids = array_map(static fn(array $r): int => (int)$r['id'], $result->fetchAll());
+        $result->closeCursor();
+        if ($ids === []) {
+            return 0;
+        }
+        $qb2 = $this->db->getQueryBuilder();
+        $qb2->delete('ragchat_chunks')
+            ->where($qb2->expr()->in('document_id', $qb2->createNamedParameter($ids, IQueryBuilder::PARAM_INT_ARRAY)));
+        return $qb2->executeStatement();
+    }
+
+    public function deleteAll(): int {
+        $qb = $this->db->getQueryBuilder();
+        $qb->delete('ragchat_chunks');
+        return $qb->executeStatement();
+    }
+
     /**
      * Fetch all candidate chunks (id, document_id, chunk_index, content, embedding)
      * for a user, joined against the documents table.

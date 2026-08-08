@@ -491,4 +491,26 @@ class Indexer {
         }
         $this->chunkMapper->deleteByDocumentIds($docIds);
     }
+
+    /**
+     * Delete the complete RAG index (documents + chunks) for one user
+     * or for ALL users. Resets the index state flags as well.
+     * @return array{documents:int,chunks:int}
+     */
+    public function reset(?string $userId = null): array {
+        if ($userId !== null && $userId !== '') {
+            $docs = $this->documentMapper->deleteByUser($userId);
+            $chunks = $this->chunkMapper->deleteForUser($userId);
+        } else {
+            $docs = $this->documentMapper->deleteAll();
+            $chunks = $this->chunkMapper->deleteAll();
+        }
+        $this->config->set('index_running', '0');
+        $this->config->set('index_finished', '0');
+        $this->config->set('index_started', '');
+        $this->config->set('last_index_total', '0');
+        $this->config->set('last_index_processed', '0');
+        $this->config->set('last_index_error', '');
+        return ['documents' => $docs, 'chunks' => $chunks];
+    }
 }
