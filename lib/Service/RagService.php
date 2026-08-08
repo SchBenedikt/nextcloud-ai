@@ -51,7 +51,7 @@ class RagService {
                     'error' => null,
                 ];
             }
-            $messages[] = ['role' => 'assistant', 'content' => $chat['answer'] ?? '', 'tool_calls' => $chat['raw_tool_calls'] ?? []];
+            $messages[] = ['role' => 'assistant', 'content' => $chat['answer'] ?? '', 'tool_calls' => $this->canonicalToolCalls($chat['raw_tool_calls'] ?? [])];
             foreach ($toolCalls as $tc) {
                 $res = $this->executor->run($userId, $tc['name'], $tc['arguments']);
                 $messages[] = ['role' => 'tool', 'content' => json_encode($res, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES)];
@@ -107,11 +107,11 @@ class RagService {
                 if ($toolCalls === []) {
                     break;
                 }
-                $messages[] = ['role' => 'assistant', 'content' => $answer, 'tool_calls' => $rawToolCalls];
+                $messages[] = ['role' => 'assistant', 'content' => $answer, 'tool_calls' => $this->canonicalToolCalls($rawToolCalls)];
                 foreach ($toolCalls as $tc) {
                     yield json_encode(['type' => 'tool', 'name' => $tc['name'] ?? '?']) . "\n";
                     $res = $this->executor->run($userId, $tc['name'] ?? '', $tc['arguments'] ?? []);
-                    yield json_encode(['type' => 'tool_result', 'name' => $tc['name'] ?? '?', 'ok' => !empty($res['ok'])]) . "\n";
+                    yield json_encode(['type' => 'tool_result', 'name' => $tc['name'] ?? '?', 'ok' => !empty($res['ok']), 'error' => $res['error'] ?? null]) . "\n";
                     $messages[] = ['role' => 'tool', 'content' => json_encode($res, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES)];
                 }
                 $answer = '';
@@ -230,6 +230,46 @@ class RagService {
     public function fileUrl(string $userId, string $path): string {
         $encoded = implode('/', array_map('rawurlencode', explode('/', $path)));
         return $this->urlGenerator->getAbsoluteURL('/remote.php/dav/files/' . rawurlencode($userId) . '/' . $encoded);
+    }
+
+    /**
+     * Bringt Tool-Calls aus Modell-Antworten (Stream und Non-Stream) in die
+     * von Ollama erwartete Kanonik. Ollama rechnet bei function.arguments mit
+     * einem JSON-Objekt ab; ein leeres Array [] oder String wird mit 400
+     * "Value looks like object, but can't find closing '}' symbol" abgelehnt.
+     * @param array<int,array<string,mixed>> $raw
+     * @return array<int,array{id?:string,type:string,function:array{name:string,arguments:object}}>
+     */
+    private function canonicalToolCalls(array $raw): array {
+        $out = [];
+        foreach ($raw as $tc) {
+            $fn = $tc['function'] ?? $tc;
+            $name = (string)($fn['name'] ?? '');
+            if ($name === '') {
+                continue;
+            }
+            $args = $fn['arguments'] ?? '';
+            if (is_string($args)) {
+                $decoded = json_decode($args, true);
+                $args = is_array($decoded) ? $decoded : [];
+            }
+            if (!is_array($args)) {
+                $args = [];
+            }
+            $obj = new \stdClass();
+            foreach ($args as $k => $v) {
+                $obj->{$k} = $v;
+            }
+            $out[] = [
+                'id' => (string)($tc['id'] ?? ('call_' . bin2hex(random_bytes(4)))),
+                'type' => 'function',
+                'function' => [
+                    'name' => $name,
+                    'arguments' => $obj,
+                ],
+            ];
+        }
+        return $out;
     }
 
     private function actionsEnabled(): bool {

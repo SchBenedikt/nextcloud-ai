@@ -192,6 +192,7 @@ class Ollama {
         if ($tools !== []) {
             $payload['tools'] = $tools;
         }
+        $encoded = json_encode($payload, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
         try {
             $r = $this->client()->post($this->base() . '/api/chat', [
                 'json' => $payload,
@@ -246,6 +247,7 @@ class Ollama {
         if ($tools !== []) {
             $payload['tools'] = $tools;
         }
+        $encoded = json_encode($payload, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
         try {
             $r = $this->client()->post($this->base() . '/api/chat', [
                 'json' => $payload,
@@ -254,7 +256,7 @@ class Ollama {
             ]);
             $body = $r->getBody();
             $buffer = '';
-            $pendingToolCalls = [];
+            $streamCalls = [];
             while (is_resource($body) ? !feof($body) : !$body->eof()) {
                 $chunk = is_resource($body) ? fread($body, 8192) : $body->read(8192);
                 if ($chunk === '') {
@@ -274,11 +276,37 @@ class Ollama {
                     }
                     $msg = $obj['message'] ?? [];
                     if (is_array($msg) && !empty($msg['tool_calls'])) {
-                        $pendingToolCalls = $msg['tool_calls'];
+                        // Ollama streamt Tool-Call-Argumente in mehreren Chunks:
+                        // nach Index akkumulieren statt überschreiben.
+                        foreach ($msg['tool_calls'] as $tc) {
+                            $idx = (int)($tc['index'] ?? 0);
+                            $fn = $tc['function'] ?? [];
+                            if (!isset($streamCalls[$idx])) {
+                                $streamCalls[$idx] = [
+                                    'id' => (string)($tc['id'] ?? ('call_' . random_int(100000, 999999))),
+                                    'type' => 'function',
+                                    'function' => ['name' => (string)($fn['name'] ?? ''), 'arguments' => ''],
+                                ];
+                            }
+                            if (isset($fn['name']) && $fn['name'] !== '') {
+                                $streamCalls[$idx]['function']['name'] = (string)$fn['name'];
+                            }
+                            if (isset($fn['arguments'])) {
+                                $arg = $fn['arguments'];
+                                if (is_array($arg)) {
+                                    $arg = json_encode($arg, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+                                }
+                                if (is_string($arg) && $arg !== '') {
+                                    $streamCalls[$idx]['function']['arguments'] .= $arg;
+                                }
+                            }
+                        }
                     }
                     if (!empty($obj['done'])) {
-                        if ($pendingToolCalls !== []) {
-                            yield ['type' => 'tool_calls', 'tool_calls' => $this->normalizeToolCalls($pendingToolCalls), 'raw' => $pendingToolCalls];
+                        if ($streamCalls !== []) {
+                            ksort($streamCalls);
+                            $rawToolCalls = array_values($streamCalls);
+                            yield ['type' => 'tool_calls', 'tool_calls' => $this->normalizeToolCalls($streamCalls), 'raw' => $rawToolCalls];
                         } else {
                             yield ['type' => 'finished'];
                         }
@@ -316,7 +344,7 @@ class Ollama {
             if ($name === '') {
                 continue;
             }
-            $args = $fn['arguments'] ?? [];
+            $args = $fn['arguments'] ?? '';
             if (is_string($args)) {
                 $decoded = json_decode($args, true);
                 $args = is_array($decoded) ? $decoded : [];
