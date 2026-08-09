@@ -104,6 +104,34 @@ sudo -u www-data php occ config:app:set eva-ai notify_on_complete --value=1
 3. Then chat. Tools (files, contacts, calendar, mail, shares, tasks, weather, time) are enabled by default; every answer names which file it used.
 3. Then chat. Tools (files, contacts, calendar, weather, time) are enabled by default; every answer names which file it used.
 
+### 7. Nextcloud Talk bot (optional, recommended)
+
+If the Nextcloud Talk (spreed) app is installed, EVA registers itself automatically as a chat bot on every app boot. You usually do **not** need to do anything — open a Talk conversation as admin and the bot will appear in the bot list (`/`) with the name "EVA AI".
+
+If the bot does not show up (for example after a manual database cleanup), register or remove it explicitly:
+
+```bash
+# Register or update the bot (idempotent — safe to run multiple times)
+sudo -u www-data php occ eva-ai:talk:setup
+
+# Remove the bot again
+sudo -u www-data php occ eva-ai:talk:setup --remove
+
+# Customise name/description shown to admins
+sudo -u www-data php occ eva-ai:talk:setup --name="EVA" --description="Local RAG assistant"
+```
+
+After registration, **activate the bot per conversation**:
+
+- Talk admin UI → open the conversation → conversation settings → Bots → add "EVA AI".
+- Or programmatically via the Talk OCS API: `POST /ocs/v2.php/apps/spreed/api/v1/room/{token}/bot/{botId}`.
+
+Once active, EVA answers in that Talk conversation based on the indexed documents of the user who added it. The bot is sent the last 15 chat messages as history so it can respond to follow-up questions like "what did I just ask?".
+
+### 8. File-context chat from the Files app (optional)
+
+Right-click any file in the Files app → "Open with EVA" (single file) or "Chat about these N files with EVA" (multi-select). The selected files open the EVA app on the file-context view and the chat answers strictly based on those files' chunks — no global index lookup. Files must already be indexed for the bot to find chunks.
+
 ## Calendar tools: supported time formats
 
 The chat interprets times in the user's timezone (e.g. Europe/Berlin):

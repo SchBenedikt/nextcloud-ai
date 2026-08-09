@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace OCA\EvaAi\Command;
 
+use OCA\EvaAi\Service\TalkBotRegistrar;
 use OCA\Talk\Model\Bot;
 use OCA\Talk\Model\BotServer;
 use OCA\Talk\Model\BotServerMapper;
@@ -21,7 +22,7 @@ use Symfony\Component\Console\Output\OutputInterface;
  * Talk-Admin-Oberfläche (oder per OCS-API) noch aktiviert werden.
  */
 class TalkSetup extends Command {
-    private const BOT_URL = 'nextcloudapp://eva-ai/bot';
+	public const BOT_URL = TalkBotRegistrar::BOT_URL;
 
     public function __construct(
         private BotServerMapper $botServerMapper,

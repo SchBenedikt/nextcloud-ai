@@ -47,6 +47,16 @@ class Application extends App implements IBootstrap {
             // Non-fatal: indexing is also triggered explicitly via the API.
         }
 
+        // Talk-Bot: beim Boot sicherstellen, dass er in talk_bots_server
+        // eingetragen ist. Spreed ist optional (info.xml), bei nicht
+        // installierter Talk-App ist das ein No-op. Idempotent.
+        try {
+            $context->getAppContainer()->get(\OCA\EvaAi\Service\TalkBotRegistrar::class)
+                ->ensureRegistered();
+        } catch (\Throwable $e) {
+            // Non-fatal: das OCC-Kommando 'eva-ai:talk:setup' bleibt als Fallback.
+        }
+
         // Header-Button: AI-Icon rechts oben neben den Benachrichtigungen,
         // damit man aus jeder Ansicht direkt in den Chat springen kann.
         try {
