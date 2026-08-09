@@ -27,7 +27,11 @@
     <bugs>https://example.local/eva-ai/issues</bugs>
     <dependencies>
         <nextcloud min-version="30" max-version="34"/>
+        <php min-version="8.2"/>
     </dependencies>
+    <optional-apps>
+        <app>spreed</app>
+    </optional-apps>
     <background-jobs>
         <job>OCA\EvaAi\BackgroundJob\IndexJob</job>
     </background-jobs>
@@ -36,6 +40,7 @@
         <command>OCA\EvaAi\Command\Reset</command>
         <command>OCA\EvaAi\Command\Mounts</command>
         <command>OCA\EvaAi\Command\Tool</command>
+        <command>OCA\EvaAi\Command\TalkSetup</command>
     </commands>
     <navigations>
         <navigation>
