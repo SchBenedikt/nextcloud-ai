@@ -177,11 +177,14 @@ class ActionExecutor {
             ]],
             ['type' => 'function', 'function' => [
                 'name' => 'list_calendar_events',
-                'description' => 'List calendar events in a time window (default: today up to the next 60 days).',
+                'description' => 'List calendar events in a time window. Default: today up to the next 60 days.',
                 'parameters' => ['type' => 'object', 'properties' => [
+                    'days' => ['type' => 'integer', 'description' => 'Convenience: include the next N days starting today (1-60). Equivalent to end_date = today+N.'],
+                    'past_days' => ['type' => 'integer', 'description' => 'Convenience: include the past N days (0-30). Default 0.'],
                     'start_date' => ['type' => 'string', 'description' => 'Optional start of the window, ISO-8601 like "2026-08-09".'],
                     'end_date' => ['type' => 'string', 'description' => 'Optional end of the window, ISO-8601.'],
                     'calendar' => ['type' => 'string', 'description' => 'Optional calendar name to limit the search.'],
+                    'categories' => ['type' => 'string', 'description' => 'Optional comma-separated category filter, e.g. "arbeit,privat".'],
                 ]],
             ]],
             ['type' => 'function', 'function' => [
@@ -191,15 +194,17 @@ class ActionExecutor {
                     'summary' => ['type' => 'string', 'description' => 'Event title, e.g. "Team meeting".'],
                     'start' => ['type' => 'string', 'description' => 'Start time in any supported format.'],
                     'end' => ['type' => 'string', 'description' => 'Optional end time. Default: 1 hour later (all-day: next day).'],
+                    'duration_minutes' => ['type' => 'integer', 'description' => 'Optional duration in minutes. Default 60 (or 1 day for all-day). Ignored if end is set.'],
                     'location' => ['type' => 'string', 'description' => 'Optional location / place.'],
                     'description' => ['type' => 'string', 'description' => 'Optional description or agenda.'],
                     'reminder_minutes' => ['type' => 'integer', 'description' => 'Optional reminder X minutes before the event, e.g. 15 or 60.'],
+                    'categories' => ['type' => 'string', 'description' => 'Optional comma-separated categories/tags, e.g. "arbeit,privat".'],
                     'calendar' => ['type' => 'string', 'description' => 'Optional calendar name or id; default is the first calendar.'],
                 ], 'required' => ['summary', 'start']],
             ]],
             ['type' => 'function', 'function' => [
                 'name' => 'update_calendar_event',
-                'description' => 'Update an existing calendar event (title, times, location, description). Use the event id from list_calendar_events.',
+                'description' => 'Update an existing calendar event (title, times, location, description, categories, reminder). Use the event id from list_calendar_events.',
                 'parameters' => ['type' => 'object', 'properties' => [
                     'event_id' => ['type' => 'string', 'description' => 'id like "personal/event.ics" as returned by list_calendar_events.'],
                     'summary' => ['type' => 'string', 'description' => 'New title.'],
@@ -207,6 +212,8 @@ class ActionExecutor {
                     'end' => ['type' => 'string', 'description' => 'New end.'],
                     'location' => ['type' => 'string', 'description' => 'New location (empty string removes it).'],
                     'description' => ['type' => 'string', 'description' => 'New description (empty string removes it).'],
+                    'categories' => ['type' => 'string', 'description' => 'New categories (comma separated). Empty string removes them.'],
+                    'reminder_minutes' => ['type' => 'integer', 'description' => 'Replace reminder with a single VALARM that fires X minutes before the event. 0 removes the reminder.'],
                 ], 'required' => ['event_id']],
             ]],
             ['type' => 'function', 'function' => [
@@ -215,6 +222,17 @@ class ActionExecutor {
                 'parameters' => ['type' => 'object', 'properties' => [
                     'event_id' => ['type' => 'string', 'description' => 'id like "personal/event.ics" as returned by list_calendar_events.'],
                 ], 'required' => ['event_id']],
+            ]],
+            ['type' => 'function', 'function' => [
+                'name' => 'find_free_slots',
+                'description' => 'Find free time slots in the user\'s calendar within the next N days, respecting the configured working hours (default 09:00-18:00 in the user\'s timezone). Returns at most 10 slots with length >= min_minutes. Useful before scheduling a meeting.',
+                'parameters' => ['type' => 'object', 'properties' => [
+                    'days' => ['type' => 'integer', 'description' => 'How many days to look ahead (1-30). Default 7.'],
+                    'min_minutes' => ['type' => 'integer', 'description' => 'Minimum slot length in minutes (5-480). Default 30.'],
+                    'workday_start' => ['type' => 'string', 'description' => 'Working day start "HH:MM". Default 09:00.'],
+                    'workday_end' => ['type' => 'string', 'description' => 'Working day end "HH:MM". Default 18:00.'],
+                    'calendar' => ['type' => 'string', 'description' => 'Optional calendar name or id; default = all user calendars.'],
+                ]],
             ]],
             ['type' => 'function', 'function' => [
                 'name' => 'search_mails',
@@ -283,8 +301,12 @@ class ActionExecutor {
             ]],
             ['type' => 'function', 'function' => [
                 'name' => 'list_tasks',
-                'description' => 'List all to-do items / tasks of the user (from all task-capable calendars), open tasks first, then by due date.',
-                'parameters' => ['type' => 'object', 'properties' => new \stdClass()],
+                'description' => 'List to-do items / tasks of the user. Open tasks first, then by due date. Filters: status (comma separated iCalendar statuses e.g. "NEEDS-ACTION,IN-PROCESS"), category, overdue_only (boolean).',
+                'parameters' => ['type' => 'object', 'properties' => [
+                    'status' => ['type' => 'string', 'description' => 'Optional filter by status, e.g. "NEEDS-ACTION" or "NEEDS-ACTION,IN-PROCESS".'],
+                    'category' => ['type' => 'string', 'description' => 'Optional filter by category/tag.'],
+                    'overdue_only' => ['type' => 'boolean', 'description' => 'If true, return only tasks with due date in the past that are not completed.'],
+                ]],
             ]],
             ['type' => 'function', 'function' => [
                 'name' => 'create_task',
@@ -299,13 +321,15 @@ class ActionExecutor {
             ]],
             ['type' => 'function', 'function' => [
                 'name' => 'update_task',
-                'description' => 'Update a task (title, status, due date, description). Use task ids from list_tasks.',
+                'description' => 'Update a task (title, status, due date, description, categories, priority). Use task ids from list_tasks.',
                 'parameters' => ['type' => 'object', 'properties' => [
                     'task_id' => ['type' => 'string', 'description' => 'Id like "personal/task.ics" from list_tasks.'],
                     'title' => ['type' => 'string', 'description' => 'New title.'],
                     'status' => ['type' => 'string', 'description' => 'New status: NEEDS-ACTION, IN-PROCESS, COMPLETED, CANCELLED.'],
                     'due' => ['type' => 'string', 'description' => 'New due date, ISO or relative.'],
                     'description' => ['type' => 'string', 'description' => 'New description (empty removes it).'],
+                    'categories' => ['type' => 'string', 'description' => 'New categories (comma separated). Empty removes them.'],
+                    'priority' => ['type' => 'integer', 'description' => 'New priority 1-9 (1 highest). 0 removes the priority.'],
                 ], 'required' => ['task_id']],
             ]],
             ['type' => 'function', 'function' => [
@@ -389,6 +413,7 @@ class ActionExecutor {
                 'create_calendar_event' => $this->calendar->createEvent($userId, $args),
                 'update_calendar_event' => $this->calendar->updateEvent($userId, $args),
                 'delete_calendar_event' => $this->calendar->deleteEvent($userId, $args),
+                'find_free_slots' => $this->calendar->findFreeSlots($userId, $args),
                 'current_time' => $this->currentTime($userId),
                 'weather' => $this->weather($args),
                 'search_mails' => $this->searchMails($userId, $args),

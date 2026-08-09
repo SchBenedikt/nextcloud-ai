@@ -222,6 +222,9 @@ class CalendarService {
         if (($args['description'] ?? '') !== '') {
             $ve->add('DESCRIPTION', (string)$args['description']);
         }
+        if (($args['categories'] ?? '') !== '') {
+            $ve->add('CATEGORIES', (string)$args['categories']);
+        }
         $reminder = max(0, (int)($args['reminder_minutes'] ?? 0));
         if ($reminder > 0) {
             $alm = $ve->add('VALARM');
@@ -243,11 +246,31 @@ class CalendarService {
         $allDay = false;
         $start = $this->parseTime((string)($args['start_date'] ?? ''), $userId, $allDay);
         $end = $this->parseTime((string)($args['end_date'] ?? ''), $userId, $allDay);
+        // Komfort-Shortcut: days=N => ab heute N Tage nach vorn, past_days=N => N Tage zurück.
+        $days = isset($args['days']) ? max(0, (int)$args['days']) : 0;
+        $pastDays = isset($args['past_days']) ? max(0, (int)$args['past_days']) : 0;
+        if ($start === null && ($days > 0 || $pastDays > 0)) {
+            $start = (new \DateTimeImmutable('today'))->modify('-' . $pastDays . ' days');
+        }
         if ($start === null) {
             $start = new \DateTimeImmutable('today');
         }
+        if ($end === null && $days > 0) {
+            $end = $start->modify('+' . $days . ' days');
+        }
         if ($end === null) {
             $end = $start->modify('+60 days');
+        }
+        // Kategorie-Filter (kommagetrennt oder Array).
+        $catFilter = [];
+        if (isset($args['categories'])) {
+            $cats = $args['categories'];
+            if (is_array($cats)) {
+                $catFilter = array_map(static fn($c) => strtolower(trim((string)$c)), $cats);
+            } else {
+                $catFilter = array_filter(array_map(static fn($c) => strtolower(trim($c)), explode(',', (string)$cats)));
+            }
+            $catFilter = array_values(array_unique($catFilter));
         }
 
         $events = [];
@@ -275,6 +298,13 @@ class CalendarService {
                     }
                     $dtend = $ve->DTEND ? $ve->DTEND->getDateTime() : null;
                     $isAllDay = $ve->DTSTART && !$ve->DTSTART->hasTime();
+                    if ($catFilter !== []) {
+                        $catStr = strtolower((string)($ve->CATEGORIES ?? ''));
+                        $catList = $catStr === '' ? [] : array_map('trim', explode(',', $catStr));
+                        if (count(array_intersect($catFilter, $catList)) === 0) {
+                            continue;
+                        }
+                    }
                     $events[] = [
                         'id' => $c['uri'] . '/' . $obj['uri'],
                         'calendar' => (string)$c['displayname'],
@@ -284,6 +314,7 @@ class CalendarService {
                         'all_day' => $isAllDay,
                         'location' => (string)($ve->LOCATION ?? ''),
                         'description' => (string)($ve->DESCRIPTION ?? ''),
+                        'categories' => $ve->CATEGORIES ? array_map('trim', explode(',', (string)$ve->CATEGORIES)) : [],
                     ];
                 }
             }
@@ -308,6 +339,10 @@ class CalendarService {
             return ['ok' => false, 'error' => 'Start date/time required. Examples: "2026-08-09T16:00:00Z", "03.08.2026 15:00", "morgen 10:00", "2026-08-09" (all-day).'];
         }
         $end = $this->parseTime((string)($args['end'] ?? ''), $userId, $allDay);
+        if ($end === null && isset($args['duration_minutes'])) {
+            $mins = max(1, min(24 * 60, (int)$args['duration_minutes']));
+            $end = $allDay ? $start->modify('+1 day') : $start->modify('+' . $mins . ' minutes');
+        }
         if ($end === null) {
             $end = $allDay ? $start->modify('+1 day') : $start->modify('+1 hour');
         }
@@ -369,6 +404,13 @@ class CalendarService {
                 unset($ve->DESCRIPTION);
             } else {
                 $ve->DESCRIPTION = (string)$args['description'];
+            }
+        }
+        if (array_key_exists('categories', $args)) {
+            if (trim((string)$args['categories']) === '') {
+                unset($ve->CATEGORIES);
+            } else {
+                $ve->CATEGORIES = (string)$args['categories'];
             }
         }
         if (isset($args['start']) && (string)$args['start'] !== '') {
@@ -439,6 +481,31 @@ class CalendarService {
         if ($cals === []) {
             return ['ok' => false, 'error' => 'No calendar found for this user'];
         }
+        // Status-Filter (Kommagetrennt oder Array; z.B. "needs-action,in-process").
+        $statusFilter = [];
+        if (isset($args['status'])) {
+            $st = $args['status'];
+            if (is_array($st)) {
+                $statusFilter = array_map(static fn($s) => strtolower(trim((string)$s)), $st);
+            } else {
+                $statusFilter = array_filter(array_map(static fn($s) => strtolower(trim($s)), explode(',', (string)$st)));
+            }
+            $statusFilter = array_values(array_unique($statusFilter));
+        }
+        // Kategorie-Filter.
+        $catFilter = [];
+        if (isset($args['category'])) {
+            $cats = $args['category'];
+            if (is_array($cats)) {
+                $catFilter = array_map(static fn($c) => strtolower(trim((string)$c)), $cats);
+            } else {
+                $catFilter = array_filter(array_map(static fn($c) => strtolower(trim($c)), explode(',', (string)$cats)));
+            }
+            $catFilter = array_values(array_unique($catFilter));
+        }
+        // Overdue-only: nur Aufgaben mit DUE < jetzt.
+        $overdueOnly = !empty($args['overdue_only']);
+        $now = new \DateTimeImmutable('now');
         $out = [];
         foreach ($cals as $c) {
             foreach ($this->backend->getCalendarObjects((int)$c['id']) as $obj) {
@@ -455,7 +522,21 @@ class CalendarService {
                     continue;
                 }
                 foreach ($v->VTODO as $vt) {
+                    $status = strtolower((string)($vt->STATUS ?? ''));
+                    if ($statusFilter !== [] && !in_array($status, $statusFilter, true)) {
+                        continue;
+                    }
+                    if ($catFilter !== []) {
+                        $catStr = strtolower((string)($vt->CATEGORIES ?? ''));
+                        $catList = $catStr === '' ? [] : array_map('trim', explode(',', $catStr));
+                        if (count(array_intersect($catFilter, $catList)) === 0) {
+                            continue;
+                        }
+                    }
                     $due = $vt->DUE ? $vt->DUE->getDateTime() : null;
+                    if ($overdueOnly && ($due === null || $due >= $now || $status === 'completed')) {
+                        continue;
+                    }
                     $out[] = [
                         'id' => $c['uri'] . '/' . $obj['uri'],
                         'calendar' => (string)$c['displayname'],
@@ -464,6 +545,8 @@ class CalendarService {
                         'due' => $due ? $due->format('Y-m-d\TH:i:s') : null,
                         'priority' => (int)(string)($vt->PRIORITY ?? 0),
                         'description' => (string)($vt->DESCRIPTION ?? ''),
+                        'categories' => $vt->CATEGORIES ? array_map('trim', explode(',', (string)$vt->CATEGORIES)) : [],
+                        'overdue' => $due !== null && $due < $now && $status !== 'completed',
                     ];
                 }
             }
@@ -581,6 +664,21 @@ class CalendarService {
                 $vt->DESCRIPTION = (string)$args['description'];
             }
         }
+        if (array_key_exists('categories', $args)) {
+            if (trim((string)$args['categories']) === '') {
+                unset($vt->CATEGORIES);
+            } else {
+                $vt->CATEGORIES = (string)$args['categories'];
+            }
+        }
+        if (array_key_exists('priority', $args)) {
+            $prio = max(0, min(9, (int)$args['priority']));
+            if ($prio === 0) {
+                unset($vt->PRIORITY);
+            } else {
+                $vt->PRIORITY = $prio;
+            }
+        }
         try {
             $this->backend->updateCalendarObject((int)$cal['id'], $uri, $v->serialize());
         } catch (\Throwable $e) {
@@ -616,6 +714,108 @@ class CalendarService {
     /** @return array{ok:true,result:array}|array{ok:false,error:string} */
     public function completeTask(string $userId, array $args): array {
         return $this->updateTask($userId, array_merge($args, ['status' => 'COMPLETED']));
+    }
+
+    /**
+     * Findet freie Zeitfenster (Slots) im Kalender des Nutzers.
+     * Parameter: days (1-30), min_minutes (default 30), workday_start/end "HH:MM".
+     * Liefert die ersten N Lücken >= min_minutes innerhalb der täglichen Arbeitszeit.
+     * @return array{ok:true,result:array}|array{ok:false,error:string}
+     */
+    public function findFreeSlots(string $userId, array $args = []): array {
+        $days = isset($args['days']) ? max(1, min(30, (int)$args['days'])) : 7;
+        $minMinutes = isset($args['min_minutes']) ? max(5, min(480, (int)$args['min_minutes'])) : 30;
+        $tz = $this->userTimeZone($userId);
+        $today = new \DateTimeImmutable('today', $tz);
+        // 09:00–18:00 default work hours.
+        $workStart = $this->parseHHMM((string)($args['workday_start'] ?? '09:00'));
+        $workEnd = $this->parseHHMM((string)($args['workday_end'] ?? '18:00'));
+        if ($workStart === null) { $workStart = [9, 0]; }
+        if ($workEnd === null || $workEnd <= $workStart) { $workEnd = [18, 0]; }
+        $cal = $this->resolveCalendar($userId, (string)($args['calendar'] ?? ''));
+        $cals = $cal !== null ? [$cal] : $this->calendars($userId);
+        if ($cals === []) {
+            return ['ok' => false, 'error' => 'No calendar found for this user'];
+        }
+        // Sammle alle VEvents im Zeitraum.
+        $rangeStart = $today;
+        $rangeEnd = $today->modify('+' . $days . ' days');
+        $busy = [];
+        foreach ($cals as $c) {
+            foreach ($this->backend->getCalendarObjects((int)$c['id']) as $obj) {
+                if (strtolower((string)($obj['component'] ?? '')) !== 'vevent') {
+                    continue;
+                }
+                $raw = $this->backend->getCalendarObject((int)$c['id'], (string)$obj['uri']);
+                if (!isset($raw['calendardata'])) { continue; }
+                try {
+                    $v = Reader::read((string)$raw['calendardata']);
+                } catch (\Throwable $e) { continue; }
+                foreach ($v->VEVENT as $ve) {
+                    $dtstart = $ve->DTSTART ? $ve->DTSTART->getDateTime() : null;
+                    if ($dtstart === null) { continue; }
+                    $dtend = $ve->DTEND ? $ve->DTEND->getDateTime() : $dtstart->modify('+1 hour');
+                    if ($ve->DTSTART && !$ve->DTSTART->hasTime()) {
+                        // Ganztages-Termine blockieren den ganzen Tag.
+                        $busy[] = [
+                            (new \DateTimeImmutable($dtstart->format('Y-m-d') . ' 00:00:00', $tz))->getTimestamp(),
+                            (new \DateTimeImmutable($dtstart->format('Y-m-d') . ' 23:59:59', $tz))->getTimestamp(),
+                        ];
+                    } else {
+                        $busy[] = [
+                            $dtstart->setTimezone($tz)->getTimestamp(),
+                            $dtend->setTimezone($tz)->getTimestamp(),
+                        ];
+                    }
+                }
+            }
+        }
+        // Suche Slot je Tag im Arbeitsfenster.
+        $slots = [];
+        for ($d = 0; $d < $days && count($slots) < 10; $d++) {
+            $day = $today->modify('+' . $d . ' days');
+            $winStart = $day->setTime($workStart[0], $workStart[1]);
+            $winEnd = $day->setTime($workEnd[0], $workEnd[1]);
+            $cursor = $winStart->getTimestamp();
+            $winEndTs = $winEnd->getTimestamp();
+            // Sortiere busy nach start.
+            $dayBusy = array_filter($busy, static function ($b) use ($winStart, $winEnd) {
+                return $b[1] > $winStart->getTimestamp() && $b[0] < $winEnd->getTimestamp();
+            });
+            usort($dayBusy, static fn($a, $b) => $a[0] <=> $b[0]);
+            foreach ($dayBusy as [$bs, $be]) {
+                if ($bs > $cursor && ($bs - $cursor) >= $minMinutes * 60) {
+                    $slots[] = [
+                        'start' => date('Y-m-d\TH:i:s', $cursor),
+                        'end' => date('Y-m-d\TH:i:s', $bs),
+                        'minutes' => (int)(($bs - $cursor) / 60),
+                        'day' => $day->format('Y-m-d'),
+                    ];
+                    if (count($slots) >= 10) { break 2; }
+                }
+                $cursor = max($cursor, $be);
+                if ($cursor >= $winEndTs) { break; }
+            }
+            if ($cursor < $winEndTs && ($winEndTs - $cursor) >= $minMinutes * 60) {
+                $slots[] = [
+                    'start' => date('Y-m-d\TH:i:s', $cursor),
+                    'end' => date('Y-m-d\TH:i:s', $winEndTs),
+                    'minutes' => (int)(($winEndTs - $cursor) / 60),
+                    'day' => $day->format('Y-m-d'),
+                ];
+            }
+        }
+        return ['ok' => true, 'result' => ['slots' => $slots, 'count' => count($slots)]];
+    }
+
+    /** @return array{0:int,1:int}|null */
+    private function parseHHMM(string $val): ?array {
+        if (preg_match('/^(\d{1,2}):(\d{2})$/', trim($val), $m)) {
+            $h = max(0, min(23, (int)$m[1]));
+            $mi = max(0, min(59, (int)$m[2]));
+            return [$h, $mi];
+        }
+        return null;
     }
 }
 
