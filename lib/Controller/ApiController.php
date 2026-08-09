@@ -8,6 +8,7 @@ use OCA\EvaAi\Db\DocumentMapper;
 use OCA\EvaAi\Db\ChunkMapper;
 use OCA\EvaAi\Service\AppConfig;
 use OCA\EvaAi\Service\ChatStore;
+use OCA\EvaAi\Service\FileContextChatService;
 use OCA\EvaAi\Service\Indexer;
 use OCA\EvaAi\Service\Ollama;
 use OCA\EvaAi\Service\RagService;
@@ -33,6 +34,7 @@ class ApiController extends OCSController {
         private ChunkMapper $chunkMapper,
         private IJobList $jobList,
         private ChatStore $chatStore,
+        private FileContextChatService $fileContextChat,
         private IAppManager $appManager
     ) {
         parent::__construct($appName, $request);
@@ -212,6 +214,74 @@ class ApiController extends OCSController {
             $history = [];
         }
         return new DataResponse($this->ragService->ask($user, $message, $history));
+    }
+
+    /**
+     * Kontext-Chat ueber explizit ausgewaehlte Dateien ("Mit AI oeffnen"
+     * bzw. "Mit diesen Dateien chatten"). Antwort wird ausschliesslich
+     * aus den Chunks der uebergebenen fileIds erzeugt.
+     */
+    #[NoAdminRequired]
+    public function fileContextChat(): DataResponse {
+        $user = $this->requireUser();
+        if ($user === null) {
+            return new DataResponse(['error' => 'Not logged in'], 401);
+        }
+        $fileIds = $this->request->getParam('fileIds');
+        if (!is_array($fileIds)) {
+            $fileIds = [];
+        }
+        $fileIds = array_values(array_filter(array_map('intval', $fileIds), static fn($v) => $v > 0));
+        $message = trim((string)($this->request->getParam('message') ?? ''));
+        if ($message === '') {
+            return new DataResponse(['error' => 'Empty message'], 400);
+        }
+        $history = $this->request->getParam('history') ?? [];
+        if (is_string($history)) {
+            $history = json_decode($history, true) ?? [];
+        }
+        if (!is_array($history)) {
+            $history = [];
+        }
+        return new DataResponse($this->fileContextChat->chat($user, $fileIds, $message, $history));
+    }
+
+    /**
+     * Liefert die indexierten Dokument-IDs zu einer Liste von File-IDs
+     * (fuer die UI, damit vor dem Chat geprueft werden kann, ob die
+     * Auswahl bereits indexiert ist).
+     */
+    #[NoAdminRequired]
+    public function fileContextStatus(): DataResponse {
+        $user = $this->requireUser();
+        if ($user === null) {
+            return new DataResponse(['error' => 'Not logged in'], 401);
+        }
+        $fileIds = $this->request->getParam('fileIds');
+        if (!is_array($fileIds)) {
+            $fileIds = [];
+        }
+        $fileIds = array_values(array_filter(array_map('intval', $fileIds), static fn($v) => $v > 0));
+        if ($fileIds === []) {
+            return new DataResponse(['indexed' => [], 'missing' => [], 'files' => []]);
+        }
+        $docs = $this->documentMapper->findByUserAndFileIds($user, $fileIds);
+        $indexed = [];
+        $files = [];
+        foreach ($docs as $d) {
+            $fid = (int)$d->getFileId();
+            $indexed[] = $fid;
+            $files[] = [
+                'fileId' => $fid,
+                'name' => $d->getName(),
+                'path' => $d->getPath(),
+            ];
+        }
+        return new DataResponse([
+            'indexed' => $indexed,
+            'missing' => array_values(array_diff($fileIds, $indexed)),
+            'files' => $files,
+        ]);
     }
 
     #[NoAdminRequired]

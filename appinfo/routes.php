@@ -26,5 +26,7 @@ return [
         ['name' => 'api#models', 'url' => '/api/models', 'verb' => 'GET'],
         ['name' => 'api#check', 'url' => '/api/check', 'verb' => 'POST'],
         ['name' => 'api#streamChat', 'url' => '/api/streamChat', 'verb' => 'POST'],
+        ['name' => 'api#fileContextChat', 'url' => '/api/fileContextChat', 'verb' => 'POST'],
+        ['name' => 'api#fileContextStatus', 'url' => '/api/fileContextStatus', 'verb' => 'POST'],
     ],
 ];

@@ -129,4 +129,30 @@ class ChunkMapper extends QBMapper {
         $result->closeCursor();
         return $rows;
     }
+
+    /**
+     * Liefert Chunks fuer mehrere Dokumente (Datei-Kontext-Chat).
+     * Pro Dokument auf 200 Chunks begrenzt, damit ein Dokument mit
+     * Tausenden Chunks nicht den ganzen Context sprengt.
+     *
+     * @param int[] $documentIds
+     * @return list<array{document_id:int,chunk_index:int,content:string}>
+     */
+    public function findByDocuments(array $documentIds): array {
+        $ids = array_values(array_unique(array_map('intval', $documentIds)));
+        if ($ids === []) {
+            return [];
+        }
+        $qb = $this->db->getQueryBuilder();
+        $qb->select('document_id', 'chunk_index', 'content')
+            ->from('eva_ai_chunks')
+            ->where($qb->expr()->in('document_id', $qb->createNamedParameter($ids, IQueryBuilder::PARAM_INT_ARRAY)))
+            ->orderBy('document_id', 'ASC')
+            ->addOrderBy('chunk_index', 'ASC')
+            ->setMaxResults(500 * max(1, count($ids)));
+        $result = $qb->executeQuery();
+        $rows = $result->fetchAll();
+        $result->closeCursor();
+        return $rows;
+    }
 }

@@ -81,6 +81,27 @@ class DocumentMapper extends QBMapper {
         return $rows[0] ?? null;
     }
 
+    /**
+     * Liefert alle Document-Eintraege (id, file_id, name, path) des Users fuer die
+     * uebergebenen File-IDs. Wird fuer Datei-Kontext-Chats verwendet ("Mit diesen
+     * Dateien chatten"). Liefert nur Dokumente, die dem User gehoeren.
+     *
+     * @param int[] $fileIds
+     * @return list<Document>
+     */
+    public function findByUserAndFileIds(string $userId, array $fileIds): array {
+        if ($fileIds === []) {
+            return [];
+        }
+        $ids = array_values(array_unique(array_map('intval', $fileIds)));
+        $qb = $this->db->getQueryBuilder();
+        $qb->select('*')
+            ->from('eva_ai_documents')
+            ->where($qb->expr()->eq('user_id', $qb->createNamedParameter($userId)))
+            ->andWhere($qb->expr()->in('file_id', $qb->createNamedParameter($ids, IQueryBuilder::PARAM_INT_ARRAY)));
+        return $this->findEntities($qb);
+    }
+
     public function findFileIdsForUser(string $userId): array {
         $qb = $this->db->getQueryBuilder();
         $qb->select('file_id')->from('eva_ai_documents');
