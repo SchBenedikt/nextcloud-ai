@@ -57,7 +57,10 @@ class TalkSetup extends Command {
             $existing = null;
         }
         $secret = $this->random->generate(64);
-        $features = Bot::FEATURE_RESPONSE;
+        // FEATURE_EVENT makes Talk dispatch BotInvokeEvent locally to listeners
+        // (our TalkBotListener); FEATURE_RESPONSE is also enabled so the bot can
+        // also call back into /ocs/.../bot/{token}/message if needed.
+        $features = Bot::FEATURE_RESPONSE | Bot::FEATURE_EVENT;
         if ($existing instanceof BotServer) {
             $existing->setName($name);
             $existing->setSecret($secret);

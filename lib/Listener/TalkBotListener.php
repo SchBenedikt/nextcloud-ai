@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace OCA\EvaAi\Listener;
 
 use OCA\EvaAi\Service\Ollama;
+use OCA\EvaAi\Service\TalkContextReader;
 use OCA\Talk\Events\BotInvokeEvent;
 use OCA\Talk\Model\Bot;
 use OCP\EventDispatcher\Event;
@@ -14,9 +15,11 @@ use Psr\Log\LoggerInterface;
 /**
  * EVA-Bot für Nextcloud Talk.
  *
- * Lauscht auf BotInvokeEvent (FEATURE_RESPONSE) und antwortet im
- * Raum mit einer kurzen, freundlichen LLM-Antwort. Bewusst ohne
- * Tool-Aufrufe, um Latenz und FS-Abhängigkeiten zu vermeiden.
+ * Lauscht auf BotInvokeEvent (FEATURE_EVENT) und antwortet im Raum mit
+ * einer kurzen, freundlichen LLM-Antwort. Bewusst ohne Tool-Aufrufe,
+ * um Latenz und FS-Abhängigkeiten zu vermeiden. Die letzten
+ * Chatnachrichten des Raums werden als History geladen, damit EVA
+ * Bezug auf Vorgänger nehmen kann.
  *
  * @implements IEventListener<Event>
  */
@@ -25,10 +28,13 @@ class TalkBotListener implements IEventListener {
 Du bist EVA, ein hilfreicher KI-Assistent im Nextcloud-Talk-Chat. Antworte kurz und freundlich (1-3 Sätze) auf Deutsch. Wenn der Nutzer dich direkt anspricht (z.B. "EVA, ..." oder "@EVA"), reagiere immer. Sonst nur, wenn die Frage eindeutig an dich gerichtet ist oder du konkret gebraucht wirst.
 
 Wichtig: Du hast im Talk-Kontext KEINE Werkzeuge (keine Kalender-, Aufgaben-, Datei- oder Mail-Tools). Wenn der Nutzer Live-Daten braucht (aktuelle Uhrzeit, Termine, Aufgaben, Datei-Inhalte), sage ehrlich "Das kann ich im Chat gerade nicht abrufen, schau bitte in der EVA-Web-App nach" – erfinde keine Uhrzeiten oder Termine. Allgemeinwissen, Erklärungen, Brainstorming, Formulierungshilfen und Smalltalk darfst du gerne beantworten.
+
+Dir werden die letzten Nachrichten des Raums als History angezeigt. Beziehe dich darauf, wenn der Nutzer auf Vorgänger verweist (z.B. "was hat X eben gesagt?"). Wenn die letzte echte Nachricht nicht an dich gerichtet war und keinen inhaltlichen Bezug zur jetzigen Frage hat, darfst du auch kurz und freundlich sein.
 PROMPT;
 
     public function __construct(
         private Ollama $ollama,
+        private TalkContextReader $contextReader,
         private LoggerInterface $logger,
     ) {
     }
@@ -51,19 +57,21 @@ PROMPT;
             return;
         }
         // Wer hat gefragt? Damit wir im user-Kontext des Sprechers antworten.
-        $actorType = (string)($data['actor']['talkParticipantType'] ?? '');
         $actorName = (string)($data['actor']['name'] ?? '');
         $userId = $this->extractUserId($data['actor']['id'] ?? '');
         if ($userId === null) {
-            // Bot/ anonyme Teilnehmer: ohne Nutzer-Kontext können wir keine Tools ausführen.
             $event->addAnswer("Ich kann leider nur Antworten, wenn ich weiss, von wem die Frage kommt.");
             return;
         }
         // Sprecher aus Mention-Liste entfernen, falls vorhanden.
         $cleanContent = $this->stripMention($content);
 
+        // History der letzten Chatnachrichten laden.
+        $roomId = (int)($data['target']['id'] ?? 0);
+        $history = $roomId > 0 ? $this->contextReader->buildHistoryMessages($roomId) : [];
+
         try {
-            $answer = $this->generateAnswer($userId, $cleanContent, $actorName);
+            $answer = $this->generateAnswer($history, $cleanContent, $actorName, $userId);
             if ($answer === '') {
                 $event->addAnswer("Da fällt mir gerade nichts Passendes ein. Kannst du die Frage anders stellen?");
                 return;
@@ -93,7 +101,10 @@ PROMPT;
         return trim($cleaned);
     }
 
-    private function generateAnswer(string $userId, string $question, string $actorName): string {
+    /**
+     * @param list<array{role:string,content:string}> $history
+     */
+    private function generateAnswer(array $history, string $question, string $actorName, string $userId): string {
         // Im Talk-Kontext bleiben wir absichtlich ohne Tool-Aufrufe:
         //  - Tool-Calls würden jedes Mal einen UserFilesystem-Lookup brauchen,
         //    was im CLI-Hook von Talk unzuverlässig ist.
@@ -101,8 +112,13 @@ PROMPT;
         // Wer Aktionen braucht (Kalender, Tasks, Files), nutzt die EVA-UI im Browser.
         $messages = [
             ['role' => 'system', 'content' => self::SYSTEM_PROMPT . "\nAktueller Sprecher: " . ($actorName !== '' ? $actorName : $userId)],
-            ['role' => 'user', 'content' => $question],
         ];
+        // History einfügen (chronologisch aufsteigend), dann die aktuelle Frage.
+        foreach ($history as $h) {
+            $messages[] = $h;
+        }
+        $messages[] = ['role' => 'user', 'content' => $question];
+
         $resp = $this->ollama->chat($messages, []);
         if (isset($resp['error'])) {
             $this->logger->warning('eva-ai talk: ollama error: ' . $resp['error']);
