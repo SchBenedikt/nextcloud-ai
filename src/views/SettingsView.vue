@@ -155,7 +155,11 @@
 					<NcTextField v-model="f.mail_index_max" :label="'Max. emails per run'" :label-outside="true" />
 				</div>
 				<label class="action-toggle">
-					<input type="checkbox" v-model="f.mail_index_enabled" />
+					<input
+						type="checkbox"
+						v-model="f.mail_index_enabled"
+						true-value="1"
+						false-value="0" />
 					<span>Index emails from the Mail app (subject, sender, body)</span>
 				</label>
 				<div class="index-row">
