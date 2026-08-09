@@ -28,12 +28,12 @@ class TalkContextReader {
 
     /**
      * Liefert die letzten MAX_HISTORY Chat-Nachrichten des Raums als
-     * für Ollama formatierte messages-Liste. Bots, System-Messages und
-     * Commands werden herausgefiltert.
+     * für Ollama formatierte messages-Liste. EVA's eigene Bot-Antworten
+     * werden als "assistant" zurückgegeben, fremde User-/Guest-Nachrichten
+     * als "user". System-Messages, Changelog und Commands werden
+     * herausgefiltert.
      *
      * Format: [['role' => 'user|assistant', 'content' => '...']]
-     * - role 'user' für normale User-Nachrichten
-     * - role 'assistant' für vorherige Bot-Antworten von EVA
      *
      * @return list<array{role:string,content:string}>
      */
@@ -49,7 +49,7 @@ class TalkContextReader {
             return [];
         }
         $out = [];
-        // Comments kommen DESC; wir wollen chronologisch.
+        // Comments kommen DESC; wir wollen chronologisch aufsteigend.
         $reversed = array_reverse((array)$comments);
         foreach ($reversed as $c) {
             $actorType = (string)$c->getActorType();
@@ -58,19 +58,32 @@ class TalkContextReader {
             if ($message === '') {
                 continue;
             }
-            // System-/Bot-/Changelog-Messages filtern.
-            if ($actorType !== Attendee::ACTOR_USERS && $actorType !== Attendee::ACTOR_GUESTS) {
+            // Changelog / System-Logs raus.
+            if ($actorId === Attendee::ACTOR_ID_CHANGELOG) {
                 continue;
             }
-            if (str_starts_with($actorId, Attendee::ACTOR_BOT_PREFIX) || $actorId === Attendee::ACTOR_ID_CHANGELOG) {
-                continue;
-            }
-            // Commands, die mit '/' beginnen, ignorieren (UI-Rauschen).
+            // Commands wie /me oder /help raus.
             if (str_starts_with($message, '/')) {
                 continue;
             }
-            // Mentions und Talk-System-Messages (JSON) überspringen.
+            // Talk-System-Messages sind JSON-Objekte, die mit { anfangen.
             if (str_starts_with($message, '{')) {
+                continue;
+            }
+            // Eigene Bot-Antworten -> assistant.
+            if ($actorType === Attendee::ACTOR_BOTS) {
+                $out[] = [
+                    'role' => 'assistant',
+                    'content' => $message,
+                ];
+                continue;
+            }
+            // Andere Bots (fremde Apps) und Federated/Guests mit Bots
+            // uninteressant; nur eigene User/Guest-Nachrichten behalten.
+            if ($actorType !== Attendee::ACTOR_USERS && $actorType !== Attendee::ACTOR_GUESTS) {
+                continue;
+            }
+            if (str_starts_with($actorId, Attendee::ACTOR_BOT_PREFIX)) {
                 continue;
             }
             $out[] = [
