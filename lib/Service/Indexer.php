@@ -25,6 +25,7 @@ class Indexer {
         private ChunkMapper $chunkMapper,
         private Chunker $chunker,
         private Ollama $ollama,
+        private EmailService $email,
         private LoggerInterface $logger
     ) {
     }
@@ -133,6 +134,7 @@ class Indexer {
 
             $this->flushBatch($batch, $result);
             $this->cleanupRemoved($userId, $seen);
+            $this->indexEmails($userId, $result, $maxFiles);
 
             if ($result['error'] === null && $result['processed'] === 0 && $result['total_seen'] > 0) {
                 $result['error'] = null; // up to date
@@ -475,9 +477,88 @@ class Indexer {
         $batch = [];
     }
 
+
+    /**
+     * Index emails from the Mail app (bounded pass, hash-skipped like files).
+     * Mail docs use NEGATIVE file ids (-messageId) so the file-scan cleanup
+     * never removes them. Runs only when the config 'mail_index_enabled' = 1
+     * and the Mail app tables exist.
+     */
+    private function indexEmails(string $userId, array &$result, int $maxFiles): void {
+        if ($this->config->get('mail_index_enabled') !== '1') {
+            return;
+        }
+        $limit = max(1, min(500, $this->config->getInt('mail_index_max', 25)));
+        try {
+            $mails = $this->email->listMessages($userId, $limit, false);
+        } catch (\Throwable $e) {
+            $this->logger->warning('ragchat: mail index list failed', ['e' => $e->getMessage()]);
+            return;
+        }
+        if ($mails === []) {
+            return;
+        }
+        $hashes = $this->documentMapper->hashesForUser($userId);
+        $batch = [];
+        $processedThisPass = 0;
+        $maxTotal = max($maxFiles, 10);
+        foreach ($mails as $mail) {
+            if ($processedThisPass >= $maxTotal) {
+                break;
+            }
+            $msgId = (int)$mail['id'];
+            $mailFileId = -$msgId;
+            $body = '';
+            try {
+                $body = $this->email->bodyText($msgId);
+            } catch (\Throwable $e) {
+            }
+            $from = $mail['from'];
+            $to = implode(', ', (array)($mail['to'] ?? []));
+            $content = "EMAIL\nFrom: " . $from . "\nTo: " . $to . "\nDate: " . date('Y-m-d H:i', (int)$mail['sent'])
+                . "\nSubject: " . $mail['subject'] . "\n\n" . trim($body);
+            $content = $this->normalize($content);
+            if ($content === '' || trim($mail['subject']) === '') {
+                continue;
+            }
+            if (mb_strlen($content) > 30000) {
+                $content = mb_substr($content, 0, 30000);
+            }
+            $hash = md5($content);
+            if (($hashes[$mailFileId] ?? null) === $hash) {
+                continue; // unchanged since last run
+            }
+            $chunks = $this->chunker->chunk($content);
+            if (empty($chunks)) {
+                continue;
+            }
+            $this->removeStaleDocument($userId, $mailFileId);
+            $doc = new Document();
+            $doc->setUserId($userId);
+            $doc->setFileId($mailFileId);
+            $doc->setPath('mail://' . $msgId);
+            $doc->setName('mail ' . $msgId . ' - ' . ($mail['subject'] ?? ''));
+            $doc->setMime('message/rfc822');
+            $doc->setSize(mb_strlen($content));
+            $doc->setContentHash($hash);
+            $doc->setChunkCount(count($chunks));
+            $doc->setIndexedAt(time());
+            $this->documentMapper->insert($doc);
+            foreach ($chunks as $i => $c) {
+                $batch[] = ['docId' => (int)$doc->getId(), 'index' => $i, 'content' => $c['content'], 'tokens' => $c['tokens']];
+            }
+            $result['processed']++;
+            $processedThisPass++;
+            if (count($batch) >= self::BATCH) {
+                $this->flushBatch($batch, $result);
+            }
+        }
+        $this->flushBatch($batch, $result);
+    }
+
     private function cleanupRemoved(string $userId, array $seen): void {
         $stored = $this->documentMapper->findFileIdsForUser($userId);
-        $removed = array_diff($stored, array_keys($seen));
+        $removed = array_filter(array_diff($stored, array_keys($seen)), static fn($f) => $f > 0);
         if (empty($removed)) {
             return;
         }

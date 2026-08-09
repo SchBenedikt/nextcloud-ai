@@ -5,7 +5,15 @@ Chat with a locally running Large Language Model about your own Nextcloud files.
 - Pure PHP, no external RAG service, no external database
 - Supported formats: text (txt, md, code, csv, tsv, html, json, xml, yaml, toml, rtf, sql, ...), PDF, Office (docx/xlsx/pptx incl. macro/template variants), OpenDocument (odt, ods, odp), EPUB and more
 - Hybrid search: vector search + lexical search (BM25) with RRF fusion
-- Tools in chat: create/rename/search files and templates; read/update contacts (incl. shared and group address books); create/update/delete calendar events on all calendars the user can see (local time formats, reminders); weather (Open-Meteo); current time in the user's timezone
+- Tools in chat:
+  - Files: list, create, rename, delete, read, search, notes, knowledge base (KNOWLEDGE.md)
+  - Contacts: find, create, update, delete (own, shared, group, Circles address books)
+  - Calendar: list calendars/events, create/update/delete events, reminders (local time formats)
+  - Mail (Mail app installed): search, list, read, unread count — plus optional indexing of emails into the RAG index (toggle in Settings)
+  - Shares: list (outgoing + incoming), create link/user/group shares with password, expiry and note, update and delete
+  - Tasks/to-dos: list, create, update, complete, delete (VTODO, all task-capable calendars)
+  - Activity feed of all apps, server status (version, PHP, DB, quotas, Ollama)
+  - Weather (Open-Meteo); current time in the user's timezone
 - TaskProcessing provider (IDs `ragchat:text2text`), compatible with the Assistant app
 - "AI answer ready" notification via the Notifications app
 - No configuration needed: embedding and chat model come from the local Ollama instance
@@ -62,6 +70,8 @@ sudo -u www-data php occ config:app:set ragchat chunk_size       --value=900    
 sudo -u www-data php occ config:app:set ragchat chunk_overlap    --value=120               # overlap (120)
 sudo -u www-data php occ config:app:set ragchat index_enabled    --value=1                 # 0 = index disabled
 sudo -u www-data php occ config:app:set ragchat actions_enabled  --value=1                 # 0 = no chat tools
+sudo -u www-data php occ config:app:set ragchat mail_index_enabled --value=1                 # 0 = emails not indexed
+sudo -u www-data php occ config:app:set ragchat mail_index_max   --value=25                 # emails per indexing pass
 ```
 
 ### 4. TaskProcessing / Assistant (optional, recommended)
@@ -90,7 +100,8 @@ sudo -u www-data php occ config:app:set ragchat notify_on_complete --value=1
 ### 6. First start & indexing
 
 1. Open `/apps/ragchat` as a user.
-2. In Settings start the index with the "Start indexing" button (the user whose home is indexed is set via `index_user` — empty means the current user).
+2. In Settings start the index with the "Start indexing" button (the user whose home is indexed is set via `index_user` — empty means the current user). Each pass also indexes emails (subject, sender, body) if enabled.
+3. Then chat. Tools (files, contacts, calendar, mail, shares, tasks, weather, time) are enabled by default; every answer names which file it used.
 3. Then chat. Tools (files, contacts, calendar, weather, time) are enabled by default; every answer names which file it used.
 
 ## Calendar tools: supported time formats

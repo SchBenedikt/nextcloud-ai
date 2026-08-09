@@ -151,6 +151,13 @@
 					Word (.docx/.docm/.dotx), Excel (.xlsx/.xlsm/.xltx), PowerPoint (.pptx/.pptm/.ppsx/.potx),
 					OpenDocument (.odt, .ods, .odp), EPUB and PDF (PDF requires the tool "pdftotext" on the server).
 				</p>
+				<div class="field-row">
+					<NcTextField v-model="f.mail_index_max" :label="'Max. emails per run'" :label-outside="true" />
+				</div>
+				<label class="action-toggle">
+					<input type="checkbox" v-model="f.mail_index_enabled" />
+					<span>Index emails from the Mail app (subject, sender, body)</span>
+				</label>
 				<div class="index-row">
 					<NcButton type="secondary" @click="save">
 						Save
@@ -190,6 +197,8 @@ export default {
 			chunk_size: '900',
 			chunk_overlap: '120',
 			max_files_per_run: '40',
+			mail_index_max: '25',
+			mail_index_enabled: '1',
 			scope_path: '',
 		})
 		const status = ref(null)

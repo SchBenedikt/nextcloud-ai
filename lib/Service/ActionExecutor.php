@@ -38,7 +38,10 @@ class ActionExecutor {
         private IAppDataFactory $appDataFactory,
         private IAccountManager $accounts,
         private IUserManager $userManager,
-        private CalendarService $calendar
+        private CalendarService $calendar,
+        private EmailService $email,
+        private SharesService $shares,
+        private ActivityService $activity
     ) {
     }
 
@@ -214,6 +217,124 @@ class ActionExecutor {
                 ], 'required' => ['event_id']],
             ]],
             ['type' => 'function', 'function' => [
+                'name' => 'search_mails',
+                'description' => 'Search emails of the user\'s mail account (subject, sender, preview). Typical use: "find the mail about X" or "show my latest mails".',
+                'parameters' => ['type' => 'object', 'properties' => [
+                    'query' => ['type' => 'string', 'description' => 'Search text, e.g. "Rechnung" or "alice@example.com".'],
+                    'limit' => ['type' => 'integer', 'description' => 'Optional max results (default 10).'],
+                ], 'required' => ['query']],
+            ]],
+            ['type' => 'function', 'function' => [
+                'name' => 'list_mails',
+                'description' => 'List the most recent emails of the user (latest first). Use when the user asks about their mail without a concrete topic.',
+                'parameters' => ['type' => 'object', 'properties' => [
+                    'limit' => ['type' => 'integer', 'description' => 'Optional max mails (default 15).'],
+                    'unread_only' => ['type' => 'boolean', 'description' => 'Optional: only unread mails.'],
+                ]],
+            ]],
+            ['type' => 'function', 'function' => [
+                'name' => 'read_mail',
+                'description' => 'Read the full content of a single email by its id (ids come from list_mails / search_mails).',
+                'parameters' => ['type' => 'object', 'properties' => [
+                    'message_id' => ['type' => 'integer', 'description' => 'Id of the email.'],
+                ], 'required' => ['message_id']],
+            ]],
+            ['type' => 'function', 'function' => [
+                'name' => 'unread_mail_count',
+                'description' => 'Get how many unread emails the user currently has.',
+                'parameters' => ['type' => 'object', 'properties' => new \stdClass()],
+            ]],
+            ['type' => 'function', 'function' => [
+                'name' => 'list_shares',
+                'description' => 'List all file/folder shares of the user: outgoing (link + user/group shares) and incoming shares from others, with expiry, note and link.',
+                'parameters' => ['type' => 'object', 'properties' => [
+                    'limit' => ['type' => 'integer', 'description' => 'Optional max entries (default 100).'],
+                ]],
+            ]],
+            ['type' => 'function', 'function' => [
+                'name' => 'create_share',
+                'description' => 'Create a new share for a file or folder in the user\'s Nextcloud (public link or share with a user/group). Use for "share this file with X" or "make a download link".',
+                'parameters' => ['type' => 'object', 'properties' => [
+                    'path' => ['type' => 'string', 'description' => 'Relative path of the file/folder, e.g. "Documents/Plan.pdf".'],
+                    'type' => ['type' => 'string', 'description' => 'Share type: "link" (default, public link), "user" or "group".'],
+                    'target' => ['type' => 'string', 'description' => 'For user/group shares: the user id or group id to share with.'],
+                    'write' => ['type' => 'boolean', 'description' => 'Optional: allow editing (default read-only).'],
+                    'password' => ['type' => 'string', 'description' => 'Optional password for link shares.'],
+                    'expiration' => ['type' => 'string', 'description' => 'Optional expiration date, ISO like "2026-12-31".'],
+                    'note' => ['type' => 'string', 'description' => 'Optional note / message for the share.'],
+                ], 'required' => ['path']],
+            ]],
+            ['type' => 'function', 'function' => [
+                'name' => 'update_share',
+                'description' => 'Update an existing share (note, expiration date, permissions). Use share ids from list_shares.',
+                'parameters' => ['type' => 'object', 'properties' => [
+                    'share_id' => ['type' => 'string', 'description' => 'Id from list_shares.'],
+                    'note' => ['type' => 'string', 'description' => 'New note (empty removes it).'],
+                    'expiration' => ['type' => 'string', 'description' => 'Optional expiration date ISO, empty removes it.'],
+                    'permissions' => ['type' => 'string', 'description' => 'Comma list: read,write,create,delete,share.'],
+                ], 'required' => ['share_id']],
+            ]],
+            ['type' => 'function', 'function' => [
+                'name' => 'delete_share',
+                'description' => 'Delete an existing share. Use only when the user explicitly asks to remove a share or link.',
+                'parameters' => ['type' => 'object', 'properties' => [
+                    'share_id' => ['type' => 'string', 'description' => 'Id from list_shares.'],
+                ], 'required' => ['share_id']],
+            ]],
+            ['type' => 'function', 'function' => [
+                'name' => 'list_tasks',
+                'description' => 'List all to-do items / tasks of the user (from all task-capable calendars), open tasks first, then by due date.',
+                'parameters' => ['type' => 'object', 'properties' => new \stdClass()],
+            ]],
+            ['type' => 'function', 'function' => [
+                'name' => 'create_task',
+                'description' => 'Create a new to-do item / task for the user in their default task list.',
+                'parameters' => ['type' => 'object', 'properties' => [
+                    'title' => ['type' => 'string', 'description' => 'Task title.'],
+                    'due' => ['type' => 'string', 'description' => 'Optional due date, any supported format, e.g. "2026-08-20 16:00" or "morgen".'],
+                    'description' => ['type' => 'string', 'description' => 'Optional longer description / notes.'],
+                    'priority' => ['type' => 'integer', 'description' => 'Optional priority 1-9 (1 highest).'],
+                    'categories' => ['type' => 'string', 'description' => 'Optional comma separated categories/tags.'],
+                ], 'required' => ['title']],
+            ]],
+            ['type' => 'function', 'function' => [
+                'name' => 'update_task',
+                'description' => 'Update a task (title, status, due date, description). Use task ids from list_tasks.',
+                'parameters' => ['type' => 'object', 'properties' => [
+                    'task_id' => ['type' => 'string', 'description' => 'Id like "personal/task.ics" from list_tasks.'],
+                    'title' => ['type' => 'string', 'description' => 'New title.'],
+                    'status' => ['type' => 'string', 'description' => 'New status: NEEDS-ACTION, IN-PROCESS, COMPLETED, CANCELLED.'],
+                    'due' => ['type' => 'string', 'description' => 'New due date, ISO or relative.'],
+                    'description' => ['type' => 'string', 'description' => 'New description (empty removes it).'],
+                ], 'required' => ['task_id']],
+            ]],
+            ['type' => 'function', 'function' => [
+                'name' => 'complete_task',
+                'description' => 'Mark a task as completed. Use when the user says a task is done.',
+                'parameters' => ['type' => 'object', 'properties' => [
+                    'task_id' => ['type' => 'string', 'description' => 'Task id from list_tasks.'],
+                ], 'required' => ['task_id']],
+            ]],
+            ['type' => 'function', 'function' => [
+                'name' => 'delete_task',
+                'description' => 'Delete a task permanently. Use only when the user explicitly asks to delete it.',
+                'parameters' => ['type' => 'object', 'properties' => [
+                    'task_id' => ['type' => 'string', 'description' => 'Task id from list_tasks.'],
+                ], 'required' => ['task_id']],
+            ]],
+            ['type' => 'function', 'function' => [
+                'name' => 'recent_activity',
+                'description' => 'List the recent Nextcloud activity feed of the user (files changed, shares, events) across all apps.',
+                'parameters' => ['type' => 'object', 'properties' => [
+                    'limit' => ['type' => 'integer', 'description' => 'Optional max entries (default 25).'],
+                ]],
+            ]],
+            ['type' => 'function', 'function' => [
+                'name' => 'server_status',
+                'description' => 'Get technical status info of the Nextcloud server (version, PHP, database, app version, Ollama connectivity, user). Use when the user asks about the system, server or setup.',
+                'parameters' => ['type' => 'object', 'properties' => new \stdClass()],
+            ]],
+            ['type' => 'function', 'function' => [
                 'name' => 'current_time',
                 'description' => 'Get the current date and time in the user\'s timezone. IMPORTANT: as an AI model you do not know today\'s date - always call this tool before computing dates, deadlines, appointments or relative times.',
                 'parameters' => ['type' => 'object', 'properties' => []],
@@ -270,6 +391,21 @@ class ActionExecutor {
                 'delete_calendar_event' => $this->calendar->deleteEvent($userId, $args),
                 'current_time' => $this->currentTime($userId),
                 'weather' => $this->weather($args),
+                'search_mails' => $this->searchMails($userId, $args),
+                'list_mails' => $this->listMails($userId, $args),
+                'read_mail' => $this->readMail($userId, $args),
+                'unread_mail_count' => $this->unreadMailCount($userId),
+                'list_shares' => $this->shares->list($userId, $args),
+                'create_share' => $this->shares->create($userId, $args),
+                'update_share' => $this->shares->update($userId, $args),
+                'delete_share' => $this->shares->delete($userId, $args),
+                'list_tasks' => $this->calendar->listTasks($userId, $args),
+                'create_task' => $this->calendar->createTask($userId, $args),
+                'update_task' => $this->calendar->updateTask($userId, $args),
+                'complete_task' => $this->calendar->completeTask($userId, $args),
+                'delete_task' => $this->calendar->deleteTask($userId, $args),
+                'recent_activity' => $this->activity->recent($userId, $args),
+                'server_status' => $this->serverStatus($userId),
                 'update_knowledge' => $this->updateKnowledge($home, $args),
                 default => ['ok' => false, 'error' => 'Unknown tool: ' . $name],
             };
@@ -942,6 +1078,67 @@ class ActionExecutor {
                 'unix' => $now->getTimestamp(),
             ],
         ];
+    }
+
+    private function serverStatus(string $userId): array {
+        $version = implode('.', \OCP\Util::getVersion());
+        $quota = null;
+        try {
+            $home = $this->rootFolder->getUserFolder($userId);
+            $quota = ['free_bytes' => $home->getFreeSpace(), 'used_bytes' => (int)$home->getSize()];
+        } catch (\Throwable $e) {
+        }
+        $dbName = '';
+        try {
+            $dbName = \OC::$server->get(\OC\SystemConfig::class)->getValue('dbtype', 'sqlite');
+        } catch (\Throwable $e) {
+        }
+        return ['ok' => true, 'result' => [
+            'user' => $userId,
+            'nextcloud' => $version,
+            'php' => PHP_VERSION,
+            'database' => $dbName,
+            'ollama_url' => $this->config->get('ollama_url'),
+            'chat_model' => $this->config->get('chat_model'),
+            'embedding_model' => $this->config->get('embedding_model'),
+            'quota' => $quota,
+            'mail_index_enabled' => $this->config->get('mail_index_enabled') === '1',
+        ]];
+    }
+
+    /** @return array{ok:true,result:array}|array{ok:false,error:string} */
+    private function searchMails(string $userId, array $args): array {
+        try {
+            $res = $this->email->search($userId, (string)($args['query'] ?? ''), max(1, (int)($args['limit'] ?? 10)));
+        } catch (\Throwable $e) {
+            return ['ok' => false, 'error' => 'Mail access failed: ' . $e->getMessage()];
+        }
+        return ['ok' => true, 'result' => ['mails' => $res]];
+    }
+
+    /** @return array{ok:true,result:array}|array{ok:false,error:string} */
+    private function listMails(string $userId, array $args): array {
+        try {
+            $res = $this->email->listMessages($userId, max(1, (int)($args['limit'] ?? 15)), !empty($args['unread_only']));
+        } catch (\Throwable $e) {
+            return ['ok' => false, 'error' => 'Mail access failed: ' . $e->getMessage()];
+        }
+        return ['ok' => true, 'result' => ['mails' => $res]];
+    }
+
+    /** @return array{ok:true,result:array}|array{ok:false,error:string} */
+    private function readMail(string $userId, array $args): array {
+        return $this->email->readMessage($userId, (int)($args['message_id'] ?? 0));
+    }
+
+    /** @return array{ok:true,result:array}|array{ok:false,error:string} */
+    private function unreadMailCount(string $userId): array {
+        try {
+            $n = $this->email->unreadCount($userId);
+        } catch (\Throwable $e) {
+            return ['ok' => false, 'error' => 'Mail access failed: ' . $e->getMessage()];
+        }
+        return ['ok' => true, 'result' => ['unread' => $n]];
     }
 
     private function weather(array $args): array {

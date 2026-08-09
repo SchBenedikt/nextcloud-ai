@@ -68,17 +68,19 @@ class ApiController extends OCSController {
             'actions_enabled',
             'exec_write_types', 'exec_write_max_chars', 'exec_delete_mode',
             'notify_on_complete',
+            'mail_index_enabled',
+            'mail_index_max',
         ];
         foreach ($allowed as $key) {
             $value = $this->request->getParam($key);
             if ($value !== null) {
-                if (in_array($key, ['top_k', 'chunk_size', 'chunk_overlap', 'max_file_size', 'max_files_per_run', 'context_size', 'exec_write_max_chars'], true)) {
+                if (in_array($key, ['top_k', 'chunk_size', 'chunk_overlap', 'max_file_size', 'max_files_per_run', 'context_size', 'exec_write_max_chars', 'mail_index_max'], true)) {
                     $value = (string)max(1, (int)$value);
                 }
                 if ($key === 'exec_delete_mode') {
                     $value = in_array($value, ['off', 'own', 'all'], true) ? $value : 'own';
                 }
-                if ($key === 'notify_on_complete') {
+                if ($key === 'notify_on_complete' || $key === 'mail_index_enabled') {
                     $value = in_array((string)$value, ['1', 'true', 'on'], true) ? '1' : '0';
                 }
                 if ($key === 'temperature') {

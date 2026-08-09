@@ -432,4 +432,190 @@ class CalendarService {
         }
         return ['ok' => true, 'result' => 'Deleted event ' . $id];
     }
+
+    /** @return array{ok:true,result:array}|array{ok:false,error:string} */
+    public function listTasks(string $userId, array $args = []): array {
+        $cals = $this->calendars($userId);
+        if ($cals === []) {
+            return ['ok' => false, 'error' => 'No calendar found for this user'];
+        }
+        $out = [];
+        foreach ($cals as $c) {
+            foreach ($this->backend->getCalendarObjects((int)$c['id']) as $obj) {
+                if (strtolower((string)($obj['component'] ?? '')) !== 'vtodo') {
+                    continue;
+                }
+                $raw = $this->backend->getCalendarObject((int)$c['id'], (string)$obj['uri']);
+                if (!isset($raw['calendardata'])) {
+                    continue;
+                }
+                try {
+                    $v = Reader::read((string)$raw['calendardata']);
+                } catch (\Throwable $e) {
+                    continue;
+                }
+                foreach ($v->VTODO as $vt) {
+                    $due = $vt->DUE ? $vt->DUE->getDateTime() : null;
+                    $out[] = [
+                        'id' => $c['uri'] . '/' . $obj['uri'],
+                        'calendar' => (string)$c['displayname'],
+                        'title' => (string)($vt->SUMMARY ?? ''),
+                        'status' => (string)($vt->STATUS ?? ''),
+                        'due' => $due ? $due->format('Y-m-d\TH:i:s') : null,
+                        'priority' => (int)(string)($vt->PRIORITY ?? 0),
+                        'description' => (string)($vt->DESCRIPTION ?? ''),
+                    ];
+                }
+            }
+        }
+        $statuses = ['needs-action' => 0, 'in-process' => 1, 'completed' => 2, 'cancelled' => 3];
+        usort($out, static function ($a, $b) use ($statuses) {
+            $sa = $statuses[strtolower((string)$a['status'])] ?? 0;
+            $sb = $statuses[strtolower((string)$b['status'])] ?? 0;
+            if ($sa !== $sb) {
+                return $sa <=> $sb;
+            }
+            return (string)$a['due'] <=> (string)$b['due'];
+        });
+        return ['ok' => true, 'result' => ['tasks' => $out]];
+    }
+
+    /** @return array{ok:true,result:array}|array{ok:false,error:string} */
+    public function createTask(string $userId, array $args): array {
+        $title = trim((string)($args['title'] ?? ''));
+        if ($title === '') {
+            return ['ok' => false, 'error' => 'Task title required'];
+        }
+        $cal = $this->resolveCalendar($userId, (string)($args['calendar'] ?? ''));
+        if ($cal === null) {
+            $cal = $this->resolveCalendar($userId, null);
+        }
+        if ($cal === null) {
+            return ['ok' => false, 'error' => 'No calendar found'];
+        }
+        $allDay = false;
+        $due = $this->parseTime((string)($args['due'] ?? ''), $userId, $allDay);
+        $uid = 'ai-task-' . date('YmdHis') . '-' . bin2hex(random_bytes(4));
+        $vc = new VCalendar();
+        $vt = $vc->add('VTODO');
+        $vt->add('UID', $uid);
+        $vt->add('DTSTAMP', new \DateTimeImmutable('now'));
+        $vt->add('SUMMARY', $title);
+        $vt->add('STATUS', (string)($args['status'] ?? 'NEEDS-ACTION'));
+        if ($due !== null) {
+            if ($allDay) {
+                $vt->add('DUE', $due->format('Ymd'));
+            } else {
+                $vt->add('DUE', $due->setTimezone(new \DateTimeZone('UTC'))->format('Ymd\THis\Z'));
+            }
+        }
+        if (($args['priority'] ?? 0) !== 0) {
+            $vt->add('PRIORITY', (int)$args['priority']);
+        }
+        if (($args['description'] ?? '') !== '') {
+            $vt->add('DESCRIPTION', (string)$args['description']);
+        }
+        if (($args['categories'] ?? '') !== '') {
+            $vt->add('CATEGORIES', (string)$args['categories']);
+        }
+        try {
+            $this->backend->createCalendarObject((int)$cal['id'], $uid . '.ics', $vc->serialize());
+        } catch (\Throwable $e) {
+            return ['ok' => false, 'error' => 'Task write failed: ' . $e->getMessage()];
+        }
+        return ['ok' => true, 'result' => ['task' => ['id' => $cal['uri'] . '/' . $uid . '.ics', 'title' => $title, 'calendar' => (string)$cal['displayname']]]];
+    }
+
+    /** @return array{ok:true,result:array}|array{ok:false,error:string} */
+    public function updateTask(string $userId, array $args): array {
+        $id = trim((string)($args['task_id'] ?? ''));
+        if ($id === '') {
+            return ['ok' => false, 'error' => 'task_id required (use the id from list_tasks)'];
+        }
+        $parts = explode('/', $id, 2);
+        $cal = $this->resolveCalendar($userId, $parts[0] ?? '');
+        if ($cal === null) {
+            return ['ok' => false, 'error' => 'Calendar not found'];
+        }
+        $uri = $parts[1] ?? '';
+        $raw = $this->backend->getCalendarObject((int)$cal['id'], $uri);
+        if ($raw === null || !isset($raw['calendardata'])) {
+            return ['ok' => false, 'error' => 'Task not found'];
+        }
+        try {
+            $v = Reader::read((string)$raw['calendardata']);
+        } catch (\Throwable $e) {
+            return ['ok' => false, 'error' => 'Could not parse task: ' . $e->getMessage()];
+        }
+        $vt = $v->VTODO ? $v->VTODO[0] : null;
+        if ($vt === null) {
+            return ['ok' => false, 'error' => 'No VTODO found'];
+        }
+        if (isset($args['title']) && (string)$args['title'] !== '') {
+            $vt->SUMMARY = (string)$args['title'];
+        }
+        if (array_key_exists('status', $args)) {
+            $status = strtoupper((string)$args['status']);
+            $allowed = ['NEEDS-ACTION', 'IN-PROCESS', 'COMPLETED', 'CANCELLED'];
+            if (in_array($status, $allowed, true)) {
+                $vt->STATUS = $status;
+                if ($status === 'COMPLETED') {
+                    $vt->{'PERCENT-COMPLETE'} = 100;
+                }
+            }
+        }
+        if (array_key_exists('due', $args)) {
+            $vt->remove('DUE');
+            if (trim((string)$args['due']) !== '') {
+                $allDay = false;
+                $due = $this->parseTime((string)$args['due'], $userId, $allDay);
+                if ($due !== null) {
+                    $vt->add('DUE', $allDay ? $due->format('Ymd') : $due->setTimezone(new \DateTimeZone('UTC'))->format('Ymd\THis\Z'));
+                }
+            }
+        }
+        if (array_key_exists('description', $args)) {
+            if ((string)$args['description'] === '') {
+                unset($vt->DESCRIPTION);
+            } else {
+                $vt->DESCRIPTION = (string)$args['description'];
+            }
+        }
+        try {
+            $this->backend->updateCalendarObject((int)$cal['id'], $uri, $v->serialize());
+        } catch (\Throwable $e) {
+            return ['ok' => false, 'error' => 'Task update failed: ' . $e->getMessage()];
+        }
+        return ['ok' => true, 'result' => ['task' => ['id' => $id, 'title' => (string)$vt->SUMMARY, 'status' => (string)($vt->STATUS ?? '')]]];
+    }
+
+    /** @return array{ok:true,result:string}|array{ok:false,error:string} */
+    public function deleteTask(string $userId, array $args): array {
+        $id = trim((string)($args['task_id'] ?? ''));
+        if ($id === '') {
+            return ['ok' => false, 'error' => 'task_id required'];
+        }
+        $parts = explode('/', $id, 2);
+        $cal = $this->resolveCalendar($userId, $parts[0] ?? '');
+        if ($cal === null) {
+            return ['ok' => false, 'error' => 'Calendar not found'];
+        }
+        $uri = $parts[1] ?? '';
+        $raw = $this->backend->getCalendarObject((int)$cal['id'], $uri);
+        if ($raw === null) {
+            return ['ok' => false, 'error' => 'Task not found'];
+        }
+        try {
+            $this->backend->deleteCalendarObject((int)$cal['id'], $uri);
+        } catch (\Throwable $e) {
+            return ['ok' => false, 'error' => 'Task delete failed: ' . $e->getMessage()];
+        }
+        return ['ok' => true, 'result' => 'Deleted task ' . $id];
+    }
+
+    /** @return array{ok:true,result:array}|array{ok:false,error:string} */
+    public function completeTask(string $userId, array $args): array {
+        return $this->updateTask($userId, array_merge($args, ['status' => 'COMPLETED']));
+    }
 }
+
