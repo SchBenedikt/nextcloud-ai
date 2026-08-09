@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace OCA\RagChat\Service;
+namespace OCA\EvaAi\Service;
 
 use OCP\Http\Client\IClientService;
 use Psr\Log\LoggerInterface;
@@ -137,7 +137,7 @@ class Ollama {
             // Fallback: per-text
             return $this->embedBatchLegacy($texts);
         } catch (\Throwable $e) {
-            $this->logger->error('ragchat embed batch failed', ['exception' => $e]);
+            $this->logger->error('eva-ai embed batch failed', ['exception' => $e]);
             return [null, $e->getMessage()];
         }
     }
@@ -161,7 +161,7 @@ class Ollama {
             }
             return [$out, null];
         } catch (\Throwable $e) {
-            $this->logger->error('ragchat embed legacy failed: ' . $model, ['exception' => $e]);
+            $this->logger->error('eva-ai embed legacy failed: ' . $model, ['exception' => $e]);
             return [null, 'Ollama embedding fehlgeschlagen: ' . $e->getMessage()];
         }
     }
@@ -169,6 +169,31 @@ class Ollama {
     /** @param float[] $vector */
     public function embedQuery(array $texts): array {
         return $this->embedBatch($texts);
+    }
+
+    /**
+     * Recursively convert empty associative arrays to JSON objects so Ollama
+     * doesn't reject tool schemas with `Value looks like object, but can't find closing '}'`.
+     * PHP encodes `[]` as JSON array, but Ollama requires `{}` for object fields
+     * like `parameters.properties`. Also normalize nested structures.
+     */
+    private function normalizePayload(mixed $value): mixed {
+        if (is_array($value)) {
+            $isAssoc = $value !== [] && array_keys($value) !== range(0, count($value) - 1);
+            if ($isAssoc || $value === []) {
+                $obj = new \stdClass();
+                foreach ($value as $k => $v) {
+                    $obj->{$k} = $this->normalizePayload($v);
+                }
+                return $obj;
+            }
+            $out = [];
+            foreach ($value as $i => $v) {
+                $out[$i] = $this->normalizePayload($v);
+            }
+            return $out;
+        }
+        return $value;
     }
 
     /**
@@ -190,9 +215,8 @@ class Ollama {
             ],
         ];
         if ($tools !== []) {
-            $payload['tools'] = $tools;
+            $payload['tools'] = $this->normalizePayload($tools);
         }
-        $encoded = json_encode($payload, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
         try {
             $r = $this->client()->post($this->base() . '/api/chat', [
                 'json' => $payload,
@@ -218,7 +242,7 @@ class Ollama {
             }
             return ['error' => 'Ollama: empty answer'];
         } catch (\Throwable $e) {
-            $this->logger->error('ragchat ollama chat failed', ['exception' => $e]);
+            $this->logger->error('eva-ai ollama chat failed', ['exception' => $e]);
             return ['error' => 'Ollama error: ' . $e->getMessage()];
         }
     }
@@ -245,9 +269,8 @@ class Ollama {
             ],
         ];
         if ($tools !== []) {
-            $payload['tools'] = $tools;
+            $payload['tools'] = $this->normalizePayload($tools);
         }
-        $encoded = json_encode($payload, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
         try {
             $r = $this->client()->post($this->base() . '/api/chat', [
                 'json' => $payload,
@@ -326,7 +349,7 @@ class Ollama {
                 }
             }
         } catch (\Throwable $e) {
-            $this->logger->error('ragchat ollama chat stream failed', ['exception' => $e]);
+            $this->logger->error('eva-ai ollama chat stream failed', ['exception' => $e]);
             yield ['type' => 'error', 'delta' => 'Ollama error: ' . $e->getMessage()];
         }
     }
