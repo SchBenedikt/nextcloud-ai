@@ -28,6 +28,8 @@ class AppConfig {
         'exec_write_max_chars' => '100000',
         'exec_delete_mode' => 'own',
         'notify_on_complete' => '1',
+        'mail_index_enabled' => '1',
+        'mail_index_max' => '25',
     ];
 
     public function __construct(private IConfig $config) {
