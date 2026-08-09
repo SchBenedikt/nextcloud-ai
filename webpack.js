@@ -5,10 +5,13 @@ const { VueLoaderPlugin } = require('vue-loader')
 module.exports = (env) => {
 	const isProd = process.env.NODE_ENV === 'production'
 	return {
-		entry: path.resolve(__dirname, 'src', 'main.js'),
+		entry: {
+			'eva-ai-main': path.resolve(__dirname, 'src', 'main.js'),
+			eva_ai_filesaction: path.resolve(__dirname, 'src', 'lib', 'filesaction.js'),
+		},
 		output: {
 			path: path.resolve(__dirname, 'js'),
-			filename: 'eva-ai-main.[contenthash:8].js',
+			filename: '[name].[contenthash:8].js',
 			publicPath: '/apps/eva-ai/js/',
 			clean: { keep: /^chat\.js$|^header\.js$/ },
 		},

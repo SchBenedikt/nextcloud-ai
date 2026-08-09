@@ -56,5 +56,19 @@ class Application extends App implements IBootstrap {
         } catch (\Throwable $e) {
             // Non-fatal: Button ist ein reines Komfort-Feature.
         }
+
+        // Files-Action: "Mit AI oeffnen" / "Mit diesen Dateien chatten" im
+        // Rechtsklick-Menu des Dateimanagers. Wird nur geladen, wenn die
+        // Files-App aktiv ist.
+        try {
+            $appManager = $context->getAppContainer()->get(\OCP\App\IAppManager::class);
+            $request = $context->getAppContainer()->get(\OCP\IRequest::class);
+            if ($appManager->isEnabledForAnyone('files')
+                && strpos((string)$request->getParam('app', ''), 'files') !== false) {
+                Util::addScript(self::APP_ID, 'eva_ai_filesaction');
+            }
+        } catch (\Throwable $e) {
+            // Non-fatal.
+        }
     }
 }

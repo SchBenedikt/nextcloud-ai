@@ -56,6 +56,7 @@
 		</NcAppNavigation>
 		<NcAppContent>
 			<ChatView v-if="view === 'chat'" :chat-id="currentChat" :initial-prompt="pendingPrompt" @chat-updated="loadChats" />
+			<FileContextChatView v-else-if="view === 'fileContext'" :file-ids="fileContextIds" />
 			<DocumentsView v-else-if="view === 'docs'" />
 			<SettingsView v-else />
 		</NcAppContent>
@@ -67,19 +68,27 @@ import { ref, onMounted } from 'vue'
 import ChatView from './views/ChatView.vue'
 import DocumentsView from './views/DocumentsView.vue'
 import SettingsView from './views/SettingsView.vue'
+import FileContextChatView from './views/FileContextChatView.vue'
 import { mdiChatProcessing, mdiFileDocumentOutline, mdiTune, mdiTrashCanOutline, mdiMessagePlus, mdiPencilOutline } from '@mdi/js'
 
 export default {
 	name: 'EvaAiApp',
-	components: { ChatView, DocumentsView, SettingsView },
+	components: { ChatView, DocumentsView, SettingsView, FileContextChatView },
 	setup() {
 		const params = new URLSearchParams(window.location.search)
-		const initial = params.get('view') === 'docs'
-			? 'docs'
-			: params.get('view') === 'settings'
-				? 'settings'
-				: 'chat'
+		const initialFileIdsParam = params.get('fileIds')
+		const initialFileIds = initialFileIdsParam
+			? initialFileIdsParam.split(',').map((x) => parseInt(x, 10)).filter((x) => Number.isFinite(x) && x > 0)
+			: []
+		const initial = params.get('view') === 'fileContext'
+			? 'fileContext'
+			: params.get('view') === 'docs'
+				? 'docs'
+				: params.get('view') === 'settings'
+					? 'settings'
+					: 'chat'
 		const view = ref(initial)
+		const fileContextIds = ref(initialFileIds)
 		const mobileOpen = ref(false)
 		const buildVersion = appVersion
 
@@ -170,12 +179,26 @@ export default {
 				window.addEventListener('eva-ai:ask-about', (e) => {
 					if (e && e.detail && e.detail.prompt) askAbout(e.detail.prompt)
 				})
+				window.addEventListener('eva-ai:file-context', (e) => {
+					const ids = e && e.detail && Array.isArray(e.detail.fileIds)
+						? e.detail.fileIds.map((x) => parseInt(x, 10)).filter((x) => Number.isFinite(x) && x > 0)
+						: []
+					if (ids.length === 0) return
+					fileContextIds.value = ids
+					view.value = 'fileContext'
+					// URL anpassen, damit der User die Seite bookmarken/teilen kann.
+					const url = new URL(window.location.href)
+					url.searchParams.set('view', 'fileContext')
+					url.searchParams.set('fileIds', ids.join(','))
+					window.history.replaceState({}, '', url.toString())
+				})
 			}
 		})
 
 		return {
 			view, mobileOpen, buildVersion,
 			chats, currentChat, busy, pendingPrompt,
+			fileContextIds,
 			newChat, selectChat, renameChat, deleteChat, loadChats, askAbout,
 			mdiChatProcessing, mdiFileDocumentOutline, mdiTune, mdiTrashCanOutline, mdiMessagePlus,
 		}
