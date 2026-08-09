@@ -11,9 +11,16 @@ module.exports = (env) => {
 		},
 		output: {
 			path: path.resolve(__dirname, 'js'),
-			filename: '[name].[contenthash:8].js',
+			filename: (chunkData) => {
+				// Statische Namen ohne Hash: NC rendert das Skript nur dann,
+				// wenn es exakt unter apps/{app}/js/{name}.js liegt. Gehashte
+				// Namen brauchen eine webpack-theme.json-Combiner-Datei, die
+				// wir hier nicht erzeugen. Cache-Busting übernimmt der
+				// NC-JSCombiner (Cachebuster-Query-String).
+				return chunkData.chunk.name + '.js'
+			},
 			publicPath: '/apps/eva-ai/js/',
-			clean: { keep: /^chat\.js$|^header\.js$/ },
+			clean: { keep: /^chat\.js$|^header\.js$|^eva-ai-main|^eva_ai_filesaction|\.map$|\.LICENSE\.txt$/ },
 		},
 		devtool: isProd ? 'source-map' : 'eval-cheap-module-source-map',
 		module: {

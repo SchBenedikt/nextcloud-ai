@@ -58,14 +58,15 @@ class Application extends App implements IBootstrap {
         }
 
         // Files-Action: "Mit AI oeffnen" / "Mit diesen Dateien chatten" im
-        // Rechtsklick-Menu des Dateimanagers. Wird nur geladen, wenn die
-        // Files-App aktiv ist.
+        // Rechtsklick-Menu des Dateimanagers. Der dritte Parameter 'files'
+        // ist der Trick: Util::addScript haengt das Skript an die Files-App
+        // als Dependency und liefert es auch dann aus, wenn der aktuelle
+        // Request /apps/files/* ist. NC rendert das Skript dann zusammen mit
+        // den Files-Skripten. comments/viewer/files_sharing machen es genauso.
         try {
-            $appManager = $context->getAppContainer()->get(\OCP\App\IAppManager::class);
-            $request = $context->getAppContainer()->get(\OCP\IRequest::class);
-            if ($appManager->isEnabledForAnyone('files')
-                && strpos((string)$request->getParam('app', ''), 'files') !== false) {
-                Util::addScript(self::APP_ID, 'eva_ai_filesaction');
+            if ($context->getAppContainer()->get(IUserSession::class)->isLoggedIn()
+                && $context->getAppContainer()->get(\OCP\App\IAppManager::class)->isEnabledForAnyone('files')) {
+                Util::addScript(self::APP_ID, 'eva_ai_filesaction', 'files');
             }
         } catch (\Throwable $e) {
             // Non-fatal.

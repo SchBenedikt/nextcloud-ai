@@ -76,10 +76,12 @@ class PageController extends Controller {
         $jsDir = $this->appManager->getAppPath('eva-ai') . '/js';
         $main = null;
         $candidates = [];
-        foreach (glob($jsDir . '/eva-ai-main.*.js') ?: [] as $file) {
-            if (strpos(basename($file), 'eva-ai-main.') === 0) {
-                $candidates[$file] = filemtime($file);
+        foreach (glob($jsDir . '/eva-ai-main*.js') ?: [] as $file) {
+            $base = basename($file);
+            if (!str_starts_with($base, 'eva-ai-main') || str_ends_with($base, '.map')) {
+                continue;
             }
+            $candidates[$file] = filemtime($file);
         }
         if ($candidates !== []) {
             arsort($candidates);
