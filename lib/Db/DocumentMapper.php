@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace OCA\RagChat\Db;
+namespace OCA\EvaAi\Db;
 
 use OCP\AppFramework\Db\QBMapper;
 use OCP\DB\QueryBuilder\IQueryBuilder;
@@ -10,13 +10,13 @@ use OCP\IDBConnection;
 
 class DocumentMapper extends QBMapper {
     public function __construct(IDBConnection $db) {
-        parent::__construct($db, 'ragchat_documents');
+        parent::__construct($db, 'eva_ai_documents');
     }
 
     public function findByUserAndFile(string $userId, int $fileId): ?Document {
         $qb = $this->db->getQueryBuilder();
         $qb->select('*')
-            ->from('ragchat_documents')
+            ->from('eva_ai_documents')
             ->where($qb->expr()->eq('user_id', $qb->createNamedParameter($userId)))
             ->andWhere($qb->expr()->eq('file_id', $qb->createNamedParameter($fileId, IQueryBuilder::PARAM_INT)))
             ->setMaxResults(1);
@@ -27,7 +27,7 @@ class DocumentMapper extends QBMapper {
     public function hashesForUser(string $userId): array {
         $qb = $this->db->getQueryBuilder();
         $qb->select('file_id', 'content_hash')
-            ->from('ragchat_documents')
+            ->from('eva_ai_documents')
             ->where($qb->expr()->eq('user_id', $qb->createNamedParameter($userId)));
         $result = $qb->executeQuery();
         $map = [];
@@ -40,7 +40,7 @@ class DocumentMapper extends QBMapper {
 
     public function deleteByUserAndFile(string $userId, int $fileId): void {
         $qb = $this->db->getQueryBuilder();
-        $qb->delete('ragchat_documents')
+        $qb->delete('eva_ai_documents')
             ->where($qb->expr()->eq('user_id', $qb->createNamedParameter($userId)))
             ->andWhere($qb->expr()->eq('file_id', $qb->createNamedParameter($fileId, IQueryBuilder::PARAM_INT)));
         $qb->executeStatement();
@@ -49,7 +49,7 @@ class DocumentMapper extends QBMapper {
     public function countForUser(string $userId): int {
         $qb = $this->db->getQueryBuilder();
         $qb->selectAlias($qb->createFunction('COUNT(*)'), 'c')
-            ->from('ragchat_documents')
+            ->from('eva_ai_documents')
             ->where($qb->expr()->eq('user_id', $qb->createNamedParameter($userId)));
         $row = $qb->executeQuery()->fetch();
         return $row ? (int)$row['c'] : 0;
@@ -58,7 +58,7 @@ class DocumentMapper extends QBMapper {
     public function findByUser(string $userId, ?string $search = null, ?int $limit = 100, ?int $offset = 0): array {
         $qb = $this->db->getQueryBuilder();
         $qb->select('*')
-            ->from('ragchat_documents')
+            ->from('eva_ai_documents')
             ->where($qb->expr()->eq('user_id', $qb->createNamedParameter($userId)));
         if ($search !== null && $search !== '') {
             $qb->andWhere(
@@ -74,7 +74,7 @@ class DocumentMapper extends QBMapper {
     public function findById(int $id): ?Document {
         $qb = $this->db->getQueryBuilder();
         $qb->select('*')
-            ->from('ragchat_documents')
+            ->from('eva_ai_documents')
             ->where($qb->expr()->eq('id', $qb->createNamedParameter($id, IQueryBuilder::PARAM_INT)))
             ->setMaxResults(1);
         $rows = $this->findEntities($qb);
@@ -83,7 +83,7 @@ class DocumentMapper extends QBMapper {
 
     public function findFileIdsForUser(string $userId): array {
         $qb = $this->db->getQueryBuilder();
-        $qb->select('file_id')->from('ragchat_documents');
+        $qb->select('file_id')->from('eva_ai_documents');
         if ($userId !== '') {
             $qb->where($qb->expr()->eq('user_id', $qb->createNamedParameter($userId)));
         }
@@ -103,7 +103,7 @@ class DocumentMapper extends QBMapper {
         }
         $qb = $this->db->getQueryBuilder();
         $qb->select('*')
-            ->from('ragchat_documents')
+            ->from('eva_ai_documents')
             ->where($qb->expr()->in('id', $qb->createNamedParameter($ids, IQueryBuilder::PARAM_INT_ARRAY)));
         return $this->findEntities($qb);
     }
@@ -114,21 +114,21 @@ class DocumentMapper extends QBMapper {
             return;
         }
         $qb = $this->db->getQueryBuilder();
-        $qb->delete('ragchat_documents')
+        $qb->delete('eva_ai_documents')
             ->where($qb->expr()->in('id', $qb->createNamedParameter($ids, IQueryBuilder::PARAM_INT_ARRAY)));
         $qb->executeStatement();
     }
 
     public function deleteByUser(string $userId): int {
         $qb = $this->db->getQueryBuilder();
-        $qb->delete('ragchat_documents')
+        $qb->delete('eva_ai_documents')
             ->where($qb->expr()->eq('user_id', $qb->createNamedParameter($userId)));
         return $qb->executeStatement();
     }
 
     public function deleteAll(): int {
         $qb = $this->db->getQueryBuilder();
-        $qb->delete('ragchat_documents');
+        $qb->delete('eva_ai_documents');
         return $qb->executeStatement();
     }
 }

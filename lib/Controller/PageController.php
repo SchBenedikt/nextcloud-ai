@@ -2,14 +2,14 @@
 
 declare(strict_types=1);
 
-namespace OCA\RagChat\Controller;
+namespace OCA\EvaAi\Controller;
 
 use OCP\AppFramework\Controller;
 use OCP\AppFramework\Http\TemplateResponse;
 use OCP\AppFramework\Http\Attribute\NoAdminRequired;
 use OCP\AppFramework\Http\Attribute\NoCSRFRequired;
 
-use OCA\RagChat\Service\RagService;
+use OCA\EvaAi\Service\RagService;
 use OCP\App\IAppManager;
 use OCP\IRequest;
 use OCP\IURLGenerator;
@@ -48,36 +48,36 @@ class PageController extends Controller {
     #[NoAdminRequired]
     #[NoCSRFRequired]
     public function standalone(): TemplateResponse {
-        \OCP\Util::addScript('ragchat', 'chat');
+        \OCP\Util::addScript('eva-ai', 'chat');
         \OCP\Util::addHeader('meta', [
             'name' => 'requesttoken',
             'content' => \OC::$server->get(\OC\Security\CSRF\CsrfTokenManager::class)->getToken()->getEncryptedValue(),
         ]);
         \OCP\Util::addHeader('meta', [
-            'name' => 'ragchat-api',
-            'content' => $this->urlGenerator->getAbsoluteURL('/ocs/v2.php/apps/ragchat/api/'),
+            'name' => 'eva-ai-api',
+            'content' => $this->urlGenerator->getAbsoluteURL('/ocs/v2.php/apps/eva-ai/api/'),
         ]);
         \OCP\Util::addHeader('meta', [
-            'name' => 'ragchat-stream',
-            'content' => $this->urlGenerator->getAbsoluteURL('/ocs/v2.php/apps/ragchat/api/streamChat?format=json'),
+            'name' => 'eva-ai-stream',
+            'content' => $this->urlGenerator->getAbsoluteURL('/ocs/v2.php/apps/eva-ai/api/streamChat?format=json'),
         ]);
         \OCP\Util::addHeader('meta', [
-            'name' => 'ragchat-version',
+            'name' => 'eva-ai-version',
             'content' => 'standalone-1',
         ]);
 
-        $response = new TemplateResponse('ragchat', 'standalone', [
+        $response = new TemplateResponse('eva-ai', 'standalone', [
             'version' => 'standalone-1',
         ]);
         return $this->noCache($response);
     }
 
     private function appPage(string $template): TemplateResponse {
-        $jsDir = $this->appManager->getAppPath('ragchat') . '/js';
+        $jsDir = $this->appManager->getAppPath('eva-ai') . '/js';
         $main = null;
         $candidates = [];
-        foreach (glob($jsDir . '/ragchat-main.*.js') ?: [] as $file) {
-            if (strpos(basename($file), 'ragchat-main.') === 0) {
+        foreach (glob($jsDir . '/eva-ai-main.*.js') ?: [] as $file) {
+            if (strpos(basename($file), 'eva-ai-main.') === 0) {
                 $candidates[$file] = filemtime($file);
             }
         }
@@ -86,26 +86,26 @@ class PageController extends Controller {
             $main = basename((string)array_key_first($candidates), '.js');
         }
         if ($main !== null) {
-            \OCP\Util::addScript('ragchat', $main);
+            \OCP\Util::addScript('eva-ai', $main);
             \OCP\Util::addHeader('meta', [
                 'name' => 'requesttoken',
                 'content' => \OC::$server->get(\OC\Security\CSRF\CsrfTokenManager::class)->getToken()->getEncryptedValue(),
             ]);
             \OCP\Util::addHeader('meta', [
-                'name' => 'ragchat-api',
-                'content' => $this->urlGenerator->getAbsoluteURL('/ocs/v2.php/apps/ragchat/api/'),
+                'name' => 'eva-ai-api',
+                'content' => $this->urlGenerator->getAbsoluteURL('/ocs/v2.php/apps/eva-ai/api/'),
             ]);
             \OCP\Util::addHeader('meta', [
-                'name' => 'ragchat-stream',
-                'content' => $this->urlGenerator->getAbsoluteURL('/ocs/v2.php/apps/ragchat/api/streamChat?format=json'),
+                'name' => 'eva-ai-stream',
+                'content' => $this->urlGenerator->getAbsoluteURL('/ocs/v2.php/apps/eva-ai/api/streamChat?format=json'),
             ]);
             \OCP\Util::addHeader('meta', [
-                'name' => 'ragchat-version',
+                'name' => 'eva-ai-version',
                 'content' => 'shell-v2',
             ]);
         }
-        $response = new TemplateResponse('ragchat', $template, [
-            'apiBase' => $this->urlGenerator->getAbsoluteURL('/ocs/v2.php/apps/ragchat/api/'),
+        $response = new TemplateResponse('eva-ai', $template, [
+            'apiBase' => $this->urlGenerator->getAbsoluteURL('/ocs/v2.php/apps/eva-ai/api/'),
         ]);
         return $this->noCache($response);
     }

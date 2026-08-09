@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace OCA\RagChat\Notification;
+namespace OCA\EvaAi\Notification;
 
 use OCP\Notification\INotification;
 use OCP\Notification\INotifier;
@@ -13,23 +13,23 @@ use OCP\Notification\UnknownNotificationException;
  */
 class Notifier implements INotifier {
 	public function getID(): string {
-		return 'ragchat';
+		return 'eva-ai';
 	}
 
 	public function getName(): string {
-		return 'AI – Chat';
+		return 'EVA – Chat';
 	}
 
 	public function prepare(INotification $notification, string $languageCode): INotification {
-		if ($notification->getApp() !== 'ragchat') {
+		if ($notification->getApp() !== 'eva-ai') {
 			throw new UnknownNotificationException();
 		}
 
 		if ($notification->getSubject() === 'answer_ready') {
 			$params = $notification->getSubjectParameters();
-			$notification->setParsedSubject('AI answer ready');
+			$notification->setParsedSubject('EVA answer ready');
 			$notification->setParsedMessage((string)($params['text'] ?? ''));
-			$notification->setIcon(\OC::$WEBROOT . '/apps/ragchat/img/ragchat-icon.svg');
+			$notification->setIcon(\OC::$WEBROOT . '/apps/eva-ai/img/eva-icon.svg');
 			return $notification;
 		}
 

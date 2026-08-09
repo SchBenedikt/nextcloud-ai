@@ -1,6 +1,6 @@
 <template>
-	<NcContent class="ragchat-app" :app-name="'ragchat'">
-		<NcAppNavigation :title="'AI · v' + buildVersion" @close-navigation="mobileOpen = false">
+	<NcContent class="eva-ai-app" :app-name="'eva-ai'">
+		<NcAppNavigation :title="'EVA · v' + buildVersion" @close-navigation="mobileOpen = false">
 			<template #list>
 				<button class="new-chat-btn" :disabled="busy" @click="newChat">
 					<svg width="16" height="16" viewBox="0 0 24 24" aria-hidden="true"><path :d="mdiMessagePlus" fill="currentColor" /></svg>
@@ -34,22 +34,24 @@
 				</div>
 			</template>
 			<template #footer>
-				<NcAppNavigationItem
-					:name="'Documents'"
-					:active="view === 'docs'"
-					@click="view = 'docs'">
-					<template #icon>
-						<svg width="16" height="16" viewBox="0 0 24 24"><path :d="mdiFileDocumentOutline" fill="currentColor" /></svg>
-					</template>
-				</NcAppNavigationItem>
-				<NcAppNavigationItem
-					:name="'Settings'"
-					:active="view === 'settings'"
-					@click="view = 'settings'">
-					<template #icon>
-						<svg width="16" height="16" viewBox="0 0 24 24"><path :d="mdiTune" fill="currentColor" /></svg>
-					</template>
-				</NcAppNavigationItem>
+				<ul class="nav-footer">
+					<NcAppNavigationItem
+						:name="'Documents'"
+						:active="view === 'docs'"
+						@click="view = 'docs'">
+						<template #icon>
+							<svg width="16" height="16" viewBox="0 0 24 24"><path :d="mdiFileDocumentOutline" fill="currentColor" /></svg>
+						</template>
+					</NcAppNavigationItem>
+					<NcAppNavigationItem
+						:name="'Settings'"
+						:active="view === 'settings'"
+						@click="view = 'settings'">
+						<template #icon>
+							<svg width="16" height="16" viewBox="0 0 24 24"><path :d="mdiTune" fill="currentColor" /></svg>
+						</template>
+					</NcAppNavigationItem>
+				</ul>
 			</template>
 		</NcAppNavigation>
 		<NcAppContent>
@@ -68,7 +70,7 @@ import SettingsView from './views/SettingsView.vue'
 import { mdiChatProcessing, mdiFileDocumentOutline, mdiTune, mdiTrashCanOutline, mdiMessagePlus, mdiPencilOutline } from '@mdi/js'
 
 export default {
-	name: 'RagChatApp',
+	name: 'EvaAiApp',
 	components: { ChatView, DocumentsView, SettingsView },
 	setup() {
 		const params = new URLSearchParams(window.location.search)
@@ -87,7 +89,7 @@ export default {
 		const pendingPrompt = ref('')
 
 		const apiBase = () => {
-			const el = document.head.querySelector('meta[name="ragchat-api"]')
+			const el = document.head.querySelector('meta[name="eva-ai-api"]')
 			return el ? el.getAttribute('content') : ''
 		}
 		const token = () => {
@@ -165,7 +167,7 @@ export default {
 		onMounted(() => {
 			loadChats()
 			if (typeof window !== 'undefined' && window.addEventListener) {
-				window.addEventListener('ragchat:ask-about', (e) => {
+				window.addEventListener('eva-ai:ask-about', (e) => {
 					if (e && e.detail && e.detail.prompt) askAbout(e.detail.prompt)
 				})
 			}
@@ -182,7 +184,7 @@ export default {
 </script>
 
 <style scoped>
-.ragchat-app {
+.eva-ai-app {
 	width: 100%;
 }
 
@@ -222,5 +224,14 @@ export default {
 	color: var(--color-text-maxcontrast, #666);
 	font-size: 12px;
 	padding: 8px 14px;
+}
+
+.nav-footer {
+	list-style: none;
+	margin: 0;
+	padding: var(--app-navigation-padding, 8px);
+	display: flex;
+	flex-direction: column;
+	gap: var(--default-grid-baseline, 4px);
 }
 </style>

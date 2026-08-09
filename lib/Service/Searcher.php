@@ -2,11 +2,11 @@
 
 declare(strict_types=1);
 
-namespace OCA\RagChat\Service;
+namespace OCA\EvaAi\Service;
 
-use OCA\RagChat\Db\ChunkMapper;
-use OCA\RagChat\Db\DocumentMapper;
-use OCA\RagChat\Db\Chunk;
+use OCA\EvaAi\Db\ChunkMapper;
+use OCA\EvaAi\Db\DocumentMapper;
+use OCA\EvaAi\Db\Chunk;
 
 class Searcher {
     private const POOL = 8000;

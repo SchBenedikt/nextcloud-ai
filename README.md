@@ -1,4 +1,4 @@
-# AI (ragchat) — Local RAG assistant for Nextcloud
+# EVA (eva-ai) — Local RAG assistant for Nextcloud
 
 Chat with a locally running Large Language Model about your own Nextcloud files. The app indexes files, splits them into text chunks, creates embeddings and makes them searchable via RAG. Answers always name the source (file path).
 
@@ -14,7 +14,7 @@ Chat with a locally running Large Language Model about your own Nextcloud files.
   - Tasks/to-dos: list, create, update, complete, delete (VTODO, all task-capable calendars)
   - Activity feed of all apps, server status (version, PHP, DB, quotas, Ollama)
   - Weather (Open-Meteo); current time in the user's timezone
-- TaskProcessing provider (IDs `ragchat:text2text`), compatible with the Assistant app
+- TaskProcessing provider (IDs `eva-ai:text2text`), compatible with the Assistant app
 - "AI answer ready" notification via the Notifications app
 - No configuration needed: embedding and chat model come from the local Ollama instance
 
@@ -30,19 +30,19 @@ Chat with a locally running Large Language Model about your own Nextcloud files.
 
 ### 1. Install the app
 
-The folder must be named `ragchat` (app ID):
+The folder must be named `eva-ai` (app ID):
 
 ```bash
 cd /var/www/nextcloud/apps
-sudo git clone https://github.com/SchBenedikt/nextcloud-ai.git ragchat
-sudo chown -R www-data:www-data ragchat
+sudo git clone https://github.com/SchBenedikt/nextcloud-ai.git eva-ai
+sudo chown -R www-data:www-data eva-ai
 ```
 
 ### 2. Enable the app
 
 ```bash
 cd /var/www/nextcloud
-sudo -u www-data php occ app:enable ragchat
+sudo -u www-data php occ app:enable eva-ai
 ```
 
 ### 3. Prepare Ollama
@@ -55,23 +55,23 @@ ollama pull nomic-embed-text:latest
 If Ollama runs on another machine / port, e.g.:
 
 ```bash
-sudo -u www-data php occ config:app:set ragchat ollama_url --value=http://192.168.1.50:11434
+sudo -u www-data php occ config:app:set eva-ai ollama_url --value=http://192.168.1.50:11434
 ```
 
 Further settings (defaults in brackets) — optional:
 
 ```bash
-sudo -u www-data php occ config:app:set ragchat chat_model       --value=gemma4:cloud      # chat model (gemma4:cloud)
-sudo -u www-data php occ config:app:set ragchat embedding_model  --value=nomic-embed-text  # embeddings (nomic-embed-text)
-sudo -u www-data php occ config:app:set ragchat temperature      --value=0.1               # creativity (0.1)
-sudo -u www-data php occ config:app:set ragchat context_size     --value=12288             # context length (12288)
-sudo -u www-data php occ config:app:set ragchat top_k            --value=6                 # RAG hits (6)
-sudo -u www-data php occ config:app:set ragchat chunk_size       --value=900               # chunk size (900)
-sudo -u www-data php occ config:app:set ragchat chunk_overlap    --value=120               # overlap (120)
-sudo -u www-data php occ config:app:set ragchat index_enabled    --value=1                 # 0 = index disabled
-sudo -u www-data php occ config:app:set ragchat actions_enabled  --value=1                 # 0 = no chat tools
-sudo -u www-data php occ config:app:set ragchat mail_index_enabled --value=1                 # 0 = emails not indexed
-sudo -u www-data php occ config:app:set ragchat mail_index_max   --value=25                 # emails per indexing pass
+sudo -u www-data php occ config:app:set eva-ai chat_model       --value=gemma4:cloud      # chat model (gemma4:cloud)
+sudo -u www-data php occ config:app:set eva-ai embedding_model  --value=nomic-embed-text  # embeddings (nomic-embed-text)
+sudo -u www-data php occ config:app:set eva-ai temperature      --value=0.1               # creativity (0.1)
+sudo -u www-data php occ config:app:set eva-ai context_size     --value=12288             # context length (12288)
+sudo -u www-data php occ config:app:set eva-ai top_k            --value=6                 # RAG hits (6)
+sudo -u www-data php occ config:app:set eva-ai chunk_size       --value=900               # chunk size (900)
+sudo -u www-data php occ config:app:set eva-ai chunk_overlap    --value=120               # overlap (120)
+sudo -u www-data php occ config:app:set eva-ai index_enabled    --value=1                 # 0 = index disabled
+sudo -u www-data php occ config:app:set eva-ai actions_enabled  --value=1                 # 0 = no chat tools
+sudo -u www-data php occ config:app:set eva-ai mail_index_enabled --value=1                 # 0 = emails not indexed
+sudo -u www-data php occ config:app:set eva-ai mail_index_max   --value=25                 # emails per indexing pass
 ```
 
 ### 4. TaskProcessing / Assistant (optional, recommended)
@@ -82,7 +82,7 @@ To use the app from the Assistant text field (AI app in the menu), enable the ta
 sudo -u www-data php occ taskprocessing:task-type:set-enabled core:text2text:chat 1
 ```
 
-Cron file `/etc/default.d/ragchat-taskprocessing`:
+Cron file `/etc/default.d/eva-ai-taskprocessing`:
 
 ```
 * * * * * www-data /usr/bin/php -d error_reporting=0 /var/www/nextcloud/occ taskprocessing:worker -t 60 -i 2 >/dev/null 2>&1
@@ -94,12 +94,12 @@ Bell notification "AI answer ready" after finished answers:
 
 ```bash
 sudo -u www-data php occ app:enable notifications
-sudo -u www-data php occ config:app:set ragchat notify_on_complete --value=1
+sudo -u www-data php occ config:app:set eva-ai notify_on_complete --value=1
 ```
 
 ### 6. First start & indexing
 
-1. Open `/apps/ragchat` as a user.
+1. Open `/apps/eva-ai` as a user.
 2. In Settings start the index with the "Start indexing" button (the user whose home is indexed is set via `index_user` — empty means the current user). Each pass also indexes emails (subject, sender, body) if enabled.
 3. Then chat. Tools (files, contacts, calendar, mail, shares, tasks, weather, time) are enabled by default; every answer names which file it used.
 3. Then chat. Tools (files, contacts, calendar, weather, time) are enabled by default; every answer names which file it used.

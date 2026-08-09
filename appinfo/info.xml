@@ -1,8 +1,8 @@
 <?xml version="1.0"?>
 <info xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
       xsi:noNamespaceSchemaLocation="https://apps.nextcloud.com/schema/apps/info.xsd">
-    <id>ragchat</id>
-    <name>AI</name>
+    <id>eva-ai</id>
+    <name>EVA</name>
     <summary>Local RAG assistant over your own files via Ollama</summary>
     <description>
         Index your own Nextcloud files as a knowledge base and chat about them with a
@@ -18,29 +18,29 @@
         files and templates) across the whole home space, incl. Notes and Contacts.
         - No configuration required: embedding and chat model come from your local Ollama instance.
     </description>
-    <version>1.2.0</version>
+    <version>1.3.0</version>
     <licence>agpl</licence>
     <author>YourSelf</author>
-    <namespace>RagChat</namespace>
+    <namespace>EvaAi</namespace>
     <category>ai</category>
     <category>tools</category>
-    <bugs>https://example.local/ragchat/issues</bugs>
+    <bugs>https://example.local/eva-ai/issues</bugs>
     <dependencies>
         <nextcloud min-version="30" max-version="34"/>
     </dependencies>
     <background-jobs>
-        <job>OCA\RagChat\BackgroundJob\IndexJob</job>
+        <job>OCA\EvaAi\BackgroundJob\IndexJob</job>
     </background-jobs>
     <commands>
-        <command>OCA\RagChat\Command\Index</command>
-        <command>OCA\RagChat\Command\Reset</command>
-        <command>OCA\RagChat\Command\Mounts</command>
-        <command>OCA\RagChat\Command\Tool</command>
+        <command>OCA\EvaAi\Command\Index</command>
+        <command>OCA\EvaAi\Command\Reset</command>
+        <command>OCA\EvaAi\Command\Mounts</command>
+        <command>OCA\EvaAi\Command\Tool</command>
     </commands>
     <navigations>
         <navigation>
-            <name>AI</name>
-            <route>ragchat.page.index</route>
+            <name>EVA</name>
+            <route>eva-ai.page.index</route>
             <icon>app.svg</icon>
             <order>20</order>
         </navigation>

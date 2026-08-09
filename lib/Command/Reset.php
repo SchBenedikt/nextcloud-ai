@@ -2,9 +2,9 @@
 
 declare(strict_types=1);
 
-namespace OCA\RagChat\Command;
+namespace OCA\EvaAi\Command;
 
-use OCA\RagChat\Service\Indexer;
+use OCA\EvaAi\Service\Indexer;
 use Symfony\Component\Console\Command\Command;
 use Symfony\Component\Console\Input\InputArgument;
 use Symfony\Component\Console\Input\InputInterface;
@@ -18,7 +18,7 @@ class Reset extends Command {
     }
 
     protected function configure(): void {
-        $this->setName('ragchat:reset')
+        $this->setName('eva-ai:reset')
             ->setDescription('Delete the complete RAG index (documents + chunks). Without argument: ALL users.')
             ->addArgument('user', InputArgument::OPTIONAL, 'Only delete the index of this user (default: all users)');
     }

@@ -2,12 +2,12 @@
 
 declare(strict_types=1);
 
-namespace OCA\RagChat\Service;
+namespace OCA\EvaAi\Service;
 
 use OCP\IConfig;
 
 class AppConfig {
-    public const APP = 'ragchat';
+    public const APP = 'eva-ai';
 
     private const DEFAULTS = [
         'index_enabled' => '0',

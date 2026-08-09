@@ -1,4 +1,4 @@
-/* RagChat – Standalone-Client (bewusst ohne Framework, Fallback-Seite).
+/* EvaAi – Standalone-Client (bewusst ohne Framework, Fallback-Seite).
  * Liest requesttoken + API-Basis aus <meta>-Tags und spricht die
  * OCS-API des Backends direkt per fetch an. Rendert rein über
  * textContent – Texte sind immer sichtbar.
@@ -13,9 +13,9 @@
 		return el ? el.getAttribute('content') : '';
 	}
 
-	var API_BASE = meta('ragchat-api') || '';
+	var API_BASE = meta('eva-ai-api') || '';
 	var REQUEST_TOKEN = meta('requesttoken') || '';
-	var STREAM_URL = meta('ragchat-stream') || '';
+	var STREAM_URL = meta('eva-ai-stream') || '';
 
 	var els = {
 		form: document.getElementById('form'),

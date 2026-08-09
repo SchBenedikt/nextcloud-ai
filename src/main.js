@@ -27,10 +27,10 @@ if (tokenEl && tokenEl.content) {
 }
 
 function showErrorBox(msg) {
-	const el = document.getElementById('ragchat-error')
+	const el = document.getElementById('eva-ai-error')
 	if (!el) return
 	el.style.display = 'block'
-	el.textContent = 'RagChat error:\n' + msg
+	el.textContent = 'EvaAi error:\n' + msg
 }
 window.addEventListener('error', (e) => {
 	showErrorBox('JS: ' + (e.message || '') + ' @ ' + (e.filename || '') + ':' + (e.lineno || ''))
@@ -42,7 +42,7 @@ window.addEventListener('unhandledrejection', (e) => {
 	showErrorBox('API: ' + msg)
 })
 app.config.errorHandler = (err, instance, info) => {
-	console.error('[ragchat] vue error', err, info)
+	console.error('[eva-ai] vue error', err, info)
 	showErrorBox('[Vue] ' + (err && err.message ? err.message : err) + (info ? ' (' + info + ')' : ''))
 }
 app.component('NcContent', NcContent)
@@ -61,4 +61,4 @@ app.component('NcRichText', NcRichText)
 app.component('NcAppNavigationSpacer', NcAppNavigationSpacer)
 app.component('NcActionButton', NcActionButton)
 
-app.mount('#ragchat-root')
+app.mount('#eva-ai-root')

@@ -34,7 +34,7 @@
 				<template #icon><span>📄</span></template>
 				<template #name>No documents indexed yet</template>
 				<template #description>
-					Use „Start indexing“ to scan your files, then ask the AI about them.
+					Use „Start indexing“ to scan your files, then ask EVA about them.
 				</template>
 			</NcEmptyContent>
 
@@ -59,7 +59,7 @@
 								<span class="docs-path-inner" :title="d.path">/{{ d.path }}</span>
 								<button
 									class="docs-ask"
-									title="Ask AI about this document"
+									title="Ask EVA about this document"
 									@click.stop="askAbout(d)">
 									<svg width="14" height="14" viewBox="0 0 24 24"><path :d="mdiChatProcessing" fill="currentColor" /></svg>
 								</button>
@@ -116,7 +116,7 @@ export default {
 		const askAbout = (d) => {
 			const prompt = 'Please summarize the following file from my files and list the most important points: "' + (d.path || '') + '" — please read the file using your tools.'
 			if (typeof window !== 'undefined' && window.dispatchEvent) {
-				window.dispatchEvent(new CustomEvent('ragchat:ask-about', { detail: { prompt } }))
+				window.dispatchEvent(new CustomEvent('eva-ai:ask-about', { detail: { prompt } }))
 			}
 		}
 
@@ -148,7 +148,7 @@ export default {
 				total.value = 0
 				totalChunks.value = 0
 				totalSize.value = 0
-				console.error('[ragchat] documents error', e)
+				console.error('[eva-ai] documents error', e)
 			} finally {
 				loading.value = false
 			}
@@ -162,7 +162,7 @@ export default {
 				chunkCache.value.set(id, (data && data.chunks) || [])
 			} catch (e) {
 				chunkCache.value.set(id, [])
-				console.error('[ragchat] chunks error', e)
+				console.error('[eva-ai] chunks error', e)
 			}
 		}
 

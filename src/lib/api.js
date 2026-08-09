@@ -8,7 +8,7 @@ import { generateOcsUrl } from '@nextcloud/router'
  * Unwraps the ocs envelope and returns the data object.
  */
 export async function api(method, path, data) {
-	const url = generateOcsUrl('/apps/ragchat/api/' + path)
+	const url = generateOcsUrl('/apps/eva-ai/api/' + path)
 	const cfg = { method, url }
 	if (method === 'GET' && data !== undefined && data !== null) {
 		cfg.params = data

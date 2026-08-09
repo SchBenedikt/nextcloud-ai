@@ -1,5 +1,5 @@
 <?php
-// RagChat – eigenständige Seite (ohne Vue/Framework), jetzt im
+// EvaAi – eigenständige Seite (ohne Vue/Framework), jetzt im
 // Nextcloud-Look: Core-Design-Variablen, Topbar und Seitenleiste.
 // requesttoken/apiBase/version kommen per util::addHeader/addScript.
 ?>
@@ -7,7 +7,7 @@
 <html lang="en">
 <head>
     <meta charset="utf-8">
-    <title>AI – Chat with your files</title>
+    <title>EVA – Chat with your files</title>
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <link rel="stylesheet" href="<?php echo htmlspecialchars(\OC::$WEBROOT . '/core/css/server.css', ENT_QUOTES); ?>">
     <style>
@@ -237,9 +237,9 @@
 </head>
 <body>
     <div id="topbar">
-        <a class="brand" href="<?php echo htmlspecialchars(\OC::$WEBROOT . '/apps/ragchat/', ENT_QUOTES); ?>">
-            <img class="logo" src="<?php echo htmlspecialchars(\OC::$WEBROOT . '/apps/ragchat/img/ragchat-icon.svg', ENT_QUOTES); ?>" alt="AI">
-            <span>AI</span>
+        <a class="brand" href="<?php echo htmlspecialchars(\OC::$WEBROOT . '/apps/eva-ai/', ENT_QUOTES); ?>">
+            <img class="logo" src="<?php echo htmlspecialchars(\OC::$WEBROOT . '/apps/eva-ai/img/eva-icon.svg', ENT_QUOTES); ?>" alt="EVA">
+            <span>EVA</span>
         </a>
         <div class="spacer"></div>
         <a class="toplink" href="<?php echo htmlspecialchars(\OC::$WEBROOT . '/', ENT_QUOTES); ?>">Back to overview</a>
@@ -250,15 +250,15 @@
             <button id="newchat" class="nav-new">+ New chat</button>
             <div id="chatlist"></div>
             <div class="sidebar-spacer"></div>
-            <a class="nav-item" href="<?php echo htmlspecialchars(\OC::$WEBROOT . '/apps/ragchat/app?view=docs', ENT_QUOTES); ?>">
+            <a class="nav-item" href="<?php echo htmlspecialchars(\OC::$WEBROOT . '/apps/eva-ai/app?view=docs', ENT_QUOTES); ?>">
                 <span class="nav-ico">📄</span> Documents
             </a>
-            <a class="nav-item" href="<?php echo htmlspecialchars(\OC::$WEBROOT . '/apps/ragchat/app?view=settings', ENT_QUOTES); ?>">
+            <a class="nav-item" href="<?php echo htmlspecialchars(\OC::$WEBROOT . '/apps/eva-ai/app?view=settings', ENT_QUOTES); ?>">
                 <span class="nav-ico">⚙️</span> Settings
             </a>
             <div class="sidebar-sep"></div>
             <div style="font-size:12px;color:var(--color-text-maxcontrast,#666);padding:4px 12px;">
-                AI · <span id="badge-version">standalone</span>
+                EVA · <span id="badge-version">standalone</span>
             </div>
         </nav>
 
@@ -269,7 +269,7 @@
                 </div>
                 <div class="head-right">
                     <button id="export" class="export-btn" title="Download this chat as Markdown" disabled>&#11015; Export</button>
-                    <span class="badge">ragchat</span>
+                    <span class="badge">eva-ai</span>
                 </div>
             </div>
 

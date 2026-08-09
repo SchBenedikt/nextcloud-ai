@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace OCA\RagChat\Db;
+namespace OCA\EvaAi\Db;
 
 use OCP\AppFramework\Db\Entity;
 

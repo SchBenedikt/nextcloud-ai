@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace OCA\RagChat\Db;
+namespace OCA\EvaAi\Db;
 
 use OCP\AppFramework\Db\QBMapper;
 use OCP\DB\QueryBuilder\IQueryBuilder;
@@ -10,12 +10,12 @@ use OCP\IDBConnection;
 
 class ChunkMapper extends QBMapper {
     public function __construct(IDBConnection $db) {
-        parent::__construct($db, 'ragchat_chunks');
+        parent::__construct($db, 'eva_ai_chunks');
     }
 
     public function deleteByDocument(int $documentId): void {
         $qb = $this->db->getQueryBuilder();
-        $qb->delete('ragchat_chunks')
+        $qb->delete('eva_ai_chunks')
             ->where($qb->expr()->eq('document_id', $qb->createNamedParameter($documentId, IQueryBuilder::PARAM_INT)));
         $qb->executeStatement();
     }
@@ -25,14 +25,14 @@ class ChunkMapper extends QBMapper {
             return;
         }
         $qb = $this->db->getQueryBuilder();
-        $qb->delete('ragchat_chunks')
+        $qb->delete('eva_ai_chunks')
             ->where($qb->expr()->in('document_id', $qb->createNamedParameter($documentIds, IQueryBuilder::PARAM_INT_ARRAY)));
         $qb->executeStatement();
     }
 
     public function deleteForUser(string $userId): int {
         $qb = $this->db->getQueryBuilder();
-        $qb->select('id')->from('ragchat_documents')
+        $qb->select('id')->from('eva_ai_documents')
             ->where($qb->expr()->eq('user_id', $qb->createNamedParameter($userId)));
         $result = $qb->executeQuery();
         $ids = array_map(static fn(array $r): int => (int)$r['id'], $result->fetchAll());
@@ -41,14 +41,14 @@ class ChunkMapper extends QBMapper {
             return 0;
         }
         $qb2 = $this->db->getQueryBuilder();
-        $qb2->delete('ragchat_chunks')
+        $qb2->delete('eva_ai_chunks')
             ->where($qb2->expr()->in('document_id', $qb2->createNamedParameter($ids, IQueryBuilder::PARAM_INT_ARRAY)));
         return $qb2->executeStatement();
     }
 
     public function deleteAll(): int {
         $qb = $this->db->getQueryBuilder();
-        $qb->delete('ragchat_chunks');
+        $qb->delete('eva_ai_chunks');
         return $qb->executeStatement();
     }
 
@@ -59,8 +59,8 @@ class ChunkMapper extends QBMapper {
     public function chunksForUser(string $userId): array {
         $qb = $this->db->getQueryBuilder();
         $qb->select('c.id', 'c.document_id', 'c.chunk_index', 'c.content', 'c.embedding')
-            ->from('ragchat_chunks', 'c')
-            ->innerJoin('c', 'ragchat_documents', 'd', $qb->expr()->eq('c.document_id', 'd.id'))
+            ->from('eva_ai_chunks', 'c')
+            ->innerJoin('c', 'eva_ai_documents', 'd', $qb->expr()->eq('c.document_id', 'd.id'))
             ->where($qb->expr()->eq('d.user_id', $qb->createNamedParameter($userId)));
         $result = $qb->executeQuery();
         $rows = $result->fetchAll();
@@ -79,8 +79,8 @@ class ChunkMapper extends QBMapper {
         }
         $qb = $this->db->getQueryBuilder();
         $qb->select('c.id', 'c.document_id', 'c.chunk_index', 'c.content', 'c.embedding')
-            ->from('ragchat_chunks', 'c')
-            ->innerJoin('c', 'ragchat_documents', 'd', $qb->expr()->eq('c.document_id', 'd.id'))
+            ->from('eva_ai_chunks', 'c')
+            ->innerJoin('c', 'eva_ai_documents', 'd', $qb->expr()->eq('c.document_id', 'd.id'))
             ->where($qb->expr()->eq('d.user_id', $qb->createNamedParameter($userId)));
         $like = $qb->expr()->orX();
         foreach (array_slice($tokens, 0, 12) as $tok) {
@@ -98,8 +98,8 @@ class ChunkMapper extends QBMapper {
     public function countForUser(string $userId): int {
         $qb = $this->db->getQueryBuilder();
         $qb->selectAlias($qb->createFunction('COUNT(*)'), 'c')
-            ->from('ragchat_chunks', 'c')
-            ->innerJoin('c', 'ragchat_documents', 'd', $qb->expr()->eq('c.document_id', 'd.id'))
+            ->from('eva_ai_chunks', 'c')
+            ->innerJoin('c', 'eva_ai_documents', 'd', $qb->expr()->eq('c.document_id', 'd.id'))
             ->where($qb->expr()->eq('d.user_id', $qb->createNamedParameter($userId)));
         $row = $qb->executeQuery()->fetch();
         return $row ? (int)$row['c'] : 0;
@@ -108,7 +108,7 @@ class ChunkMapper extends QBMapper {
     public function countForDocument(int $documentId): int {
         $qb = $this->db->getQueryBuilder();
         $qb->selectAlias($qb->createFunction('COUNT(*)'), 'c')
-            ->from('ragchat_chunks')
+            ->from('eva_ai_chunks')
             ->where($qb->expr()->eq('document_id', $qb->createNamedParameter($documentId, IQueryBuilder::PARAM_INT)));
         $row = $qb->executeQuery()->fetch();
         return $row ? (int)$row['c'] : 0;
@@ -120,7 +120,7 @@ class ChunkMapper extends QBMapper {
     public function findByDocument(int $documentId): array {
         $qb = $this->db->getQueryBuilder();
         $qb->select('id', 'chunk_index', 'content')
-            ->from('ragchat_chunks')
+            ->from('eva_ai_chunks')
             ->where($qb->expr()->eq('document_id', $qb->createNamedParameter($documentId, IQueryBuilder::PARAM_INT)))
             ->orderBy('chunk_index', 'ASC')
             ->setMaxResults(200);

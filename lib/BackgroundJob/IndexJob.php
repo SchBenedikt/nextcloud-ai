@@ -2,10 +2,10 @@
 
 declare(strict_types=1);
 
-namespace OCA\RagChat\BackgroundJob;
+namespace OCA\EvaAi\BackgroundJob;
 
-use OCA\RagChat\Service\AppConfig;
-use OCA\RagChat\Service\Indexer;
+use OCA\EvaAi\Service\AppConfig;
+use OCA\EvaAi\Service\Indexer;
 use OCP\AppFramework\Utility\ITimeFactory;
 use OCP\BackgroundJob\TimedJob;
 use Psr\Log\LoggerInterface;
@@ -33,7 +33,7 @@ class IndexJob extends TimedJob {
                 return;
             }
         }
-        $this->logger->info('ragchat index job start', ['user' => $user]);
+        $this->logger->info('eva-ai index job start', ['user' => $user]);
         $this->indexer->run($user);
     }
 }

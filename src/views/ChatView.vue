@@ -20,7 +20,7 @@ export default {
 		const mount = () => {
 			if (!root.value) return
 			root.value.innerHTML = ''
-			delete root.value.__ragchat
+			delete root.value.__evaAi
 			mountChat(root.value, {
 				chatId: props.chatId || null,
 				onRecent: () => emit('chat-updated'),

@@ -2,12 +2,12 @@
 
 declare(strict_types=1);
 
-namespace OCA\RagChat\Service;
+namespace OCA\EvaAi\Service;
 
-use OCA\RagChat\Db\Chunk;
-use OCA\RagChat\Db\ChunkMapper;
-use OCA\RagChat\Db\Document;
-use OCA\RagChat\Db\DocumentMapper;
+use OCA\EvaAi\Db\Chunk;
+use OCA\EvaAi\Db\ChunkMapper;
+use OCA\EvaAi\Db\Document;
+use OCA\EvaAi\Db\DocumentMapper;
 use OCP\Files\File;
 use OCP\Files\Folder;
 use OCP\Files\IRootFolder;
@@ -78,7 +78,7 @@ class Indexer {
                 try {
                     $content = $this->extractText($file);
                 } catch (\Throwable $e) {
-                    $this->logger->warning('ragchat: read failed', ['file' => $file->getPath(), 'e' => $e->getMessage()]);
+                    $this->logger->warning('eva-ai: read failed', ['file' => $file->getPath(), 'e' => $e->getMessage()]);
                     $result['skipped']++;
                     continue;
                 }
@@ -140,7 +140,7 @@ class Indexer {
                 $result['error'] = null; // up to date
             }
         } catch (\Throwable $e) {
-            $this->logger->error('ragchat index run failed', ['exception' => $e]);
+            $this->logger->error('eva-ai index run failed', ['exception' => $e]);
             $result['error'] = $e->getMessage();
         } finally {
             $this->config->set('index_running', '0');
@@ -442,7 +442,7 @@ class Indexer {
         [$vecs, $err] = $this->ollama->embedBatch($texts);
         if ($err !== null || $vecs === null) {
             $result['error'] = $err ?? 'Embedding error';
-            $this->logger->error('ragchat embedding failed', ['error' => $err]);
+            $this->logger->error('eva-ai embedding failed', ['error' => $err]);
             // Remove docs created this batch so a later run retries them.
             $docIds = [];
             foreach ($batch as $b) {
@@ -492,7 +492,7 @@ class Indexer {
         try {
             $mails = $this->email->listMessages($userId, $limit, false);
         } catch (\Throwable $e) {
-            $this->logger->warning('ragchat: mail index list failed', ['e' => $e->getMessage()]);
+            $this->logger->warning('eva-ai: mail index list failed', ['e' => $e->getMessage()]);
             return;
         }
         if ($mails === []) {

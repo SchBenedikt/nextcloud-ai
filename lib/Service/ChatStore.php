@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace OCA\RagChat\Service;
+namespace OCA\EvaAi\Service;
 
 use OCP\Files\AppData\IAppDataFactory;
 use OCP\Files\NotFoundException;
@@ -123,7 +123,7 @@ class ChatStore {
         } catch (NotFoundException $e) {
             return [];
         } catch (NotPermittedException $e) {
-            $this->logger->warning('ragchat: chat folder not readable (permissions?)', ['user' => $user]);
+            $this->logger->warning('eva-ai: chat folder not readable (permissions?)', ['user' => $user]);
             return [];
         }
         $data = json_decode($raw, true);
@@ -134,7 +134,7 @@ class ChatStore {
         try {
             $this->rootFor($user)->putContent(json_encode($data, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES));
         } catch (\Throwable $e) {
-            $this->logger->error('ragchat: chat save failed - chats may disappear after reload', [
+            $this->logger->error('eva-ai: chat save failed - chats may disappear after reload', [
                 'user' => $user,
                 'exception' => $e->getMessage(),
             ]);
@@ -142,7 +142,7 @@ class ChatStore {
     }
 
     private function rootFor(string $user): \OCP\Files\SimpleFS\ISimpleFile {
-        $appdata = $this->appDataFactory->get('ragchat');
+        $appdata = $this->appDataFactory->get('eva-ai');
         try {
             $chats = $appdata->getFolder('chats');
         } catch (NotFoundException $e) {

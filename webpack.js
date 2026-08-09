@@ -8,8 +8,8 @@ module.exports = (env) => {
 		entry: path.resolve(__dirname, 'src', 'main.js'),
 		output: {
 			path: path.resolve(__dirname, 'js'),
-			filename: 'ragchat-main.[contenthash:8].js',
-			publicPath: '/apps/ragchat/js/',
+			filename: 'eva-ai-main.[contenthash:8].js',
+			publicPath: '/apps/eva-ai/js/',
 			clean: { keep: /^chat\.js$|^header\.js$/ },
 		},
 		devtool: isProd ? 'source-map' : 'eval-cheap-module-source-map',
@@ -40,8 +40,8 @@ module.exports = (env) => {
 		plugins: [
 			new VueLoaderPlugin(),
 			new webpack.DefinePlugin({
-				appName: JSON.stringify('ragchat'),
-				appVersion: JSON.stringify('1.0.9'),
+				appName: JSON.stringify('eva-ai'),
+				appVersion: JSON.stringify('1.3.0'),
 			}),
 		],
 		performance: { hints: false },

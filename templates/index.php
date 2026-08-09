@@ -1,2 +1,2 @@
-<div id="ragchat-root" data-api="<?php echo htmlspecialchars($_['apiBase']); ?>"></div>
-<div id="ragchat-error" style="display:none;position:fixed;top:64px;left:50%;transform:translateX(-50%);z-index:20000;max-width:90%;background:var(--color-error,#e9322d);color:#fff;padding:12px 16px;border-radius:8px;font-size:13px;white-space:pre-wrap;box-shadow:0 4px 12px rgba(0,0,0,.3);"></div>
+<div id="eva-ai-root" data-api="<?php echo htmlspecialchars($_['apiBase']); ?>"></div>
+<div id="eva-ai-error" style="display:none;position:fixed;top:64px;left:50%;transform:translateX(-50%);z-index:20000;max-width:90%;background:var(--color-error,#e9322d);color:#fff;padding:12px 16px;border-radius:8px;font-size:13px;white-space:pre-wrap;box-shadow:0 4px 12px rgba(0,0,0,.3);"></div>

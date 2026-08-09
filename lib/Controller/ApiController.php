@@ -2,15 +2,15 @@
 
 declare(strict_types=1);
 
-namespace OCA\RagChat\Controller;
+namespace OCA\EvaAi\Controller;
 
-use OCA\RagChat\Db\DocumentMapper;
-use OCA\RagChat\Db\ChunkMapper;
-use OCA\RagChat\Service\AppConfig;
-use OCA\RagChat\Service\ChatStore;
-use OCA\RagChat\Service\Indexer;
-use OCA\RagChat\Service\Ollama;
-use OCA\RagChat\Service\RagService;
+use OCA\EvaAi\Db\DocumentMapper;
+use OCA\EvaAi\Db\ChunkMapper;
+use OCA\EvaAi\Service\AppConfig;
+use OCA\EvaAi\Service\ChatStore;
+use OCA\EvaAi\Service\Indexer;
+use OCA\EvaAi\Service\Ollama;
+use OCA\EvaAi\Service\RagService;
 use OCP\AppFramework\OCSController;
 use OCP\AppFramework\Http\Attribute\NoAdminRequired;
 use OCP\AppFramework\Http\StreamTraversableResponse;
@@ -101,7 +101,7 @@ class ApiController extends OCSController {
         if ($user === null) {
             return new DataResponse(['error' => 'Not logged in'], 401);
         }
-        $this->jobList->remove(\OCA\RagChat\BackgroundJob\IndexJob::class);
+        $this->jobList->remove(\OCA\EvaAi\BackgroundJob\IndexJob::class);
         $deleted = $this->indexer->reset($user);
         return new DataResponse([
             'result' => $deleted,
@@ -128,7 +128,7 @@ class ApiController extends OCSController {
                 $this->config->set('chat_model', $completion[0]['name']);
             }
         }
-        $this->jobList->add(\OCA\RagChat\BackgroundJob\IndexJob::class);
+        $this->jobList->add(\OCA\EvaAi\BackgroundJob\IndexJob::class);
         $result = $this->indexer->run($user);
         return new DataResponse([
             'result' => $result,
@@ -263,9 +263,9 @@ class ApiController extends OCSController {
             if (!$this->appManager->isInstalled('notifications')) {
                 return;
             }
-            $url = \OCP\Server::get(\OCP\IURLGenerator::class)->linkToRouteAbsolute('ragchat.page.app');
+            $url = \OCP\Server::get(\OCP\IURLGenerator::class)->linkToRouteAbsolute('eva-ai.page.app');
             $notification = $manager->createNotification();
-            $notification->setApp('ragchat')
+            $notification->setApp('eva-ai')
                 ->setUser($user)
                 ->setObject('chat', 'answer')
                 ->setSubject('answer_ready', ['text' => mb_strimwidth($text, 0, 400, '…')])

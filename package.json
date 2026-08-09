@@ -1,6 +1,6 @@
 {
-  "name": "ragchat",
-  "version": "1.0.9",
+  "name": "eva-ai",
+  "version": "1.3.0",
   "private": true,
   "engines": {
     "node": ">=20"

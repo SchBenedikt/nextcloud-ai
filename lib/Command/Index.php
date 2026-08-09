@@ -2,10 +2,10 @@
 
 declare(strict_types=1);
 
-namespace OCA\RagChat\Command;
+namespace OCA\EvaAi\Command;
 
-use OCA\RagChat\Db\DocumentMapper;
-use OCA\RagChat\Service\Indexer;
+use OCA\EvaAi\Db\DocumentMapper;
+use OCA\EvaAi\Service\Indexer;
 use OCP\IConfig;
 use Symfony\Component\Console\Command\Command;
 use Symfony\Component\Console\Input\InputArgument;
@@ -22,7 +22,7 @@ class Index extends Command {
     }
 
     protected function configure(): void {
-        $this->setName('ragchat:index')
+        $this->setName('eva-ai:index')
             ->setDescription('Index a user\'s files for RAG Chat')
             ->addArgument('user', InputArgument::OPTIONAL, 'User (default: configured index_user)');
     }
@@ -30,7 +30,7 @@ class Index extends Command {
     protected function execute(InputInterface $input, OutputInterface $output): int {
         $user = $input->getArgument('user');
         if ($user === null || $user === '') {
-            $user = $this->config->getAppValue('ragchat', 'index_user', '');
+            $user = $this->config->getAppValue('eva-ai', 'index_user', '');
         }
         if ($user === '') {
             $output->writeln('<error>No user given and index_user not configured.</error>');

@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace OCA\RagChat\Service;
+namespace OCA\EvaAi\Service;
 
 use OCP\Accounts\IAccountManager;
 use OCP\Contacts\IManager as IContactsManager;
@@ -88,7 +88,7 @@ class ActionExecutor {
             ]],
             ['type' => 'function', 'function' => [
                 'name' => 'delete_file',
-                'description' => 'Delete a file or an empty folder in the user\'s home. Use only when the user explicitly asks to delete something. Depending on the app settings you may only delete files the AI created itself.',
+                'description' => 'Delete a file or an empty folder in the user\'s home. Use only when the user explicitly asks to delete something. Depending on the app settings you may only delete files EVA created itself.',
                 'parameters' => ['type' => 'object', 'properties' => [
                     'path' => ['type' => 'string', 'description' => 'Relative path of the file or folder to delete.'],
                 ], 'required' => ['path']],
@@ -552,7 +552,7 @@ class ActionExecutor {
             return ['ok' => false, 'error' => 'Deleting files is disabled in the app settings.'];
         }
         if ($mode === 'own' && !$this->isOwned($home, $path)) {
-            return ['ok' => false, 'error' => 'Only files the AI created itself may be deleted (adjust "delete permission" in the app settings to allow more).'];
+            return ['ok' => false, 'error' => 'Only files EVA created itself may be deleted (adjust "delete permission" in the app settings to allow more).'];
         }
         $node = $this->resolve($home, $path);
         if ($node instanceof Folder && $node->getDirectoryListing() !== []) {
@@ -912,7 +912,7 @@ class ActionExecutor {
     // ---- Marker für "von der KI erstellt" ----
 
     private function marksFile(string $userId): \OCP\Files\SimpleFS\ISimpleFile {
-        $appdata = $this->appDataFactory->get('ragchat');
+        $appdata = $this->appDataFactory->get('eva-ai');
         try {
             $dir = $appdata->getFolder('ai-marks');
         } catch (\OCP\Files\NotFoundException $e) {
@@ -1192,7 +1192,7 @@ class ActionExecutor {
             CURLOPT_FOLLOWLOCATION => 1,
             CURLOPT_SSL_VERIFYPEER => false,
             CURLOPT_SSL_VERIFYHOST => 0,
-            CURLOPT_USERAGENT => 'RagChat/1.0',
+            CURLOPT_USERAGENT => 'EvaAi/1.0',
         ]);
         $r = curl_exec($ch);
         $err = curl_errno($ch);

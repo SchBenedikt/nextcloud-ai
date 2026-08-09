@@ -2,9 +2,9 @@
 
 declare(strict_types=1);
 
-namespace OCA\RagChat\AppInfo;
+namespace OCA\EvaAi\AppInfo;
 
-use OCA\RagChat\BackgroundJob\IndexJob;
+use OCA\EvaAi\BackgroundJob\IndexJob;
 use OCP\AppFramework\App;
 use OCP\AppFramework\Bootstrap\IBootContext;
 use OCP\AppFramework\Bootstrap\IBootstrap;
@@ -14,7 +14,7 @@ use OCP\IUserSession;
 use OCP\Util;
 
 class Application extends App implements IBootstrap {
-    public const APP_ID = 'ragchat';
+    public const APP_ID = 'eva-ai';
 
     public function __construct(array $urlParams = []) {
         parent::__construct(self::APP_ID, $urlParams);
@@ -22,10 +22,14 @@ class Application extends App implements IBootstrap {
 
     public function register(IRegistrationContext $context): void {
         $context->registerParameter('appId', self::APP_ID);
-        // Benachrichtigungs-Notifier: zeigt "AI answer ready" in der Glocke an.
-        $context->registerNotifierService(\OCA\RagChat\Notification\Notifier::class);
-        // AI-Provider: stellt den RAG-Chat für die Assistant-App (TaskProcessing) bereit.
-        $context->registerTaskProcessingProvider(\OCA\RagChat\TaskProcessing\TextToTextChatProvider::class);
+        // Benachrichtigungs-Notifier: zeigt "EVA answer ready" in der Glocke an.
+        $context->registerNotifierService(\OCA\EvaAi\Notification\Notifier::class);
+        // EVA-Provider: stellt den RAG-Chat für die Assistant-App (TaskProcessing) bereit.
+        $context->registerTaskProcessingProvider(\OCA\EvaAi\TaskProcessing\TextToTextChatProvider::class);
+        // EVA-Provider fuer den Original-Chat, den Agenten mit Bestaetigungs-Flow (core:contextagent:interaction)
+        // und Chat mit Tool-Unterstuetzung (core:text2text:chatwithtools).
+        $context->registerTaskProcessingProvider(\OCA\EvaAi\TaskProcessing\AgentInteractionProvider::class);
+        $context->registerTaskProcessingProvider(\OCA\EvaAi\TaskProcessing\TextToTextChatWithToolsProvider::class);
     }
 
     public function boot(IBootContext $context): void {

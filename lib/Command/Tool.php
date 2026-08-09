@@ -2,9 +2,9 @@
 
 declare(strict_types=1);
 
-namespace OCA\RagChat\Command;
+namespace OCA\EvaAi\Command;
 
-use OCA\RagChat\Service\ActionExecutor;
+use OCA\EvaAi\Service\ActionExecutor;
 use Symfony\Component\Console\Command\Command;
 use Symfony\Component\Console\Input\InputArgument;
 use Symfony\Component\Console\Input\InputInterface;
@@ -18,8 +18,8 @@ class Tool extends Command {
     }
 
     protected function configure(): void {
-        $this->setName('ragchat:tool')
-            ->setDescription('Run an AI tool for a user (test)')
+        $this->setName('eva-ai:tool')
+            ->setDescription('Run an EVA tool for a user (test)')
             ->addArgument('user', InputArgument::REQUIRED)
             ->addArgument('tool', InputArgument::REQUIRED)
             ->addArgument('args', InputArgument::OPTIONAL, 'JSON arguments', '{}');
@@ -36,9 +36,9 @@ class Tool extends Command {
             try {
                 $mgr = \OCP\Server::get(\OCP\Notification\IManager::class);
                 $n = $mgr->createNotification();
-                $n->setApp('ragchat')->setUser($user)->setObject('chat', 'answer')
+                $n->setApp('eva-ai')->setUser($user)->setObject('chat', 'answer')
                     ->setSubject('answer_ready', ['text' => mb_strimwidth((string)($args['text'] ?? 'Hallo'), 0, 400, '…')])
-                    ->setLink('https://localhost/nextcloud/apps/ragchat/')
+                    ->setLink('https://localhost/nextcloud/apps/eva-ai/')
                     ->setDateTime(new \DateTime());
                 $mgr->notify($n);
                 $output->writeln('OK notified');

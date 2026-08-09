@@ -2,10 +2,10 @@
 
 declare(strict_types=1);
 
-namespace OCA\RagChat\Service;
+namespace OCA\EvaAi\Service;
 
-use OCA\RagChat\Db\ChunkMapper;
-use OCA\RagChat\Db\DocumentMapper;
+use OCA\EvaAi\Db\ChunkMapper;
+use OCA\EvaAi\Db\DocumentMapper;
 use OCP\Files\IRootFolder;
 use OCP\IURLGenerator;
 
@@ -179,7 +179,7 @@ class RagService {
     private function buildMessages(string $userId, string $message, array $history, string $context, int $sourceCount, bool $actions = false): array {
         $sourceCount = max(1, $sourceCount);
         $knowledge = $this->knowledgeFor($userId);
-        $system = "You are a helpful, direct and precise assistant. "
+        $system = "You are EVA, a helpful, direct and precise assistant built in to Nextcloud. "
             . "Answer the user's question plainly and completely, from the top, using your own knowledge whenever possible. "
             . "The user's own files are provided below as supporting context: use them when they add relevant, specific facts about the user, "
             . "The context below contains exactly {$sourceCount} numbered snippets, labelled [1] through [{$sourceCount}]. " . "Cite only with labels that really exist in that range (never invent higher numbers such as [12] or [20]). "

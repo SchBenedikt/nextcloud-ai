@@ -2,9 +2,9 @@
 
 declare(strict_types=1);
 
-namespace OCA\RagChat\TaskProcessing;
+namespace OCA\EvaAi\TaskProcessing;
 
-use OCA\RagChat\Service\RagService;
+use OCA\EvaAi\Service\RagService;
 use OCP\TaskProcessing\Exception\ProcessingException;
 use OCP\TaskProcessing\ISynchronousProvider;
 use OCP\TaskProcessing\TaskTypes\TextToTextChat;
@@ -20,7 +20,7 @@ class TextToTextChatProvider implements ISynchronousProvider {
 
 	#[\Override]
 	public function getId(): string {
-		return 'ragchat:text2text';
+		return 'eva-ai:text2text';
 	}
 
 	#[\Override]

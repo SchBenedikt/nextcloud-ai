@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace OCA\RagChat\Service;
+namespace OCA\EvaAi\Service;
 
 use OCP\IDBConnection;
 
@@ -26,7 +26,7 @@ class ActivityService {
                 . ' WHERE `affecteduser` = ? AND `app` <> ?'
                 . ' ORDER BY `timestamp` DESC LIMIT ' . (int)$limit
             );
-            $stmt->execute([$userId, 'ragchat']);
+            $stmt->execute([$userId, 'eva-ai']);
         } catch (\Throwable $e) {
             return ['ok' => false, 'error' => 'Activity data not available: ' . $e->getMessage()];
         }

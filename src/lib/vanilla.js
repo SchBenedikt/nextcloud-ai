@@ -1,4 +1,4 @@
-/* RagChat – Vanilla-Chat-Mount.
+/* EvaAi – Vanilla-Chat-Mount.
  * Wird von ChatView.vue aufgerufen und rendert den kompletten Chat
  * (Status, Blasen, Formular) rein über textContent/DOM-API – dadurch
  * ist die Text-Darstellung deterministisch und frameworkunabhängig.
@@ -8,8 +8,8 @@
  * ein neuer Chat angelegt (sofern die API erreichbar ist).
  */
 export function mountChat(root, opts = {}) {
-	if (!root || root.__ragchat) return
-	root.__ragchat = true
+	if (!root || root.__evaAi) return
+	root.__evaAi = true
 
 	const { onRecent } = opts
 	let chatId = opts.chatId || null
@@ -18,11 +18,11 @@ export function mountChat(root, opts = {}) {
 		const el = document.head.querySelector('meta[name="' + name + '"]')
 		return el ? el.getAttribute('content') : ''
 	}
-	const API_BASE = meta('ragchat-api')
+	const API_BASE = meta('eva-ai-api')
 	const REQUEST_TOKEN = meta('requesttoken')
-	const STREAM_URL = meta('ragchat-stream') || ''
+	const STREAM_URL = meta('eva-ai-stream') || ''
 
-	const STORE_KEY = 'ragchat.conv'
+	const STORE_KEY = 'eva-ai.conv'
 	const history = []
 	const messages = []
 	let sending = false
@@ -92,14 +92,14 @@ export function mountChat(root, opts = {}) {
 
 	function exportMarkdown() {
 		const lines = []
-		lines.push('# AI chat export')
+		lines.push('# EVA chat export')
 		lines.push('')
 		const d = new Date()
 		lines.push('_Exported ' + d.toISOString() + '_')
 		lines.push('')
 		messages.forEach((m) => {
 			lines.push('')
-			lines.push('## ' + (m.role === 'user' ? 'You' : 'AI'))
+			lines.push('## ' + (m.role === 'user' ? 'You' : 'EVA'))
 			lines.push('')
 			lines.push(m.text || '')
 		})
@@ -107,7 +107,7 @@ export function mountChat(root, opts = {}) {
 		const url = URL.createObjectURL(blob)
 		const a = document.createElement('a')
 		a.href = url
-		a.download = 'ai-chat-' + (chatId || 'export') + '.md'
+		a.download = 'eva-chat-' + (chatId || 'export') + '.md'
 		document.body.appendChild(a)
 		a.click()
 		a.remove()

@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace OCA\RagChat\Command;
+namespace OCA\EvaAi\Command;
 
 use OC\Files\Filesystem;
 use OCP\Files\Mount\IMountManager;
@@ -20,7 +20,7 @@ class Mounts extends Command {
     }
 
     protected function configure(): void {
-        $this->setName('ragchat:mounts')
+        $this->setName('eva-ai:mounts')
             ->setDescription('List all file mounts (home, external storages, groupfolders, shares) visible for a user - debug helper to see what the app can access')
             ->addArgument('user', InputArgument::REQUIRED, 'User id');
     }
