@@ -28,6 +28,36 @@ Chat with a locally running Large Language Model about your own Nextcloud files.
 
 ## Installation
 
+### 0. Upgrade an existing installation (important!)
+
+If you ran a version **before 1.4.0** (e.g. `ragchat` or early `eva-ai`), the
+database may contain index names with a hyphen (`eva-ai_doc_user_file`,
+`eva-ai_chunk_doc`, …). **MySQL/MariaDB and PostgreSQL do not accept hyphens
+in index names** — those indexes were never created, and the broken schema can
+make the TaskProcessing/Assistant integration fail.
+
+From 1.4.0 on, a repair migration fixes this automatically:
+
+1. Deploy the new code:
+   ```bash
+   cd /var/www/nextcloud/apps
+   sudo git pull        # (inside the eva-ai folder)
+   sudo chown -R www-data:www-data eva-ai
+   ```
+2. Run the upgrade (executes the repair migration, renames/creates the
+   indexes and drops obsolete `ragchat_*` leftovers):
+   ```bash
+   cd /var/www/nextcloud
+   sudo -u www-data php occ upgrade
+   ```
+3. Verify no hyphenated/obsolete indexes are left:
+   ```bash
+   sudo -u www-data php occ maintenance:mimetype:update-db  # optional
+   # or check via mysql: SELECT INDEX_NAME FROM information_schema.STATISTICS
+   # WHERE TABLE_SCHEMA='nextcloud' AND (INDEX_NAME LIKE 'eva-ai%' OR INDEX_NAME LIKE 'ragchat%');
+   -- expect 0 rows
+   ```
+
 ### 1. Install the app
 
 The folder must be named `eva-ai` (app ID):
