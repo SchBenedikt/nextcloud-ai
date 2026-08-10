@@ -177,11 +177,20 @@ class AgentInteractionProvider implements ISynchronousProvider {
 		$actions = json_encode($pendingNext, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
 		$this->store->save($userId, $token, $history, $pendingNext);
 
-		return [
+		// IMPORTANT: the 'actions' output must ONLY be present for a real
+		// proposal. The Nextcloud assistant stores it in the session
+		// (agency_pending_actions) and shows the confirmation dialog whenever
+		// it is truthy - an empty JSON array '[]' also counts as truthy in
+		// the frontend, which caused the confirm dialog to pop up again and
+		// again after every normal answer.
+		$result = [
 			'output' => $output,
 			'conversation_token' => $token,
-			'actions' => $actions === false ? '[]' : $actions,
 		];
+		if ($pendingNext !== []) {
+			$result['actions'] = $actions === false ? '[]' : $actions;
+		}
+		return $result;
 	}
 
 	/** @return array{0: array<int,array{name:string,arguments:array}>, 1: string} */
@@ -247,6 +256,17 @@ class AgentInteractionProvider implements ISynchronousProvider {
 	 * directly guarantees the user-confirmed actions really happen.
 	 */
 	private function runConfirmed(string $userId, array $messages, string $token, array $history, array $pending): array {
+		// Idempotency: if the user confirms again (double-click on the dialog,
+		// or the assistant re-sends the confirmation) while nothing is pending
+		// and an answer already exists in the history, simply say that
+		// everything is done - no LLM call, no new tool proposal, no spam.
+		if ($pending === [] && $this->historyHasAssistantAnswer($history)) {
+			return [
+				'output' => 'Alles erledigt – die bestätigten Aktionen habe ich bereits ausgeführt. Gibt es noch etwas, das ich für dich tun kann?',
+				'conversation_token' => $token,
+			];
+		}
+
 		$executed = [];
 		foreach ($pending as $tc) {
 			$name = (string)($tc['name'] ?? '');
@@ -304,11 +324,20 @@ class AgentInteractionProvider implements ISynchronousProvider {
 		]);
 		$this->store->save($userId, $token, $newHistory, []);
 
+		// no 'actions' key on purpose: see the comment in process()
 		return [
 			'output' => $answer,
 			'conversation_token' => $token,
-			'actions' => '[]',
 		];
+	}
+
+	private function historyHasAssistantAnswer(array $history): bool {
+		foreach (array_reverse($history) as $h) {
+			if (($h['role'] ?? '') === 'assistant' && trim((string)($h['content'] ?? '')) !== '') {
+				return true;
+			}
+		}
+		return false;
 	}
 
 	private function buildPromptPrefix(): string {
