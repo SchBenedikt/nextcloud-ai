@@ -98,18 +98,38 @@ class AgentInteractionProvider implements ISynchronousProvider {
 			throw new RuntimeException('Kein Benutzer kontext');
 		}
 		$prompt = trim((string)($input['input'] ?? ''));
-		if ($prompt === '') {
-			throw new RuntimeException('Invalid input');
-		}
 		$confirmation = (int)($input['confirmation'] ?? 0);
 		$token = (string)($input['conversation_token'] ?? '');
 		if ($token === '' || $token === '{}' || !preg_match('/^[a-zA-Z0-9_-]{1,128}$/', $token)) {
 			$token = 'eva-' . bin2hex(random_bytes(16));
 		}
 
+		// Bei einer Bestaetigung (confirmation=1) darf das Input leer sein:
+		// Der Nutzer hat seinen Wunsch schon in der vorherigen Nachricht
+		// geaeussert, der Provider fuehrt nur noch die vorgeschlagenen
+		// Aktionen aus. Der Prompt wird aus dem Historien-Store gelesen.
+		if ($prompt === '' && $confirmation !== 1) {
+			throw new RuntimeException('Invalid input');
+		}
+
 		$state = $this->store->load($userId, $token);
 		$history = $state['history'];
 		$pending = $state['pending'];
+
+		if ($confirmation === 1 && $prompt === '') {
+			// Letzten bekannten User-Prompt aus der History wiederverwenden,
+			// damit die Bestaetigungs-Task den Kontext behaelt.
+			$promptFromHistory = '';
+			foreach (array_reverse($history) as $h) {
+				if (($h['role'] ?? '') === 'user' && ($h['content'] ?? '') !== '') {
+					$promptFromHistory = (string)$h['content'];
+					break;
+				}
+			}
+			if ($promptFromHistory !== '') {
+				$prompt = $promptFromHistory;
+			}
+		}
 
 		$system = $this->buildPrompt($userId, $confirmation, $pending);
 		$messages = [['role' => 'system', 'content' => $system]];
@@ -212,14 +232,20 @@ class AgentInteractionProvider implements ISynchronousProvider {
 
 	private function buildPrompt(string $userId, int $confirmation, array $pending): string {
 		$knowledge = '';
-		try {
-			$home = \OC::$server->get(\OCP\Files\IRootFolder::class)->getUserFolder($userId);
-			if ($home->nodeExists('KNOWLEDGE.md')) {
-				$knowledge = "\nA file KNOWLEDGE.md holds personal facts about the user. Always take them into account:\n\n"
-					. substr((string)$home->get('KNOWLEDGE.md')->getContent(), 0, 2500);
+		// KNOWLEDGE.md: nur im Web-Kontext laden. Der TaskProcessing-Worker
+		// laeuft als CLI und hat keinen eingerichteten User-File-Mount;
+		// getUserFolder() blockiert dort (bekanntes Verhalten). Der
+		// Wissens-Inhalt ist optional und darf den Worker nicht aufhaengen.
+		if (PHP_SAPI !== 'cli') {
+			try {
+				$home = \OC::$server->get(\OCP\Files\IRootFolder::class)->getUserFolder($userId);
+				if ($home->nodeExists('KNOWLEDGE.md')) {
+					$knowledge = "\nA file KNOWLEDGE.md holds personal facts about the user. Always take them into account:\n\n"
+						. substr((string)$home->get('KNOWLEDGE.md')->getContent(), 0, 2500);
+				}
+			} catch (\Throwable $e) {
+				// ignore, knowledge is optional
 			}
-		} catch (\Throwable $e) {
-			// ignore, knowledge is optional
 		}
 
 		$base = $this->buildPromptPrefix() . $knowledge;
@@ -243,7 +269,9 @@ class AgentInteractionProvider implements ISynchronousProvider {
 			. "and write an answer that explains what you would do and asks for confirmation, for example: "
 			. "'Ich würde den Termin verschieben, die Datei umbenennen und Benedikt eine Nachricht schicken – ausführen?' "
 			. "Only purely informational reads (searching, listing, reading, checking status) that are needed for the "
-			. "answer may be executed directly; but never a modifying action.";
+			. "answer may be executed directly; but never a modifying action. "
+			. "Do NOT propose tools for simple conversation or greetings: if the user just says hello, asks a general "
+			. "question or chats casually, answer directly without any tool calls and without asking for confirmation.";
 	}
 
 	private function canonical(array $raw): array {

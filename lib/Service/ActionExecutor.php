@@ -35,7 +35,6 @@ class ActionExecutor {
         private IRootFolder $rootFolder,
         private IContactsManager $contacts,
         private AppConfig $config,
-        private IAppDataFactory $appDataFactory,
         private IAccountManager $accounts,
         private IUserManager $userManager,
         private CalendarService $calendar,
@@ -386,10 +385,27 @@ class ActionExecutor {
      * @return array{ok:bool,result?:mixed,error?:string}
      */
     public function run(string $userId, string $name, array $args): array {
-        try {
-            $home = $this->rootFolder->getUserFolder($userId);
-        } catch (\Throwable $e) {
-            return ['ok' => false, 'error' => 'User folder unavailable'];
+        // Im CLI (taskprocessing:worker, occ) blockiert getUserFolder()
+        // oft dauerhaft, weil der User-File-Mount nicht aufgesetzt wird.
+        // Tools, die das Home-Verzeichnis brauchen, koennen im CLI daher
+        // nicht laufen; reine Nicht-Datei-Tools (Zeit, Wetter, Kalender,
+        // Kontakte, Tasks, Suchen) kommen ohne das Folder aus.
+        $home = null;
+        if (PHP_SAPI !== 'cli') {
+            try {
+                $home = $this->rootFolder->getUserFolder($userId);
+            } catch (\Throwable $e) {
+                return ['ok' => false, 'error' => 'User folder unavailable'];
+            }
+        }
+
+        $fileTools = [
+            'list_files', 'create_file', 'create_note', 'create_folder',
+            'rename_file', 'delete_file', 'read_file', 'search_files',
+            'update_knowledge',
+        ];
+        if (in_array($name, $fileTools, true) && $home === null) {
+            return ['ok' => false, 'error' => 'File tools are not available in the background worker (CLI). Ask in the web chat instead.'];
         }
 
         try {
@@ -937,7 +953,9 @@ class ActionExecutor {
     // ---- Marker für "von der KI erstellt" ----
 
     private function marksFile(string $userId): \OCP\Files\SimpleFS\ISimpleFile {
-        $appdata = $this->appDataFactory->get('eva-ai');
+        // IAppDataFactory wird lazy geholt statt per Konstruktor injiziert:
+        // die Aufloesung blockiert im CLI/taskprocessing-Worker.
+        $appdata = \OC::$server->get(\OCP\AppFramework\Services\IAppDataFactory::class)->get('eva-ai');
         try {
             $dir = $appdata->getFolder('ai-marks');
         } catch (\OCP\Files\NotFoundException $e) {

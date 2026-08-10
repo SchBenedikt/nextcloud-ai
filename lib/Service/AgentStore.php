@@ -4,14 +4,18 @@ declare(strict_types=1);
 
 namespace OCA\EvaAi\Service;
 
-use OCP\AppFramework\Db\QBMapper;
-use OCP\DB\QueryBuilder\IQueryBuilder;
 use OCP\IDBConnection;
 use Psr\Log\LoggerInterface;
 
 /**
  * Persists per-conversation agent state (LLM history + pending actions)
  * in a dedicated DB table, keyed by the conversation token.
+ *
+ * IMPORTANT: In the CLI (taskprocessing:worker, occ) the QueryBuilder's
+ * executeQuery()/executeStatement() with named parameters can block
+ * indefinitely (known Nextcloud + MySQL issue). We therefore use plain
+ * PDO prepared statements here — they are the only reliable path in
+ * both web and CLI context.
  */
 class AgentStore {
 
@@ -29,14 +33,10 @@ class AgentStore {
 			return ['history' => [], 'pending' => []];
 		}
 		try {
-			$qb = $this->db->getQueryBuilder();
-			$qb->select('history', 'pending')
-				->from('eva_ai_agent_state')
-				->where($qb->expr()->eq('user_id', $qb->createNamedParameter($userId)))
-				->andWhere($qb->expr()->eq('token', $qb->createNamedParameter($token)))
-				->setMaxResults(1);
-			$row = $qb->executeQuery()->fetch();
-			if ($row === false) {
+			$stmt = $this->db->prepare('SELECT history, pending FROM *PREFIX*eva_ai_agent_state WHERE user_id = ? AND token = ? LIMIT 1');
+			$stmt->execute([$userId, $token]);
+			$row = $stmt->fetch();
+			if ($row === false || $row === null) {
 				return ['history' => [], 'pending' => []];
 			}
 			$history = json_decode((string)($row['history'] ?? ''), true);
@@ -58,39 +58,34 @@ class AgentStore {
 		$history = array_slice(array_values($history), -24);
 		try {
 			$now = time();
-			$qb = $this->db->getQueryBuilder();
-			$qb->select('id')
-				->from('eva_ai_agent_state')
-				->where($qb->expr()->eq('user_id', $qb->createNamedParameter($userId)))
-				->andWhere($qb->expr()->eq('token', $qb->createNamedParameter($token)))
-				->setMaxResults(1);
-			$row = $qb->executeQuery()->fetch();
-
 			$historyStr = json_encode($history, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
 			$pendingStr = json_encode($pending, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+			if ($historyStr === false) {
+				$historyStr = '[]';
+			}
+			if ($pendingStr === false) {
+				$pendingStr = '[]';
+			}
 
-			if ($row === false) {
-				$qb = $this->db->getQueryBuilder();
-				$qb->insert('eva_ai_agent_state')
-					->values([
-						'user_id' => $qb->createNamedParameter($userId),
-						'token' => $qb->createNamedParameter($token),
-						'history' => $qb->createNamedParameter($historyStr === false ? '[]' : $historyStr, IQueryBuilder::PARAM_STR),
-						'pending' => $qb->createNamedParameter($pendingStr === false ? '[]' : $pendingStr, IQueryBuilder::PARAM_STR),
-						'updated_at' => $qb->createNamedParameter($now, IQueryBuilder::PARAM_INT),
-					]);
-				$qb->executeStatement();
+			// Existiert der Eintrag? (prepared, CLI-sicher)
+			$exists = false;
+			try {
+				$stmt = $this->db->prepare('SELECT id FROM *PREFIX*eva_ai_agent_state WHERE user_id = ? AND token = ? LIMIT 1');
+				$stmt->execute([$userId, $token]);
+				$row = $stmt->fetch();
+				$exists = $row !== false && $row !== null;
+			} catch (\Throwable $e) {
+				// Fallback: direkter Insert-Versuch unten
+			}
+
+			if (!$exists) {
+				$stmt = $this->db->prepare('INSERT INTO *PREFIX*eva_ai_agent_state (user_id, token, history, pending, updated_at) VALUES (?, ?, ?, ?, ?)');
+				$stmt->execute([$userId, $token, $historyStr, $pendingStr, $now]);
 				return;
 			}
 
-			$qb = $this->db->getQueryBuilder();
-			$qb->update('eva_ai_agent_state')
-				->set('history', $qb->createNamedParameter($historyStr === false ? '[]' : $historyStr))
-				->set('pending', $qb->createNamedParameter($pendingStr === false ? '[]' : $pendingStr))
-				->set('updated_at', $qb->createNamedParameter($now, IQueryBuilder::PARAM_INT))
-				->where($qb->expr()->eq('user_id', $qb->createNamedParameter($userId)))
-				->andWhere($qb->expr()->eq('token', $qb->createNamedParameter($token)));
-			$qb->executeStatement();
+			$stmt = $this->db->prepare('UPDATE *PREFIX*eva_ai_agent_state SET history = ?, pending = ?, updated_at = ? WHERE user_id = ? AND token = ?');
+			$stmt->execute([$historyStr, $pendingStr, $now, $userId, $token]);
 		} catch (\Throwable $e) {
 			$this->logger->warning('eva-ai: agent store save failed', ['exception' => $e]);
 		}
