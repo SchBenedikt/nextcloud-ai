@@ -7,6 +7,7 @@ namespace OCA\EvaAi\Listener;
 use OCA\EvaAi\Service\ActionExecutor;
 use OCA\EvaAi\Service\AppConfig;
 use OCA\EvaAi\Service\Ollama;
+use OCA\EvaAi\Service\RagService;
 use OCA\EvaAi\Service\TalkContextReader;
 use OCA\Talk\Events\BotInvokeEvent;
 use OCA\Talk\Model\Bot;
@@ -15,17 +16,18 @@ use OCP\EventDispatcher\IEventListener;
 use Psr\Log\LoggerInterface;
 
 /**
- * EVA-Bot für Nextcloud Talk mit Tool-Unterstützung.
+ * EVA-Bot für Nextcloud Talk mit Tool-Unterstützung und RAG.
  *
  * Lauscht auf BotInvokeEvent (FEATURE_EVENT) und antwortet im Raum mit
- * einer LLM-Antwort. Unterstützt automatische Aktionen (Kalender, Tasks,
- * Dateien, Kontakte etc.) OHNE Bestätigung im Talk-Kontext.
+ * einer LLM-Antwort. Nutzt RagService für:
+ * - Vektor-Suche in indexierten Dateien (RAG)
+ * - Automatische Aktionen (Kalender, Tasks, Dateien, Kontakte etc.) OHNE
+ *   Bestätigung im Talk-Kontext
  *
- * Selektive Antwort-Logik (Option 4):
- * - @EVA/@eva Erwähnung → immer antworten
+ * Selektive Antwort-Logik (keine Pattern-basierte Filterung):
+ * - @EVA/@eva Erwähnung → immer antworten (explizite Adressierung)
  * - Custom Trigger (konfigurierbar) → immer antworten
- * - Name "EVA" ohne @ → LLM-Klassifikation mit Teilnehmer-Info
- * - Frage an KI → antworten (LLM-basierte Klassifikation)
+ * - Sonst: KI-Klassifikation anhand Inhalt und Chat-Teilnehmer entscheidet
  *
  * @implements IEventListener<Event>
  */
@@ -35,9 +37,7 @@ Du bist EVA, ein hilfreicher KI-Assistent im Nextcloud-Talk-Chat. Antworte kurz 
 
 Du hast Zugriff auf Werkzeuge (Kalender, Tasks, Dateien, Kontakte, Mail etc.). Wenn der Nutzer eine konkrete Aktion möchte (z.B. "erstelle einen Termin", "was sind meine Aufgaben?"), führe sie automatisch aus – ohne nachzufragen. Nutze die bereitgestellten Tools direkt.
 
-Wichtig: Führe Aktionen IMMER automatisch aus, wenn der Nutzer sie eindeutig anfordert. Stelle keine unnötigen Bestätigungsfragen. Antworte direkt mit dem Ergebnis.
-
-Beachte den Chat-Verlauf: Wenn der Nutzer auf Vorgänger verweist (z.B. "was hat X eben gesagt?"), beziehe dich darauf. Wenn die letzte Nachricht nicht an dich gerichtet war, antworte nur, wenn die Frage eindeutig an dich gerichtet ist.
+Wichtig: Führe Aktionen IMMER automatisch aus, wenn der Nutzer sie eindeutig anfordert.
 PROMPT;
 
     public function __construct(
@@ -45,6 +45,7 @@ PROMPT;
         private TalkContextReader $contextReader,
         private ActionExecutor $executor,
         private AppConfig $appConfig,
+        private RagService $ragService,
         private LoggerInterface $logger,
     ) {
     }
@@ -87,7 +88,7 @@ PROMPT;
         $history = $roomId > 0 ? $this->contextReader->buildHistoryMessages($roomId) : [];
 
         try {
-            $answer = $this->generateAnswerWithTools($history, $cleanContent, $actorName, $userId);
+            $answer = $this->generateAnswerWithRag($history, $cleanContent, $actorName, $userId);
             if ($answer === '') {
                 $event->addAnswer("Da fällt mir gerade nichts Passendes ein. Kannst du die Frage anders stellen?");
                 return;
@@ -103,10 +104,14 @@ PROMPT;
      * Entscheidet ob EVA antworten soll.
      *
      * KEINE pattern-basierte Filterung. Die KI entscheidet für jede Nachricht:
+    /**
+     * Entscheidet ob EVA antworten soll.
+     *
+     * KEINE pattern-basierte Filterung. Die KI entscheidet für jede Nachricht:
      * 1. @EVA/@eva Erwähnung → immer antworten (explizite Adressierung)
      * 2. Sonst: KI-Klassifikation anhand Inhalt und Teilnehmer
      */
-     private function shouldRespond(string $content, string $currentUserId, int $roomId): bool {
+    private function shouldRespond(string $content, string $currentUserId, int $roomId): bool {
         // 1. @EVA/@eva Erwähnung – schneller Check (explizite Adressierung)
         if (preg_match('/@eva\b/i', $content)) {
             return true;
@@ -236,22 +241,54 @@ PROMPT;
     }
 
     /**
-     * Generiert eine Antwort MIT Tool-Unterstützung.
+     * Generiert eine Antwort mit RAG (Retrieval-Augmented Generation) und
+     * Tool-Unterstützung, identisch zur EVA-Web-App.
      *
-     * Flow:
-     * 1. LLM mit Tools aufrufen
-     * 2. Bei Tool-Calls: diese automatisch ausführen (kein Bestätigungsdialog)
-     * 3. Ergebnisse zurück an LLM für finale Antwort
-     * 4. Bis zu 3 Runden erlauben (für mehrstufige Aktionen)
+     * Nutzt RagService::ask() für:
+     * - Vektor-Suche in indexierten Dateien/Wissen
+     * - Tool-Aufrufe (Kalender, Tasks, Dateien, etc.)
+     * - LLM-Antwort generieren
      *
      * @param list<array{role:string,content:string}> $history
      */
-    private function generateAnswerWithTools(array $history, string $question, string $actorName, string $userId): string {
+    private function generateAnswerWithRag(array $history, string $question, string $actorName, string $userId): string {
+        // RagService::ask() macht Vector-Search + Tool-Execution + LLM-Antwort
+        $result = $this->ragService->ask($userId, $question, $history);
+
+        if (isset($result['error']) && $result['error'] !== '') {
+            $this->logger->warning('eva-ai talk: rag error: ' . $result['error']);
+            // Bei Vektor-Fehler: fallback auf reinen LLM-Chat mit Tools
+            return $this->fallbackAnswer($history, $question, $actorName, $userId);
+        }
+
+        $answer = trim((string)($result['answer'] ?? ''));
+
+        // Sources als Fußnote anhängen, falls vorhanden
+        $sources = $result['sources'] ?? [];
+        if ($sources !== []) {
+            $sourceRefs = [];
+            foreach ($sources as $s) {
+                $sourceRefs[] = (string)($s['name'] ?? $s['path'] ?? 'Quelle');
+            }
+            if ($sourceRefs !== []) {
+                $answer .= "\n\n_Quellen: " . implode(', ', $sourceRefs) . "_";
+            }
+        }
+
+        return $answer;
+    }
+
+    /**
+     * Fallback: reiner LLM-Chat mit Tools, falls RAG fehlschlägt
+     * (z.B. kein indexiertes Material vorhanden).
+     *
+     * @param list<array{role:string,content:string}> $history
+     */
+    private function fallbackAnswer(array $history, string $question, string $actorName, string $userId): string {
         $system = self::SYSTEM_PROMPT . "\nAktueller Sprecher: " . ($actorName !== '' ? $actorName : $userId);
         $messages = [
             ['role' => 'system', 'content' => $system],
         ];
-        // History einfügen (chronologisch aufsteigend)
         foreach ($history as $h) {
             $messages[] = $h;
         }
@@ -259,11 +296,10 @@ PROMPT;
 
         $tools = $this->executor->tools();
 
-        // Bis zu 3 Runden: LLM ruft Tools, wir führen sie aus, Ergebnis geht zurück.
         for ($round = 0; $round < 3; $round++) {
             $chat = $this->ollama->chat($messages, $tools);
             if (isset($chat['error'])) {
-                $this->logger->warning('eva-ai talk: ollama error: ' . $chat['error']);
+                $this->logger->warning('eva-ai talk: fallback ollama error: ' . $chat['error']);
                 return "Leider habe ich gerade ein Verbindungsproblem zur KI.";
             }
 
@@ -271,12 +307,10 @@ PROMPT;
             $rawCalls = $chat['raw_tool_calls'] ?? $chat['tool_calls'] ?? [];
             $calls = $this->normalizeToolCalls($rawCalls);
 
-            // Keine Tool-Calls → fertig, Antwort zurückgeben.
             if ($calls === []) {
                 return $answer;
             }
 
-            // Tools automatisch ausführen (kein Bestätigungsdialog im Talk).
             $ranAny = false;
             foreach ($calls as $tc) {
                 $name = (string)($tc['name'] ?? '');
@@ -284,25 +318,20 @@ PROMPT;
                     continue;
                 }
                 $args = is_array($tc['args'] ?? null) ? $tc['args'] : [];
-
                 try {
                     $res = $this->executor->run($userId, $name, $args);
                 } catch (\Throwable $e) {
                     $res = ['ok' => false, 'error' => $e->getMessage()];
                 }
-
                 $ranAny = true;
                 $messages[] = ['role' => 'assistant', 'content' => '', 'tool_calls' => $this->canonical([$tc])];
                 $messages[] = ['role' => 'tool', 'content' => json_encode($res, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES)];
             }
-
-            // Wenn keine Tools ausgeführt wurden (nur nicht-erkannte Calls), abbrechen.
             if (!$ranAny) {
                 return $answer !== '' ? $answer : "Das konnte ich leider nicht verstehen.";
             }
         }
 
-        // Nach 3 Runden: finale Antwort ohne Tools.
         $final = $this->ollama->chat($messages, []);
         return trim((string)($final['answer'] ?? ''));
     }

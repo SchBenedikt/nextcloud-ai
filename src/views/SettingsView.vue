@@ -229,7 +229,7 @@ export default {
 			mail_index_enabled: '1',
 			scope_path: '',
 			talk_history_size: '50',
-			talk_bot_trigger: 'EVA',
+			talk_bot_trigger: 'Eva',
 		})
 		const status = ref(null)
 		const checkOut = ref('')
