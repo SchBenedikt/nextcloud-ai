@@ -16,13 +16,14 @@ use OCP\Comments\ICommentsManager;
  * damit er Bezug auf Vorgänger nehmen kann ("wer hat was wann gesagt?").
  */
 class TalkContextReader {
-    /** Maximale Anzahl History-Nachrichten, die wir dem Modell geben. */
-    public const MAX_HISTORY = 15;
+    /** Default: 50 Nachrichten; konfigurierbar via AppConfig 'talk_history_size'. */
+    private const DEFAULT_HISTORY = 50;
 
     public function __construct(
         private TalkManager $talkManager,
         private ChatManager $chatManager,
         private ICommentsManager $commentsManager,
+        private AppConfig $appConfig,
     ) {
     }
 
@@ -38,11 +39,12 @@ class TalkContextReader {
      * @return list<array{role:string,content:string}>
      */
     public function buildHistoryMessages(int $roomId): array {
+        $maxHistory = $this->appConfig->getInt('talk_history_size', self::DEFAULT_HISTORY);
         try {
             $comments = $this->commentsManager->getForObject(
                 'chat',
                 (string)$roomId,
-                self::MAX_HISTORY,
+                $maxHistory,
                 0,
             );
         } catch (\Throwable $e) {
