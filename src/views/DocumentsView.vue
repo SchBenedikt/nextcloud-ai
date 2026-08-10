@@ -34,7 +34,7 @@
 				<template #icon><span>📄</span></template>
 				<template #name>No documents indexed yet</template>
 				<template #description>
-					Use „Start indexing“ to scan your files, then ask EVA about them.
+					Use „Start indexing“ to scan your files, then ask Eva about them.
 				</template>
 			</NcEmptyContent>
 
@@ -59,7 +59,7 @@
 								<span class="docs-path-inner" :title="d.path">/{{ d.path }}</span>
 								<button
 									class="docs-ask"
-									title="Ask EVA about this document"
+									title="Ask Eva about this document"
 									@click.stop="askAbout(d)">
 									<svg width="14" height="14" viewBox="0 0 24 24"><path :d="mdiChatProcessing" fill="currentColor" /></svg>
 								</button>

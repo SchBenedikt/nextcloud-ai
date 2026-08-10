@@ -38,14 +38,14 @@
 			</section>
 
 			<section class="settings-section">
-				<h3>EVA Actions</h3>
+				<h3>Eva Actions</h3>
 				<label class="action-toggle">
 					<input
 						type="checkbox"
 						v-model="f.actions_enabled"
 						true-value="1"
 						false-value="0" />
-					<span>Allow EVA to create and manage files on my Nextcloud</span>
+					<span>Allow Eva to create and manage files on my Nextcloud</span>
 				</label>
 				<p class="field-hint">
 					When enabled, the chat model can create, read, rename, search and list files anywhere in your Nextcloud home,
@@ -64,19 +64,19 @@
 						:label-outside="true" />
 				</div>
 				<p class="field-hint">
-					<strong>Allowed file types</strong>: comma-separated extensions EVA may create/overwrite, e.g. <code>md,txt,csv</code>.
-					Empty means any plain-text file. <strong>Max. characters per file</strong>: size guard for EVA-written files.
+					<strong>Allowed file types</strong>: comma-separated extensions Eva may create/overwrite, e.g. <code>md,txt,csv</code>.
+					Empty means any plain-text file. <strong>Max. characters per file</strong>: size guard for Eva-written files.
 				</p>
 
 				<fieldset class="perm-group">
 					<legend>Delete permission</legend>
 					<label class="action-toggle">
 						<input type="radio" v-model="f.exec_delete_mode" value="off" />
-						<span>Off — EVA may never delete files</span>
+						<span>Off — Eva may never delete files</span>
 					</label>
 					<label class="action-toggle">
 						<input type="radio" v-model="f.exec_delete_mode" value="own" />
-						<span>Only files EVA created itself</span>
+						<span>Only files Eva created itself</span>
 					</label>
 					<label class="action-toggle">
 						<input type="radio" v-model="f.exec_delete_mode" value="all" />
@@ -90,7 +90,7 @@
 						v-model="f.notify_on_complete"
 						true-value="1"
 						false-value="0" />
-					<span>Show a Nextcloud notification when an EVA answer is finished</span>
+					<span>Show a Nextcloud notification when an Eva answer is finished</span>
 				</label>
 			</section>
 

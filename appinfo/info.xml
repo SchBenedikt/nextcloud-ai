@@ -2,7 +2,7 @@
 <info xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
       xsi:noNamespaceSchemaLocation="https://apps.nextcloud.com/schema/apps/info.xsd">
     <id>eva-ai</id>
-    <name>EVA</name>
+    <name>Eva</name>
     <summary>Local RAG assistant over your own files via Ollama</summary>
     <description>
         Index your own Nextcloud files as a knowledge base and chat about them with a
@@ -44,7 +44,7 @@
     </commands>
     <navigations>
         <navigation>
-            <name>EVA</name>
+            <name>Eva</name>
             <route>eva-ai.page.index</route>
             <icon>app.svg</icon>
             <order>20</order>

@@ -14,7 +14,7 @@ use OCP\Security\ISecureRandom;
 use Psr\Log\LoggerInterface;
 
 /**
- * Stellt sicher, dass der EVA-AI-Bot in Nextcloud Talk (talk_bots_server)
+ * Stellt sicher, dass der Eva-AI-Bot in Nextcloud Talk (talk_bots_server)
  * registriert ist. NC hat keinen "AppInstalled"-Hook fuer optionale
  * Dependencies, daher registrieren wir beim Boot, falls spreed aktiv und
  * der Bot noch nicht existiert. Idempotent.
@@ -51,7 +51,7 @@ class TalkBotRegistrar {
 			return;
 		}
 		$bot = new BotServer();
-		$bot->setName('EVA AI');
+		$bot->setName('Eva');
 		$bot->setUrl(self::BOT_URL);
 		$bot->setUrlHash(sha1(self::BOT_URL));
 		$bot->setSecret($this->random->generate(64));
@@ -59,7 +59,7 @@ class TalkBotRegistrar {
 		// FEATURE_EVENT: Talk dispatcht BotInvokeEvent an unseren Listener.
 		// FEATURE_RESPONSE: Bot darf auch via /ocs/.../bot/{token}/message antworten.
 		$bot->setFeatures(Bot::FEATURE_RESPONSE | Bot::FEATURE_EVENT);
-		$bot->setDescription('EVA-AI assistant: chat with your indexed files.');
+		$bot->setDescription('Eva AI assistant: chat with your indexed files.');
 		try {
 			$this->botServerMapper->insert($bot);
 		} catch (DbException $e) {

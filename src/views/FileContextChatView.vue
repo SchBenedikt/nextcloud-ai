@@ -19,10 +19,10 @@
 
 		<div class="messages" ref="messagesEl">
 			<div v-if="messages.length === 0" class="empty">
-				Ask anything about these files. EVA will only use their content.
+				Ask anything about these files. Eva will only use their content.
 			</div>
 			<div v-for="(m, i) in messages" :key="i" :class="['msg', m.role]">
-				<div class="msg-author">{{ m.role === 'user' ? 'You' : 'EVA' }}</div>
+				<div class="msg-author">{{ m.role === 'user' ? 'You' : 'Eva' }}</div>
 				<div class="msg-body">{{ m.content }}</div>
 				<div v-if="m.sources && m.sources.length" class="msg-sources">
 					<a v-for="s in m.sources" :key="s.url" :href="s.url" target="_blank" rel="noreferrer">
@@ -31,7 +31,7 @@
 				</div>
 			</div>
 			<div v-if="busy" class="msg assistant pending">
-				<div class="msg-author">EVA</div>
+				<div class="msg-author">Eva</div>
 				<div class="msg-body">…</div>
 			</div>
 		</div>

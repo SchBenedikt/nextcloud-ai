@@ -26,8 +26,8 @@ class Version100000Date20260801000000 extends SimpleMigrationStep {
 			$table->addColumn('chunk_count', 'integer', ['notnull' => true, 'default' => 0]);
 			$table->addColumn('indexed_at', 'bigint', ['notnull' => false]);
 			$table->setPrimaryKey(['id']);
-			$table->addIndex(['user_id', 'file_id'], 'eva-ai_doc_user_file');
-			$table->addIndex(['user_id'], 'eva-ai_doc_user');
+			$table->addIndex(['user_id', 'file_id'], 'eva_ai_doc_user_file');
+			$table->addIndex(['user_id'], 'eva_ai_doc_user');
 		}
 
 		if (!$schema->hasTable('eva_ai_chunks')) {
@@ -39,7 +39,7 @@ class Version100000Date20260801000000 extends SimpleMigrationStep {
 			$table->addColumn('embedding', 'text', ['notnull' => true]);
 			$table->addColumn('token_count', 'integer', ['notnull' => true, 'default' => 0]);
 			$table->setPrimaryKey(['id']);
-			$table->addIndex(['document_id'], 'eva-ai_chunk_doc');
+			$table->addIndex(['document_id'], 'eva_ai_chunk_doc');
 		}
 
 		return $schema;

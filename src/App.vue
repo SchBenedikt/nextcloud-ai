@@ -1,6 +1,6 @@
 <template>
 	<NcContent class="eva-ai-app" :app-name="'eva-ai'">
-		<NcAppNavigation :title="'EVA · v' + buildVersion" @close-navigation="mobileOpen = false">
+		<NcAppNavigation :title="'Eva · v' + buildVersion" @close-navigation="mobileOpen = false">
 			<template #list>
 				<button class="new-chat-btn" :disabled="busy" @click="newChat">
 					<svg width="16" height="16" viewBox="0 0 24 24" aria-hidden="true"><path :d="mdiMessagePlus" fill="currentColor" /></svg>

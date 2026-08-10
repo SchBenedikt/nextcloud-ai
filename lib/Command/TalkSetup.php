@@ -17,7 +17,7 @@ use Symfony\Component\Console\Input\InputOption;
 use Symfony\Component\Console\Output\OutputInterface;
 
 /**
- * Registriert den EVA-AI-Bot in Nextcloud Talk (talk_bots_server).
+ * Registriert den Eva-AI-Bot in Nextcloud Talk (talk_bots_server).
  * Danach muss der Bot in der gewünschten Konversation über die
  * Talk-Admin-Oberfläche (oder per OCS-API) noch aktiviert werden.
  */
@@ -34,9 +34,9 @@ class TalkSetup extends Command {
 
     protected function configure(): void {
         $this->setName('eva-ai:talk:setup')
-            ->setDescription('Register or update the EVA-AI bot in Nextcloud Talk (talk_bots_server).')
-            ->addOption('remove', null, InputOption::VALUE_NONE, 'Remove the EVA-AI Talk bot instead of registering it.')
-            ->addOption('name', null, InputOption::VALUE_REQUIRED, 'Display name for the bot.', 'EVA AI')
+            ->setDescription('Register or update the Eva-AI bot in Nextcloud Talk (talk_bots_server).')
+            ->addOption('remove', null, InputOption::VALUE_NONE, 'Remove the Eva-AI Talk bot instead of registering it.')
+            ->addOption('name', null, InputOption::VALUE_REQUIRED, 'Display name for the bot.', 'Eva')
             ->addOption('description', null, InputOption::VALUE_REQUIRED, 'Optional description shown to admins.');
     }
 
@@ -78,7 +78,7 @@ class TalkSetup extends Command {
                 $output->writeln('<error>Could not update bot: ' . $e->getMessage() . '</error>');
                 return 1;
             }
-            $output->writeln('<info>Updated existing EVA-AI Talk bot.</info>');
+            $output->writeln('<info>Updated existing Eva-AI Talk bot.</info>');
         } else {
             $bot = new BotServer();
             $bot->setName($name);
@@ -96,7 +96,7 @@ class TalkSetup extends Command {
                 $output->writeln('<error>Could not insert bot: ' . $e->getMessage() . '</error>');
                 return 1;
             }
-            $output->writeln('<info>Registered new EVA-AI Talk bot.</info>');
+            $output->writeln('<info>Registered new Eva-AI Talk bot.</info>');
         }
         $output->writeln('Bot ID         : ' . $bot->getId());
         $output->writeln('Name           : ' . $bot->getName());
@@ -111,12 +111,12 @@ class TalkSetup extends Command {
         try {
             $existing = $this->botServerMapper->findByUrl(self::BOT_URL);
         } catch (\OCP\AppFramework\Db\DoesNotExistException) {
-            $output->writeln('No EVA-AI Talk bot registered.');
+            $output->writeln('No Eva-AI Talk bot registered.');
             return 0;
         }
         try {
             $this->botServerMapper->delete($existing);
-            $output->writeln('<info>Removed EVA-AI Talk bot.</info>');
+            $output->writeln('<info>Removed Eva-AI Talk bot.</info>');
         } catch (DbException $e) {
             $output->writeln('<error>Could not remove bot: ' . $e->getMessage() . '</error>');
             return 1;

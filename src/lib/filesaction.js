@@ -2,14 +2,14 @@
  * SPDX-FileCopyrightText: 2026 SchBenedikt
  * SPDX-License-Identifier: AGPL-3.0-or-later
  *
- * EVA AI — "Mit AI öffnen" / "Mit diesen Dateien chatten".
+ * Eva AI — "Mit AI öffnen" / "Mit diesen Dateien chatten".
  *
  * Wird im Files-Bereich der Nextcloud geladen und registriert eine
- * File-Action. Bei einer markierten Datei: "Open with EVA".
- * Bei mehreren: "Chat about these N files with EVA".
+ * File-Action. Bei einer markierten Datei: "Open with Eva".
+ * Bei mehreren: "Chat about these N files with Eva".
  *
- * Beim Klick wird die EVA-App in einem neuen Tab geöffnet (oder im
- * selben Tab, falls EVA schon offen ist). Die App liest die fileIds
+ * Beim Klick wird die Eva-App in einem neuen Tab geöffnet (oder im
+ * selben Tab, falls Eva schon offen ist). Die App liest die fileIds
  * aus der URL und öffnet den FileContextChatView.
  */
 import { registerFileAction } from '@nextcloud/files'
@@ -43,9 +43,9 @@ function dispatchOpen(fileIds) {
 	}))
 }
 
-function openEVA(fileIds) {
+function openEva(fileIds) {
 	const url = evaPageUrl(fileIds)
-	// Wenn die EVA-App in einem neuen Tab geöffnet werden soll, machen wir das.
+	// Wenn die Eva-App in einem neuen Tab geöffnet werden soll, machen wir das.
 	// Wird sie im selben Tab aufgerufen (z.B. von einem Frame), wird sie
 	// ersetzt.
 	if (window.location.pathname.startsWith(EVA_APP_PATH)) {
@@ -66,16 +66,16 @@ const action = {
 		const nodes = (context && context.nodes) || []
 		const n = nodes.length
 		if (n === 1) {
-			return 'Open with EVA'
+			return 'Open with Eva'
 		}
-		return 'Chat about these ' + n + ' files with EVA'
+		return 'Chat about these ' + n + ' files with Eva'
 	},
 	title(context) {
 		const nodes = (context && context.nodes) || []
 		if (nodes.length === 1) {
-			return 'Open the selected file in EVA. EVA answers based only on its content.'
+			return 'Open the selected file in Eva. Eva answers based only on its content.'
 		}
-		return 'Open all selected files in EVA. EVA answers based only on their content.'
+		return 'Open all selected files in Eva. Eva answers based only on their content.'
 	},
 	iconSvgInline() {
 		return ROBOT_ICON_SVG
@@ -96,7 +96,7 @@ const action = {
 		const ids = fileIds(nodes)
 		if (ids.length === 0) return Promise.resolve(null)
 		dispatchOpen(ids)
-		openEVA(ids)
+		openEva(ids)
 		return Promise.resolve(true)
 	},
 	order: 100,

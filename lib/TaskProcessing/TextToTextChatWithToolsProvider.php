@@ -35,7 +35,7 @@ class TextToTextChatWithToolsProvider implements ISynchronousProvider {
 	}
 
 	public function getName(): string {
-		return $this->l->t('EVA');
+		return $this->l->t('Eva');
 	}
 
 	public function getTaskTypeId(): string {

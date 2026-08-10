@@ -92,14 +92,14 @@ export function mountChat(root, opts = {}) {
 
 	function exportMarkdown() {
 		const lines = []
-		lines.push('# EVA chat export')
+		lines.push('# Eva chat export')
 		lines.push('')
 		const d = new Date()
 		lines.push('_Exported ' + d.toISOString() + '_')
 		lines.push('')
 		messages.forEach((m) => {
 			lines.push('')
-			lines.push('## ' + (m.role === 'user' ? 'You' : 'EVA'))
+			lines.push('## ' + (m.role === 'user' ? 'You' : 'Eva'))
 			lines.push('')
 			lines.push(m.text || '')
 		})
