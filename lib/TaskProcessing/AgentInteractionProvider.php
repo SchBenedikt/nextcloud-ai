@@ -177,23 +177,27 @@ class AgentInteractionProvider implements ISynchronousProvider {
 		$actions = json_encode($pendingNext, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
 		$this->store->save($userId, $token, $history, $pendingNext);
 
-		// IMPORTANT: the 'actions' output must ONLY be present for a real
-		// proposal. The Nextcloud assistant stores it in the session
-		// (agency_pending_actions) and shows the confirmation dialog whenever
-		// it is truthy - an empty JSON array '[]' also counts as truthy in
-		// the frontend, which caused the confirm dialog to pop up again and
-		// again after every normal answer.
+		// Proposal: the 'actions' output carries the proposed actions for the
+		// confirmation dialog. The Nextcloud assistant frontend expects
+		// objects of the form {name, args} (args = argument object).
 		$result = [
 			'output' => $output,
 			'conversation_token' => $token,
 		];
 		if ($pendingNext !== []) {
-			$result['actions'] = $actions === false ? '[]' : $actions;
+			$result['actions'] = $actions === false ? '' : $actions;
+		} else {
+			// 'actions' is part of the mandatory outputShape, so it must
+			// always be present, but an empty string is "falsy": the
+			// assistant listener stores null into agency_pending_actions and
+			// the confirmation dialog stays hidden (a JSON array '[]' would
+			// be truthy in the frontend and pop the dialog up again).
+			$result['actions'] = '';
 		}
 		return $result;
 	}
 
-	/** @return array{0: array<int,array{name:string,arguments:array}>, 1: string} */
+	/** @return array{0: array<int,array{name:string,args:array}>, 1: string} */
 	private function proposalPhase(string $userId, array $messages, array $tools): array {
 		$pending = [];
 		$seen = [];
@@ -218,7 +222,7 @@ class AgentInteractionProvider implements ISynchronousProvider {
 				if ($name === '') {
 					continue;
 				}
-				$args = is_array($tc['arguments'] ?? null) ? $tc['arguments'] : [];
+				$args = is_array($tc['args'] ?? null) ? $tc['args'] : [];
 
 				if (in_array($name, self::READ_ONLY_TOOLS, true)) {
 					// Read-only: execute now, feed the result back to the model
@@ -235,7 +239,7 @@ class AgentInteractionProvider implements ISynchronousProvider {
 					$key = $name . '|' . json_encode($args, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
 					if (!isset($seen[$key])) {
 						$seen[$key] = true;
-						$pending[] = ['name' => $name, 'arguments' => $args];
+						$pending[] = ['name' => $name, 'args' => $args];
 					}
 				}
 			}
@@ -264,6 +268,9 @@ class AgentInteractionProvider implements ISynchronousProvider {
 			return [
 				'output' => 'Alles erledigt – die bestätigten Aktionen habe ich bereits ausgeführt. Gibt es noch etwas, das ich für dich tun kann?',
 				'conversation_token' => $token,
+				// 'actions' is mandatory in the outputShape: empty string keeps
+				// agency_pending_actions at null (no confirmation dialog)
+				'actions' => '',
 			];
 		}
 
@@ -273,7 +280,11 @@ class AgentInteractionProvider implements ISynchronousProvider {
 			if ($name === '') {
 				continue;
 			}
-			$args = is_array($tc['arguments'] ?? null) ? $tc['arguments'] : [];
+			$args = is_array($tc['args'] ?? null) ? $tc['args'] : [];
+			if ($args === [] && is_array($tc['arguments'] ?? null)) {
+				// legacy store entries from earlier versions
+				$args = $tc['arguments'];
+			}
 			try {
 				$res = $this->executor->run($userId, $name, $args);
 			} catch (\Throwable $e) {
@@ -324,10 +335,12 @@ class AgentInteractionProvider implements ISynchronousProvider {
 		]);
 		$this->store->save($userId, $token, $newHistory, []);
 
-		// no 'actions' key on purpose: see the comment in process()
+		// 'actions' is mandatory in the outputShape; empty string keeps
+		// agency_pending_actions at null (no confirmation dialog).
 		return [
 			'output' => $answer,
 			'conversation_token' => $token,
+			'actions' => '',
 		];
 	}
 
@@ -396,7 +409,7 @@ class AgentInteractionProvider implements ISynchronousProvider {
 		$out = [];
 		foreach ($this->normalize($raw) as $tc) {
 			$obj = new \stdClass();
-			$args = $tc['arguments'] ?? [];
+			$args = $tc['args'] ?? [];
 			foreach ($args as $k => $v) {
 				$obj->{$k} = $v;
 			}
@@ -423,7 +436,7 @@ class AgentInteractionProvider implements ISynchronousProvider {
 			if ($name === '') {
 				continue;
 			}
-			$args = $fn['arguments'] ?? [];
+			$args = $fn['arguments'] ?? $fn['args'] ?? [];
 			if (is_string($args)) {
 				$decoded = json_decode($args, true);
 				$args = is_array($decoded) ? $decoded : [];
@@ -431,7 +444,8 @@ class AgentInteractionProvider implements ISynchronousProvider {
 			if (!is_array($args)) {
 				$args = [];
 			}
-			$out[] = ['name' => $name, 'arguments' => $args];
+			// the assistant frontend renders dialog actions as {name, args}
+			$out[] = ['name' => $name, 'args' => $args];
 		}
 		return $out;
 	}
