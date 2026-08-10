@@ -107,7 +107,8 @@ PROMPT;
      * 2. Custom Trigger (konfigurierbar) → immer antworten
      * 3. Name "EVA" ohne @ → LLM-Klassifikation mit Teilnehmer-Info
      * 4. Frage mit "?" → LLM-Klassifikation
-     * 5. Sonst → schweigen
+     * 5. Imperative Anweisungen ohne "?" → LLM-Klassifikation
+     * 6. Sonst → schweigen
      */
     private function shouldRespond(string $content, string $currentUserId, int $roomId): bool {
         // 1. @EVA/@eva Erwähnung – schneller Check
@@ -126,11 +127,45 @@ PROMPT;
             return $this->isNameMentionForBot($content, $roomId);
         }
 
-        // 4. Frage mit "?" – LLM-basierte Klassifikation
+        // 4. Frage mit "?" → LLM-basierte Klassifikation
         if (str_contains($content, '?')) {
             return $this->isQuestionForEva($content, $roomId);
         }
 
+        // 5. Imperative Anweisungen / Aktionsanfragen ohne Fragezeichen
+        //    z.B. "Erstelle einen Termin", "Zeig meine Aufgaben", "Was ist heute"
+        if ($this->looksLikeActionRequest($content)) {
+            return $this->isQuestionForEva($content, $roomId);
+        }
+
+        return false;
+    }
+
+    /**
+     * Prüft ob der Text wie eine Aktionsanfrage aussieht (ohne Fragezeichen).
+     * Diese Muster deuten typischerweise auf eine KI-Anfrage hin.
+     */
+    private function looksLikeActionRequest(string $content): bool {
+        $lower = strtolower($content);
+        // Imperative und häufige KI-Anfragen-Muster
+        $patterns = [
+            '/\b(erstelle|create)\b/',
+            '/\b(zeig|zeige|zeigen|show)\b/',
+            '/\b(liste|list)\b/',
+            '/\b(suche|finde)\b/',
+            '/\b(was ist|was sind|wie ist|wie sind)\b/',
+            '/\b(kannst du|könntest du)\b/',
+            '/\b(mach|machen)\b/',
+            '/\b(öffne|oeffne)\b/',
+            '/\b(schreibe|schreiben)\b/',
+            '/\b(löschen|entfernen|remove)\b/',
+            '/\b(bearbeite|update)\b/',
+        ];
+        foreach ($patterns as $pattern) {
+            if (preg_match($pattern, $lower)) {
+                return true;
+            }
+        }
         return false;
     }
 
