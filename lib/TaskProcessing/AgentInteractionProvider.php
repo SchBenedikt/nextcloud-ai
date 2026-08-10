@@ -27,7 +27,19 @@ use RuntimeException;
  */
 class AgentInteractionProvider implements ISynchronousProvider {
 
-	private const MAX_TOOL_ROUNDS = 6;
+	/**
+	 * Tools that only read information. They are safe to execute during the
+	 * proposal phase without user confirmation; their results are fed back to
+	 * the model so it can propose a complete chain of modifying actions.
+	 */
+	private const READ_ONLY_TOOLS = [
+		'list_files', 'read_file', 'search_files',
+		'find_contact', 'read_profile',
+		'list_calendars', 'list_calendar_events', 'find_free_slots',
+		'search_mails', 'list_mails', 'read_mail', 'unread_mail_count',
+		'list_shares', 'list_tasks', 'recent_activity', 'server_status',
+		'current_time', 'weather',
+	];
 
 	public function __construct(
 		private AppConfig $appConfig,
@@ -143,24 +155,21 @@ class AgentInteractionProvider implements ISynchronousProvider {
 		$tools = $this->executor->tools();
 
 		if ($confirmation === 1) {
-			return $this->runConfirmed($userId, $messages, $tools, $token, $history);
+			return $this->runConfirmed($userId, $messages, $token, $history, $pending);
 		}
 
-		// Proposal phase: LLM with tools, intercept tool calls, do NOT execute
-		$chat = $this->ollama->chat($messages, $tools);
-		if (isset($chat['error'])) {
-			throw new RuntimeException((string)$chat['error']);
-		}
-		$answer = (string)($chat['answer'] ?? '');
-		$pendingNext = $this->normalize($chat['raw_tool_calls'] ?? $chat['tool_calls'] ?? []);
-		if ($pendingNext === []) {
-			$pendingNext = $this->normalize($chat['tool_calls'] ?? []);
-		}
+		// Proposal phase: the LLM may freely call read-only information tools
+		// (they are executed immediately and their results fed back), while
+		// every modifying action is only collected and proposed for
+		// confirmation. Multiple rounds are allowed so the model can first
+		// gather facts (current_time, find_free_slots, ...) and then propose
+		// the complete chain of actions.
+		[$pendingNext, $answer] = $this->proposalPhase($userId, $messages, $tools);
 
 		$output = $answer;
 		if ($pendingNext !== []) {
+			$names = array_map(static fn(array $c): string => (string)($c['name'] ?? '?'), $pendingNext);
 			if ($answer === '') {
-				$names = array_map(static fn(array $c): string => (string)($c['name'] ?? '?'), $pendingNext);
 				$output = 'Ich möchte diese Aktionen ausführen: ' . implode(', ', $names) . '. Soll ich?';
 			}
 		}
@@ -175,49 +184,128 @@ class AgentInteractionProvider implements ISynchronousProvider {
 		];
 	}
 
-	/**
-	 * Confirmation received: run the tools and deliver the final answer.
-	 */
-	private function runConfirmed(string $userId, array $messages, array $tools, string $token, array $history): array {
-		$chat = $this->ollama->chat($messages, $tools);
-		if (isset($chat['error'])) {
-			throw new RuntimeException((string)$chat['error']);
-		}
-
-		for ($round = 0; $round < self::MAX_TOOL_ROUNDS; $round++) {
-			$calls = $this->normalize($chat['raw_tool_calls'] ?? $chat['tool_calls'] ?? []);
-			$answer = (string)($chat['answer'] ?? '');
-
-			if ($calls === []) {
-				$newHistory = array_merge($history, [['role' => 'assistant', 'content' => $answer]]);
-				$this->store->save($userId, $token, $newHistory, []);
-				return [
-					'output' => $answer,
-					'conversation_token' => $token,
-					'actions' => '[]',
-				];
-			}
-
-			// replay the raw assistant message so the model's tool calls are preserved
-			$messages[] = ['role' => 'assistant', 'content' => $answer, 'tool_calls' => $this->canonical($chat['raw_tool_calls'] ?? $chat['tool_calls'] ?? [])];
-			foreach ($calls as $tc) {
-				try {
-					$res = $this->executor->run($userId, (string)$tc['name'], is_array($tc['arguments']) ? $tc['arguments'] : []);
-				} catch (\Throwable $e) {
-					$res = ['ok' => false, 'error' => $e->getMessage()];
-				}
-				$messages[] = ['role' => 'tool', 'content' => json_encode($res, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES)];
-			}
-
+	/** @return array{0: array<int,array{name:string,arguments:array}>, 1: string} */
+	private function proposalPhase(string $userId, array $messages, array $tools): array {
+		$pending = [];
+		$seen = [];
+		$answer = '';
+		for ($round = 0; $round < 3; $round++) {
 			$chat = $this->ollama->chat($messages, $tools);
 			if (isset($chat['error'])) {
 				throw new RuntimeException((string)$chat['error']);
 			}
+			$answer = (string)($chat['answer'] ?? '');
+			$calls = $this->normalize($chat['raw_tool_calls'] ?? $chat['tool_calls'] ?? []);
+			if ($calls === []) {
+				$calls = $this->normalize($chat['tool_calls'] ?? []);
+			}
+			if ($calls === []) {
+				break;
+			}
+
+			$ranInfo = false;
+			foreach ($calls as $tc) {
+				$name = (string)($tc['name'] ?? '');
+				if ($name === '') {
+					continue;
+				}
+				$args = is_array($tc['arguments'] ?? null) ? $tc['arguments'] : [];
+
+				if (in_array($name, self::READ_ONLY_TOOLS, true)) {
+					// Read-only: execute now, feed the result back to the model
+					$ranInfo = true;
+					try {
+						$res = $this->executor->run($userId, $name, $args);
+					} catch (\Throwable $e) {
+						$res = ['ok' => false, 'error' => $e->getMessage()];
+					}
+					$messages[] = ['role' => 'assistant', 'content' => '', 'tool_calls' => $this->canonical([$tc])];
+					$messages[] = ['role' => 'tool', 'content' => json_encode($res, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES)];
+				} else {
+					// Modifying action: only propose, never execute
+					$key = $name . '|' . json_encode($args, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+					if (!isset($seen[$key])) {
+						$seen[$key] = true;
+						$pending[] = ['name' => $name, 'arguments' => $args];
+					}
+				}
+			}
+			if (!$ranInfo) {
+				break;
+			}
+		}
+		return [$pending, $answer];
+	}
+
+	/**
+	 * Confirmation received: deterministically execute the confirmed actions,
+	 * then let the LLM only write the final confirmation answer.
+	 *
+	 * The LLM never re-generates the tool calls here: local models are not
+	 * reliable at re-emitting the exact same calls, which caused the
+	 * "answer is simply regenerated" bug. Executing the stored $pending calls
+	 * directly guarantees the user-confirmed actions really happen.
+	 */
+	private function runConfirmed(string $userId, array $messages, string $token, array $history, array $pending): array {
+		$executed = [];
+		foreach ($pending as $tc) {
+			$name = (string)($tc['name'] ?? '');
+			if ($name === '') {
+				continue;
+			}
+			$args = is_array($tc['arguments'] ?? null) ? $tc['arguments'] : [];
+			try {
+				$res = $this->executor->run($userId, $name, $args);
+			} catch (\Throwable $e) {
+				$res = ['ok' => false, 'error' => $e->getMessage()];
+			}
+			$executed[] = [
+				'tool' => $name,
+				'arguments' => $args,
+				'ok' => (bool)($res['ok'] ?? false),
+				'error' => $res['error'] ?? null,
+				'result' => $res['result'] ?? null,
+			];
 		}
 
-		$this->store->save($userId, $token, $history, []);
+		// The confirmed actions are done. Give the LLM the real results and
+		// let it write the final summary without tools (so it cannot invent
+		// or repeat actions).
+		$finalMessages = $messages;
+		if ($executed !== []) {
+			$resultsText = json_encode($executed, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_PRETTY_PRINT);
+			$finalMessages[] = [
+				'role' => 'assistant',
+				'content' => 'The user confirmed the actions below and I already executed them:\n' . $resultsText,
+			];
+			$finalMessages[] = [
+				'role' => 'user',
+				'content' => 'Please confirm in a short, natural answer (in the user\'s language) what has been done. If an action failed, say so honestly and suggest what to do next.',
+			];
+		} else {
+			// nothing was pending (e.g. token mismatch): answer like a normal chat
+			$finalMessages[] = [
+				'role' => 'user',
+				'content' => 'Please answer the request now.',
+			];
+		}
+
+		$chat = $this->ollama->chat($finalMessages, []);
+		if (isset($chat['error'])) {
+			throw new RuntimeException((string)$chat['error']);
+		}
+		$answer = (string)($chat['answer'] ?? '');
+		if (trim($answer) === '') {
+			$answer = 'Ich habe die bestätigten Aktionen ausgeführt.';
+		}
+
+		$newHistory = array_merge($history, [
+			['role' => 'assistant', 'content' => $answer],
+		]);
+		$this->store->save($userId, $token, $newHistory, []);
+
 		return [
-			'output' => 'Zu viele Tool-Schritte – bitte erneut versuchen.',
+			'output' => $answer,
 			'conversation_token' => $token,
 			'actions' => '[]',
 		];
@@ -256,9 +344,9 @@ class AgentInteractionProvider implements ISynchronousProvider {
 				$names = array_map(static fn(array $a): string => (string)($a['name'] ?? '?'), $pending);
 				$extra = "\nEarlier you proposed these actions and the user confirmed them: "
 					. implode(', ', $names)
-					. ". Execute them now together with anything else the user asks for, then confirm what you did.";
+					. ". They have already been executed; summarize the outcome instead of repeating them.";
 			} else {
-				$extra = "\nThe user has approved your plan: execute the requested actions now and confirm what you did.";
+				$extra = "\nThe user has approved your plan: summarize what has been done.";
 			}
 			return $base . ' ' . $extra;
 		}
@@ -268,6 +356,7 @@ class AgentInteractionProvider implements ISynchronousProvider {
 			. "execute the tools right away. Instead, make the tool calls you would run (with realistic arguments) "
 			. "and write an answer that explains what you would do and asks for confirmation, for example: "
 			. "'Ich würde den Termin verschieben, die Datei umbenennen und Benedikt eine Nachricht schicken – ausführen?' "
+			. "Make ALL tool calls needed to fully complete the request in this single response, including preparatory steps that later calls depend on (for example current_time to know today's date before scheduling, or find_free_slots before proposing a meeting time). The user can only confirm the calls you propose now, so an incomplete chain means the job is never finished. "
 			. "Only purely informational reads (searching, listing, reading, checking status) that are needed for the "
 			. "answer may be executed directly; but never a modifying action. "
 			. "Do NOT propose tools for simple conversation or greetings: if the user just says hello, asks a general "
