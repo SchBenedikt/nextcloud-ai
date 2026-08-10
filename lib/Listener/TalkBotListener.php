@@ -102,119 +102,42 @@ PROMPT;
     /**
      * Entscheidet ob EVA antworten soll.
      *
-     * Trigger (Option 4):
-     * 1. @EVA/@eva Erwähnung → immer antworten
-     * 2. Custom Trigger (konfigurierbar) → immer antworten
-     * 3. Name "EVA" ohne @ → LLM-Klassifikation mit Teilnehmer-Info
-     * 4. Frage mit "?" → LLM-Klassifikation
-     * 5. Imperative Anweisungen ohne "?" → LLM-Klassifikation
-     * 6. Sonst → schweigen
+     * KEINE pattern-basierte Filterung. Die KI entscheidet für jede Nachricht:
+     * 1. @EVA/@eva Erwähnung → immer antworten (explizite Adressierung)
+     * 2. Sonst: KI-Klassifikation anhand Inhalt und Teilnehmer
      */
-    private function shouldRespond(string $content, string $currentUserId, int $roomId): bool {
-        // 1. @EVA/@eva Erwähnung – schneller Check
+     private function shouldRespond(string $content, string $currentUserId, int $roomId): bool {
+        // 1. @EVA/@eva Erwähnung – schneller Check (explizite Adressierung)
         if (preg_match('/@eva\b/i', $content)) {
             return true;
         }
 
-        // 2. Custom Trigger (konfigurierbar) – z.B. "@EVABot" oder "EVA-Bot"
-        $customTrigger = $this->appConfig->get('talk_bot_trigger');
-        if ($customTrigger !== '' && preg_match('/' . preg_quote($customTrigger, '/') . '\b/i', $content)) {
-            return true;
-        }
-
-        // 3. Name "EVA" ohne @ → LLM-Klassifikation mit Teilnehmer-Info
-        if (preg_match('/\bEVA\b/i', $content)) {
-            return $this->isNameMentionForBot($content, $roomId);
-        }
-
-        // 4. Frage mit "?" → LLM-basierte Klassifikation
-        if (str_contains($content, '?')) {
-            return $this->isQuestionForEva($content, $roomId);
-        }
-
-        // 5. Imperative Anweisungen / Aktionsanfragen ohne Fragezeichen
-        //    z.B. "Erstelle einen Termin", "Zeig meine Aufgaben", "Was ist heute"
-        if ($this->looksLikeActionRequest($content)) {
-            return $this->isQuestionForEva($content, $roomId);
-        }
-
-        return false;
+        // 2. KI entscheidet für jede Nachricht
+        $triggerName = $this->appConfig->get('talk_bot_trigger');
+        return $this->classificationForEva($content, $roomId, $triggerName);
     }
 
     /**
-     * Prüft ob der Text wie eine Aktionsanfrage aussieht (ohne Fragezeichen).
-     * Diese Muster deuten typischerweise auf eine KI-Anfrage hin.
-     */
-    private function looksLikeActionRequest(string $content): bool {
-        $lower = strtolower($content);
-        // Imperative und häufige KI-Anfragen-Muster
-        $patterns = [
-            '/\b(erstelle|create)\b/',
-            '/\b(zeig|zeige|zeigen|show)\b/',
-            '/\b(liste|list)\b/',
-            '/\b(suche|finde)\b/',
-            '/\b(was ist|was sind|wie ist|wie sind)\b/',
-            '/\b(kannst du|könntest du)\b/',
-            '/\b(mach|machen)\b/',
-            '/\b(öffne|oeffne)\b/',
-            '/\b(schreibe|schreiben)\b/',
-            '/\b(löschen|entfernen|remove)\b/',
-            '/\b(bearbeite|update)\b/',
-        ];
-        foreach ($patterns as $pattern) {
-            if (preg_match($pattern, $lower)) {
-                return true;
-            }
-        }
-        return false;
-    }
-
-    /**
-     * LLM-basierte Klassifikation: Ist diese "EVA"-Erwähnung für den Bot?
+     * KI-basierte Klassifikation: Ist diese Nachricht an den KI-Assistenten EVA?
      *
-     * Berücksichtigt Chat-Teilnehmer, um zwischen dem Bot und einer echten
-     * Person namens Eva zu unterscheiden.
+     * Die KI entscheidet für JEDE Nachricht anhand von Inhalt und Chat-Teilnehmern.
+     * KEINE pattern-basierte Filterung.
      */
-    private function isNameMentionForBot(string $content, int $roomId): bool {
+    private function classificationForEva(string $content, int $roomId, string $triggerName): bool {
         $participants = $this->getRoomParticipantNames($roomId);
-        $participantInfo = $participants !== [] ? 'Chat-Teilnehmer: ' . implode(', ', $participants) : 'Keine Teilnehmer-Informationen verfügbar.';
+        $participantInfo = $participants !== [] ? "\nChat-Teilnehmer: " . implode(', ', $participants) . "\n" : "\nKeine Teilnehmer-Informationen verfügbar.\n";
 
         $messages = [
-            ['role' => 'system', 'content' => 'Du bist ein Klassifikator. Antworte NUR mit "ja" oder "nein". '
-                . 'Ist diese Nachricht an den KI-Assistenten "EVA" gerichtet (nicht an eine echte Person)? '
+            ['role' => 'system', 'content' => 'Du bist ein KI-Assistent namens "' . $triggerName . '". '
+                . 'Dein Name ist also: ' . $triggerName . '. '
                 . $participantInfo . ' '
-                . 'Beachte: Wenn eine echte Person namens "EVA" im Chat ist und die Nachricht an diese Person gerichtet scheint (z.B. "EVA, kannst du das machen?"), antworte mit "nein". '
-                . 'Wenn die Nachricht eindeutig an den KI-Assistenten gerichtet ist (z.B. "EVA, erstelle einen Termin"), antworte mit "ja".'],
-            ['role' => 'user', 'content' => $content],
-        ];
-
-        $resp = $this->ollama->chat($messages, []);
-        if (isset($resp['error'])) {
-            $this->logger->warning('eva-ai talk: name classification error: ' . $resp['error']);
-            return false; // Bei Fehler: nicht antworten (sicherer)
-        }
-
-        $answer = strtolower(trim((string)($resp['answer'] ?? '')));
-        return str_starts_with($answer, 'ja');
-    }
-
-    /**
-     * LLM-basierte Klassifikation: Ist diese Frage an EVA gerichtet?
-     *
-     * Nutzt einen schnellen LLM-Call ohne Tools, um zu entscheiden ob die
-     * Frage an den KI-Assistenten gerichtet ist oder an andere Chat-Teilnehmer.
-     */
-    private function isQuestionForEva(string $content, int $roomId): bool {
-        $participants = $this->getRoomParticipantNames($roomId);
-        $participantInfo = $participants !== [] ? 'Chat-Teilnehmer: ' . implode(', ', $participants) : 'Keine Teilnehmer-Informationen verfügbar.';
-
-        $messages = [
-            ['role' => 'system', 'content' => 'Du bist ein Klassifikator. Antworte NUR mit "ja" oder "nein". '
-                . 'Ist diese Frage an den KI-Assistenten "EVA" gerichtet? '
-                . $participantInfo . ' '
-                . 'Beachte: Fragened an andere Personen im Chat (z.B. "Kannst du das machen?") sind NEIN. '
-                . 'Fragen nach Informationen, die nur eine KI beantworten kann (Erklärungen, Wissen, Berechnungen), sind JA. '
-                . 'Fragen die mit "EVA" beginnen sind IMMER JA.'],
+                . 'ANTWORTE NUR mit "ja" oder "nein". '
+                . 'Ist diese Nachricht für DICH (den KI-Assistenten) bestimmt? '
+                . 'Ja, wenn: eine Frage an dich gerichtet ist, eine Aktion von dir erwartet wird, '
+                . 'oder klar erkennbar an die KI gerichtet ist. '
+                . 'Nein, wenn: eine Nachricht an eine andere Person, Smalltalk zwischen anderen, '
+                . 'oder eine Bemerkung die nicht an die KI gerichtet ist. '
+                . 'Wenn eine echte Person mit demselben Namen im Chat ist und du unsicher bist, antworte mit "nein".'],
             ['role' => 'user', 'content' => $content],
         ];
 
@@ -292,18 +215,24 @@ PROMPT;
         return null;
     }
 
-    /** Entfernt "@EVA" / "@eva" und Custom Trigger aus dem Text. */
+    /** Entfernt "@EVA" / "@eva" und Custom Trigger Mentions aus dem Text.
+     *  Entfernt NUR erwähnte Namen (mit @), nicht den reinen Namen,
+     *  da dieser ggf. auf eine reale Person verweisen könnte.
+     */
     private function stripMention(string $content): string {
-        // @EVA/@eva entfernen
-        $cleaned = preg_replace('/@eva[\s,:.\-]*/iu', '', $content) ?? $content;
-
-        // Custom Trigger entfernen
+        // @EVA/@eva und @CustomTrigger entfernen (nur mit @!)
         $customTrigger = $this->appConfig->get('talk_bot_trigger');
         if ($customTrigger !== '') {
-            $cleaned = preg_replace('/' . preg_quote($customTrigger, '/') . '[\s,:.\-]*/i', '', $cleaned) ?? $cleaned;
+            $content = preg_replace(
+                '/@(?:' . preg_quote($customTrigger, '/') . '|eva)[\s,:.\-]*/iu',
+                '',
+                $content
+            ) ?? $content;
+        } else {
+            $content = preg_replace('/@eva[\s,:.\-]*/iu', '', $content) ?? $content;
         }
 
-        return trim($cleaned);
+        return trim($content);
     }
 
     /**
