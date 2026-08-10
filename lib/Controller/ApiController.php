@@ -72,11 +72,13 @@ class ApiController extends OCSController {
             'notify_on_complete',
             'mail_index_enabled',
             'mail_index_max',
+            'talk_history_size',
+            'talk_bot_trigger',
         ];
         foreach ($allowed as $key) {
             $value = $this->request->getParam($key);
             if ($value !== null) {
-                if (in_array($key, ['top_k', 'chunk_size', 'chunk_overlap', 'max_file_size', 'max_files_per_run', 'context_size', 'exec_write_max_chars', 'mail_index_max'], true)) {
+                if (in_array($key, ['top_k', 'chunk_size', 'chunk_overlap', 'max_file_size', 'max_files_per_run', 'context_size', 'exec_write_max_chars', 'mail_index_max', 'talk_history_size'], true)) {
                     $value = (string)max(1, (int)$value);
                 }
                 if ($key === 'exec_delete_mode') {
@@ -87,6 +89,12 @@ class ApiController extends OCSController {
                 }
                 if ($key === 'temperature') {
                     $value = (string)max(0.0, min(2.0, (float)$value));
+                }
+                if ($key === 'talk_bot_trigger') {
+                    $value = trim((string)$value);
+                    if ($value === '') {
+                        $value = 'EVA'; // Default falls leer
+                    }
                 }
                 $this->config->set($key, (string)$value);
             }

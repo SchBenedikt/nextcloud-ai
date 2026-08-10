@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace OCA\EvaAi\Listener;
 
 use OCA\EvaAi\Service\ActionExecutor;
+use OCA\EvaAi\Service\AppConfig;
 use OCA\EvaAi\Service\Ollama;
 use OCA\EvaAi\Service\TalkContextReader;
 use OCA\Talk\Events\BotInvokeEvent;
@@ -20,24 +21,15 @@ use Psr\Log\LoggerInterface;
  * einer LLM-Antwort. Unterstützt automatische Aktionen (Kalender, Tasks,
  * Dateien, Kontakte etc.) OHNE Bestätigung im Talk-Kontext.
  *
- * Selektive Antwort-Logik:
+ * Selektive Antwort-Logik (Option 4):
  * - @EVA/@eva Erwähnung → immer antworten
- * - Name "EVA" im Text → antworten
+ * - Custom Trigger (konfigurierbar) → immer antworten
+ * - Name "EVA" ohne @ → LLM-Klassifikation mit Teilnehmer-Info
  * - Frage an KI → antworten (LLM-basierte Klassifikation)
  *
  * @implements IEventListener<Event>
  */
 class TalkBotListener implements IEventListener {
-    /** Tools, die nur lesen – sicher ohne Bestätigung ausführbar. */
-    private const READ_ONLY_TOOLS = [
-        'list_files', 'read_file', 'search_files',
-        'find_contact', 'read_profile',
-        'list_calendars', 'list_calendar_events', 'find_free_slots',
-        'search_mails', 'list_mails', 'read_mail', 'unread_mail_count',
-        'list_shares', 'list_tasks', 'recent_activity', 'server_status',
-        'current_time', 'weather',
-    ];
-
     private const SYSTEM_PROMPT = <<<'PROMPT'
 Du bist EVA, ein hilfreicher KI-Assistent im Nextcloud-Talk-Chat. Antworte kurz und freundlich (1-3 Sätze) auf Deutsch.
 
@@ -52,6 +44,7 @@ PROMPT;
         private Ollama $ollama,
         private TalkContextReader $contextReader,
         private ActionExecutor $executor,
+        private AppConfig $appConfig,
         private LoggerInterface $logger,
     ) {
     }
@@ -82,7 +75,8 @@ PROMPT;
         }
 
         // Selektive Antwort-Logik: Nur antworten wenn angesprochen.
-        if (!$this->shouldRespond($content, $userId)) {
+        $roomId = (int)($data['target']['id'] ?? 0);
+        if (!$this->shouldRespond($content, $userId, $roomId)) {
             return; // Stille – keine Antwort.
         }
 
@@ -90,7 +84,6 @@ PROMPT;
         $cleanContent = $this->stripMention($content);
 
         // History der letzten Chatnachrichten laden.
-        $roomId = (int)($data['target']['id'] ?? 0);
         $history = $roomId > 0 ? $this->contextReader->buildHistoryMessages($roomId) : [];
 
         try {
@@ -109,31 +102,65 @@ PROMPT;
     /**
      * Entscheidet ob EVA antworten soll.
      *
-     * Trigger:
+     * Trigger (Option 4):
      * 1. @EVA/@eva Erwähnung → immer antworten
-     * 2. Name "EVA" im Text (case-insensitive) → antworten
-     * 3. Frage mit "?" die an KI gerichtet scheint → antworten
-     * 4. Sonst → schweigen
+     * 2. Custom Trigger (konfigurierbar) → immer antworten
+     * 3. Name "EVA" ohne @ → LLM-Klassifikation mit Teilnehmer-Info
+     * 4. Frage mit "?" → LLM-Klassifikation
+     * 5. Sonst → schweigen
      */
-    private function shouldRespond(string $content, string $currentUserId): bool {
-        $lower = strtolower($content);
-
+    private function shouldRespond(string $content, string $currentUserId, int $roomId): bool {
         // 1. @EVA/@eva Erwähnung – schneller Check
         if (preg_match('/@eva\b/i', $content)) {
             return true;
         }
 
-        // 2. Name "EVA" irgendwo im Text (case-insensitive, Wortgrenze)
-        if (preg_match('/\bEVA\b/i', $content)) {
+        // 2. Custom Trigger (konfigurierbar) – z.B. "@EVABot" oder "EVA-Bot"
+        $customTrigger = $this->appConfig->get('talk_bot_trigger');
+        if ($customTrigger !== '' && preg_match('/' . preg_quote($customTrigger, '/') . '\b/i', $content)) {
             return true;
         }
 
-        // 3. Frage mit "?" – LLM-basierte Klassifikation ob die Frage an EVA gerichtet ist
+        // 3. Name "EVA" ohne @ → LLM-Klassifikation mit Teilnehmer-Info
+        if (preg_match('/\bEVA\b/i', $content)) {
+            return $this->isNameMentionForBot($content, $roomId);
+        }
+
+        // 4. Frage mit "?" – LLM-basierte Klassifikation
         if (str_contains($content, '?')) {
-            return $this->isQuestionForEva($content, $currentUserId);
+            return $this->isQuestionForEva($content, $roomId);
         }
 
         return false;
+    }
+
+    /**
+     * LLM-basierte Klassifikation: Ist diese "EVA"-Erwähnung für den Bot?
+     *
+     * Berücksichtigt Chat-Teilnehmer, um zwischen dem Bot und einer echten
+     * Person namens Eva zu unterscheiden.
+     */
+    private function isNameMentionForBot(string $content, int $roomId): bool {
+        $participants = $this->getRoomParticipantNames($roomId);
+        $participantInfo = $participants !== [] ? 'Chat-Teilnehmer: ' . implode(', ', $participants) : 'Keine Teilnehmer-Informationen verfügbar.';
+
+        $messages = [
+            ['role' => 'system', 'content' => 'Du bist ein Klassifikator. Antworte NUR mit "ja" oder "nein". '
+                . 'Ist diese Nachricht an den KI-Assistenten "EVA" gerichtet (nicht an eine echte Person)? '
+                . $participantInfo . ' '
+                . 'Beachte: Wenn eine echte Person namens "EVA" im Chat ist und die Nachricht an diese Person gerichtet scheint (z.B. "EVA, kannst du das machen?"), antworte mit "nein". '
+                . 'Wenn die Nachricht eindeutig an den KI-Assistenten gerichtet ist (z.B. "EVA, erstelle einen Termin"), antworte mit "ja".'],
+            ['role' => 'user', 'content' => $content],
+        ];
+
+        $resp = $this->ollama->chat($messages, []);
+        if (isset($resp['error'])) {
+            $this->logger->warning('eva-ai talk: name classification error: ' . $resp['error']);
+            return false; // Bei Fehler: nicht antworten (sicherer)
+        }
+
+        $answer = strtolower(trim((string)($resp['answer'] ?? '')));
+        return str_starts_with($answer, 'ja');
     }
 
     /**
@@ -142,10 +169,14 @@ PROMPT;
      * Nutzt einen schnellen LLM-Call ohne Tools, um zu entscheiden ob die
      * Frage an den KI-Assistenten gerichtet ist oder an andere Chat-Teilnehmer.
      */
-    private function isQuestionForEva(string $content, string $currentUserId): bool {
+    private function isQuestionForEva(string $content, int $roomId): bool {
+        $participants = $this->getRoomParticipantNames($roomId);
+        $participantInfo = $participants !== [] ? 'Chat-Teilnehmer: ' . implode(', ', $participants) : 'Keine Teilnehmer-Informationen verfügbar.';
+
         $messages = [
             ['role' => 'system', 'content' => 'Du bist ein Klassifikator. Antworte NUR mit "ja" oder "nein". '
                 . 'Ist diese Frage an den KI-Assistenten "EVA" gerichtet? '
+                . $participantInfo . ' '
                 . 'Beachte: Fragened an andere Personen im Chat (z.B. "Kannst du das machen?") sind NEIN. '
                 . 'Fragen nach Informationen, die nur eine KI beantworten kann (Erklärungen, Wissen, Berechnungen), sind JA. '
                 . 'Fragen die mit "EVA" beginnen sind IMMER JA.'],
@@ -163,6 +194,58 @@ PROMPT;
     }
 
     /**
+     * Holt die Namen der Chat-Teilnehmer für die Klassifikation.
+     *
+     * @return list<string>
+     */
+    private function getRoomParticipantNames(int $roomId): array {
+        if ($roomId <= 0) {
+            return [];
+        }
+
+        try {
+            // TalkManager nutzen um Room zu bekommen
+            $roomManager = \OC::$server->get(\OCA\Talk\Manager::class);
+            $room = $roomManager->getRoomById($roomId);
+            if ($room === null) {
+                return [];
+            }
+
+            // ParticipantService nutzen um Teilnehmer zu bekommen
+            $participantService = \OC::$server->get(\OCA\Talk\Service\ParticipantService::class);
+            $participants = $participantService->getParticipantsForRoom($room);
+
+            $names = [];
+            foreach ($participants as $participant) {
+                $actorType = $participant->getActorType();
+                $actorId = $participant->getActorId();
+
+                // Nur User und Guests berücksichtigen
+                if ($actorType === 'users' || $actorType === 'guests') {
+                    // Bei Users: Display-Name holen
+                    if ($actorType === 'users') {
+                        $userManager = \OC::$server->get(\OCP\IUserManager::class);
+                        $user = $userManager->get($actorId);
+                        if ($user !== null) {
+                            $names[] = $user->getDisplayName();
+                        } else {
+                            $names[] = $actorId;
+                        }
+                    } else {
+                        // Guests: Actor-ID als Name verwenden
+                        $names[] = $actorId;
+                    }
+                }
+            }
+
+            return $names;
+        } catch (\Throwable $e) {
+            $this->logger->warning('eva-ai talk: could not get participants: ' . $e->getMessage());
+            return [];
+        }
+    }
+
+    /**
      * Extrahiert die Nextcloud-User-ID aus einer Actor-ID wie
      * "users/diag9" oder "federated_users/...".
      */
@@ -174,9 +257,17 @@ PROMPT;
         return null;
     }
 
-    /** Entfernt "@EVA" / "@eva" aus dem Text, falls vorhanden. */
+    /** Entfernt "@EVA" / "@eva" und Custom Trigger aus dem Text. */
     private function stripMention(string $content): string {
+        // @EVA/@eva entfernen
         $cleaned = preg_replace('/@eva[\s,:.\-]*/iu', '', $content) ?? $content;
+
+        // Custom Trigger entfernen
+        $customTrigger = $this->appConfig->get('talk_bot_trigger');
+        if ($customTrigger !== '') {
+            $cleaned = preg_replace('/' . preg_quote($customTrigger, '/') . '[\s,:.\-]*/i', '', $cleaned) ?? $cleaned;
+        }
+
         return trim($cleaned);
     }
 

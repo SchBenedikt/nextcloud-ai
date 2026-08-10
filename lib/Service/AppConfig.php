@@ -31,6 +31,7 @@ class AppConfig {
         'mail_index_enabled' => '1',
         'mail_index_max' => '25',
         'talk_history_size' => '50',
+        'talk_bot_trigger' => 'EVA',
     ];
 
     public function __construct(private IConfig $config) {

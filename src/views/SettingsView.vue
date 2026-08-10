@@ -119,6 +119,30 @@
 			</section>
 
 			<section class="settings-section">
+				<h3>Talk Bot</h3>
+				<p class="field-hint">
+					EVA kann im Nextcloud Talk aktiv werden. Wenn EVA im Raum aktiviert ist, antwortet sie nur, wenn sie
+					direkt angesprochen wird (per @EVA-Erwähnung, Namen oder einer Frage, die nur eine KI beantworten kann).
+				</p>
+				<div class="field-row">
+					<NcTextField
+						v-model="f.talk_history_size"
+						:label="'History size'"
+						:label-outside="true" />
+					<NcTextField
+						v-model="f.talk_bot_trigger"
+						:label="'Trigger name'"
+						:label-outside="true"
+						:placeholder="'EVA'" />
+				</div>
+				<p class="field-hint">
+					<strong>History size</strong>: how many previous chat messages EVA considers (default 50).<br>
+					<strong>Trigger name</strong>: the name that activates EVA when mentioned (default: EVA).
+					Example: use "@EVA" or "EVA, ..." or simply mention "EVA" in your message.
+				</p>
+			</section>
+
+			<section class="settings-section">
 				<h3>Indexing</h3>
 				<div class="field-row">
 					<NcTextField
@@ -204,6 +228,8 @@ export default {
 			mail_index_max: '25',
 			mail_index_enabled: '1',
 			scope_path: '',
+			talk_history_size: '50',
+			talk_bot_trigger: 'EVA',
 		})
 		const status = ref(null)
 		const checkOut = ref('')
