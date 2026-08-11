@@ -773,6 +773,8 @@ class Indexer {
         }
         
         if (empty($removed)) {
+            // Still reconcile exclusions even if no documents were removed this pass
+            $this->cleanupExcluded($userId);
             return;
         }
         $docIds = [];
