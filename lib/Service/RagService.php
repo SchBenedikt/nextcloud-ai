@@ -25,6 +25,15 @@ class RagService {
     }
 
     /**
+     * Forward the tool policy surface to the underlying executor.
+     * Ensures tool permission checks use the correct surface for
+     * the current execution context (web chat, Talk, TaskProcessing).
+     */
+    public function setSurface(string $surface): void {
+        $this->executor->setSurface($surface);
+    }
+
+    /**
      * @param array<int,array{role:string,content:string}> $history
      * @return array{answer:string,sources:array,model:string,error:?string}
      */
