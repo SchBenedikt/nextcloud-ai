@@ -84,12 +84,14 @@ class EvaContextWriteProvider implements ISynchronousProvider {
 			throw new RuntimeException('Kein Benutzerkontext');
 		}
 
-		$prompt = trim((string)($input['input'] ?? ''));
+		// ContextWrite's core task type uses source_input/style_input. Keep the
+		// older aliases as fallbacks for already queued tasks.
+		$prompt = trim((string)($input['source_input'] ?? $input['input'] ?? ''));
 		if ($prompt === '') {
 			throw new RuntimeException('Leere Eingabe');
 		}
 
-		$style = trim((string)($input['style'] ?? ''));
+		$style = trim((string)($input['style_input'] ?? $input['style'] ?? ''));
 		$example = trim((string)($input['example'] ?? ''));
 
 		$reportProgress(0.1);

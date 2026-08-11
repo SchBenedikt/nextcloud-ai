@@ -6,9 +6,8 @@ namespace OCA\EvaAi\TaskProcessing;
 
 use OCA\EvaAi\Service\Ollama;
 use OCP\IL10N;
-use OCP\TaskProcessing\EShapeType;
 use OCP\TaskProcessing\ISynchronousProvider;
-use OCP\TaskProcessing\ShapeDescriptor;
+use OCP\TaskProcessing\ShapeEnumValue;
 use OCP\TaskProcessing\TaskTypes\TextToTextChangeTone;
 use RuntimeException;
 
@@ -37,42 +36,36 @@ class EvaChangeToneProvider implements ISynchronousProvider {
 	}
 
 	public function getInputShapeEnumValues(): array {
-		return [];
-	}
-
-	public function getInputShapeDefaults(): array {
-		return [];
-	}
-
-	public function getOptionalInputShape(): array {
-		return [
-			'tone' => new ShapeDescriptor(
-				$this->l->t('Tone'),
-				$this->l->t('The desired tone for the text.'),
-				EShapeType::Enum
-			),
-		];
-	}
-
-	public function getOptionalInputShapeEnumValues(): array {
 		return [
 			'tone' => [
-				'formal' => 'Formell',
-				'informal' => 'Informell',
-				'friendly' => 'Freundlich',
-				'professional' => 'Professionell',
-				'humorous' => 'Humorvoll',
-				'persuasive' => 'Überzeugend',
-				'concise' => 'Knapp',
-				'detailed' => 'Detailliert',
+				new ShapeEnumValue($this->l->t('Formal'), 'formal'),
+				new ShapeEnumValue($this->l->t('Informal'), 'informal'),
+				new ShapeEnumValue($this->l->t('Friendly'), 'friendly'),
+				new ShapeEnumValue($this->l->t('Professional'), 'professional'),
+				new ShapeEnumValue($this->l->t('Humorous'), 'humorous'),
+				new ShapeEnumValue($this->l->t('Persuasive'), 'persuasive'),
+				new ShapeEnumValue($this->l->t('Concise'), 'concise'),
+				new ShapeEnumValue($this->l->t('Detailed'), 'detailed'),
 			],
 		];
 	}
 
-	public function getOptionalInputShapeDefaults(): array {
+	public function getInputShapeDefaults(): array {
 		return [
 			'tone' => 'formal',
 		];
+	}
+
+	public function getOptionalInputShape(): array {
+		return [];
+	}
+
+	public function getOptionalInputShapeEnumValues(): array {
+		return [];
+	}
+
+	public function getOptionalInputShapeDefaults(): array {
+		return [];
 	}
 
 	public function getOutputShapeEnumValues(): array {
