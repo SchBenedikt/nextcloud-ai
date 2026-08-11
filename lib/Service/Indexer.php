@@ -46,9 +46,11 @@ class Indexer {
         // Calculate current configuration hash for detecting configuration changes
         $currentConfigHash = $this->calculateConfigHash();
         $storedConfigHash = $this->config->get('index_config_hash');
-        
-        // If configuration changed, mark all documents as needing re-index
-        if ($storedConfigHash !== null && $storedConfigHash !== $currentConfigHash) {
+
+        // AppConfig::get() never returns null; treat empty string as "not yet set"
+        if ($storedConfigHash === '') {
+            $this->config->set('index_config_hash', $currentConfigHash);
+        } elseif ($storedConfigHash !== $currentConfigHash) {
             $this->logger->info('eva-ai: Configuration changed, marking index for rebuild', [
                 'oldHash' => $storedConfigHash,
                 'newHash' => $currentConfigHash,
@@ -57,9 +59,6 @@ class Indexer {
             $this->config->set('index_config_hash', $currentConfigHash);
             // Force re-index by clearing stored hashes
             $this->documentMapper->clearHashesForUser($userId);
-        } elseif ($storedConfigHash === null) {
-            // First run with config tracking
-            $this->config->set('index_config_hash', $currentConfigHash);
         }
 
         try {
