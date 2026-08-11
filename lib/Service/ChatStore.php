@@ -7,11 +7,17 @@ namespace OCA\EvaAi\Service;
 use OCP\Files\AppData\IAppDataFactory;
 use OCP\Files\NotFoundException;
 use OCP\Files\NotPermittedException;
+use OCP\Files\SimpleFS\ISimpleFolder;
 use Psr\Log\LoggerInterface;
 
 /**
  * Persistiert Chats pro Benutzer als JSON im AppData-Verzeichnis.
  * Jeder Chat: {id, title, created, updated, messages:[{role,text}]}
+ *
+ * User namespaces are derived from a SHA-256 hash of the exact Nextcloud user
+ * ID, so distinct IDs (LDAP/SSO formats like `john@example.com`) can never
+ * collide (Issue #8). Legacy folders created by the old lossy slug are still
+ * read for backwards compatibility and migrated lazily.
  */
 class ChatStore {
     private const MAX_MESSAGES = 200;
@@ -123,7 +129,7 @@ class ChatStore {
         } catch (NotFoundException $e) {
             return [];
         } catch (NotPermittedException $e) {
-            $this->logger->warning('eva-ai: chat folder not readable (permissions?)', ['user' => $user]);
+            $this->logger->warning('eva_ai: chat folder not readable (permissions?)', ['user' => $user]);
             return [];
         }
         $data = json_decode($raw, true);
@@ -134,7 +140,7 @@ class ChatStore {
         try {
             $this->rootFor($user)->putContent(json_encode($data, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES));
         } catch (\Throwable $e) {
-            $this->logger->error('eva-ai: chat save failed - chats may disappear after reload', [
+            $this->logger->error('eva_ai: chat save failed - chats may disappear after reload', [
                 'user' => $user,
                 'exception' => $e->getMessage(),
             ]);
@@ -142,25 +148,68 @@ class ChatStore {
     }
 
     private function rootFor(string $user): \OCP\Files\SimpleFS\ISimpleFile {
-        $appdata = $this->appDataFactory->get('eva-ai');
+        $appdata = $this->appDataFactory->get('eva_ai');
         try {
             $chats = $appdata->getFolder('chats');
         } catch (NotFoundException $e) {
             $chats = $appdata->newFolder('chats');
         }
-        $slug = $this->slug($user);
-        try {
-            $uidFolder = $chats->getFolder($slug);
-        } catch (NotFoundException $e) {
-            $uidFolder = $chats->newFolder($slug);
-        }
+        $uidFolder = $this->folderFor($chats, $user);
         if (!$uidFolder->fileExists('chats.json')) {
             $uidFolder->newFile('chats.json', '[]');
         }
         return $uidFolder->getFile('chats.json');
     }
 
-    private function slug(string $userId): string {
+    /**
+     * Resolve (and lazily migrate) the per-user namespace folder.
+     *
+     * Prefers the SHA-256 namespace. If it does not exist yet but the legacy
+     * lossy-slug folder does (data created before the fix), the legacy folder
+     * is used and migrated to the hashed name so no data is lost and the
+     * collision-free namespace is authoritative from now on.
+     */
+    private function folderFor(ISimpleFolder $chats, string $user): ISimpleFolder {
+        $ns = $this->namespaceFor($user);
+        try {
+            return $chats->getFolder($ns);
+        } catch (NotFoundException $e) {
+            // No hashed folder yet - check for legacy slug data.
+        }
+        $legacy = $this->legacySlug($user);
+        try {
+            $legacyFolder = $chats->getFolder($legacy);
+            // Migrate: move the legacy folder to the collision-free namespace.
+            try {
+                $newFolder = $chats->newFolder($ns);
+                foreach ($legacyFolder->getDirectoryListing() as $entry) {
+                    $newFolder->newFile($entry->getName(), $entry->getContent());
+                }
+                $legacyFolder->delete();
+                $this->logger->info('eva_ai: migrated chat namespace', ['user' => $user, 'from' => $legacy, 'to' => $ns]);
+                return $newFolder;
+            } catch (\Throwable $migErr) {
+                // If migration fails for any reason, keep using the legacy folder
+                // so existing chats remain accessible.
+                return $legacyFolder;
+            }
+        } catch (NotFoundException $e2) {
+            // Neither exists - create the collision-free namespace.
+            return $chats->newFolder($ns);
+        }
+    }
+
+    /**
+     * Collision-free namespace derived from the exact user ID.
+     */
+    private function namespaceFor(string $userId): string {
+        return substr(hash('sha256', $userId), 0, 40);
+    }
+
+    /**
+     * The old lossy slug (kept only for backwards-compatible migration).
+     */
+    private function legacySlug(string $userId): string {
         return preg_replace('/[^a-zA-Z0-9_-]/', '_', $userId) ?: 'user';
     }
 

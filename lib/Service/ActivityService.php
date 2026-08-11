@@ -26,7 +26,7 @@ class ActivityService {
                 . ' WHERE `affecteduser` = ? AND `app` <> ?'
                 . ' ORDER BY `timestamp` DESC LIMIT ' . (int)$limit
             );
-            $stmt->execute([$userId, 'eva-ai']);
+            $stmt->execute([$userId, 'eva_ai']);
         } catch (\Throwable $e) {
             return ['ok' => false, 'error' => 'Activity data not available: ' . $e->getMessage()];
         }

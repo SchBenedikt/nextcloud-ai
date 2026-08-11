@@ -41,6 +41,10 @@ class RagService {
         $topK = min($this->config->getInt('top_k', 6), 8);
         $results = $this->searcher->search($userId, $this->searchQuery($message, $history), $topK);
 
+        // Revalidate per-document file access: the index is a cache of
+        // authorized data, not an independent authorization source (Issue #14).
+        $results = $this->filterAccessible($userId, $results);
+
         [$context, $byDoc] = $this->buildContext($userId, $results);
 
         $tools = $this->actionsEnabled() ? $this->executor->tools() : [];
@@ -88,6 +92,8 @@ class RagService {
             }
             $topK = min($this->config->getInt('top_k', 6), 8);
             $results = $this->searcher->search($userId, $this->searchQuery($message, $history), $topK);
+            // Revalidate per-document file access before returning content (Issue #14).
+            $results = $this->filterAccessible($userId, $results);
             [$context, $byDoc] = $this->buildContext($userId, $results);
 
             $tools = $this->actionsEnabled() ? $this->executor->tools() : [];
@@ -156,6 +162,67 @@ class RagService {
             return $message;
         }
         return mb_substr($prev, 0, 500) . "\n\nUser question: " . $message;
+    }
+
+    /**
+     * Drop results whose underlying file is no longer accessible to the user
+     * and purge the stale index rows. Mail documents (negative file ids) are
+     * handled by dedicated mail reconciliation and skipped here. Validation
+     * happens per document, not per chunk (Issue #14).
+     * @param array<int,array{fileId?:int,documentId:int}> $results
+     * @return array<int,array<string,mixed>>
+     */
+    private function filterAccessible(string $userId, array $results): array {
+        if ($results === []) {
+            return [];
+        }
+        try {
+            $folder = $this->rootFolder->getUserFolder($userId);
+        } catch (\Throwable $e) {
+            return [];
+        }
+        $checked = [];
+        $staleDocIds = [];
+        $out = [];
+        foreach ($results as $r) {
+            $fileId = (int)($r['fileId'] ?? 0);
+            if ($fileId <= 0) {
+                // Mail documents (negative ids) are reconciled separately.
+                $out[] = $r;
+                continue;
+            }
+            if (!array_key_exists($fileId, $checked)) {
+                try {
+                    $checked[$fileId] = count($folder->getById($fileId)) > 0;
+                } catch (\Throwable $e) {
+                    $checked[$fileId] = false;
+                }
+                if (!$checked[$fileId]) {
+                    $staleDocIds[(int)$r['documentId']] = true;
+                }
+            }
+            if ($checked[$fileId]) {
+                $out[] = $r;
+            }
+        }
+        // Purge stale index rows so revoked access stops being returned even
+        // before the next background cleanup pass (defense in depth).
+        foreach ($staleDocIds as $docId => $_) {
+            try {
+                $doc = $this->documentMapper->findById($docId);
+                if ($doc !== null) {
+                    $this->chunkMapper->deleteByDocument($docId);
+                    $this->documentMapper->delete($doc);
+                    $this->logger->info('eva_ai: Purged stale RAG document (access revoked)', [
+                        'documentId' => $docId,
+                        'userId' => $userId,
+                    ]);
+                }
+            } catch (\Throwable $e) {
+                // best effort
+            }
+        }
+        return $out;
     }
 
     /**

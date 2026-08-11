@@ -19,7 +19,7 @@ class EvaHeadlineProvider implements ISynchronousProvider {
 	}
 
 	public function getId(): string {
-		return 'eva-ai:text2text:headline';
+		return 'eva_ai:text2text:headline';
 	}
 
 	public function getName(): string {

@@ -27,7 +27,7 @@ if (tokenEl && tokenEl.content) {
 }
 
 function showErrorBox(msg) {
-	const el = document.getElementById('eva-ai-error')
+	const el = document.getElementById('eva_ai-error')
 	if (!el) return
 	el.style.display = 'block'
 	el.textContent = 'EvaAi error:\n' + msg
@@ -61,4 +61,4 @@ app.component('NcRichText', NcRichText)
 app.component('NcAppNavigationSpacer', NcAppNavigationSpacer)
 app.component('NcActionButton', NcActionButton)
 
-app.mount('#eva-ai-root')
+app.mount('#eva_ai-root')

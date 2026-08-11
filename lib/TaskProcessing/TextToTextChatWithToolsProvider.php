@@ -32,7 +32,7 @@ class TextToTextChatWithToolsProvider implements ISynchronousProvider {
 	}
 
 	public function getId(): string {
-		return 'eva-ai:chatwithtools';
+		return 'eva_ai:chatwithtools';
 	}
 
 	public function getName(): string {

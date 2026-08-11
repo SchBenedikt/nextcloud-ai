@@ -19,7 +19,7 @@ class EvaReformulateProvider implements ISynchronousProvider {
 	}
 
 	public function getId(): string {
-		return 'eva-ai:text2text:reformulation';
+		return 'eva_ai:text2text:reformulation';
 	}
 
 	public function getName(): string {

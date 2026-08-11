@@ -18,7 +18,7 @@ class Tool extends Command {
     }
 
     protected function configure(): void {
-        $this->setName('eva-ai:tool')
+        $this->setName('eva_ai:tool')
             ->setDescription('Run an EVA tool for a user (test)')
             ->addArgument('user', InputArgument::REQUIRED)
             ->addArgument('tool', InputArgument::REQUIRED)
@@ -36,9 +36,9 @@ class Tool extends Command {
             try {
                 $mgr = \OCP\Server::get(\OCP\Notification\IManager::class);
                 $n = $mgr->createNotification();
-                $n->setApp('eva-ai')->setUser($user)->setObject('chat', 'answer')
+                $n->setApp('eva_ai')->setUser($user)->setObject('chat', 'answer')
                     ->setSubject('answer_ready', ['text' => mb_strimwidth((string)($args['text'] ?? 'Hallo'), 0, 400, '…')])
-                    ->setLink('https://localhost/nextcloud/apps/eva-ai/')
+                    ->setLink('https://localhost/nextcloud/apps/eva_ai/')
                     ->setDateTime(new \DateTime());
                 $mgr->notify($n);
                 $output->writeln('OK notified');

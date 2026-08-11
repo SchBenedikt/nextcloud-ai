@@ -12,7 +12,7 @@
 
 	function inject() {
 		if (typeof OC === 'undefined' || !OC.webroot) return;
-		if (/\/apps\/eva-ai($|\/)/.test(location.pathname)) return;
+		if (/\/apps\/eva_ai($|\/)/.test(location.pathname)) return;
 		var right = document.getElementById('header-right');
 		if (!right || !right.firstChild) return;
 		if (right.querySelector('.eva-ai-header-link')) return;
@@ -32,11 +32,11 @@
 
 		var a = document.createElement('a');
 		a.className = 'eva-ai-header-link';
-		a.href = OC.webroot + '/apps/eva-ai/';
+		a.href = OC.webroot + '/apps/eva_ai/';
 		a.title = 'AI – Chat with your files';
 		a.setAttribute('aria-label', 'AI – Chat with your files');
 		var img = document.createElement('img');
-		img.src = OC.webroot + '/apps/eva-ai/img/eva-icon.svg';
+		img.src = OC.webroot + '/apps/eva_ai/img/eva-icon.svg';
 		img.alt = 'AI';
 		a.appendChild(img);
 		right.insertBefore(a, right.firstChild);

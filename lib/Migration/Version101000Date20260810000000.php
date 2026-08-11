@@ -10,7 +10,7 @@ use OCP\Migration\IOutput;
 use OCP\Migration\SimpleMigrationStep;
 
 /**
- * App-Id-Umbenennung: eva-ai (vorher ragchat).
+ * App-Id-Umbenennung: eva_ai (vorher ragchat).
  * Benennt die Tabellen um, falls sie unter dem alten Namen existieren.
  */
 class Version101000Date20260810000000 extends SimpleMigrationStep {

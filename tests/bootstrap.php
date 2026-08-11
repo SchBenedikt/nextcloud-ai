@@ -3,7 +3,7 @@
 declare(strict_types=1);
 
 /**
- * Test bootstrap for eva-ai.
+ * Test bootstrap for eva_ai.
  *
  * Loads the app's own classes via the composer autoloader and - if a
  * Nextcloud installation is available - registers an autoloader for the

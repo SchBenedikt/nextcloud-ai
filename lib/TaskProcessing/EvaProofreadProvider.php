@@ -19,7 +19,7 @@ class EvaProofreadProvider implements ISynchronousProvider {
 	}
 
 	public function getId(): string {
-		return 'eva-ai:text2text:proofread';
+		return 'eva_ai:text2text:proofread';
 	}
 
 	public function getName(): string {

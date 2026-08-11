@@ -20,7 +20,7 @@ class Mounts extends Command {
     }
 
     protected function configure(): void {
-        $this->setName('eva-ai:mounts')
+        $this->setName('eva_ai:mounts')
             ->setDescription('List all file mounts (home, external storages, groupfolders, shares) visible for a user - debug helper to see what the app can access')
             ->addArgument('user', InputArgument::REQUIRED, 'User id');
     }

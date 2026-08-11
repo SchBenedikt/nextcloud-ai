@@ -48,37 +48,37 @@ class PageController extends Controller {
     #[NoAdminRequired]
     #[NoCSRFRequired]
     public function standalone(): TemplateResponse {
-        \OCP\Util::addScript('eva-ai', 'chat');
+        \OCP\Util::addScript('eva_ai', 'chat');
         \OCP\Util::addHeader('meta', [
             'name' => 'requesttoken',
             'content' => \OC::$server->get(\OC\Security\CSRF\CsrfTokenManager::class)->getToken()->getEncryptedValue(),
         ]);
         \OCP\Util::addHeader('meta', [
             'name' => 'eva-ai-api',
-            'content' => $this->urlGenerator->getAbsoluteURL('/ocs/v2.php/apps/eva-ai/api/'),
+            'content' => $this->urlGenerator->getAbsoluteURL('/ocs/v2.php/apps/eva_ai/api/'),
         ]);
         \OCP\Util::addHeader('meta', [
             'name' => 'eva-ai-stream',
-            'content' => $this->urlGenerator->getAbsoluteURL('/ocs/v2.php/apps/eva-ai/api/streamChat?format=json'),
+            'content' => $this->urlGenerator->getAbsoluteURL('/ocs/v2.php/apps/eva_ai/api/streamChat?format=json'),
         ]);
         \OCP\Util::addHeader('meta', [
             'name' => 'eva-ai-version',
             'content' => 'standalone-1',
         ]);
 
-        $response = new TemplateResponse('eva-ai', 'standalone', [
+        $response = new TemplateResponse('eva_ai', 'standalone', [
             'version' => 'standalone-1',
         ]);
         return $this->noCache($response);
     }
 
     private function appPage(string $template): TemplateResponse {
-        $jsDir = $this->appManager->getAppPath('eva-ai') . '/js';
+        $jsDir = $this->appManager->getAppPath('eva_ai') . '/js';
         $main = null;
         $candidates = [];
-        foreach (glob($jsDir . '/eva-ai-main*.js') ?: [] as $file) {
+        foreach (glob($jsDir . '/eva_ai-main*.js') ?: [] as $file) {
             $base = basename($file);
-            if (!str_starts_with($base, 'eva-ai-main') || str_ends_with($base, '.map')) {
+            if (!str_starts_with($base, 'eva_ai-main') || str_ends_with($base, '.map')) {
                 continue;
             }
             $candidates[$file] = filemtime($file);
@@ -88,26 +88,26 @@ class PageController extends Controller {
             $main = basename((string)array_key_first($candidates), '.js');
         }
         if ($main !== null) {
-            \OCP\Util::addScript('eva-ai', $main);
+            \OCP\Util::addScript('eva_ai', $main);
             \OCP\Util::addHeader('meta', [
                 'name' => 'requesttoken',
                 'content' => \OC::$server->get(\OC\Security\CSRF\CsrfTokenManager::class)->getToken()->getEncryptedValue(),
             ]);
             \OCP\Util::addHeader('meta', [
                 'name' => 'eva-ai-api',
-                'content' => $this->urlGenerator->getAbsoluteURL('/ocs/v2.php/apps/eva-ai/api/'),
+                'content' => $this->urlGenerator->getAbsoluteURL('/ocs/v2.php/apps/eva_ai/api/'),
             ]);
             \OCP\Util::addHeader('meta', [
                 'name' => 'eva-ai-stream',
-                'content' => $this->urlGenerator->getAbsoluteURL('/ocs/v2.php/apps/eva-ai/api/streamChat?format=json'),
+                'content' => $this->urlGenerator->getAbsoluteURL('/ocs/v2.php/apps/eva_ai/api/streamChat?format=json'),
             ]);
             \OCP\Util::addHeader('meta', [
                 'name' => 'eva-ai-version',
                 'content' => 'shell-v2',
             ]);
         }
-        $response = new TemplateResponse('eva-ai', $template, [
-            'apiBase' => $this->urlGenerator->getAbsoluteURL('/ocs/v2.php/apps/eva-ai/api/'),
+        $response = new TemplateResponse('eva_ai', $template, [
+            'apiBase' => $this->urlGenerator->getAbsoluteURL('/ocs/v2.php/apps/eva_ai/api/'),
         ]);
         return $this->noCache($response);
     }

@@ -70,7 +70,7 @@ class TaskProcessingContractTest extends TestCase {
             $id = (new \ReflectionClass($class))->getMethod('getId')->invoke(
                 $this->createMockProvider($class)
             );
-            $this->assertStringStartsWith('eva-ai', $id, "Provider $class ID should start with 'eva-ai': $id");
+            $this->assertStringStartsWith('eva_ai', $id, "Provider $class ID should start with 'eva_ai': $id");
         }
     }
 

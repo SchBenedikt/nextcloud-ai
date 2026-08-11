@@ -406,18 +406,20 @@ class ActionExecutor {
             return ['ok' => false, 'error' => $policy['reason'] ?? 'Tool not allowed'];
         }
 
-        // Im CLI (taskprocessing:worker, occ) blockiert getUserFolder()
-        // oft dauerhaft, weil der User-File-Mount nicht aufgesetzt wird.
-        // Tools, die das Home-Verzeichnis brauchen, koennen im CLI daher
-        // nicht laufen; reine Nicht-Datei-Tools (Zeit, Wetter, Kalender,
-        // Kontakte, Tasks, Suchen) kommen ohne das Folder aus.
+        // File tools must work consistently in TaskProcessing workers
+        // (occ taskprocessing:worker runs in CLI). The user filesystem is not
+        // mounted by default in CLI, so we initialize it with the supported
+        // Nextcloud API before resolving the user folder (Issue #10). If the
+        // mount still cannot be set up, file tools degrade gracefully while
+        // non-file tools keep working.
         $home = null;
-        if (PHP_SAPI !== 'cli') {
-            try {
-                $home = $this->rootFolder->getUserFolder($userId);
-            } catch (\Throwable $e) {
-                return ['ok' => false, 'error' => 'User folder unavailable'];
+        try {
+            if (PHP_SAPI === 'cli') {
+                \OC_Util::setupFS($userId);
             }
+            $home = $this->rootFolder->getUserFolder($userId);
+        } catch (\Throwable $e) {
+            $home = null;
         }
 
         $fileTools = [
@@ -867,7 +869,7 @@ class ActionExecutor {
         return ['ok' => true, 'result' => 'Updated profile fields: ' . implode(', ', $changed)];
     }
 
-    /** @return array{bookId:int,uri:string,carddata:string}|null */
+    /** @return array{bookId:int,uri:string,carddata:string,principaluri:string}|null */
     private function findContactCard(string $userId, string $query): ?array {
         $backend = Server::get(\OCA\DAV\CardDAV\CardDavBackend::class);
         foreach ($this->allAddressBookPrincipals($userId) as $principal) {
@@ -893,12 +895,44 @@ class ActionExecutor {
                 }
                 $hay = strtolower(implode(' ', $hayParts));
                 if (str_contains($hay, strtolower($query))) {
-                    return ['bookId' => (int)$book['id'], 'uri' => (string)($card['uri'] ?? ''), 'carddata' => $carddata];
+                    return [
+                        'bookId' => (int)$book['id'],
+                        'uri' => (string)($card['uri'] ?? ''),
+                        'carddata' => $carddata,
+                        'principaluri' => (string)($book['principaluri'] ?? ''),
+                    ];
                 }
             }
             }
         }
         return null;
+    }
+
+    /**
+     * Whether the current user may mutate a given address book.
+     * Only the user's own personal address books are writable; shared,
+     * group/circle and system books must never be modified through the raw
+     * DAV backend without an explicit write grant (Issue #11).
+     * @param array{bookId:int,principaluri?:string} $found
+     */
+    private function addressBookWritable(string $userId, array $found): bool {
+        $principal = (string)($found['principaluri'] ?? '');
+        if ($principal === 'principals/users/' . $userId) {
+            return true;
+        }
+        // Shared books are only writable with an explicit write grant.
+        try {
+            $backend = Server::get(\OCA\DAV\CardDAV\CardDavBackend::class);
+            foreach ($backend->getShares((int)$found['bookId']) as $share) {
+                $href = (string)($share['href'] ?? '');
+                if ($href === 'principal:principals/users/' . $userId) {
+                    return empty($share['readOnly']);
+                }
+            }
+        } catch (\Throwable $e) {
+            // fall through: unknown -> not writable
+        }
+        return false;
     }
 
     /**
@@ -932,6 +966,9 @@ class ActionExecutor {
         if ($found === null) {
             return ['ok' => false, 'error' => 'Contact not found'];
         }
+        if (!$this->addressBookWritable($userId, $found)) {
+            return ['ok' => false, 'error' => 'Contact lives in a read-only address book (shared or system). Only your own address books can be modified.'];
+        }
         try {
             $backend = Server::get(\OCA\DAV\CardDAV\CardDavBackend::class);
             $vc = \Sabre\VObject\Reader::read($found['carddata']);
@@ -962,6 +999,9 @@ class ActionExecutor {
         if ($found === null) {
             return ['ok' => false, 'error' => 'Contact not found'];
         }
+        if (!$this->addressBookWritable($userId, $found)) {
+            return ['ok' => false, 'error' => 'Contact lives in a read-only address book (shared or system). Only your own address books can be modified.'];
+        }
         try {
             $backend = Server::get(\OCA\DAV\CardDAV\CardDavBackend::class);
             $backend->deleteCard($found['bookId'], $found['uri']);
@@ -976,17 +1016,30 @@ class ActionExecutor {
     private function marksFile(string $userId): \OCP\Files\SimpleFS\ISimpleFile {
         // IAppDataFactory wird lazy geholt statt per Konstruktor injiziert:
         // die Aufloesung blockiert im CLI/taskprocessing-Worker.
-        $appdata = \OC::$server->get(\OCP\AppFramework\Services\IAppDataFactory::class)->get('eva-ai');
+        $appdata = \OC::$server->get(\OCP\AppFramework\Services\IAppDataFactory::class)->get('eva_ai');
         try {
             $dir = $appdata->getFolder('ai-marks');
         } catch (\OCP\Files\NotFoundException $e) {
             $dir = $appdata->newFolder('ai-marks');
         }
-        $slug = preg_replace('/[^a-zA-Z0-9_-]/', '_', $userId) ?: 'user';
+        // Collision-free per-user namespace (SHA-256 of the exact user ID).
+        // Legacy lossy-slug folders are migrated lazily so existing markers
+        // are preserved (Issue #8).
+        $ns = substr(hash('sha256', $userId), 0, 40);
         try {
-            $uid = $dir->getFolder($slug);
+            $uid = $dir->getFolder($ns);
         } catch (\OCP\Files\NotFoundException $e) {
-            $uid = $dir->newFolder($slug);
+            $legacy = preg_replace('/[^a-zA-Z0-9_-]/', '_', $userId) ?: 'user';
+            try {
+                $legacyFolder = $dir->getFolder($legacy);
+                $uid = $dir->newFolder($ns);
+                if ($legacyFolder->fileExists('created.json')) {
+                    $uid->newFile('created.json', $legacyFolder->getFile('created.json')->getContent());
+                }
+                $legacyFolder->delete();
+            } catch (\OCP\Files\NotFoundException $e2) {
+                $uid = $dir->newFolder($ns);
+            }
         }
         if (!$uid->fileExists('created.json')) {
             $uid->newFile('created.json', '[]');
@@ -1136,7 +1189,7 @@ class ActionExecutor {
                 'datetime' => $now->format('Y-m-d H:i:s'),
                 'date' => $now->format('Y-m-d'),
                 'time' => $now->format('H:i'),
-                'weekday' => $names[(int)$now->format('N')],
+                'weekday' => $names[(int)$now->format('w')],
                 'iso8601' => $now->format('c'),
                 'timezone' => $tz,
                 'unix' => $now->getTimestamp(),
@@ -1254,8 +1307,8 @@ class ActionExecutor {
             CURLOPT_RETURNTRANSFER => 1,
             CURLOPT_TIMEOUT => $timeout,
             CURLOPT_FOLLOWLOCATION => 1,
-            CURLOPT_SSL_VERIFYPEER => false,
-            CURLOPT_SSL_VERIFYHOST => 0,
+            CURLOPT_SSL_VERIFYPEER => true,
+            CURLOPT_SSL_VERIFYHOST => 2,
             CURLOPT_USERAGENT => 'EvaAi/1.0',
         ]);
         $r = curl_exec($ch);

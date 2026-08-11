@@ -7,7 +7,7 @@ namespace OCA\EvaAi\Service;
 use OCP\IConfig;
 
 class AppConfig {
-    public const APP = 'eva-ai';
+    public const APP = 'eva_ai';
 
     private const DEFAULTS = [
         'index_enabled' => '0',

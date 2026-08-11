@@ -14,7 +14,7 @@ use OCP\IUserSession;
 use OCP\Util;
 
 class Application extends App implements IBootstrap {
-    public const APP_ID = 'eva-ai';
+    public const APP_ID = 'eva_ai';
 
     public function __construct(array $urlParams = []) {
         parent::__construct(self::APP_ID, $urlParams);
@@ -65,7 +65,7 @@ class Application extends App implements IBootstrap {
             $context->getAppContainer()->get(\OCA\EvaAi\Service\TalkBotRegistrar::class)
                 ->ensureRegistered();
         } catch (\Throwable $e) {
-            // Non-fatal: das OCC-Kommando 'eva-ai:talk:setup' bleibt als Fallback.
+            // Non-fatal: das OCC-Kommando 'eva_ai:talk:setup' bleibt als Fallback.
         }
 
         // Header-Button: AI-Icon rechts oben neben den Benachrichtigungen,

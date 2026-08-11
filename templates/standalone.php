@@ -237,8 +237,8 @@
 </head>
 <body>
     <div id="topbar">
-        <a class="brand" href="<?php echo htmlspecialchars(\OC::$WEBROOT . '/apps/eva-ai/', ENT_QUOTES); ?>">
-            <img class="logo" src="<?php echo htmlspecialchars(\OC::$WEBROOT . '/apps/eva-ai/img/eva-icon.svg', ENT_QUOTES); ?>" alt="EVA">
+        <a class="brand" href="<?php echo htmlspecialchars(\OC::$WEBROOT . '/apps/eva_ai/', ENT_QUOTES); ?>">
+            <img class="logo" src="<?php echo htmlspecialchars(\OC::$WEBROOT . '/apps/eva_ai/img/eva-icon.svg', ENT_QUOTES); ?>" alt="EVA">
             <span>EVA</span>
         </a>
         <div class="spacer"></div>
@@ -250,10 +250,10 @@
             <button id="newchat" class="nav-new">+ New chat</button>
             <div id="chatlist"></div>
             <div class="sidebar-spacer"></div>
-            <a class="nav-item" href="<?php echo htmlspecialchars(\OC::$WEBROOT . '/apps/eva-ai/app?view=docs', ENT_QUOTES); ?>">
+            <a class="nav-item" href="<?php echo htmlspecialchars(\OC::$WEBROOT . '/apps/eva_ai/app?view=docs', ENT_QUOTES); ?>">
                 <span class="nav-ico">📄</span> Documents
             </a>
-            <a class="nav-item" href="<?php echo htmlspecialchars(\OC::$WEBROOT . '/apps/eva-ai/app?view=settings', ENT_QUOTES); ?>">
+            <a class="nav-item" href="<?php echo htmlspecialchars(\OC::$WEBROOT . '/apps/eva_ai/app?view=settings', ENT_QUOTES); ?>">
                 <span class="nav-ico">⚙️</span> Settings
             </a>
             <div class="sidebar-sep"></div>
@@ -269,7 +269,7 @@
                 </div>
                 <div class="head-right">
                     <button id="export" class="export-btn" title="Download this chat as Markdown" disabled>&#11015; Export</button>
-                    <span class="badge">eva-ai</span>
+                    <span class="badge">eva_ai</span>
                 </div>
             </div>
 

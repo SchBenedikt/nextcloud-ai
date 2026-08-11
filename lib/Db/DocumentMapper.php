@@ -38,6 +38,47 @@ class DocumentMapper extends QBMapper {
         return $map;
     }
 
+    /**
+     * Distinct user IDs that own at least one indexed document.
+     * Used by the background job for independent per-user indexing (Issue #7).
+     * @return string[]
+     */
+    public function distinctUserIds(): array {
+        $qb = $this->db->getQueryBuilder();
+        $qb->selectDistinct('user_id')
+            ->from('eva_ai_documents');
+        $result = $qb->executeQuery();
+        $ids = [];
+        while ($row = $result->fetch()) {
+            $uid = (string)($row['user_id'] ?? '');
+            if ($uid !== '') {
+                $ids[] = $uid;
+            }
+        }
+        $result->closeCursor();
+        return $ids;
+    }
+
+    /**
+     * File IDs of indexed mail documents (negative ids) for a user.
+     * Mail reconciliation removes entries whose message no longer exists (Issue #15).
+     * @return int[]
+     */
+    public function mailFileIdsForUser(string $userId): array {
+        $qb = $this->db->getQueryBuilder();
+        $qb->select('file_id')
+            ->from('eva_ai_documents')
+            ->where($qb->expr()->eq('user_id', $qb->createNamedParameter($userId)))
+            ->andWhere($qb->expr()->lt('file_id', $qb->createNamedParameter(0, IQueryBuilder::PARAM_INT)));
+        $result = $qb->executeQuery();
+        $ids = [];
+        while ($row = $result->fetch()) {
+            $ids[] = (int)$row['file_id'];
+        }
+        $result->closeCursor();
+        return $ids;
+    }
+
     public function deleteByUserAndFile(string $userId, int $fileId): void {
         $qb = $this->db->getQueryBuilder();
         $qb->delete('eva_ai_documents')

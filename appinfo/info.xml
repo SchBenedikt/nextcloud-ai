@@ -1,7 +1,7 @@
 <?xml version="1.0"?>
 <info xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
       xsi:noNamespaceSchemaLocation="https://apps.nextcloud.com/schema/apps/info.xsd">
-    <id>eva-ai</id>
+    <id>eva_ai</id>
     <name>Eva</name>
     <summary>Local RAG assistant over your own files via Ollama</summary>
     <description>
@@ -45,7 +45,7 @@
     <navigations>
         <navigation>
             <name>Eva</name>
-            <route>eva-ai.page.index</route>
+            <route>eva_ai.page.index</route>
             <icon>app.svg</icon>
             <order>20</order>
         </navigation>

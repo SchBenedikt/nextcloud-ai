@@ -20,7 +20,7 @@ use Psr\Log\LoggerInterface;
  * der Bot noch nicht existiert. Idempotent.
  */
 class TalkBotRegistrar {
-	public const BOT_URL = 'nextcloudapp://eva-ai/bot';
+	public const BOT_URL = 'nextcloudapp://eva_ai/bot';
 
 	public function __construct(
 		private IAppManager $appManager,
@@ -47,7 +47,7 @@ class TalkBotRegistrar {
 		} catch (DoesNotExistException) {
 			// neu anlegen
 		} catch (DbException $e) {
-			$this->logger->warning('eva-ai: Talk-Bot lookup failed: ' . $e->getMessage(), [
+			$this->logger->warning('eva_ai: Talk-Bot lookup failed: ' . $e->getMessage(), [
 				'exception' => $e,
 			]);
 			return;
@@ -65,7 +65,7 @@ class TalkBotRegistrar {
 		try {
 			$botServerMapper->insert($bot);
 		} catch (DbException $e) {
-			$this->logger->warning('eva-ai: could not auto-register Talk bot: ' . $e->getMessage(), [
+			$this->logger->warning('eva_ai: could not auto-register Talk bot: ' . $e->getMessage(), [
 				'exception' => $e,
 			]);
 		}

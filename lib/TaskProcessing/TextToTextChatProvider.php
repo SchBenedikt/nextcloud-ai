@@ -21,7 +21,7 @@ class TextToTextChatProvider implements ISynchronousProvider {
 
 	#[\Override]
 	public function getId(): string {
-		return 'eva-ai:text2text';
+		return 'eva_ai:text2text';
 	}
 
 	#[\Override]

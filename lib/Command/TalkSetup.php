@@ -32,7 +32,7 @@ class TalkSetup extends Command {
     }
 
     protected function configure(): void {
-        $this->setName('eva-ai:talk:setup')
+        $this->setName('eva_ai:talk:setup')
             ->setDescription('Register or update the Eva-AI bot in Nextcloud Talk (talk_bots_server).')
             ->addOption('remove', null, InputOption::VALUE_NONE, 'Remove the Eva-AI Talk bot instead of registering it.')
             ->addOption('name', null, InputOption::VALUE_REQUIRED, 'Display name for the bot.', 'Eva')

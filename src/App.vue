@@ -1,5 +1,5 @@
 <template>
-	<NcContent class="eva-ai-app" :app-name="'eva-ai'">
+	<NcContent class="eva-ai-app" :app-name="'eva_ai'">
 		<NcAppNavigation :title="'Eva · v' + buildVersion" @close-navigation="mobileOpen = false">
 			<template #list>
 				<button class="new-chat-btn" :disabled="busy" @click="newChat">
