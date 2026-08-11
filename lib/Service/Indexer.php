@@ -58,7 +58,8 @@ class Indexer {
             }
 
             $files = [];
-            $this->collectFiles($root, $files, 0);
+            $excludePaths = $this->parseExcludePaths();
+            $this->collectFiles($root, $files, 0, $root === $userFolder ? '' : $scope, $excludePaths);
 
             $hashes = $this->documentMapper->hashesForUser($userId);
             $seen = [];
@@ -155,7 +156,7 @@ class Indexer {
         return $result;
     }
 
-    private function collectFiles(Folder $folder, array &$out, int $depth): void {
+    private function collectFiles(Folder $folder, array &$out, int $depth, string $relativePath, array $excludePaths): void {
         if ($depth > self::MAX_DEPTH) {
             return;
         }
@@ -165,7 +166,11 @@ class Indexer {
                 if (in_array($name, ['Thumbnails', '.appdata'], true) || str_starts_with($name, '.')) {
                     continue;
                 }
-                $this->collectFiles($node, $out, $depth + 1);
+                $childPath = $relativePath === '' ? $name : $relativePath . '/' . $name;
+                if ($this->isPathExcluded($childPath, $excludePaths)) {
+                    continue;
+                }
+                $this->collectFiles($node, $out, $depth + 1, $childPath, $excludePaths);
             } elseif ($node instanceof File) {
                 if (str_starts_with($node->getName(), '.')) {
                     continue;
@@ -173,6 +178,43 @@ class Indexer {
                 $out[] = $node;
             }
         }
+    }
+
+    /**
+     * Parse the comma-separated exclude_paths config into an array of
+     * normalized lower-case paths (without leading/trailing slashes).
+     * @return string[]
+     */
+    private function parseExcludePaths(): array {
+        $raw = trim($this->config->get('exclude_paths'));
+        if ($raw === '') {
+            return [];
+        }
+        $paths = [];
+        foreach (explode(',', $raw) as $p) {
+            $p = trim($p, " \t\n\r\0\x0B/");
+            if ($p !== '') {
+                $paths[] = $p;
+            }
+        }
+        return $paths;
+    }
+
+    /**
+     * Check whether a relative file/folder path should be excluded.
+     * Matches exact path and prefix (children of excluded folders).
+     */
+    private function isPathExcluded(string $relativePath, array $excludePaths): bool {
+        if ($excludePaths === []) {
+            return false;
+        }
+        $lower = strtolower($relativePath);
+        foreach ($excludePaths as $excluded) {
+            if ($lower === $excluded || str_starts_with($lower, $excluded . '/')) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private function isIndexable(File $file, int $maxSize): bool {

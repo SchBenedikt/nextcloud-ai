@@ -169,6 +169,27 @@
 					:label-outside="true"
 					:placeholder="'e.g. Documents/Notes'" />
 				<p class="field-hint">Empty = all your files; otherwise a relative subfolder as shown in "Files" (e.g. Documents/Notes).</p>
+
+				<div class="exclude-paths">
+					<label class="exclude-label">Exclude folders from indexing</label>
+					<div v-if="excludeList.length" class="exclude-chips">
+						<span v-for="(p, i) in excludeList" :key="i" class="exclude-chip">
+							{{ p }}
+							<button class="chip-remove" @click="removeExclude(i)" title="Remove">×</button>
+						</span>
+					</div>
+					<p v-else class="field-hint" style="margin-top: 0">No folders excluded yet.</p>
+					<div class="exclude-add-row">
+						<NcTextField
+							v-model="newExcludePath"
+							:placeholder="'e.g. Documents/Trash or .git'"
+							@keydown.enter.prevent="addExclude" />
+						<NcButton type="secondary" @click="addExclude">
+							Add
+						</NcButton>
+					</div>
+					<p class="field-hint">Excluded folders and all their subfolders will not be indexed. Changes take effect on next indexing run.</p>
+				</div>
 				<p class="field-hint">
 					<strong>Supported file types:</strong> Text/Markdown (.md, .txt), HTML, JSON/YAML/XML/TOML, CSV/TSV,
 					RTF/LaTeX/BibTeX, SVG, source code (JS, TS, Vue, Python, PHP, C/C++, Java, …), log/conf files,
@@ -204,7 +225,7 @@
 </template>
 
 <script>
-import { ref, onMounted } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import { api } from '../lib/api'
 
 export default {
@@ -230,7 +251,34 @@ export default {
 			scope_path: '',
 			talk_history_size: '50',
 			talk_bot_trigger: 'Eva',
+			exclude_paths: '',
 		})
+
+		const excludeList = computed(() => {
+			const raw = (f.value.exclude_paths || '').trim()
+			if (!raw) return []
+			return raw.split(',').map(s => s.trim()).filter(s => s.length > 0)
+		})
+
+		function removeExclude(index) {
+			const list = excludeList.value.slice()
+			list.splice(index, 1)
+			f.value.exclude_paths = list.join(', ')
+		}
+
+		const newExcludePath = ref('')
+
+		function addExclude() {
+			const path = newExcludePath.value.trim().replace(/^\/+|\/+$/g, '')
+			if (!path) return
+			const current = (f.value.exclude_paths || '').trim()
+			const list = current ? current.split(',').map(s => s.trim()).filter(Boolean) : []
+			if (!list.includes(path)) {
+				list.push(path)
+				f.value.exclude_paths = list.join(', ')
+			}
+			newExcludePath.value = ''
+		}
 		const status = ref(null)
 		const checkOut = ref('')
 		const checking = ref(false)
@@ -337,6 +385,8 @@ export default {
 
 		return {
 			f,
+			excludeList,
+			newExcludePath,
 			checkOut,
 			checking,
 			indexing,
@@ -345,6 +395,8 @@ export default {
 			checkOllama,
 			startIndex,
 			resetIndex,
+			removeExclude,
+			addExclude,
 		}
 	},
 }
@@ -461,5 +513,60 @@ export default {
 	margin-top: 10px;
 	font-size: 13px;
 	color: var(--color-text-maxcontrast);
+}
+
+.exclude-paths {
+	margin-top: 8px;
+}
+
+.exclude-label {
+	display: block;
+	font-size: 14px;
+	font-weight: 500;
+	margin-bottom: 6px;
+}
+
+.exclude-chips {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 6px;
+	margin-bottom: 8px;
+}
+
+.exclude-chip {
+	display: inline-flex;
+	align-items: center;
+	gap: 4px;
+	background: var(--color-background-hover);
+	border: 1px solid var(--color-border);
+	border-radius: 12px;
+	padding: 3px 8px;
+	font-size: 12px;
+}
+
+.chip-remove {
+	background: none;
+	border: none;
+	cursor: pointer;
+	font-size: 14px;
+	padding: 0 2px;
+	color: var(--color-text-maxcontrast);
+	line-height: 1;
+}
+
+.chip-remove:hover {
+	color: var(--color-error);
+}
+
+.exclude-add-row {
+	margin-top: 4px;
+	display: flex;
+	gap: 8px;
+	align-items: flex-end;
+}
+
+.exclude-add-row > * {
+	flex: 1;
+	min-width: 0;
 }
 </style>

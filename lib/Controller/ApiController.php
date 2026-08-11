@@ -74,6 +74,7 @@ class ApiController extends OCSController {
             'mail_index_max',
             'talk_history_size',
             'talk_bot_trigger',
+            'exclude_paths',
         ];
         foreach ($allowed as $key) {
             $value = $this->request->getParam($key);

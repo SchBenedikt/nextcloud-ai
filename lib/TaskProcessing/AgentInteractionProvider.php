@@ -8,6 +8,9 @@ use OCA\EvaAi\Service\ActionExecutor;
 use OCA\EvaAi\Service\AgentStore;
 use OCA\EvaAi\Service\AppConfig;
 use OCA\EvaAi\Service\Ollama;
+use OCA\EvaAi\Service\Searcher;
+use OCA\EvaAi\Service\TalkContextReader;
+use OCP\Files\IRootFolder;
 use OCP\IL10N;
 use OCP\TaskProcessing\EShapeType;
 use OCP\TaskProcessing\ISynchronousProvider;
@@ -48,6 +51,9 @@ class AgentInteractionProvider implements ISynchronousProvider {
 		private AgentStore $store,
 		private IL10N $l,
 		private LoggerInterface $logger,
+		private TalkContextReader $talkContextReader,
+		private Searcher $searcher,
+		private IRootFolder $rootFolder,
 	) {
 	}
 
@@ -82,6 +88,16 @@ class AgentInteractionProvider implements ISynchronousProvider {
 				$this->l->t('The memories to be injected into the chat prompt.'),
 				EShapeType::ListOfTexts
 			),
+			'talk_room_ids' => new ShapeDescriptor(
+				$this->l->t('Talk room IDs'),
+				$this->l->t('List of Nextcloud Talk room IDs whose chat history should be included as context.'),
+				EShapeType::ListOfTexts
+			),
+			'rag_enabled' => new ShapeDescriptor(
+				$this->l->t('RAG enabled'),
+				$this->l->t('Whether to perform vector retrieval from indexed files for knowledge augmentation.'),
+				EShapeType::Text
+			),
 		];
 	}
 
@@ -112,6 +128,9 @@ class AgentInteractionProvider implements ISynchronousProvider {
 		$prompt = trim((string)($input['input'] ?? ''));
 		$confirmation = (int)($input['confirmation'] ?? 0);
 		$token = (string)($input['conversation_token'] ?? '');
+		$memories = is_array($input['memories'] ?? null) ? $input['memories'] : [];
+		$talkRoomIds = is_array($input['talk_room_ids'] ?? null) ? $input['talk_room_ids'] : [];
+		$ragEnabled = (bool)($input['rag_enabled'] ?? true);
 		if ($token === '' || $token === '{}' || !preg_match('/^[a-zA-Z0-9_-]{1,128}$/', $token)) {
 			$token = 'eva-' . bin2hex(random_bytes(16));
 		}
@@ -143,8 +162,17 @@ class AgentInteractionProvider implements ISynchronousProvider {
 			}
 		}
 
-		$system = $this->buildPrompt($userId, $confirmation, $pending);
+		$system = $this->buildPrompt($userId, $confirmation, $pending, $talkRoomIds, $ragEnabled);
 		$messages = [['role' => 'system', 'content' => $system]];
+		// Talk-Verlauf injizieren:
+		// 1. Explizit über talk_room_ids (falls übergeben)
+		// 2. Automatisch alle Talk-Räume des Users (falls Talk installiert)
+		$talkHistory = $this->buildTalkHistoryContext($talkRoomIds, $userId);
+		if (!empty($talkHistory)) {
+			foreach ($talkHistory as $h) {
+				$messages[] = $h;
+			}
+		}
 		foreach (array_slice($history, -12) as $h) {
 			if (isset($h['role'], $h['content'])) {
 				$messages[] = $h;
@@ -152,7 +180,11 @@ class AgentInteractionProvider implements ISynchronousProvider {
 		}
 		$messages[] = ['role' => 'user', 'content' => $prompt];
 
+		// RAG: Vektor-Suche in indexierten Dateien - Kontext injizieren
 		$tools = $this->executor->tools();
+		if ($ragEnabled && $prompt !== '' && $this->searcher !== null) {
+			$this->injectRagContext($messages, $userId, $prompt, $history);
+		}
 
 		if ($confirmation === 1) {
 			return $this->runConfirmed($userId, $messages, $token, $history, $pending);
@@ -353,6 +385,100 @@ class AgentInteractionProvider implements ISynchronousProvider {
 		return false;
 	}
 
+	/**
+	 * Baut Talk-Verlauf auf. Nutzt explizit übergebene Room-IDs oder
+	 * automatisch alle Talk-Räume des Users (wenn Talk installiert ist).
+	 *
+	 * @param list<string|int> $talkRoomIds Explizit übergebene Room-IDs
+	 * @param string $userId Benutzer für automatische Raum-Erkennung
+	 * @return list<array{role:string,content:string}>
+	 */
+	private function buildTalkHistoryContext(array $talkRoomIds, string $userId): array {
+		// Falls explizit Room-IDs übergeben wurden, nur diese verwenden
+		$rooms = $talkRoomIds;
+		if (empty($rooms) && class_exists('\\OCA\\Talk\\Manager')) {
+			// Automatisch alle Talk-Räume des Users finden
+			try {
+				$talkManager = \OC::$server->get(\OCA\Talk\Manager::class);
+				if ($talkManager !== null) {
+					$rooms = array_map(static fn($r): int => (int)$r->getId(), $talkManager->getRoomsForUser($userId, false, false));
+				}
+			} catch (\Throwable $e) {
+				// Talk nicht verfügbar oder Fehler - ignorieren
+				$rooms = [];
+			}
+		}
+
+		$context = [];
+		foreach ($rooms as $roomIdRaw) {
+			$roomId = (int)$roomIdRaw;
+			if ($roomId <= 0) {
+				continue;
+			}
+			try {
+				$talkHistory = $this->talkContextReader->buildHistoryMessages($roomId);
+			} catch (\Throwable $e) {
+				continue;
+			}
+			if ($talkHistory === []) {
+				continue;
+			}
+			$header = "Talk conversation (Room #" . $roomId . "):\n";
+			$context[] = [
+				'role' => 'user',
+				'content' => $header . implode("\n", array_map(static fn($h): string => '[' . ($h['role'] === 'assistant' ? 'EVA' : 'User') . '] ' . $h['content'], $talkHistory)),
+			];
+		}
+		return $context;
+	}
+
+	/**
+	 * Führt RAG-Vektor-Suche durch und injiziert die gefundenen Snippets
+	 * als Context in die letzte User-Nachricht.
+	 *
+	 * @param array $messages Referenz auf die Nachrichtenliste
+	 * @param string $userId
+	 * @param string $message Die aktuelle Nutzer-Nachricht
+	 */
+	private function injectRagContext(array &$messages, string $userId, string $message): void {
+		try {
+			// Prüfe ob Dokumente für diesen User indexiert sind
+			$docCount = $this->config->get('last_index_total');
+			if ((int)$docCount === 0) {
+				return; // nichts indexiert, nichts zu suchen
+			}
+
+			$topK = min($this->config->getInt('top_k', 6), 8);
+			$results = $this->searcher->search($userId, $message, $topK);
+
+			if (empty($results)) {
+				return;
+			}
+
+			// Kontext aus Ergebnissen bauen
+			$context = '';
+			$sourceRefs = [];
+			foreach ($results as $i => $r) {
+				$idx = $i + 1;
+				$context .= "[{$idx}] (Source: {$r['docPath']})\n{$r['content']}\n\n";
+				$sourceRefs[] = (string)($r['docName'] ?? $r['docPath'] ?? 'Source ' . $idx);
+			}
+
+			// Ersetze die letzte User-Nachricht durch eine erweiterte Version
+			// mit RAG-Kontext
+			$lastIndex = array_key_last($messages);
+			if ($lastIndex !== null && ($messages[$lastIndex]['role'] ?? '') === 'user') {
+				$sourceFooter = "\n\n_Relevant sources: " . implode(', ', array_slice($sourceRefs, 0, 10)) . "_";
+				$messages[$lastIndex]['content'] = "Context from the user's indexed files:\n\n"
+					. $context
+					. "\n\nUser question: " . $messages[$lastIndex]['content']
+					. $sourceFooter;
+			}
+		} catch (\Throwable $e) {
+			// RAG ist optional - bei Fehler einfach weitermachen ohne Context
+		}
+	}
+
 	private function buildPromptPrefix(): string {
 		return "You are EVA, a helpful, precise assistant built into this Nextcloud instance. "
 			. "You can act on the user's Nextcloud account via the provided tools "
@@ -360,7 +486,7 @@ class AgentInteractionProvider implements ISynchronousProvider {
 			. "Always answer in the same language as the user's question.";
 	}
 
-	private function buildPrompt(string $userId, int $confirmation, array $pending): string {
+	private function buildPrompt(string $userId, int $confirmation, array $pending, array $talkRoomIds = [], bool $ragEnabled = true): string {
 		$knowledge = '';
 		// KNOWLEDGE.md: nur im Web-Kontext laden. Der TaskProcessing-Worker
 		// laeuft als CLI und hat keinen eingerichteten User-File-Mount;
@@ -368,7 +494,7 @@ class AgentInteractionProvider implements ISynchronousProvider {
 		// Wissens-Inhalt ist optional und darf den Worker nicht aufhaengen.
 		if (PHP_SAPI !== 'cli') {
 			try {
-				$home = \OC::$server->get(\OCP\Files\IRootFolder::class)->getUserFolder($userId);
+				$home = $this->rootFolder->getUserFolder($userId);
 				if ($home->nodeExists('KNOWLEDGE.md')) {
 					$knowledge = "\nA file KNOWLEDGE.md holds personal facts about the user. Always take them into account:\n\n"
 						. substr((string)$home->get('KNOWLEDGE.md')->getContent(), 0, 2500);
@@ -378,7 +504,17 @@ class AgentInteractionProvider implements ISynchronousProvider {
 			}
 		}
 
-		$base = $this->buildPromptPrefix() . $knowledge;
+		$talkInfo = '';
+		if (!empty($talkRoomIds)) {
+			$talkInfo = "\n\nYou have access to the chat history of one or more Nextcloud Talk conversations. Relevant excerpts from these conversations are included in the conversation context above. When the user asks about something that was discussed in those rooms (e.g., \"what did Vinzent say?\", \"did we schedule the meeting?\"), answer based on those messages.";
+		}
+
+		$ragInfo = '';
+		if ($ragEnabled) {
+			$ragInfo = "\n\nYou also have access to the user's indexed files via RAG (vector search). Relevant snippets from their files are injected as context. Cite them with [1], [2], etc. if you use them. If no file context is available, just answer from your own knowledge.";
+		}
+
+		$base = $this->buildPromptPrefix() . $knowledge . $talkInfo . $ragInfo;
 
 		if ($confirmation === 1) {
 			$extra = '';

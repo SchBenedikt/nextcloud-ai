@@ -38,7 +38,7 @@
 
 		<form class="input-row" @submit.prevent="ask">
 			<NcTextField
-				:value.sync="input"
+				v-model="input"
 				:placeholder="files.length === 0 ? 'Loading…' : 'Ask about these files…'"
 				:disabled="busy || files.length === 0"
 				@keydown.enter.exact.prevent="ask" />
@@ -96,6 +96,7 @@ export default {
 			return fetch(apiBase() + path, opts)
 				.then((r) => r.json())
 				.then((json) => (json && json.ocs && typeof json.ocs.data !== 'undefined' ? json.ocs.data : json))
+				.catch(() => null)
 		}
 
 		const scrollDown = async () => {
@@ -109,12 +110,19 @@ export default {
 			if (!props.fileIds || props.fileIds.length === 0) {
 				return
 			}
-			const r = await api('POST', '/fileContextStatus', { fileIds: props.fileIds })
-			if (r && Array.isArray(r.files)) {
-				files.value = r.files
+			try {
+				const r = await api('POST', '/fileContextStatus', { fileIds: props.fileIds })
+				if (r && Array.isArray(r.files)) {
+					files.value = r.files
+				}
+				if (r && Array.isArray(r.missing)) {
+					missing.value = r.missing
+				}
+			} catch (e) {
+				console.error('[eva-ai] fileContextStatus failed', e)
 			}
-			if (r && Array.isArray(r.missing)) {
-				missing.value = r.missing
+			if (files.value.length === 0 && props.fileIds.length > 0) {
+				files.value = props.fileIds.map((id) => ({ fileId: id, name: 'File #' + id, path: '' }))
 			}
 		}
 

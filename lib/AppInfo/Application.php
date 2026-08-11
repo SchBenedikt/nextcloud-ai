@@ -32,8 +32,8 @@ class Application extends App implements IBootstrap {
         $context->registerTaskProcessingProvider(\OCA\EvaAi\TaskProcessing\TextToTextChatWithToolsProvider::class);
         // Talk-Bot: reagiert auf BotInvokeEvent, wenn Nextcloud Talk installiert ist.
         $context->registerEventListener(\OCA\Talk\Events\BotInvokeEvent::class, \OCA\EvaAi\Listener\TalkBotListener::class);
-        // OCC-Befehl: Talk-Bot in talk_bots_server registrieren.
-        $context->registerCommand(\OCA\EvaAi\Command\TalkSetup::class);
+        // Talk-Bot wird zusaetzlich in boot() ueber TalkBotRegistrar registriert,
+        // siehe OCA\EvaAi\Service\TalkBotRegistrar::ensureRegistered().
     }
 
     public function boot(IBootContext $context): void {

@@ -77,7 +77,8 @@ PROMPT;
 
         // Selektive Antwort-Logik: Nur antworten wenn angesprochen.
         $roomId = (int)($data['target']['id'] ?? 0);
-        if (!$this->shouldRespond($content, $userId, $roomId)) {
+        $explicit = $this->isExplicitlyMentioned($content);
+        if (!$this->shouldRespond($content, $userId, $roomId, $explicit)) {
             return; // Stille – keine Antwort.
         }
 
@@ -89,7 +90,13 @@ PROMPT;
 
         try {
             $answer = $this->generateAnswerWithRag($history, $cleanContent, $actorName, $userId);
-            if ($answer === '') {
+            if (trim($answer) === '') {
+                // Ohne Antwort NUR posten, wenn EVA explizit angesprochen wurde
+                // (z.B. "@Eva …"). Bei einer rein klassifizierten Nachricht
+                // schweigen wir, damit wir nicht unnötig Lärm in den Chat schreiben.
+                if (!$explicit) {
+                    return;
+                }
                 $event->addAnswer("Da fällt mir gerade nichts Passendes ein. Kannst du die Frage anders stellen?");
                 return;
             }
@@ -100,20 +107,28 @@ PROMPT;
         }
     }
 
+    /** Prüft, ob EVA explizit per @Mention oder Custom-Trigger angesprochen wurde. */
+    private function isExplicitlyMentioned(string $content): bool {
+        if (preg_match('/@eva\b/i', $content)) {
+            return true;
+        }
+        $triggerName = $this->appConfig->get('talk_bot_trigger');
+        if ($triggerName !== '' && preg_match('/@' . preg_quote($triggerName, '/') . '\b/iu', $content)) {
+            return true;
+        }
+        return false;
+    }
+
     /**
      * Entscheidet ob EVA antworten soll.
      *
      * KEINE pattern-basierte Filterung. Die KI entscheidet für jede Nachricht:
-    /**
-     * Entscheidet ob EVA antworten soll.
-     *
-     * KEINE pattern-basierte Filterung. Die KI entscheidet für jede Nachricht:
-     * 1. @EVA/@eva Erwähnung → immer antworten (explizite Adressierung)
+     * 1. @EVA/@eva/Custom-Trigger Erwähnung → immer antworten (explizite Adressierung)
      * 2. Sonst: KI-Klassifikation anhand Inhalt und Teilnehmer
      */
-    private function shouldRespond(string $content, string $currentUserId, int $roomId): bool {
-        // 1. @EVA/@eva Erwähnung – schneller Check (explizite Adressierung)
-        if (preg_match('/@eva\b/i', $content)) {
+    private function shouldRespond(string $content, string $currentUserId, int $roomId, bool $explicit = false): bool {
+        // 1. @EVA/@eva/Custom-Trigger Erwähnung – schneller Check (explizite Adressierung)
+        if ($explicit) {
             return true;
         }
 
