@@ -25,7 +25,6 @@ class TalkSetup extends Command {
 	public const BOT_URL = TalkBotRegistrar::BOT_URL;
 
     public function __construct(
-        private BotServerMapper $botServerMapper,
         private IAppManager $appManager,
         private ISecureRandom $random,
     ) {
@@ -45,13 +44,16 @@ class TalkSetup extends Command {
             $output->writeln('<error>Nextcloud Talk (spreed) is not installed or not enabled.</error>');
             return 1;
         }
+        // Talk is optional; resolve the mapper lazily so that occ can load this
+        // command even when Talk is not installed or enabled.
+        $botServerMapper = \OCP\Server::get(BotServerMapper::class);
         if ($input->getOption('remove')) {
-            return $this->remove($output);
+            return $this->remove($output, $botServerMapper);
         }
         $name = (string)$input->getOption('name');
         $description = (string)$input->getOption('description');
         try {
-            $existing = $this->botServerMapper->findByUrl(self::BOT_URL);
+            $existing = $botServerMapper->findByUrl(self::BOT_URL);
         } catch (\OCP\AppFramework\Db\DoesNotExistException) {
             $existing = null;
         } catch (DbException) {
@@ -73,7 +75,7 @@ class TalkSetup extends Command {
             $existing->setErrorCount(0);
             $existing->setLastErrorMessage('');
             try {
-                $bot = $this->botServerMapper->update($existing);
+                $bot = $botServerMapper->update($existing);
             } catch (DbException $e) {
                 $output->writeln('<error>Could not update bot: ' . $e->getMessage() . '</error>');
                 return 1;
@@ -91,7 +93,7 @@ class TalkSetup extends Command {
                 $bot->setDescription($description);
             }
             try {
-                $bot = $this->botServerMapper->insert($bot);
+                $bot = $botServerMapper->insert($bot);
             } catch (DbException $e) {
                 $output->writeln('<error>Could not insert bot: ' . $e->getMessage() . '</error>');
                 return 1;
@@ -107,15 +109,15 @@ class TalkSetup extends Command {
         return 0;
     }
 
-    private function remove(OutputInterface $output): int {
+    private function remove(OutputInterface $output, BotServerMapper $botServerMapper): int {
         try {
-            $existing = $this->botServerMapper->findByUrl(self::BOT_URL);
+            $existing = $botServerMapper->findByUrl(self::BOT_URL);
         } catch (\OCP\AppFramework\Db\DoesNotExistException) {
             $output->writeln('No Eva-AI Talk bot registered.');
             return 0;
         }
         try {
-            $this->botServerMapper->delete($existing);
+            $botServerMapper->delete($existing);
             $output->writeln('<info>Removed Eva-AI Talk bot.</info>');
         } catch (DbException $e) {
             $output->writeln('<error>Could not remove bot: ' . $e->getMessage() . '</error>');
