@@ -6,7 +6,7 @@ module.exports = (env) => {
 	const isProd = process.env.NODE_ENV === 'production'
 	return {
 		entry: {
-			'eva-ai-main': path.resolve(__dirname, 'src', 'main.js'),
+			'eva_ai-main': path.resolve(__dirname, 'src', 'main.js'),
 			eva_ai_filesaction: path.resolve(__dirname, 'src', 'lib', 'filesaction.js'),
 		},
 		output: {
@@ -19,8 +19,8 @@ module.exports = (env) => {
 				// NC-JSCombiner (Cachebuster-Query-String).
 				return chunkData.chunk.name + '.js'
 			},
-			publicPath: '/apps/eva-ai/js/',
-			clean: { keep: /^chat\.js$|^header\.js$|^eva-ai-main|^eva_ai_filesaction|\.map$|\.LICENSE\.txt$/ },
+			publicPath: '/apps/eva_ai/js/',
+			clean: { keep: /^chat\.js$|^header\.js$|^eva_ai-main|^eva_ai_filesaction|\.map$|\.LICENSE\.txt$/ },
 		},
 		devtool: isProd ? 'source-map' : 'eval-cheap-module-source-map',
 		module: {
@@ -50,8 +50,8 @@ module.exports = (env) => {
 		plugins: [
 			new VueLoaderPlugin(),
 			new webpack.DefinePlugin({
-				appName: JSON.stringify('eva-ai'),
-				appVersion: JSON.stringify('1.3.0'),
+				appName: JSON.stringify('eva_ai'),
+				appVersion: JSON.stringify('1.4.0'),
 			}),
 		],
 		performance: { hints: false },

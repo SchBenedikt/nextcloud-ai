@@ -7,6 +7,40 @@ follows [Semantic Versioning](https://semver.org/).
 ## [Unreleased]
 
 ### Fixed
+- **Frontend**: the main Vue bundle is now emitted as `eva_ai-main.js` (was
+  `eva-ai-main.js`), matching the name the page controller looks up. The app
+  page no longer renders as an empty shell after the app-ID migration.
+- **Issue #16**: calendar/task defaults now use the user's timezone and the
+  weekday calculation is correct on Sundays (was off by one for `date('w')`).
+- **Issue #15**: deleted emails are removed from the RAG index during
+  reconciliation instead of lingering in retrieval results.
+- **Issue #14**: every indexed document is re-checked for read access before
+  its chunks are returned to the model; stale documents are purged.
+- **Issue #13**: dense (semantic) candidates are no longer gated behind the
+  keyword `LIKE` filter, preserving retrieval quality on large indexes.
+- **Issue #11**: writes to shared calendars and address books are rejected
+  unless the user holds an explicit write grant (DAV permission checks).
+- **Issue #10**: file tools work again in `occ taskprocessing:worker` (CLI) by
+  setting up the user filesystem before resolving the home folder.
+- **Issue #8**: AppData namespaces for chats and AI marks are derived from a
+  SHA-256 hash of the user ID, eliminating cross-user collisions.
+- **Issue #7**: background indexing runs independently per user instead of
+  being blocked by other users' partial indexes.
+- **Issue #6**: an incomplete (bounded) index scan can no longer delete valid
+  documents that were simply not visited yet.
+- **Issue #5**: global configuration and index management endpoints are
+  restricted to administrators.
+
+### Changed
+- **Issue #2**: the app ID is migrated from `eva-ai` to `eva_ai` (info.xml,
+  namespaces references, routes, AppData folder, DB rows, Talk bot URL, JS
+  bundles and docs). Existing installs keep their data; the Talk bot was
+  re-registered under the new URL.
+
+### Added
+- **Issue #3**: automated test asserting every TaskProcessing provider ID is
+  unique and prefixed with the app ID.
+
 - **Security**: external HTTP calls (Open-Meteo weather) now enforce TLS
   certificate verification (`CURLOPT_SSL_VERIFYPEER`/`SSL_VERIFYHOST` were
   disabled, enabling man-in-the-middle attacks). Fixes issue #9.
