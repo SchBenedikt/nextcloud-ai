@@ -152,4 +152,16 @@ class DocumentMapper extends QBMapper {
         $qb->delete('eva_ai_documents');
         return $qb->executeStatement();
     }
+
+    /**
+     * Clear content hashes for a user to force re-indexing
+     * Used when configuration changes that affect embeddings/chunking
+     */
+    public function clearHashesForUser(string $userId): void {
+        $qb = $this->db->getQueryBuilder();
+        $qb->update('eva_ai_documents')
+            ->set('content_hash', $qb->createNamedParameter(''))
+            ->where($qb->expr()->eq('user_id', $qb->createNamedParameter($userId)));
+        $qb->executeStatement();
+    }
 }
