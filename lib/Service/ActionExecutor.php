@@ -40,8 +40,23 @@ class ActionExecutor {
         private CalendarService $calendar,
         private EmailService $email,
         private SharesService $shares,
-        private ActivityService $activity
+        private ActivityService $activity,
+        private ToolPolicy $toolPolicy
     ) {
+    }
+
+    /**
+     * Set the execution surface for tool permission checks.
+     */
+    public function setSurface(string $surface): void {
+        $this->toolPolicy->setSurface($surface);
+    }
+
+    /**
+     * Get the ToolPolicy instance for external surface configuration.
+     */
+    public function getToolPolicy(): ToolPolicy {
+        return $this->toolPolicy;
     }
 
     /** @return array<int,array{type:string,function:array}> */
@@ -385,6 +400,12 @@ class ActionExecutor {
      * @return array{ok:bool,result?:mixed,error?:string}
      */
     public function run(string $userId, string $name, array $args): array {
+        // Centralized tool permission check
+        $policy = $this->toolPolicy->check($name);
+        if (!$policy['allowed']) {
+            return ['ok' => false, 'error' => $policy['reason'] ?? 'Tool not allowed'];
+        }
+
         // Im CLI (taskprocessing:worker, occ) blockiert getUserFolder()
         // oft dauerhaft, weil der User-File-Mount nicht aufgesetzt wird.
         // Tools, die das Home-Verzeichnis brauchen, koennen im CLI daher

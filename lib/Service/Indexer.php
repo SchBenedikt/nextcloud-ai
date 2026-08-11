@@ -82,9 +82,7 @@ class Indexer {
                 }
             }
 
-            $files = [];
             $excludePaths = $this->parseExcludePaths();
-            $this->collectFiles($root, $files, 0, $root === $userFolder ? '' : $scope, $excludePaths);
 
             $hashes = $this->documentMapper->hashesForUser($userId);
             $seen = [];
@@ -92,7 +90,8 @@ class Indexer {
             $batch = [];
             $maxSize = $this->config->getInt('max_file_size', 20971520);
 
-            foreach ($files as $fileData) {
+            // Stream files via generator instead of loading all into memory
+            foreach ($this->collectFilesGenerator($root, 0, $root === $userFolder ? '' : $scope, $excludePaths) as $fileData) {
                 $fileId = (int)$fileData['id'];
                 $seen[$fileId] = true;
                 $result['total_seen']++;
@@ -226,7 +225,12 @@ class Indexer {
         return $result;
     }
 
-    private function collectFiles(Folder $folder, array &$out, int $depth, string $relativePath, array $excludePaths): void {
+    /**
+     * Generator-based file discovery: yields lightweight file metadata arrays
+     * one at a time instead of loading the complete tree into memory.
+     * Enables processing large file trees without materializing all File objects.
+     */
+    private function collectFilesGenerator(Folder $folder, int $depth, string $relativePath, array $excludePaths): \Generator {
         if ($depth > self::MAX_DEPTH) {
             return;
         }
@@ -240,13 +244,12 @@ class Indexer {
                 if ($this->isPathExcluded($childPath, $excludePaths)) {
                     continue;
                 }
-                $this->collectFiles($node, $out, $depth + 1, $childPath, $excludePaths);
+                yield from $this->collectFilesGenerator($node, $depth + 1, $childPath, $excludePaths);
             } elseif ($node instanceof File) {
                 if (str_starts_with($node->getName(), '.')) {
                     continue;
                 }
-                // Store only lightweight metadata instead of full File objects
-                $out[] = [
+                yield [
                     'id' => $node->getId(),
                     'path' => $node->getPath(),
                     'name' => $node->getName(),
@@ -425,7 +428,7 @@ class Indexer {
             }
         }
 
-        // Unbekannte Formate: nur lesen, wenn offensichtlich Text (kein  ).
+        // Unbekannte Formate: nur lesen, wenn offensichtlich Text (kein \0).
         $raw = (string)$file->getContent();
         if (strpos($raw, "\0") !== false) {
             return '';
@@ -750,7 +753,7 @@ class Indexer {
             $doc->setIndexedAt(time());
             $this->documentMapper->insert($doc);
             foreach ($chunks as $i => $c) {
-                $batch[] = ['docId' => (int)$doc->getId(), 'index' => $i, 'content' => $c['content'], 'tokens' => $c['tokens']];
+                $batch[] = ['docId' => (int)$doc->getId(), 'index' => $i, 'content' => $c['content'], 'tokens' => $c['tokens'], 'oldDocId' => null];
             }
             $result['processed']++;
             $processedThisPass++;

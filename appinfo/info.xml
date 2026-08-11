@@ -20,11 +20,11 @@
     </description>
     <version>1.4.0</version>
     <licence>agpl</licence>
-    <author>YourSelf</author>
+    <author>Benedikt Schächner</author>
     <namespace>EvaAi</namespace>
     <category>ai</category>
     <category>tools</category>
-    <bugs>https://example.local/eva-ai/issues</bugs>
+    <bugs>https://github.com/SchBenedikt/nextcloud-ai/issues</bugs>
     <dependencies>
         <nextcloud min-version="30" max-version="34"/>
         <php min-version="8.2"/>

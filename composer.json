@@ -1,0 +1,25 @@
+{
+    "name": "schbenedikt/eva-ai",
+    "description": "EVA - AI assistant for Nextcloud with local Ollama, RAG and tools",
+    "license": "AGPL-3.0-or-later",
+    "type": "project",
+    "require-dev": {
+        "phpunit/phpunit": "^10.5 || ^11.0"
+    },
+    "autoload": {
+        "psr-4": {
+            "OCA\\EvaAi\\": "lib/"
+        }
+    },
+    "autoload-dev": {
+        "psr-4": {
+            "OCA\\EvaAi\\Tests\\": "tests/"
+        }
+    },
+    "scripts": {
+        "test": "phpunit --colors=always --bootstrap tests/bootstrap.php tests/"
+    },
+    "config": {
+        "sort-packages": true
+    }
+}

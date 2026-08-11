@@ -9,6 +9,7 @@ use OCA\EvaAi\Service\AppConfig;
 use OCA\EvaAi\Service\Ollama;
 use OCA\EvaAi\Service\RagService;
 use OCA\EvaAi\Service\TalkContextReader;
+use OCA\EvaAi\Service\ToolPolicy;
 use OCA\Talk\Events\BotInvokeEvent;
 use OCA\Talk\Model\Bot;
 use OCP\EventDispatcher\Event;
@@ -51,6 +52,9 @@ PROMPT;
     }
 
     public function handle(Event $event): void {
+        // Set tool policy surface to Talk (per request, at execution time)
+        $this->executor->setSurface(ToolPolicy::SURFACE_TALK);
+
         if (!($event instanceof BotInvokeEvent)) {
             return;
         }

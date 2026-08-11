@@ -10,6 +10,7 @@ use OCA\EvaAi\Service\AppConfig;
 use OCA\EvaAi\Service\Ollama;
 use OCA\EvaAi\Service\Searcher;
 use OCA\EvaAi\Service\TalkContextReader;
+use OCA\EvaAi\Service\ToolPolicy;
 use OCP\Files\IRootFolder;
 use OCP\IL10N;
 use OCP\TaskProcessing\EShapeType;
@@ -122,6 +123,9 @@ class AgentInteractionProvider implements ISynchronousProvider {
 	}
 
 	public function process(?string $userId, array $input, callable $reportProgress): array {
+		// Set tool policy surface to TaskProcessing (per request, at execution time)
+		$this->executor->setSurface(ToolPolicy::SURFACE_TASKPROCESSING);
+
 		if ($userId === null) {
 			throw new RuntimeException('Kein Benutzer kontext');
 		}
@@ -292,6 +296,12 @@ class AgentInteractionProvider implements ISynchronousProvider {
 	 * directly guarantees the user-confirmed actions really happen.
 	 */
 	private function runConfirmed(string $userId, array $messages, string $token, array $history, array $pending): array {
+		// The user explicitly confirmed the proposed actions in the Assistant
+		// UI - this is the same consent level as the web chat. Switch the
+		// tool policy surface back to WEB so the confirmed mutating actions
+		// (create_file, delete_file, calendar events, shares, ...) are allowed.
+		$this->executor->setSurface(ToolPolicy::SURFACE_WEB);
+
 		// Idempotency: if the user confirms again (double-click on the dialog,
 		// or the assistant re-sends the confirmation) while nothing is pending
 		// and an answer already exists in the history, simply say that
@@ -443,12 +453,12 @@ class AgentInteractionProvider implements ISynchronousProvider {
 	private function injectRagContext(array &$messages, string $userId, string $message): void {
 		try {
 			// Prüfe ob Dokumente für diesen User indexiert sind
-			$docCount = $this->config->get('last_index_total');
+			$docCount = $this->appConfig->get('last_index_total');
 			if ((int)$docCount === 0) {
 				return; // nichts indexiert, nichts zu suchen
 			}
 
-			$topK = min($this->config->getInt('top_k', 6), 8);
+			$topK = min($this->appConfig->getInt('top_k', 6), 8);
 			$results = $this->searcher->search($userId, $message, $topK);
 
 			if (empty($results)) {

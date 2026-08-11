@@ -7,6 +7,7 @@ namespace OCA\EvaAi\TaskProcessing;
 use OCA\EvaAi\Service\ActionExecutor;
 use OCA\EvaAi\Service\AppConfig;
 use OCA\EvaAi\Service\Ollama;
+use OCA\EvaAi\Service\ToolPolicy;
 use OCP\IL10N;
 use OCP\TaskProcessing\ISynchronousProvider;
 use OCP\TaskProcessing\TaskTypes\TextToTextChatWithTools;
@@ -79,6 +80,9 @@ class TextToTextChatWithToolsProvider implements ISynchronousProvider {
 	}
 
 	public function process(?string $userId, array $input, callable $reportProgress): array {
+		// Set tool policy surface to TaskProcessing (per request, at execution time)
+		$this->executor->setSurface(ToolPolicy::SURFACE_TASKPROCESSING);
+
 		if ($userId === null) {
 			throw new RuntimeException('Kein Benutzerkontext');
 		}
