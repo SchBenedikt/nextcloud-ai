@@ -128,15 +128,15 @@ class Indexer {
                 try {
                     // Get the actual file for content extraction
                     $actualFile = $root->getById($fileId);
-                    if (empty($actualFile)) {
+                    if (empty($actualFile) || !($actualFile[0] instanceof File)) {
                         $result['skipped']++;
+                        // If this file was previously indexed, mark it as stale for removal
+                        if (isset($hashes[$fileId])) {
+                            $stale[$fileId] = true;
+                        }
                         continue;
                     }
                     $actualFile = $actualFile[0];
-                    if (!($actualFile instanceof File)) {
-                        $result['skipped']++;
-                        continue;
-                    }
                     $content = $this->extractText($actualFile);
                 } catch (\Throwable $e) {
                     $this->logger->warning('eva-ai: read failed', ['file' => $file->getPath(), 'e' => $e->getMessage()]);
