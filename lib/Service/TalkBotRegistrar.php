@@ -23,7 +23,6 @@ class TalkBotRegistrar {
 	public const BOT_URL = 'nextcloudapp://eva-ai/bot';
 
 	public function __construct(
-		private BotServerMapper $botServerMapper,
 		private IAppManager $appManager,
 		private ISecureRandom $random,
 		private LoggerInterface $logger,
@@ -39,8 +38,11 @@ class TalkBotRegistrar {
 		if (!$this->appManager->isEnabledForAnyone('spreed')) {
 			return;
 		}
+		// Talk is optional; resolve the mapper lazily so that the app can boot
+		// even when Talk is not installed or enabled.
+		$botServerMapper = \OCP\Server::get(BotServerMapper::class);
 		try {
-			$this->botServerMapper->findByUrl(self::BOT_URL);
+			$botServerMapper->findByUrl(self::BOT_URL);
 			return; // bereits registriert
 		} catch (DoesNotExistException) {
 			// neu anlegen
@@ -61,7 +63,7 @@ class TalkBotRegistrar {
 		$bot->setFeatures(Bot::FEATURE_RESPONSE | Bot::FEATURE_EVENT);
 		$bot->setDescription('Eva AI assistant: chat with your indexed files.');
 		try {
-			$this->botServerMapper->insert($bot);
+			$botServerMapper->insert($bot);
 		} catch (DbException $e) {
 			$this->logger->warning('eva-ai: could not auto-register Talk bot: ' . $e->getMessage(), [
 				'exception' => $e,
