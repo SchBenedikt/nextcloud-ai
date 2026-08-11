@@ -6,9 +6,8 @@ namespace OCA\EvaAi\TaskProcessing;
 
 use OCA\EvaAi\Service\Ollama;
 use OCP\IL10N;
-use OCP\TaskProcessing\EShapeType;
 use OCP\TaskProcessing\ISynchronousProvider;
-use OCP\TaskProcessing\ShapeDescriptor;
+use OCP\TaskProcessing\ShapeEnumValue;
 use OCP\TaskProcessing\TaskTypes\TextToTextTranslate;
 use RuntimeException;
 
@@ -37,70 +36,51 @@ class EvaTranslateProvider implements ISynchronousProvider {
 	}
 
 	public function getInputShapeEnumValues(): array {
-		return [];
+		$languages = [
+			'de' => 'Deutsch',
+			'en' => 'English',
+			'fr' => 'Français',
+			'es' => 'Español',
+			'it' => 'Italiano',
+			'nl' => 'Nederlands',
+			'pt' => 'Português',
+			'ru' => 'Русский',
+			'zh' => '中文',
+			'ja' => '日本語',
+			'ko' => '한국어',
+			'ar' => 'العربية',
+			'pl' => 'Polski',
+			'tr' => 'Türkçe',
+		];
+		$values = [];
+		foreach ($languages as $code => $name) {
+			$values[] = new ShapeEnumValue($name, $code);
+		}
+
+		return [
+			'origin_language' => array_merge([
+				new ShapeEnumValue($this->l->t('Detect language'), 'detect_language'),
+			], $values),
+			'target_language' => $values,
+		];
 	}
 
 	public function getInputShapeDefaults(): array {
-		return [];
+		return [
+			'origin_language' => 'detect_language',
+		];
 	}
 
 	public function getOptionalInputShape(): array {
-		return [
-			'origin_language' => new ShapeDescriptor(
-				$this->l->t('Source language'),
-				$this->l->t('The language of the text to translate.'),
-				EShapeType::Enum
-			),
-			'target_language' => new ShapeDescriptor(
-				$this->l->t('Target language'),
-				$this->l->t('The language to translate to.'),
-				EShapeType::Enum
-			),
-		];
+		return [];
 	}
 
 	public function getOptionalInputShapeEnumValues(): array {
-		return [
-			'origin_language' => [
-				'de' => 'Deutsch',
-				'en' => 'English',
-				'fr' => 'Français',
-				'es' => 'Español',
-				'it' => 'Italiano',
-				'nl' => 'Nederlands',
-				'pt' => 'Português',
-				'ru' => 'Русский',
-				'zh' => '中文',
-				'ja' => '日本語',
-				'ko' => '한국어',
-				'ar' => 'العربية',
-				'pl' => 'Polski',
-				'tr' => 'Türkçe',
-			],
-			'target_language' => [
-				'de' => 'Deutsch',
-				'en' => 'English',
-				'fr' => 'Français',
-				'es' => 'Español',
-				'it' => 'Italiano',
-				'nl' => 'Nederlands',
-				'pt' => 'Português',
-				'ru' => 'Русский',
-				'zh' => '中文',
-				'ja' => '日本語',
-				'ko' => '한국어',
-				'ar' => 'العربية',
-				'pl' => 'Polski',
-				'tr' => 'Türkçe',
-			],
-		];
+		return [];
 	}
 
 	public function getOptionalInputShapeDefaults(): array {
-		return [
-			'origin_language' => 'auto',
-			'target_language' => 'en',
-		];
+		return [];
 	}
 
 	public function getOutputShapeEnumValues(): array {
@@ -125,7 +105,7 @@ class EvaTranslateProvider implements ISynchronousProvider {
 			throw new RuntimeException('Leere Eingabe');
 		}
 
-		$originLanguage = (string)($input['origin_language'] ?? 'auto');
+		$originLanguage = (string)($input['origin_language'] ?? 'detect_language');
 		$targetLanguage = (string)($input['target_language'] ?? 'en');
 
 		$reportProgress(0.1);
@@ -154,7 +134,7 @@ class EvaTranslateProvider implements ISynchronousProvider {
 			. 'Gib nur die Übersetzung zurück, keine zusätzlichen Erklärungen oder Kommentare. '
 			. 'Behalte den ursprünglichen Ton und Stil bei.';
 
-		if ($originLanguage !== 'auto') {
+		if ($originLanguage !== 'auto' && $originLanguage !== 'detect_language') {
 			$originLangName = $languageMap[$originLanguage] ?? $originLanguage;
 			$systemPrompt = 'Du bist ein professioneller Übersetzer. '
 				. 'Übersetze den Text von ' . $originLangName . ' ins ' . $targetLangName . '. '
