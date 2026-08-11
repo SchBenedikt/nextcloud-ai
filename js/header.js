@@ -12,7 +12,7 @@
 
 	function inject() {
 		if (typeof OC === 'undefined' || !OC.webroot) return;
-		if (/\/apps\/eva-ai($|\/)/.test(location.pathname)) return;
+		if (/\/apps\/eva_ai($|\/)/.test(location.pathname)) return;
 		var right = document.getElementById('header-right');
 		if (!right || !right.firstChild) return;
 		if (right.querySelector('.eva-ai-header-link')) return;
