@@ -798,25 +798,31 @@ class Indexer {
         
         $allDocs = $this->documentMapper->findByUser($userId);
         $excludedDocIds = [];
-        
-        foreach ($allDocs as $doc) {
-            $docPath = $doc->getPath();
-            // Normalize path for comparison
-            $normalizedPath = strtolower($docPath);
-            
-            // Check if this document's path is now excluded
-            foreach ($excludePaths as $excluded) {
-                if ($normalizedPath === $excluded || str_starts_with($normalizedPath, $excluded . '/')) {
-                    $excludedDocIds[] = (int)$doc->getId();
-                    $this->logger->info('eva-ai: Removing document due to exclusion rule', [
-                        'userId' => $userId,
-                        'path' => $docPath,
-                        'excludedRule' => $excluded
-                    ]);
-                    break;
+        $offset = 0;
+        $limit = 500;
+
+        do {
+            $docs = $this->documentMapper->findByUser($userId, null, $limit, $offset);
+            foreach ($docs as $doc) {
+                $docPath = $doc->getPath();
+                // Normalize path for comparison (match parseExcludePaths normalization)
+                $normalizedPath = trim(strtolower($docPath), '/');
+
+                // Check if this document's path is now excluded
+                foreach ($excludePaths as $excluded) {
+                    if ($normalizedPath === $excluded || str_starts_with($normalizedPath, $excluded . '/')) {
+                        $excludedDocIds[] = (int)$doc->getId();
+                        $this->logger->info('eva-ai: Removing document due to exclusion rule', [
+                            'userId' => $userId,
+                            'path' => $docPath,
+                            'excludedRule' => $excluded
+                        ]);
+                        break;
+                    }
                 }
             }
-        }
+            $offset += $limit;
+        } while (count($docs) === $limit);
         
         if (!empty($excludedDocIds)) {
             $this->chunkMapper->deleteByDocumentIds($excludedDocIds);
