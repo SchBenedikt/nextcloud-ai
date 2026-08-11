@@ -17,6 +17,8 @@ use Psr\Log\LoggerInterface;
 class Indexer {
     private const BATCH = 24;
     private const MAX_DEPTH = 30;
+    private const MAX_DECOMPRESSED_BYTES = 104857600; // 100MB limit for decompressed content
+    private const MAX_ZIP_ENTRIES = 1000; // Maximum number of ZIP entries to process
 
     public function __construct(
         private AppConfig $config,
@@ -40,6 +42,24 @@ class Indexer {
 
         $this->config->set('index_running', '1');
         $this->config->set('index_started', (string)time());
+        
+        // Calculate current configuration hash for detecting configuration changes
+        $currentConfigHash = $this->calculateConfigHash();
+        $storedConfigHash = $this->config->get('index_config_hash');
+
+        // AppConfig::get() never returns null; treat empty string as "not yet set"
+        if ($storedConfigHash === '') {
+            $this->config->set('index_config_hash', $currentConfigHash);
+        } elseif ($storedConfigHash !== $currentConfigHash) {
+            $this->logger->info('eva-ai: Configuration changed, marking index for rebuild', [
+                'oldHash' => $storedConfigHash,
+                'newHash' => $currentConfigHash,
+                'userId' => $userId
+            ]);
+            $this->config->set('index_config_hash', $currentConfigHash);
+            // Force re-index by clearing stored hashes
+            $this->documentMapper->clearHashesForUser($userId);
+        }
 
         try {
             $userFolder = $this->rootFolder->getUserFolder($userId);
@@ -50,6 +70,11 @@ class Indexer {
                     $node = $userFolder->get($scope);
                     if ($node instanceof Folder) {
                         $root = $node;
+                    } else {
+                        // Path exists but is not a folder - this is a configuration error
+                        $result['error'] = 'Scope path must be a folder, but it points to a file: /' . $scope;
+                        $this->logger->error('eva-ai: Invalid scope path - not a folder', ['scope' => $scope, 'userId' => $userId]);
+                        return $result;
                     }
                 } catch (NotFoundException $e) {
                     $result['error'] = 'Scope path not found: /' . $scope;
@@ -63,28 +88,70 @@ class Indexer {
 
             $hashes = $this->documentMapper->hashesForUser($userId);
             $seen = [];
+            $stale = []; // Track files that should be removed from index
             $batch = [];
             $maxSize = $this->config->getInt('max_file_size', 20971520);
 
-            foreach ($files as $file) {
-                $fileId = (int)$file->getId();
+            foreach ($files as $fileData) {
+                $fileId = (int)$fileData['id'];
                 $seen[$fileId] = true;
                 $result['total_seen']++;
 
+                // Create a lightweight file-like object for compatibility
+                $file = new class($fileData) {
+                    private array $data;
+                    public function __construct(array $data) {
+                        $this->data = $data;
+                    }
+                    public function getId() { return $this->data['id']; }
+                    public function getPath() { return $this->data['path']; }
+                    public function getName() { return $this->data['name']; }
+                    public function getSize() { return $this->data['size']; }
+                    public function getMimeType() { return $this->data['mime']; }
+                    public function getContent() {
+                        // This won't be used for the lightweight approach
+                        // We'll get the actual file when needed
+                        return '';
+                    }
+                };
+
                 if (!$this->isIndexable($file, $maxSize)) {
                     $result['skipped']++;
+                    // If this file was previously indexed, mark it as stale for removal
+                    if (isset($hashes[$fileId])) {
+                        $stale[$fileId] = true;
+                    }
                     continue;
                 }
 
                 try {
-                    $content = $this->extractText($file);
+                    // Get the actual file for content extraction
+                    $actualFile = $root->getById($fileId);
+                    if (empty($actualFile) || !($actualFile[0] instanceof File)) {
+                        $result['skipped']++;
+                        // If this file was previously indexed, mark it as stale for removal
+                        if (isset($hashes[$fileId])) {
+                            $stale[$fileId] = true;
+                        }
+                        continue;
+                    }
+                    $actualFile = $actualFile[0];
+                    $content = $this->extractText($actualFile);
                 } catch (\Throwable $e) {
                     $this->logger->warning('eva-ai: read failed', ['file' => $file->getPath(), 'e' => $e->getMessage()]);
                     $result['skipped']++;
+                    // If this file was previously indexed, mark it as stale for removal
+                    if (isset($hashes[$fileId])) {
+                        $stale[$fileId] = true;
+                    }
                     continue;
                 }
                 if ($content === '') {
                     $result['skipped']++;
+                    // If this file was previously indexed, mark it as stale for removal
+                    if (isset($hashes[$fileId])) {
+                        $stale[$fileId] = true;
+                    }
                     continue;
                 }
 
@@ -105,7 +172,10 @@ class Indexer {
                 $mime = $file->getMimeType();
                 $size = $file->getSize();
 
-                $this->removeStaleDocument($userId, $fileId);
+                // Check if document already exists to preserve old version on failure
+                $existingDoc = $this->documentMapper->findByUserAndFile($userId, $fileId);
+                $oldDocId = $existingDoc !== null ? (int)$existingDoc->getId() : null;
+                
                 $doc = new Document();
                 $doc->setUserId($userId);
                 $doc->setFileId($fileId);
@@ -119,7 +189,7 @@ class Indexer {
                 $this->documentMapper->insert($doc);
 
                 foreach ($chunks as $i => $c) {
-                    $batch[] = ['docId' => (int)$doc->getId(), 'index' => $i, 'content' => $c['content'], 'tokens' => $c['tokens']];
+                    $batch[] = ['docId' => (int)$doc->getId(), 'index' => $i, 'content' => $c['content'], 'tokens' => $c['tokens'], 'oldDocId' => $oldDocId];
                 }
 
                 $result['processed']++;
@@ -134,7 +204,7 @@ class Indexer {
             }
 
             $this->flushBatch($batch, $result);
-            $this->cleanupRemoved($userId, $seen);
+            $this->cleanupRemoved($userId, $seen, $stale);
             $this->indexEmails($userId, $result, $maxFiles);
 
             if ($result['error'] === null && $result['processed'] === 0 && $result['total_seen'] > 0) {
@@ -175,7 +245,14 @@ class Indexer {
                 if (str_starts_with($node->getName(), '.')) {
                     continue;
                 }
-                $out[] = $node;
+                // Store only lightweight metadata instead of full File objects
+                $out[] = [
+                    'id' => $node->getId(),
+                    'path' => $node->getPath(),
+                    'name' => $node->getName(),
+                    'size' => $node->getSize(),
+                    'mime' => $node->getMimeType()
+                ];
             }
         }
     }
@@ -194,7 +271,8 @@ class Indexer {
         foreach (explode(',', $raw) as $p) {
             $p = trim($p, " \t\n\r\0\x0B/");
             if ($p !== '') {
-                $paths[] = $p;
+                // Normalize to lowercase for consistent comparison
+                $paths[] = strtolower($p);
             }
         }
         return $paths;
@@ -217,7 +295,7 @@ class Indexer {
         return false;
     }
 
-    private function isIndexable(File $file, int $maxSize): bool {
+    private function isIndexable($file, int $maxSize): bool {
         if ($file->getSize() > $maxSize) {
             return false;
         }
@@ -361,6 +439,9 @@ class Indexer {
         }
         $tmp = tempnam(sys_get_temp_dir(), 'rg_');
         $out = '';
+        $totalDecompressed = 0;
+        $entriesProcessed = 0;
+        
         try {
             if ($tmp === false) {
                 return '';
@@ -370,10 +451,24 @@ class Indexer {
             if ($zip->open($tmp) !== true) {
                 return '';
             }
+            
             $target = $kind === 'docx' ? 'word/document.xml' : ($kind === 'odf' ? 'content.xml' : '');
             if ($target !== '') {
+                // Check entry size before reading
+                $stat = $zip->statName($target);
+                if ($stat !== false && $stat['size'] > self::MAX_DECOMPRESSED_BYTES) {
+                    $this->logger->warning('eva-ai: ZIP entry too large', ['file' => $file->getPath(), 'entry' => $target, 'size' => $stat['size']]);
+                    return '';
+                }
+                
                 $xml = $zip->getFromName($target);
                 if ($xml !== false) {
+                    $totalDecompressed += strlen($xml);
+                    if ($totalDecompressed > self::MAX_DECOMPRESSED_BYTES) {
+                        $this->logger->warning('eva-ai: Decompressed content exceeds limit', ['file' => $file->getPath(), 'bytes' => $totalDecompressed]);
+                        return '';
+                    }
+                    
                     if ($kind === 'docx') {
                         preg_match_all('/<w:t(?:\s[^>]*)?>(.*?)<\/w:t>/is', $xml, $m);
                         $out = implode(' ', $m[1]);
@@ -385,19 +480,49 @@ class Indexer {
                 }
             } elseif ($kind === 'epub') {
                 $i = 0;
-                while (($entry = $zip->getNameIndex($i)) !== false) {
+                while (($entry = $zip->getNameIndex($i)) !== false && $entriesProcessed < self::MAX_ZIP_ENTRIES) {
+                    $entriesProcessed++;
                     if (str_ends_with($entry, '.htm') || str_ends_with($entry, '.html') || str_ends_with($entry, '.xhtml')) {
+                        // Check entry size before reading
+                        $stat = $zip->statIndex($i);
+                        if ($stat !== false && $stat['size'] > self::MAX_DECOMPRESSED_BYTES) {
+                            $this->logger->warning('eva-ai: EPUB entry too large, skipping', ['file' => $file->getPath(), 'entry' => $entry, 'size' => $stat['size']]);
+                            $i++;
+                            continue;
+                        }
+                        
                         $html = $zip->getFromName($entry);
-                        $html = preg_replace('/<script\b[^>]*>.*?<\/script>/is', ' ', $html ?? '');
-                        $html = preg_replace('/<style\b[^>]*>.*?<\/style>/is', ' ', $html ?? '');
-                        $html = preg_replace('/<[^>]+>/', ' ', $html ?? '');
-                        $out .= ' ' . html_entity_decode($html ?? '', ENT_QUOTES | ENT_HTML5, 'UTF-8');
+                        if ($html !== false) {
+                            $totalDecompressed += strlen($html);
+                            if ($totalDecompressed > self::MAX_DECOMPRESSED_BYTES) {
+                                $this->logger->warning('eva-ai: EPUB decompressed content exceeds limit', ['file' => $file->getPath(), 'bytes' => $totalDecompressed]);
+                                break;
+                            }
+                            
+                            $html = preg_replace('/<script\b[^>]*>.*?<\/script>/is', ' ', $html ?? '');
+                            $html = preg_replace('/<style\b[^>]*>.*?<\/style>/is', ' ', $html ?? '');
+                            $html = preg_replace('/<[^>]+>/', ' ', $html ?? '');
+                            $out .= ' ' . html_entity_decode($html ?? '', ENT_QUOTES | ENT_HTML5, 'UTF-8');
+                        }
                     }
                     $i++;
                 }
             } elseif ($kind === 'xlsx') {
+                // Check entry size before reading
+                $stat = $zip->statName('xl/sharedStrings.xml');
+                if ($stat !== false && $stat['size'] > self::MAX_DECOMPRESSED_BYTES) {
+                    $this->logger->warning('eva-ai: XLSX sharedStrings too large', ['file' => $file->getPath(), 'size' => $stat['size']]);
+                    return '';
+                }
+                
                 $xml = $zip->getFromName('xl/sharedStrings.xml');
                 if ($xml !== false) {
+                    $totalDecompressed += strlen($xml);
+                    if ($totalDecompressed > self::MAX_DECOMPRESSED_BYTES) {
+                        $this->logger->warning('eva-ai: XLSX decompressed content exceeds limit', ['file' => $file->getPath(), 'bytes' => $totalDecompressed]);
+                        return '';
+                    }
+                    
                     preg_match_all('/<si>(.*?)<\/si>/is', $xml, $si);
                     foreach ($si[1] as $cell) {
                         preg_match_all('/<t(?:\s[^>]*)?>(.*?)<\/t>/is', $cell, $tm);
@@ -406,11 +531,28 @@ class Indexer {
                 }
             } elseif ($kind === 'pptx') {
                 $i = 0;
-                while (($entry = $zip->getNameIndex($i)) !== false) {
+                while (($entry = $zip->getNameIndex($i)) !== false && $entriesProcessed < self::MAX_ZIP_ENTRIES) {
+                    $entriesProcessed++;
                     if (preg_match('~^ppt/slides/slide\d+\.xml$~', $entry)) {
+                        // Check entry size before reading
+                        $stat = $zip->statIndex($i);
+                        if ($stat !== false && $stat['size'] > self::MAX_DECOMPRESSED_BYTES) {
+                            $this->logger->warning('eva-ai: PPTX slide too large, skipping', ['file' => $file->getPath(), 'entry' => $entry, 'size' => $stat['size']]);
+                            $i++;
+                            continue;
+                        }
+                        
                         $xml = $zip->getFromName($entry);
-                        preg_match_all('/<a:t(?:\s[^>]*)?>(.*?)<\/a:t>/is', $xml ?? '', $tm);
-                        $out .= ' ' . implode(' ', $tm[1]);
+                        if ($xml !== false) {
+                            $totalDecompressed += strlen($xml);
+                            if ($totalDecompressed > self::MAX_DECOMPRESSED_BYTES) {
+                                $this->logger->warning('eva-ai: PPTX decompressed content exceeds limit', ['file' => $file->getPath(), 'bytes' => $totalDecompressed]);
+                                break;
+                            }
+                            
+                            preg_match_all('/<a:t(?:\s[^>]*)?>(.*?)<\/a:t>/is', $xml ?? '', $tm);
+                            $out .= ' ' . implode(' ', $tm[1]);
+                        }
                     }
                     $i++;
                 }
@@ -481,10 +623,12 @@ class Indexer {
         foreach ($batch as $b) {
             $texts[] = $b['content'];
         }
+        
         [$vecs, $err] = $this->ollama->embedBatch($texts);
         if ($err !== null || $vecs === null) {
             $result['error'] = $err ?? 'Embedding error';
             $this->logger->error('eva-ai embedding failed', ['error' => $err]);
+            
             // Remove docs created this batch so a later run retries them.
             $docIds = [];
             foreach ($batch as $b) {
@@ -492,13 +636,17 @@ class Indexer {
             }
             $this->chunkMapper->deleteByDocumentIds(array_keys($docIds));
             $this->documentMapper->deleteByIds(array_keys($docIds));
+            
+            // Note: Old documents are NOT deleted yet, so they remain available for search
+            $this->logger->info('eva-ai: Preserved old documents after embedding failure', ['docCount' => count($docIds)]);
+            
             $batch = [];
             return;
         }
 
         $perDoc = [];
         foreach ($batch as $i => $b) {
-            $perDoc[$b['docId']][] = ['index' => $b['index'], 'content' => $b['content'], 'tokens' => $b['tokens'], 'vec' => $vecs[$i]];
+            $perDoc[$b['docId']][] = ['index' => $b['index'], 'content' => $b['content'], 'tokens' => $b['tokens'], 'vec' => $vecs[$i], 'oldDocId' => $b['oldDocId']];
         }
         foreach ($perDoc as $docId => $chunks) {
             foreach ($chunks as $c) {
@@ -514,6 +662,21 @@ class Indexer {
             if ($doc !== null) {
                 $doc->setChunkCount(count($chunks));
                 $this->documentMapper->update($doc);
+            }
+            
+            // Only remove old document after successful embedding of new version
+            $oldDocId = $chunks[0]['oldDocId'];
+            if ($oldDocId !== null) {
+                try {
+                    $oldDoc = $this->documentMapper->findById($oldDocId);
+                    if ($oldDoc !== null) {
+                        $this->chunkMapper->deleteByDocument($oldDocId);
+                        $this->documentMapper->delete($oldDoc);
+                        $this->logger->debug('eva-ai: Removed old document after successful re-index', ['oldDocId' => $oldDocId]);
+                    }
+                } catch (\Throwable $e) {
+                    $this->logger->warning('eva-ai: Failed to remove old document after re-index', ['error' => $e->getMessage(), 'oldDocId' => $oldDocId]);
+                }
             }
         }
         $batch = [];
@@ -598,10 +761,20 @@ class Indexer {
         $this->flushBatch($batch, $result);
     }
 
-    private function cleanupRemoved(string $userId, array $seen): void {
+    private function cleanupRemoved(string $userId, array $seen, array $stale): void {
         $stored = $this->documentMapper->findFileIdsForUser($userId);
         $removed = array_filter(array_diff($stored, array_keys($seen)), static fn($f) => $f > 0);
+        
+        // Also add stale files to removal list
+        foreach ($stale as $fileId => $flag) {
+            if (!in_array($fileId, $removed, true)) {
+                $removed[] = $fileId;
+            }
+        }
+        
         if (empty($removed)) {
+            // Still reconcile exclusions even if no documents were removed this pass
+            $this->cleanupExcluded($userId);
             return;
         }
         $docIds = [];
@@ -610,9 +783,78 @@ class Indexer {
             if ($doc !== null) {
                 $docIds[] = (int)$doc->getId();
                 $this->documentMapper->delete($doc);
+                $this->logger->info('eva-ai: Removed stale document', ['fileId' => $fileId, 'userId' => $userId]);
             }
         }
         $this->chunkMapper->deleteByDocumentIds($docIds);
+        
+        // Also remove documents that are now excluded by exclude_paths configuration
+        $this->cleanupExcluded($userId);
+    }
+    
+    private function cleanupExcluded(string $userId): void {
+        $excludePaths = $this->parseExcludePaths();
+        if (empty($excludePaths)) {
+            return;
+        }
+        
+        $allDocs = $this->documentMapper->findByUser($userId);
+        $excludedDocIds = [];
+        $offset = 0;
+        $limit = 500;
+
+        do {
+            $docs = $this->documentMapper->findByUser($userId, null, $limit, $offset);
+            foreach ($docs as $doc) {
+                $docPath = $doc->getPath();
+                // Normalize path for comparison (match parseExcludePaths normalization)
+                $normalizedPath = trim(strtolower($docPath), '/');
+
+                // Check if this document's path is now excluded
+                foreach ($excludePaths as $excluded) {
+                    if ($normalizedPath === $excluded || str_starts_with($normalizedPath, $excluded . '/')) {
+                        $excludedDocIds[] = (int)$doc->getId();
+                        $this->logger->info('eva-ai: Removing document due to exclusion rule', [
+                            'userId' => $userId,
+                            'path' => $docPath,
+                            'excludedRule' => $excluded
+                        ]);
+                        break;
+                    }
+                }
+            }
+            $offset += $limit;
+        } while (count($docs) === $limit);
+        
+        if (!empty($excludedDocIds)) {
+            $this->chunkMapper->deleteByDocumentIds($excludedDocIds);
+            foreach ($excludedDocIds as $docId) {
+                $doc = $this->documentMapper->findById($docId);
+                if ($doc !== null) {
+                    $this->documentMapper->delete($doc);
+                }
+            }
+            $this->logger->info('eva-ai: Cleaned up excluded documents', [
+                'userId' => $userId,
+                'count' => count($excludedDocIds)
+            ]);
+        }
+    }
+
+    /**
+     * Calculate a hash of the current indexing configuration to detect changes
+     * that require index rebuilds (embedding model, chunking settings, etc.)
+     */
+    private function calculateConfigHash(): string {
+        $configKey = implode('|', [
+            $this->config->get('embedding_model', 'default'),
+            $this->config->get('chunk_size', '1000'),
+            $this->config->get('chunk_overlap', '200'),
+            $this->config->get('max_file_size', '20971520'),
+            $this->config->get('exclude_paths', ''),
+            $this->config->get('scope_path', ''),
+        ]);
+        return md5($configKey);
     }
 
     /**
@@ -634,6 +876,7 @@ class Indexer {
         $this->config->set('last_index_total', '0');
         $this->config->set('last_index_processed', '0');
         $this->config->set('last_index_error', '');
+        $this->config->set('index_config_hash', ''); // Reset config hash on full reset
         return ['documents' => $docs, 'chunks' => $chunks];
     }
 }
