@@ -23,7 +23,14 @@ jobs:
           coverage: none
 
       - name: Install dependencies
-        run: composer install --no-interaction --prefer-dist
+        run: |
+          # Retry because GitHub API zipball downloads can transiently fail
+          # with "curl error 60: SSL certificate problem" on fresh runners.
+          for i in 1 2 3; do
+            composer install --no-interaction --prefer-dist && break
+            echo "composer install attempt $i failed, retrying in 10s..."
+            sleep 10
+          done
 
       - name: Run tests
         run: composer test
