@@ -19,7 +19,7 @@ class EvaReformatProvider implements ISynchronousProvider {
 	}
 
 	public function getId(): string {
-		return 'eva-ai:text2text:reformat';
+		return 'eva_ai:text2text:reformat';
 	}
 
 	public function getName(): string {

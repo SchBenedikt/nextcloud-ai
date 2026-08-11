@@ -59,7 +59,7 @@ PROMPT;
             return;
         }
         $url = $event->getBotUrl();
-        if (!str_starts_with($url, Bot::URL_APP_PREFIX . 'eva-ai')) {
+        if (!str_starts_with($url, Bot::URL_APP_PREFIX . 'eva_ai')) {
             return;
         }
         $data = $event->getMessage();
@@ -106,7 +106,7 @@ PROMPT;
             }
             $event->addAnswer($answer);
         } catch (\Throwable $e) {
-            $this->logger->error('eva-ai talk bot failed', ['exception' => $e]);
+            $this->logger->error('eva_ai talk bot failed', ['exception' => $e]);
             $event->addAnswer("Uups, da ist bei mir ein Fehler aufgetreten. Bitte versuche es gleich nochmal.");
         }
     }
@@ -167,7 +167,7 @@ PROMPT;
 
         $resp = $this->ollama->chat($messages, []);
         if (isset($resp['error'])) {
-            $this->logger->warning('eva-ai talk: classification error: ' . $resp['error']);
+            $this->logger->warning('eva_ai talk: classification error: ' . $resp['error']);
             return false; // Bei Fehler: nicht antworten (sicherer)
         }
 
@@ -222,7 +222,7 @@ PROMPT;
 
             return $names;
         } catch (\Throwable $e) {
-            $this->logger->warning('eva-ai talk: could not get participants: ' . $e->getMessage());
+            $this->logger->warning('eva_ai talk: could not get participants: ' . $e->getMessage());
             return [];
         }
     }
@@ -275,7 +275,7 @@ PROMPT;
         $result = $this->ragService->ask($userId, $question, $history);
 
         if (isset($result['error']) && $result['error'] !== '') {
-            $this->logger->warning('eva-ai talk: rag error: ' . $result['error']);
+            $this->logger->warning('eva_ai talk: rag error: ' . $result['error']);
             // Bei Vektor-Fehler: fallback auf reinen LLM-Chat mit Tools
             return $this->fallbackAnswer($history, $question, $actorName, $userId);
         }
@@ -318,7 +318,7 @@ PROMPT;
         for ($round = 0; $round < 3; $round++) {
             $chat = $this->ollama->chat($messages, $tools);
             if (isset($chat['error'])) {
-                $this->logger->warning('eva-ai talk: fallback ollama error: ' . $chat['error']);
+                $this->logger->warning('eva_ai talk: fallback ollama error: ' . $chat['error']);
                 return "Leider habe ich gerade ein Verbindungsproblem zur KI.";
             }
 

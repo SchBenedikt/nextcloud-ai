@@ -34,7 +34,7 @@ class CalendarService {
         return 'principals/users/' . $userId;
     }
 
-    /** @return array<int,array{id:int,uri:string,displayname:string,color?:string}> */
+    /** @return array<int,array{id:int,uri:string,displayname:string,color?:string,principaluri:string,readOnly:bool}> */
     public function calendars(string $userId): array {
         $out = [];
         foreach ($this->allCalendarPrincipals($userId) as $principal) {
@@ -44,10 +44,33 @@ class CalendarService {
                     'uri' => (string)$cal['uri'],
 			        'displayname' => (string)($cal['{DAV:}displayname'] ?? $cal['uri']),
                     'color' => (string)($cal['{http://apple.com/ns/ical/}calendar-color'] ?? ''),
+                    'principaluri' => (string)($cal['principaluri'] ?? $principal),
+                    'readOnly' => (int)($cal['{http://owncloud.org/ns}read-only'] ?? 0) === 1,
                 ];
             }
         }
         return $out;
+    }
+
+    /**
+     * Whether the current user may mutate a calendar. Personal calendars (own
+     * principal), group/circle calendars (membership) and shared calendars with
+     * an explicit write grant (read-only flag 0) are writable. Read-only shared
+     * and system/subscription calendars are rejected before any DAV mutation
+     * (Issue #11).
+     */
+    private function calendarWritable(array $cal, string $userId): bool {
+        $principal = (string)($cal['principaluri'] ?? '');
+        if ($principal === 'principals/users/' . $userId) {
+            return true;
+        }
+        if (str_starts_with($principal, 'principals/groups/')
+            || str_starts_with($principal, 'principals/circles/')) {
+            // Group/circle calendars: membership implies write access.
+            return true;
+        }
+        // Shared calendar: writable only with an explicit write grant.
+        return !$cal['readOnly'];
     }
 
     /**
@@ -69,12 +92,25 @@ class CalendarService {
         return array_values(array_unique($principals));
     }
 
-    /** @return array{id:int,uri:string,displayname:string,color?:string}|null */
-    private function resolveCalendar(string $userId, ?string $hint): ?array {
-        foreach ($this->calendars($userId) as $cal) {
-            if ($hint === null || $hint === '') {
-                return $cal;
+    /** @return array{id:int,uri:string,displayname:string,color?:string,principaluri:string,readOnly:bool}|null */
+    private function resolveCalendar(string $userId, ?string $hint, bool $writableOnly = false): ?array {
+        $cals = $this->calendars($userId);
+        // Default write target: the user's personal (own principal) calendar.
+        if ($hint === null || $hint === '') {
+            foreach ($cals as $cal) {
+                if (($cal['principaluri'] ?? '') === 'principals/users/' . $userId
+                    && (!$writableOnly || $this->calendarWritable($cal, $userId))) {
+                    return $cal;
+                }
             }
+            foreach ($cals as $cal) {
+                if (!$writableOnly || $this->calendarWritable($cal, $userId)) {
+                    return $cal;
+                }
+            }
+            return null;
+        }
+        foreach ($cals as $cal) {
             if ($hint === (string)$cal['id'] || $hint === $cal['uri'] || strcasecmp($hint, (string)$cal['displayname']) === 0) {
                 return $cal;
             }
@@ -249,11 +285,12 @@ class CalendarService {
         // Komfort-Shortcut: days=N => ab heute N Tage nach vorn, past_days=N => N Tage zurück.
         $days = isset($args['days']) ? max(0, (int)$args['days']) : 0;
         $pastDays = isset($args['past_days']) ? max(0, (int)$args['past_days']) : 0;
+        $tz = $this->userTimeZone($userId);
         if ($start === null && ($days > 0 || $pastDays > 0)) {
-            $start = (new \DateTimeImmutable('today'))->modify('-' . $pastDays . ' days');
+            $start = (new \DateTimeImmutable('today', $tz))->modify('-' . $pastDays . ' days');
         }
         if ($start === null) {
-            $start = new \DateTimeImmutable('today');
+            $start = new \DateTimeImmutable('today', $tz);
         }
         if ($end === null && $days > 0) {
             $end = $start->modify('+' . $days . ' days');
@@ -329,9 +366,9 @@ class CalendarService {
         if ($summary === '') {
             return ['ok' => false, 'error' => 'Event summary required'];
         }
-        $cal = $this->resolveCalendar($userId, (string)($args['calendar'] ?? ''));
+        $cal = $this->resolveCalendar($userId, (string)($args['calendar'] ?? ''), true);
         if ($cal === null) {
-            return ['ok' => false, 'error' => 'Calendar not found'];
+            return ['ok' => false, 'error' => 'No writable calendar found. Create events only in your own calendars.'];
         }
         $allDay = false;
         $start = $this->parseTime((string)($args['start'] ?? ''), $userId, $allDay);
@@ -374,6 +411,9 @@ class CalendarService {
         $cal = $this->resolveCalendar($userId, $parts[0] ?? '');
         if ($cal === null) {
             return ['ok' => false, 'error' => 'Calendar not found'];
+        }
+        if (!$this->calendarWritable($cal, $userId)) {
+            return ['ok' => false, 'error' => 'Calendar is read-only (shared or system). Only your own calendars can be modified.'];
         }
         $uri = $parts[1] ?? '';
         $raw = $this->backend->getCalendarObject((int)$cal['id'], $uri);
@@ -462,6 +502,9 @@ class CalendarService {
         if ($cal === null) {
             return ['ok' => false, 'error' => 'Calendar not found'];
         }
+        if (!$this->calendarWritable($cal, $userId)) {
+            return ['ok' => false, 'error' => 'Calendar is read-only (shared or system). Only your own calendars can be modified.'];
+        }
         $uri = $parts[1] ?? '';
         $raw = $this->backend->getCalendarObject((int)$cal['id'], $uri);
         if ($raw === null) {
@@ -503,9 +546,9 @@ class CalendarService {
             }
             $catFilter = array_values(array_unique($catFilter));
         }
-        // Overdue-only: nur Aufgaben mit DUE < jetzt.
+        // Overdue-only: nur Aufgaben mit DUE < jetzt (in der Nutzer-Zeitzone).
         $overdueOnly = !empty($args['overdue_only']);
-        $now = new \DateTimeImmutable('now');
+        $now = new \DateTimeImmutable('now', $this->userTimeZone($userId));
         $out = [];
         foreach ($cals as $c) {
             foreach ($this->backend->getCalendarObjects((int)$c['id']) as $obj) {
@@ -569,12 +612,12 @@ class CalendarService {
         if ($title === '') {
             return ['ok' => false, 'error' => 'Task title required'];
         }
-        $cal = $this->resolveCalendar($userId, (string)($args['calendar'] ?? ''));
+        $cal = $this->resolveCalendar($userId, (string)($args['calendar'] ?? ''), true);
         if ($cal === null) {
-            $cal = $this->resolveCalendar($userId, null);
+            $cal = $this->resolveCalendar($userId, null, true);
         }
         if ($cal === null) {
-            return ['ok' => false, 'error' => 'No calendar found'];
+            return ['ok' => false, 'error' => 'No writable calendar found. Create tasks only in your own calendars.'];
         }
         $allDay = false;
         $due = $this->parseTime((string)($args['due'] ?? ''), $userId, $allDay);
@@ -619,6 +662,9 @@ class CalendarService {
         $cal = $this->resolveCalendar($userId, $parts[0] ?? '');
         if ($cal === null) {
             return ['ok' => false, 'error' => 'Calendar not found'];
+        }
+        if (!$this->calendarWritable($cal, $userId)) {
+            return ['ok' => false, 'error' => 'Calendar is read-only (shared or system). Only your own calendars can be modified.'];
         }
         $uri = $parts[1] ?? '';
         $raw = $this->backend->getCalendarObject((int)$cal['id'], $uri);
@@ -697,6 +743,9 @@ class CalendarService {
         $cal = $this->resolveCalendar($userId, $parts[0] ?? '');
         if ($cal === null) {
             return ['ok' => false, 'error' => 'Calendar not found'];
+        }
+        if (!$this->calendarWritable($cal, $userId)) {
+            return ['ok' => false, 'error' => 'Calendar is read-only (shared or system). Only your own calendars can be modified.'];
         }
         $uri = $parts[1] ?? '';
         $raw = $this->backend->getCalendarObject((int)$cal['id'], $uri);

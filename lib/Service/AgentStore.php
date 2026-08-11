@@ -46,7 +46,7 @@ class AgentStore {
 				'pending' => is_array($pending) ? $pending : [],
 			];
 		} catch (\Throwable $e) {
-			$this->logger->warning('eva-ai: agent store load failed', ['exception' => $e]);
+			$this->logger->warning('eva_ai: agent store load failed', ['exception' => $e]);
 			return ['history' => [], 'pending' => []];
 		}
 	}
@@ -87,7 +87,7 @@ class AgentStore {
 			$stmt = $this->db->prepare('UPDATE *PREFIX*eva_ai_agent_state SET history = ?, pending = ?, updated_at = ? WHERE user_id = ? AND token = ?');
 			$stmt->execute([$historyStr, $pendingStr, $now, $userId, $token]);
 		} catch (\Throwable $e) {
-			$this->logger->warning('eva-ai: agent store save failed', ['exception' => $e]);
+			$this->logger->warning('eva_ai: agent store save failed', ['exception' => $e]);
 		}
 	}
 }

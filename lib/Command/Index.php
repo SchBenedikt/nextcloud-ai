@@ -22,7 +22,7 @@ class Index extends Command {
     }
 
     protected function configure(): void {
-        $this->setName('eva-ai:index')
+        $this->setName('eva_ai:index')
             ->setDescription('Index a user\'s files for RAG Chat')
             ->addArgument('user', InputArgument::OPTIONAL, 'User (default: configured index_user)');
     }
@@ -30,7 +30,7 @@ class Index extends Command {
     protected function execute(InputInterface $input, OutputInterface $output): int {
         $user = $input->getArgument('user');
         if ($user === null || $user === '') {
-            $user = $this->config->getAppValue('eva-ai', 'index_user', '');
+            $user = $this->config->getAppValue('eva_ai', 'index_user', '');
         }
         if ($user === '') {
             $output->writeln('<error>No user given and index_user not configured.</error>');

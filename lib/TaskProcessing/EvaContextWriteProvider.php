@@ -21,7 +21,7 @@ class EvaContextWriteProvider implements ISynchronousProvider {
 	}
 
 	public function getId(): string {
-		return 'eva-ai:contextwrite';
+		return 'eva_ai:contextwrite';
 	}
 
 	public function getName(): string {

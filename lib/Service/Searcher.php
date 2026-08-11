@@ -84,11 +84,13 @@ class Searcher {
                 'chunkIndex' => (int)$row['chunk_index'],
                 'content' => $row['content'],
                 'documentId' => $docId,
+                'fileId' => $doc !== null ? (int)$doc->getFileId() : 0,
                 'docPath' => $doc?->getPath() ?? '',
                 'docName' => $doc?->getName() ?? '',
                 'score' => $rrf,
                 'dense' => $denseScore,
-                'lexical' => $lexical[$i] ?? 0.0,            ];
+                'lexical' => $lexical[$i] ?? 0.0,
+            ];
         }
 
         usort($results, function ($a, $b) {
@@ -98,12 +100,55 @@ class Searcher {
         return array_slice($results, 0, $topK);
     }
 
+    /**
+     * Build the bounded candidate set for a user + query.
+     *
+     * On indexes that fit the pool threshold we use every chunk. On larger
+     * indexes we build two INDEPENDENT candidate sets and fuse them:
+     *
+     *  - lexical: chunks matching at least one query token (bounded LIKE scan)
+     *  - dense:   a bounded, token-independent page of chunks so semantic-only
+     *             matches are NOT gated by lexical overlap (Issue #13)
+     *
+     * Both sets are merged and deduped by chunk id; dense/BM25 scoring then
+     * runs over the union, keeping retrieval quality stable above the
+     * threshold. Empty-token queries stay bounded too (see ChunkMapper).
+     *
+     * @return array<int,array<string,mixed>>
+     */
     private function loadCandidates(string $userId, string $query): array {
         $n = $this->chunkMapper->countForUser($userId);
-        if ($n > self::POOL) {
-            return $this->chunkMapper->filterChunksByTokens($userId, $this->tokens($query), self::POOL);
+        if ($n <= self::POOL) {
+            return $this->chunkMapper->chunksForUser($userId);
         }
-        return $this->chunkMapper->chunksForUser($userId);
+
+        $tokens = $this->tokens($query);
+
+        // Lexical set: bounded prefilter (up to half the pool).
+        $lexCap = (int)ceil(self::POOL / 2);
+        $lexical = $tokens === [] ? [] : $this->chunkMapper->filterChunksByTokens($userId, $tokens, $lexCap);
+
+        // Dense set: independent bounded sample (rest of the pool), starting at
+        // a query-derived offset so the sample is stable per query.
+        $denseCap = self::POOL - count($lexical);
+        $denseCap = max(1, min($denseCap, $n));
+        $offset = 0;
+        if ($denseCap < $n) {
+            $offset = (abs(crc32($query)) % max(1, $n - $denseCap));
+        }
+        $dense = $this->chunkMapper->chunksForUserPage($userId, $denseCap, $offset);
+
+        // Merge + dedupe by chunk id.
+        $byId = [];
+        foreach ($lexical as $row) {
+            $byId[(int)$row['id']] = $row;
+        }
+        foreach ($dense as $row) {
+            if (!isset($byId[(int)$row['id']])) {
+                $byId[(int)$row['id']] = $row;
+            }
+        }
+        return array_values(array_slice($byId, 0, self::POOL));
     }
 
     /** @return string[] */
@@ -112,9 +157,9 @@ class Searcher {
         preg_match_all('/\p{L}\p{M}*+[\p{L}\p{M}\p{N}_]*+|\p{N}+/u', $text, $m);
         $stop = [
             'der','die','das','den','dem','des','ein','eine','einer','eines','einem','einen',
-            'und','oder','aber','oder','und','auch','im','in','am','an','auf','mit','von','für',
-            'zu','nach','bei','aus','über','die','ist','sind','war','wer','was','wie','wo','wenn',
-            'ich','du','er','sie','es','wir','ihr','mir','mir','mich','dir','dich','mein','dein','ihr',
+            'und','oder','aber','auch','im','in','am','an','auf','mit','von','für',
+            'zu','nach','bei','aus','über','ist','sind','war','wer','was','wie','wo','wenn',
+            'ich','du','er','sie','es','wir','ihr','mir','mich','dir','dich','mein','dein','ihr',
             'more','and','the','of','to','in','is','are','was','for','on','at','with','that','this',
         ];
         $out = [];

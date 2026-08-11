@@ -93,6 +93,23 @@ class EmailService {
     }
 
     /**
+     * All message IDs currently present in the user's mailboxes.
+     * Used for RAG mail reconciliation (Issue #15): indexed mail documents
+     * whose message no longer exists are removed from the index.
+     * @return int[]
+     */
+    public function allMessageIds(string $userId): array {
+        $mailboxIds = $this->mailboxIdsOf($userId);
+        if ($mailboxIds === []) {
+            return [];
+        }
+        $whereMailbox = 'm.`mailbox_id` IN (' . implode(',', $mailboxIds) . ')';
+        $sql = "SELECT m.`id` FROM *PREFIX*mail_messages m WHERE {$whereMailbox}";
+        $rows = $this->q($sql, []);
+        return array_map('intval', array_column($rows, 'id'));
+    }
+
+    /**
      * Read full message by id (DB content — preview + summary).
      * Returns IMAP body only if MailManager is available and works.
      *

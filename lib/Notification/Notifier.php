@@ -13,7 +13,7 @@ use OCP\Notification\UnknownNotificationException;
  */
 class Notifier implements INotifier {
 	public function getID(): string {
-		return 'eva-ai';
+		return 'eva_ai';
 	}
 
 	public function getName(): string {
@@ -21,7 +21,7 @@ class Notifier implements INotifier {
 	}
 
 	public function prepare(INotification $notification, string $languageCode): INotification {
-		if ($notification->getApp() !== 'eva-ai') {
+		if ($notification->getApp() !== 'eva_ai') {
 			throw new UnknownNotificationException();
 		}
 
@@ -29,7 +29,7 @@ class Notifier implements INotifier {
 			$params = $notification->getSubjectParameters();
 			$notification->setParsedSubject('EVA answer ready');
 			$notification->setParsedMessage((string)($params['text'] ?? ''));
-			$notification->setIcon(\OC::$WEBROOT . '/apps/eva-ai/img/eva-icon.svg');
+			$notification->setIcon(\OC::$WEBROOT . '/apps/eva_ai/img/eva-icon.svg');
 			return $notification;
 		}
 

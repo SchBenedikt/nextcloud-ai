@@ -19,7 +19,7 @@ class EvaTextToTextProvider implements ISynchronousProvider {
 	}
 
 	public function getId(): string {
-		return 'eva-ai:text2text:generate';
+		return 'eva_ai:text2text:generate';
 	}
 
 	public function getName(): string {

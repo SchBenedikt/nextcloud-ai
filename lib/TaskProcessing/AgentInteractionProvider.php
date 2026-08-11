@@ -59,7 +59,7 @@ class AgentInteractionProvider implements ISynchronousProvider {
 	}
 
 	public function getId(): string {
-		return 'eva-ai:agent';
+		return 'eva_ai:agent';
 	}
 
 	public function getName(): string {
@@ -498,20 +498,20 @@ class AgentInteractionProvider implements ISynchronousProvider {
 
 	private function buildPrompt(string $userId, int $confirmation, array $pending, array $talkRoomIds = [], bool $ragEnabled = true): string {
 		$knowledge = '';
-		// KNOWLEDGE.md: nur im Web-Kontext laden. Der TaskProcessing-Worker
-		// laeuft als CLI und hat keinen eingerichteten User-File-Mount;
-		// getUserFolder() blockiert dort (bekanntes Verhalten). Der
-		// Wissens-Inhalt ist optional und darf den Worker nicht aufhaengen.
-		if (PHP_SAPI !== 'cli') {
-			try {
-				$home = $this->rootFolder->getUserFolder($userId);
-				if ($home->nodeExists('KNOWLEDGE.md')) {
-					$knowledge = "\nA file KNOWLEDGE.md holds personal facts about the user. Always take them into account:\n\n"
-						. substr((string)$home->get('KNOWLEDGE.md')->getContent(), 0, 2500);
-				}
-			} catch (\Throwable $e) {
-				// ignore, knowledge is optional
+		// KNOWLEDGE.md: auch im TaskProcessing-Worker (CLI) laden. Dazu wird
+		// der User-File-Mount mit der unterstuetzten Nextcloud-API initialisiert
+		// (Issue #10); schlaegt das fehl, wird der optionale Inhalt ignoriert.
+		try {
+			if (PHP_SAPI === 'cli') {
+				\OC_Util::setupFS($userId);
 			}
+			$home = $this->rootFolder->getUserFolder($userId);
+			if ($home->nodeExists('KNOWLEDGE.md')) {
+				$knowledge = "\nA file KNOWLEDGE.md holds personal facts about the user. Always take them into account:\n\n"
+					. substr((string)$home->get('KNOWLEDGE.md')->getContent(), 0, 2500);
+			}
+		} catch (\Throwable $e) {
+			// ignore, knowledge is optional
 		}
 
 		$talkInfo = '';

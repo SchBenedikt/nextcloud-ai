@@ -137,7 +137,7 @@ class Ollama {
             // Fallback: per-text
             return $this->embedBatchLegacy($texts);
         } catch (\Throwable $e) {
-            $this->logger->error('eva-ai embed batch failed', ['exception' => $e]);
+            $this->logger->error('eva_ai embed batch failed', ['exception' => $e]);
             return [null, $e->getMessage()];
         }
     }
@@ -161,7 +161,7 @@ class Ollama {
             }
             return [$out, null];
         } catch (\Throwable $e) {
-            $this->logger->error('eva-ai embed legacy failed: ' . $model, ['exception' => $e]);
+            $this->logger->error('eva_ai embed legacy failed: ' . $model, ['exception' => $e]);
             return [null, 'Ollama embedding fehlgeschlagen: ' . $e->getMessage()];
         }
     }
@@ -242,7 +242,7 @@ class Ollama {
             }
             return ['error' => 'Ollama: empty answer'];
         } catch (\Throwable $e) {
-            $this->logger->error('eva-ai ollama chat failed', ['exception' => $e]);
+            $this->logger->error('eva_ai ollama chat failed', ['exception' => $e]);
             return ['error' => 'Ollama error: ' . $e->getMessage()];
         }
     }
@@ -349,7 +349,7 @@ class Ollama {
                 }
             }
         } catch (\Throwable $e) {
-            $this->logger->error('eva-ai ollama chat stream failed', ['exception' => $e]);
+            $this->logger->error('eva_ai ollama chat stream failed', ['exception' => $e]);
             yield ['type' => 'error', 'delta' => 'Ollama error: ' . $e->getMessage()];
         }
     }

@@ -20,7 +20,7 @@ class EvaChangeToneProvider implements ISynchronousProvider {
 	}
 
 	public function getId(): string {
-		return 'eva-ai:text2text:change-tone';
+		return 'eva_ai:text2text:change-tone';
 	}
 
 	public function getName(): string {

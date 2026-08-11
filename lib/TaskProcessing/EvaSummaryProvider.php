@@ -19,7 +19,7 @@ class EvaSummaryProvider implements ISynchronousProvider {
 	}
 
 	public function getId(): string {
-		return 'eva-ai:text2text:summary';
+		return 'eva_ai:text2text:summary';
 	}
 
 	public function getName(): string {

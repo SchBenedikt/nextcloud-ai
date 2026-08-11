@@ -53,7 +53,7 @@ PROMPT;
 
         if ($documents === []) {
             return [
-                'answer' => 'Keine der ausgewaehlten Dateien ist indexiert. Bitte fuehre zuerst `occ eva-ai:index ' . $userId . '` aus oder warte, bis der Index-Job die Dateien verarbeitet hat.',
+                'answer' => 'Keine der ausgewaehlten Dateien ist indexiert. Bitte fuehre zuerst `occ eva_ai:index ' . $userId . '` aus oder warte, bis der Index-Job die Dateien verarbeitet hat.',
                 'sources' => [],
                 'model' => $this->config->get('chat_model'),
                 'error' => null,

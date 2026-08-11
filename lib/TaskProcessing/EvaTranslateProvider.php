@@ -20,7 +20,7 @@ class EvaTranslateProvider implements ISynchronousProvider {
 	}
 
 	public function getId(): string {
-		return 'eva-ai:text2text:translate';
+		return 'eva_ai:text2text:translate';
 	}
 
 	public function getName(): string {

@@ -4,17 +4,28 @@ declare(strict_types=1);
 
 namespace OCA\EvaAi\BackgroundJob;
 
+use OCA\EvaAi\Db\DocumentMapper;
 use OCA\EvaAi\Service\AppConfig;
 use OCA\EvaAi\Service\Indexer;
 use OCP\AppFramework\Utility\ITimeFactory;
 use OCP\BackgroundJob\TimedJob;
 use Psr\Log\LoggerInterface;
 
+/**
+ * Periodic background indexing job.
+ *
+ * Servers every user that has EVA index data (independent background indexing
+ * per user) plus the legacy configured `index_user`, instead of only the
+ * single app-global index_user (Issue #7). Each per-user pass is bounded by
+ * the indexer's max_files_per_run budget, so the whole job stays bounded even
+ * on multi-user instances.
+ */
 class IndexJob extends TimedJob {
     public function __construct(
         ITimeFactory $time,
         private AppConfig $config,
         private Indexer $indexer,
+        private DocumentMapper $documentMapper,
         private LoggerInterface $logger
     ) {
         parent::__construct($time);
@@ -22,18 +33,35 @@ class IndexJob extends TimedJob {
     }
 
     protected function run($argument): void {
-        $user = $this->config->get('index_user');
-        if ($user === '') {
-            return;
-        }
-        // Avoid overlapping runs.
+        // Avoid overlapping runs (same global guard as before).
         if ($this->config->get('index_running') === '1') {
             $started = (int)$this->config->get('index_started');
             if (time() - $started < 3600) {
                 return;
             }
         }
-        $this->logger->info('eva-ai index job start', ['user' => $user]);
-        $this->indexer->run($user);
+
+        $users = $this->documentMapper->distinctUserIds();
+        $configured = $this->config->get('index_user');
+        if ($configured !== '') {
+            $users[] = $configured;
+        }
+        $users = array_values(array_unique(array_filter($users, static fn($u) => $u !== '')));
+
+        if ($users === []) {
+            return;
+        }
+
+        foreach ($users as $user) {
+            $this->logger->info('eva_ai index job start', ['user' => $user]);
+            try {
+                $this->indexer->run($user);
+            } catch (\Throwable $e) {
+                $this->logger->warning('eva_ai index job failed for user', [
+                    'user' => $user,
+                    'exception' => $e->getMessage(),
+                ]);
+            }
+        }
     }
 }

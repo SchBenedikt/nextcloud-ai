@@ -18,7 +18,7 @@ class Reset extends Command {
     }
 
     protected function configure(): void {
-        $this->setName('eva-ai:reset')
+        $this->setName('eva_ai:reset')
             ->setDescription('Delete the complete RAG index (documents + chunks). Without argument: ALL users.')
             ->addArgument('user', InputArgument::OPTIONAL, 'Only delete the index of this user (default: all users)');
     }

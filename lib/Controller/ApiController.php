@@ -53,12 +53,10 @@ class ApiController extends OCSController {
         return new DataResponse($this->ragService->buildStatus($user));
     }
 
-    #[NoAdminRequired]
     public function settings(): DataResponse {
         return new DataResponse($this->config->all());
     }
 
-    #[NoAdminRequired]
     public function saveSettings(): DataResponse {
         $user = $this->requireUser();
         if ($user === null) {
@@ -106,7 +104,6 @@ class ApiController extends OCSController {
         return new DataResponse($this->config->all());
     }
 
-    #[NoAdminRequired]
     public function resetIndex(): DataResponse {
         $user = $this->requireUser();
         if ($user === null) {
@@ -120,7 +117,6 @@ class ApiController extends OCSController {
         ]);
     }
 
-    #[NoAdminRequired]
     public function startIndex(): DataResponse {
         $user = $this->requireUser();
         if ($user === null) {
@@ -342,9 +338,9 @@ class ApiController extends OCSController {
             if (!$this->appManager->isInstalled('notifications')) {
                 return;
             }
-            $url = \OCP\Server::get(\OCP\IURLGenerator::class)->linkToRouteAbsolute('eva-ai.page.app');
+            $url = \OCP\Server::get(\OCP\IURLGenerator::class)->linkToRouteAbsolute('eva_ai.page.app');
             $notification = $manager->createNotification();
-            $notification->setApp('eva-ai')
+            $notification->setApp('eva_ai')
                 ->setUser($user)
                 ->setObject('chat', 'answer')
                 ->setSubject('answer_ready', ['text' => mb_strimwidth($text, 0, 400, '…')])

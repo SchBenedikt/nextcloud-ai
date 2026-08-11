@@ -14,7 +14,7 @@
  */
 import { registerFileAction } from '@nextcloud/files'
 
-const EVA_APP_PATH = '/apps/eva-ai/app'
+const EVA_APP_PATH = '/apps/eva_ai/app'
 
 function evaPageUrl(fileIds) {
 	const params = new URLSearchParams()

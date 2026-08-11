@@ -19,7 +19,7 @@ class EvaTopicsProvider implements ISynchronousProvider {
 	}
 
 	public function getId(): string {
-		return 'eva-ai:text2text:topics';
+		return 'eva_ai:text2text:topics';
 	}
 
 	public function getName(): string {

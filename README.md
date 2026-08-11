@@ -1,78 +1,74 @@
-# EVA (eva-ai) — Local RAG assistant for Nextcloud
+# EVA (eva_ai) — Private RAG assistant for Nextcloud
 
-Chat with a locally running Large Language Model about your own Nextcloud files. The app indexes files, splits them into text chunks, creates embeddings and makes them searchable via RAG. Answers always name the source (file path).
+Chat with a **locally running** LLM (Ollama) about your own Nextcloud files. EVA
+indexes your files, splits them into chunks, creates embeddings and makes them
+searchable via **hybrid retrieval** (vector + BM25 with RRF fusion). Answers
+always cite the source file path the model took the information from.
 
-- Pure PHP, no external RAG service, no external database
-- Supported formats: text (txt, md, code, csv, tsv, html, json, xml, yaml, toml, rtf, sql, ...), PDF, Office (docx/xlsx/pptx incl. macro/template variants), OpenDocument (odt, ods, odp), EPUB and more
-- Hybrid search: vector search + lexical search (BM25) with RRF fusion
-- Tools in chat:
-  - Files: list, create, rename, delete, read, search, notes, knowledge base (KNOWLEDGE.md)
-  - Contacts: find, create, update, delete (own, shared, group, Circles address books)
-  - Calendar: list calendars/events, create/update/delete events, reminders (local time formats)
-  - Mail (Mail app installed): search, list, read, unread count — plus optional indexing of emails into the RAG index (toggle in Settings)
-  - Shares: list (outgoing + incoming), create link/user/group shares with password, expiry and note, update and delete
-  - Tasks/to-dos: list, create, update, complete, delete (VTODO, all task-capable calendars)
-  - Activity feed of all apps, server status (version, PHP, DB, quotas, Ollama)
-  - Weather (Open-Meteo); current time in the user's timezone
-- TaskProcessing provider (IDs `eva-ai:text2text`), compatible with the Assistant app
-- "AI answer ready" notification via the Notifications app
-- No configuration needed: embedding and chat model come from the local Ollama instance
+> 🔒 **Privacy by design:** everything runs on your own server — no external RAG
+> service, no external database, no cloud, no API keys. Only Ollama is involved,
+> and it runs locally too.
+
+---
+
+## Features
+
+- **Local & private**: pure PHP, no external AI service; only a local Ollama instance
+- **Hybrid retrieval**: vector search + lexical search (BM25), fused with RRF
+- **Broad format support**: text (txt, md, code, csv, tsv, html, json, xml, yaml,
+  toml, rtf, sql, …), PDF, Office (docx/xlsx/pptx incl. macro/template variants),
+  OpenDocument (odt, ods, odp), EPUB and more
+- **Chat tools** (toggleable, risk-classified — see [Security](docs/SECURITY.md)):
+  - **Files**: list, create, rename, delete, read, search, notes, personal knowledge base (`KNOWLEDGE.md`)
+  - **Contacts**: find, create, update, delete (own, shared, group and Circles address books)
+  - **Calendar**: list calendars/events, create/update/delete events, reminders, free-slot search
+  - **Mail** (if the Mail app is installed): search, list, read, unread count — plus optional indexing of emails into the RAG index
+  - **Shares**: list (outgoing + incoming), create link/user/group shares with password, expiry and note; update and delete
+  - **Tasks**: list, create, update, complete, delete (VTODO, all task-capable calendars)
+  - **Profile**: read and update the own Nextcloud profile
+  - **Utility**: activity feed, server status, current time (user timezone), weather (Open-Meteo)
+- **TaskProcessing providers**: 13 providers for the Assistant app (chat, summary, headline, topics, translate, reformulate, proofread, reformat, change tone, context write, …)
+- **Talk bot**: optional Nextcloud Talk integration — EVA answers in conversations
+- **File-context chat**: right-click a file in the Files app → "Open with EVA"
+- **"AI answer ready" notifications** via the Notifications app
+- **No configuration needed**: models come from the local Ollama instance
+
+---
 
 ## Requirements
 
-- Nextcloud 30–34 (tested with 34)
-- PHP extension `curl` (standard on Nextcloud installations)
-- Ollama, reachable from the web server. Default URL `http://127.0.0.1:11434` (no API key needed in a classic setup), with these models:
-  - `gemma4:cloud` (chat, default)
-  - `nomic-embed-text:latest` (embeddings)
+| Component | Requirement |
+|---|---|
+| Nextcloud | **30 – 35** (tested with 35) |
+| PHP | ≥ 8.2 (module `curl` required, standard on Nextcloud installs) |
+| Ollama | reachable from the web server, default `http://127.0.0.1:11434` |
+
+Recommended models:
+
+```bash
+ollama pull gemma4:cloud            # chat model (default)
+ollama pull nomic-embed-text:latest # embeddings (default)
+```
+
+---
 
 ## Installation
 
-### 0. Upgrade an existing installation (important!)
-
-If you ran a version **before 1.4.0** (e.g. `ragchat` or early `eva-ai`), the
-database may contain index names with a hyphen (`eva-ai_doc_user_file`,
-`eva-ai_chunk_doc`, …). **MySQL/MariaDB and PostgreSQL do not accept hyphens
-in index names** — those indexes were never created, and the broken schema can
-make the TaskProcessing/Assistant integration fail.
-
-From 1.4.0 on, a repair migration fixes this automatically:
-
-1. Deploy the new code:
-   ```bash
-   cd /var/www/nextcloud/apps
-   sudo git pull        # (inside the eva-ai folder)
-   sudo chown -R www-data:www-data eva-ai
-   ```
-2. Run the upgrade (executes the repair migration, renames/creates the
-   indexes and drops obsolete `ragchat_*` leftovers):
-   ```bash
-   cd /var/www/nextcloud
-   sudo -u www-data php occ upgrade
-   ```
-3. Verify no hyphenated/obsolete indexes are left:
-   ```bash
-   sudo -u www-data php occ maintenance:mimetype:update-db  # optional
-   # or check via mysql: SELECT INDEX_NAME FROM information_schema.STATISTICS
-   # WHERE TABLE_SCHEMA='nextcloud' AND (INDEX_NAME LIKE 'eva-ai%' OR INDEX_NAME LIKE 'ragchat%');
-   -- expect 0 rows
-   ```
-
 ### 1. Install the app
 
-The folder must be named `eva-ai` (app ID):
+The folder must be named `eva_ai` (app ID):
 
 ```bash
 cd /var/www/nextcloud/apps
-sudo git clone https://github.com/SchBenedikt/nextcloud-ai.git eva-ai
-sudo chown -R www-data:www-data eva-ai
+sudo git clone https://github.com/SchBenedikt/nextcloud-ai.git eva_ai
+sudo chown -R www-data:www-data eva_ai
 ```
 
 ### 2. Enable the app
 
 ```bash
 cd /var/www/nextcloud
-sudo -u www-data php occ app:enable eva-ai
+sudo -u www-data php occ app:enable eva_ai
 ```
 
 ### 3. Prepare Ollama
@@ -82,96 +78,150 @@ ollama pull gemma4:cloud
 ollama pull nomic-embed-text:latest
 ```
 
-If Ollama runs on another machine / port, e.g.:
+If Ollama runs on another machine or port:
 
 ```bash
-sudo -u www-data php occ config:app:set eva-ai ollama_url --value=http://192.168.1.50:11434
+sudo -u www-data php occ config:app:set eva_ai ollama_url --value=http://192.168.1.50:11434
 ```
 
-Further settings (defaults in brackets) — optional:
+### 4. First start & indexing
 
-```bash
-sudo -u www-data php occ config:app:set eva-ai chat_model       --value=gemma4:cloud      # chat model (gemma4:cloud)
-sudo -u www-data php occ config:app:set eva-ai embedding_model  --value=nomic-embed-text  # embeddings (nomic-embed-text)
-sudo -u www-data php occ config:app:set eva-ai temperature      --value=0.1               # creativity (0.1)
-sudo -u www-data php occ config:app:set eva-ai context_size     --value=12288             # context length (12288)
-sudo -u www-data php occ config:app:set eva-ai top_k            --value=6                 # RAG hits (6)
-sudo -u www-data php occ config:app:set eva-ai chunk_size       --value=900               # chunk size (900)
-sudo -u www-data php occ config:app:set eva-ai chunk_overlap    --value=120               # overlap (120)
-sudo -u www-data php occ config:app:set eva-ai index_enabled    --value=1                 # 0 = index disabled
-sudo -u www-data php occ config:app:set eva-ai actions_enabled  --value=1                 # 0 = no chat tools
-sudo -u www-data php occ config:app:set eva-ai mail_index_enabled --value=1                 # 0 = emails not indexed
-sudo -u www-data php occ config:app:set eva-ai mail_index_max   --value=25                 # emails per indexing pass
-```
+1. Open `/apps/eva_ai` as a user.
+2. In **Settings** start the index with the **"Start indexing"** button. The user whose
+   home is indexed is set via `index_user` (empty = current user). Each pass also
+   indexes emails (subject, sender, body) if `mail_index_enabled` is on.
+3. Then chat. Tools are enabled by default; every answer names which file it used.
 
-### 4. TaskProcessing / Assistant (optional, recommended)
+### 5. TaskProcessing / Assistant (optional, recommended)
 
-To use the app from the Assistant text field (AI app in the menu), enable the task type. A worker cron processes the tasks — without a worker they stay "scheduled" (HTTP 417 in the UI polling):
+Use EVA from the Assistant text field (AI app in the menu). Enable the task type —
+a worker cron processes the tasks (without a worker they stay "scheduled", HTTP 417):
 
 ```bash
 sudo -u www-data php occ taskprocessing:task-type:set-enabled core:text2text:chat 1
 ```
 
-Cron file `/etc/default.d/eva-ai-taskprocessing`:
+Cron entry (`/etc/cron.d/eva_ai-taskprocessing`):
 
 ```
 * * * * * www-data /usr/bin/php -d error_reporting=0 /var/www/nextcloud/occ taskprocessing:worker -t 60 -i 2 >/dev/null 2>&1
 ```
 
-### 5. Notifications (optional)
+### 6. Notifications (optional)
 
 Bell notification "AI answer ready" after finished answers:
 
 ```bash
 sudo -u www-data php occ app:enable notifications
-sudo -u www-data php occ config:app:set eva-ai notify_on_complete --value=1
+sudo -u www-data php occ config:app:set eva_ai notify_on_complete --value=1
 ```
-
-### 6. First start & indexing
-
-1. Open `/apps/eva-ai` as a user.
-2. In Settings start the index with the "Start indexing" button (the user whose home is indexed is set via `index_user` — empty means the current user). Each pass also indexes emails (subject, sender, body) if enabled.
-3. Then chat. Tools (files, contacts, calendar, mail, shares, tasks, weather, time) are enabled by default; every answer names which file it used.
-3. Then chat. Tools (files, contacts, calendar, weather, time) are enabled by default; every answer names which file it used.
 
 ### 7. Nextcloud Talk bot (optional, recommended)
 
-If the Nextcloud Talk (spreed) app is installed, EVA registers itself automatically as a chat bot on every app boot. You usually do **not** need to do anything — open a Talk conversation as admin and the bot will appear in the bot list (`/`) with the name "EVA AI".
+If Talk (spreed) is installed, EVA registers itself as a bot automatically on every
+app boot. Open a Talk conversation as admin and the bot appears in the bot list with
+the name **"Eva"** — activate it per conversation in the conversation settings.
 
-If the bot does not show up (for example after a manual database cleanup), register or remove it explicitly:
+Explicit (re-)registration, e.g. after a manual DB cleanup:
 
 ```bash
-# Register or update the bot (idempotent — safe to run multiple times)
-sudo -u www-data php occ eva-ai:talk:setup
-
-# Remove the bot again
-sudo -u www-data php occ eva-ai:talk:setup --remove
-
-# Customise name/description shown to admins
-sudo -u www-data php occ eva-ai:talk:setup --name="EVA" --description="Local RAG assistant"
+sudo -u www-data php occ eva_ai:talk:setup                          # register/update (idempotent)
+sudo -u www-data php occ eva_ai:talk:setup --remove                 # remove the bot
+sudo -u www-data php occ eva_ai:talk:setup --name="EVA" --description="Local RAG assistant"
 ```
 
-After registration, **activate the bot per conversation**:
-
-- Talk admin UI → open the conversation → conversation settings → Bots → add "EVA AI".
-- Or programmatically via the Talk OCS API: `POST /ocs/v2.php/apps/spreed/api/v1/room/{token}/bot/{botId}`.
-
-Once active, EVA answers in that Talk conversation based on the indexed documents of the user who added it. The bot is sent the last 15 chat messages as history so it can respond to follow-up questions like "what did I just ask?".
+The bot answers based on the indexed documents of the user who added it, and it
+receives the last `talk_history_size` messages as context.
 
 ### 8. File-context chat from the Files app (optional)
 
-Right-click any file in the Files app → "Open with EVA" (single file) or "Chat about these N files with EVA" (multi-select). The selected files open the EVA app on the file-context view and the chat answers strictly based on those files' chunks — no global index lookup. Files must already be indexed for the bot to find chunks.
+Right-click a file → **"Open with EVA"** (single file) or **"Chat about these N
+files with EVA"** (multi-select). The chat answers strictly based on those files'
+chunks — no global index lookup. The files must already be indexed.
+
+---
+
+## Upgrading from an older version
+
+If you ran a version **before 1.4.0** (e.g. `ragchat` or early `eva_ai`), the database
+may contain index names with a hyphen (`eva_ai_doc_user_file`, …). **MySQL/MariaDB and
+PostgreSQL do not accept hyphens in index names** — those indexes were never created,
+and the broken schema could break the TaskProcessing/Assistant integration.
+
+From 1.4.0 on, a repair migration fixes this automatically:
+
+```bash
+cd /var/www/nextcloud/apps
+sudo git pull                       # inside the eva_ai folder
+sudo chown -R www-data:www-data eva_ai
+cd /var/www/nextcloud
+sudo -u www-data php occ upgrade    # runs the repair migration
+```
+
+Verify no obsolete indexes remain:
+
+```sql
+SELECT INDEX_NAME FROM information_schema.STATISTICS
+WHERE TABLE_SCHEMA='nextcloud' AND (INDEX_NAME LIKE 'eva_ai%' OR INDEX_NAME LIKE 'ragchat%');
+-- expect 0 rows
+```
+
+---
+
+## Configuration
+
+All settings are stored in `oc_appconfig` and can be changed via occ or the app's
+Settings tab. Defaults are shown in brackets.
+
+| Setting | Default | Description |
+|---|---|---|
+| `ollama_url` | `http://127.0.0.1:11434` | Base URL of the Ollama instance |
+| `chat_model` | `gemma4:cloud` | Chat/LLM model |
+| `embedding_model` | `nomic-embed-text` | Embedding model |
+| `temperature` | `0.1` | LLM creativity |
+| `context_size` | `12288` | Context window length |
+| `top_k` | `6` | Number of RAG hits retrieved |
+| `chunk_size` | `900` | Text chunk size for indexing |
+| `chunk_overlap` | `120` | Chunk overlap |
+| `max_file_size` | `20971520` (20 MB) | Largest file to index |
+| `max_files_per_run` | `40` | Files processed per indexing pass |
+| `scope_path` | `''` | Only index files under this path (empty = whole home) |
+| `exclude_paths` | `''` | Comma-separated path prefixes to skip |
+| `index_user` | `''` | User whose home is indexed (empty = current user) |
+| `index_enabled` | `0` | Master switch for the indexer |
+| `actions_enabled` | `1` | Enable chat tools (0 = read-only chat) |
+| `exec_write_types` | `''` (all) | Restrict creatable file types, e.g. `md,txt` |
+| `exec_write_max_chars` | `100000` | Max characters for AI-created files |
+| `exec_delete_mode` | `own` | `own` = only files EVA created; `off` = deletion disabled |
+| `mail_index_enabled` | `1` | Index emails into RAG (0 = off) |
+| `mail_index_max` | `25` | Emails per indexing pass |
+| `notify_on_complete` | `1` | "AI answer ready" notification |
+| `talk_history_size` | `50` | Chat messages sent to the Talk bot as history |
+| `talk_bot_trigger` | `Eva` | Bot trigger word |
+
+Example:
+
+```bash
+sudo -u www-data php occ config:app:set eva_ai chat_model --value=gemma4:cloud
+sudo -u www-data php occ config:app:set eva_ai top_k --value=6
+sudo -u www-data php occ config:app:set eva_ai mail_index_enabled --value=0
+```
+
+See [docs/CONFIGURATION.md](docs/CONFIGURATION.md) for details.
+
+---
 
 ## Calendar tools: supported time formats
 
-The chat interprets times in the user's timezone (e.g. Europe/Berlin):
+The chat interprets times in the user's timezone (e.g. `Europe/Berlin`):
 
-- ISO with/without Z: `2026-08-20T16:00:00Z`, `2026-08-20 16:00` (a Z is read as local time for non-UTC zones)
+- ISO with/without `Z`: `2026-08-20T16:00:00Z`, `2026-08-20 16:00` (a `Z` is read as local time for non-UTC zones)
 - German formats: `20.08.2026 16:00`, `20/08/2026 16:00`
 - Relative: `morgen 09:00` (tomorrow), `in 2 Tagen um 10:30`
 - A plain date → all-day event
 - Reminders via the `reminder_minutes` parameter (e.g. 30, 60)
 
+<<<<<<< HEAD
 ## Data Lifecycle & Privacy
 
 EVA operates on your personal Nextcloud data. This section documents what data is stored,
@@ -256,8 +306,84 @@ This drops all database tables and removes the app-data folder.
 | `index_user` | `''` (current user) | Only this user's files are indexed. Leave empty for per-user indexing. |
 
 ## Notes
+=======
+---
+>>>>>>> 8f973d3 (WIP: fix issues #5-#16 + app-id rename to eva_ai)
 
-- The index lives in the Nextcloud app-data folder, not in an external database.
-- Known dependency: Ollama must have the models loaded locally (`ollama pull`), otherwise the first answer is slow.
-- Contacts and calendars are read from all address books / calendars the user can see (own, shared, group and Circles/Teams calendars); writes go to the user's personal books.
-- The tools are online-calls to your local Ollama; the app never sends file contents to third parties.
+## Data lifecycle & privacy
+
+EVA operates on your personal Nextcloud data. A complete overview of what is
+stored, where, and how to remove it lives in [docs/PRIVACY.md](docs/PRIVACY.md).
+
+Quick reference:
+
+| Data | Location | Retention |
+|---|---|---|
+| Document metadata | DB (`eva_ai_documents`) | Until file deleted or index reset |
+| Text chunks & embeddings | DB (`eva_ai_chunks`) | Same as parent document |
+| Indexed emails | DB (`eva_ai_documents`) | Until email changes or index reset |
+| Chat history | DB (`eva_ai_chat_history`) | Per user; deleted on index reset |
+| AI-created file markers | app-data (`ai-marks/`) | Until file deleted or cleaned |
+| Knowledge base (`KNOWLEDGE.md`) | User home | Until user deletes the file |
+| Agent conversation state | DB (`eva_ai_agent_store`) | Per conversation token; deleted on reset |
+| App configuration | `oc_appconfig` | Persistent until changed |
+
+**Reset a single user:**
+
+```bash
+sudo -u www-data php occ eva_ai:reset --user=username
+```
+
+**Reset all users:**
+
+```bash
+sudo -u www-data php occ eva_ai:reset --all
+```
+
+**Remove only AI-created file markers:**
+
+```bash
+sudo -u www-data php occ eva_ai:reset --user=username --marks-only
+```
+
+**Uninstall completely:**
+
+```bash
+sudo -u www-data php occ app:remove eva_ai
+```
+
+---
+
+## Security model
+
+All tools are classified by **risk** (readonly / mutating / destructive) and restricted
+by **execution surface** (web chat, Talk, RAG, TaskProcessing). Mutating and destructive
+tools always require explicit user confirmation. See [docs/SECURITY.md](docs/SECURITY.md).
+
+---
+
+## Commands
+
+| Command | Purpose |
+|---|---|
+| `occ eva_ai:index [user]` | Index a user's files for RAG |
+| `occ eva_ai:reset [--user] [--all] [--marks-only]` | Delete index data |
+| `occ eva_ai:mounts` | List file mounts visible to a user (debug) |
+| `occ eva_ai:tool` | Run a single EVA tool for a user (test) |
+| `occ eva_ai:talk:setup [--remove] [--name] [--description]` | Register/remove the Talk bot |
+
+---
+
+## Development
+
+- **Tests**: `composer test` (PHPUnit) — security policy + TaskProcessing contracts
+- **CI**: GitHub Actions on PHP 8.2 / 8.3 / 8.4 (see [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md))
+- **Architecture**: see [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)
+
+---
+
+## License
+
+AGPL-3.0-or-later — see [COPYING](COPYING).
+
+*Bugs & feature requests:* https://github.com/SchBenedikt/nextcloud-ai/issues
