@@ -26,7 +26,7 @@
     <category>tools</category>
     <bugs>https://github.com/SchBenedikt/nextcloud-ai/issues</bugs>
     <dependencies>
-        <nextcloud min-version="30" max-version="34"/>
+        <nextcloud min-version="30" max-version="35"/>
         <php min-version="8.2"/>
     </dependencies>
     <optional-apps>
