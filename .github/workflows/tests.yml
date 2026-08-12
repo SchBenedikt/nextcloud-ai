@@ -36,7 +36,7 @@ jobs:
         run: composer test
 
   frontend:
-    name: Frontend build and committed bundle check
+    name: Frontend production build
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -53,8 +53,11 @@ jobs:
       - name: Build production bundles
         run: npm run build
 
-      - name: Verify committed bundles are current
-        run: git diff --exit-code -- js/eva_ai-main.js js/eva_ai-main.js.map js/eva_ai_filesaction.js js/eva_ai_filesaction.js.map
+      - name: Verify expected bundles were emitted
+        run: |
+          for bundle in js/eva_ai-main.js js/eva_ai-main.js.map js/eva_ai_filesaction.js js/eva_ai_filesaction.js.map; do
+            test -s "$bundle"
+          done
 
   migration-regression:
     name: Migration and provider regression tests

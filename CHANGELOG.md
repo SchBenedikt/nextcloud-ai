@@ -68,7 +68,7 @@ follows [Semantic Versioning](https://semver.org/).
   `tests/TaskProcessingContractTest.php`, `composer.json` (PHPUnit), bootstrap
   and `phpunit.xml.dist`.
 - GitHub Actions CI (`tests.yml`) running PHPUnit on PHP 8.2/8.3/8.4, PHP
-  syntax checks, frontend builds, generated-bundle checks and migration/provider
+  syntax checks, frontend builds, generated-bundle emission checks and migration/provider
   regression tests; composer install retries on transient SSL failures.
 - Privacy documentation (data lifecycle, retention, reset commands) in the
   README and `docs/PRIVACY.md`.
