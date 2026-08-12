@@ -147,10 +147,14 @@ tools are allowed in each:
 
 ## Current UI and tool boundaries
 
-The workspace uses one responsive `--eva-content-width` token: it expands to `clamp(1180px, 78vw, 1680px)` on large displays and is constrained by the viewport on smaller screens. The native New chat action is centered, uses the same full padded navigation-item width as Documents and Settings, and is placed directly below the chat search. Assistant providers keep stable IDs while using the display names `Eva · Local`, `Eva · RAG`, `Eva · Tools`, and `Eva · Agent`.
+The workspace uses one responsive `--eva-content-width` token: it expands to `clamp(1180px, 78vw, 1680px)` on large displays and is constrained by the viewport on smaller screens. The native New chat action uses a block-level full width with Nextcloud's native wide modifier, matching the padded Documents and Settings navigation-item width directly below the chat search. Assistant providers keep stable IDs while using the display names `Eva · Local`, `Eva · RAG`, `Eva · Tools`, and `Eva · Agent`.
 
 The centralized tool policy exposes registered read-only tools to the safe RAG/TaskProcessing surfaces. File, calendar, contact, share, and task mutations remain restricted to interactive surfaces and require explicit confirmation where configured. Live web search is not implemented yet; see GitHub issue #54.
 
 ## Index cancellation
 
 The Stop indexing action detaches the active per-user run immediately by clearing its run token and state. Queued workers and active workers stop at their next cancellation check and cannot overwrite a newer run. An Ollama embedding request already in progress cannot be interrupted by a separate PHP request, so that worker-side request may finish before cleanup, but no subsequent file or pass is started.
+
+## Index conflict recovery
+
+A repeated start request for the same user is treated as an idempotent status response rather than a user-visible HTTP 409. A genuine worker-lock conflict remains a 409 with an actionable message. Request parameters use Nextcloud's native IRequest access first, with one non-recursive JSON-body fallback for POST payloads; the app does not use the old recursively named wrapper. Stale per-user index state is recovered after 15 minutes without a heartbeat; cancellation recovery remains faster. These responses are application concurrency handling, not Content Security Policy decisions.

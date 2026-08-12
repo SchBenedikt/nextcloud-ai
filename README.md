@@ -31,9 +31,10 @@ always cite the source file path the model took the information from.
 - **Talk bot**: optional Nextcloud Talk integration — EVA answers in conversations
 - **File-context chat**: right-click a file in the Files app → "Open with EVA"
 - **Responsive chat and document UI**: fluid layouts for mobile and wide desktop screens, with explicit chunk loading, empty, error and retry states when inspecting indexed documents
+- **Reliable indexing requests**: request parameters use Nextcloud's native access with a single non-recursive JSON fallback, preserving POST bodies while avoiding recursive input handling and memory failures; duplicate starts are idempotent while genuine worker-lock conflicts remain explicit 409 responses
 - **Persistent settings**: folder exclusions are saved immediately, and connection checks use the configured HTTP/HTTPS Ollama endpoint for every user
 - **Incremental document browsing**: large knowledge bases load in manageable pages with a "Load more" action and clear progress/end state
-- **Unified workspace navigation**: a responsive shared content width that expands on large screens while remaining mobile-safe with an always-visible native chat search, a centered native primary New chat action with the same full navigation-item width as Documents and Settings directly below the always-visible native chat search, with a standard comfortable touch target and reduced horizontal sidebar padding, a clean native three-dot rename/delete menu, and Markdown export
+- **Unified workspace navigation**: a responsive shared content width that expands on large screens while remaining mobile-safe with an always-visible native chat search, a native primary New chat action using the native wide modifier and a block-level full navigation-item width matching Documents and Settings directly below the always-visible native chat search, with a standard comfortable touch target and reduced horizontal sidebar padding, a clean native three-dot rename/delete menu, and Markdown export
 - **"AI answer ready" notifications** via the Notifications app
 - **No configuration needed**: models come from the local Ollama instance
 

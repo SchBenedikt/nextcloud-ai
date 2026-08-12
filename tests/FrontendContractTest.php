@@ -42,7 +42,7 @@ final class FrontendContractTest extends TestCase {
         self::assertStringContainsString('NcAppNavigationSearch', $app);
         self::assertStringContainsString('placeholder="Search chats"', $app);
         self::assertStringContainsString('<div class="new-chat-container">', $app);
-        self::assertStringContainsString('justify-content: center;', $app);
+        self::assertStringContainsString('display: block;', $app);
         self::assertStringContainsString('width: 100%;', $app);
         self::assertStringContainsString('max-width: 100%;', $app);
         self::assertStringContainsString("import NcIconSvgWrapper from '@nextcloud/vue/components/NcIconSvgWrapper'", $app);
@@ -50,15 +50,16 @@ final class FrontendContractTest extends TestCase {
         self::assertStringContainsString('NcButton', $app);
         self::assertStringContainsString('variant="primary"', $app);
         self::assertStringNotContainsString('variant="tertiary"', $app);
-        self::assertStringNotContainsString(':wide="true"', $app);
+        self::assertStringContainsString(':wide="true"', $app);
         self::assertStringContainsString('size="normal"', $app);
-        self::assertStringContainsString('alignment="start"', $app);
+        self::assertStringNotContainsString('alignment="start"', $app);
         self::assertStringNotContainsString('position: sticky;', $app);
         self::assertStringNotContainsString('top: 0;', $app);
         self::assertStringContainsString('background: transparent;', $app);
         self::assertStringContainsString('margin-top: calc(-1 * var(--default-grid-baseline, 4px));', $app);
         self::assertStringContainsString('padding: 0 var(--app-navigation-padding, 8px) var(--default-grid-baseline, 4px);', $app);
         self::assertStringContainsString('box-sizing: border-box;', $app);
+        self::assertStringContainsString('display: block;', $app);
         self::assertStringContainsString('width: 100%;', $app);
         self::assertStringContainsString(':path="mdiPencilOutline"', $app);
         self::assertStringContainsString(':path="mdiTrashCanOutline"', $app);
@@ -79,6 +80,12 @@ final class FrontendContractTest extends TestCase {
         self::assertStringContainsString("'eva-ai:chats-cleared'", $app);
         self::assertStringContainsString('api#deleteAllChats', (string)file_get_contents(__DIR__ . '/../appinfo/routes.php'));
         self::assertStringContainsString('public function deleteAllChats', (string)file_get_contents(__DIR__ . '/../lib/Controller/ApiController.php'));
+        $controller = (string)file_get_contents(__DIR__ . '/../lib/Controller/ApiController.php');
+        self::assertStringContainsString('private function requestParam', $controller);
+        self::assertStringContainsString('private function requestBody', $controller);
+        self::assertStringContainsString('$this->request->getParam(', $controller);
+        self::assertStringNotContainsString('private function param', $controller);
+        self::assertStringNotContainsString('function jsonBody', $controller);
         self::assertStringContainsString('deleteAll(string $user)', (string)file_get_contents(__DIR__ . '/../lib/Service/ChatStore.php'));
 
         $documents = (string)file_get_contents(__DIR__ . '/../src/views/DocumentsView.vue');

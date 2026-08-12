@@ -8,7 +8,7 @@
 						class="new-chat-button"
 						variant="primary"
 						size="normal"
-						alignment="start"
+						:wide="true"
 						:disabled="busy"
 						aria-label="Start a new chat"
 						@click="newChat">
@@ -256,19 +256,19 @@ export default {
 }
 
 .new-chat-container {
-	align-items: flex-start;
 	background: transparent;
-	display: flex;
-	justify-content: center;
+	box-sizing: border-box;
+	display: block;
 	margin-top: calc(-1 * var(--default-grid-baseline, 4px));
 	padding: 0 var(--app-navigation-padding, 8px) var(--default-grid-baseline, 4px);
-	box-sizing: border-box;
 	width: 100%;
 }
 
-.new-chat-button {
+.new-chat-button,
+.new-chat-container :deep(.new-chat-button) {
 	box-sizing: border-box;
-	margin-inline: auto;
+	display: block;
+	margin: 0;
 	max-width: 100%;
 	width: 100%;
 }

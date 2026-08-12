@@ -59,7 +59,7 @@ class IndexJob extends TimedJob {
                     $heartbeat = (int)$this->config->get('index_heartbeat');
                     $age = $heartbeat > 0 ? time() - $heartbeat : PHP_INT_MAX;
                     $cancelRequested = $this->config->get('index_cancel_requested') === '1';
-                    if ($age > 3600 || ($cancelRequested && $age > 300)) {
+                    if ($age > 900 || ($cancelRequested && $age > 300)) {
                         // Cron must recover abandoned requests even when no
                         // browser calls the status endpoint.
                         $this->config->set('index_running', '0');

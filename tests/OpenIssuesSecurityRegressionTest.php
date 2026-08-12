@@ -102,6 +102,25 @@ final class OpenIssuesSecurityRegressionTest extends TestCase {
         self::assertStringContainsString("set('index_cancel_requested', '0')", $stop);
     }
 
+    public function testIndexStartTreatsDuplicateRunsAsIdempotent(): void {
+        $controller = (string)file_get_contents(__DIR__ . '/../lib/Controller/ApiController.php');
+        $start = strpos($controller, 'private function queueIndex');
+        self::assertNotFalse($start);
+        $end = strpos($controller, 'private function recoverStaleIndex', $start);
+        self::assertNotFalse($end);
+        $queue = substr($controller, $start, $end - $start);
+        self::assertStringContainsString("'alreadyRunning' => true", $queue);
+        self::assertStringContainsString("'message' => 'Indexing is already running for this user.'", $queue);
+        self::assertStringContainsString('private function requestParam', $controller);
+        self::assertStringContainsString('private function requestBody', $controller);
+        self::assertStringContainsString('$this->request->getParam(', $controller);
+        self::assertStringNotContainsString('private function param', $controller);
+        self::assertStringNotContainsString('function jsonBody', $controller);
+        self::assertStringContainsString('if ($age > 900 || ($cancelRequested && $age > 300))', $controller);
+        self::assertStringContainsString('if ($age > 900 || ($cancelRequested && $age > 300))', (string)file_get_contents(__DIR__ . '/../lib/Service/RagService.php'));
+        self::assertStringContainsString('if ($age > 900 || ($cancelRequested && $age > 300))', (string)file_get_contents(__DIR__ . '/../lib/BackgroundJob/IndexJob.php'));
+    }
+
     public function testIndexingContractUsesOneExclusivePerUserClaimPath(): void {
         $indexer = (string)file_get_contents(__DIR__ . '/../lib/Service/Indexer.php');
         self::assertStringContainsString('ILockingProvider::LOCK_EXCLUSIVE', $indexer);

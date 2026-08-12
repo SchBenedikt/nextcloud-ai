@@ -367,7 +367,7 @@ class RagService {
             $heartbeat = (int)$this->config->get('index_heartbeat');
             $started = $heartbeat > 0 ? $heartbeat : (int)$this->config->get('index_started');
             $age = $started > 0 ? time() - $started : PHP_INT_MAX;
-            if ($age > 3600 || ($cancelRequested && $age > 300)) {
+            if ($age > 900 || ($cancelRequested && $age > 300)) {
                 // Recover queued jobs that never reached a cron worker. The
                 // run token prevents a late stale worker from clearing a new run.
                 $this->config->set('index_running', '0');

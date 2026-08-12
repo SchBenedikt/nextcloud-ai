@@ -45,7 +45,7 @@ composer test
 3. Otherwise the contract tests **skip** with a clear message — the suite stays
    green in CI environments without Nextcloud.
 
-Before opening a pull request, frontend changes must pass `npm run build` and the generated-bundle emission checks. Keep the relevant Markdown documentation and `CHANGELOG.md` synchronized with user-visible changes.
+The API controller must use Nextcloud's IRequest access plus one non-recursive JSON fallback for JSON/form bodies; do not add a recursively named custom request parser. Before opening a pull request, frontend changes must pass `npm run build` and the generated-bundle emission checks. Keep the relevant Markdown documentation and `CHANGELOG.md` synchronized with user-visible changes.
 
 ## CI
 
@@ -93,4 +93,4 @@ Before opening a pull request, frontend changes must pass `npm run build` and th
 
 ## Validation notes
 
-When changing the shared workspace layout, keep the responsive `--eva-content-width` contract, native navigation controls, full-width centered New chat sizing matching the other navigation items, notification app-icon URL generation, stable TaskProcessing provider IDs, and tool-policy confirmation boundaries covered by tests. Regenerate committed frontend bundles only after source validation succeeds.
+When changing the shared workspace layout, keep the responsive `--eva-content-width` contract, native navigation controls, block-level full-width New chat sizing using the native wide modifier and matching the other navigation items, notification app-icon URL generation, stable TaskProcessing provider IDs, and tool-policy confirmation boundaries covered by tests. Regenerate committed frontend bundles only after source validation succeeds.
