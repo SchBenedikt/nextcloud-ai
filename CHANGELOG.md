@@ -7,6 +7,7 @@ follows [Semantic Versioning](https://semver.org/).
 ## [Unreleased]
 
 ### Fixed
+- **Indexing API**: use native Nextcloud request parameters with a single non-recursive JSON fallback instead of a recursively named input wrapper; duplicate starts now remain idempotent while genuine worker-lock conflicts still return an actionable 409.
 - **Frontend**: the main Vue bundle is now emitted as `eva_ai-main.js` (was
   `eva-ai-main.js`), matching the name the page controller looks up. The app
   page no longer renders as an empty shell after the app-ID migration.
@@ -32,6 +33,8 @@ follows [Semantic Versioning](https://semver.org/).
   restricted to administrators.
 
 ### Changed
+- **Responsive workspace and providers**: the New chat action now uses a block-level full width with Nextcloud's native wide modifier, exactly matching the Documents/Settings navigation-item width, shared chat content expands on large screens, notification entries use the EVA app icon, and Assistant provider labels are standardized as `Eva · Local`, `Eva · RAG`, `Eva · Tools`, and `Eva · Agent`.
+- **Frontend navigation**: the native chat search now has the primary **New chat** action directly below it, and per-chat rename/delete actions use Nextcloud's native icon wrapper for stable alignment.
 - **Issue #2**: the app ID is migrated from `eva-ai` to `eva_ai` (info.xml,
   namespaces references, routes, AppData folder, DB rows, Talk bot URL, JS
   bundles and docs). Existing installs keep their data; the Talk bot was

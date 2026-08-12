@@ -8,7 +8,7 @@ The web UI presents the configuration in these groups:
 - **Indexing & scope** — folder scope, file/run limits, chunking, Mail indexing, and excluded folders.
 - **Talk & notifications** — Talk history size and the trigger name.
 
-Use **Save changes** to persist the form. **Save & start indexing** saves the settings first and stops if saving fails. The UI displays `max_file_size` in MB while the app stores it as bytes. Deleting the index removes indexed documents and vectors, not the original files in Nextcloud.
+Use **Save changes** to persist the form. **Save & start indexing** saves the settings first and stops if saving fails. The UI displays `max_file_size` in MB while the app stores it as bytes. The sidebar provides native chat search, a primary **New chat** action directly below it, and per-chat rename/delete controls. Chat-history deletion is separate from index deletion: deleting the index removes indexed documents and vectors, not chats or original files in Nextcloud.
 
 # EVA — Configuration reference
 
@@ -90,3 +90,9 @@ sudo -u www-data php occ config:list apps --app=eva_ai
   (a RAG index is still required for file-grounded answers).
 - **Talk bot does not appear** → run `occ eva_ai:talk:setup`, then activate the
   bot per conversation (Talk admin UI or OCS API).
+
+## Responsive layout and assistant providers
+
+Chat, documents, and settings share a responsive content-width token that uses more available space on large screens without overflowing smaller viewports. The New chat control is centered and uses the same full padded navigation-item width as Documents and Settings. Nextcloud Assistant displays the stable EVA provider family as `Eva · Local`, `Eva · RAG`, `Eva · Tools`, and `Eva · Agent`; provider IDs are unchanged.
+
+Read-only tools may be used on the RAG and TaskProcessing surfaces according to the centralized policy. State-changing tools are not widened by this UI work and remain confirmation-gated. Live web search remains planned under issue #54.

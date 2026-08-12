@@ -34,7 +34,7 @@ lib/
 | `SharesService` | File sharing: list/create/update/delete shares |
 | `EmailService` | Mail app integration: search/list/read mails + email indexing |
 | `FileContextChatService` | Chat strictly over selected files (Files app context menu) |
-| `ChatStore` | Chat history persistence (`eva_ai_chat_history`) |
+| `ChatStore` | Chat history persistence in Nextcloud AppData (`eva_ai/chats/<user namespace>/chats.json`) |
 | `AgentStore` | Agent conversation state (`eva_ai_agent_store`) |
 | `ActivityService` | Reads the activity feed (all apps) |
 | `AppConfig` | Typed access to all app settings with defaults |
@@ -47,7 +47,7 @@ lib/
 |---|---|
 | `eva_ai_documents` | Indexed files/emails: path, name, hash, mime, size, user |
 | `eva_ai_chunks` | Text chunks + embedding vectors, linked to a document |
-| `eva_ai_chat_history` | Per-user chat conversations/messages |
+| `eva_ai/chats/<user namespace>/chats.json` (AppData) | Per-user chat conversations/messages |
 | `eva_ai_agent_store` | Agent (confirmation-flow) conversation state |
 | `ai-marks/` (app-data) | Tracks files created by EVA (for safe deletion) |
 
@@ -57,8 +57,12 @@ Migrations in `lib/Migration/`:
 - `Version101000…` — agent store / chat-history extensions
 - `Version103000…` — schema refinements
 - `Version104000…` — **repair migration**: renames hyphenated index names
-  (`eva_ai_*` → `eva_ai_*`) and drops obsolete `ragchat_*` leftovers; required
+  (legacy `eva-ai_*` / `ragchat_*` → `eva_ai_*`) and drops obsolete leftovers; required
   for MySQL/MariaDB/PostgreSQL compatibility
+
+## Frontend navigation
+
+The Vue application uses native Nextcloud navigation components. `NcAppNavigationSearch` filters the per-user chat list, and the primary `New chat` action is rendered directly below the search field. Each chat entry exposes native action-menu controls for rename and delete; these operations are scoped to the authenticated user and do not invoke LLM file tools.
 
 ## Data flow — indexing
 
@@ -140,3 +144,17 @@ tools are allowed in each:
 - `tests/TaskProcessingContractTest.php` — provider IDs, task types, input/output shapes
 - Bootstrap loads OCP interfaces when a Nextcloud installation is available and
   skips the contract tests gracefully otherwise (CI-safe).
+
+## Current UI and tool boundaries
+
+The workspace uses one responsive `--eva-content-width` token: it expands to `clamp(1180px, 78vw, 1680px)` on large displays and is constrained by the viewport on smaller screens. The native New chat action uses a block-level full width with Nextcloud's native wide modifier, matching the padded Documents and Settings navigation-item width directly below the chat search. Assistant providers keep stable IDs while using the display names `Eva · Local`, `Eva · RAG`, `Eva · Tools`, and `Eva · Agent`.
+
+The centralized tool policy exposes registered read-only tools to the safe RAG/TaskProcessing surfaces. File, calendar, contact, share, and task mutations remain restricted to interactive surfaces and require explicit confirmation where configured. Live web search is not implemented yet; see GitHub issue #54.
+
+## Index cancellation
+
+The Stop indexing action detaches the active per-user run immediately by clearing its run token and state. Queued workers and active workers stop at their next cancellation check and cannot overwrite a newer run. An Ollama embedding request already in progress cannot be interrupted by a separate PHP request, so that worker-side request may finish before cleanup, but no subsequent file or pass is started.
+
+## Index conflict recovery
+
+A repeated start request for the same user is treated as an idempotent status response rather than a user-visible HTTP 409. A genuine worker-lock conflict remains a 409 with an actionable message. Request parameters use Nextcloud's native IRequest access first, with one non-recursive JSON-body fallback for POST payloads; the app does not use the old recursively named wrapper. Stale per-user index state is recovered after 15 minutes without a heartbeat; cancellation recovery remains faster. These responses are application concurrency handling, not Content Security Policy decisions.

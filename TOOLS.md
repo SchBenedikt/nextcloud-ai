@@ -4,6 +4,8 @@ Eva (the Nextcloud AI assistant) can call the following tools during a conversat
 
 Tool usage is proposed by the assistant and **confirmed by the user** before anything is executed.
 
+The web sidebar's chat search, per-chat rename/delete actions, and Settings' **Delete all chats** control are UI operations, not LLM tools. They only manage the logged-in user's saved chat history.
+
 ---
 
 ## File tools
@@ -355,6 +357,10 @@ Gets the weather forecast (today + 2 days) for a place. Useful for planning outd
 
 ## Notes on behaviour
 
-- **Read-only vs. write tools:** destructive operations (create/update/delete, shares, file writes) always require an explicit user confirmation in the chat before they are executed.
+- **Read-only vs. write tools:** mutating or destructive operations (create/update/delete, shares, file writes) always require an explicit user confirmation in the chat before they are executed.
 - **Background worker (CLI) limitation:** file tools (`list_files`, `create_file`, `create_note`, `create_folder`, `rename_file`, `delete_file`, `read_file`, `search_files`, `update_knowledge`) are not available in background `taskprocessing:worker` runs, because the user's file mount is not set up there. They work in the regular web chat.
 - **Multi-step tasks:** Eva combines several tools in one task run (up to 4 tool rounds) until it can answer.
+
+## Safe tool exposure
+
+EVA can expose registered read-only tools such as file search/read, calendar and mail lookup, contacts lookup, shares/tasks listing, recent activity, server status, time, and weather according to the active surface. State-changing and destructive operations remain policy-controlled and require explicit confirmation on interactive surfaces; they are not enabled automatically by provider-label or layout changes. Live web search is tracked separately in issue #54.

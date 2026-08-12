@@ -44,25 +44,29 @@ class ApiController extends OCSController {
         $this->config->setUserId($this->userId);
     }
 
-    /** Lazily decode JSON bodies used by the Vue/axios client. */
-    private ?array $jsonBody = null;
+    /**
+     * Read JSON bodies once without shadowing framework/controller parameter APIs.
+     * IRequest exposes query/form parameters directly, while JSON bodies need
+     * this small fallback on the supported Nextcloud versions.
+     */
+    private ?array $bodyParams = null;
 
-    private function jsonBody(): array {
-        if ($this->jsonBody !== null) {
-            return $this->jsonBody;
+    private function requestBody(): array {
+        if ($this->bodyParams !== null) {
+            return $this->bodyParams;
         }
         $raw = (string)file_get_contents('php://input');
         $decoded = $raw !== '' ? json_decode($raw, true) : null;
-        $this->jsonBody = is_array($decoded) ? $decoded : [];
-        return $this->jsonBody;
+        $this->bodyParams = is_array($decoded) ? $decoded : [];
+        return $this->bodyParams;
     }
 
-    private function param(string $key, mixed $default = null): mixed {
-        $value = $this->request->getParam($key);
+    private function requestParam(string $key, mixed $default = null): mixed {
+        $value = $this->request->getParam($key, null);
         if ($value !== null) {
             return $value;
         }
-        $body = $this->jsonBody();
+        $body = $this->requestBody();
         return array_key_exists($key, $body) ? $body[$key] : $default;
     }
 
@@ -114,7 +118,7 @@ class ApiController extends OCSController {
         $validationErrors = [];
         $pending = [];
         foreach ($allowed as $key) {
-            $value = $this->param($key);
+            $value = $this->requestParam($key);
             if ($value === null) {
                 continue;
             }
@@ -216,9 +220,17 @@ class ApiController extends OCSController {
             return new DataResponse(['stopped' => true, 'status' => $this->ragService->buildStatus($user)]);
         }
         $this->config->set('index_cancel_requested', '1');
-        // Keep the run marked as active until the queued worker observes the
-        // flag and cleans up. This prevents a new run from racing the old one.
-        $this->config->set('index_mode', 'stopping');
+        // Detach the run immediately so the UI and a subsequent start do not
+        // wait for a worker that may currently be inside an Ollama request.
+        // Clearing the run ID is the cancellation token: queued/active workers
+        // will exit on their next check and their finally blocks cannot clear a
+        // newer run's state. The per-user worker lock still prevents overlap.
+        $this->config->set('index_running', '0');
+        $this->config->set('index_mode', 'idle');
+        $this->config->set('index_run_id', '');
+        $this->config->set('index_heartbeat', '');
+        $this->config->set('index_finished', (string)time());
+        $this->config->set('index_cancel_requested', '0');
         return new DataResponse([
             'stopped' => true,
             'status' => $this->ragService->buildStatus($user),
@@ -235,8 +247,10 @@ class ApiController extends OCSController {
         if ($this->config->get('index_running') === '1') {
             return new DataResponse([
                 'queued' => false,
+                'alreadyRunning' => true,
+                'message' => 'Indexing is already running for this user.',
                 'status' => $this->ragService->buildStatus($user),
-            ], 409);
+            ]);
         }
         $runId = bin2hex(random_bytes(16));
         $lockPath = 'eva_ai/index/' . hash('sha256', $user);
@@ -247,6 +261,7 @@ class ApiController extends OCSController {
         } catch (\Throwable $e) {
             return new DataResponse([
                 'queued' => false,
+                'error' => 'Indexing is currently locked by another worker. Please retry shortly.',
                 'status' => $this->ragService->buildStatus($user),
             ], 409);
         }
@@ -254,16 +269,17 @@ class ApiController extends OCSController {
             $this->lockingProvider->releaseLock($lockPath, ILockingProvider::LOCK_EXCLUSIVE);
             return new DataResponse([
                 'queued' => false,
+                'error' => 'Indexing could not be claimed because another worker is active. Please retry shortly.',
                 'status' => $this->ragService->buildStatus($user),
             ], 409);
         }
         try {
             $this->config->setUserId($user);
-        $this->config->set('index_started', (string)time());
-        $this->config->set('index_heartbeat', (string)time());
-        $this->config->set('index_finished', '0');
-        $this->config->set('last_index_error', '');
-        $this->config->set('index_mode', $mode);
+            $this->config->set('index_started', (string)time());
+            $this->config->set('index_heartbeat', (string)time());
+            $this->config->set('index_finished', '0');
+            $this->config->set('last_index_error', '');
+            $this->config->set('index_mode', $mode);
             $this->config->set('index_cancel_requested', '0');
             $this->config->set('index_run_id', $runId);
             $this->jobList->add(IndexRequestJob::class, [
@@ -298,7 +314,7 @@ class ApiController extends OCSController {
         $started = $heartbeat > 0 ? $heartbeat : (int)$this->config->get('index_started');
         $age = $started > 0 ? time() - $started : PHP_INT_MAX;
         $cancelRequested = $this->config->get('index_cancel_requested') === '1';
-        if ($age > 3600 || ($cancelRequested && $age > 300)) {
+        if ($age > 900 || ($cancelRequested && $age > 300)) {
             $this->config->set('index_running', '0');
             $this->config->set('index_mode', 'idle');
             $this->config->set('index_cancel_requested', '0');
@@ -313,9 +329,9 @@ class ApiController extends OCSController {
         if ($user === null) {
             return new DataResponse(['error' => 'Not logged in'], 401);
         }
-        $search = (string)($this->param('search') ?? '');
-        $limit = max(1, min(500, (int)($this->param('limit') ?? 100)));
-        $offset = max(0, (int)($this->param('offset') ?? 0));
+        $search = (string)($this->requestParam('search') ?? '');
+        $limit = max(1, min(500, (int)($this->requestParam('limit') ?? 100)));
+        $offset = max(0, (int)($this->requestParam('offset') ?? 0));
         $docs = $this->documentMapper->findByUser($user, $search, $limit, $offset);
         $totalChunks = 0;
         $totalSize = 0;
@@ -346,7 +362,7 @@ class ApiController extends OCSController {
         if ($user === null) {
             return new DataResponse(['error' => 'Not logged in'], 401);
         }
-        $id = (int)($this->param('id') ?? 0);
+        $id = (int)($this->requestParam('id') ?? 0);
         $doc = $id > 0 ? $this->documentMapper->findById($id) : null;
         if ($doc === null || $doc->getUserId() !== $user
             || !$this->fileContextChat->fileAccessible($user, (int)$doc->getFileId())) {
@@ -372,11 +388,11 @@ class ApiController extends OCSController {
         if ($user === null) {
             return new DataResponse(['error' => 'Not logged in'], 401);
         }
-        $message = trim((string)($this->param('message') ?? ''));
+        $message = trim((string)($this->requestParam('message') ?? ''));
         if ($message === '') {
             return new DataResponse(['error' => 'Empty message'], 400);
         }
-        $history = $this->param('history') ?? [];
+        $history = $this->requestParam('history') ?? [];
         if (is_string($history)) {
             $history = json_decode($history, true) ?? [];
         }
@@ -397,16 +413,16 @@ class ApiController extends OCSController {
         if ($user === null) {
             return new DataResponse(['error' => 'Not logged in'], 401);
         }
-        $fileIds = $this->param('fileIds');
+        $fileIds = $this->requestParam('fileIds');
         if (!is_array($fileIds)) {
             $fileIds = [];
         }
         $fileIds = array_values(array_filter(array_map('intval', $fileIds), static fn($v) => $v > 0));
-        $message = trim((string)($this->param('message') ?? ''));
+        $message = trim((string)($this->requestParam('message') ?? ''));
         if ($message === '') {
             return new DataResponse(['error' => 'Empty message'], 400);
         }
-        $history = $this->param('history') ?? [];
+        $history = $this->requestParam('history') ?? [];
         if (is_string($history)) {
             $history = json_decode($history, true) ?? [];
         }
@@ -427,7 +443,7 @@ class ApiController extends OCSController {
         if ($user === null) {
             return new DataResponse(['error' => 'Not logged in'], 401);
         }
-        $fileIds = $this->param('fileIds');
+        $fileIds = $this->requestParam('fileIds');
         if (!is_array($fileIds)) {
             $fileIds = [];
         }
@@ -539,7 +555,7 @@ class ApiController extends OCSController {
             return new DataResponse(['error' => 'Not logged in'], 401);
         }
         try {
-            $chat = $this->chatStore->create($user, (string)($this->param('title') ?? ''));
+            $chat = $this->chatStore->create($user, (string)($this->requestParam('title') ?? ''));
             return new DataResponse($chat);
         } catch (\Throwable $e) {
             return new DataResponse(['error' => 'Unable to persist chat data'], 500);
@@ -598,8 +614,8 @@ class ApiController extends OCSController {
             if ($this->chatStore->get($user, $id) === null) {
                 return new NotFoundResponse();
             }
-            $role = (string)($this->param('role') ?? '');
-            $text = trim((string)($this->param('text') ?? ''));
+            $role = (string)($this->requestParam('role') ?? '');
+            $text = trim((string)($this->requestParam('text') ?? ''));
             if ($role === '' || $text === '') {
                 return new DataResponse(['error' => 'role and text are required'], 400);
             }
@@ -620,7 +636,7 @@ class ApiController extends OCSController {
             if ($this->chatStore->get($user, $id) === null) {
                 return new NotFoundResponse();
             }
-            $title = trim((string)($this->param('title') ?? ''));
+            $title = trim((string)($this->requestParam('title') ?? ''));
             if ($title === '') {
                 return new DataResponse(['error' => 'title required'], 400);
             }

@@ -32,6 +32,7 @@ composer test
 |---|---|
 | `tests/ToolPolicySecurityTest.php` | Tool registration, risk classification, surface isolation, prompt-injection rejection |
 | `tests/TaskProcessingContractTest.php` | Unique provider IDs, correct task-type IDs, input/output shape contracts |
+| `tests/FrontendContractTest.php` | Vue navigation, settings, document pagination and generated frontend contracts |
 
 ### How the bootstrap works
 
@@ -43,6 +44,8 @@ composer test
    namespaces so contract tests can load real interfaces.
 3. Otherwise the contract tests **skip** with a clear message — the suite stays
    green in CI environments without Nextcloud.
+
+The API controller must use Nextcloud's IRequest access plus one non-recursive JSON fallback for JSON/form bodies; do not add a recursively named custom request parser. Before opening a pull request, frontend changes must pass `npm run build` and the generated-bundle emission checks. Keep the relevant Markdown documentation and `CHANGELOG.md` synchronized with user-visible changes.
 
 ## CI
 
@@ -87,3 +90,7 @@ composer test
 4. Run `composer test`, the lint job and a manual smoke test on the target
    Nextcloud version.
 5. Tag the release and push.
+
+## Validation notes
+
+When changing the shared workspace layout, keep the responsive `--eva-content-width` contract, native navigation controls, block-level full-width New chat sizing using the native wide modifier and matching the other navigation items, notification app-icon URL generation, stable TaskProcessing provider IDs, and tool-policy confirmation boundaries covered by tests. Regenerate committed frontend bundles only after source validation succeeds.
