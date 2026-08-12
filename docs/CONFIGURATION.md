@@ -8,7 +8,7 @@ The web UI presents the configuration in these groups:
 - **Indexing & scope** — folder scope, file/run limits, chunking, Mail indexing, and excluded folders.
 - **Talk & notifications** — Talk history size and the trigger name.
 
-Use **Save changes** to persist the form. **Save & start indexing** saves the settings first and stops if saving fails. The UI displays `max_file_size` in MB while the app stores it as bytes. Deleting the index removes indexed documents and vectors, not the original files in Nextcloud.
+Use **Save changes** to persist the form. **Save & start indexing** saves the settings first and stops if saving fails. The UI displays `max_file_size` in MB while the app stores it as bytes. The sidebar provides native chat search, a primary **New chat** action directly below it, and per-chat rename/delete controls. Chat-history deletion is separate from index deletion: deleting the index removes indexed documents and vectors, not chats or original files in Nextcloud.
 
 # EVA — Configuration reference
 

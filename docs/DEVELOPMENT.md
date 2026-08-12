@@ -32,6 +32,7 @@ composer test
 |---|---|
 | `tests/ToolPolicySecurityTest.php` | Tool registration, risk classification, surface isolation, prompt-injection rejection |
 | `tests/TaskProcessingContractTest.php` | Unique provider IDs, correct task-type IDs, input/output shape contracts |
+| `tests/FrontendContractTest.php` | Vue navigation, settings, document pagination and generated frontend contracts |
 
 ### How the bootstrap works
 
@@ -43,6 +44,8 @@ composer test
    namespaces so contract tests can load real interfaces.
 3. Otherwise the contract tests **skip** with a clear message — the suite stays
    green in CI environments without Nextcloud.
+
+Before opening a pull request, frontend changes must pass `npm run build` and the generated-bundle emission checks. Keep the relevant Markdown documentation and `CHANGELOG.md` synchronized with user-visible changes.
 
 ## CI
 

@@ -41,6 +41,8 @@ final class FrontendContractTest extends TestCase {
         self::assertStringContainsString('v-model="chatFilter"', $app);
         self::assertStringContainsString('NcAppNavigationSearch', $app);
         self::assertStringContainsString('placeholder="Search chats"', $app);
+        self::assertStringContainsString('<div class="new-chat-container">', $app);
+        self::assertStringContainsString("import NcIconSvgWrapper from '@nextcloud/vue/components/NcIconSvgWrapper'", $app);
         self::assertStringContainsString('NcCounterBubble', $app);
         self::assertStringContainsString('NcButton', $app);
         self::assertStringContainsString('variant="primary"', $app);
@@ -48,10 +50,14 @@ final class FrontendContractTest extends TestCase {
         self::assertStringContainsString(':wide="true"', $app);
         self::assertStringContainsString('size="normal"', $app);
         self::assertStringContainsString('alignment="start"', $app);
-        self::assertStringContainsString('position: sticky;', $app);
-        self::assertStringContainsString('top: 0;', $app);
+        self::assertStringNotContainsString('position: sticky;', $app);
+        self::assertStringNotContainsString('top: 0;', $app);
         self::assertStringContainsString('background: transparent;', $app);
-        self::assertStringContainsString('padding: var(--default-grid-baseline, 4px) 4px;', $app);
+        self::assertStringContainsString('margin-top: calc(-1 * var(--default-grid-baseline, 4px));', $app);
+        self::assertStringContainsString('padding: 0 0 var(--default-grid-baseline, 4px);', $app);
+        self::assertStringContainsString(':path="mdiPencilOutline"', $app);
+        self::assertStringContainsString(':path="mdiTrashCanOutline"', $app);
+        self::assertStringNotContainsString('<svg width="20" height="20"', $app);
         self::assertStringNotContainsString('allow-collapse', $app);
         self::assertStringNotContainsString('chatsOpen', $app);
         self::assertStringContainsString('filteredChats', $app);

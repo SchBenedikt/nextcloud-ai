@@ -13,7 +13,7 @@ you can remove it.
 | Embedding vectors (numerical representations of chunks) | Nextcloud database (`eva_ai_chunks`) | Same as parent document |
 | Indexed email metadata (subject, sender, body excerpt) | Nextcloud database (`eva_ai_documents`) | Until the email changes or the index is reset |
 | Email chunks and embeddings | Nextcloud database (`eva_ai_chunks`) | Same as parent email document |
-| Chat history (conversation messages) | Nextcloud database (`eva_ai_chat_history`) | Per user; deleted on index reset |
+| Chat history (conversation messages) | Nextcloud AppData (`eva_ai/chats/<user namespace>/chats.json`) | Per user; retained until the user deletes it or app data is removed |
 | AI-created file markers (tracking files EVA created) | Nextcloud app-data (`ai-marks/`) | Until the file is deleted or manually cleaned |
 | Knowledge base entries (`KNOWLEDGE.md`) | User's Nextcloud home folder | Until the user deletes the file |
 | Agent conversation state | Nextcloud database (`eva_ai_agent_store`) | Per conversation token; deleted on reset |
@@ -50,8 +50,9 @@ you can remove it.
 sudo -u www-data php occ eva_ai:reset --user=username
 ```
 
-This removes all documents, chunks, chat history, agent state and AI-created
-file markers for the specified user.
+This removes the indexed documents and chunks for the specified user. It does not delete the user's saved chat history or original Nextcloud files.
+
+Users can delete one conversation from the chat sidebar using its rename/delete menu, or permanently delete all saved EVA conversations from **Settings → Chat history**. These UI actions affect chat history only; they do not delete Nextcloud files or indexed documents.
 
 **Reset ALL users:**
 

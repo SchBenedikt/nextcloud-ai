@@ -3,9 +3,7 @@
 		<NcAppNavigation :title="'Eva · v' + buildVersion" @close-navigation="mobileOpen = false">
 			<template #search>
 				<NcAppNavigationSearch v-model="chatFilter" label="Search chats" placeholder="Search chats" />
-			</template>
-			<template #list>
-				<li class="new-chat-container">
+				<div class="new-chat-container">
 					<NcButton
 						class="new-chat-button"
 						variant="primary"
@@ -16,11 +14,13 @@
 						aria-label="Start a new chat"
 						@click="newChat">
 						<template #icon>
-							<svg width="16" height="16" viewBox="0 0 24 24" aria-hidden="true"><path :d="mdiMessagePlus" fill="currentColor" /></svg>
+							<NcIconSvgWrapper :path="mdiMessagePlus" :size="16" aria-hidden="true" />
 						</template>
 						New chat
 					</NcButton>
-				</li>
+				</div>
+			</template>
+			<template #list>
 				<li class="chat-list-heading">
 					<span>Chats</span>
 					<NcCounterBubble :count="chats.length" />
@@ -38,11 +38,11 @@
 					</template>
 					<template #actions>
 						<NcActionButton aria-label="Rename chat" :close-after-click="true" @click.stop="renameChat(c.id)">
-							<template #icon><svg width="20" height="20" viewBox="0 0 24 24" aria-hidden="true"><path :d="mdiPencilOutline" fill="currentColor" /></svg></template>
+							<template #icon><NcIconSvgWrapper :path="mdiPencilOutline" :size="16" aria-hidden="true" /></template>
 							Rename chat
 						</NcActionButton>
 						<NcActionButton aria-label="Delete chat" :close-after-click="true" @click.stop="deleteChat(c.id)">
-							<template #icon><svg width="20" height="20" viewBox="0 0 24 24" aria-hidden="true"><path :d="mdiTrashCanOutline" fill="currentColor" /></svg></template>
+							<template #icon><NcIconSvgWrapper :path="mdiTrashCanOutline" :size="16" aria-hidden="true" /></template>
 							Delete chat
 						</NcActionButton>
 					</template>
@@ -89,10 +89,11 @@ import FileContextChatView from './views/FileContextChatView.vue'
 import { mdiChatProcessing, mdiFileDocumentOutline, mdiTune, mdiTrashCanOutline, mdiMessagePlus, mdiPencilOutline } from '@mdi/js'
 import { NcCounterBubble } from '@nextcloud/vue'
 import NcAppNavigationSearch from '@nextcloud/vue/components/NcAppNavigationSearch'
+import NcIconSvgWrapper from '@nextcloud/vue/components/NcIconSvgWrapper'
 
 export default {
 	name: 'EvaAiApp',
-	components: { ChatView, DocumentsView, SettingsView, FileContextChatView, NcCounterBubble, NcAppNavigationSearch },
+	components: { ChatView, DocumentsView, SettingsView, FileContextChatView, NcCounterBubble, NcAppNavigationSearch, NcIconSvgWrapper },
 	setup() {
 		const params = new URLSearchParams(window.location.search)
 		const initialFileIdsParam = params.get('fileIds')
@@ -257,12 +258,12 @@ export default {
 
 .new-chat-container {
 	background: transparent;
-	list-style: none;
-	margin: 0;
-	padding: var(--default-grid-baseline, 4px) 4px;
-	position: sticky;
-	top: 0;
-	z-index: 2;
+	margin-top: calc(-1 * var(--default-grid-baseline, 4px));
+	padding: 0 0 var(--default-grid-baseline, 4px);
+}
+
+.new-chat-button {
+	width: 100%;
 }
 
 .chat-list-heading {

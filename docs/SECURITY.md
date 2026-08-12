@@ -97,6 +97,10 @@ For mutating/destructive tools EVA uses a two-phase flow:
   the owning user (`user_id` column). The reset commands (`eva_ai:reset`) operate
   per user.
 
+## 5. Authenticated chat-history controls
+
+The sidebar search, per-chat rename/delete actions, and **Settings → Chat history → Delete all chats** are authenticated web-UI operations against the logged-in user's own AppData namespace. They are separate from the LLM tool policy: they cannot read, modify or delete files, and they never grant the model an additional tool.
+
 ## 5. Least-privilege in the RAG pipeline
 
 The RAG pipeline only ever runs readonly tools on the `rag` surface. Even if a
@@ -104,11 +108,11 @@ document's text contains malicious instructions, the worst outcome is that the
 model reads *more* of your own indexed documents — it cannot create, modify or
 delete anything through the RAG path.
 
-## 6. Testing
+## 7. Testing
 
 The security policy is covered by `tests/ToolPolicySecurityTest.php`
 (risk classification, surface isolation, prompt-injection rejection) and
-`tests/TaskProcessingContractTest.php` (provider contracts). Run locally:
+`tests/TaskProcessingContractTest.php` (provider contracts), and `tests/FrontendContractTest.php` (frontend source contracts). Run locally:
 
 ```bash
 cd apps/eva_ai

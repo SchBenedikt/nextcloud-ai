@@ -34,7 +34,7 @@ lib/
 | `SharesService` | File sharing: list/create/update/delete shares |
 | `EmailService` | Mail app integration: search/list/read mails + email indexing |
 | `FileContextChatService` | Chat strictly over selected files (Files app context menu) |
-| `ChatStore` | Chat history persistence (`eva_ai_chat_history`) |
+| `ChatStore` | Chat history persistence in Nextcloud AppData (`eva_ai/chats/<user namespace>/chats.json`) |
 | `AgentStore` | Agent conversation state (`eva_ai_agent_store`) |
 | `ActivityService` | Reads the activity feed (all apps) |
 | `AppConfig` | Typed access to all app settings with defaults |
@@ -47,7 +47,7 @@ lib/
 |---|---|
 | `eva_ai_documents` | Indexed files/emails: path, name, hash, mime, size, user |
 | `eva_ai_chunks` | Text chunks + embedding vectors, linked to a document |
-| `eva_ai_chat_history` | Per-user chat conversations/messages |
+| `eva_ai/chats/<user namespace>/chats.json` (AppData) | Per-user chat conversations/messages |
 | `eva_ai_agent_store` | Agent (confirmation-flow) conversation state |
 | `ai-marks/` (app-data) | Tracks files created by EVA (for safe deletion) |
 
@@ -57,8 +57,12 @@ Migrations in `lib/Migration/`:
 - `Version101000…` — agent store / chat-history extensions
 - `Version103000…` — schema refinements
 - `Version104000…` — **repair migration**: renames hyphenated index names
-  (`eva_ai_*` → `eva_ai_*`) and drops obsolete `ragchat_*` leftovers; required
+  (legacy `eva-ai_*` / `ragchat_*` → `eva_ai_*`) and drops obsolete leftovers; required
   for MySQL/MariaDB/PostgreSQL compatibility
+
+## Frontend navigation
+
+The Vue application uses native Nextcloud navigation components. `NcAppNavigationSearch` filters the per-user chat list, and the primary `New chat` action is rendered directly below the search field. Each chat entry exposes native action-menu controls for rename and delete; these operations are scoped to the authenticated user and do not invoke LLM file tools.
 
 ## Data flow — indexing
 

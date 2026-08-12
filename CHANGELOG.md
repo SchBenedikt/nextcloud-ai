@@ -32,6 +32,7 @@ follows [Semantic Versioning](https://semver.org/).
   restricted to administrators.
 
 ### Changed
+- **Frontend navigation**: the native chat search now has the primary **New chat** action directly below it, and per-chat rename/delete actions use Nextcloud's native icon wrapper for stable alignment.
 - **Issue #2**: the app ID is migrated from `eva-ai` to `eva_ai` (info.xml,
   namespaces references, routes, AppData folder, DB rows, Talk bot URL, JS
   bundles and docs). Existing installs keep their data; the Talk bot was
