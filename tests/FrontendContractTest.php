@@ -37,17 +37,18 @@ final class FrontendContractTest extends TestCase {
 
     public function testAppSharesContentWidthAndProvidesSearchableChatActions(): void {
         $app = (string)file_get_contents(__DIR__ . '/../src/App.vue');
-        self::assertStringContainsString('--eva-content-width: 1180px;', $app);
+        self::assertStringContainsString('--eva-content-width: clamp(1180px, 78vw, 1680px);', $app);
         self::assertStringContainsString('v-model="chatFilter"', $app);
         self::assertStringContainsString('NcAppNavigationSearch', $app);
         self::assertStringContainsString('placeholder="Search chats"', $app);
         self::assertStringContainsString('<div class="new-chat-container">', $app);
+        self::assertStringContainsString('width: fit-content;', $app);
         self::assertStringContainsString("import NcIconSvgWrapper from '@nextcloud/vue/components/NcIconSvgWrapper'", $app);
         self::assertStringContainsString('NcCounterBubble', $app);
         self::assertStringContainsString('NcButton', $app);
         self::assertStringContainsString('variant="primary"', $app);
         self::assertStringNotContainsString('variant="tertiary"', $app);
-        self::assertStringContainsString(':wide="true"', $app);
+        self::assertStringNotContainsString(':wide="true"', $app);
         self::assertStringContainsString('size="normal"', $app);
         self::assertStringContainsString('alignment="start"', $app);
         self::assertStringNotContainsString('position: sticky;', $app);
@@ -86,6 +87,14 @@ final class FrontendContractTest extends TestCase {
         self::assertStringContainsString("className = 'export'", $vanilla);
         self::assertStringContainsString('Export chat as Markdown', $vanilla);
         self::assertStringContainsString('.head .export', $chat);
+        self::assertStringContainsString('max-width: min(88%, 1200px);', $chat);
+
+        $notifier = (string)file_get_contents(__DIR__ . '/../lib/Notification/Notifier.php');
+        self::assertStringContainsString('$this->urlGenerator->imagePath(\'eva_ai\', \'app.svg\')', $notifier);
+        self::assertStringContainsString('Eva · RAG', (string)file_get_contents(__DIR__ . '/../lib/TaskProcessing/TextToTextChatProvider.php'));
+        self::assertStringContainsString('Eva · Tools', (string)file_get_contents(__DIR__ . '/../lib/TaskProcessing/TextToTextChatWithToolsProvider.php'));
+        self::assertStringContainsString('Eva · Agent', (string)file_get_contents(__DIR__ . '/../lib/TaskProcessing/AgentInteractionProvider.php'));
+        self::assertStringContainsString('Eva · Local', (string)file_get_contents(__DIR__ . '/../lib/TaskProcessing/EvaSummaryProvider.php'));
     }
 
     public function testSettingsPersistExclusionsAndDoNotOverwriteFormDuringPolling(): void {

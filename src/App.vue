@@ -9,7 +9,6 @@
 						variant="primary"
 						size="normal"
 						alignment="start"
-						:wide="true"
 						:disabled="busy"
 						aria-label="Start a new chat"
 						@click="newChat">
@@ -253,17 +252,20 @@ export default {
 <style scoped>
 .eva-ai-app {
 	width: 100%;
-	--eva-content-width: 1180px;
+	--eva-content-width: clamp(1180px, 78vw, 1680px);
 }
 
 .new-chat-container {
+	align-items: flex-start;
 	background: transparent;
+	display: flex;
 	margin-top: calc(-1 * var(--default-grid-baseline, 4px));
 	padding: 0 0 var(--default-grid-baseline, 4px);
 }
 
 .new-chat-button {
-	width: 100%;
+	max-width: 100%;
+	width: fit-content;
 }
 
 .chat-list-heading {

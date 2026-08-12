@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace OCA\EvaAi\Notification;
 
+use OCP\IURLGenerator;
 use OCP\Notification\INotification;
 use OCP\Notification\INotifier;
 use OCP\Notification\UnknownNotificationException;
@@ -12,6 +13,11 @@ use OCP\Notification\UnknownNotificationException;
  * Stellt unsere Benachrichtigungen in der Nextcloud-Nachrichtenliste (Glocke) dar.
  */
 class Notifier implements INotifier {
+	public function __construct(
+		private IURLGenerator $urlGenerator,
+	) {
+	}
+
 	public function getID(): string {
 		return 'eva_ai';
 	}
@@ -29,7 +35,7 @@ class Notifier implements INotifier {
 			$params = $notification->getSubjectParameters();
 			$notification->setParsedSubject('EVA answer ready');
 			$notification->setParsedMessage((string)($params['text'] ?? ''));
-			$notification->setIcon(\OC::$WEBROOT . '/apps/eva_ai/img/eva-icon.svg');
+			$notification->setIcon($this->urlGenerator->imagePath('eva_ai', 'app.svg'));
 			return $notification;
 		}
 

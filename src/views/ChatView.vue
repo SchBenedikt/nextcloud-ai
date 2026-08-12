@@ -47,6 +47,7 @@ export default {
 </script>
 
 <style>
+/* App.vue provides a responsive shared content width for all workspace views. */
 .chatview-root {
 	width: 100%;
 	height: 100%;
@@ -138,7 +139,7 @@ export default {
 .chatview-root .rm.user { align-items: flex-end; }
 .chatview-root .rb {
 	position: relative;
-	max-width: min(82%, 900px);
+	max-width: min(88%, 1200px);
 	padding: 0;
 	border: 0;
 	border-radius: 0;
