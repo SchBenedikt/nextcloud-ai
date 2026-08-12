@@ -8,8 +8,8 @@
 				<li class="new-chat-container">
 					<NcButton
 						class="new-chat-button"
-						variant="tertiary"
-						size="normal"
+						variant="primary"
+						size="large"
 						alignment="start"
 						:wide="true"
 						:disabled="busy"
@@ -259,7 +259,7 @@ export default {
 	background: transparent;
 	list-style: none;
 	margin: 0;
-	padding: var(--app-navigation-padding, 8px);
+	padding: var(--default-grid-baseline, 4px) 4px;
 	position: sticky;
 	top: 0;
 	z-index: 2;
