@@ -87,22 +87,9 @@ export default {
 	gap: 8px;
 }
 
-.chatview-root .refresh {
-	border: 0;
-	background: transparent;
-	border-radius: 6px;
-	padding: 6px 8px;
-	cursor: pointer;
-	font-size: 12px;
-	line-height: 1.2;
-	color: var(--color-text-maxcontrast, #555);
-	transition: background-color .15s ease, color .15s ease;
-}
 
-.chatview-root .refresh:hover:not(:disabled) {
-	background: var(--color-background-hover, #f1f2f4);
-	color: var(--color-main-text, #222);
-}
+
+
 
 .chatview-root .pill {
 	padding: 2px 8px;
@@ -237,7 +224,7 @@ export default {
 .chatview-root .rm.assistant:hover .rcopy,
 .chatview-root .rcopy:focus-visible { opacity: 1; }
 .chatview-root .rcopy:hover { background: var(--color-background-hover, #e5e5e5); }
-.chatview-root .head .export:disabled { opacity: .5; cursor: default; }
+
 
 .chatview-root .rth { margin: 0 0 9px; font-size: 12px; }
 .chatview-root .rth summary { cursor: pointer; color: var(--color-text-maxcontrast, #555); font-weight: 600; user-select: none; }
@@ -308,4 +295,9 @@ export default {
 	.chatview-root .rm.assistant .rb { padding-right: 28px; }
 	.chatview-root .cbtn { padding-inline: 13px; }
 }
+.chatview-root .head .export { display: inline-flex; align-items: center; justify-content: center; gap: 6px; min-height: var(--default-clickable-area, 34px); padding: 6px 12px; border: 1px solid var(--color-border, #ccd0d4); border-radius: var(--border-radius-element, 8px); background: var(--color-main-background, #fff); color: var(--color-main-text, #222); cursor: pointer; font: inherit; font-size: 13px; font-weight: 500; line-height: 1.2; transition: background-color var(--animation-quick, .2s), border-color var(--animation-quick, .2s), color var(--animation-quick, .2s); }
+.chatview-root .head .export:hover:not(:disabled) { border-color: var(--color-border-dark, #b5b9bd); background: var(--color-background-hover, #f1f2f4); }
+.chatview-root .head .export:focus-visible { outline: 2px solid var(--color-main-text, #222); outline-offset: 2px; }
+.chatview-root .head .export:disabled { opacity: .5; cursor: default; }
+.chatview-root .head .export-icon { width: 16px; height: 16px; fill: currentColor; }
 </style>

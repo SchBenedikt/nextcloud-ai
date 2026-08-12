@@ -39,22 +39,28 @@ final class FrontendContractTest extends TestCase {
         $app = (string)file_get_contents(__DIR__ . '/../src/App.vue');
         self::assertStringContainsString('--eva-content-width: 1180px;', $app);
         self::assertStringContainsString('v-model="chatFilter"', $app);
-        self::assertStringContainsString('class="chat-search-toggle"', $app);
-        self::assertStringContainsString('class="chat-search-expanded"', $app);
-        self::assertStringContainsString('searchOpen', $app);
-        self::assertStringContainsString('openSearch', $app);
-        self::assertStringContainsString('searchToggle', $app);
+        self::assertStringContainsString('allow-collapse', $app);
+        self::assertStringContainsString('inline-actions', $app);
+        self::assertStringContainsString('NcCounterBubble', $app);
+        self::assertStringContainsString('NcActionButton', $app);
+        self::assertStringContainsString('chatsOpen', $app);
+        self::assertStringContainsString('toggleSearch', $app);
         self::assertStringContainsString('filteredChats', $app);
-        self::assertStringContainsString('class="chat-item-actions"', $app);
         self::assertStringContainsString('aria-label="Rename chat"', $app);
         self::assertStringContainsString('aria-label="Delete chat"', $app);
         self::assertStringContainsString("return api('GET', '/chats')", $app);
-        self::assertStringContainsString('outline: 2px solid var(--color-primary-element, #00679c);', $app);
 
         $settings = (string)file_get_contents(__DIR__ . '/../src/views/SettingsView.vue');
         $documents = (string)file_get_contents(__DIR__ . '/../src/views/DocumentsView.vue');
         self::assertStringContainsString('max-width: var(--eva-content-width, 1180px);', $settings);
         self::assertStringContainsString('max-width: var(--eva-content-width, 1180px);', $documents);
+
+        $vanilla = (string)file_get_contents(__DIR__ . '/../src/lib/vanilla.js');
+        $chat = (string)file_get_contents(__DIR__ . '/../src/views/ChatView.vue');
+        self::assertStringContainsString('mdiDownload', $vanilla);
+        self::assertStringContainsString("className = 'export'", $vanilla);
+        self::assertStringContainsString('Export chat as Markdown', $vanilla);
+        self::assertStringContainsString('.head .export', $chat);
     }
 
     public function testSettingsPersistExclusionsAndDoNotOverwriteFormDuringPolling(): void {
