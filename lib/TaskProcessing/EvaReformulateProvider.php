@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace OCA\EvaAi\TaskProcessing;
 
+use OCA\EvaAi\Service\AppConfig;
 use OCA\EvaAi\Service\Ollama;
 use OCP\IL10N;
 use OCP\TaskProcessing\ISynchronousProvider;
@@ -13,6 +14,7 @@ use RuntimeException;
 class EvaReformulateProvider implements ISynchronousProvider {
 
 	public function __construct(
+		private AppConfig $appConfig,
 		private Ollama $ollama,
 		private IL10N $l,
 	) {
@@ -70,6 +72,7 @@ class EvaReformulateProvider implements ISynchronousProvider {
 		if ($userId === null) {
 			throw new RuntimeException('Kein Benutzerkontext');
 		}
+		$this->appConfig->setUserId($userId);
 
 		$prompt = trim((string)($input['input'] ?? ''));
 		if ($prompt === '') {

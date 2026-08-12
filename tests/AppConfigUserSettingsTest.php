@@ -44,6 +44,8 @@ final class AppConfigUserSettingsTest extends TestCase {
         self::assertSame('7', $appConfig->get('max_files_per_run'));
         self::assertSame('Private', $appConfig->get('exclude_paths'));
         self::assertSame('1', $appConfig->get('index_running'));
+        $appConfig->set('chunk_overlap', '0');
+        self::assertSame(0, $appConfig->getInt('chunk_overlap', 120));
 
         // A second user reads only their own values or fixed defaults, never Alice's or a global legacy value.
         $appConfig->setUserId('bob');

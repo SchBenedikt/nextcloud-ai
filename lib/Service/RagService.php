@@ -39,7 +39,7 @@ class RagService {
      */
     public function ask(string $userId, string $message, array $history): array {
         $this->config->setUserId($userId);
-        $topK = min($this->config->getInt('top_k', 6), 8);
+        $topK = min($this->config->getInt('top_k', 6), (int)AppConfig::LIMITS['top_k'][1]);
         $results = $this->searcher->search($userId, $this->searchQuery($message, $history), $topK);
 
         // Revalidate per-document file access: the index is a cache of
@@ -92,7 +92,7 @@ class RagService {
                 yield json_encode(['type' => 'error', 'message' => 'Empty message']) . "\n";
                 return;
             }
-            $topK = min($this->config->getInt('top_k', 6), 8);
+            $topK = min($this->config->getInt('top_k', 6), (int)AppConfig::LIMITS['top_k'][1]);
             $results = $this->searcher->search($userId, $this->searchQuery($message, $history), $topK);
             // Revalidate per-document file access before returning content (Issue #14).
             $results = $this->filterAccessible($userId, $results);
@@ -364,7 +364,8 @@ class RagService {
         $running = $this->config->get('index_running') === '1';
         $cancelRequested = $this->config->get('index_cancel_requested') === '1';
         if ($running) {
-            $started = (int)$this->config->get('index_started');
+            $heartbeat = (int)$this->config->get('index_heartbeat');
+            $started = $heartbeat > 0 ? $heartbeat : (int)$this->config->get('index_started');
             $age = $started > 0 ? time() - $started : PHP_INT_MAX;
             if ($age > 3600 || ($cancelRequested && $age > 300)) {
                 // Recover queued jobs that never reached a cron worker. The
@@ -399,6 +400,7 @@ class RagService {
             'lastTotal' => $this->config->get('last_index_total'),
             'lastError' => $this->config->get('last_index_error'),
             'settings' => $this->config->all(),
+            'limits' => $this->config->limits(),
         ];
     }
 }

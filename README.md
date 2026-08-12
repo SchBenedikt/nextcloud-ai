@@ -143,26 +143,49 @@ chunks — no global index lookup. The files must already be indexed.
 
 ## Upgrading from an older version
 
-If you ran a version **before 1.4.0** (e.g. `ragchat` or early `eva_ai`), the database
-may contain index names with a hyphen (`eva_ai_doc_user_file`, …). **MySQL/MariaDB and
-PostgreSQL do not accept hyphens in index names** — those indexes were never created,
-and the broken schema could break the TaskProcessing/Assistant integration.
+### From `eva-ai` to `eva_ai`
 
-From 1.4.0 on, a repair migration fixes this automatically:
+Do not delete the old app directory or its configuration first. The repair step
+copies the legacy app and per-user settings to the new ID before removing the old
+configuration namespace; the database tables remain available to the schema
+migrations and chat data is migrated lazily when a user opens it.
 
 ```bash
+cd /var/www/nextcloud
+sudo -u www-data php occ app:disable eva-ai
 cd /var/www/nextcloud/apps
-sudo git pull                       # inside the eva_ai folder
+sudo mv eva-ai eva_ai
 sudo chown -R www-data:www-data eva_ai
 cd /var/www/nextcloud
-sudo -u www-data php occ upgrade    # runs the repair migration
+sudo -u www-data php occ app:enable eva_ai
+sudo -u www-data php occ upgrade
+sudo -u www-data php occ maintenance:repair
+```
+
+If the old directory is no longer present, copy the app into `eva_ai` instead of
+removing the old database/configuration first. Make a database and `data/appdata_*`
+backup before upgrading; restore those backups and re-enable the old app ID if a
+rollback is required.
+
+### Legacy index names
+
+If you ran a version **before 1.4.0** (e.g. `ragchat` or early `eva-ai`), the database
+may contain literal hyphenated index names such as `eva-ai_doc_user_file`. **MySQL,
+MariaDB and PostgreSQL do not accept these names reliably**. The repair migration
+renames them to `eva_ai_doc_user_file`, `eva_ai_doc_user` and `eva_ai_chunk_doc` and
+is idempotent for already repaired installations.
+
+```bash
+cd /var/www/nextcloud
+sudo -u www-data php occ upgrade
+sudo -u www-data php occ maintenance:repair
 ```
 
 Verify no obsolete indexes remain:
 
 ```sql
 SELECT INDEX_NAME FROM information_schema.STATISTICS
-WHERE TABLE_SCHEMA='nextcloud' AND (INDEX_NAME LIKE 'eva_ai%' OR INDEX_NAME LIKE 'ragchat%');
+WHERE TABLE_SCHEMA='nextcloud' AND (INDEX_NAME LIKE 'eva-ai%' OR INDEX_NAME LIKE 'ragchat%');
 -- expect 0 rows
 ```
 
@@ -170,8 +193,9 @@ WHERE TABLE_SCHEMA='nextcloud' AND (INDEX_NAME LIKE 'eva_ai%' OR INDEX_NAME LIKE
 
 ## Configuration
 
-All settings are stored in `oc_appconfig` and can be changed via occ or the app's
-Settings tab. Defaults are shown in brackets.
+Instance defaults live in `oc_appconfig`; settings changed in the app UI are stored
+per user in Nextcloud's user configuration. Users cannot read or change another user's
+settings. Defaults are shown in brackets.
 
 | Setting | Default | Description |
 |---|---|---|
@@ -188,7 +212,7 @@ Settings tab. Defaults are shown in brackets.
 | `scope_path` | `''` | Only index files under this path (empty = whole home) |
 | `exclude_paths` | `''` | Comma-separated path prefixes to skip |
 | `index_user` | `''` | Optional instance-wide legacy background-job user; normal users cannot change it from Settings |
-| `index_enabled` | `0` | Instance-wide legacy indexer switch; per-user **Start indexing** does not change it |
+| `index_enabled` | `0` | Instance-wide legacy indexer switch; normal users cannot change it from Settings |
 | `actions_enabled` | `1` | Enable chat tools (0 = read-only chat) |
 | `exec_write_types` | `''` (all) | Restrict creatable file types, e.g. `md,txt` |
 | `exec_write_max_chars` | `100000` | Max characters for AI-created files |
@@ -294,7 +318,8 @@ tools always require explicit user confirmation. See [docs/SECURITY.md](docs/SEC
 
 ## Development
 
-- **Tests**: `composer test` (PHPUnit) — security policy + TaskProcessing contracts
+- **Tests**: `composer test` (PHPUnit) — security, provider, settings and migration regressions
+- **Frontend build**: `npm ci && npm run build`; CI also verifies that the expected generated bundles are emitted
 - **CI**: GitHub Actions on PHP 8.2 / 8.3 / 8.4 (see [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md))
 - **Architecture**: see [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)
 

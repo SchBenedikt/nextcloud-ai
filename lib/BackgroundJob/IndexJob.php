@@ -56,8 +56,22 @@ class IndexJob extends TimedJob {
                 // Do not compete with an explicitly requested per-user job.
                 $this->config->setUserId($user);
                 if ($this->config->get('index_running') === '1') {
-                    continue;
+                    $heartbeat = (int)$this->config->get('index_heartbeat');
+                    $age = $heartbeat > 0 ? time() - $heartbeat : PHP_INT_MAX;
+                    $cancelRequested = $this->config->get('index_cancel_requested') === '1';
+                    if ($age > 3600 || ($cancelRequested && $age > 300)) {
+                        // Cron must recover abandoned requests even when no
+                        // browser calls the status endpoint.
+                        $this->config->set('index_running', '0');
+                        $this->config->set('index_mode', 'idle');
+                        $this->config->set('index_cancel_requested', '0');
+                        $this->config->set('index_run_id', '');
+                        $this->config->set('index_heartbeat', '');
+                    } else {
+                        continue;
+                    }
                 }
+                $this->config->setUserId($user);
                 $this->logger->info('eva_ai index job start', ['user' => $user]);
                 try {
                     $this->indexer->run($user);

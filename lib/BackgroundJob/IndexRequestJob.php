@@ -87,6 +87,7 @@ class IndexRequestJob extends QueuedJob {
                 $this->config->set('index_finished', (string)time());
                 $this->config->set('index_mode', 'idle');
                 $this->config->set('index_cancel_requested', '0');
+                $this->config->set('index_heartbeat', '');
             }
             $this->config->setUserId(null);
         }

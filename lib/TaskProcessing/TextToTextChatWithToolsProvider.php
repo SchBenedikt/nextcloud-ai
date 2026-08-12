@@ -85,8 +85,8 @@ class TextToTextChatWithToolsProvider implements ISynchronousProvider {
 
 		if ($userId === null) {
 			throw new RuntimeException('Kein Benutzerkontext');
-			$this->appConfig->setUserId($userId);
 		}
+		$this->appConfig->setUserId($userId);
 		$chatInput = trim((string)($input['input'] ?? ''));
 		if ($chatInput === '') {
 			throw new RuntimeException('Invalid input');

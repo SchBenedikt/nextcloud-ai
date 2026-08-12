@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace OCA\EvaAi\TaskProcessing;
 
+use OCA\EvaAi\Service\AppConfig;
 use OCA\EvaAi\Service\Ollama;
 use OCP\IL10N;
 use OCP\TaskProcessing\EShapeType;
@@ -15,6 +16,7 @@ use RuntimeException;
 class EvaContextWriteProvider implements ISynchronousProvider {
 
 	public function __construct(
+		private AppConfig $appConfig,
 		private Ollama $ollama,
 		private IL10N $l,
 	) {
@@ -83,6 +85,7 @@ class EvaContextWriteProvider implements ISynchronousProvider {
 		if ($userId === null) {
 			throw new RuntimeException('Kein Benutzerkontext');
 		}
+		$this->appConfig->setUserId($userId);
 
 		// ContextWrite's core task type uses source_input/style_input. Keep the
 		// older aliases as fallbacks for already queued tasks.

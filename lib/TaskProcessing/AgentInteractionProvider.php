@@ -128,8 +128,8 @@ class AgentInteractionProvider implements ISynchronousProvider {
 
 		if ($userId === null) {
 			throw new RuntimeException('Kein Benutzer kontext');
-			$this->appConfig->setUserId($userId);
 		}
+		$this->appConfig->setUserId($userId);
 		$prompt = trim((string)($input['input'] ?? ''));
 		$confirmation = (int)($input['confirmation'] ?? 0);
 		$token = (string)($input['conversation_token'] ?? '');
@@ -459,7 +459,7 @@ class AgentInteractionProvider implements ISynchronousProvider {
 				return; // nichts indexiert, nichts zu suchen
 			}
 
-			$topK = min($this->appConfig->getInt('top_k', 6), 8);
+			$topK = min($this->appConfig->getInt('top_k', 6), (int)AppConfig::LIMITS['top_k'][1]);
 			$results = $this->searcher->search($userId, $message, $topK);
 
 			if (empty($results)) {

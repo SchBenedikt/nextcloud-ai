@@ -21,6 +21,8 @@ use OCP\AppFramework\Http\NotFoundResponse;
 use OCP\BackgroundJob\IJobList;
 use OCP\App\IAppManager;
 use OCP\IRequest;
+use OCP\IGroupManager;
+use OCP\Lock\ILockingProvider;
 
 class ApiController extends OCSController {
     public function __construct(
@@ -34,6 +36,8 @@ class ApiController extends OCSController {
         private DocumentMapper $documentMapper,
         private ChunkMapper $chunkMapper,
         private IJobList $jobList,
+        private IGroupManager $groupManager,
+        private ILockingProvider $lockingProvider,
         private ChatStore $chatStore,
         private FileContextChatService $fileContextChat,
         private IAppManager $appManager
@@ -109,11 +113,38 @@ class ApiController extends OCSController {
             'talk_bot_trigger',
             'exclude_paths',
         ];
+        $validationErrors = [];
+        $pending = [];
         foreach ($allowed as $key) {
             $value = $this->param($key);
-            if ($value !== null) {
+            if ($value === null) {
+                continue;
+            }
+            $pending[$key] = $value;
+            $limitError = $this->config->validateValue($key, $value);
+            if ($limitError !== null) {
+                $validationErrors[$key] = $key . ' ' . $limitError . '.';
+            }
+            if ($key === 'ollama_url') {
+                $urlError = $this->validateOllamaUrl((string)$value, $user);
+                if ($urlError !== null) {
+                    $validationErrors[$key] = $urlError;
+                }
+            }
+            if (in_array($key, ['scope_path', 'exclude_paths'], true)
+                && preg_match('~(^|[\\\\/])\\.\\.?([\\\\/]|$)~', (string)$value)) {
+                $validationErrors[$key] = $key . ' may not contain relative path traversal.';
+            }
+        }
+        if ($validationErrors !== []) {
+            return new DataResponse([
+                'error' => 'Invalid settings.',
+                'validationErrors' => array_values($validationErrors),
+            ], 400);
+        }
+        foreach ($pending as $key => $value) {
                 if (in_array($key, ['top_k', 'chunk_size', 'chunk_overlap', 'max_file_size', 'max_files_per_run', 'context_size', 'exec_write_max_chars', 'mail_index_max', 'talk_history_size'], true)) {
-                    $value = (string)max(1, (int)$value);
+                    $value = (string)$value;
                 }
                 if ($key === 'exec_delete_mode') {
                     $value = in_array($value, ['off', 'own', 'all'], true) ? $value : 'own';
@@ -131,9 +162,30 @@ class ApiController extends OCSController {
                     }
                 }
                 $this->config->set($key, (string)$value);
-            }
         }
         return new DataResponse($this->config->all());
+    }
+
+    private function validateOllamaUrl(string $url, string $user): ?string {
+        $url = trim($url);
+        $parts = parse_url($url);
+        if ($parts === false || !in_array(strtolower((string)($parts['scheme'] ?? '')), ['http', 'https'], true)
+            || empty($parts['host']) || isset($parts['user'], $parts['pass'], $parts['query'], $parts['fragment'])
+            || (($parts['path'] ?? '') !== '' && ($parts['path'] ?? '') !== '/')
+            || (isset($parts['port']) && ((int)$parts['port'] < 1 || (int)$parts['port'] > 65535))) {
+            return 'Ollama server URL must be a plain http(s) URL without credentials, path, query or fragment.';
+        }
+        // Remote Ollama targets are an explicit administrator decision. A
+        // regular user is restricted to the local loopback service to prevent
+        // SSRF through a personal setting.
+        if (!$this->groupManager->isAdmin($user)) {
+            $host = strtolower(trim((string)$parts['host'], '[]'));
+            $isLoopback = $host === 'localhost' || $host === '127.0.0.1' || $host === '::1';
+            if (!$isLoopback) {
+                return 'Only the local Ollama service may be configured by a non-administrator.';
+            }
+        }
+        return null;
     }
 
     #[NoAdminRequired]
@@ -198,37 +250,64 @@ class ApiController extends OCSController {
                 'status' => $this->ragService->buildStatus($user),
             ], 409);
         }
-        $this->config->set('index_running', '1');
+        $runId = bin2hex(random_bytes(16));
+        $lockPath = 'eva_ai/index/' . hash('sha256', $user);
+        try {
+            // Serialize the initial claim as well. IConfig's precondition is
+            // atomic only after the first missing value has been created.
+            $this->lockingProvider->acquireLock($lockPath, ILockingProvider::LOCK_EXCLUSIVE, 'EVA index for ' . $user);
+        } catch (\Throwable $e) {
+            return new DataResponse([
+                'queued' => false,
+                'status' => $this->ragService->buildStatus($user),
+            ], 409);
+        }
+        if (!$this->config->tryClaimIndex($user)) {
+            $this->lockingProvider->releaseLock($lockPath, ILockingProvider::LOCK_EXCLUSIVE);
+            return new DataResponse([
+                'queued' => false,
+                'status' => $this->ragService->buildStatus($user),
+            ], 409);
+        }
+        try {
+            $this->config->setUserId($user);
         $this->config->set('index_started', (string)time());
+        $this->config->set('index_heartbeat', (string)time());
         $this->config->set('index_finished', '0');
         $this->config->set('last_index_error', '');
         $this->config->set('index_mode', $mode);
-        $this->config->set('index_cancel_requested', '0');
-        $runId = bin2hex(random_bytes(16));
-        $this->config->set('index_run_id', $runId);
-        try {
+            $this->config->set('index_cancel_requested', '0');
+            $this->config->set('index_run_id', $runId);
             $this->jobList->add(IndexRequestJob::class, [
                 'userId' => $user,
                 'mode' => $mode,
                 'runId' => $runId,
             ]);
+            return new DataResponse([
+                'queued' => true,
+                'mode' => $mode,
+                'status' => $this->ragService->buildStatus($user),
+            ]);
         } catch (\Throwable $e) {
-            $this->config->set('index_running', '0');
-            $this->config->set('index_mode', 'idle');
+            $this->config->setUserId($user);
+            if ($this->config->get('index_run_id') === $runId) {
+                $this->config->set('index_running', '0');
+                $this->config->set('index_mode', 'idle');
+                $this->config->set('index_run_id', '');
+                $this->config->set('index_heartbeat', '');
+            }
             return new DataResponse(['error' => 'The background index job could not be queued.'], 500);
+        } finally {
+            $this->lockingProvider->releaseLock($lockPath, ILockingProvider::LOCK_EXCLUSIVE);
         }
-        return new DataResponse([
-            'queued' => true,
-            'mode' => $mode,
-            'status' => $this->ragService->buildStatus($user),
-        ]);
     }
 
     private function recoverStaleIndex(): void {
         if ($this->config->get('index_running') !== '1') {
             return;
         }
-        $started = (int)$this->config->get('index_started');
+        $heartbeat = (int)$this->config->get('index_heartbeat');
+        $started = $heartbeat > 0 ? $heartbeat : (int)$this->config->get('index_started');
         $age = $started > 0 ? time() - $started : PHP_INT_MAX;
         $cancelRequested = $this->config->get('index_cancel_requested') === '1';
         if ($age > 3600 || ($cancelRequested && $age > 300)) {
@@ -236,6 +315,7 @@ class ApiController extends OCSController {
             $this->config->set('index_mode', 'idle');
             $this->config->set('index_cancel_requested', '0');
             $this->config->set('index_run_id', '');
+            $this->config->set('index_heartbeat', '');
         }
     }
 
@@ -280,7 +360,8 @@ class ApiController extends OCSController {
         }
         $id = (int)($this->param('id') ?? 0);
         $doc = $id > 0 ? $this->documentMapper->findById($id) : null;
-        if ($doc === null || $doc->getUserId() !== $user) {
+        if ($doc === null || $doc->getUserId() !== $user
+            || !$this->fileContextChat->fileAccessible($user, (int)$doc->getFileId())) {
             return new DataResponse(['error' => 'Document not found'], 404);
         }
         $rows = $this->chunkMapper->findByDocument($id);
@@ -366,7 +447,10 @@ class ApiController extends OCSController {
         if ($fileIds === []) {
             return new DataResponse(['indexed' => [], 'missing' => [], 'files' => []]);
         }
-        $docs = $this->documentMapper->findByUserAndFileIds($user, $fileIds);
+        $docs = $this->fileContextChat->accessibleDocuments(
+            $user,
+            $this->documentMapper->findByUserAndFileIds($user, $fileIds)
+        );
         $indexed = [];
         $files = [];
         foreach ($docs as $d) {

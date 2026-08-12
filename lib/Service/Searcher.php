@@ -23,6 +23,7 @@ class Searcher {
      * @return array<int,array{chunk:array,doc:?array,cosine:float,lexical:float,score:float}>
      */
     public function search(string $userId, string $query, int $topK): array {
+        $topK = max(1, min($topK, (int)AppConfig::LIMITS['top_k'][1]));
         if (trim($query) === '') {
             return [];
         }
