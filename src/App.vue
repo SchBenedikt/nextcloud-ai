@@ -259,13 +259,17 @@ export default {
 	align-items: flex-start;
 	background: transparent;
 	display: flex;
+	justify-content: center;
 	margin-top: calc(-1 * var(--default-grid-baseline, 4px));
-	padding: 0 0 var(--default-grid-baseline, 4px);
+	padding: 0 var(--app-navigation-padding, 8px) var(--default-grid-baseline, 4px);
+	box-sizing: border-box;
+	width: 100%;
 }
 
 .new-chat-button {
 	max-width: 100%;
-	width: fit-content;
+	margin-inline: auto;
+	width: min(100%, 220px);
 }
 
 .chat-list-heading {

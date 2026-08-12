@@ -216,9 +216,17 @@ class ApiController extends OCSController {
             return new DataResponse(['stopped' => true, 'status' => $this->ragService->buildStatus($user)]);
         }
         $this->config->set('index_cancel_requested', '1');
-        // Keep the run marked as active until the queued worker observes the
-        // flag and cleans up. This prevents a new run from racing the old one.
-        $this->config->set('index_mode', 'stopping');
+        // Detach the run immediately so the UI and a subsequent start do not
+        // wait for a worker that may currently be inside an Ollama request.
+        // Clearing the run ID is the cancellation token: queued/active workers
+        // will exit on their next check and their finally blocks cannot clear a
+        // newer run's state. The per-user worker lock still prevents overlap.
+        $this->config->set('index_running', '0');
+        $this->config->set('index_mode', 'idle');
+        $this->config->set('index_run_id', '');
+        $this->config->set('index_heartbeat', '');
+        $this->config->set('index_finished', (string)time());
+        $this->config->set('index_cancel_requested', '0');
         return new DataResponse([
             'stopped' => true,
             'status' => $this->ragService->buildStatus($user),

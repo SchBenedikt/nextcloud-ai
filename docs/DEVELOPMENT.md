@@ -93,4 +93,4 @@ Before opening a pull request, frontend changes must pass `npm run build` and th
 
 ## Validation notes
 
-When changing the shared workspace layout, keep the responsive `--eva-content-width` contract, native navigation controls, notification app-icon URL generation, stable TaskProcessing provider IDs, and tool-policy confirmation boundaries covered by tests. Regenerate committed frontend bundles only after source validation succeeds.
+When changing the shared workspace layout, keep the responsive `--eva-content-width` contract, native navigation controls, bounded centered New chat sizing, notification app-icon URL generation, stable TaskProcessing provider IDs, and tool-policy confirmation boundaries covered by tests. Regenerate committed frontend bundles only after source validation succeeds.

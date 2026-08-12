@@ -88,6 +88,20 @@ final class OpenIssuesSecurityRegressionTest extends TestCase {
         self::assertSame([$document], $service->accessibleDocuments('alice', [$document]));
     }
 
+    public function testStopIndexDetachesTheRunImmediately(): void {
+        $controller = (string)file_get_contents(__DIR__ . '/../lib/Controller/ApiController.php');
+        $start = strpos($controller, 'public function stopIndex');
+        self::assertNotFalse($start);
+        $end = strpos($controller, 'private function recoverStaleIndex', $start);
+        self::assertNotFalse($end);
+        $stop = substr($controller, $start, $end - $start);
+        self::assertStringContainsString("set('index_running', '0')", $stop);
+        self::assertStringContainsString("set('index_mode', 'idle')", $stop);
+        self::assertStringContainsString("set('index_run_id', '')", $stop);
+        self::assertStringContainsString("set('index_heartbeat', '')", $stop);
+        self::assertStringContainsString("set('index_cancel_requested', '0')", $stop);
+    }
+
     public function testIndexingContractUsesOneExclusivePerUserClaimPath(): void {
         $indexer = (string)file_get_contents(__DIR__ . '/../lib/Service/Indexer.php');
         self::assertStringContainsString('ILockingProvider::LOCK_EXCLUSIVE', $indexer);

@@ -42,7 +42,8 @@ final class FrontendContractTest extends TestCase {
         self::assertStringContainsString('NcAppNavigationSearch', $app);
         self::assertStringContainsString('placeholder="Search chats"', $app);
         self::assertStringContainsString('<div class="new-chat-container">', $app);
-        self::assertStringContainsString('width: fit-content;', $app);
+        self::assertStringContainsString('justify-content: center;', $app);
+        self::assertStringContainsString('width: min(100%, 220px);', $app);
         self::assertStringContainsString("import NcIconSvgWrapper from '@nextcloud/vue/components/NcIconSvgWrapper'", $app);
         self::assertStringContainsString('NcCounterBubble', $app);
         self::assertStringContainsString('NcButton', $app);
@@ -55,7 +56,9 @@ final class FrontendContractTest extends TestCase {
         self::assertStringNotContainsString('top: 0;', $app);
         self::assertStringContainsString('background: transparent;', $app);
         self::assertStringContainsString('margin-top: calc(-1 * var(--default-grid-baseline, 4px));', $app);
-        self::assertStringContainsString('padding: 0 0 var(--default-grid-baseline, 4px);', $app);
+        self::assertStringContainsString('padding: 0 var(--app-navigation-padding, 8px) var(--default-grid-baseline, 4px);', $app);
+        self::assertStringContainsString('box-sizing: border-box;', $app);
+        self::assertStringContainsString('width: 100%;', $app);
         self::assertStringContainsString(':path="mdiPencilOutline"', $app);
         self::assertStringContainsString(':path="mdiTrashCanOutline"', $app);
         self::assertStringNotContainsString('<svg width="20" height="20"', $app);

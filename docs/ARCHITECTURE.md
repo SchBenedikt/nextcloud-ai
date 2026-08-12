@@ -150,3 +150,7 @@ tools are allowed in each:
 The workspace uses one responsive `--eva-content-width` token: it expands to `clamp(1180px, 78vw, 1680px)` on large displays and is constrained by the viewport on smaller screens. The native New chat action remains compact and is placed directly below the chat search. Assistant providers keep stable IDs while using the display names `Eva · Local`, `Eva · RAG`, `Eva · Tools`, and `Eva · Agent`.
 
 The centralized tool policy exposes registered read-only tools to the safe RAG/TaskProcessing surfaces. File, calendar, contact, share, and task mutations remain restricted to interactive surfaces and require explicit confirmation where configured. Live web search is not implemented yet; see GitHub issue #54.
+
+## Index cancellation
+
+The Stop indexing action detaches the active per-user run immediately by clearing its run token and state. Queued workers and active workers stop at their next cancellation check and cannot overwrite a newer run. An Ollama embedding request already in progress cannot be interrupted by a separate PHP request, so that worker-side request may finish before cleanup, but no subsequent file or pass is started.

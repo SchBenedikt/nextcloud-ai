@@ -93,6 +93,6 @@ sudo -u www-data php occ config:list apps --app=eva_ai
 
 ## Responsive layout and assistant providers
 
-Chat, documents, and settings share a responsive content-width token that uses more available space on large screens without overflowing smaller viewports. The New chat control is intentionally label-sized rather than full-width. Nextcloud Assistant displays the stable EVA provider family as `Eva · Local`, `Eva · RAG`, `Eva · Tools`, and `Eva · Agent`; provider IDs are unchanged.
+Chat, documents, and settings share a responsive content-width token that uses more available space on large screens without overflowing smaller viewports. The New chat control is centered and bounded to 220px rather than stretching across the navigation. Nextcloud Assistant displays the stable EVA provider family as `Eva · Local`, `Eva · RAG`, `Eva · Tools`, and `Eva · Agent`; provider IDs are unchanged.
 
 Read-only tools may be used on the RAG and TaskProcessing surfaces according to the centralized policy. State-changing tools are not widened by this UI work and remain confirmation-gated. Live web search remains planned under issue #54.
