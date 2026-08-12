@@ -87,6 +87,20 @@ follows [Semantic Versioning](https://semver.org/).
 - Docs: `docs/SECURITY.md`, `docs/CONFIGURATION.md`, `docs/ARCHITECTURE.md`,
   `docs/DEVELOPMENT.md`.
 
+### Housekeeping
+- Pending regression contracts for open issues #99–#106
+  (`tests/OpenIssuesPendingContractTest.php`): each test documents the fix
+  contract and is skipped until the issue is implemented, so CI stays green.
+- New CI workflows: `quality.yml` (composer/npm dependency security audits on
+  push and pull requests) and `nightly.yml` (nightly `occ app:check-code` and
+  the test suite against every supported Nextcloud release line and `latest`).
+- New documentation: `docs/FAQ.md` (setup, indexing, chat, Talk, Assistant and
+  privacy troubleshooting).
+- Issue and pull-request templates (`.github/ISSUE_TEMPLATE/*`,
+  `.github/PULL_REQUEST_TEMPLATE.md`) matching the repository issue format.
+- Backlog grooming: related open issues are cross-linked and small, isolated
+  fixes are labelled `good first issue`.
+
 ## [1.4.0]
 
 ### Fixed

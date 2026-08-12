@@ -1,0 +1,45 @@
+name: Nightly
+
+on:
+  schedule:
+    # 03:00 UTC every night
+    - cron: '0 3 * * *'
+  workflow_dispatch:
+
+jobs:
+  compat:
+    name: Nextcloud ${{ matrix.nc }} compatibility
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        nc: ['stable30', 'stable31', 'stable32', 'stable33', 'stable34', 'stable35', 'latest']
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install into Nextcloud ${{ matrix.nc }} and check code
+        run: |
+          docker run --rm \
+            -v "$PWD":/app:ro \
+            -e NC="${{ matrix.nc }}" \
+            ghcr.io/nextcloud/continuous-integration-php8.3 sh -c '
+              set -e
+              if [ "$NC" = "latest" ]; then
+                URL="https://download.nextcloud.com/server/latest.tar.bz2"
+              else
+                URL="https://download.nextcloud.com/server/$NC/latest.tar.bz2"
+              fi
+              echo "== Downloading $URL =="
+              curl -fsSL "$URL" -o /tmp/nc.tar.bz2
+              mkdir -p /srv
+              tar -xjf /tmp/nc.tar.bz2 -C /srv
+              cp -r /app /srv/nextcloud/apps/eva_ai
+              cd /srv/nextcloud/apps/eva_ai
+              composer install --no-interaction --prefer-dist
+              echo "== occ app:check-code eva_ai =="
+              cd /srv/nextcloud
+              php occ app:check-code eva_ai
+              echo "== composer test =="
+              cd /srv/nextcloud/apps/eva_ai
+              composer test
+            '

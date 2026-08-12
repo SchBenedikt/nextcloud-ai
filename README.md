@@ -326,7 +326,8 @@ tools always require explicit user confirmation. See [docs/SECURITY.md](docs/SEC
 
 - **Tests**: `composer test` (PHPUnit) — security, provider, settings and migration regressions
 - **Frontend build**: `npm ci && npm run build`; CI also verifies that the expected generated bundles are emitted
-- **CI**: GitHub Actions on PHP 8.2 / 8.3 / 8.4 (see [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md))
+- **CI**: GitHub Actions on PHP 8.2 / 8.3 / 8.4 (see [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md)), dependency security audits (`quality.yml`) and nightly Nextcloud compatibility checks across all supported release lines (`nightly.yml`)
+- **FAQ**: see [docs/FAQ.md](docs/FAQ.md) for setup, indexing and troubleshooting
 - **Architecture**: see [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)
 
 ---
