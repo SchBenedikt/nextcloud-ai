@@ -44,6 +44,8 @@ final class FrontendContractTest extends TestCase {
         self::assertStringContainsString('NcCounterBubble', $app);
         self::assertStringContainsString('NcButton', $app);
         self::assertStringContainsString(':wide="true"', $app);
+        self::assertStringContainsString('position: sticky;', $app);
+        self::assertStringContainsString('top: 0;', $app);
         self::assertStringNotContainsString('allow-collapse', $app);
         self::assertStringNotContainsString('chatsOpen', $app);
         self::assertStringContainsString('filteredChats', $app);

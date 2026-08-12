@@ -249,8 +249,13 @@ export default {
 }
 
 .new-chat-container {
+	background: var(--color-main-background);
+	border-bottom: 1px solid var(--color-border);
 	list-style: none;
 	padding: 8px var(--app-navigation-padding, 8px) 12px;
+	position: sticky;
+	top: 0;
+	z-index: 2;
 }
 
 .new-chat-button {
