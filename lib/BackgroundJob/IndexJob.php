@@ -45,7 +45,18 @@ class IndexJob extends TimedJob {
         $this->config->set('index_job_started', (string)time());
 
         try {
-            $users = $this->documentMapper->distinctUserIds();
+            $documentUsers = $this->documentMapper->distinctUserIds();
+            // Enrollment is persisted separately from indexed documents. An
+            // explicit opt-out must win over stale document rows; users with
+            // no stored choice are migrated into the enrolled set below.
+            $eligibleDocumentUsers = array_values(array_filter(
+                $documentUsers,
+                fn(string $user): bool => !$this->config->hasIndexEnrollment($user)
+                    || $this->config->isIndexEnrolled($user)
+            ));
+            // This keeps empty/reset indexes in the recurring schedule while
+            // honoring an explicit per-user opt-out (Issue #49).
+            $users = array_merge($eligibleDocumentUsers, $this->config->enrolledUserIds());
             $configured = $this->config->get('index_user');
             if ($configured !== '') {
                 $users[] = $configured;
@@ -53,6 +64,12 @@ class IndexJob extends TimedJob {
             $users = array_values(array_unique(array_filter($users, static fn($u) => $u !== '')));
 
             foreach ($users as $user) {
+                // Existing installations are migrated lazily: a user with
+                // indexed data is enrolled unless they already explicitly
+                // chose an enrollment value (including 0).
+                if (in_array($user, $eligibleDocumentUsers, true) && in_array($user, $documentUsers, true) && !$this->config->hasIndexEnrollment($user)) {
+                    $this->config->setIndexEnrolled($user, true);
+                }
                 // Do not compete with an explicitly requested per-user job.
                 $this->config->setUserId($user);
                 if ($this->config->get('index_running') === '1') {

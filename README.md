@@ -91,8 +91,8 @@ sudo -u www-data php occ config:app:set eva_ai ollama_url --value=http://192.168
 
 ### 4. First start & indexing
 
-1. Open `/apps/eva_ai` as a user.
-2. In **Settings** start the index with the **"Start indexing"** button. Per-user indexing uses the currently authenticated user. The optional instance-wide
+1. Open `/apps/eva_ai` as a user. On the first authenticated app request, EVA creates a small editable `KNOWLEDGE.md` profile section in that user's home from the Nextcloud user ID, display name and (when available) email. It never overwrites existing knowledge and does not import address, phone or biography automatically.
+2. In **Settings** start the index with the **"Start indexing"** button. Starting an index explicitly enrolls your account in the recurring background schedule, even when the first pass finds zero documents. You can disable future scheduled passes with **Keep indexing this account in the background** in Settings. Per-user indexing uses the currently authenticated user. The optional instance-wide
    legacy background job can be limited with `index_user`. Each pass also
    indexes emails (subject, sender, body) if `mail_index_enabled` is on.
 3. Then chat. Tools are enabled by default; every answer names which file it used.
@@ -271,7 +271,8 @@ Quick reference:
 | Indexed emails | DB (`eva_ai_documents`) | Until email changes or index reset |
 | Chat history | AppData (`eva_ai/chats/<user namespace>/chats.json`) | Until the user deletes chats or app data is removed |
 | AI-created file markers | app-data (`ai-marks/`) | Until file deleted or cleaned |
-| Knowledge base (`KNOWLEDGE.md`) | User home | Until user deletes the file |
+| Knowledge base (`KNOWLEDGE.md`), including the optional first-run profile section | User home | Until the user edits/deletes it or removes the file |
+| First-run knowledge marker | Per-user Nextcloud user configuration | Until the app is reset/uninstalled or the user changes it |
 | Agent conversation state | DB (`eva_ai_agent_store`) | Per conversation token; deleted on reset |
 | App configuration | `oc_appconfig` | Persistent until changed |
 

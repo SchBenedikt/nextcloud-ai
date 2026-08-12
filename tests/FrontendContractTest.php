@@ -73,7 +73,7 @@ final class FrontendContractTest extends TestCase {
         self::assertStringContainsString('@click.stop="deleteChat(c.id)"', $app);
         self::assertStringContainsString('aria-label="Rename chat"', $app);
         self::assertStringContainsString('aria-label="Delete chat"', $app);
-        self::assertStringContainsString("return api('GET', '/chats')", $app);
+        self::assertStringContainsString("return requestApi('GET', '/chats')", $app);
         $settings = (string)file_get_contents(__DIR__ . '/../src/views/SettingsView.vue');
         self::assertStringContainsString("api('DELETE', 'chats')", $settings);
         self::assertStringContainsString("new CustomEvent('eva-ai:chats-cleared')", $settings);
@@ -81,6 +81,9 @@ final class FrontendContractTest extends TestCase {
         self::assertStringContainsString('api#deleteAllChats', (string)file_get_contents(__DIR__ . '/../appinfo/routes.php'));
         self::assertStringContainsString('public function deleteAllChats', (string)file_get_contents(__DIR__ . '/../lib/Controller/ApiController.php'));
         $controller = (string)file_get_contents(__DIR__ . '/../lib/Controller/ApiController.php');
+        self::assertStringContainsString('KnowledgeInitializer $knowledgeInitializer', $controller);
+        self::assertStringContainsString('ensureInitialized($user)', $controller);
+        self::assertStringContainsString('knowledge_initialized', (string)file_get_contents(__DIR__ . '/../lib/Service/KnowledgeInitializer.php'));
         self::assertStringContainsString('private function requestParam', $controller);
         self::assertStringContainsString('private function requestBody', $controller);
         self::assertStringContainsString('$this->request->getParam(', $controller);
@@ -130,4 +133,24 @@ final class FrontendContractTest extends TestCase {
         self::assertStringNotContainsString('width: min(100%, 1540px);', $source);
         self::assertStringNotContainsString('box-shadow:', $source);
     }
+
+    public function testNon2xxResponsesAreVisibleInsteadOfSilentNulls(): void {
+        $app = (string)file_get_contents(__DIR__ . '/../src/App.vue');
+        $fileContext = (string)file_get_contents(__DIR__ . '/../src/views/FileContextChatView.vue');
+        $api = (string)file_get_contents(__DIR__ . '/../src/lib/api.js');
+        self::assertStringContainsString("import { api as requestApi, errMsg } from './lib/api'", $app);
+        self::assertStringContainsString("import { api, errMsg } from '../lib/api'", $fileContext);
+        self::assertStringContainsString('apiError', $app);
+        self::assertStringContainsString('apiError', $fileContext);
+        self::assertStringNotContainsString('.catch(() => null)', $app);
+        self::assertStringNotContainsString('.catch(() => null)', $fileContext);
+        self::assertStringContainsString('slice(0, 240)', $api);
+        $vanilla = (string)file_get_contents(__DIR__ . '/../src/lib/vanilla.js');
+        $standalone = (string)file_get_contents(__DIR__ . '/../js/chat.js');
+        self::assertStringContainsString('if (!r.ok)', $vanilla);
+        self::assertStringContainsString('if (!r.ok)', $standalone);
+        self::assertStringContainsString("'HTTP ' + r.status", $vanilla);
+        self::assertStringContainsString("'HTTP ' + r.status", $standalone);
+    }
+
 }

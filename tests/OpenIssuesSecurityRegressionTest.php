@@ -131,4 +131,27 @@ final class OpenIssuesSecurityRegressionTest extends TestCase {
         $requestJob = (string)file_get_contents(__DIR__ . '/../lib/BackgroundJob/IndexRequestJob.php');
         self::assertStringContainsString('$this->indexer->run($userId', $requestJob);
     }
+
+    public function testEnrollmentStreamingAndFileContextContracts(): void {
+        $config = (string)file_get_contents(__DIR__ . '/../lib/Service/AppConfig.php');
+        $job = (string)file_get_contents(__DIR__ . '/../lib/BackgroundJob/IndexJob.php');
+        $controller = (string)file_get_contents(__DIR__ . '/../lib/Controller/ApiController.php');
+        $ollama = (string)file_get_contents(__DIR__ . '/../lib/Service/Ollama.php');
+        $rag = (string)file_get_contents(__DIR__ . '/../lib/Service/RagService.php');
+        $fileContext = (string)file_get_contents(__DIR__ . '/../lib/Service/FileContextChatService.php');
+        self::assertStringContainsString("'index_enrolled'", $config);
+        self::assertStringContainsString('enrolledUserIds', $config);
+        self::assertStringContainsString('setIndexEnrolled', $config);
+        self::assertStringContainsString('enrolledUserIds()', $job);
+        self::assertStringContainsString('hasIndexEnrollment', $job);
+        self::assertStringContainsString('isIndexEnrolled', $config);
+        self::assertStringContainsString('setIndexEnrolled($user, true)', $controller);
+        self::assertStringContainsString('clientDisconnected', $controller);
+        self::assertStringContainsString('clientDisconnected', $ollama);
+        self::assertStringContainsString('clientDisconnected', $rag);
+        self::assertStringContainsString('knowledgeFor', $fileContext);
+        self::assertStringContainsString('KNOWLEDGE.md', $fileContext);
+        self::assertStringContainsString('selected file excerpts remain the only document evidence', $fileContext);
+    }
+
 }

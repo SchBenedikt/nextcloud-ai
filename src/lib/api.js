@@ -8,7 +8,8 @@ import { generateOcsUrl } from '@nextcloud/router'
  * Unwraps the ocs envelope and returns the data object.
  */
 export async function api(method, path, data) {
-	const url = generateOcsUrl('/apps/eva_ai/api/' + path)
+	const normalizedPath = String(path || '').replace(/^\/+/, '')
+	const url = generateOcsUrl('/apps/eva_ai/api/' + normalizedPath)
 	const cfg = { method, url }
 	if (method === 'GET' && data !== undefined && data !== null) {
 		cfg.params = data
@@ -29,11 +30,12 @@ export function errMsg(e) {
 		const data = e.response.data
 		let detail = ''
 		try {
-			detail = data && data.ocs && data.ocs.message ? data.ocs.message : ''
+			detail = data?.ocs?.message || data?.ocs?.data?.error || data?.error || (typeof data === 'string' ? data : '')
 		} catch (_) { /* ignore */ }
-		return (e.response.status || '') + (detail ? ' ' + detail : '')
+		detail = String(detail || '').replace(/\s+/g, ' ').trim().slice(0, 240)
+		return String(e.response.status || 'HTTP error') + (detail ? ' ' + detail : '')
 	}
-	return e && e.message ? e.message : String(e)
+	return e && e.message ? String(e.message).replace(/\s+/g, ' ').trim().slice(0, 240) : String(e)
 }
 
 /** Escapes a string for safe injection in raw HTML. */

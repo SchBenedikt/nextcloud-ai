@@ -1,10 +1,11 @@
 <template>
 	<div class="file-context-root">
+		<div v-if="apiError" class="api-error" role="alert">{{ apiError }}</div>
 		<header class="head">
 			<div class="head-info">
 				<h1>File context chat</h1>
 				<p class="subtitle">
-					Answers are based exclusively on the selected files.
+					Selected files provide the document evidence; your personal knowledge can personalise the answer.
 				</p>
 			</div>
 			<div class="file-chips">
@@ -21,7 +22,7 @@
 			<div v-if="messages.length === 0" class="empty">
 				<div class="empty-icon">⌘</div>
 				<strong>Ask about the selected files</strong>
-				<span>Eva will only use content from this file selection.</span>
+				<span>Eva uses the selected files for document evidence and may use your personal KNOWLEDGE.md for context.</span>
 			</div>
 			<div v-for="(m, i) in messages" :key="i" :class="['msg', m.role]">
 				<div class="msg-author">{{ m.role === 'user' ? 'You' : 'Eva' }}</div>
@@ -58,6 +59,7 @@
 import { ref, onMounted, nextTick } from 'vue'
 import { NcButton, NcTextField } from '@nextcloud/vue'
 import { mdiSend } from '@mdi/js'
+import { api, errMsg } from '../lib/api'
 
 export default {
 	name: 'FileContextChatView',
@@ -72,34 +74,7 @@ export default {
 		const input = ref('')
 		const busy = ref(false)
 		const messagesEl = ref(null)
-
-		const apiBase = () => {
-			const el = document.head.querySelector('meta[name="eva-ai-api"]')
-			return el ? el.getAttribute('content') : ''
-		}
-		const token = () => {
-			const el = document.head.querySelector('meta[name="requesttoken"]')
-			return el ? el.getAttribute('content') : ''
-		}
-		const api = (method, path, body) => {
-			const opts = {
-				method,
-				credentials: 'same-origin',
-				headers: {
-					'OCS-APIRequest': 'true',
-					'Accept': 'application/json',
-					'requesttoken': token(),
-				},
-			}
-			if (body) {
-				opts.headers['Content-Type'] = 'application/json'
-				opts.body = JSON.stringify(body)
-			}
-			return fetch(apiBase() + path, opts)
-				.then((r) => r.json())
-				.then((json) => (json && json.ocs && typeof json.ocs.data !== 'undefined' ? json.ocs.data : json))
-				.catch(() => null)
-		}
+		const apiError = ref('')
 
 		const scrollDown = async () => {
 			await nextTick()
@@ -114,6 +89,7 @@ export default {
 			}
 			try {
 				const r = await api('POST', '/fileContextStatus', { fileIds: props.fileIds })
+				apiError.value = ''
 				if (r && Array.isArray(r.files)) {
 					files.value = r.files
 				}
@@ -121,6 +97,7 @@ export default {
 					missing.value = r.missing
 				}
 			} catch (e) {
+				apiError.value = 'The selected files could not be loaded: ' + errMsg(e)
 				console.error('[eva-ai] fileContextStatus failed', e)
 			}
 			if (files.value.length === 0 && props.fileIds.length > 0) {
@@ -155,7 +132,8 @@ export default {
 					})
 				}
 			} catch (e) {
-				messages.value.push({ role: 'assistant', content: 'Network error: ' + (e && e.message || e), sources: [] })
+				apiError.value = 'The file-context request failed: ' + errMsg(e)
+				messages.value.push({ role: 'assistant', content: 'Error: ' + errMsg(e), sources: [] })
 			} finally {
 				busy.value = false
 				await scrollDown()
@@ -164,12 +142,21 @@ export default {
 
 		onMounted(loadStatus)
 
-		return { files, missing, messages, input, busy, messagesEl, ask, mdiSend }
+		return { files, missing, messages, input, busy, messagesEl, apiError, ask, mdiSend }
 	},
 }
 </script>
 
 <style scoped>
+.api-error {
+	padding: 10px 12px;
+	border: 1px solid color-mix(in srgb, var(--color-error, #c00) 45%, var(--color-border));
+	border-radius: 10px;
+	background: color-mix(in srgb, var(--color-error, #c00) 8%, var(--color-main-background));
+	color: var(--color-error, #c00);
+	font-size: 13px;
+}
+
 .file-context-root {
 	width: 100%;
 	max-width: 1180px;

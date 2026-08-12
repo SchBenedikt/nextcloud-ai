@@ -19,7 +19,7 @@ class AppConfig {
         // Per-user index state: progress and hashes must never leak between users.
         'index_running', 'index_started', 'index_heartbeat', 'index_finished', 'last_index_processed',
         'last_index_total', 'last_index_error', 'index_config_hash', 'index_mode',
-        'index_cancel_requested', 'index_run_id',
+        'index_cancel_requested', 'index_run_id', 'index_enrolled', 'knowledge_initialized',
     ];
 
     private const DEFAULTS = [
@@ -57,6 +57,8 @@ class AppConfig {
         'index_mode' => 'idle',
         'index_cancel_requested' => '0',
         'index_run_id' => '',
+        'index_enrolled' => '0',
+        'knowledge_initialized' => '0',
         // Only the scheduler lock is global; it is not exposed as a user setting.
         'index_job_running' => '0',
         'index_job_started' => '',
@@ -137,6 +139,48 @@ class AppConfig {
      * Atomically claim a user's index state where possible. The precondition
      * prevents two web/cron workers from both entering the mutation pipeline.
      */
+    /** @return list<string> users that explicitly enabled recurring indexing */
+    public function enrolledUserIds(): array {
+        try {
+            $users = $this->config->getUsersForUserValue(self::APP, 'index_enrolled', '1');
+            return array_values(array_unique(array_filter(array_map('strval', $users), static fn(string $user): bool => $user !== '')));
+        } catch (\Throwable $e) {
+            return [];
+        }
+    }
+
+    public function hasIndexEnrollment(string $userId): bool {
+        $sentinel = "\0eva_ai_missing\0";
+        try {
+            return $this->config->getUserValue($userId, self::APP, 'index_enrolled', $sentinel) !== $sentinel;
+        } catch (\Throwable $e) {
+            return false;
+        }
+    }
+
+    public function isIndexEnrolled(string $userId): bool {
+        $previous = $this->userId;
+        $this->setUserId($userId);
+        try {
+            return $this->get('index_enrolled') === '1';
+        } finally {
+            $this->userId = $previous;
+        }
+    }
+
+    public function setIndexEnrolled(string $userId, bool $enabled): void {
+        if ($userId === '') {
+            return;
+        }
+        $previous = $this->userId;
+        $this->setUserId($userId);
+        try {
+            $this->set('index_enrolled', $enabled ? '1' : '0');
+        } finally {
+            $this->userId = $previous;
+        }
+    }
+
     public function tryClaimIndex(string $userId): bool {
         $previous = $this->userId;
         $this->setUserId($userId);
@@ -167,7 +211,7 @@ class AppConfig {
      * malformed, non-numeric, or out-of-range values.
      */
     public function validateValue(string $key, mixed $value): ?string {
-        if (in_array($key, ['actions_enabled', 'notify_on_complete', 'mail_index_enabled'], true)) {
+        if (in_array($key, ['actions_enabled', 'notify_on_complete', 'mail_index_enabled', 'index_enrolled'], true)) {
             return is_scalar($value) && in_array((string)$value, ['0', '1', 'true', 'false', 'on', 'off'], true)
                 ? null : 'must be a boolean value';
         }

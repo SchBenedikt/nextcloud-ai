@@ -15,12 +15,14 @@ you can remove it.
 | Email chunks and embeddings | Nextcloud database (`eva_ai_chunks`) | Same as parent email document |
 | Chat history (conversation messages) | Nextcloud AppData (`eva_ai/chats/<user namespace>/chats.json`) | Per user; retained until the user deletes it or app data is removed |
 | AI-created file markers (tracking files EVA created) | Nextcloud app-data (`ai-marks/`) | Until the file is deleted or manually cleaned |
-| Knowledge base entries (`KNOWLEDGE.md`) | User's Nextcloud home folder | Until the user deletes the file |
+| Knowledge base entries (`KNOWLEDGE.md`), including the optional first-run identity section | User's Nextcloud home folder | Until the user edits/deletes the section or file |
+| First-run knowledge marker | Per-user Nextcloud user configuration | Until the app is reset/uninstalled or the user changes it |
 | Agent conversation state | Nextcloud database (`eva_ai_agent_store`) | Per conversation token; deleted on reset |
 | App configuration | Nextcloud database (`oc_appconfig`) | Persistent until manually changed |
 
 ## 2. Where is data processed?
 
+- **First app start**: EVA may add only the user's Nextcloud ID, display name and non-empty email to that user's own `KNOWLEDGE.md`. Existing content is preserved; address, phone, biography and groups are not imported automatically.
 - **All processing is local**: file indexing, text extraction, chunking, embedding
   generation and LLM chat all happen on your own server.
 - **Ollama** is the only AI component — it runs locally on your machine. No file

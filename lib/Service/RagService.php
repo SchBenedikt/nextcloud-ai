@@ -88,6 +88,9 @@ class RagService {
     public function askStream(string $userId, string $message, array $history): \Generator {
         $this->config->setUserId($userId);
         try {
+            if ($this->clientDisconnected()) {
+                return;
+            }
             if (trim($message) === '') {
                 yield json_encode(['type' => 'error', 'message' => 'Empty message']) . "\n";
                 return;
@@ -107,6 +110,9 @@ class RagService {
                 $toolCalls = [];
                 $rawToolCalls = [];
                 foreach ($this->ollama->chatStream($messages, $tools) as $ev) {
+                    if ($this->clientDisconnected()) {
+                        return;
+                    }
                     $evType = $ev['type'] ?? '';
                     if ($evType === 'content') {
                         $answer .= $ev['delta'] ?? '';
@@ -121,17 +127,26 @@ class RagService {
                         return;
                     }
                 }
+                if ($this->clientDisconnected()) {
+                    return;
+                }
                 if ($toolCalls === []) {
                     break;
                 }
                 $messages[] = ['role' => 'assistant', 'content' => $answer, 'tool_calls' => $this->canonicalToolCalls($rawToolCalls)];
                 foreach ($toolCalls as $tc) {
+                    if ($this->clientDisconnected()) {
+                        return;
+                    }
                     yield json_encode(['type' => 'tool', 'name' => $tc['name'] ?? '?']) . "\n";
                     $res = $this->executor->run($userId, $tc['name'] ?? '', $tc['arguments'] ?? []);
                     yield json_encode(['type' => 'tool_result', 'name' => $tc['name'] ?? '?', 'ok' => !empty($res['ok']), 'error' => $res['error'] ?? null]) . "\n";
                     $messages[] = ['role' => 'tool', 'content' => json_encode($res, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES)];
                 }
                 $answer = '';
+            }
+            if ($this->clientDisconnected()) {
+                return;
             }
             if ($answer === '') {
                 yield json_encode(['type' => 'error', 'message' => 'No text response received from Ollama.']) . "\n";
@@ -144,8 +159,14 @@ class RagService {
                 'sources' => array_values($byDoc),
             ]) . "\n";
         } catch (\Throwable $e) {
-            yield json_encode(['type' => 'error', 'message' => 'Ollama error: ' . $e->getMessage()]) . "\n";
+            if (!$this->clientDisconnected()) {
+                yield json_encode(['type' => 'error', 'message' => 'Ollama error: ' . $e->getMessage()]) . "\n";
+            }
         }
+    }
+
+    private function clientDisconnected(): bool {
+        return function_exists('connection_aborted') && connection_aborted() > 0;
     }
 
     /**
