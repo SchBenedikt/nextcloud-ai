@@ -1,18 +1,15 @@
 <template>
 	<NcContent class="eva-ai-app" :app-name="'eva_ai'">
 		<NcAppNavigation :title="'Eva · v' + buildVersion" @close-navigation="mobileOpen = false">
+			<template #search>
+				<NcAppNavigationSearch v-model="chatFilter" label="Search chats" />
+			</template>
 			<template #list>
 				<button class="new-chat-btn" :disabled="busy" @click="newChat">
 					<svg width="16" height="16" viewBox="0 0 24 24" aria-hidden="true"><path :d="mdiMessagePlus" fill="currentColor" /></svg>
 					<span>New chat</span>
 				</button>
-				<div class="chat-list-tools">
-					<div class="chat-list-heading"><span>Chats</span><small>{{ chats.length }}</small></div>
-					<div class="chat-search">
-						<input v-model="chatFilter" type="search" placeholder="Search chats" aria-label="Search chats" @keyup.esc="chatFilter = ''">
-						<button v-if="chatFilter" class="clear-chat-search" type="button" aria-label="Clear chat search" title="Clear search" @click="chatFilter = ''">×</button>
-					</div>
-				</div>
+				<div class="chat-list-heading"><span>Chats</span><small>{{ chats.length }}</small></div>
 				<div class="chat-list">
 					<NcAppNavigationItem
 						v-for="c in filteredChats"
@@ -76,10 +73,11 @@ import DocumentsView from './views/DocumentsView.vue'
 import SettingsView from './views/SettingsView.vue'
 import FileContextChatView from './views/FileContextChatView.vue'
 import { mdiChatProcessing, mdiFileDocumentOutline, mdiTune, mdiTrashCanOutline, mdiMessagePlus, mdiPencilOutline } from '@mdi/js'
+import NcAppNavigationSearch from '@nextcloud/vue/components/NcAppNavigationSearch'
 
 export default {
 	name: 'EvaAiApp',
-	components: { ChatView, DocumentsView, SettingsView, FileContextChatView },
+	components: { ChatView, DocumentsView, SettingsView, FileContextChatView, NcAppNavigationSearch },
 	setup() {
 		const params = new URLSearchParams(window.location.search)
 		const initialFileIdsParam = params.get('fileIds')
@@ -264,14 +262,8 @@ export default {
 .new-chat-btn:hover:not(:disabled) { filter: brightness(1.08); }
 .new-chat-btn:disabled { opacity: .6; cursor: default; }
 
-.chat-list-tools { padding: 12px 12px 6px; }
-.chat-list-heading { display: flex; align-items: center; justify-content: space-between; margin: 0 2px 7px; color: var(--color-text-maxcontrast, #666); font-size: 11px; font-weight: 700; letter-spacing: .07em; text-transform: uppercase; }
+.chat-list-heading { display: flex; align-items: center; justify-content: space-between; margin: 8px 12px 4px; color: var(--color-text-maxcontrast, #666); font-size: 11px; font-weight: 700; letter-spacing: .07em; text-transform: uppercase; }
 .chat-list-heading small { min-width: 20px; padding: 2px 5px; border-radius: 999px; background: var(--color-background-hover, #eee); font-size: 10px; letter-spacing: 0; text-align: center; }
-.chat-search { position: relative; }
-.chat-search input { width: 100%; box-sizing: border-box; padding: 7px 28px 7px 9px; border: 1px solid var(--color-border, #ddd); border-radius: 7px; background: var(--color-main-background, #fff); color: var(--color-main-text, #222); font: inherit; font-size: 12px; }
-.chat-search input:focus { border-color: var(--color-primary-element, #00679c); outline: 2px solid color-mix(in srgb, var(--color-primary-element, #00679c) 18%, transparent); outline-offset: 0; }
-.clear-chat-search { position: absolute; top: 50%; right: 5px; width: 22px; height: 22px; transform: translateY(-50%); border: 0; border-radius: 5px; background: transparent; color: var(--color-text-maxcontrast, #666); cursor: pointer; font-size: 17px; line-height: 1; }
-.clear-chat-search:hover { background: var(--color-background-hover, #eee); color: var(--color-main-text, #222); }
 .chat-item-actions { display: flex; align-items: center; gap: 2px; margin-right: 4px; }
 .chat-action { display: grid; place-items: center; width: 27px; height: 27px; padding: 0; border: 0; border-radius: 6px; background: transparent; color: var(--color-text-maxcontrast, #666); cursor: pointer; opacity: .75; }
 .chat-action:hover, .chat-action:focus-visible { background: var(--color-background-hover, #eee); color: var(--color-main-text, #222); opacity: 1; outline: 2px solid var(--color-primary-element, #00679c); outline-offset: 1px; }

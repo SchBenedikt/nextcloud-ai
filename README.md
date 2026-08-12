@@ -33,7 +33,7 @@ always cite the source file path the model took the information from.
 - **Responsive chat and document UI**: fluid layouts for mobile and wide desktop screens, with explicit chunk loading, empty, error and retry states when inspecting indexed documents
 - **Persistent settings**: folder exclusions are saved immediately, and connection checks use the configured HTTP/HTTPS Ollama endpoint for every user
 - **Incremental document browsing**: large knowledge bases load in manageable pages with a "Load more" action and clear progress/end state
-- **Unified workspace navigation**: consistent content width plus searchable chats with clear rename and delete actions
+- **Unified workspace navigation**: consistent content width plus native Nextcloud navigation search with clear rename and delete actions
 - **"AI answer ready" notifications** via the Notifications app
 - **No configuration needed**: models come from the local Ollama instance
 
