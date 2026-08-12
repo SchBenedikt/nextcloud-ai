@@ -33,10 +33,11 @@ final class FrontendContractTest extends TestCase {
 
     public function testChatUsesFluidWideScreenLayout(): void {
         $source = (string)file_get_contents(__DIR__ . '/../src/views/ChatView.vue');
-        self::assertStringContainsString('max-width: none;', $source);
+        self::assertStringNotContainsString('max-width: none;', $source);
         self::assertStringContainsString('@media (min-width: 1400px)', $source);
-        self::assertStringContainsString('width: min(100%, 1540px);', $source);
-        self::assertStringNotContainsString('max-width: 1180px;', $source);
+        self::assertStringContainsString('font-size: 18px;', $source);
+        self::assertStringContainsString('width: min(100%, 1180px);', $source);
+        self::assertStringNotContainsString('width: min(100%, 1540px);', $source);
         self::assertStringNotContainsString('box-shadow:', $source);
     }
 }
