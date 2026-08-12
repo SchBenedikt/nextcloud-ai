@@ -35,6 +35,23 @@ final class FrontendContractTest extends TestCase {
         self::assertStringContainsString("addOrderBy('id', 'DESC')", $mapper);
     }
 
+    public function testAppSharesContentWidthAndProvidesSearchableChatActions(): void {
+        $app = (string)file_get_contents(__DIR__ . '/../src/App.vue');
+        self::assertStringContainsString('--eva-content-width: 1180px;', $app);
+        self::assertStringContainsString('v-model="chatFilter"', $app);
+        self::assertStringContainsString('filteredChats', $app);
+        self::assertStringContainsString('class="chat-item-actions"', $app);
+        self::assertStringContainsString('aria-label="Rename chat"', $app);
+        self::assertStringContainsString('aria-label="Delete chat"', $app);
+        self::assertStringContainsString("return api('GET', '/chats')", $app);
+        self::assertStringContainsString('outline: 2px solid var(--color-primary-element, #00679c);', $app);
+
+        $settings = (string)file_get_contents(__DIR__ . '/../src/views/SettingsView.vue');
+        $documents = (string)file_get_contents(__DIR__ . '/../src/views/DocumentsView.vue');
+        self::assertStringContainsString('max-width: var(--eva-content-width, 1180px);', $settings);
+        self::assertStringContainsString('max-width: var(--eva-content-width, 1180px);', $documents);
+    }
+
     public function testSettingsPersistExclusionsAndDoNotOverwriteFormDuringPolling(): void {
         $settings = (string)file_get_contents(__DIR__ . '/../src/views/SettingsView.vue');
         self::assertStringContainsString('async function persistExcludeList(list, previous)', $settings);
@@ -53,7 +70,7 @@ final class FrontendContractTest extends TestCase {
         self::assertStringNotContainsString('max-width: none;', $source);
         self::assertStringContainsString('@media (min-width: 1400px)', $source);
         self::assertStringContainsString('font-size: 18px;', $source);
-        self::assertStringContainsString('width: min(100%, 1180px);', $source);
+        self::assertStringContainsString('width: min(100%, var(--eva-content-width, 1180px));', $source);
         self::assertStringNotContainsString('width: min(100%, 1540px);', $source);
         self::assertStringNotContainsString('box-shadow:', $source);
     }

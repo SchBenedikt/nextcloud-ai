@@ -338,7 +338,7 @@ export default {
 <style scoped lang="scss">
 .docs-view {
 	width: 100%;
-	max-width: none;
+	max-width: var(--eva-content-width, 1180px);
 	margin: 0 auto;
 	padding: 24px clamp(16px, 3vw, 36px) 48px;
 	box-sizing: border-box;

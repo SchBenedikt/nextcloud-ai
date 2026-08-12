@@ -65,7 +65,7 @@ export default {
 	justify-content: space-between;
 	gap: 12px;
 	flex: 0 0 auto;
-	width: min(100%, 1180px);
+	width: min(100%, var(--eva-content-width, 1180px));
 	min-height: 52px;
 	margin: 0 auto;
 	padding: 8px 0 9px;
@@ -121,7 +121,7 @@ export default {
 .chatview-root .chat-log {
 	flex: 1;
 	min-height: 180px;
-	width: min(100%, 1180px);
+	width: min(100%, var(--eva-content-width, 1180px));
 	margin: 0 auto;
 	padding: 24px 0 20px;
 	box-sizing: border-box;
@@ -256,7 +256,7 @@ export default {
 	align-items: center;
 	gap: 8px;
 	flex: 0 0 auto;
-	width: min(100%, 1180px);
+	width: min(100%, var(--eva-content-width, 1180px));
 	margin: 0 auto;
 	padding: 12px 0 16px;
 	border-top: 1px solid var(--color-border, #ddd);

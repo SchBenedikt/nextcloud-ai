@@ -6,9 +6,16 @@
 					<svg width="16" height="16" viewBox="0 0 24 24" aria-hidden="true"><path :d="mdiMessagePlus" fill="currentColor" /></svg>
 					<span>New chat</span>
 				</button>
+				<div class="chat-list-tools">
+					<div class="chat-list-heading"><span>Chats</span><small>{{ chats.length }}</small></div>
+					<div class="chat-search">
+						<input v-model="chatFilter" type="search" placeholder="Search chats" aria-label="Search chats" @keyup.esc="chatFilter = ''">
+						<button v-if="chatFilter" class="clear-chat-search" type="button" aria-label="Clear chat search" title="Clear search" @click="chatFilter = ''">×</button>
+					</div>
+				</div>
 				<div class="chat-list">
 					<NcAppNavigationItem
-						v-for="c in chats"
+						v-for="c in filteredChats"
 						:key="c.id"
 						:name="c.title"
 						:active="view === 'chat' && c.id === currentChat"
@@ -18,19 +25,18 @@
 							<svg width="16" height="16" viewBox="0 0 24 24"><path :d="mdiChatProcessing" fill="currentColor" /></svg>
 						</template>
 						<template #actions>
-							<NcActionButton :name="'Rename chat'" @click="renameChat(c.id)">
-								<template #icon>
-									<svg width="18" height="18" viewBox="0 0 24 24"><path :d="mdiPencilOutline" fill="currentColor" /></svg>
-								</template>
-							</NcActionButton>
-							<NcActionButton :name="'Delete chat'" @click="deleteChat(c.id)">
-								<template #icon>
-									<svg width="18" height="18" viewBox="0 0 24 24"><path :d="mdiTrashCanOutline" fill="currentColor" /></svg>
-								</template>
-							</NcActionButton>
+							<div class="chat-item-actions" @click.stop>
+								<button class="chat-action" type="button" aria-label="Rename chat" title="Rename chat" @click.stop="renameChat(c.id)">
+									<svg width="16" height="16" viewBox="0 0 24 24" aria-hidden="true"><path :d="mdiPencilOutline" fill="currentColor" /></svg>
+								</button>
+								<button class="chat-action chat-action-delete" type="button" aria-label="Delete chat" title="Delete chat" @click.stop="deleteChat(c.id)">
+									<svg width="16" height="16" viewBox="0 0 24 24" aria-hidden="true"><path :d="mdiTrashCanOutline" fill="currentColor" /></svg>
+								</button>
+							</div>
 						</template>
 					</NcAppNavigationItem>
 					<div v-if="!chats.length" class="chat-list-empty">No chats yet — start a new one.</div>
+					<div v-else-if="!filteredChats.length" class="chat-list-empty">No chats match your search.</div>
 				</div>
 			</template>
 			<template #footer>
@@ -64,7 +70,7 @@
 </template>
 
 <script>
-import { ref, onMounted } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import ChatView from './views/ChatView.vue'
 import DocumentsView from './views/DocumentsView.vue'
 import SettingsView from './views/SettingsView.vue'
@@ -101,6 +107,11 @@ export default {
 		const chats = ref([])
 		const currentChat = ref(null)
 		const busy = ref(false)
+		const chatFilter = ref('')
+		const filteredChats = computed(() => {
+			const query = chatFilter.value.trim().toLowerCase()
+			return query ? chats.value.filter((chat) => String(chat.title || '').toLowerCase().includes(query)) : chats.value
+		})
 
 		const appRootPath = () => {
 			const current = window.location.pathname.replace(/\/+$/, '')
@@ -145,11 +156,11 @@ export default {
 		}
 
 		const loadChats = () => {
-			api('GET', '/chats').then((list) => {
+			return api('GET', '/chats').then((list) => {
 				if (!Array.isArray(list)) return
 				chats.value = list
-				if (!currentChat.value && list.length) {
-					currentChat.value = list[0].id
+				if (!currentChat.value || !list.some((chat) => chat.id === currentChat.value)) {
+					currentChat.value = list.length ? list[0].id : null
 				}
 			})
 		}
@@ -177,14 +188,14 @@ export default {
 			const name = window.prompt('New chat title:', c ? c.title : '')
 			if (name === null || !name.trim()) return
 			await api('POST', '/chats/' + encodeURIComponent(id) + '/title', { title: name.trim() })
-			loadChats()
-			}
+			await loadChats()
+		}
 
 		const deleteChat = async (id) => {
 			if (!window.confirm('Delete this chat?')) return
 			await api('DELETE', '/chats/' + encodeURIComponent(id))
 			if (currentChat.value === id) currentChat.value = null
-			loadChats()
+			await loadChats()
 		}
 
 		onMounted(() => {
@@ -212,7 +223,7 @@ export default {
 
 		return {
 			view, mobileOpen, buildVersion,
-			chats, currentChat, busy,
+			chats, currentChat, busy, chatFilter, filteredChats,
 			fileContextIds,
 			newChat, selectChat, renameChat, deleteChat, loadChats, navigate,
 			mdiChatProcessing, mdiFileDocumentOutline, mdiTune, mdiTrashCanOutline, mdiMessagePlus, mdiPencilOutline,
@@ -224,6 +235,7 @@ export default {
 <style scoped>
 .eva-ai-app {
 	width: 100%;
+	--eva-content-width: 1180px;
 }
 
 .newchat-wrap {
@@ -251,6 +263,19 @@ export default {
 
 .new-chat-btn:hover:not(:disabled) { filter: brightness(1.08); }
 .new-chat-btn:disabled { opacity: .6; cursor: default; }
+
+.chat-list-tools { padding: 12px 12px 6px; }
+.chat-list-heading { display: flex; align-items: center; justify-content: space-between; margin: 0 2px 7px; color: var(--color-text-maxcontrast, #666); font-size: 11px; font-weight: 700; letter-spacing: .07em; text-transform: uppercase; }
+.chat-list-heading small { min-width: 20px; padding: 2px 5px; border-radius: 999px; background: var(--color-background-hover, #eee); font-size: 10px; letter-spacing: 0; text-align: center; }
+.chat-search { position: relative; }
+.chat-search input { width: 100%; box-sizing: border-box; padding: 7px 28px 7px 9px; border: 1px solid var(--color-border, #ddd); border-radius: 7px; background: var(--color-main-background, #fff); color: var(--color-main-text, #222); font: inherit; font-size: 12px; }
+.chat-search input:focus { border-color: var(--color-primary-element, #00679c); outline: 2px solid color-mix(in srgb, var(--color-primary-element, #00679c) 18%, transparent); outline-offset: 0; }
+.clear-chat-search { position: absolute; top: 50%; right: 5px; width: 22px; height: 22px; transform: translateY(-50%); border: 0; border-radius: 5px; background: transparent; color: var(--color-text-maxcontrast, #666); cursor: pointer; font-size: 17px; line-height: 1; }
+.clear-chat-search:hover { background: var(--color-background-hover, #eee); color: var(--color-main-text, #222); }
+.chat-item-actions { display: flex; align-items: center; gap: 2px; margin-right: 4px; }
+.chat-action { display: grid; place-items: center; width: 27px; height: 27px; padding: 0; border: 0; border-radius: 6px; background: transparent; color: var(--color-text-maxcontrast, #666); cursor: pointer; opacity: .75; }
+.chat-action:hover, .chat-action:focus-visible { background: var(--color-background-hover, #eee); color: var(--color-main-text, #222); opacity: 1; outline: 2px solid var(--color-primary-element, #00679c); outline-offset: 1px; }
+.chat-action-delete:hover, .chat-action-delete:focus-visible { background: color-mix(in srgb, var(--color-error, #e9322d) 12%, transparent); color: var(--color-error, #e9322d); }
 
 .chat-list {
 	overflow-y: auto;
