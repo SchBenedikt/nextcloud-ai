@@ -46,6 +46,7 @@
 						</NcActionButton>
 					</template>
 				</NcAppNavigationItem>
+				<li v-if="apiError" class="chat-list-error" role="alert">{{ apiError }}</li>
 				<li v-if="!chats.length" class="chat-list-empty">No chats yet — start a new one.</li>
 				<li v-else-if="!filteredChats.length" class="chat-list-empty">No chats match your search.</li>
 			</template>
@@ -89,6 +90,7 @@ import { mdiChatProcessing, mdiFileDocumentOutline, mdiTune, mdiTrashCanOutline,
 import { NcCounterBubble } from '@nextcloud/vue'
 import NcAppNavigationSearch from '@nextcloud/vue/components/NcAppNavigationSearch'
 import NcIconSvgWrapper from '@nextcloud/vue/components/NcIconSvgWrapper'
+import { api as requestApi, errMsg } from './lib/api'
 
 export default {
 	name: 'EvaAiApp',
@@ -121,6 +123,7 @@ export default {
 		const currentChat = ref(null)
 		const busy = ref(false)
 		const chatFilter = ref('')
+		const apiError = ref('')
 		const filteredChats = computed(() => {
 			const query = chatFilter.value.trim().toLowerCase()
 			return query ? chats.value.filter((chat) => String(chat.title || '').toLowerCase().includes(query)) : chats.value
@@ -139,54 +142,34 @@ export default {
 			window.history.pushState({}, '', url.toString())
 		}
 
-		const apiBase = () => {
-			const el = document.head.querySelector('meta[name="eva-ai-api"]')
-			return el ? el.getAttribute('content') : ''
-		}
-		const token = () => {
-			const el = document.head.querySelector('meta[name="requesttoken"]')
-			return el ? el.getAttribute('content') : ''
-		}
-
-		const api = (method, path, body) => {
-			const opts = {
-				method,
-				credentials: 'same-origin',
-				headers: {
-					'OCS-APIRequest': 'true',
-					'Accept': 'application/json',
-					'requesttoken': token(),
-				},
-			}
-			if (body) {
-				opts.headers['Content-Type'] = 'application/json'
-				opts.body = JSON.stringify(body)
-			}
-			return fetch(apiBase() + path, opts)
-				.then((r) => r.json())
-				.then((json) => (json && json.ocs && typeof json.ocs.data !== 'undefined' ? json.ocs.data : json))
-				.catch(() => null)
-		}
-
 		const loadChats = () => {
-			return api('GET', '/chats').then((list) => {
-				if (!Array.isArray(list)) return
+			return requestApi('GET', '/chats').then((list) => {
+				apiError.value = ''
+				if (!Array.isArray(list)) throw new Error('The chat list response was invalid.')
 				chats.value = list
 				if (!currentChat.value || !list.some((chat) => chat.id === currentChat.value)) {
 					currentChat.value = list.length ? list[0].id : null
 				}
+			}).catch((error) => {
+				apiError.value = 'Chat list unavailable: ' + errMsg(error)
+				return []
 			})
 		}
 
 		const newChat = async () => {
 			if (busy.value) return
 			busy.value = true
-			const c = await api('POST', '/chats', {})
-			busy.value = false
-			if (c && c.id) {
+			try {
+				const c = await requestApi('POST', '/chats', {})
+				if (!c || !c.id) throw new Error('The server returned no chat ID.')
 				await loadChats()
 				currentChat.value = c.id
 				navigate('chat')
+				apiError.value = ''
+			} catch (error) {
+				apiError.value = 'A new chat could not be created: ' + errMsg(error)
+			} finally {
+				busy.value = false
 			}
 		}
 
@@ -200,15 +183,23 @@ export default {
 			const c = chats.value.find((x) => x.id === id)
 			const name = window.prompt('New chat title:', c ? c.title : '')
 			if (name === null || !name.trim()) return
-			await api('POST', '/chats/' + encodeURIComponent(id) + '/title', { title: name.trim() })
-			await loadChats()
+			try {
+				await requestApi('POST', '/chats/' + encodeURIComponent(id) + '/title', { title: name.trim() })
+				await loadChats()
+			} catch (error) {
+				apiError.value = 'The chat could not be renamed: ' + errMsg(error)
+			}
 		}
 
 		const deleteChat = async (id) => {
 			if (!window.confirm('Delete this chat?')) return
-			await api('DELETE', '/chats/' + encodeURIComponent(id))
-			if (currentChat.value === id) currentChat.value = null
-			await loadChats()
+			try {
+				await requestApi('DELETE', '/chats/' + encodeURIComponent(id))
+				if (currentChat.value === id) currentChat.value = null
+				await loadChats()
+			} catch (error) {
+				apiError.value = 'The chat could not be deleted: ' + errMsg(error)
+			}
 		}
 
 		onMounted(() => {
@@ -240,7 +231,7 @@ export default {
 
 		return {
 			view, mobileOpen, buildVersion,
-			chats, currentChat, busy, chatFilter, filteredChats,
+			chats, currentChat, busy, chatFilter, filteredChats, apiError,
 			fileContextIds,
 			newChat, selectChat, renameChat, deleteChat, loadChats, navigate,
 			mdiChatProcessing, mdiFileDocumentOutline, mdiTune, mdiTrashCanOutline, mdiMessagePlus, mdiPencilOutline,
@@ -283,6 +274,13 @@ export default {
 	list-style: none;
 	padding: 8px var(--app-navigation-padding, 8px) 4px;
 	text-transform: uppercase;
+}
+
+.chat-list-error {
+	color: var(--color-error, #c00);
+	font-size: 12px;
+	padding: 8px 14px;
+	word-break: break-word;
 }
 
 .chat-list-empty {

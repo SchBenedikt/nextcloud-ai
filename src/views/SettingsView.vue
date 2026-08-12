@@ -201,6 +201,9 @@
 				<NcCheckboxRadioSwitch v-model="mailIndexEnabled" type="switch" class="native-toggle compact-switch" :description="'Include subject, sender and message text from the Nextcloud Mail app in search results.'">
 					Index Mail messages
 				</NcCheckboxRadioSwitch>
+				<NcCheckboxRadioSwitch v-model="indexEnrolled" type="switch" class="native-toggle compact-switch" :disabled="busy" :description="'Keep this account in the recurring background schedule, even when its index is currently empty. Starting indexing enables this automatically.'">
+					Keep indexing this account in the background
+				</NcCheckboxRadioSwitch>
 
 				<div class="exclude-paths">
 					<div class="sub-heading"><strong>Excluded folders</strong><span>These folders and their subfolders are skipped.</span></div>
@@ -318,6 +321,7 @@ export default {
 			max_files_per_run: '40',
 			mail_index_max: '25',
 			mail_index_enabled: '1',
+			index_enrolled: '0',
 			scope_path: '',
 			talk_history_size: '50',
 			talk_bot_trigger: 'Eva',
@@ -356,6 +360,10 @@ export default {
 		const mailIndexEnabled = computed({
 			get: () => f.value.mail_index_enabled === '1',
 			set: value => { f.value.mail_index_enabled = value ? '1' : '0' },
+		})
+		const indexEnrolled = computed({
+			get: () => f.value.index_enrolled === '1',
+			set: value => { f.value.index_enrolled = value ? '1' : '0' },
 		})
 		const actionsDisabled = computed(() => f.value.actions_enabled !== '1')
 		const indexingActive = computed(() => indexing.value || status.value?.indexing === true)
@@ -622,7 +630,7 @@ export default {
 
 		return {
 			f, status, limits, checkOut, saving, checking, indexing, resetting, deletingChats, stopping, saved, loadError, message, validationErrors, resetConfirm, chatsDeleteConfirm,
-			newExcludePath, excludeError, excludeList, actionsEnabled, notificationsEnabled, mailIndexEnabled, actionsDisabled, busy, indexingActive, settingsLocked, maxFileSizeMb,
+			newExcludePath, excludeError, excludeList, actionsEnabled, notificationsEnabled, mailIndexEnabled, indexEnrolled, actionsDisabled, busy, indexingActive, settingsLocked, maxFileSizeMb,
 			formatNumber, loadStatus, save, checkOllama, addExclude, removeExclude, startIndex, startMailIndex, stopIndex, resetIndex, deleteAllChats,
 		}
 	},

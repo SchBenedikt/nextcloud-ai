@@ -38,6 +38,7 @@ lib/
 | `AgentStore` | Agent conversation state (`eva_ai_agent_store`) |
 | `ActivityService` | Reads the activity feed (all apps) |
 | `AppConfig` | Typed access to all app settings with defaults |
+| `KnowledgeInitializer` | Idempotently adds the per-user first-run profile section to `KNOWLEDGE.md` without overwriting existing content |
 | `TalkBotRegistrar` | Auto-registers the Talk bot on boot (idempotent) |
 | `TalkContextReader` | Reads Talk conversation history for the bot |
 
@@ -63,6 +64,14 @@ Migrations in `lib/Migration/`:
 ## Frontend navigation
 
 The Vue application uses native Nextcloud navigation components. `NcAppNavigationSearch` filters the per-user chat list, and the primary `New chat` action is rendered directly below the search field. Each chat entry exposes native action-menu controls for rename and delete; these operations are scoped to the authenticated user and do not invoke LLM file tools.
+
+## Data flow — first app start
+
+On the first authenticated `status` or `settings` request, `KnowledgeInitializer` checks a per-user marker, reads only the current user's core Nextcloud identity, and appends an explicitly marked editable section to that user's `KNOWLEDGE.md` through the VFS. Existing content is preserved and the marker makes the operation idempotent.
+
+## Data flow — persistent enrollment and stream cancellation
+
+`IndexJob` combines persisted per-user enrollment with legacy/document discovery, so an empty or reset index does not remove a user from recurring processing. Users can opt out through their personal Settings. Streaming checks the client connection at the controller, RAG and Ollama layers; a disconnect ends the generator and releases the response body before another tool round can begin.
 
 ## Data flow — indexing
 

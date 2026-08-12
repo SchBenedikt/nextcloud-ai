@@ -13,6 +13,7 @@ use OCA\EvaAi\Service\Indexer;
 use OCA\EvaAi\BackgroundJob\IndexRequestJob;
 use OCA\EvaAi\Service\Ollama;
 use OCA\EvaAi\Service\RagService;
+use OCA\EvaAi\Service\KnowledgeInitializer;
 use OCP\AppFramework\OCSController;
 use OCP\AppFramework\Http\Attribute\NoAdminRequired;
 use OCP\AppFramework\Http\StreamTraversableResponse;
@@ -38,7 +39,8 @@ class ApiController extends OCSController {
         private ILockingProvider $lockingProvider,
         private ChatStore $chatStore,
         private FileContextChatService $fileContextChat,
-        private IAppManager $appManager
+        private IAppManager $appManager,
+        private KnowledgeInitializer $knowledgeInitializer
     ) {
         parent::__construct($appName, $request);
         $this->config->setUserId($this->userId);
@@ -80,6 +82,7 @@ class ApiController extends OCSController {
         if ($user === null) {
             return new DataResponse(['error' => 'Not logged in'], 401);
         }
+        $this->knowledgeInitializer->ensureInitialized($user);
         return new DataResponse($this->ragService->buildStatus($user));
     }
 
@@ -89,6 +92,7 @@ class ApiController extends OCSController {
         if ($user === null) {
             return new DataResponse(['error' => 'Not logged in'], 401);
         }
+        $this->knowledgeInitializer->ensureInitialized($user);
         return new DataResponse($this->config->all());
     }
 
@@ -114,6 +118,7 @@ class ApiController extends OCSController {
             'talk_history_size',
             'talk_bot_trigger',
             'exclude_paths',
+            'index_enrolled',
         ];
         $validationErrors = [];
         $pending = [];
@@ -126,6 +131,9 @@ class ApiController extends OCSController {
             $limitError = $this->config->validateValue($key, $value);
             if ($limitError !== null) {
                 $validationErrors[$key] = $key . ' ' . $limitError . '.';
+            }
+            if ($key === 'index_enrolled' && $this->config->validateValue($key, $value) !== null) {
+                $validationErrors[$key] = $key . ' must be a boolean value.';
             }
             if ($key === 'ollama_url') {
                 $urlError = $this->validateOllamaUrl((string)$value);
@@ -151,7 +159,7 @@ class ApiController extends OCSController {
                 if ($key === 'exec_delete_mode') {
                     $value = in_array($value, ['off', 'own', 'all'], true) ? $value : 'own';
                 }
-                if ($key === 'notify_on_complete' || $key === 'mail_index_enabled') {
+                if ($key === 'notify_on_complete' || $key === 'mail_index_enabled' || $key === 'index_enrolled') {
                     $value = in_array((string)$value, ['1', 'true', 'on'], true) ? '1' : '0';
                 }
                 if ($key === 'temperature') {
@@ -287,6 +295,9 @@ class ApiController extends OCSController {
                 'mode' => $mode,
                 'runId' => $runId,
             ]);
+            // A successful explicit start enrolls this user even if the
+            // current pass eventually finds zero indexable documents.
+            $this->config->setIndexEnrolled($user, true);
             return new DataResponse([
                 'queued' => true,
                 'mode' => $mode,
@@ -491,9 +502,17 @@ class ApiController extends OCSController {
                 yield json_encode(['type' => 'error', 'message' => 'Not logged in']) . "\n";
                 return;
             }
-            $gen = $this->ragService->askStream($user, $message, $history);
-            foreach ($gen as $line) {
-                try {
+            if ($this->clientDisconnected()) {
+                return;
+            }
+            $gen = null;
+            try {
+                $gen = $this->ragService->askStream($user, $message, $history);
+                foreach ($gen as $line) {
+                    if ($this->clientDisconnected()) {
+                        return;
+                    }
+                    try {
                     $ev = json_decode((string)$line, true);
                     if (is_array($ev) && ($ev['type'] ?? '') === 'done') {
                         $answer = (string)($ev['answer'] ?? '');
@@ -501,10 +520,20 @@ class ApiController extends OCSController {
                             $this->sendAnswerNotification($user, $answer);
                         }
                     }
-                    yield $line;
-                } catch (\Throwable $e) {
-                    yield json_encode(['type' => 'error', 'message' => $e->getMessage()]) . "\n";
+                        yield $line;
+                        if ($this->clientDisconnected()) {
+                            return;
+                        }
+                    } catch (\Throwable $e) {
+                        if (!$this->clientDisconnected()) {
+                            yield json_encode(['type' => 'error', 'message' => $e->getMessage()]) . "\n";
+                        }
+                    }
                 }
+            } finally {
+                // Dropping the generator reference closes nested stream
+                // resources on every supported PHP version.
+                $gen = null;
             }
         })();
 
@@ -515,6 +544,10 @@ class ApiController extends OCSController {
         ]);
     }
 
+
+    private function clientDisconnected(): bool {
+        return function_exists('connection_aborted') && connection_aborted() > 0;
+    }
 
     private function sendAnswerNotification(string $user, string $text): void {
         try {

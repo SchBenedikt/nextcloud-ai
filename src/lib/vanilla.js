@@ -47,8 +47,14 @@ export function mountChat(root, opts = {}) {
 				opts.body = JSON.stringify(body)
 			}
 			fetch(API_BASE + path, opts)
-				.then((r) => r.json())
-				.then((json) => {
+				.then(async (r) => {
+					const text = await r.text()
+					let json = null
+					try { json = text ? JSON.parse(text) : null } catch (_) {}
+					if (!r.ok) {
+						const detail = json?.ocs?.message || json?.ocs?.data?.error || json?.error || text
+						throw new Error(('HTTP ' + r.status + ' ' + String(detail || '')).trim().slice(0, 260))
+					}
 					const data = json && json.ocs && typeof json.ocs.data !== 'undefined' ? json.ocs.data : json
 					resolve(data)
 				})

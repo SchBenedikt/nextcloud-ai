@@ -87,9 +87,16 @@
 			opts.body = JSON.stringify(body);
 		}
 		return fetch(API_BASE + path, opts)
-			.then(function (r) { return r.json(); })
-			.then(function (json) {
-				return json && json.ocs && typeof json.ocs.data !== 'undefined' ? json.ocs.data : json;
+			.then(function (r) {
+				return r.text().then(function (text) {
+					var json = null;
+					try { json = text ? JSON.parse(text) : null; } catch (e) {}
+					if (!r.ok) {
+						var detail = json && json.ocs && json.ocs.message || json && json.ocs && json.ocs.data && json.ocs.data.error || json && json.error || text;
+						throw new Error(('HTTP ' + r.status + ' ' + String(detail || '')).trim().slice(0, 260));
+					}
+					return json && json.ocs && typeof json.ocs.data !== 'undefined' ? json.ocs.data : json;
+				});
 			});
 	}
 

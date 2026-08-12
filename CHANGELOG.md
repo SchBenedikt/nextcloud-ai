@@ -40,7 +40,14 @@ follows [Semantic Versioning](https://semver.org/).
   bundles and docs). Existing installs keep their data; the Talk bot was
   re-registered under the new URL.
 
+### Reliability and bug fixes
+- **Issue #49:** background indexing now persists per-user enrollment, including empty or reset indexes, with an explicit Settings opt-out.
+- **Issue #57:** abandoned streaming requests now stop when the client disconnects and close the Ollama response stream without starting another tool round.
+- **Issue #58:** frontend API failures now preserve HTTP status and bounded server messages instead of becoming silent null responses.
+- File-context chat now includes the current user's personal `KNOWLEDGE.md` as personal context while keeping selected-file excerpts as the only document evidence.
+
 ### Added
+- On first use, EVA creates an editable, per-user `KNOWLEDGE.md` profile section from the Nextcloud user ID, display name and optional email without overwriting existing knowledge or importing sensitive profile fields.
 - **Issue #3**: automated test asserting every TaskProcessing provider ID is
   unique and prefixed with the app ID.
 

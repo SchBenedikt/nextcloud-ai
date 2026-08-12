@@ -271,16 +271,26 @@ class Ollama {
         if ($tools !== []) {
             $payload['tools'] = $this->normalizePayload($tools);
         }
+        $body = null;
         try {
+            if ($this->clientDisconnected()) {
+                return;
+            }
             $r = $this->client()->post($this->base() . '/api/chat', [
                 'json' => $payload,
                 'timeout' => self::TIMEOUT,
+                // Bound idle reads so disconnect checks can release the worker
+                // even when Ollama temporarily emits no token.
+                'read_timeout' => 5,
                 'stream' => true,
             ]);
             $body = $r->getBody();
             $buffer = '';
             $streamCalls = [];
             while (is_resource($body) ? !feof($body) : !$body->eof()) {
+                if ($this->clientDisconnected()) {
+                    return;
+                }
                 $chunk = is_resource($body) ? fread($body, 8192) : $body->read(8192);
                 if ($chunk === '') {
                     usleep(10000);
@@ -292,6 +302,9 @@ class Ollama {
                     $buffer = substr($buffer, $nl + 1);
                     if (trim($line) === '') {
                         continue;
+                    }
+                    if ($this->clientDisconnected()) {
+                        return;
                     }
                     $obj = json_decode($line, true);
                     if (!is_array($obj)) {
@@ -326,6 +339,9 @@ class Ollama {
                         }
                     }
                     if (!empty($obj['done'])) {
+                        if ($this->clientDisconnected()) {
+                            return;
+                        }
                         if ($streamCalls !== []) {
                             ksort($streamCalls);
                             $rawToolCalls = array_values($streamCalls);
@@ -340,18 +356,40 @@ class Ollama {
                     }
                     $thinking = (string)($msg['thinking'] ?? $msg['reasoning'] ?? '');
                     if ($thinking !== '') {
+                        if ($this->clientDisconnected()) {
+                            return;
+                        }
                         yield ['type' => 'thinking', 'delta' => $thinking];
                     }
                     $content = (string)($msg['content'] ?? '');
                     if ($content !== '') {
+                        if ($this->clientDisconnected()) {
+                            return;
+                        }
                         yield ['type' => 'content', 'delta' => $content];
                     }
                 }
             }
         } catch (\Throwable $e) {
-            $this->logger->error('eva_ai ollama chat stream failed', ['exception' => $e]);
-            yield ['type' => 'error', 'delta' => 'Ollama error: ' . $e->getMessage()];
+            if (!$this->clientDisconnected()) {
+                $this->logger->error('eva_ai ollama chat stream failed', ['exception' => $e]);
+                yield ['type' => 'error', 'delta' => 'Ollama error: ' . $e->getMessage()];
+            }
+        } finally {
+            if (is_resource($body)) {
+                @fclose($body);
+            } elseif (is_object($body) && method_exists($body, 'close')) {
+                try {
+                    $body->close();
+                } catch (\Throwable $ignored) {
+                    // Cleanup must never mask the original stream result.
+                }
+            }
         }
+    }
+
+    private function clientDisconnected(): bool {
+        return function_exists('connection_aborted') && connection_aborted() > 0;
     }
 
     /**
