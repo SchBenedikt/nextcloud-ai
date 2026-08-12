@@ -370,8 +370,12 @@ class ApiController extends OCSController {
         if ($user === null) {
             return new DataResponse(['error' => 'Not logged in'], 401);
         }
-        $chat = $this->chatStore->create($user, (string)($this->request->getParam('title') ?? ''));
-        return new DataResponse($chat);
+        try {
+            $chat = $this->chatStore->create($user, (string)($this->request->getParam('title') ?? ''));
+            return new DataResponse($chat);
+        } catch (\Throwable $e) {
+            return new DataResponse(['error' => 'Unable to persist chat data'], 500);
+        }
     }
 
     #[NoAdminRequired]
@@ -393,10 +397,14 @@ class ApiController extends OCSController {
         if ($user === null) {
             return new DataResponse(['error' => 'Not logged in'], 401);
         }
-        if (!$this->chatStore->delete($user, $id)) {
-            return new NotFoundResponse();
+        try {
+            if (!$this->chatStore->delete($user, $id)) {
+                return new NotFoundResponse();
+            }
+            return new DataResponse(['ok' => true]);
+        } catch (\Throwable $e) {
+            return new DataResponse(['error' => 'Unable to persist chat data'], 500);
         }
-        return new DataResponse(['ok' => true]);
     }
 
     #[NoAdminRequired]
@@ -405,16 +413,20 @@ class ApiController extends OCSController {
         if ($user === null) {
             return new DataResponse(['error' => 'Not logged in'], 401);
         }
-        if ($this->chatStore->get($user, $id) === null) {
-            return new NotFoundResponse();
+        try {
+            if ($this->chatStore->get($user, $id) === null) {
+                return new NotFoundResponse();
+            }
+            $role = (string)($this->request->getParam('role') ?? '');
+            $text = trim((string)($this->request->getParam('text') ?? ''));
+            if ($role === '' || $text === '') {
+                return new DataResponse(['error' => 'role and text are required'], 400);
+            }
+            $this->chatStore->append($user, $id, $role, $text);
+            return new DataResponse(['ok' => true]);
+        } catch (\Throwable $e) {
+            return new DataResponse(['error' => 'Unable to persist chat data'], 500);
         }
-        $role = (string)($this->request->getParam('role') ?? '');
-        $text = trim((string)($this->request->getParam('text') ?? ''));
-        if ($role === '' || $text === '') {
-            return new DataResponse(['error' => 'role and text are required'], 400);
-        }
-        $this->chatStore->append($user, $id, $role, $text);
-        return new DataResponse(['ok' => true]);
     }
 
     #[NoAdminRequired]
@@ -423,15 +435,19 @@ class ApiController extends OCSController {
         if ($user === null) {
             return new DataResponse(['error' => 'Not logged in'], 401);
         }
-        if ($this->chatStore->get($user, $id) === null) {
-            return new NotFoundResponse();
+        try {
+            if ($this->chatStore->get($user, $id) === null) {
+                return new NotFoundResponse();
+            }
+            $title = trim((string)($this->request->getParam('title') ?? ''));
+            if ($title === '') {
+                return new DataResponse(['error' => 'title required'], 400);
+            }
+            $this->chatStore->setTitle($user, $id, $title);
+            return new DataResponse(['ok' => true]);
+        } catch (\Throwable $e) {
+            return new DataResponse(['error' => 'Unable to persist chat data'], 500);
         }
-        $title = trim((string)($this->request->getParam('title') ?? ''));
-        if ($title === '') {
-            return new DataResponse(['error' => 'title required'], 400);
-        }
-        $this->chatStore->setTitle($user, $id, $title);
-        return new DataResponse(['ok' => true]);
     }
 
     #[NoAdminRequired]

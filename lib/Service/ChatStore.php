@@ -31,95 +31,107 @@ class ChatStore {
 
     /** @return list<array{id:string,title:string,created:int,updated:int,count:int}> */
     public function list(string $user): array {
-        $all = $this->read($user);
-        $out = [];
-        foreach ($all as $chat) {
-            $out[] = [
-                'id' => $chat['id'] ?? '',
-                'title' => $chat['title'] ?? 'Neuer Chat',
-                'created' => $chat['created'] ?? 0,
-                'updated' => $chat['updated'] ?? 0,
-                'count' => count($chat['messages'] ?? []),
-            ];
-        }
-        usort($out, static fn($a, $b) => $b['updated'] <=> $a['updated']);
-        return $out;
+        return $this->withUserLock($user, function () use ($user): array {
+            $all = $this->read($user);
+            $out = [];
+            foreach ($all as $chat) {
+                $out[] = [
+                    'id' => $chat['id'] ?? '',
+                    'title' => $chat['title'] ?? 'Neuer Chat',
+                    'created' => $chat['created'] ?? 0,
+                    'updated' => $chat['updated'] ?? 0,
+                    'count' => count($chat['messages'] ?? []),
+                ];
+            }
+            usort($out, static fn($a, $b) => $b['updated'] <=> $a['updated']);
+            return $out;
+        });
     }
 
     /** @return array|null */
     public function get(string $user, string $id): ?array {
-        foreach ($this->read($user) as $chat) {
-            if (($chat['id'] ?? '') === $id) {
-                return $chat;
+        return $this->withUserLock($user, function () use ($user, $id): ?array {
+            foreach ($this->read($user) as $chat) {
+                if (($chat['id'] ?? '') === $id) {
+                    return $chat;
+                }
             }
-        }
-        return null;
+            return null;
+        });
     }
 
     public function create(string $user, ?string $title = null): array {
-        // Keine doppelten leeren Chats: ein noch leerer Chat wird wiederverwendet.
-        $all = $this->read($user);
-        foreach ($all as $existing) {
-            if (count($existing['messages'] ?? []) === 0) {
-                $existing['reused'] = true;
-                return $existing;
+        return $this->withUserLock($user, function () use ($user, $title): array {
+            // Keine doppelten leeren Chats: ein noch leerer Chat wird wiederverwendet.
+            $all = $this->read($user);
+            foreach ($all as $existing) {
+                if (count($existing['messages'] ?? []) === 0) {
+                    $existing['reused'] = true;
+                    return $existing;
+                }
             }
-        }
-        $chat = [
-            'id' => 'c' . date('YmdHis') . '-' . bin2hex(random_bytes(4)),
-            'title' => $title !== null && $title !== '' ? $this->clipTitle($title) : 'Neuer Chat',
-            'created' => time(),
-            'updated' => time(),
-            'messages' => [],
-        ];
-        $all[] = $chat;
-        $this->write($user, $all);
-        return $chat;
+            $chat = [
+                'id' => 'c' . date('YmdHis') . '-' . bin2hex(random_bytes(4)),
+                'title' => $title !== null && $title !== '' ? $this->clipTitle($title) : 'Neuer Chat',
+                'created' => time(),
+                'updated' => time(),
+                'messages' => [],
+            ];
+            $all[] = $chat;
+            $this->write($user, $all);
+            return $chat;
+        });
     }
 
     public function delete(string $user, string $id): bool {
-        $all = $this->read($user);
-        $kept = array_values(array_filter($all, static fn($c) => ($c['id'] ?? '') !== $id));
-        if (count($kept) === count($all)) {
-            return false;
-        }
-        $this->write($user, $kept);
-        return true;
+        return $this->withUserLock($user, function () use ($user, $id): bool {
+            $all = $this->read($user);
+            $kept = array_values(array_filter($all, static fn($c) => ($c['id'] ?? '') !== $id));
+            if (count($kept) === count($all)) {
+                return false;
+            }
+            $this->write($user, $kept);
+            return true;
+        });
     }
 
     public function setTitle(string $user, string $id, string $title): void {
-        $all = $this->read($user);
-        foreach ($all as &$chat) {
-            if (($chat['id'] ?? '') === $id) {
-                $chat['title'] = $this->clipTitle($title);
-                $chat['updated'] = time();
-                break;
+        $this->withUserLock($user, function () use ($user, $id, $title): void {
+            $all = $this->read($user);
+            foreach ($all as &$chat) {
+                if (($chat['id'] ?? '') === $id) {
+                    $chat['title'] = $this->clipTitle($title);
+                    $chat['updated'] = time();
+                    break;
+                }
             }
-        }
-        unset($chat);
-        $this->write($user, $all);
+            unset($chat);
+            $this->write($user, $all);
+        });
     }
 
     public function append(string $user, string $id, string $role, string $text): void {
         if ($role !== 'user' && $role !== 'assistant') {
             return;
         }
-        $all = $this->read($user);
-        foreach ($all as &$chat) {
-            if (($chat['id'] ?? '') === $id) {
-                $chat['messages'][] = ['role' => $role, 'text' => $text];
-                $chat['updated'] = time();
-                if (count($chat['messages']) > self::MAX_MESSAGES) {
-                    $chat['messages'] = array_slice($chat['messages'], -self::MAX_MESSAGES);
+        $this->withUserLock($user, function () use ($user, $id, $role, $text): void {
+            $all = $this->read($user);
+            foreach ($all as &$chat) {
+                if (($chat['id'] ?? '') === $id) {
+                    $chat['messages'][] = ['role' => $role, 'text' => $text];
+                    $chat['updated'] = time();
+                    if (count($chat['messages']) > self::MAX_MESSAGES) {
+                        $chat['messages'] = array_slice($chat['messages'], -self::MAX_MESSAGES);
+                    }
+                    if (isset($chat['messages'][0]['text']) && str_starts_with($chat['title'] ?? '', 'Neuer Chat')) {
+                        $chat['title'] = $this->clipTitle((string)$chat['messages'][0]['text']);
+                    }
+                    break;
                 }
-                if (isset($chat['messages'][0]['text']) && str_starts_with($chat['title'] ?? '', 'Neuer Chat')) {
-                    $chat['title'] = $this->clipTitle((string)$chat['messages'][0]['text']);
-                }
-                break;
             }
-        }
-        unset($chat);
-        $this->write($user, $all);
+            unset($chat);
+            $this->write($user, $all);
+        });
     }
 
     /** @return list<array{id:string,title:string,created:int,updated:int,messages:list<array{role:string,text:string}>}> */
@@ -130,7 +142,7 @@ class ChatStore {
             return [];
         } catch (NotPermittedException $e) {
             $this->logger->warning('eva_ai: chat folder not readable (permissions?)', ['user' => $user]);
-            return [];
+            throw $e;
         }
         $data = json_decode($raw, true);
         return is_array($data) ? $data : [];
@@ -138,12 +150,36 @@ class ChatStore {
 
     private function write(string $user, array $data): void {
         try {
-            $this->rootFor($user)->putContent(json_encode($data, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES));
+            $json = json_encode($data, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR);
+            $this->rootFor($user)->putContent($json);
         } catch (\Throwable $e) {
             $this->logger->error('eva_ai: chat save failed - chats may disappear after reload', [
                 'user' => $user,
                 'exception' => $e->getMessage(),
             ]);
+            throw $e;
+        }
+    }
+
+    /**
+     * Serialize all chat reads and mutations for one user on this node.
+     * The lock is kept outside AppData because AppData may be object-backed
+     * and does not expose a portable locking primitive.
+     */
+    private function withUserLock(string $user, callable $operation): mixed {
+        $lockPath = sys_get_temp_dir() . '/eva_ai_chat_' . $this->namespaceFor($user) . '.lock';
+        $handle = fopen($lockPath, 'c');
+        if ($handle === false) {
+            throw new \RuntimeException('Unable to create the EVA chat lock');
+        }
+        try {
+            if (!flock($handle, LOCK_EX)) {
+                throw new \RuntimeException('Unable to acquire the EVA chat lock');
+            }
+            return $operation();
+        } finally {
+            flock($handle, LOCK_UN);
+            fclose($handle);
         }
     }
 
