@@ -37,11 +37,11 @@
 						<svg width="16" height="16" viewBox="0 0 24 24"><path :d="mdiChatProcessing" fill="currentColor" /></svg>
 					</template>
 					<template #actions>
-						<NcActionButton aria-label="Rename chat" close-after-click="true" @click.stop="renameChat(c.id)">
+						<NcActionButton aria-label="Rename chat" :close-after-click="true" @click.stop="renameChat(c.id)">
 							<template #icon><svg width="20" height="20" viewBox="0 0 24 24" aria-hidden="true"><path :d="mdiPencilOutline" fill="currentColor" /></svg></template>
 							Rename chat
 						</NcActionButton>
-						<NcActionButton aria-label="Delete chat" close-after-click="true" @click.stop="deleteChat(c.id)">
+						<NcActionButton aria-label="Delete chat" :close-after-click="true" @click.stop="deleteChat(c.id)">
 							<template #icon><svg width="20" height="20" viewBox="0 0 24 24" aria-hidden="true"><path :d="mdiTrashCanOutline" fill="currentColor" /></svg></template>
 							Delete chat
 						</NcActionButton>

@@ -54,7 +54,7 @@ final class FrontendContractTest extends TestCase {
         self::assertStringNotContainsString('chatsOpen', $app);
         self::assertStringContainsString('filteredChats', $app);
         self::assertStringContainsString(':force-menu="true"', $app);
-        self::assertStringContainsString('close-after-click="true"', $app);
+        self::assertStringContainsString(':close-after-click="true"', $app);
         self::assertStringContainsString('@click.stop="renameChat(c.id)"', $app);
         self::assertStringContainsString('@click.stop="deleteChat(c.id)"', $app);
         self::assertStringContainsString('aria-label="Rename chat"', $app);
