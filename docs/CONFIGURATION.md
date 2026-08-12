@@ -1,3 +1,15 @@
+## Settings page
+
+The web UI presents the configuration in these groups:
+
+- **Connection & models** — Ollama URL, embedding model, chat model, and a connection test.
+- **Safety & actions** — file actions, write limits, delete permission, and completion notifications.
+- **Search & answer quality** — source count, model context size, and temperature.
+- **Indexing & scope** — folder scope, file/run limits, chunking, Mail indexing, and excluded folders.
+- **Talk & notifications** — Talk history size and the trigger name.
+
+Use **Save changes** to persist the form. **Save & start indexing** saves the settings first and stops if saving fails. The UI displays `max_file_size` in MB while the app stores it as bytes. Deleting the index removes indexed documents and vectors, not the original files in Nextcloud.
+
 # EVA — Configuration reference
 
 All settings are stored in `oc_appconfig` under the app ID `eva_ai`. You can
@@ -30,8 +42,8 @@ or in the app's **Settings** tab. Values are plain strings; booleans use `1`/`0`
 | `max_files_per_run` | `40` | Files processed per indexing pass (protects against long jobs). |
 | `scope_path` | `''` | Only index files below this path (e.g. `/Documents`). Empty = entire home. |
 | `exclude_paths` | `''` | Comma-separated path prefixes to skip (e.g. `/.trash,/Photos`). |
-| `index_user` | `''` | User whose home is indexed. Empty = the user who starts the index. |
-| `index_enabled` | `0` | Master switch for the indexer (`1` = enabled). |
+| `index_user` | `''` | Optional instance-wide legacy background-job user; normal users cannot change it from Settings. |
+| `index_enabled` | `0` | Instance-wide legacy indexer switch; per-user **Start indexing** does not change it. |
 | `mail_index_enabled` | `1` | Index emails (subject, sender, body) into RAG. |
 | `mail_index_max` | `25` | Emails indexed per pass (limits resource usage). |
 
@@ -60,7 +72,7 @@ or in the app's **Settings** tab. Values are plain strings; booleans use `1`/`0`
 | `actions_enabled` | `1` | Model may modify data (with confirmation). Set `0` for read-only. |
 | `exec_delete_mode` | `own` | Only EVA-created files can be deleted. `off` disables deletion. |
 | `exec_write_types` | `''` | Restrict creatable file types. |
-| `index_user` | `''` | Limit indexing to a single user. |
+| `index_user` | `''` | Optional instance-wide legacy background-job user; leave empty for per-user indexing. |
 
 ## Reading the current configuration
 

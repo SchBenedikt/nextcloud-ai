@@ -38,6 +38,7 @@ class RagService {
      * @return array{answer:string,sources:array,model:string,error:?string}
      */
     public function ask(string $userId, string $message, array $history): array {
+        $this->config->setUserId($userId);
         $topK = min($this->config->getInt('top_k', 6), 8);
         $results = $this->searcher->search($userId, $this->searchQuery($message, $history), $topK);
 
@@ -85,6 +86,7 @@ class RagService {
      * @return \Generator<string,string,void,void>
      */
     public function askStream(string $userId, string $message, array $history): \Generator {
+        $this->config->setUserId($userId);
         try {
             if (trim($message) === '') {
                 yield json_encode(['type' => 'error', 'message' => 'Empty message']) . "\n";
@@ -353,6 +355,7 @@ class RagService {
     }
 
     public function buildStatus(string $userId): array {
+        $this->config->setUserId($userId);
         $ping = $this->ollama->ping();
         $models = $this->ollama->listModels();
         $docCount = $this->documentMapper->countForUser($userId);

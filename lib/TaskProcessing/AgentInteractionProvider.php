@@ -128,6 +128,7 @@ class AgentInteractionProvider implements ISynchronousProvider {
 
 		if ($userId === null) {
 			throw new RuntimeException('Kein Benutzer kontext');
+			$this->appConfig->setUserId($userId);
 		}
 		$prompt = trim((string)($input['input'] ?? ''));
 		$confirmation = (int)($input['confirmation'] ?? 0);

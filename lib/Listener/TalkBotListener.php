@@ -79,6 +79,8 @@ PROMPT;
             return;
         }
 
+        $this->appConfig->setUserId($userId);
+
         // Selektive Antwort-Logik: Nur antworten wenn angesprochen.
         $roomId = (int)($data['target']['id'] ?? 0);
         $explicit = $this->isExplicitlyMentioned($content);
