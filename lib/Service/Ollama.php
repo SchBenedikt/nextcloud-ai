@@ -210,8 +210,8 @@ class Ollama {
             'messages' => $messages,
             'stream' => false,
             'options' => [
-                'temperature' => (float)$this->config->get('temperature'),
-                'num_ctx' => (int)$this->config->get('context_size'),
+                'temperature' => max(0.0, min(2.0, (float)$this->config->get('temperature'))),
+                'num_ctx' => max(256, min(131072, (int)$this->config->get('context_size'))),
             ],
         ];
         if ($tools !== []) {
@@ -264,8 +264,8 @@ class Ollama {
             'messages' => $messages,
             'stream' => true,
             'options' => [
-                'temperature' => (float)$this->config->get('temperature'),
-                'num_ctx' => (int)$this->config->get('context_size'),
+                'temperature' => max(0.0, min(2.0, (float)$this->config->get('temperature'))),
+                'num_ctx' => max(256, min(131072, (int)$this->config->get('context_size'))),
             ],
         ];
         if ($tools !== []) {

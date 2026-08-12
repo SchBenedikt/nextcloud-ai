@@ -67,8 +67,9 @@ follows [Semantic Versioning](https://semver.org/).
 - Automated test suite: `tests/ToolPolicySecurityTest.php`,
   `tests/TaskProcessingContractTest.php`, `composer.json` (PHPUnit), bootstrap
   and `phpunit.xml.dist`.
-- GitHub Actions CI (`tests.yml`) running PHPUnit on PHP 8.2/8.3/8.4 plus a PHP
-  syntax check; composer install retries on transient SSL failures.
+- GitHub Actions CI (`tests.yml`) running PHPUnit on PHP 8.2/8.3/8.4, PHP
+  syntax checks, frontend builds, generated-bundle checks and migration/provider
+  regression tests; composer install retries on transient SSL failures.
 - Privacy documentation (data lifecycle, retention, reset commands) in the
   README and `docs/PRIVACY.md`.
 - `Indexer` now streams file discovery via a generator instead of materializing
@@ -79,9 +80,9 @@ follows [Semantic Versioning](https://semver.org/).
 ## [1.4.0]
 
 ### Fixed
-- Repair migration for hyphenated index names (`eva_ai_*` → `eva_ai_*`) so the
-  schema works on MySQL/MariaDB and PostgreSQL; obsolete `ragchat_*` indexes are
-  dropped.
+- Repair migration for legacy hyphenated index names (`eva-ai_*` → `eva_ai_*`)
+  so the schema works on MySQL/MariaDB and PostgreSQL; obsolete `ragchat_*`
+  indexes are dropped idempotently.
 - Indexing reconciliation now removes stale entries for deleted or unreadable
   files and re-chunks modified files based on content hash.
 

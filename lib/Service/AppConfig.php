@@ -17,7 +17,7 @@ class AppConfig {
         'mail_index_enabled', 'mail_index_max', 'talk_history_size',
         'talk_bot_trigger', 'exclude_paths',
         // Per-user index state: progress and hashes must never leak between users.
-        'index_running', 'index_started', 'index_finished', 'last_index_processed',
+        'index_running', 'index_started', 'index_heartbeat', 'index_finished', 'last_index_processed',
         'last_index_total', 'last_index_error', 'index_config_hash', 'index_mode',
         'index_cancel_requested', 'index_run_id',
     ];
@@ -48,6 +48,7 @@ class AppConfig {
         'exclude_paths' => '',
         'index_running' => '0',
         'index_started' => '',
+        'index_heartbeat' => '',
         'index_finished' => '0',
         'last_index_processed' => '0',
         'last_index_total' => '0',
@@ -59,6 +60,24 @@ class AppConfig {
         // Only the scheduler lock is global; it is not exposed as a user setting.
         'index_job_running' => '0',
         'index_job_started' => '',
+    ];
+
+    /**
+     * The single source of truth for user-controlled resource limits. Values
+     * are deliberately conservative because they are also enforced by the
+     * background worker, not just by the settings form.
+     */
+    public const LIMITS = [
+        'top_k' => [1, 8],
+        'chunk_size' => [128, 10000],
+        'chunk_overlap' => [0, 5000],
+        'max_file_size' => [1048576, 2147483648],
+        'max_files_per_run' => [1, 10000],
+        'context_size' => [256, 131072],
+        'temperature' => [0.0, 2.0],
+        'exec_write_max_chars' => [1, 10000000],
+        'mail_index_max' => [1, 500],
+        'talk_history_size' => [1, 500],
     ];
 
     private ?string $userId = null;
@@ -96,7 +115,10 @@ class AppConfig {
     public function getInt(string $key, ?int $default = null): int {
         $value = $this->get($key);
         $default = $default ?? (int)(self::DEFAULTS[$key] ?? 0);
-        return (int)$value ?: $default;
+        if ($value === '' || !is_numeric($value)) {
+            return $default;
+        }
+        return (int)$value;
     }
 
     public function set(string $key, string $value): void {
@@ -109,6 +131,73 @@ class AppConfig {
 
     public function increment(string $key): void {
         $this->config->setAppValue(self::APP, $key, (string)((int)$this->get($key) + 1));
+    }
+
+    /**
+     * Atomically claim a user's index state where possible. The precondition
+     * prevents two web/cron workers from both entering the mutation pipeline.
+     */
+    public function tryClaimIndex(string $userId): bool {
+        $previous = $this->userId;
+        $this->setUserId($userId);
+        try {
+            $sentinel = "\0eva_ai_missing\0";
+            $current = $this->config->getUserValue($userId, self::APP, 'index_running', $sentinel);
+            if ($current === $sentinel) {
+                // The first claim has no competing stored value yet. Persist a
+                // default before using the conditional update on later runs.
+                $this->config->setUserValue($userId, self::APP, 'index_running', '0');
+            }
+            $this->config->setUserValue($userId, self::APP, 'index_running', '1', '0');
+            return true;
+        } catch (\Throwable $e) {
+            return false;
+        } finally {
+            $this->userId = $previous;
+        }
+    }
+
+    /** @return array<string,array{0:int|float,1:int|float}> */
+    public function limits(): array {
+        return self::LIMITS;
+    }
+
+    /**
+     * Validate a value without coercing invalid input. Returns an error for
+     * malformed, non-numeric, or out-of-range values.
+     */
+    public function validateValue(string $key, mixed $value): ?string {
+        if (in_array($key, ['actions_enabled', 'notify_on_complete', 'mail_index_enabled'], true)) {
+            return is_scalar($value) && in_array((string)$value, ['0', '1', 'true', 'false', 'on', 'off'], true)
+                ? null : 'must be a boolean value';
+        }
+        if ($key === 'exec_delete_mode' && (!is_scalar($value) || !in_array((string)$value, ['off', 'own', 'all'], true))) {
+            return 'must be one of: off, own, all';
+        }
+        if (in_array($key, ['embedding_model', 'chat_model', 'talk_bot_trigger'], true)
+            && (!is_scalar($value) || trim((string)$value) === '')) {
+            return 'must not be empty';
+        }
+        if (!array_key_exists($key, self::LIMITS)) {
+            return null;
+        }
+        [$min, $max] = self::LIMITS[$key];
+        if ($key === 'temperature') {
+            if (!is_numeric($value)) {
+                return 'must be a number';
+            }
+            $number = (float)$value;
+        } else {
+            if ((is_array($value) || is_object($value) || filter_var($value, FILTER_VALIDATE_INT) === false)
+                && !(is_string($value) && preg_match('/^-?\\d+$/', $value))) {
+                return 'must be an integer';
+            }
+            $number = (int)$value;
+        }
+        if ($number < $min || $number > $max) {
+            return 'must be between ' . $min . ' and ' . $max;
+        }
+        return null;
     }
 
     /**

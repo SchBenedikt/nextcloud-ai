@@ -35,6 +35,9 @@
     <background-jobs>
         <job>OCA\EvaAi\BackgroundJob\IndexJob</job>
     </background-jobs>
+    <repair-steps>
+        <step>OCA\EvaAi\Migration\MigrateLegacyAppIdRepairStep</step>
+    </repair-steps>
     <commands>
         <command>OCA\EvaAi\Command\Index</command>
         <command>OCA\EvaAi\Command\Reset</command>

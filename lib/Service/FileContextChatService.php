@@ -47,7 +47,10 @@ PROMPT;
             return $this->emptyResult('Bitte waehle mindestens eine Datei aus.');
         }
 
-        $documents = $this->documentMapper->findByUserAndFileIds($userId, $fileIds);
+        $documents = $this->accessibleDocuments(
+            $userId,
+            $this->documentMapper->findByUserAndFileIds($userId, $fileIds)
+        );
         $foundFileIds = array_map(static fn($d) => (int)$d->getFileId(), $documents);
         $missing = count(array_diff($fileIds, $foundFileIds));
 
@@ -144,6 +147,52 @@ PROMPT;
             'error' => null,
             'missing' => $missing,
         ];
+    }
+
+    /**
+     * Revalidate cached document ownership against the current Files
+     * permission graph. The index is only a cache, never an authorization
+     * grant. Inaccessible rows are purged defensively.
+     *
+     * @param list<\OCA\EvaAi\Db\Document> $documents
+     * @return list<\OCA\EvaAi\Db\Document>
+     */
+    public function accessibleDocuments(string $userId, array $documents): array {
+        try {
+            $folder = $this->rootFolder->getUserFolder($userId);
+        } catch (\Throwable $e) {
+            return [];
+        }
+        $out = [];
+        foreach ($documents as $doc) {
+            $fileId = (int)$doc->getFileId();
+            $accessible = false;
+            try {
+                $nodes = $fileId > 0 ? $folder->getById($fileId) : [];
+                $accessible = $nodes !== [] && $nodes[0] instanceof \OCP\Files\File;
+            } catch (\Throwable $e) {
+                $accessible = false;
+            }
+            if ($accessible) {
+                $out[] = $doc;
+                continue;
+            }
+            try {
+                $this->chunkMapper->deleteByDocument((int)$doc->getId());
+                $this->documentMapper->delete($doc);
+            } catch (\Throwable $e) {
+                // Best effort cleanup; the access check still denies this call.
+            }
+        }
+        return $out;
+    }
+
+    public function fileAccessible(string $userId, int $fileId): bool {
+        if ($fileId <= 0) {
+            return false;
+        }
+        $docs = $this->documentMapper->findByUserAndFileIds($userId, [$fileId]);
+        return $this->accessibleDocuments($userId, $docs) !== [];
     }
 
     public function fileUrl(string $userId, string $path): string {

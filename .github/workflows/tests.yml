@@ -35,6 +35,45 @@ jobs:
       - name: Run tests
         run: composer test
 
+  frontend:
+    name: Frontend build and committed bundle check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+
+      - name: Install frontend dependencies
+        run: npm ci
+
+      - name: Build production bundles
+        run: npm run build
+
+      - name: Verify committed bundles are current
+        run: git diff --exit-code -- js/eva_ai-main.js js/eva_ai-main.js.map js/eva_ai_filesaction.js js/eva_ai_filesaction.js.map
+
+  migration-regression:
+    name: Migration and provider regression tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+          coverage: none
+
+      - name: Install dependencies
+        run: composer install --no-interaction --prefer-dist
+
+      - name: Run migration/provider regression tests
+        run: vendor/bin/phpunit --colors=always tests/MigrationRegressionTest.php tests/TaskProcessingContractTest.php tests/AppConfigUserSettingsTest.php
+
   lint:
     name: PHP syntax check
     runs-on: ubuntu-latest

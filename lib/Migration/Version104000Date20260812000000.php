@@ -10,74 +10,56 @@ use OCP\Migration\IOutput;
 use OCP\Migration\SimpleMigrationStep;
 
 /**
- * Repariert Index-Namen der ersten Migration (Version100000...).
+ * Repairs index names left by the early eva-ai/ragchat schema migrations.
  *
- * Die erste Migration legte die Indizes mit Bindestrich an
- * ("eva_ai_doc_user_file", "eva_ai_doc_user", "eva_ai_chunk_doc").
- * Bindestriche sind in MySQL/PostgreSQL-DDL unzulässig, deshalb
- * schlug das Erstellen dieser Indizes auf manchen Instanzen fehl
- * (der Rest der Tabelle wurde aber angelegt). Das kann im
- * TaskProcessing/Assistant-Kontext zu kaputten Schema-Abfragen
- * führen.
- *
- * Diese Migration korrigiert Bestands-Instanzen:
- *  - existierende "eva_ai_*"-Indizes werden zu "eva_ai_*" umbenannt
- *  - fehlende Indizes (weil damals fehlgeschlagen) werden neu angelegt
+ * The legacy source names really contained a hyphen (for example
+ * `eva-ai_doc_user_file`). The current app-id uses underscores, so the
+ * migration must refer to those old names literally and must never attempt a
+ * self-rename. It is safe for clean, partially migrated, and already repaired
+ * installations.
  */
 class Version104000Date20260812000000 extends SimpleMigrationStep {
+    public function changeSchema(IOutput $output, Closure $schemaClosure, array $options): ?ISchemaWrapper {
+        $schema = $schemaClosure();
 
-	public function changeSchema(IOutput $output, Closure $schemaClosure, array $options): ?ISchemaWrapper {
-		/** @var ISchemaWrapper $schema */
-		$schema = $schemaClosure();
+        if ($schema->hasTable('eva_ai_documents')) {
+            $table = $schema->getTable('eva_ai_documents');
+            $this->repairIndex($table, $output, ['user_id', 'file_id'], 'eva-ai_doc_user_file', 'eva_ai_doc_user_file');
+            $this->repairIndex($table, $output, ['user_id'], 'eva-ai_doc_user', 'eva_ai_doc_user');
+            $this->dropIndexIfPresent($table, $output, 'ragchat_doc_user_file');
+            $this->dropIndexIfPresent($table, $output, 'ragchat_doc_user');
+        }
 
-		if ($schema->hasTable('eva_ai_documents')) {
-			$table = $schema->getTable('eva_ai_documents');
-			// Alte (fehlerhafte) Namen -> umbenennen.
-			if ($table->hasIndex('eva_ai_doc_user_file')) {
-				$table->renameIndex('eva_ai_doc_user_file', 'eva_ai_doc_user_file');
-				$output->info('Renamed index eva_ai_doc_user_file -> eva_ai_doc_user_file');
-			}
-			if ($table->hasIndex('eva_ai_doc_user')) {
-				$table->renameIndex('eva_ai_doc_user', 'eva_ai_doc_user');
-				$output->info('Renamed index eva_ai_doc_user -> eva_ai_doc_user');
-			}
-			// Falls die Indizes damals gar nicht erzeugt wurden -> anlegen.
-			if (!$table->hasIndex('eva_ai_doc_user_file')) {
-				$table->addIndex(['user_id', 'file_id'], 'eva_ai_doc_user_file');
-				$output->info('Created missing index eva_ai_doc_user_file');
-			}
-			if (!$table->hasIndex('eva_ai_doc_user')) {
-				$table->addIndex(['user_id'], 'eva_ai_doc_user');
-				$output->info('Created missing index eva_ai_doc_user');
-			}
-			// Ueberbleibsel aus der ragchat-Aera entfernen (Rename
-			// ragchat -> eva_ai liess die Indizes stehen).
-			if ($table->hasIndex('ragchat_doc_user_file')) {
-				$table->dropIndex('ragchat_doc_user_file');
-				$output->info('Dropped obsolete index ragchat_doc_user_file');
-			}
-			if ($table->hasIndex('ragchat_doc_user')) {
-				$table->dropIndex('ragchat_doc_user');
-				$output->info('Dropped obsolete index ragchat_doc_user');
-			}
-		}
+        if ($schema->hasTable('eva_ai_chunks')) {
+            $table = $schema->getTable('eva_ai_chunks');
+            $this->repairIndex($table, $output, ['document_id'], 'eva-ai_chunk_doc', 'eva_ai_chunk_doc');
+            $this->dropIndexIfPresent($table, $output, 'ragchat_chunk_doc');
+        }
 
-		if ($schema->hasTable('eva_ai_chunks')) {
-			$table = $schema->getTable('eva_ai_chunks');
-			if ($table->hasIndex('eva_ai_chunk_doc')) {
-				$table->renameIndex('eva_ai_chunk_doc', 'eva_ai_chunk_doc');
-				$output->info('Renamed index eva_ai_chunk_doc -> eva_ai_chunk_doc');
-			}
-			if (!$table->hasIndex('eva_ai_chunk_doc')) {
-				$table->addIndex(['document_id'], 'eva_ai_chunk_doc');
-				$output->info('Created missing index eva_ai_chunk_doc');
-			}
-			if ($table->hasIndex('ragchat_chunk_doc')) {
-				$table->dropIndex('ragchat_chunk_doc');
-				$output->info('Dropped obsolete index ragchat_chunk_doc');
-			}
-		}
+        return $schema;
+    }
 
-		return $schema;
-	}
+    private function repairIndex($table, IOutput $output, array $columns, string $legacy, string $current): void {
+        if ($table->hasIndex($legacy)) {
+            if ($table->hasIndex($current)) {
+                // A previous partial run may have created the target already.
+                $table->dropIndex($legacy);
+                $output->info('Dropped duplicate legacy index ' . $legacy);
+            } else {
+                $table->renameIndex($legacy, $current);
+                $output->info('Renamed index ' . $legacy . ' -> ' . $current);
+            }
+        }
+        if (!$table->hasIndex($current)) {
+            $table->addIndex($columns, $current);
+            $output->info('Created missing index ' . $current);
+        }
+    }
+
+    private function dropIndexIfPresent($table, IOutput $output, string $name): void {
+        if ($table->hasIndex($name)) {
+            $table->dropIndex($name);
+            $output->info('Dropped obsolete index ' . $name);
+        }
+    }
 }

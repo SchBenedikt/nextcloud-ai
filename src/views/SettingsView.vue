@@ -300,6 +300,7 @@ export default {
 			exclude_paths: '',
 		})
 		const status = ref(null)
+		const limits = ref({})
 		const checkOut = ref(null)
 		const saving = ref(false)
 		const checking = ref(false)
@@ -355,16 +356,17 @@ export default {
 
 		function validate() {
 			const errors = []
+			const effective = (key, fallback) => limits.value[key] || fallback
 			const numberRules = [
-				['top_k', 'Sources per answer', 1, 100],
-				['context_size', 'Model context size', 256, 131072],
-				['temperature', 'Answer creativity', 0, 2],
-				['chunk_size', 'Chunk size', 1, 10000],
-				['chunk_overlap', 'Chunk overlap', 1, 5000],
-				['max_files_per_run', 'Files per indexing run', 1, 10000],
-				['mail_index_max', 'Emails per indexing run', 1, 10000],
-				['talk_history_size', 'Talk history size', 1, 500],
-				['exec_write_max_chars', 'Maximum characters per file', 1, 10000000],
+				['top_k', 'Sources per answer', ...effective('top_k', [1, 8])],
+				['context_size', 'Model context size', ...effective('context_size', [256, 131072])],
+				['temperature', 'Answer creativity', ...effective('temperature', [0, 2])],
+				['chunk_size', 'Chunk size', ...effective('chunk_size', [128, 10000])],
+				['chunk_overlap', 'Chunk overlap', ...effective('chunk_overlap', [0, 5000])],
+				['max_files_per_run', 'Files per indexing run', ...effective('max_files_per_run', [1, 10000])],
+				['mail_index_max', 'Emails per indexing run', ...effective('mail_index_max', [1, 500])],
+				['talk_history_size', 'Talk history size', ...effective('talk_history_size', [1, 500])],
+				['exec_write_max_chars', 'Maximum characters per file', ...effective('exec_write_max_chars', [1, 10000000])],
 			]
 			if (!/^https?:\/\//i.test(f.value.ollama_url.trim())) errors.push('Ollama server URL must start with http:// or https://.')
 			if (!f.value.embedding_model.trim()) errors.push('Embedding model is required.')
@@ -392,6 +394,7 @@ export default {
 			loadError.value = ''
 			try {
 				status.value = await api('GET', 'status')
+				limits.value = status.value?.limits || {}
 				fill()
 			} catch (error) {
 				loadError.value = errMsg(error)
@@ -560,7 +563,7 @@ export default {
 		})
 
 		return {
-			f, status, checkOut, saving, checking, indexing, resetting, stopping, saved, loadError, message, validationErrors, resetConfirm,
+			f, status, limits, checkOut, saving, checking, indexing, resetting, stopping, saved, loadError, message, validationErrors, resetConfirm,
 			newExcludePath, excludeError, excludeList, actionsEnabled, notificationsEnabled, mailIndexEnabled, actionsDisabled, busy, indexingActive, settingsLocked, maxFileSizeMb,
 			formatNumber, loadStatus, save, checkOllama, addExclude, removeExclude, startIndex, startMailIndex, stopIndex, resetIndex,
 		}

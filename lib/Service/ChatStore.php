@@ -190,11 +190,50 @@ class ChatStore {
         } catch (NotFoundException $e) {
             $chats = $appdata->newFolder('chats');
         }
+        $this->copyLegacyChatData($chats);
         $uidFolder = $this->folderFor($chats, $user);
         if (!$uidFolder->fileExists('chats.json')) {
             $uidFolder->newFile('chats.json', '[]');
         }
         return $uidFolder->getFile('chats.json');
+    }
+
+    /**
+     * Copy chat folders from legacy app IDs when they are still available.
+     * Existing current folders always win; the old namespace is retained for
+     * rollback safety and can be removed after an administrator verifies it.
+     */
+    private function copyLegacyChatData(ISimpleFolder $targetChats): void {
+        foreach (['eva-ai', 'ragchat'] as $legacyAppId) {
+            try {
+                $legacyChats = $this->appDataFactory->get($legacyAppId)->getFolder('chats');
+            } catch (\Throwable $e) {
+                continue;
+            }
+            foreach ($legacyChats->getDirectoryListing() as $legacyUserFolder) {
+                try {
+                    $targetUserFolder = $targetChats->getFolder($legacyUserFolder->getName());
+                } catch (NotFoundException $e) {
+                    try {
+                        $targetUserFolder = $targetChats->newFolder($legacyUserFolder->getName());
+                    } catch (\Throwable $copyError) {
+                        continue;
+                    }
+                }
+                foreach ($legacyUserFolder->getDirectoryListing() as $entry) {
+                    try {
+                        if (!$targetUserFolder->fileExists($entry->getName())) {
+                            $targetUserFolder->newFile($entry->getName(), $entry->getContent());
+                        }
+                    } catch (\Throwable $copyError) {
+                        $this->logger->warning('eva_ai: legacy chat copy skipped', [
+                            'file' => $entry->getName(),
+                            'exception' => $copyError->getMessage(),
+                        ]);
+                    }
+                }
+            }
+        }
     }
 
     /**

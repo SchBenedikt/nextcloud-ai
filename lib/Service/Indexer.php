@@ -12,6 +12,7 @@ use OCP\Files\File;
 use OCP\Files\Folder;
 use OCP\Files\IRootFolder;
 use OCP\Files\NotFoundException;
+use OCP\Lock\ILockingProvider;
 use Psr\Log\LoggerInterface;
 
 class Indexer {
@@ -28,7 +29,8 @@ class Indexer {
         private Chunker $chunker,
         private Ollama $ollama,
         private EmailService $email,
-        private LoggerInterface $logger
+        private LoggerInterface $logger,
+        private ILockingProvider $lockingProvider
     ) {
     }
 
@@ -39,14 +41,39 @@ class Indexer {
     public function run(string $userId, ?int $maxFiles = null, string $mode = 'all', bool $keepRunning = false, ?string $runId = null): array {
         $this->config->setUserId($userId);
         $mode = in_array($mode, ['all', 'files', 'mail'], true) ? $mode : 'all';
-        $maxFiles = $maxFiles ?? $this->config->getInt('max_files_per_run', 40);
+        $maxFiles = $maxFiles ?? min(10000, max(1, $this->config->getInt('max_files_per_run', 40)));
         $result = ['processed' => 0, 'changed' => 0, 'skipped' => 0, 'total_seen' => 0, 'error' => null];
+        $lockPath = 'eva_ai/index/' . hash('sha256', $userId);
+        try {
+            $this->lockingProvider->acquireLock($lockPath, ILockingProvider::LOCK_EXCLUSIVE, 'EVA index for ' . $userId);
+        } catch (\Throwable $e) {
+            $result['error'] = 'Indexing is already running for this user.';
+            return $result;
+        }
+        if ($runId === null) {
+            // OCC/manual runs and the periodic worker share the same
+            // per-user claim. A second worker exits before any DB mutation.
+            if ($this->config->get('index_running') === '1') {
+                $result['error'] = 'Indexing is already running for this user.';
+                $this->lockingProvider->releaseLock($lockPath, ILockingProvider::LOCK_EXCLUSIVE);
+                return $result;
+            }
+            if (!$this->config->tryClaimIndex($userId)) {
+                $result['error'] = 'Indexing is already running for this user.';
+                $this->lockingProvider->releaseLock($lockPath, ILockingProvider::LOCK_EXCLUSIVE);
+                return $result;
+            }
+            $this->config->setUserId($userId);
+        }
         if ($runId !== null && $this->config->get('index_run_id') !== $runId) {
+            $this->lockingProvider->releaseLock($lockPath, ILockingProvider::LOCK_EXCLUSIVE);
             return $result;
         }
 
         $this->config->set('index_running', '1');
         $this->config->set('index_started', (string)time());
+        $this->config->set('index_heartbeat', (string)time());
+        $this->config->set('last_index_error', '');
         
         // Calculate the file-index configuration hash only for file passes.
         // A mail-only request must not invalidate the user's file index.
@@ -111,6 +138,7 @@ class Indexer {
                     $completed = false;
                     break;
                 }
+                $this->config->set('index_heartbeat', (string)time());
                 $fileId = (int)$fileData['id'];
                 $seen[$fileId] = true;
                 $result['total_seen']++;
@@ -154,20 +182,30 @@ class Indexer {
                         continue;
                     }
                     $actualFile = $actualFile[0];
-                    $content = $this->extractText($actualFile);
                 } catch (\Throwable $e) {
-                    $this->logger->warning('eva_ai: read failed', ['file' => $file->getPath(), 'e' => $e->getMessage()]);
+                    $this->logger->warning('eva_ai: file access failed', ['file' => $file->getPath(), 'e' => $e->getMessage()]);
                     $result['skipped']++;
-                    // If this file was previously indexed, mark it as stale for removal
+                    // Access loss is authoritative and must purge cached content.
                     if (isset($hashes[$fileId])) {
                         $stale[$fileId] = true;
                     }
                     continue;
                 }
+                try {
+                    $content = $this->extractText($actualFile);
+                } catch (\Throwable $e) {
+                    // Parser/decompressor/OCR failures are transient. Preserve
+                    // the last-good version and retry on a later pass.
+                    $result['skipped']++;
+                    $result['error'] ??= 'Transient extraction failure for ' . $file->getPath();
+                    $this->logger->warning('eva_ai: extraction failed; preserving previous index', ['file' => $file->getPath(), 'e' => $e->getMessage()]);
+                    continue;
+                }
                 if ($content === '') {
                     $result['skipped']++;
-                    // If this file was previously indexed, mark it as stale for removal
-                    if (isset($hashes[$fileId])) {
+                    // A genuinely zero-byte file is authoritative empty input;
+                    // parser failures on non-empty files preserve last-good data.
+                    if ((int)$file->getSize() === 0 && isset($hashes[$fileId])) {
                         $stale[$fileId] = true;
                     }
                     continue;
@@ -214,7 +252,7 @@ class Indexer {
                 $result['changed']++;
 
                 if (count($batch) >= self::BATCH || $result['processed'] >= $maxFiles) {
-                    $this->flushBatch($batch, $result);
+                    $this->flushBatch($batch, $result, $runId);
                 }
                 if ($result['processed'] >= $maxFiles) {
                     $completed = false;
@@ -225,7 +263,7 @@ class Indexer {
             if ($this->cancellationRequested($runId)) {
                 $cancelled = true;
             }
-            $this->flushBatch($batch, $result);
+            $this->flushBatch($batch, $result, $runId);
             if (!$cancelled && $mode !== 'mail') {
                 if ($completed) {
                     // Full traversal: safe to remove files that are no longer
@@ -249,17 +287,25 @@ class Indexer {
             $this->logger->error('eva_ai index run failed', ['exception' => $e]);
             $result['error'] = $e->getMessage();
         } finally {
-            $ownsRun = $runId === null || $this->config->get('index_run_id') === $runId;
-            if ($ownsRun) {
-                if (!$keepRunning) {
-                    $this->config->set('index_running', '0');
-                    $this->config->set('index_finished', (string)time());
+            try {
+                // Persist the terminal state while the per-user lock is still
+                // held. Otherwise a new run could start between lock release
+                // and these writes and be overwritten by the older worker.
+                $ownsRun = $runId === null || $this->config->get('index_run_id') === $runId;
+                if ($ownsRun) {
+                    if (!$keepRunning) {
+                        $this->config->set('index_running', '0');
+                        $this->config->set('index_finished', (string)time());
+                        $this->config->set('index_heartbeat', '');
+                    }
+                    $this->config->set('last_index_processed', (string)$result['processed']);
+                    $this->config->set('last_index_total', (string)$result['total_seen']);
+                    if ($result['error'] !== null) {
+                        $this->config->set('last_index_error', $result['error']);
+                    }
                 }
-                $this->config->set('last_index_processed', (string)$result['processed']);
-                $this->config->set('last_index_total', (string)$result['total_seen']);
-                if ($result['error'] !== null) {
-                    $this->config->set('last_index_error', $result['error']);
-                }
+            } finally {
+                $this->lockingProvider->releaseLock($lockPath, ILockingProvider::LOCK_EXCLUSIVE);
             }
         }
 
@@ -659,16 +705,18 @@ class Indexer {
         }
     }
 
-    private function flushBatch(array &$batch, array &$result): void {
+    private function flushBatch(array &$batch, array &$result, ?string $runId = null): void {
         if (empty($batch)) {
             return;
         }
+        $this->touchHeartbeat($runId);
         $texts = [];
         foreach ($batch as $b) {
             $texts[] = $b['content'];
         }
         
         [$vecs, $err] = $this->ollama->embedBatch($texts);
+        $this->touchHeartbeat($runId);
         if ($err !== null || $vecs === null) {
             $result['error'] = $err ?? 'Embedding error';
             $this->logger->error('eva_ai embedding failed', ['error' => $err]);
@@ -752,6 +800,7 @@ class Indexer {
         $processedThisPass = 0;
         $maxTotal = max($maxFiles, 10);
         foreach ($mails as $mail) {
+            $this->touchHeartbeat($runId);
             if ($this->cancellationRequested($runId)) {
                 break;
             }
@@ -765,6 +814,7 @@ class Indexer {
                 $body = $this->email->bodyText($msgId);
             } catch (\Throwable $e) {
             }
+            $this->touchHeartbeat($runId);
             $from = $mail['from'];
             $to = implode(', ', (array)($mail['to'] ?? []));
             $content = "EMAIL\nFrom: " . $from . "\nTo: " . $to . "\nDate: " . date('Y-m-d H:i', (int)$mail['sent'])
@@ -784,7 +834,10 @@ class Indexer {
             if (empty($chunks)) {
                 continue;
             }
-            $this->removeStaleDocument($userId, $mailFileId);
+            // Stage the replacement. The previous mail document remains
+            // searchable until flushBatch successfully embeds the new chunks.
+            $existingDoc = $this->documentMapper->findByUserAndFile($userId, $mailFileId);
+            $oldDocId = $existingDoc !== null ? (int)$existingDoc->getId() : null;
             $doc = new Document();
             $doc->setUserId($userId);
             $doc->setFileId($mailFileId);
@@ -797,15 +850,15 @@ class Indexer {
             $doc->setIndexedAt(time());
             $this->documentMapper->insert($doc);
             foreach ($chunks as $i => $c) {
-                $batch[] = ['docId' => (int)$doc->getId(), 'index' => $i, 'content' => $c['content'], 'tokens' => $c['tokens'], 'oldDocId' => null];
+                $batch[] = ['docId' => (int)$doc->getId(), 'index' => $i, 'content' => $c['content'], 'tokens' => $c['tokens'], 'oldDocId' => $oldDocId];
             }
             $result['processed']++;
             $processedThisPass++;
             if (count($batch) >= self::BATCH) {
-                $this->flushBatch($batch, $result);
+                $this->flushBatch($batch, $result, $runId);
             }
         }
-        $this->flushBatch($batch, $result);
+        $this->flushBatch($batch, $result, $runId);
 
         // Reconciliation (Issue #15): remove indexed mail documents whose
         // underlying message no longer exists in the Mail account.
@@ -922,6 +975,13 @@ class Indexer {
      * Calculate a hash of the current indexing configuration to detect changes
      * that require index rebuilds (embedding model, chunking settings, etc.)
      */
+    private function touchHeartbeat(?string $runId = null): void {
+        if ($runId !== null && $this->config->get('index_run_id') !== $runId) {
+            return;
+        }
+        $this->config->set('index_heartbeat', (string)time());
+    }
+
     private function cancellationRequested(?string $runId = null): bool {
         return $this->config->get('index_cancel_requested') === '1'
             || ($runId !== null && $this->config->get('index_run_id') !== $runId);
@@ -966,6 +1026,7 @@ class Indexer {
         $this->config->set('index_mode', 'idle');
         $this->config->set('index_cancel_requested', '0');
         $this->config->set('index_run_id', '');
+        $this->config->set('index_heartbeat', '');
         return ['documents' => $docs, 'chunks' => $chunks];
     }
 }
