@@ -18,6 +18,23 @@ final class FrontendContractTest extends TestCase {
         self::assertStringContainsString('@keydown.space.prevent', $source);
     }
 
+    public function testDocumentsLoadIncrementallyUntilTheFilteredTotal(): void {
+        $documents = (string)file_get_contents(__DIR__ . '/../src/views/DocumentsView.vue');
+        self::assertStringContainsString('const pageSize = 100', $documents);
+        self::assertStringContainsString('offset = append ? docs.value.length : 0', $documents);
+        self::assertStringContainsString('async function loadMore()', $documents);
+        self::assertStringContainsString('loadMoreError', $documents);
+        self::assertStringContainsString('hasMore.value = incoming.length === pageSize', $documents);
+        self::assertStringContainsString('loadMore, loadStatus', $documents);
+
+        $controller = (string)file_get_contents(__DIR__ . '/../lib/Controller/ApiController.php');
+        self::assertStringContainsString("'total' => \$this->documentMapper->countForUser(\$user, \$search)", $controller);
+        $mapper = (string)file_get_contents(__DIR__ . '/../lib/Db/DocumentMapper.php');
+        self::assertStringContainsString('countForUser(string $userId, ?string $search = null)', $mapper);
+        self::assertStringContainsString("like('path'", $mapper);
+        self::assertStringContainsString("addOrderBy('id', 'DESC')", $mapper);
+    }
+
     public function testSettingsPersistExclusionsAndDoNotOverwriteFormDuringPolling(): void {
         $settings = (string)file_get_contents(__DIR__ . '/../src/views/SettingsView.vue');
         self::assertStringContainsString('async function persistExcludeList(list, previous)', $settings);

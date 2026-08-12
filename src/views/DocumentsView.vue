@@ -38,8 +38,8 @@
 		</div>
 
 		<section class="docs-toolbar">
-			<NcTextField v-model="search" label="Search documents" :label-outside="true" placeholder="File name or path" @keydown.enter="load" />
-			<NcButton type="secondary" :loading="loading" @click="load">Refresh</NcButton>
+			<NcTextField v-model="search" label="Search documents" :label-outside="true" placeholder="File name or path" :disabled="loadingMore" @keydown.enter="load" />
+			<NcButton type="secondary" :loading="loading" :disabled="loadingMore" @click="load">Refresh</NcButton>
 		</section>
 
 		<section class="docs-body">
@@ -108,6 +108,15 @@
 						</tr>
 					</template>
 				</tbody>			</table>
+				<div v-if="docs.length" class="docs-pagination" role="status">
+					<span>Showing {{ docs.length }} of {{ total }} documents</span>
+					<div v-if="loadMoreError" class="docs-pagination-error" role="alert">
+						<span>{{ loadMoreError }}</span>
+						<NcButton type="tertiary" @click="loadMore">Retry</NcButton>
+					</div>
+					<NcButton v-else-if="hasMore" type="secondary" :loading="loadingMore" :disabled="loading || loadingMore" @click="loadMore">Load more</NcButton>
+					<span v-else class="docs-pagination-end">All matching documents are loaded.</span>
+				</div>
 		</section>
 	</div>
 </template>
@@ -126,6 +135,10 @@ export default {
 		const totalSize = ref(0)
 		const search = ref('')
 		const loading = ref(false)
+		const loadingMore = ref(false)
+		const pageSize = 100
+		const hasMore = ref(true)
+		const loadMoreError = ref('')
 		const indexing = ref(false)
 		const stopping = ref(false)
 		const indexStatus = ref(null)
@@ -190,24 +203,51 @@ export default {
 			}
 		}
 
-		async function load() {
-			loading.value = true
+		async function fetchDocuments(append = false) {
+			if (append) {
+				loadingMore.value = true
+				loadMoreError.value = ''
+			} else {
+				loading.value = true
+				loadMoreError.value = ''
+			}
+			const offset = append ? docs.value.length : 0
 			try {
-				const data = await api('GET', 'documents', { search: search.value, limit: 500 })
-				docs.value = data.documents || []
-				total.value = data.total || docs.value.length
-				totalChunks.value = data.totalChunks || 0
-				totalSize.value = data.totalSize || 0
+				const data = await api('GET', 'documents', { search: search.value, limit: pageSize, offset })
+				const incoming = Array.isArray(data?.documents) ? data.documents : []
+				docs.value = append ? docs.value.concat(incoming) : incoming
+				total.value = Number.isFinite(Number(data?.total)) ? Number(data.total) : docs.value.length
+				totalChunks.value = Number(data?.totalChunks) || 0
+				totalSize.value = Number(data?.totalSize) || 0
+				hasMore.value = incoming.length === pageSize && docs.value.length < total.value
 			} catch (e) {
-				docs.value = []
-				total.value = 0
-				totalChunks.value = 0
-				totalSize.value = 0
+				if (!append) {
+					docs.value = []
+					total.value = 0
+					totalChunks.value = 0
+					totalSize.value = 0
+					hasMore.value = false
+				} else {
+					loadMoreError.value = 'More documents could not be loaded. Please try again.'
+				}
 				console.error('[eva-ai] documents error', e)
 			} finally {
 				loading.value = false
+				loadingMore.value = false
 			}
-		}			function setChunkState(id, state) {
+		}
+
+		async function load() {
+			if (loading.value || loadingMore.value) return
+			await fetchDocuments(false)
+		}
+
+		async function loadMore() {
+			if (loading.value || loadingMore.value || !hasMore.value) return
+			await fetchDocuments(true)
+		}
+
+		function setChunkState(id, state) {
 				const next = new Map(chunkCache.value)
 				next.set(id, state)
 				chunkCache.value = next
@@ -290,7 +330,7 @@ export default {
 			if (statusTimer !== null) window.clearInterval(statusTimer)
 		})
 
-		return { docs, total, totalChunks, totalSize, search, loading, indexing, stopping, indexStatus, indexingActive, progress, expanded, chunkCache, load, loadStatus, toggle, startIndex, startMailIndex, stopIndex, fmtSize, fmtDate, mdiChevronDown, mdiChevronRight }
+		return { docs, total, totalChunks, totalSize, search, loading, loadingMore, hasMore, loadMoreError, indexing, stopping, indexStatus, indexingActive, progress, expanded, chunkCache, load, loadMore, loadStatus, toggle, startIndex, startMailIndex, stopIndex, fmtSize, fmtDate, mdiChevronDown, mdiChevronRight }
 	},
 }
 </script>
@@ -477,6 +517,20 @@ export default {
 	font-size: 13px;
 	color: var(--color-text-maxcontrast);
 }
+
+.docs-pagination {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	flex-wrap: wrap;
+	gap: 12px;
+	padding: 18px 12px 4px;
+	border-top: 1px solid var(--color-border);
+	color: var(--color-text-maxcontrast);
+	font-size: 13px;
+}
+.docs-pagination-end { color: var(--color-text-maxcontrast); }
+.docs-pagination-error { display: inline-flex; align-items: center; gap: 10px; color: var(--color-error); }
 
 @media (max-width: 800px) {
 	.page-header { align-items: flex-start; flex-direction: column; }

@@ -334,7 +334,7 @@ class ApiController extends OCSController {
         }, $docs);
         return new DataResponse([
             'documents' => $out,
-            'total' => $this->documentMapper->countForUser($user),
+            'total' => $this->documentMapper->countForUser($user, $search),
             'totalChunks' => $totalChunks,
             'totalSize' => $totalSize,
         ]);

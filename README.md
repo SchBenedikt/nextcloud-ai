@@ -32,6 +32,7 @@ always cite the source file path the model took the information from.
 - **File-context chat**: right-click a file in the Files app → "Open with EVA"
 - **Responsive chat and document UI**: fluid layouts for mobile and wide desktop screens, with explicit chunk loading, empty, error and retry states when inspecting indexed documents
 - **Persistent settings**: folder exclusions are saved immediately, and connection checks use the configured HTTP/HTTPS Ollama endpoint for every user
+- **Incremental document browsing**: large knowledge bases load in manageable pages with a "Load more" action and clear progress/end state
 - **"AI answer ready" notifications** via the Notifications app
 - **No configuration needed**: models come from the local Ollama instance
 
