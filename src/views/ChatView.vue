@@ -49,7 +49,7 @@ export default {
 <style>
 .chatview-root {
 	width: 100%;
-	max-width: 1180px;
+	max-width: none;
 	height: 100%;
 	margin: 0 auto;
 	box-sizing: border-box;
@@ -65,9 +65,14 @@ export default {
 	justify-content: space-between;
 	gap: 16px;
 	flex-wrap: wrap;
-	margin-bottom: 18px;
-	padding-bottom: 16px;
-	border-bottom: 1px solid var(--color-border, #ddd);
+	width: min(100%, 1540px);
+	margin: 0 auto 20px;
+	padding: 16px 20px;
+	border: 1px solid var(--color-border, #ddd);
+	border-radius: 16px;
+	background: var(--color-main-background, #fff);
+	box-shadow: 0 8px 24px color-mix(in srgb, var(--color-main-text) 8%, transparent);
+	box-sizing: border-box;
 }
 
 .chatview-root .head h1 {
@@ -135,7 +140,10 @@ export default {
 	display: flex;
 	flex-direction: column;
 	gap: 16px;
-	margin-bottom: 14px;
+	width: min(100%, 1540px);
+	margin: 0 auto 16px;
+	box-shadow: 0 10px 28px color-mix(in srgb, var(--color-main-text) 7%, transparent);
+	box-sizing: border-box;
 }
 
 .chatview-root .empty {
@@ -156,7 +164,7 @@ export default {
 .chatview-root .rm.user { align-items: flex-end; }
 .chatview-root .rb {
 	position: relative;
-	max-width: min(86%, 820px);
+	max-width: min(82%, 1120px);
 	padding: 12px 16px;
 	border: 1px solid var(--color-border, #ddd);
 	border-radius: 14px;
@@ -240,7 +248,10 @@ export default {
 	padding: 8px;
 	border: 1px solid var(--color-border, #ddd);
 	border-radius: 12px;
-	background: var(--color-main-background, #fff);
+	width: min(100%, 1540px);
+	margin: 0 auto;
+	box-sizing: border-box;
+	box-shadow: 0 8px 24px color-mix(in srgb, var(--color-main-text) 7%, transparent);
 }
 
 .chatview-root .chatform input {
@@ -282,6 +293,16 @@ export default {
 	font-size: 13px;
 	margin-top: 8px;
 	white-space: pre-wrap;
+}
+
+
+@media (min-width: 1400px) {
+	.chatview-root { padding: 32px clamp(28px, 4vw, 72px) 40px; }
+	.chatview-root .head { padding: 18px 24px; }
+	.chatview-root .chat-log { padding: 26px clamp(24px, 2.5vw, 42px); gap: 20px; }
+	.chatview-root .rb { max-width: min(78%, 1160px); padding: 14px 18px; font-size: 15px; }
+	.chatview-root .rt { font-size: 15px; line-height: 1.62; }
+	.chatview-root .chatform { padding: 10px; }
 }
 
 @media (max-width: 600px) {

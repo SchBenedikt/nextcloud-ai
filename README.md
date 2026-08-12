@@ -30,6 +30,7 @@ always cite the source file path the model took the information from.
 - **TaskProcessing providers**: 13 providers for the Assistant app (chat, summary, headline, topics, translate, reformulate, proofread, reformat, change tone, context write, …)
 - **Talk bot**: optional Nextcloud Talk integration — EVA answers in conversations
 - **File-context chat**: right-click a file in the Files app → "Open with EVA"
+- **Responsive chat and document UI**: fluid layouts for mobile and wide desktop screens, with explicit chunk loading, empty, error and retry states when inspecting indexed documents
 - **"AI answer ready" notifications** via the Notifications app
 - **No configuration needed**: models come from the local Ollama instance
 
