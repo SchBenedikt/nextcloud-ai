@@ -362,10 +362,19 @@ class RagService {
         $chunkCount = $this->chunkMapper->countForUser($userId);
 
         $running = $this->config->get('index_running') === '1';
+        $cancelRequested = $this->config->get('index_cancel_requested') === '1';
         if ($running) {
             $started = (int)$this->config->get('index_started');
-            if (time() - $started > 3600) {
+            $age = $started > 0 ? time() - $started : PHP_INT_MAX;
+            if ($age > 3600 || ($cancelRequested && $age > 300)) {
+                // Recover queued jobs that never reached a cron worker. The
+                // run token prevents a late stale worker from clearing a new run.
+                $this->config->set('index_running', '0');
+                $this->config->set('index_mode', 'idle');
+                $this->config->set('index_cancel_requested', '0');
+                $this->config->set('index_run_id', '');
                 $running = false;
+                $cancelRequested = false;
             }
         }
 
@@ -378,10 +387,12 @@ class RagService {
             'embeddingModel' => $this->config->get('embedding_model'),
             'chatModel' => $this->config->get('chat_model'),
             'chatModelInstalled' => in_array($this->config->get('chat_model'), array_map(static fn($m) => $m['name'] ?? '', $models), true),
-            'indexUser' => $this->config->get('index_user'),
             'documents' => $docCount,
             'chunks' => $chunkCount,
             'indexing' => $running,
+            'indexMode' => $this->config->get('index_mode'),
+            'indexCancelRequested' => $cancelRequested,
+            'indexStopping' => $running && $cancelRequested,
             'lastStarted' => $this->config->get('index_started'),
             'lastFinished' => $this->config->get('index_finished'),
             'lastProcessed' => $this->config->get('last_index_processed'),

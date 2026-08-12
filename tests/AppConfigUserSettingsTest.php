@@ -16,42 +16,55 @@ final class AppConfigUserSettingsTest extends TestCase {
         }
     }
 
-    public function testPersonalSettingsUseUserConfigAndRuntimeStateStaysGlobal(): void {
+    public function testPersonalSettingsAndRuntimeStateUseUserConfig(): void {
         $config = $this->createMock(IConfig::class);
+        $values = [];
         $config->method('getUserValue')
-            ->with('alice', 'eva_ai', 'chat_model', self::isType('string'))
-            ->willReturn('alice-model');
-        $config->expects(self::once())
-            ->method('setUserValue')
-            ->with('alice', 'eva_ai', 'chat_model', 'alice-model-2');
-        $config->expects(self::once())
-            ->method('setAppValue')
-            ->with('eva_ai', 'index_running', '1');
-        $config->method('getAppValue')
-            ->willReturn('global-value');
+            ->willReturnCallback(static function (string $user, string $app, string $key, string $default) use (&$values): string {
+                if (isset($values[$user][$key])) {
+                    return $values[$user][$key];
+                }
+                return $user === 'alice' && $key === 'chat_model' ? 'alice-model' : $default;
+            });
+        $config->method('setUserValue')
+            ->willReturnCallback(static function (string $user, string $app, string $key, string $value) use (&$values): void {
+                $values[$user][$key] = $value;
+            });
+        $config->method('setAppValue');
+        $config->method('getAppValue')->willReturn('global-value');
 
         $appConfig = new AppConfig($config);
         $appConfig->setUserId('alice');
 
         self::assertSame('alice-model', $appConfig->get('chat_model'));
         $appConfig->set('chat_model', 'alice-model-2');
+        $appConfig->set('max_files_per_run', '7');
+        $appConfig->set('exclude_paths', 'Private');
         $appConfig->set('index_running', '1');
+        self::assertSame('7', $appConfig->get('max_files_per_run'));
+        self::assertSame('Private', $appConfig->get('exclude_paths'));
+        self::assertSame('1', $appConfig->get('index_running'));
+
+        // A second user reads only their own values or fixed defaults, never Alice's or a global legacy value.
+        $appConfig->setUserId('bob');
+        self::assertSame('gemma4:cloud', $appConfig->get('chat_model'));
+        self::assertSame('40', $appConfig->get('max_files_per_run'));
+        self::assertSame('', $appConfig->get('exclude_paths'));
+        self::assertSame('0', $appConfig->get('index_running'));
     }
 
-    public function testPersonalSettingFallsBackToGlobalValueWhenNotOverridden(): void {
+    public function testPersonalSettingFallsBackToFixedDefaultWhenNotOverridden(): void {
         $config = $this->createMock(IConfig::class);
         $config->expects(self::once())
             ->method('getUserValue')
             ->with('alice', 'eva_ai', 'chat_model', self::isType('string'))
             ->willReturnCallback(static fn(string $user, string $app, string $key, string $default): string => $default);
-        $config->expects(self::once())
-            ->method('getAppValue')
-            ->with('eva_ai', 'chat_model', 'gemma4:cloud')
-            ->willReturn('global-model');
+        $config->expects(self::never())
+            ->method('getAppValue');
 
         $appConfig = new AppConfig($config);
         $appConfig->setUserId('alice');
 
-        self::assertSame('global-model', $appConfig->get('chat_model'));
+        self::assertSame('gemma4:cloud', $appConfig->get('chat_model'));
     }
 }

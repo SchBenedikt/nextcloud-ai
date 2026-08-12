@@ -38,7 +38,7 @@
 					<NcAppNavigationItem
 						:name="'Documents'"
 						:active="view === 'docs'"
-						@click="view = 'docs'">
+						@click="navigate('docs')">
 						<template #icon>
 							<svg width="16" height="16" viewBox="0 0 24 24"><path :d="mdiFileDocumentOutline" fill="currentColor" /></svg>
 						</template>
@@ -46,7 +46,7 @@
 					<NcAppNavigationItem
 						:name="'Settings'"
 						:active="view === 'settings'"
-						@click="view = 'settings'">
+						@click="navigate('settings')">
 						<template #icon>
 							<svg width="16" height="16" viewBox="0 0 24 24"><path :d="mdiTune" fill="currentColor" /></svg>
 						</template>
@@ -55,7 +55,7 @@
 			</template>
 		</NcAppNavigation>
 		<NcAppContent>
-			<ChatView v-if="view === 'chat'" :chat-id="currentChat" :initial-prompt="pendingPrompt" @chat-updated="loadChats" />
+			<ChatView v-if="view === 'chat'" :chat-id="currentChat" @chat-updated="loadChats" />
 			<FileContextChatView v-else-if="view === 'fileContext'" :file-ids="fileContextIds" />
 			<DocumentsView v-else-if="view === 'docs'" />
 			<SettingsView v-else />
@@ -80,13 +80,19 @@ export default {
 		const initialFileIds = initialFileIdsParam
 			? initialFileIdsParam.split(',').map((x) => parseInt(x, 10)).filter((x) => Number.isFinite(x) && x > 0)
 			: []
+		const path = window.location.pathname.replace(/\/+$/, '')
+		const pathView = path.endsWith('/settings')
+			? 'settings'
+			: path.endsWith('/documents')
+				? 'docs'
+				: 'chat'
 		const initial = params.get('view') === 'fileContext'
 			? 'fileContext'
 			: params.get('view') === 'docs'
 				? 'docs'
 				: params.get('view') === 'settings'
 					? 'settings'
-					: 'chat'
+					: pathView
 		const view = ref(initial)
 		const fileContextIds = ref(initialFileIds)
 		const mobileOpen = ref(false)
@@ -95,7 +101,19 @@ export default {
 		const chats = ref([])
 		const currentChat = ref(null)
 		const busy = ref(false)
-		const pendingPrompt = ref('')
+
+		const appRootPath = () => {
+			const current = window.location.pathname.replace(/\/+$/, '')
+			return current.replace(/\/(settings|documents|app|standalone)$/, '') || current
+		}
+		const navigate = (nextView) => {
+			view.value = nextView
+			const url = new URL(window.location.href)
+			url.searchParams.delete('view')
+			url.searchParams.delete('fileIds')
+			url.pathname = nextView === 'chat' ? appRootPath() : appRootPath() + '/' + (nextView === 'docs' ? 'documents' : nextView)
+			window.history.pushState({}, '', url.toString())
+		}
 
 		const apiBase = () => {
 			const el = document.head.querySelector('meta[name="eva-ai-api"]')
@@ -144,19 +162,15 @@ export default {
 			if (c && c.id) {
 				await loadChats()
 				currentChat.value = c.id
-				view.value = 'chat'
+				navigate('chat')
 			}
 		}
 
 		const selectChat = (id) => {
 			currentChat.value = id
-			view.value = 'chat'
+			navigate('chat')
 		}
 
-		const askAbout = (prompt) => {
-			pendingPrompt.value = prompt
-			view.value = 'chat'
-		}
 
 		const renameChat = async (id) => {
 			const c = chats.value.find((x) => x.id === id)
@@ -176,8 +190,9 @@ export default {
 		onMounted(() => {
 			loadChats()
 			if (typeof window !== 'undefined' && window.addEventListener) {
-				window.addEventListener('eva-ai:ask-about', (e) => {
-					if (e && e.detail && e.detail.prompt) askAbout(e.detail.prompt)
+				window.addEventListener('popstate', () => {
+					const current = window.location.pathname.replace(/\/+$/, '')
+					view.value = current.endsWith('/settings') ? 'settings' : current.endsWith('/documents') ? 'docs' : 'chat'
 				})
 				window.addEventListener('eva-ai:file-context', (e) => {
 					const ids = e && e.detail && Array.isArray(e.detail.fileIds)
@@ -185,7 +200,7 @@ export default {
 						: []
 					if (ids.length === 0) return
 					fileContextIds.value = ids
-					view.value = 'fileContext'
+						view.value = 'fileContext'
 					// URL anpassen, damit der User die Seite bookmarken/teilen kann.
 					const url = new URL(window.location.href)
 					url.searchParams.set('view', 'fileContext')
@@ -197,10 +212,10 @@ export default {
 
 		return {
 			view, mobileOpen, buildVersion,
-			chats, currentChat, busy, pendingPrompt,
+			chats, currentChat, busy,
 			fileContextIds,
-			newChat, selectChat, renameChat, deleteChat, loadChats, askAbout,
-			mdiChatProcessing, mdiFileDocumentOutline, mdiTune, mdiTrashCanOutline, mdiMessagePlus,
+			newChat, selectChat, renameChat, deleteChat, loadChats, navigate,
+			mdiChatProcessing, mdiFileDocumentOutline, mdiTune, mdiTrashCanOutline, mdiMessagePlus, mdiPencilOutline,
 		}
 	},
 }

@@ -33,35 +33,44 @@ class IndexJob extends TimedJob {
     }
 
     protected function run($argument): void {
-        // Avoid overlapping runs (same global guard as before).
-        if ($this->config->get('index_running') === '1') {
-            $started = (int)$this->config->get('index_started');
+        // The scheduler lock is global; the actual progress/settings are per user.
+        $this->config->setUserId(null);
+        if ($this->config->get('index_job_running') === '1') {
+            $started = (int)$this->config->get('index_job_started');
             if (time() - $started < 3600) {
                 return;
             }
         }
+        $this->config->set('index_job_running', '1');
+        $this->config->set('index_job_started', (string)time());
 
-        $users = $this->documentMapper->distinctUserIds();
-        $configured = $this->config->get('index_user');
-        if ($configured !== '') {
-            $users[] = $configured;
-        }
-        $users = array_values(array_unique(array_filter($users, static fn($u) => $u !== '')));
-
-        if ($users === []) {
-            return;
-        }
-
-        foreach ($users as $user) {
-            $this->logger->info('eva_ai index job start', ['user' => $user]);
-            try {
-                $this->indexer->run($user);
-            } catch (\Throwable $e) {
-                $this->logger->warning('eva_ai index job failed for user', [
-                    'user' => $user,
-                    'exception' => $e->getMessage(),
-                ]);
+        try {
+            $users = $this->documentMapper->distinctUserIds();
+            $configured = $this->config->get('index_user');
+            if ($configured !== '') {
+                $users[] = $configured;
             }
+            $users = array_values(array_unique(array_filter($users, static fn($u) => $u !== '')));
+
+            foreach ($users as $user) {
+                // Do not compete with an explicitly requested per-user job.
+                $this->config->setUserId($user);
+                if ($this->config->get('index_running') === '1') {
+                    continue;
+                }
+                $this->logger->info('eva_ai index job start', ['user' => $user]);
+                try {
+                    $this->indexer->run($user);
+                } catch (\Throwable $e) {
+                    $this->logger->warning('eva_ai index job failed for user', [
+                        'user' => $user,
+                        'exception' => $e->getMessage(),
+                    ]);
+                }
+            }
+        } finally {
+            $this->config->setUserId(null);
+            $this->config->set('index_job_running', '0');
         }
     }
 }

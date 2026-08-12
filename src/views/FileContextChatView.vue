@@ -19,7 +19,9 @@
 
 		<div class="messages" ref="messagesEl">
 			<div v-if="messages.length === 0" class="empty">
-				Ask anything about these files. Eva will only use their content.
+				<div class="empty-icon">⌘</div>
+				<strong>Ask about the selected files</strong>
+				<span>Eva will only use content from this file selection.</span>
 			</div>
 			<div v-for="(m, i) in messages" :key="i" :class="['msg', m.role]">
 				<div class="msg-author">{{ m.role === 'user' ? 'You' : 'Eva' }}</div>
@@ -169,11 +171,15 @@ export default {
 
 <style scoped>
 .file-context-root {
+	width: 100%;
+	max-width: 1180px;
+	height: 100%;
+	margin: 0 auto;
+	box-sizing: border-box;
 	display: flex;
 	flex-direction: column;
-	height: 100%;
-	padding: 12px 20px 16px;
-	gap: 12px;
+	padding: 24px clamp(16px, 3vw, 36px) 28px;
+	gap: 18px;
 	overflow: hidden;
 }
 .head {
@@ -182,11 +188,14 @@ export default {
 	gap: 16px;
 	flex-wrap: wrap;
 	align-items: flex-start;
+	padding-bottom: 16px;
+	border-bottom: 1px solid var(--color-border);
 }
 .head h1 {
 	margin: 0;
-	font-size: 18px;
-	font-weight: 600;
+	font-size: clamp(22px, 3vw, 28px);
+	font-weight: 700;
+	letter-spacing: -.02em;
 }
 .head .subtitle {
 	margin: 4px 0 0 0;
@@ -199,12 +208,13 @@ export default {
 	gap: 6px;
 	max-width: 60%;
 	justify-content: flex-end;
+	padding-top: 2px;
 }
 .chip {
 	background: var(--color-background-hover);
 	border: 1px solid var(--color-border);
-	border-radius: 12px;
-	padding: 3px 10px;
+	border-radius: 14px;
+	padding: 5px 10px;
 	font-size: 12px;
 }
 .chip.missing {
@@ -213,31 +223,58 @@ export default {
 }
 .messages {
 	flex: 1;
+	min-height: 280px;
 	overflow-y: auto;
 	display: flex;
 	flex-direction: column;
-	gap: 10px;
-	padding: 4px 0;
+	gap: 14px;
+	padding: clamp(14px, 2vw, 22px);
+	border: 1px solid var(--color-border);
+	border-radius: 14px;
+	background: var(--color-background-dark, var(--color-main-background));
 }
 .empty {
+	flex: 1;
+	min-height: 150px;
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	justify-content: center;
+	gap: 6px;
 	color: var(--color-text-maxcontrast);
 	text-align: center;
-	margin-top: 30px;
-	font-style: italic;
 }
-.msg {
-	background: var(--color-background-hover);
+.empty-icon {
+	display: grid;
+	place-items: center;
+	width: 44px;
+	height: 44px;
+	margin-bottom: 4px;
+	border: 1px solid var(--color-border);
 	border-radius: 12px;
-	padding: 10px 14px;
-	max-width: 80%;
+	color: var(--color-primary-element);
+	font-size: 24px;
+}
+.empty strong { color: var(--color-main-text); font-size: 16px; }
+.empty span { max-width: 420px; font-size: 13px; }
+.msg {
+	background: var(--color-main-background);
+	border: 1px solid var(--color-border);
+	border-radius: 14px;
+	padding: 12px 16px;
+	max-width: min(80%, 820px);
+	line-height: 1.5;
 }
 .msg.user {
 	align-self: flex-end;
 	background: var(--color-primary-element, #006aa3);
+	border-color: color-mix(in srgb, var(--color-primary-element) 45%, transparent);
 	color: var(--color-primary-text, #fff);
+	border-bottom-right-radius: 4px;
 }
 .msg.assistant {
 	align-self: flex-start;
+	border-bottom-left-radius: 4px;
 }
 .msg.pending .msg-body {
 	opacity: 0.6;
@@ -261,16 +298,28 @@ export default {
 }
 .msg-sources a {
 	background: rgba(0, 0, 0, 0.08);
-	padding: 2px 8px;
+	background: color-mix(in srgb, currentColor 10%, transparent);
+	padding: 3px 9px;
 	border-radius: 10px;
 	text-decoration: none;
 }
 .input-row {
 	display: flex;
 	gap: 8px;
-	align-items: flex-end;
+	align-items: center;
+	padding: 8px;
+	border: 1px solid var(--color-border);
+	border-radius: 12px;
+	background: var(--color-main-background);
 }
 .input-row :deep(.input-field) {
 	flex: 1;
+	min-width: 0;
+}
+
+@media (max-width: 600px) {
+	.file-context-root { padding: 18px 12px 20px; }
+	.file-chips { max-width: 100%; justify-content: flex-start; }
+	.msg { max-width: 94%; }
 }
 </style>

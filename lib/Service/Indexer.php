@@ -36,34 +36,43 @@ class Indexer {
      * Perform one bounded indexing pass for a user.
      * @return array{processed:int,changed:int,skipped:int,total_seen:int,error:?string}
      */
-    public function run(string $userId, ?int $maxFiles = null): array {
+    public function run(string $userId, ?int $maxFiles = null, string $mode = 'all', bool $keepRunning = false, ?string $runId = null): array {
         $this->config->setUserId($userId);
+        $mode = in_array($mode, ['all', 'files', 'mail'], true) ? $mode : 'all';
         $maxFiles = $maxFiles ?? $this->config->getInt('max_files_per_run', 40);
         $result = ['processed' => 0, 'changed' => 0, 'skipped' => 0, 'total_seen' => 0, 'error' => null];
+        if ($runId !== null && $this->config->get('index_run_id') !== $runId) {
+            return $result;
+        }
 
         $this->config->set('index_running', '1');
         $this->config->set('index_started', (string)time());
         
-        // Calculate current configuration hash for detecting configuration changes
-        $currentConfigHash = $this->calculateConfigHash();
-        $storedConfigHash = $this->config->get('index_config_hash');
+        // Calculate the file-index configuration hash only for file passes.
+        // A mail-only request must not invalidate the user's file index.
+        if ($mode !== 'mail') {
+            $currentConfigHash = $this->calculateConfigHash();
+            $storedConfigHash = $this->config->get('index_config_hash');
 
-        // AppConfig::get() never returns null; treat empty string as "not yet set"
-        if ($storedConfigHash === '') {
-            $this->config->set('index_config_hash', $currentConfigHash);
-        } elseif ($storedConfigHash !== $currentConfigHash) {
-            $this->logger->info('eva_ai: Configuration changed, marking index for rebuild', [
-                'oldHash' => $storedConfigHash,
-                'newHash' => $currentConfigHash,
-                'userId' => $userId
-            ]);
-            $this->config->set('index_config_hash', $currentConfigHash);
-            // Force re-index by clearing stored hashes
-            $this->documentMapper->clearHashesForUser($userId);
+            // AppConfig::get() never returns null; treat empty string as "not yet set"
+            if ($storedConfigHash === '') {
+                $this->config->set('index_config_hash', $currentConfigHash);
+            } elseif ($storedConfigHash !== $currentConfigHash) {
+                $this->logger->info('eva_ai: Configuration changed, marking index for rebuild', [
+                    'oldHash' => $storedConfigHash,
+                    'newHash' => $currentConfigHash,
+                    'userId' => $userId
+                ]);
+                $this->config->set('index_config_hash', $currentConfigHash);
+                // Force re-index by clearing stored hashes
+                $this->documentMapper->clearHashesForUser($userId);
+            }
         }
 
+        $cancelled = false;
         try {
-            $userFolder = $this->rootFolder->getUserFolder($userId);
+            if ($mode !== 'mail') {
+                $userFolder = $this->rootFolder->getUserFolder($userId);
             $scope = $this->config->get('scope_path');
             $root = $userFolder;
             if ($scope !== '') {
@@ -97,6 +106,11 @@ class Indexer {
 
             // Stream files via generator instead of loading all into memory
             foreach ($this->collectFilesGenerator($root, 0, $root === $userFolder ? '' : $scope, $excludePaths) as $fileData) {
+                if ($this->cancellationRequested($runId)) {
+                    $cancelled = true;
+                    $completed = false;
+                    break;
+                }
                 $fileId = (int)$fileData['id'];
                 $seen[$fileId] = true;
                 $result['total_seen']++;
@@ -208,17 +222,25 @@ class Indexer {
                 }
             }
 
-            $this->flushBatch($batch, $result);
-            if ($completed) {
-                // Full traversal: safe to remove files that are no longer
-                // present. With a bounded pass that ended early the seen set
-                // is incomplete and must not trigger deletions (Issue #6).
-                $this->cleanupRemoved($userId, $seen, $stale);
-            } else {
-                // Config-based exclusions are still safe on partial passes.
-                $this->cleanupExcluded($userId);
+            if ($this->cancellationRequested($runId)) {
+                $cancelled = true;
             }
-            $this->indexEmails($userId, $result, $maxFiles);
+            $this->flushBatch($batch, $result);
+            if (!$cancelled && $mode !== 'mail') {
+                if ($completed) {
+                    // Full traversal: safe to remove files that are no longer
+                    // present. With a bounded pass that ended early the seen set
+                    // is incomplete and must not trigger deletions (Issue #6).
+                    $this->cleanupRemoved($userId, $seen, $stale);
+                } else {
+                    // Config-based exclusions are still safe on partial passes.
+                    $this->cleanupExcluded($userId);
+                }
+            }
+            }
+            if (!$cancelled && $mode !== 'files') {
+                $this->indexEmails($userId, $result, $maxFiles, $mode === 'mail', $runId);
+            }
 
             if ($result['error'] === null && $result['processed'] === 0 && $result['total_seen'] > 0) {
                 $result['error'] = null; // up to date
@@ -227,12 +249,17 @@ class Indexer {
             $this->logger->error('eva_ai index run failed', ['exception' => $e]);
             $result['error'] = $e->getMessage();
         } finally {
-            $this->config->set('index_running', '0');
-            $this->config->set('index_finished', (string)time());
-            $this->config->set('last_index_processed', (string)$result['processed']);
-            $this->config->set('last_index_total', (string)$result['total_seen']);
-            if ($result['error'] !== null) {
-                $this->config->set('last_index_error', $result['error']);
+            $ownsRun = $runId === null || $this->config->get('index_run_id') === $runId;
+            if ($ownsRun) {
+                if (!$keepRunning) {
+                    $this->config->set('index_running', '0');
+                    $this->config->set('index_finished', (string)time());
+                }
+                $this->config->set('last_index_processed', (string)$result['processed']);
+                $this->config->set('last_index_total', (string)$result['total_seen']);
+                if ($result['error'] !== null) {
+                    $this->config->set('last_index_error', $result['error']);
+                }
             }
         }
 
@@ -706,8 +733,8 @@ class Indexer {
      * never removes them. Runs only when the config 'mail_index_enabled' = 1
      * and the Mail app tables exist.
      */
-    private function indexEmails(string $userId, array &$result, int $maxFiles): void {
-        if ($this->config->get('mail_index_enabled') !== '1') {
+    private function indexEmails(string $userId, array &$result, int $maxFiles, bool $force = false, ?string $runId = null): void {
+        if (!$force && $this->config->get('mail_index_enabled') !== '1') {
             return;
         }
         $limit = max(1, min(500, $this->config->getInt('mail_index_max', 25)));
@@ -725,6 +752,9 @@ class Indexer {
         $processedThisPass = 0;
         $maxTotal = max($maxFiles, 10);
         foreach ($mails as $mail) {
+            if ($this->cancellationRequested($runId)) {
+                break;
+            }
             if ($processedThisPass >= $maxTotal) {
                 break;
             }
@@ -892,6 +922,11 @@ class Indexer {
      * Calculate a hash of the current indexing configuration to detect changes
      * that require index rebuilds (embedding model, chunking settings, etc.)
      */
+    private function cancellationRequested(?string $runId = null): bool {
+        return $this->config->get('index_cancel_requested') === '1'
+            || ($runId !== null && $this->config->get('index_run_id') !== $runId);
+    }
+
     private function calculateConfigHash(): string {
         $configKey = implode('|', [
             $this->config->get('embedding_model', 'default'),
@@ -915,6 +950,9 @@ class Indexer {
             $docs = $this->documentMapper->deleteByUser($userId);
             $chunks = $this->chunkMapper->deleteForUser($userId);
         } else {
+            // A null reset is the explicit all-users/maintenance path. Clear
+            // any stale request context before writing the global state.
+            $this->config->setUserId(null);
             $docs = $this->documentMapper->deleteAll();
             $chunks = $this->chunkMapper->deleteAll();
         }
@@ -925,6 +963,9 @@ class Indexer {
         $this->config->set('last_index_processed', '0');
         $this->config->set('last_index_error', '');
         $this->config->set('index_config_hash', ''); // Reset config hash on full reset
+        $this->config->set('index_mode', 'idle');
+        $this->config->set('index_cancel_requested', '0');
+        $this->config->set('index_run_id', '');
         return ['documents' => $docs, 'chunks' => $chunks];
     }
 }

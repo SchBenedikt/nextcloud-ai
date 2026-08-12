@@ -42,6 +42,18 @@ class PageController extends Controller {
         return $this->appPage('index');
     }
 
+    #[NoAdminRequired]
+    #[NoCSRFRequired]
+    public function settings(): TemplateResponse {
+        return $this->appPage('index');
+    }
+
+    #[NoAdminRequired]
+    #[NoCSRFRequired]
+    public function documents(): TemplateResponse {
+        return $this->appPage('index');
+    }
+
     /**
      * Fallback ohne App-Shell: reine Chat-Seite (Vanilla-HTML, eigenes Layout).
      */

@@ -101,11 +101,11 @@
             display: flex;
             flex-direction: column;
             overflow: hidden;
-            padding: 16px 20px 20px;
+            padding: 24px clamp(16px, 3vw, 36px) 28px;
             background: var(--color-main-background, #f7f7f7);
         }
-        .head { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; margin-bottom: 12px; }
-        .head h1 { font-size: 20px; font-weight: 600; color: var(--color-main-text, #111); }
+        .head { display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap; margin-bottom: 18px; padding-bottom: 16px; border-bottom: 1px solid var(--color-border, #ddd); }
+        .head h1 { font-size: clamp(22px, 3vw, 28px); font-weight: 700; letter-spacing: -.02em; color: var(--color-main-text, #111); }
         .head-left { display: flex; align-items: center; gap: 10px; }
         .badge {
             font-size: 11px; color: var(--color-text-maxcontrast, #666); background: var(--color-background-hover, #e9e9e9);
@@ -119,10 +119,10 @@
         #msgs {
             flex: 1;
             min-height: 320px;
-            background: var(--color-main-background, #fff);
+            background: var(--color-background-dark, var(--color-main-background, #fff));
             border: 1px solid var(--color-border, #ddd);
-            border-radius: 8px;
-            padding: 12px;
+            border-radius: 14px;
+            padding: clamp(14px, 2vw, 22px);
             overflow-y: auto;
             display: flex;
             flex-direction: column;
@@ -133,9 +133,11 @@
         .empty .ico { font-size: 42px; }
         .empty .t { font-size: 16px; font-weight: 600; color: var(--color-main-text, #222); }
         .empty .d { font-size: 13px; color: var(--color-text-maxcontrast, #444); max-width: 480px; }
-        .rm { display: flex; flex-direction: column; align-items: flex-start; }
+        .rm { display: flex; flex-direction: column; align-items: flex-start; width: 100%; }
         .rm.user { align-items: flex-end; }
-        .rb { max-width: 86%; padding: 10px 14px; border-radius: 14px; line-height: 1.5; font-size: 14px; word-break: break-word; background: var(--color-background-hover, #f1f2f4); color: var(--color-main-text, #111); }
+        .rb { max-width: min(86%, 820px); padding: 12px 16px; border: 1px solid var(--color-border, #ddd); border-radius: 14px; line-height: 1.5; font-size: 14px; word-break: break-word; background: var(--color-main-background, #fff); color: var(--color-main-text, #111); }
+        .rm.user .rb { border-color: color-mix(in srgb, var(--color-primary-element) 45%, transparent); }
+        .rm.assistant .rb { background: var(--color-main-background, #fff) !important; }
         .rm.user .rb { background: var(--color-primary-element, #00679c); color: var(--color-primary-element-text, #fff); border-bottom-right-radius: 4px; }
         .rm.assistant .rb { border-bottom-left-radius: 4px; }
         .rt { white-space: normal; font-size: 14px; line-height: 1.55; color: inherit; text-align: left; }
@@ -224,15 +226,21 @@
         }
         .rm:hover .rcopy { opacity: 1; }
         .rcopy:hover { background: var(--color-background-hover, #e5e5e5); }
-        .form { display: flex; gap: 8px; }
+        .form { display: flex; gap: 8px; align-items: center; padding: 8px; border: 1px solid var(--color-border, #ddd); border-radius: 12px; background: var(--color-main-background, #fff); }
         .form input {
-            flex: 1; padding: 10px 12px; border: 1px solid var(--color-border, #ccc); border-radius: 6px;
-            font-size: 14px; color: var(--color-main-text, #111); background: var(--color-main-background, #fff);
+            flex: 1; min-width: 0; padding: 10px 12px; border: 1px solid transparent; border-radius: 8px;
+            font-size: 14px; color: var(--color-main-text, #111); background: transparent;
         }
-        .form input:focus { border-color: var(--color-primary-element, #00679c); outline: none; }
-        .form button { padding: 10px 20px; border: 0; border-radius: 6px; background: var(--color-primary-element, #00679c); color: var(--color-primary-element-text, #fff); font-size: 14px; font-weight: 600; cursor: pointer; }
+        .form input:focus { border-color: var(--color-primary-element, #00679c); outline: none; background: var(--color-background-hover, #f1f2f4); }
+        .form button { padding: 10px 18px; border: 0; border-radius: 8px; background: var(--color-primary-element, #00679c); color: var(--color-primary-element-text, #fff); font-size: 14px; font-weight: 600; cursor: pointer; }
         .form button:disabled { opacity: .6; cursor: default; }
-        .err { color: var(--color-error, #e9322d); font-size: 13px; margin-top: 8px; white-space: pre-wrap; }
+        .err { color: var(--color-error, #e9322d); font-size: 13px; margin: 8px 4px 0; white-space: pre-wrap; }
+        @media (max-width: 600px) {
+            #content { padding: 18px 12px 20px; }
+            .head { align-items: flex-start; flex-direction: column; }
+            .head-right { width: 100%; justify-content: flex-end; }
+            .rb { max-width: 94%; }
+        }
     </style>
 </head>
 <body>
@@ -250,10 +258,10 @@
             <button id="newchat" class="nav-new">+ New chat</button>
             <div id="chatlist"></div>
             <div class="sidebar-spacer"></div>
-            <a class="nav-item" href="<?php echo htmlspecialchars(\OC::$WEBROOT . '/apps/eva_ai/app?view=docs', ENT_QUOTES); ?>">
+            <a class="nav-item" href="<?php echo htmlspecialchars(\OC::$WEBROOT . '/apps/eva_ai/documents', ENT_QUOTES); ?>">
                 <span class="nav-ico">📄</span> Documents
             </a>
-            <a class="nav-item" href="<?php echo htmlspecialchars(\OC::$WEBROOT . '/apps/eva_ai/app?view=settings', ENT_QUOTES); ?>">
+            <a class="nav-item" href="<?php echo htmlspecialchars(\OC::$WEBROOT . '/apps/eva_ai/settings', ENT_QUOTES); ?>">
                 <span class="nav-ico">⚙️</span> Settings
             </a>
             <div class="sidebar-sep"></div>
