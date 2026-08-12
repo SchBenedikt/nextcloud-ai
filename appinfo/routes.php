@@ -6,6 +6,8 @@ return [
     'routes' => [
         ['name' => 'page#index', 'url' => '/', 'verb' => 'GET'],
         ['name' => 'page#app', 'url' => '/app', 'verb' => 'GET'],
+        ['name' => 'page#settings', 'url' => '/settings', 'verb' => 'GET'],
+        ['name' => 'page#documents', 'url' => '/documents', 'verb' => 'GET'],
         ['name' => 'page#standalone', 'url' => '/standalone', 'verb' => 'GET'],
     ],
     'ocs' => [
@@ -13,6 +15,8 @@ return [
         ['name' => 'api#settings', 'url' => '/api/settings', 'verb' => 'GET'],
         ['name' => 'api#saveSettings', 'url' => '/api/settings', 'verb' => 'PUT'],
         ['name' => 'api#startIndex', 'url' => '/api/index', 'verb' => 'POST'],
+        ['name' => 'api#startMailIndex', 'url' => '/api/mailIndex', 'verb' => 'POST'],
+        ['name' => 'api#stopIndex', 'url' => '/api/indexStop', 'verb' => 'POST'],
         ['name' => 'api#resetIndex', 'url' => '/api/indexReset', 'verb' => 'POST'],
         ['name' => 'api#documents', 'url' => '/api/documents', 'verb' => 'GET'],
         ['name' => 'api#documentChunks', 'url' => '/api/documentChunks', 'verb' => 'POST'],

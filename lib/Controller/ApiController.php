@@ -10,6 +10,7 @@ use OCA\EvaAi\Service\AppConfig;
 use OCA\EvaAi\Service\ChatStore;
 use OCA\EvaAi\Service\FileContextChatService;
 use OCA\EvaAi\Service\Indexer;
+use OCA\EvaAi\BackgroundJob\IndexRequestJob;
 use OCA\EvaAi\Service\Ollama;
 use OCA\EvaAi\Service\RagService;
 use OCP\AppFramework\OCSController;
@@ -41,6 +42,28 @@ class ApiController extends OCSController {
         $this->config->setUserId($this->userId);
     }
 
+    /** Lazily decode JSON bodies used by the Vue/axios client. */
+    private ?array $jsonBody = null;
+
+    private function jsonBody(): array {
+        if ($this->jsonBody !== null) {
+            return $this->jsonBody;
+        }
+        $raw = (string)file_get_contents('php://input');
+        $decoded = $raw !== '' ? json_decode($raw, true) : null;
+        $this->jsonBody = is_array($decoded) ? $decoded : [];
+        return $this->jsonBody;
+    }
+
+    private function param(string $key, mixed $default = null): mixed {
+        $value = $this->request->getParam($key);
+        if ($value !== null) {
+            return $value;
+        }
+        $body = $this->jsonBody();
+        return array_key_exists($key, $body) ? $body[$key] : $default;
+    }
+
     private function requireUser(): ?string {
         return $this->userId ?: null;
     }
@@ -69,6 +92,11 @@ class ApiController extends OCSController {
         if ($user === null) {
             return new DataResponse(['error' => 'Not logged in'], 401);
         }
+        $this->config->setUserId($user);
+        $this->recoverStaleIndex();
+        if ($this->config->get('index_running') === '1') {
+            return new DataResponse(['error' => 'Settings are locked while indexing is running.'], 409);
+        }
         $allowed = [
             'ollama_url', 'embedding_model', 'chat_model', 'top_k', 'chunk_size',
             'chunk_overlap', 'max_file_size', 'max_files_per_run', 'scope_path', 'context_size', 'temperature',
@@ -82,7 +110,7 @@ class ApiController extends OCSController {
             'exclude_paths',
         ];
         foreach ($allowed as $key) {
-            $value = $this->request->getParam($key);
+            $value = $this->param($key);
             if ($value !== null) {
                 if (in_array($key, ['top_k', 'chunk_size', 'chunk_overlap', 'max_file_size', 'max_files_per_run', 'context_size', 'exec_write_max_chars', 'mail_index_max', 'talk_history_size'], true)) {
                     $value = (string)max(1, (int)$value);
@@ -114,7 +142,11 @@ class ApiController extends OCSController {
         if ($user === null) {
             return new DataResponse(['error' => 'Not logged in'], 401);
         }
-        $this->jobList->remove(\OCA\EvaAi\BackgroundJob\IndexJob::class);
+        $this->config->setUserId($user);
+        $this->recoverStaleIndex();
+        if ($this->config->get('index_running') === '1') {
+            return new DataResponse(['error' => 'Stop indexing before deleting the index.'], 409);
+        }
         $deleted = $this->indexer->reset($user);
         return new DataResponse([
             'result' => $deleted,
@@ -124,24 +156,87 @@ class ApiController extends OCSController {
 
     #[NoAdminRequired]
     public function startIndex(): DataResponse {
+        return $this->queueIndex('all');
+    }
+
+    #[NoAdminRequired]
+    public function startMailIndex(): DataResponse {
+        return $this->queueIndex('mail');
+    }
+
+    #[NoAdminRequired]
+    public function stopIndex(): DataResponse {
         $user = $this->requireUser();
         if ($user === null) {
             return new DataResponse(['error' => 'Not logged in'], 401);
         }
-        // Index this user's scope without changing instance-wide configuration.
-        if ($this->config->get('chat_model') === '') {
-            $models = $this->ollama->listModels();
-            $completion = array_values(array_filter($models, static fn($m) => in_array('completion', $m['capabilities'] ?? [], true)));
-            if (!empty($completion)) {
-                $this->config->set('chat_model', $completion[0]['name']);
-            }
+        $this->config->setUserId($user);
+        $this->recoverStaleIndex();
+        if ($this->config->get('index_running') !== '1') {
+            return new DataResponse(['stopped' => true, 'status' => $this->ragService->buildStatus($user)]);
         }
-        $this->jobList->add(\OCA\EvaAi\BackgroundJob\IndexJob::class);
-        $result = $this->indexer->run($user);
+        $this->config->set('index_cancel_requested', '1');
+        // Keep the run marked as active until the queued worker observes the
+        // flag and cleans up. This prevents a new run from racing the old one.
+        $this->config->set('index_mode', 'stopping');
         return new DataResponse([
-            'result' => $result,
+            'stopped' => true,
             'status' => $this->ragService->buildStatus($user),
         ]);
+    }
+
+    private function queueIndex(string $mode): DataResponse {
+        $user = $this->requireUser();
+        if ($user === null) {
+            return new DataResponse(['error' => 'Not logged in'], 401);
+        }
+        $this->config->setUserId($user);
+        $this->recoverStaleIndex();
+        if ($this->config->get('index_running') === '1') {
+            return new DataResponse([
+                'queued' => false,
+                'status' => $this->ragService->buildStatus($user),
+            ], 409);
+        }
+        $this->config->set('index_running', '1');
+        $this->config->set('index_started', (string)time());
+        $this->config->set('index_finished', '0');
+        $this->config->set('last_index_error', '');
+        $this->config->set('index_mode', $mode);
+        $this->config->set('index_cancel_requested', '0');
+        $runId = bin2hex(random_bytes(16));
+        $this->config->set('index_run_id', $runId);
+        try {
+            $this->jobList->add(IndexRequestJob::class, [
+                'userId' => $user,
+                'mode' => $mode,
+                'runId' => $runId,
+            ]);
+        } catch (\Throwable $e) {
+            $this->config->set('index_running', '0');
+            $this->config->set('index_mode', 'idle');
+            return new DataResponse(['error' => 'The background index job could not be queued.'], 500);
+        }
+        return new DataResponse([
+            'queued' => true,
+            'mode' => $mode,
+            'status' => $this->ragService->buildStatus($user),
+        ]);
+    }
+
+    private function recoverStaleIndex(): void {
+        if ($this->config->get('index_running') !== '1') {
+            return;
+        }
+        $started = (int)$this->config->get('index_started');
+        $age = $started > 0 ? time() - $started : PHP_INT_MAX;
+        $cancelRequested = $this->config->get('index_cancel_requested') === '1';
+        if ($age > 3600 || ($cancelRequested && $age > 300)) {
+            $this->config->set('index_running', '0');
+            $this->config->set('index_mode', 'idle');
+            $this->config->set('index_cancel_requested', '0');
+            $this->config->set('index_run_id', '');
+        }
     }
 
     #[NoAdminRequired]
@@ -150,9 +245,9 @@ class ApiController extends OCSController {
         if ($user === null) {
             return new DataResponse(['error' => 'Not logged in'], 401);
         }
-        $search = (string)($this->request->getParam('search') ?? '');
-        $limit = max(1, min(500, (int)($this->request->getParam('limit') ?? 100)));
-        $offset = max(0, (int)($this->request->getParam('offset') ?? 0));
+        $search = (string)($this->param('search') ?? '');
+        $limit = max(1, min(500, (int)($this->param('limit') ?? 100)));
+        $offset = max(0, (int)($this->param('offset') ?? 0));
         $docs = $this->documentMapper->findByUser($user, $search, $limit, $offset);
         $totalChunks = 0;
         $totalSize = 0;
@@ -183,7 +278,7 @@ class ApiController extends OCSController {
         if ($user === null) {
             return new DataResponse(['error' => 'Not logged in'], 401);
         }
-        $id = (int)($this->request->getParam('id') ?? 0);
+        $id = (int)($this->param('id') ?? 0);
         $doc = $id > 0 ? $this->documentMapper->findById($id) : null;
         if ($doc === null || $doc->getUserId() !== $user) {
             return new DataResponse(['error' => 'Document not found'], 404);
@@ -208,11 +303,11 @@ class ApiController extends OCSController {
         if ($user === null) {
             return new DataResponse(['error' => 'Not logged in'], 401);
         }
-        $message = trim((string)($this->request->getParam('message') ?? ''));
+        $message = trim((string)($this->param('message') ?? ''));
         if ($message === '') {
             return new DataResponse(['error' => 'Empty message'], 400);
         }
-        $history = $this->request->getParam('history') ?? [];
+        $history = $this->param('history') ?? [];
         if (is_string($history)) {
             $history = json_decode($history, true) ?? [];
         }
@@ -233,16 +328,16 @@ class ApiController extends OCSController {
         if ($user === null) {
             return new DataResponse(['error' => 'Not logged in'], 401);
         }
-        $fileIds = $this->request->getParam('fileIds');
+        $fileIds = $this->param('fileIds');
         if (!is_array($fileIds)) {
             $fileIds = [];
         }
         $fileIds = array_values(array_filter(array_map('intval', $fileIds), static fn($v) => $v > 0));
-        $message = trim((string)($this->request->getParam('message') ?? ''));
+        $message = trim((string)($this->param('message') ?? ''));
         if ($message === '') {
             return new DataResponse(['error' => 'Empty message'], 400);
         }
-        $history = $this->request->getParam('history') ?? [];
+        $history = $this->param('history') ?? [];
         if (is_string($history)) {
             $history = json_decode($history, true) ?? [];
         }
@@ -263,7 +358,7 @@ class ApiController extends OCSController {
         if ($user === null) {
             return new DataResponse(['error' => 'Not logged in'], 401);
         }
-        $fileIds = $this->request->getParam('fileIds');
+        $fileIds = $this->param('fileIds');
         if (!is_array($fileIds)) {
             $fileIds = [];
         }
@@ -372,7 +467,7 @@ class ApiController extends OCSController {
             return new DataResponse(['error' => 'Not logged in'], 401);
         }
         try {
-            $chat = $this->chatStore->create($user, (string)($this->request->getParam('title') ?? ''));
+            $chat = $this->chatStore->create($user, (string)($this->param('title') ?? ''));
             return new DataResponse($chat);
         } catch (\Throwable $e) {
             return new DataResponse(['error' => 'Unable to persist chat data'], 500);
@@ -418,8 +513,8 @@ class ApiController extends OCSController {
             if ($this->chatStore->get($user, $id) === null) {
                 return new NotFoundResponse();
             }
-            $role = (string)($this->request->getParam('role') ?? '');
-            $text = trim((string)($this->request->getParam('text') ?? ''));
+            $role = (string)($this->param('role') ?? '');
+            $text = trim((string)($this->param('text') ?? ''));
             if ($role === '' || $text === '') {
                 return new DataResponse(['error' => 'role and text are required'], 400);
             }
@@ -440,7 +535,7 @@ class ApiController extends OCSController {
             if ($this->chatStore->get($user, $id) === null) {
                 return new NotFoundResponse();
             }
-            $title = trim((string)($this->request->getParam('title') ?? ''));
+            $title = trim((string)($this->param('title') ?? ''));
             if ($title === '') {
                 return new DataResponse(['error' => 'title required'], 400);
             }

@@ -16,6 +16,10 @@ class AppConfig {
         'exec_write_max_chars', 'exec_delete_mode', 'notify_on_complete',
         'mail_index_enabled', 'mail_index_max', 'talk_history_size',
         'talk_bot_trigger', 'exclude_paths',
+        // Per-user index state: progress and hashes must never leak between users.
+        'index_running', 'index_started', 'index_finished', 'last_index_processed',
+        'last_index_total', 'last_index_error', 'index_config_hash', 'index_mode',
+        'index_cancel_requested', 'index_run_id',
     ];
 
     private const DEFAULTS = [
@@ -42,6 +46,19 @@ class AppConfig {
         'talk_history_size' => '50',
         'talk_bot_trigger' => 'Eva',
         'exclude_paths' => '',
+        'index_running' => '0',
+        'index_started' => '',
+        'index_finished' => '0',
+        'last_index_processed' => '0',
+        'last_index_total' => '0',
+        'last_index_error' => '',
+        'index_config_hash' => '',
+        'index_mode' => 'idle',
+        'index_cancel_requested' => '0',
+        'index_run_id' => '',
+        // Only the scheduler lock is global; it is not exposed as a user setting.
+        'index_job_running' => '0',
+        'index_job_started' => '',
     ];
 
     private ?string $userId = null;
@@ -65,6 +82,9 @@ class AppConfig {
             if ($userValue !== $sentinel) {
                 return (string)$userValue;
             }
+            // Personal settings must never inherit another user's or an old
+            // instance-wide value. New users receive only the app default.
+            return self::DEFAULTS[$key] ?? '';
         }
         $value = $this->config->getAppValue(self::APP, $key, self::DEFAULTS[$key] ?? '');
         if ($value === '') {
@@ -91,9 +111,13 @@ class AppConfig {
         $this->config->setAppValue(self::APP, $key, (string)((int)$this->get($key) + 1));
     }
 
+    /**
+     * Return only settings that belong to the current user.
+     * Global scheduler/legacy values must never be exposed through the user API.
+     */
     public function all(): array {
         $out = [];
-        foreach (array_keys(self::DEFAULTS) as $key) {
+        foreach (self::USER_SETTINGS as $key) {
             $out[$key] = $this->get($key);
         }
         return $out;

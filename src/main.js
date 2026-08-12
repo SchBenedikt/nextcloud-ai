@@ -8,6 +8,7 @@ import {
 	NcAppContent,
 	NcButton,
 	NcTextField,
+	NcCheckboxRadioSwitch,
 	NcLoadingIcon,
 	NcEmptyContent,
 	NcNoteCard,
@@ -51,6 +52,7 @@ app.component('NcAppNavigationItem', NcAppNavigationItem)
 app.component('NcAppContent', NcAppContent)
 app.component('NcButton', NcButton)
 app.component('NcTextField', NcTextField)
+app.component('NcCheckboxRadioSwitch', NcCheckboxRadioSwitch)
 app.component('NcLoadingIcon', NcLoadingIcon)
 app.component('NcEmptyContent', NcEmptyContent)
 app.component('NcNoteCard', NcNoteCard)

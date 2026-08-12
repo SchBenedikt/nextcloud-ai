@@ -1,35 +1,48 @@
 <template>
 	<div class="docs-view">
-		<div class="docs-header">
-			<h2 class="docs-title">Indexed documents</h2>
-			<div class="docs-actions">
-				<NcTextField
-					:value="search"
-					:label="'Search…'"
-					:label-outside="true"
-					:placeholder="'File name'"
-					@update:value="search = $event"
-					@keydown.enter="load" />
-				<NcButton type="secondary" class="doc-refresh" :loading="indexing" @click="startIndex">
-					<template #icon>
-						<svg width="18" height="18" viewBox="0 0 24 24"><path d="M15.5 14h-.79l-.28-.27a6.5 6.5 0 1 0-.7.7l.27.28v.79l5 4.99L20.49 19l-4.99-5Zm-6 0A4.5 4.5 0 1 1 14 9.5 4.5 4.5 0 0 1 9.5 14Z" fill="currentColor" /></svg>
-					</template>
-					Start indexing
-				</NcButton>
+		<header class="page-header">
+			<div class="header-copy">
+				<p class="eyebrow">EVA AI</p>
+				<h2 class="docs-title">Documents</h2>
+				<p class="page-intro">Review the files in your personal EVA knowledge base and inspect their indexed text.</p>
+			</div>
+			<div class="header-actions">
+				<NcButton type="primary" :loading="indexing" :disabled="indexingActive" @click="startIndex">Index files &amp; emails</NcButton>
+				<NcButton type="secondary" :disabled="indexingActive" @click="startMailIndex">Only emails</NcButton>
+				<NcButton v-if="indexingActive" type="tertiary-no-background" :loading="stopping" :disabled="indexStatus?.indexStopping" @click="stopIndex">Stop</NcButton>
+			</div>
+		</header>
+
+		<div v-if="indexingActive" class="callout indexing-callout" role="status">
+			<strong>{{ indexStatus?.indexStopping ? 'Stopping indexing…' : indexStatus?.indexMode === 'mail' ? 'Email indexing is running' : 'Indexing is running' }}</strong>
+			<span>The job continues on the server even if you close this page.</span>
+		</div>
+		<div v-if="progress" class="callout" role="status">{{ progress }}</div>
+
+		<div class="summary-grid" aria-label="Index summary">
+			<div class="summary-card">
+				<span class="summary-label">Documents</span>
+				<strong>{{ total }}</strong>
+				<small>Indexed files in your knowledge base</small>
+			</div>
+			<div class="summary-card">
+				<span class="summary-label">Text chunks</span>
+				<strong>{{ totalChunks }}</strong>
+				<small>Searchable sections</small>
+			</div>
+			<div class="summary-card">
+				<span class="summary-label">Indexed size</span>
+				<strong>{{ fmtSize(totalSize) }}</strong>
+				<small>Content currently available to EVA</small>
 			</div>
 		</div>
 
-		<p v-if="progress" class="docs-progress">{{ progress }}</p>
+		<section class="docs-toolbar">
+			<NcTextField v-model="search" label="Search documents" :label-outside="true" placeholder="File name or path" @keydown.enter="load" />
+			<NcButton type="secondary" :loading="loading" @click="load">Refresh</NcButton>
+		</section>
 
-		<div class="docs-stats" v-if="total">
-			<span class="docs-stat">{{ total }} documents</span>
-			<span class="docs-stat-dot">·</span>
-			<span class="docs-stat">{{ totalChunks }} chunks</span>
-			<span class="docs-stat-dot">·</span>
-			<span class="docs-stat">{{ fmtSize(totalSize) }} indexed</span>
-		</div>
-
-		<div class="docs-body">
+		<section class="docs-body">
 			<NcEmptyContent v-if="!loading && !docs.length" class="docs-empty">
 				<template #icon><span>📄</span></template>
 				<template #name>No documents indexed yet</template>
@@ -57,12 +70,6 @@
 							</td>
 							<td class="docs-path">
 								<span class="docs-path-inner" :title="d.path">/{{ d.path }}</span>
-								<button
-									class="docs-ask"
-									title="Ask Eva about this document"
-									@click.stop="askAbout(d)">
-									<svg width="14" height="14" viewBox="0 0 24 24"><path :d="mdiChatProcessing" fill="currentColor" /></svg>
-								</button>
 							</td>
 							<td class="docs-mime">{{ d.mime }}</td>
 							<td>{{ fmtSize(d.size) }}</td>
@@ -88,16 +95,15 @@
 							</td>
 						</tr>
 					</template>
-				</tbody>
-			</table>
-		</div>
+				</tbody>			</table>
+		</section>
 	</div>
 </template>
 
 <script>
-import { ref, onMounted } from 'vue'
+import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { api } from '../lib/api'
-import { mdiRefresh, mdiChevronDown, mdiChevronRight, mdiChatProcessing } from '@mdi/js'
+import { mdiChevronDown, mdiChevronRight } from '@mdi/js'
 
 export default {
 	name: 'DocumentsView',
@@ -109,29 +115,66 @@ export default {
 		const search = ref('')
 		const loading = ref(false)
 		const indexing = ref(false)
+		const stopping = ref(false)
+		const indexStatus = ref(null)
 		const progress = ref('')
+		const indexingActive = computed(() => indexing.value || indexStatus.value?.indexing === true)
 		const expanded = ref(new Set())
 		const chunkCache = ref(new Map())
 
-		const askAbout = (d) => {
-			const prompt = 'Please summarize the following file from my files and list the most important points: "' + (d.path || '') + '" — please read the file using your tools.'
-			if (typeof window !== 'undefined' && window.dispatchEvent) {
-				window.dispatchEvent(new CustomEvent('eva-ai:ask-about', { detail: { prompt } }))
+
+		const loadStatus = async () => {
+			try {
+				indexStatus.value = await api('GET', 'status')
+			} catch (e) {
+				console.error('[eva-ai] status error', e)
 			}
 		}
 
 		const startIndex = async () => {
+			if (indexingActive.value) return
 			indexing.value = true
-			progress.value = 'Indexing running … (may take a while depending on your files)'
+			progress.value = 'Indexing is being queued in the background …'
 			try {
-				const res = await api('POST', 'index') || {}
-				progress.value = 'Processed: ' + (res.processed ?? 0) + ' · Skipped: ' + (res.skipped ?? 0) + ' · Found: ' + (res.total_seen ?? 0)
-				if (res.error) progress.value += ' · Error: ' + res.error
+				const response = await api('POST', 'index') || {}
+				indexStatus.value = response.status || indexStatus.value
+				progress.value = 'Indexing queued. It continues even if you close the website.'
 			} catch (e) {
-				progress.value = 'Indexing failed: ' + e
+				progress.value = 'Indexing could not be queued: ' + e
 			} finally {
 				indexing.value = false
 				load()
+			}
+		}
+
+		const startMailIndex = async () => {
+			if (indexingActive.value) return
+			indexing.value = true
+			progress.value = 'Email indexing is being queued in the background …'
+			try {
+				const response = await api('POST', 'mailIndex') || {}
+				indexStatus.value = response.status || indexStatus.value
+				progress.value = 'Email indexing queued. It continues even if you close the website.'
+			} catch (e) {
+				progress.value = 'Email indexing could not be queued: ' + e
+			} finally {
+				indexing.value = false
+			}
+		}
+
+		const stopIndex = async () => {
+			if (stopping.value) return
+			stopping.value = true
+			try {
+				const response = await api('POST', 'indexStop') || {}
+				indexStatus.value = response.status || indexStatus.value
+				progress.value = 'Indexing stopped.'
+			} catch (e) {
+				progress.value = 'Indexing could not be stopped: ' + e
+			} finally {
+				stopping.value = false
+				await loadStatus()
+				await load()
 			}
 		}
 
@@ -193,71 +236,57 @@ export default {
 				+ ' ' + d.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })
 		}
 
-		onMounted(load)
+		let statusTimer = null
+		onMounted(async () => {
+			await Promise.all([load(), loadStatus()])
+			statusTimer = window.setInterval(loadStatus, 3000)
+		})
+		onUnmounted(() => {
+			if (statusTimer !== null) window.clearInterval(statusTimer)
+		})
 
-		return { docs, total, totalChunks, totalSize, search, loading, indexing, progress, expanded, chunkCache, load, toggle, askAbout, startIndex, fmtSize, fmtDate, mdiRefresh, mdiChevronDown, mdiChevronRight, mdiChatProcessing }
+		return { docs, total, totalChunks, totalSize, search, loading, indexing, stopping, indexStatus, indexingActive, progress, expanded, chunkCache, load, loadStatus, toggle, startIndex, startMailIndex, stopIndex, fmtSize, fmtDate, mdiChevronDown, mdiChevronRight }
 	},
 }
 </script>
 
 <style scoped lang="scss">
 .docs-view {
-	padding: 16px 20px;
+	width: 100%;
+	max-width: 1120px;
+	margin: 0 auto;
+	padding: 24px clamp(16px, 3vw, 36px) 48px;
 	box-sizing: border-box;
 }
 
-.docs-header {
+.page-header {
 	display: flex;
-	align-items: center;
+	align-items: flex-end;
 	justify-content: space-between;
-	gap: 12px;
-	flex-wrap: wrap;
-	margin-bottom: 12px;
+	gap: 24px;
+	margin-bottom: 24px;
 }
 
-.docs-title,
-.docs-header h2 {
-	margin: 0;
-	font-size: 20px;
-	font-weight: 600;
-}
+.header-copy { max-width: 700px; }
+.eyebrow { margin: 0 0 4px; color: var(--color-primary-element); font-size: 12px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; }
+.docs-title { margin: 0; font-size: clamp(24px, 3vw, 32px); font-weight: 700; letter-spacing: -.02em; }
+.page-intro { margin: 8px 0 0; color: var(--color-text-maxcontrast); font-size: 14px; line-height: 1.55; }
+.header-actions { display: flex; align-items: center; justify-content: flex-end; flex-wrap: wrap; gap: 8px; flex-shrink: 0; }
 
-.docs-actions {
-	display: flex;
-	gap: 8px;
-	align-items: center;
-}
-
-.doc-refresh {
-	min-height: 48px;
-	min-width: 190px;
-	padding: 0 32px;
-	font-size: 16px;
-	font-weight: 600;
-	justify-content: center;
-}
-
-.docs-stats {
-	display: flex;
-	align-items: center;
-	gap: 8px;
-	margin-bottom: 12px;
-	font-size: 13px;
-	color: var(--color-text-maxcontrast);
-}
-
-.docs-stat {
-	font-weight: 600;
-}
-
-.docs-stat-dot {
-	opacity: 0.5;
-}
+.callout {	margin: 0 0 16px; padding: 12px 14px; border: 1px solid var(--color-border); border-radius: 8px; color: var(--color-text-maxcontrast); font-size: 13px; }
+.indexing-callout { display: flex; align-items: center; gap: 8px; border-color: color-mix(in srgb, var(--color-primary-element) 42%, var(--color-border)); }
+.summary-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; margin-bottom: 16px; }
+.summary-card { min-height: 76px; padding: 14px; border: 1px solid var(--color-border); border-radius: 8px; background: var(--color-main-background); box-sizing: border-box; }
+.summary-label { display: block; color: var(--color-text-maxcontrast); font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: .04em; }
+.summary-card strong { display: block; margin-top: 3px; font-size: 20px; }
+.summary-card small { display: block; margin-top: 4px; color: var(--color-text-maxcontrast); font-size: 12px; }
+.docs-toolbar { display: flex; align-items: flex-end; gap: 12px; margin-bottom: 20px; padding-bottom: 20px; border-bottom: 1px solid var(--color-border); }
+.docs-toolbar > :first-child { flex: 1; min-width: 0; }
 
 .docs-body {
 	background: var(--color-main-background);
 	border: 1px solid var(--color-border);
-	border-radius: 12px;
+	border-radius: 9px;
 	overflow: hidden;
 }
 
@@ -323,21 +352,6 @@ export default {
 	vertical-align: middle;
 }
 
-.docs-ask {
-	margin-left: 8px;
-	vertical-align: middle;
-	border: none;
-	background: transparent;
-	color: var(--color-text-maxcontrast, #888);
-	border-radius: 6px;
-	padding: 3px 5px;
-	cursor: pointer;
-}
-
-.docs-ask:hover {
-	background: var(--color-primary-light, #e8f0f7);
-	color: var(--color-primary-element, #00679c);
-}
 
 .docs-mime {
 	color: var(--color-text-maxcontrast);
@@ -395,5 +409,19 @@ export default {
 	padding: 12px;
 	font-size: 13px;
 	color: var(--color-text-maxcontrast);
+}
+
+@media (max-width: 800px) {
+	.page-header { align-items: flex-start; flex-direction: column; }
+	.header-actions { width: 100%; justify-content: flex-start; }
+	.summary-grid { grid-template-columns: 1fr; }
+	.docs-toolbar { align-items: stretch; flex-direction: column; }
+	.docs-toolbar :deep(.button-vue) { width: 100%; }
+	.docs-table { min-width: 720px; }
+	.docs-body { overflow-x: auto; }
+}
+
+@media (max-width: 500px) {
+	.docs-view { padding: 18px 12px 36px; }
 }
 </style>

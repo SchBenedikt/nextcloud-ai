@@ -48,10 +48,14 @@ export default {
 
 <style>
 .chatview-root {
+	width: 100%;
+	max-width: 1180px;
 	height: 100%;
+	margin: 0 auto;
+	box-sizing: border-box;
 	display: flex;
 	flex-direction: column;
-	padding: 12px 20px 20px;
+	padding: 24px clamp(16px, 3vw, 36px) 28px;
 	overflow: hidden;
 }
 
@@ -59,15 +63,18 @@ export default {
 	display: flex;
 	align-items: center;
 	justify-content: space-between;
-	gap: 12px;
+	gap: 16px;
 	flex-wrap: wrap;
-	margin-bottom: 12px;
+	margin-bottom: 18px;
+	padding-bottom: 16px;
+	border-bottom: 1px solid var(--color-border, #ddd);
 }
 
 .chatview-root .head h1 {
 	margin: 0;
-	font-size: 20px;
-	font-weight: 600;
+	font-size: clamp(22px, 3vw, 28px);
+	font-weight: 700;
+	letter-spacing: -.02em;
 }
 
 .chatview-root .head-right {
@@ -79,12 +86,18 @@ export default {
 .chatview-root .refresh {
 	border: 1px solid var(--color-border, #ddd);
 	background: var(--color-main-background, #fff);
-	border-radius: 6px;
-	padding: 4px 9px;
+	border-radius: 8px;
+	padding: 7px 11px;
 	cursor: pointer;
-	font-size: 14px;
-	line-height: 1;
+	font-size: 13px;
+	line-height: 1.2;
 	color: var(--color-main-text, #111);
+	transition: background-color .15s ease, border-color .15s ease;
+}
+
+.chatview-root .refresh:hover:not(:disabled) {
+	background: var(--color-background-hover, #f1f2f4);
+	border-color: var(--color-primary-element, #00679c);
 }
 
 .chatview-root .pill {
@@ -114,15 +127,15 @@ export default {
 .chatview-root .chat-log {
 	flex: 1;
 	min-height: 280px;
-	background: var(--color-main-background, #fff);
+	background: var(--color-background-dark, var(--color-main-background, #fff));
 	border: 1px solid var(--color-border, #ddd);
-	border-radius: 8px;
-	padding: 12px;
+	border-radius: 14px;
+	padding: clamp(14px, 2vw, 22px);
 	overflow-y: auto;
 	display: flex;
 	flex-direction: column;
-	gap: 12px;
-	margin-bottom: 12px;
+	gap: 16px;
+	margin-bottom: 14px;
 }
 
 .chatview-root .empty {
@@ -136,19 +149,24 @@ export default {
 	padding: 24px;
 }
 
-.chatview-root .empty .ico { font-size: 42px; }
-.chatview-root .empty .t { font-size: 16px; font-weight: 600; color: var(--color-main-text, #222); }
+.chatview-root .empty .ico { font-size: 42px; filter: saturate(.8); }
+.chatview-root .empty .t { font-size: 17px; font-weight: 700; color: var(--color-main-text, #222); }
 .chatview-root .empty .d { font-size: 13px; color: var(--color-text-maxcontrast, #444); max-width: 480px; }
-.chatview-root .rm { display: flex; flex-direction: column; align-items: flex-start; }
+.chatview-root .rm { display: flex; flex-direction: column; align-items: flex-start; width: 100%; }
 .chatview-root .rm.user { align-items: flex-end; }
 .chatview-root .rb {
-	max-width: 86%;
-	padding: 10px 14px;
+	position: relative;
+	max-width: min(86%, 820px);
+	padding: 12px 16px;
+	border: 1px solid var(--color-border, #ddd);
 	border-radius: 14px;
 	line-height: 1.5;
 	font-size: 14px;
 	word-break: break-word;
+	transition: border-color .15s ease;
 }
+.chatview-root .rm.user .rb { border-color: color-mix(in srgb, var(--color-primary-element) 45%, transparent); }
+.chatview-root .rm.assistant .rb { background: var(--color-main-background, #fff) !important; }
 .chatview-root .rm.user .rb { border-bottom-right-radius: 4px; }
 .chatview-root .rm.assistant .rb { border-bottom-left-radius: 4px; }
 .chatview-root .rt { white-space: normal; font-size: 14px; line-height: 1.55; color: inherit; text-align: left; }
@@ -218,27 +236,34 @@ export default {
 .chatview-root .chatform {
 	display: flex;
 	gap: 8px;
+	align-items: center;
+	padding: 8px;
+	border: 1px solid var(--color-border, #ddd);
+	border-radius: 12px;
+	background: var(--color-main-background, #fff);
 }
 
 .chatview-root .chatform input {
 	flex: 1;
+	min-width: 0;
 	padding: 10px 12px;
-	border: 1px solid var(--color-border, #ccc);
-	border-radius: 6px;
+	border: 1px solid transparent;
+	border-radius: 8px;
 	font-size: 14px;
 	color: var(--color-main-text, #111);
-	background: var(--color-main-background, #fff);
+	background: transparent;
 }
 
 .chatview-root .chatform input:focus {
 	border-color: var(--color-primary-element, #00679c);
 	outline: none;
+	background: var(--color-background-hover, #f1f2f4);
 }
 
 .chatview-root .cbtn {
-	padding: 10px 20px;
+	padding: 10px 18px;
 	border: 0;
-	border-radius: 6px;
+	border-radius: 8px;
 	background: var(--color-primary-element, #00679c);
 	color: var(--color-primary-element-text, #fff);
 	font-size: 14px;
@@ -252,9 +277,18 @@ export default {
 }
 
 .chatview-root .err {
+	margin-left: 4px;
 	color: var(--color-error, #e9322d);
 	font-size: 13px;
 	margin-top: 8px;
 	white-space: pre-wrap;
+}
+
+@media (max-width: 600px) {
+	.chatview-root { padding: 18px 12px 20px; }
+	.chatview-root .head { align-items: flex-start; flex-direction: column; }
+	.chatview-root .head-right { width: 100%; justify-content: flex-end; }
+	.chatview-root .rb { max-width: 94%; }
+	.chatview-root .cbtn { padding-inline: 14px; }
 }
 </style>
