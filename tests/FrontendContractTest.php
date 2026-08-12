@@ -39,12 +39,13 @@ final class FrontendContractTest extends TestCase {
         $app = (string)file_get_contents(__DIR__ . '/../src/App.vue');
         self::assertStringContainsString('--eva-content-width: 1180px;', $app);
         self::assertStringContainsString('v-model="chatFilter"', $app);
-        self::assertStringContainsString('allow-collapse', $app);
-        self::assertStringContainsString('inline-actions', $app);
+        self::assertStringContainsString('NcAppNavigationSearch', $app);
+        self::assertStringContainsString('placeholder="Search chats"', $app);
         self::assertStringContainsString('NcCounterBubble', $app);
-        self::assertStringContainsString('NcActionButton', $app);
-        self::assertStringContainsString('chatsOpen', $app);
-        self::assertStringContainsString('toggleSearch', $app);
+        self::assertStringContainsString('NcButton', $app);
+        self::assertStringContainsString(':wide="true"', $app);
+        self::assertStringNotContainsString('allow-collapse', $app);
+        self::assertStringNotContainsString('chatsOpen', $app);
         self::assertStringContainsString('filteredChats', $app);
         self::assertStringContainsString('aria-label="Rename chat"', $app);
         self::assertStringContainsString('aria-label="Delete chat"', $app);

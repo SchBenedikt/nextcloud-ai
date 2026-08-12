@@ -2,58 +2,50 @@
 	<NcContent class="eva-ai-app" :app-name="'eva_ai'">
 		<NcAppNavigation :title="'Eva · v' + buildVersion" @close-navigation="mobileOpen = false">
 			<template #search>
-				<NcAppNavigationSearch v-if="searchOpen" ref="searchInput" v-model="chatFilter" label="Search chats" />
+				<NcAppNavigationSearch v-model="chatFilter" label="Search chats" placeholder="Search chats" />
 			</template>
 			<template #list>
+				<li class="new-chat-container">
+					<NcButton
+						class="new-chat-button"
+						variant="primary"
+						:wide="true"
+						:disabled="busy"
+						aria-label="Start a new chat"
+						@click="newChat">
+						<template #icon>
+							<svg width="20" height="20" viewBox="0 0 24 24" aria-hidden="true"><path :d="mdiMessagePlus" fill="currentColor" /></svg>
+						</template>
+						New chat
+					</NcButton>
+				</li>
+				<li class="chat-list-heading">
+					<span>Chats</span>
+					<NcCounterBubble :count="chats.length" />
+				</li>
 				<NcAppNavigationItem
-					name="Chats"
-					:allow-collapse="true"
-					:open="chatsOpen"
-					:force-display-actions="true"
-					:inline-actions="2"
-					@update:open="chatsOpen = $event">
+					v-for="c in filteredChats"
+					:key="c.id"
+					:name="c.title"
+					:active="view === 'chat' && c.id === currentChat"
+					:title="c.title + ' · ' + c.count + ' messages'"
+					@click="selectChat(c.id)">
 					<template #icon>
 						<svg width="16" height="16" viewBox="0 0 24 24"><path :d="mdiChatProcessing" fill="currentColor" /></svg>
 					</template>
-					<template #counter>
-						<NcCounterBubble :count="chats.length" />
-					</template>
 					<template #actions>
-						<NcActionButton aria-label="New chat" @click="newChat">
-							<template #icon><svg width="20" height="20" viewBox="0 0 24 24" aria-hidden="true"><path :d="mdiMessagePlus" fill="currentColor" /></svg></template>
-							New chat
+						<NcActionButton aria-label="Rename chat" @click="renameChat(c.id)">
+							<template #icon><svg width="20" height="20" viewBox="0 0 24 24" aria-hidden="true"><path :d="mdiPencilOutline" fill="currentColor" /></svg></template>
+							Rename chat
 						</NcActionButton>
-						<NcActionButton :aria-label="searchOpen ? 'Close chat search' : 'Search chats'" @click="toggleSearch">
-							<template #icon><svg width="20" height="20" viewBox="0 0 24 24" aria-hidden="true"><path :d="searchOpen ? mdiClose : mdiMagnify" fill="currentColor" /></svg></template>
-							{{ searchOpen ? 'Close search' : 'Search chats' }}
+						<NcActionButton aria-label="Delete chat" @click="deleteChat(c.id)">
+							<template #icon><svg width="20" height="20" viewBox="0 0 24 24" aria-hidden="true"><path :d="mdiTrashCanOutline" fill="currentColor" /></svg></template>
+							Delete chat
 						</NcActionButton>
-					</template>
-					<template #default>
-						<NcAppNavigationItem
-							v-for="c in filteredChats"
-							:key="c.id"
-							:name="c.title"
-							:active="view === 'chat' && c.id === currentChat"
-							:title="c.title + ' · ' + c.count + ' messages'"
-							@click="selectChat(c.id)">
-							<template #icon>
-								<svg width="16" height="16" viewBox="0 0 24 24"><path :d="mdiChatProcessing" fill="currentColor" /></svg>
-							</template>
-							<template #actions>
-								<NcActionButton aria-label="Rename chat" @click="renameChat(c.id)">
-									<template #icon><svg width="20" height="20" viewBox="0 0 24 24" aria-hidden="true"><path :d="mdiPencilOutline" fill="currentColor" /></svg></template>
-									Rename chat
-								</NcActionButton>
-								<NcActionButton aria-label="Delete chat" @click="deleteChat(c.id)">
-									<template #icon><svg width="20" height="20" viewBox="0 0 24 24" aria-hidden="true"><path :d="mdiTrashCanOutline" fill="currentColor" /></svg></template>
-									Delete chat
-								</NcActionButton>
-							</template>
-						</NcAppNavigationItem>
-						<li v-if="!chats.length" class="chat-list-empty">No chats yet — start a new one.</li>
-						<li v-else-if="!filteredChats.length" class="chat-list-empty">No chats match your search.</li>
 					</template>
 				</NcAppNavigationItem>
+				<li v-if="!chats.length" class="chat-list-empty">No chats yet — start a new one.</li>
+				<li v-else-if="!filteredChats.length" class="chat-list-empty">No chats match your search.</li>
 			</template>
 			<template #footer>
 				<ul class="nav-footer">
@@ -91,7 +83,7 @@ import ChatView from './views/ChatView.vue'
 import DocumentsView from './views/DocumentsView.vue'
 import SettingsView from './views/SettingsView.vue'
 import FileContextChatView from './views/FileContextChatView.vue'
-import { mdiChatProcessing, mdiFileDocumentOutline, mdiTune, mdiTrashCanOutline, mdiMessagePlus, mdiPencilOutline, mdiMagnify, mdiClose } from '@mdi/js'
+import { mdiChatProcessing, mdiFileDocumentOutline, mdiTune, mdiTrashCanOutline, mdiMessagePlus, mdiPencilOutline } from '@mdi/js'
 import { NcCounterBubble } from '@nextcloud/vue'
 import NcAppNavigationSearch from '@nextcloud/vue/components/NcAppNavigationSearch'
 
@@ -130,13 +122,6 @@ export default {
 			const query = chatFilter.value.trim().toLowerCase()
 			return query ? chats.value.filter((chat) => String(chat.title || '').toLowerCase().includes(query)) : chats.value
 		})
-		const chatsOpen = ref(true)
-		const searchOpen = ref(false)
-		const searchInput = ref(null)
-		const toggleSearch = () => {
-			searchOpen.value = !searchOpen.value
-			if (!searchOpen.value) chatFilter.value = ''
-		}
 
 		const appRootPath = () => {
 			const current = window.location.pathname.replace(/\/+$/, '')
@@ -248,10 +233,10 @@ export default {
 
 		return {
 			view, mobileOpen, buildVersion,
-			chats, currentChat, busy, chatFilter, filteredChats, chatsOpen, searchOpen, searchInput,
+			chats, currentChat, busy, chatFilter, filteredChats,
 			fileContextIds,
-			newChat, selectChat, renameChat, deleteChat, loadChats, navigate, toggleSearch,
-			mdiChatProcessing, mdiFileDocumentOutline, mdiTune, mdiTrashCanOutline, mdiMessagePlus, mdiPencilOutline, mdiMagnify, mdiClose,
+			newChat, selectChat, renameChat, deleteChat, loadChats, navigate,
+			mdiChatProcessing, mdiFileDocumentOutline, mdiTune, mdiTrashCanOutline, mdiMessagePlus, mdiPencilOutline,
 		}
 	},
 }
@@ -263,9 +248,26 @@ export default {
 	--eva-content-width: 1180px;
 }
 
+.new-chat-container {
+	list-style: none;
+	padding: 8px var(--app-navigation-padding, 8px) 12px;
+}
 
-.chat-action:hover, .chat-action:focus-visible { background: var(--color-background-hover, #eee); color: var(--color-main-text, #222); opacity: 1; outline: 2px solid var(--color-primary-element, #00679c); outline-offset: 1px; }
+.new-chat-button {
+	width: 100%;
+}
 
+.chat-list-heading {
+	align-items: center;
+	color: var(--color-text-maxcontrast, #666);
+	display: flex;
+	font-size: 12px;
+	font-weight: 600;
+	gap: 6px;
+	list-style: none;
+	padding: 8px var(--app-navigation-padding, 8px) 4px;
+	text-transform: uppercase;
+}
 
 .chat-list-empty {
 	color: var(--color-text-maxcontrast, #666);
