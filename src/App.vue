@@ -8,7 +8,7 @@
 				<li class="new-chat-container">
 					<NcButton
 						class="new-chat-button"
-						variant="primary"
+						variant="tertiary"
 						size="small"
 						alignment="start"
 						:wide="true"

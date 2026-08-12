@@ -43,6 +43,8 @@ final class FrontendContractTest extends TestCase {
         self::assertStringContainsString('placeholder="Search chats"', $app);
         self::assertStringContainsString('NcCounterBubble', $app);
         self::assertStringContainsString('NcButton', $app);
+        self::assertStringContainsString('variant="tertiary"', $app);
+        self::assertStringNotContainsString('variant="primary"', $app);
         self::assertStringContainsString(':wide="true"', $app);
         self::assertStringContainsString('size="small"', $app);
         self::assertStringContainsString('alignment="start"', $app);
