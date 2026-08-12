@@ -38,6 +38,7 @@ class ApiController extends OCSController {
         private IAppManager $appManager
     ) {
         parent::__construct($appName, $request);
+        $this->config->setUserId($this->userId);
     }
 
     private function requireUser(): ?string {
@@ -53,10 +54,16 @@ class ApiController extends OCSController {
         return new DataResponse($this->ragService->buildStatus($user));
     }
 
+    #[NoAdminRequired]
     public function settings(): DataResponse {
+        $user = $this->requireUser();
+        if ($user === null) {
+            return new DataResponse(['error' => 'Not logged in'], 401);
+        }
         return new DataResponse($this->config->all());
     }
 
+    #[NoAdminRequired]
     public function saveSettings(): DataResponse {
         $user = $this->requireUser();
         if ($user === null) {
@@ -98,12 +105,10 @@ class ApiController extends OCSController {
                 $this->config->set($key, (string)$value);
             }
         }
-        if ($this->config->get('index_user') === '') {
-            $this->config->set('index_user', $user);
-        }
         return new DataResponse($this->config->all());
     }
 
+    #[NoAdminRequired]
     public function resetIndex(): DataResponse {
         $user = $this->requireUser();
         if ($user === null) {
@@ -117,17 +122,13 @@ class ApiController extends OCSController {
         ]);
     }
 
+    #[NoAdminRequired]
     public function startIndex(): DataResponse {
         $user = $this->requireUser();
         if ($user === null) {
             return new DataResponse(['error' => 'Not logged in'], 401);
         }
-        if ($this->config->get('index_enabled') !== '1') {
-            $this->config->set('index_enabled', '1');
-        }
-        if ($this->config->get('index_user') === '') {
-            $this->config->set('index_user', $user);
-        }
+        // Index this user's scope without changing instance-wide configuration.
         if ($this->config->get('chat_model') === '') {
             $models = $this->ollama->listModels();
             $completion = array_values(array_filter($models, static fn($m) => in_array('completion', $m['capabilities'] ?? [], true)));

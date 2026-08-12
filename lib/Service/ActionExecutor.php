@@ -400,6 +400,7 @@ class ActionExecutor {
      * @return array{ok:bool,result?:mixed,error?:string}
      */
     public function run(string $userId, string $name, array $args): array {
+        $this->config->setUserId($userId);
         // Centralized tool permission check
         $policy = $this->toolPolicy->check($name);
         if (!$policy['allowed']) {

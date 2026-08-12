@@ -87,8 +87,8 @@ sudo -u www-data php occ config:app:set eva_ai ollama_url --value=http://192.168
 ### 4. First start & indexing
 
 1. Open `/apps/eva_ai` as a user.
-2. In **Settings** start the index with the **"Start indexing"** button. The user whose
-   home is indexed is set via `index_user` (empty = current user). Each pass also
+2. In **Settings** start the index with the **"Start indexing"** button. Per-user indexing uses the currently authenticated user. The optional instance-wide
+   legacy background job can be limited with `index_user`. Each pass also
    indexes emails (subject, sender, body) if `mail_index_enabled` is on.
 3. Then chat. Tools are enabled by default; every answer names which file it used.
 
@@ -187,8 +187,8 @@ Settings tab. Defaults are shown in brackets.
 | `max_files_per_run` | `40` | Files processed per indexing pass |
 | `scope_path` | `''` | Only index files under this path (empty = whole home) |
 | `exclude_paths` | `''` | Comma-separated path prefixes to skip |
-| `index_user` | `''` | User whose home is indexed (empty = current user) |
-| `index_enabled` | `0` | Master switch for the indexer |
+| `index_user` | `''` | Optional instance-wide legacy background-job user; normal users cannot change it from Settings |
+| `index_enabled` | `0` | Instance-wide legacy indexer switch; per-user **Start indexing** does not change it |
 | `actions_enabled` | `1` | Enable chat tools (0 = read-only chat) |
 | `exec_write_types` | `''` (all) | Restrict creatable file types, e.g. `md,txt` |
 | `exec_write_max_chars` | `100000` | Max characters for AI-created files |
@@ -210,6 +210,12 @@ sudo -u www-data php occ config:app:set eva_ai mail_index_enabled --value=0
 See [docs/CONFIGURATION.md](docs/CONFIGURATION.md) for details.
 
 ---
+
+### Using the Settings page
+
+The Settings page groups configuration into five areas: **Connection & models**, **Safety & actions**, **Search & answer quality**, **Indexing & scope**, and **Talk & notifications**. Changes are saved explicitly with **Save changes**; **Save & start indexing** saves first and will not start a run if saving fails.
+
+Use **Check connection** to test the configured Ollama server, embedding model, and chat model. The indexing scope is relative to the user's Files root. The maximum file size is shown in MB in the UI and stored internally as bytes. EVA's recommended delete permission is **Only EVA-created files**; choosing **Any file in my Files** should only be done when that risk is understood.
 
 ## Calendar tools: supported time formats
 

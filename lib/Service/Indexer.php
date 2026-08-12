@@ -37,6 +37,7 @@ class Indexer {
      * @return array{processed:int,changed:int,skipped:int,total_seen:int,error:?string}
      */
     public function run(string $userId, ?int $maxFiles = null): array {
+        $this->config->setUserId($userId);
         $maxFiles = $maxFiles ?? $this->config->getInt('max_files_per_run', 40);
         $result = ['processed' => 0, 'changed' => 0, 'skipped' => 0, 'total_seen' => 0, 'error' => null];
 
@@ -910,6 +911,7 @@ class Indexer {
      */
     public function reset(?string $userId = null): array {
         if ($userId !== null && $userId !== '') {
+            $this->config->setUserId($userId);
             $docs = $this->documentMapper->deleteByUser($userId);
             $chunks = $this->chunkMapper->deleteForUser($userId);
         } else {
