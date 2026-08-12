@@ -9,12 +9,14 @@
 					<NcButton
 						class="new-chat-button"
 						variant="primary"
+						size="small"
+						alignment="start"
 						:wide="true"
 						:disabled="busy"
 						aria-label="Start a new chat"
 						@click="newChat">
 						<template #icon>
-							<svg width="20" height="20" viewBox="0 0 24 24" aria-hidden="true"><path :d="mdiMessagePlus" fill="currentColor" /></svg>
+							<svg width="16" height="16" viewBox="0 0 24 24" aria-hidden="true"><path :d="mdiMessagePlus" fill="currentColor" /></svg>
 						</template>
 						New chat
 					</NcButton>
@@ -250,16 +252,12 @@ export default {
 
 .new-chat-container {
 	background: var(--color-main-background);
-	border-bottom: 1px solid var(--color-border);
 	list-style: none;
-	padding: 8px var(--app-navigation-padding, 8px) 12px;
+	margin: 0;
+	padding: 0 0 var(--default-grid-baseline, 4px);
 	position: sticky;
 	top: 0;
 	z-index: 2;
-}
-
-.new-chat-button {
-	width: 100%;
 }
 
 .chat-list-heading {
