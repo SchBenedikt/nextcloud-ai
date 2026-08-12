@@ -147,7 +147,7 @@ tools are allowed in each:
 
 ## Current UI and tool boundaries
 
-The workspace uses one responsive `--eva-content-width` token: it expands to `clamp(1180px, 78vw, 1680px)` on large displays and is constrained by the viewport on smaller screens. The native New chat action remains compact and is placed directly below the chat search. Assistant providers keep stable IDs while using the display names `Eva · Local`, `Eva · RAG`, `Eva · Tools`, and `Eva · Agent`.
+The workspace uses one responsive `--eva-content-width` token: it expands to `clamp(1180px, 78vw, 1680px)` on large displays and is constrained by the viewport on smaller screens. The native New chat action is centered, uses the same full padded navigation-item width as Documents and Settings, and is placed directly below the chat search. Assistant providers keep stable IDs while using the display names `Eva · Local`, `Eva · RAG`, `Eva · Tools`, and `Eva · Agent`.
 
 The centralized tool policy exposes registered read-only tools to the safe RAG/TaskProcessing surfaces. File, calendar, contact, share, and task mutations remain restricted to interactive surfaces and require explicit confirmation where configured. Live web search is not implemented yet; see GitHub issue #54.
 

@@ -267,9 +267,10 @@ export default {
 }
 
 .new-chat-button {
-	max-width: 100%;
+	box-sizing: border-box;
 	margin-inline: auto;
-	width: min(100%, 220px);
+	max-width: 100%;
+	width: 100%;
 }
 
 .chat-list-heading {

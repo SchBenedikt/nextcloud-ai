@@ -43,7 +43,8 @@ final class FrontendContractTest extends TestCase {
         self::assertStringContainsString('placeholder="Search chats"', $app);
         self::assertStringContainsString('<div class="new-chat-container">', $app);
         self::assertStringContainsString('justify-content: center;', $app);
-        self::assertStringContainsString('width: min(100%, 220px);', $app);
+        self::assertStringContainsString('width: 100%;', $app);
+        self::assertStringContainsString('max-width: 100%;', $app);
         self::assertStringContainsString("import NcIconSvgWrapper from '@nextcloud/vue/components/NcIconSvgWrapper'", $app);
         self::assertStringContainsString('NcCounterBubble', $app);
         self::assertStringContainsString('NcButton', $app);
