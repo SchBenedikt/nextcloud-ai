@@ -279,6 +279,9 @@ class Ollama {
             $r = $this->client()->post($this->base() . '/api/chat', [
                 'json' => $payload,
                 'timeout' => self::TIMEOUT,
+                // Bound idle reads so disconnect checks can release the worker
+                // even when Ollama temporarily emits no token.
+                'read_timeout' => 5,
                 'stream' => true,
             ]);
             $body = $r->getBody();

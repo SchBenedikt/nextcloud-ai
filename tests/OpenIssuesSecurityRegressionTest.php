@@ -152,6 +152,7 @@ final class OpenIssuesSecurityRegressionTest extends TestCase {
         self::assertStringContainsString('knowledgeFor', $fileContext);
         self::assertStringContainsString('KNOWLEDGE.md', $fileContext);
         self::assertStringContainsString('selected file excerpts remain the only document evidence', $fileContext);
+        self::assertStringContainsString('selected_file_excerpts', $fileContext);
     }
 
 }

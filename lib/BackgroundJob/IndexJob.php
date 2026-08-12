@@ -58,7 +58,8 @@ class IndexJob extends TimedJob {
             // honoring an explicit per-user opt-out (Issue #49).
             $users = array_merge($eligibleDocumentUsers, $this->config->enrolledUserIds());
             $configured = $this->config->get('index_user');
-            if ($configured !== '') {
+            if ($configured !== ''
+                && (!$this->config->hasIndexEnrollment($configured) || $this->config->isIndexEnrolled($configured))) {
                 $users[] = $configured;
             }
             $users = array_values(array_unique(array_filter($users, static fn($u) => $u !== '')));
