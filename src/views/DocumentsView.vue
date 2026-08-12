@@ -38,8 +38,8 @@
 		</div>
 
 		<section class="docs-toolbar">
-			<NcTextField v-model="search" label="Search documents" :label-outside="true" placeholder="File name or path" @keydown.enter="load" />
-			<NcButton type="secondary" :loading="loading" @click="load">Refresh</NcButton>
+			<NcTextField v-model="search" label="Search documents" :label-outside="true" placeholder="File name or path" :disabled="loadingMore" @keydown.enter="load" />
+			<NcButton type="secondary" :loading="loading" :disabled="loadingMore" @click="load">Refresh</NcButton>
 		</section>
 
 		<section class="docs-body">
@@ -64,7 +64,15 @@
 				</thead>
 				<tbody>
 					<template v-for="d in docs" :key="d.id">
-						<tr class="docs-row" :class="{ open: expanded.has(d.id) }" @click="toggle(d.id)">
+						<tr
+							class="docs-row"
+							:class="{ open: expanded.has(d.id) }"
+							tabindex="0"
+							:aria-expanded="expanded.has(d.id)"
+							:aria-label="d.path + ' , ' + d.chunks + ' chunks'"
+							@click="toggle(d.id, d.chunks)"
+							@keydown.enter.prevent="toggle(d.id, d.chunks)"
+							@keydown.space.prevent="toggle(d.id, d.chunks)">
 							<td class="docs-caret">
 								<svg width="14" height="14" viewBox="0 0 24 24"><path :d="expanded.has(d.id) ? mdiChevronDown : mdiChevronRight" fill="currentColor" /></svg>
 							</td>
@@ -79,16 +87,20 @@
 						<tr v-if="expanded.has(d.id)" class="docs-chunkrow">
 							<td colspan="6">
 								<div class="docs-chunklist">
-									<div v-if="chunkCache.get(d.id) === undefined" class="docs-chunk-loading">
-										<NcLoadingIcon :size="16" /> Loading chunks …
+									<div v-if="!chunkCache.get(d.id) || chunkCache.get(d.id).status === 'loading'" class="docs-chunk-loading">
+										<NcLoadingIcon :size="16" /> Loading {{ d.chunks ? d.chunks + ' ' : '' }}chunks …
+									</div>
+									<div v-else-if="chunkCache.get(d.id).status === 'error'" class="docs-chunk-state docs-chunk-state-error" role="alert">
+										<div><strong>Chunks could not be loaded.</strong> {{ chunkCache.get(d.id).error }}</div>
+										<NcButton type="tertiary" @click.stop="loadChunks(d.id, d.chunks, true)">Retry</NcButton>
 									</div>
 									<template v-else>
-										<div v-for="c in chunkCache.get(d.id) || []" :key="c.index" class="docs-chunk">
+										<div v-for="c in chunkCache.get(d.id).chunks" :key="c.index" class="docs-chunk">
 											<span class="docs-chunk-idx">#{{ c.index + 1 }}</span>
 											<span class="docs-chunk-text">{{ c.content }}</span>
 										</div>
-										<div v-if="!(chunkCache.get(d.id) || []).length" class="docs-chunk-loading">
-											No chunks.
+										<div v-if="!chunkCache.get(d.id).chunks.length" class="docs-chunk-loading">
+											No indexed chunk rows are available for this document.
 										</div>
 									</template>
 								</div>
@@ -96,6 +108,15 @@
 						</tr>
 					</template>
 				</tbody>			</table>
+				<div v-if="docs.length" class="docs-pagination" role="status">
+					<span>Showing {{ docs.length }} of {{ total }} documents</span>
+					<div v-if="loadMoreError" class="docs-pagination-error" role="alert">
+						<span>{{ loadMoreError }}</span>
+						<NcButton type="tertiary" @click="loadMore">Retry</NcButton>
+					</div>
+					<NcButton v-else-if="hasMore" type="secondary" :loading="loadingMore" :disabled="loading || loadingMore" @click="loadMore">Load more</NcButton>
+					<span v-else class="docs-pagination-end">All matching documents are loaded.</span>
+				</div>
 		</section>
 	</div>
 </template>
@@ -114,6 +135,10 @@ export default {
 		const totalSize = ref(0)
 		const search = ref('')
 		const loading = ref(false)
+		const loadingMore = ref(false)
+		const pageSize = 100
+		const hasMore = ref(true)
+		const loadMoreError = ref('')
 		const indexing = ref(false)
 		const stopping = ref(false)
 		const indexStatus = ref(null)
@@ -178,44 +203,104 @@ export default {
 			}
 		}
 
-		async function load() {
-			loading.value = true
+		async function fetchDocuments(append = false) {
+			if (append) {
+				loadingMore.value = true
+				loadMoreError.value = ''
+			} else {
+				loading.value = true
+				loadMoreError.value = ''
+			}
+			const offset = append ? docs.value.length : 0
 			try {
-				const data = await api('GET', 'documents', { search: search.value, limit: 500 })
-				docs.value = data.documents || []
-				total.value = data.total || docs.value.length
-				totalChunks.value = data.totalChunks || 0
-				totalSize.value = data.totalSize || 0
+				const data = await api('GET', 'documents', { search: search.value, limit: pageSize, offset })
+				const incoming = Array.isArray(data?.documents) ? data.documents : []
+				docs.value = append ? docs.value.concat(incoming) : incoming
+				total.value = Number.isFinite(Number(data?.total)) ? Number(data.total) : docs.value.length
+				totalChunks.value = Number(data?.totalChunks) || 0
+				totalSize.value = Number(data?.totalSize) || 0
+				hasMore.value = incoming.length === pageSize && docs.value.length < total.value
 			} catch (e) {
-				docs.value = []
-				total.value = 0
-				totalChunks.value = 0
-				totalSize.value = 0
+				if (!append) {
+					docs.value = []
+					total.value = 0
+					totalChunks.value = 0
+					totalSize.value = 0
+					hasMore.value = false
+				} else {
+					loadMoreError.value = 'More documents could not be loaded. Please try again.'
+				}
 				console.error('[eva-ai] documents error', e)
 			} finally {
 				loading.value = false
+				loadingMore.value = false
 			}
 		}
 
-		async function loadChunks(id) {
-			if (chunkCache.value.has(id)) return
-			chunkCache.value.set(id, undefined)
-			try {
-				const data = await api('POST', 'documentChunks', { id })
-				chunkCache.value.set(id, (data && data.chunks) || [])
-			} catch (e) {
-				chunkCache.value.set(id, [])
-				console.error('[eva-ai] chunks error', e)
-			}
+		async function load() {
+			if (loading.value || loadingMore.value) return
+			await fetchDocuments(false)
 		}
 
-		function toggle(id) {
+		async function loadMore() {
+			if (loading.value || loadingMore.value || !hasMore.value) return
+			await fetchDocuments(true)
+		}
+
+		function setChunkState(id, state) {
+				const next = new Map(chunkCache.value)
+				next.set(id, state)
+				chunkCache.value = next
+			}
+
+			async function loadChunks(id, expectedChunks = 0, retry = false) {
+				const cached = chunkCache.value.get(id)
+				if (!retry && cached && cached.status !== 'error') return
+				const fallbackExpected = Number(expectedChunks) || 0
+				setChunkState(id, { status: 'loading', chunks: [], expected: fallbackExpected, error: '' })
+				let expected = fallbackExpected
+				try {
+					const data = await api('POST', 'documentChunks', { id })
+					const source = Array.isArray(data)
+						? data
+						: Array.isArray(data?.chunks)
+							? data.chunks
+							: Array.isArray(data?.data?.chunks)
+								? data.data.chunks
+								: Array.isArray(data?.data) ? data.data : []
+					const chunks = source.map((chunk, index) => {
+						const rawIndex = chunk.index ?? chunk.chunk_index
+						const numericIndex = rawIndex !== null && rawIndex !== undefined && String(rawIndex).trim() !== ''
+							? Number(rawIndex)
+							: NaN
+						return {
+							index: Number.isFinite(numericIndex) ? numericIndex : index,
+							content: String(chunk.content ?? ''),
+						}
+					})
+					const reportedExpected = data?.document?.chunks
+					if (reportedExpected !== null && reportedExpected !== undefined && String(reportedExpected).trim() !== '' && Number.isFinite(Number(reportedExpected))) {
+						expected = Number(reportedExpected)
+					}
+					if (!chunks.length && expected > 0) {
+						throw new Error(`The server reported ${expected} chunks, but returned no chunk rows.`)
+					}
+					setChunkState(id, { status: 'ready', chunks, expected, error: '' })
+				} catch (e) {
+					const message = e instanceof Error ? e.message : String(e)
+					setChunkState(id, { status: 'error', chunks: [], expected, error: message })
+					console.error('[eva-ai] chunks error', e)
+				}
+			}
+
+
+		function toggle(id, expectedChunks = 0) {
 			const set = new Set(expanded.value)
 			if (set.has(id)) {
 				set.delete(id)
 			} else {
 				set.add(id)
-				loadChunks(id)
+				loadChunks(id, expectedChunks)
 			}
 			expanded.value = set
 		}
@@ -245,7 +330,7 @@ export default {
 			if (statusTimer !== null) window.clearInterval(statusTimer)
 		})
 
-		return { docs, total, totalChunks, totalSize, search, loading, indexing, stopping, indexStatus, indexingActive, progress, expanded, chunkCache, load, loadStatus, toggle, startIndex, startMailIndex, stopIndex, fmtSize, fmtDate, mdiChevronDown, mdiChevronRight }
+		return { docs, total, totalChunks, totalSize, search, loading, loadingMore, hasMore, loadMoreError, indexing, stopping, indexStatus, indexingActive, progress, expanded, chunkCache, load, loadMore, loadStatus, toggle, startIndex, startMailIndex, stopIndex, fmtSize, fmtDate, mdiChevronDown, mdiChevronRight }
 	},
 }
 </script>
@@ -253,7 +338,7 @@ export default {
 <style scoped lang="scss">
 .docs-view {
 	width: 100%;
-	max-width: 1120px;
+	max-width: var(--eva-content-width, 1180px);
 	margin: 0 auto;
 	padding: 24px clamp(16px, 3vw, 36px) 48px;
 	box-sizing: border-box;
@@ -324,6 +409,11 @@ export default {
 	background: var(--color-background-hover);
 }
 
+.docs-row:focus-visible td {
+	outline: 2px solid var(--color-primary-element);
+	outline-offset: -2px;
+}
+
 .docs-row.open td {
 	background: var(--color-background-hover);
 }
@@ -372,7 +462,7 @@ export default {
 }
 
 .docs-chunklist {
-	max-height: 340px;
+	max-height: min(58vh, 720px);
 	overflow-y: auto;
 }
 
@@ -402,6 +492,23 @@ export default {
 	line-height: 1.5;
 }
 
+
+.docs-chunk-state {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 12px;
+	padding: 12px;
+	border: 1px solid var(--color-border);
+	border-radius: 8px;
+	font-size: 13px;
+}
+
+.docs-chunk-state-error {
+	border-color: var(--color-error);
+	color: var(--color-error);
+}
+
 .docs-chunk-loading {
 	display: flex;
 	align-items: center;
@@ -410,6 +517,20 @@ export default {
 	font-size: 13px;
 	color: var(--color-text-maxcontrast);
 }
+
+.docs-pagination {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	flex-wrap: wrap;
+	gap: 12px;
+	padding: 18px 12px 4px;
+	border-top: 1px solid var(--color-border);
+	color: var(--color-text-maxcontrast);
+	font-size: 13px;
+}
+.docs-pagination-end { color: var(--color-text-maxcontrast); }
+.docs-pagination-error { display: inline-flex; align-items: center; gap: 10px; color: var(--color-error); }
 
 @media (max-width: 800px) {
 	.page-header { align-items: flex-start; flex-direction: column; }

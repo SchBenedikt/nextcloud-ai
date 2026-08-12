@@ -1,3 +1,5 @@
+import { mdiDownload } from '@mdi/js'
+
 /* EvaAi – Vanilla-Chat-Mount.
  * Wird von ChatView.vue aufgerufen und rendert den kompletten Chat
  * (Status, Blasen, Formular) rein über textContent/DOM-API – dadurch
@@ -296,9 +298,20 @@ export function mountChat(root, opts = {}) {
 	const h1 = document.createElement('h1')
 	h1.textContent = 'Chat with your files'
 	const exportBtn = document.createElement('button')
-	exportBtn.className = 'refresh export'
-	exportBtn.textContent = '⬇ Export'
-	exportBtn.title = 'Download this chat as Markdown'
+	exportBtn.className = 'export'
+	exportBtn.type = 'button'
+	exportBtn.setAttribute('aria-label', 'Export chat as Markdown')
+	exportBtn.title = 'Export chat as Markdown'
+	const exportIcon = document.createElementNS('http://www.w3.org/2000/svg', 'svg')
+	exportIcon.classList.add('export-icon')
+	exportIcon.setAttribute('viewBox', '0 0 24 24')
+	exportIcon.setAttribute('aria-hidden', 'true')
+	const exportPath = document.createElementNS('http://www.w3.org/2000/svg', 'path')
+	exportPath.setAttribute('d', mdiDownload)
+	exportIcon.append(exportPath)
+	const exportLabel = document.createElement('span')
+	exportLabel.textContent = 'Export'
+	exportBtn.append(exportIcon, exportLabel)
 	exportBtn.disabled = true
 	exportBtn.addEventListener('click', exportMarkdown)
 	head.append(h1, exportBtn)

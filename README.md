@@ -30,6 +30,10 @@ always cite the source file path the model took the information from.
 - **TaskProcessing providers**: 13 providers for the Assistant app (chat, summary, headline, topics, translate, reformulate, proofread, reformat, change tone, context write, …)
 - **Talk bot**: optional Nextcloud Talk integration — EVA answers in conversations
 - **File-context chat**: right-click a file in the Files app → "Open with EVA"
+- **Responsive chat and document UI**: fluid layouts for mobile and wide desktop screens, with explicit chunk loading, empty, error and retry states when inspecting indexed documents
+- **Persistent settings**: folder exclusions are saved immediately, and connection checks use the configured HTTP/HTTPS Ollama endpoint for every user
+- **Incremental document browsing**: large knowledge bases load in manageable pages with a "Load more" action and clear progress/end state
+- **Unified workspace navigation**: consistent content width with an always-visible native chat search, a native primary wide New chat action with a standard comfortable touch target and reduced horizontal sidebar padding pinned above the scrolling chat list, a clean native three-dot rename/delete menu, and Markdown export
 - **"AI answer ready" notifications** via the Notifications app
 - **No configuration needed**: models come from the local Ollama instance
 
@@ -239,7 +243,7 @@ See [docs/CONFIGURATION.md](docs/CONFIGURATION.md) for details.
 
 The Settings page groups configuration into five areas: **Connection & models**, **Safety & actions**, **Search & answer quality**, **Indexing & scope**, and **Talk & notifications**. Changes are saved explicitly with **Save changes**; **Save & start indexing** saves first and will not start a run if saving fails.
 
-Use **Check connection** to test the configured Ollama server, embedding model, and chat model. The indexing scope is relative to the user's Files root. The maximum file size is shown in MB in the UI and stored internally as bytes. EVA's recommended delete permission is **Only EVA-created files**; choosing **Any file in my Files** should only be done when that risk is understood.
+Use **Check connection** to test the configured Ollama server, embedding model, and chat model. The indexing scope is relative to the user's Files root. The maximum file size is shown in MB in the UI and stored internally as bytes. EVA's recommended delete permission is **Only EVA-created files**; choosing **Any file in my Files** should only be done when that risk is understood. The **Chat history** section can permanently delete all saved EVA chats without touching your files or the document index; the chat sidebar refreshes immediately after deletion.
 
 ## Calendar tools: supported time formats
 

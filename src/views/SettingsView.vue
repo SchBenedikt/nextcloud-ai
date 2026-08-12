@@ -17,7 +17,7 @@
 		<div v-if="loadError" class="callout callout-error" role="alert">
 			<strong>Settings could not be loaded.</strong>
 			<span>{{ loadError }}</span>
-			<NcButton type="tertiary-no-background" @click="loadStatus">Try again</NcButton>
+			<NcButton type="tertiary-no-background" @click="loadStatus(true)">Try again</NcButton>
 		</div>
 
 		<div class="summary-grid" aria-label="EVA status">
@@ -207,7 +207,7 @@
 					<div v-if="excludeList.length" class="exclude-chips">
 						<span v-for="(path, index) in excludeList" :key="path" class="exclude-chip">
 							{{ path }}
-							<NcButton class="chip-remove" type="tertiary-no-background" :aria-label="'Remove ' + path" @click="removeExclude(index)">×</NcButton>
+							<NcButton class="chip-remove" type="tertiary-no-background" :aria-label="'Remove ' + path" :disabled="busy" @click="removeExclude(index)">×</NcButton>
 						</span>
 					</div>
 					<p v-else class="empty-help">No folders are excluded.</p>
@@ -236,6 +236,30 @@
 					<div class="button-group">
 						<NcButton type="tertiary-no-background" @click="resetConfirm = false">Cancel</NcButton>
 						<NcButton type="primary" class="danger-button" :loading="resetting" @click="resetIndex">Delete index</NcButton>
+					</div>
+				</div>
+			</section>
+
+			<section class="settings-section">
+				<div class="section-heading">
+					<div>
+						<h3>Chat history</h3>
+						<p>Manage the conversations stored for your Nextcloud account. This does not affect indexed files.</p>
+					</div>
+				</div>
+				<div class="index-actions chat-history-actions">
+					<div>
+						<strong>Delete all chats</strong>
+						<p>Permanently removes your saved EVA conversations and messages.</p>
+					</div>
+					<NcButton type="tertiary-no-background" :disabled="settingsLocked" @click="chatsDeleteConfirm = true">Delete all chats</NcButton>
+				</div>
+				<div v-if="chatsDeleteConfirm" class="confirm-panel" role="alertdialog" aria-modal="true" aria-labelledby="chats-delete-title">
+					<strong id="chats-delete-title">Delete all chat history?</strong>
+					<p>This cannot be undone. Your indexed documents and files will remain untouched.</p>
+					<div class="button-group">
+						<NcButton type="tertiary-no-background" @click="chatsDeleteConfirm = false">Cancel</NcButton>
+						<NcButton type="primary" class="danger-button" :loading="deletingChats" @click="deleteAllChats">Delete all chats</NcButton>
 					</div>
 				</div>
 			</section>
@@ -306,12 +330,14 @@ export default {
 		const checking = ref(false)
 		const indexing = ref(false)
 		const resetting = ref(false)
+		const deletingChats = ref(false)
 		const stopping = ref(false)
 		const saved = ref(false)
 		const loadError = ref('')
 		const message = ref({ type: '', text: '' })
 		const validationErrors = ref([])
 		const resetConfirm = ref(false)
+		const chatsDeleteConfirm = ref(false)
 		const newExcludePath = ref('')
 		const excludeError = ref('')
 
@@ -333,7 +359,7 @@ export default {
 		})
 		const actionsDisabled = computed(() => f.value.actions_enabled !== '1')
 		const indexingActive = computed(() => indexing.value || status.value?.indexing === true)
-		const busy = computed(() => saving.value || checking.value || indexing.value || resetting.value || stopping.value)
+		const busy = computed(() => saving.value || checking.value || indexing.value || resetting.value || deletingChats.value || stopping.value)
 		const settingsLocked = computed(() => busy.value || indexingActive.value)
 		const maxFileSizeMb = computed({
 			get: () => {
@@ -390,12 +416,12 @@ export default {
 			})
 		}
 
-		async function loadStatus() {
+		async function loadStatus(syncForm = false) {
 			loadError.value = ''
 			try {
 				status.value = await api('GET', 'status')
 				limits.value = status.value?.limits || {}
-				fill()
+				if (syncForm) fill()
 			} catch (error) {
 				loadError.value = errMsg(error)
 			}
@@ -458,7 +484,18 @@ export default {
 			}
 		}
 
-		function addExclude() {
+		async function persistExcludeList(list, previous) {
+			f.value.exclude_paths = list.join(', ')
+			const savedSuccessfully = await save()
+			if (!savedSuccessfully) {
+				f.value.exclude_paths = previous
+				excludeError.value = 'The folder exclusion could not be saved. Your previous exclusions were restored.'
+				return false
+			}
+			return true
+		}
+
+		async function addExclude() {
 			excludeError.value = ''
 			const path = newExcludePath.value.trim().replace(/^\/+|\/+$/g, '')
 			if (!path) {
@@ -470,15 +507,36 @@ export default {
 				return
 			}
 			const list = excludeList.value.slice()
-			if (!list.includes(path)) list.push(path)
-			f.value.exclude_paths = list.join(', ')
-			newExcludePath.value = ''
+			if (list.includes(path)) {
+				excludeError.value = 'This folder is already excluded.'
+				return
+			}
+			const previous = f.value.exclude_paths
+			list.push(path)
+			if (await persistExcludeList(list, previous)) newExcludePath.value = ''
 		}
 
-		function removeExclude(index) {
+		async function removeExclude(index) {
+			excludeError.value = ''
 			const list = excludeList.value.slice()
 			list.splice(index, 1)
-			f.value.exclude_paths = list.join(', ')
+			await persistExcludeList(list, f.value.exclude_paths)
+		}
+
+		async function deleteAllChats() {
+			if (deletingChats.value) return
+			chatsDeleteConfirm.value = false
+			deletingChats.value = true
+			setMessage('info', 'Deleting all chat history…')
+			try {
+				const response = await api('DELETE', 'chats')
+				window.dispatchEvent(new CustomEvent('eva-ai:chats-cleared'))
+				setMessage('success', `${formatNumber(response?.deleted)} chats deleted.`)
+			} catch (error) {
+				setMessage('error', 'The chat history could not be deleted: ' + errMsg(error))
+			} finally {
+				deletingChats.value = false
+			}
 		}
 
 		async function startIndex() {
@@ -555,7 +613,7 @@ export default {
 
 		let statusTimer = null
 		onMounted(async () => {
-			await loadStatus()
+			await loadStatus(true)
 			statusTimer = window.setInterval(loadStatus, 3000)
 		})
 		onUnmounted(() => {
@@ -563,9 +621,9 @@ export default {
 		})
 
 		return {
-			f, status, limits, checkOut, saving, checking, indexing, resetting, stopping, saved, loadError, message, validationErrors, resetConfirm,
+			f, status, limits, checkOut, saving, checking, indexing, resetting, deletingChats, stopping, saved, loadError, message, validationErrors, resetConfirm, chatsDeleteConfirm,
 			newExcludePath, excludeError, excludeList, actionsEnabled, notificationsEnabled, mailIndexEnabled, actionsDisabled, busy, indexingActive, settingsLocked, maxFileSizeMb,
-			formatNumber, loadStatus, save, checkOllama, addExclude, removeExclude, startIndex, startMailIndex, stopIndex, resetIndex,
+			formatNumber, loadStatus, save, checkOllama, addExclude, removeExclude, startIndex, startMailIndex, stopIndex, resetIndex, deleteAllChats,
 		}
 	},
 }
@@ -574,7 +632,7 @@ export default {
 <style scoped lang="scss">
 .settings-view {
 	width: 100%;
-	max-width: 1120px;
+	max-width: var(--eva-content-width, 1180px);
 	margin: 0 auto;
 	padding: 24px clamp(16px, 3vw, 36px) 48px;
 	box-sizing: border-box;

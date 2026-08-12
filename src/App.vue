@@ -1,37 +1,54 @@
 <template>
 	<NcContent class="eva-ai-app" :app-name="'eva_ai'">
 		<NcAppNavigation :title="'Eva · v' + buildVersion" @close-navigation="mobileOpen = false">
+			<template #search>
+				<NcAppNavigationSearch v-model="chatFilter" label="Search chats" placeholder="Search chats" />
+			</template>
 			<template #list>
-				<button class="new-chat-btn" :disabled="busy" @click="newChat">
-					<svg width="16" height="16" viewBox="0 0 24 24" aria-hidden="true"><path :d="mdiMessagePlus" fill="currentColor" /></svg>
-					<span>New chat</span>
-				</button>
-				<div class="chat-list">
-					<NcAppNavigationItem
-						v-for="c in chats"
-						:key="c.id"
-						:name="c.title"
-						:active="view === 'chat' && c.id === currentChat"
-						:title="c.title + ' · ' + c.count + ' messages'"
-						@click="selectChat(c.id)">
+				<li class="new-chat-container">
+					<NcButton
+						class="new-chat-button"
+						variant="primary"
+						size="normal"
+						alignment="start"
+						:wide="true"
+						:disabled="busy"
+						aria-label="Start a new chat"
+						@click="newChat">
 						<template #icon>
-							<svg width="16" height="16" viewBox="0 0 24 24"><path :d="mdiChatProcessing" fill="currentColor" /></svg>
+							<svg width="16" height="16" viewBox="0 0 24 24" aria-hidden="true"><path :d="mdiMessagePlus" fill="currentColor" /></svg>
 						</template>
-						<template #actions>
-							<NcActionButton :name="'Rename chat'" @click="renameChat(c.id)">
-								<template #icon>
-									<svg width="18" height="18" viewBox="0 0 24 24"><path :d="mdiPencilOutline" fill="currentColor" /></svg>
-								</template>
-							</NcActionButton>
-							<NcActionButton :name="'Delete chat'" @click="deleteChat(c.id)">
-								<template #icon>
-									<svg width="18" height="18" viewBox="0 0 24 24"><path :d="mdiTrashCanOutline" fill="currentColor" /></svg>
-								</template>
-							</NcActionButton>
-						</template>
-					</NcAppNavigationItem>
-					<div v-if="!chats.length" class="chat-list-empty">No chats yet — start a new one.</div>
-				</div>
+						New chat
+					</NcButton>
+				</li>
+				<li class="chat-list-heading">
+					<span>Chats</span>
+					<NcCounterBubble :count="chats.length" />
+				</li>
+				<NcAppNavigationItem
+					v-for="c in filteredChats"
+					:key="c.id"
+					:name="c.title"
+					:active="view === 'chat' && c.id === currentChat"
+					:force-menu="true"
+					:title="c.title + ' · ' + c.count + ' messages'"
+					@click="selectChat(c.id)">
+					<template #icon>
+						<svg width="16" height="16" viewBox="0 0 24 24"><path :d="mdiChatProcessing" fill="currentColor" /></svg>
+					</template>
+					<template #actions>
+						<NcActionButton aria-label="Rename chat" :close-after-click="true" @click.stop="renameChat(c.id)">
+							<template #icon><svg width="20" height="20" viewBox="0 0 24 24" aria-hidden="true"><path :d="mdiPencilOutline" fill="currentColor" /></svg></template>
+							Rename chat
+						</NcActionButton>
+						<NcActionButton aria-label="Delete chat" :close-after-click="true" @click.stop="deleteChat(c.id)">
+							<template #icon><svg width="20" height="20" viewBox="0 0 24 24" aria-hidden="true"><path :d="mdiTrashCanOutline" fill="currentColor" /></svg></template>
+							Delete chat
+						</NcActionButton>
+					</template>
+				</NcAppNavigationItem>
+				<li v-if="!chats.length" class="chat-list-empty">No chats yet — start a new one.</li>
+				<li v-else-if="!filteredChats.length" class="chat-list-empty">No chats match your search.</li>
 			</template>
 			<template #footer>
 				<ul class="nav-footer">
@@ -64,16 +81,18 @@
 </template>
 
 <script>
-import { ref, onMounted } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import ChatView from './views/ChatView.vue'
 import DocumentsView from './views/DocumentsView.vue'
 import SettingsView from './views/SettingsView.vue'
 import FileContextChatView from './views/FileContextChatView.vue'
 import { mdiChatProcessing, mdiFileDocumentOutline, mdiTune, mdiTrashCanOutline, mdiMessagePlus, mdiPencilOutline } from '@mdi/js'
+import { NcCounterBubble } from '@nextcloud/vue'
+import NcAppNavigationSearch from '@nextcloud/vue/components/NcAppNavigationSearch'
 
 export default {
 	name: 'EvaAiApp',
-	components: { ChatView, DocumentsView, SettingsView, FileContextChatView },
+	components: { ChatView, DocumentsView, SettingsView, FileContextChatView, NcCounterBubble, NcAppNavigationSearch },
 	setup() {
 		const params = new URLSearchParams(window.location.search)
 		const initialFileIdsParam = params.get('fileIds')
@@ -101,6 +120,11 @@ export default {
 		const chats = ref([])
 		const currentChat = ref(null)
 		const busy = ref(false)
+		const chatFilter = ref('')
+		const filteredChats = computed(() => {
+			const query = chatFilter.value.trim().toLowerCase()
+			return query ? chats.value.filter((chat) => String(chat.title || '').toLowerCase().includes(query)) : chats.value
+		})
 
 		const appRootPath = () => {
 			const current = window.location.pathname.replace(/\/+$/, '')
@@ -145,11 +169,11 @@ export default {
 		}
 
 		const loadChats = () => {
-			api('GET', '/chats').then((list) => {
+			return api('GET', '/chats').then((list) => {
 				if (!Array.isArray(list)) return
 				chats.value = list
-				if (!currentChat.value && list.length) {
-					currentChat.value = list[0].id
+				if (!currentChat.value || !list.some((chat) => chat.id === currentChat.value)) {
+					currentChat.value = list.length ? list[0].id : null
 				}
 			})
 		}
@@ -177,14 +201,14 @@ export default {
 			const name = window.prompt('New chat title:', c ? c.title : '')
 			if (name === null || !name.trim()) return
 			await api('POST', '/chats/' + encodeURIComponent(id) + '/title', { title: name.trim() })
-			loadChats()
-			}
+			await loadChats()
+		}
 
 		const deleteChat = async (id) => {
 			if (!window.confirm('Delete this chat?')) return
 			await api('DELETE', '/chats/' + encodeURIComponent(id))
 			if (currentChat.value === id) currentChat.value = null
-			loadChats()
+			await loadChats()
 		}
 
 		onMounted(() => {
@@ -193,6 +217,10 @@ export default {
 				window.addEventListener('popstate', () => {
 					const current = window.location.pathname.replace(/\/+$/, '')
 					view.value = current.endsWith('/settings') ? 'settings' : current.endsWith('/documents') ? 'docs' : 'chat'
+				})
+				window.addEventListener('eva-ai:chats-cleared', () => {
+					currentChat.value = null
+					loadChats()
 				})
 				window.addEventListener('eva-ai:file-context', (e) => {
 					const ids = e && e.detail && Array.isArray(e.detail.fileIds)
@@ -212,7 +240,7 @@ export default {
 
 		return {
 			view, mobileOpen, buildVersion,
-			chats, currentChat, busy,
+			chats, currentChat, busy, chatFilter, filteredChats,
 			fileContextIds,
 			newChat, selectChat, renameChat, deleteChat, loadChats, navigate,
 			mdiChatProcessing, mdiFileDocumentOutline, mdiTune, mdiTrashCanOutline, mdiMessagePlus, mdiPencilOutline,
@@ -224,38 +252,29 @@ export default {
 <style scoped>
 .eva-ai-app {
 	width: 100%;
+	--eva-content-width: 1180px;
 }
 
-.newchat-wrap {
-	padding: 10px 12px 6px;
+.new-chat-container {
+	background: transparent;
+	list-style: none;
+	margin: 0;
+	padding: var(--default-grid-baseline, 4px) 4px;
+	position: sticky;
+	top: 0;
+	z-index: 2;
 }
 
-.new-chat-btn {
-	display: flex;
+.chat-list-heading {
 	align-items: center;
-	justify-content: center;
-	gap: 6px;
-	padding: 9px 12px;
-	width: 100%;
-	box-sizing: border-box;
-	border: none;
-	border-radius: 10px;
-	background: var(--color-primary-element, #00679c);
-	color: var(--color-primary-element-text, #fff);
-	font-size: 13px;
+	color: var(--color-text-maxcontrast, #666);
+	display: flex;
+	font-size: 12px;
 	font-weight: 600;
-	font-family: inherit;
-	cursor: pointer;
-	transition: filter .1s;
-}
-
-.new-chat-btn:hover:not(:disabled) { filter: brightness(1.08); }
-.new-chat-btn:disabled { opacity: .6; cursor: default; }
-
-.chat-list {
-	overflow-y: auto;
-	max-height: 45vh;
-	padding: 4px 0;
+	gap: 6px;
+	list-style: none;
+	padding: 8px var(--app-navigation-padding, 8px) 4px;
+	text-transform: uppercase;
 }
 
 .chat-list-empty {
@@ -272,4 +291,5 @@ export default {
 	flex-direction: column;
 	gap: var(--default-grid-baseline, 4px);
 }
+
 </style>

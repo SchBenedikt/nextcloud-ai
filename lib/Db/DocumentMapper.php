@@ -87,11 +87,16 @@ class DocumentMapper extends QBMapper {
         $qb->executeStatement();
     }
 
-    public function countForUser(string $userId): int {
+    public function countForUser(string $userId, ?string $search = null): int {
         $qb = $this->db->getQueryBuilder();
         $qb->selectAlias($qb->createFunction('COUNT(*)'), 'c')
             ->from('eva_ai_documents')
             ->where($qb->expr()->eq('user_id', $qb->createNamedParameter($userId)));
+        if ($search !== null && $search !== '') {
+            $qb->andWhere(
+                $qb->expr()->like('path', $qb->createNamedParameter('%' . $search . '%'))
+            );
+        }
         $row = $qb->executeQuery()->fetch();
         return $row ? (int)$row['c'] : 0;
     }
@@ -107,6 +112,7 @@ class DocumentMapper extends QBMapper {
             );
         }
         $qb->orderBy('indexed_at', 'DESC')
+            ->addOrderBy('id', 'DESC')
             ->setMaxResults($limit)
             ->setFirstResult($offset);
         return $this->findEntities($qb);
