@@ -137,6 +137,15 @@ class ToolPolicySecurityTest extends TestCase {
         }
     }
 
+    public function testEveryInteractiveMutatingToolRequiresConfirmation(): void {
+        $this->policy->setSurface(ToolPolicy::SURFACE_WEB);
+        foreach ($this->policy->mutatingTools() as $tool) {
+            $meta = $this->policy->getTool($tool);
+            self::assertNotNull($meta, "Tool '$tool' should be registered");
+            self::assertTrue($meta['requiresConfirmation'], "Mutating tool '$tool' should require confirmation");
+        }
+    }
+
     public function testReadonlyToolsNeverRequireConfirmation(): void {
         foreach ($this->policy->readonlyTools() as $tool) {
             $meta = $this->policy->getTool($tool);

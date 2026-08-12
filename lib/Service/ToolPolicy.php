@@ -84,7 +84,7 @@ class ToolPolicy {
         'update_knowledge' => [
             'risk' => self::RISK_MUTATING,
             'surfaces' => [self::SURFACE_WEB, self::SURFACE_TALK, self::SURFACE_TASKPROCESSING],
-            'requiresConfirmation' => false,
+            'requiresConfirmation' => true,
             'description' => 'Update personal knowledge base',
         ],
 
@@ -240,7 +240,7 @@ class ToolPolicy {
         'complete_task' => [
             'risk' => self::RISK_MUTATING,
             'surfaces' => [self::SURFACE_WEB, self::SURFACE_TALK],
-            'requiresConfirmation' => false,
+            'requiresConfirmation' => true,
             'description' => 'Mark a task as completed',
         ],
         'delete_task' => [
