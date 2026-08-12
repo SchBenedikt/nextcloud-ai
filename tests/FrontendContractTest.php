@@ -46,7 +46,7 @@ final class FrontendContractTest extends TestCase {
         self::assertStringContainsString('variant="primary"', $app);
         self::assertStringNotContainsString('variant="tertiary"', $app);
         self::assertStringContainsString(':wide="true"', $app);
-        self::assertStringContainsString('size="large"', $app);
+        self::assertStringContainsString('size="normal"', $app);
         self::assertStringContainsString('alignment="start"', $app);
         self::assertStringContainsString('position: sticky;', $app);
         self::assertStringContainsString('top: 0;', $app);

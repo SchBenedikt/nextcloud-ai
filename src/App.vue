@@ -9,7 +9,7 @@
 					<NcButton
 						class="new-chat-button"
 						variant="primary"
-						size="large"
+						size="normal"
 						alignment="start"
 						:wide="true"
 						:disabled="busy"
