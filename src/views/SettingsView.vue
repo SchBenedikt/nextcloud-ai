@@ -243,6 +243,30 @@
 			<section class="settings-section">
 				<div class="section-heading">
 					<div>
+						<h3>Chat history</h3>
+						<p>Manage the conversations stored for your Nextcloud account. This does not affect indexed files.</p>
+					</div>
+				</div>
+				<div class="index-actions chat-history-actions">
+					<div>
+						<strong>Delete all chats</strong>
+						<p>Permanently removes your saved EVA conversations and messages.</p>
+					</div>
+					<NcButton type="tertiary-no-background" :disabled="settingsLocked" @click="chatsDeleteConfirm = true">Delete all chats</NcButton>
+				</div>
+				<div v-if="chatsDeleteConfirm" class="confirm-panel" role="alertdialog" aria-modal="true" aria-labelledby="chats-delete-title">
+					<strong id="chats-delete-title">Delete all chat history?</strong>
+					<p>This cannot be undone. Your indexed documents and files will remain untouched.</p>
+					<div class="button-group">
+						<NcButton type="tertiary-no-background" @click="chatsDeleteConfirm = false">Cancel</NcButton>
+						<NcButton type="primary" class="danger-button" :loading="deletingChats" @click="deleteAllChats">Delete all chats</NcButton>
+					</div>
+				</div>
+			</section>
+
+			<section class="settings-section">
+				<div class="section-heading">
+					<div>
 						<h3>Talk &amp; notifications</h3>
 						<p>Configure how EVA behaves when she is used from Nextcloud Talk.</p>
 					</div>
@@ -306,12 +330,14 @@ export default {
 		const checking = ref(false)
 		const indexing = ref(false)
 		const resetting = ref(false)
+		const deletingChats = ref(false)
 		const stopping = ref(false)
 		const saved = ref(false)
 		const loadError = ref('')
 		const message = ref({ type: '', text: '' })
 		const validationErrors = ref([])
 		const resetConfirm = ref(false)
+		const chatsDeleteConfirm = ref(false)
 		const newExcludePath = ref('')
 		const excludeError = ref('')
 
@@ -333,7 +359,7 @@ export default {
 		})
 		const actionsDisabled = computed(() => f.value.actions_enabled !== '1')
 		const indexingActive = computed(() => indexing.value || status.value?.indexing === true)
-		const busy = computed(() => saving.value || checking.value || indexing.value || resetting.value || stopping.value)
+		const busy = computed(() => saving.value || checking.value || indexing.value || resetting.value || deletingChats.value || stopping.value)
 		const settingsLocked = computed(() => busy.value || indexingActive.value)
 		const maxFileSizeMb = computed({
 			get: () => {
@@ -497,6 +523,22 @@ export default {
 			await persistExcludeList(list, f.value.exclude_paths)
 		}
 
+		async function deleteAllChats() {
+			if (deletingChats.value) return
+			chatsDeleteConfirm.value = false
+			deletingChats.value = true
+			setMessage('info', 'Deleting all chat history…')
+			try {
+				const response = await api('DELETE', 'chats')
+				window.dispatchEvent(new CustomEvent('eva-ai:chats-cleared'))
+				setMessage('success', `${formatNumber(response?.deleted)} chats deleted.`)
+			} catch (error) {
+				setMessage('error', 'The chat history could not be deleted: ' + errMsg(error))
+			} finally {
+				deletingChats.value = false
+			}
+		}
+
 		async function startIndex() {
 			if (settingsLocked.value) return
 			const savedSuccessfully = await save()
@@ -579,9 +621,9 @@ export default {
 		})
 
 		return {
-			f, status, limits, checkOut, saving, checking, indexing, resetting, stopping, saved, loadError, message, validationErrors, resetConfirm,
+			f, status, limits, checkOut, saving, checking, indexing, resetting, deletingChats, stopping, saved, loadError, message, validationErrors, resetConfirm, chatsDeleteConfirm,
 			newExcludePath, excludeError, excludeList, actionsEnabled, notificationsEnabled, mailIndexEnabled, actionsDisabled, busy, indexingActive, settingsLocked, maxFileSizeMb,
-			formatNumber, loadStatus, save, checkOllama, addExclude, removeExclude, startIndex, startMailIndex, stopIndex, resetIndex,
+			formatNumber, loadStatus, save, checkOllama, addExclude, removeExclude, startIndex, startMailIndex, stopIndex, resetIndex, deleteAllChats,
 		}
 	},
 }

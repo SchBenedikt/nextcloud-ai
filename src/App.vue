@@ -8,7 +8,7 @@
 				<li class="new-chat-container">
 					<NcButton
 						class="new-chat-button"
-						variant="tertiary"
+						variant="primary"
 						size="small"
 						alignment="start"
 						:wide="true"
@@ -30,17 +30,18 @@
 					:key="c.id"
 					:name="c.title"
 					:active="view === 'chat' && c.id === currentChat"
+					:force-menu="true"
 					:title="c.title + ' · ' + c.count + ' messages'"
 					@click="selectChat(c.id)">
 					<template #icon>
 						<svg width="16" height="16" viewBox="0 0 24 24"><path :d="mdiChatProcessing" fill="currentColor" /></svg>
 					</template>
 					<template #actions>
-						<NcActionButton aria-label="Rename chat" @click="renameChat(c.id)">
+						<NcActionButton aria-label="Rename chat" close-after-click="true" @click.stop="renameChat(c.id)">
 							<template #icon><svg width="20" height="20" viewBox="0 0 24 24" aria-hidden="true"><path :d="mdiPencilOutline" fill="currentColor" /></svg></template>
 							Rename chat
 						</NcActionButton>
-						<NcActionButton aria-label="Delete chat" @click="deleteChat(c.id)">
+						<NcActionButton aria-label="Delete chat" close-after-click="true" @click.stop="deleteChat(c.id)">
 							<template #icon><svg width="20" height="20" viewBox="0 0 24 24" aria-hidden="true"><path :d="mdiTrashCanOutline" fill="currentColor" /></svg></template>
 							Delete chat
 						</NcActionButton>
@@ -216,6 +217,10 @@ export default {
 				window.addEventListener('popstate', () => {
 					const current = window.location.pathname.replace(/\/+$/, '')
 					view.value = current.endsWith('/settings') ? 'settings' : current.endsWith('/documents') ? 'docs' : 'chat'
+				})
+				window.addEventListener('eva-ai:chats-cleared', () => {
+					currentChat.value = null
+					loadChats()
 				})
 				window.addEventListener('eva-ai:file-context', (e) => {
 					const ids = e && e.detail && Array.isArray(e.detail.fileIds)

@@ -23,6 +23,7 @@ return [
         ['name' => 'api#chat', 'url' => '/api/chat', 'verb' => 'POST'],
         ['name' => 'api#chats', 'url' => '/api/chats', 'verb' => 'GET'],
         ['name' => 'api#createChat', 'url' => '/api/chats', 'verb' => 'POST'],
+        ['name' => 'api#deleteAllChats', 'url' => '/api/chats', 'verb' => 'DELETE'],
         ['name' => 'api#chatDetail', 'url' => '/api/chats/{id}', 'verb' => 'GET'],
         ['name' => 'api#chatDelete', 'url' => '/api/chats/{id}', 'verb' => 'DELETE'],
         ['name' => 'api#chatAppend', 'url' => '/api/chats/{id}/messages', 'verb' => 'POST'],

@@ -43,8 +43,8 @@ final class FrontendContractTest extends TestCase {
         self::assertStringContainsString('placeholder="Search chats"', $app);
         self::assertStringContainsString('NcCounterBubble', $app);
         self::assertStringContainsString('NcButton', $app);
-        self::assertStringContainsString('variant="tertiary"', $app);
-        self::assertStringNotContainsString('variant="primary"', $app);
+        self::assertStringContainsString('variant="primary"', $app);
+        self::assertStringNotContainsString('variant="tertiary"', $app);
         self::assertStringContainsString(':wide="true"', $app);
         self::assertStringContainsString('size="small"', $app);
         self::assertStringContainsString('alignment="start"', $app);
@@ -53,11 +53,21 @@ final class FrontendContractTest extends TestCase {
         self::assertStringNotContainsString('allow-collapse', $app);
         self::assertStringNotContainsString('chatsOpen', $app);
         self::assertStringContainsString('filteredChats', $app);
+        self::assertStringContainsString(':force-menu="true"', $app);
+        self::assertStringContainsString('close-after-click="true"', $app);
+        self::assertStringContainsString('@click.stop="renameChat(c.id)"', $app);
+        self::assertStringContainsString('@click.stop="deleteChat(c.id)"', $app);
         self::assertStringContainsString('aria-label="Rename chat"', $app);
         self::assertStringContainsString('aria-label="Delete chat"', $app);
         self::assertStringContainsString("return api('GET', '/chats')", $app);
-
         $settings = (string)file_get_contents(__DIR__ . '/../src/views/SettingsView.vue');
+        self::assertStringContainsString("api('DELETE', 'chats')", $settings);
+        self::assertStringContainsString("new CustomEvent('eva-ai:chats-cleared')", $settings);
+        self::assertStringContainsString("'eva-ai:chats-cleared'", $app);
+        self::assertStringContainsString('api#deleteAllChats', (string)file_get_contents(__DIR__ . '/../appinfo/routes.php'));
+        self::assertStringContainsString('public function deleteAllChats', (string)file_get_contents(__DIR__ . '/../lib/Controller/ApiController.php'));
+        self::assertStringContainsString('deleteAll(string $user)', (string)file_get_contents(__DIR__ . '/../lib/Service/ChatStore.php'));
+
         $documents = (string)file_get_contents(__DIR__ . '/../src/views/DocumentsView.vue');
         self::assertStringContainsString('max-width: var(--eva-content-width, 1180px);', $settings);
         self::assertStringContainsString('max-width: var(--eva-content-width, 1180px);', $documents);

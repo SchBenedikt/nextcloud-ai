@@ -95,6 +95,21 @@ class ChatStore {
         });
     }
 
+    /**
+     * Delete every saved chat belonging to one user and return the number
+     * removed. The operation is serialized with the other chat mutations.
+     */
+    public function deleteAll(string $user): int {
+        return $this->withUserLock($user, function () use ($user): int {
+            $all = $this->read($user);
+            $deleted = count($all);
+            if ($deleted > 0) {
+                $this->write($user, []);
+            }
+            return $deleted;
+        });
+    }
+
     public function setTitle(string $user, string $id, string $title): void {
         $this->withUserLock($user, function () use ($user, $id, $title): void {
             $all = $this->read($user);

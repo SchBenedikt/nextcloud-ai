@@ -547,6 +547,19 @@ class ApiController extends OCSController {
     }
 
     #[NoAdminRequired]
+    public function deleteAllChats(): DataResponse {
+        $user = $this->requireUser();
+        if ($user === null) {
+            return new DataResponse(['error' => 'Not logged in'], 401);
+        }
+        try {
+            return new DataResponse(['ok' => true, 'deleted' => $this->chatStore->deleteAll($user)]);
+        } catch (\Throwable $e) {
+            return new DataResponse(['error' => 'Unable to persist chat data'], 500);
+        }
+    }
+
+    #[NoAdminRequired]
     public function chatDetail(string $id): DataResponse {
         $user = $this->requireUser();
         if ($user === null) {
