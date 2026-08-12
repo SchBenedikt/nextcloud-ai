@@ -221,94 +221,6 @@ The chat interprets times in the user's timezone (e.g. `Europe/Berlin`):
 - A plain date → all-day event
 - Reminders via the `reminder_minutes` parameter (e.g. 30, 60)
 
-<<<<<<< HEAD
-## Data Lifecycle & Privacy
-
-EVA operates on your personal Nextcloud data. This section documents what data is stored,
-how long it is retained, and how to remove it.
-
-### What data does EVA store?
-
-| Data Type | Storage Location | Retention |
-|---|---|---|
-| Indexed document metadata (file path, name, hash, MIME type, size) | Nextcloud database (`eva_ai_documents`) | Until the file is deleted from Nextcloud or index is reset |
-| Text chunks (split from indexed files) | Nextcloud database (`eva_ai_chunks`) | Same as parent document |
-| Embedding vectors (numerical representations of chunks) | Nextcloud database (`eva_ai_chunks`) | Same as parent document |
-| Indexed email metadata (subject, sender, body excerpt) | Nextcloud database (`eva_ai_documents`) | Until the email changes or index is reset |
-| Email chunks and embeddings | Nextcloud database (`eva_ai_chunks`) | Same as parent email document |
-| Chat history (conversation messages) | Nextcloud database (`eva_ai_chat_history`) | Stored per user; deleted on index reset |
-| AI-created file markers (tracking which files EVA created) | Nextcloud app-data (`ai-marks/`) | Until the file is deleted or manually cleaned |
-| Knowledge base entries (KNOWLEDGE.md) | User's Nextcloud home folder | Until the user deletes the file |
-| Agent conversation state | Nextcloud database (`eva_ai_agent_store`) | Per conversation token; deleted on reset |
-| App configuration | Nextcloud database (`oc_appconfig`) | Persistent until manually changed |
-
-### Where is data processed?
-
-- **All processing is local**: file indexing, text extraction, chunking, embedding generation,
-  and LLM chat all happen on your own server.
-- **Ollama** is the only external component — it runs locally on your machine.
-  No file contents, emails, or personal data are ever sent to third-party services.
-- **Weather queries** use the free Open-Meteo API (no API key, no user data sent).
-
-### What happens when a file is modified or deleted?
-
-- **File modified**: The next indexing pass detects the content hash change,
-  re-chunks the file, generates new embeddings, and replaces the old index entry.
-- **File deleted from Nextcloud**: The next indexing pass detects the missing file ID
-  and automatically removes the document and all its chunks from the index.
-- **File becomes unreadable/non-indexable**: Stale index entries are removed during
-  reconciliation (the file ID appears in the filesystem but extraction fails).
-- **Shared file access revoked**: EVA only indexes files the user can currently read.
-  Revoked shares are not indexed; previously indexed content from revoked shares
-  is removed during the next indexing pass.
-- **Email deleted**: The next email indexing pass skips deleted emails. Old indexed
-  email content is removed when the email entry is no longer found.
-
-### How to delete all EVA data
-
-**Reset a single user's index:**
-
-```bash
-sudo -u www-data php occ eva-ai:reset --user=username
-```
-
-This removes all documents, chunks, chat history, agent state, and AI-created file
-markers for the specified user.
-
-**Reset ALL users:**
-
-```bash
-sudo -u www-data php occ eva-ai:reset --all
-```
-
-**Remove the AI-created file markers only:**
-
-```bash
-sudo -u www-data php occ eva-ai:reset --user=username --marks-only
-```
-
-**Uninstall the app completely:**
-
-```bash
-sudo -u www-data php occ app:remove eva-ai
-```
-
-This drops all database tables and removes the app-data folder.
-
-### Configuration defaults affecting privacy
-
-| Setting | Default | Privacy Impact |
-|---|---|---|
-| `mail_index_enabled` | `1` (on) | Emails are indexed into RAG. Set to `0` to disable. |
-| `actions_enabled` | `1` (on) | The AI can create/rename/delete files. Set to `0` for read-only chat. |
-| `exec_delete_mode` | `own` | Only files EVA created itself can be deleted. Set to `off` to disable deletion entirely. |
-| `exec_write_types` | `''` (all) | Restrict which file types EVA can create (e.g. `md,txt`). |
-| `index_user` | `''` (current user) | Only this user's files are indexed. Leave empty for per-user indexing. |
-
-## Notes
-=======
----
->>>>>>> 8f973d3 (WIP: fix issues #5-#16 + app-id rename to eva_ai)
 
 ## Data lifecycle & privacy
 
@@ -322,7 +234,7 @@ Quick reference:
 | Document metadata | DB (`eva_ai_documents`) | Until file deleted or index reset |
 | Text chunks & embeddings | DB (`eva_ai_chunks`) | Same as parent document |
 | Indexed emails | DB (`eva_ai_documents`) | Until email changes or index reset |
-| Chat history | DB (`eva_ai_chat_history`) | Per user; deleted on index reset |
+| Chat history | AppData (`eva_ai/chats/<user namespace>/chats.json`) | Until the user deletes chats or app data is removed |
 | AI-created file markers | app-data (`ai-marks/`) | Until file deleted or cleaned |
 | Knowledge base (`KNOWLEDGE.md`) | User home | Until user deletes the file |
 | Agent conversation state | DB (`eva_ai_agent_store`) | Per conversation token; deleted on reset |
