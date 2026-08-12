@@ -17,7 +17,7 @@
 		<div v-if="loadError" class="callout callout-error" role="alert">
 			<strong>Settings could not be loaded.</strong>
 			<span>{{ loadError }}</span>
-			<NcButton type="tertiary-no-background" @click="loadStatus">Try again</NcButton>
+			<NcButton type="tertiary-no-background" @click="loadStatus(true)">Try again</NcButton>
 		</div>
 
 		<div class="summary-grid" aria-label="EVA status">
@@ -207,7 +207,7 @@
 					<div v-if="excludeList.length" class="exclude-chips">
 						<span v-for="(path, index) in excludeList" :key="path" class="exclude-chip">
 							{{ path }}
-							<NcButton class="chip-remove" type="tertiary-no-background" :aria-label="'Remove ' + path" @click="removeExclude(index)">×</NcButton>
+							<NcButton class="chip-remove" type="tertiary-no-background" :aria-label="'Remove ' + path" :disabled="busy" @click="removeExclude(index)">×</NcButton>
 						</span>
 					</div>
 					<p v-else class="empty-help">No folders are excluded.</p>
@@ -390,12 +390,12 @@ export default {
 			})
 		}
 
-		async function loadStatus() {
+		async function loadStatus(syncForm = false) {
 			loadError.value = ''
 			try {
 				status.value = await api('GET', 'status')
 				limits.value = status.value?.limits || {}
-				fill()
+				if (syncForm) fill()
 			} catch (error) {
 				loadError.value = errMsg(error)
 			}
@@ -458,7 +458,18 @@ export default {
 			}
 		}
 
-		function addExclude() {
+		async function persistExcludeList(list, previous) {
+			f.value.exclude_paths = list.join(', ')
+			const savedSuccessfully = await save()
+			if (!savedSuccessfully) {
+				f.value.exclude_paths = previous
+				excludeError.value = 'The folder exclusion could not be saved. Your previous exclusions were restored.'
+				return false
+			}
+			return true
+		}
+
+		async function addExclude() {
 			excludeError.value = ''
 			const path = newExcludePath.value.trim().replace(/^\/+|\/+$/g, '')
 			if (!path) {
@@ -470,15 +481,20 @@ export default {
 				return
 			}
 			const list = excludeList.value.slice()
-			if (!list.includes(path)) list.push(path)
-			f.value.exclude_paths = list.join(', ')
-			newExcludePath.value = ''
+			if (list.includes(path)) {
+				excludeError.value = 'This folder is already excluded.'
+				return
+			}
+			const previous = f.value.exclude_paths
+			list.push(path)
+			if (await persistExcludeList(list, previous)) newExcludePath.value = ''
 		}
 
-		function removeExclude(index) {
+		async function removeExclude(index) {
+			excludeError.value = ''
 			const list = excludeList.value.slice()
 			list.splice(index, 1)
-			f.value.exclude_paths = list.join(', ')
+			await persistExcludeList(list, f.value.exclude_paths)
 		}
 
 		async function startIndex() {
@@ -555,7 +571,7 @@ export default {
 
 		let statusTimer = null
 		onMounted(async () => {
-			await loadStatus()
+			await loadStatus(true)
 			statusTimer = window.setInterval(loadStatus, 3000)
 		})
 		onUnmounted(() => {

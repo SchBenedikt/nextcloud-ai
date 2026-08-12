@@ -21,7 +21,6 @@ use OCP\AppFramework\Http\NotFoundResponse;
 use OCP\BackgroundJob\IJobList;
 use OCP\App\IAppManager;
 use OCP\IRequest;
-use OCP\IGroupManager;
 use OCP\Lock\ILockingProvider;
 
 class ApiController extends OCSController {
@@ -36,7 +35,6 @@ class ApiController extends OCSController {
         private DocumentMapper $documentMapper,
         private ChunkMapper $chunkMapper,
         private IJobList $jobList,
-        private IGroupManager $groupManager,
         private ILockingProvider $lockingProvider,
         private ChatStore $chatStore,
         private FileContextChatService $fileContextChat,
@@ -126,7 +124,7 @@ class ApiController extends OCSController {
                 $validationErrors[$key] = $key . ' ' . $limitError . '.';
             }
             if ($key === 'ollama_url') {
-                $urlError = $this->validateOllamaUrl((string)$value, $user);
+                $urlError = $this->validateOllamaUrl((string)$value);
                 if ($urlError !== null) {
                     $validationErrors[$key] = $urlError;
                 }
@@ -166,7 +164,7 @@ class ApiController extends OCSController {
         return new DataResponse($this->config->all());
     }
 
-    private function validateOllamaUrl(string $url, string $user): ?string {
+    private function validateOllamaUrl(string $url): ?string {
         $url = trim($url);
         $parts = parse_url($url);
         if ($parts === false || !in_array(strtolower((string)($parts['scheme'] ?? '')), ['http', 'https'], true)
@@ -174,16 +172,6 @@ class ApiController extends OCSController {
             || (($parts['path'] ?? '') !== '' && ($parts['path'] ?? '') !== '/')
             || (isset($parts['port']) && ((int)$parts['port'] < 1 || (int)$parts['port'] > 65535))) {
             return 'Ollama server URL must be a plain http(s) URL without credentials, path, query or fragment.';
-        }
-        // Remote Ollama targets are an explicit administrator decision. A
-        // regular user is restricted to the local loopback service to prevent
-        // SSRF through a personal setting.
-        if (!$this->groupManager->isAdmin($user)) {
-            $host = strtolower(trim((string)$parts['host'], '[]'));
-            $isLoopback = $host === 'localhost' || $host === '127.0.0.1' || $host === '::1';
-            if (!$isLoopback) {
-                return 'Only the local Ollama service may be configured by a non-administrator.';
-            }
         }
         return null;
     }

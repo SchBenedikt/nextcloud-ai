@@ -71,7 +71,6 @@ export default {
 	border: 1px solid var(--color-border, #ddd);
 	border-radius: 16px;
 	background: var(--color-main-background, #fff);
-	box-shadow: 0 8px 24px color-mix(in srgb, var(--color-main-text) 8%, transparent);
 	box-sizing: border-box;
 }
 
@@ -142,7 +141,6 @@ export default {
 	gap: 16px;
 	width: min(100%, 1540px);
 	margin: 0 auto 16px;
-	box-shadow: 0 10px 28px color-mix(in srgb, var(--color-main-text) 7%, transparent);
 	box-sizing: border-box;
 }
 
@@ -251,7 +249,6 @@ export default {
 	width: min(100%, 1540px);
 	margin: 0 auto;
 	box-sizing: border-box;
-	box-shadow: 0 8px 24px color-mix(in srgb, var(--color-main-text) 7%, transparent);
 }
 
 .chatview-root .chatform input {
