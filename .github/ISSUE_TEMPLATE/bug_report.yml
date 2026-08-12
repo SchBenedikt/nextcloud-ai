@@ -1,0 +1,97 @@
+name: Bug report
+description: Report a problem with EVA (eva_ai)
+title: "[Bug] "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to fill out this bug report! Please follow the issue format used in this repository (Triage / Summary / Reproduction / Expected behavior / Proposed solution / Acceptance criteria).
+
+  - type: dropdown
+    id: priority
+    attributes:
+      label: Priority
+      options:
+        - critical (blocks usage / security / data loss)
+        - high (major feature broken)
+        - medium (partial breakage / annoying)
+        - low (cosmetic / edge case)
+    validations:
+      required: true
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      multiple: true
+      options:
+        - Chat / Frontend
+        - Indexing / RAG
+        - Search
+        - Calendar tools
+        - Files tools
+        - Shares tools
+        - Mail
+        - Talk bot
+        - TaskProcessing / Assistant
+        - Settings
+        - Security & Privacy
+        - Background jobs
+        - Other
+    validations:
+      required: true
+
+  - type: input
+    id: version
+    attributes:
+      label: App version
+      description: Version from info.xml (or git commit/branch)
+      placeholder: e.g. 1.4.0
+    validations:
+      required: true
+
+  - type: input
+    id: nextcloud
+    attributes:
+      label: Nextcloud version
+      placeholder: e.g. 35
+    validations:
+      required: true
+
+  - type: input
+    id: php
+    attributes:
+      label: PHP version
+      placeholder: e.g. 8.3
+
+  - type: textarea
+    id: summary
+    attributes:
+      label: Summary
+      description: What is the bug? What did you expect instead?
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. Go to ...
+        2. Click on ...
+        3. See error
+    validations:
+      required: true
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant logs / screenshots
+      description: nextcloud.log lines (redact personal data), browser console errors, screenshots.
+
+  - type: textarea
+    id: proposed
+    attributes:
+      label: Proposed solution (optional)
+      description: If you already know how this should be fixed, describe it here.

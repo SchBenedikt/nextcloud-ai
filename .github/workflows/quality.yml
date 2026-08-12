@@ -1,0 +1,37 @@
+name: Quality
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  audit:
+    name: Dependency security audit
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+          coverage: none
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: '.nvmrc'
+          cache: npm
+
+      - name: Install composer dependencies
+        run: composer install --no-interaction --prefer-dist
+
+      - name: Audit composer dependencies
+        run: composer audit --no-interaction
+
+      - name: Install frontend dependencies
+        run: npm ci
+
+      - name: Audit npm dependencies (production only)
+        run: npm audit --omit=dev

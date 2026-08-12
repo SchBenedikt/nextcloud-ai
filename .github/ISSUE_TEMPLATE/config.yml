@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: FAQ
+    url: https://github.com/SchBenedikt/nextcloud-ai/blob/main/docs/FAQ.md
+    about: Common questions and troubleshooting before opening an issue.
+  - name: Security vulnerability
+    url: https://github.com/SchBenedikt/nextcloud-ai/blob/main/docs/SECURITY.md
+    about: Please report security issues as described in docs/SECURITY.md, not as public issues.
