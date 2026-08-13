@@ -8,6 +8,7 @@ use OCA\EvaAi\Db\ChunkMapper;
 use OCA\EvaAi\Db\DocumentMapper;
 use OCP\Files\IRootFolder;
 use OCP\IURLGenerator;
+use Psr\Log\LoggerInterface;
 
 class RagService {
     private const MAX_TOOL_ROUNDS = 4;
@@ -20,7 +21,8 @@ class RagService {
         private ChunkMapper $chunkMapper,
         private IURLGenerator $urlGenerator,
         private ActionExecutor $executor,
-        private IRootFolder $rootFolder
+        private IRootFolder $rootFolder,
+        private LoggerInterface $logger
     ) {
     }
 

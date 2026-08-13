@@ -33,6 +33,8 @@ always cite the source file path the model took the information from.
 - **Responsive chat and document UI**: fluid layouts for mobile and wide desktop screens, with explicit chunk loading, empty, error and retry states when inspecting indexed documents
 - **Reliable indexing requests**: request parameters use Nextcloud's native access with a single non-recursive JSON fallback, preserving POST bodies while avoiding recursive input handling and memory failures; duplicate starts are idempotent while genuine worker-lock conflicts remain explicit 409 responses
 - **Persistent settings**: folder exclusions are saved immediately, and connection checks use the configured HTTP/HTTPS Ollama endpoint for every user
+- **Fast connection diagnostics**: unreachable Ollama servers and uninstalled models are reported immediately; configured model probes use bounded diagnostic timeouts instead of serial multi-minute waits
+- **Reliable chat persistence**: each completed question is written before its answer, preventing reversed message pairs after a reload
 - **Incremental document browsing**: large knowledge bases load in manageable pages with a "Load more" action and clear progress/end state
 - **Unified workspace navigation**: a responsive shared content width that expands on large screens while remaining mobile-safe with an always-visible native chat search, a native primary New chat action using the native wide modifier and a block-level full navigation-item width matching Documents and Settings directly below the always-visible native chat search, with a standard comfortable touch target and reduced horizontal sidebar padding, a clean native three-dot rename/delete menu, and Markdown export
 - **"AI answer ready" notifications** via the Notifications app
