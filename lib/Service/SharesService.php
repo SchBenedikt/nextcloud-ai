@@ -133,7 +133,10 @@ class SharesService {
         } catch (\Throwable $e) {
             return ['ok' => false, 'error' => 'Share failed: ' . $e->getMessage()];
         }
-        return ['ok' => true, 'result' => $this->describe($share, 'outgoing')];
+        // A newly created link may return its URL once so the user can act
+        // on it. Existing-share listings and updates never expose capability
+        // tokens or public URLs.
+        return ['ok' => true, 'result' => $this->describe($share, 'outgoing', true)];
     }
 
     /** @return array{ok:true,result:array}|array{ok:false,error:string} */
@@ -203,7 +206,7 @@ class SharesService {
     }
 
     /** @return array{path:string,type:string,recipient:string,token:string,url:string,expiration:?string,note:string,permissions:int} */
-    private function describe(IShare $share, string $direction): array {
+    private function describe(IShare $share, string $direction, bool $includeNewLinkUrl = false): array {
         $path = '/';
         try {
             $path = $share->getNode()->getPath();
@@ -214,9 +217,10 @@ class SharesService {
             }
         } catch (\Throwable $e) {
         }
-        $token = $share->getToken() ?? '';
+        $isLink = $share->getShareType() === IShare::TYPE_LINK;
+        $token = $includeNewLinkUrl && $isLink ? ($share->getToken() ?? '') : '';
         $url = '';
-        if ($token !== '' && $share->getShareType() === IShare::TYPE_LINK &&
+        if ($includeNewLinkUrl && $token !== '' && $isLink &&
             class_exists(\OCP\Server::class)) {
             try {
                 $url = \OCP\Server::get(\OCP\IURLGenerator::class)->linkToRouteAbsolute('files_sharing.sharecontroller.showShare', ['token' => $token]);
@@ -241,7 +245,9 @@ class SharesService {
             'type' => $this->typeName($share->getShareType()),
             'path' => $path,
             'recipient' => (string)($share->getSharedWith() ?? ''),
-            'token' => $token,
+            // A token is a capability secret. Keep the field shape stable for
+            // existing callers, but never return the actual value.
+            'token' => $isLink ? '[redacted]' : '',
             'url' => $url,
             'expiration' => $exp,
             'note' => $note,

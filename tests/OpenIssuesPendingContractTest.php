@@ -20,9 +20,9 @@ use Psr\Log\LoggerInterface;
 /**
  * Pending regression contracts for the open GitHub issues #99–#106.
  *
- * Each test asserts the contract that the FIX must guarantee. The tests are
- * marked `markTestSkipped()` until the corresponding issue is implemented, so
- * CI stays green while the intended behaviour is documented and executable.
+ * Each test asserts the contract that the fix must guarantee. Contracts for
+ * issues already implemented in a focused PR run as active regression tests;
+ * the remaining contracts stay skipped until their issue is implemented.
  *
  * When you fix an issue:
  *   1. remove the `markTestSkipped(...)` line of that test,
@@ -55,15 +55,13 @@ final class OpenIssuesPendingContractTest extends TestCase {
 	 * output (LLM context / persisted chat history).
 	 */
 	public function testIssue100ShareTokensAreRedactedFromToolOutput(): void {
-		$this->markTestSkipped('Fix for issue #100 (share token redaction) is not implemented yet');
-
 		$link = $this->createMock(IShare::class);
 		$link->method('getToken')->willReturn('leakable-secret-token-123');
 		$link->method('getShareType')->willReturn(IShare::TYPE_LINK);
 		$link->method('getSharedWith')->willReturn('');
 		$link->method('getExpirationDate')->willReturn(null);
 		$link->method('getNote')->willReturn('');
-		$link->method('getId')->willReturn(11);
+		$link->method('getId')->willReturn('11');
 		$node = $this->createMock(Node::class);
 		$node->method('getPath')->willReturn('/alice/files/report.pdf');
 		$link->method('getNode')->willReturn($node);
@@ -146,17 +144,15 @@ final class OpenIssuesPendingContractTest extends TestCase {
 	 * context injection (room count and/or message count cap).
 	 */
 	public function testIssue103TalkHistoryInjectionIsBounded(): void {
-		$this->markTestSkipped('Fix for issue #103 (bounded Talk context) is not implemented yet');
 		$provider = (string)file_get_contents(__DIR__ . '/../lib/TaskProcessing/AgentInteractionProvider.php');
 		$slice = $this->sliceBetween(
 			$provider,
 			'private function buildTalkHistoryContext',
 			'private function injectRagContext'
 		);
-		self::assertTrue(
-			str_contains($slice, 'MAX_TALK_ROOMS') || str_contains($slice, 'array_slice($rooms'),
-			'buildTalkHistoryContext must cap the number of auto-injected Talk rooms'
-		);
+		self::assertStringContainsString('MAX_TALK_ROOMS', $slice);
+		self::assertStringContainsString('MAX_TALK_MESSAGES_PER_ROOM', $slice);
+		self::assertStringNotContainsString('getRoomsForUser', $slice);
 	}
 
 	/**

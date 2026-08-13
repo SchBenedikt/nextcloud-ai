@@ -117,9 +117,9 @@ class ToolPolicy {
         // ---- Profile ----
         'read_profile' => [
             'risk' => self::RISK_READONLY,
-            'surfaces' => [self::SURFACE_WEB, self::SURFACE_TALK, self::SURFACE_TASKPROCESSING, self::SURFACE_RAG],
+            'surfaces' => [self::SURFACE_WEB, self::SURFACE_TASKPROCESSING, self::SURFACE_RAG],
             'requiresConfirmation' => false,
-            'description' => 'Read own profile',
+            'description' => 'Read own profile (not available in Talk)',
         ],
         'update_profile' => [
             'risk' => self::RISK_MUTATING,
@@ -195,9 +195,9 @@ class ToolPolicy {
         // ---- Shares ----
         'list_shares' => [
             'risk' => self::RISK_READONLY,
-            'surfaces' => [self::SURFACE_WEB, self::SURFACE_TALK, self::SURFACE_TASKPROCESSING, self::SURFACE_RAG],
+            'surfaces' => [self::SURFACE_WEB, self::SURFACE_TASKPROCESSING, self::SURFACE_RAG],
             'requiresConfirmation' => false,
-            'description' => 'List shares',
+            'description' => 'List shares (not available in Talk)',
         ],
         'create_share' => [
             'risk' => self::RISK_MUTATING,
@@ -259,9 +259,9 @@ class ToolPolicy {
         ],
         'server_status' => [
             'risk' => self::RISK_READONLY,
-            'surfaces' => [self::SURFACE_WEB, self::SURFACE_TALK, self::SURFACE_TASKPROCESSING, self::SURFACE_RAG],
+            'surfaces' => [self::SURFACE_WEB, self::SURFACE_TASKPROCESSING, self::SURFACE_RAG],
             'requiresConfirmation' => false,
-            'description' => 'Get server status',
+            'description' => 'Get server status (not available in Talk)',
         ],
         'current_time' => [
             'risk' => self::RISK_READONLY,

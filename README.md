@@ -18,7 +18,7 @@ always cite the source file path the model took the information from.
 - **Broad format support**: text (txt, md, code, csv, tsv, html, json, xml, yaml,
   toml, rtf, sql, …), PDF, Office (docx/xlsx/pptx incl. macro/template variants),
   OpenDocument (odt, ods, odp), EPUB and more
-- **Chat tools** (toggleable, risk-classified — see [Security](docs/SECURITY.md)):
+- **Chat tools** (toggleable, risk-classified — see [Security](docs/SECURITY.md)); Talk blocks sensitive profile, share-listing and server-status tools
   - **Files**: list, create, rename, delete, read, search, notes, personal knowledge base (`KNOWLEDGE.md`)
   - **Contacts**: find, create, update, delete (own, shared, group and Circles address books)
   - **Calendar**: list calendars/events, create/update/delete events, reminders, free-slot search
@@ -135,8 +135,7 @@ sudo -u www-data php occ eva_ai:talk:setup --remove                 # remove the
 sudo -u www-data php occ eva_ai:talk:setup --name="EVA" --description="Local RAG assistant"
 ```
 
-The bot answers based on the indexed documents of the user who added it, and it
-receives the last `talk_history_size` messages as context.
+The bot answers based on the indexed documents of the user who added it. TaskProcessing only receives Talk history when room IDs are explicitly supplied, limited to three rooms and the latest 20 messages per room; it never loads every room automatically. Sensitive tools such as profile, share-listing and server-status access are unavailable in Talk.
 
 ### 8. File-context chat from the Files app (optional)
 
