@@ -242,7 +242,7 @@ Gets how many unread emails the user currently has. No parameters.
 ## Shares
 
 ### list_shares
-Lists all file/folder shares of the user: outgoing (link + user/group shares) and incoming shares from others, with expiry, note and link.
+Lists file/folder shares of the user: outgoing and incoming shares with expiry and note. Existing public-link tokens and URLs are redacted; a newly created link returns its URL once.
 
 | Parameter | Type | Required | Description |
 |---|---|---|---|

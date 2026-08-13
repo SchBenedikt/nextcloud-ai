@@ -66,12 +66,13 @@ class ToolPolicySecurityTest extends TestCase {
         }
     }
 
-    public function testTalkSurfaceAllowsAllTools(): void {
+    public function testTalkSurfaceBlocksSensitiveInstanceAndProfileTools(): void {
         $this->policy->setSurface(ToolPolicy::SURFACE_TALK);
-        foreach ($this->policy->allToolNames() as $tool) {
-            $result = $this->policy->check($tool);
-            $this->assertTrue($result['allowed'], "Tool '$tool' should be allowed on talk surface");
-        }
+        self::assertTrue($this->policy->check('list_files')['allowed']);
+        self::assertTrue($this->policy->check('current_time')['allowed']);
+        self::assertFalse($this->policy->check('read_profile')['allowed']);
+        self::assertFalse($this->policy->check('list_shares')['allowed']);
+        self::assertFalse($this->policy->check('server_status')['allowed']);
     }
 
     public function testTaskProcessingSurfaceRestrictsMutatingTools(): void {
