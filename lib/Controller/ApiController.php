@@ -180,7 +180,11 @@ class ApiController extends OCSController {
         $url = trim($url);
         $parts = parse_url($url);
         if ($parts === false || !in_array(strtolower((string)($parts['scheme'] ?? '')), ['http', 'https'], true)
-            || empty($parts['host']) || isset($parts['user'], $parts['pass'], $parts['query'], $parts['fragment'])
+            || empty($parts['host'])
+            || isset($parts['user'])
+            || isset($parts['pass'])
+            || isset($parts['query'])
+            || isset($parts['fragment'])
             || (($parts['path'] ?? '') !== '' && ($parts['path'] ?? '') !== '/')
             || (isset($parts['port']) && ((int)$parts['port'] < 1 || (int)$parts['port'] > 65535))) {
             return 'Ollama server URL must be a plain http(s) URL without credentials, path, query or fragment.';
