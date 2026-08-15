@@ -18,15 +18,14 @@ use PHPUnit\Framework\TestCase;
 use Psr\Log\LoggerInterface;
 
 /**
- * Pending regression contracts for the open GitHub issues #99–#106.
+ * Pending regression contracts for the open GitHub issues #98–#106.
  *
- * Each test asserts the contract that the FIX must guarantee. The tests are
- * marked `markTestSkipped()` until the corresponding issue is implemented, so
- * CI stays green while the intended behaviour is documented and executable.
+ * Each test asserts the contract that the fix must guarantee. Contracts for
+ * issues already implemented in a focused batch run as active regression
+ * tests; the remaining contracts stay skipped until their issue is implemented.
  *
- * When you fix an issue:
- *   1. remove the `markTestSkipped(...)` line of that test,
- *   2. the assertions below then verify the fix and guard against regressions.
+ * When you fix a skipped issue, remove its `markTestSkipped(...)` line so the
+ * assertions below verify the fix and guard against regressions.
  */
 final class OpenIssuesPendingContractTest extends TestCase {
 
@@ -108,8 +107,6 @@ final class OpenIssuesPendingContractTest extends TestCase {
 	 * tools through unfiltered - tool calls outside the policy must be dropped.
 	 */
 	public function testIssue102ChatWithToolsFiltersCallsAgainstPolicy(): void {
-		$this->markTestSkipped('Fix for issue #102 (tool gateway policy) is not implemented yet');
-
 		$ollama = $this->createMock(Ollama::class);
 		$ollama->method('chat')->willReturn([
 			'answer' => '',
@@ -118,10 +115,14 @@ final class OpenIssuesPendingContractTest extends TestCase {
 			],
 		]);
 
+		$executor = $this->createMock(ActionExecutor::class);
+		$executor->method('tools')->willReturn([
+			['type' => 'function', 'function' => ['name' => 'list_files']],
+		]);
 		$provider = new TextToTextChatWithToolsProvider(
 			$this->createMock(AppConfig::class),
 			$ollama,
-			$this->createMock(ActionExecutor::class),
+			$executor,
 			$this->createMock(IL10N::class),
 			$this->createMock(LoggerInterface::class),
 		);
@@ -139,6 +140,18 @@ final class OpenIssuesPendingContractTest extends TestCase {
 
 		$calls = json_decode((string)($result['tool_calls'] ?? '[]'), true);
 		self::assertSame([], $calls, 'chatwithtools must drop tool calls that the surface policy would reject');
+	}
+
+	/**
+	 * Issue #98: a final tool-only streaming round must complete without a
+	 * misleading "No text response" transport error.
+	 */
+	public function testIssue98ToolOnlyStreamingRoundIsNotReportedAsFalseError(): void {
+		$rag = (string)file_get_contents(__DIR__ . '/../lib/Service/RagService.php');
+		self::assertStringContainsString('$toolActivity = false;', $rag);
+		self::assertStringContainsString("if (\$answer === '' && \$toolActivity)", $rag);
+		self::assertStringContainsString("'type' => 'done'", $rag);
+		self::assertStringContainsString('Ollama returned no text summary.', $rag);
 	}
 
 	/**
@@ -179,14 +192,11 @@ final class OpenIssuesPendingContractTest extends TestCase {
 	 * of growing without bound.
 	 */
 	public function testIssue105AgentStateRowsArePruned(): void {
-		$this->markTestSkipped('Fix for issue #105 (agent state pruning) is not implemented yet');
 		$store = (string)file_get_contents(__DIR__ . '/../lib/Service/AgentStore.php');
-		self::assertTrue(
-			str_contains($store, 'function purge')
-			|| str_contains($store, 'function deleteOlderThan')
-			|| str_contains($store, 'function cleanup'),
-			'AgentStore must expose a pruning/cleanup method'
-		);
+		$job = (string)file_get_contents(__DIR__ . '/../lib/BackgroundJob/IndexJob.php');
+		self::assertStringContainsString('function purgeOlderThan', $store);
+		self::assertStringContainsString('DELETE FROM *PREFIX*eva_ai_agent_state', $store);
+		self::assertStringContainsString('purgeOlderThan()', $job);
 	}
 
 	/**
