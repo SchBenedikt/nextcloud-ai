@@ -392,6 +392,16 @@ class ActionExecutor {
                 : $t['function']['parameters']['properties'];
         }
         unset($t);
+
+        // Tool definitions are filtered at the same policy boundary as
+        // execution. This is important for callers such as Talk and
+        // TaskProcessing: a provider must never expose a tool merely because
+        // a caller supplied or requested its name.
+        $output = array_values(array_filter($output, function (array $tool): bool {
+            $name = (string)($tool['function']['name'] ?? '');
+            return $name !== '' && ($this->toolPolicy->check($name)['allowed'] ?? false);
+        }));
+
         return $output;
     }
 

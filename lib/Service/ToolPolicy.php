@@ -83,7 +83,7 @@ class ToolPolicy {
         ],
         'update_knowledge' => [
             'risk' => self::RISK_MUTATING,
-            'surfaces' => [self::SURFACE_WEB, self::SURFACE_TALK, self::SURFACE_TASKPROCESSING],
+            'surfaces' => [self::SURFACE_WEB, self::SURFACE_TALK],
             'requiresConfirmation' => true,
             'description' => 'Update personal knowledge base',
         ],
