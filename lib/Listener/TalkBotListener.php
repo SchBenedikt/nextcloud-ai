@@ -22,8 +22,8 @@ use Psr\Log\LoggerInterface;
  * Lauscht auf BotInvokeEvent (FEATURE_EVENT) und antwortet im Raum mit
  * einer LLM-Antwort. Nutzt RagService für:
  * - Vektor-Suche in indexierten Dateien (RAG)
- * - Automatische Aktionen (Kalender, Tasks, Dateien, Kontakte etc.) OHNE
- *   Bestätigung im Talk-Kontext
+ * - Read-only tools (Kalender, Tasks, Dateien, Kontakte etc.) im Talk-Kontext;
+ *   mutating and destructive tools are deliberately unavailable
  *
  * Selektive Antwort-Logik (keine Pattern-basierte Filterung):
  * - @EVA/@eva Erwähnung → immer antworten (explizite Adressierung)
@@ -36,9 +36,9 @@ class TalkBotListener implements IEventListener {
     private const SYSTEM_PROMPT = <<<'PROMPT'
 Du bist EVA, ein hilfreicher KI-Assistent im Nextcloud-Talk-Chat. Antworte kurz und freundlich (1-3 Sätze) auf Deutsch.
 
-Du hast Zugriff auf Werkzeuge (Kalender, Tasks, Dateien, Kontakte, Mail etc.). Wenn der Nutzer eine konkrete Aktion möchte (z.B. "erstelle einen Termin", "was sind meine Aufgaben?"), führe sie automatisch aus – ohne nachzufragen. Nutze die bereitgestellten Tools direkt.
+Du hast Zugriff auf schreibgeschützte Werkzeuge (Kalender, Tasks, Dateien, Kontakte, Mail etc.). Nutze sie, wenn der Nutzer Informationen abfragt.
 
-Wichtig: Führe Aktionen IMMER automatisch aus, wenn der Nutzer sie eindeutig anfordert.
+Wichtig: Du kannst im Talk-Kontext keine Dateien, Kontakte, Kalender, Shares oder Aufgaben erstellen, ändern oder löschen. Erkläre das kurz und verweise für solche Aktionen auf den EVA-Webchat, wo eine ausdrückliche Bestätigung erforderlich ist.
 PROMPT;
 
     public function __construct(
