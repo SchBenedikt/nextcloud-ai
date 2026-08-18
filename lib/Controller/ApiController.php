@@ -7,6 +7,7 @@ namespace OCA\EvaAi\Controller;
 use OCA\EvaAi\Db\DocumentMapper;
 use OCA\EvaAi\Db\ChunkMapper;
 use OCA\EvaAi\Service\AppConfig;
+use OCA\EvaAi\Service\ActionExecutor;
 use OCA\EvaAi\Service\ChatStore;
 use OCA\EvaAi\Service\FileContextChatService;
 use OCA\EvaAi\Service\Indexer;
@@ -31,6 +32,7 @@ class ApiController extends OCSController {
         private ?string $userId,
         private AppConfig $config,
         private RagService $ragService,
+        private ActionExecutor $executor,
         private Indexer $indexer,
         private Ollama $ollama,
         private DocumentMapper $documentMapper,
@@ -482,6 +484,32 @@ class ApiController extends OCSController {
             'missing' => array_values(array_diff($fileIds, $indexed)),
             'files' => $files,
         ]);
+    }
+
+    /**
+     * Execute one model-proposed mutating action after an explicit click in
+     * the authenticated web chat. The tool policy is reset to WEB here so a
+     * previous Talk/worker request cannot influence this request's surface.
+     */
+    #[NoAdminRequired]
+    public function confirmTool(): DataResponse {
+        $user = $this->requireUser();
+        if ($user === null) {
+            return new DataResponse(['error' => 'Not logged in'], 401);
+        }
+        $name = trim((string)($this->requestParam('name') ?? ''));
+        $args = $this->requestParam('arguments', $this->requestParam('args', []));
+        if (is_string($args)) {
+            $decoded = json_decode($args, true);
+            $args = is_array($decoded) ? $decoded : [];
+        }
+        if ($name === '' || !is_array($args)) {
+            return new DataResponse(['error' => 'A tool name and argument object are required.'], 400);
+        }
+
+        $this->executor->setSurface(\OCA\EvaAi\Service\ToolPolicy::SURFACE_WEB);
+        $result = $this->executor->runConfirmed($user, $name, $args);
+        return new DataResponse($result, !empty($result['ok']) ? 200 : 400);
     }
 
     #[NoAdminRequired]

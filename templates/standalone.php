@@ -197,6 +197,14 @@
         .rtools .tool.bad { color: var(--color-error, #e9322d); }
         .rs .lab { color: var(--color-text-maxcontrast, #555); margin-bottom: 2px; }
         .rs a { display: block; color: var(--color-primary-element, #00679c); text-decoration: none; margin: 2px 0; }
+        .rconfirm { margin-top: 10px; max-width: min(100%, 560px); padding: 12px; border: 1px solid var(--color-border, #ccd0d4); border-left: 3px solid var(--color-warning, #eab308); border-radius: 8px; background: var(--color-background-hover, #f6f7f8); }
+        .rconfirm-label { font-size: 13px; font-weight: 650; }
+        .rconfirm-args { max-height: 150px; margin: 8px 0; padding: 8px; overflow: auto; white-space: pre-wrap; word-break: break-word; font: 12px/1.45 var(--font-family-monospace, monospace); color: var(--color-text-maxcontrast, #555); background: var(--color-main-background, #fff); border: 1px solid var(--color-border, #ddd); border-radius: 5px; }
+        .rconfirm-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+        .rconfirm-actions button { min-height: 34px; padding: 6px 12px; border: 1px solid var(--color-border, #ccd0d4); border-radius: 6px; cursor: pointer; font: inherit; font-size: 13px; }
+        .rconfirm-approve { color: var(--color-primary-element-text, #fff); background: var(--color-primary-element, #00679c); border-color: var(--color-primary-element, #00679c) !important; }
+        .rconfirm-reject { color: var(--color-main-text, #222); background: var(--color-main-background, #fff); }
+        .rconfirm-actions button:disabled { opacity: .6; cursor: default; }
         .export-btn {
             border: 1px solid var(--color-border, #ccc);
             background: var(--color-main-background, #fff);

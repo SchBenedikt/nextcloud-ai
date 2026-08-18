@@ -233,6 +233,14 @@ export default {
 .chatview-root .rs { margin-top: 8px; padding: 6px 0 0 10px; border-left: 2px solid var(--color-border, #ccc); font-size: 12px; color: var(--color-text-maxcontrast, #555); }
 .chatview-root .rs .lab { margin-bottom: 2px; font-weight: 600; }
 .chatview-root .rs a { display: block; color: var(--color-primary-element, #00679c); text-decoration: none; margin: 2px 0; }
+.chatview-root .rconfirm { margin-top: 10px; max-width: min(100%, 560px); padding: 12px; border: 1px solid var(--color-border, #ccd0d4); border-left: 3px solid var(--color-warning, #eab308); border-radius: 8px; background: var(--color-background-hover, #f6f7f8); }
+.chatview-root .rconfirm-label { font-size: 13px; font-weight: 650; color: var(--color-main-text, #222); }
+.chatview-root .rconfirm-args { max-height: 150px; margin: 8px 0; padding: 8px; overflow: auto; white-space: pre-wrap; word-break: break-word; font: 12px/1.45 var(--font-family-monospace, monospace); color: var(--color-text-maxcontrast, #555); background: var(--color-main-background, #fff); border: 1px solid var(--color-border, #ddd); border-radius: 5px; }
+.chatview-root .rconfirm-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+.chatview-root .rconfirm-actions button { min-height: var(--default-clickable-area, 34px); padding: 6px 12px; border: 1px solid var(--color-border, #ccd0d4); border-radius: var(--border-radius-element, 6px); cursor: pointer; font: inherit; font-size: 13px; }
+.chatview-root .rconfirm-approve { color: var(--color-primary-element-text, #fff); background: var(--color-primary-element, #00679c); border-color: var(--color-primary-element, #00679c) !important; }
+.chatview-root .rconfirm-reject { color: var(--color-main-text, #222); background: var(--color-main-background, #fff); }
+.chatview-root .rconfirm-actions button:disabled { opacity: .6; cursor: default; }
 .chatview-root .rtools { display: flex; flex-direction: column; gap: 4px; max-width: 86%; margin-top: 8px; }
 .chatview-root .rtools .tool { padding: 3px 0; font-size: 12px; color: var(--color-text-maxcontrast, #555); font-family: var(--font-family-monospace, monospace); }
 .chatview-root .rtools .tool.running { color: #8a6d1a; }

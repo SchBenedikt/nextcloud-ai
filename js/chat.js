@@ -259,6 +259,55 @@
 			wrap.appendChild(s);
 		}
 
+		if (m.confirmation && !m.confirmation.resolved) {
+			var panel = document.createElement('div');
+			panel.className = 'rconfirm';
+			var label = document.createElement('div');
+			label.className = 'rconfirm-label';
+			label.textContent = 'EVA wants to run: ' + m.confirmation.name;
+			var details = document.createElement('pre');
+			details.className = 'rconfirm-args';
+			details.textContent = JSON.stringify(m.confirmation.arguments || {}, null, 2);
+			var actions = document.createElement('div');
+			actions.className = 'rconfirm-actions';
+			var approve = document.createElement('button');
+			approve.type = 'button';
+			approve.className = 'rconfirm-approve';
+			approve.textContent = 'Confirm and run';
+			var reject = document.createElement('button');
+			reject.type = 'button';
+			reject.className = 'rconfirm-reject';
+			reject.textContent = 'Cancel';
+			var finish = function (text) {
+				m.confirmation.resolved = true;
+				m.text = text;
+				m.done = true;
+				renderAll(messages);
+				saveMessage('assistant', m.text).then(renderChatListAgain);
+			};
+			approve.addEventListener('click', function () {
+				approve.disabled = true;
+				reject.disabled = true;
+				approve.textContent = 'Running…';
+				api('POST', '/confirmTool', { name: m.confirmation.name, arguments: m.confirmation.arguments || {} })
+					.then(function (result) {
+						if (!result || !result.ok) {
+							finish('⚠️ ' + (result && result.error || 'The action could not be completed.'));
+							return;
+						}
+						finish('✅ ' + (typeof result.result === 'string' ? result.result : 'The action was completed.'));
+					})
+					.catch(function (error) { finish('⚠️ ' + String(error && error.message || error)); });
+			});
+			reject.addEventListener('click', function () { finish('Action cancelled.'); });
+			actions.appendChild(approve);
+			actions.appendChild(reject);
+			panel.appendChild(label);
+			panel.appendChild(details);
+			panel.appendChild(actions);
+			wrap.appendChild(panel);
+		}
+
 		els.msgs.appendChild(wrap);
 		if (els.empty) {
 			els.empty.style.display = 'none';
@@ -489,6 +538,17 @@
 						var t = last.tools[last.tools.length - 1];
 						t.state = ev.ok ? 'ok' : 'bad';
 					}
+				} else if (ev.type === 'confirmation') {
+					last.confirmation = {
+						name: ev.name || '?',
+						arguments: ev.arguments || {},
+						risk: ev.risk || 'mutating',
+						resolved: false
+					};
+					last.text = 'Please review this action and confirm it explicitly.';
+					last.done = true;
+					saveMessage('user', msg);
+					renderAll(messages);
 				} else if (ev.type === 'done') {
 					last.text = ev.answer || last.text;
 					last.sources = citedSources(last.text, ev.sources || []);

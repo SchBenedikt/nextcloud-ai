@@ -66,11 +66,13 @@ class ToolPolicySecurityTest extends TestCase {
         }
     }
 
-    public function testTalkSurfaceAllowsAllTools(): void {
+    public function testTalkSurfaceAllowsReadonlyToolsOnly(): void {
         $this->policy->setSurface(ToolPolicy::SURFACE_TALK);
-        foreach ($this->policy->allToolNames() as $tool) {
-            $result = $this->policy->check($tool);
-            $this->assertTrue($result['allowed'], "Tool '$tool' should be allowed on talk surface");
+        foreach ($this->policy->readonlyTools() as $tool) {
+            $this->assertTrue($this->policy->check($tool)['allowed'], "Read-only tool '$tool' should be allowed on Talk");
+        }
+        foreach (['create_file', 'delete_file', 'create_share', 'delete_calendar_event', 'update_profile'] as $tool) {
+            $this->assertFalse($this->policy->check($tool)['allowed'], "Mutating tool '$tool' must be blocked on Talk");
         }
     }
 
