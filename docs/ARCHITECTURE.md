@@ -162,7 +162,7 @@ The centralized tool policy exposes registered read-only tools to the safe RAG/T
 
 ## Index cancellation
 
-The Stop indexing action detaches the active per-user run immediately by clearing its run token and state. Queued workers and active workers stop at their next cancellation check and cannot overwrite a newer run. An Ollama embedding request already in progress cannot be interrupted by a separate PHP request, so that worker-side request may finish before cleanup, but no subsequent file or pass is started.
+The Stop indexing action sets a durable per-user cancellation flag but does not clear the run token or terminal state from the HTTP request. The UI therefore reports `stopping` until the worker confirms termination. Embedding requests use a bounded read timeout; queued workers and active workers stop at their next cancellation boundary, discard staged replacement rows, and the worker's `finally` block alone records the real finish time and releases the run claim. A start requested during this state is represented by a follow-up queued job that waits for the old worker to release the claim before creating a new run.
 
 ## Index conflict recovery
 

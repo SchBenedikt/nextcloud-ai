@@ -593,7 +593,7 @@ export default {
 			try {
 				const response = await api('POST', 'indexStop')
 				status.value = response?.status || status.value
-				setMessage('success', 'The indexing job was stopped.')
+				setMessage('info', response?.stopping ? 'Stop requested. Indexing will finish the current cancellable request and then release its lock.' : 'Indexing is stopped.')
 			} catch (error) {
 				setMessage('error', 'Indexing could not be stopped: ' + errMsg(error))
 			} finally {

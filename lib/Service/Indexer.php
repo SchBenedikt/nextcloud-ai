@@ -264,6 +264,11 @@ class Indexer {
                 $cancelled = true;
             }
             $this->flushBatch($batch, $result, $runId);
+            // A stop may have arrived during embedding; re-check before any
+            // cleanup or mail work so cancellation cannot trigger more writes.
+            if ($this->cancellationRequested($runId)) {
+                $cancelled = true;
+            }
             if (!$cancelled && $mode !== 'mail') {
                 if ($completed) {
                     // Full traversal: safe to remove files that are no longer
@@ -709,29 +714,34 @@ class Indexer {
         if (empty($batch)) {
             return;
         }
+        // Do not start expensive work after a stop request has been observed.
+        if ($this->cancellationRequested($runId)) {
+            $this->discardStagedBatch($batch);
+            $batch = [];
+            return;
+        }
         $this->touchHeartbeat($runId);
         $texts = [];
         foreach ($batch as $b) {
             $texts[] = $b['content'];
         }
-        
+
         [$vecs, $err] = $this->ollama->embedBatch($texts);
         $this->touchHeartbeat($runId);
+        // The HTTP client uses a bounded read timeout, but cancellation can
+        // still arrive while a response is completing. Never publish vectors
+        // from a batch after the stop flag was set.
+        if ($this->cancellationRequested($runId)) {
+            $this->discardStagedBatch($batch);
+            $batch = [];
+            return;
+        }
         if ($err !== null || $vecs === null) {
             $result['error'] = $err ?? 'Embedding error';
             $this->logger->error('eva_ai embedding failed', ['error' => $err]);
-            
-            // Remove docs created this batch so a later run retries them.
-            $docIds = [];
-            foreach ($batch as $b) {
-                $docIds[$b['docId']] = true;
-            }
-            $this->chunkMapper->deleteByDocumentIds(array_keys($docIds));
-            $this->documentMapper->deleteByIds(array_keys($docIds));
-            
-            // Note: Old documents are NOT deleted yet, so they remain available for search
-            $this->logger->info('eva_ai: Preserved old documents after embedding failure', ['docCount' => count($docIds)]);
-            
+            $this->discardStagedBatch($batch);
+            // Note: Old documents are NOT deleted yet, so they remain available for search.
+            $this->logger->info('eva_ai: Preserved old documents after embedding failure', ['docCount' => count(array_unique(array_column($batch, 'docId')))]);
             $batch = [];
             return;
         }
@@ -741,6 +751,11 @@ class Indexer {
             $perDoc[$b['docId']][] = ['index' => $b['index'], 'content' => $b['content'], 'tokens' => $b['tokens'], 'vec' => $vecs[$i], 'oldDocId' => $b['oldDocId']];
         }
         foreach ($perDoc as $docId => $chunks) {
+            if ($this->cancellationRequested($runId)) {
+                $this->discardStagedBatch($batch);
+                $batch = [];
+                return;
+            }
             foreach ($chunks as $c) {
                 $chunk = new Chunk();
                 $chunk->setDocumentId($docId);
@@ -756,7 +771,14 @@ class Indexer {
                 $this->documentMapper->update($doc);
             }
             
-            // Only remove old document after successful embedding of new version
+            // Only remove old document after successful embedding of new version.
+            // If cancellation arrived while publishing this document, remove
+            // the staged replacement and leave the old version intact.
+            if ($this->cancellationRequested($runId)) {
+                $this->discardStagedBatch($batch);
+                $batch = [];
+                return;
+            }
             $oldDocId = $chunks[0]['oldDocId'];
             if ($oldDocId !== null) {
                 try {
@@ -772,6 +794,22 @@ class Indexer {
             }
         }
         $batch = [];
+    }
+
+    /** Remove staged replacement documents without touching their old versions. */
+    private function discardStagedBatch(array $batch): void {
+        $docIds = [];
+        foreach ($batch as $entry) {
+            if (isset($entry['docId'])) {
+                $docIds[(int)$entry['docId']] = true;
+            }
+        }
+        if ($docIds === []) {
+            return;
+        }
+        $ids = array_keys($docIds);
+        $this->chunkMapper->deleteByDocumentIds($ids);
+        $this->documentMapper->deleteByIds($ids);
     }
 
 
@@ -859,6 +897,9 @@ class Indexer {
             }
         }
         $this->flushBatch($batch, $result, $runId);
+        if ($this->cancellationRequested($runId)) {
+            return;
+        }
 
         // Reconciliation (Issue #15): remove indexed mail documents whose
         // underlying message no longer exists in the Mail account.

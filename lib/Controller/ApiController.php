@@ -227,20 +227,15 @@ class ApiController extends OCSController {
         if ($this->config->get('index_running') !== '1') {
             return new DataResponse(['stopped' => true, 'status' => $this->ragService->buildStatus($user)]);
         }
+        // Keep the run claim and heartbeat until the worker confirms that it
+        // has stopped. Clearing them here makes the UI report a false
+        // completion and allows a second worker to race with the first one.
+        // The worker observes this durable cancellation flag at its next
+        // boundary and owns the terminal-state transition in its finally block.
         $this->config->set('index_cancel_requested', '1');
-        // Detach the run immediately so the UI and a subsequent start do not
-        // wait for a worker that may currently be inside an Ollama request.
-        // Clearing the run ID is the cancellation token: queued/active workers
-        // will exit on their next check and their finally blocks cannot clear a
-        // newer run's state. The per-user worker lock still prevents overlap.
-        $this->config->set('index_running', '0');
-        $this->config->set('index_mode', 'idle');
-        $this->config->set('index_run_id', '');
-        $this->config->set('index_heartbeat', '');
-        $this->config->set('index_finished', (string)time());
-        $this->config->set('index_cancel_requested', '0');
         return new DataResponse([
             'stopped' => true,
+            'stopping' => true,
             'status' => $this->ragService->buildStatus($user),
         ]);
     }
@@ -253,6 +248,26 @@ class ApiController extends OCSController {
         $this->config->setUserId($user);
         $this->recoverStaleIndex();
         if ($this->config->get('index_running') === '1') {
+            if ($this->config->get('index_cancel_requested') === '1') {
+                // A restart requested while the previous worker is stopping
+                // is queued behind it. The queued job claims a fresh run only
+                // after the old worker has released its lock and terminal state.
+                try {
+                    $this->jobList->add(IndexRequestJob::class, [
+                        'userId' => $user,
+                        'mode' => $mode,
+                        'waitForCancellation' => true,
+                    ]);
+                    return new DataResponse([
+                        'queued' => true,
+                        'waitingForStop' => true,
+                        'mode' => $mode,
+                        'status' => $this->ragService->buildStatus($user),
+                    ]);
+                } catch (\Throwable $e) {
+                    return new DataResponse(['error' => 'The follow-up index job could not be queued.'], 500);
+                }
+            }
             return new DataResponse([
                 'queued' => false,
                 'alreadyRunning' => true,
