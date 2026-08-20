@@ -88,18 +88,29 @@ final class OpenIssuesSecurityRegressionTest extends TestCase {
         self::assertSame([$document], $service->accessibleDocuments('alice', [$document]));
     }
 
-    public function testStopIndexDetachesTheRunImmediately(): void {
+    public function testStopIndexLeavesTerminalStateToTheWorker(): void {
         $controller = (string)file_get_contents(__DIR__ . '/../lib/Controller/ApiController.php');
         $start = strpos($controller, 'public function stopIndex');
         self::assertNotFalse($start);
-        $end = strpos($controller, 'private function recoverStaleIndex', $start);
+        $end = strpos($controller, 'private function queueIndex', $start);
         self::assertNotFalse($end);
         $stop = substr($controller, $start, $end - $start);
-        self::assertStringContainsString("set('index_running', '0')", $stop);
-        self::assertStringContainsString("set('index_mode', 'idle')", $stop);
-        self::assertStringContainsString("set('index_run_id', '')", $stop);
-        self::assertStringContainsString("set('index_heartbeat', '')", $stop);
-        self::assertStringContainsString("set('index_cancel_requested', '0')", $stop);
+        self::assertStringContainsString("set('index_cancel_requested', '1')", $stop);
+        self::assertStringContainsString("'stopping' => true", $stop);
+        self::assertStringNotContainsString("set('index_running', '0')", $stop);
+        self::assertStringNotContainsString("set('index_run_id', '')", $stop);
+        self::assertStringNotContainsString("set('index_finished', (string)time())", $stop);
+    }
+
+    public function testEmbeddingCancellationIsBoundedAndDiscardsStagedRows(): void {
+        $ollama = (string)file_get_contents(__DIR__ . '/../lib/Service/Ollama.php');
+        self::assertStringContainsString("'read_timeout' => 5", $ollama);
+        self::assertGreaterThanOrEqual(3, substr_count($ollama, "'read_timeout' => 5"));
+
+        $indexer = (string)file_get_contents(__DIR__ . '/../lib/Service/Indexer.php');
+        self::assertStringContainsString('private function discardStagedBatch', $indexer);
+        self::assertStringContainsString('Never publish vectors', $indexer);
+        self::assertStringContainsString('$this->discardStagedBatch($batch);', $indexer);
     }
 
     public function testIndexStartTreatsDuplicateRunsAsIdempotent(): void {
@@ -110,7 +121,12 @@ final class OpenIssuesSecurityRegressionTest extends TestCase {
         self::assertNotFalse($end);
         $queue = substr($controller, $start, $end - $start);
         self::assertStringContainsString("'alreadyRunning' => true", $queue);
+        self::assertStringContainsString("'waitingForStop' => true", $queue);
         self::assertStringContainsString("'message' => 'Indexing is already running for this user.'", $queue);
+        $requestJob = (string)file_get_contents(__DIR__ . '/../lib/BackgroundJob/IndexRequestJob.php');
+        self::assertStringContainsString("'waitForCancellation'", $controller);
+        self::assertStringContainsString('$waitForCancellation', $requestJob);
+        self::assertStringContainsString('sleep(1)', $requestJob);
         self::assertStringContainsString('private function requestParam', $controller);
         self::assertStringContainsString('private function requestBody', $controller);
         self::assertStringContainsString('$this->request->getParam(', $controller);

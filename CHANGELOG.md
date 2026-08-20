@@ -7,6 +7,7 @@ follows [Semantic Versioning](https://semver.org/).
 ## [Unreleased]
 
 ### Fixed
+- **Issues #65 and #94:** stopping an index run now leaves cancellation and terminal state ownership with the worker, so the UI shows `stopping` instead of a false completion; embedding requests have bounded read timeouts, staged replacement rows are discarded when cancellation arrives, and a restart requested during stopping is queued behind the old worker.
 - **Indexing API**: use native Nextcloud request parameters with a single non-recursive JSON fallback instead of a recursively named input wrapper; duplicate starts now remain idempotent while genuine worker-lock conflicts still return an actionable 409.
 - **Frontend**: the main Vue bundle is now emitted as `eva_ai-main.js` (was
   `eva-ai-main.js`), matching the name the page controller looks up. The app
@@ -41,6 +42,7 @@ follows [Semantic Versioning](https://semver.org/).
   re-registered under the new URL.
 
 ### Reliability and bug fixes
+- Index cancellation is now bounded at the Ollama embedding boundary and does not publish staged chunks after a stop request; the worker alone records the real finish time and releases the run claim.
 - **Issue #49:** background indexing now persists per-user enrollment, including empty or reset indexes, with an explicit Settings opt-out.
 - **Issue #57:** abandoned streaming requests now stop when the client disconnects and close the Ollama response stream without starting another tool round.
 - **Issue #58:** frontend API failures now preserve HTTP status and bounded server messages instead of becoming silent null responses.

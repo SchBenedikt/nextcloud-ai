@@ -31,11 +31,37 @@ class IndexRequestJob extends QueuedJob {
         $userId = is_array($argument) ? trim((string)($argument['userId'] ?? '')) : '';
         $mode = is_array($argument) ? (string)($argument['mode'] ?? 'all') : 'all';
         $runId = is_array($argument) ? (string)($argument['runId'] ?? '') : '';
-        if ($userId === '' || $runId === '' || !in_array($mode, ['all', 'files', 'mail'], true)) {
+        $waitForCancellation = is_array($argument) && !empty($argument['waitForCancellation']);
+        if ($userId === '' || (!$waitForCancellation && $runId === '') || !in_array($mode, ['all', 'files', 'mail'], true)) {
             return;
         }
 
         $this->config->setUserId($userId);
+        if ($waitForCancellation) {
+            // The old worker owns the per-user lock while it observes the stop
+            // request. Wait in the queued job instead of returning a spurious
+            // lock error, then claim a fresh run after the old state is gone.
+            for ($attempt = 0; $attempt < 60 && $this->config->get('index_running') === '1'; $attempt++) {
+                sleep(1);
+            }
+            if ($this->config->get('index_running') === '1' || $this->config->get('index_cancel_requested') === '1') {
+                $this->config->setUserId(null);
+                return;
+            }
+            $runId = bin2hex(random_bytes(16));
+            if (!$this->config->tryClaimIndex($userId)) {
+                $this->config->setUserId(null);
+                return;
+            }
+            $this->config->setUserId($userId);
+            $this->config->set('index_started', (string)time());
+            $this->config->set('index_heartbeat', (string)time());
+            $this->config->set('index_finished', '0');
+            $this->config->set('last_index_error', '');
+            $this->config->set('index_mode', $mode);
+            $this->config->set('index_cancel_requested', '0');
+            $this->config->set('index_run_id', $runId);
+        }
         $passes = 0;
         $lastResult = null;
         $ownsRun = $this->config->get('index_run_id') === $runId;

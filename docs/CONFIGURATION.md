@@ -40,6 +40,7 @@ or in the app's **Settings** tab. Values are plain strings; booleans use `1`/`0`
 | `chunk_overlap` | `120` | Overlap between consecutive chunks. |
 | `max_file_size` | `20971520` (20 MB) | Files larger than this are skipped. |
 | `max_files_per_run` | `40` | Files processed per indexing pass (protects against long jobs). |
+| `index_cancel_requested` | `0` | Per-user runtime flag. The Stop action sets it to `1`; only the worker clears it after releasing the run claim. |
 | `scope_path` | `''` | Only index files below this path (e.g. `/Documents`). Empty = entire home. |
 | `exclude_paths` | `''` | Comma-separated path prefixes to skip (e.g. `/.trash,/Photos`). |
 | `index_user` | `''` | Optional instance-wide legacy background-job user; normal users cannot change it from Settings. |
