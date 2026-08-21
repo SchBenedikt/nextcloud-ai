@@ -7,6 +7,8 @@ follows [Semantic Versioning](https://semver.org/).
 ## [Unreleased]
 
 ### Fixed
+- **Issue #70:** `search_files` now searches bounded readable text content as well as names, returns short content snippets, reports when traversal/result limits were reached, and skips binary or oversized files without aborting the search.
+- **Issue #93:** Knowledge-base trimming now removes only the oldest non-profile lines, preserves the automatic first-run identity section, logs the trim, and reports the warning in the tool result.
 - **Indexing API**: use native Nextcloud request parameters with a single non-recursive JSON fallback instead of a recursively named input wrapper; duplicate starts now remain idempotent while genuine worker-lock conflicts still return an actionable 409.
 - **Frontend**: the main Vue bundle is now emitted as `eva_ai-main.js` (was
   `eva-ai-main.js`), matching the name the page controller looks up. The app

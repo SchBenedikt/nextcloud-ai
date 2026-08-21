@@ -19,7 +19,7 @@ always cite the source file path the model took the information from.
   toml, rtf, sql, …), PDF, Office (docx/xlsx/pptx incl. macro/template variants),
   OpenDocument (odt, ods, odp), EPUB and more
 - **Chat tools** (toggleable, risk-classified — see [Security](docs/SECURITY.md)):
-  - **Files**: list, create, rename, delete, read, search, notes, personal knowledge base (`KNOWLEDGE.md`)
+  - **Files**: list, create, rename, delete, read, bounded name/content search with snippets, notes, personal knowledge base (`KNOWLEDGE.md`)
   - **Contacts**: find, create, update, delete (own, shared, group and Circles address books)
   - **Calendar**: list calendars/events, create/update/delete events, reminders, free-slot search
   - **Mail** (if the Mail app is installed): search, list, read, unread count — plus optional indexing of emails into the RAG index
@@ -245,6 +245,10 @@ See [docs/CONFIGURATION.md](docs/CONFIGURATION.md) for details.
 The Settings page groups configuration into five areas: **Connection & models**, **Safety & actions**, **Search & answer quality**, **Indexing & scope**, and **Talk & notifications**. Changes are saved explicitly with **Save changes**; **Save & start indexing** saves first and will not start a run if saving fails.
 
 Use **Check connection** to test the configured Ollama server, embedding model, and chat model. The indexing scope is relative to the user's Files root. The maximum file size is shown in MB in the UI and stored internally as bytes. EVA's recommended delete permission is **Only EVA-created files**; choosing **Any file in my Files** should only be done when that risk is understood. The **Chat history** section can permanently delete all saved EVA chats without touching your files or the document index; the chat sidebar refreshes immediately after deletion.
+
+## File search limits
+
+`search_files` searches names and readable text files (up to 1 MB per file), with bounded traversal (2,000 nodes, depth 5 and 50 results). A `truncated` flag tells the model when a larger search was capped; binary and unsupported files are skipped safely.
 
 ## Calendar tools: supported time formats
 
