@@ -49,7 +49,7 @@ class ToolPolicy {
             'risk' => self::RISK_READONLY,
             'surfaces' => [self::SURFACE_WEB, self::SURFACE_TALK, self::SURFACE_TASKPROCESSING, self::SURFACE_RAG],
             'requiresConfirmation' => false,
-            'description' => 'Search files by name',
+            'description' => 'Search files by name and bounded text content',
         ],
         'create_file' => [
             'risk' => self::RISK_MUTATING,

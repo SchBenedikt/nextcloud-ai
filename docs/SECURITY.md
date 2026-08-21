@@ -32,7 +32,7 @@ Every tool is registered centrally with three properties:
 ### Risk classification
 
 - **readonly** — no side effects. Safe on every surface:
-  `list_files`, `read_file`, `search_files`, `find_contact`, `read_profile`,
+  `list_files`, `read_file`, `search_files` (bounded name/content search), `find_contact`, `read_profile`,
   `list_calendars`, `list_calendar_events`, `find_free_slots`, `search_mails`,
   `list_mails`, `read_mail`, `unread_mail_count`, `list_shares`, `list_tasks`,
   `recent_activity`, `server_status`, `current_time`, `weather`.
@@ -91,6 +91,12 @@ For mutating/destructive tools EVA uses a two-phase flow:
 - **`actions_enabled = 0`**: turns the chat into read-only mode — no tools at all.
 - **Scope & exclusions**: `scope_path` and `exclude_paths` limit which folders
   are indexed (and thus visible to the model).
+- **Bounded file search**: `search_files` reads only supported text files up to
+  1 MB each, caps the walk at 2,000 nodes/depth 5/50 results, and never reads
+  binary content. Returned snippets are untrusted file data, not instructions.
+- **Knowledge retention**: when `KNOWLEDGE.md` reaches its size limit, only
+  old non-profile lines are removed; the automatic identity section is retained,
+  and the operation is logged and reported to the user.
 - **TLS verification** for weather and external HTTP calls is enabled; unknown
   certificates are rejected.
 - **Per-user data isolation**: documents, chunks and chat history are bound to

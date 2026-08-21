@@ -9,6 +9,8 @@ use OCA\EvaAi\Service\AppConfig;
 use OCA\EvaAi\Service\Ollama;
 use OCA\EvaAi\Service\SharesService;
 use OCA\EvaAi\TaskProcessing\TextToTextChatWithToolsProvider;
+use OCP\Files\File;
+use OCP\Files\Folder;
 use OCP\Files\IRootFolder;
 use OCP\Files\Node;
 use OCP\IL10N;
@@ -18,11 +20,12 @@ use PHPUnit\Framework\TestCase;
 use Psr\Log\LoggerInterface;
 
 /**
- * Pending regression contracts for the open GitHub issues #99–#106.
+ * Pending regression contracts for the open GitHub issues #99–#106,
+ * plus implemented contracts for #70 and #93.
  *
- * Each test asserts the contract that the FIX must guarantee. The tests are
- * marked `markTestSkipped()` until the corresponding issue is implemented, so
- * CI stays green while the intended behaviour is documented and executable.
+ * Each pending test asserts the contract that its FIX must guarantee and is
+ * skipped until that issue is implemented. The #70 and #93 tests are active
+ * regression tests for the fixes in this branch.
  *
  * When you fix an issue:
  *   1. remove the `markTestSkipped(...)` line of that test,
@@ -37,8 +40,67 @@ final class OpenIssuesPendingContractTest extends TestCase {
 		}
 	}
 
-	/**
-	 * Issue #99: recurring events (RRULE) must be expanded in
+    /**
+     * Issue #70: search_files must search bounded readable content as well as
+     * filenames and report when its traversal limits are reached.
+     */
+    public function testIssue70SearchFilesSearchesBoundedTextContent(): void {
+        $reflection = new \ReflectionClass(ActionExecutor::class);
+        $instance = $reflection->newInstanceWithoutConstructor();
+        $search = $reflection->getMethod('searchFiles');
+        $search->setAccessible(true);
+        $file = $this->createMock(File::class);
+        $file->method('getName')->willReturn('notes.txt');
+        $file->method('getSize')->willReturn(128);
+        $file->method('getMimeType')->willReturn('text/plain');
+        $file->method('getContent')->willReturn('The 2026 budget is approved.');
+        $folder = $this->createMock(Folder::class);
+        $folder->method('getDirectoryListing')->willReturn([$file]);
+        $result = $search->invoke($instance, $folder, ['query' => 'budget']);
+        self::assertSame('content', $result['result']['matches'][0]['reason']);
+        self::assertStringContainsString('budget', $result['result']['matches'][0]['snippet']);
+        self::assertFalse($result['result']['truncated']);
+
+        $executor = (string)file_get_contents(__DIR__ . '/../lib/Service/ActionExecutor.php');
+        self::assertStringContainsString("'reason' => 'content'", $executor);
+        self::assertStringContainsString('getContent()', $this->sliceBetween($executor, 'private function searchWalk', 'private function findContact'));
+        self::assertStringContainsString('MAX_SEARCH_NODES', $executor);
+        self::assertStringContainsString("'truncated' => \$truncated", $executor);
+        self::assertStringContainsString('MAX_SEARCH_FILE_BYTES', $executor);
+    }
+
+    /**
+     * Issue #93: knowledge trimming must preserve the automatic identity block
+     * while dropping old non-profile lines.
+     */
+    public function testIssue93KnowledgeTrimPreservesIdentityBlock(): void {
+        $executor = new \ReflectionClass(ActionExecutor::class);
+        $instance = $executor->newInstanceWithoutConstructor();
+        $method = $executor->getMethod('trimKnowledge');
+        $method->setAccessible(true);
+        $content = implode("\n", [
+            '# Old notes',
+            str_repeat('old fact ', 8000),
+            '<!-- eva_ai:profile-initialized -->',
+            '## About me (from my Nextcloud profile)',
+            '- Nextcloud user ID: alice',
+            '- Name: Alice Example',
+            '- Imported automatically on 2026-08-21.',
+            '- 2026-08-21: newest fact',
+        ]);
+        [$trimmed, $wasTrimmed] = $method->invoke($instance, $content);
+        self::assertTrue($wasTrimmed);
+        self::assertLessThanOrEqual(45000, mb_strlen($trimmed));
+        self::assertStringContainsString('eva_ai:profile-initialized', $trimmed);
+        self::assertStringContainsString('Nextcloud user ID: alice', $trimmed);
+        self::assertStringContainsString('Name: Alice Example', $trimmed);
+        self::assertStringContainsString('newest fact', $trimmed);
+        self::assertStringNotContainsString('# Old notes', $trimmed);
+    }
+
+    /**
+     * Issue #99: recurring events (RRULE) must be expanded in
+
 	 * list_calendar_events and find_free_slots.
 	 */
 	public function testIssue99RecurringEventsAreExpanded(): void {

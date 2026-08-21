@@ -28,7 +28,7 @@ lib/
 | `Ollama` | Thin HTTP client for the Ollama API (embedding + chat) |
 | `Searcher` | Hybrid retrieval: vector search + BM25, fused with RRF |
 | `RagService` | Orchestrates retrieval + prompt building + answer generation |
-| `ActionExecutor` | **Single chokepoint** for all tools — enforces `ToolPolicy` before executing |
+| `ActionExecutor` | **Single chokepoint** for all tools — enforces `ToolPolicy` before executing; bounded name/content file search and protected knowledge trimming |
 | `ToolPolicy` | Central tool registry: risk class, allowed surfaces, confirmation flags |
 | `CalendarService` | CalDAV access: calendars, events, reminders, free slots |
 | `SharesService` | File sharing: list/create/update/delete shares |
@@ -157,6 +157,8 @@ tools are allowed in each:
 ## Current UI and tool boundaries
 
 The workspace uses one responsive `--eva-content-width` token: it expands to `clamp(1180px, 78vw, 1680px)` on large displays and is constrained by the viewport on smaller screens. The native New chat action uses a block-level full width with Nextcloud's native wide modifier, matching the padded Documents and Settings navigation-item width directly below the chat search. Assistant providers keep stable IDs while using the display names `Eva · Local`, `Eva · RAG`, `Eva · Tools`, and `Eva · Agent`.
+
+`search_files` performs a bounded VFS walk and searches names plus readable text-file content, returning snippets and a `truncated` flag when its node/depth/result limits are reached. `update_knowledge` protects the automatic profile block while trimming only old non-profile lines when the file exceeds its size limit.
 
 The centralized tool policy exposes registered read-only tools to the safe RAG/TaskProcessing surfaces. File, calendar, contact, share, and task mutations remain restricted to interactive surfaces and require explicit confirmation where configured. Live web search is not implemented yet; see GitHub issue #54.
 
