@@ -7,7 +7,6 @@ namespace OCA\EvaAi\Service;
 use OCP\Files\IRootFolder;
 use OCP\Share\IManager as ShareManager;
 use OCP\Share\IShare;
-use OCP\Share\Exceptions\ShareNotFound;
 use OCP\Constants;
 
 /**
@@ -262,19 +261,32 @@ class SharesService {
         };
     }
 
-    /** Resolve share id ("ocinternal:12", "ocRoomShare:3" or plain id) owned by the user. */
+    /**
+     * Resolve an outgoing share by its stable full ID instead of scanning a
+     * bounded page of shares. Plain IDs are the internal provider IDs emitted
+     * by describe(); prefixed IDs are accepted for compatibility with callers
+     * that already have an IShare full ID.
+     */
     private function findOwnShare(string $userId, string $id): ?IShare {
-        foreach ([IShare::TYPE_USER, IShare::TYPE_GROUP, IShare::TYPE_LINK] as $type) {
+        $id = trim($id);
+        if ($id === '') {
+            return null;
+        }
+
+        $candidateIds = str_contains($id, ':')
+            ? [$id]
+            : ['ocinternal:' . $id, 'ocCircleShare:' . $id, 'ocMailShare:' . $id, 'ocRoomShare:' . $id, 'deck:' . $id];
+        foreach (array_values(array_unique($candidateIds)) as $candidateId) {
             try {
-                $shares = $this->shareManager->getSharesBy($userId, $type, null, true, 500, 0);
+                $share = $this->shareManager->getShareById($candidateId, $userId);
             } catch (\Throwable $e) {
                 continue;
             }
-            foreach ($shares as $share) {
-                if ((string)$share->getId() === $id
-                    || (str_starts_with((string)$share->getFullId(), 'oc:') && substr((string)$share->getFullId(), 3) === $id)) {
-                    return $share;
-                }
+            // getShareById() enforces recipient visibility, but not ownership.
+            // Keep the original outgoing-share boundary before allowing update
+            // or delete, including for a valid incoming share ID.
+            if ((string)$share->getSharedBy() === $userId) {
+                return $share;
             }
         }
         return null;
