@@ -23,7 +23,7 @@ always cite the source file path the model took the information from.
   - **Contacts**: find, create, update, delete (own, shared, group and Circles address books)
   - **Calendar**: list calendars/events, create/update/delete events, reminders, free-slot search
   - **Mail** (if the Mail app is installed): search, list, read, unread count — plus optional indexing of emails into the RAG index
-  - **Shares**: list (outgoing + incoming), create link/user/group shares with password, expiry and note; update and delete
+  - **Shares**: list (outgoing + incoming), create link/user/group shares with password, expiry and note; update and delete by stable share ID, including shares beyond the first 500 entries
   - **Tasks**: list, create, update, complete, delete (VTODO, all task-capable calendars)
   - **Profile**: read and update the own Nextcloud profile
   - **Utility**: activity feed, server status, current time (user timezone), weather (Open-Meteo)
@@ -248,7 +248,7 @@ Use **Check connection** to test the configured Ollama server, embedding model, 
 
 ## Calendar tools: supported time formats
 
-The chat interprets times in the user's timezone (e.g. `Europe/Berlin`):
+The chat interprets input times in the user's timezone (e.g. `Europe/Berlin`) and returns timed calendar events as explicit UTC timestamps:
 
 - ISO with/without `Z`: `2026-08-20T16:00:00Z`, `2026-08-20 16:00` (a `Z` is read as local time for non-UTC zones)
 - German formats: `20.08.2026 16:00`, `20/08/2026 16:00`

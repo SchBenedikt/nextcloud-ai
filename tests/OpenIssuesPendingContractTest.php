@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace OCA\EvaAi\Tests;
 
 use OCA\EvaAi\Service\ActionExecutor;
+use OCA\EvaAi\Service\CalendarService;
 use OCA\EvaAi\Service\AppConfig;
 use OCA\EvaAi\Service\Ollama;
 use OCA\EvaAi\Service\SharesService;
@@ -93,14 +94,21 @@ final class OpenIssuesPendingContractTest extends TestCase {
 	 * with a correct offset) instead of appending a bare "Z" to local times.
 	 */
 	public function testIssue101EventTimesAreReportedInUtc(): void {
-		$this->markTestSkipped('Fix for issue #101 (UTC conversion in listEvents) is not implemented yet');
 		$calendar = (string)file_get_contents(__DIR__ . '/../lib/Service/CalendarService.php');
 		$slice = $this->sliceBetween($calendar, 'public function listEvents', 'public function createEvent');
 		self::assertStringContainsString(
-			"setTimezone(new \\DateTimeZone('UTC'))",
+			'formatEventDateTime',
 			$slice,
-			'list_calendar_events must convert event times to UTC before appending "Z"'
+			'list_calendar_events must use the timezone-safe serializer'
 		);
+
+		$reflection = new \ReflectionClass(CalendarService::class);
+		$instance = $reflection->newInstanceWithoutConstructor();
+		$method = $reflection->getMethod('formatEventDateTime');
+		$method->setAccessible(true);
+		$local = new \DateTimeImmutable('2026-08-20 16:00:00', new \DateTimeZone('Europe/Berlin'));
+		self::assertSame('2026-08-20T14:00:00Z', $method->invoke($instance, $local, false));
+		self::assertSame('2026-08-20', $method->invoke($instance, $local, true));
 	}
 
 	/**
@@ -194,12 +202,22 @@ final class OpenIssuesPendingContractTest extends TestCase {
 	 * first 500 per type can be updated and deleted.
 	 */
 	public function testIssue106ShareLookupUsesIdFirst(): void {
-		$this->markTestSkipped('Fix for issue #106 (share id lookup) is not implemented yet');
 		$shares = (string)file_get_contents(__DIR__ . '/../lib/Service/SharesService.php');
+		$slice = $this->sliceToEnd($shares, 'private function findOwnShare');
 		self::assertStringContainsString(
 			'getShareById',
-			$shares,
+			$slice,
 			'findOwnShare must resolve shares by id before iterating'
+		);
+		self::assertStringContainsString(
+			'\'ocinternal:\' . $id',
+			$slice,
+			'plain provider IDs must be resolved through the internal share provider'
+		);
+		self::assertStringNotContainsString(
+			'getSharesBy($userId, $type, null, true, 500, 0)',
+			$slice,
+			'findOwnShare must not be limited to the first 500 shares'
 		);
 	}
 
