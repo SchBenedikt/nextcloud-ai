@@ -7,6 +7,7 @@ namespace OCA\EvaAi\BackgroundJob;
 use OCA\EvaAi\Service\AppConfig;
 use OCA\EvaAi\Service\Indexer;
 use OCP\AppFramework\Utility\ITimeFactory;
+use OCP\BackgroundJob\IJobList;
 use OCP\BackgroundJob\QueuedJob;
 use Psr\Log\LoggerInterface;
 
@@ -16,13 +17,17 @@ use Psr\Log\LoggerInterface;
  * configured scope is up to date or the user requests cancellation.
  */
 class IndexRequestJob extends QueuedJob {
+    // Keep one queue execution bounded. A follow-up job is queued when the
+    // pass budget is exhausted, so very large libraries can make progress
+    // without monopolising a worker indefinitely.
     private const MAX_PASSES = 1000;
 
     public function __construct(
         ITimeFactory $time,
         private AppConfig $config,
         private Indexer $indexer,
-        private LoggerInterface $logger
+        private LoggerInterface $logger,
+        private IJobList $jobList
     ) {
         parent::__construct($time);
     }
@@ -66,9 +71,18 @@ class IndexRequestJob extends QueuedJob {
                 }
             } while ($passes < self::MAX_PASSES);
 
-            if ($passes >= self::MAX_PASSES) {
-                $this->config->set('last_index_error', 'Indexing stopped after the safety pass limit.');
-                $this->logger->warning('eva_ai: background index pass limit reached', [
+            if ($passes >= self::MAX_PASSES && !$this->cancelRequested($runId)) {
+                // Do not report a successful continuation as an error. Queue
+                // the same run again; the run id preserves cancellation and
+                // stale-job protection across the hand-off.
+                $this->config->set('index_running', '1');
+                $this->config->set('index_mode', $mode);
+                $this->jobList->add(self::class, [
+                    'userId' => $userId,
+                    'mode' => $mode,
+                    'runId' => $runId,
+                ]);
+                $this->logger->info('eva_ai: queued follow-up index pass batch', [
                     'userId' => $userId,
                     'mode' => $mode,
                 ]);
