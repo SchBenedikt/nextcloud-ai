@@ -6,6 +6,9 @@ follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+- **Issue #99:** calendar event listing and free-slot detection now expand recurring events with bounded support for RRULE, RDATE, EXDATE, and RECURRENCE-ID.
+
 ### Fixed
 - **Indexing API**: use native Nextcloud request parameters with a single non-recursive JSON fallback instead of a recursively named input wrapper; duplicate starts now remain idempotent while genuine worker-lock conflicts still return an actionable 409.
 - **Frontend**: the main Vue bundle is now emitted as `eva_ai-main.js` (was
