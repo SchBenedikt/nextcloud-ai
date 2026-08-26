@@ -20,6 +20,13 @@ final class MigrationRegressionTest extends TestCase {
         }
     }
 
+    public function testLegacyTableMigrationDropsObsoleteDuplicateTables(): void {
+        $source = (string)file_get_contents(__DIR__ . '/../lib/Migration/Version101000Date20260810000000.php');
+        self::assertStringContainsString('$schema->dropTable($old)', $source);
+        self::assertStringContainsString('$schema->hasTable($new)', $source);
+        self::assertStringContainsString('$output->warning', $source);
+    }
+
     public function testIndexRepairKeepsLiteralLegacyNamesAndAvoidsSelfRename(): void {
         $source = (string)file_get_contents(__DIR__ . '/../lib/Migration/Version104000Date20260812000000.php');
 

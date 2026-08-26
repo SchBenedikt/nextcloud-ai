@@ -7,6 +7,7 @@ follows [Semantic Versioning](https://semver.org/).
 ## [Unreleased]
 
 ### Fixed
+- **Issue #116:** legacy `ragchat_*` tables are now explicitly removed when their current `eva_ai_*` counterparts already exist after a partial upgrade.
 - **Indexing API**: use native Nextcloud request parameters with a single non-recursive JSON fallback instead of a recursively named input wrapper; duplicate starts now remain idempotent while genuine worker-lock conflicts still return an actionable 409.
 - **Frontend**: the main Vue bundle is now emitted as `eva_ai-main.js` (was
   `eva-ai-main.js`), matching the name the page controller looks up. The app

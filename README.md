@@ -324,6 +324,8 @@ tools always require explicit user confirmation. See [docs/SECURITY.md](docs/SEC
 
 ## Development
 
+The app-ID migration treats the current `eva_ai_*` tables as authoritative and removes duplicate legacy `ragchat_*` tables left by interrupted upgrades.
+
 - **Tests**: `composer test` (PHPUnit) — security, provider, settings and migration regressions
 - **Frontend build**: `npm ci && npm run build`; CI also verifies that the expected generated bundles are emitted
 - **CI**: GitHub Actions on PHP 8.2 / 8.3 / 8.4 (see [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md)), dependency security audits (`quality.yml`) and nightly Nextcloud compatibility checks across all supported release lines (`nightly.yml`)
