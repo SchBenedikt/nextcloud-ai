@@ -254,6 +254,16 @@ final class OpenIssuesPendingContractTest extends TestCase {
 	}
 
 	/**
+	 * Issue #110: exhausting one worker's pass budget must queue a follow-up
+	 * job instead of reporting a false terminal error.
+	 */
+	public function testIssue110BackgroundIndexQueuesContinuation(): void {
+		$job = (string)file_get_contents(__DIR__ . '/../lib/BackgroundJob/IndexRequestJob.php');
+		self::assertStringContainsString('$this->jobList->add(self::class', $job);
+		self::assertStringNotContainsString('Indexing stopped after the safety pass limit.', $job);
+	}
+
+	/**
 	 * Issue #105: agent state rows must be pruned (TTL / cleanup job) instead
 	 * of growing without bound.
 	 */
