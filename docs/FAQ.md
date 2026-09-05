@@ -44,10 +44,12 @@ return a German or English explanation.
 
 ### Indexing takes very long / "Stop" seems to do nothing
 
-The worker only checks for a stop request **between** embedding batches. A
-single batch can take up to 600 s, so stopping can appear unresponsive for a
-few minutes. See issues #65 and #94. The `index_finished` state may also be set
-while the worker is still finishing up — wait for the run to actually finish.
+Stopping sets a durable cancellation request and the page intentionally shows
+**Stopping indexing…** until the worker confirms that it has released the run.
+Embedding reads have a bounded idle timeout, so a slow or unavailable Ollama
+request no longer keeps cancellation blocked for up to ten minutes. The worker
+also discards staged replacement rows when cancellation arrives and records the
+real finish time only after it has stopped. If you start indexing again while the status is still stopping, the follow-up run is queued until the old worker has released its lock. See issues #65 and #94.
 
 ### Starting an index returns 409 Conflict
 

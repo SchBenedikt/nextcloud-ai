@@ -185,7 +185,10 @@ class Ollama {
             $body = ['model' => $model, 'input' => $texts];
             $r = $this->client()->post($this->base() . '/api/embed', [
                 'json' => $body,
-                'timeout' => self::TIMEOUT,
+                // Keep cancellation responsive while allowing a cold model
+                // enough time to produce a normal batch response.
+                'timeout' => 30,
+                'read_timeout' => 5,
             ]);
             $data = json_decode((string)$r->getBody(), true);
             $embs = $data['embeddings'] ?? null;
@@ -208,7 +211,8 @@ class Ollama {
             foreach ($texts as $t) {
                 $r = $this->client()->post($this->base() . '/api/embeddings', [
                     'json' => ['model' => $model, 'prompt' => $t],
-                    'timeout' => self::TIMEOUT,
+                    'timeout' => 30,
+                    'read_timeout' => 5,
                 ]);
             $data = json_decode((string)$r->getBody(), true);
                 if (isset($data['embedding'])) {
