@@ -201,6 +201,8 @@ class TaskProcessingContractTest extends TestCase {
                 $args[] = $this->createMock(\OCA\EvaAi\Service\AppConfig::class);
             } elseif ($typeName === \OCA\EvaAi\Service\Ollama::class) {
                 $args[] = $this->createMock(\OCA\EvaAi\Service\Ollama::class);
+            } elseif ($typeName === \OCP\ICacheFactory::class) {
+                $args[] = $this->createMock(\OCP\ICacheFactory::class);
             } elseif ($typeName === \OCA\EvaAi\Service\ActionExecutor::class) {
                 $args[] = $this->createMock(\OCA\EvaAi\Service\ActionExecutor::class);
             } elseif ($typeName === \OCA\EvaAi\Service\AgentStore::class) {

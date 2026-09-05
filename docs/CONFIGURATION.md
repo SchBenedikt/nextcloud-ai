@@ -53,7 +53,7 @@ or in the app's **Settings** tab. Values are plain strings; booleans use `1`/`0`
 | Key | Default | Description |
 |---|---|---|
 | `actions_enabled` | `1` | Enable chat tools. `0` = read-only chat (no tools). |
-| `exec_write_types` | `''` (all) | Comma-separated allowed file types for AI-created files, e.g. `md,txt`. |
+| `exec_write_types` | `''` (all) | Comma-separated allowed file extensions for AI-created files, e.g. `md,txt`; values are normalized to lowercase without leading dots and limited to 32 entries. |
 | `exec_write_max_chars` | `100000` | Maximum size of AI-created file contents. |
 | `exec_delete_mode` | `own` | `own` = only delete files EVA created; `off` = deletion disabled entirely. |
 

@@ -161,6 +161,9 @@ class ApiController extends OCSController {
                 if ($key === 'exec_delete_mode') {
                     $value = in_array($value, ['off', 'own', 'all'], true) ? $value : 'own';
                 }
+                if ($key === 'exec_write_types') {
+                    $value = $this->config->normalizeValue($key, $value);
+                }
                 if ($key === 'notify_on_complete' || $key === 'mail_index_enabled' || $key === 'index_enrolled') {
                     $value = in_array((string)$value, ['1', 'true', 'on'], true) ? '1' : '0';
                 }

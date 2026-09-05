@@ -34,6 +34,12 @@ foreach ($roots as $root) {
 }
 
 if ($ocpRoot !== null) {
+    // OCP interfaces reference Nextcloud-bundled Doctrine and PSR packages.
+    // Load those dependencies before PHPUnit creates typed mocks for them.
+    $nextcloudAutoload = $ocpRoot . '/3rdparty/autoload.php';
+    if (is_file($nextcloudAutoload)) {
+        require_once $nextcloudAutoload;
+    }
     $loader->addPsr4('OCP\\', $ocpRoot . '/lib/public/');
     // OC\ internal classes (e.g. OC\Hooks\Emitter which OCP interfaces extend).
     if (is_dir($ocpRoot . '/lib/private')) {
@@ -43,6 +49,11 @@ if ($ocpRoot !== null) {
     // ships them under 3rdparty/psr/log.
     if (is_dir($ocpRoot . '/3rdparty/psr/log/src')) {
         $loader->addPsr4('Psr\\Log\\', $ocpRoot . '/3rdparty/psr/log/src/');
+    }
+    // The calendar regression contract uses the DAV backend class when the
+    // installed DAV app is available.
+    if (is_dir($ocpRoot . '/apps/dav/lib')) {
+        $loader->addPsr4('OCA\\DAV\\', $ocpRoot . '/apps/dav/lib/');
     }
     define('EVA_AI_OCP_AVAILABLE', true);
 } else {

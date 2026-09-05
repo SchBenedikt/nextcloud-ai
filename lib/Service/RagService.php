@@ -417,8 +417,11 @@ class RagService {
 
     public function buildStatus(string $userId): array {
         $this->config->setUserId($userId);
-        $ping = $this->ollama->ping();
-        $models = $this->ollama->listModels();
+        // Connectivity and model discovery share one /api/tags request and
+        // are cached briefly by Ollama, so frequent UI polling stays cheap.
+        $ollamaStatus = $this->ollama->status();
+        $ping = $ollamaStatus['ping'];
+        $models = $ollamaStatus['models'];
         $docCount = $this->documentMapper->countForUser($userId);
         $chunkCount = $this->chunkMapper->countForUser($userId);
 

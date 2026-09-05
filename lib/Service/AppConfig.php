@@ -207,10 +207,52 @@ class AppConfig {
     }
 
     /**
+     * Normalize values whose storage format is shared by the settings UI and
+     * action executor.
+     */
+    public function normalizeValue(string $key, mixed $value): mixed {
+        if ($key !== 'exec_write_types' || !is_scalar($value)) {
+            return $value;
+        }
+        $raw = trim((string)$value);
+        if ($raw === '' || $raw === '*') {
+            return $raw;
+        }
+        $types = [];
+        foreach (explode(',', $raw) as $type) {
+            $type = strtolower(trim($type));
+            $type = ltrim($type, '.');
+            if ($type !== '' && !in_array($type, $types, true)) {
+                $types[] = $type;
+            }
+        }
+        return implode(',', $types);
+    }
+
+    /**
      * Validate a value without coercing invalid input. Returns an error for
      * malformed, non-numeric, or out-of-range values.
      */
     public function validateValue(string $key, mixed $value): ?string {
+        if ($key === 'exec_write_types') {
+            if (!is_scalar($value)) {
+                return 'must be a comma-separated list of file extensions';
+            }
+            $raw = trim((string)$value);
+            if ($raw === '' || $raw === '*') {
+                return null;
+            }
+            $types = array_map(static fn(string $type): string => ltrim(strtolower(trim($type)), '.'), explode(',', $raw));
+            if (count($types) > 32 || in_array('*', $types, true)) {
+                return 'must contain at most 32 file extensions and may not mix * with extensions';
+            }
+            foreach ($types as $type) {
+                if ($type === '' || preg_match('/^[a-z0-9][a-z0-9_-]{0,15}$/', $type) !== 1) {
+                    return 'must be a comma-separated list of file extensions (for example md,txt,csv)';
+                }
+            }
+            return null;
+        }
         if (in_array($key, ['actions_enabled', 'notify_on_complete', 'mail_index_enabled', 'index_enrolled'], true)) {
             return is_scalar($value) && in_array((string)$value, ['0', '1', 'true', 'false', 'on', 'off'], true)
                 ? null : 'must be a boolean value';

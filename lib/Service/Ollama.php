@@ -5,15 +5,25 @@ declare(strict_types=1);
 namespace OCA\EvaAi\Service;
 
 use OCP\Http\Client\IClientService;
+use OCP\ICache;
+use OCP\ICacheFactory;
 use Psr\Log\LoggerInterface;
 
 class Ollama {
     private const TIMEOUT = 600;
+    private const STATUS_CACHE_TTL = 30;
+
+    /** @var array<string,array{expires:int,ping:array,models:array}> */
+    private static array $statusCache = [];
+
+    private ?ICache $statusStore = null;
+    private bool $statusStoreInitialized = false;
 
     public function __construct(
         private AppConfig $config,
         private IClientService $clientService,
-        private LoggerInterface $logger
+        private LoggerInterface $logger,
+        private ICacheFactory $cacheFactory
     ) {
     }
 
@@ -41,6 +51,90 @@ class Ollama {
         } catch (\Throwable $e) {
             return ['ok' => false, 'url' => $this->base(), 'error' => $e->getMessage()];
         }
+    }
+
+    /**
+     * Return connectivity and model information from one /api/tags request.
+     * The short process-local cache prevents repeated status polls from
+     * multiplying requests while keeping the information at most 30 seconds
+     * stale. Explicit connection checks continue to use testAll().
+     *
+     * @return array{ping:array,models:array<int,array<string,mixed>>}
+     */
+    public function status(): array {
+        $base = $this->base();
+        $now = time();
+        $key = 'tags_' . hash('sha256', $base);
+        $cached = $this->readStatusCache($key, $base, $now);
+        if ($cached !== null) {
+            return ['ping' => $cached['ping'], 'models' => $cached['models']];
+        }
+
+        try {
+            $response = $this->client()->get($base . '/api/tags', ['timeout' => 20]);
+            $status = $response->getStatusCode();
+            if ($status !== 200) {
+                $ping = [
+                    'ok' => false,
+                    'url' => $base,
+                    'error' => 'Ollama returned HTTP ' . $status . '.',
+                ];
+                $models = [];
+            } else {
+                $data = json_decode((string)$response->getBody(), true);
+                $models = is_array($data['models'] ?? null) ? $data['models'] : [];
+                $ping = ['ok' => true, 'url' => $base];
+            }
+        } catch (\Throwable $e) {
+            $ping = ['ok' => false, 'url' => $base, 'error' => $e->getMessage()];
+            $models = [];
+        }
+
+        $entry = [
+            'expires' => $now + self::STATUS_CACHE_TTL,
+            'ping' => $ping,
+            'models' => $models,
+        ];
+        self::$statusCache[$base] = $entry;
+        try {
+            $this->statusStore()->set($key, $entry, self::STATUS_CACHE_TTL);
+        } catch (\Throwable $e) {
+            // The process-local fallback above still protects long-running
+            // workers if the configured cache backend is temporarily absent.
+        }
+        return ['ping' => $ping, 'models' => $models];
+    }
+
+    /**
+     * @return array{expires:int,ping:array,models:array}|null
+     */
+    private function readStatusCache(string $key, string $base, int $now): ?array {
+        $cached = null;
+        try {
+            $cached = $this->statusStore()->get($key);
+        } catch (\Throwable $e) {
+            $cached = self::$statusCache[$base] ?? null;
+        }
+        if (!is_array($cached) || !isset($cached['expires'], $cached['ping'], $cached['models'])
+            || (int)$cached['expires'] <= $now) {
+            $cached = self::$statusCache[$base] ?? null;
+        }
+        return is_array($cached) && (int)($cached['expires'] ?? 0) > $now ? $cached : null;
+    }
+
+    private function statusStore(): ICache {
+        if (!$this->statusStoreInitialized) {
+            $this->statusStoreInitialized = true;
+            try {
+                $this->statusStore = $this->cacheFactory->createDistributed('eva_ai_status_');
+            } catch (\Throwable $e) {
+                $this->statusStore = null;
+            }
+        }
+        if ($this->statusStore === null) {
+            throw new \RuntimeException('No distributed cache available');
+        }
+        return $this->statusStore;
     }
 
     /** @return array<int,array<string,mixed>> */
