@@ -40,25 +40,24 @@ class MigrateLegacyAppIdRepairStep implements IRepairStep {
             }
         }
 
-        $users = [];
-        $this->userManager->callForAllUsers(function ($user) use (&$users): void {
-            $users[] = (string)$user->getUID();
-        });
-        foreach (array_values(array_unique($users)) as $userId) {
+        $userCount = 0;
+        $this->userManager->callForAllUsers(function ($user) use (&$userCount): void {
+            $userId = (string)$user->getUID();
             foreach ($this->config->getUserKeys($userId, self::LEGACY) as $key) {
                 $value = $this->config->getUserValue($userId, self::LEGACY, $key, '');
                 if ($value !== '') {
                     $this->config->setUserValue($userId, self::CURRENT, $key, $value);
                 }
             }
-        }
+            $userCount++;
+        });
 
         // Remove only after every value was copied. This avoids leaving a
         // second active configuration namespace behind after a successful run.
         if ($keys !== []) {
             $this->config->deleteAppValues(self::LEGACY);
         }
-        if ($users !== []) {
+        if ($userCount > 0) {
             $this->config->deleteAppFromAllUsers(self::LEGACY);
         }
         $output->info('Migrated legacy EVA configuration from eva-ai to eva_ai.');

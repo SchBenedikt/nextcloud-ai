@@ -85,6 +85,8 @@ final class MigrationRegressionTest extends TestCase {
         self::assertStringContainsString('MigrateLegacyAppIdRepairStep', $info);
         self::assertStringContainsString('getAppKeys(self::LEGACY)', $repair);
         self::assertStringContainsString('getUserKeys($userId, self::LEGACY)', $repair);
+        self::assertStringNotContainsString('$users = []', $repair);
+        self::assertStringContainsString('$userCount = 0', $repair);
         self::assertStringContainsString('setAppValue(self::CURRENT', $repair);
         self::assertStringContainsString('setUserValue($userId, self::CURRENT', $repair);
     }
