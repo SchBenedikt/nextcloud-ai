@@ -13,6 +13,12 @@ always cite the source file path the model took the information from.
 
 ## Features
 
+Eine ausführliche deutschsprachige Übersicht über Bedienoberflächen,
+Wissenssuche, Werkzeuge, Sicherheitsgrenzen und bekannte Einschränkungen steht
+in **[docs/FUNKTIONEN.md](docs/FUNKTIONEN.md)**. Die vollständigen Ein- und
+Ausgabeparameter aller Modellwerkzeuge sind in **[TOOLS.md](TOOLS.md)**
+dokumentiert.
+
 - **Local & private**: pure PHP, no external AI service; only a local Ollama instance
 - **Hybrid retrieval**: vector search + lexical search (BM25), fused with RRF
 - **Broad format support**: text (txt, md, code, csv, tsv, html, json, xml, yaml,

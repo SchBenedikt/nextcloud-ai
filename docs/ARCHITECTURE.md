@@ -129,7 +129,7 @@ tools are allowed in each:
 | Surface | Set by | Mutating tools |
 |---|---|---|
 | `web` | default | ✅ (after confirmation) |
-| `talk` | `TalkBotListener::handle()` | ✅ (after confirmation) |
+| `talk` | `TalkBotListener::handle()` | ❌ readonly only |
 | `rag` | RAG pipeline | ❌ readonly only |
 | `taskprocessing` | TaskProcessing providers (proposal phase) | ❌ readonly only |
 | `taskprocessing_confirmed` | Native Assistant confirmation phase | ✅ only the confirmed action |

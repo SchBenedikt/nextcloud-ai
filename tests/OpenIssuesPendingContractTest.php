@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace OCA\EvaAi\Tests;
 
+use OCA\DAV\CalDAV\CalDavBackend;
 use OCA\EvaAi\Service\ActionExecutor;
 use OCA\EvaAi\Service\CalendarService;
 use OCA\EvaAi\Service\AppConfig;
@@ -239,13 +240,44 @@ final class OpenIssuesPendingContractTest extends TestCase {
 	 * all calendars - the scan must be limited to the requested window.
 	 */
 	public function testIssue104FreeSlotsPrefiltersByDateRange(): void {
-		$this->markTestSkipped('Fix for issue #104 (free-slot range prefiltering) is not implemented yet');
 		$calendar = (string)file_get_contents(__DIR__ . '/../lib/Service/CalendarService.php');
 		$slotSlice = $this->sliceToEnd($calendar, 'public function findFreeSlots');
 		self::assertStringNotContainsString(
 			'getCalendarObjects((int)$c[\'id\'])',
 			$slotSlice,
 			'find_free_slots must query calendar objects within the requested window'
+		);
+		self::assertStringContainsString(
+			'eventUrisInRange((int)$c[\'id\'], $rangeStart, $rangeEnd)',
+			$slotSlice,
+			'find_free_slots must pass its bounded date range to the backend query'
+		);
+
+		$querySlice = $this->sliceBetween($calendar, 'private function eventUrisInRange', 'public function createEvent');
+		self::assertStringContainsString('calendarQuery($calendarId', $querySlice);
+		self::assertStringContainsString("'name' => 'VEVENT'", $querySlice);
+		self::assertStringContainsString("'time-range'", $querySlice);
+
+		$rangeStart = new \DateTimeImmutable('2026-09-05T00:00:00+00:00');
+		$rangeEnd = new \DateTimeImmutable('2026-09-12T00:00:00+00:00');
+		$backend = $this->createMock(CalDavBackend::class);
+		$backend->expects(self::once())
+			->method('calendarQuery')
+			->with(42, self::callback(static function (array $filter) use ($rangeStart, $rangeEnd): bool {
+				$event = $filter['comp-filters'][0] ?? [];
+				return ($filter['name'] ?? null) === 'VCALENDAR'
+					&& ($event['name'] ?? null) === 'VEVENT'
+					&& ($event['time-range']['start'] ?? null) === $rangeStart
+					&& ($event['time-range']['end'] ?? null) === $rangeEnd;
+			}))
+			->willReturn(['first.ics', '', 'second.ics']);
+
+		$service = new CalendarService($backend, $this->createMock(\OCP\IConfig::class));
+		$method = new \ReflectionMethod($service, 'eventUrisInRange');
+		self::assertSame(
+			['first.ics', 'second.ics'],
+			$method->invoke($service, 42, $rangeStart, $rangeEnd),
+			'calendarQuery results must be normalized before calendar objects are loaded'
 		);
 	}
 
