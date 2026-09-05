@@ -80,7 +80,6 @@ class ToolPolicySecurityTest extends TestCase {
         self::assertFalse($this->policy->check('list_shares')['allowed']);
         self::assertFalse($this->policy->check('server_status')['allowed']);
     }
-    }
 
     public function testTaskProcessingSurfaceRestrictsMutatingTools(): void {
         $this->policy->setSurface(ToolPolicy::SURFACE_TASKPROCESSING);

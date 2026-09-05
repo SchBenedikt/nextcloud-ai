@@ -428,7 +428,6 @@ class CalendarService {
         }
         return $date->setTimezone(new \DateTimeZone('UTC'))->format('Y-m-d\\TH:i:s\\Z');
     }
-    }
 
     /** @return array{ok:true,result:array}|array{ok:false,error:string} */
     public function createEvent(string $userId, array $args): array {
