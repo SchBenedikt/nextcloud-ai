@@ -66,13 +66,20 @@ class ToolPolicySecurityTest extends TestCase {
         }
     }
 
-    public function testTalkSurfaceBlocksSensitiveInstanceAndProfileTools(): void {
+    public function testTalkSurfaceAllowsReadonlyToolsOnly(): void {
         $this->policy->setSurface(ToolPolicy::SURFACE_TALK);
+        foreach ($this->policy->readonlyTools() as $tool) {
+            $this->assertTrue($this->policy->check($tool)['allowed'], "Read-only tool '$tool' should be allowed on Talk");
+        }
+        foreach (['create_file', 'delete_file', 'create_share', 'delete_calendar_event', 'update_profile'] as $tool) {
+            $this->assertFalse($this->policy->check($tool)['allowed'], "Mutating tool '$tool' must be blocked on Talk");
+        }
         self::assertTrue($this->policy->check('list_files')['allowed']);
         self::assertTrue($this->policy->check('current_time')['allowed']);
         self::assertFalse($this->policy->check('read_profile')['allowed']);
         self::assertFalse($this->policy->check('list_shares')['allowed']);
         self::assertFalse($this->policy->check('server_status')['allowed']);
+    }
     }
 
     public function testTaskProcessingSurfaceRestrictsMutatingTools(): void {

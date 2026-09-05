@@ -406,15 +406,36 @@ class ActionExecutor {
     }
 
     /**
-     * Führt einen Tool-Aufruf aus. Wirft nie - liefert immer {ok, result|error}.
+     * Execute a tool after the caller has explicitly confirmed it.
+     *
+     * This is intentionally a separate method so ordinary model-generated
+     * calls cannot accidentally opt into the confirmation bypass.
+     *
      * @return array{ok:bool,result?:mixed,error?:string}
      */
-    public function run(string $userId, string $name, array $args): array {
+    public function runConfirmed(string $userId, string $name, array $args): array {
+        return $this->run($userId, $name, $args, true);
+    }
+
+    /**
+     * Führt einen Tool-Aufruf aus. Wirft nie - liefert immer {ok, result|error}.
+     * @return array{ok:bool,result?:mixed,error?:string,confirmation_required?:bool,tool?:string,risk?:string}
+     */
+    public function run(string $userId, string $name, array $args, bool $confirmed = false): array {
         $this->config->setUserId($userId);
         // Centralized tool permission check
         $policy = $this->toolPolicy->check($name);
         if (!$policy['allowed']) {
             return ['ok' => false, 'error' => $policy['reason'] ?? 'Tool not allowed'];
+        }
+        if (($policy['requiresConfirmation'] ?? false) && !$confirmed) {
+            return [
+                'ok' => false,
+                'confirmation_required' => true,
+                'tool' => $name,
+                'risk' => (string)($policy['risk'] ?? ToolPolicy::RISK_MUTATING),
+                'error' => 'This action requires explicit user confirmation before it can be executed.',
+            ];
         }
 
         // File tools must work consistently in TaskProcessing workers

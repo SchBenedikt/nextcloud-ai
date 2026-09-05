@@ -70,8 +70,22 @@ class RagService {
             $messages[] = ['role' => 'assistant', 'content' => $chat['answer'] ?? '', 'tool_calls' => $this->canonicalToolCalls($chat['raw_tool_calls'] ?? [])];
             foreach ($toolCalls as $tc) {
                 $res = $this->executor->run($userId, $tc['name'], $tc['arguments']);
+                if (!empty($res['confirmation_required'])) {
+                    return [
+                        'answer' => 'I need your confirmation before I can perform that action.',
+                        'sources' => array_values($byDoc),
+                        'model' => $chat['model'] ?? $this->config->get('chat_model'),
+                        'error' => null,
+                        'confirmation' => [
+                            'name' => $tc['name'],
+                            'arguments' => $tc['arguments'],
+                            'risk' => $res['risk'] ?? ToolPolicy::RISK_MUTATING,
+                        ],
+                    ];
+                }
                 $messages[] = ['role' => 'tool', 'content' => json_encode($res, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES)];
             }
+
         }
 
         return [
@@ -146,6 +160,15 @@ class RagService {
                     yield json_encode(['type' => 'tool', 'name' => $tc['name'] ?? '?']) . "\n";
                     $res = $this->executor->run($userId, $tc['name'] ?? '', $tc['arguments'] ?? []);
                     $toolFailure = $toolFailure || empty($res['ok']);
+                    if (!empty($res['confirmation_required'])) {
+                        yield json_encode([
+                            'type' => 'confirmation',
+                            'name' => $tc['name'] ?? '?',
+                            'arguments' => $tc['arguments'] ?? [],
+                            'risk' => $res['risk'] ?? ToolPolicy::RISK_MUTATING,
+                        ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) . "\n";
+                        return;
+                    }
                     yield json_encode(['type' => 'tool_result', 'name' => $tc['name'] ?? '?', 'ok' => !empty($res['ok']), 'error' => $res['error'] ?? null]) . "\n";
                     $messages[] = ['role' => 'tool', 'content' => json_encode($res, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES)];
                 }

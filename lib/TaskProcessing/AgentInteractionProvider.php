@@ -331,7 +331,7 @@ class AgentInteractionProvider implements ISynchronousProvider {
 				$args = $tc['arguments'];
 			}
 			try {
-				$res = $this->executor->run($userId, $name, $args);
+				$res = $this->executor->runConfirmed($userId, $name, $args);
 			} catch (\Throwable $e) {
 				$res = ['ok' => false, 'error' => $e->getMessage()];
 			}

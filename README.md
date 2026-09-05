@@ -28,7 +28,9 @@ always cite the source file path the model took the information from.
   - **Profile**: read and update the own Nextcloud profile
   - **Utility**: activity feed, server status, current time (user timezone), weather (Open-Meteo)
 - **TaskProcessing providers**: 13 providers for the Assistant app (chat, summary, headline, topics, translate, reformulate, proofread, reformat, change tone, context write, …); the tools provider exposes only policy-allowed read-only tools and never trusts caller-supplied tool definitions or policy prompts
-- **Talk bot**: optional Nextcloud Talk integration — EVA answers in conversations
+- Mutating and destructive actions are never executed directly by the model: the web chat shows the exact tool name and arguments and requires an explicit **Confirm and run** click.
+- **Talk bot**: optional Nextcloud Talk integration — EVA answers in conversations using read-only tools only; file, calendar, share, contact and task changes are unavailable in Talk
+
 - **File-context chat**: right-click a file in the Files app → "Open with EVA"
 - **Responsive chat and document UI**: fluid layouts for mobile and wide desktop screens, with explicit chunk loading, empty, error and retry states when inspecting indexed documents
 - **Reliable indexing requests**: request parameters use Nextcloud's native access with a single non-recursive JSON fallback, preserving POST bodies while avoiding recursive input handling and memory failures; duplicate starts are idempotent while genuine worker-lock conflicts remain explicit 409 responses
@@ -97,7 +99,7 @@ sudo -u www-data php occ config:app:set eva_ai ollama_url --value=http://192.168
 2. In **Settings** start the index with the **"Start indexing"** button. Starting an index explicitly enrolls your account in the recurring background schedule, even when the first pass finds zero documents. You can disable future scheduled passes with **Keep indexing this account in the background** in Settings. Per-user indexing uses the currently authenticated user. The optional instance-wide
    legacy background job can be limited with `index_user`. Each pass also
    indexes emails (subject, sender, body) if `mail_index_enabled` is on.
-3. Then chat. Tools are enabled by default; every answer names which file it used.
+3. Then chat. Tools are enabled by default; every answer names which file it used. When EVA proposes a file, calendar, contact, share or task change, review the displayed arguments and click **Confirm and run**; cancelling leaves your data unchanged. The Talk bot is intentionally read-only and cannot perform changes.
 
 ### 5. TaskProcessing / Assistant (optional, recommended)
 
@@ -137,7 +139,7 @@ sudo -u www-data php occ eva_ai:talk:setup --remove                 # remove the
 sudo -u www-data php occ eva_ai:talk:setup --name="EVA" --description="Local RAG assistant"
 ```
 
-The bot answers based on the indexed documents of the user who added it. TaskProcessing only receives Talk history when room IDs are explicitly supplied, limited to three rooms and the latest 20 messages per room; it never loads every room automatically. Sensitive tools such as profile, share-listing and server-status access are unavailable in Talk.
+The bot answers based on the indexed documents of the user who added it. TaskProcessing only receives Talk history when room IDs are explicitly supplied, limited to three rooms and the latest 20 messages per room; it never loads every room automatically. Sensitive tools such as profile, share-listing and server-status access are unavailable in Talk. Talk exposes read-only information tools only; mutating or destructive actions are blocked there and must be performed from the authenticated web chat, where EVA asks for explicit confirmation before execution.
 
 ### 8. File-context chat from the Files app (optional)
 

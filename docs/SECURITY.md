@@ -55,12 +55,16 @@ Not every surface may run every tool:
 | Surface | Context | Mutating tools allowed? |
 |---|---|---|
 | `web` | EVA web chat UI | ✅ yes (with confirmation) |
-| `talk` | Nextcloud Talk bot | ✅ yes (with confirmation), but sensitive profile/share/server-status reads are blocked |
+| `talk` | Nextcloud Talk bot | ❌ no — readonly only |
 | `rag` | RAG pipeline internals | ❌ no — only readonly tools |
 | `taskprocessing` | Assistant app / background workers | ❌ no — only readonly tools (before user confirmation) |
 
-This prevents a background job or the Assistant app from silently creating,
-deleting or overwriting data. Talk additionally does not expose profile details, existing share listings or instance server status. The `AgentInteractionProvider` switches the surface to `web` **only after** the user confirmed a proposed tool call, so the confirmation flow keeps working in TaskProcessing.
+This prevents Talk participants, a background job or the Assistant app from silently
+creating, deleting or overwriting data. Talk intentionally has no mutating tools:
+room members cannot use the bot to change the bot owner's files, shares, contacts,
+calendar or tasks. The `AgentInteractionProvider` switches the surface to `web`
+**only after** the user confirmed a proposed tool call, so the confirmation flow
+keeps working in TaskProcessing.
 
 Talk history is opt-in: TaskProcessing only accepts explicitly supplied room IDs and caps the context at three rooms and the latest 20 messages per room. It never discovers and injects every room automatically.
 
@@ -79,8 +83,17 @@ retention of abandoned prompts and pending actions.
 `ActionExecutor::run()` is the single chokepoint: it calls `ToolPolicy::check()`
 for the tool name before any operation is performed. Tools that are not
 registered, not allowed on the current surface, or that fail validation are
-rejected **before** touching any data. This also defends against prompt-injected
-fake tool names.
+rejected **before** touching any data. Mutating/destructive tools additionally
+return `confirmation_required` unless the caller uses the dedicated
+`runConfirmed()` path after an explicit user approval. This also defends against
+prompt-injected fake tool names.
+
+The web streaming path emits a bounded pending action containing the tool name and
+arguments. The authenticated web UI renders those values and calls
+`POST /api/confirmTool` only after the user clicks **Confirm and run**. The endpoint
+resets the surface to `web`, rechecks policy and executes exactly that confirmed
+call; cancellation never reaches the executor. Talk has no equivalent confirmation
+endpoint and therefore cannot expose mutating tools.
 
 ## 3. Confirmation flow (agent mode)
 

@@ -153,6 +153,7 @@ final class FrontendContractTest extends TestCase {
         self::assertStringContainsString("'HTTP ' + r.status", $standalone);
     }
 
+
     public function testChatMessagesArePersistedInQuestionThenAnswerOrder(): void {
         $source = (string)file_get_contents(__DIR__ . '/../src/lib/vanilla.js');
         self::assertStringContainsString(
@@ -180,6 +181,30 @@ final class FrontendContractTest extends TestCase {
         $rag = (string)file_get_contents(__DIR__ . '/../lib/Service/RagService.php');
         self::assertStringContainsString('use Psr\\Log\\LoggerInterface;', $rag);
         self::assertStringContainsString('private LoggerInterface $logger', $rag);
+    }
+
+    public function testToolConfirmationIsEnforcedAcrossWebAndTalk(): void {
+        $executor = (string)file_get_contents(__DIR__ . '/../lib/Service/ActionExecutor.php');
+        self::assertStringContainsString('bool $confirmed = false', $executor);
+        self::assertStringContainsString("'confirmation_required' => true", $executor);
+        self::assertStringContainsString('public function runConfirmed', $executor);
+
+        $policy = (string)file_get_contents(__DIR__ . '/../lib/Service/ToolPolicy.php');
+        self::assertStringContainsString("'surfaces' => [self::SURFACE_WEB],", $policy);
+        self::assertStringContainsString('SURFACE_TALK', $policy);
+
+        $controller = (string)file_get_contents(__DIR__ . '/../lib/Controller/ApiController.php');
+        self::assertStringContainsString('public function confirmTool', $controller);
+        self::assertStringContainsString('runConfirmed($user, $name, $args)', $controller);
+        self::assertStringContainsString('api#confirmTool', (string)file_get_contents(__DIR__ . '/../appinfo/routes.php'));
+
+        $rag = (string)file_get_contents(__DIR__ . '/../lib/Service/RagService.php');
+        $vanilla = (string)file_get_contents(__DIR__ . '/../src/lib/vanilla.js');
+        $standalone = (string)file_get_contents(__DIR__ . '/../js/chat.js');
+        self::assertStringContainsString("'type' => 'confirmation'", $rag);
+        self::assertStringContainsString('confirmation_required', $rag);
+        self::assertStringContainsString("ev.type === 'confirmation'", $vanilla);
+        self::assertStringContainsString("ev.type === 'confirmation'", $standalone);
     }
 
 }

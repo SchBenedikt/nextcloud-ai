@@ -286,6 +286,56 @@ export function mountChat(root, opts = {}) {
 			wrap.appendChild(s)
 		}
 
+		if (m.confirmation && !m.confirmation.resolved) {
+			const panel = document.createElement('div')
+			panel.className = 'rconfirm'
+			const label = document.createElement('div')
+			label.className = 'rconfirm-label'
+			label.textContent = 'EVA wants to run: ' + m.confirmation.name
+			const details = document.createElement('pre')
+			details.className = 'rconfirm-args'
+			details.textContent = JSON.stringify(m.confirmation.arguments || {}, null, 2)
+			const actions = document.createElement('div')
+			actions.className = 'rconfirm-actions'
+			const approve = document.createElement('button')
+			approve.type = 'button'
+			approve.className = 'rconfirm-approve'
+			approve.textContent = 'Confirm and run'
+			const reject = document.createElement('button')
+			reject.type = 'button'
+			reject.className = 'rconfirm-reject'
+			reject.textContent = 'Cancel'
+			const finish = (text) => {
+				m.confirmation.resolved = true
+				m.text = text
+				m.done = true
+				renderAll(messages)
+				saveMessage('assistant', m.text).then(() => { if (onRecent) onRecent() })
+			}
+			approve.addEventListener('click', () => {
+				approve.disabled = true
+				reject.disabled = true
+				approve.textContent = 'Running…'
+				api('POST', '/confirmTool', {
+					name: m.confirmation.name,
+					arguments: m.confirmation.arguments || {},
+				}).then((result) => {
+					if (!result || !result.ok) {
+						finish('⚠️ ' + (result?.error || 'The action could not be completed.'))
+						return
+					}
+					const value = typeof result.result === 'string' ? result.result : 'The action was completed.'
+					finish('✅ ' + value)
+				}).catch((error) => {
+					finish('⚠️ ' + String(error?.message || error))
+				})
+			})
+			reject.addEventListener('click', () => finish('Action cancelled.'))
+			actions.append(approve, reject)
+			panel.append(label, details, actions)
+			wrap.appendChild(panel)
+		}
+
 		scroll.appendChild(wrap)
 		if (emptyEl) {
 			emptyEl.style.display = 'none'
@@ -515,6 +565,17 @@ export function mountChat(root, opts = {}) {
 						const t = last.tools[last.tools.length - 1]
 						t.state = ev.ok ? 'ok' : 'bad'
 					}
+				} else if (ev.type === 'confirmation') {
+					last.confirmation = {
+						name: ev.name || '?',
+						arguments: ev.arguments || {},
+						risk: ev.risk || 'mutating',
+						resolved: false,
+					}
+					last.text = 'Please review this action and confirm it explicitly.'
+					last.done = true
+					saveMessage('user', msg)
+					renderAll(messages)
 				} else if (ev.type === 'done') {
 					last.text = ev.answer || last.text
 					last.sources = citedSources(last.text, ev.sources || [])
