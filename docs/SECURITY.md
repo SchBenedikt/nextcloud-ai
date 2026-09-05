@@ -31,7 +31,9 @@ Every tool is registered centrally with three properties:
 
 ### Risk classification
 
-- **readonly** — no side effects. Safe on every surface:
+- **readonly** — no side effects. Most are safe on every surface. Sensitive
+  profile, share-listing and server-status reads are intentionally unavailable
+  on Talk:
   `list_files`, `read_file`, `search_files`, `find_contact`, `read_profile`,
   `list_calendars`, `list_calendar_events`, `find_free_slots`, `search_mails`,
   `list_mails`, `read_mail`, `unread_mail_count`, `list_shares`, `list_tasks`,
@@ -53,14 +55,14 @@ Not every surface may run every tool:
 | Surface | Context | Mutating tools allowed? |
 |---|---|---|
 | `web` | EVA web chat UI | ✅ yes (with confirmation) |
-| `talk` | Nextcloud Talk bot | ✅ yes (with confirmation) |
+| `talk` | Nextcloud Talk bot | ✅ yes (with confirmation), but sensitive profile/share/server-status reads are blocked |
 | `rag` | RAG pipeline internals | ❌ no — only readonly tools |
 | `taskprocessing` | Assistant app / background workers | ❌ no — only readonly tools (before user confirmation) |
 
 This prevents a background job or the Assistant app from silently creating,
-deleting or overwriting data. The `AgentInteractionProvider` switches the surface
-to `web` **only after** the user confirmed a proposed tool call, so the
-confirmation flow keeps working in TaskProcessing.
+deleting or overwriting data. Talk additionally does not expose profile details, existing share listings or instance server status. The `AgentInteractionProvider` switches the surface to `web` **only after** the user confirmed a proposed tool call, so the confirmation flow keeps working in TaskProcessing.
+
+Talk history is opt-in: TaskProcessing only accepts explicitly supplied room IDs and caps the context at three rooms and the latest 20 messages per room. It never discovers and injects every room automatically.
 
 ### Enforcement point
 

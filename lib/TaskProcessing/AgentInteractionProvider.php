@@ -36,6 +36,9 @@ class AgentInteractionProvider implements ISynchronousProvider {
 	 * proposal phase without user confirmation; their results are fed back to
 	 * the model so it can propose a complete chain of modifying actions.
 	 */
+	private const MAX_TALK_ROOMS = 3;
+	private const MAX_TALK_MESSAGES_PER_ROOM = 20;
+
 	private const READ_ONLY_TOOLS = [
 		'list_files', 'read_file', 'search_files',
 		'find_contact', 'read_profile',
@@ -169,10 +172,9 @@ class AgentInteractionProvider implements ISynchronousProvider {
 
 		$system = $this->buildPrompt($userId, $confirmation, $pending, $talkRoomIds, $ragEnabled);
 		$messages = [['role' => 'system', 'content' => $system]];
-		// Talk-Verlauf injizieren:
-		// 1. Explizit über talk_room_ids (falls übergeben)
-		// 2. Automatisch alle Talk-Räume des Users (falls Talk installiert)
-		$talkHistory = $this->buildTalkHistoryContext($talkRoomIds, $userId);
+		// Talk-Verlauf wird ausschließlich bei explizit übergebenen Room-IDs
+		// injiziert. Niemals automatisch alle Räume des Users laden.
+		$talkHistory = $this->buildTalkHistoryContext($talkRoomIds);
 		if (!empty($talkHistory)) {
 			foreach ($talkHistory as $h) {
 				$messages[] = $h;
@@ -397,40 +399,27 @@ class AgentInteractionProvider implements ISynchronousProvider {
 	}
 
 	/**
-	 * Baut Talk-Verlauf auf. Nutzt explizit übergebene Room-IDs oder
-	 * automatisch alle Talk-Räume des Users (wenn Talk installiert ist).
+	 * Baut Talk-Verlauf nur für explizit übergebene Room-IDs auf.
+	 * The context is deliberately bounded because room messages may contain
+	 * private data from other participants.
 	 *
-	 * @param list<string|int> $talkRoomIds Explizit übergebene Room-IDs
-	 * @param string $userId Benutzer für automatische Raum-Erkennung
+	 * @param list<string|int> $talkRoomIds Explicitly opted-in room IDs
 	 * @return list<array{role:string,content:string}>
 	 */
-	private function buildTalkHistoryContext(array $talkRoomIds, string $userId): array {
-		// Falls explizit Room-IDs übergeben wurden, nur diese verwenden
-		$rooms = $talkRoomIds;
-		if (empty($rooms) && class_exists('\\OCA\\Talk\\Manager')) {
-			// Automatisch alle Talk-Räume des Users finden
-			try {
-				$talkManager = \OC::$server->get(\OCA\Talk\Manager::class);
-				if ($talkManager !== null) {
-					$rooms = array_map(static fn($r): int => (int)$r->getId(), $talkManager->getRoomsForUser($userId, false, false));
-				}
-			} catch (\Throwable $e) {
-				// Talk nicht verfügbar oder Fehler - ignorieren
-				$rooms = [];
-			}
-		}
-
+	private function buildTalkHistoryContext(array $talkRoomIds): array {
+		$rooms = array_values(array_unique(array_filter(
+			array_map('intval', $talkRoomIds),
+			static fn(int $roomId): bool => $roomId > 0
+		)));
+		$rooms = array_slice($rooms, 0, self::MAX_TALK_ROOMS);
 		$context = [];
-		foreach ($rooms as $roomIdRaw) {
-			$roomId = (int)$roomIdRaw;
-			if ($roomId <= 0) {
-				continue;
-			}
+		foreach ($rooms as $roomId) {
 			try {
 				$talkHistory = $this->talkContextReader->buildHistoryMessages($roomId);
 			} catch (\Throwable $e) {
 				continue;
 			}
+			$talkHistory = array_slice($talkHistory, -self::MAX_TALK_MESSAGES_PER_ROOM);
 			if ($talkHistory === []) {
 				continue;
 			}
