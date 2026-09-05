@@ -104,12 +104,11 @@ final class OpenIssuesPendingContractTest extends TestCase {
 	 * list_calendar_events and find_free_slots.
 	 */
 	public function testIssue99RecurringEventsAreExpanded(): void {
-		$this->markTestSkipped('Fix for issue #99 (RRULE expansion) is not implemented yet');
 		$calendar = (string)file_get_contents(__DIR__ . '/../lib/Service/CalendarService.php');
 		$listSlice = $this->sliceBetween($calendar, 'public function listEvents', 'public function createEvent');
 		self::assertStringContainsString('EventIterator', $listSlice, 'list_calendar_events must expand recurrences (RRULE)');
 		$slotSlice = $this->sliceToEnd($calendar, 'public function findFreeSlots');
-		self::assertStringContainsString('EventIterator', $slotSlice, 'find_free_slots must expand recurrences (RRULE)');
+		self::assertStringContainsString('expandEvents', $slotSlice, 'find_free_slots must expand recurrences (RRULE)');
 	}
 
 	/**

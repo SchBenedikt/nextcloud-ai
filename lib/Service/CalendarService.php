@@ -8,6 +8,7 @@ use OCA\DAV\CalDAV\CalDavBackend;
 use OCP\IConfig;
 use Sabre\VObject\Component\VCalendar;
 use Sabre\VObject\Reader;
+use Sabre\VObject\Recur\EventIterator;
 
 /**
  * Kalender-Zugriff für die KI: Kalender auflisten, Termine erstellen,
@@ -325,16 +326,11 @@ class CalendarService {
                 } catch (\Throwable $e) {
                     continue;
                 }
-                foreach ($v->VEVENT as $ve) {
-                    $dtstart = $ve->DTSTART ? $ve->DTSTART->getDateTime() : null;
-                    if ($dtstart === null) {
-                        continue;
-                    }
-                    if ($dtstart < $start || $dtstart > $end->modify('+1 day')) {
-                        continue;
-                    }
-                    $dtend = $ve->DTEND ? $ve->DTEND->getDateTime() : null;
-                    $isAllDay = $ve->DTSTART && !$ve->DTSTART->hasTime();
+                foreach ($this->expandEvents($v, $start, $end, $userId) as $occurrence) {
+                    $ve = $occurrence['event'];
+                    $dtstart = $occurrence['start'];
+                    $dtend = $occurrence['end'];
+                    $isAllDay = $occurrence['all_day'];
                     if ($catFilter !== []) {
                         $catStr = strtolower((string)($ve->CATEGORIES ?? ''));
                         $catList = $catStr === '' ? [] : array_map('trim', explode(',', $catStr));
@@ -361,6 +357,67 @@ class CalendarService {
     }
 
     /**
+     * Expand one or more VEVENTs into bounded occurrences in the requested
+     * range. EventIterator handles RRULE, RDATE, EXDATE and RECURRENCE-ID.
+     * @return list<array{event:object,start:\DateTimeImmutable,end:?\DateTimeImmutable,all_day:bool}>
+     */
+    private function expandEvents(VCalendar $calendar, \DateTimeImmutable $rangeStart, \DateTimeImmutable $rangeEnd, string $userId): array {
+        $out = [];
+        $seen = [];
+        $tz = $this->userTimeZone($userId);
+        foreach ($calendar->VEVENT as $event) {
+            if (isset($event->{'RECURRENCE-ID'})) {
+                continue;
+            }
+            try {
+                $iterator = new EventIterator($calendar, (string)($event->UID ?? ''), $tz);
+                $count = 0;
+                foreach ($iterator as $occurrenceStart) {
+                    if (++$count > 500) {
+                        break;
+                    }
+                    $occurrenceStart = \DateTimeImmutable::createFromMutable($occurrenceStart);
+                    if ($occurrenceStart > $rangeEnd) {
+                        break;
+                    }
+                    $occurrenceEnd = $iterator->getDtEnd();
+                    $occurrenceEnd = $occurrenceEnd ? \DateTimeImmutable::createFromMutable($occurrenceEnd) : null;
+                    if ($occurrenceEnd !== null && $occurrenceEnd < $rangeStart) {
+                        continue;
+                    }
+                    if ($occurrenceStart < $rangeStart && ($occurrenceEnd === null || $occurrenceEnd <= $rangeStart)) {
+                        continue;
+                    }
+                    $key = (string)($event->UID ?? '') . ':' . $occurrenceStart->getTimestamp();
+                    if (isset($seen[$key])) {
+                        continue;
+                    }
+                    $seen[$key] = true;
+                    $out[] = [
+                        'event' => $event,
+                        'start' => $occurrenceStart,
+                        'end' => $occurrenceEnd,
+                        'all_day' => !$event->DTSTART->hasTime(),
+                    ];
+                }
+            } catch (\Throwable $e) {
+                // Malformed recurrence rules must not make other calendar
+                // entries unavailable; the master event is still useful.
+                $start = $event->DTSTART ? $event->DTSTART->getDateTime($tz) : null;
+                if ($start !== null && $start >= $rangeStart && $start <= $rangeEnd) {
+                    $out[] = [
+                        'event' => $event,
+                        'start' => $start,
+                        'end' => $event->DTEND ? $event->DTEND->getDateTime($tz) : null,
+                        'all_day' => !$event->DTSTART->hasTime(),
+                    ];
+                }
+            }
+        }
+        return $out;
+    }
+
+    /**
      * Serialize a parsed calendar date without claiming that a local wall
      * clock value is UTC. Timed values are converted to UTC before the Z
      * suffix is emitted; all-day values intentionally remain date-only.
@@ -370,6 +427,7 @@ class CalendarService {
             return $date->format('Y-m-d');
         }
         return $date->setTimezone(new \DateTimeZone('UTC'))->format('Y-m-d\\TH:i:s\\Z');
+    }
     }
 
     /** @return array{ok:true,result:array}|array{ok:false,error:string} */
@@ -812,11 +870,11 @@ class CalendarService {
                 try {
                     $v = Reader::read((string)$raw['calendardata']);
                 } catch (\Throwable $e) { continue; }
-                foreach ($v->VEVENT as $ve) {
-                    $dtstart = $ve->DTSTART ? $ve->DTSTART->getDateTime() : null;
-                    if ($dtstart === null) { continue; }
-                    $dtend = $ve->DTEND ? $ve->DTEND->getDateTime() : $dtstart->modify('+1 hour');
-                    if ($ve->DTSTART && !$ve->DTSTART->hasTime()) {
+                foreach ($this->expandEvents($v, $rangeStart, $rangeEnd, $userId) as $occurrence) {
+                    $ve = $occurrence['event'];
+                    $dtstart = $occurrence['start'];
+                    $dtend = $occurrence['end'] ?? $dtstart->modify('+1 hour');
+                    if ($occurrence['all_day']) {
                         // Ganztages-Termine blockieren den ganzen Tag.
                         $busy[] = [
                             (new \DateTimeImmutable($dtstart->format('Y-m-d') . ' 00:00:00', $tz))->getTimestamp(),

@@ -6,6 +6,9 @@ follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+- **Issue #99:** calendar event listing and free-slot detection now expand recurring events with bounded support for RRULE, RDATE, EXDATE, and RECURRENCE-ID.
+
 ### Fixed
 - **Issue #71**: `RagService` now receives a `LoggerInterface` through
   constructor injection, so the access-revocation purge path no longer
