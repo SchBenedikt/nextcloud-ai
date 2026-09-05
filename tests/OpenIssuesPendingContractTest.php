@@ -48,7 +48,6 @@ final class OpenIssuesPendingContractTest extends TestCase {
         $reflection = new \ReflectionClass(ActionExecutor::class);
         $instance = $reflection->newInstanceWithoutConstructor();
         $search = $reflection->getMethod('searchFiles');
-        $search->setAccessible(true);
         $file = $this->createMock(File::class);
         $file->method('getName')->willReturn('notes.txt');
         $file->method('getSize')->willReturn(128);
@@ -77,7 +76,6 @@ final class OpenIssuesPendingContractTest extends TestCase {
         $executor = new \ReflectionClass(ActionExecutor::class);
         $instance = $executor->newInstanceWithoutConstructor();
         $method = $executor->getMethod('trimKnowledge');
-        $method->setAccessible(true);
         $content = implode("\n", [
             '# Old notes',
             str_repeat('old fact ', 8000),
@@ -163,7 +161,6 @@ final class OpenIssuesPendingContractTest extends TestCase {
 		$reflection = new \ReflectionClass(CalendarService::class);
 		$instance = $reflection->newInstanceWithoutConstructor();
 		$method = $reflection->getMethod('formatEventDateTime');
-		$method->setAccessible(true);
 		$local = new \DateTimeImmutable('2026-08-20 16:00:00', new \DateTimeZone('Europe/Berlin'));
 		self::assertSame('2026-08-20T14:00:00Z', $method->invoke($instance, $local, false));
 		self::assertSame('2026-08-20', $method->invoke($instance, $local, true));

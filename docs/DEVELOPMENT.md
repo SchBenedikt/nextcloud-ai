@@ -5,6 +5,7 @@ How to set up, test and contribute to eva_ai.
 ## Requirements
 
 - PHP ≥ 8.2 with `curl`
+- Node.js 24 and npm ≥ 10.5 for frontend builds (see `.nvmrc`)
 - Composer (for PHPUnit)
 - A Nextcloud instance (≥ 30) for integration testing, or none at all — the unit
   tests run standalone
@@ -93,4 +94,11 @@ The API controller must use Nextcloud's IRequest access plus one non-recursive J
 
 ## Validation notes
 
-When changing the shared workspace layout, keep the responsive `--eva-content-width` contract, native navigation controls, block-level full-width New chat sizing using the native wide modifier and matching the other navigation items, notification app-icon URL generation, stable TaskProcessing provider IDs, and tool-policy confirmation boundaries covered by tests. Regenerate committed frontend bundles only after source validation succeeds.
+When changing the shared workspace layout, keep the responsive `--eva-content-width` contract, native navigation controls, block-level full-width New chat sizing using the native wide modifier and matching the other navigation items, notification app-icon URL generation, stable TaskProcessing provider IDs, and tool-policy confirmation boundaries covered by tests. Regenerate committed frontend bundles only after source validation succeeds. The Vue app loads JSON bundles through `@nextcloud/l10n`; the legacy standalone fallback loads `l10n/<locale>.js` through Nextcloud's `Util::addTranslations()` and uses the legacy `t()` API.
+
+### Building on small hosts
+
+Run `EVA_LOW_MEMORY_BUILD=1 NODE_OPTIONS=--max-old-space-size=640 nice -n 15 npm run build`
+to serialize module compilation and minification. Run the build separately from
+indexing and model inference. This limits V8 heap usage, not total process memory.
+See [the September review](REVIEW-2026-09-05.md) for verified checks and remaining integration gaps.

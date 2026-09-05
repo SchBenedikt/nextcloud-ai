@@ -69,22 +69,7 @@ PROMPT;
 
         // Chunks pro Dokument kappen, damit kein einzelnes Dokument den
         // Context ueberwaeltigt.
-        $contextPerDoc = [];
-        $currentDoc = null;
-        $currentLen = 0;
-        foreach ($chunks as $c) {
-            $did = (int)$c['document_id'];
-            if ($currentDoc !== $did) {
-                $currentDoc = $did;
-                $currentLen = 0;
-            }
-            if ($currentLen >= self::MAX_CHARS_PER_DOC) {
-                continue;
-            }
-            $text = (string)$c['content'];
-            $contextPerDoc[$did][] = $text;
-            $currentLen += mb_strlen($text);
-        }
+        $contextPerDoc = $this->groupChunksWithinDocumentLimit($chunks);
 
         $byDocId = [];
         foreach ($documents as $d) {
@@ -152,6 +137,36 @@ PROMPT;
             'error' => null,
             'missing' => $missing,
         ];
+    }
+
+    /**
+     * Group chunks independently per document and enforce the context limit
+     * even when the database returns chunks interleaved across documents.
+     *
+     * @param list<array{document_id:int|string,content:string}> $chunks
+     * @return array<int,list<string>>
+     */
+    private function groupChunksWithinDocumentLimit(array $chunks): array {
+        $contextPerDoc = [];
+        $lengthByDoc = [];
+        foreach ($chunks as $c) {
+            $did = (int)$c['document_id'];
+            $currentLen = $lengthByDoc[$did] ?? 0;
+            if ($currentLen >= self::MAX_CHARS_PER_DOC) {
+                continue;
+            }
+            $text = (string)$c['content'];
+            $remaining = self::MAX_CHARS_PER_DOC - $currentLen;
+            if (mb_strlen($text) > $remaining) {
+                $text = mb_substr($text, 0, $remaining);
+            }
+            if ($text === '') {
+                continue;
+            }
+            $contextPerDoc[$did][] = $text;
+            $lengthByDoc[$did] = $currentLen + mb_strlen($text);
+        }
+        return $contextPerDoc;
     }
 
     /**

@@ -81,9 +81,9 @@ class TextToTextChatProvider implements ISynchronousProvider {
 
 	#[\Override]
 	public function process(?string $userId, array $input, callable $reportProgress): array {
-		// The plain RAG chat mirrors the web chat UX (direct user chat, no
-		// separate confirmation flow) - keep the full tool surface (WEB).
-		$this->ragService->setSurface(ToolPolicy::SURFACE_WEB);
+		// Assistant tasks must never expose or execute mutating web tools.
+		// Read-only tools remain available through the RAG service.
+		$this->ragService->setSurface(ToolPolicy::SURFACE_TASKPROCESSING);
 
 		if ($userId === null) {
 			throw new ProcessingException('Not logged in');

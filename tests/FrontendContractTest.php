@@ -40,7 +40,7 @@ final class FrontendContractTest extends TestCase {
         self::assertStringContainsString('--eva-content-width: clamp(1180px, 78vw, 1680px);', $app);
         self::assertStringContainsString('v-model="chatFilter"', $app);
         self::assertStringContainsString('NcAppNavigationSearch', $app);
-        self::assertStringContainsString('placeholder="Search chats"', $app);
+        self::assertStringContainsString(':placeholder="$t(\'Search chats\')"', $app);
         self::assertStringContainsString('<div class="new-chat-container">', $app);
         self::assertStringContainsString('display: block;', $app);
         self::assertStringContainsString('width: 100%;', $app);
@@ -71,8 +71,8 @@ final class FrontendContractTest extends TestCase {
         self::assertStringContainsString(':close-after-click="true"', $app);
         self::assertStringContainsString('@click.stop="renameChat(c.id)"', $app);
         self::assertStringContainsString('@click.stop="deleteChat(c.id)"', $app);
-        self::assertStringContainsString('aria-label="Rename chat"', $app);
-        self::assertStringContainsString('aria-label="Delete chat"', $app);
+        self::assertStringContainsString(':aria-label="$t(\'Rename chat\')"', $app);
+        self::assertStringContainsString(':aria-label="$t(\'Delete chat\')"', $app);
         self::assertStringContainsString("return requestApi('GET', '/chats')", $app);
         $settings = (string)file_get_contents(__DIR__ . '/../src/views/SettingsView.vue');
         self::assertStringContainsString("api('DELETE', 'chats')", $settings);
@@ -80,6 +80,8 @@ final class FrontendContractTest extends TestCase {
         self::assertStringContainsString("'eva-ai:chats-cleared'", $app);
         self::assertStringContainsString('api#deleteAllChats', (string)file_get_contents(__DIR__ . '/../appinfo/routes.php'));
         self::assertStringContainsString('public function deleteAllChats', (string)file_get_contents(__DIR__ . '/../lib/Controller/ApiController.php'));
+        self::assertStringContainsString("public function models(): DataResponse", (string)file_get_contents(__DIR__ . '/../lib/Controller/ApiController.php'));
+        self::assertStringContainsString("return new DataResponse(['error' => 'Not logged in'], 401)", (string)file_get_contents(__DIR__ . '/../lib/Controller/ApiController.php'));
         $controller = (string)file_get_contents(__DIR__ . '/../lib/Controller/ApiController.php');
         self::assertStringContainsString('KnowledgeInitializer $knowledgeInitializer', $controller);
         self::assertStringContainsString('ensureInitialized($user)', $controller);
@@ -100,6 +102,8 @@ final class FrontendContractTest extends TestCase {
         self::assertStringContainsString('mdiDownload', $vanilla);
         self::assertStringContainsString("className = 'export'", $vanilla);
         self::assertStringContainsString('Export chat as Markdown', $vanilla);
+        self::assertStringContainsString("Util::addTranslations('eva_ai')", (string)file_get_contents(__DIR__ . '/../lib/Controller/PageController.php'));
+        self::assertStringContainsString('function tr(text, vars)', (string)file_get_contents(__DIR__ . '/../js/chat.js'));
         self::assertStringContainsString('.head .export', $chat);
         self::assertStringContainsString('max-width: min(88%, 1200px);', $chat);
 
@@ -190,8 +194,10 @@ final class FrontendContractTest extends TestCase {
         self::assertStringContainsString('public function runConfirmed', $executor);
 
         $policy = (string)file_get_contents(__DIR__ . '/../lib/Service/ToolPolicy.php');
-        self::assertStringContainsString("'surfaces' => [self::SURFACE_WEB],", $policy);
+        self::assertStringContainsString("'surfaces' => [self::SURFACE_WEB, self::SURFACE_TASKPROCESSING_CONFIRMED],", $policy);
+        self::assertStringContainsString('SURFACE_TASKPROCESSING_CONFIRMED', $policy);
         self::assertStringContainsString('SURFACE_TALK', $policy);
+        self::assertStringContainsString('SURFACE_TASKPROCESSING_CONFIRMED', (string)file_get_contents(__DIR__ . '/../lib/TaskProcessing/AgentInteractionProvider.php'));
 
         $controller = (string)file_get_contents(__DIR__ . '/../lib/Controller/ApiController.php');
         self::assertStringContainsString('public function confirmTool', $controller);
@@ -202,6 +208,7 @@ final class FrontendContractTest extends TestCase {
         $vanilla = (string)file_get_contents(__DIR__ . '/../src/lib/vanilla.js');
         $standalone = (string)file_get_contents(__DIR__ . '/../js/chat.js');
         self::assertStringContainsString("'type' => 'confirmation'", $rag);
+        self::assertStringContainsString('SURFACE_TASKPROCESSING_CONFIRMED', (string)file_get_contents(__DIR__ . '/../lib/TaskProcessing/AgentInteractionProvider.php'));
         self::assertStringContainsString('confirmation_required', $rag);
         self::assertStringContainsString("ev.type === 'confirmation'", $vanilla);
         self::assertStringContainsString("ev.type === 'confirmation'", $standalone);

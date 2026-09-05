@@ -1,8 +1,8 @@
 <template>
 	<NcContent class="eva-ai-app" :app-name="'eva_ai'">
-		<NcAppNavigation :title="'Eva · v' + buildVersion" @close-navigation="mobileOpen = false">
+		<NcAppNavigation :title="$t('Eva · v') + buildVersion" @close-navigation="mobileOpen = false">
 			<template #search>
-				<NcAppNavigationSearch v-model="chatFilter" label="Search chats" placeholder="Search chats" />
+				<NcAppNavigationSearch v-model="chatFilter" :label="$t('Search chats')" :placeholder="$t('Search chats')" />
 				<div class="new-chat-container">
 					<NcButton
 						class="new-chat-button"
@@ -10,18 +10,18 @@
 						size="normal"
 						:wide="true"
 						:disabled="busy"
-						aria-label="Start a new chat"
+						:aria-label="$t('Start a new chat')"
 						@click="newChat">
 						<template #icon>
 							<NcIconSvgWrapper :path="mdiMessagePlus" :size="16" aria-hidden="true" />
 						</template>
-						New chat
+						{{ $t('New chat') }}
 					</NcButton>
 				</div>
 			</template>
 			<template #list>
 				<li class="chat-list-heading">
-					<span>Chats</span>
+					<span>{{ $t('Chats') }}</span>
 					<NcCounterBubble :count="chats.length" />
 				</li>
 				<NcAppNavigationItem
@@ -30,30 +30,30 @@
 					:name="c.title"
 					:active="view === 'chat' && c.id === currentChat"
 					:force-menu="true"
-					:title="c.title + ' · ' + c.count + ' messages'"
+					:title="$t('{title} · {count} messages', { title: c.title, count: c.count })"
 					@click="selectChat(c.id)">
 					<template #icon>
 						<svg width="16" height="16" viewBox="0 0 24 24"><path :d="mdiChatProcessing" fill="currentColor" /></svg>
 					</template>
 					<template #actions>
-						<NcActionButton aria-label="Rename chat" :close-after-click="true" @click.stop="renameChat(c.id)">
+						<NcActionButton :aria-label="$t('Rename chat')" :close-after-click="true" @click.stop="renameChat(c.id)">
 							<template #icon><NcIconSvgWrapper :path="mdiPencilOutline" :size="16" aria-hidden="true" /></template>
-							Rename chat
+							{{ $t('Rename chat') }}
 						</NcActionButton>
-						<NcActionButton aria-label="Delete chat" :close-after-click="true" @click.stop="deleteChat(c.id)">
+						<NcActionButton :aria-label="$t('Delete chat')" :close-after-click="true" @click.stop="deleteChat(c.id)">
 							<template #icon><NcIconSvgWrapper :path="mdiTrashCanOutline" :size="16" aria-hidden="true" /></template>
-							Delete chat
+							{{ $t('Delete chat') }}
 						</NcActionButton>
 					</template>
 				</NcAppNavigationItem>
 				<li v-if="apiError" class="chat-list-error" role="alert">{{ apiError }}</li>
-				<li v-if="!chats.length" class="chat-list-empty">No chats yet — start a new one.</li>
-				<li v-else-if="!filteredChats.length" class="chat-list-empty">No chats match your search.</li>
+				<li v-if="!chats.length" class="chat-list-empty">{{ $t('No chats yet — start a new one.') }}</li>
+				<li v-else-if="!filteredChats.length" class="chat-list-empty">{{ $t('No chats match your search.') }}</li>
 			</template>
 			<template #footer>
 				<ul class="nav-footer">
 					<NcAppNavigationItem
-						:name="'Documents'"
+						:name="$t('Documents')"
 						:active="view === 'docs'"
 						@click="navigate('docs')">
 						<template #icon>
@@ -61,7 +61,7 @@
 						</template>
 					</NcAppNavigationItem>
 					<NcAppNavigationItem
-						:name="'Settings'"
+						:name="$t('Settings')"
 						:active="view === 'settings'"
 						@click="navigate('settings')">
 						<template #icon>
@@ -91,6 +91,7 @@ import { NcCounterBubble } from '@nextcloud/vue'
 import NcAppNavigationSearch from '@nextcloud/vue/components/NcAppNavigationSearch'
 import NcIconSvgWrapper from '@nextcloud/vue/components/NcIconSvgWrapper'
 import { api as requestApi, errMsg } from './lib/api'
+import { translate as t } from './lib/i18n'
 
 export default {
 	name: 'EvaAiApp',
@@ -145,13 +146,13 @@ export default {
 		const loadChats = () => {
 			return requestApi('GET', '/chats').then((list) => {
 				apiError.value = ''
-				if (!Array.isArray(list)) throw new Error('The chat list response was invalid.')
+				if (!Array.isArray(list)) throw new Error(t('The chat list response was invalid.'))
 				chats.value = list
 				if (!currentChat.value || !list.some((chat) => chat.id === currentChat.value)) {
 					currentChat.value = list.length ? list[0].id : null
 				}
 			}).catch((error) => {
-				apiError.value = 'Chat list unavailable: ' + errMsg(error)
+				apiError.value = t('Chat list unavailable: {error}', { error: errMsg(error) })
 				return []
 			})
 		}
@@ -161,13 +162,13 @@ export default {
 			busy.value = true
 			try {
 				const c = await requestApi('POST', '/chats', {})
-				if (!c || !c.id) throw new Error('The server returned no chat ID.')
+				if (!c || !c.id) throw new Error(t('The server returned no chat ID.'))
 				await loadChats()
 				currentChat.value = c.id
 				navigate('chat')
 				apiError.value = ''
 			} catch (error) {
-				apiError.value = 'A new chat could not be created: ' + errMsg(error)
+				apiError.value = t('A new chat could not be created: {error}', { error: errMsg(error) })
 			} finally {
 				busy.value = false
 			}
@@ -181,24 +182,24 @@ export default {
 
 		const renameChat = async (id) => {
 			const c = chats.value.find((x) => x.id === id)
-			const name = window.prompt('New chat title:', c ? c.title : '')
+			const name = window.prompt(t('New chat title:'), c ? c.title : '')
 			if (name === null || !name.trim()) return
 			try {
 				await requestApi('POST', '/chats/' + encodeURIComponent(id) + '/title', { title: name.trim() })
 				await loadChats()
 			} catch (error) {
-				apiError.value = 'The chat could not be renamed: ' + errMsg(error)
+				apiError.value = t('The chat could not be renamed: {error}', { error: errMsg(error) })
 			}
 		}
 
 		const deleteChat = async (id) => {
-			if (!window.confirm('Delete this chat?')) return
+			if (!window.confirm(t('Delete this chat?'))) return
 			try {
 				await requestApi('DELETE', '/chats/' + encodeURIComponent(id))
 				if (currentChat.value === id) currentChat.value = null
 				await loadChats()
 			} catch (error) {
-				apiError.value = 'The chat could not be deleted: ' + errMsg(error)
+				apiError.value = t('The chat could not be deleted: {error}', { error: errMsg(error) })
 			}
 		}
 

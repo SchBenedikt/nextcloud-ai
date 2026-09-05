@@ -3,17 +3,17 @@
 		<div v-if="apiError" class="api-error" role="alert">{{ apiError }}</div>
 		<header class="head">
 			<div class="head-info">
-				<h1>File context chat</h1>
+				<h1>{{ $t('File context chat') }}</h1>
 				<p class="subtitle">
-					Selected files provide the document evidence; your personal knowledge can personalise the answer.
+					{{ $t('Selected files provide the document evidence; your personal knowledge can personalise the answer.') }}
 				</p>
 			</div>
 			<div class="file-chips">
 				<span v-for="f in files" :key="f.fileId" class="chip">
 					{{ f.name }}
 				</span>
-				<span v-if="missing.length" class="chip missing" :title="missing.length + ' file(s) not yet indexed'">
-					{{ missing.length }} not indexed
+				<span v-if="missing.length" class="chip missing" :title="$t('{count} file(s) not yet indexed', { count: missing.length })">
+					{{ $t('{count} not indexed', { count: missing.length }) }}
 				</span>
 			</div>
 		</header>
@@ -21,11 +21,11 @@
 		<div class="messages" ref="messagesEl">
 			<div v-if="messages.length === 0" class="empty">
 				<div class="empty-icon">⌘</div>
-				<strong>Ask about the selected files</strong>
-				<span>Eva uses the selected files for document evidence and may use your personal KNOWLEDGE.md for context.</span>
+				<strong>{{ $t('Ask about the selected files') }}</strong>
+				<span>{{ $t('Eva uses the selected files for document evidence and may use your personal KNOWLEDGE.md for context.') }}</span>
 			</div>
 			<div v-for="(m, i) in messages" :key="i" :class="['msg', m.role]">
-				<div class="msg-author">{{ m.role === 'user' ? 'You' : 'Eva' }}</div>
+				<div class="msg-author">{{ m.role === 'user' ? $t('You') : 'Eva' }}</div>
 				<div class="msg-body">{{ m.content }}</div>
 				<div v-if="m.sources && m.sources.length" class="msg-sources">
 					<a v-for="s in m.sources" :key="s.url" :href="s.url" target="_blank" rel="noreferrer">
@@ -42,14 +42,14 @@
 		<form class="input-row" @submit.prevent="ask">
 			<NcTextField
 				v-model="input"
-				:placeholder="files.length === 0 ? 'Loading…' : 'Ask about these files…'"
+				:placeholder="files.length === 0 ? $t('Loading…') : $t('Ask about these files…')"
 				:disabled="busy || files.length === 0"
 				@keydown.enter.exact.prevent="ask" />
 			<NcButton type="primary" native-type="submit" :disabled="busy || !input.trim()">
 				<template #icon>
 					<svg width="18" height="18" viewBox="0 0 24 24"><path :d="mdiSend" fill="currentColor" /></svg>
 				</template>
-				Send
+				{{ $t('Send') }}
 			</NcButton>
 		</form>
 	</div>
@@ -60,6 +60,7 @@ import { ref, onMounted, nextTick } from 'vue'
 import { NcButton, NcTextField } from '@nextcloud/vue'
 import { mdiSend } from '@mdi/js'
 import { api, errMsg } from '../lib/api'
+import { translate as t } from '../lib/i18n'
 
 export default {
 	name: 'FileContextChatView',
@@ -97,11 +98,11 @@ export default {
 					missing.value = r.missing
 				}
 			} catch (e) {
-				apiError.value = 'The selected files could not be loaded: ' + errMsg(e)
+				apiError.value = t('The selected files could not be loaded: {error}', { error: errMsg(e) })
 				console.error('[eva-ai] fileContextStatus failed', e)
 			}
 			if (files.value.length === 0 && props.fileIds.length > 0) {
-				files.value = props.fileIds.map((id) => ({ fileId: id, name: 'File #' + id, path: '' }))
+				files.value = props.fileIds.map((id) => ({ fileId: id, name: t('File #{id}', { id }), path: '' }))
 			}
 		}
 
@@ -123,7 +124,7 @@ export default {
 					history,
 				})
 				if (r && r.error) {
-					messages.value.push({ role: 'assistant', content: 'Error: ' + r.error, sources: [] })
+					messages.value.push({ role: 'assistant', content: t('Error: {error}', { error: r.error }), sources: [] })
 				} else {
 					messages.value.push({
 						role: 'assistant',
@@ -132,8 +133,8 @@ export default {
 					})
 				}
 			} catch (e) {
-				apiError.value = 'The file-context request failed: ' + errMsg(e)
-				messages.value.push({ role: 'assistant', content: 'Error: ' + errMsg(e), sources: [] })
+				apiError.value = t('The file-context request failed: {error}', { error: errMsg(e) })
+				messages.value.push({ role: 'assistant', content: t('Error: {error}', { error: errMsg(e) }), sources: [] })
 			} finally {
 				busy.value = false
 				await scrollDown()

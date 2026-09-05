@@ -57,6 +57,37 @@ final class OpenIssuesSecurityRegressionTest extends TestCase {
         self::assertSame([], $service->accessibleDocuments('alice', [$document]));
     }
 
+    public function testAccessibleDocumentsRejectFoldersReturnedForAFileId(): void {
+        $document = new Document();
+        $document->setId(9);
+        $document->setFileId(44);
+
+        $folderNode = $this->createMock(Folder::class);
+        $userFolder = $this->createMock(Folder::class);
+        $userFolder->expects(self::once())
+            ->method('getById')
+            ->with(44)
+            ->willReturn([$folderNode]);
+        $rootFolder = $this->createMock(IRootFolder::class);
+        $rootFolder->method('getUserFolder')->with('alice')->willReturn($userFolder);
+
+        $documentMapper = $this->createMock(DocumentMapper::class);
+        $documentMapper->expects(self::once())->method('delete')->with($document);
+        $chunkMapper = $this->createMock(ChunkMapper::class);
+        $chunkMapper->expects(self::once())->method('deleteByDocument')->with(9);
+
+        $service = new FileContextChatService(
+            $this->createMock(Ollama::class),
+            $this->createMock(AppConfig::class),
+            $documentMapper,
+            $chunkMapper,
+            $rootFolder,
+            $this->createMock(IURLGenerator::class),
+        );
+
+        self::assertSame([], $service->accessibleDocuments('alice', [$document]));
+    }
+
     public function testCurrentlyAccessibleFileRemainsAvailableFromTheCache(): void {
         $document = new Document();
         $document->setId(8);
@@ -146,6 +177,51 @@ final class OpenIssuesSecurityRegressionTest extends TestCase {
 
         $requestJob = (string)file_get_contents(__DIR__ . '/../lib/BackgroundJob/IndexRequestJob.php');
         self::assertStringContainsString('$this->indexer->run($userId', $requestJob);
+    }
+
+    public function testFileContextCapsEachDocumentEvenWhenChunksAreInterleaved(): void {
+        $service = new FileContextChatService(
+            $this->createMock(Ollama::class),
+            $this->createMock(AppConfig::class),
+            $this->createMock(DocumentMapper::class),
+            $this->createMock(ChunkMapper::class),
+            $this->createMock(IRootFolder::class),
+            $this->createMock(IURLGenerator::class),
+        );
+        $reflection = new \ReflectionClass($service);
+        $method = $reflection->getMethod('groupChunksWithinDocumentLimit');
+        $chunks = [
+            ['document_id' => 1, 'content' => str_repeat('a', 8000)],
+            ['document_id' => 2, 'content' => str_repeat('b', 8000)],
+            ['document_id' => 1, 'content' => str_repeat('c', 8000)],
+            ['document_id' => 2, 'content' => str_repeat('d', 8000)],
+        ];
+
+        $grouped = $method->invoke($service, $chunks);
+        self::assertSame(12000, mb_strlen(implode('', $grouped[1])));
+        self::assertSame(12000, mb_strlen(implode('', $grouped[2])));
+        self::assertSame(str_repeat('a', 8000) . str_repeat('c', 4000), implode('', $grouped[1]));
+        self::assertSame(str_repeat('b', 8000) . str_repeat('d', 4000), implode('', $grouped[2]));
+    }
+
+    public function testAuditFixesKeepSearchAndPromptBoundariesExplicit(): void {
+        $email = (string)file_get_contents(__DIR__ . '/../lib/Service/EmailService.php');
+        self::assertStringContainsString("ESCAPE '!'", $email);
+        self::assertStringContainsString("['!', '%', '_']", $email);
+        self::assertStringContainsString("['!!', '!%', '!_']", $email);
+        self::assertStringContainsString('$limit = max(1, min(100, $limit));', $email);
+
+        $rag = (string)file_get_contents(__DIR__ . '/../lib/Service/RagService.php');
+        self::assertStringContainsString('<personal_knowledge>', $rag);
+        self::assertStringContainsString('untrusted data; use only to personalise', $rag);
+        self::assertStringNotContainsString('Knowledge so far:', $rag);
+
+        $controller = (string)file_get_contents(__DIR__ . '/../lib/Controller/ApiController.php');
+        $modelsStart = strpos($controller, 'public function models');
+        self::assertNotFalse($modelsStart);
+        $models = substr($controller, $modelsStart);
+        self::assertStringContainsString('if ($user === null)', $models);
+        self::assertStringContainsString("'Not logged in'", $models);
     }
 
     public function testEnrollmentStreamingAndFileContextContracts(): void {

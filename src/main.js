@@ -1,6 +1,7 @@
 import { createApp } from 'vue'
 import { setRequestToken } from '@nextcloud/auth'
 import App from './App.vue'
+import { loadTranslations, translate as nextcloudTranslate, translatePlural as nextcloudTranslatePlural } from '@nextcloud/l10n'
 import {
 	NcContent,
 	NcAppNavigation,
@@ -21,6 +22,8 @@ import {
 } from '@nextcloud/vue'
 
 const app = createApp(App)
+app.config.globalProperties.$t = (text, placeholders) => nextcloudTranslate('eva_ai', text, placeholders)
+app.config.globalProperties.$n = (singular, plural, count, placeholders) => nextcloudTranslatePlural('eva_ai', singular, plural, count, placeholders)
 
 const tokenEl = document.querySelector('meta[name="requesttoken"]')
 if (tokenEl && tokenEl.content) {
@@ -63,4 +66,6 @@ app.component('NcRichText', NcRichText)
 app.component('NcAppNavigationSpacer', NcAppNavigationSpacer)
 app.component('NcActionButton', NcActionButton)
 
-app.mount('#eva_ai-root')
+loadTranslations('eva_ai')
+	.catch((error) => console.warn('[eva-ai] translation bundle could not be loaded', error))
+	.finally(() => app.mount('#eva_ai-root'))
