@@ -26,7 +26,6 @@
     "@babel/preset-env": "^8.0.2",
     "@nextcloud/browserslist-config": "^3.1.2",
     "@vue/compiler-sfc": "^3.5.41",
-    "asset": "^0.4.13",
     "babel-loader": "^10.1.1",
     "css-loader": "^7.1.4",
     "sass": "^1.102.0",

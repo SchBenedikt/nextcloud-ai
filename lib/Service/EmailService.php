@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace OCA\EvaAi\Service;
 
 use OCP\IDBConnection;
+use Psr\Log\LoggerInterface;
 
 /**
  * Read-only access to the Nextcloud Mail app (accounts, mailboxes, messages).
@@ -20,7 +21,8 @@ class EmailService {
     private const RCV_CC   = 2;
 
     public function __construct(
-        private IDBConnection $db
+        private IDBConnection $db,
+        private LoggerInterface $logger
     ) {
     }
 
@@ -352,7 +354,9 @@ class EmailService {
     }
 
     /**
-     * Execute a prepared statement. Returns rows or empty array on any error.
+     * Execute a prepared statement. Database failures are logged and
+     * propagated so callers can distinguish an empty mailbox from a broken
+     * Mail schema or database connection.
      *
      * @return list<array<string,mixed>>
      */
@@ -363,7 +367,11 @@ class EmailService {
             $result = $stmt->fetchAll();
             return is_array($result) ? $result : [];
         } catch (\Throwable $e) {
-            return [];
+            $this->logger->error('eva_ai: Mail database query failed', [
+                'exception' => $e,
+                'sql' => mb_substr($sql, 0, 500),
+            ]);
+            throw $e;
         }
     }
 }

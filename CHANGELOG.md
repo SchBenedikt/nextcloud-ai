@@ -12,6 +12,7 @@ follows [Semantic Versioning](https://semver.org/).
 - **Issue #99:** calendar event listing and free-slot detection now expand recurring events with bounded support for RRULE, RDATE, EXDATE, and RECURRENCE-ID.
 
 ### Fixed
+- **Issues #115, #97 and #76:** validate and normalize `exec_write_types` before saving, log and propagate Mail database failures instead of treating them as empty mailboxes, and reuse one short-lived Ollama `/api/tags` status result for repeated UI polls.
 - **Issue #104:** calendar event listing and free-slot searches now use CalDAV time-range queries instead of loading every object from every selected calendar.
 - **Issue #132:** bind EVA-created file grants to file IDs; reject legacy path grants, prune stale IDs, preserve grants across renames, and do not claim existing files or folders.
 - **Issue #72:** move personal knowledge out of privileged system prompts and mark retrieved context as untrusted data.

@@ -1412,7 +1412,11 @@ class ActionExecutor {
 
     /** @return array{ok:true,result:array}|array{ok:false,error:string} */
     private function readMail(string $userId, array $args): array {
-        return $this->email->readMessage($userId, (int)($args['message_id'] ?? 0));
+        try {
+            return $this->email->readMessage($userId, (int)($args['message_id'] ?? 0));
+        } catch (\Throwable $e) {
+            return ['ok' => false, 'error' => 'Mail access failed: ' . $e->getMessage()];
+        }
     }
 
     /** @return array{ok:true,result:array}|array{ok:false,error:string} */
