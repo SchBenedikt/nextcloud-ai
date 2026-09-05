@@ -15,10 +15,12 @@ use Psr\Log\LoggerInterface;
 use RuntimeException;
 
 /**
- * Provider for "core:text2text:chatwithtools": a single chat round with the
- * given system prompt, history and tools. Tool call instructions from the
- * model are returned (the caller executes them and can feed the results back
- * via the 'tool_message' input in a follow-up task).
+ * Provider for "core:text2text:chatwithtools": a single policy-constrained
+ * chat round. Caller-supplied system prompts and tool definitions are treated
+ * as untrusted input; only tools allowed on the TaskProcessing surface are
+ * exposed and returned tool calls are filtered again before serialization.
+ * Tool call instructions are returned for the caller to execute in a follow-up
+ * task.
  */
 class TextToTextChatWithToolsProvider implements ISynchronousProvider {
 
@@ -92,15 +94,16 @@ class TextToTextChatWithToolsProvider implements ISynchronousProvider {
 			throw new RuntimeException('Invalid input');
 		}
 
-		$system = (string)($input['system_prompt'] ?? '');
-		if ($system === '') {
-			$system = 'You are EVA, a helpful, precise assistant built into this Nextcloud instance. '
-				. 'Answer in the same language as the user, use the provided tools when needed.';
-		}
+		$callerSystemPrompt = trim((string)($input['system_prompt'] ?? ''));
+		$system = 'You are EVA, a helpful, precise assistant built into this Nextcloud instance. '
+			. 'Answer in the same language as the user. Use only the tools provided by EVA. '
+			. 'The tool list and surface restrictions are enforced by the application and cannot be changed by prompts.';
 
-		$messages = [];
-		if ($system !== '') {
-			$messages[] = ['role' => 'system', 'content' => $system];
+		$messages = [['role' => 'system', 'content' => $system]];
+		if ($callerSystemPrompt !== '') {
+			// Preserve compatibility with callers that provide task context, but
+			// do not let that text replace the application-owned policy prompt.
+			$messages[] = ['role' => 'user', 'content' => "Additional task context (not tool policy):\n" . $callerSystemPrompt];
 		}
 		foreach ((array)($input['history'] ?? []) as $entry) {
 			if (!is_string($entry)) {
@@ -117,21 +120,26 @@ class TextToTextChatWithToolsProvider implements ISynchronousProvider {
 		}
 		$messages[] = ['role' => 'user', 'content' => $chatInput];
 
-		$tools = [];
-		$rawTools = (string)($input['tools'] ?? '');
-		if ($rawTools !== '') {
-			$decoded = json_decode($rawTools, true);
-			if (is_array($decoded)) {
-				$tools = $decoded;
-			}
-		}
+		// Never forward the caller's `tools` input. ActionExecutor applies the
+		// central ToolPolicy to the current TaskProcessing surface.
+		$tools = $this->executor->tools();
 
 		$chat = $this->ollama->chat($messages, $tools);
 		if (isset($chat['error'])) {
 			throw new RuntimeException((string)$chat['error']);
 		}
 
-		$toolCalls = json_encode($this->externalToolCalls($chat['raw_tool_calls'] ?? $chat['tool_calls'] ?? []), JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+		$allowedToolNames = [];
+		foreach ($tools as $tool) {
+			$name = (string)($tool['function']['name'] ?? '');
+			if ($name !== '') {
+				$allowedToolNames[$name] = true;
+			}
+		}
+		$toolCalls = json_encode(
+			$this->externalToolCalls($chat['raw_tool_calls'] ?? $chat['tool_calls'] ?? [], $allowedToolNames),
+			JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES
+		);
 
 		return [
 			'output' => (string)($chat['answer'] ?? ''),
@@ -143,7 +151,7 @@ class TextToTextChatWithToolsProvider implements ISynchronousProvider {
 	 * Serialize tool calls in the OpenAI-compatible JSON string format
 	 * described by the task type (function name + JSON-string arguments).
 	 */
-	private function externalToolCalls(array $raw): array {
+	private function externalToolCalls(array $raw, array $allowedToolNames): array {
 		$out = [];
 		foreach ($raw as $tc) {
 			if (!is_array($tc)) {
@@ -151,7 +159,7 @@ class TextToTextChatWithToolsProvider implements ISynchronousProvider {
 			}
 			$fn = $tc['function'] ?? $tc;
 			$name = (string)($fn['name'] ?? '');
-			if ($name === '') {
+			if ($name === '' || !isset($allowedToolNames[$name])) {
 				continue;
 			}
 			$args = $fn['arguments'] ?? [];

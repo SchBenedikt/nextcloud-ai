@@ -108,6 +108,8 @@ class RagService {
 
             $answer = '';
             $model = $this->config->get('chat_model');
+            $toolActivity = false;
+            $toolFailure = false;
             for ($round = 0; $round < self::MAX_TOOL_ROUNDS; $round++) {
                 $toolCalls = [];
                 $rawToolCalls = [];
@@ -140,8 +142,10 @@ class RagService {
                     if ($this->clientDisconnected()) {
                         return;
                     }
+                    $toolActivity = true;
                     yield json_encode(['type' => 'tool', 'name' => $tc['name'] ?? '?']) . "\n";
                     $res = $this->executor->run($userId, $tc['name'] ?? '', $tc['arguments'] ?? []);
+                    $toolFailure = $toolFailure || empty($res['ok']);
                     yield json_encode(['type' => 'tool_result', 'name' => $tc['name'] ?? '?', 'ok' => !empty($res['ok']), 'error' => $res['error'] ?? null]) . "\n";
                     $messages[] = ['role' => 'tool', 'content' => json_encode($res, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES)];
                 }
@@ -149,6 +153,14 @@ class RagService {
             }
             if ($this->clientDisconnected()) {
                 return;
+            }
+            if ($answer === '' && $toolActivity) {
+                // A tool-only final round is a valid Ollama response. Do not
+                // turn a completed tool chain into a misleading transport
+                // error just because the model omitted a text summary.
+                $answer = $toolFailure
+                    ? 'The requested tool action could not be fully completed, and Ollama returned no text summary.'
+                    : 'The requested tool action was processed, but Ollama returned no text summary.';
             }
             if ($answer === '') {
                 yield json_encode(['type' => 'error', 'message' => 'No text response received from Ollama.']) . "\n";

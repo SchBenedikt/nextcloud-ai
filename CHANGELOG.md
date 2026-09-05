@@ -13,6 +13,7 @@ follows [Semantic Versioning](https://semver.org/).
   surrounding `try`/`catch`; the audit log entry is now actually written.
 - **Issues #108, #114 and #117**: Ollama URLs reject credentials/query/fragment components individually, connection checks stop after an unreachable server or missing model instead of waiting through multi-minute model timeouts, and chat pairs are persisted strictly as question then answer.
 - **Issues #95, #100 and #103**: Talk blocks sensitive profile/share/server-status tools, existing share listings redact link capability secrets and URLs, and TaskProcessing only injects explicitly supplied Talk rooms with caps of three rooms and 20 recent messages per room.
+- **Issues #102, #105 and #98**: the `chatwithtools` TaskProcessing provider now ignores caller-supplied tool definitions and keeps the application-owned policy prompt, abandoned agent state is pruned after 30 days, and a tool-only streaming round completes with a truthful summary instead of a false no-text error.
 - **Indexing API**: use native Nextcloud request parameters with a single non-recursive JSON fallback instead of a recursively named input wrapper; duplicate starts now remain idempotent while genuine worker-lock conflicts still return an actionable 409.
 - **Frontend**: the main Vue bundle is now emitted as `eva_ai-main.js` (was
   `eva-ai-main.js`), matching the name the page controller looks up. The app

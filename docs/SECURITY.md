@@ -64,6 +64,16 @@ deleting or overwriting data. Talk additionally does not expose profile details,
 
 Talk history is opt-in: TaskProcessing only accepts explicitly supplied room IDs and caps the context at three rooms and the latest 20 messages per room. It never discovers and injects every room automatically.
 
+The `core:text2text:chatwithtools` provider does not trust caller-supplied `tools`
+or `system_prompt` values as a security boundary. It always uses the
+application-owned policy prompt, obtains definitions from `ActionExecutor`, and
+filters returned calls against the TaskProcessing surface. Caller text can
+provide task context, but it cannot add a tool or change its allowed surface.
+
+Agent conversation state is stored per user and token. Rows that have not been
+updated for 30 days are removed by the existing periodic background job, limiting
+retention of abandoned prompts and pending actions.
+
 ### Enforcement point
 
 `ActionExecutor::run()` is the single chokepoint: it calls `ToolPolicy::check()`

@@ -91,6 +91,18 @@ class ToolPolicySecurityTest extends TestCase {
         $this->assertFalse($this->policy->check('create_calendar_event')['allowed']);
         $this->assertFalse($this->policy->check('delete_calendar_event')['allowed']);
         $this->assertFalse($this->policy->check('create_share')['allowed']);
+        $this->assertFalse($this->policy->check('update_knowledge')['allowed']);
+
+        foreach ($this->policy->allToolNames() as $tool) {
+            $meta = $this->policy->getTool($tool);
+            self::assertNotNull($meta);
+            if ($meta['risk'] !== ToolPolicy::RISK_READONLY) {
+                self::assertFalse(
+                    $this->policy->check($tool)['allowed'],
+                    "Mutating tool '$tool' must not be exposed on TaskProcessing"
+                );
+            }
+        }
     }
 
     public function testRagSurfaceRestrictsMutatingTools(): void {

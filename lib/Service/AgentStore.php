@@ -51,6 +51,25 @@ class AgentStore {
 		}
 	}
 
+	/**
+	 * Delete conversation states that have not been touched for the given
+	 * number of seconds. Agent state contains prompts and pending actions, so
+	 * retaining abandoned tokens forever is both a privacy and storage issue.
+	 *
+	 * @return int Number of deleted rows (best effort).
+	 */
+	public function purgeOlderThan(int $maxAgeSeconds = 2592000): int {
+		$cutoff = time() - max(3600, $maxAgeSeconds);
+		try {
+			$stmt = $this->db->prepare('DELETE FROM *PREFIX*eva_ai_agent_state WHERE updated_at < ?');
+			$stmt->execute([$cutoff]);
+			return max(0, (int)$stmt->rowCount());
+		} catch (\Throwable $e) {
+			$this->logger->warning('eva_ai: agent store purge failed', ['exception' => $e]);
+			return 0;
+		}
+	}
+
 	public function save(string $userId, string $token, array $history, array $pending): void {
 		if ($token === '' || $token === '{}' || !preg_match('/^[a-zA-Z0-9_-]{1,128}$/', $token)) {
 			return;

@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace OCA\EvaAi\BackgroundJob;
 
 use OCA\EvaAi\Db\DocumentMapper;
+use OCA\EvaAi\Service\AgentStore;
 use OCA\EvaAi\Service\AppConfig;
 use OCA\EvaAi\Service\Indexer;
 use OCP\AppFramework\Utility\ITimeFactory;
@@ -26,6 +27,7 @@ class IndexJob extends TimedJob {
         private AppConfig $config,
         private Indexer $indexer,
         private DocumentMapper $documentMapper,
+        private AgentStore $agentStore,
         private LoggerInterface $logger
     ) {
         parent::__construct($time);
@@ -43,6 +45,13 @@ class IndexJob extends TimedJob {
         }
         $this->config->set('index_job_running', '1');
         $this->config->set('index_job_started', (string)time());
+
+        // Agent conversations are user data too. Prune abandoned state from
+        // the shared table during the existing periodic maintenance job.
+        $purged = $this->agentStore->purgeOlderThan();
+        if ($purged > 0) {
+            $this->logger->info('eva_ai agent state cleanup', ['deleted' => $purged]);
+        }
 
         try {
             $documentUsers = $this->documentMapper->distinctUserIds();

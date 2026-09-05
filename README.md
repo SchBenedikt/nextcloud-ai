@@ -27,7 +27,7 @@ always cite the source file path the model took the information from.
   - **Tasks**: list, create, update, complete, delete (VTODO, all task-capable calendars)
   - **Profile**: read and update the own Nextcloud profile
   - **Utility**: activity feed, server status, current time (user timezone), weather (Open-Meteo)
-- **TaskProcessing providers**: 13 providers for the Assistant app (chat, summary, headline, topics, translate, reformulate, proofread, reformat, change tone, context write, …)
+- **TaskProcessing providers**: 13 providers for the Assistant app (chat, summary, headline, topics, translate, reformulate, proofread, reformat, change tone, context write, …); the tools provider exposes only policy-allowed read-only tools and never trusts caller-supplied tool definitions or policy prompts
 - **Talk bot**: optional Nextcloud Talk integration — EVA answers in conversations
 - **File-context chat**: right-click a file in the Files app → "Open with EVA"
 - **Responsive chat and document UI**: fluid layouts for mobile and wide desktop screens, with explicit chunk loading, empty, error and retry states when inspecting indexed documents
@@ -274,7 +274,7 @@ Quick reference:
 | AI-created file markers | app-data (`ai-marks/`) | Until file deleted or cleaned |
 | Knowledge base (`KNOWLEDGE.md`), including the optional first-run profile section | User home | Until the user edits/deletes it or removes the file |
 | First-run knowledge marker | Per-user Nextcloud user configuration | Until the app is reset/uninstalled or the user changes it |
-| Agent conversation state | DB (`eva_ai_agent_store`) | Per conversation token; deleted on reset |
+| Agent conversation state | DB (`eva_ai_agent_state`) | Per conversation token; abandoned rows older than 30 days are pruned automatically; deleted on reset |
 | App configuration | `oc_appconfig` | Persistent until changed |
 
 **Reset a single user:**
