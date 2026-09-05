@@ -8,6 +8,15 @@
 (function () {
 	'use strict';
 
+	function tr(text, vars) {
+		if (typeof window !== 'undefined' && typeof window.t === 'function') {
+			return window.t('eva_ai', text, vars);
+		}
+		return String(text).replace(/\{([^{}]+)\}/g, function (match, key) {
+			return vars && Object.prototype.hasOwnProperty.call(vars, key) ? String(vars[key]) : match;
+		});
+	}
+
 	function meta(name) {
 		var el = document.head.querySelector('meta[name="' + name + '"]');
 		return el ? el.getAttribute('content') : '';
@@ -33,6 +42,31 @@
 	var sending = false;
 	var lastMd = 0;
 	var chatId = null;
+	var exportButton = document.getElementById('export');
+
+	function localizePage() {
+		document.title = tr('Chat with your files');
+		var topLink = document.querySelector('#topbar .toplink');
+		if (topLink) topLink.textContent = tr('Back to overview');
+		if (els.newchat) els.newchat.textContent = '+ ' + tr('New chat');
+		var navItems = document.querySelectorAll('#sidebar .nav-item');
+		if (navItems[0]) navItems[0].lastChild.textContent = ' ' + tr('Documents');
+		if (navItems[1]) navItems[1].lastChild.textContent = ' ' + tr('Settings');
+		var heading = document.querySelector('.head h1');
+		if (heading) heading.textContent = tr('Chat with your files');
+		var exportButton = document.getElementById('export');
+		if (exportButton) {
+			exportButton.title = tr('Export chat as Markdown');
+			exportButton.innerHTML = '&#11015; ' + tr('Export');
+		}
+		var emptyTitle = document.querySelector('#empty .t');
+		if (emptyTitle) emptyTitle.textContent = tr('Ask a question about your files');
+		var emptyDescription = document.querySelector('#empty .d');
+		if (emptyDescription) emptyDescription.textContent = tr('Ask about notes, plans or files — I can even create files, write notes and remember personal facts in a KNOWLEDGE.md.');
+		if (els.input) els.input.placeholder = tr('What does my note about X say?');
+		if (els.send) els.send.textContent = tr('Send');
+	}
+	localizePage();
 
 	function copyText(txt, el) {
 		var done = function () {
@@ -56,10 +90,10 @@
 	}
 
 	function exportMarkdown() {
-		var lines = ['# AI chat export', ''];
-		lines.push('_Exported ' + new Date().toISOString() + '_');
+		var lines = ['# ' + tr('Chat with your files'), ''];
+		lines.push('_' + tr('Exported {date}', { date: new Date().toISOString() }) + '_');
 		messages.forEach(function (m) {
-			lines.push('', '## ' + (m.role === 'user' ? 'You' : 'AI'), '', m.text || '');
+			lines.push('', '## ' + (m.role === 'user' ? tr('You') : 'EVA'), '', m.text || '');
 		});
 		var blob = new Blob([lines.join('\n')], { type: 'text/markdown' });
 		var url = URL.createObjectURL(blob);
@@ -204,7 +238,7 @@
 			det.className = 'rth';
 			det.style.display = 'none';
 			var sum = document.createElement('summary');
-			sum.textContent = '🧠 Thinking…';
+			sum.textContent = '🧠 ' + tr('Thinking…');
 			var th = document.createElement('div');
 			th.className = 'rth-c';
 			det.appendChild(sum);
@@ -223,7 +257,7 @@
 			if (m.role === 'assistant') {
 				var cb = document.createElement('button');
 				cb.className = 'rcopy';
-				cb.title = 'Copy answer';
+				cb.title = tr('Copy answer');
 				cb.textContent = '⧉';
 				cb.addEventListener('click', function () { copyText(String(m.text || ''), cb); });
 				b.appendChild(cb);
@@ -244,7 +278,7 @@
 			s.className = 'rs';
 			var lab = document.createElement('div');
 			lab.className = 'lab';
-			lab.textContent = 'Sources:';
+			lab.textContent = tr('Sources:');
 			s.appendChild(lab);
 			m.sources.forEach(function (item) {
 				var src = item.src || item;
@@ -264,7 +298,7 @@
 			panel.className = 'rconfirm';
 			var label = document.createElement('div');
 			label.className = 'rconfirm-label';
-			label.textContent = 'EVA wants to run: ' + m.confirmation.name;
+			label.textContent = tr('EVA wants to run: {tool}', { tool: m.confirmation.name });
 			var details = document.createElement('pre');
 			details.className = 'rconfirm-args';
 			details.textContent = JSON.stringify(m.confirmation.arguments || {}, null, 2);
@@ -273,11 +307,11 @@
 			var approve = document.createElement('button');
 			approve.type = 'button';
 			approve.className = 'rconfirm-approve';
-			approve.textContent = 'Confirm and run';
+			approve.textContent = tr('Confirm and run');
 			var reject = document.createElement('button');
 			reject.type = 'button';
 			reject.className = 'rconfirm-reject';
-			reject.textContent = 'Cancel';
+			reject.textContent = tr('Cancel');
 			var finish = function (text) {
 				m.confirmation.resolved = true;
 				m.text = text;
@@ -288,18 +322,18 @@
 			approve.addEventListener('click', function () {
 				approve.disabled = true;
 				reject.disabled = true;
-				approve.textContent = 'Running…';
+				approve.textContent = tr('Running…');
 				api('POST', '/confirmTool', { name: m.confirmation.name, arguments: m.confirmation.arguments || {} })
 					.then(function (result) {
 						if (!result || !result.ok) {
-							finish('⚠️ ' + (result && result.error || 'The action could not be completed.'));
+							finish('⚠️ ' + (result && result.error || tr('The action could not be completed.')));
 							return;
 						}
-						finish('✅ ' + (typeof result.result === 'string' ? result.result : 'The action was completed.'));
+						finish('✅ ' + (typeof result.result === 'string' ? result.result : tr('The action was completed.')));
 					})
 					.catch(function (error) { finish('⚠️ ' + String(error && error.message || error)); });
 			});
-			reject.addEventListener('click', function () { finish('Action cancelled.'); });
+			reject.addEventListener('click', function () { finish(tr('Action cancelled.')); });
 			actions.appendChild(approve);
 			actions.appendChild(reject);
 			panel.appendChild(label);
@@ -322,7 +356,12 @@
 		while (els.msgs.firstChild) {
 			els.msgs.removeChild(els.msgs.firstChild);
 		}
+		if (!list.length && els.empty) {
+			els.msgs.appendChild(els.empty);
+			els.empty.style.display = '';
+		}
 		list.forEach(function (m, i) { renderMsg(m, i); });
+		if (exportButton) exportButton.disabled = list.length === 0;
 		els.msgs.scrollTop = els.msgs.scrollHeight;
 	}
 
@@ -368,7 +407,7 @@
 
 	function apiStream(body, onLine) {
 		if (!STREAM_URL) {
-			return Promise.reject(new Error('No streaming endpoint'));
+			return Promise.reject(new Error(tr('No streaming endpoint')));
 		}
 		return fetch(STREAM_URL, {
 			method: 'POST',
@@ -449,7 +488,7 @@
 		if (!chats || !chats.length) {
 			var empty = document.createElement('div');
 			empty.className = 'chat-empty';
-			empty.textContent = 'No chats yet.';
+			empty.textContent = tr('No chats yet.');
 			els.chatlist.appendChild(empty);
 			return;
 		}
@@ -466,10 +505,10 @@
 			var x = document.createElement('button');
 			x.className = 'x';
 			x.textContent = '✕';
-			x.title = 'Delete chat';
+			x.title = tr('Delete chat');
 			x.addEventListener('click', function (e) {
 				e.stopPropagation();
-				if (!window.confirm('Delete chat "' + c.title + '"?')) return;
+				if (!window.confirm(tr('Delete chat "{title}"?', { title: c.title }))) return;
 				api('DELETE', '/chats/' + encodeURIComponent(c.id)).then(function () {
 					if (chatId === c.id) {
 						chatId = null;
@@ -545,7 +584,7 @@
 						risk: ev.risk || 'mutating',
 						resolved: false
 					};
-					last.text = 'Please review this action and confirm it explicitly.';
+					last.text = tr('Please review this action and confirm it explicitly.');
 					last.done = true;
 					saveMessage('user', msg);
 					renderAll(messages);
@@ -566,11 +605,11 @@
 		}).catch(function (e) {
 			var last = messages[messages.length - 1];
 			if (last && last.role === 'assistant' && !last.done) {
-				last.text = (last.text || '') + '⚠️ Error: ' + String(e && e.message ? e.message : e);
+				last.text = (last.text || '') + '⚠️ ' + tr('Error: {error}', { error: String(e && e.message ? e.message : e) });
 				last.done = true;
 				updateMessage(messages.length - 1);
 			}
-			showErr('Network error – see console.');
+			showErr(tr('Network error — see console.'));
 		}).finally(function () {
 			sending = false;
 			els.send.disabled = false;
@@ -597,6 +636,6 @@
 			els.newchat.disabled = false;
 		});
 	});
-
+	if (exportButton) exportButton.addEventListener('click', exportMarkdown);
 	refreshChats();
 })();

@@ -3,51 +3,51 @@
 		<header class="page-header">
 			<div class="header-copy">
 				<p class="eyebrow">EVA AI</p>
-				<h2 class="docs-title">Documents</h2>
-				<p class="page-intro">Review the files in your personal EVA knowledge base and inspect their indexed text.</p>
+				<h2 class="docs-title">{{ $t('Documents') }}</h2>
+				<p class="page-intro">{{ $t('Review the files in your personal EVA knowledge base and inspect their indexed text.') }}</p>
 			</div>
 			<div class="header-actions">
-				<NcButton type="primary" :loading="indexing" :disabled="indexingActive" @click="startIndex">Index files &amp; emails</NcButton>
-				<NcButton type="secondary" :disabled="indexingActive" @click="startMailIndex">Only emails</NcButton>
-				<NcButton v-if="indexingActive" type="tertiary-no-background" :loading="stopping" :disabled="indexStatus?.indexStopping" @click="stopIndex">Stop</NcButton>
+				<NcButton type="primary" :loading="indexing" :disabled="indexingActive" @click="startIndex">{{ $t('Index files & emails') }}</NcButton>
+				<NcButton type="secondary" :disabled="indexingActive" @click="startMailIndex">{{ $t('Only emails') }}</NcButton>
+				<NcButton v-if="indexingActive" type="tertiary-no-background" :loading="stopping" :disabled="indexStatus?.indexStopping" @click="stopIndex">{{ $t('Stop') }}</NcButton>
 			</div>
 		</header>
 
 		<div v-if="indexingActive" class="callout indexing-callout" role="status">
-			<strong>{{ indexStatus?.indexStopping ? 'Stopping indexing…' : indexStatus?.indexMode === 'mail' ? 'Email indexing is running' : 'Indexing is running' }}</strong>
-			<span>The job continues on the server even if you close this page.</span>
+			<strong>{{ indexStatus?.indexStopping ? $t('Stopping indexing…') : indexStatus?.indexMode === 'mail' ? $t('Email indexing is running') : $t('Indexing is running') }}</strong>
+			<span>{{ $t('The job continues on the server even if you close this page.') }}</span>
 		</div>
 		<div v-if="progress" class="callout" role="status">{{ progress }}</div>
 
-		<div class="summary-grid" aria-label="Index summary">
+		<div class="summary-grid" :aria-label="$t('Index summary')">
 			<div class="summary-card">
-				<span class="summary-label">Documents</span>
+				<span class="summary-label">{{ $t('Documents') }}</span>
 				<strong>{{ total }}</strong>
-				<small>Indexed files in your knowledge base</small>
+				<small>{{ $t('Indexed files in your knowledge base') }}</small>
 			</div>
 			<div class="summary-card">
-				<span class="summary-label">Text chunks</span>
+				<span class="summary-label">{{ $t('Text chunks') }}</span>
 				<strong>{{ totalChunks }}</strong>
-				<small>Searchable sections</small>
+				<small>{{ $t('Searchable sections') }}</small>
 			</div>
 			<div class="summary-card">
-				<span class="summary-label">Indexed size</span>
+				<span class="summary-label">{{ $t('Indexed size') }}</span>
 				<strong>{{ fmtSize(totalSize) }}</strong>
-				<small>Content currently available to EVA</small>
+				<small>{{ $t('Content currently available to EVA') }}</small>
 			</div>
 		</div>
 
 		<section class="docs-toolbar">
-			<NcTextField v-model="search" label="Search documents" :label-outside="true" placeholder="File name or path" :disabled="loadingMore" @keydown.enter="load" />
-			<NcButton type="secondary" :loading="loading" :disabled="loadingMore" @click="load">Refresh</NcButton>
+			<NcTextField v-model="search" :label="$t('Search documents')" :label-outside="true" :placeholder="$t('File name or path')" :disabled="loadingMore" @keydown.enter="load" />
+			<NcButton type="secondary" :loading="loading" :disabled="loadingMore" @click="load">{{ $t('Refresh') }}</NcButton>
 		</section>
 
 		<section class="docs-body">
 			<NcEmptyContent v-if="!loading && !docs.length" class="docs-empty">
 				<template #icon><span>📄</span></template>
-				<template #name>No documents indexed yet</template>
+				<template #name>{{ $t('No documents indexed yet') }}</template>
 				<template #description>
-					Use „Start indexing“ to scan your files, then ask Eva about them.
+					{{ $t('Use “Start indexing” to scan your files, then ask Eva about them.') }}
 				</template>
 			</NcEmptyContent>
 
@@ -55,11 +55,11 @@
 				<thead>
 					<tr>
 						<th class="docs-caret-head"></th>
-						<th>Path</th>
-						<th>Type</th>
-						<th>Size</th>
-						<th>Chunks</th>
-						<th>Indexed</th>
+						<th>{{ $t('Path') }}</th>
+						<th>{{ $t('Type') }}</th>
+						<th>{{ $t('Size') }}</th>
+						<th>{{ $t('Chunks') }}</th>
+						<th>{{ $t('Indexed') }}</th>
 					</tr>
 				</thead>
 				<tbody>
@@ -88,11 +88,11 @@
 							<td colspan="6">
 								<div class="docs-chunklist">
 									<div v-if="!chunkCache.get(d.id) || chunkCache.get(d.id).status === 'loading'" class="docs-chunk-loading">
-										<NcLoadingIcon :size="16" /> Loading {{ d.chunks ? d.chunks + ' ' : '' }}chunks …
+										<NcLoadingIcon :size="16" /> {{ $t('Loading {count} chunks …', { count: d.chunks || 0 }) }}
 									</div>
 									<div v-else-if="chunkCache.get(d.id).status === 'error'" class="docs-chunk-state docs-chunk-state-error" role="alert">
-										<div><strong>Chunks could not be loaded.</strong> {{ chunkCache.get(d.id).error }}</div>
-										<NcButton type="tertiary" @click.stop="loadChunks(d.id, d.chunks, true)">Retry</NcButton>
+										<div><strong>{{ $t('Chunks could not be loaded.') }}</strong> {{ chunkCache.get(d.id).error }}</div>
+										<NcButton type="tertiary" @click.stop="loadChunks(d.id, d.chunks, true)">{{ $t('Retry') }}</NcButton>
 									</div>
 									<template v-else>
 										<div v-for="c in chunkCache.get(d.id).chunks" :key="c.index" class="docs-chunk">
@@ -100,7 +100,7 @@
 											<span class="docs-chunk-text">{{ c.content }}</span>
 										</div>
 										<div v-if="!chunkCache.get(d.id).chunks.length" class="docs-chunk-loading">
-											No indexed chunk rows are available for this document.
+											{{ $t('No indexed chunk rows are available for this document.') }}
 										</div>
 									</template>
 								</div>
@@ -109,13 +109,13 @@
 					</template>
 				</tbody>			</table>
 				<div v-if="docs.length" class="docs-pagination" role="status">
-					<span>Showing {{ docs.length }} of {{ total }} documents</span>
+					<span>{{ $t('Showing {shown} of {total} documents', { shown: docs.length, total }) }}</span>
 					<div v-if="loadMoreError" class="docs-pagination-error" role="alert">
 						<span>{{ loadMoreError }}</span>
-						<NcButton type="tertiary" @click="loadMore">Retry</NcButton>
+						<NcButton type="tertiary" @click="loadMore">{{ $t('Retry') }}</NcButton>
 					</div>
-					<NcButton v-else-if="hasMore" type="secondary" :loading="loadingMore" :disabled="loading || loadingMore" @click="loadMore">Load more</NcButton>
-					<span v-else class="docs-pagination-end">All matching documents are loaded.</span>
+					<NcButton v-else-if="hasMore" type="secondary" :loading="loadingMore" :disabled="loading || loadingMore" @click="loadMore">{{ $t('Load more') }}</NcButton>
+					<span v-else class="docs-pagination-end">{{ $t('All matching documents are loaded.') }}</span>
 				</div>
 		</section>
 	</div>
@@ -124,6 +124,7 @@
 <script>
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { api } from '../lib/api'
+import { translate as t } from '../lib/i18n'
 import { mdiChevronDown, mdiChevronRight } from '@mdi/js'
 
 export default {
@@ -159,13 +160,13 @@ export default {
 		const startIndex = async () => {
 			if (indexingActive.value) return
 			indexing.value = true
-			progress.value = 'Indexing is being queued in the background …'
+			progress.value = t('Indexing is being queued in the background …')
 			try {
 				const response = await api('POST', 'index') || {}
 				indexStatus.value = response.status || indexStatus.value
-				progress.value = 'Indexing queued. It continues even if you close the website.'
+				progress.value = t('Indexing queued. It continues even if you close the website.')
 			} catch (e) {
-				progress.value = 'Indexing could not be queued: ' + e
+				progress.value = t('Indexing could not be queued: {error}', { error: e })
 			} finally {
 				indexing.value = false
 				load()
@@ -175,13 +176,13 @@ export default {
 		const startMailIndex = async () => {
 			if (indexingActive.value) return
 			indexing.value = true
-			progress.value = 'Email indexing is being queued in the background …'
+			progress.value = t('Email indexing is being queued in the background …')
 			try {
 				const response = await api('POST', 'mailIndex') || {}
 				indexStatus.value = response.status || indexStatus.value
-				progress.value = 'Email indexing queued. It continues even if you close the website.'
+				progress.value = t('Email indexing queued. It continues even if you close the website.')
 			} catch (e) {
-				progress.value = 'Email indexing could not be queued: ' + e
+				progress.value = t('Email indexing could not be queued: {error}', { error: e })
 			} finally {
 				indexing.value = false
 			}
@@ -193,9 +194,9 @@ export default {
 			try {
 				const response = await api('POST', 'indexStop') || {}
 				indexStatus.value = response.status || indexStatus.value
-				progress.value = response?.stopping ? 'Stop requested. Indexing will finish the current cancellable request and then release its lock.' : 'Indexing stopped.'
+				progress.value = response?.stopping ? t('Stop requested. Indexing will finish the current cancellable request and then release its lock.') : t('Indexing stopped.')
 			} catch (e) {
-				progress.value = 'Indexing could not be stopped: ' + e
+				progress.value = t('Indexing could not be stopped: {error}', { error: e })
 			} finally {
 				stopping.value = false
 				await loadStatus()
@@ -228,7 +229,7 @@ export default {
 					totalSize.value = 0
 					hasMore.value = false
 				} else {
-					loadMoreError.value = 'More documents could not be loaded. Please try again.'
+					loadMoreError.value = t('More documents could not be loaded. Please try again.')
 				}
 				console.error('[eva-ai] documents error', e)
 			} finally {

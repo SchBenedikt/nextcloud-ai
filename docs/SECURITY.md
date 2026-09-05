@@ -26,7 +26,7 @@ Every tool is registered centrally with three properties:
 | Property | Values | Meaning |
 |---|---|---|
 | `risk` | `readonly`, `mutating`, `destructive` | Severity of side effects |
-| `surfaces` | `web`, `talk`, `rag`, `taskprocessing` | Where the tool may run |
+| `surfaces` | `web`, `talk`, `rag`, `taskprocessing`, `taskprocessing_confirmed` | Where the tool may run |
 | `requiresConfirmation` | `true` / `false` | Must the user approve first? |
 
 ### Risk classification
@@ -57,14 +57,15 @@ Not every surface may run every tool:
 | `web` | EVA web chat UI | ✅ yes (with confirmation) |
 | `talk` | Nextcloud Talk bot | ❌ no — readonly only |
 | `rag` | RAG pipeline internals | ❌ no — only readonly tools |
-| `taskprocessing` | Assistant app / background workers | ❌ no — only readonly tools (before user confirmation) |
+| `taskprocessing` | Assistant app / background workers, proposal phase | ❌ no — readonly tools only |
+| `taskprocessing_confirmed` | Explicitly confirmed native Assistant action | ✅ only for the confirmed task |
 
 This prevents Talk participants, a background job or the Assistant app from silently
 creating, deleting or overwriting data. Talk intentionally has no mutating tools:
 room members cannot use the bot to change the bot owner's files, shares, contacts,
-calendar or tasks. The `AgentInteractionProvider` switches the surface to `web`
-**only after** the user confirmed a proposed tool call, so the confirmation flow
-keeps working in TaskProcessing.
+calendar or tasks. The `AgentInteractionProvider` switches to the dedicated
+`taskprocessing_confirmed` surface only after the user confirmed a proposed tool
+call. It never grants a background worker the broader `web` surface.
 
 Talk history is opt-in: TaskProcessing only accepts explicitly supplied room IDs and caps the context at three rooms and the latest 20 messages per room. It never discovers and injects every room automatically.
 
@@ -102,13 +103,18 @@ For mutating/destructive tools EVA uses a two-phase flow:
 1. **Proposal phase**: the model proposes a tool call; the UI shows exactly what
    will happen ("Create file `notes.md` with …", "Delete event …").
 2. **Confirmation phase**: only after the user clicks **Confirm** the tool is
-   executed. The surface switches from `taskprocessing` (readonly) to `web`
-   (mutating allowed) at that point.
+   executed. The surface switches from `taskprocessing` (readonly) to
+   `taskprocessing_confirmed` (only the explicitly confirmed mutation is allowed)
+   at that point.
 
 ## 4. Additional guards
 
 - **`exec_delete_mode`** (default `own`): the model may only delete files that
-  EVA itself created (tracked via app-data `ai-marks/`). Set to `off` to disable
+  EVA itself created (tracked by file ID via app-data `ai-marks/`). Renames
+  preserve the grant; deletion/recreation at the same path does not. Legacy
+  path-only markers are discarded conservatively, so old EVA files require
+  manual deletion or an explicit permission change. Editing an existing file
+  never grants ownership. Set to `off` to disable
   deletion entirely.
 - **`exec_write_types`**: restrict which file types EVA may create
   (e.g. `md,txt`). Empty = all types.

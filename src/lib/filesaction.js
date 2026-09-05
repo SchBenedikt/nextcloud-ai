@@ -13,8 +13,11 @@
  * aus der URL und öffnet den FileContextChatView.
  */
 import { registerFileAction } from '@nextcloud/files'
+import { generateUrl } from '@nextcloud/router'
+import { loadTranslations } from '@nextcloud/l10n'
+import { translate as t } from './i18n'
 
-const EVA_APP_PATH = '/apps/eva_ai/app'
+const EVA_APP_PATH = generateUrl('/apps/eva_ai/app')
 
 function evaPageUrl(fileIds) {
 	const params = new URLSearchParams()
@@ -66,16 +69,16 @@ const action = {
 		const nodes = (context && context.nodes) || []
 		const n = nodes.length
 		if (n === 1) {
-			return 'Open with Eva'
+			return t('Open with Eva')
 		}
-		return 'Chat about these ' + n + ' files with Eva'
+		return t('Chat about these {count} files with Eva', { count: n })
 	},
 	title(context) {
 		const nodes = (context && context.nodes) || []
 		if (nodes.length === 1) {
-			return 'Open the selected file in Eva. Eva answers based only on its content.'
+			return t('Open the selected file in Eva. Eva answers based only on its content.')
 		}
-		return 'Open all selected files in Eva. Eva answers based only on their content.'
+		return t('Open all selected files in Eva. Eva answers based only on their content.')
 	},
 	iconSvgInline() {
 		return ROBOT_ICON_SVG
@@ -99,9 +102,20 @@ const action = {
 		openEva(ids)
 		return Promise.resolve(true)
 	},
+	execBatch(context) {
+		const nodes = (context && context.nodes) || []
+		const ids = fileIds(nodes)
+		if (ids.length === 0) return Promise.resolve(nodes.map(() => null))
+		dispatchOpen(ids)
+		openEva(ids)
+		return Promise.resolve(nodes.map(() => true))
+	},
 	order: 100,
 }
 
-registerFileAction(action)
-
-console.info('[eva-ai] registered file action: eva-ai-open-with')
+loadTranslations('eva_ai')
+	.catch((error) => console.warn('[eva-ai] translation bundle could not be loaded', error))
+	.finally(() => {
+		registerFileAction(action)
+		console.info('[eva-ai] registered file action: eva-ai-open-with')
+	})

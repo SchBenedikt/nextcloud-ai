@@ -111,6 +111,17 @@ class ToolPolicySecurityTest extends TestCase {
         }
     }
 
+    public function testConfirmedTaskProcessingSurfaceAllowsOnlyExplicitlyConfirmedMutations(): void {
+        $this->policy->setSurface(ToolPolicy::SURFACE_TASKPROCESSING_CONFIRMED);
+        $this->assertTrue($this->policy->check('create_file')['allowed']);
+        $this->assertTrue($this->policy->check('delete_file')['allowed']);
+        $this->assertTrue($this->policy->check('read_file')['allowed']);
+
+        $this->policy->setSurface(ToolPolicy::SURFACE_TASKPROCESSING);
+        $this->assertFalse($this->policy->check('create_file')['allowed']);
+        $this->assertFalse($this->policy->check('delete_file')['allowed']);
+    }
+
     public function testRagSurfaceRestrictsMutatingTools(): void {
         $this->policy->setSurface(ToolPolicy::SURFACE_RAG);
 
@@ -217,6 +228,9 @@ class ToolPolicySecurityTest extends TestCase {
 
         $this->policy->setSurface(ToolPolicy::SURFACE_TASKPROCESSING);
         $this->assertEquals(ToolPolicy::SURFACE_TASKPROCESSING, $this->policy->getSurface());
+
+        $this->policy->setSurface(ToolPolicy::SURFACE_TASKPROCESSING_CONFIRMED);
+        $this->assertEquals(ToolPolicy::SURFACE_TASKPROCESSING_CONFIRMED, $this->policy->getSurface());
 
         $this->policy->setSurface(ToolPolicy::SURFACE_WEB);
         $this->assertEquals(ToolPolicy::SURFACE_WEB, $this->policy->getSurface());

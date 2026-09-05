@@ -3,91 +3,91 @@
 		<header class="page-header">
 			<div class="header-copy">
 				<p class="eyebrow">EVA AI</p>
-				<h2 class="settings-title">Settings</h2>
-				<p class="page-intro">Control how EVA connects to Ollama, searches your files and is allowed to act in Nextcloud.</p>
+				<h2 class="settings-title">{{ $t('Settings') }}</h2>
+				<p class="page-intro">{{ $t('Control how EVA connects to Ollama, searches your files and is allowed to act in Nextcloud.') }}</p>
 			</div>
 			<div class="header-actions">
-				<span v-if="saved" class="saved-label" role="status">Saved</span>
+				<span v-if="saved" class="saved-label" role="status">{{ $t('Saved') }}</span>
 				<NcButton type="primary" :loading="saving" :disabled="settingsLocked" @click="save">
-					Save changes
+					{{ $t('Save changes') }}
 				</NcButton>
 			</div>
 		</header>
 
 		<div v-if="loadError" class="callout callout-error" role="alert">
-			<strong>Settings could not be loaded.</strong>
+			<strong>{{ $t('Settings could not be loaded.') }}</strong>
 			<span>{{ loadError }}</span>
-			<NcButton type="tertiary-no-background" @click="loadStatus(true)">Try again</NcButton>
+			<NcButton type="tertiary-no-background" @click="loadStatus(true)">{{ $t('Try again') }}</NcButton>
 		</div>
 
-		<div class="summary-grid" aria-label="EVA status">
+		<div class="summary-grid" :aria-label="$t('EVA status')">
 			<div class="summary-card" :class="status && status.ollamaOnline ? 'is-ok' : 'is-muted'">
 				<span class="status-dot" aria-hidden="true"></span>
 				<div>
-					<span class="summary-label">Ollama</span>
-					<strong>{{ status ? (status.ollamaOnline ? 'Connected' : 'Not connected') : 'Checking…' }}</strong>
-					<small>{{ status?.ollamaError || status?.ollamaUrl || 'Local AI server' }}</small>
+					<span class="summary-label">{{ $t('Ollama') }}</span>
+					<strong>{{ status ? (status.ollamaOnline ? $t('Connected') : $t('Not connected')) : $t('Checking…') }}</strong>
+					<small>{{ status?.ollamaError || status?.ollamaUrl || $t('Local AI server') }}</small>
 				</div>
 			</div>
 			<div class="summary-card">
 				<div>
-					<span class="summary-label">Knowledge base</span>
-					<strong>{{ formatNumber(status?.documents) }} documents</strong>
-					<small>{{ formatNumber(status?.chunks) }} searchable text chunks</small>
+					<span class="summary-label">{{ $t('Knowledge base') }}</span>
+					<strong>{{ $t('{count} documents', { count: formatNumber(status?.documents) }) }}</strong>
+					<small>{{ $t('{count} searchable text chunks', { count: formatNumber(status?.chunks) }) }}</small>
 				</div>
 			</div>
 			<div class="summary-card" :class="status?.indexing ? 'is-working' : ''">
 				<div>
-					<span class="summary-label">Indexing</span>
-					<strong>{{ status?.indexing ? 'In progress' : 'Ready' }}</strong>
-					<small>{{ status?.lastFinished ? 'Last finished ' + status.lastFinished : 'Run indexing after changing scope' }}</small>
+					<span class="summary-label">{{ $t('Indexing') }}</span>
+					<strong>{{ status?.indexing ? $t('In progress') : $t('Ready') }}</strong>
+					<small>{{ status?.lastFinished ? $t('Last finished {time}', { time: status.lastFinished }) : $t('Run indexing after changing scope') }}</small>
 				</div>
 			</div>
 		</div>
 
 		<div v-if="message.text" class="callout" :class="'callout-' + message.type" :role="message.type === 'error' ? 'alert' : 'status'">
-			<strong>{{ message.type === 'error' ? 'Something went wrong' : message.type === 'success' ? 'Done' : 'Notice' }}</strong>
+			<strong>{{ message.type === 'error' ? $t('Something went wrong') : message.type === 'success' ? $t('Done') : $t('Notice') }}</strong>
 			<span>{{ message.text }}</span>
 		</div>
 		<div v-if="validationErrors.length" class="callout callout-error validation-summary" role="alert">
-			<strong>Check these values</strong>
+			<strong>{{ $t('Check these values') }}</strong>
 			<ul><li v-for="error in validationErrors" :key="error">{{ error }}</li></ul>
 		</div>
 
 		<main class="settings-body">
 			<div v-if="indexingActive" class="indexing-banner" role="status">
 				<div>
-					<strong>{{ status?.indexStopping ? 'Stopping indexing…' : status?.indexMode === 'mail' ? 'Email indexing is running' : 'Indexing is running' }}</strong>
-					<span>You can leave this page; the background job continues on the server. Settings stay locked until it finishes.</span>
+					<strong>{{ status?.indexStopping ? $t('Stopping indexing…') : status?.indexMode === 'mail' ? $t('Email indexing is running') : $t('Indexing is running') }}</strong>
+					<span>{{ $t('You can leave this page; the background job continues on the server. Settings stay locked until it finishes.') }}</span>
 				</div>
-				<NcButton type="secondary" :loading="stopping" :disabled="status?.indexStopping" @click="stopIndex">Stop indexing</NcButton>
+				<NcButton type="secondary" :loading="stopping" :disabled="status?.indexStopping" @click="stopIndex">{{ $t('Stop indexing') }}</NcButton>
 			</div>
 			<fieldset class="settings-fieldset" :disabled="settingsLocked">
 			<section class="settings-section">
 				<div class="section-heading">
 					<div>
-						<h3>Connection &amp; models</h3>
-						<p>Tell EVA where Ollama is running and which models should answer questions.</p>
+						<h3>{{ $t('Connection & models') }}</h3>
+						<p>{{ $t('Tell EVA where Ollama is running and which models should answer questions.') }}</p>
 					</div>
 				</div>
 
 				<div class="field-grid field-grid-wide">
 					<div class="field field-wide">
-						<NcTextField id="ollama-url" label="Ollama server URL" :label-outside="true" v-model="f.ollama_url" type="url" placeholder="http://127.0.0.1:11434" />
-						<p class="field-help">The address of your Ollama HTTP API. The default works when Ollama runs on this same server.</p>
+						<NcTextField id="ollama-url" :label="$t('Ollama server URL')" :label-outside="true" v-model="f.ollama_url" type="url" :placeholder="$t('http://127.0.0.1:11434')" />
+						<p class="field-help">{{ $t('The address of your Ollama HTTP API. The default works when Ollama runs on this same server.') }}</p>
 					</div>
 					<div class="field">
-						<NcTextField id="embedding-model" label="Embedding model" :label-outside="true" v-model="f.embedding_model" placeholder="nomic-embed-text" />
-						<p class="field-help">Turns file text into searchable vectors. This model must be installed in Ollama.</p>
+						<NcTextField id="embedding-model" :label="$t('Embedding model')" :label-outside="true" v-model="f.embedding_model" :placeholder="$t('nomic-embed-text')" />
+						<p class="field-help">{{ $t('Turns file text into searchable vectors. This model must be installed in Ollama.') }}</p>
 					</div>
 					<div class="field">
-						<NcTextField id="chat-model" label="Chat model" :label-outside="true" v-model="f.chat_model" placeholder="gemma4:cloud" />
-						<p class="field-help">Writes EVA’s answers. Use a model available in Ollama.</p>
+						<NcTextField id="chat-model" :label="$t('Chat model')" :label-outside="true" v-model="f.chat_model" :placeholder="$t('gemma4:cloud')" />
+						<p class="field-help">{{ $t('Writes EVA’s answers. Use a model available in Ollama.') }}</p>
 					</div>
 				</div>
 				<div class="inline-actions">
-					<NcButton type="secondary" :loading="checking" :disabled="busy" @click="checkOllama">Check connection</NcButton>
-					<span class="action-hint">Saves the current values first, then tests the server and both models.</span>
+					<NcButton type="secondary" :loading="checking" :disabled="busy" @click="checkOllama">{{ $t('Check connection') }}</NcButton>
+					<span class="action-hint">{{ $t('Saves the current values first, then tests the server and both models.') }}</span>
 				</div>
 				<div v-if="checkOut" class="check-panel" :class="'check-' + checkOut.type" role="status">
 					<div v-for="line in checkOut.lines" :key="line.label" class="check-line">
@@ -100,65 +100,64 @@
 			<section class="settings-section">
 				<div class="section-heading">
 					<div>
-						<h3>Safety &amp; actions</h3>
-						<p>Choose what EVA may do beyond answering questions. Recommended defaults are shown below.</p>
+						<h3>{{ $t('Safety & actions') }}</h3>
+						<p>{{ $t('Choose what EVA may do beyond answering questions. Recommended defaults are shown below.') }}</p>
 					</div>
 				</div>
-				<NcCheckboxRadioSwitch v-model="actionsEnabled" type="switch" class="native-toggle" :description="'Let EVA create, read, rename and search files, plus work with supported contacts and notes.'">
-						Allow file actions
+				<NcCheckboxRadioSwitch v-model="actionsEnabled" type="switch" class="native-toggle" :description="$t('Let EVA create, read, rename and search files, plus work with supported contacts and notes.')">{{ $t('Allow file actions') }}
 					</NcCheckboxRadioSwitch>
 				<div class="warning-note" :class="{ 'is-disabled': actionsDisabled }">
-					<strong>{{ actionsDisabled ? 'Actions are disabled' : 'Actions can change your files' }}</strong>
-					<span>{{ actionsDisabled ? 'The fields below are inactive until you enable file actions.' : 'EVA still requires confirmation for mutating or destructive operations.' }}</span>
+					<strong>{{ actionsDisabled ? $t('Actions are disabled') : $t('Actions can change your files') }}</strong>
+					<span>{{ actionsDisabled ? $t('The fields below are inactive until you enable file actions.') : $t('EVA still requires confirmation for mutating or destructive operations.') }}</span>
 				</div>
 
 				<div class="field-grid" :class="{ 'is-disabled': actionsDisabled }">
 					<div class="field">
-						<NcTextField id="write-types" label="File types EVA may write" :label-outside="true" v-model="f.exec_write_types" :disabled="actionsDisabled" placeholder="md, txt, csv" />
-						<p class="field-help">Comma-separated extensions, for example <code>md, txt</code>. Empty means any supported text file.</p>
+						<NcTextField id="write-types" :label="$t('File types EVA may write')" :label-outside="true" v-model="f.exec_write_types" :disabled="actionsDisabled" :placeholder="$t('md, txt, csv')" />
+						<p class="field-help">{{ $t('Comma-separated extensions, for example {types}. Empty means any supported text file.', { types: 'md, txt' }) }}</p>
 					</div>
 					<div class="field">
-						<NcTextField id="write-max-chars" label="Maximum characters per file" :label-outside="true" v-model="f.exec_write_max_chars" type="number" :disabled="actionsDisabled" />
-						<p class="field-help">A size guard for files created or overwritten by EVA.</p>
+						<NcTextField id="write-max-chars" :label="$t('Maximum characters per file')" :label-outside="true" v-model="f.exec_write_max_chars" type="number" :disabled="actionsDisabled" />
+						<p class="field-help">{{ $t('A size guard for files created or overwritten by EVA.') }}</p>
 					</div>
 				</div>
 
 				<div class="choice-group" :class="{ 'is-disabled': actionsDisabled }">
-					<strong class="choice-label">Delete permission</strong>
-					<NcCheckboxRadioSwitch v-model="f.exec_delete_mode" type="radio" name="delete-mode" value="off" :disabled="actionsDisabled" :description="'EVA cannot delete files.'">
-						Never
+					<strong class="choice-label">{{ $t('Delete permission') }}</strong>
+					<NcCheckboxRadioSwitch v-model="f.exec_delete_mode" type="radio" name="delete-mode" value="off" :disabled="actionsDisabled" :description="$t('EVA cannot delete files.')">
+						{{ $t('Never') }}
 					</NcCheckboxRadioSwitch>
-					<NcCheckboxRadioSwitch v-model="f.exec_delete_mode" type="radio" name="delete-mode" value="own" :disabled="actionsDisabled" :description="'EVA may delete files it created itself.'">
-						Only EVA-created files <em>Recommended</em>
+					<NcCheckboxRadioSwitch v-model="f.exec_delete_mode" type="radio" name="delete-mode" value="own" :disabled="actionsDisabled" :description="$t('EVA may delete files it created itself.')">
+						{{ $t('Only EVA-created files') }} <em>{{ $t('Recommended') }}</em>
 					</NcCheckboxRadioSwitch>
-					<NcCheckboxRadioSwitch v-model="f.exec_delete_mode" type="radio" name="delete-mode" value="all" :disabled="actionsDisabled" class="choice-danger" :description="'Allows deletion of any file after explicit confirmation. Use with care.'">
-						Any file in my Files
+					<NcCheckboxRadioSwitch v-model="f.exec_delete_mode" type="radio" name="delete-mode" value="all" :disabled="actionsDisabled" class="choice-danger" :description="$t('Allows deletion of any file after explicit confirmation. Use with care.')">
+						{{ $t('Any file in my Files') }}
 					</NcCheckboxRadioSwitch>
 				</div>
-				<NcCheckboxRadioSwitch v-model="notificationsEnabled" type="switch" class="native-toggle compact-switch" :description="'Uses Nextcloud Notifications when background or Talk work finishes.'">
-					Notify me when a long answer is ready
+				<NcCheckboxRadioSwitch v-model="notificationsEnabled" type="switch" class="native-toggle compact-switch" :description="$t('Uses Nextcloud Notifications when background or Talk work finishes.')">
+					{{ $t('Notify me when a long answer is ready') }}
 				</NcCheckboxRadioSwitch>
 			</section>
 
 			<section class="settings-section">
 				<div class="section-heading">
 					<div>
-						<h3>Search &amp; answer quality</h3>
-						<p>These settings control how much indexed context EVA retrieves and how creative its answers are.</p>
+						<h3>{{ $t('Search & answer quality') }}</h3>
+						<p>{{ $t('These settings control how much indexed context EVA retrieves and how creative its answers are.') }}</p>
 					</div>
 				</div>
 				<div class="field-grid field-grid-three">
 					<div class="field">
-						<NcTextField id="top-k" label="Sources per answer" :label-outside="true" v-model="f.top_k" type="number" />
-						<p class="field-help">Maximum number of relevant text snippets sent to the chat model. Default: 6.</p>
+						<NcTextField id="top-k" :label="$t('Sources per answer')" :label-outside="true" v-model="f.top_k" type="number" />
+						<p class="field-help">{{ $t('Maximum number of relevant text snippets sent to the chat model. Default: 6.') }}</p>
 					</div>
 					<div class="field">
-						<NcTextField id="context-size" label="Model context size" :label-outside="true" v-model="f.context_size" type="number" />
-						<p class="field-help">Token window passed to Ollama. Match the model’s supported context size. Default: 12,288.</p>
+						<NcTextField id="context-size" :label="$t('Model context size')" :label-outside="true" v-model="f.context_size" type="number" />
+						<p class="field-help">{{ $t('Token window passed to Ollama. Match the model’s supported context size. Default: 12,288.') }}</p>
 					</div>
 					<div class="field">
-						<NcTextField id="temperature" label="Answer creativity" :label-outside="true" v-model="f.temperature" type="number" />
-						<p class="field-help">0 is deterministic and factual; higher values are more varied. Default: 0.1.</p>
+						<NcTextField id="temperature" :label="$t('Answer creativity')" :label-outside="true" v-model="f.temperature" type="number" />
+						<p class="field-help">{{ $t('0 is deterministic and factual; higher values are more varied. Default: 0.1.') }}</p>
 					</div>
 				</div>
 			</section>
@@ -166,79 +165,77 @@
 			<section class="settings-section">
 				<div class="section-heading">
 					<div>
-						<h3>Indexing &amp; scope</h3>
-						<p>Define which files become part of EVA’s private knowledge base and how they are split for search.</p>
+						<h3>{{ $t('Indexing & scope') }}</h3>
+						<p>{{ $t('Define which files become part of EVA’s private knowledge base and how they are split for search.') }}</p>
 					</div>
 				</div>
 				<div class="field-grid field-grid-three">
 					<div class="field">
-						<NcTextField id="scope-path" label="Folder to index" :label-outside="true" v-model="f.scope_path" placeholder="Everything in Files" />
-						<p class="field-help">Relative to your Files root. Empty indexes all files; for example use <code>Documents/Notes</code> for one folder.</p>
+						<NcTextField id="scope-path" :label="$t('Folder to index')" :label-outside="true" v-model="f.scope_path" :placeholder="$t('Everything in Files')" />
+						<p class="field-help">{{ $t('Relative to your Files root. Empty indexes all files; for example use {folder} for one folder.', { folder: 'Documents/Notes' }) }}</p>
 					</div>
 					<div class="field">
-						<NcTextField id="max-file-size" label="Maximum file size (MB)" :label-outside="true" v-model="maxFileSizeMb" type="number" />
-						<p class="field-help">Larger files are skipped during indexing. Default: 20 MB.</p>
+						<NcTextField id="max-file-size" :label="$t('Maximum file size (MB)')" :label-outside="true" v-model="maxFileSizeMb" type="number" />
+						<p class="field-help">{{ $t('Larger files are skipped during indexing. Default: 20 MB.') }}</p>
 					</div>
 					<div class="field">
-						<NcTextField id="max-files" label="Files per indexing run" :label-outside="true" v-model="f.max_files_per_run" type="number" />
-						<p class="field-help">Limits work per run so large accounts remain responsive. Default: 40.</p>
+						<NcTextField id="max-files" :label="$t('Files per indexing run')" :label-outside="true" v-model="f.max_files_per_run" type="number" />
+						<p class="field-help">{{ $t('Limits work per run so large accounts remain responsive. Default: 40.') }}</p>
 					</div>
 				</div>
 				<div class="field-grid field-grid-three">
 					<div class="field">
-						<NcTextField id="chunk-size" label="Chunk size (characters)" :label-outside="true" v-model="f.chunk_size" type="number" />
-						<p class="field-help">Target length of each searchable text section. Default: 900.</p>
+						<NcTextField id="chunk-size" :label="$t('Chunk size (characters)')" :label-outside="true" v-model="f.chunk_size" type="number" />
+						<p class="field-help">{{ $t('Target length of each searchable text section. Default: 900.') }}</p>
 					</div>
 					<div class="field">
-						<NcTextField id="chunk-overlap" label="Chunk overlap (characters)" :label-outside="true" v-model="f.chunk_overlap" type="number" />
-						<p class="field-help">Repeated context between sections so sentences are not split abruptly. Default: 120.</p>
+						<NcTextField id="chunk-overlap" :label="$t('Chunk overlap (characters)')" :label-outside="true" v-model="f.chunk_overlap" type="number" />
+						<p class="field-help">{{ $t('Repeated context between sections so sentences are not split abruptly. Default: 120.') }}</p>
 					</div>
 					<div class="field">
-						<NcTextField id="mail-index-max" label="Emails per indexing run" :label-outside="true" v-model="f.mail_index_max" type="number" />
-						<p class="field-help">Only used when Mail indexing is enabled. Default: 25.</p>
+						<NcTextField id="mail-index-max" :label="$t('Emails per indexing run')" :label-outside="true" v-model="f.mail_index_max" type="number" />
+						<p class="field-help">{{ $t('Only used when Mail indexing is enabled. Default: 25.') }}</p>
 					</div>
 				</div>
-				<NcCheckboxRadioSwitch v-model="mailIndexEnabled" type="switch" class="native-toggle compact-switch" :description="'Include subject, sender and message text from the Nextcloud Mail app in search results.'">
-					Index Mail messages
+				<NcCheckboxRadioSwitch v-model="mailIndexEnabled" type="switch" class="native-toggle compact-switch" :description="$t('Include subject, sender and message text from the Nextcloud Mail app in search results.')">{{ $t('Index Mail messages') }}
 				</NcCheckboxRadioSwitch>
-				<NcCheckboxRadioSwitch v-model="indexEnrolled" type="switch" class="native-toggle compact-switch" :disabled="busy" :description="'Keep this account in the recurring background schedule, even when its index is currently empty. Starting indexing enables this automatically.'">
-					Keep indexing this account in the background
+				<NcCheckboxRadioSwitch v-model="indexEnrolled" type="switch" class="native-toggle compact-switch" :disabled="busy" :description="$t('Keep this account in the recurring background schedule, even when its index is currently empty. Starting indexing enables this automatically.')">{{ $t('Keep indexing this account in the background') }}
 				</NcCheckboxRadioSwitch>
 
 				<div class="exclude-paths">
-					<div class="sub-heading"><strong>Excluded folders</strong><span>These folders and their subfolders are skipped.</span></div>
+					<div class="sub-heading"><strong>{{ $t('Excluded folders') }}</strong><span>{{ $t('These folders and their subfolders are skipped.') }}</span></div>
 					<div v-if="excludeList.length" class="exclude-chips">
 						<span v-for="(path, index) in excludeList" :key="path" class="exclude-chip">
 							{{ path }}
-							<NcButton class="chip-remove" type="tertiary-no-background" :aria-label="'Remove ' + path" :disabled="busy" @click="removeExclude(index)">×</NcButton>
+							<NcButton class="chip-remove" type="tertiary-no-background" :aria-label="$t('Remove {path}', { path })" :disabled="busy" @click="removeExclude(index)">×</NcButton>
 						</span>
 					</div>
-					<p v-else class="empty-help">No folders are excluded.</p>
+					<p v-else class="empty-help">{{ $t('No folders are excluded.') }}</p>
 					<div class="exclude-add-row">
-						<NcTextField v-model="newExcludePath" label="Folder path" :label-outside="true" placeholder="e.g. Photos or Documents/Archive" @keydown.enter.prevent="addExclude" />
-						<NcButton type="secondary" :disabled="busy" @click="addExclude">Add folder</NcButton>
+						<NcTextField v-model="newExcludePath" :label="$t('Folder path')" :label-outside="true" :placeholder="$t('e.g. Photos or Documents/Archive')" @keydown.enter.prevent="addExclude" />
+						<NcButton type="secondary" :disabled="busy" @click="addExclude">{{ $t('Add folder') }}</NcButton>
 					</div>
 					<p v-if="excludeError" class="inline-error" role="alert">{{ excludeError }}</p>
-					<p class="field-help">Changes take effect the next time you start indexing. Use paths relative to your Files root.</p>
+					<p class="field-help">{{ $t('Changes take effect the next time you start indexing. Use paths relative to your Files root.') }}</p>
 				</div>
 
 				<div class="index-actions">
 					<div>
-						<strong>Apply indexing settings</strong>
-						<p>Save first, then rebuild the knowledge base with the current scope.</p>
+						<strong>{{ $t('Apply indexing settings') }}</strong>
+						<p>{{ $t('Save first, then rebuild the knowledge base with the current scope.') }}</p>
 					</div>
 					<div class="button-group">
-						<NcButton type="primary" :loading="indexing" :disabled="settingsLocked" @click="startIndex">Save &amp; start indexing</NcButton>
-						<NcButton type="secondary" :disabled="settingsLocked" @click="startMailIndex">Only index emails</NcButton>
-						<NcButton type="tertiary-no-background" :disabled="settingsLocked" @click="resetConfirm = true">Delete index</NcButton>
+						<NcButton type="primary" :loading="indexing" :disabled="settingsLocked" @click="startIndex">{{ $t('Save & start indexing') }}</NcButton>
+						<NcButton type="secondary" :disabled="settingsLocked" @click="startMailIndex">{{ $t('Only index emails') }}</NcButton>
+						<NcButton type="tertiary-no-background" :disabled="settingsLocked" @click="resetConfirm = true">{{ $t('Delete index') }}</NcButton>
 					</div>
 				</div>
 				<div v-if="resetConfirm" class="confirm-panel" role="alertdialog" aria-modal="true" aria-labelledby="reset-title">
-					<strong id="reset-title">Delete the complete index?</strong>
-					<p>This removes indexed documents and vectors. Your original Nextcloud files stay untouched. You will need to start indexing again.</p>
+					<strong id="reset-title">{{ $t('Delete the complete index?') }}</strong>
+					<p>{{ $t('This removes indexed documents and vectors. Your original Nextcloud files stay untouched. You will need to start indexing again.') }}</p>
 					<div class="button-group">
-						<NcButton type="tertiary-no-background" @click="resetConfirm = false">Cancel</NcButton>
-						<NcButton type="primary" class="danger-button" :loading="resetting" @click="resetIndex">Delete index</NcButton>
+						<NcButton type="tertiary-no-background" @click="resetConfirm = false">{{ $t('Cancel') }}</NcButton>
+						<NcButton type="primary" class="danger-button" :loading="resetting" @click="resetIndex">{{ $t('Delete index') }}</NcButton>
 					</div>
 				</div>
 			</section>
@@ -246,23 +243,23 @@
 			<section class="settings-section">
 				<div class="section-heading">
 					<div>
-						<h3>Chat history</h3>
-						<p>Manage the conversations stored for your Nextcloud account. This does not affect indexed files.</p>
+						<h3>{{ $t('Chat history') }}</h3>
+						<p>{{ $t('Manage the conversations stored for your Nextcloud account. This does not affect indexed files.') }}</p>
 					</div>
 				</div>
 				<div class="index-actions chat-history-actions">
 					<div>
-						<strong>Delete all chats</strong>
-						<p>Permanently removes your saved EVA conversations and messages.</p>
+						<strong>{{ $t('Delete all chats') }}</strong>
+						<p>{{ $t('Permanently removes your saved EVA conversations and messages.') }}</p>
 					</div>
-					<NcButton type="tertiary-no-background" :disabled="settingsLocked" @click="chatsDeleteConfirm = true">Delete all chats</NcButton>
+					<NcButton type="tertiary-no-background" :disabled="settingsLocked" @click="chatsDeleteConfirm = true">{{ $t('Delete all chats') }}</NcButton>
 				</div>
 				<div v-if="chatsDeleteConfirm" class="confirm-panel" role="alertdialog" aria-modal="true" aria-labelledby="chats-delete-title">
-					<strong id="chats-delete-title">Delete all chat history?</strong>
-					<p>This cannot be undone. Your indexed documents and files will remain untouched.</p>
+					<strong id="chats-delete-title">{{ $t('Delete all chat history?') }}</strong>
+					<p>{{ $t('This cannot be undone. Your indexed documents and files will remain untouched.') }}</p>
 					<div class="button-group">
-						<NcButton type="tertiary-no-background" @click="chatsDeleteConfirm = false">Cancel</NcButton>
-						<NcButton type="primary" class="danger-button" :loading="deletingChats" @click="deleteAllChats">Delete all chats</NcButton>
+						<NcButton type="tertiary-no-background" @click="chatsDeleteConfirm = false">{{ $t('Cancel') }}</NcButton>
+						<NcButton type="primary" class="danger-button" :loading="deletingChats" @click="deleteAllChats">{{ $t('Delete all chats') }}</NcButton>
 					</div>
 				</div>
 			</section>
@@ -270,23 +267,23 @@
 			<section class="settings-section">
 				<div class="section-heading">
 					<div>
-						<h3>Talk &amp; notifications</h3>
-						<p>Configure how EVA behaves when she is used from Nextcloud Talk.</p>
+						<h3>{{ $t('Talk & notifications') }}</h3>
+						<p>{{ $t('Configure how EVA behaves when she is used from Nextcloud Talk.') }}</p>
 					</div>
 				</div>
 				<div class="field-grid">
 					<div class="field">
-						<NcTextField id="talk-history" label="Talk history size" :label-outside="true" v-model="f.talk_history_size" type="number" />
-						<p class="field-help">Number of recent Talk messages sent as context. Default: 50.</p>
+						<NcTextField id="talk-history" :label="$t('Talk history size')" :label-outside="true" v-model="f.talk_history_size" type="number" />
+						<p class="field-help">{{ $t('Number of recent Talk messages sent as context. Default: 50.') }}</p>
 					</div>
 					<div class="field">
-						<NcTextField id="talk-trigger" label="Trigger name" :label-outside="true" v-model="f.talk_bot_trigger" placeholder="Eva" />
-						<p class="field-help">The name people mention to address EVA in Talk. Example: <code>@Eva</code>.</p>
+						<NcTextField id="talk-trigger" :label="$t('Trigger name')" :label-outside="true" v-model="f.talk_bot_trigger" :placeholder="$t('Eva')" />
+						<p class="field-help">{{ $t('The name people mention to address EVA in Talk. Example: {mention}.', { mention: '@Eva' }) }}</p>
 					</div>
 				</div>
 				<div class="help-box">
-					<strong>Privacy reminder</strong>
-					<span>Indexed content stays in Nextcloud and is sent to the Ollama server configured above. Review your indexing scope before enabling Mail or Talk features.</span>
+					<strong>{{ $t('Privacy reminder') }}</strong>
+					<span>{{ $t('Indexed content stays in Nextcloud and is sent to the Ollama server configured above. Review your indexing scope before enabling Mail or Talk features.') }}</span>
 				</div>
 			</section>
 			</fieldset>
@@ -298,6 +295,7 @@
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { NcCheckboxRadioSwitch } from '@nextcloud/vue'
 import { api, errMsg } from '../lib/api'
+import { translate as t } from '../lib/i18n'
 
 export default {
 	name: 'SettingsView',
@@ -439,7 +437,7 @@ export default {
 			if (saving.value) return false
 			validationErrors.value = validate()
 			if (validationErrors.value.length) {
-				setMessage('error', 'Please correct the highlighted settings before saving.')
+				setMessage('error', t('Please correct the highlighted settings before saving.'))
 				return false
 			}
 			saving.value = true
@@ -450,11 +448,11 @@ export default {
 				validationErrors.value = []
 				fill(settings)
 				saved.value = true
-				setMessage('success', 'Your settings were saved.')
+				setMessage('success', t('Your settings were saved.'))
 				window.setTimeout(() => { saved.value = false }, 3000)
 				return true
 			} catch (error) {
-				setMessage('error', 'The settings could not be saved: ' + errMsg(error))
+				setMessage('error', t('The settings could not be saved: {error}', { error: errMsg(error) }))
 				return false
 			} finally {
 				saving.value = false
@@ -467,7 +465,7 @@ export default {
 			checkOut.value = null
 			const savedSuccessfully = await save()
 			if (!savedSuccessfully) {
-				checkOut.value = { type: 'error', lines: [{ label: 'Connection test', ok: false, detail: 'Correct the settings above before testing the connection.' }] }
+				checkOut.value = { type: 'error', lines: [{ label: t('Connection test'), ok: false, detail: t('Correct the settings above before testing the connection.') }] }
 				checking.value = false
 				return
 			}
@@ -475,18 +473,18 @@ export default {
 				const data = await api('POST', 'check')
 				const lines = []
 				const server = data.server || {}
-				lines.push({ label: 'Server', ok: !!server.ok, detail: server.ok ? (server.url || 'Reachable') : (server.error || 'Not reachable') })
+				lines.push({ label: t('Server'), ok: !!server.ok, detail: server.ok ? (server.url || t('Reachable')) : (server.error || t('Not reachable')) })
 				if (data.embedding) {
 					const embedding = data.embedding
-					lines.push({ label: 'Embedding model', ok: !!embedding.ok, detail: embedding.ok ? `${embedding.model} · ${embedding.len} dimensions` : `${embedding.model || f.value.embedding_model}: ${embedding.error || 'Not available'}` })
+					lines.push({ label: t('Embedding model'), ok: !!embedding.ok, detail: embedding.ok ? t('{model} · {count} dimensions', { model: embedding.model, count: embedding.len }) : `${embedding.model || f.value.embedding_model}: ${embedding.error || t('Not available')}` })
 				}
 				if (data.chat) {
 					const chat = data.chat
-					lines.push({ label: 'Chat model', ok: !!chat.ok, detail: chat.ok ? `${chat.model} · responded in ${chat.seconds}s` : `${chat.model || f.value.chat_model}: ${chat.error || 'Not available'}` })
+					lines.push({ label: t('Chat model'), ok: !!chat.ok, detail: chat.ok ? t('{model} · responded in {seconds}s', { model: chat.model, seconds: chat.seconds }) : `${chat.model || f.value.chat_model}: ${chat.error || t('Not available')}` })
 				}
 				checkOut.value = { type: lines.every(line => line.ok) ? 'success' : 'error', lines }
 			} catch (error) {
-				checkOut.value = { type: 'error', lines: [{ label: 'Connection test', ok: false, detail: errMsg(error) }] }
+				checkOut.value = { type: 'error', lines: [{ label: t('Connection test'), ok: false, detail: errMsg(error) }] }
 			} finally {
 				checking.value = false
 			}
@@ -497,7 +495,7 @@ export default {
 			const savedSuccessfully = await save()
 			if (!savedSuccessfully) {
 				f.value.exclude_paths = previous
-				excludeError.value = 'The folder exclusion could not be saved. Your previous exclusions were restored.'
+				excludeError.value = t('The folder exclusion could not be saved. Your previous exclusions were restored.')
 				return false
 			}
 			return true
@@ -507,16 +505,16 @@ export default {
 			excludeError.value = ''
 			const path = newExcludePath.value.trim().replace(/^\/+|\/+$/g, '')
 			if (!path) {
-				excludeError.value = 'Enter a folder path first.'
+				excludeError.value = t('Enter a folder path first.')
 				return
 			}
 			if (path.split('/').some(part => part === '.' || part === '..')) {
-				excludeError.value = 'Use a path inside your Files folder; relative traversal is not allowed.'
+				excludeError.value = t('Use a path inside your Files folder; relative traversal is not allowed.')
 				return
 			}
 			const list = excludeList.value.slice()
 			if (list.includes(path)) {
-				excludeError.value = 'This folder is already excluded.'
+				excludeError.value = t('This folder is already excluded.')
 				return
 			}
 			const previous = f.value.exclude_paths
@@ -535,13 +533,13 @@ export default {
 			if (deletingChats.value) return
 			chatsDeleteConfirm.value = false
 			deletingChats.value = true
-			setMessage('info', 'Deleting all chat history…')
+			setMessage('info', t('Deleting all chat history…'))
 			try {
 				const response = await api('DELETE', 'chats')
 				window.dispatchEvent(new CustomEvent('eva-ai:chats-cleared'))
-				setMessage('success', `${formatNumber(response?.deleted)} chats deleted.`)
+				setMessage('success', t('{count} chats deleted.', { count: formatNumber(response?.deleted) }))
 			} catch (error) {
-				setMessage('error', 'The chat history could not be deleted: ' + errMsg(error))
+				setMessage('error', t('The chat history could not be deleted: {error}', { error: errMsg(error) }))
 			} finally {
 				deletingChats.value = false
 			}
@@ -551,17 +549,17 @@ export default {
 			if (settingsLocked.value) return
 			const savedSuccessfully = await save()
 			if (!savedSuccessfully) {
-				setMessage('error', 'Indexing was not started because the settings could not be saved.')
+				setMessage('error', t('Indexing was not started because the settings could not be saved.'))
 				return
 			}
 			indexing.value = true
-			setMessage('info', 'Indexing is running. This can take a while for large file collections.')
+			setMessage('info', t('Indexing is running. This can take a while for large file collections.'))
 			try {
 				const response = await api('POST', 'index')
 				status.value = response?.status || status.value
-				setMessage('info', 'Indexing was queued in the background. You can leave this page safely.')
+				setMessage('info', t('Indexing was queued in the background. You can leave this page safely.'))
 			} catch (error) {
-				setMessage('error', 'Indexing could not be queued: ' + errMsg(error))
+				setMessage('error', t('Indexing could not be queued: {error}', { error: errMsg(error) }))
 			} finally {
 				indexing.value = false
 			}
@@ -571,17 +569,17 @@ export default {
 			if (settingsLocked.value) return
 			const savedSuccessfully = await save()
 			if (!savedSuccessfully) {
-				setMessage('error', 'Email indexing was not started because the settings could not be saved.')
+				setMessage('error', t('Email indexing was not started because the settings could not be saved.'))
 				return
 			}
 			indexing.value = true
-			setMessage('info', 'Email indexing is being queued in the background.')
+			setMessage('info', t('Email indexing is being queued in the background.'))
 			try {
 				const response = await api('POST', 'mailIndex')
 				status.value = response?.status || status.value
-				setMessage('info', 'Email indexing was queued. You can leave this page safely.')
+				setMessage('info', t('Email indexing was queued. You can leave this page safely.'))
 			} catch (error) {
-				setMessage('error', 'Email indexing could not be queued: ' + errMsg(error))
+				setMessage('error', t('Email indexing could not be queued: {error}', { error: errMsg(error) }))
 			} finally {
 				indexing.value = false
 			}
@@ -593,9 +591,9 @@ export default {
 			try {
 				const response = await api('POST', 'indexStop')
 				status.value = response?.status || status.value
-				setMessage('info', response?.stopping ? 'Stop requested. Indexing will finish the current cancellable request and then release its lock.' : 'Indexing is stopped.')
+				setMessage('info', response?.stopping ? t('Stop requested. Indexing will finish the current cancellable request and then release its lock.') : t('Indexing is stopped.'))
 			} catch (error) {
-				setMessage('error', 'Indexing could not be stopped: ' + errMsg(error))
+				setMessage('error', t('Indexing could not be stopped: {error}', { error: errMsg(error) }))
 			} finally {
 				stopping.value = false
 				await loadStatus()
@@ -606,14 +604,14 @@ export default {
 			if (resetting.value) return
 			resetConfirm.value = false
 			resetting.value = true
-			setMessage('info', 'Deleting the index…')
+			setMessage('info', t('Deleting the index…'))
 			try {
 				const response = await api('POST', 'indexReset')
 				const result = response.result || {}
-				setMessage('success', `Index deleted: ${formatNumber(result.documents)} documents and ${formatNumber(result.chunks)} chunks removed.`)
+				setMessage('success', t('Index deleted: {documents} documents and {chunks} chunks removed.', { documents: formatNumber(result.documents), chunks: formatNumber(result.chunks) }))
 				await loadStatus()
 			} catch (error) {
-				setMessage('error', 'The index could not be deleted: ' + errMsg(error))
+				setMessage('error', t('The index could not be deleted: {error}', { error: errMsg(error) }))
 			} finally {
 				resetting.value = false
 			}

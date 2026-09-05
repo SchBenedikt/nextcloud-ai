@@ -412,6 +412,25 @@ class ActionExecutor {
     }
 
     /**
+     * Build tool definitions for a specific execution surface without
+     * changing the caller's current surface. This is used by the agent's
+     * proposal phase: mutation tools may be shown to the model as candidates,
+     * but they are never executed until an explicit confirmation switches to
+     * the confirmed TaskProcessing surface.
+     *
+     * @return array<int,array{type:string,function:array}>
+     */
+    public function toolsForSurface(string $surface): array {
+        $previous = $this->toolPolicy->getSurface();
+        $this->toolPolicy->setSurface($surface);
+        try {
+            return $this->tools();
+        } finally {
+            $this->toolPolicy->setSurface($previous);
+        }
+    }
+
+    /**
      * Execute a tool after the caller has explicitly confirmed it.
      *
      * This is intentionally a separate method so ordinary model-generated
@@ -576,7 +595,6 @@ class ActionExecutor {
             $existing = $folder->get($name);
             if ($existing instanceof File) {
                 $existing->putContent($content);
-                $this->markOwned($home, $path);
                 return ['ok' => true, 'result' => 'Updated ' . $path];
             }
             return ['ok' => false, 'error' => 'A folder with that name already exists at ' . $path];
@@ -620,8 +638,11 @@ class ActionExecutor {
         if ($path === '') {
             return ['ok' => false, 'error' => 'Folder path required'];
         }
+        $existed = $home->nodeExists($path);
         $this->ensureFolderPath($home, $path);
-        $this->markOwned($home, $path);
+        if (!$existed) {
+            $this->markOwned($home, $path);
+        }
         return ['ok' => true, 'result' => 'Created folder ' . $path];
     }
 
@@ -637,9 +658,7 @@ class ActionExecutor {
         if ($parent->nodeExists($newName)) {
             return ['ok' => false, 'error' => 'Target name already exists'];
         }
-        $this->unmarkOwned($home, $path);
         $node->move($parent->getPath() . '/' . $newName);
-        $this->markOwned($home, rtrim($this->cleanPath(dirname($path)), '/.') . '/' . $newName);
         return ['ok' => true, 'result' => 'Renamed to ' . $newName];
     }
 
@@ -653,15 +672,16 @@ class ActionExecutor {
         if ($mode === 'off') {
             return ['ok' => false, 'error' => 'Deleting files is disabled in the app settings.'];
         }
-        if ($mode === 'own' && !$this->isOwned($home, $path)) {
+        $node = $this->resolve($home, $path);
+        if ($mode !== 'all' && !$this->isOwned($home, $node)) {
             return ['ok' => false, 'error' => 'Only files EVA created itself may be deleted (adjust "delete permission" in the app settings to allow more).'];
         }
-        $node = $this->resolve($home, $path);
         if ($node instanceof Folder && $node->getDirectoryListing() !== []) {
             return ['ok' => false, 'error' => 'Folder is not empty'];
         }
+        $fileId = (int)$node->getId();
         $node->delete();
-        $this->unmarkOwned($home, $path);
+        $this->unmarkOwned($home, $fileId);
         return ['ok' => true, 'result' => 'Deleted ' . ($node instanceof Folder ? 'folder ' : 'file ') . $path];
     }
 
@@ -1219,52 +1239,36 @@ class ActionExecutor {
         return $parts[0] ?? '';
     }
 
-    private function ownedList(Folder $home): array {
+    private function ownershipStore(Folder $home): FileOwnershipStore {
         $userId = $this->userNameOf($home);
         if ($userId === '') {
-            return [];
+            throw new \RuntimeException('No ownership namespace');
         }
-        try {
-            $raw = $this->marksFile($userId)->getContent();
-            $data = json_decode($raw, true);
-            return is_array($data) ? $data : [];
-        } catch (\Throwable $e) {
-            return [];
-        }
+        return new FileOwnershipStore($this->marksFile($userId), $home);
     }
 
     private function markOwned(Folder $home, string $path): void {
-        $userId = $this->userNameOf($home);
-        if ($userId === '') {
-            return;
-        }
-        $list = $this->ownedList($home);
-        $path = $this->cleanPath($path);
-        if (!in_array($path, $list, true)) {
-            $list[] = $path;
-        }
         try {
-            $this->marksFile($userId)->putContent(json_encode($list, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES));
+            $this->ownershipStore($home)->remember($this->resolve($home, $path));
         } catch (\Throwable $e) {
-            /* Marker optional */
+            // Missing markers must fail closed: the file cannot be deleted in own mode.
         }
     }
 
-    private function unmarkOwned(Folder $home, string $path): void {
-        $userId = $this->userNameOf($home);
-        if ($userId === '') {
-            return;
-        }
-        $list = array_values(array_filter($this->ownedList($home), static fn($p) => $p !== $path));
+    private function unmarkOwned(Folder $home, int $fileId): void {
         try {
-            $this->marksFile($userId)->putContent(json_encode($list, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES));
+            $this->ownershipStore($home)->forget($fileId);
         } catch (\Throwable $e) {
-            /* Marker optional */
+            // Stale IDs never authorize a replacement file and are pruned on next access.
         }
     }
 
-    private function isOwned(Folder $home, string $path): bool {
-        return in_array($this->cleanPath($path), $this->ownedList($home), true);
+    private function isOwned(Folder $home, \OCP\Files\Node $node): bool {
+        try {
+            return $this->ownershipStore($home)->contains($node);
+        } catch (\Throwable $e) {
+            return false;
+        }
     }
 
     // ---- Helfer ----

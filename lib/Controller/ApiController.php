@@ -729,6 +729,11 @@ class ApiController extends OCSController {
 
     #[NoAdminRequired]
     public function models(): DataResponse {
+        $user = $this->requireUser();
+        if ($user === null) {
+            return new DataResponse(['error' => 'Not logged in'], 401);
+        }
+        $this->config->setUserId($user);
         $names = array_map(static fn($m) => $m['name'] ?? '', $this->ollama->listModels());
         return new DataResponse(['models' => $names, 'embedding' => $this->config->get('embedding_model')]);
     }

@@ -131,7 +131,8 @@ tools are allowed in each:
 | `web` | default | ✅ (after confirmation) |
 | `talk` | `TalkBotListener::handle()` | ✅ (after confirmation) |
 | `rag` | RAG pipeline | ❌ readonly only |
-| `taskprocessing` | TaskProcessing providers (proposal phase) | ❌ readonly only; switches to `web` after user confirmation |
+| `taskprocessing` | TaskProcessing providers (proposal phase) | ❌ readonly only |
+| `taskprocessing_confirmed` | Native Assistant confirmation phase | ✅ only the confirmed action |
 
 ## API routes (`appinfo/routes.php`)
 

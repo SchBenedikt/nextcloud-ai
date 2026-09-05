@@ -55,6 +55,7 @@ class EmailService {
      * @return list<array{id:int,mailbox:string,subject:string,from:string,to:list<string>,preview:string,sent:int,unread:bool}>
      */
     public function listMessages(string $userId, int $limit = 15, bool $unreadOnly = false): array {
+        $limit = max(1, min(100, $limit));
         $mailboxIds = $this->mailboxIdsOf($userId);
         if ($mailboxIds === []) {
             return [];
@@ -158,12 +159,19 @@ class EmailService {
      * @return list<array{id:int,subject:string,from:string,preview:string,sent:int,unread:bool}>
      */
     public function search(string $userId, string $needle, int $limit = 10): array {
+        $limit = max(1, min(100, $limit));
+        $needle = trim($needle);
+        if ($needle === '') {
+            return [];
+        }
         $mailboxIds = $this->mailboxIdsOf($userId);
         if ($mailboxIds === []) {
             return [];
         }
 
-        $like = '%' . str_replace(['%', '_'], ['\\%', '\\_'], $needle) . '%';
+        // Use a dedicated escape character instead of database-specific
+        // backslash rules, so literal '%' and '_' behave consistently.
+        $like = '%' . str_replace(['!', '%', '_'], ['!!', '!%', '!_'], $needle) . '%';
         $mboxSql = implode(',', $mailboxIds);
 
         // Search subject + preview_text + recipients (sender name/email)
@@ -173,10 +181,10 @@ class EmailService {
                 LEFT JOIN *PREFIX*mail_recipients r
                     ON r.`message_id` = m.`id` AND r.`type` = " . self::RCV_FROM . "
                 WHERE m.`mailbox_id` IN ({$mboxSql})
-                  AND (m.`subject` LIKE ?
-                       OR m.`preview_text` LIKE ?
-                       OR r.`email` LIKE ?
-                       OR r.`label` LIKE ?)
+                  AND (m.`subject` LIKE ? ESCAPE '!'
+                       OR m.`preview_text` LIKE ? ESCAPE '!'
+                       OR r.`email` LIKE ? ESCAPE '!'
+                       OR r.`label` LIKE ? ESCAPE '!')
                 ORDER BY m.`sent_at` DESC
                 LIMIT " . (int)$limit;
 

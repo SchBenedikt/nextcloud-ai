@@ -7,9 +7,20 @@ follows [Semantic Versioning](https://semver.org/).
 ## [Unreleased]
 
 ### Added
+- **Issue #109:** English and German translation bundles for the Vue workspace, file actions and standalone chat.
+- Opt-in single-process frontend build for memory-constrained hosts (`EVA_LOW_MEMORY_BUILD=1`).
 - **Issue #99:** calendar event listing and free-slot detection now expand recurring events with bounded support for RRULE, RDATE, EXDATE, and RECURRENCE-ID.
 
 ### Fixed
+- **Issue #132:** bind EVA-created file grants to file IDs; reject legacy path grants, prune stale IDs, preserve grants across renames, and do not claim existing files or folders.
+- **Issue #72:** move personal knowledge out of privileged system prompts and mark retrieved context as untrusted data.
+- Persist native confirmation results before optional model summaries; failed summaries retain truthful results without leaving completed actions pending.
+- Native Assistant proposal tools and confirmed execution use separate policy surfaces; plain Assistant chat remains read-only.
+- Enforce per-document context limits with interleaved chunks, bound mail searches and escape literal search wildcards, and initialize the authenticated user for model lookup.
+- Generate file-action links through the Nextcloud router for subdirectory installations and load translations in the Files entry point.
+- Align the build environment with the Node.js 24 requirement of `@nextcloud/files`.
+- Restore standalone empty-chat state and connect its Markdown export button.
+- Remove obsolete reflection calls from tests for PHP 8.5 compatibility.
 - **Issue #71**: `RagService` now receives a `LoggerInterface` through
   constructor injection, so the access-revocation purge path no longer
   throws an undefined-property error that was silently swallowed by the

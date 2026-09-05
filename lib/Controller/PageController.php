@@ -13,6 +13,7 @@ use OCA\EvaAi\Service\RagService;
 use OCP\App\IAppManager;
 use OCP\IRequest;
 use OCP\IURLGenerator;
+use OCP\Util;
 
 class PageController extends Controller {
     public function __construct(
@@ -60,6 +61,7 @@ class PageController extends Controller {
     #[NoAdminRequired]
     #[NoCSRFRequired]
     public function standalone(): TemplateResponse {
+        Util::addTranslations('eva_ai');
         \OCP\Util::addScript('eva_ai', 'chat');
         \OCP\Util::addHeader('meta', [
             'name' => 'requesttoken',
@@ -85,6 +87,7 @@ class PageController extends Controller {
     }
 
     private function appPage(string $template): TemplateResponse {
+        Util::addTranslations('eva_ai');
         $jsDir = $this->appManager->getAppPath('eva_ai') . '/js';
         $main = null;
         $candidates = [];

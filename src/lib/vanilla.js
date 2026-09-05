@@ -1,4 +1,5 @@
 import { mdiDownload } from '@mdi/js'
+import { translate as t } from './i18n'
 
 /* EvaAi – Vanilla-Chat-Mount.
  * Wird von ChatView.vue aufgerufen und rendert den kompletten Chat
@@ -100,14 +101,14 @@ export function mountChat(root, opts = {}) {
 
 	function exportMarkdown() {
 		const lines = []
-		lines.push('# Eva chat export')
+		lines.push('# ' + t('Eva chat export'))
 		lines.push('')
 		const d = new Date()
-		lines.push('_Exported ' + d.toISOString() + '_')
+		lines.push('_' + t('Exported {date}', { date: d.toISOString() }) + '_')
 		lines.push('')
 		messages.forEach((m) => {
 			lines.push('')
-			lines.push('## ' + (m.role === 'user' ? 'You' : 'Eva'))
+			lines.push('## ' + (m.role === 'user' ? t('You') : 'Eva'))
 			lines.push('')
 			lines.push(m.text || '')
 		})
@@ -229,25 +230,25 @@ export function mountChat(root, opts = {}) {
 			det.className = 'rth'
 			det.style.display = 'none'
 			const sum = document.createElement('summary')
-			sum.textContent = '🧠 Thinking…'
+			sum.textContent = '🧠 ' + t('Thinking…')
 			const th = document.createElement('div')
 			th.className = 'rth-c'
 			det.append(sum, th)
 			b.appendChild(det)
 		}
 
-		const t = document.createElement('div')
-		t.className = 'rt'
+		const textEl = document.createElement('div')
+		textEl.className = 'rt'
 		if (m.role === 'assistant' && m.text && m.done) {
-			t.innerHTML = mdToHtml(m.text)
+			textEl.innerHTML = mdToHtml(m.text)
 		} else {
-			t.textContent = m.text || (m.role === 'assistant' ? '…' : '')
+			textEl.textContent = m.text || (m.role === 'assistant' ? '…' : '')
 		}
-		b.appendChild(t)
+		b.appendChild(textEl)
 		if (m.role === 'assistant') {
 			const cb = document.createElement('button')
 			cb.className = 'rcopy'
-			cb.title = 'Copy answer'
+			cb.title = t('Copy answer')
 			cb.textContent = '⧉'
 			cb.addEventListener('click', () => copyText(String(m.text || ''), cb))
 			b.appendChild(cb)
@@ -271,7 +272,7 @@ export function mountChat(root, opts = {}) {
 			s.className = 'rs'
 			const lab = document.createElement('div')
 			lab.className = 'lab'
-			lab.textContent = 'Sources:'
+			lab.textContent = t('Sources:')
 			s.appendChild(lab)
 			m.sources.forEach((item) => {
 				const src = item.src || item
@@ -291,7 +292,7 @@ export function mountChat(root, opts = {}) {
 			panel.className = 'rconfirm'
 			const label = document.createElement('div')
 			label.className = 'rconfirm-label'
-			label.textContent = 'EVA wants to run: ' + m.confirmation.name
+			label.textContent = t('EVA wants to run: {tool}', { tool: m.confirmation.name })
 			const details = document.createElement('pre')
 			details.className = 'rconfirm-args'
 			details.textContent = JSON.stringify(m.confirmation.arguments || {}, null, 2)
@@ -300,11 +301,11 @@ export function mountChat(root, opts = {}) {
 			const approve = document.createElement('button')
 			approve.type = 'button'
 			approve.className = 'rconfirm-approve'
-			approve.textContent = 'Confirm and run'
+			approve.textContent = t('Confirm and run')
 			const reject = document.createElement('button')
 			reject.type = 'button'
 			reject.className = 'rconfirm-reject'
-			reject.textContent = 'Cancel'
+			reject.textContent = t('Cancel')
 			const finish = (text) => {
 				m.confirmation.resolved = true
 				m.text = text
@@ -315,22 +316,22 @@ export function mountChat(root, opts = {}) {
 			approve.addEventListener('click', () => {
 				approve.disabled = true
 				reject.disabled = true
-				approve.textContent = 'Running…'
+				approve.textContent = t('Running…')
 				api('POST', '/confirmTool', {
 					name: m.confirmation.name,
 					arguments: m.confirmation.arguments || {},
 				}).then((result) => {
 					if (!result || !result.ok) {
-						finish('⚠️ ' + (result?.error || 'The action could not be completed.'))
+						finish('⚠️ ' + (result?.error || t('The action could not be completed.')))
 						return
 					}
-					const value = typeof result.result === 'string' ? result.result : 'The action was completed.'
+					const value = typeof result.result === 'string' ? result.result : t('The action was completed.')
 					finish('✅ ' + value)
 				}).catch((error) => {
 					finish('⚠️ ' + String(error?.message || error))
 				})
 			})
-			reject.addEventListener('click', () => finish('Action cancelled.'))
+			reject.addEventListener('click', () => finish(t('Action cancelled.')))
 			actions.append(approve, reject)
 			panel.append(label, details, actions)
 			wrap.appendChild(panel)
@@ -352,12 +353,12 @@ export function mountChat(root, opts = {}) {
 	head.className = 'head'
 	head.innerHTML = ''
 	const h1 = document.createElement('h1')
-	h1.textContent = 'Chat with your files'
+	h1.textContent = t('Chat with your files')
 	const exportBtn = document.createElement('button')
 	exportBtn.className = 'export'
 	exportBtn.type = 'button'
-	exportBtn.setAttribute('aria-label', 'Export chat as Markdown')
-	exportBtn.title = 'Export chat as Markdown'
+	exportBtn.setAttribute('aria-label', t('Export chat as Markdown'))
+	exportBtn.title = t('Export chat as Markdown')
 	const exportIcon = document.createElementNS('http://www.w3.org/2000/svg', 'svg')
 	exportIcon.classList.add('export-icon')
 	exportIcon.setAttribute('viewBox', '0 0 24 24')
@@ -366,7 +367,7 @@ export function mountChat(root, opts = {}) {
 	exportPath.setAttribute('d', mdiDownload)
 	exportIcon.append(exportPath)
 	const exportLabel = document.createElement('span')
-	exportLabel.textContent = 'Export'
+	exportLabel.textContent = t('Export')
 	exportBtn.append(exportIcon, exportLabel)
 	exportBtn.disabled = true
 	exportBtn.addEventListener('click', exportMarkdown)
@@ -382,10 +383,10 @@ export function mountChat(root, opts = {}) {
 	eico.textContent = '💬'
 	const et = document.createElement('div')
 	et.className = 't'
-	et.textContent = 'Ask a question about your files'
+	et.textContent = t('Ask a question about your files')
 	const ed = document.createElement('div')
 	ed.className = 'd'
-	ed.textContent = 'Ask about notes, plans or files — I can even create files, write notes and remember personal facts in a KNOWLEDGE.md.'
+	ed.textContent = t('Ask about notes, plans or files — I can even create files, write notes and remember personal facts in a KNOWLEDGE.md.')
 	emptyEl.append(eico, et, ed)
 	scroll.appendChild(emptyEl)
 
@@ -395,11 +396,11 @@ export function mountChat(root, opts = {}) {
 	input.id = 'chatinput'
 	input.type = 'text'
 	input.autocomplete = 'off'
-	input.placeholder = 'What do you want to do or know?'
+	input.placeholder = t('What do you want to do or know?')
 	const sendBtn = document.createElement('button')
 	sendBtn.type = 'submit'
 	sendBtn.className = 'cbtn'
-	sendBtn.textContent = 'Send'
+	sendBtn.textContent = t('Send')
 	form.append(input, sendBtn)
 
 	const err = document.createElement('div')
@@ -572,7 +573,7 @@ export function mountChat(root, opts = {}) {
 						risk: ev.risk || 'mutating',
 						resolved: false,
 					}
-					last.text = 'Please review this action and confirm it explicitly.'
+					last.text = t('Please review this action and confirm it explicitly.')
 					last.done = true
 					saveMessage('user', msg)
 					renderAll(messages)
@@ -600,7 +601,7 @@ export function mountChat(root, opts = {}) {
 					last.done = true
 					updateMessage(messages.length - 1)
 				}
-				err.textContent = 'Network error — see console.'
+				err.textContent = t('Network error — see console.')
 				err.style.display = 'block'
 			}).finally(() => {
 				sending = false
@@ -611,7 +612,7 @@ export function mountChat(root, opts = {}) {
 		}).catch(() => {
 			sending = false
 			sendBtn.disabled = false
-			err.textContent = 'Chat konnte nicht erstellt werden.'
+			err.textContent = t('Chat could not be created.')
 			err.style.display = 'block'
 		})
 	}
