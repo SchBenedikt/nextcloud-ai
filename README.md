@@ -333,6 +333,7 @@ tools always require explicit user confirmation. See [docs/SECURITY.md](docs/SEC
 ## Development
 
 Queued indexing runs are bounded per worker execution and enqueue a continuation when the pass budget is reached. This allows very large libraries to finish without monopolising a single background worker. Legacy configuration migration processes each user immediately during the Nextcloud user-manager traversal, keeping memory usage bounded on large installations.
+The app-ID migration treats the current `eva_ai_*` tables as authoritative and removes duplicate legacy `ragchat_*` tables left by interrupted upgrades.
 
 - **Tests**: `composer test` (PHPUnit) — security, provider, settings and migration regressions
 - **Frontend build**: `npm ci && npm run build`; CI also verifies that the expected generated bundles are emitted

@@ -21,6 +21,7 @@ follows [Semantic Versioning](https://semver.org/).
 - **Issues #101 and #106:** calendar event timestamps returned by `list_calendar_events` are now converted to UTC before the `Z` suffix is emitted, and share updates/deletes resolve the provider-aware share ID directly instead of scanning only the first 500 shares of each type.
 - **Issue #110:** large queued indexing jobs now enqueue a continuation after the bounded pass budget instead of stopping with a misleading safety-limit error.
 - **Issue #111:** legacy app-ID migration now copies each user's settings during the user-manager callback instead of collecting every UID in memory first.
+- **Issue #116:** legacy `ragchat_*` tables are now explicitly removed when their current `eva_ai_*` counterparts already exist after a partial upgrade.
 - **Indexing API**: use native Nextcloud request parameters with a single non-recursive JSON fallback instead of a recursively named input wrapper; duplicate starts now remain idempotent while genuine worker-lock conflicts still return an actionable 409.
 - **Frontend**: the main Vue bundle is now emitted as `eva_ai-main.js` (was
   `eva-ai-main.js`), matching the name the page controller looks up. The app

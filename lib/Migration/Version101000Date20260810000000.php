@@ -22,9 +22,19 @@ class Version101000Date20260810000000 extends SimpleMigrationStep {
 			'ragchat_chunks'    => 'eva_ai_chunks',
 		];
 		foreach ($renames as $old => $new) {
-			if ($schema->hasTable($old) && !$schema->hasTable($new)) {
-				$schema->renameTable($old, $new);
+			if (!$schema->hasTable($old)) {
+				continue;
 			}
+			if (!$schema->hasTable($new)) {
+				$schema->renameTable($old, $new);
+				continue;
+			}
+
+			// A partial upgrade can leave both names behind. The current table
+			// is authoritative; drop the obsolete duplicate instead of silently
+				// preserving stale indexed data forever.
+			$schema->dropTable($old);
+			$output->warning('Dropped obsolete legacy table ' . $old . ' because ' . $new . ' already exists.');
 		}
 		return $schema;
 	}
