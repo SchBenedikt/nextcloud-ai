@@ -313,11 +313,8 @@ class CalendarService {
 
         $events = [];
         foreach ($cals as $c) {
-            foreach ($this->backend->getCalendarObjects((int)$c['id']) as $obj) {
-                if (strtolower((string)($obj['component'] ?? '')) !== 'vevent') {
-                    continue;
-                }
-                $raw = $this->backend->getCalendarObject((int)$c['id'], (string)$obj['uri']);
+            foreach ($this->eventUrisInRange((int)$c['id'], $start, $end) as $uri) {
+                $raw = $this->backend->getCalendarObject((int)$c['id'], $uri);
                 if (!isset($raw['calendardata'])) {
                     continue;
                 }
@@ -339,7 +336,7 @@ class CalendarService {
                         }
                     }
                     $events[] = [
-                        'id' => $c['uri'] . '/' . $obj['uri'],
+                        'id' => $c['uri'] . '/' . $uri,
                         'calendar' => (string)$c['displayname'],
                         'title' => (string)($ve->SUMMARY ?? ''),
                         'start' => $this->formatEventDateTime($dtstart, $isAllDay),
@@ -427,6 +424,35 @@ class CalendarService {
             return $date->format('Y-m-d');
         }
         return $date->setTimezone(new \DateTimeZone('UTC'))->format('Y-m-d\\TH:i:s\\Z');
+    }
+
+    /**
+     * Ask the CalDAV backend to prefilter event objects by their effective
+     * time range. Besides avoiding a full calendar scan, calendarQuery keeps
+     * recurring masters whose occurrences overlap the requested interval.
+     *
+     * @return list<string> Calendar object URIs
+     */
+    private function eventUrisInRange(int $calendarId, \DateTimeImmutable $start, \DateTimeImmutable $end): array {
+        $uris = $this->backend->calendarQuery($calendarId, [
+            'name' => 'VCALENDAR',
+            'prop-filters' => [],
+            'comp-filters' => [[
+                'name' => 'VEVENT',
+                'is-not-defined' => false,
+                'prop-filters' => [],
+                'comp-filters' => [],
+                'time-range' => [
+                    'start' => $start,
+                    'end' => $end,
+                ],
+            ]],
+        ]);
+
+        return array_values(array_filter(
+            array_map(static fn($uri): string => (string)$uri, $uris),
+            static fn(string $uri): bool => $uri !== ''
+        ));
     }
 
     /** @return array{ok:true,result:array}|array{ok:false,error:string} */
@@ -860,11 +886,8 @@ class CalendarService {
         $rangeEnd = $today->modify('+' . $days . ' days');
         $busy = [];
         foreach ($cals as $c) {
-            foreach ($this->backend->getCalendarObjects((int)$c['id']) as $obj) {
-                if (strtolower((string)($obj['component'] ?? '')) !== 'vevent') {
-                    continue;
-                }
-                $raw = $this->backend->getCalendarObject((int)$c['id'], (string)$obj['uri']);
+            foreach ($this->eventUrisInRange((int)$c['id'], $rangeStart, $rangeEnd) as $uri) {
+                $raw = $this->backend->getCalendarObject((int)$c['id'], $uri);
                 if (!isset($raw['calendardata'])) { continue; }
                 try {
                     $v = Reader::read((string)$raw['calendardata']);
@@ -936,4 +959,3 @@ class CalendarService {
         return null;
     }
 }
-
