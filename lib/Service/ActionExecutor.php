@@ -25,10 +25,16 @@ use OCP\Server;
  */
 class ActionExecutor {
     private const MAX_SEARCH_DEPTH = 5;
+    private const MAX_SEARCH_NODES = 2000;
+    private const MAX_SEARCH_FILE_BYTES = 1048576; // 1 MB per text file
+    private const MAX_SEARCH_RESULTS = 50;
     private const MAX_LIST_DEPTH = 2;
     private const MAX_LIST_ENTRIES = 300;
     private const MAX_READ_CHARS = 20000;
     private const MAX_WRITE_CHARS = 100000;
+    private const KNOWLEDGE_MAX_CHARS = 60000;
+    private const KNOWLEDGE_TARGET_CHARS = 45000;
+    private const KNOWLEDGE_PROFILE_MARKER = '<!-- eva_ai:profile-initialized -->';
     private const NOTES_FOLDER = 'Notes';
 
     public function __construct(
@@ -118,7 +124,7 @@ class ActionExecutor {
                 'name' => 'search_files',
                 'description' => 'Search the user\'s entire Nextcloud home for files by name or content keywords.',
                 'parameters' => ['type' => 'object', 'properties' => [
-                    'query' => ['type' => 'string', 'description' => 'Keyword to look for in file and folder names (case-insensitive).'],
+                    'query' => ['type' => 'string', 'description' => 'Keyword to look for in file and folder names and in bounded text-file content (case-insensitive).'],
                 ], 'required' => ['query']],
             ]],
             ['type' => 'function', 'function' => [
@@ -684,31 +690,105 @@ class ActionExecutor {
 
     /** @return array{ok:true,result:array} */
     private function searchFiles(Folder $home, array $args): array {
-        $query = mb_strtolower(trim((string)($args['query'] ?? '')));
+        $query = trim((string)($args['query'] ?? ''));
         if ($query === '') {
             return ['ok' => false, 'error' => 'Search query required'];
         }
         $matches = [];
-        $this->searchWalk($home, $query, $matches, 0, '');
-        return ['ok' => true, 'result' => ['matches' => $matches]];
+        $visited = 0;
+        $truncated = false;
+        $this->searchWalk($home, mb_strtolower($query), $matches, $visited, $truncated, 0, '');
+        return ['ok' => true, 'result' => [
+            'query' => $query,
+            'matches' => $matches,
+            'truncated' => $truncated,
+            'limits' => [
+                'max_results' => self::MAX_SEARCH_RESULTS,
+                'max_nodes' => self::MAX_SEARCH_NODES,
+                'max_depth' => self::MAX_SEARCH_DEPTH,
+                'max_text_file_bytes' => self::MAX_SEARCH_FILE_BYTES,
+            ],
+        ]];
     }
 
-    private function searchWalk(Folder $folder, string $query, array &$matches, int $depth, string $prefix): void {
-        if ($depth >= self::MAX_SEARCH_DEPTH || count($matches) >= 50) {
+    /**
+     * Search names and bounded text content while protecting the request from
+     * an unbounded VFS walk or unexpectedly large/binary files.
+     *
+     * @param array<int,array<string,mixed>> $matches
+     */
+    private function searchWalk(Folder $folder, string $query, array &$matches, int &$visited, bool &$truncated, int $depth, string $prefix): void {
+        if ($depth >= self::MAX_SEARCH_DEPTH || count($matches) >= self::MAX_SEARCH_RESULTS) {
+            $truncated = true;
             return;
         }
         foreach ($folder->getDirectoryListing() as $node) {
-            if (count($matches) >= 50) {
+            if (count($matches) >= self::MAX_SEARCH_RESULTS || $visited >= self::MAX_SEARCH_NODES) {
+                $truncated = true;
                 return;
             }
+            $visited++;
             $rel = $prefix === '' ? $node->getName() : $prefix . '/' . $node->getName();
+            $nameMatches = str_contains(mb_strtolower($node->getName()), $query);
             if ($node instanceof Folder) {
-                $this->searchWalk($node, $query, $matches, $depth + 1, $rel);
+                if ($nameMatches) {
+                    $matches[] = ['path' => $rel, 'reason' => 'filename'];
+                }
+                $this->searchWalk($node, $query, $matches, $visited, $truncated, $depth + 1, $rel);
+                continue;
             }
-            if (str_contains(mb_strtolower($node->getName()), $query)) {
+
+            $contentMatch = null;
+            if ($node instanceof File && $this->isSearchableTextFile($node)) {
+                try {
+                    $content = (string)$node->getContent();
+                    if (strpos($content, "\0") === false) {
+                        $position = mb_stripos($content, $query);
+                        if ($position !== false) {
+                            $contentMatch = $this->searchSnippet($content, $position, mb_strlen($query));
+                        }
+                    }
+                } catch (\Throwable $e) {
+                    // A single unreadable file must not abort the complete search.
+                }
+            }
+
+            if ($nameMatches && $contentMatch !== null) {
+                $matches[] = ['path' => $rel, 'reason' => 'filename and content', 'snippet' => $contentMatch];
+            } elseif ($nameMatches) {
                 $matches[] = ['path' => $rel, 'reason' => 'filename'];
+            } elseif ($contentMatch !== null) {
+                $matches[] = ['path' => $rel, 'reason' => 'content', 'snippet' => $contentMatch];
             }
         }
+    }
+
+    private function isSearchableTextFile(File $file): bool {
+        if ($file->getSize() > self::MAX_SEARCH_FILE_BYTES) {
+            return false;
+        }
+        $mime = strtolower((string)$file->getMimeType());
+        if (str_starts_with($mime, 'text/')) {
+            return true;
+        }
+        return in_array($mime, [
+            'application/json', 'application/ld+json', 'application/xml',
+            'application/x-yaml', 'application/yaml', 'application/rtf',
+            'application/sql', 'application/x-sh', 'application/x-httpd-php',
+        ], true);
+    }
+
+    private function searchSnippet(string $content, int $position, int $queryLength): string {
+        $start = max(0, $position - 120);
+        $snippet = mb_substr($content, $start, $queryLength + 240);
+        $snippet = preg_replace('/\s+/u', ' ', trim($snippet)) ?? trim($snippet);
+        if ($start > 0) {
+            $snippet = '…' . $snippet;
+        }
+        if ($start + mb_strlen($snippet) < mb_strlen($content)) {
+            $snippet .= '…';
+        }
+        return mb_substr($snippet, 0, 300);
     }
 
     /** @return array{ok:true,result:array} */
@@ -805,25 +885,76 @@ class ActionExecutor {
         $content = rtrim($content) . "
 " . $line . "
 ";
-        $newLen = mb_strlen($content);
-        if ($newLen > 60000) {
-            $overflow = $content;
-            while (mb_strlen($overflow) > 45000) {
-                $nl = strpos($overflow, "
-");
-                if ($nl === false) {
-                    break;
-                }
-                $overflow = substr($overflow, $nl + 1);
-            }
-            $content = $overflow;
+        $trimmed = false;
+        if (mb_strlen($content) > self::KNOWLEDGE_MAX_CHARS) {
+            [$content, $trimmed] = $this->trimKnowledge($content);
         }
         if ($home->nodeExists($path)) {
             $home->get($path)->putContent($content);
         } else {
             $home->newFile($path, $content);
         }
-        return ['ok' => true, 'result' => 'Knowledge updated: ' . $line];
+        if ($trimmed) {
+            try {
+                \OC::$server->get(\Psr\Log\LoggerInterface::class)->warning('eva_ai: knowledge file trimmed; automatic profile section preserved', [
+                    'file' => $path,
+                ]);
+            } catch (\Throwable $e) {
+                // Logging must not make a successful knowledge update fail.
+            }
+        }
+        $result = 'Knowledge updated: ' . $line;
+        if ($trimmed) {
+            $result .= ' Older non-profile entries were trimmed to keep KNOWLEDGE.md bounded; the automatic profile section was preserved.';
+        }
+        return ['ok' => true, 'result' => $result];
+    }
+
+    /**
+     * Remove the oldest non-profile lines while retaining the automatic
+     * identity block. The block is recognized by its marker (or heading for
+     * files created before the marker was introduced).
+     *
+     * @return array{0:string,1:bool}
+     */
+    private function trimKnowledge(string $content): array {
+        $lines = explode("\n", $content);
+        $protected = array_fill(0, count($lines), false);
+        $inProfile = false;
+        foreach ($lines as $i => $line) {
+            $trimmed = trim($line);
+            if ($trimmed === self::KNOWLEDGE_PROFILE_MARKER || $trimmed === '## About me (from my Nextcloud profile)') {
+                $inProfile = true;
+            }
+            if ($inProfile) {
+                $protected[$i] = true;
+            }
+            if ($inProfile && str_starts_with($trimmed, '- Imported automatically on ')) {
+                $inProfile = false;
+            }
+        }
+
+        $removed = array_fill(0, count($lines), false);
+        $length = mb_strlen($content);
+        foreach ($lines as $i => $line) {
+            if ($length <= self::KNOWLEDGE_TARGET_CHARS) {
+                break;
+            }
+            if ($protected[$i]) {
+                continue;
+            }
+            $removed[$i] = true;
+            $length -= mb_strlen($line) + ($i < count($lines) - 1 ? 1 : 0);
+        }
+
+        $kept = [];
+        foreach ($lines as $i => $line) {
+            if (!$removed[$i]) {
+                $kept[] = $line;
+            }
+        }
+        $updated = implode("\n", $kept);
+        return [$updated, $updated !== $content];
     }
 
     /** @return array{ok:true,result:array}|array{ok:false,error:string} */

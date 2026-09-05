@@ -65,14 +65,14 @@ Reads the text content of a file in the user's home (max. 20,000 characters are 
 | `path` | string | yes | Relative path, e.g. `Documents/Notes.md`. |
 
 ### search_files
-Searches the user's entire Nextcloud home for files by name or content keywords.
+Searches the user's entire Nextcloud home for file/folder names and bounded readable text content. The walk is capped at 2,000 nodes and depth 5, returns at most 50 matches, and reads at most 1 MB per text file; the result includes `truncated` when a limit is reached. Binary and unsupported files are skipped.
 
 | Parameter | Type | Required | Description |
 |---|---|---|---|
-| `query` | string | yes | Keyword to look for in file and folder names (case-insensitive). |
+| `query` | string | yes | Keyword to look for in file/folder names and bounded readable text content (case-insensitive). |
 
 ### update_knowledge
-Appends personal facts about the user to the knowledge file `KNOWLEDGE.md` in the home folder (e.g. name, family, work, preferences, allergies, plans). Eva calls it whenever the user shares such information explicitly. The file is read before every answer, so the fact is considered in all future chats. Facts are appended as one bullet per entry; old entries are never overwritten.
+Appends personal facts about the user to the knowledge file `KNOWLEDGE.md` in the home folder (e.g. name, family, work, preferences, allergies, plans). Eva calls it whenever the user shares such information explicitly. The file is read before every answer, so the fact is considered in all future chats. Facts are appended as one bullet per entry; when the size limit is reached, only old non-profile lines are trimmed and the automatic identity section is preserved.
 
 | Parameter | Type | Required | Description |
 |---|---|---|---|
