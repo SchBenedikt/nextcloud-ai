@@ -29,7 +29,15 @@ class Ollama {
     public function ping(): array {
         try {
             $r = $this->client()->get($this->base() . '/api/tags', ['timeout' => 10]);
-            return ['ok' => $r->getStatusCode() === 200, 'url' => $this->base()];
+            $status = $r->getStatusCode();
+            if ($status !== 200) {
+                return [
+                    'ok' => false,
+                    'url' => $this->base(),
+                    'error' => 'Ollama returned HTTP ' . $status . '.',
+                ];
+            }
+            return ['ok' => true, 'url' => $this->base()];
         } catch (\Throwable $e) {
             return ['ok' => false, 'url' => $this->base(), 'error' => $e->getMessage()];
         }
@@ -53,23 +61,73 @@ class Ollama {
     public function testAll(): array {
         $emb = $this->config->get('embedding_model');
         $chat = $this->config->get('chat_model');
+        $server = $this->ping();
+        if (!$server['ok']) {
+            $reason = 'Skipped because the Ollama server is not reachable.';
+            return [
+                'server' => $server,
+                'models' => [],
+                'embedding' => [
+                    'ok' => false,
+                    'len' => 0,
+                    'model' => $emb,
+                    'error' => $reason,
+                ],
+                'chat' => [
+                    'ok' => false,
+                    'model' => $chat,
+                    'answer' => null,
+                    'error' => $reason,
+                ],
+            ];
+        }
+
+        // Do not wait for model loading timeouts when /api/tags already tells
+        // us that a configured model is unavailable. This keeps "Check
+        // connection" bounded and makes the actual configuration error clear.
+        $models = $this->listModels();
+        $modelNames = array_values(array_filter(array_map(
+            static fn($model): string => (string)($model['name'] ?? ''),
+            $models
+        )));
+        $embedding = $emb === ''
+            ? $this->testEmbedding($emb, 30)
+            : (in_array($emb, $modelNames, true)
+                ? $this->testEmbedding($emb, 30)
+                : [
+                    'ok' => false,
+                    'len' => 0,
+                    'model' => $emb,
+                    'error' => 'Model is not listed by Ollama. Pull it before testing the connection.',
+                ]);
+        $chatResult = $chat === ''
+            ? $this->testChat($chat, 60)
+            : (in_array($chat, $modelNames, true)
+                ? $this->testChat($chat, 60)
+                : [
+                    'ok' => false,
+                    'model' => $chat,
+                    'answer' => null,
+                    'error' => 'Model is not listed by Ollama. Pull it before testing the connection.',
+                ]);
+
         return [
-            'server' => $this->ping(),
-            'models' => $this->listModels(),
-            'embedding' => $this->testEmbedding($emb),
-            'chat' => $this->testChat($chat),
+            'server' => $server,
+            'models' => $models,
+            'embedding' => $embedding,
+            'chat' => $chatResult,
         ];
     }
 
     /** @return array{ok:bool,len:?int,error:?string} */
-    public function testEmbedding(string $model): array {
+    public function testEmbedding(string $model, int $timeout = 120): array {
         if ($model === '') {
             return ['ok' => false, 'len' => 0, 'model' => '', 'error' => 'No embedding model configured.'];
         }
         try {
             $r = $this->client()->post($this->base() . '/api/embed', [
                 'json' => ['model' => $model, 'input' => ['Test']],
-                'timeout' => 120,
+                'timeout' => $timeout,
             ]);
             $data = json_decode((string)$r->getBody(), true);
             $emb = $data['embeddings'][0] ?? null;
@@ -83,7 +141,7 @@ class Ollama {
     }
 
     /** @return array{ok:bool,model:string,answer:?string,error:?string} */
-    public function testChat(string $model): array {
+    public function testChat(string $model, int $timeout = 240): array {
         if ($model === '') {
             return ['ok' => false, 'model' => '', 'answer' => null, 'error' => 'Kein Chat-Modell konfiguriert.'];
         }
@@ -96,7 +154,7 @@ class Ollama {
                     'stream' => false,
                     'options' => ['num_ctx' => 1024, 'num_predict' => 8],
                 ],
-                'timeout' => 240,
+                'timeout' => $timeout,
             ]);
             $data = json_decode((string)$r->getBody(), true);
             $elapsed = round(microtime(true) - $start, 1);

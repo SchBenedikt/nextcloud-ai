@@ -153,4 +153,33 @@ final class FrontendContractTest extends TestCase {
         self::assertStringContainsString("'HTTP ' + r.status", $standalone);
     }
 
+    public function testChatMessagesArePersistedInQuestionThenAnswerOrder(): void {
+        $source = (string)file_get_contents(__DIR__ . '/../src/lib/vanilla.js');
+        self::assertStringContainsString(
+            "saveMessage('user', msg)\n\t\t\t\t\t\t.then((savedUser) => savedUser ? saveMessage('assistant', last.text) : false)",
+            $source
+        );
+        self::assertStringNotContainsString("Promise.all([saveMessage('user', msg)", $source);
+    }
+
+    public function testConnectionCheckShortCircuitsAndReportsHttpErrors(): void {
+        $ollama = (string)file_get_contents(__DIR__ . '/../lib/Service/Ollama.php');
+        self::assertStringContainsString("'error' => 'Ollama returned HTTP ' . \$status", $ollama);
+        self::assertStringContainsString('if (!$server[\'ok\'])', $ollama);
+        self::assertStringContainsString('Skipped because the Ollama server is not reachable.', $ollama);
+        self::assertStringContainsString('$this->testEmbedding($emb, 30)', $ollama);
+        self::assertStringContainsString('$this->testChat($chat, 60)', $ollama);
+    }
+
+    public function testSecurityAndLoggerFixesRemainInPlace(): void {
+        $controller = (string)file_get_contents(__DIR__ . '/../lib/Controller/ApiController.php');
+        self::assertStringContainsString("|| isset(\$parts['user'])", $controller);
+        self::assertStringContainsString("|| isset(\$parts['query'])", $controller);
+        self::assertStringNotContainsString("isset(\$parts['user'], \$parts['pass'], \$parts['query'], \$parts['fragment'])", $controller);
+
+        $rag = (string)file_get_contents(__DIR__ . '/../lib/Service/RagService.php');
+        self::assertStringContainsString('use Psr\\Log\\LoggerInterface;', $rag);
+        self::assertStringContainsString('private LoggerInterface $logger', $rag);
+    }
+
 }

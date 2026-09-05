@@ -519,8 +519,12 @@ export function mountChat(root, opts = {}) {
 					last.text = ev.answer || last.text
 					last.sources = citedSources(last.text, ev.sources || [])
 					last.done = true
-					Promise.all([saveMessage('user', msg), saveMessage('assistant', last.text)])
-						.then(() => { if (onRecent) onRecent() })
+					// Persist the pair in conversation order. Sending both requests at
+					// once lets the per-user file lock acquire them in either order,
+					// which can swap the question and answer after a reload.
+					saveMessage('user', msg)
+						.then((savedUser) => savedUser ? saveMessage('assistant', last.text) : false)
+						.then((saved) => { if (saved && onRecent) onRecent() })
 						.catch(() => {})
 				} else if (ev.type === 'error') {
 					last.text = '⚠️ ' + ev.message
