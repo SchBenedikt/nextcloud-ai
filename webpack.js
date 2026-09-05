@@ -1,10 +1,16 @@
 const path = require('path')
 const webpack = require('webpack')
+const TerserPlugin = require('terser-webpack-plugin')
 const { VueLoaderPlugin } = require('vue-loader')
 
 module.exports = (env) => {
 	const isProd = process.env.NODE_ENV === 'production'
 	return {
+		// Opt-in bounded build for small Nextcloud hosts.
+		...(process.env.EVA_LOW_MEMORY_BUILD === '1' ? {
+			parallelism: 1,
+			optimization: { minimizer: [new TerserPlugin({ parallel: false })] },
+		} : {}),
 		entry: {
 			'eva_ai-main': path.resolve(__dirname, 'src', 'main.js'),
 			eva_ai_filesaction: path.resolve(__dirname, 'src', 'lib', 'filesaction.js'),
@@ -45,6 +51,8 @@ module.exports = (env) => {
 		},
 		resolve: {
 			extensions: ['.js', '.vue', '.scss', '.css'],
+			// SAX uses its non-streaming parser for browser SVG detection.
+			fallback: { stream: false },
 			alias: { vue: 'vue/dist/vue.esm-bundler.js' },
 		},
 		plugins: [
