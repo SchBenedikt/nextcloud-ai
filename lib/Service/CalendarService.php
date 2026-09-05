@@ -346,8 +346,8 @@ class CalendarService {
                         'id' => $c['uri'] . '/' . $obj['uri'],
                         'calendar' => (string)$c['displayname'],
                         'title' => (string)($ve->SUMMARY ?? ''),
-                        'start' => $dtstart->format('Y-m-d\TH:i:s') . ($isAllDay ? '' : 'Z'),
-                        'end' => $dtend ? $dtend->format('Y-m-d\TH:i:s') . ($isAllDay ? '' : 'Z') : null,
+                        'start' => $this->formatEventDateTime($dtstart, $isAllDay),
+                        'end' => $dtend ? $this->formatEventDateTime($dtend, $isAllDay) : null,
                         'all_day' => $isAllDay,
                         'location' => (string)($ve->LOCATION ?? ''),
                         'description' => (string)($ve->DESCRIPTION ?? ''),
@@ -358,6 +358,18 @@ class CalendarService {
         }
         usort($events, static fn($a, $b) => strcmp((string)$a['start'], (string)$b['start']));
         return ['ok' => true, 'result' => ['events' => $events]];
+    }
+
+    /**
+     * Serialize a parsed calendar date without claiming that a local wall
+     * clock value is UTC. Timed values are converted to UTC before the Z
+     * suffix is emitted; all-day values intentionally remain date-only.
+     */
+    private function formatEventDateTime(\DateTimeInterface $date, bool $allDay): string {
+        if ($allDay) {
+            return $date->format('Y-m-d');
+        }
+        return $date->setTimezone(new \DateTimeZone('UTC'))->format('Y-m-d\\TH:i:s\\Z');
     }
 
     /** @return array{ok:true,result:array}|array{ok:false,error:string} */

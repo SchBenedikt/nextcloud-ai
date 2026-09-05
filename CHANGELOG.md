@@ -18,6 +18,7 @@ follows [Semantic Versioning](https://semver.org/).
 - **Issues #65 and #94:** stopping an index run now leaves cancellation and terminal state ownership with the worker, so the UI shows `stopping` instead of a false completion; embedding requests have bounded read timeouts, staged replacement rows are discarded when cancellation arrives, and a restart requested during stopping is queued behind the old worker.
 - **Issue #70:** `search_files` now searches bounded readable text content as well as names, returns short content snippets, reports when traversal/result limits were reached, and skips binary or oversized files without aborting the search.
 - **Issue #93:** Knowledge-base trimming now removes only the oldest non-profile lines, preserves the automatic first-run identity section, logs the trim, and reports the warning in the tool result.
+- **Issues #101 and #106:** calendar event timestamps returned by `list_calendar_events` are now converted to UTC before the `Z` suffix is emitted, and share updates/deletes resolve the provider-aware share ID directly instead of scanning only the first 500 shares of each type.
 - **Indexing API**: use native Nextcloud request parameters with a single non-recursive JSON fallback instead of a recursively named input wrapper; duplicate starts now remain idempotent while genuine worker-lock conflicts still return an actionable 409.
 - **Frontend**: the main Vue bundle is now emitted as `eva_ai-main.js` (was
   `eva-ai-main.js`), matching the name the page controller looks up. The app

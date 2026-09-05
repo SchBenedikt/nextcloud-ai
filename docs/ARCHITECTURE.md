@@ -31,7 +31,7 @@ lib/
 | `ActionExecutor` | **Single chokepoint** for all tools — enforces `ToolPolicy` before executing; bounded name/content file search and protected knowledge trimming |
 | `ToolPolicy` | Central tool registry: risk class, allowed surfaces, confirmation flags |
 | `CalendarService` | CalDAV access: calendars, events, reminders, free slots |
-| `SharesService` | File sharing: list/create/update/delete shares |
+| `SharesService` | File sharing: list/create/update/delete shares; provider-aware direct lookup avoids a 500-entry scan cap |
 | `EmailService` | Mail app integration: search/list/read mails + email indexing |
 | `FileContextChatService` | Chat strictly over selected files (Files app context menu) |
 | `ChatStore` | Chat history persistence in Nextcloud AppData (`eva_ai/chats/<user namespace>/chats.json`) |
@@ -146,6 +146,8 @@ tools are allowed in each:
 - `POST /api/fileContextChat`, `/api/fileContextStatus` — file-context chat
 - `POST /api/check` — connectivity check
 - `GET  /api/models` — available Ollama models
+
+Calendar tool output normalizes timed event timestamps to UTC before adding the `Z` suffix; all-day events remain date-only. Share mutations resolve a provider-aware share ID through Nextcloud's share manager and verify that the authenticated user owns the outgoing share.
 
 ## Testing
 
