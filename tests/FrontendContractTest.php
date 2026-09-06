@@ -68,6 +68,7 @@ final class FrontendContractTest extends TestCase {
         self::assertStringNotContainsString('chatsOpen', $app);
         self::assertStringContainsString('filteredChats', $app);
         self::assertStringContainsString(':force-menu="true"', $app);
+        // The app no longer ships project management; older `:close-after-click="true"` buttons were removed with it.
         self::assertStringContainsString(':close-after-click="true"', $app);
         self::assertStringContainsString('@click.stop="renameChat(c.id)"', $app);
         self::assertStringContainsString('@click.stop="deleteChat(c.id)"', $app);

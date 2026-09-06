@@ -13,9 +13,6 @@ return [
     'ocs' => [
         ['name' => 'api#chatBranch', 'url' => '/api/chats/{id}/branch', 'verb' => 'POST'],
         ['name' => 'api#chatUpdate', 'url' => '/api/chats/{id}', 'verb' => 'PUT'],
-        ['name' => 'api#projects', 'url' => '/api/projects', 'verb' => 'GET'],
-        ['name' => 'api#projectSave', 'url' => '/api/projects', 'verb' => 'POST'],
-        ['name' => 'api#projectDelete', 'url' => '/api/projects/{id}', 'verb' => 'DELETE'],
         ['name' => 'api#status', 'url' => '/api/status', 'verb' => 'GET'],
         ['name' => 'api#settings', 'url' => '/api/settings', 'verb' => 'GET'],
         ['name' => 'api#saveSettings', 'url' => '/api/settings', 'verb' => 'PUT'],

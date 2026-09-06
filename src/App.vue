@@ -20,29 +20,6 @@
 				</div>
 			</template>
 			<template #list>
-                <li class="project-controls">
-                    <label>{{ $t('Projects') }}
-                        <select v-model="project">
-                            <option value="*">{{ $t('All chats') }}</option>
-                            <option value="">{{ $t('Unassigned') }}</option>
-                            <option v-for="p in projects" :key="p.id" :value="p.id">{{ p.title }}{{ p.archived ? ' (' + $t('Archived') + ')' : '' }}</option>
-                        </select>
-                    </label>
-                    <NcButton @click="editProject()">{{ $t('New project') }}</NcButton>
-                    <template v-for="p in projects.filter(p => p.id === project)" :key="p.id">
-                        <NcButton @click="editProject(p)">{{ $t('Rename') }}</NcButton>
-                        <NcButton @click="archiveProject(p)">{{ p.archived ? $t('Unarchive') : $t('Archive') }}</NcButton>
-                        <NcButton @click="deleteProject(p)">{{ $t('Delete project') }}</NcButton>
-                    </template>
-                    <label><input v-model="showArchived" type="checkbox"> {{ $t('Archived chats') }}</label>
-                    <label v-if="movingChat">{{ $t('Move chat to project') }}
-                        <select :value="movingChat.project || ''" @change="updateChat(movingChat.id, { project: $event.target.value }); movingChat = null">
-                            <option value="">{{ $t('Unassigned') }}</option>
-                            <option v-for="p in projects" :key="p.id" :value="p.id">{{ p.title }}</option>
-                        </select>
-                        <NcButton @click="movingChat = null">{{ $t('Cancel') }}</NcButton>
-                    </label>
-                </li>
 				<li class="chat-list-heading">
 					<span>{{ $t('Chats') }}</span>
 					<NcCounterBubble :count="chats.length" />
@@ -62,13 +39,11 @@
 					<template #actions>
                         <NcActionButton @click.stop="updateChat(c.id, { pinned: !c.pinned })">{{ c.pinned ? $t('Unpin') : $t('Pin') }}</NcActionButton>
                         <NcActionButton @click.stop="updateChat(c.id, { archived: !c.archived })">{{ c.archived ? $t('Unarchive') : $t('Archive') }}</NcActionButton>
-                        <NcActionButton @click.stop="configureChat(c)">{{ $t('Chat instructions') }}</NcActionButton>
-                        <NcActionButton @click.stop="moveChat(c)">{{ $t('Move chat to project') }}</NcActionButton>
-						<NcActionButton :aria-label="$t('Rename chat')" :close-after-click="true" @click.stop="renameChat(c.id)">
+                        <NcActionButton @click.stop="configureChat(c)">{{ $t('Chat instructions') }}</NcActionButton>                        <NcActionButton :aria-label="$t('Rename chat')" @click.stop="renameChat(c.id)">
 							<template #icon><NcIconSvgWrapper :path="mdiPencilOutline" :size="16" aria-hidden="true" /></template>
 							{{ $t('Rename chat') }}
 						</NcActionButton>
-						<NcActionButton :aria-label="$t('Delete chat')" :close-after-click="true" @click.stop="deleteChat(c.id)">
+						<NcActionButton :aria-label="$t('Delete chat')" @click.stop="deleteChat(c.id)">
 							<template #icon><NcIconSvgWrapper :path="mdiTrashCanOutline" :size="16" aria-hidden="true" /></template>
 							{{ $t('Delete chat') }}
 						</NcActionButton>
@@ -148,15 +123,12 @@ export default {
 		const fileContextIds = ref(initialFileIds)
 		const mobileOpen = ref(false)
 		const buildVersion = appVersion
-
 		const chats = ref([])
 		const currentChat = ref(null)
 		const busy = ref(false)
 		const chatFilter = ref('')
 		const apiError = ref('')
         const filteredChats = computed(() => chats.value)
-        const projects = ref([])
-        const project = ref('*')
         const showArchived = ref(false)
         const hasMoreChats = ref(false)
         let searchTimer = null
@@ -180,7 +152,7 @@ export default {
             const version = ++searchVersion
             try {
                 const list = await requestApi('GET', '/chats', { search: chatFilter.value, offset: append ? chats.value.length : 0,
-                    limit: 100, archived: showArchived.value, ...(project.value === '*' ? {} : { project: project.value }) })
+                    limit: 100, archived: showArchived.value })
                 if (version !== searchVersion) return
                 if (!Array.isArray(list)) throw new Error(t('The chat list response was invalid.'))
                 chats.value = append ? chats.value.concat(list) : list
@@ -188,36 +160,15 @@ export default {
                 apiError.value = ''
             } catch (error) { apiError.value = errMsg(error) }
         }
-        watch([chatFilter, project, showArchived], () => {
+        watch([chatFilter, showArchived], () => {
             clearTimeout(searchTimer)
             searchTimer = setTimeout(() => loadChats(), 250)
         })
         onUnmounted(() => { clearTimeout(searchTimer); searchVersion++ })
-        const loadProjects = async () => { projects.value = await requestApi('GET', '/projects') }
-        const editProject = async (item = null) => {
-            const title = window.prompt(t('Project name'), item?.title || '')
-            if (!title?.trim()) return
-            try { await requestApi('POST', '/projects', { ...item, title }); await loadProjects() }
-            catch (e) { apiError.value = errMsg(e) }
-        }
-        const archiveProject = async (item) => {
-            try { await requestApi('POST', '/projects', { ...item, archived: !item.archived }); await loadProjects() }
-            catch (e) { apiError.value = errMsg(e) }
-        }
-        const deleteProject = async (item) => {
-            if (!window.confirm(t('Delete project? Chats will be kept.'))) return
-            try { await requestApi('DELETE', '/projects/' + encodeURIComponent(item.id)); project.value = '*'; await loadProjects(); await loadChats() }
-            catch (e) { apiError.value = errMsg(e) }
-        }
         const updateChat = async (id, changes) => {
             try { await requestApi('PUT', '/chats/' + encodeURIComponent(id), changes); await loadChats() }
             catch (e) { apiError.value = errMsg(e) }
         }
-        const moveChat = async (chat) => {
-            // A labelled native select uses the same keyboard interaction in both entry points.
-            movingChat.value = chat
-        }
-        const movingChat = ref(null)
         const configureChat = async (chat) => {
             const instructions = window.prompt(t('Chat instructions'), chat.instructions || '')
             if (instructions !== null) await updateChat(chat.id, { instructions })
@@ -230,8 +181,7 @@ export default {
 			try {
 				const c = await requestApi('POST', '/chats', {})
 				if (!c || !c.id) throw new Error(t('The server returned no chat ID.'))
-                if (project.value !== '*' && project.value !== '') await requestApi('PUT', '/chats/' + encodeURIComponent(c.id), { project: project.value })
-				await loadChats()
+    				await loadChats()
 				currentChat.value = c.id
 				navigate('chat')
 				apiError.value = ''
@@ -273,7 +223,6 @@ export default {
 
 		onMounted(() => {
 			loadChats()
-            loadProjects().catch((e) => { apiError.value = errMsg(e) })
 			if (typeof window !== 'undefined' && window.addEventListener) {
 				window.addEventListener('popstate', () => {
 					const current = window.location.pathname.replace(/\/+$/, '')
@@ -299,13 +248,12 @@ export default {
 				})
 			}
 		})
-
 		return {
 			view, mobileOpen, buildVersion,
 			chats, currentChat, busy, chatFilter, filteredChats, apiError,
 			fileContextIds,
 			newChat, selectChat, renameChat, deleteChat, loadChats, navigate,
-            projects, project, showArchived, hasMoreChats, editProject, archiveProject, deleteProject, updateChat, moveChat, movingChat, configureChat,
+			showArchived, hasMoreChats, updateChat, configureChat,
 			mdiChatProcessing, mdiFileDocumentOutline, mdiTune, mdiTrashCanOutline, mdiMessagePlus, mdiPencilOutline,
 		}
 	},
@@ -313,9 +261,6 @@ export default {
 </script>
 
 <style scoped>
-.project-controls { display: grid; gap: 8px; padding: 8px 12px; list-style: none; }
-.project-controls label { display: block; }
-.project-controls select { width: 100%; }
 .eva-ai-app {
 	width: 100%;
 	--eva-content-width: clamp(1180px, 78vw, 1680px);

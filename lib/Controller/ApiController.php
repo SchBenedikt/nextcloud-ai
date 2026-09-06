@@ -645,7 +645,7 @@ class ApiController extends OCSController {
         }
         return new DataResponse($this->chatStore->list($user, (string)$this->requestParam('search', ''),
             (int)$this->requestParam('limit', 100), (int)$this->requestParam('offset', 0),
-            $this->requestParam('project'), filter_var($this->requestParam('archived', false), FILTER_VALIDATE_BOOLEAN)));
+            null, filter_var($this->requestParam('archived', false), FILTER_VALIDATE_BOOLEAN)));
     }
 
     #[NoAdminRequired]
@@ -768,29 +768,6 @@ class ApiController extends OCSController {
         if ($user === null) { return new DataResponse(['error' => 'Not logged in'], 401); }
         try { return new DataResponse($this->chatStore->update($user, $id, $this->requestBody() ?: $this->request->getParams())); }
         catch (\InvalidArgumentException $e) { return new DataResponse(['error' => $e->getMessage()], 400); }
-    }
-
-    #[NoAdminRequired]
-    public function projects(): DataResponse {
-        $user = $this->requireUser();
-        if ($user === null) { return new DataResponse(['error' => 'Not logged in'], 401); }
-        return new DataResponse($this->chatStore->projects($user));
-    }
-
-    #[NoAdminRequired]
-    public function projectSave(): DataResponse {
-        $user = $this->requireUser();
-        if ($user === null) { return new DataResponse(['error' => 'Not logged in'], 401); }
-        try { return new DataResponse($this->chatStore->saveProject($user, $this->requestBody() ?: $this->request->getParams())); }
-        catch (\InvalidArgumentException $e) { return new DataResponse(['error' => $e->getMessage()], 400); }
-    }
-
-    #[NoAdminRequired]
-    public function projectDelete(string $id): DataResponse {
-        $user = $this->requireUser();
-        if ($user === null) { return new DataResponse(['error' => 'Not logged in'], 401); }
-        $this->chatStore->deleteProject($user, $id);
-        return new DataResponse(['ok' => true]);
     }
 
     #[NoAdminRequired]

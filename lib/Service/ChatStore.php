@@ -64,14 +64,15 @@ class ChatStore {
         $qb = $this->db->getQueryBuilder();
         $values = ['user_id' => $user, 'kind' => $kind, 'item_id' => $item['id'],
             'title' => mb_substr((string)($item['title'] ?? ''), 0, 255),
-            'project_id' => (string)($item['project'] ?? ''), 'archived' => (int)($item['archived'] ?? false), 'pinned' => (int)($item['pinned'] ?? false),
+            'archived' => (int)($item['archived'] ?? false), 'pinned' => (int)($item['pinned'] ?? false),
             'data' => json_encode($item, JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR), 'updated_at' => time()];
+        if (isset($values['project_id'])) { unset($values['project_id']); }
         if ($existing === null) {
             $qb->insert('eva_ai_chat_items');
             foreach ($values as $key => $value) { $qb->setValue($key, $qb->createNamedParameter($value)); }
         } else {
             $qb->update('eva_ai_chat_items');
-            foreach (['title', 'data', 'updated_at', 'project_id', 'archived', 'pinned'] as $key) { $qb->set($key, $qb->createNamedParameter($values[$key])); }
+            foreach (['title', 'data', 'updated_at', 'archived', 'pinned'] as $key) { $qb->set($key, $qb->createNamedParameter($values[$key])); }
             foreach (['user_id', 'kind', 'item_id'] as $key) { $qb->andWhere($qb->expr()->eq($key, $qb->createNamedParameter($values[$key]))); }
         }
         $qb->executeStatement();
@@ -114,8 +115,7 @@ class ChatStore {
                 }
                 $qb->andWhere($qb->expr()->orX(...$conditions));
             }
-            $qb->andWhere($qb->expr()->eq('archived', $qb->createNamedParameter((int)$archived, IQueryBuilder::PARAM_INT)));
-            if ($project !== null) { $qb->andWhere($qb->expr()->eq('project_id', $qb->createNamedParameter($project))); }
+            $qb            ->andWhere($qb->expr()->eq('archived', $qb->createNamedParameter((int)$archived, IQueryBuilder::PARAM_INT)));
             if ($search !== '') {
                 $exact = $qb->createNamedParameter(mb_strtolower(mb_substr($search, 0, 200)));
                 $qb->orderBy($qb->createFunction('CASE WHEN LOWER(title) = ' . $exact . ' THEN 0 ELSE 1 END'), 'ASC');
@@ -203,12 +203,12 @@ class ChatStore {
 
     public function update(string $user, string $id, array $changes): array {
         return $this->locked($user, function () use ($user, $id, $changes): array {
+            unset($changes['project']);
             $chat = $this->item($user, 'chat', $id);
             if ($chat === null) { throw new \InvalidArgumentException('Chat not found'); }
-            foreach (['title' => 60, 'instructions' => 4000, 'persona' => 40, 'project' => 64] as $key => $max) {
+            foreach (['title' => 60, 'instructions' => 4000, 'persona' => 40] as $key => $max) {
                 if (isset($changes[$key])) { $chat[$key] = mb_substr(trim((string)$changes[$key]), 0, $max); }
             }
-            if (!empty($chat['project']) && $this->item($user, 'project', $chat['project']) === null) { throw new \InvalidArgumentException('Project not found'); }
             foreach (['pinned', 'archived'] as $key) { if (isset($changes[$key])) { $chat[$key] = filter_var($changes[$key], FILTER_VALIDATE_BOOLEAN); } }
             $chat['updated'] = time();
             $this->saveItem($user, 'chat', $chat);
@@ -266,40 +266,4 @@ class ChatStore {
         });
     }
 
-    public function projects(string $user): array {
-        return $this->locked($user, function () use ($user): array {
-            $r = $this->scope($user, 'project')->executeQuery();
-            try { $items = array_map(static fn($r) => json_decode($r['data'], true), $r->fetchAll()); }
-            finally { $r->closeCursor(); }
-            usort($items, static fn($a, $b) => ($a['position'] <=> $b['position']) ?: strcmp($a['title'], $b['title']));
-            return $items;
-        });
-    }
-
-    public function saveProject(string $user, array $data): array {
-        return $this->locked($user, function () use ($user, $data): array {
-            $id = (string)($data['id'] ?? '');
-            $item = $id !== '' ? $this->item($user, 'project', $id) : ['id' => bin2hex(random_bytes(16))];
-            if ($item === null) { throw new \InvalidArgumentException('Project not found'); }
-            $item['title'] = mb_substr(trim((string)($data['title'] ?? $item['title'] ?? '')), 0, 60);
-            if ($item['title'] === '') { throw new \InvalidArgumentException('Project name is required'); }
-            foreach (['description' => 1000, 'color' => 32, 'icon' => 32] as $key => $max) { $item[$key] = mb_substr((string)($data[$key] ?? $item[$key] ?? ''), 0, $max); }
-            $item['archived'] = filter_var($data['archived'] ?? $item['archived'] ?? false, FILTER_VALIDATE_BOOLEAN);
-            $item['position'] = max(0, min(10000, (int)($data['position'] ?? $item['position'] ?? 0)));
-            $this->saveItem($user, 'project', $item);
-            return $item;
-        });
-    }
-
-    public function deleteProject(string $user, string $id): void {
-        $this->locked($user, function () use ($user, $id): void {
-            $r = $this->scope($user, 'chat')->executeQuery();
-            try { $rows = $r->fetchAll(); } finally { $r->closeCursor(); }
-            foreach ($rows as $row) {
-                $chat = json_decode($row['data'], true, 512, JSON_THROW_ON_ERROR);
-                if (($chat['project'] ?? '') === $id) { $chat['project'] = ''; $this->saveItem($user, 'chat', $chat); }
-            }
-            $this->remove($user, 'project', $id);
-        });
-    }
 }
