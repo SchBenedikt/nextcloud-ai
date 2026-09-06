@@ -14,7 +14,7 @@ final class TranslationCatalogTest extends TestCase {
             $catalog = json_decode(file_get_contents($root . '/l10n/' . $language . '.json'), true, 512, JSON_THROW_ON_ERROR);
             self::assertSame(array_keys($english['translations']), array_keys($catalog['translations']));
             $legacy = file_get_contents($root . '/l10n/' . $language . '.js');
-            self::assertSame(1, preg_match('/register\("eva_ai", (\{.*\}), /s', $legacy, $match));
+            self::assertSame(1, preg_match('/register\(\s*["\']eva_ai["\']\s*,\s*(\{.*\})\s*,/s', $legacy, $match));
             self::assertSame($catalog['translations'], json_decode($match[1], true, 512, JSON_THROW_ON_ERROR));
             foreach ($catalog['translations'] as $source => $translation) {
                 preg_match_all('/\{\w+\}/', $source, $expected);

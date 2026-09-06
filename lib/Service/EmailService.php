@@ -121,7 +121,7 @@ class EmailService {
     public function readMessage(string $userId, int $messageId): array {
         $mailboxIds = $this->mailboxIdsOf($userId);
         if ($mailboxIds === []) {
-            return ['ok' => false, 'error' => 'Mail-App nicht verfügbar'];
+            return ['ok' => false, 'error' => 'The Mail app is not available'];
         }
 
         $rows = $this->q(
@@ -131,11 +131,11 @@ class EmailService {
             [$messageId]
         );
         if ($rows === []) {
-            return ['ok' => false, 'error' => 'Nachricht nicht gefunden'];
+            return ['ok' => false, 'error' => 'Message not found'];
         }
         $row = $rows[0];
         if (!in_array((int)($row['mailbox_id'] ?? 0), $mailboxIds, true)) {
-            return ['ok' => false, 'error' => 'Nachricht gehört nicht zu diesem Benutzer'];
+            return ['ok' => false, 'error' => 'The message does not belong to this user'];
         }
 
         $body = trim((string)($row['preview_text'] ?? ''));

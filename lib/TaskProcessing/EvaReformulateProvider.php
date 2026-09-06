@@ -70,24 +70,24 @@ class EvaReformulateProvider implements ISynchronousProvider {
 
 	public function process(?string $userId, array $input, callable $reportProgress): array {
 		if ($userId === null) {
-			throw new RuntimeException('Kein Benutzerkontext');
+			throw new RuntimeException('No user context');
 		}
 		$this->appConfig->setUserId($userId);
 
 		$prompt = trim((string)($input['input'] ?? ''));
 		if ($prompt === '') {
-			throw new RuntimeException('Leere Eingabe');
+			throw new RuntimeException('Empty input');
 		}
 
 		$reportProgress(0.1);
 
 		$messages = [
-			['role' => 'system', 'content' => 'Du bist ein hilfreicher Assistent, der Texte umformuliert. '
-				. 'Formuliere den Text so um, dass er klarer, verständlicher oder eleganter wird. '
-				. 'Behalte die ursprüngliche Bedeutung und Intention bei. '
-				. 'Antworte in der gleichen Sprache wie der Originaltext. '
-				. 'Gib nur den umformulierten Text zurück, keine zusätzlichen Erklärungen.'],
-			['role' => 'user', 'content' => 'Formuliere den folgenden Text um:\n\n' . $prompt],
+			['role' => 'system', 'content' => 'You are a helpful assistant that reformulates text. '
+				. 'Rephrase the text to make it clearer, more understandable, or more elegant. '
+				. 'Preserve the original meaning and intent. '
+				. 'Answer in the same language as the original text. '
+				. 'Return only the reformulated text, without additional explanations.'],
+			['role' => 'user', 'content' => 'Rephrase the following text:\n\n' . $prompt],
 		];
 
 		$reportProgress(0.3);
@@ -103,7 +103,7 @@ class EvaReformulateProvider implements ISynchronousProvider {
 		$answer = (string)($result['answer'] ?? '');
 
 		if (trim($answer) === '') {
-			throw new RuntimeException('Leere Antwort vom Modell');
+			throw new RuntimeException('The model returned an empty answer');
 		}
 
 		return ['output' => $answer];

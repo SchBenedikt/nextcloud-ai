@@ -23,6 +23,8 @@ class LegacyChatStore {
     private const MAX_MESSAGES = 200;
     private const MAX_TITLE = 60;
 
+    private bool $legacyDataCopied = false;
+
     public function __construct(
         private IAppDataFactory $appDataFactory,
         private LoggerInterface $logger
@@ -37,7 +39,7 @@ class LegacyChatStore {
             foreach ($all as $chat) {
                 $out[] = [
                     'id' => $chat['id'] ?? '',
-                    'title' => $chat['title'] ?? 'Neuer Chat',
+                    'title' => $chat['title'] ?? 'New chat',
                     'created' => $chat['created'] ?? 0,
                     'updated' => $chat['updated'] ?? 0,
                     'count' => count($chat['messages'] ?? []),
@@ -62,7 +64,7 @@ class LegacyChatStore {
 
     public function create(string $user, ?string $title = null): array {
         return $this->withUserLock($user, function () use ($user, $title): array {
-            // Keine doppelten leeren Chats: ein noch leerer Chat wird wiederverwendet.
+            // Reuse an empty chat instead of creating duplicate empty entries.
             $all = $this->read($user);
             foreach ($all as $existing) {
                 if (count($existing['messages'] ?? []) === 0) {
@@ -72,7 +74,7 @@ class LegacyChatStore {
             }
             $chat = [
                 'id' => 'c' . date('YmdHis') . '-' . bin2hex(random_bytes(4)),
-                'title' => $title !== null && $title !== '' ? $this->clipTitle($title) : 'Neuer Chat',
+                'title' => $title !== null && $title !== '' ? $this->clipTitle($title) : 'New chat',
                 'created' => time(),
                 'updated' => time(),
                 'messages' => [],
@@ -138,7 +140,7 @@ class LegacyChatStore {
                     if (count($chat['messages']) > self::MAX_MESSAGES) {
                         $chat['messages'] = array_slice($chat['messages'], -self::MAX_MESSAGES);
                     }
-                    if (isset($chat['messages'][0]['text']) && str_starts_with($chat['title'] ?? '', 'Neuer Chat')) {
+                    if (isset($chat['messages'][0]['text']) && in_array($chat['title'] ?? '', ['New chat', 'Neuer Chat'], true)) {
                         $chat['title'] = $this->clipTitle((string)$chat['messages'][0]['text']);
                     }
                     break;
@@ -206,7 +208,10 @@ class LegacyChatStore {
         } catch (NotFoundException $e) {
             $chats = $appdata->newFolder('chats');
         }
-        $this->copyLegacyChatData($chats);
+        if (!$this->legacyDataCopied) {
+            $this->copyLegacyChatData($chats);
+            $this->legacyDataCopied = true;
+        }
         $uidFolder = $this->folderFor($chats, $user);
         if (!$uidFolder->fileExists('chats.json')) {
             $uidFolder->newFile('chats.json', '[]');
@@ -309,6 +314,6 @@ class LegacyChatStore {
         if (mb_strlen($clean) > self::MAX_TITLE) {
             $clean = mb_substr($clean, 0, self::MAX_TITLE) . '…';
         }
-        return $clean === '' ? 'Neuer Chat' : $clean;
+        return $clean === '' ? 'New chat' : $clean;
     }
 }

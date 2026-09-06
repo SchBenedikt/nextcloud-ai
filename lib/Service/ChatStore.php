@@ -82,19 +82,42 @@ class ChatStore {
         return $this->locked($user, function () use ($user, $search, $limit, $offset, $project, $archived): array {
             $qb = $this->scope($user, 'chat');
             if ($search !== '') {
-                $like = $qb->createNamedParameter('%' . $qb->escapeLikeParameter(mb_strtolower(mb_substr($search, 0, 200))) . '%');
-                $sub = $this->db->getQueryBuilder();
-                $sub->select('chat_id')->from('eva_ai_messages')
-                    ->where($sub->expr()->eq('user_id', $sub->createNamedParameter($user, IQueryBuilder::PARAM_STR, ':searchuser')))
-                    ->andWhere($sub->expr()->like($sub->func()->lower('content'), $sub->createNamedParameter('%' . $sub->escapeLikeParameter(mb_strtolower(mb_substr($search, 0, 200))) . '%', IQueryBuilder::PARAM_STR, ':searchtext')));
-                $qb->andWhere($qb->expr()->orX($qb->expr()->like($qb->func()->lower('title'), $like), $qb->expr()->in('item_id', $qb->createFunction($sub->getSQL()))));
-                $qb->setParameter('searchuser', $user);
-                $qb->setParameter('searchtext', '%' . $qb->escapeLikeParameter(mb_strtolower(mb_substr($search, 0, 200))) . '%');
+                $term = mb_strtolower(mb_substr($search, 0, 200));
+                $like = $qb->createNamedParameter('%' . $qb->escapeLikeParameter($term) . '%');
+
+                // QueryBuilder parameters belong to the builder that executes
+                // the query. Resolve matching message chat IDs first instead
+                // of embedding a second builder's SQL and unbound parameters.
+                $messageQuery = $this->db->getQueryBuilder();
+                $messageQuery->selectDistinct('chat_id')->from('eva_ai_messages')
+                    ->where($messageQuery->expr()->eq('user_id', $messageQuery->createNamedParameter($user)))
+                    ->andWhere($messageQuery->expr()->like(
+                        $messageQuery->func()->lower('content'),
+                        $messageQuery->createNamedParameter('%' . $messageQuery->escapeLikeParameter($term) . '%')
+                    ));
+                $messageResult = $messageQuery->executeQuery();
+                try {
+                    $matchingChatIds = array_values(array_filter(array_map(
+                        static fn(array $row): string => (string)($row['chat_id'] ?? ''),
+                        $messageResult->fetchAll()
+                    ), static fn(string $id): bool => $id !== ''));
+                } finally {
+                    $messageResult->closeCursor();
+                }
+
+                $conditions = [$qb->expr()->like($qb->func()->lower('title'), $like)];
+                if ($matchingChatIds !== []) {
+                    $conditions[] = $qb->expr()->in(
+                        'item_id',
+                        $qb->createNamedParameter($matchingChatIds, IQueryBuilder::PARAM_STR_ARRAY)
+                    );
+                }
+                $qb->andWhere($qb->expr()->orX(...$conditions));
             }
             $qb->andWhere($qb->expr()->eq('archived', $qb->createNamedParameter((int)$archived, IQueryBuilder::PARAM_INT)));
             if ($project !== null) { $qb->andWhere($qb->expr()->eq('project_id', $qb->createNamedParameter($project))); }
             if ($search !== '') {
-                $exact = $qb->createNamedParameter(mb_strtolower($search));
+                $exact = $qb->createNamedParameter(mb_strtolower(mb_substr($search, 0, 200)));
                 $qb->orderBy($qb->createFunction('CASE WHEN LOWER(title) = ' . $exact . ' THEN 0 ELSE 1 END'), 'ASC');
             }
             $result = $qb->addOrderBy('pinned', 'DESC')->addOrderBy('updated_at', 'DESC')->addOrderBy('item_id', 'ASC')
@@ -118,7 +141,10 @@ class ChatStore {
         try { $row = $r->fetch(); $text = (string)($row['content'] ?? ''); }
         finally { $r->closeCursor(); }
         $pos = mb_stripos($text, $search);
-        return mb_substr($text, max(0, (int)$pos - 60), 220);
+        if ($pos === false) {
+            return '';
+        }
+        return mb_substr($text, max(0, $pos - 60), 220);
     }
 
     private function messagesQuery(string $user, string $id): IQueryBuilder {
@@ -146,7 +172,7 @@ class ChatStore {
 
     public function create(string $user, ?string $title = null): array {
         return $this->locked($user, function () use ($user, $title): array {
-            $chat = ['id' => bin2hex(random_bytes(16)), 'title' => mb_substr(trim($title ?? '') ?: 'Neuer Chat', 0, 60),
+            $chat = ['id' => bin2hex(random_bytes(16)), 'title' => mb_substr(trim($title ?? '') ?: 'New chat', 0, 60),
                 'created' => time(), 'updated' => time(), 'count' => 0, 'messages' => []];
             $this->saveItem($user, 'chat', $chat);
             return $chat;
@@ -166,7 +192,7 @@ class ChatStore {
             $chat = $this->item($user, 'chat', $id);
             if ($chat === null) { throw new \InvalidArgumentException('Chat not found'); }
             $this->insertMessage($user, $id, $role, $text);
-            if (($chat['count'] ?? 0) === 0 && $chat['title'] === 'Neuer Chat') { $chat['title'] = mb_substr($text, 0, 60); }
+            if (($chat['count'] ?? 0) === 0 && in_array($chat['title'] ?? '', ['New chat', 'Neuer Chat'], true)) { $chat['title'] = mb_substr($text, 0, 60); }
             $chat['count'] = ($chat['count'] ?? 0) + 1;
             $chat['updated'] = time();
             $this->saveItem($user, 'chat', $chat);
@@ -221,15 +247,19 @@ class ChatStore {
             $qb->andWhere($qb->expr()->lte('id', $qb->createNamedParameter($messageId, IQueryBuilder::PARAM_INT)));
             $r = $qb->executeQuery();
             $newId = bin2hex(random_bytes(16)); $count = 0; $found = false;
+            $messages = [];
             try {
                 while ($m = $r->fetch()) {
                     $last = (int)$m['id'] === $messageId;
                     if ($last && $replacement !== null && $m['role'] !== 'user') { throw new \InvalidArgumentException('Only user messages can be edited'); }
-                    $this->insertMessage($user, $newId, $m['role'], $last && $replacement !== null ? $replacement : $m['content']);
+                    $messages[] = [$m['role'], $last && $replacement !== null ? $replacement : $m['content']];
                     $count++; $found = $found || $last;
                 }
             } finally { $r->closeCursor(); }
             if (!$found) { throw new \InvalidArgumentException('Message not found'); }
+            foreach ($messages as [$role, $text]) {
+                $this->insertMessage($user, $newId, (string)$role, (string)$text);
+            }
             $chat = array_merge($chat, ['id' => $newId, 'parent' => $id, 'count' => $count, 'created' => time(), 'updated' => time(), 'archived' => false]);
             $this->saveItem($user, 'chat', $chat);
             return $chat;
@@ -252,7 +282,7 @@ class ChatStore {
             $item = $id !== '' ? $this->item($user, 'project', $id) : ['id' => bin2hex(random_bytes(16))];
             if ($item === null) { throw new \InvalidArgumentException('Project not found'); }
             $item['title'] = mb_substr(trim((string)($data['title'] ?? $item['title'] ?? '')), 0, 60);
-            if ($item['title'] === '') { throw new \InvalidArgumentException('Project name required'); }
+            if ($item['title'] === '') { throw new \InvalidArgumentException('Project name is required'); }
             foreach (['description' => 1000, 'color' => 32, 'icon' => 32] as $key => $max) { $item[$key] = mb_substr((string)($data[$key] ?? $item[$key] ?? ''), 0, $max); }
             $item['archived'] = filter_var($data['archived'] ?? $item['archived'] ?? false, FILTER_VALIDATE_BOOLEAN);
             $item['position'] = max(0, min(10000, (int)($data['position'] ?? $item['position'] ?? 0)));

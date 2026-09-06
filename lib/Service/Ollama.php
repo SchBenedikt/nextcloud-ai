@@ -281,7 +281,7 @@ class Ollama {
             $r = $this->client()->post($this->base() . '/api/generate', [
                 'json' => [
                     'model' => $model,
-                    'prompt' => 'Antworte nur mit dem Wort: ok',
+                    'prompt' => 'Reply with the single word: ok',
                     'stream' => false,
                     'options' => ['num_ctx' => 1024, 'num_predict' => 8],
                 ],
@@ -294,7 +294,7 @@ class Ollama {
                 return ['ok' => false, 'model' => $model, 'answer' => null, 'error' => $data['error'] . ' (' . $elapsed . 's)'];
             }
             if ($answer === null || trim($answer) === '') {
-                return ['ok' => false, 'model' => $model, 'answer' => null, 'error' => 'Leere Antwort (' . $elapsed . 's)'];
+                return ['ok' => false, 'model' => $model, 'answer' => null, 'error' => 'Empty answer (' . $elapsed . 's)'];
             }
             return ['ok' => true, 'model' => $model, 'answer' => trim(substr($answer, 0, 80)), 'error' => null, 'seconds' => $elapsed];
         } catch (\Throwable $e) {
@@ -592,7 +592,7 @@ class Ollama {
                     $msg = $obj['message'] ?? [];
                     if (is_array($msg) && !empty($msg['tool_calls'])) {
                         // Ollama streamt Tool-Call-Argumente in mehreren Chunks:
-                        // nach Index akkumulieren statt überschreiben.
+                        // Accumulate by index instead of overwriting.
                         foreach ($msg['tool_calls'] as $tc) {
                             $idx = (int)($tc['index'] ?? 0);
                             $fn = $tc['function'] ?? [];

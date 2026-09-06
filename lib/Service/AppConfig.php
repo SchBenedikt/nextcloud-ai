@@ -32,7 +32,7 @@ class AppConfig {
 
     private const DEFAULTS = [
         'weather_enabled' => '0', 'talk_classification_enabled' => '0', 'personalization_enabled' => '1',
-        'ocr_enabled' => '0' => '0', 'chat_fallback_models' => '', 'summary_model' => '', 'tool_model' => '',
+        'ocr_enabled' => '0', 'chat_fallback_models' => '', 'summary_model' => '', 'tool_model' => '',
         'index_enabled' => '0',
         'ollama_url' => 'http://127.0.0.1:11434',
         'embedding_model' => 'nomic-embed-text',
@@ -166,7 +166,7 @@ class AppConfig {
     public function hasIndexEnrollment(string $userId): bool {
         $sentinel = "\0eva_ai_missing\0";
         try {
-            return $this->config->getUserValue($userId, self::APP, 'index_enrolled', $sentinel) !== $sentinel;
+            return $this->config->getUserValue($userId, self::APP, 'index_enrolled', $sentinel) === '1';
         } catch (\Throwable $e) {
             return false;
         }

@@ -70,19 +70,19 @@ class EvaTextToTextProvider implements ISynchronousProvider {
 
 	public function process(?string $userId, array $input, callable $reportProgress): array {
 		if ($userId === null) {
-			throw new RuntimeException('Kein Benutzerkontext');
+			throw new RuntimeException('No user context');
 		}
 		$this->appConfig->setUserId($userId);
 
 		$prompt = trim((string)($input['input'] ?? ''));
 		if ($prompt === '') {
-			throw new RuntimeException('Leere Eingabe');
+			throw new RuntimeException('Empty input');
 		}
 
 		$reportProgress(0.1);
 
 		$messages = [
-			['role' => 'system', 'content' => 'Du bist ein hilfreicher, präziser Assistent. Antworte immer in der Sprache der Frage des Nutzers.'],
+			['role' => 'system', 'content' => "You are a helpful, precise assistant. Always answer in the language of the user's question."],
 			['role' => 'user', 'content' => $prompt],
 		];
 
@@ -99,7 +99,7 @@ class EvaTextToTextProvider implements ISynchronousProvider {
 		$answer = (string)($result['answer'] ?? '');
 
 		if (trim($answer) === '') {
-			throw new RuntimeException('Leere Antwort vom Modell');
+			throw new RuntimeException('The model returned an empty answer');
 		}
 
 		return ['output' => $answer];

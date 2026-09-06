@@ -70,25 +70,25 @@ class EvaReformatProvider implements ISynchronousProvider {
 
 	public function process(?string $userId, array $input, callable $reportProgress): array {
 		if ($userId === null) {
-			throw new RuntimeException('Kein Benutzerkontext');
+			throw new RuntimeException('No user context');
 		}
 		$this->appConfig->setUserId($userId);
 
 		$prompt = trim((string)($input['input'] ?? ''));
 		if ($prompt === '') {
-			throw new RuntimeException('Leere Eingabe');
+			throw new RuntimeException('Empty input');
 		}
 
 		$reportProgress(0.1);
 
 		$messages = [
-			['role' => 'system', 'content' => 'Du bist ein hilfreicher Assistent, der Texte formatiert. '
-				. 'Formatiere den Text in saubere, logische Absätze. '
-				. 'Trenne verschiedene Themen oder Gedanken in eigene Absätze. '
-				. 'Behalte den Inhalt bei und ändere nur die Formatierung. '
-				. 'Antworte in der gleichen Sprache wie der Originaltext. '
-				. 'Gib nur den formatierten Text zurück, keine zusätzlichen Erklärungen.'],
-			['role' => 'user', 'content' => 'Formatiere den folgenden Text in saubere Absätze:\n\n' . $prompt],
+			['role' => 'system', 'content' => 'You are a helpful assistant that formats text. '
+				. 'Format the text into clean, logical paragraphs. '
+				. 'Separate different topics or thoughts into their own paragraphs. '
+				. 'Preserve the content and change only the formatting. '
+				. 'Answer in the same language as the original text. '
+				. 'Return only the formatted text, without additional explanations.'],
+			['role' => 'user', 'content' => 'Format the following text into clean paragraphs:\n\n' . $prompt],
 		];
 
 		$reportProgress(0.3);
@@ -104,7 +104,7 @@ class EvaReformatProvider implements ISynchronousProvider {
 		$answer = (string)($result['answer'] ?? '');
 
 		if (trim($answer) === '') {
-			throw new RuntimeException('Leere Antwort vom Modell');
+			throw new RuntimeException('The model returned an empty answer');
 		}
 
 		return ['output' => $answer];

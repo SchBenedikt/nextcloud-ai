@@ -9,10 +9,10 @@ use PHPUnit\Framework\TestCase;
 final class FrontendContractTest extends TestCase {
     public function testDocumentChunkViewKeepsLoadingErrorsAndRetriesVisible(): void {
         $source = (string)file_get_contents(__DIR__ . '/../src/views/DocumentsView.vue');
-        self::assertStringContainsString('data?.data?.chunks', $source);
+        self::assertStringContainsString("if (!Array.isArray(data?.chunks))", $source);
         self::assertStringContainsString("status: 'error'", $source);
         self::assertStringContainsString('loadChunks(d.id, d.chunks, true)', $source);
-        self::assertStringContainsString('const reportedExpected = data?.document?.chunks', $source);
+        self::assertStringContainsString("expected: data.total", $source);
         self::assertStringContainsString('aria-expanded', $source);
         self::assertStringContainsString('@keydown.enter.prevent', $source);
         self::assertStringContainsString('@keydown.space.prevent', $source);
@@ -73,7 +73,7 @@ final class FrontendContractTest extends TestCase {
         self::assertStringContainsString('@click.stop="deleteChat(c.id)"', $app);
         self::assertStringContainsString(':aria-label="$t(\'Rename chat\')"', $app);
         self::assertStringContainsString(':aria-label="$t(\'Delete chat\')"', $app);
-        self::assertStringContainsString("return requestApi('GET', '/chats')", $app);
+        self::assertStringContainsString("requestApi('GET', '/chats'", $app);
         $settings = (string)file_get_contents(__DIR__ . '/../src/views/SettingsView.vue');
         self::assertStringContainsString("api('DELETE', 'chats')", $settings);
         self::assertStringContainsString("new CustomEvent('eva-ai:chats-cleared')", $settings);

@@ -7,6 +7,7 @@ namespace OCA\EvaAi\Tests\Support;
 trait SqliteDatabase {
     private function sqliteDatabase(): \OCP\IDBConnection {
         if (!class_exists(\OC\DB\ConnectionAdapter::class)) { $this->markTestSkipped('Nextcloud query builder sources required'); }
+        if (!extension_loaded('pdo_sqlite')) { $this->markTestSkipped('PDO SQLite driver is not available'); }
         $pdo = new \PDO('sqlite::memory:');
         $pdo->setAttribute(\PDO::ATTR_ERRMODE, \PDO::ERRMODE_EXCEPTION);
         $pdo->exec('CREATE TABLE oc_eva_ai_chat_items (user_id TEXT, kind TEXT, item_id TEXT, title TEXT, data TEXT, updated_at INTEGER, project_id TEXT, archived INTEGER, pinned INTEGER, PRIMARY KEY(user_id,kind,item_id))');

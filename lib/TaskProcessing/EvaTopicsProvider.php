@@ -70,24 +70,24 @@ class EvaTopicsProvider implements ISynchronousProvider {
 
 	public function process(?string $userId, array $input, callable $reportProgress): array {
 		if ($userId === null) {
-			throw new RuntimeException('Kein Benutzerkontext');
+			throw new RuntimeException('No user context');
 		}
 		$this->appConfig->setUserId($userId);
 
 		$prompt = trim((string)($input['input'] ?? ''));
 		if ($prompt === '') {
-			throw new RuntimeException('Leere Eingabe');
+			throw new RuntimeException('Empty input');
 		}
 
 		$reportProgress(0.1);
 
 		$messages = [
-			['role' => 'system', 'content' => 'Du bist ein hilfreicher Assistent, der die wichtigsten Themen eines Textes extrahiert. '
-				. 'Extrahiere die 3-7 wichtigsten Themen oder Schlagwörter aus dem Text. '
-				. 'Gib die Themen als kommagetrennte Liste zurück. '
-				. 'Antworte in der gleichen Sprache wie der Text. '
-				. 'Gib nur die Themenliste zurück, keine zusätzlichen Erklärungen.'],
-			['role' => 'user', 'content' => 'Extrahiere die wichtigsten Themen aus dem folgenden Text:\n\n' . $prompt],
+			['role' => 'system', 'content' => 'You are a helpful assistant that extracts the most important topics from text. '
+				. 'Extract the 3-7 most important topics or keywords from the text. '
+				. 'Return the topics as a comma-separated list. '
+				. 'Answer in the same language as the text. '
+				. 'Return only the topic list, without additional explanations.'],
+			['role' => 'user', 'content' => 'Extract the most important topics from the following text:\n\n' . $prompt],
 		];
 
 		$reportProgress(0.3);
@@ -103,7 +103,7 @@ class EvaTopicsProvider implements ISynchronousProvider {
 		$answer = (string)($result['answer'] ?? '');
 
 		if (trim($answer) === '') {
-			throw new RuntimeException('Leere Antwort vom Modell');
+			throw new RuntimeException('The model returned an empty answer');
 		}
 
 		return ['output' => $answer];

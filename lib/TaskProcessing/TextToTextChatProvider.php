@@ -11,7 +11,7 @@ use OCP\TaskProcessing\ISynchronousProvider;
 use OCP\TaskProcessing\TaskTypes\TextToTextChat;
 
 /**
- * Stellt den RAG-Chat als TaskProcessing-Provider für die Nextcloud-Assistant-App bereit.
+ * Provides the RAG chat as a TaskProcessing provider for the Nextcloud Assistant app.
  */
 class TextToTextChatProvider implements ISynchronousProvider {
 	public function __construct(
@@ -90,7 +90,7 @@ class TextToTextChatProvider implements ISynchronousProvider {
 		}
 		$prompt = (string)($input['input'] ?? '');
 		if (trim($prompt) === '') {
-			throw new ProcessingException('Leere Eingabe');
+			throw new ProcessingException('Empty input');
 		}
 		$reportProgress(0.1);
 

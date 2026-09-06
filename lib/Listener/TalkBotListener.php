@@ -17,28 +17,28 @@ use OCP\EventDispatcher\IEventListener;
 use Psr\Log\LoggerInterface;
 
 /**
- * EVA-Bot für Nextcloud Talk mit Tool-Unterstützung und RAG.
+ * EVA bot for Nextcloud Talk with tool support and RAG.
  *
- * Lauscht auf BotInvokeEvent (FEATURE_EVENT) und antwortet im Raum mit
- * einer LLM-Antwort. Nutzt RagService für:
- * - Vektor-Suche in indexierten Dateien (RAG)
- * - Read-only tools (Kalender, Tasks, Dateien, Kontakte etc.) im Talk-Kontext;
+ * Listens for BotInvokeEvent (FEATURE_EVENT) and responds in the room with
+ * an LLM answer. RagService provides:
+ * - vector search in indexed files (RAG)
+ * - read-only tools (calendar, tasks, files, contacts, etc.) in Talk;
  *   mutating and destructive tools are deliberately unavailable
  *
- * Selektive Antwort-Logik (keine Pattern-basierte Filterung):
- * - @EVA/@eva Erwähnung → immer antworten (explizite Adressierung)
- * - Custom Trigger (konfigurierbar) → immer antworten
- * - Sonst: KI-Klassifikation anhand Inhalt und Chat-Teilnehmer entscheidet
+ * Selective response logic (no pattern-based filtering):
+ * - @EVA/@eva mention → always respond (explicit addressing)
+ * - custom trigger (configurable) → always respond
+ * - otherwise, AI classification based on content and chat participants decides
  *
  * @implements IEventListener<Event>
  */
 class TalkBotListener implements IEventListener {
     private const SYSTEM_PROMPT = <<<'PROMPT'
-Du bist EVA, ein hilfreicher KI-Assistent im Nextcloud-Talk-Chat. Antworte kurz und freundlich (1-3 Sätze) auf Deutsch.
+You are EVA, a helpful AI assistant in a Nextcloud Talk conversation. Answer briefly and kindly (1–3 sentences) in the user's language.
 
-Du hast Zugriff auf schreibgeschützte Werkzeuge (Kalender, Tasks, Dateien, Kontakte, Mail etc.). Nutze sie, wenn der Nutzer Informationen abfragt.
+You have access to read-only tools (calendar, tasks, files, contacts, mail, etc.). Use them when the user asks for information.
 
-Wichtig: Du kannst im Talk-Kontext keine Dateien, Kontakte, Kalender, Shares oder Aufgaben erstellen, ändern oder löschen. Erkläre das kurz und verweise für solche Aktionen auf den EVA-Webchat, wo eine ausdrückliche Bestätigung erforderlich ist.
+Important: In the Talk context you cannot create, change, or delete files, contacts, calendars, shares, or tasks. Explain this briefly and direct the user to the EVA web chat, where explicit confirmation is required.
 PROMPT;
 
     public function __construct(
@@ -63,7 +63,7 @@ PROMPT;
             return;
         }
         $data = $event->getMessage();
-        // Nur auf Chat-Nachrichten reagieren; Reactions/System-Messages ignorieren.
+        // Respond only to chat messages; ignore reactions and system messages.
         if (!isset($data['type']) || ($data['type'] !== 'Create' && $data['type'] !== 'Activity')) {
             return;
         }
@@ -71,49 +71,49 @@ PROMPT;
         if ($content === '') {
             return;
         }
-        // Wer hat gefragt? Damit wir im user-Kontext des Sprechers antworten.
+        // Identify the asker so the response uses the speaker's user context.
         $actorName = (string)($data['actor']['name'] ?? '');
         $userId = $this->extractUserId($data['actor']['id'] ?? '');
         if ($userId === null) {
-            $event->addAnswer("Ich kann leider nur Antworten, wenn ich weiss, von wem die Frage kommt.");
+            $event->addAnswer("I can only answer when I know which user asked the question.");
             return;
         }
 
         $this->appConfig->setUserId($userId);
 
-        // Selektive Antwort-Logik: Nur antworten wenn angesprochen.
+        // Selective response logic: answer only when addressed.
         $roomId = (int)($data['target']['id'] ?? 0);
         $explicit = $this->isExplicitlyMentioned($content);
         if (!$this->shouldRespond($content, $userId, $roomId, $explicit)) {
             return; // Stille – keine Antwort.
         }
 
-        // Sprecher aus Mention-Liste entfernen, falls vorhanden.
+        // Remove the speaker mention, if present.
         $cleanContent = $this->stripMention($content);
 
-        // History der letzten Chatnachrichten laden.
+        // Load the recent chat history.
         $history = $roomId > 0 ? $this->contextReader->buildHistoryMessages($roomId) : [];
 
         try {
             $answer = $this->generateAnswerWithRag($history, $cleanContent, $actorName, $userId);
             if (trim($answer) === '') {
-                // Ohne Antwort NUR posten, wenn EVA explizit angesprochen wurde
-                // (z.B. "@Eva …"). Bei einer rein klassifizierten Nachricht
-                // schweigen wir, damit wir nicht unnötig Lärm in den Chat schreiben.
+                // Post an empty-answer fallback only when EVA was explicitly addressed
+                // (for example, "@Eva …"). Stay silent for a classified ambient
+                // message to avoid adding unnecessary noise to the conversation.
                 if (!$explicit) {
                     return;
                 }
-                $event->addAnswer("Da fällt mir gerade nichts Passendes ein. Kannst du die Frage anders stellen?");
+                $event->addAnswer("I could not find a suitable answer right now. Could you phrase the question differently?");
                 return;
             }
             $event->addAnswer($answer);
         } catch (\Throwable $e) {
             $this->logger->error('eva_ai talk bot failed', ['exception' => $e]);
-            $event->addAnswer("Uups, da ist bei mir ein Fehler aufgetreten. Bitte versuche es gleich nochmal.");
+            $event->addAnswer("Something went wrong on my side. Please try again shortly.");
         }
     }
 
-    /** Prüft, ob EVA explizit per @Mention oder Custom-Trigger angesprochen wurde. */
+    /** Check whether EVA was explicitly addressed through an @mention or custom trigger. */
     private function isExplicitlyMentioned(string $content): bool {
         if (preg_match('/@eva\b/i', $content)) {
             return true;
@@ -126,14 +126,14 @@ PROMPT;
     }
 
     /**
-     * Entscheidet ob EVA antworten soll.
+     * Decide whether EVA should respond.
      *
-     * KEINE pattern-basierte Filterung. Die KI entscheidet für jede Nachricht:
-     * 1. @EVA/@eva/Custom-Trigger Erwähnung → immer antworten (explizite Adressierung)
-     * 2. Sonst: KI-Klassifikation anhand Inhalt und Teilnehmer
+     * No pattern-based filtering. AI decides for every message:
+     * 1. @EVA/@eva/custom trigger mention → always respond (explicit addressing)
+     * 2. Otherwise: AI classification based on content and participants
      */
     private function shouldRespond(string $content, string $currentUserId, int $roomId, bool $explicit = false): bool {
-        // 1. @EVA/@eva/Custom-Trigger Erwähnung – schneller Check (explizite Adressierung)
+        // 1. @EVA/@eva/custom trigger mention – fast check (explicit addressing)
         if ($explicit) {
             return true;
         }
@@ -147,41 +147,41 @@ PROMPT;
     }
 
     /**
-     * KI-basierte Klassifikation: Ist diese Nachricht an den KI-Assistenten EVA?
+     * AI-based classification: is this message addressed to the EVA assistant?
      *
-     * Die KI entscheidet für JEDE Nachricht anhand von Inhalt und Chat-Teilnehmern.
-     * KEINE pattern-basierte Filterung.
+     * AI decides for EVERY message based on content and chat participants.
+     * There is no pattern-based filtering.
      */
     private function classificationForEva(string $content, int $roomId, string $triggerName): bool {
         $participants = $this->getRoomParticipantNames($roomId);
-        $participantInfo = $participants !== [] ? "\nChat-Teilnehmer: " . implode(', ', $participants) . "\n" : "\nKeine Teilnehmer-Informationen verfügbar.\n";
+        $participantInfo = $participants !== [] ? "\nChat participants: " . implode(', ', $participants) . "\n" : "\nNo participant information is available.\n";
 
         $messages = [
-            ['role' => 'system', 'content' => 'Du bist ein KI-Assistent namens "' . $triggerName . '". '
-                . 'Dein Name ist also: ' . $triggerName . '. '
+            ['role' => 'system', 'content' => 'You are an AI assistant named "' . $triggerName . '". '
+                . 'Your name is: ' . $triggerName . '. '
                 . $participantInfo . ' '
-                . 'ANTWORTE NUR mit "ja" oder "nein". '
-                . 'Ist diese Nachricht für DICH (den KI-Assistenten) bestimmt? '
-                . 'Ja, wenn: eine Frage an dich gerichtet ist, eine Aktion von dir erwartet wird, '
-                . 'oder klar erkennbar an die KI gerichtet ist. '
-                . 'Nein, wenn: eine Nachricht an eine andere Person, Smalltalk zwischen anderen, '
-                . 'oder eine Bemerkung die nicht an die KI gerichtet ist. '
-                . 'Wenn eine echte Person mit demselben Namen im Chat ist und du unsicher bist, antworte mit "nein".'],
+                . 'ANSWER ONLY with "yes" or "no". '
+                . 'Is this message intended for YOU (the AI assistant)? '
+                . 'Yes if: a question is addressed to you, an action is expected from you, '
+                . 'or the message is clearly directed at the AI. '
+                . 'No if: the message is addressed to another person, is small talk between others, '
+                . 'or is a remark not directed at the AI. '
+                . 'If a real person with the same name is in the chat and you are uncertain, answer "no".'],
             ['role' => 'user', 'content' => $content],
         ];
 
         $resp = $this->ollama->chat($messages, []);
         if (isset($resp['error'])) {
             $this->logger->warning('eva_ai talk: classification error: ' . $resp['error']);
-            return false; // Bei Fehler: nicht antworten (sicherer)
+            return false; // On error, do not answer (safer).
         }
 
         $answer = strtolower(trim((string)($resp['answer'] ?? '')));
-        return str_starts_with($answer, 'ja');
+        return str_starts_with($answer, 'yes');
     }
 
     /**
-     * Holt die Namen der Chat-Teilnehmer für die Klassifikation.
+     * Get chat participant names for classification.
      *
      * @return list<string>
      */
@@ -191,14 +191,14 @@ PROMPT;
         }
 
         try {
-            // TalkManager nutzen um Room zu bekommen
+            // Use TalkManager to retrieve the room.
             $roomManager = \OC::$server->get(\OCA\Talk\Manager::class);
             $room = $roomManager->getRoomById($roomId);
             if ($room === null) {
                 return [];
             }
 
-            // ParticipantService nutzen um Teilnehmer zu bekommen
+            // Use ParticipantService to retrieve participants.
             $participantService = \OC::$server->get(\OCA\Talk\Service\ParticipantService::class);
             $participants = $participantService->getParticipantsForRoom($room);
 
@@ -207,9 +207,9 @@ PROMPT;
                 $actorType = $participant->getActorType();
                 $actorId = $participant->getActorId();
 
-                // Nur User und Guests berücksichtigen
+                // Consider only users and guests.
                 if ($actorType === 'users' || $actorType === 'guests') {
-                    // Bei Users: Display-Name holen
+                    // For users, resolve the display name.
                     if ($actorType === 'users') {
                         $userManager = \OC::$server->get(\OCP\IUserManager::class);
                         $user = $userManager->get($actorId);
@@ -219,7 +219,7 @@ PROMPT;
                             $names[] = $actorId;
                         }
                     } else {
-                        // Guests: Actor-ID als Name verwenden
+                        // For guests, use the actor ID as the name.
                         $names[] = $actorId;
                     }
                 }
@@ -233,23 +233,23 @@ PROMPT;
     }
 
     /**
-     * Extrahiert die Nextcloud-User-ID aus einer Actor-ID wie
-     * "users/diag9" oder "federated_users/...".
+     * Extract the Nextcloud user ID from an actor ID such as
+     * "users/diag9" or "federated_users/...".
      */
     private function extractUserId(string $actorId): ?string {
         if (str_starts_with($actorId, 'users/')) {
             return substr($actorId, strlen('users/'));
         }
-        // Für federated/Guests keine Tools ausführen.
+        // Do not execute tools for federated users or guests.
         return null;
     }
 
-    /** Entfernt "@EVA" / "@eva" und Custom Trigger Mentions aus dem Text.
-     *  Entfernt NUR erwähnte Namen (mit @), nicht den reinen Namen,
-     *  da dieser ggf. auf eine reale Person verweisen könnte.
+    /** Remove "@EVA" / "@eva" and custom trigger mentions from the text.
+     *  Remove only names that include @, not the plain name,
+     *  because it may refer to a real person.
      */
     private function stripMention(string $content): string {
-        // @EVA/@eva und @CustomTrigger entfernen (nur mit @!)
+        // Remove @EVA/@eva and @CustomTrigger (only with @).
         $customTrigger = $this->appConfig->get('talk_bot_trigger');
         if ($customTrigger !== '') {
             $content = preg_replace(
@@ -265,37 +265,37 @@ PROMPT;
     }
 
     /**
-     * Generiert eine Antwort mit RAG (Retrieval-Augmented Generation) und
-     * Tool-Unterstützung, identisch zur EVA-Web-App.
+     * Generate an answer with RAG (Retrieval-Augmented Generation) and
+     * tool support, matching the EVA web app.
      *
-     * Nutzt RagService::ask() für:
-     * - Vektor-Suche in indexierten Dateien/Wissen
-     * - Tool-Aufrufe (Kalender, Tasks, Dateien, etc.)
-     * - LLM-Antwort generieren
+     * RagService::ask() provides:
+     * - vector search in indexed files/knowledge
+     * - tool calls (calendar, tasks, files, etc.)
+     * - LLM answer generation
      *
      * @param list<array{role:string,content:string}> $history
      */
     private function generateAnswerWithRag(array $history, string $question, string $actorName, string $userId): string {
-        // RagService::ask() macht Vector-Search + Tool-Execution + LLM-Antwort
+        // RagService::ask() performs vector search, tool execution, and LLM answering.
         $result = $this->ragService->ask($userId, $question, $history);
 
         if (isset($result['error']) && $result['error'] !== '') {
             $this->logger->warning('eva_ai talk: rag error: ' . $result['error']);
-            // Bei Vektor-Fehler: fallback auf reinen LLM-Chat mit Tools
+            // On vector-search failure, fall back to a plain LLM chat with tools.
             return $this->fallbackAnswer($history, $question, $actorName, $userId);
         }
 
         $answer = trim((string)($result['answer'] ?? ''));
 
-        // Sources als Fußnote anhängen, falls vorhanden
+        // Append sources as a footnote when available.
         $sources = $result['sources'] ?? [];
         if ($sources !== []) {
             $sourceRefs = [];
             foreach ($sources as $s) {
-                $sourceRefs[] = (string)($s['name'] ?? $s['path'] ?? 'Quelle');
+                $sourceRefs[] = (string)($s['name'] ?? $s['path'] ?? 'Source');
             }
             if ($sourceRefs !== []) {
-                $answer .= "\n\n_Quellen: " . implode(', ', $sourceRefs) . "_";
+                $answer .= "\n\n_Sources: " . implode(', ', $sourceRefs) . "_";
             }
         }
 
@@ -303,13 +303,13 @@ PROMPT;
     }
 
     /**
-     * Fallback: reiner LLM-Chat mit Tools, falls RAG fehlschlägt
-     * (z.B. kein indexiertes Material vorhanden).
+     * Fallback: plain LLM chat with tools when RAG fails
+     * (for example, when no material has been indexed).
      *
      * @param list<array{role:string,content:string}> $history
      */
     private function fallbackAnswer(array $history, string $question, string $actorName, string $userId): string {
-        $system = self::SYSTEM_PROMPT . "\nAktueller Sprecher: " . ($actorName !== '' ? $actorName : $userId);
+        $system = self::SYSTEM_PROMPT . "\nCurrent speaker: " . ($actorName !== '' ? $actorName : $userId);
         $messages = [
             ['role' => 'system', 'content' => $system],
         ];
@@ -324,7 +324,7 @@ PROMPT;
             $chat = $this->ollama->chat($messages, $tools);
             if (isset($chat['error'])) {
                 $this->logger->warning('eva_ai talk: fallback ollama error: ' . $chat['error']);
-                return "Leider habe ich gerade ein Verbindungsproblem zur KI.";
+                return "I currently have a connection problem with the AI service.";
             }
 
             $answer = (string)($chat['answer'] ?? '');
@@ -352,7 +352,7 @@ PROMPT;
                 $messages[] = ['role' => 'tool', 'content' => json_encode($res, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES)];
             }
             if (!$ranAny) {
-                return $answer !== '' ? $answer : "Das konnte ich leider nicht verstehen.";
+                return $answer !== '' ? $answer : "I could not understand that request.";
             }
         }
 
@@ -391,7 +391,7 @@ PROMPT;
     }
 
     /**
-     * Wandelt Tool-Calls in das kanonische Format für Ollama um.
+     * Convert tool calls to Ollama's canonical format.
      *
      * @param list<array{name:string,args:array}> $raw
      * @return list<array{id:string,type:string,function:array{name:string,arguments:object}}>

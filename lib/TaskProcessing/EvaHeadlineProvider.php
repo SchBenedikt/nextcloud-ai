@@ -70,23 +70,23 @@ class EvaHeadlineProvider implements ISynchronousProvider {
 
 	public function process(?string $userId, array $input, callable $reportProgress): array {
 		if ($userId === null) {
-			throw new RuntimeException('Kein Benutzerkontext');
+			throw new RuntimeException('No user context');
 		}
 		$this->appConfig->setUserId($userId);
 
 		$prompt = trim((string)($input['input'] ?? ''));
 		if ($prompt === '') {
-			throw new RuntimeException('Leere Eingabe');
+			throw new RuntimeException('Empty input');
 		}
 
 		$reportProgress(0.1);
 
 		$messages = [
-			['role' => 'system', 'content' => 'Du bist ein hilfreicher Assistent, der aussagekräftige Überschriften generiert. '
-				. 'Erstelle eine kurze, prägnante Überschrift, die den Inhalt des Textes widergibt. '
-				. 'Antworte in der gleichen Sprache wie der Text. '
-				. 'Gib nur die Überschrift zurück, keine zusätzlichen Erklärungen.'],
-			['role' => 'user', 'content' => 'Erstelle eine Überschrift für den folgenden Text:\n\n' . $prompt],
+			['role' => 'system', 'content' => 'You are a helpful assistant that generates meaningful headlines. '
+				. 'Create a short, precise headline that reflects the content of the text. '
+				. 'Answer in the same language as the text. '
+				. 'Return only the headline, without additional explanations.'],
+			['role' => 'user', 'content' => 'Create a headline for the following text:\n\n' . $prompt],
 		];
 
 		$reportProgress(0.3);
@@ -102,7 +102,7 @@ class EvaHeadlineProvider implements ISynchronousProvider {
 		$answer = (string)($result['answer'] ?? '');
 
 		if (trim($answer) === '') {
-			throw new RuntimeException('Leere Antwort vom Modell');
+			throw new RuntimeException('The model returned an empty answer');
 		}
 
 		return ['output' => $answer];
