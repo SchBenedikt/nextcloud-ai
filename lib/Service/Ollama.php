@@ -10,7 +10,7 @@ use OCP\ICacheFactory;
 use Psr\Log\LoggerInterface;
 
 class Ollama {
-    private const TIMEOUT = 600;
+    private const TIMEOUT = 90;
     private const STATUS_CACHE_TTL = 30;
 
     /** @var array<string,array{expires:int,ping:array,models:array}> */
@@ -70,7 +70,7 @@ class Ollama {
         $key = 'tags_' . hash('sha256', $base);
         $cached = $this->readStatusCache($key, $base, $now);
         if ($cached !== null) {
-            return ['ping' => $cached['ping'], 'models' => $cached['models']];
+            return ['version' => 1, 'state' => !empty($cached['ping']['ok']) ? 'ready' : 'error', 'cached' => true, 'expiresAt' => $cached['expires'], 'ping' => $cached['ping'], 'models' => $cached['models']];
         }
 
         try {
@@ -105,7 +105,7 @@ class Ollama {
             // The process-local fallback above still protects long-running
             // workers if the configured cache backend is temporarily absent.
         }
-        return ['ping' => $ping, 'models' => $models];
+        return ['version' => 1, 'state' => !empty($ping['ok']) ? 'ready' : 'error', 'cached' => false, 'expiresAt' => $entry['expires'], 'ping' => $ping, 'models' => $models];
     }
 
     /**
@@ -146,10 +146,43 @@ class Ollama {
         try {
             $r = $this->client()->get($baseUrl . '/api/tags', ['timeout' => 20]);
             $data = json_decode((string)$r->getBody(), true);
-            return $data['models'] ?? [];
+            $models = array_slice($data['models'] ?? [], 0, 40);
+            $deadline = microtime(true) + 6;
+            foreach ($models as &$model) { $model['capabilities'] = microtime(true) < $deadline ? $this->modelCapabilities((string)($model['name'] ?? ''), $baseUrl) : null; }
+            unset($model);
+            return $models;
         } catch (\Throwable $e) {
             return [];
         }
+    }
+
+    /** null means unknown; an empty list means the provider reports no supported roles. */
+    public function modelCapabilities(string $name, ?string $base = null): ?array {
+        if ($name === '') { return null; }
+        $base ??= $this->base();
+        $key = 'cap_' . hash('sha256', $base . "\0" . $name);
+        try {
+            $cached = $this->statusStore()->get($key);
+            if (is_array($cached)) { return $cached['capabilities']; }
+        } catch (\Throwable $e) {}
+        try {
+            $r = $this->client()->post($base . '/api/show', ['json' => ['model' => $name], 'timeout' => 2]);
+            $data = json_decode((string)$r->getBody(), true);
+            $capabilities = isset($data['capabilities']) && is_array($data['capabilities']) ? array_values(array_intersect($data['capabilities'], ['completion','embedding','vision','tools','thinking'])) : null;
+        } catch (\Throwable $e) { $capabilities = null; }
+        try { $this->statusStore()->set($key, ['capabilities' => $capabilities], 300); } catch (\Throwable $e) {}
+        return $capabilities;
+    }
+
+    public function resolveModel(string $operation = 'chat'): string {
+        $primary = $operation === 'summary' ? $this->config->get('summary_model') : ($operation === 'tools' ? $this->config->get('tool_model') : '');
+        $primary = $primary ?: $this->config->get('chat_model');
+        $fallback = trim($this->config->get('chat_fallback_models'));
+        if ($fallback === '') { return $primary; }
+        $candidates = array_slice(array_values(array_unique(array_filter(array_map('trim', array_merge([$primary], explode(',', $fallback)))))), 0, 4);
+        $installed = array_column($this->status()['models'], 'name');
+        foreach ($candidates as $candidate) { if (in_array($candidate, $installed, true)) { return $candidate; } }
+        return '';
     }
 
     /**
@@ -241,7 +274,7 @@ class Ollama {
     /** @return array{ok:bool,model:string,answer:?string,error:?string} */
     public function testChat(string $model, int $timeout = 240): array {
         if ($model === '') {
-            return ['ok' => false, 'model' => '', 'answer' => null, 'error' => 'Kein Chat-Modell konfiguriert.'];
+            return ['ok' => false, 'model' => '', 'answer' => null, 'error' => 'No configured chat model is available. Check the primary and fallback models.'];
         }
         try {
             $start = microtime(true);
@@ -438,14 +471,16 @@ class Ollama {
      * @param array<int,array{role:string,content:string}> $messages
      * @return array{answer?:string,error?:string,model?:string}
      */
-    public function chat(array $messages, array $tools = []): array {
-        $model = $this->config->get('chat_model');
+    public function chat(array $messages, array $tools = [], string $operation = 'chat'): array {
+        $model = $this->resolveModel($tools !== [] ? 'tools' : $operation);
         if ($model === '') {
-            return ['error' => 'Kein Chat-Modell konfiguriert.'];
+            return ['error' => 'No configured chat model is available. Check the primary and fallback models.'];
         }
+        try { $budget = (new ContextBudget())->prepare($messages, $tools, $this->config->getInt('context_size', 12288)); }
+        catch (\InvalidArgumentException $e) { return ['error' => $e->getMessage()]; }
         $payload = [
             'model' => $model,
-            'messages' => $messages,
+            'messages' => $budget['messages'],
             'stream' => false,
             'options' => [
                 'temperature' => max(0.0, min(2.0, (float)$this->config->get('temperature'))),
@@ -467,6 +502,8 @@ class Ollama {
             if (isset($msg['content']) && $msg['content'] !== '') {
                 return [
                     'answer' => $msg['content'],
+                    'contextReduced' => $budget['reduced'],
+                    'fallback' => $model !== $this->config->get('chat_model'),
                     'model' => $data['model'] ?? $model,
                     'tool_calls' => $toolCalls,
                     'raw_tool_calls' => $rawToolCalls,
@@ -492,14 +529,18 @@ class Ollama {
      * @return \Generator<string,array{type:string,delta:string},void,void>
      */
     public function chatStream(array $messages, array $tools = []): \Generator {
-        $model = $this->config->get('chat_model');
+        $model = $this->resolveModel($tools !== [] ? 'tools' : 'chat');
         if ($model === '') {
-            yield ['type' => 'error', 'delta' => 'No chat model configured.'];
+            yield ['type' => 'error', 'delta' => 'No configured chat model is available. Check the primary and fallback models.'];
             return;
         }
+        try { $budget = (new ContextBudget())->prepare($messages, $tools, $this->config->getInt('context_size', 12288)); }
+        catch (\InvalidArgumentException $e) { yield ['type' => 'error', 'delta' => $e->getMessage()]; return; }
+        yield ['type' => 'status', 'model' => $model, 'fallback' => $model !== $this->config->get('chat_model'), 'delta' => $model];
+        if ($budget['reduced']) { yield ['type' => 'status', 'delta' => 'Context reduced to fit the model.']; }
         $payload = [
             'model' => $model,
-            'messages' => $messages,
+            'messages' => $budget['messages'],
             'stream' => true,
             'options' => [
                 'temperature' => max(0.0, min(2.0, (float)$this->config->get('temperature'))),

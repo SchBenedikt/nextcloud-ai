@@ -1431,6 +1431,9 @@ class ActionExecutor {
     }
 
     private function weather(array $args): array {
+        if ($this->config->get('weather_enabled') !== '1') {
+            return ['ok' => false, 'error' => 'Weather lookup is disabled. Enable external weather requests in Settings first.'];
+        }
         $loc = trim((string)($args['location'] ?? ''));
         if ($loc === '') {
             return ['ok' => false, 'error' => 'location required'];

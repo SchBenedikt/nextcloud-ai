@@ -21,6 +21,8 @@ use OCP\AppFramework\Db\Entity;
  * @method void setTokenCount(int $n)
  */
 class Chunk extends Entity {
+    protected $provenance;
+
     protected ?int $documentId = null;
     protected ?int $chunkIndex = 0;
     protected ?string $content = '';

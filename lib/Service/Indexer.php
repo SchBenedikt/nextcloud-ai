@@ -231,6 +231,7 @@ class Indexer {
                 }
 
                 $chunks = $this->chunker->chunk($content);
+                unset($content);
                 if (empty($chunks)) {
                     $result['skipped']++;
                     continue;
@@ -253,12 +254,12 @@ class Indexer {
                 $doc->setMime($mime);
                 $doc->setSize($size);
                 $doc->setContentHash($hash);
-                $doc->setChunkCount(count($chunks));
+                $doc->setChunkCount(0); // Publish only after every embedding batch succeeds.
                 $doc->setIndexedAt(time());
                 $this->documentMapper->insert($doc);
 
                 foreach ($chunks as $i => $c) {
-                    $batch[] = ['docId' => (int)$doc->getId(), 'index' => $i, 'content' => $c['content'], 'tokens' => $c['tokens'], 'oldDocId' => $oldDocId];
+                    $batch[] = ['docId' => (int)$doc->getId(), 'index' => $i, 'content' => $c['content'], 'tokens' => $c['tokens'], 'provenance' => $c['provenance'] ?? [], 'oldDocId' => $oldDocId];
                 }
 
                 $result['processed']++;
@@ -415,6 +416,9 @@ class Indexer {
     }
 
     private function isTextMime(?string $mime, string $name = ''): bool {
+        $extension = strtolower(pathinfo($name, PATHINFO_EXTENSION));
+        if (in_array($extension, DocumentExtractor::OFFICE, true)
+            || ($this->config->get('ocr_enabled') === '1' && in_array($extension, ['png', 'jpg', 'jpeg', 'tif', 'tiff'], true))) { return true; }
         if ($mime === null) {
             return false;
         }
@@ -475,6 +479,19 @@ class Indexer {
     private function extractText(File $file): string {
         $mime = $file->getMimeType() ?? '';
         $name = strtolower($file->getName());
+        $extension = pathinfo($name, PATHINFO_EXTENSION);
+        if (in_array($extension, DocumentExtractor::OFFICE, true)) { return (new DocumentExtractor())->extract($file); }
+        if ($extension === 'pdf' || ($this->config->get('ocr_enabled') === '1' && in_array($extension, ['png','jpg','jpeg','tif','tiff'], true))) {
+            $tmp = tempnam(sys_get_temp_dir(), 'eva_source_');
+            if ($tmp === false) { throw new \RuntimeException('Cannot create extraction file'); }
+            try {
+                $in = $file->fopen('r'); $out = fopen($tmp, 'wb');
+                if (!is_resource($in) || !is_resource($out)) { throw new \RuntimeException('Cannot read extraction source'); }
+                try { stream_copy_to_stream($in, $out, 33554433); } finally { fclose($in); fclose($out); }
+                if (filesize($tmp) > 33554432) { throw new \RuntimeException('Extraction source exceeds 32 MiB'); }
+                return $extension === 'pdf' ? SystemExtractor::pdf($tmp, $this->config->get('ocr_enabled') === '1') : SystemExtractor::image($tmp);
+            } finally { @unlink($tmp); }
+        }
 
         if (str_starts_with($mime, 'text/')) {
             $raw = (string)$file->getContent();
@@ -736,81 +753,57 @@ class Indexer {
             $batch = [];
             return;
         }
-        $this->touchHeartbeat($runId);
-        $texts = [];
-        foreach ($batch as $b) {
-            $texts[] = $b['content'];
-        }
-
-        [$vecs, $err] = $this->ollama->embedBatch($texts, $userId);
-        $stats = $this->ollama->lastEmbeddingStats();
-        $result['cache_hits'] += $stats['cache_hits'];
-        $result['cache_misses'] += $stats['cache_misses'];
-        $result['ollama_requests'] += $stats['ollama_requests'];
-        $this->touchHeartbeat($runId);
-        // The HTTP client uses a bounded read timeout, but cancellation can
-        // still arrive while a response is completing. Never publish vectors
-        // from a batch after the stop flag was set.
-        if ($this->cancellationRequested($runId)) {
-            $this->discardStagedBatch($batch);
-            $batch = [];
-            return;
-        }
-        if ($err !== null || $vecs === null) {
-            $result['error'] = $err ?? 'Embedding error';
-            $this->logger->error('eva_ai embedding failed', ['error' => $err]);
-            $this->discardStagedBatch($batch);
-            // Note: Old documents are NOT deleted yet, so they remain available for search.
-            $this->logger->info('eva_ai: Preserved old documents after embedding failure', ['docCount' => count(array_unique(array_column($batch, 'docId')))]);
-            $batch = [];
-            return;
-        }
-
         $perDoc = [];
-        foreach ($batch as $i => $b) {
-            $perDoc[$b['docId']][] = ['index' => $b['index'], 'content' => $b['content'], 'tokens' => $b['tokens'], 'vec' => $vecs[$i], 'oldDocId' => $b['oldDocId']];
+        try {
+            // Keep vectors/request payloads bounded even for a single very large document.
+            for ($offset = 0; $offset < count($batch); $offset += self::BATCH) {
+                if ($this->cancellationRequested($runId)) { throw new \RuntimeException('Indexing cancelled'); }
+                $this->touchHeartbeat($runId);
+                $slice = array_slice($batch, $offset, self::BATCH);
+                [$vecs, $err] = $this->ollama->embedBatch(array_column($slice, 'content'), $userId);
+                $stats = $this->ollama->lastEmbeddingStats();
+                foreach (['cache_hits', 'cache_misses', 'ollama_requests'] as $key) { $result[$key] += $stats[$key]; }
+                if ($err !== null || !is_array($vecs) || count($vecs) !== count($slice)) { throw new \RuntimeException($err ?? 'Incomplete embedding batch'); }
+                if ($this->cancellationRequested($runId)) { throw new \RuntimeException('Indexing cancelled'); }
+                foreach ($slice as $i => $b) {
+                    $chunk = new Chunk();
+                    $chunk->setDocumentId($b['docId']);
+                    $chunk->setChunkIndex($b['index']);
+                    $chunk->setContent($b['content']);
+                    $chunk->setEmbeddingArray($vecs[$i]);
+                    $chunk->setTokenCount($b['tokens']);
+                    $chunk->setProvenance(json_encode($b['provenance'] ?? [], JSON_THROW_ON_ERROR));
+                    $this->chunkMapper->insert($chunk);
+                    $perDoc[$b['docId']] = $b['oldDocId'];
+                }
+                unset($vecs, $slice);
+                $this->touchHeartbeat($runId);
+            }
+            if ($this->cancellationRequested($runId)) { throw new \RuntimeException('Indexing cancelled'); }
+        } catch (\Throwable $e) {
+            $result['error'] = $e->getMessage();
+            $this->discardStagedBatch($batch);
+            $batch = [];
+            return;
         }
-        foreach ($perDoc as $docId => $chunks) {
+        foreach ($perDoc as $docId => $oldDocId) {
             if ($this->cancellationRequested($runId)) {
-                $this->discardStagedBatch($batch);
+                // Retain already published documents; discard only the remaining staging rows.
+                $remaining = array_filter($batch, static fn($b) => isset($perDoc[$b['docId']]));
+                $this->discardStagedBatch($remaining);
                 $batch = [];
                 return;
-            }
-            foreach ($chunks as $c) {
-                $chunk = new Chunk();
-                $chunk->setDocumentId($docId);
-                $chunk->setChunkIndex($c['index']);
-                $chunk->setContent($c['content']);
-                $chunk->setEmbeddingArray($c['vec']);
-                $chunk->setTokenCount($c['tokens']);
-                $this->chunkMapper->insert($chunk);
             }
             $doc = $this->documentMapper->findById($docId);
-            if ($doc !== null) {
-                $doc->setChunkCount(count($chunks));
-                $this->documentMapper->update($doc);
-            }
-            
-            // Only remove old document after successful embedding of new version.
-            // If cancellation arrived while publishing this document, remove
-            // the staged replacement and leave the old version intact.
-            if ($this->cancellationRequested($runId)) {
-                $this->discardStagedBatch($batch);
-                $batch = [];
-                return;
-            }
-            $oldDocId = $chunks[0]['oldDocId'];
+            if ($doc === null) { unset($perDoc[$docId]); continue; }
+            $doc->setChunkCount($this->chunkMapper->countForDocument($docId));
+            $this->documentMapper->update($doc);
+            unset($perDoc[$docId]);
             if ($oldDocId !== null) {
                 try {
                     $oldDoc = $this->documentMapper->findById($oldDocId);
-                    if ($oldDoc !== null) {
-                        $this->chunkMapper->deleteByDocument($oldDocId);
-                        $this->documentMapper->delete($oldDoc);
-                        $this->logger->debug('eva_ai: Removed old document after successful re-index', ['oldDocId' => $oldDocId]);
-                    }
-                } catch (\Throwable $e) {
-                    $this->logger->warning('eva_ai: Failed to remove old document after re-index', ['error' => $e->getMessage(), 'oldDocId' => $oldDocId]);
-                }
+                    if ($oldDoc !== null) { $this->chunkMapper->deleteByDocument($oldDocId); $this->documentMapper->delete($oldDoc); }
+                } catch (\Throwable $e) { $this->logger->warning('EVA old index version cleanup failed', ['exception' => $e]); }
             }
         }
         $batch = [];
@@ -888,7 +881,9 @@ class Indexer {
             if (($hashes[$mailFileId] ?? null) === $hash) {
                 continue; // unchanged since last run
             }
+            $contentSize = strlen($content);
             $chunks = $this->chunker->chunk($content);
+            unset($content);
             if (empty($chunks)) {
                 continue;
             }
@@ -902,13 +897,13 @@ class Indexer {
             $doc->setPath('mail://' . $msgId);
             $doc->setName('mail ' . $msgId . ' - ' . ($mail['subject'] ?? ''));
             $doc->setMime('message/rfc822');
-            $doc->setSize(mb_strlen($content));
+            $doc->setSize($contentSize);
             $doc->setContentHash($hash);
-            $doc->setChunkCount(count($chunks));
+            $doc->setChunkCount(0); // Publish only after every embedding batch succeeds.
             $doc->setIndexedAt(time());
             $this->documentMapper->insert($doc);
             foreach ($chunks as $i => $c) {
-                $batch[] = ['docId' => (int)$doc->getId(), 'index' => $i, 'content' => $c['content'], 'tokens' => $c['tokens'], 'oldDocId' => $oldDocId];
+                $batch[] = ['docId' => (int)$doc->getId(), 'index' => $i, 'content' => $c['content'], 'tokens' => $c['tokens'], 'provenance' => $c['provenance'] ?? [], 'oldDocId' => $oldDocId];
             }
             $result['processed']++;
             $processedThisPass++;
@@ -1051,6 +1046,7 @@ class Indexer {
 
     private function calculateConfigHash(): string {
         $configKey = implode('|', [
+            'extraction-v2', $this->config->get('ocr_enabled'),
             $this->config->get('embedding_model', 'default'),
             $this->config->get('chunk_size', '1000'),
             $this->config->get('chunk_overlap', '200'),

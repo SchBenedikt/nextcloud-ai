@@ -296,6 +296,30 @@
 					<span>{{ $t('Indexed content stays in Nextcloud and is sent to the Ollama server configured above. Review your indexing scope before enabling Mail or Talk features.') }}</span>
 				</div>
 			</section>
+            <section class="settings-section">
+                <h3>{{ $t('Privacy and extraction') }}</h3>
+                <label v-for="option in privacyOptions" :key="option.key" class="field-help" style="display:block">
+                    <input type="checkbox" :checked="f[option.key] === '1'" @change="f[option.key] = $event.target.checked ? '1' : '0'"> {{ option.label }}
+                </label>
+                <p>{{ $t('Unknown model capabilities require an explicit choice. Known incompatible model roles are rejected.') }}</p>
+                <label>{{ $t('Fallback chat models (in listed order)') }}
+                    <select multiple :value="f.chat_fallback_models.split(',').filter(Boolean)" @change="f.chat_fallback_models = Array.from($event.target.selectedOptions).map(o => o.value).slice(0, 3).join(',')">
+                        <option v-for="model in chatModels" :key="model" :value="model">{{ model }}</option>
+                    </select>
+                </label>
+                <label>{{ $t('Summary model') }}
+                    <select v-model="f.summary_model"><option value="">{{ $t('Default chat model') }}</option><option v-for="model in chatModels" :key="model" :value="model">{{ model }}</option></select>
+                </label>
+                <label>{{ $t('Tool model') }}
+                    <select v-model="f.tool_model"><option value="">{{ $t('Default chat model') }}</option><option v-for="model in chatModels" :key="model" :value="model">{{ model }}</option></select>
+                </label>
+                <div v-if="extraction">
+                    <h4>{{ $t('Local extraction tools') }}</h4>
+                    <p v-for="(available, name) in extraction.tools" :key="name">{{ name }}: {{ available ? $t('Available') : $t('Not installed') }}</p>
+                    <p>{{ extraction.office.join(', ') }}</p>
+                    <p>{{ $t('Office and PDF sources are limited to 32 MiB. OCR supports up to 20 pages.') }}</p>
+                </div>
+            </section>
 			</fieldset>
 		</main>
 	</div>
@@ -312,6 +336,8 @@ export default {
 	components: { NcCheckboxRadioSwitch },
 	setup() {
 		const f = ref({
+            weather_enabled: '0', talk_classification_enabled: '0', personalization_enabled: '1', ocr_enabled: '0',
+            chat_fallback_models: '', summary_model: '', tool_model: '',
 			ollama_url: 'http://127.0.0.1:11434',
 			embedding_model: 'nomic-embed-text',
 			chat_model: 'gemma4:cloud',
@@ -338,6 +364,14 @@ export default {
 		const status = ref(null)
 		const limits = ref({})
 		const availableModels = ref([])
+        const modelDetails = ref([])
+        const extraction = ref(null)
+        const privacyOptions = [
+            { key: 'weather_enabled', label: t('Allow external weather requests') },
+            { key: 'talk_classification_enabled', label: t('Allow AI classification of unmentioned Talk messages') },
+            { key: 'personalization_enabled', label: t('Use personal knowledge in answers') },
+            { key: 'ocr_enabled', label: t('Enable local OCR for scans and images') },
+        ]
 		const modelLoading = ref(false)
 		const modelError = ref('')
 		const checkOut = ref(null)
@@ -377,8 +411,13 @@ export default {
 			set: value => { f.value.index_enrolled = value ? '1' : '0' },
 		})
 		const actionsDisabled = computed(() => f.value.actions_enabled !== '1')
-		const embeddingModels = computed(() => availableModels.value.filter((name) => /embed|bge|e5|gte|jina|minilm|nomic|snowflake|mxbai|arctic|retriev|instructor/i.test(name)))
-		const chatModels = computed(() => availableModels.value.filter((name) => !/embed|bge|e5|gte|jina|minilm|nomic|snowflake|mxbai|arctic|retriev|instructor|rerank/i.test(name)))
+        const supports = (name, role) => {
+            const detail = modelDetails.value.find((m) => m.name === name)
+            return !Array.isArray(detail?.capabilities) || detail.capabilities.includes(role)
+        }
+        const embeddingModels = computed(() => availableModels.value.filter((name) => supports(name, 'embedding')))
+        const chatModels = computed(() => availableModels.value.filter((name) => supports(name, 'completion')))
+
 		const indexingActive = computed(() => indexing.value || status.value?.indexing === true)
 		const busy = computed(() => saving.value || checking.value || indexing.value || resetting.value || deletingChats.value || stopping.value)
 		const settingsLocked = computed(() => busy.value || indexingActive.value)
@@ -447,6 +486,8 @@ export default {
 			modelError.value = ''
 			try {
 				const data = await api('GET', 'models', { endpoint: url })
+                modelDetails.value = data?.details || []
+                extraction.value = data?.extraction || null
 				applyModelDiscovery(data?.models || [])
 				if (!availableModels.value.length) modelError.value = t('No models are installed in this Ollama endpoint.')
 			} catch (error) {
@@ -678,7 +719,7 @@ export default {
 		})
 
 		return {
-			f, status, limits, availableModels, embeddingModels, chatModels, modelLoading, modelError, checkOut, saving, checking, indexing, resetting, deletingChats, stopping, saved, loadError, message, validationErrors, resetConfirm, chatsDeleteConfirm,
+			f, status, limits, modelDetails, extraction, privacyOptions, availableModels, embeddingModels, chatModels, modelLoading, modelError, checkOut, saving, checking, indexing, resetting, deletingChats, stopping, saved, loadError, message, validationErrors, resetConfirm, chatsDeleteConfirm,
 			newExcludePath, excludeError, excludeList, actionsEnabled, notificationsEnabled, mailIndexEnabled, indexEnrolled, actionsDisabled, busy, indexingActive, settingsLocked, maxFileSizeMb,
 			formatNumber, loadStatus, save, checkOllama, addExclude, removeExclude, startIndex, startMailIndex, stopIndex, resetIndex, deleteAllChats,
 		}

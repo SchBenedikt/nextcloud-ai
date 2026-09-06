@@ -20,7 +20,7 @@ class IndexRequestJob extends QueuedJob {
     // Keep one queue execution bounded. A follow-up job is queued when the
     // pass budget is exhausted, so very large libraries can make progress
     // without monopolising a worker indefinitely.
-    private const MAX_PASSES = 1000;
+    private const MAX_PASSES = 1;
 
     public function __construct(
         ITimeFactory $time,
@@ -67,6 +67,7 @@ class IndexRequestJob extends QueuedJob {
             $this->config->set('index_cancel_requested', '0');
             $this->config->set('index_run_id', $runId);
         }
+        $queuedContinuation = false;
         $passes = 0;
         $lastResult = null;
         $ownsRun = $this->config->get('index_run_id') === $runId;
@@ -97,7 +98,8 @@ class IndexRequestJob extends QueuedJob {
                 }
             } while ($passes < self::MAX_PASSES);
 
-            if ($passes >= self::MAX_PASSES && !$this->cancelRequested($runId)) {
+            if ($passes >= self::MAX_PASSES && ($lastResult['error'] ?? null) === null
+                && (int)($lastResult['processed'] ?? 0) > 0 && !$this->cancelRequested($runId)) {
                 // Do not report a successful continuation as an error. Queue
                 // the same run again; the run id preserves cancellation and
                 // stale-job protection across the hand-off.
@@ -107,7 +109,9 @@ class IndexRequestJob extends QueuedJob {
                     'userId' => $userId,
                     'mode' => $mode,
                     'runId' => $runId,
+                    'generation' => (int)($argument['generation'] ?? 0) + 1,
                 ]);
+                $queuedContinuation = true;
                 $this->logger->info('eva_ai: queued follow-up index pass batch', [
                     'userId' => $userId,
                     'mode' => $mode,
@@ -122,7 +126,7 @@ class IndexRequestJob extends QueuedJob {
             ]);
         } finally {
             // A stale job must never clear a newer run's state.
-            if ($this->config->get('index_run_id') === $runId) {
+            if (!$queuedContinuation && $this->config->get('index_run_id') === $runId) {
                 $this->config->set('index_running', '0');
                 $this->config->set('index_finished', (string)time());
                 $this->config->set('index_mode', 'idle');

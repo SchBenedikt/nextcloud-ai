@@ -355,3 +355,10 @@ Calendar tools expand recurring events within the requested range (with a 500-oc
 AGPL-3.0-or-later — see [COPYING](COPYING).
 
 *Bugs & feature requests:* https://github.com/SchBenedikt/nextcloud-ai/issues
+
+### Version 1.5 implementation notes
+
+Database-backed chat history, projects, improved retrieval, bounded extraction,
+model preferences and privacy controls are described in
+[the release and migration notes](docs/RELEASE-1.5.md). Read the backup and
+migration limitations before upgrading. Final runtime verification is pending.

@@ -87,6 +87,23 @@ class DocumentMapper extends QBMapper {
         $qb->executeStatement();
     }
 
+    /** Aggregates are scoped to the same filter as the paginated list. */
+    public function totalsForUser(string $userId, string $search = ''): array {
+        $qb = $this->db->getQueryBuilder();
+        $qb->selectAlias($qb->createFunction('SUM(chunk_count)'), 'chunks')
+            ->selectAlias($qb->createFunction('SUM(size)'), 'bytes')
+            ->from('eva_ai_documents')
+            ->where($qb->expr()->eq('user_id', $qb->createNamedParameter($userId)));
+        if ($search !== '') {
+            $qb->andWhere($qb->expr()->like('path', $qb->createNamedParameter('%' . $qb->escapeLikeParameter($search) . '%')));
+        }
+        $result = $qb->executeQuery();
+        try {
+            $row = $result->fetch();
+            return ['chunks' => (int)($row['chunks'] ?? 0), 'size' => (int)($row['bytes'] ?? 0)];
+        } finally { $result->closeCursor(); }
+    }
+
     public function countForUser(string $userId, ?string $search = null): int {
         $qb = $this->db->getQueryBuilder();
         $qb->selectAlias($qb->createFunction('COUNT(*)'), 'c')
@@ -94,7 +111,7 @@ class DocumentMapper extends QBMapper {
             ->where($qb->expr()->eq('user_id', $qb->createNamedParameter($userId)));
         if ($search !== null && $search !== '') {
             $qb->andWhere(
-                $qb->expr()->like('path', $qb->createNamedParameter('%' . $search . '%'))
+                $qb->expr()->like('path', $qb->createNamedParameter('%' . $qb->escapeLikeParameter($search) . '%'))
             );
         }
         $row = $qb->executeQuery()->fetch();
@@ -108,7 +125,7 @@ class DocumentMapper extends QBMapper {
             ->where($qb->expr()->eq('user_id', $qb->createNamedParameter($userId)));
         if ($search !== null && $search !== '') {
             $qb->andWhere(
-                $qb->expr()->like('path', $qb->createNamedParameter('%' . $search . '%'))
+                $qb->expr()->like('path', $qb->createNamedParameter('%' . $qb->escapeLikeParameter($search) . '%'))
             );
         }
         $qb->orderBy('indexed_at', 'DESC')

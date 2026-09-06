@@ -152,7 +152,7 @@ class EvaTranslateProvider implements ISynchronousProvider {
 
 		$reportProgress(0.3);
 
-		$result = $this->ollama->chat($messages);
+		$result = $this->ollama->chat($messages, [], 'summary');
 
 		if (isset($result['error'])) {
 			throw new RuntimeException((string)$result['error']);

@@ -22,13 +22,13 @@ class Searcher {
     /**
      * @return array<int,array{chunk:array,doc:?array,cosine:float,lexical:float,score:float}>
      */
-    public function search(string $userId, string $query, int $topK): array {
+    public function search(string $userId, string $query, int $topK, array $documentIds = [], string $folder = ''): array {
         $topK = max(1, min($topK, (int)AppConfig::LIMITS['top_k'][1]));
         if (trim($query) === '') {
             return [];
         }
         [$queryVec, $err] = $this->ollama->embedQuery([$query], $userId);
-        $rows = $this->loadCandidates($userId, $query);
+        $rows = $this->loadCandidates($userId, $query, $err === null ? ($queryVec[0] ?? []) : [], $documentIds, $folder);
 
         $queryTokens = $this->tokens($query);
         $lexical = $this->lexicalBm25($rows, $queryTokens);
@@ -41,10 +41,10 @@ class Searcher {
                     $cos = $this->cosine($queryVec[0], $vec);
                     $dense[$i] = $cos;
                 } else {
-                    $dense[$i] = 0.0;
+                    unset($dense[$i]);
                 }
             } else {
-                $dense[$i] = 0.0;
+                unset($dense[$i]);
             }
         }
 
@@ -75,13 +75,14 @@ class Searcher {
             if (array_key_exists($i, $lexPos)) {
                 $rrf += 1 / (60 + $lexPos[$i]);
             }
-            if (array_key_exists($i, $densePos)) {
+            if ($denseScore > 0 && array_key_exists($i, $densePos)) {
                 $rrf += 1 / (60 + $densePos[$i]);
             }
             $docId = (int)$row['document_id'];
             $doc = $docMeta[$docId] ?? null;
             $results[] = [
                 'chunkId' => (int)$row['id'],
+                'provenance' => json_decode($row['provenance'] ?? 'null', true) ?: [],
                 'chunkIndex' => (int)$row['chunk_index'],
                 'content' => $row['content'],
                 'documentId' => $docId,
@@ -95,61 +96,45 @@ class Searcher {
         }
 
         usort($results, function ($a, $b) {
-            return ($b['score'] <=> $a['score']);
+            return ($b['score'] <=> $a['score']) ?: ($a['chunkId'] <=> $b['chunkId']);
         });
 
-        return array_slice($results, 0, $topK);
+        // Bound one document's influence while preserving deterministic ranking.
+        $selected = [];
+        $perDoc = [];
+        foreach ($results as $hit) {
+            if ($hit['score'] <= 0 || ($perDoc[$hit['documentId']] ?? 0) >= max(2, (int)ceil($topK / 2))) { continue; }
+            $selected[] = $hit;
+            $perDoc[$hit['documentId']] = ($perDoc[$hit['documentId']] ?? 0) + 1;
+            if (count($selected) === $topK) { break; }
+        }
+        return $selected;
     }
 
-    /**
-     * Build the bounded candidate set for a user + query.
-     *
-     * On indexes that fit the pool threshold we use every chunk. On larger
-     * indexes we build two INDEPENDENT candidate sets and fuse them:
-     *
-     *  - lexical: chunks matching at least one query token (bounded LIKE scan)
-     *  - dense:   a bounded, token-independent page of chunks so semantic-only
-     *             matches are NOT gated by lexical overlap (Issue #13)
-     *
-     * Both sets are merged and deduped by chunk id; dense/BM25 scoring then
-     * runs over the union, keeping retrieval quality stable above the
-     * threshold. Empty-token queries stay bounded too (see ChunkMapper).
-     *
-     * @return array<int,array<string,mixed>>
-     */
-    private function loadCandidates(string $userId, string $query): array {
-        $n = $this->chunkMapper->countForUser($userId);
-        if ($n <= self::POOL) {
-            return $this->chunkMapper->chunksForUser($userId);
-        }
-
-        $tokens = $this->tokens($query);
-
-        // Lexical set: bounded prefilter (up to half the pool).
-        $lexCap = (int)ceil(self::POOL / 2);
-        $lexical = $tokens === [] ? [] : $this->chunkMapper->filterChunksByTokens($userId, $tokens, $lexCap);
-
-        // Dense set: independent bounded sample (rest of the pool), starting at
-        // a query-derived offset so the sample is stable per query.
-        $denseCap = self::POOL - count($lexical);
-        $denseCap = max(1, min($denseCap, $n));
-        $offset = 0;
-        if ($denseCap < $n) {
-            $offset = (abs(crc32($query)) % max(1, $n - $denseCap));
-        }
-        $dense = $this->chunkMapper->chunksForUserPage($userId, $denseCap, $offset);
-
-        // Merge + dedupe by chunk id.
-        $byId = [];
-        foreach ($lexical as $row) {
-            $byId[(int)$row['id']] = $row;
-        }
-        foreach ($dense as $row) {
-            if (!isset($byId[(int)$row['id']])) {
-                $byId[(int)$row['id']] = $row;
+    /** Full-coverage dense scan with bounded top-candidate retention. */
+    private function loadCandidates(string $userId, string $query, array $queryVector, array $documentIds = [], string $folder = ''): array {
+        $lexical = $this->chunkMapper->filterChunksByTokens($userId, $this->tokens($query), 256, $documentIds, $folder);
+        $heap = new \SplPriorityQueue();
+        $after = 0;
+        do {
+            $page = $this->chunkMapper->scanForUser($userId, $after, 512, $documentIds, $folder);
+            foreach ($page as $row) {
+                $after = max($after, (int)$row['id']);
+                $vector = json_decode($row['embedding'], true);
+                if ($queryVector === [] || !is_array($vector) || count($vector) !== count($queryVector)) {
+                    continue;
+                }
+                $score = $this->cosine($queryVector, $vector);
+                if ($score <= 0) { continue; }
+                // Negative priority keeps the worst retained candidate on top.
+                $heap->insert($row, [-$score, -(int)$row['id']]);
+                if ($heap->count() > 256) { $heap->extract(); }
             }
-        }
-        return array_values(array_slice($byId, 0, self::POOL));
+        } while (count($page) === 512);
+        $byId = [];
+        foreach ($lexical as $row) { $byId[(int)$row['id']] = $row; }
+        foreach ($heap as $row) { $byId[(int)$row['id']] = $row; }
+        return array_values($byId);
     }
 
     /** @return string[] */
@@ -220,7 +205,8 @@ class Searcher {
         $dot = 0.0;
         $na = 0.0;
         $nb = 0.0;
-        $n = min(count($a), count($b));
+        if (count($a) !== count($b)) { return 0.0; }
+        $n = count($a);
         for ($i = 0; $i < $n; $i++) {
             $va = (float)$a[$i];
             $vb = (float)$b[$i];

@@ -61,29 +61,8 @@ class PageController extends Controller {
     #[NoAdminRequired]
     #[NoCSRFRequired]
     public function standalone(): TemplateResponse {
-        Util::addTranslations('eva_ai');
-        \OCP\Util::addScript('eva_ai', 'chat');
-        \OCP\Util::addHeader('meta', [
-            'name' => 'requesttoken',
-            'content' => \OC::$server->get(\OC\Security\CSRF\CsrfTokenManager::class)->getToken()->getEncryptedValue(),
-        ]);
-        \OCP\Util::addHeader('meta', [
-            'name' => 'eva-ai-api',
-            'content' => $this->urlGenerator->getAbsoluteURL('/ocs/v2.php/apps/eva_ai/api/'),
-        ]);
-        \OCP\Util::addHeader('meta', [
-            'name' => 'eva-ai-stream',
-            'content' => $this->urlGenerator->getAbsoluteURL('/ocs/v2.php/apps/eva_ai/api/streamChat?format=json'),
-        ]);
-        \OCP\Util::addHeader('meta', [
-            'name' => 'eva-ai-version',
-            'content' => 'standalone-1',
-        ]);
-
-        $response = new TemplateResponse('eva_ai', 'standalone', [
-            'version' => 'standalone-1',
-        ]);
-        return $this->noCache($response);
+        // One maintained client for all entry points, including existing bookmarks.
+        return $this->appPage('index');
     }
 
     private function appPage(string $template): TemplateResponse {

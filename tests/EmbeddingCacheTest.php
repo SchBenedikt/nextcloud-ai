@@ -23,21 +23,21 @@ final class EmbeddingCacheTest extends TestCase {
         $cache = new class($values) implements \OCP\ICache {
             public function __construct(private array &$values) {
             }
-            public function get(string $key): mixed {
+            public function get($key): mixed {
                 return $this->values[$key]['value'] ?? null;
             }
-            public function set(string $key, mixed $value, int $ttl = 0): bool {
+            public function set($key, $value, $ttl = 0): bool {
                 $this->values[$key] = ['ttl' => $ttl, 'value' => $value];
                 return true;
             }
-            public function hasKey(string $key): bool {
+            public function hasKey($key): bool {
                 return isset($this->values[$key]);
             }
-            public function remove(string $key): bool {
+            public function remove($key): bool {
                 unset($this->values[$key]);
                 return true;
             }
-            public function clear(string $prefix = ''): bool {
+            public function clear($prefix = ''): bool {
                 foreach (array_keys($this->values) as $key) {
                     if ($prefix === '' || str_starts_with($key, $prefix)) {
                         unset($this->values[$key]);

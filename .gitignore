@@ -3,3 +3,7 @@ ragtest.tmp.php
 *.tmp
 vendor/
 .phpunit.result.cache
+
+# Signing keys must remain outside version control.
+*.key
+*.pem

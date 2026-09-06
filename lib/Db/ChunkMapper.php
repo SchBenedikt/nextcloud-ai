@@ -54,10 +54,11 @@ class ChunkMapper extends QBMapper {
      */
     public function chunksForUser(string $userId): array {
         $qb = $this->db->getQueryBuilder();
-        $qb->select('c.id', 'c.document_id', 'c.chunk_index', 'c.content', 'c.embedding')
+        $qb->select('c.id', 'c.document_id', 'c.chunk_index', 'c.content', 'c.embedding', 'c.provenance')
             ->from('eva_ai_chunks', 'c')
             ->innerJoin('c', 'eva_ai_documents', 'd', $qb->expr()->eq('c.document_id', 'd.id'))
-            ->where($qb->expr()->eq('d.user_id', $qb->createNamedParameter($userId)));
+            ->where($qb->expr()->eq('d.user_id', $qb->createNamedParameter($userId)))
+            ->andWhere($qb->expr()->gt('d.chunk_count', $qb->createNamedParameter(0, IQueryBuilder::PARAM_INT)));
         $result = $qb->executeQuery();
         $rows = $result->fetchAll();
         $result->closeCursor();
@@ -78,10 +79,11 @@ class ChunkMapper extends QBMapper {
         $limit = max(1, $limit);
         $offset = max(0, $offset);
         $qb = $this->db->getQueryBuilder();
-        $qb->select('c.id', 'c.document_id', 'c.chunk_index', 'c.content', 'c.embedding')
+        $qb->select('c.id', 'c.document_id', 'c.chunk_index', 'c.content', 'c.embedding', 'c.provenance')
             ->from('eva_ai_chunks', 'c')
             ->innerJoin('c', 'eva_ai_documents', 'd', $qb->expr()->eq('c.document_id', 'd.id'))
             ->where($qb->expr()->eq('d.user_id', $qb->createNamedParameter($userId)))
+            ->andWhere($qb->expr()->gt('d.chunk_count', $qb->createNamedParameter(0, IQueryBuilder::PARAM_INT)))
             ->orderBy('c.id', 'ASC')
             ->setMaxResults($limit)
             ->setFirstResult($offset);
@@ -91,23 +93,39 @@ class ChunkMapper extends QBMapper {
         return $rows;
     }
 
+    /** Stable keyset scan: every chunk is visited once, with bounded memory. */
+    public function scanForUser(string $userId, int $afterId = 0, int $limit = 512, array $documentIds = [], string $folder = ''): array {
+        $qb = $this->db->getQueryBuilder();
+        $qb->select('c.id', 'c.document_id', 'c.chunk_index', 'c.content', 'c.embedding', 'c.provenance')
+            ->from('eva_ai_chunks', 'c')
+            ->innerJoin('c', 'eva_ai_documents', 'd', $qb->expr()->eq('c.document_id', 'd.id'))
+            ->where($qb->expr()->eq('d.user_id', $qb->createNamedParameter($userId)))
+            ->andWhere($qb->expr()->gt('d.chunk_count', $qb->createNamedParameter(0, IQueryBuilder::PARAM_INT)))
+            ->andWhere($qb->expr()->gt('c.id', $qb->createNamedParameter($afterId, IQueryBuilder::PARAM_INT)))
+            ->orderBy('c.id', 'ASC')->setMaxResults(max(1, min(512, $limit)));
+        $this->restrictScope($qb, $documentIds, $folder);
+        $result = $qb->executeQuery();
+        try { return $result->fetchAll(); } finally { $result->closeCursor(); }
+    }
+
     /**
      * Coarse lexical preselect for very large collections: only chunks whose
      * content contains at least one query token, up to $cap rows.
      * @param string[] $tokens
      * @return array<int,array<string,mixed>>
      */
-    public function filterChunksByTokens(string $userId, array $tokens, int $cap): array {
+    public function filterChunksByTokens(string $userId, array $tokens, int $cap, array $documentIds = [], string $folder = ''): array {
         if ($tokens === []) {
             // Empty token list: a lexical filter has nothing to match against.
             // Return a bounded page instead of the full index (Issue #13).
-            return $this->chunksForUserPage($userId, $cap, 0);
+            return [];
         }
         $qb = $this->db->getQueryBuilder();
-        $qb->select('c.id', 'c.document_id', 'c.chunk_index', 'c.content', 'c.embedding')
+        $qb->select('c.id', 'c.document_id', 'c.chunk_index', 'c.content', 'c.embedding', 'c.provenance')
             ->from('eva_ai_chunks', 'c')
             ->innerJoin('c', 'eva_ai_documents', 'd', $qb->expr()->eq('c.document_id', 'd.id'))
-            ->where($qb->expr()->eq('d.user_id', $qb->createNamedParameter($userId)));
+            ->where($qb->expr()->eq('d.user_id', $qb->createNamedParameter($userId)))
+            ->andWhere($qb->expr()->gt('d.chunk_count', $qb->createNamedParameter(0, IQueryBuilder::PARAM_INT)));
         $like = $qb->expr()->orX();
         foreach (array_slice($tokens, 0, 12) as $tok) {
             $like->add($qb->expr()->like('c.content', $qb->createNamedParameter('%' . $tok . '%')));
@@ -115,10 +133,16 @@ class ChunkMapper extends QBMapper {
         $qb->andWhere($like);
         $qb->orderBy('c.document_id', 'ASC')
             ->setMaxResults($cap);
+        $this->restrictScope($qb, $documentIds, $folder);
         $result = $qb->executeQuery();
         $rows = $result->fetchAll();
         $result->closeCursor();
         return $rows;
+    }
+
+    private function restrictScope(IQueryBuilder $qb, array $documentIds, string $folder): void {
+        if ($documentIds !== []) { $qb->andWhere($qb->expr()->in('d.id', $qb->createNamedParameter(array_map('intval', $documentIds), IQueryBuilder::PARAM_INT_ARRAY))); }
+        if ($folder !== '') { $qb->andWhere($qb->expr()->like('d.path', $qb->createNamedParameter($qb->escapeLikeParameter(trim($folder, '/') . '/') . '%'))); }
     }
 
     public function countForUser(string $userId): int {
@@ -126,7 +150,8 @@ class ChunkMapper extends QBMapper {
         $qb->selectAlias($qb->createFunction('COUNT(*)'), 'c')
             ->from('eva_ai_chunks', 'c')
             ->innerJoin('c', 'eva_ai_documents', 'd', $qb->expr()->eq('c.document_id', 'd.id'))
-            ->where($qb->expr()->eq('d.user_id', $qb->createNamedParameter($userId)));
+            ->where($qb->expr()->eq('d.user_id', $qb->createNamedParameter($userId)))
+            ->andWhere($qb->expr()->gt('d.chunk_count', $qb->createNamedParameter(0, IQueryBuilder::PARAM_INT)));
         $row = $qb->executeQuery()->fetch();
         return $row ? (int)$row['c'] : 0;
     }
@@ -141,12 +166,14 @@ class ChunkMapper extends QBMapper {
     }
 
     /** @return array<int,array<string,mixed>> */
-    public function findByDocument(int $documentId): array {
+    public function findByDocument(int $documentId, int $limit = 50, int $offset = 0): array {
         $qb = $this->db->getQueryBuilder();
-        $qb->select('id', 'chunk_index', 'content')
+        $qb->select('id', 'chunk_index', 'content', 'provenance')
             ->from('eva_ai_chunks')
             ->where($qb->expr()->eq('document_id', $qb->createNamedParameter($documentId, IQueryBuilder::PARAM_INT)))
-            ->orderBy('chunk_index', 'ASC');
+            ->orderBy('chunk_index', 'ASC')
+            ->setMaxResults(max(1, min(100, $limit)))
+            ->setFirstResult(max(0, $offset));
         $result = $qb->executeQuery();
         $rows = $result->fetchAll();
         $result->closeCursor();

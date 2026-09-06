@@ -138,7 +138,10 @@ PROMPT;
             return true;
         }
 
-        // 2. KI entscheidet für jede Nachricht
+        // Classifying ambient conversations requires a separate explicit opt-in.
+        if ($this->appConfig->get('talk_classification_enabled') !== '1') {
+            return false;
+        }
         $triggerName = $this->appConfig->get('talk_bot_trigger');
         return $this->classificationForEva($content, $roomId, $triggerName);
     }

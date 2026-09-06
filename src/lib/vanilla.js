@@ -16,6 +16,7 @@ export function mountChat(root, opts = {}) {
 
 	const { onRecent } = opts
 	let chatId = opts.chatId || null
+    let historyOffset = 0
 
 	const meta = (name) => {
 		const el = document.head.querySelector('meta[name="' + name + '"]')
@@ -99,14 +100,25 @@ export function mountChat(root, opts = {}) {
 			.filter((x) => nums.has(x.ref))
 	}
 
-	function exportMarkdown() {
+	async function exportMarkdown() {
+        let exportMessages = messages
+        if (chatId) {
+            exportMessages = []
+            let offset = 0
+            do {
+                const page = await api('GET', '/chats/' + encodeURIComponent(chatId) + '?limit=200&offset=' + offset)
+                exportMessages.push(...page.messages)
+                offset += page.messages.length
+                if (offset >= page.total || !page.messages.length) break
+            } while (true)
+        }
 		const lines = []
 		lines.push('# ' + t('Eva chat export'))
 		lines.push('')
 		const d = new Date()
 		lines.push('_' + t('Exported {date}', { date: d.toISOString() }) + '_')
 		lines.push('')
-		messages.forEach((m) => {
+		exportMessages.forEach((m) => {
 			lines.push('')
 			lines.push('## ' + (m.role === 'user' ? t('You') : 'Eva'))
 			lines.push('')
@@ -253,6 +265,8 @@ export function mountChat(root, opts = {}) {
 			cb.addEventListener('click', () => copyText(String(m.text || ''), cb))
 			b.appendChild(cb)
 		}
+        if (m.contextNote) { const note = document.createElement('small'); note.textContent = m.contextNote; b.appendChild(note) }
+        if (m.model) { const model = document.createElement('small'); model.textContent = m.model; b.appendChild(model) }
 		wrap.appendChild(b)
 
 		if (m.tools && m.tools.length) {
@@ -426,6 +440,22 @@ export function mountChat(root, opts = {}) {
 			wrap.appendChild(panel)
 		}
 
+        if (m.id && m.done) {
+            const branch = document.createElement('button')
+            branch.textContent = m.role === 'user' ? t('Edit in a new branch') : t('Branch from here')
+            branch.addEventListener('click', async () => {
+                const replacement = m.role === 'user' ? window.prompt(t('Edit message'), m.text) : null
+                if (m.role === 'user' && replacement === null) return
+                try {
+                    const chat = await api('POST', '/chats/' + encodeURIComponent(chatId) + '/branch', { messageId: m.id, replacement })
+                    chatId = chat.id
+                    await restoreServerChat(chatId)
+                    if (onRecent) onRecent()
+                    window.dispatchEvent(new CustomEvent('eva-ai:select-chat', { detail: { id: chatId } }))
+                } catch (e) { branch.textContent = String(e) }
+            })
+            wrap.appendChild(branch)
+        }
 		scroll.appendChild(wrap)
 		if (emptyEl) {
 			emptyEl.style.display = 'none'
@@ -459,7 +489,7 @@ export function mountChat(root, opts = {}) {
 	exportLabel.textContent = t('Export')
 	exportBtn.append(exportIcon, exportLabel)
 	exportBtn.disabled = true
-	exportBtn.addEventListener('click', exportMarkdown)
+	exportBtn.addEventListener('click', () => { exportMarkdown().catch((error) => { err.textContent = String(error.message || error); err.style.display = 'block' }) })
 	head.append(h1, exportBtn)
 
 	const scroll = document.createElement('div')
@@ -603,11 +633,14 @@ export function mountChat(root, opts = {}) {
 			.catch(() => false)
 	}
 
-	function restoreServerChat(id) {
-		return api('GET', '/chats/' + id).then((chat) => {
+	function restoreServerChat(id, offset = -1) {
+		return api('GET', '/chats/' + encodeURIComponent(id) + '?limit=100&offset=' + offset).then((chat) => {
+            historyOffset = chat.offset || 0
+            olderButton.hidden = !chat.hasEarlier
 			messages.length = 0
 			;(chat.messages || []).forEach((m) => messages.push({
-				role: m.role === 'user' || m.role === 'assistant' ? m.role : 'assistant',
+				id: m.id,
+                role: m.role === 'user' || m.role === 'assistant' ? m.role : 'assistant',
 				text: m.text || '',
 				thinking: '',
 				done: true,
@@ -615,6 +648,17 @@ export function mountChat(root, opts = {}) {
 			renderAll(messages)
 		})
 	}
+
+    const olderButton = document.createElement('button')
+    olderButton.textContent = t('Previous messages')
+    olderButton.hidden = true
+    olderButton.addEventListener('click', () => restoreServerChat(chatId, Math.max(0, historyOffset - 100)).catch((e) => { olderButton.textContent = String(e) }))
+    root.prepend(olderButton)
+    const latestButton = document.createElement('button')
+    latestButton.textContent = t('Latest messages')
+    latestButton.hidden = !chatId
+    latestButton.addEventListener('click', () => restoreServerChat(chatId).catch((e) => { latestButton.textContent = String(e) }))
+    root.prepend(latestButton)
 
 	if (chatId) {
 		restoreServerChat(chatId).catch(() => { /* falls Chat nicht existiert: leer starten */ })
@@ -640,10 +684,13 @@ export function mountChat(root, opts = {}) {
 		}
 
 		ensureChat().then(() => {
-			apiStream(STREAM_URL, { message: msg, history }, (ev) => {
+			apiStream(STREAM_URL, { message: msg, history, chatId }, (ev) => {
 				const last = messages[messages.length - 1]
 				if (!last || last.role !== 'assistant' || last.done) return
-				if (ev.type === 'thinking') {
+				if (ev.type === 'status') {
+                    if (ev.model) last.model = ev.model
+                    last.contextNote = ev.delta || ''
+                } else if (ev.type === 'thinking') {
 					last.thinking += ev.delta || ''
 				} else if (ev.type === 'content') {
 					last.text += ev.delta || ''
@@ -667,6 +714,7 @@ export function mountChat(root, opts = {}) {
 					saveMessage('user', msg)
 					renderAll(messages)
 				} else if (ev.type === 'done') {
+					last.model = ev.model || last.model
 					last.text = ev.answer || last.text
 					last.sources = citedSources(last.text, ev.sources || [])
 					last.done = true
@@ -682,7 +730,8 @@ export function mountChat(root, opts = {}) {
 					last.done = true
 					saveMessage('user', msg)
 				}
-				updateMessage(messages.length - 1)
+				if (last.done) renderAll(messages)
+				else updateMessage(messages.length - 1)
 			}).catch((e) => {
 				const last = messages[messages.length - 1]
 				if (last && last.role === 'assistant' && !last.done) {

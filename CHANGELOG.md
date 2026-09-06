@@ -6,6 +6,14 @@ follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Version 1.5 implementation batch
+- Database chat history, search, projects, pin/archive, instructions and branches.
+- Paged retrieval and chunk display, corrected source mapping and bounded embedding batches.
+- Office extraction, optional local OCR, model-role metadata, fallback preferences and context budgeting.
+- Explicit weather/Talk consent, administrator-default inheritance and shared chat workspace.
+- Corrected `eva_ai` signing CSR and migration/coverage documentation in [release notes](docs/RELEASE-1.5.md).
+- Final runtime verification remains pending; no further tests were run at the owner's request.
+
 ### Added
 - **Issue #145:** user-isolated, content-addressed embedding cache with 30-day bounded retention, model/endpoint/schema metadata validation, duplicate-miss coalescing, reset cleanup, and index-status hit/miss/request counters.
 - **Issue #109:** English and German translation bundles for the Vue workspace, file actions and standalone chat.

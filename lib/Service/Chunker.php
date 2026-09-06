@@ -1,95 +1,36 @@
 <?php
 
 declare(strict_types=1);
-
 namespace OCA\EvaAi\Service;
 
 class Chunker {
-    public function __construct(private AppConfig $config) {
-    }
+    public function __construct(private AppConfig $config) {}
 
-    /**
-     * Split raw text into overlapping sentence-boundary chunks.
-     * @return array<int,array{content:string,tokens:int}>
-     */
-    public function chunk(string $text): array {
-        if (trim($text) === '') {
-            return [];
-        }
-        $chunkSize = $this->config->getInt('chunk_size', 900);
-        $overlap = $this->config->getInt('chunk_overlap', 120);
-        if ($overlap >= $chunkSize) {
-            $overlap = max(0, (int)($chunkSize / 4));
-        }
+    /** @return list<array{content:string,tokens:int,provenance:array}> */
+    public function chunk(string $text): array { return iterator_to_array($this->iterate($text), false); }
 
-        // Normalise whitespace runs but keep line structure.
-        $text = preg_replace('/[ \t]+/', ' ', $text);
-        $text = preg_replace('/\n{3,}/', "\n\n", $text);
-
-        $sentences = $this->splitSentences($text);
-        if (empty($sentences)) {
-            return [];
-        }
-
-        $chunks = [];
-        $current = '';
-        foreach ($sentences as $sentence) {
-            if (mb_strlen($current . $sentence) <= $chunkSize) {
-                $current .= $sentence;
-                continue;
+    /** Preserve source order, repeated passages, line boundaries and compact provenance. */
+    public function iterate(string $text): \Generator {
+        $size = max(128, min(10000, $this->config->getInt('chunk_size', 900)));
+        $overlap = max(0, min($size - 1, $this->config->getInt('chunk_overlap', 120)));
+        $text = str_replace(["\r\n", "\r"], "\n", $text);
+        $length = mb_strlen($text); $offset = 0; $heading = '';
+        while ($offset < $length) {
+            $piece = mb_substr($text, $offset, $size);
+            if ($offset + $size < $length) {
+                // Prefer paragraph/row boundaries over arbitrary character cuts.
+                $boundary = mb_strrpos($piece, "\n");
+                if ($boundary !== false && $boundary >= (int)($size / 2)) { $piece = mb_substr($piece, 0, $boundary + 1); }
             }
-            if ($current !== '') {
-                $chunks[] = trim($current);
+            if (preg_match_all('/^#{1,6}\s+([^\n]+)/mu', $piece, $matches)) { $heading = mb_substr((string)end($matches[1]), 0, 240); }
+            $consumed = mb_strlen($piece);
+            if (trim($piece) !== '') {
+                yield ['content' => trim($piece), 'tokens' => $this->estimateTokens($piece),
+                    'provenance' => ['version' => 1, 'heading' => $heading, 'offset' => $offset, 'length' => $consumed]];
             }
-            // A single sentence longer than the chunk size gets hard-split.
-            if (mb_strlen($sentence) > $chunkSize) {
-                foreach ($this->hardSplit($sentence, $chunkSize, $overlap) as $piece) {
-                    $chunks[] = trim($piece);
-                }
-                $current = '';
-                continue;
-            }
-            $current = $overlap > 0 ? mb_substr($current, -$overlap) : '';
-            $current .= $sentence;
+            if ($offset + $consumed >= $length) { break; }
+            $offset += max(1, $consumed - min($overlap, (int)($consumed / 2)));
         }
-        if (trim($current) !== '') {
-            $chunks[] = trim($current);
-        }
-
-        $out = [];
-        foreach (array_unique($chunks) as $chunk) {
-            $out[] = ['content' => $chunk, 'tokens' => $this->estimateTokens($chunk)];
-        }
-        return $out;
     }
-
-    private function splitSentences(string $text): array {
-        // Keep punctuation with the sentence; normalise line breaks as separators.
-        $text = preg_replace('/\n/', ' ', $text);
-        $parts = preg_split('/(?<=[.!?:;])[ \t]+(?=\S)/u', $text) ?: [];
-        $result = [];
-        foreach ($parts as $p) {
-            $p = trim($p);
-            if ($p !== '') {
-                $result[] = $p . ' ';
-            }
-        }
-        return $result;
-    }
-
-    private function hardSplit(string $text, int $size, int $overlap): array {
-        $pieces = [];
-        $len = mb_strlen($text);
-        $step = max(1, $size - $overlap);
-        $start = 0;
-        while ($start < $len) {
-            $pieces[] = mb_substr($text, $start, $size);
-            $start += $step;
-        }
-        return $pieces;
-    }
-
-    public function estimateTokens(string $text): int {
-        return max(1, (int)ceil(mb_strlen($text) / 4));
-    }
+    public function estimateTokens(string $text): int { return max(1, (int)ceil(mb_strlen($text) / 4)); }
 }

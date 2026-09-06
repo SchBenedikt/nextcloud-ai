@@ -28,7 +28,8 @@ class IndexJob extends TimedJob {
         private Indexer $indexer,
         private DocumentMapper $documentMapper,
         private AgentStore $agentStore,
-        private LoggerInterface $logger
+        private LoggerInterface $logger,
+        private \OCP\BackgroundJob\IJobList $jobList
     ) {
         parent::__construct($time);
         $this->setInterval(15 * 60);
@@ -99,15 +100,9 @@ class IndexJob extends TimedJob {
                     }
                 }
                 $this->config->setUserId($user);
-                $this->logger->info('eva_ai index job start', ['user' => $user]);
-                try {
-                    $this->indexer->run($user);
-                } catch (\Throwable $e) {
-                    $this->logger->warning('eva_ai index job failed for user', [
-                        'user' => $user,
-                        'exception' => $e->getMessage(),
-                    ]);
-                }
+                // Dispatch independent bounded jobs so one slow user cannot block the scheduler.
+                $this->jobList->add(PeriodicUserIndexJob::class, ['userId' => $user]);
+
             }
         } finally {
             $this->config->setUserId(null);

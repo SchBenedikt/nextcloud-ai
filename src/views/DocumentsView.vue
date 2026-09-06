@@ -95,6 +95,11 @@
 										<NcButton type="tertiary" @click.stop="loadChunks(d.id, d.chunks, true)">{{ $t('Retry') }}</NcButton>
 									</div>
 									<template v-else>
+                                        <div class="docs-pagination">
+                                            <NcButton v-if="chunkCache.get(d.id).offset > 0" @click.stop="loadChunks(d.id, d.chunks, true, Math.max(0, chunkCache.get(d.id).offset - 50))">{{ $t('Previous') }}</NcButton>
+                                            <span>{{ chunkCache.get(d.id).offset + 1 }}–{{ chunkCache.get(d.id).offset + chunkCache.get(d.id).chunks.length }} / {{ chunkCache.get(d.id).expected }}</span>
+                                            <NcButton v-if="chunkCache.get(d.id).nextOffset !== null" @click.stop="loadChunks(d.id, d.chunks, true, chunkCache.get(d.id).nextOffset)">{{ $t('Next') }}</NcButton>
+                                        </div>
 										<div v-for="c in chunkCache.get(d.id).chunks" :key="c.index" class="docs-chunk">
 											<span class="docs-chunk-idx">#{{ c.index + 1 }}</span>
 											<span class="docs-chunk-text">{{ c.content }}</span>
@@ -254,51 +259,26 @@ export default {
 				chunkCache.value = next
 			}
 
-			async function loadChunks(id, expectedChunks = 0, retry = false) {
-				const cached = chunkCache.value.get(id)
-				if (!retry && cached && cached.status !== 'error') return
-				const fallbackExpected = Number(expectedChunks) || 0
-				setChunkState(id, { status: 'loading', chunks: [], expected: fallbackExpected, error: '' })
-				let expected = fallbackExpected
-				try {
-					const data = await api('POST', 'documentChunks', { id })
-					const source = Array.isArray(data)
-						? data
-						: Array.isArray(data?.chunks)
-							? data.chunks
-							: Array.isArray(data?.data?.chunks)
-								? data.data.chunks
-								: Array.isArray(data?.data) ? data.data : []
-					const chunks = source.map((chunk, index) => {
-						const rawIndex = chunk.index ?? chunk.chunk_index
-						const numericIndex = rawIndex !== null && rawIndex !== undefined && String(rawIndex).trim() !== ''
-							? Number(rawIndex)
-							: NaN
-						return {
-							index: Number.isFinite(numericIndex) ? numericIndex : index,
-							content: String(chunk.content ?? ''),
-						}
-					})
-					const reportedExpected = data?.document?.chunks
-					if (reportedExpected !== null && reportedExpected !== undefined && String(reportedExpected).trim() !== '' && Number.isFinite(Number(reportedExpected))) {
-						expected = Number(reportedExpected)
-					}
-					if (!chunks.length && expected > 0) {
-						throw new Error(`The server reported ${expected} chunks, but returned no chunk rows.`)
-					}
-					setChunkState(id, { status: 'ready', chunks, expected, error: '' })
-				} catch (e) {
-					const message = e instanceof Error ? e.message : String(e)
-					setChunkState(id, { status: 'error', chunks: [], expected, error: message })
-					console.error('[eva-ai] chunks error', e)
-				}
-			}
+            async function loadChunks(id, expectedChunks = 0, retry = false, offset = 0) {
+                const cached = chunkCache.value.get(id)
+                if (!retry && cached && cached.status !== 'error' && offset === 0) return
+                setChunkState(id, { status: 'loading', chunks: [], expected: expectedChunks, error: '' })
+                try {
+                    const data = await api('POST', 'documentChunks', { id, limit: 50, offset })
+                    if (!Array.isArray(data?.chunks)) throw new Error(t('Chunks could not be loaded.'))
+                    setChunkState(id, { status: 'ready', chunks: data.chunks, expected: data.total,
+                        offset, nextOffset: data.nextOffset, error: '' })
+                } catch (e) {
+                    setChunkState(id, { status: 'error', chunks: [], expected: expectedChunks, error: String(e) })
+                }
+            }
 
 
 		function toggle(id, expectedChunks = 0) {
 			const set = new Set(expanded.value)
 			if (set.has(id)) {
 				set.delete(id)
+                chunkCache.value.delete(id)
 			} else {
 				set.add(id)
 				loadChunks(id, expectedChunks)
@@ -331,7 +311,7 @@ export default {
 			if (statusTimer !== null) window.clearInterval(statusTimer)
 		})
 
-		return { docs, total, totalChunks, totalSize, search, loading, loadingMore, hasMore, loadMoreError, indexing, stopping, indexStatus, indexingActive, progress, expanded, chunkCache, load, loadMore, loadStatus, toggle, startIndex, startMailIndex, stopIndex, fmtSize, fmtDate, mdiChevronDown, mdiChevronRight }
+		return { docs, total, totalChunks, totalSize, search, loading, loadingMore, hasMore, loadMoreError, indexing, stopping, indexStatus, indexingActive, progress, expanded, chunkCache, load, loadMore, loadStatus, loadChunks, toggle, startIndex, startMailIndex, stopIndex, fmtSize, fmtDate, mdiChevronDown, mdiChevronRight }
 	},
 }
 </script>

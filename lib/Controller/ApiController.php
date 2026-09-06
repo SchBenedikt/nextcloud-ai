@@ -110,6 +110,7 @@ class ApiController extends OCSController {
             return new DataResponse(['error' => 'Settings are locked while indexing is running.'], 409);
         }
         $allowed = [
+            'weather_enabled', 'talk_classification_enabled', 'personalization_enabled', 'ocr_enabled', 'chat_fallback_models', 'summary_model', 'tool_model',
             'ollama_url', 'embedding_model', 'chat_model', 'top_k', 'chunk_size',
             'chunk_overlap', 'max_file_size', 'max_files_per_run', 'scope_path', 'context_size', 'temperature',
             'actions_enabled',
@@ -154,6 +155,13 @@ class ApiController extends OCSController {
                 'validationErrors' => array_values($validationErrors),
             ], 400);
         }
+        // Resolve against the pending endpoint before persisting any part of the settings.
+        $endpoint = (string)($pending['ollama_url'] ?? $this->config->ollamaUrl());
+        foreach (['embedding_model' => 'embedding', 'chat_model' => 'completion', 'summary_model' => 'completion', 'tool_model' => 'completion'] as $key => $role) {
+            if (!isset($pending[$key]) || $pending[$key] === '' || ($pending[$key] === $this->config->get($key) && !isset($pending['ollama_url']))) { continue; }
+            $capabilities = $this->ollama->modelCapabilities((string)$pending[$key], rtrim($endpoint, '/'));
+            if ($capabilities !== null && !in_array($role, $capabilities, true)) { return new DataResponse(['error' => $key . ' does not support ' . $role], 400); }
+        }
         foreach ($pending as $key => $value) {
                 if (in_array($key, ['top_k', 'chunk_size', 'chunk_overlap', 'max_file_size', 'max_files_per_run', 'context_size', 'exec_write_max_chars', 'mail_index_max', 'talk_history_size'], true)) {
                     $value = (string)$value;
@@ -164,7 +172,7 @@ class ApiController extends OCSController {
                 if ($key === 'exec_write_types') {
                     $value = $this->config->normalizeValue($key, $value);
                 }
-                if ($key === 'notify_on_complete' || $key === 'mail_index_enabled' || $key === 'index_enrolled') {
+                if (in_array($key, ['notify_on_complete', 'mail_index_enabled', 'index_enrolled', 'weather_enabled', 'talk_classification_enabled', 'personalization_enabled', 'ocr_enabled'], true)) {
                     $value = in_array((string)$value, ['1', 'true', 'on'], true) ? '1' : '0';
                 }
                 if ($key === 'temperature') {
@@ -368,11 +376,8 @@ class ApiController extends OCSController {
         $limit = max(1, min(500, (int)($this->requestParam('limit') ?? 100)));
         $offset = max(0, (int)($this->requestParam('offset') ?? 0));
         $docs = $this->documentMapper->findByUser($user, $search, $limit, $offset);
-        $totalChunks = 0;
-        $totalSize = 0;
-        $out = array_map(static function ($d) use (&$totalChunks, &$totalSize) {
-            $totalChunks += (int)$d->getChunkCount();
-            $totalSize += (int)$d->getSize();
+        $totals = $this->documentMapper->totalsForUser($user, $search);
+        $out = array_map(static function ($d) {
             return [
                 'id' => (int)$d->getId(),
                 'path' => $d->getPath(),
@@ -386,8 +391,8 @@ class ApiController extends OCSController {
         return new DataResponse([
             'documents' => $out,
             'total' => $this->documentMapper->countForUser($user, $search),
-            'totalChunks' => $totalChunks,
-            'totalSize' => $totalSize,
+            'totalChunks' => $totals['chunks'],
+            'totalSize' => $totals['size'],
         ]);
     }
 
@@ -403,8 +408,15 @@ class ApiController extends OCSController {
             || !$this->fileContextChat->fileAccessible($user, (int)$doc->getFileId())) {
             return new DataResponse(['error' => 'Document not found'], 404);
         }
-        $rows = $this->chunkMapper->findByDocument($id);
+        $limit = max(1, min(100, (int)$this->requestParam('limit', 50)));
+        $offset = max(0, (int)$this->requestParam('offset', 0));
+        $total = $this->chunkMapper->countForDocument($id);
+        $rows = $this->chunkMapper->findByDocument($id, $limit, $offset);
         return new DataResponse([
+            'total' => $total,
+            'offset' => $offset,
+            'limit' => $limit,
+            'nextOffset' => $offset + count($rows) < $total ? $offset + count($rows) : null,
             'document' => [
                 'id' => (int)$doc->getId(),
                 'path' => $doc->getPath(),
@@ -413,6 +425,7 @@ class ApiController extends OCSController {
             'chunks' => array_map(static fn($c) => [
                 'index' => (int)$c['chunk_index'],
                 'content' => (string)$c['content'],
+                'provenance' => json_decode($c['provenance'] ?? 'null', true) ?: [],
             ], $rows),
         ]);
     }
@@ -434,6 +447,7 @@ class ApiController extends OCSController {
         if (!is_array($history)) {
             $history = [];
         }
+        $this->prepareChatPreferences($user);
         return new DataResponse($this->ragService->ask($user, $message, $history));
     }
 
@@ -537,10 +551,11 @@ class ApiController extends OCSController {
     #[NoAdminRequired]
     public function streamChat(): StreamTraversableResponse {
         $user = $this->requireUser();
-        $body = json_decode((string)file_get_contents('php://input'), true);
+        $body = $this->requestBody();
         $message = trim((string)($body['message'] ?? ''));
         $history = isset($body['history']) && is_array($body['history']) ? $body['history'] : [];
 
+        if ($user !== null) { $this->prepareChatPreferences($user); }
         $generator = (function () use ($user, $message, $history): \Generator {
             // Aber die PHP-Output-Buffering-Schicht (php.ini output_buffering)
             // würde jede erzeugte Zeile bis zum Ende puffern -> keine Live-Streams.
@@ -628,7 +643,9 @@ class ApiController extends OCSController {
         if ($user === null) {
             return new DataResponse(['error' => 'Not logged in'], 401);
         }
-        return new DataResponse($this->chatStore->list($user));
+        return new DataResponse($this->chatStore->list($user, (string)$this->requestParam('search', ''),
+            (int)$this->requestParam('limit', 100), (int)$this->requestParam('offset', 0),
+            $this->requestParam('project'), filter_var($this->requestParam('archived', false), FILTER_VALIDATE_BOOLEAN)));
     }
 
     #[NoAdminRequired]
@@ -664,7 +681,7 @@ class ApiController extends OCSController {
         if ($user === null) {
             return new DataResponse(['error' => 'Not logged in'], 401);
         }
-        $chat = $this->chatStore->get($user, $id);
+        $chat = $this->chatStore->get($user, $id, (int)$this->requestParam('limit', 100), (int)$this->requestParam('offset', -1));
         if ($chat === null) {
             return new NotFoundResponse();
         }
@@ -731,6 +748,52 @@ class ApiController extends OCSController {
     }
 
     #[NoAdminRequired]
+    public function chatBranch(string $id): DataResponse {
+        $user = $this->requireUser();
+        if ($user === null) { return new DataResponse(['error' => 'Not logged in'], 401); }
+        try { return new DataResponse($this->chatStore->branch($user, $id, (int)$this->requestParam('messageId', 0), $this->requestParam('replacement'))); }
+        catch (\InvalidArgumentException $e) { return new DataResponse(['error' => $e->getMessage()], 400); }
+    }
+
+    private function prepareChatPreferences(string $user): void {
+        $id = (string)$this->requestParam('chatId', '');
+        $chat = $id !== '' ? $this->chatStore->get($user, $id, 1) : null;
+        $personas = ['concise' => 'Prefer concise answers.', 'teacher' => 'Explain step by step with examples.', 'technical' => 'Use precise technical explanations and state assumptions.'];
+        $this->ragService->setChatInstructions(($personas[$chat['persona'] ?? ''] ?? '') . "\n" . ($chat['instructions'] ?? ''));
+    }
+
+    #[NoAdminRequired]
+    public function chatUpdate(string $id): DataResponse {
+        $user = $this->requireUser();
+        if ($user === null) { return new DataResponse(['error' => 'Not logged in'], 401); }
+        try { return new DataResponse($this->chatStore->update($user, $id, $this->requestBody() ?: $this->request->getParams())); }
+        catch (\InvalidArgumentException $e) { return new DataResponse(['error' => $e->getMessage()], 400); }
+    }
+
+    #[NoAdminRequired]
+    public function projects(): DataResponse {
+        $user = $this->requireUser();
+        if ($user === null) { return new DataResponse(['error' => 'Not logged in'], 401); }
+        return new DataResponse($this->chatStore->projects($user));
+    }
+
+    #[NoAdminRequired]
+    public function projectSave(): DataResponse {
+        $user = $this->requireUser();
+        if ($user === null) { return new DataResponse(['error' => 'Not logged in'], 401); }
+        try { return new DataResponse($this->chatStore->saveProject($user, $this->requestBody() ?: $this->request->getParams())); }
+        catch (\InvalidArgumentException $e) { return new DataResponse(['error' => $e->getMessage()], 400); }
+    }
+
+    #[NoAdminRequired]
+    public function projectDelete(string $id): DataResponse {
+        $user = $this->requireUser();
+        if ($user === null) { return new DataResponse(['error' => 'Not logged in'], 401); }
+        $this->chatStore->deleteProject($user, $id);
+        return new DataResponse(['ok' => true]);
+    }
+
+    #[NoAdminRequired]
     public function models(): DataResponse {
         $user = $this->requireUser();
         if ($user === null) {
@@ -749,6 +812,7 @@ class ApiController extends OCSController {
             'embedding' => $this->config->get('embedding_model'),
             'chat' => $this->config->get('chat_model'),
             'details' => $models,
+            'extraction' => \OCA\EvaAi\Service\SystemExtractor::capabilities(),
         ]);
     }
 

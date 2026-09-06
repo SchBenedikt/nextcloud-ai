@@ -20,6 +20,29 @@
 				</div>
 			</template>
 			<template #list>
+                <li class="project-controls">
+                    <label>{{ $t('Projects') }}
+                        <select v-model="project">
+                            <option value="*">{{ $t('All chats') }}</option>
+                            <option value="">{{ $t('Unassigned') }}</option>
+                            <option v-for="p in projects" :key="p.id" :value="p.id">{{ p.title }}{{ p.archived ? ' (' + $t('Archived') + ')' : '' }}</option>
+                        </select>
+                    </label>
+                    <NcButton @click="editProject()">{{ $t('New project') }}</NcButton>
+                    <template v-for="p in projects.filter(p => p.id === project)" :key="p.id">
+                        <NcButton @click="editProject(p)">{{ $t('Rename') }}</NcButton>
+                        <NcButton @click="archiveProject(p)">{{ p.archived ? $t('Unarchive') : $t('Archive') }}</NcButton>
+                        <NcButton @click="deleteProject(p)">{{ $t('Delete project') }}</NcButton>
+                    </template>
+                    <label><input v-model="showArchived" type="checkbox"> {{ $t('Archived chats') }}</label>
+                    <label v-if="movingChat">{{ $t('Move chat to project') }}
+                        <select :value="movingChat.project || ''" @change="updateChat(movingChat.id, { project: $event.target.value }); movingChat = null">
+                            <option value="">{{ $t('Unassigned') }}</option>
+                            <option v-for="p in projects" :key="p.id" :value="p.id">{{ p.title }}</option>
+                        </select>
+                        <NcButton @click="movingChat = null">{{ $t('Cancel') }}</NcButton>
+                    </label>
+                </li>
 				<li class="chat-list-heading">
 					<span>{{ $t('Chats') }}</span>
 					<NcCounterBubble :count="chats.length" />
@@ -27,7 +50,8 @@
 				<NcAppNavigationItem
 					v-for="c in filteredChats"
 					:key="c.id"
-					:name="c.title"
+					:name="(c.pinned ? '★ ' : '') + c.title"
+                    :subtitle="c.snippet || ''"
 					:active="view === 'chat' && c.id === currentChat"
 					:force-menu="true"
 					:title="$t('{title} · {count} messages', { title: c.title, count: c.count })"
@@ -36,6 +60,10 @@
 						<svg width="16" height="16" viewBox="0 0 24 24"><path :d="mdiChatProcessing" fill="currentColor" /></svg>
 					</template>
 					<template #actions>
+                        <NcActionButton @click.stop="updateChat(c.id, { pinned: !c.pinned })">{{ c.pinned ? $t('Unpin') : $t('Pin') }}</NcActionButton>
+                        <NcActionButton @click.stop="updateChat(c.id, { archived: !c.archived })">{{ c.archived ? $t('Unarchive') : $t('Archive') }}</NcActionButton>
+                        <NcActionButton @click.stop="configureChat(c)">{{ $t('Chat instructions') }}</NcActionButton>
+                        <NcActionButton @click.stop="moveChat(c)">{{ $t('Move chat to project') }}</NcActionButton>
 						<NcActionButton :aria-label="$t('Rename chat')" :close-after-click="true" @click.stop="renameChat(c.id)">
 							<template #icon><NcIconSvgWrapper :path="mdiPencilOutline" :size="16" aria-hidden="true" /></template>
 							{{ $t('Rename chat') }}
@@ -46,7 +74,8 @@
 						</NcActionButton>
 					</template>
 				</NcAppNavigationItem>
-				<li v-if="apiError" class="chat-list-error" role="alert">{{ apiError }}</li>
+				<li v-if="hasMoreChats"><NcButton @click="loadChats(true)">{{ $t('Load more') }}</NcButton></li>
+                <li v-if="apiError" class="chat-list-error" role="alert">{{ apiError }}</li>
 				<li v-if="!chats.length" class="chat-list-empty">{{ $t('No chats yet — start a new one.') }}</li>
 				<li v-else-if="!filteredChats.length" class="chat-list-empty">{{ $t('No chats match your search.') }}</li>
 			</template>
@@ -81,7 +110,7 @@
 </template>
 
 <script>
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, watch, onUnmounted } from 'vue'
 import ChatView from './views/ChatView.vue'
 import DocumentsView from './views/DocumentsView.vue'
 import SettingsView from './views/SettingsView.vue'
@@ -125,10 +154,14 @@ export default {
 		const busy = ref(false)
 		const chatFilter = ref('')
 		const apiError = ref('')
-		const filteredChats = computed(() => {
-			const query = chatFilter.value.trim().toLowerCase()
-			return query ? chats.value.filter((chat) => String(chat.title || '').toLowerCase().includes(query)) : chats.value
-		})
+        const filteredChats = computed(() => chats.value)
+        const projects = ref([])
+        const project = ref('*')
+        const showArchived = ref(false)
+        const hasMoreChats = ref(false)
+        let searchTimer = null
+        let searchVersion = 0
+
 
 		const appRootPath = () => {
 			const current = window.location.pathname.replace(/\/+$/, '')
@@ -143,19 +176,53 @@ export default {
 			window.history.pushState({}, '', url.toString())
 		}
 
-		const loadChats = () => {
-			return requestApi('GET', '/chats').then((list) => {
-				apiError.value = ''
-				if (!Array.isArray(list)) throw new Error(t('The chat list response was invalid.'))
-				chats.value = list
-				if (!currentChat.value || !list.some((chat) => chat.id === currentChat.value)) {
-					currentChat.value = list.length ? list[0].id : null
-				}
-			}).catch((error) => {
-				apiError.value = t('Chat list unavailable: {error}', { error: errMsg(error) })
-				return []
-			})
-		}
+        const loadChats = async (append = false) => {
+            const version = ++searchVersion
+            try {
+                const list = await requestApi('GET', '/chats', { search: chatFilter.value, offset: append ? chats.value.length : 0,
+                    limit: 100, archived: showArchived.value, ...(project.value === '*' ? {} : { project: project.value }) })
+                if (version !== searchVersion) return
+                if (!Array.isArray(list)) throw new Error(t('The chat list response was invalid.'))
+                chats.value = append ? chats.value.concat(list) : list
+                hasMoreChats.value = list.length === 100
+                apiError.value = ''
+            } catch (error) { apiError.value = errMsg(error) }
+        }
+        watch([chatFilter, project, showArchived], () => {
+            clearTimeout(searchTimer)
+            searchTimer = setTimeout(() => loadChats(), 250)
+        })
+        onUnmounted(() => { clearTimeout(searchTimer); searchVersion++ })
+        const loadProjects = async () => { projects.value = await requestApi('GET', '/projects') }
+        const editProject = async (item = null) => {
+            const title = window.prompt(t('Project name'), item?.title || '')
+            if (!title?.trim()) return
+            try { await requestApi('POST', '/projects', { ...item, title }); await loadProjects() }
+            catch (e) { apiError.value = errMsg(e) }
+        }
+        const archiveProject = async (item) => {
+            try { await requestApi('POST', '/projects', { ...item, archived: !item.archived }); await loadProjects() }
+            catch (e) { apiError.value = errMsg(e) }
+        }
+        const deleteProject = async (item) => {
+            if (!window.confirm(t('Delete project? Chats will be kept.'))) return
+            try { await requestApi('DELETE', '/projects/' + encodeURIComponent(item.id)); project.value = '*'; await loadProjects(); await loadChats() }
+            catch (e) { apiError.value = errMsg(e) }
+        }
+        const updateChat = async (id, changes) => {
+            try { await requestApi('PUT', '/chats/' + encodeURIComponent(id), changes); await loadChats() }
+            catch (e) { apiError.value = errMsg(e) }
+        }
+        const moveChat = async (chat) => {
+            // A labelled native select uses the same keyboard interaction in both entry points.
+            movingChat.value = chat
+        }
+        const movingChat = ref(null)
+        const configureChat = async (chat) => {
+            const instructions = window.prompt(t('Chat instructions'), chat.instructions || '')
+            if (instructions !== null) await updateChat(chat.id, { instructions })
+        }
+
 
 		const newChat = async () => {
 			if (busy.value) return
@@ -163,6 +230,7 @@ export default {
 			try {
 				const c = await requestApi('POST', '/chats', {})
 				if (!c || !c.id) throw new Error(t('The server returned no chat ID.'))
+                if (project.value !== '*' && project.value !== '') await requestApi('PUT', '/chats/' + encodeURIComponent(c.id), { project: project.value })
 				await loadChats()
 				currentChat.value = c.id
 				navigate('chat')
@@ -205,11 +273,13 @@ export default {
 
 		onMounted(() => {
 			loadChats()
+            loadProjects().catch((e) => { apiError.value = errMsg(e) })
 			if (typeof window !== 'undefined' && window.addEventListener) {
 				window.addEventListener('popstate', () => {
 					const current = window.location.pathname.replace(/\/+$/, '')
 					view.value = current.endsWith('/settings') ? 'settings' : current.endsWith('/documents') ? 'docs' : 'chat'
 				})
+                window.addEventListener('eva-ai:select-chat', (e) => { if (e.detail?.id) selectChat(e.detail.id) })
 				window.addEventListener('eva-ai:chats-cleared', () => {
 					currentChat.value = null
 					loadChats()
@@ -235,6 +305,7 @@ export default {
 			chats, currentChat, busy, chatFilter, filteredChats, apiError,
 			fileContextIds,
 			newChat, selectChat, renameChat, deleteChat, loadChats, navigate,
+            projects, project, showArchived, hasMoreChats, editProject, archiveProject, deleteProject, updateChat, moveChat, movingChat, configureChat,
 			mdiChatProcessing, mdiFileDocumentOutline, mdiTune, mdiTrashCanOutline, mdiMessagePlus, mdiPencilOutline,
 		}
 	},
@@ -242,6 +313,9 @@ export default {
 </script>
 
 <style scoped>
+.project-controls { display: grid; gap: 8px; padding: 8px 12px; list-style: none; }
+.project-controls label { display: block; }
+.project-controls select { width: 100%; }
 .eva-ai-app {
 	width: 100%;
 	--eva-content-width: clamp(1180px, 78vw, 1680px);

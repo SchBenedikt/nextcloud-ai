@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace OCA\EvaAi\Tests;
 
-use OCA\EvaAi\Service\ChatStore;
+use OCA\EvaAi\Service\LegacyChatStore as ChatStore;
 use OCP\Files\AppData\IAppDataFactory;
 use OCP\Files\IAppData;
 use OCP\Files\SimpleFS\ISimpleFile;

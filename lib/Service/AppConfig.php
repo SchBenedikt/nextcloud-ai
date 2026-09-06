@@ -10,6 +10,8 @@ class AppConfig {
     public const APP = 'eva_ai';
 
     private const USER_SETTINGS = [
+        'weather_enabled', 'talk_classification_enabled', 'personalization_enabled', 'ocr_enabled',
+        'chat_fallback_models', 'summary_model', 'tool_model',
         'ollama_url', 'embedding_model', 'chat_model', 'top_k', 'chunk_size',
         'chunk_overlap', 'max_file_size', 'max_files_per_run', 'scope_path',
         'context_size', 'temperature', 'actions_enabled', 'exec_write_types',
@@ -23,7 +25,14 @@ class AppConfig {
         'index_cancel_requested', 'index_run_id', 'index_enrolled', 'knowledge_initialized',
     ];
 
+    // Only operational defaults may be inherited. State, consent and personal paths stay private.
+    private const INHERITED_SETTINGS = ['ollama_url', 'embedding_model', 'chat_model', 'top_k',
+        'chunk_size', 'chunk_overlap', 'max_file_size', 'max_files_per_run',
+        'context_size', 'temperature', 'exec_write_types', 'exec_write_max_chars', 'exec_delete_mode'];
+
     private const DEFAULTS = [
+        'weather_enabled' => '0', 'talk_classification_enabled' => '0', 'personalization_enabled' => '1',
+        'ocr_enabled' => '0' => '0', 'chat_fallback_models' => '', 'summary_model' => '', 'tool_model' => '',
         'index_enabled' => '0',
         'ollama_url' => 'http://127.0.0.1:11434',
         'embedding_model' => 'nomic-embed-text',
@@ -107,8 +116,9 @@ class AppConfig {
             if ($userValue !== $sentinel) {
                 return (string)$userValue;
             }
-            // Personal settings must never inherit another user's or an old
-            // instance-wide value. New users receive only the app default.
+            if (in_array($key, self::INHERITED_SETTINGS, true)) {
+                return $this->config->getAppValue(self::APP, $key, self::DEFAULTS[$key] ?? '');
+            }
             return self::DEFAULTS[$key] ?? '';
         }
         $value = $this->config->getAppValue(self::APP, $key, self::DEFAULTS[$key] ?? '');
@@ -238,6 +248,11 @@ class AppConfig {
      * malformed, non-numeric, or out-of-range values.
      */
     public function validateValue(string $key, mixed $value): ?string {
+        if (in_array($key, ['chat_fallback_models', 'summary_model', 'tool_model'], true)) {
+            if (!is_string($value) || strlen($value) > 400 || preg_match('/[\r\n\x00]/', $value)) { return 'must be a bounded model name or list'; }
+            if ($key === 'chat_fallback_models' && count(explode(',', $value)) > 3) { return 'must contain at most three fallback models'; }
+            return null;
+        }
         if ($key === 'exec_write_types') {
             if (!is_scalar($value)) {
                 return 'must be a comma-separated list of file extensions';
@@ -257,7 +272,7 @@ class AppConfig {
             }
             return null;
         }
-        if (in_array($key, ['actions_enabled', 'notify_on_complete', 'mail_index_enabled', 'index_enrolled'], true)) {
+        if (in_array($key, ['actions_enabled', 'notify_on_complete', 'mail_index_enabled', 'index_enrolled', 'weather_enabled', 'talk_classification_enabled', 'personalization_enabled', 'ocr_enabled'], true)) {
             return is_scalar($value) && in_array((string)$value, ['0', '1', 'true', 'false', 'on', 'off'], true)
                 ? null : 'must be a boolean value';
         }
