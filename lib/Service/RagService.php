@@ -463,6 +463,11 @@ class RagService {
             'lastProcessed' => $this->config->get('last_index_processed'),
             'lastTotal' => $this->config->get('last_index_total'),
             'lastError' => $this->config->get('last_index_error'),
+            'embeddingCache' => [
+                'hits' => (int)$this->config->get('last_index_cache_hits'),
+                'misses' => (int)$this->config->get('last_index_cache_misses'),
+                'ollamaRequests' => (int)$this->config->get('last_index_ollama_requests'),
+            ],
             'settings' => $this->config->all(),
             'limits' => $this->config->limits(),
         ];

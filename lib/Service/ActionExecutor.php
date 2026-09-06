@@ -297,6 +297,7 @@ class ActionExecutor {
                     'type' => ['type' => 'string', 'description' => 'Share type: "link" (default, public link), "user" or "group".'],
                     'target' => ['type' => 'string', 'description' => 'For user/group shares: the user id or group id to share with.'],
                     'write' => ['type' => 'boolean', 'description' => 'Optional: allow editing (default read-only).'],
+                    'share' => ['type' => 'boolean', 'description' => 'Optional: allow recipients to reshare (default false).'],
                     'password' => ['type' => 'string', 'description' => 'Optional password for link shares.'],
                     'expiration' => ['type' => 'string', 'description' => 'Optional expiration date, ISO like "2026-12-31".'],
                     'note' => ['type' => 'string', 'description' => 'Optional note / message for the share.'],

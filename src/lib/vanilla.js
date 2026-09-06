@@ -293,9 +293,85 @@ export function mountChat(root, opts = {}) {
 			const label = document.createElement('div')
 			label.className = 'rconfirm-label'
 			label.textContent = t('EVA wants to run: {tool}', { tool: m.confirmation.name })
+			const args = m.confirmation.arguments || {}
 			const details = document.createElement('pre')
 			details.className = 'rconfirm-args'
-			details.textContent = JSON.stringify(m.confirmation.arguments || {}, null, 2)
+			if (m.confirmation.name === 'create_share') {
+				details.textContent = t('Review the share details before creating it. You can change the path, recipient, password and expiration date.')
+			} else {
+				details.textContent = JSON.stringify(args, null, 2)
+			}
+			const shareForm = m.confirmation.name === 'create_share' ? document.createElement('div') : null
+			const shareInputs = {}
+			if (shareForm) {
+				shareForm.className = 'rconfirm-share-form'
+				const field = (key, labelText, type, value) => {
+					const wrap = document.createElement('label')
+					wrap.className = 'rconfirm-field'
+					const caption = document.createElement('span')
+					caption.textContent = labelText
+					const input = document.createElement(type === 'textarea' ? 'textarea' : 'input')
+					if (type !== 'textarea') input.type = type
+					input.value = value || ''
+					if (key === 'path') input.required = true
+					wrap.append(caption, input)
+					shareForm.appendChild(wrap)
+					shareInputs[key] = input
+					return input
+				}
+				field('path', t('File or folder path'), 'text', args.path)
+				const typeWrap = document.createElement('label')
+				typeWrap.className = 'rconfirm-field'
+				const typeCaption = document.createElement('span')
+				typeCaption.textContent = t('Share type')
+				const typeSelect = document.createElement('select')
+				;[['link', t('Public link')], ['user', t('Nextcloud user')], ['group', t('Nextcloud group')]].forEach(([value, text]) => {
+					const option = document.createElement('option')
+					option.value = value
+					option.textContent = text
+					typeSelect.appendChild(option)
+				})
+				typeSelect.value = args.type === 'public' ? 'link' : (args.type || 'link')
+				typeWrap.append(typeCaption, typeSelect)
+				shareForm.appendChild(typeWrap)
+				shareInputs.type = typeSelect
+				const target = field('target', t('Recipient user or group'), 'text', args.target)
+				const password = field('password', t('Link password (optional)'), 'password', args.password)
+				password.autocomplete = 'new-password'
+				const expiration = field('expiration', t('Expiration date (optional)'), 'date', args.expiration)
+				const note = field('note', t('Message or note (optional)'), 'textarea', args.note)
+				const check = (key, text, checked) => {
+					const wrap = document.createElement('label')
+					wrap.className = 'rconfirm-check'
+					const input = document.createElement('input')
+					input.type = 'checkbox'
+					input.checked = !!checked
+					const caption = document.createElement('span')
+					caption.textContent = text
+					wrap.append(input, caption)
+					shareForm.appendChild(wrap)
+					shareInputs[key] = input
+				}
+				check('write', t('Allow editing'), args.write)
+				check('share', t('Allow resharing'), args.share)
+				const updateShareFields = () => {
+					const link = typeSelect.value === 'link'
+					target.parentElement.style.display = link ? 'none' : ''
+					password.parentElement.style.display = link ? '' : 'none'
+					args.type = typeSelect.value
+					args.path = shareInputs.path.value.trim()
+					args.target = target.value.trim()
+					args.password = password.value
+					args.expiration = expiration.value
+					args.note = note.value
+					args.write = shareInputs.write.checked
+					args.share = shareInputs.share.checked
+					return args.path !== '' && (link || args.target !== '')
+				}
+				typeSelect.addEventListener('change', updateShareFields)
+				shareForm.addEventListener('input', updateShareFields)
+				updateShareFields()
+			}
 			const actions = document.createElement('div')
 			actions.className = 'rconfirm-actions'
 			const approve = document.createElement('button')
@@ -317,6 +393,15 @@ export function mountChat(root, opts = {}) {
 				approve.disabled = true
 				reject.disabled = true
 				approve.textContent = t('Running…')
+				if (shareForm) {
+					shareForm.dispatchEvent(new Event('input'))
+					if (!shareInputs.path.value.trim() || (typeSelect.value !== 'link' && !shareInputs.target.value.trim())) {
+						approve.disabled = false
+						reject.disabled = false
+						approve.textContent = t('Confirm and run')
+						return
+					}
+				}
 				api('POST', '/confirmTool', {
 					name: m.confirmation.name,
 					arguments: m.confirmation.arguments || {},
@@ -325,7 +410,9 @@ export function mountChat(root, opts = {}) {
 						finish('⚠️ ' + (result?.error || t('The action could not be completed.')))
 						return
 					}
-					const value = typeof result.result === 'string' ? result.result : t('The action was completed.')
+					let value = t('The action was completed.')
+					if (typeof result.result === 'string') value = result.result
+					else if (result.result && result.result.url) value = t('Share created: {url}', { url: result.result.url })
 					finish('✅ ' + value)
 				}).catch((error) => {
 					finish('⚠️ ' + String(error?.message || error))
@@ -333,7 +420,9 @@ export function mountChat(root, opts = {}) {
 			})
 			reject.addEventListener('click', () => finish(t('Action cancelled.')))
 			actions.append(approve, reject)
-			panel.append(label, details, actions)
+			panel.append(label, details)
+			if (shareForm) panel.appendChild(shareForm)
+			panel.appendChild(actions)
 			wrap.appendChild(panel)
 		}
 

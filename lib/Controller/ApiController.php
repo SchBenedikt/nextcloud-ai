@@ -737,8 +737,19 @@ class ApiController extends OCSController {
             return new DataResponse(['error' => 'Not logged in'], 401);
         }
         $this->config->setUserId($user);
-        $names = array_map(static fn($m) => $m['name'] ?? '', $this->ollama->listModels());
-        return new DataResponse(['models' => $names, 'embedding' => $this->config->get('embedding_model')]);
+        $endpoint = trim((string)($this->requestParam('endpoint') ?? $this->config->ollamaUrl()));
+        $urlError = $this->validateOllamaUrl($endpoint);
+        if ($urlError !== null) {
+            return new DataResponse(['error' => $urlError], 400);
+        }
+        $models = $this->ollama->listModels($endpoint);
+        $names = array_values(array_filter(array_map(static fn($m) => (string)($m['name'] ?? ''), $models)));
+        return new DataResponse([
+            'models' => $names,
+            'embedding' => $this->config->get('embedding_model'),
+            'chat' => $this->config->get('chat_model'),
+            'details' => $models,
+        ]);
     }
 
     #[NoAdminRequired]

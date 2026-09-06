@@ -77,17 +77,27 @@
 						<p class="field-help">{{ $t('The address of your Ollama HTTP API. The default works when Ollama runs on this same server.') }}</p>
 					</div>
 					<div class="field">
-						<NcTextField id="embedding-model" :label="$t('Embedding model')" :label-outside="true" v-model="f.embedding_model" :placeholder="$t('nomic-embed-text')" />
-						<p class="field-help">{{ $t('Turns file text into searchable vectors. This model must be installed in Ollama.') }}</p>
+						<label class="native-label" for="embedding-model">{{ $t('Embedding model') }}</label>
+						<select id="embedding-model" v-model="f.embedding_model" class="native-select" :disabled="modelLoading || !embeddingModels.length">
+							<option v-if="!embeddingModels.length" :value="f.embedding_model">{{ modelLoading ? $t('Loading models…') : $t('No embedding model found') }}</option>
+							<option v-for="model in embeddingModels" :key="model" :value="model">{{ model }}</option>
+						</select>
+						<p class="field-help">{{ $t('EVA discovers installed models automatically from the Ollama endpoint. Embedding models turn file text into searchable vectors.') }}</p>
 					</div>
 					<div class="field">
-						<NcTextField id="chat-model" :label="$t('Chat model')" :label-outside="true" v-model="f.chat_model" :placeholder="$t('gemma4:cloud')" />
-						<p class="field-help">{{ $t('Writes EVA’s answers. Use a model available in Ollama.') }}</p>
+						<label class="native-label" for="chat-model">{{ $t('Chat model') }}</label>
+						<select id="chat-model" v-model="f.chat_model" class="native-select" :disabled="modelLoading || !chatModels.length">
+							<option v-if="!chatModels.length" :value="f.chat_model">{{ modelLoading ? $t('Loading models…') : $t('No chat model found') }}</option>
+							<option v-for="model in chatModels" :key="model" :value="model">{{ model }}</option>
+						</select>
+						<p class="field-help">{{ $t('EVA discovers installed chat models automatically from the Ollama endpoint.') }}</p>
 					</div>
 				</div>
 				<div class="inline-actions">
 					<NcButton type="secondary" :loading="checking" :disabled="busy" @click="checkOllama">{{ $t('Check connection') }}</NcButton>
-					<span class="action-hint">{{ $t('Saves the current values first, then tests the server and both models.') }}</span>
+					<span v-if="modelError" class="action-hint action-error">{{ modelError }}</span>
+					<span v-else-if="modelLoading" class="action-hint">{{ $t('Discovering models from Ollama…') }}</span>
+					<span v-else class="action-hint">{{ $t('Models are loaded automatically from the configured endpoint.') }}</span>
 				</div>
 				<div v-if="checkOut" class="check-panel" :class="'check-' + checkOut.type" role="status">
 					<div v-for="line in checkOut.lines" :key="line.label" class="check-line">
@@ -292,7 +302,7 @@
 </template>
 
 <script>
-import { ref, computed, onMounted, onUnmounted } from 'vue'
+import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
 import { NcCheckboxRadioSwitch } from '@nextcloud/vue'
 import { api, errMsg } from '../lib/api'
 import { translate as t } from '../lib/i18n'
@@ -327,6 +337,9 @@ export default {
 		})
 		const status = ref(null)
 		const limits = ref({})
+		const availableModels = ref([])
+		const modelLoading = ref(false)
+		const modelError = ref('')
 		const checkOut = ref(null)
 		const saving = ref(false)
 		const checking = ref(false)
@@ -364,6 +377,8 @@ export default {
 			set: value => { f.value.index_enrolled = value ? '1' : '0' },
 		})
 		const actionsDisabled = computed(() => f.value.actions_enabled !== '1')
+		const embeddingModels = computed(() => availableModels.value.filter((name) => /embed|bge|e5|gte|jina|minilm|nomic|snowflake|mxbai|arctic|retriev|instructor/i.test(name)))
+		const chatModels = computed(() => availableModels.value.filter((name) => !/embed|bge|e5|gte|jina|minilm|nomic|snowflake|mxbai|arctic|retriev|instructor|rerank/i.test(name)))
 		const indexingActive = computed(() => indexing.value || status.value?.indexing === true)
 		const busy = computed(() => saving.value || checking.value || indexing.value || resetting.value || deletingChats.value || stopping.value)
 		const settingsLocked = computed(() => busy.value || indexingActive.value)
@@ -413,6 +428,34 @@ export default {
 			return errors
 		}
 
+		function applyModelDiscovery(names) {
+			availableModels.value = [...new Set((names || []).map((name) => String(name || '').trim()).filter(Boolean))]
+			const embeddings = embeddingModels.value
+			const chats = chatModels.value
+			if (embeddings.length && !embeddings.includes(f.value.embedding_model)) {
+				f.value.embedding_model = embeddings[0]
+			}
+			if (chats.length && !chats.includes(f.value.chat_model)) {
+				f.value.chat_model = chats[0]
+			}
+		}
+
+		async function discoverModels(endpoint = f.value.ollama_url) {
+			const url = String(endpoint || '').trim()
+			if (!/^https?:\/\//i.test(url)) return
+			modelLoading.value = true
+			modelError.value = ''
+			try {
+				const data = await api('GET', 'models', { endpoint: url })
+				applyModelDiscovery(data?.models || [])
+				if (!availableModels.value.length) modelError.value = t('No models are installed in this Ollama endpoint.')
+			} catch (error) {
+				modelError.value = t('Models could not be loaded: {error}', { error: errMsg(error) })
+			} finally {
+				modelLoading.value = false
+			}
+		}
+
 		function fill(settings = status.value?.settings) {
 			if (!settings) return
 			Object.keys(f.value).forEach(key => {
@@ -428,6 +471,8 @@ export default {
 				status.value = await api('GET', 'status')
 				limits.value = status.value?.limits || {}
 				if (syncForm) fill()
+				if (Array.isArray(status.value?.models)) applyModelDiscovery(status.value.models)
+				if (syncForm) await discoverModels(f.value.ollama_url)
 			} catch (error) {
 				loadError.value = errMsg(error)
 			}
@@ -618,16 +663,22 @@ export default {
 		}
 
 		let statusTimer = null
+		let modelTimer = null
+		watch(() => f.value.ollama_url, (value) => {
+			window.clearTimeout(modelTimer)
+			modelTimer = window.setTimeout(() => discoverModels(value), 500)
+		})
 		onMounted(async () => {
 			await loadStatus(true)
 			statusTimer = window.setInterval(loadStatus, 3000)
 		})
 		onUnmounted(() => {
 			if (statusTimer !== null) window.clearInterval(statusTimer)
+			if (modelTimer !== null) window.clearTimeout(modelTimer)
 		})
 
 		return {
-			f, status, limits, checkOut, saving, checking, indexing, resetting, deletingChats, stopping, saved, loadError, message, validationErrors, resetConfirm, chatsDeleteConfirm,
+			f, status, limits, availableModels, embeddingModels, chatModels, modelLoading, modelError, checkOut, saving, checking, indexing, resetting, deletingChats, stopping, saved, loadError, message, validationErrors, resetConfirm, chatsDeleteConfirm,
 			newExcludePath, excludeError, excludeList, actionsEnabled, notificationsEnabled, mailIndexEnabled, indexEnrolled, actionsDisabled, busy, indexingActive, settingsLocked, maxFileSizeMb,
 			formatNumber, loadStatus, save, checkOllama, addExclude, removeExclude, startIndex, startMailIndex, stopIndex, resetIndex, deleteAllChats,
 		}
@@ -710,11 +761,16 @@ export default {
 .field-grid-wide { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 .field-wide { grid-column: 1 / -1; }
 .field { min-width: 0; }
+.native-label { display: block; margin-bottom: 6px; font-size: 13px; font-weight: 600; }
+.native-select { width: 100%; min-height: 42px; padding: 8px 34px 8px 10px; border: 2px solid var(--color-border); border-radius: var(--border-radius-large, 8px); background: var(--color-main-background); color: var(--color-main-text); font: inherit; }
+.native-select:focus { border-color: var(--color-primary-element); outline: 2px solid color-mix(in srgb, var(--color-primary-element) 25%, transparent); outline-offset: 1px; }
+.native-select:disabled { opacity: .65; }
 .sub-heading strong { display: block; margin-bottom: 4px; font-size: 14px; font-weight: 600; }
 .field-help { margin: 6px 0 0; color: var(--color-text-maxcontrast); font-size: 12px; line-height: 1.5; }
 .field-help code, .help-box code { padding: 1px 4px; border-radius: 4px; background: var(--color-background-dark); font-family: var(--font-family-monospace, monospace); }
 .inline-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 12px; margin-top: 18px; }
 .action-hint { color: var(--color-text-maxcontrast); font-size: 12px; }
+.action-error { color: var(--color-error); }
 
 .check-panel { display: grid; gap: 8px; margin-top: 14px; padding: 12px; border: 1px solid var(--color-border); border-radius: 10px; }
 .check-success { border-color: color-mix(in srgb, var(--color-success) 45%, var(--color-border)); background: color-mix(in srgb, var(--color-success) 6%, var(--color-main-background)); }
