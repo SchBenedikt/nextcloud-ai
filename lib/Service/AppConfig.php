@@ -18,7 +18,8 @@ class AppConfig {
         'talk_bot_trigger', 'exclude_paths',
         // Per-user index state: progress and hashes must never leak between users.
         'index_running', 'index_started', 'index_heartbeat', 'index_finished', 'last_index_processed',
-        'last_index_total', 'last_index_error', 'index_config_hash', 'index_mode',
+        'last_index_total', 'last_index_error', 'last_index_cache_hits', 'last_index_cache_misses',
+        'last_index_ollama_requests', 'index_config_hash', 'index_mode',
         'index_cancel_requested', 'index_run_id', 'index_enrolled', 'knowledge_initialized',
     ];
 
@@ -53,6 +54,9 @@ class AppConfig {
         'last_index_processed' => '0',
         'last_index_total' => '0',
         'last_index_error' => '',
+        'last_index_cache_hits' => '0',
+        'last_index_cache_misses' => '0',
+        'last_index_ollama_requests' => '0',
         'index_config_hash' => '',
         'index_mode' => 'idle',
         'index_cancel_requested' => '0',

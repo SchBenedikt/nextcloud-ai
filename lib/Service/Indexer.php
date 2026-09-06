@@ -28,6 +28,7 @@ class Indexer {
         private ChunkMapper $chunkMapper,
         private Chunker $chunker,
         private Ollama $ollama,
+        private EmbeddingCache $embeddingCache,
         private EmailService $email,
         private LoggerInterface $logger,
         private ILockingProvider $lockingProvider
@@ -36,13 +37,22 @@ class Indexer {
 
     /**
      * Perform one bounded indexing pass for a user.
-     * @return array{processed:int,changed:int,skipped:int,total_seen:int,error:?string}
+     * @return array{processed:int,changed:int,skipped:int,total_seen:int,cache_hits:int,cache_misses:int,ollama_requests:int,error:?string}
      */
     public function run(string $userId, ?int $maxFiles = null, string $mode = 'all', bool $keepRunning = false, ?string $runId = null): array {
         $this->config->setUserId($userId);
         $mode = in_array($mode, ['all', 'files', 'mail'], true) ? $mode : 'all';
         $maxFiles = $maxFiles ?? min(10000, max(1, $this->config->getInt('max_files_per_run', 40)));
-        $result = ['processed' => 0, 'changed' => 0, 'skipped' => 0, 'total_seen' => 0, 'error' => null];
+        $result = [
+            'processed' => 0,
+            'changed' => 0,
+            'skipped' => 0,
+            'total_seen' => 0,
+            'cache_hits' => 0,
+            'cache_misses' => 0,
+            'ollama_requests' => 0,
+            'error' => null,
+        ];
         $lockPath = 'eva_ai/index/' . hash('sha256', $userId);
         try {
             $this->lockingProvider->acquireLock($lockPath, ILockingProvider::LOCK_EXCLUSIVE, 'EVA index for ' . $userId);
@@ -74,6 +84,9 @@ class Indexer {
         $this->config->set('index_started', (string)time());
         $this->config->set('index_heartbeat', (string)time());
         $this->config->set('last_index_error', '');
+        $this->config->set('last_index_cache_hits', '0');
+        $this->config->set('last_index_cache_misses', '0');
+        $this->config->set('last_index_ollama_requests', '0');
         
         // Calculate the file-index configuration hash only for file passes.
         // A mail-only request must not invalidate the user's file index.
@@ -252,7 +265,7 @@ class Indexer {
                 $result['changed']++;
 
                 if (count($batch) >= self::BATCH || $result['processed'] >= $maxFiles) {
-                    $this->flushBatch($batch, $result, $runId);
+                    $this->flushBatch($batch, $result, $runId, $userId);
                 }
                 if ($result['processed'] >= $maxFiles) {
                     $completed = false;
@@ -263,7 +276,7 @@ class Indexer {
             if ($this->cancellationRequested($runId)) {
                 $cancelled = true;
             }
-            $this->flushBatch($batch, $result, $runId);
+            $this->flushBatch($batch, $result, $runId, $userId);
             // A stop may have arrived during embedding; re-check before any
             // cleanup or mail work so cancellation cannot trigger more writes.
             if ($this->cancellationRequested($runId)) {
@@ -305,6 +318,9 @@ class Indexer {
                     }
                     $this->config->set('last_index_processed', (string)$result['processed']);
                     $this->config->set('last_index_total', (string)$result['total_seen']);
+                    $this->config->set('last_index_cache_hits', (string)$result['cache_hits']);
+                    $this->config->set('last_index_cache_misses', (string)$result['cache_misses']);
+                    $this->config->set('last_index_ollama_requests', (string)$result['ollama_requests']);
                     if ($result['error'] !== null) {
                         $this->config->set('last_index_error', $result['error']);
                     }
@@ -710,7 +726,7 @@ class Indexer {
         }
     }
 
-    private function flushBatch(array &$batch, array &$result, ?string $runId = null): void {
+    private function flushBatch(array &$batch, array &$result, ?string $runId = null, ?string $userId = null): void {
         if (empty($batch)) {
             return;
         }
@@ -726,7 +742,11 @@ class Indexer {
             $texts[] = $b['content'];
         }
 
-        [$vecs, $err] = $this->ollama->embedBatch($texts);
+        [$vecs, $err] = $this->ollama->embedBatch($texts, $userId);
+        $stats = $this->ollama->lastEmbeddingStats();
+        $result['cache_hits'] += $stats['cache_hits'];
+        $result['cache_misses'] += $stats['cache_misses'];
+        $result['ollama_requests'] += $stats['ollama_requests'];
         $this->touchHeartbeat($runId);
         // The HTTP client uses a bounded read timeout, but cancellation can
         // still arrive while a response is completing. Never publish vectors
@@ -893,10 +913,11 @@ class Indexer {
             $result['processed']++;
             $processedThisPass++;
             if (count($batch) >= self::BATCH) {
-                $this->flushBatch($batch, $result, $runId);
+                $this->flushBatch($batch, $result, $runId, $userId);
             }
         }
-        $this->flushBatch($batch, $result, $runId);
+        $this->flushBatch($batch, $result, $runId, $userId);
+
         if ($this->cancellationRequested($runId)) {
             return;
         }
@@ -1050,12 +1071,14 @@ class Indexer {
             $this->config->setUserId($userId);
             $docs = $this->documentMapper->deleteByUser($userId);
             $chunks = $this->chunkMapper->deleteForUser($userId);
+            $this->embeddingCache->clearUser($userId);
         } else {
             // A null reset is the explicit all-users/maintenance path. Clear
             // any stale request context before writing the global state.
             $this->config->setUserId(null);
             $docs = $this->documentMapper->deleteAll();
             $chunks = $this->chunkMapper->deleteAll();
+            $this->embeddingCache->clear();
         }
         $this->config->set('index_running', '0');
         $this->config->set('index_finished', '0');
@@ -1063,6 +1086,9 @@ class Indexer {
         $this->config->set('last_index_total', '0');
         $this->config->set('last_index_processed', '0');
         $this->config->set('last_index_error', '');
+        $this->config->set('last_index_cache_hits', '0');
+        $this->config->set('last_index_cache_misses', '0');
+        $this->config->set('last_index_ollama_requests', '0');
         $this->config->set('index_config_hash', ''); // Reset config hash on full reset
         $this->config->set('index_mode', 'idle');
         $this->config->set('index_cancel_requested', '0');

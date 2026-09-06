@@ -40,7 +40,13 @@ final class Issue76OllamaStatusTest extends TestCase {
         $cacheFactory = $this->createMock(\OCP\ICacheFactory::class);
         $cacheFactory->expects(self::once())->method('createDistributed')->with('eva_ai_status_')->willReturn($cache);
 
-        $ollama = new Ollama($config, $clientService, $this->createMock(LoggerInterface::class), $cacheFactory);
+        $ollama = new Ollama(
+            $config,
+            $clientService,
+            $this->createMock(LoggerInterface::class),
+            $cacheFactory,
+            $this->createMock(\OCA\EvaAi\Service\EmbeddingCache::class)
+        );
         self::assertSame(['name' => 'gemma4:cloud'], $ollama->status()['models'][0]);
         self::assertSame(['name' => 'gemma4:cloud'], $ollama->status()['models'][0]);
     }

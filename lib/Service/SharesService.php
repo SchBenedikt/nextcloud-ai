@@ -112,8 +112,16 @@ class SharesService {
 
         if (!empty($args['expiration'])) {
             try {
-                $exp = new \DateTimeImmutable((string)$args['expiration']);
-                $share->setExpirationDate($exp);
+                $date = \DateTime::createFromFormat('!Y-m-d', (string)$args['expiration']);
+                $errors = \DateTime::getLastErrors();
+                if ($date === false || ($errors !== false && ($errors['warning_count'] > 0 || $errors['error_count'] > 0))
+                    || $date->format('Y-m-d') !== (string)$args['expiration']) {
+                    throw new \InvalidArgumentException('invalid date');
+                }
+                if ($date < new \DateTime('today')) {
+                    return ['ok' => false, 'error' => 'Expiration date must be today or later'];
+                }
+                $share->setExpirationDate($date);
             } catch (\Throwable $e) {
                 return ['ok' => false, 'error' => 'Invalid expiration date (use ISO like 2026-12-31)'];
             }
@@ -156,7 +164,16 @@ class SharesService {
         }
         if (!empty($args['expiration'])) {
             try {
-                $share->setExpirationDate(new \DateTimeImmutable((string)$args['expiration']));
+                $date = \DateTime::createFromFormat('!Y-m-d', (string)$args['expiration']);
+                $errors = \DateTime::getLastErrors();
+                if ($date === false || ($errors !== false && ($errors['warning_count'] > 0 || $errors['error_count'] > 0))
+                    || $date->format('Y-m-d') !== (string)$args['expiration']) {
+                    throw new \InvalidArgumentException('invalid date');
+                }
+                if ($date < new \DateTime('today')) {
+                    return ['ok' => false, 'error' => 'Expiration date must be today or later'];
+                }
+                $share->setExpirationDate($date);
             } catch (\Throwable $e) {
                 return ['ok' => false, 'error' => 'Invalid expiration date'];
             }

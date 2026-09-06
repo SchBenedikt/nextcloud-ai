@@ -81,6 +81,12 @@ final class FrontendContractTest extends TestCase {
         self::assertStringContainsString('api#deleteAllChats', (string)file_get_contents(__DIR__ . '/../appinfo/routes.php'));
         self::assertStringContainsString('public function deleteAllChats', (string)file_get_contents(__DIR__ . '/../lib/Controller/ApiController.php'));
         self::assertStringContainsString("public function models(): DataResponse", (string)file_get_contents(__DIR__ . '/../lib/Controller/ApiController.php'));
+        self::assertStringContainsString('public function listModels(?string $baseUrl = null): array', (string)file_get_contents(__DIR__ . '/../lib/Service/Ollama.php'));
+        self::assertStringContainsString('availableModels', $settings);
+        self::assertStringContainsString('embeddingModels', $settings);
+        self::assertStringContainsString('chatModels', $settings);
+        self::assertStringContainsString('m.confirmation.name === \'create_share\'', $vanilla = (string)file_get_contents(__DIR__ . '/../src/lib/vanilla.js'));
+        self::assertStringContainsString('buildShareForm', (string)file_get_contents(__DIR__ . '/../js/chat.js'));
         self::assertStringContainsString("return new DataResponse(['error' => 'Not logged in'], 401)", (string)file_get_contents(__DIR__ . '/../lib/Controller/ApiController.php'));
         $controller = (string)file_get_contents(__DIR__ . '/../lib/Controller/ApiController.php');
         self::assertStringContainsString('KnowledgeInitializer $knowledgeInitializer', $controller);

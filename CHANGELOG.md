@@ -7,6 +7,7 @@ follows [Semantic Versioning](https://semver.org/).
 ## [Unreleased]
 
 ### Added
+- **Issue #145:** user-isolated, content-addressed embedding cache with 30-day bounded retention, model/endpoint/schema metadata validation, duplicate-miss coalescing, reset cleanup, and index-status hit/miss/request counters.
 - **Issue #109:** English and German translation bundles for the Vue workspace, file actions and standalone chat.
 - Opt-in single-process frontend build for memory-constrained hosts (`EVA_LOW_MEMORY_BUILD=1`).
 - **Issue #99:** calendar event listing and free-slot detection now expand recurring events with bounded support for RRULE, RDATE, EXDATE, and RECURRENCE-ID.

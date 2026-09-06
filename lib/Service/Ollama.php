@@ -18,12 +18,15 @@ class Ollama {
 
     private ?ICache $statusStore = null;
     private bool $statusStoreInitialized = false;
+    /** @var array{cache_hits:int,cache_misses:int,ollama_requests:int} */
+    private array $lastEmbeddingStats = ['cache_hits' => 0, 'cache_misses' => 0, 'ollama_requests' => 0];
 
     public function __construct(
         private AppConfig $config,
         private IClientService $clientService,
         private LoggerInterface $logger,
-        private ICacheFactory $cacheFactory
+        private ICacheFactory $cacheFactory,
+        private EmbeddingCache $embeddingCache
     ) {
     }
 
@@ -138,9 +141,10 @@ class Ollama {
     }
 
     /** @return array<int,array<string,mixed>> */
-    public function listModels(): array {
+    public function listModels(?string $baseUrl = null): array {
+        $baseUrl = $baseUrl !== null ? rtrim($baseUrl, '/') : $this->base();
         try {
-            $r = $this->client()->get($this->base() . '/api/tags', ['timeout' => 20]);
+            $r = $this->client()->get($baseUrl . '/api/tags', ['timeout' => 20]);
             $data = json_decode((string)$r->getBody(), true);
             return $data['models'] ?? [];
         } catch (\Throwable $e) {
@@ -266,19 +270,51 @@ class Ollama {
     }
 
     /**
-     * Embed a batch of texts.
+     * Embed a batch of texts, reusing user-isolated cached vectors where
+     * possible. Duplicate misses are coalesced into one model input.
+     *
      * @param string[] $texts
-     * @return array{0: array, 1: ?string} [vectors[], error]
+     * @return array{0: array|null, 1: ?string} [vectors[], error]
      */
-    public function embedBatch(array $texts): array {
+    public function embedBatch(array $texts, ?string $userId = null): array {
+        $this->lastEmbeddingStats = ['cache_hits' => 0, 'cache_misses' => 0, 'ollama_requests' => 0];
         if (empty($texts)) {
             return [[], null];
         }
+
+        $vectors = array_fill(0, count($texts), null);
+        $misses = [];
+        $missIndices = [];
+        $seenMisses = [];
+        foreach ($texts as $index => $text) {
+            $text = (string)$text;
+            if ($userId !== null && $userId !== '') {
+                $cached = $this->embeddingCache->get($userId, $text);
+                if ($cached !== null) {
+                    $vectors[$index] = $cached['vector'];
+                    $this->lastEmbeddingStats['cache_hits']++;
+                    continue;
+                }
+            }
+            $digest = hash('sha256', preg_replace('/\\s+/u', ' ', trim($text)) ?? trim($text));
+            $missIndices[$digest][] = $index;
+            if (!isset($seenMisses[$digest])) {
+                $seenMisses[$digest] = true;
+                $misses[$digest] = $text;
+            }
+        }
+
+        $this->lastEmbeddingStats['cache_misses'] = count($misses);
+        if ($misses === []) {
+            return [$vectors, null];
+        }
+
+        $missTexts = array_values($misses);
         $model = $this->config->get('embedding_model');
         try {
-            $body = ['model' => $model, 'input' => $texts];
+            $this->lastEmbeddingStats['ollama_requests'] = 1;
             $r = $this->client()->post($this->base() . '/api/embed', [
-                'json' => $body,
+                'json' => ['model' => $model, 'input' => $missTexts],
                 // Keep cancellation responsive while allowing a cold model
                 // enough time to produce a normal batch response.
                 'timeout' => 30,
@@ -286,15 +322,48 @@ class Ollama {
             ]);
             $data = json_decode((string)$r->getBody(), true);
             $embs = $data['embeddings'] ?? null;
-            if (is_array($embs) && count($embs) === count($texts)) {
-                return [$embs, null];
+            if (!is_array($embs) || count($embs) !== count($missTexts)) {
+                // Fallback: per-text, retaining the same coalesced miss set.
+                [$embs, $error] = $this->embedBatchLegacy($missTexts);
+                if ($error !== null || !is_array($embs)) {
+                    return [null, $error ?? 'Unexpected embedding response'];
+                }
             }
-            // Fallback: per-text
-            return $this->embedBatchLegacy($texts);
+
+            $dimension = null;
+            foreach ($embs as $vector) {
+                if (!$this->isNumericVector($vector)) {
+                    return [null, 'Invalid embedding vector returned'];
+                }
+                $dimension ??= count($vector);
+                if (count($vector) !== $dimension) {
+                    return [null, 'Embedding vectors have inconsistent dimensions'];
+                }
+            }
+
+            $cacheEntries = [];
+            $missKeys = array_keys($misses);
+            foreach ($missTexts as $i => $text) {
+                $vector = array_map('floatval', $embs[$i]);
+                foreach ($missIndices[$missKeys[$i]] as $index) {
+                    $vectors[$index] = $vector;
+                }
+                if ($userId !== null && $userId !== '') {
+                    $cacheEntries[] = ['userId' => $userId, 'text' => $text, 'vector' => $vector];
+                }
+            }
+            // Publish only after the complete response has been validated.
+            $this->embeddingCache->putMany($cacheEntries);
+            return [$vectors, null];
         } catch (\Throwable $e) {
             $this->logger->error('eva_ai embed batch failed', ['exception' => $e]);
             return [null, $e->getMessage()];
         }
+    }
+
+    /** @return array{cache_hits:int,cache_misses:int,ollama_requests:int} */
+    public function lastEmbeddingStats(): array {
+        return $this->lastEmbeddingStats;
     }
 
     /** @param string[] $texts */
@@ -303,6 +372,7 @@ class Ollama {
         try {
             $out = [];
             foreach ($texts as $t) {
+                $this->lastEmbeddingStats['ollama_requests']++;
                 $r = $this->client()->post($this->base() . '/api/embeddings', [
                     'json' => ['model' => $model, 'prompt' => $t],
                     'timeout' => 30,
@@ -322,9 +392,21 @@ class Ollama {
         }
     }
 
-    /** @param float[] $vector */
-    public function embedQuery(array $texts): array {
-        return $this->embedBatch($texts);
+    /** @param string[] $texts */
+    public function embedQuery(array $texts, ?string $userId = null): array {
+        return $this->embedBatch($texts, $userId);
+    }
+
+    private function isNumericVector(mixed $vector): bool {
+        if (!is_array($vector) || $vector === []) {
+            return false;
+        }
+        foreach ($vector as $value) {
+            if (!is_int($value) && !is_float($value) && !is_numeric($value)) {
+                return false;
+            }
+        }
+        return true;
     }
 
     /**

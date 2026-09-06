@@ -200,6 +200,14 @@
         .rconfirm { margin-top: 10px; max-width: min(100%, 560px); padding: 12px; border: 1px solid var(--color-border, #ccd0d4); border-left: 3px solid var(--color-warning, #eab308); border-radius: 8px; background: var(--color-background-hover, #f6f7f8); }
         .rconfirm-label { font-size: 13px; font-weight: 650; }
         .rconfirm-args { max-height: 150px; margin: 8px 0; padding: 8px; overflow: auto; white-space: pre-wrap; word-break: break-word; font: 12px/1.45 var(--font-family-monospace, monospace); color: var(--color-text-maxcontrast, #555); background: var(--color-main-background, #fff); border: 1px solid var(--color-border, #ddd); border-radius: 5px; }
+        .rconfirm-share-form { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; margin: 10px 0 12px; }
+        .rconfirm-field { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+        .rconfirm-field:first-child { grid-column: 1 / -1; }
+        .rconfirm-field span, .rconfirm-check span { color: var(--color-text-maxcontrast, #555); font-size: 12px; font-weight: 600; }
+        .rconfirm-field input, .rconfirm-field select, .rconfirm-field textarea { width: 100%; min-height: 34px; padding: 6px 8px; border: 1px solid var(--color-border, #bbb); border-radius: 6px; background: var(--color-main-background, #fff); color: var(--color-main-text, #222); font: inherit; font-size: 13px; }
+        .rconfirm-field textarea { min-height: 58px; resize: vertical; }
+        .rconfirm-check { display: flex; align-items: center; gap: 7px; min-width: 0; }
+        .rconfirm-check input { margin: 0; }
         .rconfirm-actions { display: flex; gap: 8px; flex-wrap: wrap; }
         .rconfirm-actions button { min-height: 34px; padding: 6px 12px; border: 1px solid var(--color-border, #ccd0d4); border-radius: 6px; cursor: pointer; font: inherit; font-size: 13px; }
         .rconfirm-approve { color: var(--color-primary-element-text, #fff); background: var(--color-primary-element, #00679c); border-color: var(--color-primary-element, #00679c) !important; }
@@ -215,6 +223,10 @@
             cursor: pointer;
         }
         .export-btn:disabled { opacity: .5; cursor: default; }
+        @media (max-width: 600px) {
+            .rconfirm-share-form { grid-template-columns: 1fr; }
+            .rconfirm-field:first-child { grid-column: auto; }
+        }
         .rm { position: relative; }
         .rcopy {
             position: absolute;

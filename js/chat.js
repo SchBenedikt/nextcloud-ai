@@ -224,6 +224,83 @@
 		return row;
 	}
 
+	function buildShareForm(args) {
+		var form = document.createElement('div');
+		form.className = 'rconfirm-share-form';
+		var inputs = {};
+		function field(key, labelText, type, value) {
+			var wrap = document.createElement('label');
+			wrap.className = 'rconfirm-field';
+			var caption = document.createElement('span');
+			caption.textContent = labelText;
+			var input = document.createElement(type === 'textarea' ? 'textarea' : 'input');
+			if (type !== 'textarea') input.type = type;
+			input.value = value || '';
+			if (key === 'path') input.required = true;
+			wrap.appendChild(caption);
+			wrap.appendChild(input);
+			form.appendChild(wrap);
+			inputs[key] = input;
+			return input;
+		}
+		field('path', tr('File or folder path'), 'text', args.path);
+		var typeWrap = document.createElement('label');
+		typeWrap.className = 'rconfirm-field';
+		var typeCaption = document.createElement('span');
+		typeCaption.textContent = tr('Share type');
+		var typeSelect = document.createElement('select');
+		[['link', tr('Public link')], ['user', tr('Nextcloud user')], ['group', tr('Nextcloud group')]].forEach(function (entry) {
+			var option = document.createElement('option');
+			option.value = entry[0];
+			option.textContent = entry[1];
+			typeSelect.appendChild(option);
+		});
+		typeSelect.value = args.type === 'public' ? 'link' : (args.type || 'link');
+		typeWrap.appendChild(typeCaption);
+		typeWrap.appendChild(typeSelect);
+		form.appendChild(typeWrap);
+		inputs.type = typeSelect;
+		var target = field('target', tr('Recipient user or group'), 'text', args.target);
+		var password = field('password', tr('Link password (optional)'), 'password', args.password);
+		password.autocomplete = 'new-password';
+		field('expiration', tr('Expiration date (optional)'), 'date', args.expiration);
+		field('note', tr('Message or note (optional)'), 'textarea', args.note);
+		function check(key, text, checked) {
+			var wrap = document.createElement('label');
+			wrap.className = 'rconfirm-check';
+			var input = document.createElement('input');
+			input.type = 'checkbox';
+			input.checked = !!checked;
+			var caption = document.createElement('span');
+			caption.textContent = text;
+			wrap.appendChild(input);
+			wrap.appendChild(caption);
+			form.appendChild(wrap);
+			inputs[key] = input;
+		}
+		check('write', tr('Allow editing'), args.write);
+		check('share', tr('Allow resharing'), args.share);
+		function sync() {
+			var link = typeSelect.value === 'link';
+			target.parentNode.style.display = link ? 'none' : '';
+			password.parentNode.style.display = link ? '' : 'none';
+			args.type = typeSelect.value;
+			args.path = inputs.path.value.trim();
+			args.target = target.value.trim();
+			args.password = password.value;
+			args.expiration = inputs.expiration.value;
+			args.note = inputs.note.value;
+			args.write = inputs.write.checked;
+			args.share = inputs.share.checked;
+			return args.path !== '' && (link || args.target !== '');
+		}
+		typeSelect.addEventListener('change', sync);
+		form.addEventListener('input', sync);
+		form.__sync = sync;
+		sync();
+		return form;
+	}
+
 	function renderMsg(m, idx) {
 		var wrap = document.createElement('div');
 		wrap.className = 'rm ' + m.role;
@@ -292,16 +369,22 @@
 			});
 			wrap.appendChild(s);
 		}
-
 		if (m.confirmation && !m.confirmation.resolved) {
+
 			var panel = document.createElement('div');
 			panel.className = 'rconfirm';
 			var label = document.createElement('div');
 			label.className = 'rconfirm-label';
 			label.textContent = tr('EVA wants to run: {tool}', { tool: m.confirmation.name });
+			var args = m.confirmation.arguments || {};
 			var details = document.createElement('pre');
 			details.className = 'rconfirm-args';
-			details.textContent = JSON.stringify(m.confirmation.arguments || {}, null, 2);
+			if (m.confirmation.name === 'create_share') {
+				details.textContent = tr('Review the share details before creating it. You can change the path, recipient, password and expiration date.');
+			} else {
+				details.textContent = JSON.stringify(args, null, 2);
+			}
+			var shareForm = m.confirmation.name === 'create_share' ? buildShareForm(args) : null;
 			var actions = document.createElement('div');
 			actions.className = 'rconfirm-actions';
 			var approve = document.createElement('button');
@@ -323,13 +406,22 @@
 				approve.disabled = true;
 				reject.disabled = true;
 				approve.textContent = tr('Running…');
+				if (shareForm && shareForm.__sync && !shareForm.__sync()) {
+					approve.disabled = false;
+					reject.disabled = false;
+					approve.textContent = tr('Confirm and run');
+					return;
+				}
 				api('POST', '/confirmTool', { name: m.confirmation.name, arguments: m.confirmation.arguments || {} })
 					.then(function (result) {
 						if (!result || !result.ok) {
 							finish('⚠️ ' + (result && result.error || tr('The action could not be completed.')));
 							return;
 						}
-						finish('✅ ' + (typeof result.result === 'string' ? result.result : tr('The action was completed.')));
+						var value = tr('The action was completed.');
+						if (typeof result.result === 'string') value = result.result;
+						else if (result.result && result.result.url) value = tr('Share created: {url}', { url: result.result.url });
+						finish('✅ ' + value);
 					})
 					.catch(function (error) { finish('⚠️ ' + String(error && error.message || error)); });
 			});
@@ -338,6 +430,7 @@
 			actions.appendChild(reject);
 			panel.appendChild(label);
 			panel.appendChild(details);
+			if (shareForm) panel.appendChild(shareForm);
 			panel.appendChild(actions);
 			wrap.appendChild(panel);
 		}

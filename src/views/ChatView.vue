@@ -236,6 +236,14 @@ export default {
 .chatview-root .rconfirm { margin-top: 10px; max-width: min(100%, 560px); padding: 12px; border: 1px solid var(--color-border, #ccd0d4); border-left: 3px solid var(--color-warning, #eab308); border-radius: 8px; background: var(--color-background-hover, #f6f7f8); }
 .chatview-root .rconfirm-label { font-size: 13px; font-weight: 650; color: var(--color-main-text, #222); }
 .chatview-root .rconfirm-args { max-height: 150px; margin: 8px 0; padding: 8px; overflow: auto; white-space: pre-wrap; word-break: break-word; font: 12px/1.45 var(--font-family-monospace, monospace); color: var(--color-text-maxcontrast, #555); background: var(--color-main-background, #fff); border: 1px solid var(--color-border, #ddd); border-radius: 5px; }
+.chatview-root .rconfirm-share-form { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; margin: 10px 0 12px; }
+.chatview-root .rconfirm-field { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.chatview-root .rconfirm-field:first-child { grid-column: 1 / -1; }
+.chatview-root .rconfirm-field span, .chatview-root .rconfirm-check span { color: var(--color-text-maxcontrast, #555); font-size: 12px; font-weight: 600; }
+.chatview-root .rconfirm-field input, .chatview-root .rconfirm-field select, .chatview-root .rconfirm-field textarea { width: 100%; min-height: 34px; padding: 6px 8px; border: 1px solid var(--color-border, #bbb); border-radius: var(--border-radius-element, 6px); background: var(--color-main-background, #fff); color: var(--color-main-text, #222); font: inherit; font-size: 13px; box-sizing: border-box; }
+.chatview-root .rconfirm-field textarea { min-height: 58px; resize: vertical; }
+.chatview-root .rconfirm-check { display: flex; align-items: center; gap: 7px; min-width: 0; }
+.chatview-root .rconfirm-check input { margin: 0; }
 .chatview-root .rconfirm-actions { display: flex; gap: 8px; flex-wrap: wrap; }
 .chatview-root .rconfirm-actions button { min-height: var(--default-clickable-area, 34px); padding: 6px 12px; border: 1px solid var(--color-border, #ccd0d4); border-radius: var(--border-radius-element, 6px); cursor: pointer; font: inherit; font-size: 13px; }
 .chatview-root .rconfirm-approve { color: var(--color-primary-element-text, #fff); background: var(--color-primary-element, #00679c); border-color: var(--color-primary-element, #00679c) !important; }
@@ -302,6 +310,8 @@ export default {
 	.chatview-root .chat-log { padding-top: 18px; gap: 16px; }
 	.chatview-root .rb { max-width: 94%; }
 	.chatview-root .rm.assistant .rb { padding-right: 28px; }
+	.chatview-root .rconfirm-share-form { grid-template-columns: 1fr; }
+	.chatview-root .rconfirm-field:first-child { grid-column: auto; }
 	.chatview-root .cbtn { padding-inline: 13px; }
 }
 .chatview-root .head .export { display: inline-flex; align-items: center; justify-content: center; gap: 6px; min-height: var(--default-clickable-area, 34px); padding: 6px 12px; border: 1px solid var(--color-border, #ccd0d4); border-radius: var(--border-radius-element, 8px); background: var(--color-main-background, #fff); color: var(--color-main-text, #222); cursor: pointer; font: inherit; font-size: 13px; font-weight: 500; line-height: 1.2; transition: background-color var(--animation-quick, .2s), border-color var(--animation-quick, .2s), color var(--animation-quick, .2s); }

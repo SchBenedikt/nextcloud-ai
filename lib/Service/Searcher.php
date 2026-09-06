@@ -27,7 +27,7 @@ class Searcher {
         if (trim($query) === '') {
             return [];
         }
-        [$queryVec, $err] = $this->ollama->embedQuery([$query]);
+        [$queryVec, $err] = $this->ollama->embedQuery([$query], $userId);
         $rows = $this->loadCandidates($userId, $query);
 
         $queryTokens = $this->tokens($query);

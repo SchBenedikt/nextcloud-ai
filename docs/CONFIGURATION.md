@@ -48,6 +48,8 @@ or in the app's **Settings** tab. Values are plain strings; booleans use `1`/`0`
 | `mail_index_enabled` | `1` | Index emails (subject, sender, body) into RAG. |
 | `mail_index_max` | `25` | Emails indexed per pass (limits resource usage). |
 
+Embedding vectors are cached in Nextcloud's distributed cache for up to 30 days. Cache keys are user-isolated and derived from normalized chunk content, the Ollama endpoint, the embedding model, and a cache schema version; document text is never stored in the key. A successful index status exposes the last pass's `hits`, `misses`, and `ollamaRequests` under `embeddingCache`. Resetting a user's index also clears that user's cached vectors; an all-user reset clears the complete embedding cache.
+
 ## Chat tools / actions
 
 | Key | Default | Description |
