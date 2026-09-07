@@ -8,6 +8,7 @@ use OCP\Files\AppData\IAppDataFactory;
 use OCP\Files\NotFoundException;
 use OCP\Files\NotPermittedException;
 use OCP\Files\SimpleFS\ISimpleFolder;
+use OCP\Lock\ILockingProvider;
 use Psr\Log\LoggerInterface;
 
 /**
@@ -25,7 +26,8 @@ class ChatStore {
 
     public function __construct(
         private IAppDataFactory $appDataFactory,
-        private LoggerInterface $logger
+        private LoggerInterface $logger,
+        private ILockingProvider $lockingProvider
     ) {
     }
 
@@ -177,24 +179,33 @@ class ChatStore {
     }
 
     /**
-     * Serialize all chat reads and mutations for one user on this node.
-     * The lock is kept outside AppData because AppData may be object-backed
-     * and does not expose a portable locking primitive.
+     * Serialize all chat reads and mutations for one user across the whole
+     * cluster. A node-local flock() in the temp directory let two app servers
+     * race on the same chats.json, silently losing updates on clustered
+     * deployments (Issue #78). Nextcloud's locking provider coordinates via a
+     * shared backend (database or distributed cache), so the read-modify-write
+     * of one user's chat file is atomic on every node.
      */
     private function withUserLock(string $user, callable $operation): mixed {
-        $lockPath = sys_get_temp_dir() . '/eva_ai_chat_' . $this->namespaceFor($user) . '.lock';
-        $handle = fopen($lockPath, 'c');
-        if ($handle === false) {
-            throw new \RuntimeException('Unable to create the EVA chat lock');
+        $lockPath = 'eva_ai/chat/' . $this->namespaceFor($user);
+        try {
+            $this->lockingProvider->acquireLock($lockPath, ILockingProvider::LOCK_EXCLUSIVE);
+        } catch (\Throwable $e) {
+            $this->logger->warning('eva_ai: chat lock could not be acquired', [
+                'user' => $user,
+                'exception' => $e->getMessage(),
+            ]);
+            throw new \RuntimeException('Unable to acquire the EVA chat lock');
         }
         try {
-            if (!flock($handle, LOCK_EX)) {
-                throw new \RuntimeException('Unable to acquire the EVA chat lock');
-            }
             return $operation();
         } finally {
-            flock($handle, LOCK_UN);
-            fclose($handle);
+            try {
+                $this->lockingProvider->releaseLock($lockPath, ILockingProvider::LOCK_EXCLUSIVE);
+            } catch (\Throwable $e) {
+                // A lock that was already released (e.g. expired TTL on a
+                // crashed node) must not mask the operation's own result.
+            }
         }
     }
 

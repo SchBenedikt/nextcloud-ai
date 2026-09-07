@@ -11,6 +11,14 @@ use Psr\Log\LoggerInterface;
 
 class Ollama {
     private const TIMEOUT = 600;
+    /**
+     * Bounded total timeout for non-streaming chat calls (web endpoints,
+     * file-context chat, Talk classification). One slow model response must
+     * not hold a PHP-FPM or TaskProcessing worker for the full streaming
+     * timeout - a request without visible progress is capped much earlier
+     * (Issue #92). Streaming paths may pass their own larger budget.
+     */
+    private const CHAT_TIMEOUT = 120;
     private const STATUS_CACHE_TTL = 30;
 
     /** @var array<string,array{expires:int,ping:array,models:array}> */
@@ -435,13 +443,27 @@ class Ollama {
     }
 
     /**
+     * Non-streaming chat.
+     *
+     * Every call is bounded by a total timeout (default {@see self::CHAT_TIMEOUT},
+     * 120 s) plus a read timeout so a slow model cannot silently occupy a web
+     * or TaskProcessing worker for up to ten minutes (Issue #92). Callers that
+     * run in a dedicated worker and provide an $onProgress callback switch to
+     * an internal streaming request: they report progress as tokens arrive,
+     * their reads are idle-bounded and a timeout surfaces as a clear error.
+     *
      * @param array<int,array{role:string,content:string}> $messages
+     * @param callable(float):void|null $onProgress called with a monotonically
+     *        increasing estimate between 0 and 1 while the model generates.
      * @return array{answer?:string,error?:string,model?:string}
      */
-    public function chat(array $messages, array $tools = []): array {
+    public function chat(array $messages, array $tools = [], ?int $timeout = null, ?callable $onProgress = null): array {
         $model = $this->config->get('chat_model');
         if ($model === '') {
             return ['error' => 'Kein Chat-Modell konfiguriert.'];
+        }
+        if ($onProgress !== null) {
+            return $this->chatStreamingAccumulate($messages, $tools, $timeout, $model, $onProgress);
         }
         $payload = [
             'model' => $model,
@@ -455,10 +477,14 @@ class Ollama {
         if ($tools !== []) {
             $payload['tools'] = $this->normalizePayload($tools);
         }
+        $totalTimeout = $timeout ?? self::CHAT_TIMEOUT;
         try {
             $r = $this->client()->post($this->base() . '/api/chat', [
                 'json' => $payload,
-                'timeout' => self::TIMEOUT,
+                'timeout' => max(1, $totalTimeout),
+                // Bound idle reads too: an unresponsive endpoint releases the
+                // worker instead of holding it until the total timeout.
+                'read_timeout' => 30,
             ]);
             $data = json_decode((string)$r->getBody(), true);
             $msg = $data['message'] ?? [];
@@ -481,8 +507,66 @@ class Ollama {
             return ['error' => 'Ollama: empty answer'];
         } catch (\Throwable $e) {
             $this->logger->error('eva_ai ollama chat failed', ['exception' => $e]);
-            return ['error' => 'Ollama error: ' . $e->getMessage()];
+            return ['error' => $this->boundedError($e, $totalTimeout)];
         }
+    }
+
+    /**
+     * Run the chat as an internal NDJSON stream while accumulating the final
+     * answer, used when a caller wants progress reports during generation.
+     *
+     * @param array<int,array{role:string,content:string}> $messages
+     * @param callable(float):void $onProgress
+     * @return array{answer?:string,error?:string,model?:string}
+     */
+    private function chatStreamingAccumulate(array $messages, array $tools, ?int $timeout, string $defaultModel, callable $onProgress): array {
+        // Progress-reporting callers run inside a dedicated worker, so the
+        // generous total budget from the streaming path is acceptable: reads
+        // stay idle-bounded and every token is reported to the task.
+        $totalTimeout = $timeout ?? self::TIMEOUT;
+        $answer = '';
+        $model = $defaultModel;
+        $toolCalls = [];
+        $rawToolCalls = [];
+        $chunks = 0;
+        foreach ($this->chatStream($messages, $tools, $totalTimeout) as $ev) {
+            $evType = $ev['type'] ?? '';
+            if ($evType === 'content') {
+                $answer .= (string)($ev['delta'] ?? '');
+                $chunks++;
+                // A cheap monotonic estimate; the caller maps it into its own
+                // progress window.
+                $onProgress(min(0.98, $chunks * 0.01));
+            } elseif ($evType === 'tool_calls') {
+                $toolCalls = $ev['tool_calls'] ?? [];
+                $rawToolCalls = $ev['raw'] ?? [];
+                if (isset($ev['model']) && $ev['model'] !== '') {
+                    $model = (string)$ev['model'];
+                }
+            } elseif ($evType === 'finished') {
+                if (isset($ev['model']) && $ev['model'] !== '') {
+                    $model = (string)$ev['model'];
+                }
+            } elseif ($evType === 'error') {
+                return ['error' => (string)($ev['delta'] ?? 'Ollama request failed')];
+            }
+        }
+        if ($toolCalls !== []) {
+            return ['answer' => trim($answer), 'model' => $model, 'tool_calls' => $toolCalls, 'raw_tool_calls' => $rawToolCalls];
+        }
+        if (trim($answer) !== '') {
+            return ['answer' => trim($answer), 'model' => $model, 'tool_calls' => [], 'raw_tool_calls' => []];
+        }
+        return ['error' => 'Ollama: empty answer'];
+    }
+
+    /** Build a clear, user-facing timeout error message. */
+    private function boundedError(\Throwable $e, int $timeoutSeconds): string {
+        $message = $e->getMessage();
+        if (stripos($message, 'timed out') !== false || stripos($message, 'timeout') !== false) {
+            return 'Ollama request timed out after ' . $timeoutSeconds . ' seconds. The model may still be loading - retry or choose a smaller context size.';
+        }
+        return 'Ollama error: ' . $message;
     }
 
     /**
@@ -491,7 +575,7 @@ class Ollama {
      * @param array<int,array{role:string,content:string}> $messages
      * @return \Generator<string,array{type:string,delta:string},void,void>
      */
-    public function chatStream(array $messages, array $tools = []): \Generator {
+    public function chatStream(array $messages, array $tools = [], ?int $timeout = null): \Generator {
         $model = $this->config->get('chat_model');
         if ($model === '') {
             yield ['type' => 'error', 'delta' => 'No chat model configured.'];
@@ -516,7 +600,7 @@ class Ollama {
             }
             $r = $this->client()->post($this->base() . '/api/chat', [
                 'json' => $payload,
-                'timeout' => self::TIMEOUT,
+                'timeout' => max(1, $timeout ?? self::TIMEOUT),
                 // Bound idle reads so disconnect checks can release the worker
                 // even when Ollama temporarily emits no token.
                 'read_timeout' => 5,
@@ -580,12 +664,13 @@ class Ollama {
                         if ($this->clientDisconnected()) {
                             return;
                         }
+                        $doneModel = isset($obj['model']) ? (string)$obj['model'] : '';
                         if ($streamCalls !== []) {
                             ksort($streamCalls);
                             $rawToolCalls = array_values($streamCalls);
-                            yield ['type' => 'tool_calls', 'tool_calls' => $this->normalizeToolCalls($streamCalls), 'raw' => $rawToolCalls];
+                            yield ['type' => 'tool_calls', 'tool_calls' => $this->normalizeToolCalls($streamCalls), 'raw' => $rawToolCalls, 'model' => $doneModel];
                         } else {
-                            yield ['type' => 'finished'];
+                            yield ['type' => 'finished', 'model' => $doneModel];
                         }
                         return;
                     }

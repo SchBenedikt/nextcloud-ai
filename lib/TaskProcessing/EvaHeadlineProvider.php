@@ -91,7 +91,9 @@ class EvaHeadlineProvider implements ISynchronousProvider {
 
 		$reportProgress(0.3);
 
-		$result = $this->ollama->chat($messages);
+		$result = $this->ollama->chat($messages, [], null, static function (float $p) use ($reportProgress): void {
+			$reportProgress(0.3 + min(0.6, max(0.0, $p)) * 0.6);
+		});
 
 		if (isset($result['error'])) {
 			throw new RuntimeException((string)$result['error']);

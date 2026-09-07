@@ -491,7 +491,7 @@ export default {
 			try {
 				const settings = await api('PUT', 'settings', { ...f.value })
 				validationErrors.value = []
-				fill(settings)
+				if (settings) fill(settings)
 				saved.value = true
 				setMessage('success', t('Your settings were saved.'))
 				window.setTimeout(() => { saved.value = false }, 3000)

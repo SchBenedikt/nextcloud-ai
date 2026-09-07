@@ -7,12 +7,21 @@ follows [Semantic Versioning](https://semver.org/).
 ## [Unreleased]
 
 ### Added
+- Confirmation requests in the web chat now render a native, editable form for every tool that requires confirmation (shares, calendar events, tasks, files, notes, contacts, profile and knowledge) instead of raw JSON; destructive actions get a red warning style, unknown tools still fall back to readable JSON, and successful share creations show a copyable link chip.
 - **Issue #145:** user-isolated, content-addressed embedding cache with 30-day bounded retention, model/endpoint/schema metadata validation, duplicate-miss coalescing, reset cleanup, and index-status hit/miss/request counters.
 - **Issue #109:** English and German translation bundles for the Vue workspace, file actions and standalone chat.
 - Opt-in single-process frontend build for memory-constrained hosts (`EVA_LOW_MEMORY_BUILD=1`).
 - **Issue #99:** calendar event listing and free-slot detection now expand recurring events with bounded support for RRULE, RDATE, EXDATE, and RECURRENCE-ID.
 
 ### Fixed
+- Indexing can no longer be permanently blocked by the per-user index lock. Two related defects are fixed: the lock key is now bounded to 40 hex chars (the full sha256 exceeded the varchar(64) key column of Nextcloud's file_locks table, so acquire/release silently failed and stale rows collided with every later attempt), and when a worker still crashes while holding the lock, the queue endpoint and the indexer reclaim the expired row once the tracked run state is idle or stale - never while a live worker with a fresh heartbeat is running. Previously such a row blocked "Indexing could not be queued" forever on instances whose cron never ran the file-lock cleanup job.
+- **Issue #62:** the chunker no longer runs `array_unique()` on its output, so genuinely repeated passages and overlap-induced duplicate chunks stay in the index; `chunk_index` stays sequential and the stored `chunk_count` always matches the number of written chunks.
+- **Issue #73:** a personal setting now falls back to the admin-configured instance value (`occ config:app:set eva_ai …`) when the user has no explicit personal value; explicit choices still win, and per-user runtime state never inherits instance values.
+- **Issue #92:** non-streaming chat calls are bounded (default 120 s total with an idle read timeout) instead of holding a PHP-FPM/TaskProcessing worker for up to 600 s; TaskProcessing generation providers now stream internally and report progress while generating, and timeouts surface as clear errors.
+- **Issue #61:** once an index exceeds the candidate pool, the dense (semantic) candidate set is built by scanning the entire index in fixed pages and keeping the best cosine scores - no more query-derived random window that silently skipped semantic-only matches.
+- **Issue #74:** the Documents summary (`totalChunks`, `totalSize`, `total`) is computed from full-index SQL aggregates with the same search filter, so paging with "Load more" no longer changes the totals.
+- **Issue #78:** chat mutations are serialized through Nextcloud's shared locking provider (oc_lock) instead of a node-local `flock()` file, so concurrent writes cannot race on clustered multi-node deployments.
+- **Issue #113:** the activity tool only queries when the Activity app is enabled for the user, uses a defensive stable read instead of a hard-coded column list, no longer hides the app's own entries, and formats timestamps in the requesting user's timezone.
 - **Issues #115, #97 and #76:** validate and normalize `exec_write_types` before saving, log and propagate Mail database failures instead of treating them as empty mailboxes, and reuse one short-lived Ollama `/api/tags` status result for repeated UI polls.
 - **Issue #104:** calendar event listing and free-slot searches now use CalDAV time-range queries instead of loading every object from every selected calendar.
 - **Issue #132:** bind EVA-created file grants to file IDs; reject legacy path grants, prune stale IDs, preserve grants across renames, and do not claim existing files or folders.

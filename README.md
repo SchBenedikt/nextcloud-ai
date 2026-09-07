@@ -66,6 +66,15 @@ ollama pull gemma4:cloud            # chat model (default)
 ollama pull nomic-embed-text:latest # embeddings (default)
 ```
 
+> **Multi-node / horizontal scaling:** EVA works on clustered Nextcloud
+> deployments that share the same database and storage. Chat mutations are
+> serialized per user through Nextcloud's own locking provider (database or
+> distributed cache), never through node-local files, and index runs use the
+> same shared locks - so two app servers cannot overwrite each other's chat or
+> index state. Ollama must be reachable from every app server, and per-user
+> settings/config are stored in the shared database. No shared filesystem or
+> Redis setup beyond what Nextcloud itself requires is needed.
+
 ---
 
 ## Installation

@@ -1,1 +1,1 @@
-"use strict";(globalThis.webpackChunkeva_ai||=[]).push([[710],{3710(a,e,s){s.r(e),s.d(e,{default:()=>u.N});var u=s(9852)}}]);
+"use strict";(self.webpackChunkeva_ai=self.webpackChunkeva_ai||[]).push([[710],{3710(a,e,s){s.r(e),s.d(e,{default:()=>u.N});var u=s(9852)}}]);

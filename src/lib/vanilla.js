@@ -1,5 +1,6 @@
 import { mdiDownload } from '@mdi/js'
 import { translate as t } from './i18n'
+import { buildConfirmForm } from './confirmForms'
 
 /* EvaAi – Vanilla-Chat-Mount.
  * Wird von ChatView.vue aufgerufen und rendert den kompletten Chat
@@ -287,90 +288,49 @@ export function mountChat(root, opts = {}) {
 			wrap.appendChild(s)
 		}
 
+		if (m.confirmation && m.confirmation.resolved && m.confirmation.resultUrl) {
+			const linkRow = document.createElement('div')
+			linkRow.className = 'rconfirm-link'
+			const link = document.createElement('a')
+			link.href = m.confirmation.resultUrl
+			link.target = '_blank'
+			link.rel = 'noopener'
+			link.textContent = m.confirmation.resultUrl
+			link.title = t('Open link')
+			const copyBtn = document.createElement('button')
+			copyBtn.type = 'button'
+			copyBtn.textContent = t('Copy link')
+			copyBtn.addEventListener('click', () => copyText(m.confirmation.resultUrl, copyBtn))
+			linkRow.append(link, copyBtn)
+			wrap.appendChild(linkRow)
+		}
+
 		if (m.confirmation && !m.confirmation.resolved) {
 			const panel = document.createElement('div')
 			panel.className = 'rconfirm'
+			const danger = (m.confirmation.risk || 'mutating') === 'destructive'
+			if (danger) panel.classList.add('rconfirm--danger')
+			const conf = buildConfirmForm(m.confirmation)
 			const label = document.createElement('div')
 			label.className = 'rconfirm-label'
-			label.textContent = t('EVA wants to run: {tool}', { tool: m.confirmation.name })
-			const args = m.confirmation.arguments || {}
-			const details = document.createElement('pre')
-			details.className = 'rconfirm-args'
-			if (m.confirmation.name === 'create_share') {
-				details.textContent = t('Review the share details before creating it. You can change the path, recipient, password and expiration date.')
+			label.textContent = conf ? t(conf.title) : t('EVA wants to run: {tool}', { tool: m.confirmation.name })
+			panel.appendChild(label)
+			const summary = document.createElement('div')
+			summary.className = 'rconfirm-summary'
+			summary.textContent = danger
+				? t('This action cannot be undone.')
+				: t('Please review this action and confirm it explicitly.')
+			panel.appendChild(summary)
+			const errEl = document.createElement('div')
+			errEl.className = 'rconfirm-error'
+			errEl.style.display = 'none'
+			if (conf) {
+				panel.appendChild(conf.element)
 			} else {
-				details.textContent = JSON.stringify(args, null, 2)
-			}
-			const shareForm = m.confirmation.name === 'create_share' ? document.createElement('div') : null
-			const shareInputs = {}
-			if (shareForm) {
-				shareForm.className = 'rconfirm-share-form'
-				const field = (key, labelText, type, value) => {
-					const wrap = document.createElement('label')
-					wrap.className = 'rconfirm-field'
-					const caption = document.createElement('span')
-					caption.textContent = labelText
-					const input = document.createElement(type === 'textarea' ? 'textarea' : 'input')
-					if (type !== 'textarea') input.type = type
-					input.value = value || ''
-					if (key === 'path') input.required = true
-					wrap.append(caption, input)
-					shareForm.appendChild(wrap)
-					shareInputs[key] = input
-					return input
-				}
-				field('path', t('File or folder path'), 'text', args.path)
-				const typeWrap = document.createElement('label')
-				typeWrap.className = 'rconfirm-field'
-				const typeCaption = document.createElement('span')
-				typeCaption.textContent = t('Share type')
-				const typeSelect = document.createElement('select')
-				;[['link', t('Public link')], ['user', t('Nextcloud user')], ['group', t('Nextcloud group')]].forEach(([value, text]) => {
-					const option = document.createElement('option')
-					option.value = value
-					option.textContent = text
-					typeSelect.appendChild(option)
-				})
-				typeSelect.value = args.type === 'public' ? 'link' : (args.type || 'link')
-				typeWrap.append(typeCaption, typeSelect)
-				shareForm.appendChild(typeWrap)
-				shareInputs.type = typeSelect
-				const target = field('target', t('Recipient user or group'), 'text', args.target)
-				const password = field('password', t('Link password (optional)'), 'password', args.password)
-				password.autocomplete = 'new-password'
-				const expiration = field('expiration', t('Expiration date (optional)'), 'date', args.expiration)
-				const note = field('note', t('Message or note (optional)'), 'textarea', args.note)
-				const check = (key, text, checked) => {
-					const wrap = document.createElement('label')
-					wrap.className = 'rconfirm-check'
-					const input = document.createElement('input')
-					input.type = 'checkbox'
-					input.checked = !!checked
-					const caption = document.createElement('span')
-					caption.textContent = text
-					wrap.append(input, caption)
-					shareForm.appendChild(wrap)
-					shareInputs[key] = input
-				}
-				check('write', t('Allow editing'), args.write)
-				check('share', t('Allow resharing'), args.share)
-				const updateShareFields = () => {
-					const link = typeSelect.value === 'link'
-					target.parentElement.style.display = link ? 'none' : ''
-					password.parentElement.style.display = link ? '' : 'none'
-					args.type = typeSelect.value
-					args.path = shareInputs.path.value.trim()
-					args.target = target.value.trim()
-					args.password = password.value
-					args.expiration = expiration.value
-					args.note = note.value
-					args.write = shareInputs.write.checked
-					args.share = shareInputs.share.checked
-					return args.path !== '' && (link || args.target !== '')
-				}
-				typeSelect.addEventListener('change', updateShareFields)
-				shareForm.addEventListener('input', updateShareFields)
-				updateShareFields()
+				const details = document.createElement('pre')
+				details.className = 'rconfirm-args'
+				details.textContent = JSON.stringify(m.confirmation.arguments || {}, null, 2)
+				panel.appendChild(details)
 			}
 			const actions = document.createElement('div')
 			actions.className = 'rconfirm-actions'
@@ -382,47 +342,52 @@ export function mountChat(root, opts = {}) {
 			reject.type = 'button'
 			reject.className = 'rconfirm-reject'
 			reject.textContent = t('Cancel')
-			const finish = (text) => {
+			const finish = (text, url) => {
 				m.confirmation.resolved = true
+				if (url) m.confirmation.resultUrl = url
 				m.text = text
 				m.done = true
 				renderAll(messages)
 				saveMessage('assistant', m.text).then(() => { if (onRecent) onRecent() })
 			}
+			const disableButtons = (disabled) => {
+				approve.disabled = disabled
+				reject.disabled = disabled
+				approve.textContent = disabled ? t('Running…') : t('Confirm and run')
+			}
 			approve.addEventListener('click', () => {
-				approve.disabled = true
-				reject.disabled = true
-				approve.textContent = t('Running…')
-				if (shareForm) {
-					shareForm.dispatchEvent(new Event('input'))
-					if (!shareInputs.path.value.trim() || (typeSelect.value !== 'link' && !shareInputs.target.value.trim())) {
-						approve.disabled = false
-						reject.disabled = false
-						approve.textContent = t('Confirm and run')
-						return
-					}
+				if (conf && !conf.validate()) {
+					errEl.textContent = t('Please fill in all required fields.')
+					errEl.style.display = ''
+					return
 				}
+				errEl.style.display = 'none'
+				disableButtons(true)
 				api('POST', '/confirmTool', {
 					name: m.confirmation.name,
-					arguments: m.confirmation.arguments || {},
+					arguments: conf ? conf.getArguments() : (m.confirmation.arguments || {}),
 				}).then((result) => {
 					if (!result || !result.ok) {
 						finish('⚠️ ' + (result?.error || t('The action could not be completed.')))
 						return
 					}
 					let value = t('The action was completed.')
+					let url = ''
 					if (typeof result.result === 'string') value = result.result
-					else if (result.result && result.result.url) value = t('Share created: {url}', { url: result.result.url })
-					finish('✅ ' + value)
+					else if (result.result && result.result.url) {
+						url = result.result.url
+						value = t('Share created: {url}', { url })
+					}
+					finish('✅ ' + value, url)
 				}).catch((error) => {
-					finish('⚠️ ' + String(error?.message || error))
+					disableButtons(false)
+					errEl.textContent = String(error?.message || error)
+					errEl.style.display = ''
 				})
 			})
 			reject.addEventListener('click', () => finish(t('Action cancelled.')))
 			actions.append(approve, reject)
-			panel.append(label, details)
-			if (shareForm) panel.appendChild(shareForm)
-			panel.appendChild(actions)
+			panel.append(errEl, actions)
 			wrap.appendChild(panel)
 		}
 
