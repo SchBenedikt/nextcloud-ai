@@ -119,6 +119,7 @@ class ApiController extends OCSController {
             'notify_on_complete',
             'mail_index_enabled',
             'mail_index_max',
+            'weather_tool_enabled',
             'talk_history_size',
             'talk_bot_trigger',
             'exclude_paths',
@@ -166,7 +167,7 @@ class ApiController extends OCSController {
                 if ($key === 'exec_write_types') {
                     $value = $this->config->normalizeValue($key, $value);
                 }
-                if ($key === 'notify_on_complete' || $key === 'mail_index_enabled' || $key === 'index_enrolled') {
+                if ($key === 'notify_on_complete' || $key === 'mail_index_enabled' || $key === 'index_enrolled' || $key === 'weather_tool_enabled') {
                     $value = in_array((string)$value, ['1', 'true', 'on'], true) ? '1' : '0';
                 }
                 if ($key === 'temperature') {
@@ -409,13 +410,20 @@ class ApiController extends OCSController {
             || !$this->fileContextChat->fileAccessible($user, (int)$doc->getFileId())) {
             return new DataResponse(['error' => 'Document not found'], 404);
         }
-        $rows = $this->chunkMapper->findByDocument($id);
+        // Bounded pagination (Issues #91/#140): a huge document must not be
+        // transferred all at once. The client streams pages of LIMIT chunks
+        // until it reached document.chunks.
+        $limit = max(1, min(500, (int)($this->requestParam('limit') ?? 200)));
+        $offset = max(0, (int)($this->requestParam('offset') ?? 0));
+        $rows = $this->chunkMapper->findByDocument($id, $limit, $offset);
         return new DataResponse([
             'document' => [
                 'id' => (int)$doc->getId(),
                 'path' => $doc->getPath(),
                 'chunks' => (int)$doc->getChunkCount(),
             ],
+            'offset' => $offset,
+            'limit' => $limit,
             'chunks' => array_map(static fn($c) => [
                 'index' => (int)$c['chunk_index'],
                 'content' => (string)$c['content'],

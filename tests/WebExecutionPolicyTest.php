@@ -69,7 +69,7 @@ final class WebExecutionPolicyTest extends TestCase {
         $required = $reflection->getConstant('REQUIRED_ARGS');
         self::assertIsArray($required);
 
-        $policy = new ToolPolicy();
+        $policy = new ToolPolicy($this->createMock(\OCA\EvaAi\Service\AppConfig::class));
         $policy->setSurface(ToolPolicy::SURFACE_WEB);
         foreach ($policy->mutatingTools() as $tool) {
             self::assertArrayHasKey($tool, $required, "Missing required-args table for '$tool'");

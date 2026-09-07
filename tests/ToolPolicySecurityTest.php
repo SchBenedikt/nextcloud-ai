@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace OCA\EvaAi\Tests;
 
+use OCA\EvaAi\Service\AppConfig;
 use OCA\EvaAi\Service\ToolPolicy;
 use PHPUnit\Framework\TestCase;
 
@@ -23,7 +24,11 @@ class ToolPolicySecurityTest extends TestCase {
     private ToolPolicy $policy;
 
     protected function setUp(): void {
-        $this->policy = new ToolPolicy();
+        $config = $this->createMock(AppConfig::class);
+        // PHPUnit mocks return 0 for `: int` methods; the app default is 1
+        // (weather tool enabled) unless explicitly disabled (Issue #69).
+        $config->method('getInt')->willReturn(1);
+        $this->policy = new ToolPolicy($config);
     }
 
     // ---- Risk Classification ----
@@ -37,6 +42,28 @@ class ToolPolicySecurityTest extends TestCase {
         $this->assertContains('find_contact', $readonly);
         $this->assertContains('current_time', $readonly);
         $this->assertContains('weather', $readonly);
+    }
+
+    public function testWeatherToolCanBeDisabledViaConfig(): void {
+        // Issue #69: the weather tool calls external Open-Meteo services.
+        $config = $this->createMock(AppConfig::class);
+        $config->method('getInt')
+            ->with('weather_tool_enabled', 1)
+            ->willReturn(0);
+        $policy = new ToolPolicy($config);
+        $policy->setSurface(ToolPolicy::SURFACE_WEB);
+        $result = $policy->check('weather');
+        self::assertFalse($result['allowed'], 'Disabled weather tool must not be allowed');
+        self::assertSame('Weather tool disabled by configuration', $result['reason']);
+
+        // Enabled (default): the tool stays available.
+        $configOn = $this->createMock(AppConfig::class);
+        $configOn->method('getInt')
+            ->with('weather_tool_enabled', 1)
+            ->willReturn(1);
+        $policyOn = new ToolPolicy($configOn);
+        $policyOn->setSurface(ToolPolicy::SURFACE_WEB);
+        self::assertTrue($policyOn->check('weather')['allowed']);
     }
 
     public function testMutatingToolsAreClassifiedCorrectly(): void {

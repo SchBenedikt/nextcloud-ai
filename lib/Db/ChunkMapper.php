@@ -166,13 +166,24 @@ class ChunkMapper extends QBMapper {
         return $row ? (int)$row['c'] : 0;
     }
 
-    /** @return array<int,array<string,mixed>> */
-    public function findByDocument(int $documentId): array {
+    /**
+     * @return array<int,array<string,mixed>>
+     *
+     * Bounded pagination: $limit/$offset keep huge documents (thousands of
+     * chunks) from being transferred in a single response (Issue #91/#140).
+     */
+    public function findByDocument(int $documentId, ?int $limit = null, ?int $offset = null): array {
         $qb = $this->db->getQueryBuilder();
         $qb->select('id', 'chunk_index', 'content')
             ->from('eva_ai_chunks')
             ->where($qb->expr()->eq('document_id', $qb->createNamedParameter($documentId, IQueryBuilder::PARAM_INT)))
             ->orderBy('chunk_index', 'ASC');
+        if ($limit !== null && $limit > 0) {
+            $qb->setMaxResults($limit);
+        }
+        if ($offset !== null && $offset > 0) {
+            $qb->setFirstResult($offset);
+        }
         $result = $qb->executeQuery();
         $rows = $result->fetchAll();
         $result->closeCursor();

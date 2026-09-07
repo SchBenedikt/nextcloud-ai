@@ -102,6 +102,12 @@
 										<div v-if="!chunkCache.get(d.id).chunks.length" class="docs-chunk-loading">
 											{{ $t('No indexed chunk rows are available for this document.') }}
 										</div>
+										<div v-if="chunkCache.get(d.id).status === 'ready' && chunkCache.get(d.id).chunks.length < chunkCache.get(d.id).expected" class="docs-chunk-more">
+											<NcButton v-if="!chunkCache.get(d.id).loadingMore" type="secondary" @click.stop="loadMoreChunks(d.id)">
+												{{ $t('Load {count} more chunks', { count: chunkCache.get(d.id).expected - chunkCache.get(d.id).chunks.length }) }}
+											</NcButton>
+											<NcLoadingIcon v-else :size="16" /> {{ $t('Loading chunks …') }}
+										</div>
 									</template>
 								</div>
 							</td>
@@ -261,7 +267,7 @@ export default {
 				setChunkState(id, { status: 'loading', chunks: [], expected: fallbackExpected, error: '' })
 				let expected = fallbackExpected
 				try {
-					const data = await api('POST', 'documentChunks', { id })
+					const data = await api('POST', 'documentChunks', { id, limit: 200, offset: 0 })
 					const source = Array.isArray(data)
 						? data
 						: Array.isArray(data?.chunks)
@@ -286,11 +292,43 @@ export default {
 					if (!chunks.length && expected > 0) {
 						throw new Error(`The server reported ${expected} chunks, but returned no chunk rows.`)
 					}
-					setChunkState(id, { status: 'ready', chunks, expected, error: '' })
+					setChunkState(id, { status: 'ready', chunks, expected, error: '', loadingMore: false })
 				} catch (e) {
 					const message = e instanceof Error ? e.message : String(e)
 					setChunkState(id, { status: 'error', chunks: [], expected, error: message })
 					console.error('[eva-ai] chunks error', e)
+				}
+			}
+
+			async function loadMoreChunks(id) {
+				const state = chunkCache.value.get(id)
+				if (!state || state.status !== 'ready' || state.loadingMore) return
+				setChunkState(id, { ...state, loadingMore: true })
+				try {
+					const data = await api('POST', 'documentChunks', { id, limit: 200, offset: state.chunks.length })
+					const source = Array.isArray(data)
+						? data
+						: Array.isArray(data?.chunks)
+							? data.chunks
+							: Array.isArray(data?.data?.chunks)
+								? data.data.chunks
+								: []
+					const base = state.chunks.length
+					const more = source.map((chunk, index) => {
+						const rawIndex = chunk.index ?? chunk.chunk_index
+						const numericIndex = rawIndex !== null && rawIndex !== undefined && String(rawIndex).trim() !== ''
+							? Number(rawIndex)
+							: NaN
+						return {
+							index: Number.isFinite(numericIndex) ? numericIndex : base + index,
+							content: String(chunk.content ?? ''),
+						}
+					})
+					setChunkState(id, { status: 'ready', chunks: [...state.chunks, ...more], expected: state.expected, error: '', loadingMore: false })
+				} catch (e) {
+					const stateNow = chunkCache.value.get(id) || state
+					setChunkState(id, { ...stateNow, loadingMore: false })
+					console.error('[eva-ai] chunks load-more error', e)
 				}
 			}
 
@@ -517,6 +555,14 @@ export default {
 	padding: 12px;
 	font-size: 13px;
 	color: var(--color-text-maxcontrast);
+}
+
+.docs-chunk-more {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	padding: 10px 12px;
+	font-size: 13px;
 }
 
 .docs-pagination {

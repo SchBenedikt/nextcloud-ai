@@ -144,6 +144,9 @@
 						{{ $t('Any file in my Files') }}
 					</NcCheckboxRadioSwitch>
 				</div>
+				<NcCheckboxRadioSwitch v-model="weatherEnabled" type="switch" class="native-toggle compact-switch" :description="$t('The weather tool queries the external Open-Meteo services (geocoding + forecast). Turn it off to keep all tool traffic on your own server.')">
+					{{ $t('Allow weather forecasts') }}
+				</NcCheckboxRadioSwitch>
 				<NcCheckboxRadioSwitch v-model="notificationsEnabled" type="switch" class="native-toggle compact-switch" :description="$t('Uses Nextcloud Notifications when background or Talk work finishes.')">
 					{{ $t('Notify me when a long answer is ready') }}
 				</NcCheckboxRadioSwitch>
@@ -367,6 +370,10 @@ export default {
 		const notificationsEnabled = computed({
 			get: () => f.value.notify_on_complete === '1',
 			set: value => { f.value.notify_on_complete = value ? '1' : '0' },
+		})
+		const weatherEnabled = computed({
+			get: () => f.value.weather_tool_enabled === undefined || f.value.weather_tool_enabled === null || f.value.weather_tool_enabled === '1',
+			set: value => { f.value.weather_tool_enabled = value ? '1' : '0' },
 		})
 		const mailIndexEnabled = computed({
 			get: () => f.value.mail_index_enabled === '1',
@@ -679,7 +686,7 @@ export default {
 
 		return {
 			f, status, limits, availableModels, embeddingModels, chatModels, modelLoading, modelError, checkOut, saving, checking, indexing, resetting, deletingChats, stopping, saved, loadError, message, validationErrors, resetConfirm, chatsDeleteConfirm,
-			newExcludePath, excludeError, excludeList, actionsEnabled, notificationsEnabled, mailIndexEnabled, indexEnrolled, actionsDisabled, busy, indexingActive, settingsLocked, maxFileSizeMb,
+			newExcludePath, excludeError, excludeList, actionsEnabled, notificationsEnabled, weatherEnabled, mailIndexEnabled, indexEnrolled, actionsDisabled, busy, indexingActive, settingsLocked, maxFileSizeMb,
 			formatNumber, loadStatus, save, checkOllama, addExclude, removeExclude, startIndex, startMailIndex, stopIndex, resetIndex, deleteAllChats,
 		}
 	},

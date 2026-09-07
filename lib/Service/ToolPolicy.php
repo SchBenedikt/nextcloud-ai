@@ -16,6 +16,11 @@ namespace OCA\EvaAi\Service;
  */
 class ToolPolicy {
 
+    public function __construct(
+        private AppConfig $appConfig,
+    ) {
+    }
+
     /** Risk classification for tools. */
     public const RISK_READONLY = 'readonly';    // No side effects, safe everywhere
     public const RISK_MUTATING = 'mutating';     // Creates/updates user data
@@ -309,6 +314,17 @@ class ToolPolicy {
             return [
                 'allowed' => false,
                 'reason' => 'Unknown tool: ' . $toolName,
+            ];
+        }
+
+        // Privacy opt-out (Issue #69): the weather tool calls the external
+        // Open-Meteo services. When disabled it is removed from every tool
+        // surface, blocked at dispatch, and skipped by the agent proposal
+        // phase - one check covers all execution paths.
+        if ($toolName === 'weather' && $this->appConfig->getInt('weather_tool_enabled', 1) === 0) {
+            return [
+                'allowed' => false,
+                'reason' => 'Weather tool disabled by configuration',
             ];
         }
 
