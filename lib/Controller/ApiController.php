@@ -46,7 +46,8 @@ class ApiController extends OCSController {
         private KnowledgeInitializer $knowledgeInitializer,
         private LockGuard $lockGuard,
         private \OCA\EvaAi\Service\ActionAudit $actionAudit,
-        private \OCA\EvaAi\Service\UserDataService $userDataService
+        private \OCA\EvaAi\Service\UserDataService $userDataService,
+        private \OCA\EvaAi\Service\ChatLearner $chatLearner
     ) {
         parent::__construct($appName, $request);
         $this->config->setUserId($this->userId);
@@ -840,7 +841,8 @@ class ApiController extends OCSController {
             return new DataResponse(['error' => 'Not logged in'], 401);
         }
         try {
-            if ($this->chatStore->get($user, $id) === null) {
+            $chat = $this->chatStore->get($user, $id);
+            if ($chat === null) {
                 return new NotFoundResponse();
             }
             $role = (string)($this->requestParam('role') ?? '');
@@ -849,6 +851,19 @@ class ApiController extends OCSController {
                 return new DataResponse(['error' => 'role and text are required'], 400);
             }
             $this->chatStore->append($user, $id, $role, $text);
+
+            // After an assistant message is saved, learn from the full chat.
+            if ($role === 'assistant') {
+                try {
+                    $fullChat = $this->chatStore->getChat($user, $id);
+                    if ($fullChat !== null && count($fullChat['messages']) >= 4) {
+                        $this->chatLearner->learnFromChat($user, $fullChat['messages']);
+                    }
+                } catch (\Throwable $e) {
+                    // Learning failure must never break chat persistence.
+                }
+            }
+
             return new DataResponse(['ok' => true]);
         } catch (\Throwable $e) {
             return new DataResponse(['error' => 'Unable to persist chat data'], 500);
