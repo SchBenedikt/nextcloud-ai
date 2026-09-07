@@ -70,7 +70,7 @@ final class EmbeddingCacheTest extends TestCase {
 
     public function testOllamaBatchReusesCacheAndCoalescesDuplicateMisses(): void {
         $config = $this->createMock(AppConfig::class);
-        $config->method('get')->with('embedding_model')->willReturn('nomic-embed-text');
+        $config->method('get')->willReturnCallback(static fn(string $key): string => $key === 'embedding_model' ? 'nomic-embed-text' : '');
         $config->method('ollamaUrl')->willReturn('http://127.0.0.1:11434');
 
         $cache = $this->createMock(EmbeddingCache::class);

@@ -82,7 +82,8 @@
 							<option v-if="!embeddingModels.length" :value="f.embedding_model">{{ modelLoading ? $t('Loading models…') : $t('No embedding model found') }}</option>
 							<option v-for="model in embeddingModels" :key="model" :value="model">{{ model }}</option>
 						</select>
-						<p class="field-help">{{ $t('EVA discovers installed models automatically from the Ollama endpoint. Embedding models turn file text into searchable vectors.') }}</p>
+						<p class="field-help">{{ $t('EVA discovers installed models automatically from the Ollama endpoint and separates embedding from chat models by their declared capabilities. Embedding models turn file text into searchable vectors.') }}</p>
+						<div v-if="!modelLoading && embeddingInstalledHint" class="model-hint">{{ embeddingInstalledHint }}</div>
 					</div>
 					<div class="field">
 						<label class="native-label" for="chat-model">{{ $t('Chat model') }}</label>
@@ -91,6 +92,25 @@
 							<option v-for="model in chatModels" :key="model" :value="model">{{ model }}</option>
 						</select>
 						<p class="field-help">{{ $t('EVA discovers installed chat models automatically from the Ollama endpoint.') }}</p>
+						<div v-if="!modelLoading && chatInstalledHint" class="model-hint">{{ chatInstalledHint }}</div>
+					</div>
+					<div class="field">
+						<label class="native-label" for="chat-model-fallback">{{ $t('Chat model fallbacks') }}</label>
+						<NcTextField id="chat-model-fallback" :label-outside="true" v-model="f.chat_model_fallback" :placeholder="$t('Optional, comma-separated')" />
+						<p class="field-help">{{ $t('If the chat model above is not installed, EVA tries these models in order before failing. (E.g. llama3.1, qwen2.5)') }}</p>
+					</div>
+					<div class="field">
+						<label class="native-label" for="embedding-model-fallback">{{ $t('Embedding model fallbacks') }}</label>
+						<NcTextField id="embedding-model-fallback" :label-outside="true" v-model="f.embedding_model_fallback" :placeholder="$t('Optional, comma-separated')" />
+						<p class="field-help">{{ $t('If the embedding model above is not installed, EVA tries these models in order before failing.') }}</p>
+					</div>
+					<div class="field">
+						<label class="native-label" for="summary-model">{{ $t('Heavy task model (optional)') }}</label>
+						<select id="summary-model" v-model="f.summary_model" class="native-select" :disabled="modelLoading">
+							<option value="">{{ $t('Use the chat model') }}</option>
+							<option v-for="model in chatModels" :key="model" :value="model">{{ model }}</option>
+						</select>
+						<p class="field-help">{{ $t('Optionally use a separate, usually larger model for summaries, translations and proofreading. Leave empty to reuse the chat model.') }}</p>
 					</div>
 				</div>
 				<div class="inline-actions">
@@ -357,6 +377,9 @@ export default {
 			ollama_url: 'http://127.0.0.1:11434',
 			embedding_model: 'nomic-embed-text',
 			chat_model: 'gemma4:cloud',
+			chat_model_fallback: '',
+			embedding_model_fallback: '',
+			summary_model: '',
 			temperature: '0.1',
 			actions_enabled: '1',
 			notify_on_complete: '1',
@@ -380,6 +403,7 @@ export default {
 		const status = ref(null)
 		const limits = ref({})
 		const availableModels = ref([])
+		const modelRoles = ref({})
 		const modelLoading = ref(false)
 		const modelError = ref('')
 		const checkOut = ref(null)
@@ -423,8 +447,45 @@ export default {
 			set: value => { f.value.index_enrolled = value ? '1' : '0' },
 		})
 		const actionsDisabled = computed(() => f.value.actions_enabled !== '1')
-		const embeddingModels = computed(() => availableModels.value.filter((name) => /embed|bge|e5|gte|jina|minilm|nomic|snowflake|mxbai|arctic|retriev|instructor/i.test(name)))
-		const chatModels = computed(() => availableModels.value.filter((name) => !/embed|bge|e5|gte|jina|minilm|nomic|snowflake|mxbai|arctic|retriev|instructor|rerank/i.test(name)))
+		// Role classification first comes from the provider capability metadata
+		// (status.provider.roles, Issue #148); the name regex only kicks in for
+		// older Ollama servers that do not report capabilities.
+		const rolesOf = (name) => {
+			const roles = (modelRoles.value[name] || {}).roles
+			return Array.isArray(roles) ? roles : []
+		}
+		const EMBEDDING_NAME = /embed|bge|e5|gte|jina|minilm|nomic|snowflake|mxbai|arctic|retriev|instructor|rerank/i
+		const embeddingModels = computed(() => {
+			const fromRoles = availableModels.value.filter((name) => rolesOf(name).includes('embedding'))
+			if (fromRoles.length || (availableModels.value.length && Object.keys(modelRoles.value).length)) return fromRoles
+			return availableModels.value.filter((name) => EMBEDDING_NAME.test(name))
+		})
+		const chatModels = computed(() => {
+			const fromRoles = availableModels.value.filter((name) => rolesOf(name).includes('chat'))
+			if (fromRoles.length || (availableModels.value.length && Object.keys(modelRoles.value).length)) return fromRoles
+			return availableModels.value.filter((name) => !EMBEDDING_NAME.test(name))
+		})
+		const providerRoles = computed(() => status.value?.provider?.roles || {})
+		const installedHintFor = (configured, role) => {
+			if (!configured) return ''
+			const provider = status.value?.provider
+			if (!provider || provider.online === false) return ''
+			const key = role === 'embedding' ? 'embeddingModel' : 'chatModel'
+			if (provider[key] && provider[key].usedFallback) {
+				return t('{configured} is not installed - using {resolved} instead.', { configured, resolved: provider[key].resolved })
+			}
+			const listed = Object.keys(providerRoles.value).some((name) => name === configured || name.replace(/:latest$/, '') === configured)
+			if (!listed) {
+				return t('{model} is not installed on this Ollama endpoint yet.', { model: configured })
+			}
+			const roles = providerRoles.value[Object.keys(providerRoles.value).find((name) => name === configured || name.replace(/:latest$/, '') === configured)]?.roles || []
+			if (roles.length && !roles.includes(role)) {
+				return t('{model} is installed but is not usable as the {role} model.', { model: configured, role })
+			}
+			return ''
+		}
+		const embeddingInstalledHint = computed(() => installedHintFor(f.value.embedding_model, 'embedding'))
+		const chatInstalledHint = computed(() => installedHintFor(f.value.chat_model, 'chat'))
 		const indexingActive = computed(() => indexing.value || status.value?.indexing === true)
 		const busy = computed(() => saving.value || checking.value || indexing.value || resetting.value || deletingChats.value || stopping.value)
 		const settingsLocked = computed(() => busy.value || indexingActive.value)
@@ -474,8 +535,9 @@ export default {
 			return errors
 		}
 
-		function applyModelDiscovery(names) {
+		function applyModelDiscovery(names, roles = {}) {
 			availableModels.value = [...new Set((names || []).map((name) => String(name || '').trim()).filter(Boolean))]
+			if (roles && typeof roles === 'object') modelRoles.value = roles
 			const embeddings = embeddingModels.value
 			const chats = chatModels.value
 			if (embeddings.length && !embeddings.includes(f.value.embedding_model)) {
@@ -493,14 +555,14 @@ export default {
 			modelError.value = ''
 			try {
 				const data = await api('GET', 'models', { endpoint: url })
-				applyModelDiscovery(data?.models || [])
-				if (!availableModels.value.length) modelError.value = t('No models are installed in this Ollama endpoint.')
-			} catch (error) {
-				modelError.value = t('Models could not be loaded: {error}', { error: errMsg(error) })
-			} finally {
-				modelLoading.value = false
+					applyModelDiscovery(data?.models || [], data?.roles || {})
+					if (!availableModels.value.length) modelError.value = t('No models are installed in this Ollama endpoint.')
+				} catch (error) {
+					modelError.value = t('Models could not be loaded: {error}', { error: errMsg(error) })
+				} finally {
+					modelLoading.value = false
+				}
 			}
-		}
 
 		function fill(settings = status.value?.settings) {
 			if (!settings) return
@@ -517,7 +579,9 @@ export default {
 				status.value = await api('GET', 'status')
 				limits.value = status.value?.limits || {}
 				if (syncForm) fill()
-				if (Array.isArray(status.value?.models)) applyModelDiscovery(status.value.models)
+				if (Array.isArray(status.value?.models)) {
+					applyModelDiscovery(status.value.models, status.value?.provider?.roles || {})
+				}
 				if (syncForm) await discoverModels(f.value.ollama_url)
 			} catch (error) {
 				loadError.value = errMsg(error)
@@ -780,7 +844,7 @@ export default {
 		})
 
 		return {
-			f, status, limits, availableModels, embeddingModels, chatModels, modelLoading, modelError, checkOut, saving, checking, indexing, resetting, deletingChats, stopping, saved, loadError, message, validationErrors, resetConfirm, chatsDeleteConfirm,
+			f, status, limits, availableModels, embeddingModels, chatModels, embeddingInstalledHint, chatInstalledHint, modelLoading, modelError, checkOut, saving, checking, indexing, resetting, deletingChats, stopping, saved, loadError, message, validationErrors, resetConfirm, chatsDeleteConfirm,
 			newExcludePath, excludeError, excludeList, actionsEnabled, notificationsEnabled, weatherEnabled, mailIndexEnabled, indexEnrolled, actionsDisabled, busy, indexingActive, settingsLocked, maxFileSizeMb,
 			auditEntries, auditLoading, exporting, clearing, loadAudit, clearAudit, downloadExport,
 			formatNumber, loadStatus, save, checkOllama, addExclude, removeExclude, startIndex, startMailIndex, stopIndex, resetIndex, deleteAllChats,
@@ -874,6 +938,7 @@ export default {
 .inline-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 12px; margin-top: 18px; }
 .action-hint { color: var(--color-text-maxcontrast); font-size: 12px; }
 .action-error { color: var(--color-error); }
+.model-hint { margin: 6px 0 0; font-size: 12px; color: var(--color-warning, #d4a72c); line-height: 1.5; }
 
 .check-panel { display: grid; gap: 8px; margin-top: 14px; padding: 12px; border: 1px solid var(--color-border); border-radius: 10px; }
 .check-success { border-color: color-mix(in srgb, var(--color-success) 45%, var(--color-border)); background: color-mix(in srgb, var(--color-success) 6%, var(--color-main-background)); }

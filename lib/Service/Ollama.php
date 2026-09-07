@@ -20,9 +20,33 @@ class Ollama {
      */
     private const CHAT_TIMEOUT = 120;
     private const STATUS_CACHE_TTL = 30;
+    private const STATUS_CACHE_TTL_FALLBACK = 15;
 
     /** @var array<string,array{expires:int,ping:array,models:array}> */
     private static array $statusCache = [];
+
+    /**
+     * Model capability markers for Ollama versions that do not yet report an
+     * explicit `capabilities` array in /api/tags. Names alone are a heuristic
+     * (Issue #148) - it is only used when the provider metadata is absent,
+     * never to override what the endpoint itself declares.
+     */
+    private const EMBEDDING_NAME_MARKERS = [
+        'embed', 'bge', 'e5', 'gte', 'jina', 'minilm', 'nomic', 'snowflake',
+        'mxbai', 'arctic', 'retriev', 'instructor', 'voyage', 'text-embedding',
+    ];
+    private const EMBEDDING_FAMILIES = [
+        'nomic-bert', 'bert', 'bge', 'e5', 'gte', 'jina', 'minilm',
+        'snowflake-arctic-embed', 'mxbai-embed', 'qwen3-embedding', 'granite-embedding',
+    ];
+
+    /**
+     * Bounded process-local resolution memo: candidates are verified against
+     * the (already cached) /api/tags snapshot, so a configured fallback chain
+     * is evaluated at most once per unique input combination per worker.
+     * @var array<string,array{model:?string,usedFallback:bool,error:?string,at:int}>
+     */
+    private static array $resolutionCache = [];
 
     private ?ICache $statusStore = null;
     private bool $statusStoreInitialized = false;
@@ -65,12 +89,216 @@ class Ollama {
     }
 
     /**
+     * Capability snapshot of the currently installed models (Issue #148/#151).
+     * Reuses the same cached /api/tags response as status(); it never issues
+     * an extra request. When the endpoint itself declares capabilities (Ollama
+     * >= 0.33) those are authoritative; name/family heuristics are only a
+     * fallback for older servers and are marked as heuristic.
+     *
+     * @return array{available:bool,online:bool,error:?string,models:array<string,array{roles:list<string>,declared:list<string>,heuristic:bool}>}
+     */
+    public function capabilities(): array {
+        $status = $this->status();
+        $ping = $status['ping'];
+        if (!($ping['ok'] ?? false)) {
+            return [
+                'available' => false,
+                'online' => false,
+                'error' => $ping['error'] ?? null,
+                'models' => [],
+            ];
+        }
+        $out = [];
+        foreach ($status['models'] as $entry) {
+            $name = (string)($entry['name'] ?? '');
+            if ($name === '') {
+                continue;
+            }
+            $declared = array_values(array_filter(array_map('strval', $entry['capabilities'] ?? [])));
+            $roles = $this->rolesFromCapabilities($declared);
+            $heuristic = false;
+            if ($roles === []) {
+                $heuristic = true;
+                $roles = $this->rolesFromHeuristics($name, $entry['details'] ?? []);
+            }
+            $out[$name] = ['roles' => $roles, 'declared' => $declared, 'heuristic' => $heuristic];
+        }
+        return ['available' => true, 'online' => true, 'error' => null, 'models' => $out];
+    }
+
+    /**
+     * Role list for a single raw /api/tags entry (public so the controller
+     * can annotate the model picker without a second request).
+     *
+     * @return list<string>
+     */
+    public function rolesForModelEntry(array $entry): array {
+        $declared = array_values(array_filter(array_map('strval', $entry['capabilities'] ?? [])));
+        $roles = $this->rolesFromCapabilities($declared);
+        if ($roles !== []) {
+            return $roles;
+        }
+        return $this->rolesFromHeuristics((string)($entry['name'] ?? ''), $entry['details'] ?? []);
+    }
+
+    /** Map Ollama capability names to app-level model roles. */
+    private function rolesFromCapabilities(array $declared): array {
+        $roles = [];
+        foreach ($declared as $capability) {
+            $capability = strtolower((string)$capability);
+            if ($capability === 'embedding') {
+                $roles[] = 'embedding';
+            } elseif (in_array($capability, ['completion', 'chat', 'tools', 'vision'], true)) {
+                $roles[] = 'chat';
+            }
+        }
+        return array_values(array_unique($roles));
+    }
+
+    /** Conservative name/family fallback for Ollama without capabilities. */
+    private function rolesFromHeuristics(string $name, array $details): array {
+        $haystack = strtolower($name . ' ' . (string)($details['family'] ?? ''));
+        $looksEmbedding = false;
+        foreach (self::EMBEDDING_NAME_MARKERS as $marker) {
+            if (strpos($haystack, $marker) !== false) {
+                $looksEmbedding = true;
+                break;
+            }
+        }
+        if (!$looksEmbedding) {
+            $family = strtolower((string)($details['family'] ?? ''));
+            if (in_array($family, self::EMBEDDING_FAMILIES, true)) {
+                $looksEmbedding = true;
+            }
+        }
+        return $looksEmbedding ? ['embedding'] : ['chat'];
+    }
+
+    /**
+     * Resolve the effective model for a role from the configured model plus
+     * its optional fallback chain (Issue #86). The first candidate that is
+     * actually installed AND matches the requested role wins; verification
+     * uses the cached /api/tags snapshot so it adds no request when status()
+     * was already polled. If the endpoint cannot be reached the configured
+     * model is used unchanged so the real Ollama error still surfaces.
+     *
+     * @param string $role 'chat'|'embedding'
+     * @return array{model:?string,usedFallback:bool,error:?string,candidates:list<string>}
+     */
+    public function resolveModel(string $role, string $configured, string $fallbackList, string $taskModel = ''): array {
+        $configured = trim($configured);
+        $fallbackList = trim($fallbackList);
+        $taskModel = trim($taskModel);
+        if ($fallbackList === '' && $taskModel === '') {
+            // No fallback chain configured: the hot path (every chat message
+            // and embedding batch) must not add a /api/tags round trip. The
+            // configured model is used directly; a missing model surfaces the
+            // real Ollama error as before.
+            return ['model' => $configured, 'usedFallback' => false, 'error' => null, 'candidates' => [$configured]];
+        }
+        $candidates = [];
+        foreach ([$taskModel, $configured, ...array_map('trim', explode(',', $fallbackList))] as $candidate) {
+            if ($candidate !== '' && !in_array($candidate, $candidates, true)) {
+                $candidates[] = $candidate;
+            }
+        }
+        if ($candidates === []) {
+            return ['model' => null, 'usedFallback' => false, 'error' => 'No ' . $role . ' model configured.', 'candidates' => []];
+        }
+
+        $memoKey = hash('sha256', $role . '|' . implode(',', $candidates) . '|' . $this->base());
+        $cached = self::$resolutionCache[$memoKey] ?? null;
+        if ($cached !== null && time() - $cached['at'] < self::STATUS_CACHE_TTL_FALLBACK) {
+            return $cached;
+        }
+
+        $capabilities = $this->capabilities();
+        $installed = $capabilities['models'];
+        if (!$capabilities['online']) {
+            // Endpoint unreachable: keep the primary configured model so the
+            // actual request reports the true connection error.
+            return ['model' => $configured, 'usedFallback' => false, 'error' => null, 'candidates' => $candidates];
+        }
+
+        $normalized = [];
+        foreach (array_keys($installed) as $name) {
+            $lower = strtolower($name);
+            $normalized[$lower] = $name;
+            if (str_ends_with($lower, ':latest')) {
+                $normalized[substr($lower, 0, -7)] = $name;
+            }
+        }
+        foreach ($candidates as $candidate) {
+            $listed = $normalized[strtolower($candidate)] ?? null;
+            if ($listed === null) {
+                continue;
+            }
+            $roles = $installed[$listed]['roles'] ?? [];
+            if (in_array($role, $roles, true)) {
+                $result = [
+                    'model' => $listed,
+                    'usedFallback' => $candidate !== $configured,
+                    'error' => null,
+                    'candidates' => $candidates,
+                ];
+                self::$resolutionCache[$memoKey] = $result + ['at' => time()];
+                return $result;
+            }
+        }
+
+        // None of the candidates is installed with the required role. Only
+        // fail fast when the endpoint genuinely lists models - an empty list
+        // is indistinguishable from a still-starting server, where the
+        // configured model should be attempted directly.
+        if ($installed === []) {
+            return ['model' => $configured, 'usedFallback' => false, 'error' => null, 'candidates' => $candidates];
+        }
+        $error = 'None of the configured ' . $role . ' models (' . implode(', ', $candidates)
+            . ') is installed and capable. Installed: '
+            . implode(', ', array_keys($installed)) . '.';
+        return ['model' => null, 'usedFallback' => false, 'error' => $error, 'candidates' => $candidates];
+    }
+
+    /**
+     * Resolve the chat model from chat_model + chat_model_fallback. Heavy
+     * text tasks may prefer summary_model via $preferredModel (Issue #86).
+     *
+     * @return array{model:?string,error:?string,usedFallback:bool}
+     */
+    private function resolveChatModel(?string $preferredModel = null): array {
+        return $this->resolveModel(
+            'chat',
+            $this->config->get('chat_model'),
+            $this->config->get('chat_model_fallback'),
+            $preferredModel ?? ''
+        );
+    }
+
+    /**
+     * Resolve the embedding model from embedding_model + fallback chain.
+     *
+     * @return array{model:?string,error:?string,usedFallback:bool}
+     */
+    private function resolveEmbeddingModel(): array {
+        return $this->resolveModel(
+            'embedding',
+            $this->config->get('embedding_model'),
+            $this->config->get('embedding_model_fallback')
+        );
+    }
+
+    /**
      * Return connectivity and model information from one /api/tags request.
      * The short process-local cache prevents repeated status polls from
      * multiplying requests while keeping the information at most 30 seconds
      * stale. Explicit connection checks continue to use testAll().
      *
-     * @return array{ping:array,models:array<int,array<string,mixed>>}
+     * The returned block keeps `ping` and `models` stable (older consumers
+     * depend on that shape) and adds a small, versioned `meta` block with the
+     * snapshot time, request latency and staleness so the UI can explain the
+     * provider state without extra requests (Issue #151).
+     *
+     * @return array{ping:array,models:array<int,array<string,mixed>>,meta:array{version:int,checkedAt:int,latencyMs:?int,fromCache:bool}}
      */
     public function status(): array {
         $base = $this->base();
@@ -78,9 +306,19 @@ class Ollama {
         $key = 'tags_' . hash('sha256', $base);
         $cached = $this->readStatusCache($key, $base, $now);
         if ($cached !== null) {
-            return ['ping' => $cached['ping'], 'models' => $cached['models']];
+            return [
+                'ping' => $cached['ping'],
+                'models' => $cached['models'],
+                'meta' => [
+                    'version' => 1,
+                    'checkedAt' => (int)($cached['checkedAt'] ?? $now),
+                    'latencyMs' => isset($cached['latencyMs']) ? (int)$cached['latencyMs'] : null,
+                    'fromCache' => true,
+                ],
+            ];
         }
 
+        $started = microtime(true);
         try {
             $response = $this->client()->get($base . '/api/tags', ['timeout' => 20]);
             $status = $response->getStatusCode();
@@ -100,11 +338,14 @@ class Ollama {
             $ping = ['ok' => false, 'url' => $base, 'error' => $e->getMessage()];
             $models = [];
         }
+        $latencyMs = (int)round((microtime(true) - $started) * 1000);
 
         $entry = [
             'expires' => $now + self::STATUS_CACHE_TTL,
             'ping' => $ping,
             'models' => $models,
+            'checkedAt' => $now,
+            'latencyMs' => $latencyMs,
         ];
         self::$statusCache[$base] = $entry;
         try {
@@ -113,7 +354,16 @@ class Ollama {
             // The process-local fallback above still protects long-running
             // workers if the configured cache backend is temporarily absent.
         }
-        return ['ping' => $ping, 'models' => $models];
+        return [
+            'ping' => $ping,
+            'models' => $models,
+            'meta' => [
+                'version' => 1,
+                'checkedAt' => $now,
+                'latencyMs' => $latencyMs,
+                'fromCache' => false,
+            ],
+        ];
     }
 
     /**
@@ -318,11 +568,15 @@ class Ollama {
         }
 
         $missTexts = array_values($misses);
-        $model = $this->config->get('embedding_model');
+        $model = $this->resolveEmbeddingModel();
+        if ($model['error'] !== null) {
+            return [null, $model['error']];
+        }
+        $modelName = $model['model'] ?? '';
         try {
             $this->lastEmbeddingStats['ollama_requests'] = 1;
             $r = $this->client()->post($this->base() . '/api/embed', [
-                'json' => ['model' => $model, 'input' => $missTexts],
+                'json' => ['model' => $modelName, 'input' => $missTexts],
                 // Keep cancellation responsive while allowing a cold model
                 // enough time to produce a normal batch response.
                 'timeout' => 30,
@@ -376,13 +630,17 @@ class Ollama {
 
     /** @param string[] $texts */
     private function embedBatchLegacy(array $texts): array {
-        $model = $this->config->get('embedding_model');
+        $model = $this->resolveEmbeddingModel();
+        if ($model['error'] !== null) {
+            return [null, $model['error']];
+        }
+        $modelName = $model['model'] ?? '';
         try {
             $out = [];
             foreach ($texts as $t) {
                 $this->lastEmbeddingStats['ollama_requests']++;
                 $r = $this->client()->post($this->base() . '/api/embeddings', [
-                    'json' => ['model' => $model, 'prompt' => $t],
+                    'json' => ['model' => $modelName, 'prompt' => $t],
                     'timeout' => 30,
                     'read_timeout' => 5,
                 ]);
@@ -395,7 +653,7 @@ class Ollama {
             }
             return [$out, null];
         } catch (\Throwable $e) {
-            $this->logger->error('eva_ai embed legacy failed: ' . $model, ['exception' => $e]);
+            $this->logger->error('eva_ai embed legacy failed: ' . ($modelName ?? ''), ['exception' => $e]);
             return [null, 'Ollama embedding fehlgeschlagen: ' . $e->getMessage()];
         }
     }
@@ -457,16 +715,20 @@ class Ollama {
      *        increasing estimate between 0 and 1 while the model generates.
      * @return array{answer?:string,error?:string,model?:string}
      */
-    public function chat(array $messages, array $tools = [], ?int $timeout = null, ?callable $onProgress = null): array {
-        $model = $this->config->get('chat_model');
-        if ($model === '') {
+    public function chat(array $messages, array $tools = [], ?int $timeout = null, ?callable $onProgress = null, ?string $preferredModel = null): array {
+        $model = $this->resolveChatModel($preferredModel);
+        if ($model['error'] !== null) {
+            return ['error' => $model['error']];
+        }
+        $modelName = $model['model'] ?? '';
+        if ($modelName === '') {
             return ['error' => 'Kein Chat-Modell konfiguriert.'];
         }
         if ($onProgress !== null) {
-            return $this->chatStreamingAccumulate($messages, $tools, $timeout, $model, $onProgress);
+            return $this->chatStreamingAccumulate($messages, $tools, $timeout, $modelName, $onProgress, $preferredModel);
         }
         $payload = [
-            'model' => $model,
+            'model' => $modelName,
             'messages' => $messages,
             'stream' => false,
             'options' => [
@@ -493,13 +755,13 @@ class Ollama {
             if (isset($msg['content']) && $msg['content'] !== '') {
                 return [
                     'answer' => $msg['content'],
-                    'model' => $data['model'] ?? $model,
+                    'model' => $data['model'] ?? $modelName,
                     'tool_calls' => $toolCalls,
                     'raw_tool_calls' => $rawToolCalls,
                 ];
             }
             if ($toolCalls !== []) {
-                return ['answer' => '', 'model' => $data['model'] ?? $model, 'tool_calls' => $toolCalls, 'raw_tool_calls' => $rawToolCalls];
+                return ['answer' => '', 'model' => $data['model'] ?? $modelName, 'tool_calls' => $toolCalls, 'raw_tool_calls' => $rawToolCalls];
             }
             if (isset($data['error'])) {
                 return ['error' => $data['error']];
@@ -519,7 +781,7 @@ class Ollama {
      * @param callable(float):void $onProgress
      * @return array{answer?:string,error?:string,model?:string}
      */
-    private function chatStreamingAccumulate(array $messages, array $tools, ?int $timeout, string $defaultModel, callable $onProgress): array {
+    private function chatStreamingAccumulate(array $messages, array $tools, ?int $timeout, string $defaultModel, callable $onProgress, ?string $preferredModel = null): array {
         // Progress-reporting callers run inside a dedicated worker, so the
         // generous total budget from the streaming path is acceptable: reads
         // stay idle-bounded and every token is reported to the task.
@@ -529,7 +791,7 @@ class Ollama {
         $toolCalls = [];
         $rawToolCalls = [];
         $chunks = 0;
-        foreach ($this->chatStream($messages, $tools, $totalTimeout) as $ev) {
+        foreach ($this->chatStream($messages, $tools, $totalTimeout, $preferredModel) as $ev) {
             $evType = $ev['type'] ?? '';
             if ($evType === 'content') {
                 $answer .= (string)($ev['delta'] ?? '');
@@ -575,14 +837,19 @@ class Ollama {
      * @param array<int,array{role:string,content:string}> $messages
      * @return \Generator<string,array{type:string,delta:string},void,void>
      */
-    public function chatStream(array $messages, array $tools = [], ?int $timeout = null): \Generator {
-        $model = $this->config->get('chat_model');
-        if ($model === '') {
+    public function chatStream(array $messages, array $tools = [], ?int $timeout = null, ?string $preferredModel = null): \Generator {
+        $model = $this->resolveChatModel($preferredModel);
+        if ($model['error'] !== null) {
+            yield ['type' => 'error', 'delta' => $model['error']];
+            return;
+        }
+        $modelName = $model['model'] ?? '';
+        if ($modelName === '') {
             yield ['type' => 'error', 'delta' => 'No chat model configured.'];
             return;
         }
         $payload = [
-            'model' => $model,
+            'model' => $modelName,
             'messages' => $messages,
             'stream' => true,
             'options' => [

@@ -90,7 +90,7 @@ class EvaTextToTextProvider implements ISynchronousProvider {
 
 		$result = $this->ollama->chat($messages, [], null, static function (float $p) use ($reportProgress): void {
 			$reportProgress(0.3 + min(0.6, max(0.0, $p)) * 0.6);
-		});
+		}, $this->appConfig->get('summary_model'));
 
 		if (isset($result['error'])) {
 			throw new RuntimeException((string)$result['error']);

@@ -453,15 +453,62 @@ class RagService {
             }
         }
 
+        $installedNames = array_map(static fn($m) => (string)($m['name'] ?? ''), $models);
+        $installedLower = array_map(static fn(string $name): string => strtolower(preg_replace('/:latest$/', '', $name) ?? $name), $installedNames);
+        $isInstalled = static function (string $configured) use ($installedLower): bool {
+            $configured = strtolower(preg_replace('/:latest$/', '', trim($configured)) ?? trim($configured));
+            return $configured !== '' && in_array($configured, $installedLower, true);
+        };
+
+        $chatResolution = $this->ollama->resolveModel(
+            'chat',
+            $this->config->get('chat_model'),
+            $this->config->get('chat_model_fallback')
+        );
+        $embeddingResolution = $this->ollama->resolveModel(
+            'embedding',
+            $this->config->get('embedding_model'),
+            $this->config->get('embedding_model_fallback')
+        );
+        $caps = $this->ollama->capabilities();
+        $statusMeta = $ollamaStatus['meta'] ?? ['version' => 1, 'checkedAt' => time(), 'latencyMs' => null, 'fromCache' => false];
+
         return [
             'enabled' => true,
             'ollamaOnline' => (bool)($ping['ok'] ?? false),
             'ollamaError' => $ping['error'] ?? null,
             'ollamaUrl' => $this->config->ollamaUrl(),
-            'models' => array_map(static fn($m) => $m['name'] ?? '', $models),
+            'models' => $installedNames,
             'embeddingModel' => $this->config->get('embedding_model'),
             'chatModel' => $this->config->get('chat_model'),
-            'chatModelInstalled' => in_array($this->config->get('chat_model'), array_map(static fn($m) => $m['name'] ?? '', $models), true),
+            'chatModelInstalled' => $isInstalled($this->config->get('chat_model')),
+            'embeddingModelInstalled' => $isInstalled($this->config->get('embedding_model')),
+            // Versioned provider health/capability snapshot (Issue #151):
+            // everything here is metadata - no prompts, files or user content.
+            'provider' => [
+                'version' => 1,
+                'online' => (bool)($ping['ok'] ?? false),
+                'checkedAt' => (int)$statusMeta['checkedAt'],
+                'latencyMs' => $statusMeta['latencyMs'] ?? null,
+                'fromCache' => (bool)($statusMeta['fromCache'] ?? false),
+                'capabilitiesAvailable' => (bool)($caps['available'] ?? false),
+                'roles' => $caps['models'] ?? [],
+                'chatModel' => [
+                    'configured' => $this->config->get('chat_model'),
+                    'fallbacks' => $this->config->get('chat_model_fallback'),
+                    'summaryModel' => $this->config->get('summary_model'),
+                    'resolved' => $chatResolution['model'],
+                    'usedFallback' => (bool)($chatResolution['usedFallback'] ?? false),
+                    'error' => $chatResolution['error'] ?? null,
+                ],
+                'embeddingModel' => [
+                    'configured' => $this->config->get('embedding_model'),
+                    'fallbacks' => $this->config->get('embedding_model_fallback'),
+                    'resolved' => $embeddingResolution['model'],
+                    'usedFallback' => (bool)($embeddingResolution['usedFallback'] ?? false),
+                    'error' => $embeddingResolution['error'] ?? null,
+                ],
+            ],
             'documents' => $docCount,
             'chunks' => $chunkCount,
             'indexing' => $running,

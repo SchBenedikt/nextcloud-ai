@@ -114,7 +114,8 @@ class ApiController extends OCSController {
             return new DataResponse(['error' => 'Settings are locked while indexing is running.'], 409);
         }
         $allowed = [
-            'ollama_url', 'embedding_model', 'chat_model', 'top_k', 'chunk_size',
+            'ollama_url', 'embedding_model', 'chat_model', 'chat_model_fallback',
+            'embedding_model_fallback', 'summary_model', 'top_k', 'chunk_size',
             'chunk_overlap', 'max_file_size', 'max_files_per_run', 'scope_path', 'context_size', 'temperature',
             'actions_enabled',
             'exec_write_types', 'exec_write_max_chars', 'exec_delete_mode',
@@ -160,6 +161,13 @@ class ApiController extends OCSController {
                 'validationErrors' => array_values($validationErrors),
             ], 400);
         }
+        $roleErrors = $this->validateModelRoles($pending);
+        if ($roleErrors !== []) {
+            return new DataResponse([
+                'error' => 'Invalid settings.',
+                'validationErrors' => array_values($roleErrors),
+            ], 400);
+        }
         foreach ($pending as $key => $value) {
                 if (in_array($key, ['top_k', 'chunk_size', 'chunk_overlap', 'max_file_size', 'max_files_per_run', 'context_size', 'exec_write_max_chars', 'mail_index_max', 'talk_history_size'], true)) {
                     $value = (string)$value;
@@ -185,6 +193,73 @@ class ApiController extends OCSController {
                 $this->config->set($key, (string)$value);
         }
         return new DataResponse($this->config->all());
+    }
+
+    /**
+     * Reject role-mismatched model selections before they are stored (Issue
+     * #148): when the endpoint reports capabilities for an installed model,
+     * an embedding model must actually produce vectors and a chat model must
+     * accept chat/completion. Selections for models that are not installed
+     * yet (or an offline endpoint) are allowed - the pull may still be
+     * pending, and indexing/chat will surface the real error.
+     */
+    private function validateModelRoles(array $pending): array {
+        $modelKeys = ['embedding_model', 'chat_model', 'summary_model'];
+        if (!array_intersect(array_keys($pending), $modelKeys + ['ollama_url'])) {
+            return [];
+        }
+        $errors = [];
+        $previousUrl = null;
+        $urlPending = isset($pending['ollama_url']) && is_scalar($pending['ollama_url']);
+        if ($urlPending) {
+            // Capability checks must run against the endpoint the user is
+            // about to save, not the previously stored one.
+            $previousUrl = $this->config->get('ollama_url');
+            $this->config->set('ollama_url', trim((string)$pending['ollama_url']));
+        }
+        try {
+            $caps = $this->ollama->capabilities();
+            if (!$caps['available'] || $caps['models'] === []) {
+                // Cannot verify capabilities (offline or still starting): do
+                // not block saving, the connection check explains the state.
+                return [];
+            }
+            $byLower = [];
+            foreach ($caps['models'] as $name => $info) {
+                $lower = strtolower($name);
+                $byLower[$lower] = $info['roles'] ?? [];
+                if (str_ends_with($lower, ':latest')) {
+                    $byLower[substr($lower, 0, -7)] = $info['roles'] ?? [];
+                }
+            }
+            $expect = [
+                'embedding_model' => 'embedding',
+                'chat_model' => 'chat',
+                'summary_model' => 'chat',
+            ];
+            foreach ($expect as $key => $role) {
+                if (!isset($pending[$key]) || !is_scalar($pending[$key])) {
+                    continue;
+                }
+                $model = trim((string)$pending[$key]);
+                if ($model === '') {
+                    continue;
+                }
+                $roles = $byLower[strtolower($model)] ?? null;
+                if ($roles === null) {
+                    continue; // Not installed yet: allow, pull may be pending.
+                }
+                if (!in_array($role, $roles, true)) {
+                    $errors[] = $key . ' model "' . $model . '" does not support ' . $role
+                        . ' (provider reports: ' . implode(', ', $roles) . ').';
+                }
+            }
+        } finally {
+            if ($urlPending && $previousUrl !== null) {
+                $this->config->set('ollama_url', $previousUrl);
+            }
+        }
+        return $errors;
     }
 
     private function validateOllamaUrl(string $url): ?string {
@@ -767,8 +842,19 @@ class ApiController extends OCSController {
         }
         $models = $this->ollama->listModels($endpoint);
         $names = array_values(array_filter(array_map(static fn($m) => (string)($m['name'] ?? ''), $models)));
+        $roles = [];
+        foreach ($models as $entry) {
+            $name = (string)($entry['name'] ?? '');
+            if ($name === '') {
+                continue;
+            }
+            $declared = array_values(array_filter(array_map('strval', $entry['capabilities'] ?? [])));
+            $entryRoles = $this->ollama->rolesForModelEntry($entry);
+            $roles[$name] = ['roles' => $entryRoles, 'declared' => $declared];
+        }
         return new DataResponse([
             'models' => $names,
+            'roles' => $roles,
             'embedding' => $this->config->get('embedding_model'),
             'chat' => $this->config->get('chat_model'),
             'details' => $models,

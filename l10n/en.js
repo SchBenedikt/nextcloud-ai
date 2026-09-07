@@ -361,5 +361,17 @@ OC.L10N.register("eva_ai", {
   "The action history could not be cleared: {error}": "The action history could not be cleared: {error}",
   "Preparing your data export…": "Preparing your data export…",
   "Your data export was downloaded.": "Your data export was downloaded.",
-  "The data export could not be created: {error}": "The data export could not be created: {error}"
+  "The data export could not be created: {error}": "The data export could not be created: {error}",
+  "EVA discovers installed models automatically from the Ollama endpoint and separates embedding from chat models by their declared capabilities. Embedding models turn file text into searchable vectors.": "EVA discovers installed models automatically from the Ollama endpoint and separates embedding from chat models by their declared capabilities. Embedding models turn file text into searchable vectors.",
+  "Chat model fallbacks": "Chat model fallbacks",
+  "Optional, comma-separated": "Optional, comma-separated",
+  "If the chat model above is not installed, EVA tries these models in order before failing. (E.g. llama3.1, qwen2.5)": "If the chat model above is not installed, EVA tries these models in order before failing. (E.g. llama3.1, qwen2.5)",
+  "Embedding model fallbacks": "Embedding model fallbacks",
+  "If the embedding model above is not installed, EVA tries these models in order before failing.": "If the embedding model above is not installed, EVA tries these models in order before failing.",
+  "Heavy task model (optional)": "Heavy task model (optional)",
+  "Use the chat model": "Use the chat model",
+  "Optionally use a separate, usually larger model for summaries, translations and proofreading. Leave empty to reuse the chat model.": "Optionally use a separate, usually larger model for summaries, translations and proofreading. Leave empty to reuse the chat model.",
+  "{configured} is not installed - using {resolved} instead.": "{configured} is not installed - using {resolved} instead.",
+  "{model} is not installed on this Ollama endpoint yet.": "{model} is not installed on this Ollama endpoint yet.",
+  "{model} is installed but is not usable as the {role} model.": "{model} is installed but is not usable as the {role} model."
 }, "nplurals=2; plural=(n != 1);");
