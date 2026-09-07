@@ -1,6 +1,7 @@
 import { mdiDownload } from '@mdi/js'
 import { translate as t } from './i18n'
 import { buildConfirmForm } from './confirmForms'
+import { escHtml, mdInline, mdToHtml, citedSources, copyText } from './chat-utils'
 
 /* EvaAi – Vanilla-Chat-Mount.
  * Wird von ChatView.vue aufgerufen und rendert den kompletten Chat
@@ -74,33 +75,6 @@ export function mountChat(root, opts = {}) {
 		} catch (_) { return [] }
 	}
 
-	/**
-	 * Nur Quellen anzeigen, die wirklich im Antworttext mit [n] zitiert sind.
-	 * Liefert [{ref:n, src:{...}}, ...] in der Reihenfolge der Zitierung.
-	 */
-	function citedSources(text, sources) {
-		const nums = new Set()
-		if (text) {
-			const re = /\[([\d,\s\-–]+)\]/g
-			let m
-			while ((m = re.exec(text)) !== null) {
-				m[1].split(/[\s,]+/).forEach((tok) => {
-					if (!tok) return
-					const range = tok.match(/^(\d+)[-–](\d+)$/)
-					if (range) {
-						for (let n = parseInt(range[1], 10); n <= parseInt(range[2], 10); n++) nums.add(n)
-					} else {
-						const n = parseInt(tok, 10)
-						if (!isNaN(n)) nums.add(n)
-					}
-				})
-			}
-		}
-		return (sources || [])
-			.map((src, i) => ({ ref: i + 1, src }))
-			.filter((x) => nums.has(x.ref))
-	}
-
 	function exportMarkdown() {
 		const lines = []
 		lines.push('# ' + t('Eva chat export'))
@@ -123,99 +97,6 @@ export function mountChat(root, opts = {}) {
 		a.click()
 		a.remove()
 		URL.revokeObjectURL(url)
-	}
-
-	function copyText(txt, el) {
-		const done = () => {
-			if (!el) return
-			el.textContent = '✓'
-			setTimeout(() => { el.textContent = '⧉' }, 1200)
-		}
-		if (navigator.clipboard && navigator.clipboard.writeText) {
-			navigator.clipboard.writeText(txt).then(done).catch(done)
-		} else {
-			const ta = document.createElement('textarea')
-			ta.value = txt
-			ta.style.position = 'fixed'
-			ta.style.opacity = '0'
-			document.body.appendChild(ta)
-			ta.select()
-			try { document.execCommand('copy') } catch (_) {}
-			ta.remove()
-			done()
-		}
-	}
-
-	function escHtml(s) {
-		return String(s).replace(/[&<>"']/g, (c) =>
-			({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]))
-	}
-
-	function mdInline(text) {
-		text = text
-			.replace(/`([^`]+)`/g, '<code>$1</code>')
-			.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
-			.replace(/~~([^~]+)~~/g, '<del>$1</del>')
-			.replace(/\*([^*]+)\*/g, '<em>$1</em>')
-			.replace(/\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g, '<a href="$2" target="_blank" rel="noopener">$1</a>')
-			.replace(/(^|[\s(])(https?:\/\/[^\s<]+)/g, '$1<a href="$2" target="_blank" rel="noopener">$2</a>')
-		return text
-	}
-
-	function mdToHtml(src) {
-		const blocks = String(src || '').split(/(```+)/)
-		let html = ''
-		for (let i = 0; i < blocks.length; i++) {
-			if (i % 2 === 1) {
-				const fence = blocks[i]
-				if (fence[0] !== '`') continue
-				const body = blocks[++i] ?? ''
-				const nl = body.indexOf('\n')
-				const lang = (nl > 0 ? body.slice(0, nl) : '').trim().replace(/[^a-zA-Z0-9_+-]/g, '')
-				const code = body.slice(nl > 0 ? nl + 1 : 0).replace(/[ \t]+\n?$/, '')
-				html += '<pre class="md-pre"><code>' + escHtml(code) + '</code></pre>\n'
-				continue
-			}
-			const block = blocks[i]
-			if (!block) continue
-			const lines = block.split('\n')
-			let para = []
-			let listType = null
-			const flushPara = () => {
-				if (para.length) {
-					html += '<p>' + para.join('<br>') + '</p>\n'
-					para = []
-				}
-			}
-			const flushList = () => {
-				if (listType === 'ul' || listType === 'ol') {
-					html += '</' + listType + '>\n'
-					listType = null
-				}
-			}
-			for (const rawLine of lines) {
-				const s = rawLine.trim()
-				if (s === '') { flushPara(); flushList(); continue }
-				const h = /^(#{1,6})\s+(.*)$/.exec(s)
-				if (h) { flushPara(); flushList(); html += '<h' + h[1].length + '>' + mdInline(escHtml(h[2])) + '</h' + h[1].length + '>\n'; continue }
-				if (/^(-{3,}|\*{3,}|_{3,})$/.test(s)) { flushPara(); flushList(); html += '<hr>\n'; continue }
-				if (s[0] === '>') { flushPara(); flushList(); html += '<blockquote>' + mdInline(escHtml(s.slice(1).trim())) + '</blockquote>\n'; continue }
-				const ul = /^[-*+]\s+(.*)$/.exec(s)
-				const ol = /^(\d+)[.):]\s+(.*)$/.exec(s)
-				if (ul || ol) {
-					flushPara()
-					const type = ul ? 'ul' : 'ol'
-					if (listType !== type) { flushList(); html += '<' + type + '>\n'; listType = type }
-					html += '<li>' + mdInline(escHtml((ul ? ul[1] : ol[2]) || '')) + '</li>\n'
-					continue
-				}
-				flushList()
-				para.push(mdInline(escHtml(s)))
-			}
-			flushPara()
-			flushList()
-		}
-		return html
 	}
 
 	function renderMsg(scroll, emptyEl, m, idx) {

@@ -38,5 +38,7 @@ return [
         ['name' => 'api#confirmTool', 'url' => '/api/confirmTool', 'verb' => 'POST'],
         ['name' => 'api#fileContextChat', 'url' => '/api/fileContextChat', 'verb' => 'POST'],
         ['name' => 'api#fileContextStatus', 'url' => '/api/fileContextStatus', 'verb' => 'POST'],
+        ['name' => 'api#knowledge', 'url' => '/api/knowledge', 'verb' => 'GET'],
+        ['name' => 'api#saveKnowledge', 'url' => '/api/knowledge', 'verb' => 'PUT'],
     ],
 ];

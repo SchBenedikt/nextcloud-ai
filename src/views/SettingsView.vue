@@ -300,6 +300,33 @@
 			<section class="settings-section">
 				<div class="section-heading">
 					<div>
+						<h3>{{ $t('Personal knowledge') }}</h3>
+						<p>{{ $t('Edit the facts EVA remembers about you. This file is read before every answer to personalise responses.') }}</p>
+					</div>
+				</div>
+				<div class="field field-wide">
+					<textarea
+						v-model="knowledgeContent"
+						class="knowledge-editor"
+						:placeholder="$t('No knowledge file yet. EVA will create one with your profile on first use.')"
+						rows="12"
+						:disabled="settingsLocked"
+					></textarea>
+					<p class="field-help">
+						{{ $t('{count} of {max} characters', { count: formatNumber(knowledgeContent.length), max: '60,000' }) }}
+					</p>
+				</div>
+				<div class="inline-actions">
+					<NcButton type="primary" :loading="savingKnowledge" :disabled="settingsLocked || knowledgeContent === knowledgeOriginal" @click="saveKnowledgeContent">
+						{{ $t('Save knowledge') }}
+					</NcButton>
+					<span v-if="knowledgeSaved" class="action-hint" style="color: var(--color-success);">{{ $t('Saved') }}</span>
+				</div>
+			</section>
+
+			<section class="settings-section">
+				<div class="section-heading">
+					<div>
 						<h3>{{ $t('Talk & notifications') }}</h3>
 						<p>{{ $t('Configure how EVA behaves when she is used from Nextcloud Talk.') }}</p>
 					</div>
@@ -776,6 +803,10 @@ export default {
 		const auditLoading = ref(false)
 		const exporting = ref(false)
 		const clearing = ref(false)
+		const knowledgeContent = ref('')
+		const knowledgeOriginal = ref('')
+		const savingKnowledge = ref(false)
+		const knowledgeSaved = ref(false)
 
 		async function loadAudit() {
 			if (auditLoading.value) return
@@ -801,6 +832,32 @@ export default {
 				setMessage('error', t('The action history could not be cleared: {error}', { error: errMsg(error) }))
 			} finally {
 				clearing.value = false
+			}
+		}
+
+		async function loadKnowledge() {
+			try {
+				const data = await api('GET', 'knowledge')
+				knowledgeContent.value = data?.content || ''
+				knowledgeOriginal.value = knowledgeContent.value
+			} catch (e) {
+				// Silently fail - knowledge is optional
+			}
+		}
+
+		async function saveKnowledgeContent() {
+			if (savingKnowledge.value) return
+			savingKnowledge.value = true
+			try {
+				await api('PUT', 'knowledge', { content: knowledgeContent.value })
+				knowledgeOriginal.value = knowledgeContent.value
+				knowledgeSaved.value = true
+				setMessage('success', t('Your personal knowledge was saved.'))
+				window.setTimeout(() => { knowledgeSaved.value = false }, 3000)
+			} catch (error) {
+				setMessage('error', t('Could not save knowledge: {error}', { error: errMsg(error) }))
+			} finally {
+				savingKnowledge.value = false
 			}
 		}
 
@@ -836,6 +893,7 @@ export default {
 		onMounted(async () => {
 			await loadStatus(true)
 			await loadAudit()
+			await loadKnowledge()
 			statusTimer = window.setInterval(loadStatus, 3000)
 		})
 		onUnmounted(() => {
@@ -847,6 +905,7 @@ export default {
 			f, status, limits, availableModels, embeddingModels, chatModels, embeddingInstalledHint, chatInstalledHint, modelLoading, modelError, checkOut, saving, checking, indexing, resetting, deletingChats, stopping, saved, loadError, message, validationErrors, resetConfirm, chatsDeleteConfirm,
 			newExcludePath, excludeError, excludeList, actionsEnabled, notificationsEnabled, weatherEnabled, mailIndexEnabled, indexEnrolled, actionsDisabled, busy, indexingActive, settingsLocked, maxFileSizeMb,
 			auditEntries, auditLoading, exporting, clearing, loadAudit, clearAudit, downloadExport,
+			knowledgeContent, knowledgeOriginal, savingKnowledge, knowledgeSaved, saveKnowledgeContent,
 			formatNumber, loadStatus, save, checkOllama, addExclude, removeExclude, startIndex, startMailIndex, stopIndex, resetIndex, deleteAllChats,
 		}
 	},
@@ -993,6 +1052,10 @@ export default {
 .audit-tool { font-weight: 600; }
 .audit-detail { color: var(--color-text-maxcontrast); overflow-wrap: anywhere; }
 .audit-time { margin-left: auto; color: var(--color-text-maxcontrast); font-size: 11px; white-space: nowrap; }
+
+.knowledge-editor { width: 100%; min-height: 200px; padding: 12px; border: 2px solid var(--color-border); border-radius: var(--border-radius-large, 8px); background: var(--color-main-background); color: var(--color-main-text); font: inherit; font-size: 13px; line-height: 1.6; resize: vertical; box-sizing: border-box; font-family: var(--font-family-monospace, monospace); }
+.knowledge-editor:focus { border-color: var(--color-primary-element); outline: 2px solid color-mix(in srgb, var(--color-primary-element) 25%, transparent); outline-offset: 1px; }
+.knowledge-editor:disabled { opacity: .65; cursor: not-allowed; }
 
 @media (max-width: 800px) {
 	.page-header { align-items: flex-start; flex-direction: column; }

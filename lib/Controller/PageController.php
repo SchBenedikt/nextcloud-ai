@@ -62,7 +62,25 @@ class PageController extends Controller {
     #[NoCSRFRequired]
     public function standalone(): TemplateResponse {
         Util::addTranslations('eva_ai');
-        \OCP\Util::addScript('eva_ai', 'chat');
+        $jsDir = $this->appManager->getAppPath('eva_ai') . '/js';
+        $standalone = null;
+        $candidates = [];
+        foreach (glob($jsDir . '/eva_ai_standalone*.js') ?: [] as $file) {
+            $base = basename($file);
+            if (!str_starts_with($base, 'eva_ai_standalone') || str_ends_with($base, '.map')) {
+                continue;
+            }
+            $candidates[$file] = filemtime($file);
+        }
+        if ($candidates !== []) {
+            arsort($candidates);
+            $standalone = basename((string)array_key_first($candidates), '.js');
+        }
+        if ($standalone !== null) {
+            \OCP\Util::addScript('eva_ai', $standalone);
+        } else {
+            \OCP\Util::addScript('eva_ai', 'chat');
+        }
         \OCP\Util::addHeader('meta', [
             'name' => 'requesttoken',
             'content' => \OC::$server->get(\OC\Security\CSRF\CsrfTokenManager::class)->getToken()->getEncryptedValue(),

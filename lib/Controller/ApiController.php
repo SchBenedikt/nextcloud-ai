@@ -569,6 +569,54 @@ class ApiController extends OCSController {
      * Auswahl bereits indexiert ist).
      */
     #[NoAdminRequired]
+    public function knowledge(): DataResponse {
+        $user = $this->requireUser();
+        if ($user === null) {
+            return new DataResponse(['error' => 'Not logged in'], 401);
+        }
+        $this->knowledgeInitializer->ensureInitialized($user);
+        try {
+            $rootFolder = \OCP\Server::get(\OCP\Files\IRootFolder::class);
+            $home = $rootFolder->getUserFolder($user);
+            $content = '';
+            if ($home->nodeExists('KNOWLEDGE.md')) {
+                $node = $home->get('KNOWLEDGE.md');
+                if ($node instanceof \OCP\Files\File) {
+                    $content = (string)$node->getContent();
+                }
+            }
+            return new DataResponse(['content' => $content, 'length' => mb_strlen($content)]);
+        } catch (\Throwable $e) {
+            return new DataResponse(['content' => '', 'length' => 0]);
+        }
+    }
+
+    #[NoAdminRequired]
+    public function saveKnowledge(): DataResponse {
+        $user = $this->requireUser();
+        if ($user === null) {
+            return new DataResponse(['error' => 'Not logged in'], 401);
+        }
+        $content = (string)($this->requestParam('content', ''));
+        if (mb_strlen($content) > 60000) {
+            return new DataResponse(['error' => 'Content exceeds 60,000 characters.'], 400);
+        }
+        try {
+            $rootFolder = \OCP\Server::get(\OCP\Files\IRootFolder::class);
+            $home = $rootFolder->getUserFolder($user);
+            $path = 'KNOWLEDGE.md';
+            if ($home->nodeExists($path)) {
+                $home->get($path)->putContent($content);
+            } else {
+                $home->newFile($path, $content);
+            }
+            return new DataResponse(['ok' => true, 'length' => mb_strlen($content)]);
+        } catch (\Throwable $e) {
+            return new DataResponse(['error' => 'Could not save knowledge file: ' . $e->getMessage()], 500);
+        }
+    }
+
+    #[NoAdminRequired]
     public function fileContextStatus(): DataResponse {
         $user = $this->requireUser();
         if ($user === null) {

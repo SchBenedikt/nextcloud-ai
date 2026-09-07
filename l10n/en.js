@@ -373,5 +373,12 @@ OC.L10N.register("eva_ai", {
   "Optionally use a separate, usually larger model for summaries, translations and proofreading. Leave empty to reuse the chat model.": "Optionally use a separate, usually larger model for summaries, translations and proofreading. Leave empty to reuse the chat model.",
   "{configured} is not installed - using {resolved} instead.": "{configured} is not installed - using {resolved} instead.",
   "{model} is not installed on this Ollama endpoint yet.": "{model} is not installed on this Ollama endpoint yet.",
-  "{model} is installed but is not usable as the {role} model.": "{model} is installed but is not usable as the {role} model."
+  "{model} is installed but is not usable as the {role} model.": "{model} is installed but is not usable as the {role} model.",
+  "Personal knowledge": "Personal knowledge",
+  "Edit the facts EVA remembers about you. This file is read before every answer to personalise responses.": "Edit the facts EVA remembers about you. This file is read before every answer to personalise responses.",
+  "No knowledge file yet. EVA will create one with your profile on first use.": "No knowledge file yet. EVA will create one with your profile on first use.",
+  "{count} of {max} characters": "{count} of {max} characters",
+  "Save knowledge": "Save knowledge",
+  "Your personal knowledge was saved.": "Your personal knowledge was saved.",
+  "Could not save knowledge: {error}": "Could not save knowledge: {error}"
 }, "nplurals=2; plural=(n != 1);");

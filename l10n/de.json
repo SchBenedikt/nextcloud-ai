@@ -374,7 +374,14 @@
     "Optionally use a separate, usually larger model for summaries, translations and proofreading. Leave empty to reuse the chat model.": "Optional ein separates, meist größeres Modell für Zusammenfassungen, Übersetzungen und Korrekturlesen. Leer lassen, um das Chat-Modell wiederzuverwenden.",
     "{configured} is not installed - using {resolved} instead.": "{configured} ist nicht installiert – stattdessen wird {resolved} verwendet.",
     "{model} is not installed on this Ollama endpoint yet.": "{model} ist auf diesem Ollama-Endpunkt noch nicht installiert.",
-    "{model} is installed but is not usable as the {role} model.": "{model} ist installiert, kann aber nicht als {role}-Modell verwendet werden."
+    "{model} is installed but is not usable as the {role} model.": "{model} ist installiert, kann aber nicht als {role}-Modell verwendet werden.",
+    "Personal knowledge": "Persönliches Wissen",
+    "Edit the facts EVA remembers about you. This file is read before every answer to personalise responses.": "Bearbeiten Sie die Fakten, die sich EVA über Sie merkt. Diese Datei wird vor jeder Antwort gelesen, um Antworten zu personalisieren.",
+    "No knowledge file yet. EVA will create one with your profile on first use.": "Noch keine Wissensdatei vorhanden. EVA erstellt eine mit Ihrem Profil bei der ersten Nutzung.",
+    "{count} of {max} characters": "{count} von {max} Zeichen",
+    "Save knowledge": "Wissen speichern",
+    "Your personal knowledge was saved.": "Ihr persönliches Wissen wurde gespeichert.",
+    "Could not save knowledge: {error}": "Wissen konnte nicht gespeichert werden: {error}"
   },
   "pluralForm": "nplurals=2; plural=(n != 1);"
 }
