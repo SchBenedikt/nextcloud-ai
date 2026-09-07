@@ -566,6 +566,59 @@ class Indexer {
     }
 
     /**
+     * Extract text from a raw content blob (Issue #64: mail attachments).
+     * Handles plain text and PDF; other formats are skipped gracefully.
+     */
+    private function extractTextFromBlob(string $blob, string $mime): string {
+        $lower = strtolower($mime);
+
+        // Plain text types — return directly.
+        if (str_starts_with($lower, 'text/')) {
+            $raw = $blob;
+            if ($lower === 'text/html' || $lower === 'application/xhtml+xml') {
+                $raw = preg_replace('/<script\b[^>]*>.*?<\/script>/is', ' ', $raw ?? '');
+                $raw = preg_replace('/<style\b[^>]*>.*?<\/style>/is', ' ', $raw ?? '');
+                $raw = preg_replace('/<[^>]+>/', ' ', $raw ?? '');
+                $raw = html_entity_decode($raw ?? '', ENT_QUOTES | ENT_HTML5, 'UTF-8');
+            }
+            return $this->normalize($raw ?? '');
+        }
+
+        // PDF via pdftotext.
+        if ($lower === 'application/pdf') {
+            $txt = $this->pdfToTextFromBlob($blob);
+            if ($txt !== null) {
+                return $this->normalize($txt);
+            }
+            return '';
+        }
+
+        // Other binary formats: skip (office docs, images, etc.).
+        return '';
+    }
+
+    /**
+     * Extract text from a PDF content blob via pdftotext.
+     */
+    private function pdfToTextFromBlob(string $blob): ?string {
+        $bin = trim((string)(shell_exec('command -v pdftotext 2>/dev/null') ?: ''));
+        if ($bin === '') {
+            return null;
+        }
+        $tmpIn = tempnam(sys_get_temp_dir(), 'eva_pdf_');
+        if ($tmpIn === false) {
+            return null;
+        }
+        try {
+            file_put_contents($tmpIn, $blob);
+            $output = shell_exec(escapeshellarg($bin) . ' -enc UTF-8 ' . escapeshellarg($tmpIn) . ' - 2>/dev/null');
+            return (is_string($output) && trim($output) !== '') ? $output : null;
+        } finally {
+            @unlink($tmpIn);
+        }
+    }
+
+    /**
      * Shared, bounded reader for one ZIP entry: guards the raw size of each
      * entry and the total decompressed budget across a whole container, so
      * extraction stays memory-bounded even for hostile archives.
@@ -1148,7 +1201,7 @@ class Indexer {
             $mailFileId = -$msgId;
             $body = '';
             try {
-                $body = $this->email->bodyText($msgId);
+                $body = $this->email->bodyText($msgId, $userId);
             } catch (\Throwable $e) {
             }
             $this->touchHeartbeat($runId);
@@ -1156,6 +1209,20 @@ class Indexer {
             $to = implode(', ', (array)($mail['to'] ?? []));
             $content = "EMAIL\nFrom: " . $from . "\nTo: " . $to . "\nDate: " . date('Y-m-d H:i', (int)$mail['sent'])
                 . "\nSubject: " . $mail['subject'] . "\n\n" . trim($body);
+
+            // Append indexable attachment text (Issue #64).
+            try {
+                $attachments = $this->email->fetchAttachments($userId, $msgId);
+                foreach ($attachments as $att) {
+                    $attText = $this->extractTextFromBlob($att['content'], $att['mime']);
+                    if (trim($attText) !== '') {
+                        $content .= "\n\nATTACHMENT " . $att['name'] . "\n" . $attText;
+                    }
+                }
+            } catch (\Throwable $e) {
+                // Attachment indexing is best-effort; never block the email index.
+            }
+
             $content = $this->normalize($content);
             if ($content === '' || trim($mail['subject']) === '') {
                 continue;
