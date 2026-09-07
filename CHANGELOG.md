@@ -8,6 +8,7 @@ follows [Semantic Versioning](https://semver.org/).
 
 ### Changed
 - **Web chat:** complete, explicit tool calls (shares, calendar events, tasks, files, contacts, profile, knowledge) now execute directly without a confirmation dialog; the dialog is only shown when required data is missing or ambiguous. Missing fields are highlighted right away, the prompt instructs the model to never invent missing values, and the dialog copy now explains what is missing. Newly created shares still show the copyable-link chip after direct execution.
+- **Issues #60/#66:** the indexer extracts the complete content of office documents instead of partial sections. DOCX now includes headers, footers, footnotes, endnotes, comments and tables; XLSX covers shared and inline strings sheet by sheet with cell references and sheet names; PPTX adds speaker notes and numbers each slide; ODS sheet names are preserved as boundary markers. Legacy binary `.doc`/`.xls`/`.ppt` files are converted via LibreOffice headless when installed (otherwise skipped with a logged reason, never silent).
 
 ### Added
 - Confirmation requests in the web chat now render a native, editable form for every tool that requires confirmation (shares, calendar events, tasks, files, notes, contacts, profile and knowledge) instead of raw JSON; destructive actions get a red warning style, unknown tools still fall back to readable JSON, and successful share creations show a copyable link chip.
