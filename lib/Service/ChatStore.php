@@ -229,6 +229,62 @@ class ChatStore {
         });
     }
 
+    /**
+     * Truncate a chat's messages after the given 0-based index (inclusive).
+     * Messages at and after $fromIndex are removed.
+     */
+    public function truncateAfter(string $user, string $id, int $fromIndex): void {
+        $this->withUserLock($user, function () use ($user, $id, $fromIndex): void {
+            $all = $this->read($user);
+            foreach ($all as &$chat) {
+                if (($chat['id'] ?? '') === $id) {
+                    if ($fromIndex >= 0 && $fromIndex < count($chat['messages'])) {
+                        $chat['messages'] = array_slice($chat['messages'], 0, $fromIndex);
+                        $chat['updated'] = time();
+                    }
+                    break;
+                }
+            }
+            unset($chat);
+            $this->write($user, $all);
+        });
+    }
+
+    /**
+     * Replace the text of a message at the given 0-based index.
+     */
+    public function replaceMessage(string $user, string $id, int $index, string $newText): void {
+        $this->withUserLock($user, function () use ($user, $id, $index, $newText): void {
+            $all = $this->read($user);
+            foreach ($all as &$chat) {
+                if (($chat['id'] ?? '') === $id) {
+                    if (isset($chat['messages'][$index])) {
+                        $chat['messages'][$index]['text'] = $newText;
+                        $chat['updated'] = time();
+                    }
+                    break;
+                }
+            }
+            unset($chat);
+            $this->write($user, $all);
+        });
+    }
+
+    /**
+     * Get a specific chat by ID.
+     *
+     * @return array{id:string,title:string,created:int,updated:int,messages:list<array{role:string,text:string}>}|null
+     */
+    public function getChat(string $user, string $id): ?array {
+        $all = $this->read($user);
+        foreach ($all as $chat) {
+            if (($chat['id'] ?? '') === $id) {
+                return $chat;
+            }
+        }
+        return null;
+    }
+
     /** @return list<array{id:string,title:string,created:int,updated:int,messages:list<array{role:string,text:string}>}> */
     private function read(string $user): array {
         try {

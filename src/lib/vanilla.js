@@ -128,13 +128,33 @@ export function mountChat(root, opts = {}) {
 			textEl.textContent = m.text || (m.role === 'assistant' ? '…' : '')
 		}
 		b.appendChild(textEl)
-		if (m.role === 'assistant') {
+		if (m.role === 'assistant' && m.done) {
+			const actBar = document.createElement('div')
+			actBar.className = 'racts'
 			const cb = document.createElement('button')
 			cb.className = 'rcopy'
 			cb.title = t('Copy answer')
 			cb.textContent = '⧉'
 			cb.addEventListener('click', () => copyText(String(m.text || ''), cb))
-			b.appendChild(cb)
+			actBar.appendChild(cb)
+			const rb = document.createElement('button')
+			rb.className = 'ract'
+			rb.title = t('Regenerate')
+			rb.textContent = '↻'
+			rb.addEventListener('click', () => regenerateMessage(idx))
+			actBar.appendChild(rb)
+			b.appendChild(actBar)
+		}
+		if (m.role === 'user' && m.done) {
+			const actBar = document.createElement('div')
+			actBar.className = 'racts'
+			const eb = document.createElement('button')
+			eb.className = 'ract'
+			eb.title = t('Edit message')
+			eb.textContent = '✎'
+			eb.addEventListener('click', () => editMessage(idx))
+			actBar.appendChild(eb)
+			b.appendChild(actBar)
 		}
 		wrap.appendChild(b)
 
@@ -511,6 +531,130 @@ export function mountChat(root, opts = {}) {
 
 	if (chatId) {
 		restoreServerChat(chatId).catch(() => { /* falls Chat nicht existiert: leer starten */ })
+	}
+
+	const regenerateMessage = (assistantIdx) => {
+		if (sending) return
+		const userIdx = assistantIdx - 1
+		if (userIdx < 0 || !messages[userIdx] || messages[userIdx].role !== 'user') return
+		if (!messages[assistantIdx] || messages[assistantIdx].role !== 'assistant') return
+		sending = true
+		sendBtn.disabled = true
+		err.style.display = 'none'
+		// Remove the assistant message and everything after it
+		messages.length = assistantIdx
+		renderAll(messages)
+		const history = []
+		for (let i = 0; i < messages.length; i++) {
+			const m = messages[i]
+			history.push({ role: m.role, content: m.text })
+		}
+		const targetMsg = messages[userIdx].text
+		messages.push({ role: 'assistant', text: '', thinking: '', done: false, tools: [] })
+		renderAll(messages)
+		apiStream(STREAM_URL, { message: targetMsg, history }, (ev) => {
+			const last = messages[messages.length - 1]
+			if (ev.type === 'thinking') {
+				last.thinking = (last.thinking || '') + (ev.delta || '')
+				updateMessage(messages.length - 1)
+			} else if (ev.type === 'content') {
+				last.text += (ev.delta || '')
+				updateMessage(messages.length - 1)
+			} else if (ev.type === 'tool') {
+				last.tools = last.tools || []
+				last.tools.push({ name: ev.name || '?', state: 'running' })
+				updateMessage(messages.length - 1)
+			} else if (ev.type === 'tool_result') {
+				last.tools = last.tools || []
+				for (let t = last.tools.length - 1; t >= 0; t--) {
+					if (last.tools[t].name === ev.name && last.tools[t].state === 'running') {
+						last.tools[t].state = ev.ok ? 'ok' : 'bad'
+						break
+					}
+				}
+				updateMessage(messages.length - 1)
+			} else if (ev.type === 'done') {
+				last.text = ev.answer || last.text
+				last.sources = citedSources(last.text, ev.sources || [])
+				last.followups = ev.followups || []
+				last.done = true
+				// Persist: truncate old messages and save new ones
+				api('POST', '/chats/' + chatId + '/regenerate', { messageIndex: userIdx, message: null })
+					.then(() => saveMessage('assistant', last.text))
+					.then(() => { if (onRecent) onRecent() })
+					.catch(() => {})
+				sending = false
+				sendBtn.disabled = false
+			} else if (ev.type === 'error') {
+				last.text = '⚠️ ' + ev.message
+				last.done = true
+				sending = false
+				sendBtn.disabled = false
+			}
+			scroll.scrollTop = scroll.scrollHeight
+		})
+	}
+
+	const editMessage = (userIdx) => {
+		if (sending) return
+		if (!messages[userIdx] || messages[userIdx].role !== 'user') return
+		const oldText = messages[userIdx].text
+		const newText = prompt(t('Edit your message:'), oldText)
+		if (newText === null || newText.trim() === '' || newText.trim() === oldText) return
+		sending = true
+		sendBtn.disabled = true
+		err.style.display = 'none'
+		// Truncate after the user message (remove the old assistant response)
+		messages.length = userIdx + 1
+		messages[userIdx].text = newText.trim()
+		renderAll(messages)
+		const history = []
+		for (let i = 0; i < messages.length; i++) {
+			const m = messages[i]
+			history.push({ role: m.role, content: m.text })
+		}
+		messages.push({ role: 'assistant', text: '', thinking: '', done: false, tools: [] })
+		renderAll(messages)
+		apiStream(STREAM_URL, { message: newText.trim(), history }, (ev) => {
+			const last = messages[messages.length - 1]
+			if (ev.type === 'thinking') {
+				last.thinking = (last.thinking || '') + (ev.delta || '')
+				updateMessage(messages.length - 1)
+			} else if (ev.type === 'content') {
+				last.text += (ev.delta || '')
+				updateMessage(messages.length - 1)
+			} else if (ev.type === 'tool') {
+				last.tools = last.tools || []
+				last.tools.push({ name: ev.name || '?', state: 'running' })
+				updateMessage(messages.length - 1)
+			} else if (ev.type === 'tool_result') {
+				last.tools = last.tools || []
+				for (let t = last.tools.length - 1; t >= 0; t--) {
+					if (last.tools[t].name === ev.name && last.tools[t].state === 'running') {
+						last.tools[t].state = ev.ok ? 'ok' : 'bad'
+						break
+					}
+				}
+				updateMessage(messages.length - 1)
+			} else if (ev.type === 'done') {
+				last.text = ev.answer || last.text
+				last.sources = citedSources(last.text, ev.sources || [])
+				last.followups = ev.followups || []
+				last.done = true
+				api('POST', '/chats/' + chatId + '/regenerate', { messageIndex: userIdx, message: newText.trim() })
+					.then(() => saveMessage('assistant', last.text))
+					.then(() => { if (onRecent) onRecent() })
+					.catch(() => {})
+				sending = false
+				sendBtn.disabled = false
+			} else if (ev.type === 'error') {
+				last.text = '⚠️ ' + ev.message
+				last.done = true
+				sending = false
+				sendBtn.disabled = false
+			}
+			scroll.scrollTop = scroll.scrollHeight
+		})
 	}
 
 	const send = () => {
