@@ -1331,6 +1331,7 @@ class Indexer {
     private function calculateConfigHash(): string {
         $configKey = implode('|', [
             $this->config->get('embedding_model', 'default'),
+            $this->config->get('embedding_model_fallback', ''),
             $this->config->get('chunk_size', '1000'),
             $this->config->get('chunk_overlap', '200'),
             $this->config->get('max_file_size', '20971520'),

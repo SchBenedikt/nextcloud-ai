@@ -6,6 +6,31 @@ follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added (1.4.7)
+
+- **Provider capability layer (Issues #86/#148/#151):** EVA now reads each
+  installed Ollama model's declared capabilities from `/api/tags` instead of
+  classifying models by their names alone. Older Ollama servers without the
+  capabilities field fall back to a conservative name/family heuristic that
+  is explicitly marked as such.
+- **Model fallback chains (Issue #86):** new per-user settings
+  `chat_model_fallback` and `embedding_model_fallback` (comma-separated).
+  When the primary model is not installed, EVA resolves the first installed
+  candidate with the matching capability; if no candidate is usable it fails
+  with a clear error that lists what is actually installed. A dedicated
+  optional `summary_model` lets heavy text tasks (summarize, translate,
+  proofread, …) use a separate model while chat keeps the lightweight one.
+- **Versioned provider snapshot (Issue #151):** the status endpoint now
+  reports `provider` with version, online state, snapshot age, request
+  latency, capability availability, per-model roles and the resolved model
+  including whether a fallback was used - all metadata, never content.
+- **Capability-aware settings (Issue #148):** the model picker separates
+  embedding and chat models by provider capability, shows installed status
+  next to the configured model, explains fallback usage, and rejects a
+  role-mismatched model selection before it is saved.
+- Index config hashes include the embedding fallback chain so a changed
+  fallback re-indexes automatically.
+
 ### Changed
 - **Issue #143:** retrieval ranking is now deterministic for identical inputs and bounds repeated chunks per document (diversity cap), so one document cannot crowd out all other relevant evidence while a single-document query still fills the full window.
 - **Issue #77:** the Talk bot no longer sends every room message to the LLM for classification. A deterministic heuristic pre-filter (bot name/trigger, question mark, assistant-directed phrasing) decides first; only plausibly-addressed messages reach the classifier. New `talk_classify_all` setting (default `0`) restores the legacy classify-everything behaviour.

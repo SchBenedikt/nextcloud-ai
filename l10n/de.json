@@ -362,7 +362,19 @@
     "The action history could not be cleared: {error}": "Der Aktionsverlauf konnte nicht gelöscht werden: {error}",
     "Preparing your data export…": "Dein Datenexport wird vorbereitet …",
     "Your data export was downloaded.": "Dein Datenexport wurde heruntergeladen.",
-    "The data export could not be created: {error}": "Der Datenexport konnte nicht erstellt werden: {error}"
+    "The data export could not be created: {error}": "Der Datenexport konnte nicht erstellt werden: {error}",
+    "EVA discovers installed models automatically from the Ollama endpoint and separates embedding from chat models by their declared capabilities. Embedding models turn file text into searchable vectors.": "EVA ermittelt installierte Modelle automatisch vom Ollama-Endpunkt und trennt Einbettungs- von Chat-Modellen anhand ihrer gemeldeten Fähigkeiten. Einbettungsmodelle wandeln Dateitexte in durchsuchbare Vektoren um.",
+    "Chat model fallbacks": "Chat-Modell-Fallbacks",
+    "Optional, comma-separated": "Optional, durch Komma getrennt",
+    "If the chat model above is not installed, EVA tries these models in order before failing. (E.g. llama3.1, qwen2.5)": "Falls das obige Chat-Modell nicht installiert ist, versucht EVA diese Modelle der Reihe nach, bevor es abbricht. (z. B. llama3.1, qwen2.5)",
+    "Embedding model fallbacks": "Einbettungsmodell-Fallbacks",
+    "If the embedding model above is not installed, EVA tries these models in order before failing.": "Falls das obige Einbettungsmodell nicht installiert ist, versucht EVA diese Modelle der Reihe nach, bevor es abbricht.",
+    "Heavy task model (optional)": "Modell für schwere Aufgaben (optional)",
+    "Use the chat model": "Chat-Modell verwenden",
+    "Optionally use a separate, usually larger model for summaries, translations and proofreading. Leave empty to reuse the chat model.": "Optional ein separates, meist größeres Modell für Zusammenfassungen, Übersetzungen und Korrekturlesen. Leer lassen, um das Chat-Modell wiederzuverwenden.",
+    "{configured} is not installed - using {resolved} instead.": "{configured} ist nicht installiert – stattdessen wird {resolved} verwendet.",
+    "{model} is not installed on this Ollama endpoint yet.": "{model} ist auf diesem Ollama-Endpunkt noch nicht installiert.",
+    "{model} is installed but is not usable as the {role} model.": "{model} ist installiert, kann aber nicht als {role}-Modell verwendet werden."
   },
   "pluralForm": "nplurals=2; plural=(n != 1);"
 }

@@ -37,6 +37,8 @@ Legend: **P** = personal setting (per-user override possible),
 | `chat_model` | P | `gemma4:cloud` | non-empty string | – | Model used for chat/generation. |
 | `chat_model_fallback` | P | `''` | comma-separated model names | – | Models tried in order when the primary chat model is unavailable (Issue #86). |
 | `embedding_model` | P | `nomic-embed-text` | non-empty string | – | Model used to embed chunks and queries. |
+| `embedding_model_fallback` | P | `''` | comma-separated model names | – | Models tried in order when the primary embedding model is unavailable (Issue #86). |
+| `summary_model` | P | `''` | model name or empty | – | Optional dedicated model for heavy text tasks (summarize, translate, proofread, …). Empty = the chat model chain is used (Issue #86). |
 | `temperature` | P | `0.1` | `0`–`2` | – | Sampling temperature passed to Ollama (`options.temperature`). Lower = more deterministic. |
 | `context_size` | P | `12288` | `256`–`131072` | tokens | Context window passed to Ollama (`options.num_ctx`). |
 

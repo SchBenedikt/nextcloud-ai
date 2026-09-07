@@ -16,7 +16,8 @@ class AppConfig {
      * default (Issue #73).
      */
     private const USER_SETTINGS = [
-        'ollama_url', 'embedding_model', 'chat_model', 'top_k', 'chunk_size',
+        'ollama_url', 'embedding_model', 'chat_model', 'chat_model_fallback',
+        'embedding_model_fallback', 'summary_model', 'top_k', 'chunk_size',
         'chunk_overlap', 'max_file_size', 'max_files_per_run', 'scope_path',
         'context_size', 'temperature', 'actions_enabled', 'exec_write_types',
         'exec_write_max_chars', 'exec_delete_mode',        'notify_on_complete',
@@ -44,6 +45,14 @@ class AppConfig {
         'ollama_url' => 'http://127.0.0.1:11434',
         'embedding_model' => 'nomic-embed-text',
         'chat_model' => 'gemma4:cloud',
+        // Optional comma-separated fallback chains (Issue #86): when the
+        // primary model is not installed Ollama resolves the first installed
+        // candidate of the matching capability instead of failing hard.
+        'chat_model_fallback' => '',
+        'embedding_model_fallback' => '',
+        // Optional dedicated model for heavy text tasks (summarize, translate,
+        // proofread, …). Empty means the chat chain is used (Issue #86).
+        'summary_model' => '',
         'top_k' => '6',
         'chunk_size' => '900',
         'chunk_overlap' => '120',
@@ -319,6 +328,31 @@ class AppConfig {
         if (in_array($key, ['embedding_model', 'chat_model', 'talk_bot_trigger'], true)
             && (!is_scalar($value) || trim((string)$value) === '')) {
             return 'must not be empty';
+        }
+        if (in_array($key, ['chat_model_fallback', 'embedding_model_fallback'], true)) {
+            if (!is_scalar($value)) {
+                return 'must be a comma-separated list of model names';
+            }
+            $raw = trim((string)$value);
+            if ($raw === '') {
+                return null;
+            }
+            $models = explode(',', $raw);
+            if (count($models) > 8) {
+                return 'must contain at most 8 models';
+            }
+            foreach ($models as $model) {
+                $model = trim($model);
+                if ($model === '' || preg_match('/^[A-Za-z0-9][A-Za-z0-9._:+-]{0,127}$/', $model) !== 1) {
+                    return 'must be a comma-separated list of model names';
+                }
+            }
+            return null;
+        }
+        if ($key === 'summary_model'
+            && is_scalar($value) && trim((string)$value) !== ''
+            && preg_match('/^[A-Za-z0-9][A-Za-z0-9._:+-]{0,127}$/', trim((string)$value)) !== 1) {
+            return 'must be a model name or empty';
         }
         if (!array_key_exists($key, self::LIMITS)) {
             return null;
