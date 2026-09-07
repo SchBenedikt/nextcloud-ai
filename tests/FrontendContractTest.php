@@ -206,6 +206,28 @@ final class FrontendContractTest extends TestCase {
         self::assertStringContainsString('private LoggerInterface $logger', $rag);
     }
 
+    public function testCompleteWebToolCallsRunDirectlyWithoutUnconditionalConfirmation(): void {
+        // Complete, explicit requests on the interactive WEB surface execute
+        // immediately; the confirmation dialog is reserved for missing data.
+        $executor = (string)file_get_contents(__DIR__ . '/../lib/Service/ActionExecutor.php');
+        self::assertStringContainsString('REQUIRED_ARGS', $executor);
+        self::assertStringContainsString('private function missingRequiredArgs', $executor);
+        self::assertStringContainsString('getSurface() === ToolPolicy::SURFACE_WEB', $executor);
+        self::assertStringContainsString("'missing' => \$missing", $executor);
+
+        // The stream forwards which required fields are missing so the dialog
+        // can pre-highlight them (reason: missing) and surface the created
+        // share link even when no dialog was needed.
+        $rag = (string)file_get_contents(__DIR__ . '/../lib/Service/RagService.php');
+        self::assertStringContainsString("'missing' => \$res['missing'] ?? [],", $rag);
+        self::assertStringContainsString("'url' => !empty(\$res['ok'])", $rag);
+
+        $vanilla = (string)file_get_contents(__DIR__ . '/../src/lib/vanilla.js');
+        self::assertStringContainsString('m.confirmation.missing', $vanilla);
+        self::assertStringContainsString('last.linkUrl = ev.url', $vanilla);
+        self::assertStringContainsString('Some required details are missing', $vanilla);
+    }
+
     public function testToolConfirmationIsEnforcedAcrossWebAndTalk(): void {
         $executor = (string)file_get_contents(__DIR__ . '/../lib/Service/ActionExecutor.php');
         self::assertStringContainsString('bool $confirmed = false', $executor);

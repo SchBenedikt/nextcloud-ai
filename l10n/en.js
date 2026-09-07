@@ -142,7 +142,7 @@ OC.L10N.register("eva_ai", {
   "Actions are disabled": "Actions are disabled",
   "Actions can change your files": "Actions can change your files",
   "The fields below are inactive until you enable file actions.": "The fields below are inactive until you enable file actions.",
-  "EVA still requires confirmation for mutating or destructive operations.": "EVA still requires confirmation for mutating or destructive operations.",
+  "Complete, explicit requests run directly. EVA only asks when information is missing or a target is unclear.": "EVA still requires confirmation for mutating or destructive operations.",
   "File types EVA may write": "File types EVA may write",
   "Comma-separated extensions, for example {types}. Empty means any supported text file.": "Comma-separated extensions, for example {types}. Empty means any supported text file.",
   "Maximum characters per file": "Maximum characters per file",
@@ -153,7 +153,7 @@ OC.L10N.register("eva_ai", {
   "EVA may delete files it created itself.": "EVA may delete files it created itself.",
   "Only EVA-created files": "Only EVA-created files",
   "Recommended": "Recommended",
-  "Allows deletion of any file after explicit confirmation. Use with care.": "Allows deletion of any file after explicit confirmation. Use with care.",
+  "Allows EVA to delete any file in your Files when you explicitly ask for it. Use with care.": "Allows deletion of any file after explicit confirmation. Use with care.",
   "Any file in my Files": "Any file in my Files",
   "Uses Nextcloud Notifications when background or Talk work finishes.": "Uses Nextcloud Notifications when background or Talk work finishes.",
   "Notify me when a long answer is ready": "Notify me when a long answer is ready",
@@ -341,5 +341,6 @@ OC.L10N.register("eva_ai", {
   "Open link": "Open link",
   "Chat search unavailable: {error}": "Chat search unavailable: {error}",
   "{count} message matches": "{count} message matches",
-  "This conversation is very long: some of the oldest messages were trimmed to keep it manageable. Use Export if you need the full history.": "This conversation is very long: some of the oldest messages were trimmed to keep it manageable. Use Export if you need the full history."
+  "This conversation is very long: some of the oldest messages were trimmed to keep it manageable. Use Export if you need the full history.": "This conversation is very long: some of the oldest messages were trimmed to keep it manageable. Use Export if you need the full history.",
+  "Some required details are missing - please complete them below.": "This conversation is very long: some of the oldest messages were trimmed to keep it manageable. Use Export if you need the full history."
 }, "nplurals=2; plural=(n != 1);");

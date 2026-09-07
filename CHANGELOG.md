@@ -6,6 +6,9 @@ follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Changed
+- **Web chat:** complete, explicit tool calls (shares, calendar events, tasks, files, contacts, profile, knowledge) now execute directly without a confirmation dialog; the dialog is only shown when required data is missing or ambiguous. Missing fields are highlighted right away, the prompt instructs the model to never invent missing values, and the dialog copy now explains what is missing. Newly created shares still show the copyable-link chip after direct execution.
+
 ### Added
 - Confirmation requests in the web chat now render a native, editable form for every tool that requires confirmation (shares, calendar events, tasks, files, notes, contacts, profile and knowledge) instead of raw JSON; destructive actions get a red warning style, unknown tools still fall back to readable JSON, and successful share creations show a copyable link chip.
 - **Issue #145:** user-isolated, content-addressed embedding cache with 30-day bounded retention, model/endpoint/schema metadata validation, duplicate-miss coalescing, reset cleanup, and index-status hit/miss/request counters.
