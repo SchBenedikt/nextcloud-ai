@@ -151,6 +151,41 @@ class ChatStore {
         });
     }
 
+    /**
+     * Full export of every saved chat (messages included), used by the GDPR
+     * data-export endpoint (Issue #83). Serialized like every other chat read.
+     *
+     * @return list<array<string,mixed>>
+     */
+    public function exportAll(string $user): array {
+        return $this->withUserLock($user, function () use ($user): array {
+            return $this->read($user);
+        });
+    }
+
+    /**
+     * Remove the user's complete chat storage (hashed + legacy folders) when
+     * their account is deleted (Issue #83).
+     */
+    public function deleteUserData(string $user): void {
+        $this->withUserLock($user, function () use ($user): void {
+            try {
+                $appdata = $this->appDataFactory->get('eva_ai');
+                $chats = $appdata->getFolder('chats');
+                $ns = $this->namespaceFor($user);
+                foreach ([$ns, $this->legacySlug($user)] as $candidate) {
+                    try {
+                        $chats->getFolder($candidate)->delete();
+                    } catch (NotFoundException $e) {
+                        // No folder for this candidate - fine.
+                    }
+                }
+            } catch (\Throwable $e) {
+                $this->logger->warning('eva_ai: chat cleanup failed for deleted account', ['user' => $user]);
+            }
+        });
+    }
+
     public function setTitle(string $user, string $id, string $title): void {
         $this->withUserLock($user, function () use ($user, $id, $title): void {
             $all = $this->read($user);

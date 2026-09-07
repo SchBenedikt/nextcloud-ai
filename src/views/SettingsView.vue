@@ -299,6 +299,45 @@
 					<span>{{ $t('Indexed content stays in Nextcloud and is sent to the Ollama server configured above. Review your indexing scope before enabling Mail or Talk features.') }}</span>
 				</div>
 			</section>
+
+			<section class="settings-section">
+				<div class="section-heading">
+					<div>
+						<h3>{{ $t('Privacy & data') }}</h3>
+						<p>{{ $t('Export everything EVA stores about you, or review and clear the action history. Sensitive values are redacted before anything is saved.') }}</p>
+					</div>
+				</div>
+				<div class="index-actions">
+					<div>
+						<strong>{{ $t('Download my data') }}</strong>
+						<p>{{ $t('Your chats, personal knowledge and a metadata list of indexed documents as one JSON file (GDPR export).') }}</p>
+					</div>
+					<NcButton type="secondary" :disabled="exporting" :loading="exporting" @click="downloadExport">{{ $t('Download') }}</NcButton>
+				</div>
+				<div class="field field-wide" style="margin-top: 16px;">
+					<div class="section-heading" style="padding: 0;">
+						<div>
+							<h4 style="margin: 0;">{{ $t('Action history') }}</h4>
+							<p>{{ $t('Recent tool actions on your account: time, tool, outcome and the surface they ran on.') }}</p>
+						</div>
+						<div class="section-actions">
+							<NcButton v-if="auditEntries.length" type="tertiary-no-background" :disabled="clearing" :loading="clearing" @click="clearAudit">{{ $t('Clear action history') }}</NcButton>
+						</div>
+					</div>
+					<div v-if="auditLoading" class="action-hint">{{ $t('Loading action history…') }}</div>
+					<div v-else-if="auditEntries.length === 0" class="help-box">
+						<span>{{ $t('No recorded actions yet. Mutating tool calls will appear here after you use EVA.') }}</span>
+					</div>
+					<ul v-else class="audit-list">
+						<li v-for="entry in auditEntries" :key="entry.id" class="audit-row">
+							<span class="audit-outcome" :class="'outcome-' + entry.outcome">{{ entry.outcome }}</span>
+							<span class="audit-tool">{{ entry.tool }}</span>
+							<span class="audit-detail">{{ entry.detail }}</span>
+							<time class="audit-time" :title="new Date(entry.ts * 1000).toISOString()">{{ new Date(entry.ts * 1000).toLocaleString() }}</time>
+						</li>
+					</ul>
+				</div>
+			</section>
 			</fieldset>
 		</main>
 	</div>
@@ -669,6 +708,61 @@ export default {
 			}
 		}
 
+		const auditEntries = ref([])
+		const auditLoading = ref(false)
+		const exporting = ref(false)
+		const clearing = ref(false)
+
+		async function loadAudit() {
+			if (auditLoading.value) return
+			auditLoading.value = true
+			try {
+				const response = await api('GET', 'audit', { limit: 100 })
+				auditEntries.value = Array.isArray(response?.entries) ? response.entries : []
+			} catch (error) {
+				auditEntries.value = []
+			} finally {
+				auditLoading.value = false
+			}
+		}
+
+		async function clearAudit() {
+			if (clearing.value) return
+			clearing.value = true
+			try {
+				await api('DELETE', 'audit')
+				auditEntries.value = []
+				setMessage('success', t('The action history was cleared.'))
+			} catch (error) {
+				setMessage('error', t('The action history could not be cleared: {error}', { error: errMsg(error) }))
+			} finally {
+				clearing.value = false
+			}
+		}
+
+		async function downloadExport() {
+			if (exporting.value) return
+			exporting.value = true
+			setMessage('info', t('Preparing your data export…'))
+			try {
+				const data = await api('GET', 'export')
+				const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' })
+				const url = URL.createObjectURL(blob)
+				const link = document.createElement('a')
+				link.href = url
+				link.download = 'eva_ai_export_' + new Date().toISOString().slice(0, 10) + '.json'
+				document.body.appendChild(link)
+				link.click()
+				link.remove()
+				URL.revokeObjectURL(url)
+				setMessage('success', t('Your data export was downloaded.'))
+			} catch (error) {
+				setMessage('error', t('The data export could not be created: {error}', { error: errMsg(error) }))
+			} finally {
+				exporting.value = false
+			}
+		}
+
 		let statusTimer = null
 		let modelTimer = null
 		watch(() => f.value.ollama_url, (value) => {
@@ -677,6 +771,7 @@ export default {
 		})
 		onMounted(async () => {
 			await loadStatus(true)
+			await loadAudit()
 			statusTimer = window.setInterval(loadStatus, 3000)
 		})
 		onUnmounted(() => {
@@ -687,6 +782,7 @@ export default {
 		return {
 			f, status, limits, availableModels, embeddingModels, chatModels, modelLoading, modelError, checkOut, saving, checking, indexing, resetting, deletingChats, stopping, saved, loadError, message, validationErrors, resetConfirm, chatsDeleteConfirm,
 			newExcludePath, excludeError, excludeList, actionsEnabled, notificationsEnabled, weatherEnabled, mailIndexEnabled, indexEnrolled, actionsDisabled, busy, indexingActive, settingsLocked, maxFileSizeMb,
+			auditEntries, auditLoading, exporting, clearing, loadAudit, clearAudit, downloadExport,
 			formatNumber, loadStatus, save, checkOllama, addExclude, removeExclude, startIndex, startMailIndex, stopIndex, resetIndex, deleteAllChats,
 		}
 	},
@@ -823,6 +919,15 @@ export default {
 .help-box { display: flex; flex-wrap: wrap; gap: 6px 10px; margin-top: 18px; padding: 12px; border-radius: 9px; background: var(--color-background-hover); font-size: 12px; line-height: 1.5; }
 .help-box strong { color: var(--color-primary-element); }
 .help-box span { color: var(--color-text-maxcontrast); }
+
+.audit-list { display: grid; gap: 6px; margin: 10px 0 0; padding: 0; list-style: none; }
+.audit-row { display: flex; align-items: baseline; flex-wrap: wrap; gap: 4px 10px; padding: 8px 10px; border: 1px solid var(--color-border); border-radius: 8px; background: var(--color-main-background); font-size: 12px; }
+.audit-outcome { padding: 1px 7px; border-radius: 999px; font-size: 11px; font-weight: 700; text-transform: lowercase; }
+.outcome-executed { background: color-mix(in srgb, var(--color-success) 16%, transparent); color: var(--color-success); }
+.outcome-rejected, .outcome-failed { background: color-mix(in srgb, var(--color-warning) 18%, transparent); color: var(--color-warning-text, var(--color-main-text)); }
+.audit-tool { font-weight: 600; }
+.audit-detail { color: var(--color-text-maxcontrast); overflow-wrap: anywhere; }
+.audit-time { margin-left: auto; color: var(--color-text-maxcontrast); font-size: 11px; white-space: nowrap; }
 
 @media (max-width: 800px) {
 	.page-header { align-items: flex-start; flex-direction: column; }

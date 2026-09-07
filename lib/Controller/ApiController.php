@@ -44,7 +44,9 @@ class ApiController extends OCSController {
         private FileContextChatService $fileContextChat,
         private IAppManager $appManager,
         private KnowledgeInitializer $knowledgeInitializer,
-        private LockGuard $lockGuard
+        private LockGuard $lockGuard,
+        private \OCA\EvaAi\Service\ActionAudit $actionAudit,
+        private \OCA\EvaAi\Service\UserDataService $userDataService
     ) {
         parent::__construct($appName, $request);
         $this->config->setUserId($this->userId);
@@ -122,6 +124,7 @@ class ApiController extends OCSController {
             'weather_tool_enabled',
             'talk_history_size',
             'talk_bot_trigger',
+            'talk_classify_all',
             'exclude_paths',
             'index_enrolled',
         ];
@@ -167,7 +170,7 @@ class ApiController extends OCSController {
                 if ($key === 'exec_write_types') {
                     $value = $this->config->normalizeValue($key, $value);
                 }
-                if ($key === 'notify_on_complete' || $key === 'mail_index_enabled' || $key === 'index_enrolled' || $key === 'weather_tool_enabled') {
+                if ($key === 'notify_on_complete' || $key === 'mail_index_enabled' || $key === 'index_enrolled' || $key === 'weather_tool_enabled' || $key === 'talk_classify_all') {
                     $value = in_array((string)$value, ['1', 'true', 'on'], true) ? '1' : '0';
                 }
                 if ($key === 'temperature') {
@@ -779,5 +782,42 @@ class ApiController extends OCSController {
             return new DataResponse(['error' => 'Not logged in'], 401);
         }
         return new DataResponse($this->ollama->testAll());
+    }
+
+    /**
+     * GDPR data export (Issue #83): the user downloads their chats, personal
+     * knowledge and index metadata as one JSON file. Read-only, no admin needed.
+     */
+    #[NoAdminRequired]
+    public function exportData(): DataResponse {
+        $user = $this->requireUser();
+        if ($user === null) {
+            return new DataResponse(['error' => 'Not logged in'], 401);
+        }
+        $payload = $this->userDataService->export($user);
+        $response = new DataResponse($payload);
+        $response->addHeader('Content-Disposition', 'attachment; filename="eva_ai_export_' . $user . '.json"');
+        return $response;
+    }
+
+    /** Per-user action history (Issue #150): metadata only, never file content. */
+    #[NoAdminRequired]
+    public function audit(): DataResponse {
+        $user = $this->requireUser();
+        if ($user === null) {
+            return new DataResponse(['error' => 'Not logged in'], 401);
+        }
+        $limit = max(1, min(500, (int)($this->requestParam('limit') ?? 100)));
+        return new DataResponse(['entries' => $this->actionAudit->list($user, $limit)]);
+    }
+
+    /** Let the user clear their own action history (Issue #150). */
+    #[NoAdminRequired]
+    public function clearAudit(): DataResponse {
+        $user = $this->requireUser();
+        if ($user === null) {
+            return new DataResponse(['error' => 'Not logged in'], 401);
+        }
+        return new DataResponse(['cleared' => $this->actionAudit->clear($user)]);
     }
 }

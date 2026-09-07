@@ -346,5 +346,20 @@ OC.L10N.register("eva_ai", {
   "Chat search unavailable: {error}": "Chatsuche nicht verfügbar: {error}",
   "{count} message matches": "{count} passende Nachrichten",
   "This conversation is very long: some of the oldest messages were trimmed to keep it manageable. Use Export if you need the full history.": "Diese Unterhaltung ist sehr lang: Einige der ältesten Nachrichten wurden gekürzt, um sie überschaubar zu halten. Nutze Export, falls du den vollständigen Verlauf brauchst.",
-  "Some required details are missing - please complete them below.": "Einige erforderliche Angaben fehlen – bitte vervollständige sie unten."
+  "Some required details are missing - please complete them below.": "Einige erforderliche Angaben fehlen – bitte vervollständige sie unten.",
+  "Privacy & data": "Datenschutz & Daten",
+  "Export everything EVA stores about you, or review and clear the action history. Sensitive values are redacted before anything is saved.": "Exportiere alles, was EVA über dich speichert, oder prüfe und leere den Aktionsverlauf. Vertrauliche Werte werden vor dem Speichern unkenntlich gemacht.",
+  "Download my data": "Meine Daten herunterladen",
+  "Your chats, personal knowledge and a metadata list of indexed documents as one JSON file (GDPR export).": "Deine Chats, dein persönliches Wissen und eine Metadaten-Liste indexierter Dokumente als eine JSON-Datei (DSGVO-Export).",
+  "Download": "Herunterladen",
+  "Action history": "Aktionsverlauf",
+  "Recent tool actions on your account: time, tool, outcome and the surface they ran on.": "Letzte Tool-Aktionen in deinem Konto: Zeit, Tool, Ergebnis und die Oberfläche, auf der sie liefen.",
+  "Clear action history": "Aktionsverlauf löschen",
+  "Loading action history…": "Aktionsverlauf wird geladen …",
+  "No recorded actions yet. Mutating tool calls will appear here after you use EVA.": "Noch keine Aktionen aufgezeichnet. Ändernde Tool-Aufrufe erscheinen hier, nachdem du EVA benutzt hast.",
+  "The action history was cleared.": "Der Aktionsverlauf wurde gelöscht.",
+  "The action history could not be cleared: {error}": "Der Aktionsverlauf konnte nicht gelöscht werden: {error}",
+  "Preparing your data export…": "Dein Datenexport wird vorbereitet …",
+  "Your data export was downloaded.": "Dein Datenexport wurde heruntergeladen.",
+  "The data export could not be created: {error}": "Der Datenexport konnte nicht erstellt werden: {error}"
 }, "nplurals=2; plural=(n != 1);");

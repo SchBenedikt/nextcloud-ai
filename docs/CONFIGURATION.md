@@ -1,81 +1,123 @@
-## Settings page
-
-The web UI presents the configuration in these groups:
-
-- **Connection & models** — Ollama URL, embedding model, chat model, and a connection test.
-- **Safety & actions** — file actions, write limits, delete permission, and completion notifications.
-- **Search & answer quality** — source count, model context size, and temperature.
-- **Indexing & scope** — folder scope, file/run limits, chunking, Mail indexing, and excluded folders.
-- **Talk & notifications** — Talk history size and the trigger name.
-
-Use **Save changes** to persist the form. **Save & start indexing** saves the settings first and stops if saving fails. The UI displays `max_file_size` in MB while the app stores it as bytes. The sidebar provides native chat search, a primary **New chat** action directly below it, and per-chat rename/delete controls. Chat-history deletion is separate from index deletion: deleting the index removes indexed documents and vectors, not chats or original files in Nextcloud.
-
 # EVA — Configuration reference
 
-All settings are stored in `oc_appconfig` under the app ID `eva_ai`. You can
-change them via:
+All settings are stored in `oc_appconfig` under the app ID `eva_ai`. Personal
+settings can be overridden per user (from the app's **Settings** tab), but when
+a user has no personal value they fall back to the admin-configured instance
+value, and only if that is empty to the built-in default (Issue #73).
 
 ```bash
+# Read one value
+sudo -u www-data php occ config:app:get eva_ai <key>
+
+# Set an instance-wide value (used by every user who did not choose their own)
 sudo -u www-data php occ config:app:set eva_ai <key> --value=<value>
+
+# Reset to the built-in default / clear a personal override:
+# instance-wide: delete the app value
+sudo -u www-data php occ config:app:delete eva_ai <key>
+# per-user override: remove only that user's personal value
+sudo -u www-data php occ config:user:delete <user> eva_ai <key>
 ```
 
-or in the app's **Settings** tab. Values are plain strings; booleans use `1`/`0`.
+Values are plain strings; booleans use `1`/`0`; sizes are stored in **bytes**
+(the settings UI shows MB). Invalid values are rejected by the Settings form;
+`occ` does not validate, so keep values inside the documented limits.
 
-## Ollama / model settings
+## Key reference
 
-| Key | Default | Description |
-|---|---|---|
-| `ollama_url` | `http://127.0.0.1:11434` | Base URL of the Ollama HTTP API. Trailing slashes are stripped. |
-| `chat_model` | `gemma4:cloud` | Model used for chat/generation. |
-| `embedding_model` | `nomic-embed-text` | Model used to embed chunks. |
-| `temperature` | `0.1` | Sampling temperature (creativity). Lower = more deterministic. |
-| `context_size` | `12288` | Context window size passed to Ollama (`num_ctx`). |
+Legend: **P** = personal setting (per-user override possible),
+**I** = instance-wide only, **S** = internal per-user runtime state,
+**G** = global scheduler state.
 
-## Retrieval & indexing
+### Connection & models
 
-| Key | Default | Description |
-|---|---|---|
-| `top_k` | `6` | Number of RAG hits fed to the model (per retrieval). |
-| `chunk_size` | `900` | Target size of a text chunk (characters). |
-| `chunk_overlap` | `120` | Overlap between consecutive chunks. |
-| `max_file_size` | `20971520` (20 MB) | Files larger than this are skipped. |
-| `max_files_per_run` | `40` | Files processed per indexing pass (protects against long jobs). |
-| `index_cancel_requested` | `0` | Per-user runtime flag. The Stop action sets it to `1`; only the worker clears it after releasing the run claim. |
-| `scope_path` | `''` | Only index files below this path (e.g. `/Documents`). Empty = entire home. |
-| `exclude_paths` | `''` | Comma-separated path prefixes to skip (e.g. `/.trash,/Photos`). |
-| `index_user` | `''` | Optional instance-wide legacy background-job user; normal users cannot change it from Settings. |
-| `index_enabled` | `0` | Instance-wide legacy indexer switch; per-user **Start indexing** does not change it. |
-| `mail_index_enabled` | `1` | Index emails (subject, sender, body) into RAG. |
-| `mail_index_max` | `25` | Emails indexed per pass (limits resource usage). |
+| Key | Scope | Default | Range / values | Unit | Effect |
+|---|---|---|---|---|---|
+| `ollama_url` | P | `http://127.0.0.1:11434` | plain `http(s)://host[:port]`, no path/credentials | – | Base URL of the Ollama HTTP API; trailing slashes are stripped. |
+| `chat_model` | P | `gemma4:cloud` | non-empty string | – | Model used for chat/generation. |
+| `chat_model_fallback` | P | `''` | comma-separated model names | – | Models tried in order when the primary chat model is unavailable (Issue #86). |
+| `embedding_model` | P | `nomic-embed-text` | non-empty string | – | Model used to embed chunks and queries. |
+| `temperature` | P | `0.1` | `0`–`2` | – | Sampling temperature passed to Ollama (`options.temperature`). Lower = more deterministic. |
+| `context_size` | P | `12288` | `256`–`131072` | tokens | Context window passed to Ollama (`options.num_ctx`). |
 
-Embedding vectors are cached in Nextcloud's distributed cache for up to 30 days. Cache keys are user-isolated and derived from normalized chunk content, the Ollama endpoint, the embedding model, and a cache schema version; document text is never stored in the key. A successful index status exposes the last pass's `hits`, `misses`, and `ollamaRequests` under `embeddingCache`. Resetting a user's index also clears that user's cached vectors; an all-user reset clears the complete embedding cache.
+### Retrieval & indexing
 
-## Chat tools / actions
+| Key | Scope | Default | Range / values | Unit | Effect |
+|---|---|---|---|---|---|
+| `top_k` | P | `6` | `1`–`8` | chunks | Number of RAG hits fed to the model per retrieval. |
+| `chunk_size` | P | `900` | `128`–`10000` | characters | Target size of a text chunk. |
+| `chunk_overlap` | P | `120` | `0`–`5000` | characters | Overlap between consecutive chunks. |
+| `max_file_size` | P | `20971520` | `1048576`–`2147483648` | bytes | Files larger than this are skipped during indexing. |
+| `max_files_per_run` | P | `40` | `1`–`10000` | files | Files processed per indexing pass (bounds job duration). |
+| `scope_path` | P | `''` | path, no `..` | – | Only index files below this path (e.g. `/Documents`). Empty = entire home. |
+| `exclude_paths` | P | `''` | comma-separated paths, no `..` | – | Path prefixes to skip (e.g. `/.trash,/Photos`). |
+| `index_user` | I | `''` | user id | – | Legacy instance-wide background-job user; not changeable from Settings. |
+| `index_enabled` | I | `0` | `1`/`0` | – | Legacy instance-wide indexer switch. |
+| `mail_index_enabled` | P | `1` | `1`/`0` | – | Index emails into RAG. |
+| `mail_index_max` | P | `25` | `1`–`500` | emails/pass | Emails indexed per pass. |
 
-| Key | Default | Description |
-|---|---|---|
-| `actions_enabled` | `1` | Enable chat tools. `0` = read-only chat (no tools). |
-| `exec_write_types` | `''` (all) | Comma-separated allowed file extensions for AI-created files, e.g. `md,txt`; values are normalized to lowercase without leading dots and limited to 32 entries. |
-| `exec_write_max_chars` | `100000` | Maximum size of AI-created file contents. |
-| `exec_delete_mode` | `own` | `own` = only delete files EVA created; `off` = deletion disabled entirely. |
+Embedding vectors are cached in Nextcloud's distributed cache for up to 30 days
+(user-isolated, content-derived keys; document text is never stored in the key).
+Resetting a user's index clears that user's cached vectors.
 
-## Notifications & Talk
+### Chat tools / actions
 
-| Key | Default | Description |
-|---|---|---|
-| `notify_on_complete` | `1` | Send "AI answer ready" notification (requires the Notifications app). |
-| `talk_history_size` | `50` | Number of chat messages sent to the Talk bot as context. |
-| `talk_bot_trigger` | `Eva` | Trigger word the Talk bot reacts to. |
+| Key | Scope | Default | Range / values | Unit | Effect |
+|---|---|---|---|---|---|
+| `actions_enabled` | P | `1` | `1`/`0` | – | `1` = chat tools enabled; `0` = read-only chat. |
+| `exec_write_types` | P | `''` (all) | `*`, empty, or ≤32 extensions `md,txt,…` | – | Allowed extensions for AI-created files. |
+| `exec_write_max_chars` | P | `100000` | `1`–`10000000` | characters | Maximum size of AI-created file contents. |
+| `exec_delete_mode` | P | `own` | `off`/`own`/`all` | – | `own` = delete only EVA-created files; `all` = also user files (with confirmation); `off` = deletion disabled. |
 
-## Privacy-relevant defaults at a glance
+### Notifications, Talk & privacy
 
-| Setting | Default | Privacy impact |
-|---|---|---|
-| `mail_index_enabled` | `1` | Emails are indexed. Set `0` to disable. |
-| `actions_enabled` | `1` | Model may modify data (with confirmation). Set `0` for read-only. |
-| `exec_delete_mode` | `own` | Only EVA-created files can be deleted. `off` disables deletion. |
-| `exec_write_types` | `''` | Restrict creatable file types. |
-| `index_user` | `''` | Optional instance-wide legacy background-job user; leave empty for per-user indexing. |
+| Key | Scope | Default | Range / values | Unit | Effect |
+|---|---|---|---|---|---|
+| `notify_on_complete` | P | `1` | `1`/`0` | – | Send an "AI answer ready" notification (Notifications app). |
+| `talk_history_size` | P | `50` | `1`–`500` | messages | Number of previous Talk messages sent as bot context. |
+| `talk_bot_trigger` | P | `Eva` | non-empty string | – | Trigger word (with `@`) the Talk bot reacts to. |
+| `talk_classify_all` | P | `0` | `1`/`0` | – | `0` = heuristic pre-filter decides before any LLM call (Issue #77, default); `1` = classify every room message via the LLM (legacy, higher cost/privacy exposure). |
+| `weather_tool_enabled` | P | `1` | `1`/`0` | – | `0` disables the weather tool (external Open-Meteo requests) everywhere (Issue #69). |
+| `index_enrolled` | P/S | `0` | `1`/`0` | – | Per-user opt-in for recurring background indexing. |
+
+### Internal per-user runtime state (S)
+
+Managed by the indexer; never user-facing configuration and never inherited
+from an instance-wide value.
+
+| Key | Meaning |
+|---|---|
+| `index_running` | `1` while a per-user index pass holds its claim. |
+| `index_started` / `index_heartbeat` | Unix timestamps of claim start / last progress. |
+| `index_finished` | `1` after the last completed pass. |
+| `last_index_processed` / `last_index_total` | Progress counters of the last pass. |
+| `last_index_error` | Message of the last failed pass. |
+| `last_index_cache_hits` / `last_index_cache_misses` / `last_index_ollama_requests` | Embedding-cache and request counters of the last pass. |
+| `index_config_hash` | Hash of the user's indexing settings; a change forces re-embedding. |
+| `index_mode` | `idle`/`running`/`stopping` display state. |
+| `index_cancel_requested` | `1` when the user asked to stop a running pass. |
+| `index_run_id` | Unique id of the current/last pass. |
+| `index_enrolled` | Opt-in for recurring background indexing (see above). |
+| `knowledge_initialized` | `1` once the per-user `KNOWLEDGE.md` has been created. |
+
+### Global scheduler state (G)
+
+| Key | Meaning |
+|---|---|
+| `index_job_running` | `1` while a periodic `IndexJob` run is active. |
+| `index_job_started` | Unix timestamp when the current run claimed the scheduler lock. |
+| `index_job_max_seconds` | Wall-clock budget (seconds, default `50`) one periodic run may spend before the next cron tick continues (Issue #112). |
+| `index_job_last_user` | Last user finished by a periodic run; the next run rotates past it for fairness (Issue #112). |
+
+## Settings page
+
+The web UI presents the configuration in groups: **Connection & models**,
+**Safety & actions**, **Search & answer quality**, **Indexing & scope**, and
+**Talk & notifications**. Use **Save changes** to persist the form;
+**Save & start indexing** saves first and stops if saving fails. The UI shows
+`max_file_size` in MB while the app stores bytes. Chat-history deletion is
+separate from index deletion (deleting the index removes indexed documents and
+vectors, not chats or original files).
 
 ## Reading the current configuration
 
@@ -85,17 +127,11 @@ sudo -u www-data php occ config:list apps --app=eva_ai
 
 ## Troubleshooting
 
-- **First answer is slow** → the model may still be loading; run
-  `ollama pull <model>` beforehand, or pre-warm with a short test query.
-- **No answers / connection refused** → check `ollama_url` and that Ollama is
-  reachable from the web server user: `sudo -u www-data curl http://127.0.0.1:11434`.
-- **Chat has no tools** → verify `actions_enabled=1` and that `index_enabled=1`
-  (a RAG index is still required for file-grounded answers).
+- **First answer is slow** → the model may still be loading; `ollama pull <model>`
+  or pre-warm with a short test query.
+- **No answers / connection refused** → check `ollama_url` and reachability from
+  the web-server user: `sudo -u www-data curl http://127.0.0.1:11434`.
+- **Chat has no tools** → verify `actions_enabled=1`.
 - **Talk bot does not appear** → run `occ eva_ai:talk:setup`, then activate the
-  bot per conversation (Talk admin UI or OCS API).
-
-## Responsive layout and assistant providers
-
-Chat, documents, and settings share a responsive content-width token that uses more available space on large screens without overflowing smaller viewports. The New chat control is centered and uses the same full padded navigation-item width as Documents and Settings. Nextcloud Assistant displays the stable EVA provider family as `Eva · Local`, `Eva · RAG`, `Eva · Tools`, and `Eva · Agent`; provider IDs are unchanged.
-
-Read-only tools may be used on the RAG and TaskProcessing surfaces according to the centralized policy. State-changing tools are not widened by this UI work and remain confirmation-gated. Live web search remains planned under issue #54.
+  bot per conversation. If the bot stays silent on ordinary messages, check
+  `talk_classify_all` (default `0` keeps human smalltalk away from the LLM).
