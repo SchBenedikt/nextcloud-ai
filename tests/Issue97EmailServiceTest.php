@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace OCA\EvaAi\Tests;
 
 use OCA\EvaAi\Service\EmailService;
+use OCP\App\IAppManager;
 use PHPUnit\Framework\TestCase;
 use Psr\Log\LoggerInterface;
 
@@ -34,7 +35,8 @@ final class Issue97EmailServiceTest extends TestCase {
                 })
             );
 
-        $service = new EmailService($db, $logger);
+        $appManager = $this->createMock(IAppManager::class);
+        $service = new EmailService($db, $appManager, $logger);
         $this->expectExceptionObject($exception);
         $service->accountsOf('alice');
     }
@@ -48,7 +50,8 @@ final class Issue97EmailServiceTest extends TestCase {
         $logger = $this->createMock(LoggerInterface::class);
         $logger->expects(self::never())->method('error');
 
-        $service = new EmailService($db, $logger);
+        $appManager = $this->createMock(IAppManager::class);
+        $service = new EmailService($db, $appManager, $logger);
         self::assertSame([], $service->accountsOf('alice'));
     }
 }
