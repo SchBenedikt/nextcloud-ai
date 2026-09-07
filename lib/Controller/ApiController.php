@@ -416,14 +416,18 @@ class ApiController extends OCSController {
         $limit = max(1, min(500, (int)($this->requestParam('limit') ?? 200)));
         $offset = max(0, (int)($this->requestParam('offset') ?? 0));
         $rows = $this->chunkMapper->findByDocument($id, $limit, $offset);
+        $totalChunks = (int)$doc->getChunkCount();
+        $nextOffset = $offset + count($rows);
         return new DataResponse([
             'document' => [
                 'id' => (int)$doc->getId(),
                 'path' => $doc->getPath(),
-                'chunks' => (int)$doc->getChunkCount(),
+                'chunks' => $totalChunks,
             ],
             'offset' => $offset,
             'limit' => $limit,
+            'hasMore' => $nextOffset < $totalChunks,
+            'nextOffset' => $nextOffset,
             'chunks' => array_map(static fn($c) => [
                 'index' => (int)$c['chunk_index'],
                 'content' => (string)$c['content'],

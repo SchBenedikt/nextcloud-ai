@@ -33,11 +33,15 @@ final class DocumentChunksPaginationTest extends TestCase {
 
         self::assertStringContainsString("'limit'", $method);
         self::assertStringContainsString("'offset'", $method);
+        self::assertStringContainsString("'hasMore'", $method);
+        self::assertStringContainsString("'nextOffset'", $method);
         self::assertStringContainsString('max(1, min(500, (int)($this->requestParam(\'limit\') ?? 200)))', $method);
         self::assertStringContainsString('max(0, (int)($this->requestParam(\'offset\') ?? 0))', $method);
         self::assertStringContainsString('$this->chunkMapper->findByDocument($id, $limit, $offset)', $method);
-        // The response must still expose the total so the client can page.
-        self::assertStringContainsString("'chunks' => (int)\$doc->getChunkCount()", $method);
+        // The response must still expose the total and paging metadata.
+        self::assertStringContainsString("'chunks' => \$totalChunks,", $method);
+        self::assertStringContainsString("'hasMore' => \$nextOffset < \$totalChunks,", $method);
+        self::assertStringContainsString("'nextOffset' => \$nextOffset,", $method);
     }
 
     public function testFrontendLoadsChunksInBoundedPages(): void {
