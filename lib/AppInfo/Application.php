@@ -46,7 +46,7 @@ class Application extends App implements IBootstrap {
         // GDPR-Erasure: Kontenloeschung raeumt alle eva_ai-Daten des Users ab (Issue #83).
         $context->registerEventListener(\OCP\User\Events\UserDeletedEvent::class, \OCA\EvaAi\Listener\UserDeletedListener::class);
         // Dashboard-Widget: EVA AI Quick-Chat und Status auf dem Dashboard.
-        $context->registerWidgetProvider(\OCA\EvaAi\Dashboard\EVAWidget::class);
+        $context->registerDashboardWidget(\OCA\EvaAi\Dashboard\EVAWidget::class);
         // Talk-Bot wird zusaetzlich in boot() ueber TalkBotRegistrar registriert,
         // siehe OCA\EvaAi\Service\TalkBotRegistrar::ensureRegistered().
     }
