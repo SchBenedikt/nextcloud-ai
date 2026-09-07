@@ -109,6 +109,32 @@ class ActionExecutor {
     ) {
     }
 
+    private ?ActionAudit $auditService = null;
+
+    /**
+     * Lazy audit-store lookup: IAppDataFactory must not be resolved in the
+     * ActionExecutor constructor (it blocks the CLI/taskprocessing worker,
+     * see marksFile()). Resolve on first mutating action instead.
+     */
+    private function audit(): ?ActionAudit {
+        if ($this->auditService === null) {
+            try {
+                // Build lazily from server-container dependencies, exactly like
+                // marksFile() resolves IAppDataFactory at runtime - never in
+                // the constructor, which would block the CLI/taskprocessing
+                // worker.
+                $this->auditService = new ActionAudit(
+                    \OC::$server->get(\OCP\Files\AppData\IAppDataFactory::class),
+                    \OC::$server->get(\OCP\Lock\ILockingProvider::class),
+                    \OC::$server->get(\Psr\Log\LoggerInterface::class)
+                );
+            } catch (\Throwable $e) {
+                $this->auditService = null;
+            }
+        }
+        return $this->auditService;
+    }
+
     /**
      * Set the execution surface for tool permission checks.
      */
@@ -507,9 +533,11 @@ class ActionExecutor {
      */
     public function run(string $userId, string $name, array $args, bool $confirmed = false): array {
         $this->config->setUserId($userId);
+        $surface = $this->toolPolicy->getSurface();
         // Centralized tool permission check
         $policy = $this->toolPolicy->check($name);
         if (!$policy['allowed']) {
+            $this->auditResult($userId, $surface, $name, $args, 'rejected', $policy['reason'] ?? 'Tool not allowed');
             return ['ok' => false, 'error' => $policy['reason'] ?? 'Tool not allowed'];
         }
         if (($policy['requiresConfirmation'] ?? false) && !$confirmed) {
@@ -522,6 +550,7 @@ class ActionExecutor {
                 if ($missing === []) {
                     // Complete and explicit -> execute directly below.
                 } else {
+                    $this->auditResult($userId, $surface, $name, $args, 'rejected', 'Missing required information: ' . implode(', ', $missing));
                     return [
                         'ok' => false,
                         'confirmation_required' => true,
@@ -533,6 +562,7 @@ class ActionExecutor {
                 }
             } else {
                 // Non-interactive surfaces keep the strict confirmation gate.
+                $this->auditResult($userId, $surface, $name, $args, 'rejected', 'Confirmation required');
                 return [
                     'ok' => false,
                     'confirmation_required' => true,
@@ -565,11 +595,12 @@ class ActionExecutor {
             'update_knowledge',
         ];
         if (in_array($name, $fileTools, true) && $home === null) {
+            $this->auditResult($userId, $surface, $name, $args, 'failed', 'File tools unavailable in the background worker');
             return ['ok' => false, 'error' => 'File tools are not available in the background worker (CLI). Ask in the web chat instead.'];
         }
 
         try {
-            return match ($name) {
+            $result = match ($name) {
                 'list_files' => $this->listFiles($home, $args),
                 'create_file' => $this->createFile($home, $args),
                 'create_note' => $this->createNote($home, $args),
@@ -611,7 +642,32 @@ class ActionExecutor {
                 default => ['ok' => false, 'error' => 'Unknown tool: ' . $name],
             };
         } catch (\Throwable $e) {
+            $this->auditResult($userId, $surface, $name, $args, 'failed', $e->getMessage());
             return ['ok' => false, 'error' => $e->getMessage()];
+        }
+        $this->auditResult($userId, $surface, $name, $args, !empty($result['ok']) ? 'executed' : 'failed', (string)($result['error'] ?? ''));
+        return $result;
+    }
+
+    /**
+     * Write one audit event for a mutating/destructive tool call (Issue #150).
+     * Read-only tools are never recorded - there is no state change to trace.
+     * The audit store redacts sensitive arguments before persisting them.
+     */
+    private function auditResult(string $userId, string $surface, string $name, array $args, string $outcome, string $detail): void {
+        $meta = $this->toolPolicy->getTool($name);
+        $risk = is_array($meta) ? (string)($meta['risk'] ?? ToolPolicy::RISK_READONLY) : ToolPolicy::RISK_READONLY;
+        if ($risk === ToolPolicy::RISK_READONLY) {
+            return;
+        }
+        $audit = $this->audit();
+        if ($audit === null) {
+            return;
+        }
+        try {
+            $audit->record($userId, $surface, $name, $args, $outcome, $detail !== '' ? $detail : ($outcome === 'executed' ? 'ok' : $outcome));
+        } catch (\Throwable $e) {
+            // A failing audit write must never break the tool call itself.
         }
     }
 

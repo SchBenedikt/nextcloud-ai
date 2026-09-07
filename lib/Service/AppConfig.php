@@ -19,9 +19,9 @@ class AppConfig {
         'ollama_url', 'embedding_model', 'chat_model', 'top_k', 'chunk_size',
         'chunk_overlap', 'max_file_size', 'max_files_per_run', 'scope_path',
         'context_size', 'temperature', 'actions_enabled', 'exec_write_types',
-        'exec_write_max_chars', 'exec_delete_mode', 'notify_on_complete',
+        'exec_write_max_chars', 'exec_delete_mode',        'notify_on_complete',
         'mail_index_enabled', 'mail_index_max', 'talk_history_size',
-        'talk_bot_trigger', 'exclude_paths',
+        'talk_bot_trigger', 'talk_classify_all', 'exclude_paths',
     ];
 
     /**
@@ -62,6 +62,7 @@ class AppConfig {
         'mail_index_max' => '25',
         'talk_history_size' => '50',
         'talk_bot_trigger' => 'Eva',
+        'talk_classify_all' => '0',
         'exclude_paths' => '',
         'index_running' => '0',
         'index_started' => '',
@@ -82,6 +83,12 @@ class AppConfig {
         // Only the scheduler lock is global; it is not exposed as a user setting.
         'index_job_running' => '0',
         'index_job_started' => '',
+        // Maximum wall-clock seconds one periodic IndexJob run may spend before
+        // the next cron tick continues with the remaining users (Issue #112).
+        'index_job_max_seconds' => '50',
+        // Round-robin continuation marker: the last user a periodic run
+        // finished, so later users are not starved by earlier slow ones.
+        'index_job_last_user' => '',
     ];
 
     /**
@@ -236,6 +243,20 @@ class AppConfig {
         }
     }
 
+    /**
+     * Remove every eva_ai value stored for one user (personal settings AND
+     * per-user runtime state) when their account is deleted (Issue #83).
+     */
+    public function deleteUserValues(string $userId): void {
+        foreach (self::USER_SCOPED_KEYS as $key) {
+            try {
+                $this->config->deleteUserValue($userId, self::APP, $key);
+            } catch (\Throwable $e) {
+                // Best effort per key; a failing deletion must not abort the rest.
+            }
+        }
+    }
+
     /** @return array<string,array{0:int|float,1:int|float}> */
     public function limits(): array {
         return self::LIMITS;
@@ -288,7 +309,7 @@ class AppConfig {
             }
             return null;
         }
-        if (in_array($key, ['actions_enabled', 'notify_on_complete', 'mail_index_enabled', 'index_enrolled'], true)) {
+        if (in_array($key, ['actions_enabled', 'notify_on_complete', 'mail_index_enabled', 'index_enrolled', 'talk_classify_all'], true)) {
             return is_scalar($value) && in_array((string)$value, ['0', '1', 'true', 'false', 'on', 'off'], true)
                 ? null : 'must be a boolean value';
         }

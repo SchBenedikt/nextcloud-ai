@@ -126,21 +126,72 @@ PROMPT;
     }
 
     /**
-     * Entscheidet ob EVA antworten soll.
+     * Entscheidet ob EVA antworten soll (Issue #77).
      *
-     * KEINE pattern-basierte Filterung. Die KI entscheidet für jede Nachricht:
+     * Um jede Raum-Nachricht von einer teuren LLM-Klassifikation
+     * fernzuhalten, entscheidet zuerst ein deterministischer Pre-Filter:
      * 1. @EVA/@eva/Custom-Trigger Erwähnung → immer antworten (explizite Adressierung)
-     * 2. Sonst: KI-Klassifikation anhand Inhalt und Teilnehmer
+     * 2. Mit talk_classify_all=1 kann der Admin die alte „jede Nachricht
+     *    klassifizieren“-Logik wieder einschalten (Standard: aus).
+     * 3. Sonst: nur Nachrichten, die den kostengünstigen Heuristik-Pre-Filter
+     *    passieren (Triggerwort, Frageform, Bot-Name im Text), erreichen die
+     *    KI-Klassifikation. Reiner Smalltalk zwischen Menschen löst also keine
+     *    LLM-Anfrage aus und wird nie an ein Modell geschickt.
      */
     private function shouldRespond(string $content, string $currentUserId, int $roomId, bool $explicit = false): bool {
-        // 1. @EVA/@eva/Custom-Trigger Erwähnung – schneller Check (explizite Adressierung)
+        // 1. Explizite Adressierung – schneller Check, keine LLM-Anfrage nötig.
         if ($explicit) {
             return true;
         }
 
-        // 2. KI entscheidet für jede Nachricht
         $triggerName = $this->appConfig->get('talk_bot_trigger');
+
+        // 2. Opt-in „jede Nachricht per KI klassifizieren“ (alter Modus).
+        if ($this->appConfig->get('talk_classify_all') === '1') {
+            return $this->classificationForEva($content, $roomId, $triggerName);
+        }
+
+        // 3. Kostengünstiger Pre-Filter: Nur plausibel an den Bot gerichtete
+        // Nachrichten dürfen eine LLM-Klassifikation auslösen.
+        if (!$this->heuristicPrefilter($content, $triggerName)) {
+            return false;
+        }
         return $this->classificationForEva($content, $roomId, $triggerName);
+    }
+
+    /**
+     * Deterministischer, LLM-freier Pre-Filter (Issue #77).
+     *
+     * Gibt true zurück, wenn die Nachricht plausibel an den Bot gerichtet ist
+     * – Bot-Name/Triggerwort im Text, Frageform, Imperativ/Aufforderung an den
+     * Assistenten oder Hilfebegriffe. Reiner Smalltalk (kein Trigger, keine
+     * Frage) wird hier abgefangen, damit keine Klassifikations-LLM-Anfrage
+     * ausgelöst wird.
+     */
+    private function heuristicPrefilter(string $content, string $triggerName): bool {
+        $text = mb_strtolower(trim($content));
+        if ($text === '') {
+            return false;
+        }
+        // Bot-Name/Triggerwort als eigenständiges Wort im Text (auch ohne @).
+        $needles = ['eva'];
+        if ($triggerName !== '' && strtolower($triggerName) !== 'eva') {
+            $needles[] = strtolower($triggerName);
+        }
+        foreach ($needles as $needle) {
+            if (preg_match('/(?:^|[^\p{L}\p{N}])' . preg_quote($needle, '/') . '(?:$|[^\p{L}\p{N}])/iu', $text)) {
+                return true;
+            }
+        }
+        // Fragezeichen (Frage an den Raum – meist an den Assistenten).
+        if (str_contains($text, '?')) {
+            return true;
+        }
+        // Typische Aufforderungen an einen Assistenten.
+        if (preg_match('/(?:bitte|kannst du|könntest du|hilf mir|erklär|zusammenfass|erinner|termin|wetter|wie viel|was ist|wer ist)/u', $text)) {
+            return true;
+        }
+        return false;
     }
 
     /**

@@ -346,5 +346,20 @@ OC.L10N.register("eva_ai", {
   "Chat search unavailable: {error}": "Chat search unavailable: {error}",
   "{count} message matches": "{count} message matches",
   "This conversation is very long: some of the oldest messages were trimmed to keep it manageable. Use Export if you need the full history.": "This conversation is very long: some of the oldest messages were trimmed to keep it manageable. Use Export if you need the full history.",
-  "Some required details are missing - please complete them below.": "This conversation is very long: some of the oldest messages were trimmed to keep it manageable. Use Export if you need the full history."
+  "Some required details are missing - please complete them below.": "This conversation is very long: some of the oldest messages were trimmed to keep it manageable. Use Export if you need the full history.",
+  "Privacy & data": "Privacy & data",
+  "Export everything EVA stores about you, or review and clear the action history. Sensitive values are redacted before anything is saved.": "Export everything EVA stores about you, or review and clear the action history. Sensitive values are redacted before anything is saved.",
+  "Download my data": "Download my data",
+  "Your chats, personal knowledge and a metadata list of indexed documents as one JSON file (GDPR export).": "Your chats, personal knowledge and a metadata list of indexed documents as one JSON file (GDPR export).",
+  "Download": "Download",
+  "Action history": "Action history",
+  "Recent tool actions on your account: time, tool, outcome and the surface they ran on.": "Recent tool actions on your account: time, tool, outcome and the surface they ran on.",
+  "Clear action history": "Clear action history",
+  "Loading action history…": "Loading action history…",
+  "No recorded actions yet. Mutating tool calls will appear here after you use EVA.": "No recorded actions yet. Mutating tool calls will appear here after you use EVA.",
+  "The action history was cleared.": "The action history was cleared.",
+  "The action history could not be cleared: {error}": "The action history could not be cleared: {error}",
+  "Preparing your data export…": "Preparing your data export…",
+  "Your data export was downloaded.": "Your data export was downloaded.",
+  "The data export could not be created: {error}": "The data export could not be created: {error}"
 }, "nplurals=2; plural=(n != 1);");

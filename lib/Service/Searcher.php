@@ -99,10 +99,58 @@ class Searcher {
         }
 
         usort($results, function ($a, $b) {
-            return ($b['score'] <=> $a['score']);
+            // Deterministic ordering for identical inputs: score first, then
+            // chunk id (Issue #143).
+            $byScore = $b['score'] <=> $a['score'];
+            return $byScore !== 0 ? $byScore : ($a['chunkId'] <=> $b['chunkId']);
         });
 
-        return array_slice($results, 0, $topK);
+        return $this->diversify($results, $topK);
+    }
+
+    /**
+     * Bound repeated chunks per document while preserving a small amount of
+     * diversity across relevant documents (Issue #143).
+     *
+     * After score-sorted ranking, several near-duplicate chunks of the same
+     * document can crowd out independently relevant evidence from other
+     * documents. When more than one document is relevant we cap each
+     * document's contribution (a few chunks at most), so a single document
+     * cannot monopolise the context window. When only one document matches,
+     * the cap is lifted and the full topK is served - there is no other
+     * evidence to diversify with.
+     *
+     * @param array<int,array<string,mixed>> $ranked
+     * @return array<int,array<string,mixed>>
+     */
+    private function diversify(array $ranked, int $topK): array {
+        if ($ranked === [] || $topK <= 1) {
+            return array_slice($ranked, 0, $topK);
+        }
+        $distinctDocs = [];
+        foreach ($ranked as $r) {
+            $distinctDocs[(int)$r['documentId']] = true;
+        }
+        $cap = count($distinctDocs) <= 1
+            ? $topK
+            : max(1, min(3, (int)ceil($topK / 2)));
+
+        $result = [];
+        $counts = [];
+        foreach ($ranked as $r) {
+            $docId = (int)$r['documentId'];
+            if (($counts[$docId] ?? 0) >= $cap) {
+                continue; // This document already has its fair share.
+            }
+            $result[] = $r;
+            $counts[$docId] = ($counts[$docId] ?? 0) + 1;
+            if (count($result) >= $topK) {
+                break;
+            }
+        }
+        // Deterministic for identical inputs: candidates arrive already sorted
+        // by (score desc, chunk id asc), so the capped walk is reproducible.
+        return array_slice($result, 0, $topK);
     }
 
     /**

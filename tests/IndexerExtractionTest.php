@@ -17,6 +17,13 @@ use ZipArchive;
  * never silently return empty for a well-formed container.
  */
 final class IndexerExtractionTest extends TestCase {
+    protected function setUp(): void {
+        parent::setUp();
+        if (!defined('EVA_AI_OCP_AVAILABLE') || !EVA_AI_OCP_AVAILABLE) {
+            $this->markTestSkipped('Nextcloud OCP interfaces are not available');
+        }
+    }
+
     private function extractor(): Indexer {
         $reflection = new ReflectionClass(Indexer::class);
         /** @var Indexer $indexer */

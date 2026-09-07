@@ -34,11 +34,21 @@ class IndexJob extends TimedJob {
         $this->setInterval(15 * 60);
     }
 
+    /**
+     * Maximum wall-clock seconds a single periodic run may spend indexing
+     * before the next cron tick continues with the remaining users. Keep the
+     * global lock short so one slow user cannot starve later users (Issue #112).
+     */
+    private const DEFAULT_MAX_SECONDS = 50;
+
     protected function run($argument): void {
         // The scheduler lock is global; the actual progress/settings are per user.
         $this->config->setUserId(null);
         if ($this->config->get('index_job_running') === '1') {
             $started = (int)$this->config->get('index_job_started');
+            // Only reclaim a stale lock. A running pass now holds the lock for
+            // a bounded budget (index_job_max_seconds), not up to an hour, so
+            // a concurrent cron tick simply yields.
             if (time() - $started < 3600) {
                 return;
             }
@@ -73,6 +83,13 @@ class IndexJob extends TimedJob {
             }
             $users = array_values(array_unique(array_filter($users, static fn($u) => $u !== '')));
 
+            // Fair round-robin continuation (Issue #112): begin this run after
+            // the user the previous run finished, wrapping around, so users
+            // later in the list are not starved by earlier slow users.
+            $users = $this->rotateFromLastProcessed($users);
+
+            $startedAt = time();
+            $budget = $this->budgetSeconds();
             foreach ($users as $user) {
                 // Existing installations are migrated lazily: a user with
                 // indexed data is enrolled unless they already explicitly
@@ -99,6 +116,15 @@ class IndexJob extends TimedJob {
                     }
                 }
                 $this->config->setUserId($user);
+                // Enforce the bounded time budget: one run must not block the
+                // whole instance for every other user's index pass.
+                if (time() - $startedAt >= $budget) {
+                    $this->logger->info('eva_ai index job budget reached', [
+                        'user' => $user,
+                        'budget_seconds' => $budget,
+                    ]);
+                    break;
+                }
                 $this->logger->info('eva_ai index job start', ['user' => $user]);
                 try {
                     $this->indexer->run($user);
@@ -108,10 +134,43 @@ class IndexJob extends TimedJob {
                         'exception' => $e->getMessage(),
                     ]);
                 }
+                // Remember the last user actually processed (even on failure)
+                // so the next run continues fairly after this user.
+                $this->config->set('index_job_last_user', $user);
             }
         } finally {
             $this->config->setUserId(null);
             $this->config->set('index_job_running', '0');
         }
+    }
+
+    /**
+     * @param list<string> $users
+     * @return list<string>
+     */
+    private function rotateFromLastProcessed(array $users): array {
+        $last = (string)$this->config->get('index_job_last_user');
+        if ($last === '') {
+            return $users;
+        }
+        $pos = array_search($last, $users, true);
+        if ($pos === false) {
+            // The remembered user no longer exists - start from the beginning.
+            return $users;
+        }
+        if ($pos === count($users) - 1) {
+            // The whole list was processed in the previous run - wrap around.
+            return $users;
+        }
+        // Start after the last processed user, wrapping around at the end.
+        return array_merge(array_slice($users, $pos + 1), array_slice($users, 0, $pos + 1));
+    }
+
+    private function budgetSeconds(): int {
+        $raw = (int)$this->config->get('index_job_max_seconds');
+        if ($raw < 5) {
+            return self::DEFAULT_MAX_SECONDS;
+        }
+        return min(600, $raw);
     }
 }
