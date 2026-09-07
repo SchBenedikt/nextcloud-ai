@@ -29,7 +29,7 @@ final class TranslationCatalogTest extends TestCase {
     public function testFrontendLiteralTranslationKeysHaveCatalogEntries(): void {
         $root = dirname(__DIR__);
         $catalog = json_decode(file_get_contents($root . '/l10n/en.json'), true, 512, JSON_THROW_ON_ERROR)['translations'];
-        $files = [$root . '/js/chat.js'];
+        $files = [$root . '/src/standalone-chat.js'];
         foreach (new \RecursiveIteratorIterator(new \RecursiveDirectoryIterator($root . '/src')) as $file) {
             if ($file->isFile() && in_array($file->getExtension(), ['js', 'vue'], true)) {
                 $files[] = $file->getPathname();

@@ -14,6 +14,7 @@ module.exports = (env) => {
 		entry: {
 			'eva_ai-main': path.resolve(__dirname, 'src', 'main.js'),
 			eva_ai_filesaction: path.resolve(__dirname, 'src', 'lib', 'filesaction.js'),
+			eva_ai_standalone: path.resolve(__dirname, 'src', 'standalone-chat.js'),
 		},
 		output: {
 			path: path.resolve(__dirname, 'js'),
@@ -26,7 +27,7 @@ module.exports = (env) => {
 				return chunkData.chunk.name + '.js'
 			},
 			publicPath: '/apps/eva_ai/js/',
-			clean: { keep: /^chat\.js$|^header\.js$|^eva_ai-main|^eva_ai_filesaction|\.map$|\.LICENSE\.txt$/ },
+			clean: { keep: /^header\.js$|^eva_ai-main|^eva_ai_filesaction|^eva_ai_standalone|\.map$|\.LICENSE\.txt$/ },
 		},
 		devtool: isProd ? 'source-map' : 'eval-cheap-module-source-map',
 		module: {

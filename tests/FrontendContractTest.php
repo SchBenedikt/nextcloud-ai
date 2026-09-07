@@ -99,7 +99,7 @@ final class FrontendContractTest extends TestCase {
         self::assertStringContainsString('create_share:', $confirmForms);
         self::assertStringContainsString('delete_calendar_event:', $confirmForms);
         self::assertStringContainsString('delete_file:', $confirmForms);
-        self::assertStringContainsString('buildShareForm', (string)file_get_contents(__DIR__ . '/../js/chat.js'));
+        self::assertStringContainsString('buildShareForm', (string)file_get_contents(__DIR__ . '/../src/standalone-chat.js'));
         self::assertStringContainsString("return new DataResponse(['error' => 'Not logged in'], 401)", (string)file_get_contents(__DIR__ . '/../lib/Controller/ApiController.php'));
         $controller = (string)file_get_contents(__DIR__ . '/../lib/Controller/ApiController.php');
         self::assertStringContainsString('KnowledgeInitializer $knowledgeInitializer', $controller);
@@ -122,7 +122,7 @@ final class FrontendContractTest extends TestCase {
         self::assertStringContainsString("className = 'export'", $vanilla);
         self::assertStringContainsString('Export chat as Markdown', $vanilla);
         self::assertStringContainsString("Util::addTranslations('eva_ai')", (string)file_get_contents(__DIR__ . '/../lib/Controller/PageController.php'));
-        self::assertStringContainsString('function tr(text, vars)', (string)file_get_contents(__DIR__ . '/../js/chat.js'));
+        self::assertStringContainsString('function tr(text, vars)', (string)file_get_contents(__DIR__ . '/../src/standalone-chat.js'));
         self::assertStringContainsString('.head .export', $chat);
         self::assertStringContainsString('max-width: min(88%, 1200px);', $chat);
 
@@ -169,7 +169,7 @@ final class FrontendContractTest extends TestCase {
         self::assertStringNotContainsString('.catch(() => null)', $fileContext);
         self::assertStringContainsString('slice(0, 240)', $api);
         $vanilla = (string)file_get_contents(__DIR__ . '/../src/lib/vanilla.js');
-        $standalone = (string)file_get_contents(__DIR__ . '/../js/chat.js');
+        $standalone = (string)file_get_contents(__DIR__ . '/../src/standalone-chat.js');
         self::assertStringContainsString('if (!r.ok)', $vanilla);
         self::assertStringContainsString('if (!r.ok)', $standalone);
         self::assertStringContainsString("'HTTP ' + r.status", $vanilla);
@@ -247,7 +247,7 @@ final class FrontendContractTest extends TestCase {
 
         $rag = (string)file_get_contents(__DIR__ . '/../lib/Service/RagService.php');
         $vanilla = (string)file_get_contents(__DIR__ . '/../src/lib/vanilla.js');
-        $standalone = (string)file_get_contents(__DIR__ . '/../js/chat.js');
+        $standalone = (string)file_get_contents(__DIR__ . '/../src/standalone-chat.js');
         self::assertStringContainsString("'type' => 'confirmation'", $rag);
         self::assertStringContainsString('SURFACE_TASKPROCESSING_CONFIRMED', (string)file_get_contents(__DIR__ . '/../lib/TaskProcessing/AgentInteractionProvider.php'));
         self::assertStringContainsString('confirmation_required', $rag);
