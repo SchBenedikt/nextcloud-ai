@@ -97,8 +97,6 @@ final class AppConfigUserSettingsTest extends TestCase {
         // Alice never saved a personal value, so the admin-configured instance
         // value is used instead of the hardcoded default.
         self::assertSame('http://192.168.1.10:11434', $appConfig->get('ollama_url'));
-        self::assertFalse($appConfig->hasPersonal('ollama_url'));
-        self::assertFalse($appConfig->personalMap()['ollama_url']);
     }
 
     public function testExplicitPersonalValueOverridesAdminInstanceValue(): void {
@@ -111,24 +109,6 @@ final class AppConfigUserSettingsTest extends TestCase {
         $appConfig->setUserId('alice');
 
         self::assertSame('http://personal-value:11434', $appConfig->get('ollama_url'));
-        self::assertTrue($appConfig->hasPersonal('ollama_url'));
-        self::assertTrue($appConfig->personalMap()['ollama_url']);
-    }
-
-    public function testResetPersonalValueRestoresAdminInstanceValue(): void {
-        [$config, $user] = $this->configHarness(
-            ['ollama_url' => 'http://admin-value:11434'],
-            ['alice' => ['ollama_url' => 'http://personal-value:11434']]
-        );
-
-        $appConfig = new AppConfig($config);
-        $appConfig->setUserId('alice');
-        self::assertSame('http://personal-value:11434', $appConfig->get('ollama_url'));
-
-        $appConfig->resetPersonal('ollama_url');
-        self::assertFalse(isset($user['alice']['ollama_url']));
-        self::assertSame('http://admin-value:11434', $appConfig->get('ollama_url'));
-        self::assertFalse($appConfig->hasPersonal('ollama_url'));
     }
 
     public function testRuntimeStateNeverInheritsAdminInstanceValue(): void {
@@ -143,8 +123,8 @@ final class AppConfigUserSettingsTest extends TestCase {
         self::assertSame('idle', $appConfig->get('index_mode'));
     }
 
-    public function testAllAndResetOnlyExposeUserFacingKeys(): void {
-        [$config, $user] = $this->configHarness(
+    public function testAllExposesUserSettingsAndRuntimeState(): void {
+        [$config] = $this->configHarness(
             [],
             ['alice' => ['chat_model' => 'personal-model', 'index_running' => '1']]
         );
@@ -155,15 +135,5 @@ final class AppConfigUserSettingsTest extends TestCase {
         $all = $appConfig->all();
         self::assertSame('personal-model', $all['chat_model']);
         self::assertSame('1', $all['index_running']);
-
-        // Runtime state keys can never be reset through the user-facing API.
-        $appConfig->resetPersonal('index_running');
-        self::assertSame('1', $appConfig->get('index_running'));
-        self::assertTrue(isset($user['alice']['index_running']));
-
-        // Resetting a user-facing setting removes the personal override.
-        $appConfig->resetPersonal('chat_model');
-        self::assertFalse($appConfig->hasPersonal('chat_model'));
-        self::assertFalse(isset($user['alice']['chat_model']));
     }
 }

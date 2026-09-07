@@ -14,7 +14,6 @@ return [
         ['name' => 'api#status', 'url' => '/api/status', 'verb' => 'GET'],
         ['name' => 'api#settings', 'url' => '/api/settings', 'verb' => 'GET'],
         ['name' => 'api#saveSettings', 'url' => '/api/settings', 'verb' => 'PUT'],
-        ['name' => 'api#resetSetting', 'url' => '/api/settings/reset', 'verb' => 'POST'],
         ['name' => 'api#startIndex', 'url' => '/api/index', 'verb' => 'POST'],
         ['name' => 'api#startMailIndex', 'url' => '/api/mailIndex', 'verb' => 'POST'],
         ['name' => 'api#stopIndex', 'url' => '/api/indexStop', 'verb' => 'POST'],

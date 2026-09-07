@@ -97,26 +97,7 @@ class ApiController extends OCSController {
             return new DataResponse(['error' => 'Not logged in'], 401);
         }
         $this->knowledgeInitializer->ensureInitialized($user);
-        $settings = $this->config->all();
-        $settings['personal'] = $this->config->personalMap();
-        return new DataResponse($settings);
-    }
-
-    #[NoAdminRequired]
-    public function resetSetting(): DataResponse {
-        $user = $this->requireUser();
-        if ($user === null) {
-            return new DataResponse(['error' => 'Not logged in'], 401);
-        }
-        $key = trim((string)($this->requestParam('key') ?? ''));
-        if (!$this->config->isUserFacingSetting($key)) {
-            return new DataResponse(['error' => 'Unknown setting.'], 400);
-        }
-        $this->config->setUserId($user);
-        $this->config->resetPersonal($key);
-        $settings = $this->config->all();
-        $settings['personal'] = $this->config->personalMap();
-        return new DataResponse($settings);
+        return new DataResponse($this->config->all());
     }
 
     #[NoAdminRequired]
@@ -199,9 +180,7 @@ class ApiController extends OCSController {
                 }
                 $this->config->set($key, (string)$value);
         }
-        $settings = $this->config->all();
-        $settings['personal'] = $this->config->personalMap();
-        return new DataResponse($settings);
+        return new DataResponse($this->config->all());
     }
 
     private function validateOllamaUrl(string $url): ?string {

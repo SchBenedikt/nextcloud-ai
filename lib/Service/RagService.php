@@ -469,7 +469,6 @@ class RagService {
                 'ollamaRequests' => (int)$this->config->get('last_index_ollama_requests'),
             ],
             'settings' => $this->config->all(),
-            'personalSettings' => $this->config->personalMap(),
             'limits' => $this->config->limits(),
         ];
     }

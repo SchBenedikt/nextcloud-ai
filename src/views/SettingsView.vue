@@ -54,19 +54,6 @@
 			<ul><li v-for="error in validationErrors" :key="error">{{ error }}</li></ul>
 		</div>
 
-		<div v-if="Object.keys(personalOverrides).length" class="callout callout-info personal-overrides" role="status">
-			<div class="personal-overrides-copy">
-				<strong>{{ $t('Personal overrides') }}</strong>
-				<span>{{ $t('These values are set for your account only and override the instance default configured by the administrator. Reset one to inherit the instance default again.') }}</span>
-			</div>
-			<div class="override-list">
-				<span v-for="(override, key) in personalOverrides" :key="key" class="override-chip">
-					{{ override.label }}
-					<NcButton type="tertiary-no-background" class="override-reset" :aria-label="$t('Reset {setting} to the instance default', { setting: override.label })" :disabled="busy" :loading="resettingKey === key" @click="resetPersonalSetting(key)">{{ $t('Reset') }}</NcButton>
-				</span>
-			</div>
-		</div>
-
 		<main class="settings-body">
 			<div v-if="indexingActive" class="indexing-banner" role="status">
 				<div>
@@ -368,40 +355,6 @@ export default {
 		const chatsDeleteConfirm = ref(false)
 		const newExcludePath = ref('')
 		const excludeError = ref('')
-		const personal = ref({})
-		const resettingKey = ref('')
-
-		const OVERRIDE_LABELS = {
-			ollama_url: t('Ollama server URL'),
-			embedding_model: t('Embedding model'),
-			chat_model: t('Chat model'),
-			temperature: t('Answer creativity'),
-			actions_enabled: t('Allow file actions'),
-			notify_on_complete: t('Notify me when a long answer is ready'),
-			exec_write_types: t('File types EVA may write'),
-			exec_write_max_chars: t('Maximum characters per file'),
-			exec_delete_mode: t('Delete permission'),
-			top_k: t('Sources per answer'),
-			context_size: t('Model context size'),
-			chunk_size: t('Chunk size (characters)'),
-			chunk_overlap: t('Chunk overlap (characters)'),
-			max_file_size: t('Maximum file size'),
-			max_files_per_run: t('Files per indexing run'),
-			mail_index_max: t('Emails per indexing run'),
-			mail_index_enabled: t('Index Mail messages'),
-			scope_path: t('Folder to index'),
-			talk_history_size: t('Talk history size'),
-			talk_bot_trigger: t('Trigger name'),
-			exclude_paths: t('Excluded folders'),
-		}
-
-		const personalOverrides = computed(() => {
-			const out = {}
-			Object.keys(personal.value || {}).forEach(key => {
-				if (personal.value[key] && OVERRIDE_LABELS[key]) out[key] = { label: OVERRIDE_LABELS[key] }
-			})
-			return out
-		})
 
 		const excludeList = computed(() => {
 			const raw = (f.value.exclude_paths || '').trim()
@@ -517,31 +470,11 @@ export default {
 			try {
 				status.value = await api('GET', 'status')
 				limits.value = status.value?.limits || {}
-				personal.value = status.value?.personalSettings || {}
 				if (syncForm) fill()
 				if (Array.isArray(status.value?.models)) applyModelDiscovery(status.value.models)
 				if (syncForm) await discoverModels(f.value.ollama_url)
 			} catch (error) {
 				loadError.value = errMsg(error)
-			}
-		}
-
-		async function resetPersonalSetting(key) {
-			if (!key || resettingKey.value) return
-			resettingKey.value = key
-			try {
-				const settings = await api('POST', 'settings/reset', { key })
-				if (settings) {
-					if (status.value) status.value.settings = settings
-					fill(settings)
-					personal.value = settings?.personal || {}
-				}
-				setMessage('success', t('"{setting}" now uses the instance default.', { setting: OVERRIDE_LABELS[key] || key }))
-				if (key === 'ollama_url') discoverModels()
-			} catch (error) {
-				setMessage('error', t('The setting could not be reset: {error}', { error: errMsg(error) }))
-			} finally {
-				resettingKey.value = ''
 			}
 		}
 
@@ -558,10 +491,7 @@ export default {
 			try {
 				const settings = await api('PUT', 'settings', { ...f.value })
 				validationErrors.value = []
-				if (settings) {
-					fill(settings)
-					personal.value = settings?.personal || {}
-				}
+				if (settings) fill(settings)
 				saved.value = true
 				setMessage('success', t('Your settings were saved.'))
 				window.setTimeout(() => { saved.value = false }, 3000)
@@ -750,7 +680,6 @@ export default {
 		return {
 			f, status, limits, availableModels, embeddingModels, chatModels, modelLoading, modelError, checkOut, saving, checking, indexing, resetting, deletingChats, stopping, saved, loadError, message, validationErrors, resetConfirm, chatsDeleteConfirm,
 			newExcludePath, excludeError, excludeList, actionsEnabled, notificationsEnabled, mailIndexEnabled, indexEnrolled, actionsDisabled, busy, indexingActive, settingsLocked, maxFileSizeMb,
-			personal, personalOverrides, resettingKey, resetPersonalSetting,
 			formatNumber, loadStatus, save, checkOllama, addExclude, removeExclude, startIndex, startMailIndex, stopIndex, resetIndex, deleteAllChats,
 		}
 	},
@@ -814,13 +743,6 @@ export default {
 .callout-info strong { color: var(--color-primary-element); }
 .validation-summary ul { margin: 0; padding-left: 18px; color: var(--color-text-maxcontrast); }
 .validation-summary li { margin: 2px 0; }
-
-.personal-overrides { align-items: flex-start; }
-.personal-overrides-copy { display: flex; flex-direction: column; gap: 3px; min-width: 260px; }
-.personal-overrides-copy span { color: var(--color-text-maxcontrast); font-size: 12px; }
-.override-list { display: flex; flex-wrap: wrap; gap: 7px; flex: 1; justify-content: flex-end; }
-.override-chip { display: inline-flex; align-items: center; gap: 4px; padding: 4px 4px 4px 10px; border: 1px solid color-mix(in srgb, var(--color-primary-element) 35%, var(--color-border)); border-radius: 999px; background: var(--color-main-background); font-size: 12px; }
-.override-reset { min-height: 28px; margin: -2px -4px -2px 0; padding: 0 8px; font-size: 12px; }
 
 .settings-body { display: flex; flex-direction: column; gap: 16px; }
 .settings-fieldset { min-inline-size: 0; margin: 0; padding: 0; border: 0; }

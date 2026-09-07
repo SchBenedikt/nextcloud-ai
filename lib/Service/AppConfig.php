@@ -120,11 +120,6 @@ class AppConfig {
         return in_array($key, self::USER_STATE_KEYS, true);
     }
 
-    /** Whether the key is user-facing configuration (may inherit an instance value). */
-    public function isUserFacingSetting(string $key): bool {
-        return in_array($key, self::USER_SETTINGS, true);
-    }
-
     public function get(string $key): string {
         if ($this->userId !== null && $this->isUserSetting($key)) {
             $sentinel = "\0eva_ai_missing\0";
@@ -336,47 +331,6 @@ class AppConfig {
             $out[$key] = $this->get($key);
         }
         return $out;
-    }
-
-    /**
-     * Whether the current user has stored an explicit personal value for a
-     * user-scoped key (as opposed to inheriting the instance default).
-     */
-    public function hasPersonal(string $key): bool {
-        if ($this->userId === null || !$this->isUserSetting($key)) {
-            return false;
-        }
-        $sentinel = "\0eva_ai_missing\0";
-        try {
-            return $this->config->getUserValue($this->userId, self::APP, $key, $sentinel) !== $sentinel;
-        } catch (\Throwable $e) {
-            return false;
-        }
-    }
-
-    /**
-     * Map of user-facing setting keys to whether the current user overrides
-     * the instance default with an explicit personal value.
-     * @return array<string,bool>
-     */
-    public function personalMap(): array {
-        $out = [];
-        foreach (self::USER_SETTINGS as $key) {
-            $out[$key] = $this->hasPersonal($key);
-        }
-        return $out;
-    }
-
-    /**
-     * Remove an explicit personal value so the key falls back to the
-     * admin-configured instance value again. Only user-facing configuration
-     * keys may be reset; runtime state is never exposed to the user API.
-     */
-    public function resetPersonal(string $key): void {
-        if ($this->userId === null || !$this->isUserFacingSetting($key)) {
-            return;
-        }
-        $this->config->deleteUserValue($this->userId, self::APP, $key);
     }
 
     public function ollamaUrl(): string {
