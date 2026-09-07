@@ -226,6 +226,18 @@ export default {
 .chatview-root .rcopy:focus-visible { opacity: 1; }
 .chatview-root .rcopy:hover { background: var(--color-background-hover, #e5e5e5); }
 
+.chatview-root .racts { position: absolute; top: -2px; right: 0; display: flex; gap: 2px; opacity: 0; transition: opacity .12s; }
+.chatview-root .rm:hover .racts { opacity: 1; }
+.chatview-root .racts .rcopy,
+.chatview-root .racts .ract {
+	width: 24px; height: 24px; padding: 0; border: 0; border-radius: 5px;
+	background: transparent; color: var(--color-text-maxcontrast, #888);
+	font-size: 13px; line-height: 1; cursor: pointer;
+	transition: background-color .12s;
+}
+.chatview-root .racts .ract:hover,
+.chatview-root .racts .rcopy:hover { background: var(--color-background-hover, #e5e5e5); }
+
 
 .chatview-root .rth { margin: 0 0 9px; font-size: 12px; }
 .chatview-root .rth summary { cursor: pointer; color: var(--color-text-maxcontrast, #555); font-weight: 600; user-select: none; }

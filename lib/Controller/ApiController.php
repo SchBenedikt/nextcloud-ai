@@ -876,6 +876,62 @@ class ApiController extends OCSController {
         }
     }
 
+    /**
+     * Truncate a chat after a given message index and re-run the assistant.
+     * Used for regenerate (truncate after user msg, re-ask) and edit
+     * (truncate after edited user msg, re-ask).
+     *
+     * POST /api/chats/{id}/regenerate
+     * Body: { messageIndex: int, message?: string }
+     *
+     * If messageIndex points to a user message and `message` is provided,
+     * the user message text is replaced before re-running.
+     */
+    #[NoAdminRequired]
+    public function chatRegenerate(string $id): StreamTraversableResponse {
+        $user = $this->requireUser();
+        if ($user === null) {
+            $body = json_encode(['type' => 'error', 'message' => 'Not logged in']) . "\n";
+            return new StreamTraversableResponse(new \ArrayIterator([$body]), 'application/x-ndjson');
+        }
+        $body = json_decode((string)file_get_contents('php://input'), true);
+        $messageIndex = (int)($body['messageIndex'] ?? -1);
+        $newText = isset($body['message']) ? trim((string)$body['message']) : null;
+
+        $chat = $this->chatStore->getChat($user, $id);
+        if ($chat === null) {
+            $body = json_encode(['type' => 'error', 'message' => 'Chat not found']) . "\n";
+            return new StreamTraversableResponse(new \ArrayIterator([$body]), 'application/x-ndjson');
+        }
+
+        $messages = $chat['messages'];
+        if ($messageIndex < 0 || $messageIndex >= count($messages)) {
+            $body = json_encode(['type' => 'error', 'message' => 'Invalid message index']) . "\n";
+            return new StreamTraversableResponse(new \ArrayIterator([$body]), 'application/x-ndjson');
+        }
+
+        // Truncate after the target message index (keep messages 0..messageIndex).
+        $this->chatStore->truncateAfter($user, $id, $messageIndex + 1);
+
+        // If editing a user message, replace it.
+        if ($newText !== null && ($messages[$messageIndex]['role'] ?? '') === 'user') {
+            $this->chatStore->replaceMessage($user, $id, $messageIndex, $newText);
+            $targetMessage = $newText;
+        } else {
+            $targetMessage = $messages[$messageIndex]['text'] ?? '';
+        }
+
+        // Build history from remaining messages.
+        $history = [];
+        for ($i = 0; $i < $messageIndex; $i++) {
+            $m = $messages[$i];
+            $history[] = ['role' => $m['role'] ?? 'user', 'content' => $m['text'] ?? ''];
+        }
+
+        $gen = $this->ragService->askStream($user, $targetMessage, $history);
+        return new StreamTraversableResponse($gen, 'application/x-ndjson');
+    }
+
     #[NoAdminRequired]
     public function models(): DataResponse {
         $user = $this->requireUser();

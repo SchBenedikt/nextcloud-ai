@@ -28,6 +28,7 @@ return [
         ['name' => 'api#chatDelete', 'url' => '/api/chats/{id}', 'verb' => 'DELETE'],
         ['name' => 'api#chatAppend', 'url' => '/api/chats/{id}/messages', 'verb' => 'POST'],
         ['name' => 'api#chatTitle', 'url' => '/api/chats/{id}/title', 'verb' => 'POST'],
+        ['name' => 'api#chatRegenerate', 'url' => '/api/chats/{id}/regenerate', 'verb' => 'POST'],
         ['name' => 'api#models', 'url' => '/api/models', 'verb' => 'GET'],
         ['name' => 'api#check', 'url' => '/api/check', 'verb' => 'POST'],
         ['name' => 'api#exportData', 'url' => '/api/export', 'verb' => 'GET'],
