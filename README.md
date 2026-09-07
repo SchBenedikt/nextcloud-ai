@@ -13,9 +13,9 @@ always cite the source file path the model took the information from.
 
 ## Features
 
-Eine ausführliche deutschsprachige Übersicht über Bedienoberflächen,
+Eine ausführliche Übersicht über Bedienoberflächen,
 Wissenssuche, Werkzeuge, Sicherheitsgrenzen und bekannte Einschränkungen steht
-in **[docs/FUNKTIONEN.md](docs/FUNKTIONEN.md)**. Die vollständigen Ein- und
+in **[docs/FEATURES.md](docs/FEATURES.md)**. Die vollständigen Ein- und
 Ausgabeparameter aller Modellwerkzeuge sind in **[TOOLS.md](TOOLS.md)**
 dokumentiert.
 
