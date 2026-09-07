@@ -634,7 +634,9 @@ class ApiController extends OCSController {
         if ($user === null) {
             return new DataResponse(['error' => 'Not logged in'], 401);
         }
-        return new DataResponse($this->chatStore->list($user));
+        // Optional text search across chat titles and message content.
+        $search = trim((string)($this->requestParam('search') ?? ''));
+        return new DataResponse($this->chatStore->list($user, $search !== '' ? $search : null));
     }
 
     #[NoAdminRequired]

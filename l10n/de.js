@@ -142,7 +142,7 @@ OC.L10N.register("eva_ai", {
   "Actions are disabled": "Aktionen sind deaktiviert",
   "Actions can change your files": "Aktionen können deine Dateien ändern",
   "The fields below are inactive until you enable file actions.": "Die folgenden Felder sind inaktiv, bis du Dateiaktionen aktivierst.",
-  "EVA still requires confirmation for mutating or destructive operations.": "Für ändernde oder destruktive Vorgänge benötigt EVA weiterhin eine Bestätigung.",
+  "Complete, explicit requests run directly. EVA only asks when information is missing or a target is unclear.": "Vollständige, eindeutige Anfragen führt EVA direkt aus. EVA fragt nur nach, wenn Informationen fehlen oder ein Ziel unklar ist.",
   "File types EVA may write": "Dateitypen, die EVA schreiben darf",
   "Comma-separated extensions, for example {types}. Empty means any supported text file.": "Durch Kommas getrennte Erweiterungen, zum Beispiel {types}. Leer bedeutet jede unterstützte Textdatei.",
   "Maximum characters per file": "Maximale Zeichen pro Datei",
@@ -153,7 +153,7 @@ OC.L10N.register("eva_ai", {
   "EVA may delete files it created itself.": "EVA darf Dateien löschen, die sie selbst erstellt hat.",
   "Only EVA-created files": "Nur von EVA erstellte Dateien",
   "Recommended": "Empfohlen",
-  "Allows deletion of any file after explicit confirmation. Use with care.": "Erlaubt nach ausdrücklicher Bestätigung das Löschen jeder Datei. Mit Vorsicht verwenden.",
+  "Allows EVA to delete any file in your Files when you explicitly ask for it. Use with care.": "Erlaubt EVA, jede Datei in deinen Dateien zu löschen, wenn du ausdrücklich darum bittest. Mit Vorsicht verwenden.",
   "Any file in my Files": "Jede Datei in meinen Dateien",
   "Uses Nextcloud Notifications when background or Talk work finishes.": "Verwendet Nextcloud-Benachrichtigungen, wenn Hintergrund- oder Talk-Vorgänge abgeschlossen sind.",
   "Notify me when a long answer is ready": "Benachrichtige mich, wenn eine lange Antwort bereit ist",
@@ -338,5 +338,9 @@ OC.L10N.register("eva_ai", {
   "Please fill in all required fields.": "Bitte fülle alle Pflichtfelder aus.",
   "This action cannot be undone.": "Diese Aktion kann nicht rückgängig gemacht werden.",
   "Copy link": "Link kopieren",
-  "Open link": "Link öffnen"
+  "Open link": "Link öffnen",
+  "Chat search unavailable: {error}": "Chatsuche nicht verfügbar: {error}",
+  "{count} message matches": "{count} passende Nachrichten",
+  "This conversation is very long: some of the oldest messages were trimmed to keep it manageable. Use Export if you need the full history.": "Diese Unterhaltung ist sehr lang: Einige der ältesten Nachrichten wurden gekürzt, um sie überschaubar zu halten. Nutze Export, falls du den vollständigen Verlauf brauchst.",
+  "Some required details are missing - please complete them below.": "Einige erforderliche Angaben fehlen – bitte vervollständige sie unten."
 }, "nplurals=2; plural=(n != 1);");

@@ -6,12 +6,21 @@ follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Changed
+- **Web chat:** complete, explicit tool calls (shares, calendar events, tasks, files, contacts, profile, knowledge) now execute directly without a confirmation dialog; the dialog is only shown when required data is missing or ambiguous. Missing fields are highlighted right away, the prompt instructs the model to never invent missing values, and the dialog copy now explains what is missing. Newly created shares still show the copyable-link chip after direct execution.
+- **Issues #60/#66:** the indexer extracts the complete content of office documents instead of partial sections. DOCX now includes headers, footers, footnotes, endnotes, comments and tables; XLSX covers shared and inline strings sheet by sheet with cell references and sheet names; PPTX adds speaker notes and numbers each slide; ODS sheet names are preserved as boundary markers. Legacy binary `.doc`/`.xls`/`.ppt` files are converted via LibreOffice headless when installed (otherwise skipped with a logged reason, never silent).
+
 ### Added
 - Confirmation requests in the web chat now render a native, editable form for every tool that requires confirmation (shares, calendar events, tasks, files, notes, contacts, profile and knowledge) instead of raw JSON; destructive actions get a red warning style, unknown tools still fall back to readable JSON, and successful share creations show a copyable link chip.
 - **Issue #145:** user-isolated, content-addressed embedding cache with 30-day bounded retention, model/endpoint/schema metadata validation, duplicate-miss coalescing, reset cleanup, and index-status hit/miss/request counters.
 - **Issue #109:** English and German translation bundles for the Vue workspace, file actions and standalone chat.
 - Opt-in single-process frontend build for memory-constrained hosts (`EVA_LOW_MEMORY_BUILD=1`).
 - **Issue #99:** calendar event listing and free-slot detection now expand recurring events with bounded support for RRULE, RDATE, EXDATE, and RECURRENCE-ID.
+
+### Changed
+- **Issue #63:** file-context chat now budgets the document excerpts against the configured model context instead of truncating every document at a fixed 12000 characters. A single large document may use most of the window; several documents share the budget fairly (unused share of short documents is redistributed).
+- **Issue #96:** chat conversations keep up to 1000 messages (was 200) and trimming is no longer silent: every dropped message is counted on the chat and the chat view shows a notice that the oldest messages were trimmed.
+- **Issue #152:** the chat list search now also finds chats by their message content, not only titles. Content hits show an excerpt around the first match and the number of matching messages.
 
 ### Fixed
 - Indexing can no longer be permanently blocked by the per-user index lock. Two related defects are fixed: the lock key is now bounded to 40 hex chars (the full sha256 exceeded the varchar(64) key column of Nextcloud's file_locks table, so acquire/release silently failed and stale rows collided with every later attempt), and when a worker still crashes while holding the lock, the queue endpoint and the indexer reclaim the expired row once the tracked run state is idle or stale - never while a live worker with a fresh heartbeat is running. Previously such a row blocked "Indexing could not be queued" forever on instances whose cron never ran the file-lock cleanup job.

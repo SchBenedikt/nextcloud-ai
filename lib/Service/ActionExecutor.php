@@ -37,6 +37,64 @@ class ActionExecutor {
     private const KNOWLEDGE_PROFILE_MARKER = '<!-- eva_ai:profile-initialized -->';
     private const NOTES_FOLDER = 'Notes';
 
+    /**
+     * Arguments a tool call needs before it may run without asking the user.
+     *
+     * On the interactive WEB surface, complete and explicit requests execute
+     * immediately. The confirmation/completion dialog is only shown when one
+     * of these required arguments is missing or empty, so the user can fill
+     * it in. Other surfaces keep the strict confirmation gate.
+     */
+    private const REQUIRED_ARGS = [
+        // Files / notes
+        'create_file' => ['path', 'content'],
+        'create_note' => ['title', 'content'],
+        'create_folder' => ['path'],
+        'rename_file' => ['path', 'new_name'],
+        'delete_file' => ['path'],
+        'update_knowledge' => ['fact'],
+        // Profile (any field set is explicit; no single mandatory argument)
+        'update_profile' => [],
+        // Contacts
+        'create_contact' => ['name'],
+        'update_contact' => ['query'],
+        'delete_contact' => ['query'],
+        // Calendar
+        'create_calendar_event' => ['summary', 'start'],
+        'update_calendar_event' => ['event_id'],
+        'delete_calendar_event' => ['event_id'],
+        // Shares
+        'create_share' => ['path'],
+        'update_share' => ['share_id'],
+        'delete_share' => ['share_id'],
+        // Tasks
+        'create_task' => ['title'],
+        'update_task' => ['task_id'],
+        'complete_task' => ['task_id'],
+        'delete_task' => ['task_id'],
+    ];
+
+    /**
+     * Return the keys of required arguments that are missing or empty.
+     *
+     * @return string[]
+     */
+    private function missingRequiredArgs(string $name, array $args): array {
+        $required = self::REQUIRED_ARGS[$name] ?? [];
+        // Sharing with a user/group additionally needs the concrete recipient.
+        if ($name === 'create_share' && in_array((string)($args['type'] ?? 'link'), ['user', 'group'], true)) {
+            $required[] = 'target';
+        }
+        $missing = [];
+        foreach ($required as $key) {
+            $value = $args[$key] ?? null;
+            if ($value === null || (is_string($value) && trim($value) === '') || (is_array($value) && $value === [])) {
+                $missing[] = $key;
+            }
+        }
+        return array_values(array_unique($missing));
+    }
+
     public function __construct(
         private IRootFolder $rootFolder,
         private IContactsManager $contacts,
@@ -455,13 +513,34 @@ class ActionExecutor {
             return ['ok' => false, 'error' => $policy['reason'] ?? 'Tool not allowed'];
         }
         if (($policy['requiresConfirmation'] ?? false) && !$confirmed) {
-            return [
-                'ok' => false,
-                'confirmation_required' => true,
-                'tool' => $name,
-                'risk' => (string)($policy['risk'] ?? ToolPolicy::RISK_MUTATING),
-                'error' => 'This action requires explicit user confirmation before it can be executed.',
-            ];
+            // Interactive web chat: an explicit, complete request runs
+            // immediately. The dialog is only shown when required data is
+            // still missing (e.g. an event without a name) or no concrete
+            // target was resolved, so the user can complete it there.
+            if ($this->toolPolicy->getSurface() === ToolPolicy::SURFACE_WEB) {
+                $missing = $this->missingRequiredArgs($name, $args);
+                if ($missing === []) {
+                    // Complete and explicit -> execute directly below.
+                } else {
+                    return [
+                        'ok' => false,
+                        'confirmation_required' => true,
+                        'tool' => $name,
+                        'risk' => (string)($policy['risk'] ?? ToolPolicy::RISK_MUTATING),
+                        'missing' => $missing,
+                        'error' => 'This action needs more information before it can run: ' . implode(', ', $missing),
+                    ];
+                }
+            } else {
+                // Non-interactive surfaces keep the strict confirmation gate.
+                return [
+                    'ok' => false,
+                    'confirmation_required' => true,
+                    'tool' => $name,
+                    'risk' => (string)($policy['risk'] ?? ToolPolicy::RISK_MUTATING),
+                    'error' => 'This action requires explicit user confirmation before it can be executed.',
+                ];
+            }
         }
 
         // File tools must work consistently in TaskProcessing workers

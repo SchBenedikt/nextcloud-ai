@@ -185,7 +185,7 @@ final class OpenIssuesSecurityRegressionTest extends TestCase {
         self::assertStringContainsString('$this->indexer->run($userId', $requestJob);
     }
 
-    public function testFileContextCapsEachDocumentEvenWhenChunksAreInterleaved(): void {
+    public function testFileContextSharesTheContextBudgetFairlyAcrossInterleavedDocuments(): void {
         $service = new FileContextChatService(
             $this->createMock(Ollama::class),
             $this->createMock(AppConfig::class),
@@ -195,7 +195,7 @@ final class OpenIssuesSecurityRegressionTest extends TestCase {
             $this->createMock(IURLGenerator::class),
         );
         $reflection = new \ReflectionClass($service);
-        $method = $reflection->getMethod('groupChunksWithinDocumentLimit');
+        $method = $reflection->getMethod('groupChunksWithinBudget');
         $chunks = [
             ['document_id' => 1, 'content' => str_repeat('a', 8000)],
             ['document_id' => 2, 'content' => str_repeat('b', 8000)],
@@ -203,11 +203,45 @@ final class OpenIssuesSecurityRegressionTest extends TestCase {
             ['document_id' => 2, 'content' => str_repeat('d', 8000)],
         ];
 
-        $grouped = $method->invoke($service, $chunks);
+        // A 24000 character budget is shared equally: each document may use
+        // 12000 characters and never more than the whole budget together.
+        $grouped = $method->invoke($service, $chunks, 24000);
         self::assertSame(12000, mb_strlen(implode('', $grouped[1])));
         self::assertSame(12000, mb_strlen(implode('', $grouped[2])));
         self::assertSame(str_repeat('a', 8000) . str_repeat('c', 4000), implode('', $grouped[1]));
         self::assertSame(str_repeat('b', 8000) . str_repeat('d', 4000), implode('', $grouped[2]));
+    }
+
+    public function testFileContextLargeDocumentCanUseMostOfTheBudgetInsteadOfA12000Cap(): void {
+        $config = $this->createMock(AppConfig::class);
+        // Default model context of 12288 tokens leaves room for far more than
+        // the old fixed 12000 characters when only one large document is asked.
+        $config->method('get')->with('context_size')->willReturn('12288');
+        $service = new FileContextChatService(
+            $this->createMock(Ollama::class),
+            $config,
+            $this->createMock(DocumentMapper::class),
+            $this->createMock(ChunkMapper::class),
+            $this->createMock(IRootFolder::class),
+            $this->createMock(IURLGenerator::class),
+        );
+        $reflection = new \ReflectionClass($service);
+        $budget = $reflection->getMethod('contextBudgetChars');
+        $budgetChars = $budget->invoke($service, 'system', [], 'Frage?');
+        self::assertGreaterThan(12000, $budgetChars, 'a single document should not be stuck at the old 12000 cap');
+
+        $group = $reflection->getMethod('groupChunksWithinBudget');
+        $chunks = [
+            ['document_id' => 1, 'content' => str_repeat('a', 10000)],
+            ['document_id' => 1, 'content' => str_repeat('b', 10000)],
+            ['document_id' => 1, 'content' => str_repeat('c', 10000)],
+            ['document_id' => 1, 'content' => str_repeat('d', 10000)],
+        ];
+        $grouped = $group->invoke($service, $chunks, $budgetChars);
+        self::assertLessThanOrEqual($budgetChars, mb_strlen(implode('', $grouped[1])));
+        self::assertGreaterThan(12000, mb_strlen(implode('', $grouped[1])));
+        // Excerpt order stays contiguous per document.
+        self::assertStringStartsWith(str_repeat('a', 10000), implode('', $grouped[1]));
     }
 
     public function testAuditFixesKeepSearchAndPromptBoundariesExplicit(): void {

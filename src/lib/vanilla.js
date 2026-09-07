@@ -32,6 +32,7 @@ export function mountChat(root, opts = {}) {
 	let sending = false
 	const refs = []
 	let lastMd = 0
+	let trimmedMessages = 0
 
 	function api(method, path, body) {
 		return new Promise((resolve, reject) => {
@@ -288,19 +289,20 @@ export function mountChat(root, opts = {}) {
 			wrap.appendChild(s)
 		}
 
-		if (m.confirmation && m.confirmation.resolved && m.confirmation.resultUrl) {
+		const linkUrl = (m.confirmation && m.confirmation.resolved && m.confirmation.resultUrl) || m.linkUrl
+		if (linkUrl) {
 			const linkRow = document.createElement('div')
 			linkRow.className = 'rconfirm-link'
 			const link = document.createElement('a')
-			link.href = m.confirmation.resultUrl
+			link.href = linkUrl
 			link.target = '_blank'
 			link.rel = 'noopener'
-			link.textContent = m.confirmation.resultUrl
+			link.textContent = linkUrl
 			link.title = t('Open link')
 			const copyBtn = document.createElement('button')
 			copyBtn.type = 'button'
 			copyBtn.textContent = t('Copy link')
-			copyBtn.addEventListener('click', () => copyText(m.confirmation.resultUrl, copyBtn))
+			copyBtn.addEventListener('click', () => copyText(linkUrl, copyBtn))
 			linkRow.append(link, copyBtn)
 			wrap.appendChild(linkRow)
 		}
@@ -315,17 +317,22 @@ export function mountChat(root, opts = {}) {
 			label.className = 'rconfirm-label'
 			label.textContent = conf ? t(conf.title) : t('EVA wants to run: {tool}', { tool: m.confirmation.name })
 			panel.appendChild(label)
+			const missing = Array.isArray(m.confirmation.missing) ? m.confirmation.missing : []
 			const summary = document.createElement('div')
 			summary.className = 'rconfirm-summary'
-			summary.textContent = danger
-				? t('This action cannot be undone.')
-				: t('Please review this action and confirm it explicitly.')
+			summary.textContent = missing.length
+				? t('Some required details are missing - please complete them below.')
+				: (danger
+					? t('This action cannot be undone.')
+					: t('Please review this action and confirm it explicitly.'))
 			panel.appendChild(summary)
 			const errEl = document.createElement('div')
 			errEl.className = 'rconfirm-error'
 			errEl.style.display = 'none'
 			if (conf) {
 				panel.appendChild(conf.element)
+				// Show which fields still need input right away (reason: missing).
+				if (missing.length) conf.validate()
 			} else {
 				const details = document.createElement('pre')
 				details.className = 'rconfirm-args'
@@ -466,6 +473,14 @@ export function mountChat(root, opts = {}) {
 	const renderAll = (list) => {
 		refs.length = 0
 		while (scroll.firstChild) scroll.removeChild(scroll.firstChild)
+		if (trimmedMessages > 0) {
+			// Oldest messages of a very long conversation were dropped on the
+			// server. Make that visible instead of silently missing context.
+			const note = document.createElement('div')
+			note.className = 'rtrimmed'
+			note.textContent = t('This conversation is very long: some of the oldest messages were trimmed to keep it manageable. Use Export if you need the full history.')
+			scroll.appendChild(note)
+		}
 		list.forEach((m, i) => renderMsg(scroll, null, m, i))
 		exportBtn.disabled = !list.length
 		scroll.scrollTop = scroll.scrollHeight
@@ -571,6 +586,7 @@ export function mountChat(root, opts = {}) {
 	function restoreServerChat(id) {
 		return api('GET', '/chats/' + id).then((chat) => {
 			messages.length = 0
+			trimmedMessages = (chat && chat.trimmed) ? parseInt(chat.trimmed, 10) || 0 : 0
 			;(chat.messages || []).forEach((m) => messages.push({
 				role: m.role === 'user' || m.role === 'assistant' ? m.role : 'assistant',
 				text: m.text || '',
@@ -620,14 +636,21 @@ export function mountChat(root, opts = {}) {
 						const t = last.tools[last.tools.length - 1]
 						t.state = ev.ok ? 'ok' : 'bad'
 					}
+					// Direct (no-dialog) executions still surface a created share
+					// link as a copyable chip in the bubble.
+					if (ev.ok && ev.url) last.linkUrl = ev.url
 				} else if (ev.type === 'confirmation') {
+					const missing = Array.isArray(ev.missing) ? ev.missing : []
 					last.confirmation = {
 						name: ev.name || '?',
 						arguments: ev.arguments || {},
 						risk: ev.risk || 'mutating',
+						missing,
 						resolved: false,
 					}
-					last.text = t('Please review this action and confirm it explicitly.')
+					last.text = missing.length
+						? t('Some required details are missing - please complete them below.')
+						: t('Please review this action and confirm it explicitly.')
 					last.done = true
 					saveMessage('user', msg)
 					renderAll(messages)

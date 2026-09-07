@@ -118,7 +118,7 @@
 					</NcCheckboxRadioSwitch>
 				<div class="warning-note" :class="{ 'is-disabled': actionsDisabled }">
 					<strong>{{ actionsDisabled ? $t('Actions are disabled') : $t('Actions can change your files') }}</strong>
-					<span>{{ actionsDisabled ? $t('The fields below are inactive until you enable file actions.') : $t('EVA still requires confirmation for mutating or destructive operations.') }}</span>
+					<span>{{ actionsDisabled ? $t('The fields below are inactive until you enable file actions.') : $t('Complete, explicit requests run directly. EVA only asks when information is missing or a target is unclear.') }}</span>
 				</div>
 
 				<div class="field-grid" :class="{ 'is-disabled': actionsDisabled }">
@@ -140,7 +140,7 @@
 					<NcCheckboxRadioSwitch v-model="f.exec_delete_mode" type="radio" name="delete-mode" value="own" :disabled="actionsDisabled" :description="$t('EVA may delete files it created itself.')">
 						{{ $t('Only EVA-created files') }} <em>{{ $t('Recommended') }}</em>
 					</NcCheckboxRadioSwitch>
-					<NcCheckboxRadioSwitch v-model="f.exec_delete_mode" type="radio" name="delete-mode" value="all" :disabled="actionsDisabled" class="choice-danger" :description="$t('Allows deletion of any file after explicit confirmation. Use with care.')">
+					<NcCheckboxRadioSwitch v-model="f.exec_delete_mode" type="radio" name="delete-mode" value="all" :disabled="actionsDisabled" class="choice-danger" :description="$t('Allows EVA to delete any file in your Files when you explicitly ask for it. Use with care.')">
 						{{ $t('Any file in my Files') }}
 					</NcCheckboxRadioSwitch>
 				</div>

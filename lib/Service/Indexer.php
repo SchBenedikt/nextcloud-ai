@@ -440,6 +440,7 @@ class Indexer {
             'application/msword',
             'application/vnd.ms-word',
             'application/vnd.ms-excel',
+            'application/vnd.ms-powerpoint',
             'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
             'application/vnd.openxmlformats-officedocument.wordprocessingml.template',
             'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
@@ -499,7 +500,7 @@ class Indexer {
         if (in_array($ext, ['docx', 'docm', 'dotx'], true) || $mime === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' || $mime === 'application/vnd.openxmlformats-officedocument.wordprocessingml.template') {
             return $this->zipWebText($file, 'docx');
         }
-        if ($ext === 'odt' || $mime === 'application/vnd.oasis.opendocument.text' || $mime === 'application/vnd.oasis.opendocument.spreadsheet' || $mime === 'application/vnd.oasis.opendocument.presentation') {
+        if (in_array($ext, ['odt', 'ods', 'odp'], true) || $mime === 'application/vnd.oasis.opendocument.text' || $mime === 'application/vnd.oasis.opendocument.spreadsheet' || $mime === 'application/vnd.oasis.opendocument.presentation') {
             return $this->zipWebText($file, 'odf');
         }
         if ($ext === 'epub' || $mime === 'application/epub+zip') {
@@ -523,6 +524,20 @@ class Indexer {
             $txt = preg_replace('/[{}]/', ' ', $txt ?? '');
             $txt = preg_replace('/\\u(\d+)/', '', $txt ?? '');
             return $this->normalize($txt ?? '');
+        }
+
+        // Legacy binary Office (.doc/.xls/.ppt): these have no embedded XML
+        // text. Convert headless with LibreOffice when it is available;
+        // otherwise skip with a logged reason so the gap is never silent.
+        if (in_array($ext, ['doc', 'dot', 'xls', 'xla', 'ppt', 'pps', 'pot'], true)
+            || $mime === 'application/msword'
+            || $mime === 'application/vnd.ms-excel'
+            || $mime === 'application/vnd.ms-powerpoint') {
+            $txt = $this->legacyOfficeText($file, $ext);
+            if ($txt !== '') {
+                return $this->normalize($txt);
+            }
+            return '';
         }
 
         // Nach Office: weitere bekannte Text-Erweiterungen direkt lesen (Binary-Guard).
@@ -550,15 +565,327 @@ class Indexer {
         return $this->normalize($raw);
     }
 
+    /**
+     * Shared, bounded reader for one ZIP entry: guards the raw size of each
+     * entry and the total decompressed budget across a whole container, so
+     * extraction stays memory-bounded even for hostile archives.
+     */
+    private function zipReadEntry(\ZipArchive $zip, int $index, int &$total, bool &$aborted): string {
+        if ($aborted) {
+            return '';
+        }
+        $stat = $zip->statIndex($index);
+        if ($stat === false) {
+            return '';
+        }
+        if ($stat['size'] > self::MAX_DECOMPRESSED_BYTES) {
+            $this->logWarning('eva_ai: ZIP entry too large, skipping', ['entry' => (string)($stat['name'] ?? $index), 'size' => $stat['size']]);
+            return '';
+        }
+        $data = $zip->getFromIndex($index);
+        if ($data === false) {
+            return '';
+        }
+        $total += strlen($data);
+        if ($total > self::MAX_DECOMPRESSED_BYTES) {
+            $this->logWarning('eva_ai: Decompressed content exceeds limit', ['bytes' => $total]);
+            $aborted = true;
+            return '';
+        }
+        return $data;
+    }
+
+    private function logWarning(string $message, array $context = []): void {
+        if (isset($this->logger)) {
+            $this->logger->warning($message, $context);
+        }
+    }
+
+    /**
+     * Splits one XML part on its paragraph element and collects the inline
+     * text runs, one line per paragraph. Text boxes and table cells live
+     * inside those paragraphs, so their content is captured as well.
+     */
+    private function paragraphText(string $xml, string $pTag, string $tTag): string {
+        $lines = [];
+        $parts = preg_split('/<' . preg_quote($pTag, '/') . '(?:\s[^>]*)?>/', $xml);
+        if (!is_array($parts)) {
+            return '';
+        }
+        foreach ($parts as $i => $segment) {
+            if ($i === 0) {
+                continue;
+            }
+            if (preg_match_all('/<' . preg_quote($tTag, '/') . '(?:[^>]*)>(.*?)<\/' . preg_quote($tTag, '/') . '>/s', $segment, $m)) {
+                $line = trim(html_entity_decode(implode('', $m[1]), ENT_QUOTES | ENT_XML1, 'UTF-8'));
+                if ($line !== '') {
+                    $lines[] = $line;
+                }
+            }
+        }
+        return implode("\n", $lines);
+    }
+
+    /**
+     * DOCX: the body first, then comments, endnotes, footnotes, headers and
+     * footers. Section labels keep the extracted structure clear, so chunks
+     * never silently mix header, footnote and body text.
+     */
+    private function docxZipText(\ZipArchive $zip, int &$total, bool &$aborted): string {
+        $sections = [
+            'word/document.xml' => '',
+            'word/comments.xml' => "[Comments]\n",
+            'word/endnotes.xml' => "[Endnotes]\n",
+            'word/footnotes.xml' => "[Footnotes]\n",
+        ];
+        $headers = [];
+        $footers = [];
+        $count = $zip->numFiles;
+        for ($i = 0; $i < $count && !$aborted; $i++) {
+            $name = $zip->getNameIndex($i);
+            if ($name === false) {
+                continue;
+            }
+            $lower = strtolower($name);
+            if (preg_match('~^word/header\d+\.xml$~', $lower)) {
+                $headers[$lower] = $i;
+            } elseif (preg_match('~^word/footer\d+\.xml$~', $lower)) {
+                $footers[$lower] = $i;
+            }
+        }
+        $parts = [];
+        foreach ($sections as $entry => $label) {
+            $idx = $zip->locateName($entry);
+            if ($idx === false) {
+                continue;
+            }
+            $text = $this->paragraphText($this->zipReadEntry($zip, $idx, $total, $aborted), 'w:p', 'w:t');
+            if ($text !== '') {
+                $parts[] = $label . $text;
+            }
+        }
+        ksort($headers);
+        foreach ($headers as $i) {
+            $text = $this->paragraphText($this->zipReadEntry($zip, $i, $total, $aborted), 'w:p', 'w:t');
+            if ($text !== '') {
+                $parts[] = "[Header]\n" . $text;
+            }
+        }
+        ksort($footers);
+        foreach ($footers as $i) {
+            $text = $this->paragraphText($this->zipReadEntry($zip, $i, $total, $aborted), 'w:p', 'w:t');
+            if ($text !== '') {
+                $parts[] = "[Footer]\n" . $text;
+            }
+        }
+        return implode("\n\n", $parts);
+    }
+
+    /**
+     * Sheet name resolution for XLSX: workbook.xml lists the sheets and the
+     * rels file maps each relationship id to its worksheet part.
+     *
+     * @return array<string, string> worksheet path (lower-case) => sheet name
+     */
+    private function xlsxSheetNames(\ZipArchive $zip, int &$total, bool &$aborted): array {
+        $rels = [];
+        $idx = $zip->locateName('xl/_rels/workbook.xml.rels');
+        if ($idx !== false) {
+            $xml = $this->zipReadEntry($zip, $idx, $total, $aborted);
+            if (preg_match_all('/<Relationship\b[^>]*\bId="([^"]+)"[^>]*\bTarget="([^"]+)"[^>]*>/s', $xml, $rm, PREG_SET_ORDER)) {
+                foreach ($rm as $r) {
+                    if (str_contains($r[2], 'worksheets/')) {
+                        $rels[$r[1]] = $r[2];
+                    }
+                }
+            }
+        }
+        $names = [];
+        $idx = $zip->locateName('xl/workbook.xml');
+        if ($idx !== false) {
+            $xml = $this->zipReadEntry($zip, $idx, $total, $aborted);
+            if (preg_match_all('/<sheet\b[^>]*\bname="([^"]*)"[^>]*\br:id="([^"]+)"[^>]*>/s', $xml, $sm, PREG_SET_ORDER)) {
+                foreach ($sm as $s) {
+                    $target = ltrim($rels[$s[2]] ?? '', '/');
+                    if ($target === '') {
+                        continue;
+                    }
+                    if (!str_starts_with($target, 'xl/')) {
+                        $target = 'xl/' . $target;
+                    }
+                    $names[strtolower($target)] = html_entity_decode($s[1], ENT_QUOTES | ENT_XML1, 'UTF-8');
+                }
+            }
+        }
+        return $names;
+    }
+
+    /**
+     * XLSX: every non-empty cell (shared strings and inline strings alike)
+     * with its reference, grouped by sheet, so spreadsheets keep their
+     * structure instead of one flat string list.
+     */
+    private function xlsxZipText(\ZipArchive $zip, int &$total, bool &$aborted): string {
+        $shared = [];
+        $idx = $zip->locateName('xl/sharedStrings.xml');
+        if ($idx !== false) {
+            $xml = $this->zipReadEntry($zip, $idx, $total, $aborted);
+            if (preg_match_all('/<si>(.*?)<\/si>/s', $xml, $si)) {
+                foreach ($si[1] as $cell) {
+                    preg_match_all('/<t(?:[^>]*)>(.*?)<\/t>/s', $cell, $tm);
+                    $shared[] = trim(html_entity_decode(implode('', $tm[1]), ENT_QUOTES | ENT_XML1, 'UTF-8'));
+                }
+            }
+        }
+        $names = $this->xlsxSheetNames($zip, $total, $aborted);
+        $sheets = [];
+        $count = $zip->numFiles;
+        for ($i = 0; $i < $count; $i++) {
+            $name = $zip->getNameIndex($i);
+            if ($name !== false && preg_match('~^xl/worksheets/sheet(\d+)\.xml$~', $name, $nm)) {
+                $sheets[(int)$nm[1]] = [$name, $i];
+            }
+        }
+        ksort($sheets);
+        $out = [];
+        foreach ($sheets as $num => $pair) {
+            $path = $pair[0];
+            $xml = $this->zipReadEntry($zip, $pair[1], $total, $aborted);
+            if ($xml === '') {
+                continue;
+            }
+            $cellLines = [];
+            if (preg_match_all('/<c\b([^>]*)>(.*?)<\/c>/s', $xml, $cm, PREG_SET_ORDER)) {
+                foreach ($cm as $cell) {
+                    $attrs = $cell[1];
+                    $ref = '';
+                    if (preg_match('/\br="([A-Z]+\d+)"/', $attrs, $rm)) {
+                        $ref = $rm[1];
+                    }
+                    if ($ref === '') {
+                        continue;
+                    }
+                    $val = '';
+                    if (preg_match('/\bt="inlineStr"/', $attrs)) {
+                        preg_match_all('/<t(?:[^>]*)>(.*?)<\/t>/s', $cell[2], $tm);
+                        $val = trim(html_entity_decode(implode('', $tm[1]), ENT_QUOTES | ENT_XML1, 'UTF-8'));
+                    } elseif (preg_match('/\bt="s"/', $attrs) && preg_match('/<v>(.*?)<\/v>/s', $cell[2], $vm)) {
+                        $val = $shared[(int)trim($vm[1])] ?? '';
+                    } elseif (preg_match('/<v>(.*?)<\/v>/s', $cell[2], $vm)) {
+                        $val = trim($vm[1]);
+                    }
+                    if ($val !== '') {
+                        $cellLines[] = $ref . ': ' . $val;
+                    }
+                }
+            }
+            if (!empty($cellLines)) {
+                $sheetName = $names[strtolower($path)] ?? '';
+                $label = $sheetName !== '' ? '[Sheet: ' . $sheetName . ']' : '[Sheet ' . $num . ']';
+                $out[] = $label . "\n" . implode("\n", $cellLines);
+            }
+        }
+        return implode("\n\n", $out);
+    }
+
+    /**
+     * PPTX: every slide followed by its speaker notes, numbered so the
+     * per-slide structure survives chunking.
+     */
+    private function pptxZipText(\ZipArchive $zip, int &$total, bool &$aborted): string {
+        $slides = [];
+        $notes = [];
+        $count = $zip->numFiles;
+        for ($i = 0; $i < $count && !$aborted; $i++) {
+            $name = $zip->getNameIndex($i);
+            if ($name === false) {
+                continue;
+            }
+            if (preg_match('~^ppt/slides/slide(\d+)\.xml$~', $name, $m)) {
+                $slides[(int)$m[1]] = $i;
+            } elseif (preg_match('~^ppt/notesSlides/notesSlide(\d+)\.xml$~', $name, $m)) {
+                $notes[(int)$m[1]] = $i;
+            }
+        }
+        ksort($slides);
+        ksort($notes);
+        $out = [];
+        foreach ($slides as $num => $index) {
+            $text = $this->paragraphText($this->zipReadEntry($zip, $index, $total, $aborted), 'a:p', 'a:t');
+            if ($text !== '') {
+                $out[] = '[Slide ' . $num . "]\n" . $text;
+            }
+        }
+        foreach ($notes as $num => $index) {
+            $text = $this->paragraphText($this->zipReadEntry($zip, $index, $total, $aborted), 'a:p', 'a:t');
+            if ($text !== '') {
+                $out[] = '[Speaker notes (slide ' . $num . ")]\n" . $text;
+            }
+        }
+        return implode("\n\n", $out);
+    }
+
+    /**
+     * ODF (text/spreadsheet/presentation): full content.xml, with every
+     * table/sheet prefixed by a boundary marker carrying the sheet name.
+     */
+    private function odfZipText(\ZipArchive $zip, int &$total, bool &$aborted): string {
+        $idx = $zip->locateName('content.xml');
+        if ($idx === false) {
+            return '';
+        }
+        $xml = $this->zipReadEntry($zip, $idx, $total, $aborted);
+        if ($xml === '') {
+            return '';
+        }
+        $xml = preg_replace_callback('/<table:table\b([^>]*)>/', static function (array $m): string {
+            $name = '';
+            if (preg_match('/\btable:name="([^"]*)"/', $m[1], $nm)) {
+                $name = html_entity_decode($nm[1], ENT_QUOTES | ENT_XML1, 'UTF-8');
+            }
+            return "\n\n" . ($name !== '' ? '[Sheet: ' . $name . ']' : '[Sheet]') . "\n";
+        }, $xml);
+        $plain = preg_replace('/<[^>]+>/', ' ', $xml ?? '');
+        return html_entity_decode($plain ?? '', ENT_QUOTES | ENT_HTML5, 'UTF-8');
+    }
+
+    /** EPUB: full text of every XHTML chapter, in file order. */
+    private function epubZipText(\ZipArchive $zip, int &$total, bool &$aborted): string {
+        $out = '';
+        $entriesProcessed = 0;
+        $count = $zip->numFiles;
+        for ($i = 0; $i < $count && !$aborted && $entriesProcessed < self::MAX_ZIP_ENTRIES; $i++) {
+            $entriesProcessed++;
+            $entry = $zip->getNameIndex($i);
+            if ($entry === false) {
+                continue;
+            }
+            if (!str_ends_with($entry, '.htm') && !str_ends_with($entry, '.html') && !str_ends_with($entry, '.xhtml')) {
+                continue;
+            }
+            $html = $this->zipReadEntry($zip, $i, $total, $aborted);
+            if ($html === '') {
+                continue;
+            }
+            $html = preg_replace('/<script\b[^>]*>.*?<\/script>/is', ' ', $html ?? '');
+            $html = preg_replace('/<style\b[^>]*>.*?<\/style>/is', ' ', $html ?? '');
+            $html = preg_replace('/<[^>]+>/', ' ', $html ?? '');
+            $out .= ' ' . html_entity_decode($html ?? '', ENT_QUOTES | ENT_HTML5, 'UTF-8');
+        }
+        return $out;
+    }
+
+    /**
+     * Extracts searchable text from a ZIP-based office container. Each
+     * format is read through zipReadEntry(), which enforces the entry and
+     * total decompression budget, so extraction stays memory-bounded.
+     */
     private function zipWebText(File $file, string $kind): string {
         if (!class_exists(\ZipArchive::class)) {
             return '';
         }
         $tmp = tempnam(sys_get_temp_dir(), 'rg_');
         $out = '';
-        $totalDecompressed = 0;
-        $entriesProcessed = 0;
-        
         try {
             if ($tmp === false) {
                 return '';
@@ -568,113 +895,23 @@ class Indexer {
             if ($zip->open($tmp) !== true) {
                 return '';
             }
-            
-            $target = $kind === 'docx' ? 'word/document.xml' : ($kind === 'odf' ? 'content.xml' : '');
-            if ($target !== '') {
-                // Check entry size before reading
-                $stat = $zip->statName($target);
-                if ($stat !== false && $stat['size'] > self::MAX_DECOMPRESSED_BYTES) {
-                    $this->logger->warning('eva_ai: ZIP entry too large', ['file' => $file->getPath(), 'entry' => $target, 'size' => $stat['size']]);
-                    return '';
+            try {
+                $total = 0;
+                $aborted = false;
+                if ($kind === 'docx') {
+                    $out = $this->docxZipText($zip, $total, $aborted);
+                } elseif ($kind === 'xlsx') {
+                    $out = $this->xlsxZipText($zip, $total, $aborted);
+                } elseif ($kind === 'pptx') {
+                    $out = $this->pptxZipText($zip, $total, $aborted);
+                } elseif ($kind === 'odf') {
+                    $out = $this->odfZipText($zip, $total, $aborted);
+                } elseif ($kind === 'epub') {
+                    $out = $this->epubZipText($zip, $total, $aborted);
                 }
-                
-                $xml = $zip->getFromName($target);
-                if ($xml !== false) {
-                    $totalDecompressed += strlen($xml);
-                    if ($totalDecompressed > self::MAX_DECOMPRESSED_BYTES) {
-                        $this->logger->warning('eva_ai: Decompressed content exceeds limit', ['file' => $file->getPath(), 'bytes' => $totalDecompressed]);
-                        return '';
-                    }
-                    
-                    if ($kind === 'docx') {
-                        preg_match_all('/<w:t(?:\s[^>]*)?>(.*?)<\/w:t>/is', $xml, $m);
-                        $out = implode(' ', $m[1]);
-                    } else {
-                        preg_match_all('/<text:p[^>]*>|<text:h[^>]*>(.*?)/is', $xml, $m);
-                        $plain = preg_replace('/<[^>]+>/', ' ', $xml);
-                        $out = html_entity_decode($plain ?? '', ENT_QUOTES | ENT_HTML5, 'UTF-8');
-                    }
-                }
-            } elseif ($kind === 'epub') {
-                $i = 0;
-                while (($entry = $zip->getNameIndex($i)) !== false && $entriesProcessed < self::MAX_ZIP_ENTRIES) {
-                    $entriesProcessed++;
-                    if (str_ends_with($entry, '.htm') || str_ends_with($entry, '.html') || str_ends_with($entry, '.xhtml')) {
-                        // Check entry size before reading
-                        $stat = $zip->statIndex($i);
-                        if ($stat !== false && $stat['size'] > self::MAX_DECOMPRESSED_BYTES) {
-                            $this->logger->warning('eva_ai: EPUB entry too large, skipping', ['file' => $file->getPath(), 'entry' => $entry, 'size' => $stat['size']]);
-                            $i++;
-                            continue;
-                        }
-                        
-                        $html = $zip->getFromName($entry);
-                        if ($html !== false) {
-                            $totalDecompressed += strlen($html);
-                            if ($totalDecompressed > self::MAX_DECOMPRESSED_BYTES) {
-                                $this->logger->warning('eva_ai: EPUB decompressed content exceeds limit', ['file' => $file->getPath(), 'bytes' => $totalDecompressed]);
-                                break;
-                            }
-                            
-                            $html = preg_replace('/<script\b[^>]*>.*?<\/script>/is', ' ', $html ?? '');
-                            $html = preg_replace('/<style\b[^>]*>.*?<\/style>/is', ' ', $html ?? '');
-                            $html = preg_replace('/<[^>]+>/', ' ', $html ?? '');
-                            $out .= ' ' . html_entity_decode($html ?? '', ENT_QUOTES | ENT_HTML5, 'UTF-8');
-                        }
-                    }
-                    $i++;
-                }
-            } elseif ($kind === 'xlsx') {
-                // Check entry size before reading
-                $stat = $zip->statName('xl/sharedStrings.xml');
-                if ($stat !== false && $stat['size'] > self::MAX_DECOMPRESSED_BYTES) {
-                    $this->logger->warning('eva_ai: XLSX sharedStrings too large', ['file' => $file->getPath(), 'size' => $stat['size']]);
-                    return '';
-                }
-                
-                $xml = $zip->getFromName('xl/sharedStrings.xml');
-                if ($xml !== false) {
-                    $totalDecompressed += strlen($xml);
-                    if ($totalDecompressed > self::MAX_DECOMPRESSED_BYTES) {
-                        $this->logger->warning('eva_ai: XLSX decompressed content exceeds limit', ['file' => $file->getPath(), 'bytes' => $totalDecompressed]);
-                        return '';
-                    }
-                    
-                    preg_match_all('/<si>(.*?)<\/si>/is', $xml, $si);
-                    foreach ($si[1] as $cell) {
-                        preg_match_all('/<t(?:\s[^>]*)?>(.*?)<\/t>/is', $cell, $tm);
-                        $out .= ' ' . implode(' ', $tm[1]);
-                    }
-                }
-            } elseif ($kind === 'pptx') {
-                $i = 0;
-                while (($entry = $zip->getNameIndex($i)) !== false && $entriesProcessed < self::MAX_ZIP_ENTRIES) {
-                    $entriesProcessed++;
-                    if (preg_match('~^ppt/slides/slide\d+\.xml$~', $entry)) {
-                        // Check entry size before reading
-                        $stat = $zip->statIndex($i);
-                        if ($stat !== false && $stat['size'] > self::MAX_DECOMPRESSED_BYTES) {
-                            $this->logger->warning('eva_ai: PPTX slide too large, skipping', ['file' => $file->getPath(), 'entry' => $entry, 'size' => $stat['size']]);
-                            $i++;
-                            continue;
-                        }
-                        
-                        $xml = $zip->getFromName($entry);
-                        if ($xml !== false) {
-                            $totalDecompressed += strlen($xml);
-                            if ($totalDecompressed > self::MAX_DECOMPRESSED_BYTES) {
-                                $this->logger->warning('eva_ai: PPTX decompressed content exceeds limit', ['file' => $file->getPath(), 'bytes' => $totalDecompressed]);
-                                break;
-                            }
-                            
-                            preg_match_all('/<a:t(?:\s[^>]*)?>(.*?)<\/a:t>/is', $xml ?? '', $tm);
-                            $out .= ' ' . implode(' ', $tm[1]);
-                        }
-                    }
-                    $i++;
-                }
+            } finally {
+                $zip->close();
             }
-            $zip->close();
         } finally {
             if ($tmp !== null && file_exists($tmp)) {
                 @unlink($tmp);
@@ -704,6 +941,42 @@ class Indexer {
             if (file_exists($tmpIn)) {
                 @unlink($tmpIn);
             }
+        }
+    }
+
+    /**
+     * Legacy binary Office formats (.doc/.xls/.ppt): convert to plain text
+     * headless with LibreOffice (soffice) when available, otherwise skip with
+     * a logged reason. A private profile dir keeps concurrent conversions
+     * from fighting over the global LibreOffice profile lock.
+     */
+    private function legacyOfficeText(File $file, string $ext): string {
+        $bin = trim((string)(shell_exec('command -v soffice 2>/dev/null || command -v libreoffice 2>/dev/null') ?: ''));
+        if ($bin === '') {
+            $this->logWarning('eva_ai: legacy office file skipped - LibreOffice (soffice) is not installed', ['file' => $file->getPath(), 'ext' => $ext]);
+            return '';
+        }
+        $tmpDir = sys_get_temp_dir() . '/eva_lo_' . bin2hex(random_bytes(5));
+        if (!@mkdir($tmpDir, 0700, true) && !is_dir($tmpDir)) {
+            return '';
+        }
+        try {
+            $in = $tmpDir . '/input.' . $ext;
+            $outDir = $tmpDir . '/out';
+            $profile = $tmpDir . '/profile';
+            @mkdir($outDir, 0700, true);
+            file_put_contents($in, $file->getContent());
+            $cmd = escapeshellarg($bin) . ' --headless -env:UserInstallation=file://' . escapeshellarg($profile)
+                . ' --convert-to "txt:Text (encoded):UTF8" --outdir ' . escapeshellarg($outDir)
+                . ' ' . escapeshellarg($in) . ' 2>/dev/null';
+            shell_exec($cmd);
+            $txt = '';
+            foreach ((array)glob($outDir . '/*.txt') as $f) {
+                $txt .= (string)file_get_contents($f);
+            }
+            return $txt;
+        } finally {
+            @exec('rm -rf ' . escapeshellarg($tmpDir));
         }
     }
 

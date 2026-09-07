@@ -23,7 +23,13 @@ dokumentiert.
 - **Hybrid retrieval**: vector search + lexical search (BM25), fused with RRF
 - **Broad format support**: text (txt, md, code, csv, tsv, html, json, xml, yaml,
   toml, rtf, sql, …), PDF, Office (docx/xlsx/pptx incl. macro/template variants),
-  OpenDocument (odt, ods, odp), EPUB and more
+  OpenDocument (odt, ods, odp), EPUB and more. Extraction is complete per format:
+  - **docx**: body, tables, text boxes, headers, footers, footnotes, endnotes and comments (section labels kept)
+  - **xlsx**: every non-empty cell with its cell reference, inline and shared strings, grouped per sheet with the sheet name
+  - **pptx**: all slides plus speaker notes, labelled with slide numbers
+  - **odt/ods/odp**: full content including tables, sheet names kept for spreadsheets
+  - **pdf**: full text of all pages via `pdftotext`
+  - **Legacy .doc/.xls/.ppt**: full content converted headless with LibreOffice when installed; otherwise skipped with a logged reason
 - **Chat tools** (toggleable, risk-classified — see [Security](docs/SECURITY.md)); Talk blocks sensitive profile, share-listing and server-status tools
   - **Files**: list, create, rename, delete, read, bounded name/content search with snippets, notes, personal knowledge base (`KNOWLEDGE.md`)
   - **Contacts**: find, create, update, delete (own, shared, group and Circles address books)
