@@ -32,6 +32,7 @@ export function mountChat(root, opts = {}) {
 	let sending = false
 	const refs = []
 	let lastMd = 0
+	let trimmedMessages = 0
 
 	function api(method, path, body) {
 		return new Promise((resolve, reject) => {
@@ -466,6 +467,14 @@ export function mountChat(root, opts = {}) {
 	const renderAll = (list) => {
 		refs.length = 0
 		while (scroll.firstChild) scroll.removeChild(scroll.firstChild)
+		if (trimmedMessages > 0) {
+			// Oldest messages of a very long conversation were dropped on the
+			// server. Make that visible instead of silently missing context.
+			const note = document.createElement('div')
+			note.className = 'rtrimmed'
+			note.textContent = t('This conversation is very long: some of the oldest messages were trimmed to keep it manageable. Use Export if you need the full history.')
+			scroll.appendChild(note)
+		}
 		list.forEach((m, i) => renderMsg(scroll, null, m, i))
 		exportBtn.disabled = !list.length
 		scroll.scrollTop = scroll.scrollHeight
@@ -571,6 +580,7 @@ export function mountChat(root, opts = {}) {
 	function restoreServerChat(id) {
 		return api('GET', '/chats/' + id).then((chat) => {
 			messages.length = 0
+			trimmedMessages = (chat && chat.trimmed) ? parseInt(chat.trimmed, 10) || 0 : 0
 			;(chat.messages || []).forEach((m) => messages.push({
 				role: m.role === 'user' || m.role === 'assistant' ? m.role : 'assistant',
 				text: m.text || '',

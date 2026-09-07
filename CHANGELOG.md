@@ -13,6 +13,11 @@ follows [Semantic Versioning](https://semver.org/).
 - Opt-in single-process frontend build for memory-constrained hosts (`EVA_LOW_MEMORY_BUILD=1`).
 - **Issue #99:** calendar event listing and free-slot detection now expand recurring events with bounded support for RRULE, RDATE, EXDATE, and RECURRENCE-ID.
 
+### Changed
+- **Issue #63:** file-context chat now budgets the document excerpts against the configured model context instead of truncating every document at a fixed 12000 characters. A single large document may use most of the window; several documents share the budget fairly (unused share of short documents is redistributed).
+- **Issue #96:** chat conversations keep up to 1000 messages (was 200) and trimming is no longer silent: every dropped message is counted on the chat and the chat view shows a notice that the oldest messages were trimmed.
+- **Issue #152:** the chat list search now also finds chats by their message content, not only titles. Content hits show an excerpt around the first match and the number of matching messages.
+
 ### Fixed
 - Indexing can no longer be permanently blocked by the per-user index lock. Two related defects are fixed: the lock key is now bounded to 40 hex chars (the full sha256 exceeded the varchar(64) key column of Nextcloud's file_locks table, so acquire/release silently failed and stale rows collided with every later attempt), and when a worker still crashes while holding the lock, the queue endpoint and the indexer reclaim the expired row once the tracked run state is idle or stale - never while a live worker with a fresh heartbeat is running. Previously such a row blocked "Indexing could not be queued" forever on instances whose cron never ran the file-lock cleanup job.
 - **Issue #62:** the chunker no longer runs `array_unique()` on its output, so genuinely repeated passages and overlap-induced duplicate chunks stay in the index; `chunk_index` stays sequential and the stored `chunk_count` always matches the number of written chunks.

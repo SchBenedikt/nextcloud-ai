@@ -230,6 +230,7 @@ export default {
 .chatview-root .rth { margin: 0 0 9px; font-size: 12px; }
 .chatview-root .rth summary { cursor: pointer; color: var(--color-text-maxcontrast, #555); font-weight: 600; user-select: none; }
 .chatview-root .rth-c { margin-top: 6px; padding: 8px 10px; border-left: 2px solid var(--color-border, #ccc); background: transparent; white-space: pre-wrap; word-break: break-word; color: var(--color-text-maxcontrast, #555); font-size: 12px; line-height: 1.5; max-height: 220px; overflow-y: auto; }
+.chatview-root .rtrimmed { margin-bottom: 10px; padding: 8px 10px; max-width: min(100%, 560px); border: 1px solid color-mix(in srgb, var(--color-warning) 45%, var(--color-border)); border-radius: 6px; background: color-mix(in srgb, var(--color-warning) 8%, transparent); color: var(--color-text-maxcontrast, #555); font-size: 12px; }
 .chatview-root .rs { margin-top: 8px; padding: 6px 0 0 10px; border-left: 2px solid var(--color-border, #ccc); font-size: 12px; color: var(--color-text-maxcontrast, #555); }
 .chatview-root .rs .lab { margin-bottom: 2px; font-weight: 600; }
 .chatview-root .rs a { display: block; color: var(--color-primary-element, #00679c); text-decoration: none; margin: 2px 0; }

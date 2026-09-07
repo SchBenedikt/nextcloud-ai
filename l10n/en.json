@@ -339,7 +339,10 @@
     "Please fill in all required fields.": "Please fill in all required fields.",
     "This action cannot be undone.": "This action cannot be undone.",
     "Copy link": "Copy link",
-    "Open link": "Open link"
+    "Open link": "Open link",
+    "Chat search unavailable: {error}": "Chat search unavailable: {error}",
+    "{count} message matches": "{count} message matches",
+    "This conversation is very long: some of the oldest messages were trimmed to keep it manageable. Use Export if you need the full history.": "This conversation is very long: some of the oldest messages were trimmed to keep it manageable. Use Export if you need the full history."
   },
   "pluralForm": "nplurals=2; plural=(n != 1);"
 }

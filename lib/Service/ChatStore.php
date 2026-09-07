@@ -21,8 +21,12 @@ use Psr\Log\LoggerInterface;
  * read for backwards compatibility and migrated lazily.
  */
 class ChatStore {
-    private const MAX_MESSAGES = 200;
+    // How many messages of one conversation are kept. Older messages are not
+    // silently destroyed: every drop is counted on the chat so the UI can tell
+    // the user that the beginning of the conversation was trimmed (Issue #96).
+    private const MAX_MESSAGES = 1000;
     private const MAX_TITLE = 60;
+    private const SNIPPET_RADIUS = 60;
 
     public function __construct(
         private IAppDataFactory $appDataFactory,
@@ -31,19 +35,54 @@ class ChatStore {
     ) {
     }
 
-    /** @return list<array{id:string,title:string,created:int,updated:int,count:int}> */
-    public function list(string $user): array {
-        return $this->withUserLock($user, function () use ($user): array {
+    /**
+     * List the user's chats, newest first.
+     *
+     * With $search the list is filtered to chats whose title or any message
+     * contains the needle (case-insensitive); message hits add a short snippet
+     * around the first match and a count of matching messages, so the chat list
+     * can find content, not only titles (Issue #152).
+     *
+     * @return list<array{id:string,title:string,created:int,updated:int,count:int,snippet?:string,matchCount?:int,trimmed?:int}>
+     */
+    public function list(string $user, ?string $search = null): array {
+        return $this->withUserLock($user, function () use ($user, $search): array {
             $all = $this->read($user);
+            $needle = $search !== null ? mb_strtolower(trim($search)) : '';
             $out = [];
             foreach ($all as $chat) {
-                $out[] = [
+                $messages = $chat['messages'] ?? [];
+                $entry = [
                     'id' => $chat['id'] ?? '',
                     'title' => $chat['title'] ?? 'Neuer Chat',
                     'created' => $chat['created'] ?? 0,
                     'updated' => $chat['updated'] ?? 0,
-                    'count' => count($chat['messages'] ?? []),
+                    'count' => count($messages),
+                    'trimmed' => (int)($chat['trimmed'] ?? 0),
                 ];
+                if ($needle !== '') {
+                    $titleHit = mb_strpos(mb_strtolower($entry['title']), $needle) !== false;
+                    $snippet = null;
+                    $matchCount = 0;
+                    foreach ($messages as $m) {
+                        $text = (string)($m['text'] ?? '');
+                        if ($text === '' || mb_stripos($text, $needle) === false) {
+                            continue;
+                        }
+                        $matchCount++;
+                        if ($snippet === null) {
+                            $snippet = $this->snippetAround($text, $needle);
+                        }
+                    }
+                    if (!$titleHit && $matchCount === 0) {
+                        continue; // No hit in title or content.
+                    }
+                    if ($matchCount > 0) {
+                        $entry['snippet'] = $snippet ?? '';
+                        $entry['matchCount'] = $matchCount;
+                    }
+                }
+                $out[] = $entry;
             }
             usort($out, static fn($a, $b) => $b['updated'] <=> $a['updated']);
             return $out;
@@ -137,8 +176,12 @@ class ChatStore {
                 if (($chat['id'] ?? '') === $id) {
                     $chat['messages'][] = ['role' => $role, 'text' => $text];
                     $chat['updated'] = time();
-                    if (count($chat['messages']) > self::MAX_MESSAGES) {
+                    $messageCount = count($chat['messages']);
+                    if ($messageCount > self::MAX_MESSAGES) {
+                        $dropped = $messageCount - self::MAX_MESSAGES;
                         $chat['messages'] = array_slice($chat['messages'], -self::MAX_MESSAGES);
+                        // Keep a durable counter so truncation is never silent.
+                        $chat['trimmed'] = (int)($chat['trimmed'] ?? 0) + $dropped;
                     }
                     if (isset($chat['messages'][0]['text']) && str_starts_with($chat['title'] ?? '', 'Neuer Chat')) {
                         $chat['title'] = $this->clipTitle((string)$chat['messages'][0]['text']);
@@ -312,6 +355,21 @@ class ChatStore {
      */
     private function legacySlug(string $userId): string {
         return preg_replace('/[^a-zA-Z0-9_-]/', '_', $userId) ?: 'user';
+    }
+
+    /** Build a short excerpt around the first case-insensitive match of $needle. */
+    private function snippetAround(string $text, string $needle): string {
+        $pos = mb_stripos($text, $needle);
+        if ($pos === false) {
+            return mb_substr($text, 0, self::SNIPPET_RADIUS * 2 + 20);
+        }
+        $start = max(0, $pos - self::SNIPPET_RADIUS);
+        $length = min(mb_strlen($text), self::SNIPPET_RADIUS * 2 + mb_strlen($needle));
+        $snippet = mb_substr($text, $start, $length);
+        $prefix = $start > 0 ? '…' : '';
+        $suffix = ($start + $length) < mb_strlen($text) ? '…' : '';
+        $snippet = preg_replace('/\s+/u', ' ', $prefix . $snippet . $suffix) ?? $snippet;
+        return trim($snippet);
     }
 
     private function clipTitle(string $title): string {

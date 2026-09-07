@@ -27,10 +27,10 @@
 				<NcAppNavigationItem
 					v-for="c in filteredChats"
 					:key="c.id"
-					:name="c.title"
+					:name="itemName(c)"
 					:active="view === 'chat' && c.id === currentChat"
 					:force-menu="true"
-					:title="$t('{title} · {count} messages', { title: c.title, count: c.count })"
+					:title="itemTip(c)"
 					@click="selectChat(c.id)">
 					<template #icon>
 						<svg width="16" height="16" viewBox="0 0 24 24"><path :d="mdiChatProcessing" fill="currentColor" /></svg>
@@ -81,7 +81,7 @@
 </template>
 
 <script>
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, watch, onMounted, onBeforeUnmount } from 'vue'
 import ChatView from './views/ChatView.vue'
 import DocumentsView from './views/DocumentsView.vue'
 import SettingsView from './views/SettingsView.vue'
@@ -125,10 +125,48 @@ export default {
 		const busy = ref(false)
 		const chatFilter = ref('')
 		const apiError = ref('')
+		// Message-content search results (null while not searching). The server
+		// matches chat titles AND message text (Issue #152), so results may
+		// carry a snippet + matchCount from the first content hit.
+		const searchResults = ref(null)
+		let searchTimer = null
+		const searchMessages = async () => {
+			const query = chatFilter.value.trim()
+			searchResults.value = null
+			if (!query) return
+			searchTimer = null
+			try {
+				const list = await requestApi('GET', '/chats', { search: query })
+				if (chatFilter.value.trim() === query && Array.isArray(list)) searchResults.value = list
+			} catch (error) {
+				apiError.value = t('Chat search unavailable: {error}', { error: errMsg(error) })
+			}
+		}
+		watch(chatFilter, () => {
+			if (searchTimer !== null) window.clearTimeout(searchTimer)
+			searchTimer = window.setTimeout(searchMessages, 220)
+		})
 		const filteredChats = computed(() => {
 			const query = chatFilter.value.trim().toLowerCase()
-			return query ? chats.value.filter((chat) => String(chat.title || '').toLowerCase().includes(query)) : chats.value
+			if (!query) return chats.value
+			if (searchResults.value) return searchResults.value
+			// Instant title-only fallback while the server search is in flight.
+			return chats.value.filter((chat) => String(chat.title || '').toLowerCase().includes(query))
 		})
+		// For content hits show the matched excerpt instead of an unrelated
+		// auto-generated title; the real title stays visible on hover.
+		const itemName = (chat) => {
+			const query = chatFilter.value.trim().toLowerCase()
+			const titleHit = query && String(chat.title || '').toLowerCase().includes(query)
+			return !titleHit && chat.snippet ? chat.snippet : (chat.title || '')
+		}
+		const itemTip = (chat) => {
+			const title = chat.title || ''
+			const parts = [t('{title} · {count} messages', { title, count: chat.count })]
+			if (chat.snippet) parts.push(chat.snippet)
+			if (chat.matchCount) parts.push(t('{count} message matches', { count: chat.matchCount }))
+			return parts.join(' — ')
+		}
 
 		const appRootPath = () => {
 			const current = window.location.pathname.replace(/\/+$/, '')
@@ -176,6 +214,11 @@ export default {
 
 		const selectChat = (id) => {
 			currentChat.value = id
+			// Clear an active message search so the normal chat list returns.
+			if (chatFilter.value.trim()) {
+				chatFilter.value = ''
+				searchResults.value = null
+			}
 			navigate('chat')
 		}
 
@@ -230,10 +273,14 @@ export default {
 			}
 		})
 
+		onBeforeUnmount(() => {
+			if (searchTimer !== null) window.clearTimeout(searchTimer)
+		})
+
 		return {
 			view, mobileOpen, buildVersion,
 			chats, currentChat, busy, chatFilter, filteredChats, apiError,
-			fileContextIds,
+			fileContextIds, itemName, itemTip,
 			newChat, selectChat, renameChat, deleteChat, loadChats, navigate,
 			mdiChatProcessing, mdiFileDocumentOutline, mdiTune, mdiTrashCanOutline, mdiMessagePlus, mdiPencilOutline,
 		}

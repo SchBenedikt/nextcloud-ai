@@ -338,5 +338,8 @@ OC.L10N.register("eva_ai", {
   "Please fill in all required fields.": "Bitte fülle alle Pflichtfelder aus.",
   "This action cannot be undone.": "Diese Aktion kann nicht rückgängig gemacht werden.",
   "Copy link": "Link kopieren",
-  "Open link": "Link öffnen"
+  "Open link": "Link öffnen",
+  "Chat search unavailable: {error}": "Chatsuche nicht verfügbar: {error}",
+  "{count} message matches": "{count} passende Nachrichten",
+  "This conversation is very long: some of the oldest messages were trimmed to keep it manageable. Use Export if you need the full history.": "Diese Unterhaltung ist sehr lang: Einige der ältesten Nachrichten wurden gekürzt, um sie überschaubar zu halten. Nutze Export, falls du den vollständigen Verlauf brauchst."
 }, "nplurals=2; plural=(n != 1);");
