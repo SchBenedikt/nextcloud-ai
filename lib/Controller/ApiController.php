@@ -820,4 +820,24 @@ class ApiController extends OCSController {
         }
         return new DataResponse(['cleared' => $this->actionAudit->clear($user)]);
     }
+
+    /**
+     * Admin aggregate (Issue #150): per-user audit-event counts. Metadata only
+     * - the actual entries stay per-user behind NoAdminRequired, so an admin
+     * sees which users have history and how much, never their file content.
+     * (No NoAdminRequired attribute: app controller methods are admin-only by
+     * default in Nextcloud.)
+     */
+    public function auditAdmin(): DataResponse {
+        $users = $this->documentMapper->distinctUserIds();
+        $rows = [];
+        foreach ($users as $user) {
+            $count = $this->actionAudit->count($user);
+            if ($count > 0) {
+                $rows[] = ['user' => $user, 'count' => $count];
+            }
+        }
+        usort($rows, static fn($a, $b) => $b['count'] <=> $a['count']);
+        return new DataResponse(['users' => $rows]);
+    }
 }

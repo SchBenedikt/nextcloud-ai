@@ -33,6 +33,7 @@ return [
         ['name' => 'api#exportData', 'url' => '/api/export', 'verb' => 'GET'],
         ['name' => 'api#audit', 'url' => '/api/audit', 'verb' => 'GET'],
         ['name' => 'api#clearAudit', 'url' => '/api/audit', 'verb' => 'DELETE'],
+        ['name' => 'api#auditAdmin', 'url' => '/api/audit/admin', 'verb' => 'GET'],
         ['name' => 'api#streamChat', 'url' => '/api/streamChat', 'verb' => 'POST'],
         ['name' => 'api#confirmTool', 'url' => '/api/confirmTool', 'verb' => 'POST'],
         ['name' => 'api#fileContextChat', 'url' => '/api/fileContextChat', 'verb' => 'POST'],

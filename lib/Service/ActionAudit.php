@@ -8,7 +8,6 @@ use OCP\Files\AppData\IAppDataFactory;
 use OCP\Files\IAppData;
 use OCP\Files\NotFoundException;
 use OCP\Files\SimpleFS\ISimpleFile;
-use OCP\Files\SimpleFS\ISimpleFolder;
 use OCP\Lock\ILockingProvider;
 use Psr\Log\LoggerInterface;
 
@@ -210,24 +209,12 @@ class ActionAudit {
         }
     }
 
-    /** @return list<string> users with audit data (metadata only, for the admin aggregate) */
-    public function usersWithData(): array {
+    /** Number of stored events for one user (bounded, metadata only). */
+    public function count(string $userId): int {
         try {
-            $appdata = $this->appData();
-            try {
-                $audit = $appdata->getFolder('audit');
-            } catch (NotFoundException $e) {
-                return [];
-            }
-            $names = [];
-            foreach ($audit->getDirectoryListing() as $folder) {
-                if ($folder instanceof ISimpleFolder && $folder->fileExists(self::FILE)) {
-                    $names[] = $folder->getName();
-                }
-            }
-            return $names;
+            return count($this->list($userId, 500));
         } catch (\Throwable $e) {
-            return [];
+            return 0;
         }
     }
 }
