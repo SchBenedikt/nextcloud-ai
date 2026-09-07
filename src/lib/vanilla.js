@@ -151,23 +151,54 @@ export function mountChat(root, opts = {}) {
 		}
 
 		if (m.sources && m.sources.length) {
-			const s = document.createElement('div')
-			s.className = 'rs'
-			const lab = document.createElement('div')
-			lab.className = 'lab'
-			lab.textContent = t('Sources:')
-			s.appendChild(lab)
+			const details = document.createElement('details')
+			details.className = 'rs'
+			const summary = document.createElement('summary')
+			summary.className = 'rs-sum'
+			summary.textContent = t('Sources') + ' (' + m.sources.length + ')'
+			details.appendChild(summary)
+			const list = document.createElement('div')
+			list.className = 'rs-list'
 			m.sources.forEach((item) => {
 				const src = item.src || item
+				const row = document.createElement('div')
+				row.className = 'rs-item'
 				const a = document.createElement('a')
 				a.href = src.url || '#'
 				a.target = '_blank'
 				a.rel = 'noopener'
 				const prefix = item.ref !== undefined ? '[' + item.ref + '] ' : ''
 				a.textContent = prefix + (src.path || src.name || '')
-				s.appendChild(a)
+				row.appendChild(a)
+				if (src.excerpts && src.excerpts.length) {
+					const ex = document.createElement('div')
+					ex.className = 'rs-excerpt'
+					ex.textContent = src.excerpts[0]
+					row.appendChild(ex)
+				}
+				list.appendChild(row)
 			})
-			wrap.appendChild(s)
+			details.appendChild(list)
+			wrap.appendChild(details)
+		}
+
+		if (m.followups && m.followups.length) {
+			const chips = document.createElement('div')
+			chips.className = 'rfu'
+			m.followups.forEach((q) => {
+				const btn = document.createElement('button')
+				btn.type = 'button'
+				btn.className = 'rfu-btn'
+				btn.textContent = q
+				btn.addEventListener('click', () => {
+					const ta = document.querySelector('.chatview-root .chat-input')
+					if (ta) { ta.value = q; ta.dispatchEvent(new Event('input')) }
+					const sendBtn = document.querySelector('.chatview-root .chat-send')
+					if (sendBtn) sendBtn.click()
+				})
+				chips.appendChild(btn)
+			})
+			wrap.appendChild(chips)
 		}
 
 		const linkUrl = (m.confirmation && m.confirmation.resolved && m.confirmation.resultUrl) || m.linkUrl
@@ -538,6 +569,7 @@ export function mountChat(root, opts = {}) {
 				} else if (ev.type === 'done') {
 					last.text = ev.answer || last.text
 					last.sources = citedSources(last.text, ev.sources || [])
+					last.followups = ev.followups || []
 					last.done = true
 					// Persist the pair in conversation order. Sending both requests at
 					// once lets the per-user file lock acquire them in either order,
