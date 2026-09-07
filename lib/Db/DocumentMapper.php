@@ -101,6 +101,36 @@ class DocumentMapper extends QBMapper {
         return $row ? (int)$row['c'] : 0;
     }
 
+    /**
+     * Full-index aggregates for the documents list, applying the same search
+     * filter as {@see findByUser()} and {@see countForUser()} so the summary
+     * never depends on the requested page (Issue #74).
+     *
+     * @return array{count:int,chunks:int,size:int}
+     */
+    public function aggregateForUser(string $userId, ?string $search = null): array {
+        $qb = $this->db->getQueryBuilder();
+        $qb->selectAlias($qb->createFunction('COUNT(*)'), 'doc_count')
+            ->selectAlias($qb->createFunction('COALESCE(SUM(chunk_count), 0)'), 'chunk_sum')
+            ->selectAlias($qb->createFunction('COALESCE(SUM(size), 0)'), 'size_sum')
+            ->from('eva_ai_documents')
+            ->where($qb->expr()->eq('user_id', $qb->createNamedParameter($userId)));
+        if ($search !== null && $search !== '') {
+            $qb->andWhere(
+                $qb->expr()->like('path', $qb->createNamedParameter('%' . $search . '%'))
+            );
+        }
+        $row = $qb->executeQuery()->fetch();
+        if ($row === false || $row === null) {
+            return ['count' => 0, 'chunks' => 0, 'size' => 0];
+        }
+        return [
+            'count' => (int)($row['doc_count'] ?? 0),
+            'chunks' => (int)($row['chunk_sum'] ?? 0),
+            'size' => (int)($row['size_sum'] ?? 0),
+        ];
+    }
+
     public function findByUser(string $userId, ?string $search = null, ?int $limit = 100, ?int $offset = 0): array {
         $qb = $this->db->getQueryBuilder();
         $qb->select('*')

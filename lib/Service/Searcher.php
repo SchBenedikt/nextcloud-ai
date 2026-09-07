@@ -11,6 +11,9 @@ use OCA\EvaAi\Db\Chunk;
 class Searcher {
     private const POOL = 8000;
 
+    /** Rows scanned per SQL page while computing full-coverage dense scores. */
+    private const DENSE_SCAN_PAGE = 2000;
+
     public function __construct(
         private Ollama $ollama,
         private ChunkMapper $chunkMapper,
@@ -28,7 +31,8 @@ class Searcher {
             return [];
         }
         [$queryVec, $err] = $this->ollama->embedQuery([$query], $userId);
-        $rows = $this->loadCandidates($userId, $query);
+        $queryVector = $err === null && is_array($queryVec) && isset($queryVec[0]) ? $queryVec[0] : null;
+        $rows = $this->loadCandidates($userId, $query, $queryVector);
 
         $queryTokens = $this->tokens($query);
         $lexical = $this->lexicalBm25($rows, $queryTokens);
@@ -37,8 +41,8 @@ class Searcher {
         foreach ($rows as $i => $row) {
             $vec = json_decode($row['embedding'], true);
             if (is_array($vec) && !empty($vec)) {
-                if ($err === null && is_array($queryVec) && isset($queryVec[0])) {
-                    $cos = $this->cosine($queryVec[0], $vec);
+                if ($queryVector !== null) {
+                    $cos = $this->cosine($queryVector, $vec);
                     $dense[$i] = $cos;
                 } else {
                     $dense[$i] = 0.0;
@@ -108,16 +112,23 @@ class Searcher {
      * indexes we build two INDEPENDENT candidate sets and fuse them:
      *
      *  - lexical: chunks matching at least one query token (bounded LIKE scan)
-     *  - dense:   a bounded, token-independent page of chunks so semantic-only
-     *             matches are NOT gated by lexical overlap (Issue #13)
+     *  - dense:   the cosine-similarity top of the WHOLE index, computed by
+     *             scanning bounded pages instead of sampling one random page,
+     *             so semantic-only matches are found wherever they live and
+     *             retrieval quality does not degrade as the index grows
+     *             (Issue #61)
      *
      * Both sets are merged and deduped by chunk id; dense/BM25 scoring then
-     * runs over the union, keeping retrieval quality stable above the
-     * threshold. Empty-token queries stay bounded too (see ChunkMapper).
+     * runs over the union. Memory and latency stay bounded: only the page
+     * being scanned plus the running top of the pool are held in memory, and
+     * the scan is ordered by chunk id, making the dense candidate set
+     * deterministic for identical inputs.
      *
+     * @param array|null $queryVector Embedding of the query, or null when the
+     *        embedding request failed (dense ranking is then skipped).
      * @return array<int,array<string,mixed>>
      */
-    private function loadCandidates(string $userId, string $query): array {
+    private function loadCandidates(string $userId, string $query, ?array $queryVector): array {
         $n = $this->chunkMapper->countForUser($userId);
         if ($n <= self::POOL) {
             return $this->chunkMapper->chunksForUser($userId);
@@ -129,22 +140,53 @@ class Searcher {
         $lexCap = (int)ceil(self::POOL / 2);
         $lexical = $tokens === [] ? [] : $this->chunkMapper->filterChunksByTokens($userId, $tokens, $lexCap);
 
-        // Dense set: independent bounded sample (rest of the pool), starting at
-        // a query-derived offset so the sample is stable per query.
-        $denseCap = self::POOL - count($lexical);
-        $denseCap = max(1, min($denseCap, $n));
-        $offset = 0;
-        if ($denseCap < $n) {
-            $offset = (abs(crc32($query)) % max(1, $n - $denseCap));
+        $denseCap = min(self::POOL - count($lexical), $n);
+        $denseCap = max(1, $denseCap);
+        $denseRows = [];
+        if ($queryVector !== null && $denseCap > 0) {
+            if ($denseCap < $n) {
+                // Full-coverage scan: visit every chunk in fixed pages and keep
+                // the best $denseCap cosine scores across the whole index.
+                $best = [];
+                $keep = $denseCap + self::DENSE_SCAN_PAGE;
+                for ($offset = 0; $offset < $n; $offset += self::DENSE_SCAN_PAGE) {
+                    $page = $this->chunkMapper->chunksForUserPage($userId, self::DENSE_SCAN_PAGE, $offset);
+                    foreach ($page as $row) {
+                        $vec = json_decode($row['embedding'], true);
+                        if (!is_array($vec) || $vec === []) {
+                            continue;
+                        }
+                        $best[(int)$row['id']] = $this->cosine($queryVector, $vec);
+                    }
+                    if (count($best) > $keep) {
+                        arsort($best);
+                        $best = array_slice($best, 0, $denseCap, true);
+                    }
+                }
+                if ($best !== []) {
+                    arsort($best);
+                    $bestIds = array_keys(array_slice($best, 0, $denseCap, true));
+                    foreach (array_chunk($bestIds, 1000) as $idBatch) {
+                        foreach ($this->chunkMapper->findChunksByIds($idBatch) as $row) {
+                            $denseRows[] = $row;
+                        }
+                    }
+                }
+            } else {
+                $denseRows = $this->chunkMapper->chunksForUser($userId);
+            }
+        } elseif ($denseCap > 0) {
+            // Embedding request failed: keep a deterministic bounded page so
+            // retrieval still returns candidates instead of an empty result.
+            $denseRows = $this->chunkMapper->chunksForUserPage($userId, $denseCap, 0);
         }
-        $dense = $this->chunkMapper->chunksForUserPage($userId, $denseCap, $offset);
 
         // Merge + dedupe by chunk id.
         $byId = [];
         foreach ($lexical as $row) {
             $byId[(int)$row['id']] = $row;
         }
-        foreach ($dense as $row) {
+        foreach ($denseRows as $row) {
             if (!isset($byId[(int)$row['id']])) {
                 $byId[(int)$row['id']] = $row;
             }

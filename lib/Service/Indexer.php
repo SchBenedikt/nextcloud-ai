@@ -31,7 +31,8 @@ class Indexer {
         private EmbeddingCache $embeddingCache,
         private EmailService $email,
         private LoggerInterface $logger,
-        private ILockingProvider $lockingProvider
+        private ILockingProvider $lockingProvider,
+        private LockGuard $lockGuard
     ) {
     }
 
@@ -53,9 +54,14 @@ class Indexer {
             'ollama_requests' => 0,
             'error' => null,
         ];
-        $lockPath = 'eva_ai/index/' . hash('sha256', $userId);
+        // Bounded key: the full sha256 would exceed the varchar(64) key column
+        // of Nextcloud's file_locks table and break acquire/release.
+        $lockPath = LockGuard::indexLockPath($userId);
         try {
-            $this->lockingProvider->acquireLock($lockPath, ILockingProvider::LOCK_EXCLUSIVE, 'EVA index for ' . $userId);
+            // The guard reclaims an expired lock row a crashed worker left
+            // behind (never a live run's lock), so an abandoned run cannot
+            // permanently block indexing until a cron cleanup job runs.
+            $this->lockGuard->acquireIndexLock($userId, $lockPath);
         } catch (\Throwable $e) {
             $result['error'] = 'Indexing is already running for this user.';
             return $result;

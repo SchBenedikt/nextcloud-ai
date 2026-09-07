@@ -56,8 +56,13 @@ class Chunker {
             $chunks[] = trim($current);
         }
 
+        // Every chunk that represents distinct content is preserved, including
+        // genuinely repeated passages and overlap-induced duplicates. Dropping
+        // them here would silently remove indexed content, make chunk_index
+        // non-contiguous and let the stored chunk_count disagree with the
+        // number of rows actually written (Issue #62).
         $out = [];
-        foreach (array_unique($chunks) as $chunk) {
+        foreach ($chunks as $chunk) {
             $out[] = ['content' => $chunk, 'tokens' => $this->estimateTokens($chunk)];
         }
         return $out;

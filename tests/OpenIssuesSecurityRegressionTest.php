@@ -171,9 +171,15 @@ final class OpenIssuesSecurityRegressionTest extends TestCase {
     public function testIndexingContractUsesOneExclusivePerUserClaimPath(): void {
         $indexer = (string)file_get_contents(__DIR__ . '/../lib/Service/Indexer.php');
         self::assertStringContainsString('ILockingProvider::LOCK_EXCLUSIVE', $indexer);
-        self::assertStringContainsString("'eva_ai/index/'", $indexer);
+        self::assertStringContainsString('LockGuard::indexLockPath($userId)', $indexer);
         self::assertStringContainsString('tryClaimIndex($userId)', $indexer);
         self::assertStringContainsString('releaseLock($lockPath', $indexer);
+        // The per-user lock key must stay below the varchar(64) key column of
+        // Nextcloud's file_locks table; the full sha256 would overflow it and
+        // make acquire/release silently fail (stale locks block indexing).
+        $guard = (string)file_get_contents(__DIR__ . '/../lib/Service/LockGuard.php');
+        self::assertStringContainsString("'eva_ai/index/'", $guard);
+        self::assertStringContainsString('substr(hash(\'sha256\', $userId), 0, 40)', $guard);
 
         $requestJob = (string)file_get_contents(__DIR__ . '/../lib/BackgroundJob/IndexRequestJob.php');
         self::assertStringContainsString('$this->indexer->run($userId', $requestJob);

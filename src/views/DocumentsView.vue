@@ -123,7 +123,7 @@
 
 <script>
 import { ref, computed, onMounted, onUnmounted } from 'vue'
-import { api } from '../lib/api'
+import { api, errMsg } from '../lib/api'
 import { translate as t } from '../lib/i18n'
 import { mdiChevronDown, mdiChevronRight } from '@mdi/js'
 
@@ -166,7 +166,7 @@ export default {
 				indexStatus.value = response.status || indexStatus.value
 				progress.value = t('Indexing queued. It continues even if you close the website.')
 			} catch (e) {
-				progress.value = t('Indexing could not be queued: {error}', { error: e })
+				progress.value = t('Indexing could not be queued: {error}', { error: errMsg(e) })
 			} finally {
 				indexing.value = false
 				load()
@@ -182,7 +182,7 @@ export default {
 				indexStatus.value = response.status || indexStatus.value
 				progress.value = t('Email indexing queued. It continues even if you close the website.')
 			} catch (e) {
-				progress.value = t('Email indexing could not be queued: {error}', { error: e })
+				progress.value = t('Email indexing could not be queued: {error}', { error: errMsg(e) })
 			} finally {
 				indexing.value = false
 			}
@@ -196,7 +196,7 @@ export default {
 				indexStatus.value = response.status || indexStatus.value
 				progress.value = response?.stopping ? t('Stop requested. Indexing will finish the current cancellable request and then release its lock.') : t('Indexing stopped.')
 			} catch (e) {
-				progress.value = t('Indexing could not be stopped: {error}', { error: e })
+				progress.value = t('Indexing could not be stopped: {error}', { error: errMsg(e) })
 			} finally {
 				stopping.value = false
 				await loadStatus()

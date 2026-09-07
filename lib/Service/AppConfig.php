@@ -9,6 +9,12 @@ use OCP\IConfig;
 class AppConfig {
     public const APP = 'eva_ai';
 
+    /**
+     * User-facing personal settings. These are stored per user, but when a
+     * user has no personal value they fall back to the admin-configured
+     * instance value (occ config:app:set eva_ai …) instead of the hardcoded
+     * default (Issue #73).
+     */
     private const USER_SETTINGS = [
         'ollama_url', 'embedding_model', 'chat_model', 'top_k', 'chunk_size',
         'chunk_overlap', 'max_file_size', 'max_files_per_run', 'scope_path',
@@ -16,12 +22,22 @@ class AppConfig {
         'exec_write_max_chars', 'exec_delete_mode', 'notify_on_complete',
         'mail_index_enabled', 'mail_index_max', 'talk_history_size',
         'talk_bot_trigger', 'exclude_paths',
-        // Per-user index state: progress and hashes must never leak between users.
+    ];
+
+    /**
+     * Per-user runtime state: progress and hashes must never leak between
+     * users and are never user-facing configuration, so they always fall
+     * back to the hardcoded defaults - never to an instance value.
+     */
+    private const USER_STATE_KEYS = [
         'index_running', 'index_started', 'index_heartbeat', 'index_finished', 'last_index_processed',
         'last_index_total', 'last_index_error', 'last_index_cache_hits', 'last_index_cache_misses',
         'last_index_ollama_requests', 'index_config_hash', 'index_mode',
         'index_cancel_requested', 'index_run_id', 'index_enrolled', 'knowledge_initialized',
     ];
+
+    /** All keys that are stored on the per-user scope. */
+    private const USER_SCOPED_KEYS = [...self::USER_SETTINGS, ...self::USER_STATE_KEYS];
 
     private const DEFAULTS = [
         'index_enabled' => '0',
@@ -97,6 +113,15 @@ class AppConfig {
     }
 
     private function isUserSetting(string $key): bool {
+        return in_array($key, self::USER_SCOPED_KEYS, true);
+    }
+
+    private function isUserStateKey(string $key): bool {
+        return in_array($key, self::USER_STATE_KEYS, true);
+    }
+
+    /** Whether the key is user-facing configuration (may inherit an instance value). */
+    public function isUserFacingSetting(string $key): bool {
         return in_array($key, self::USER_SETTINGS, true);
     }
 
@@ -107,12 +132,23 @@ class AppConfig {
             if ($userValue !== $sentinel) {
                 return (string)$userValue;
             }
-            // Personal settings must never inherit another user's or an old
-            // instance-wide value. New users receive only the app default.
-            return self::DEFAULTS[$key] ?? '';
+            if ($this->isUserStateKey($key)) {
+                // Runtime state never inherits an instance-wide value.
+                return self::DEFAULTS[$key] ?? '';
+            }
+            // Personal settings fall back to the admin-configured instance
+            // value, and only if that is empty to the built-in default. This
+            // makes `occ config:app:set eva_ai <key> <value>` effective for
+            // every user who has not explicitly chosen their own value while
+            // never leaking another user's personal value (Issue #73).
+            return $this->appValue($key);
         }
+        return $this->appValue($key);
+    }
+
+    private function appValue(string $key): string {
         $value = $this->config->getAppValue(self::APP, $key, self::DEFAULTS[$key] ?? '');
-        if ($value === '') {
+        if (!is_string($value) || $value === '') {
             return self::DEFAULTS[$key] ?? '';
         }
         return $value;
@@ -296,10 +332,51 @@ class AppConfig {
      */
     public function all(): array {
         $out = [];
-        foreach (self::USER_SETTINGS as $key) {
+        foreach (self::USER_SCOPED_KEYS as $key) {
             $out[$key] = $this->get($key);
         }
         return $out;
+    }
+
+    /**
+     * Whether the current user has stored an explicit personal value for a
+     * user-scoped key (as opposed to inheriting the instance default).
+     */
+    public function hasPersonal(string $key): bool {
+        if ($this->userId === null || !$this->isUserSetting($key)) {
+            return false;
+        }
+        $sentinel = "\0eva_ai_missing\0";
+        try {
+            return $this->config->getUserValue($this->userId, self::APP, $key, $sentinel) !== $sentinel;
+        } catch (\Throwable $e) {
+            return false;
+        }
+    }
+
+    /**
+     * Map of user-facing setting keys to whether the current user overrides
+     * the instance default with an explicit personal value.
+     * @return array<string,bool>
+     */
+    public function personalMap(): array {
+        $out = [];
+        foreach (self::USER_SETTINGS as $key) {
+            $out[$key] = $this->hasPersonal($key);
+        }
+        return $out;
+    }
+
+    /**
+     * Remove an explicit personal value so the key falls back to the
+     * admin-configured instance value again. Only user-facing configuration
+     * keys may be reset; runtime state is never exposed to the user API.
+     */
+    public function resetPersonal(string $key): void {
+        if ($this->userId === null || !$this->isUserFacingSetting($key)) {
+            return;
+        }
+        $this->config->deleteUserValue($this->userId, self::APP, $key);
     }
 
     public function ollamaUrl(): string {

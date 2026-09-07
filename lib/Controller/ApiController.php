@@ -11,6 +11,7 @@ use OCA\EvaAi\Service\ActionExecutor;
 use OCA\EvaAi\Service\ChatStore;
 use OCA\EvaAi\Service\FileContextChatService;
 use OCA\EvaAi\Service\Indexer;
+use OCA\EvaAi\Service\LockGuard;
 use OCA\EvaAi\BackgroundJob\IndexRequestJob;
 use OCA\EvaAi\Service\Ollama;
 use OCA\EvaAi\Service\RagService;
@@ -42,7 +43,8 @@ class ApiController extends OCSController {
         private ChatStore $chatStore,
         private FileContextChatService $fileContextChat,
         private IAppManager $appManager,
-        private KnowledgeInitializer $knowledgeInitializer
+        private KnowledgeInitializer $knowledgeInitializer,
+        private LockGuard $lockGuard
     ) {
         parent::__construct($appName, $request);
         $this->config->setUserId($this->userId);
@@ -95,7 +97,26 @@ class ApiController extends OCSController {
             return new DataResponse(['error' => 'Not logged in'], 401);
         }
         $this->knowledgeInitializer->ensureInitialized($user);
-        return new DataResponse($this->config->all());
+        $settings = $this->config->all();
+        $settings['personal'] = $this->config->personalMap();
+        return new DataResponse($settings);
+    }
+
+    #[NoAdminRequired]
+    public function resetSetting(): DataResponse {
+        $user = $this->requireUser();
+        if ($user === null) {
+            return new DataResponse(['error' => 'Not logged in'], 401);
+        }
+        $key = trim((string)($this->requestParam('key') ?? ''));
+        if (!$this->config->isUserFacingSetting($key)) {
+            return new DataResponse(['error' => 'Unknown setting.'], 400);
+        }
+        $this->config->setUserId($user);
+        $this->config->resetPersonal($key);
+        $settings = $this->config->all();
+        $settings['personal'] = $this->config->personalMap();
+        return new DataResponse($settings);
     }
 
     #[NoAdminRequired]
@@ -178,7 +199,9 @@ class ApiController extends OCSController {
                 }
                 $this->config->set($key, (string)$value);
         }
-        return new DataResponse($this->config->all());
+        $settings = $this->config->all();
+        $settings['personal'] = $this->config->personalMap();
+        return new DataResponse($settings);
     }
 
     private function validateOllamaUrl(string $url): ?string {
@@ -285,11 +308,16 @@ class ApiController extends OCSController {
             ]);
         }
         $runId = bin2hex(random_bytes(16));
-        $lockPath = 'eva_ai/index/' . hash('sha256', $user);
+        // Bounded key: the full sha256 would exceed the varchar(64) key column
+        // of Nextcloud's file_locks table and break acquire/release.
+        $lockPath = LockGuard::indexLockPath($user);
         try {
             // Serialize the initial claim as well. IConfig's precondition is
-            // atomic only after the first missing value has been created.
-            $this->lockingProvider->acquireLock($lockPath, ILockingProvider::LOCK_EXCLUSIVE, 'EVA index for ' . $user);
+            // atomic only after the first missing value has been created. The
+            // guard reclaims an expired row a crashed worker left behind;
+            // without it such a row blocks every future start until a cron
+            // maintenance job happens to clean file_locks.
+            $this->lockGuard->acquireIndexLock($user, $lockPath);
         } catch (\Throwable $e) {
             return new DataResponse([
                 'queued' => false,
@@ -368,11 +396,7 @@ class ApiController extends OCSController {
         $limit = max(1, min(500, (int)($this->requestParam('limit') ?? 100)));
         $offset = max(0, (int)($this->requestParam('offset') ?? 0));
         $docs = $this->documentMapper->findByUser($user, $search, $limit, $offset);
-        $totalChunks = 0;
-        $totalSize = 0;
-        $out = array_map(static function ($d) use (&$totalChunks, &$totalSize) {
-            $totalChunks += (int)$d->getChunkCount();
-            $totalSize += (int)$d->getSize();
+        $out = array_map(static function ($d) {
             return [
                 'id' => (int)$d->getId(),
                 'path' => $d->getPath(),
@@ -383,11 +407,14 @@ class ApiController extends OCSController {
                 'indexedAt' => $d->getIndexedAt(),
             ];
         }, $docs);
+        // Totals describe the whole filtered index, independent of the page
+        // that was requested (Issue #74).
+        $aggregates = $this->documentMapper->aggregateForUser($user, $search);
         return new DataResponse([
             'documents' => $out,
-            'total' => $this->documentMapper->countForUser($user, $search),
-            'totalChunks' => $totalChunks,
-            'totalSize' => $totalSize,
+            'total' => $aggregates['count'],
+            'totalChunks' => $aggregates['chunks'],
+            'totalSize' => $aggregates['size'],
         ]);
     }
 

@@ -121,6 +121,32 @@ class ChunkMapper extends QBMapper {
         return $rows;
     }
 
+    /**
+     * Full rows for a bounded set of chunk ids (used to materialise the dense
+     * candidate set after the cosine scan, Issue #61). Batch sizes stay well
+     * below DB parameter limits.
+     *
+     * @param int[] $ids
+     * @return array<int,array<string,mixed>>
+     */
+    public function findChunksByIds(array $ids): array {
+        $ids = array_values(array_unique(array_filter(array_map('intval', $ids), static fn($id) => $id > 0)));
+        $out = [];
+        foreach (array_chunk($ids, 500) as $chunkIds) {
+            $qb = $this->db->getQueryBuilder();
+            $qb->select('c.id', 'c.document_id', 'c.chunk_index', 'c.content', 'c.embedding')
+                ->from('eva_ai_chunks', 'c')
+                ->where($qb->expr()->in('c.id', $qb->createNamedParameter($chunkIds, IQueryBuilder::PARAM_INT_ARRAY)));
+            $result = $qb->executeQuery();
+            $rows = $result->fetchAll();
+            $result->closeCursor();
+            foreach ($rows as $row) {
+                $out[] = $row;
+            }
+        }
+        return $out;
+    }
+
     public function countForUser(string $userId): int {
         $qb = $this->db->getQueryBuilder();
         $qb->selectAlias($qb->createFunction('COUNT(*)'), 'c')

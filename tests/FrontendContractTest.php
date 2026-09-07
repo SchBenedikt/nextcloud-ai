@@ -28,9 +28,14 @@ final class FrontendContractTest extends TestCase {
         self::assertStringContainsString('loadMore, loadStatus', $documents);
 
         $controller = (string)file_get_contents(__DIR__ . '/../lib/Controller/ApiController.php');
-        self::assertStringContainsString("'total' => \$this->documentMapper->countForUser(\$user, \$search)", $controller);
+        // The document summary must come from full-index aggregates (computed
+        // with the same search filter), never from the loaded page (Issue #74).
+        self::assertStringContainsString("'total' => \$aggregates['count']", $controller);
+        self::assertStringContainsString("'totalChunks' => \$aggregates['chunks']", $controller);
+        self::assertStringContainsString("'totalSize' => \$aggregates['size']", $controller);
         $mapper = (string)file_get_contents(__DIR__ . '/../lib/Db/DocumentMapper.php');
         self::assertStringContainsString('countForUser(string $userId, ?string $search = null)', $mapper);
+        self::assertStringContainsString('aggregateForUser(string $userId, ?string $search = null)', $mapper);
         self::assertStringContainsString("like('path'", $mapper);
         self::assertStringContainsString("addOrderBy('id', 'DESC')", $mapper);
     }
@@ -85,7 +90,15 @@ final class FrontendContractTest extends TestCase {
         self::assertStringContainsString('availableModels', $settings);
         self::assertStringContainsString('embeddingModels', $settings);
         self::assertStringContainsString('chatModels', $settings);
-        self::assertStringContainsString('m.confirmation.name === \'create_share\'', $vanilla = (string)file_get_contents(__DIR__ . '/../src/lib/vanilla.js'));
+        // The web chat renders every confirmation through the shared,
+        // schema-driven form builder (not a create_share-only code path).
+        $vanilla = (string)file_get_contents(__DIR__ . '/../src/lib/vanilla.js');
+        $confirmForms = (string)file_get_contents(__DIR__ . '/../src/lib/confirmForms.js');
+        self::assertStringContainsString("import { buildConfirmForm } from './confirmForms'", $vanilla);
+        self::assertStringContainsString('const conf = buildConfirmForm(m.confirmation)', $vanilla);
+        self::assertStringContainsString('create_share:', $confirmForms);
+        self::assertStringContainsString('delete_calendar_event:', $confirmForms);
+        self::assertStringContainsString('delete_file:', $confirmForms);
         self::assertStringContainsString('buildShareForm', (string)file_get_contents(__DIR__ . '/../js/chat.js'));
         self::assertStringContainsString("return new DataResponse(['error' => 'Not logged in'], 401)", (string)file_get_contents(__DIR__ . '/../lib/Controller/ApiController.php'));
         $controller = (string)file_get_contents(__DIR__ . '/../lib/Controller/ApiController.php');
