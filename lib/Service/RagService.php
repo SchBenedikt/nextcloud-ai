@@ -37,7 +37,7 @@ class RagService {
 
     /**
      * @param array<int,array{role:string,content:string}> $history
-     * @return array{answer:string,sources:array,model:string,error:?string}
+     * @return array{answer:string,sources:array,model:string,error:?string,followups:string[]}
      */
     public function ask(string $userId, string $message, array $history): array {
         $this->config->setUserId($userId);
@@ -56,15 +56,17 @@ class RagService {
         for ($round = 0; $round < self::MAX_TOOL_ROUNDS; $round++) {
             $chat = $this->ollama->chat($messages, $tools);
             if (isset($chat['error'])) {
-                return ['answer' => '', 'sources' => array_values($byDoc), 'model' => $this->config->get('chat_model'), 'error' => $chat['error']];
+                return ['answer' => '', 'sources' => array_values($byDoc), 'model' => $this->config->get('chat_model'), 'error' => $chat['error'], 'followups' => []];
             }
             $toolCalls = $chat['tool_calls'] ?? [];
             if ($toolCalls === []) {
+                $answer = $chat['answer'] ?? '';
                 return [
-                    'answer' => $chat['answer'] ?? '',
+                    'answer' => $answer,
                     'sources' => array_values($byDoc),
                     'model' => $chat['model'] ?? $this->config->get('chat_model'),
                     'error' => null,
+                    'followups' => $this->suggestFollowups($answer, $byDoc),
                 ];
             }
             $messages[] = ['role' => 'assistant', 'content' => $chat['answer'] ?? '', 'tool_calls' => $this->canonicalToolCalls($chat['raw_tool_calls'] ?? [])];
@@ -76,6 +78,7 @@ class RagService {
                         'sources' => array_values($byDoc),
                         'model' => $chat['model'] ?? $this->config->get('chat_model'),
                         'error' => null,
+                        'followups' => [],
                         'confirmation' => [
                             'name' => $tc['name'],
                             'arguments' => $tc['arguments'],
@@ -95,6 +98,7 @@ class RagService {
             'sources' => array_values($byDoc),
             'model' => $this->config->get('chat_model'),
             'error' => 'Maximale Anzahl an Tool-Schritten erreicht.',
+            'followups' => [],
         ];
     }
 
@@ -204,6 +208,7 @@ class RagService {
                 'answer' => $answer,
                 'model' => $model,
                 'sources' => array_values($byDoc),
+                'followups' => $this->suggestFollowups($answer, $byDoc),
             ]) . "\n";
         } catch (\Throwable $e) {
             if (!$this->clientDisconnected()) {
@@ -214,6 +219,36 @@ class RagService {
 
     private function clientDisconnected(): bool {
         return function_exists('connection_aborted') && connection_aborted() > 0;
+    }
+
+    /**
+     * Generate 2-3 deterministic follow-up questions from cited sources.
+     * No extra LLM call — uses source names and a simple template.
+     *
+     * @param array<int,array{path:string,name:string,url:string,excerpts:string[]}> $byDoc
+     * @return string[]
+     */
+    private function suggestFollowups(string $answer, array $byDoc): array {
+        $sources = array_values($byDoc);
+        if ($sources === []) {
+            return [];
+        }
+        $questions = [];
+        $names = array_unique(array_map(fn($s) => pathinfo($s['name'], PATHINFO_FILENAME), $sources));
+        $name1 = $names[0] ?? '';
+        $name2 = $names[1] ?? '';
+        if ($name1 !== '') {
+            $questions[] = "What are the key points in {$name1}?";
+        }
+        if ($name2 !== '') {
+            $questions[] = "How does {$name1} compare to {$name2}?";
+        }
+        if (count($sources) > 1) {
+            $questions[] = "Summarise the differences across the cited sources.";
+        } elseif ($name1 !== '') {
+            $questions[] = "Can you expand on the details in {$name1}?";
+        }
+        return array_slice($questions, 0, 3);
     }
 
     /**

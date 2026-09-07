@@ -252,23 +252,53 @@ import { escHtml, mdInline, mdToHtml, citedSources, copyText } from './lib/chat-
 		}
 
 		if (m.sources && m.sources.length) {
-			var s = document.createElement('div')
-			s.className = 'rs'
-			var lab = document.createElement('div')
-			lab.className = 'lab'
-			lab.textContent = tr('Sources:')
-			s.appendChild(lab)
+			var details = document.createElement('details')
+			details.className = 'rs'
+			var sumEl = document.createElement('summary')
+			sumEl.className = 'rs-sum'
+			sumEl.textContent = tr('Sources') + ' (' + m.sources.length + ')'
+			details.appendChild(sumEl)
+			var list = document.createElement('div')
+			list.className = 'rs-list'
 			m.sources.forEach(function (item) {
 				var src = item.src || item
+				var row = document.createElement('div')
+				row.className = 'rs-item'
 				var a = document.createElement('a')
 				a.href = src.url || '#'
 				a.target = '_blank'
 				a.rel = 'noopener'
 				var prefix = item.ref !== undefined ? '[' + item.ref + '] ' : ''
 				a.textContent = prefix + (src.path || src.name || '')
-				s.appendChild(a)
+				row.appendChild(a)
+				if (src.excerpts && src.excerpts.length) {
+					var ex = document.createElement('div')
+					ex.className = 'rs-excerpt'
+					ex.textContent = src.excerpts[0]
+					row.appendChild(ex)
+				}
+				list.appendChild(row)
 			})
-			wrap.appendChild(s)
+			details.appendChild(list)
+			wrap.appendChild(details)
+		}
+		if (m.followups && m.followups.length) {
+			var chips = document.createElement('div')
+			chips.className = 'rfu'
+			m.followups.forEach(function (q) {
+				var btn = document.createElement('button')
+				btn.type = 'button'
+				btn.className = 'rfu-btn'
+				btn.textContent = q
+				btn.addEventListener('click', function () {
+					var inp = document.querySelector('.eva-inp')
+					if (inp) { inp.value = q; inp.dispatchEvent(new Event('input')) }
+					var sendBtn = document.querySelector('.eva-send')
+					if (sendBtn) sendBtn.click()
+				})
+				chips.appendChild(btn)
+			})
+			wrap.appendChild(chips)
 		}
 		if (m.confirmation && !m.confirmation.resolved) {
 			var panel = document.createElement('div')
@@ -585,6 +615,7 @@ import { escHtml, mdInline, mdToHtml, citedSources, copyText } from './lib/chat-
 				} else if (ev.type === 'done') {
 					last.text = ev.answer || last.text
 					last.sources = citedSources(last.text, ev.sources || [])
+					last.followups = ev.followups || []
 					last.done = true
 					Promise.all([saveMessage('user', msg), saveMessage('assistant', last.text)])
 						.then(renderChatListAgain)

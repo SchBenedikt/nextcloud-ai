@@ -189,14 +189,20 @@
         .rth { margin-bottom: 8px; font-size: 12px; }
         .rth summary { cursor: pointer; color: #555; font-weight: 600; user-select: none; }
         .rth-c { margin-top: 6px; padding: 8px 10px; background: #eef1f4; border-radius: 6px; white-space: pre-wrap; word-break: break-word; color: #555; font-size: 12px; line-height: 1.5; max-height: 220px; overflow-y: auto; }
-        .rs { margin-top: 6px; padding: 6px 10px; background: var(--color-background-dark, #f3f3f3); border-radius: 6px; font-size: 12px; color: var(--color-main-text, #333); }
+        .rs { margin-top: 6px; font-size: 12px; color: var(--color-main-text, #333); }
+        .rs-sum { cursor: pointer; font-weight: 600; user-select: none; }
+        .rs-list { margin-top: 4px; padding: 6px 10px; background: var(--color-background-dark, #f3f3f3); border-radius: 6px; }
+        .rs-item { margin-bottom: 6px; }
+        .rs-item a { color: var(--color-primary-element, #00679c); text-decoration: none; }
+        .rs-excerpt { margin-top: 2px; padding: 4px 8px; background: var(--color-main-background, #fff); border-radius: 4px; font-size: 11px; line-height: 1.4; white-space: pre-wrap; word-break: break-word; color: var(--color-text-maxcontrast, #555); }
         .rtools { margin-top: 6px; display: flex; flex-direction: column; gap: 4px; max-width: 86%; }
         .rtools .tool { font-size: 12px; padding: 4px 10px; border-radius: 6px; background: var(--color-background-dark, #eef1f4); color: var(--color-text-maxcontrast, #555); font-family: var(--font-family-monospace, monospace); }
         .rtools .tool.running { color: #8a6d1a; }
         .rtools .tool.ok { color: #2f8f3f; }
         .rtools .tool.bad { color: var(--color-error, #e9322d); }
-        .rs .lab { color: var(--color-text-maxcontrast, #555); margin-bottom: 2px; }
-        .rs a { display: block; color: var(--color-primary-element, #00679c); text-decoration: none; margin: 2px 0; }
+        .rfu { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+        .rfu-btn { padding: 4px 10px; border: 1px solid var(--color-border, #ccc); border-radius: 14px; background: var(--color-background-hover, #f6f7f8); color: var(--color-main-text, #222); font: inherit; font-size: 12px; cursor: pointer; transition: background .15s; }
+        .rfu-btn:hover { background: var(--color-primary-element, #00679c); color: #fff; border-color: var(--color-primary-element, #00679c); }
         .rconfirm { margin-top: 10px; max-width: min(100%, 560px); padding: 12px; border: 1px solid var(--color-border, #ccd0d4); border-left: 3px solid var(--color-warning, #eab308); border-radius: 8px; background: var(--color-background-hover, #f6f7f8); }
         .rconfirm-label { font-size: 13px; font-weight: 650; }
         .rconfirm-args { max-height: 150px; margin: 8px 0; padding: 8px; overflow: auto; white-space: pre-wrap; word-break: break-word; font: 12px/1.45 var(--font-family-monospace, monospace); color: var(--color-text-maxcontrast, #555); background: var(--color-main-background, #fff); border: 1px solid var(--color-border, #ddd); border-radius: 5px; }
