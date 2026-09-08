@@ -27,6 +27,9 @@ final class TalkSlashCommandsTest extends TestCase {
         if (!defined('EVA_AI_OCP_AVAILABLE') || !EVA_AI_OCP_AVAILABLE) {
             $this->markTestSkipped('Nextcloud OCP interfaces are not available');
         }
+        if (!class_exists(BotInvokeEvent::class)) {
+            $this->markTestSkipped('The Talk (spreed) app is not installed');
+        }
     }
 
     private function event(string $content, int $roomId = 7): BotInvokeEvent {
