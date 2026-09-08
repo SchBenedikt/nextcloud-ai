@@ -93,6 +93,11 @@ final class FrontendContractTest extends TestCase {
 		self::assertStringContainsString('NcModal v-if="folderPickerOpen"', $app);
 		self::assertStringContainsString('assignFolder(f.name)', $app);
 		self::assertStringContainsString('createAndAssign', $app);
+		// Folders are expandable/collapsible sections (Issue #87 follow-up).
+		self::assertStringContainsString('collapsedFolders', $app);
+		self::assertStringContainsString('toggleFolder(item.folderName)', $app);
+		self::assertStringContainsString('chevron-collapsed', $app);
+		self::assertStringContainsString('eva_ai_collapsed_folders', $app);
 		self::assertStringContainsString(':force-menu="true"', $app);
 		self::assertStringContainsString(':close-after-click="true"', $app);
 		self::assertStringContainsString('@click.stop="renameChat(item.chat.id)"', $app);

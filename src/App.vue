@@ -29,11 +29,12 @@
 						v-if="item.type === 'heading'"
 						class="chat-list-heading"
 						:class="{ 'chat-list-heading--archived': item.archived, 'chat-list-heading--folder': item.folder }"
-						@click="item.archived && (showArchived = !showArchived)">
+						:title="item.folder ? (item.collapsed ? $t('Expand folder') : $t('Collapse folder')) : undefined"
+						@click="item.folder ? toggleFolder(item.folderName) : (item.archived && (showArchived = !showArchived))">
 						<svg v-if="item.icon" width="14" height="14" viewBox="0 0 24 24" class="chat-list-heading-icon"><path :d="item.icon" fill="currentColor" /></svg>
 						<span>{{ item.label }}</span>
 						<NcCounterBubble v-if="item.count !== undefined" :count="item.count" />
-						<svg v-if="item.archived" width="16" height="16" viewBox="0 0 24 24" :class="{ rotated: showArchived }"><path :d="mdiChevronDown" fill="currentColor" /></svg>
+						<svg v-if="item.archived || item.folder" width="16" height="16" viewBox="0 0 24 24" :class="{ rotated: item.archived && showArchived, 'chevron-collapsed': item.folder && item.collapsed }"><path :d="mdiChevronDown" fill="currentColor" /></svg>
 					</li>
 					<NcAppNavigationItem
 						v-else
@@ -193,6 +194,20 @@ export default {
 		const chatFilter = ref('')
 		const apiError = ref('')
 		const showArchived = ref(false)
+		// Per-folder collapse state, persisted across reloads.
+		const collapsedFolders = ref(loadCollapsedFolders())
+		const toggleFolder = (name) => {
+			if (collapsedFolders.value[name]) {
+				delete collapsedFolders.value[name]
+			} else {
+				collapsedFolders.value[name] = true
+			}
+			try {
+				window.localStorage.setItem('eva_ai_collapsed_folders', JSON.stringify(collapsedFolders.value))
+			} catch (error) {
+				// Private mode or quota — collapsing still works for this session.
+			}
+		}
 		// Folder picker modal (Issue #87).
 		const folderPickerOpen = ref(false)
 		const folderChat = ref(null)
@@ -229,7 +244,9 @@ export default {
 				for (const c of pinnedChats.value) items.push({ type: 'chat', key: 'chat-' + c.id, chat: c })
 			}
 			for (const group of folderGroups.value) {
-				items.push({ type: 'heading', key: 'h-folder-' + group.name, label: group.name, icon: mdiFolderOutline, folder: true, count: group.chats.length })
+				const collapsed = !!collapsedFolders.value[group.name]
+				items.push({ type: 'heading', key: 'h-folder-' + group.name, label: group.name, icon: mdiFolderOutline, folder: true, folderName: group.name, count: group.chats.length, collapsed })
+				if (collapsed) continue
 				for (const c of group.chats) items.push({ type: 'chat', key: 'chat-' + c.id, chat: c })
 			}
 			for (const c of plainChats.value) items.push({ type: 'chat', key: 'chat-' + c.id, chat: c })
@@ -278,6 +295,17 @@ export default {
 			if (chat.snippet) parts.push(chat.snippet)
 			if (chat.matchCount) parts.push(t('{count} message matches', { count: chat.matchCount }))
 			return parts.join(' — ')
+		}
+
+		// Hoisted function declaration: used by the collapsedFolders ref above.
+		function loadCollapsedFolders() {
+			try {
+				const raw = window.localStorage.getItem('eva_ai_collapsed_folders')
+				const parsed = raw ? JSON.parse(raw) : {}
+				return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : {}
+			} catch (error) {
+				return {}
+			}
 		}
 
 		const appRootPath = () => {
@@ -452,7 +480,7 @@ export default {
 			view, mobileOpen, buildVersion,
 			chats, folders, currentChat, busy, chatFilter, apiError, showArchived,
 			pinnedChats, folderGroups, plainChats, navItems, listChats, activeChats, archivedChats,
-			folderPickerOpen, folderChat, newFolderName,
+			folderPickerOpen, folderChat, newFolderName, collapsedFolders, toggleFolder,
 			fileContextIds, itemName, itemTip,
 			newChat, selectChat, renameChat, deleteChat, loadChats, navigate, updateChatMeta, pickFolder, assignFolder, createAndAssign,
 			mdiChatProcessing, mdiFileDocumentOutline, mdiTune, mdiTrashCanOutline, mdiMessagePlus, mdiPencilOutline, mdiChevronDown,
@@ -500,24 +528,29 @@ export default {
 
 .chat-list-heading-icon {
 	flex: none;
-}
+}	.chat-list-heading--folder {
+		cursor: pointer;
+		text-transform: none;
+		user-select: none;
+	}
 
-.chat-list-heading--folder {
-	text-transform: none;
-}
+	.chat-list-heading--archived {
+		cursor: pointer;
+		user-select: none;
+	}
 
-.chat-list-heading--archived {
-	cursor: pointer;
-	user-select: none;
-}
+	.chat-list-heading--archived svg,
+	.chat-list-heading--folder svg {
+		transition: transform 0.15s ease;
+	}
 
-.chat-list-heading--archived svg {
-	transition: transform 0.15s ease;
-}
+	.chat-list-heading--archived svg.rotated {
+		transform: rotate(180deg);
+	}
 
-.chat-list-heading--archived svg.rotated {
-	transform: rotate(180deg);
-}
+	.chat-list-heading--folder svg.chevron-collapsed {
+		transform: rotate(-90deg);
+	}
 
 .chat-list-error {
 	color: var(--color-error, #c00);

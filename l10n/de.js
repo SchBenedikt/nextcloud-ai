@@ -406,5 +406,7 @@ OC.L10N.register("eva_ai", {
   "New folder name": "Neuer Ordnername",
   "Create folder": "Ordner erstellen",
   "No folder": "Kein Ordner",
-  "Folder: {folder}": "Ordner: {folder}"
+  "Folder: {folder}": "Ordner: {folder}",
+  "Expand folder": "Ordner aufklappen",
+  "Collapse folder": "Ordner zuklappen"
 }, "nplurals=2; plural=(n != 1);");
