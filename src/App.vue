@@ -24,121 +24,65 @@
 					<span>{{ $t('Chats') }}</span>
 					<NcCounterBubble :count="activeChats.length" />
 				</li>
-				<template v-if="!chatFilter.trim() && pinnedChats.length">
-					<li class="chat-list-heading">
-						<span>{{ $t('Pinned') }}</span>
+				<template v-for="item in navItems" :key="item.key">
+					<li
+						v-if="item.type === 'heading'"
+						class="chat-list-heading"
+						:class="{ 'chat-list-heading--archived': item.archived, 'chat-list-heading--folder': item.folder }"
+						@click="item.archived && (showArchived = !showArchived)">
+						<svg v-if="item.icon" width="14" height="14" viewBox="0 0 24 24" class="chat-list-heading-icon"><path :d="item.icon" fill="currentColor" /></svg>
+						<span>{{ item.label }}</span>
+						<NcCounterBubble v-if="item.count !== undefined" :count="item.count" />
+						<svg v-if="item.archived" width="16" height="16" viewBox="0 0 24 24" :class="{ rotated: showArchived }"><path :d="mdiChevronDown" fill="currentColor" /></svg>
 					</li>
 					<NcAppNavigationItem
-						v-for="c in pinnedChats"
-						:key="c.id"
-						:name="itemName(c)"
-						:active="view === 'chat' && c.id === currentChat"
+						v-else
+						v-show="!item.archivedChat || showArchived"
+						:name="itemName(item.chat)"
+						:active="view === 'chat' && item.chat.id === currentChat"
 						:force-menu="true"
-						:title="itemTip(c)"
-						@click="selectChat(c.id)">
+						:title="itemTip(item.chat)"
+						@click="selectChat(item.chat.id)">
 						<template #icon>
-							<svg width="16" height="16" viewBox="0 0 24 24"><path :d="mdiChatProcessing" fill="currentColor" /></svg>
+							<svg v-if="item.chat.archived" width="16" height="16" viewBox="0 0 24 24"><path :d="mdiArchiveOutline" fill="currentColor" /></svg>
+							<svg v-else width="16" height="16" viewBox="0 0 24 24"><path :d="mdiChatProcessing" fill="currentColor" /></svg>
 						</template>
 						<template #actions>
-							<NcActionButton :aria-label="$t('Pin chat')" :close-after-click="true" @click.stop="updateChatMeta(c.id, { pinned: false })">
-								<template #icon><NcIconSvgWrapper :path="mdiPinOffOutline" :size="16" aria-hidden="true" /></template>
-								{{ $t('Unpin chat') }}
+							<NcActionButton v-if="!item.chat.archived" :aria-label="item.chat.pinned ? $t('Unpin chat') : $t('Pin chat')" :close-after-click="true" @click.stop="updateChatMeta(item.chat.id, { pinned: !item.chat.pinned })">
+								<template #icon><NcIconSvgWrapper :path="item.chat.pinned ? mdiPinOffOutline : mdiPinOutline" :size="16" aria-hidden="true" /></template>
+								{{ item.chat.pinned ? $t('Unpin chat') : $t('Pin chat') }}
 							</NcActionButton>
-							<NcActionButton :aria-label="$t('Archive chat')" :close-after-click="true" @click.stop="updateChatMeta(c.id, { archived: true })">
+							<NcActionButton v-if="!item.chat.archived && item.chat.folder" :aria-label="$t('Remove from folder')" :close-after-click="true" @click.stop="updateChatMeta(item.chat.id, { folder: '' })">
+								<template #icon><NcIconSvgWrapper :path="mdiFolderRemoveOutline" :size="16" aria-hidden="true" /></template>
+								{{ $t('Remove from folder') }}
+							</NcActionButton>
+							<NcActionButton v-if="!item.chat.archived" :aria-label="item.chat.folder ? $t('Move to folder') : $t('Add to folder')" :close-after-click="true" @click.stop="pickFolder(item.chat)">
+								<template #icon><NcIconSvgWrapper :path="mdiFolderPlusOutline" :size="16" aria-hidden="true" /></template>
+								{{ item.chat.folder ? $t('Move to folder') : $t('Add to folder') }}
+							</NcActionButton>
+							<NcActionButton v-if="!item.chat.archived" :aria-label="$t('Archive chat')" :close-after-click="true" @click.stop="updateChatMeta(item.chat.id, { archived: true })">
 								<template #icon><NcIconSvgWrapper :path="mdiArchiveOutline" :size="16" aria-hidden="true" /></template>
 								{{ $t('Archive chat') }}
 							</NcActionButton>
-							<NcActionButton :aria-label="$t('Move to folder')" :close-after-click="true" @click.stop="pickFolder(c)">
-								<template #icon><NcIconSvgWrapper :path="mdiFolderPlusOutline" :size="16" aria-hidden="true" /></template>
-								{{ $t('Move to folder') }}
-							</NcActionButton>
-							<NcActionSeparator />
-							<NcActionButton :aria-label="$t('Rename chat')" :close-after-click="true" @click.stop="renameChat(c.id)">
-								<template #icon><NcIconSvgWrapper :path="mdiPencilOutline" :size="16" aria-hidden="true" /></template>
-								{{ $t('Rename chat') }}
-							</NcActionButton>
-							<NcActionButton :aria-label="$t('Delete chat')" :close-after-click="true" @click.stop="deleteChat(c.id)">
-								<template #icon><NcIconSvgWrapper :path="mdiTrashCanOutline" :size="16" aria-hidden="true" /></template>
-								{{ $t('Delete chat') }}
-							</NcActionButton>
-						</template>
-					</NcAppNavigationItem>
-				</template>
-				<NcAppNavigationItem
-					v-for="c in listChats"
-					:key="c.id"
-					:name="itemName(c)"
-					:active="view === 'chat' && c.id === currentChat"
-					:force-menu="true"
-					:title="itemTip(c)"
-					@click="selectChat(c.id)">
-					<template #icon>
-						<svg width="16" height="16" viewBox="0 0 24 24"><path :d="mdiChatProcessing" fill="currentColor" /></svg>
-					</template>
-					<template #actions>
-						<NcActionButton :aria-label="c.pinned ? $t('Unpin chat') : $t('Pin chat')" :close-after-click="true" @click.stop="updateChatMeta(c.id, { pinned: !c.pinned })">
-							<template #icon><NcIconSvgWrapper :path="c.pinned ? mdiPinOffOutline : mdiPinOutline" :size="16" aria-hidden="true" /></template>
-							{{ c.pinned ? $t('Unpin chat') : $t('Pin chat') }}
-						</NcActionButton>
-						<NcActionButton v-if="c.folder" :aria-label="$t('Remove from folder')" :close-after-click="true" @click.stop="updateChatMeta(c.id, { folder: '' })">
-							<template #icon><NcIconSvgWrapper :path="mdiFolderRemoveOutline" :size="16" aria-hidden="true" /></template>
-							{{ $t('Remove from folder') }}
-						</NcActionButton>
-						<NcActionButton :aria-label="c.folder ? $t('Move to folder') : $t('Add to folder')" :close-after-click="true" @click.stop="pickFolder(c)">
-							<template #icon><NcIconSvgWrapper :path="mdiFolderPlusOutline" :size="16" aria-hidden="true" /></template>
-							{{ c.folder ? $t('Move to folder') : $t('Add to folder') }}
-						</NcActionButton>
-						<NcActionButton :aria-label="$t('Archive chat')" :close-after-click="true" @click.stop="updateChatMeta(c.id, { archived: true })">
-							<template #icon><NcIconSvgWrapper :path="mdiArchiveOutline" :size="16" aria-hidden="true" /></template>
-							{{ $t('Archive chat') }}
-						</NcActionButton>
-						<NcActionSeparator />
-						<NcActionButton :aria-label="$t('Rename chat')" :close-after-click="true" @click.stop="renameChat(c.id)">
-							<template #icon><NcIconSvgWrapper :path="mdiPencilOutline" :size="16" aria-hidden="true" /></template>
-							{{ $t('Rename chat') }}
-						</NcActionButton>
-						<NcActionButton :aria-label="$t('Delete chat')" :close-after-click="true" @click.stop="deleteChat(c.id)">
-							<template #icon><NcIconSvgWrapper :path="mdiTrashCanOutline" :size="16" aria-hidden="true" /></template>
-							{{ $t('Delete chat') }}
-						</NcActionButton>
-					</template>
-				</NcAppNavigationItem>
-				<li v-if="apiError" class="chat-list-error" role="alert">{{ apiError }}</li>
-				<li v-if="!chats.length" class="chat-list-empty">{{ $t('No chats yet — start a new one.') }}</li>
-				<li v-else-if="!listChats.length && !pinnedChats.length" class="chat-list-empty">{{ $t('No chats match your search.') }}</li>
-				<template v-if="!chatFilter.trim() && archivedChats.length">
-					<li class="chat-list-heading chat-list-heading--archived" @click="showArchived = !showArchived">
-						<span>{{ $t('Archived') }} ({{ archivedChats.length }})</span>
-						<svg width="16" height="16" viewBox="0 0 24 24" :class="{ rotated: showArchived }"><path :d="mdiChevronDown" fill="currentColor" /></svg>
-					</li>
-					<NcAppNavigationItem
-						v-for="c in archivedChats"
-						v-show="showArchived"
-						:key="c.id"
-						:name="itemName(c)"
-						:active="view === 'chat' && c.id === currentChat"
-						:force-menu="true"
-						:title="itemTip(c)"
-						@click="selectChat(c.id)">
-						<template #icon>
-							<svg width="16" height="16" viewBox="0 0 24 24"><path :d="mdiChatProcessing" fill="currentColor" /></svg>
-						</template>
-						<template #actions>
-							<NcActionButton :aria-label="$t('Unarchive chat')" :close-after-click="true" @click.stop="updateChatMeta(c.id, { archived: false })">
+							<NcActionButton v-if="item.chat.archived" :aria-label="$t('Unarchive chat')" :close-after-click="true" @click.stop="updateChatMeta(item.chat.id, { archived: false })">
 								<template #icon><NcIconSvgWrapper :path="mdiArchiveArrowUpOutline" :size="16" aria-hidden="true" /></template>
 								{{ $t('Unarchive chat') }}
 							</NcActionButton>
-							<NcActionButton :aria-label="$t('Rename chat')" :close-after-click="true" @click.stop="renameChat(c.id)">
+							<NcActionSeparator />
+							<NcActionButton :aria-label="$t('Rename chat')" :close-after-click="true" @click.stop="renameChat(item.chat.id)">
 								<template #icon><NcIconSvgWrapper :path="mdiPencilOutline" :size="16" aria-hidden="true" /></template>
 								{{ $t('Rename chat') }}
 							</NcActionButton>
-							<NcActionButton :aria-label="$t('Delete chat')" :close-after-click="true" @click.stop="deleteChat(c.id)">
+							<NcActionButton :aria-label="$t('Delete chat')" :close-after-click="true" @click.stop="deleteChat(item.chat.id)">
 								<template #icon><NcIconSvgWrapper :path="mdiTrashCanOutline" :size="16" aria-hidden="true" /></template>
 								{{ $t('Delete chat') }}
 							</NcActionButton>
 						</template>
 					</NcAppNavigationItem>
 				</template>
+				<li v-if="apiError" class="chat-list-error" role="alert">{{ apiError }}</li>
+				<li v-if="!chats.length" class="chat-list-empty">{{ $t('No chats yet — start a new one.') }}</li>
+				<li v-else-if="chatFilter.trim() && !listChats.length" class="chat-list-empty">{{ $t('No chats match your search.') }}</li>
 			</template>
 			<template #footer>
 				<ul class="nav-footer">
@@ -167,6 +111,33 @@
 			<DocumentsView v-else-if="view === 'docs'" />
 			<SettingsView v-else />
 		</NcAppContent>
+		<NcModal v-if="folderPickerOpen" size="small" :name="$t('Move to folder')" @close="folderPickerOpen = false">
+			<div class="folder-picker">
+				<p class="folder-picker-hint">{{ $t('Choose a folder for this chat:') }}</p>
+				<ul class="folder-picker-list">
+					<li v-if="folderChat && folderChat.folder">
+						<button type="button" class="folder-picker-row" @click="assignFolder('')">
+							<svg width="16" height="16" viewBox="0 0 24 24"><path :d="mdiFolderRemoveOutline" fill="currentColor" /></svg>
+							<span>{{ $t('No folder') }}</span>
+						</button>
+					</li>
+					<li v-for="f in folders" :key="f.name">
+						<button
+							type="button"
+							class="folder-picker-row"
+							:class="{ 'folder-picker-row--active': folderChat && folderChat.folder === f.name }"
+							@click="assignFolder(f.name)">
+							<svg width="16" height="16" viewBox="0 0 24 24"><path :d="mdiFolderOutline" fill="currentColor" /></svg>
+							<span>{{ f.name }}</span>
+						</button>
+					</li>
+				</ul>
+				<form class="folder-picker-create" @submit.prevent="createAndAssign">
+					<input v-model="newFolderName" class="folder-picker-input" type="text" :placeholder="$t('New folder name')" />
+					<button type="submit" class="folder-picker-submit" :disabled="!newFolderName.trim()">{{ $t('Create folder') }}</button>
+				</form>
+			</div>
+		</NcModal>
 	</NcContent>
 </template>
 
@@ -176,7 +147,7 @@ import ChatView from './views/ChatView.vue'
 import DocumentsView from './views/DocumentsView.vue'
 import SettingsView from './views/SettingsView.vue'
 import FileContextChatView from './views/FileContextChatView.vue'
-import { mdiChatProcessing, mdiFileDocumentOutline, mdiTune, mdiTrashCanOutline, mdiMessagePlus, mdiPencilOutline, mdiChevronDown, mdiPinOutline, mdiPinOffOutline, mdiFolderPlusOutline, mdiFolderRemoveOutline, mdiArchiveOutline, mdiArchiveArrowUpOutline } from '@mdi/js'
+import { mdiChatProcessing, mdiFileDocumentOutline, mdiTune, mdiTrashCanOutline, mdiMessagePlus, mdiPencilOutline, mdiChevronDown, mdiPinOutline, mdiPinOffOutline, mdiFolderOutline, mdiFolderPlusOutline, mdiFolderRemoveOutline, mdiArchiveOutline, mdiArchiveArrowUpOutline } from '@mdi/js'
 import { NcCounterBubble } from '@nextcloud/vue'
 import NcAppNavigationSearch from '@nextcloud/vue/components/NcAppNavigationSearch'
 import NcActionButton from '@nextcloud/vue/components/NcActionButton'
@@ -222,24 +193,60 @@ export default {
 		const chatFilter = ref('')
 		const apiError = ref('')
 		const showArchived = ref(false)
-		// Sidebar sections (Issue #87): pinned on top, active chats in the
-		// middle, archived chats collapsed at the bottom.
+		// Folder picker modal (Issue #87).
+		const folderPickerOpen = ref(false)
+		const folderChat = ref(null)
+		const newFolderName = ref('')
+		// Sidebar sections (Issue #87): pinned on top, folder groups, then the
+		// remaining chats, archived chats collapsed at the bottom.
 		const pinnedChats = computed(() => chats.value.filter((c) => c.pinned && !c.archived))
-		const listChats = computed(() => {
-			const query = chatFilter.value.trim().toLowerCase()
-			if (query) {
-				// Searching: one flat result list (the pinned section is hidden).
-				if (searchResults.value) return searchResults.value.filter((c) => !c.archived)
-				return chats.value.filter((chat) => !chat.archived && String(chat.title || '').toLowerCase().includes(query))
+		const folderGroups = computed(() => {
+			const groups = new Map()
+			for (const c of chats.value) {
+				if (c.archived || c.pinned || !c.folder) continue
+				if (!groups.has(c.folder)) groups.set(c.folder, [])
+				groups.get(c.folder).push(c)
 			}
-			return chats.value.filter((c) => !c.pinned && !c.archived)
+			return [...groups.entries()]
+				.sort((a, b) => a[0].localeCompare(b[0]))
+				.map(([name, group]) => ({ name, chats: group }))
+		})
+		const plainChats = computed(() => chats.value.filter((c) => !c.archived && !c.pinned && !c.folder))
+		// Search results (null while not searching). The server matches chat
+		// titles AND message text (Issue #152), so results may carry a snippet
+		// + matchCount from the first content hit.
+		const searchResults = ref(null)
+		// One flat, ordered list of headings + chat items for the sidebar.
+		const navItems = computed(() => {
+			const query = chatFilter.value.trim()
+			if (query) {
+				const base = searchResults.value || chats.value.filter((chat) => String(chat.title || '').toLowerCase().includes(query.toLowerCase()))
+				return base.filter((c) => !c.archived).map((c) => ({ type: 'chat', key: 'chat-' + c.id, chat: c }))
+			}
+			const items = []
+			if (pinnedChats.value.length) {
+				items.push({ type: 'heading', key: 'h-pinned', label: t('Pinned'), icon: mdiPinOutline })
+				for (const c of pinnedChats.value) items.push({ type: 'chat', key: 'chat-' + c.id, chat: c })
+			}
+			for (const group of folderGroups.value) {
+				items.push({ type: 'heading', key: 'h-folder-' + group.name, label: group.name, icon: mdiFolderOutline, folder: true, count: group.chats.length })
+				for (const c of group.chats) items.push({ type: 'chat', key: 'chat-' + c.id, chat: c })
+			}
+			for (const c of plainChats.value) items.push({ type: 'chat', key: 'chat-' + c.id, chat: c })
+			if (archivedChats.value.length) {
+				items.push({ type: 'heading', key: 'h-archived', label: t('Archived') + ' (' + archivedChats.value.length + ')', icon: mdiArchiveOutline, archived: true })
+				for (const c of archivedChats.value) items.push({ type: 'chat', key: 'chat-' + c.id, chat: c, archivedChat: true })
+			}
+			return items
 		})
 		const activeChats = computed(() => chats.value.filter((c) => !c.archived))
 		const archivedChats = computed(() => chats.value.filter((c) => c.archived))
-		// Message-content search results (null while not searching). The server
-		// matches chat titles AND message text (Issue #152), so results may
-		// carry a snippet + matchCount from the first content hit.
-		const searchResults = ref(null)
+		const listChats = computed(() => {
+			const query = chatFilter.value.trim().toLowerCase()
+			if (!query) return []
+			if (searchResults.value) return searchResults.value.filter((c) => !c.archived)
+			return chats.value.filter((chat) => !chat.archived && String(chat.title || '').toLowerCase().includes(query))
+		})
 		let searchTimer = null
 		const searchMessages = async () => {
 			const query = chatFilter.value.trim()
@@ -267,6 +274,7 @@ export default {
 		const itemTip = (chat) => {
 			const title = chat.title || ''
 			const parts = [t('{title} · {count} messages', { title, count: chat.count })]
+			if (chat.folder) parts.push(t('Folder: {folder}', { folder: chat.folder }))
 			if (chat.snippet) parts.push(chat.snippet)
 			if (chat.matchCount) parts.push(t('{count} message matches', { count: chat.matchCount }))
 			return parts.join(' — ')
@@ -298,7 +306,10 @@ export default {
 				if (!Array.isArray(list)) throw new Error(t('The chat list response was invalid.'))
 				chats.value = list
 				if (!currentChat.value || !list.some((chat) => chat.id === currentChat.value)) {
-					currentChat.value = list.length ? list[0].id : null
+					// Prefer a chat the user can actually see (archived chats
+					// are collapsed by default).
+					const first = list.find((chat) => !chat.archived) || list[0]
+					currentChat.value = first ? first.id : null
 				}
 			}).catch((error) => {
 				apiError.value = t('Chat list unavailable: {error}', { error: errMsg(error) })
@@ -325,14 +336,25 @@ export default {
 			}
 		}
 
-		// Folder assignment prompt: existing folders are offered as a hint,
-		// an unknown name creates that folder, empty removes it (Issue #87).
+		// Folder assignment (Issue #87): pick an existing folder, clear the
+		// assignment, or type a new name — unknown names create the folder.
+		const assignFolder = async (name) => {
+			const id = folderChat.value && folderChat.value.id
+			if (!id) return
+			folderPickerOpen.value = false
+			newFolderName.value = ''
+			folderChat.value = null
+			await updateChatMeta(id, { folder: name })
+		}
+		const createAndAssign = () => {
+			const name = newFolderName.value.trim()
+			if (!name) return
+			assignFolder(name)
+		}
 		const pickFolder = (chat) => {
-			const known = folders.value.map((f) => f.name).filter((n) => n !== chat.folder)
-			const hint = known.length ? ' (' + known.join(', ') + ')' : ''
-			const value = window.prompt(t('Move to folder') + hint, chat.folder || '')
-			if (value === null) return
-			updateChatMeta(chat.id, { folder: value.trim() })
+			folderChat.value = chat
+			newFolderName.value = ''
+			folderPickerOpen.value = true
 		}
 
 		const newChat = async () => {
@@ -412,7 +434,7 @@ export default {
 						: []
 					if (ids.length === 0) return
 					fileContextIds.value = ids
-						view.value = 'fileContext'
+					view.value = 'fileContext'
 					// URL anpassen, damit der User die Seite bookmarken/teilen kann.
 					const url = new URL(window.location.href)
 					url.searchParams.set('view', 'fileContext')
@@ -429,11 +451,12 @@ export default {
 		return {
 			view, mobileOpen, buildVersion,
 			chats, folders, currentChat, busy, chatFilter, apiError, showArchived,
-			pinnedChats, listChats, activeChats, archivedChats,
+			pinnedChats, folderGroups, plainChats, navItems, listChats, activeChats, archivedChats,
+			folderPickerOpen, folderChat, newFolderName,
 			fileContextIds, itemName, itemTip,
-			newChat, selectChat, renameChat, deleteChat, loadChats, navigate, updateChatMeta, pickFolder,
+			newChat, selectChat, renameChat, deleteChat, loadChats, navigate, updateChatMeta, pickFolder, assignFolder, createAndAssign,
 			mdiChatProcessing, mdiFileDocumentOutline, mdiTune, mdiTrashCanOutline, mdiMessagePlus, mdiPencilOutline, mdiChevronDown,
-			mdiPinOutline, mdiPinOffOutline, mdiFolderPlusOutline, mdiFolderRemoveOutline, mdiArchiveOutline, mdiArchiveArrowUpOutline,
+			mdiPinOutline, mdiPinOffOutline, mdiFolderOutline, mdiFolderPlusOutline, mdiFolderRemoveOutline, mdiArchiveOutline, mdiArchiveArrowUpOutline,
 		}
 	},
 }
@@ -475,6 +498,14 @@ export default {
 	text-transform: uppercase;
 }
 
+.chat-list-heading-icon {
+	flex: none;
+}
+
+.chat-list-heading--folder {
+	text-transform: none;
+}
+
 .chat-list-heading--archived {
 	cursor: pointer;
 	user-select: none;
@@ -510,4 +541,77 @@ export default {
 	gap: var(--default-grid-baseline, 4px);
 }
 
+</style>
+
+<style>
+/* The folder picker renders inside NcModal, which teleports its content to
+   <body>, so these styles must not be scoped (Issue #87). */
+.folder-picker {
+	padding: 4px 20px 20px;
+}
+
+.folder-picker-hint {
+	color: var(--color-text-maxcontrast, #666);
+	font-size: 13px;
+	margin: 4px 0 12px;
+}
+
+.folder-picker-list {
+	list-style: none;
+	margin: 0;
+	padding: 0;
+}
+
+.folder-picker-row {
+	align-items: center;
+	background: transparent;
+	border: 0;
+	border-radius: var(--border-radius-large, 10px);
+	color: var(--color-main-text, #222);
+	cursor: pointer;
+	display: flex;
+	font-size: 14px;
+	gap: 10px;
+	padding: 10px 12px;
+	text-align: left;
+	width: 100%;
+}
+
+.folder-picker-row:hover {
+	background: var(--color-background-hover, #f5f5f5);
+}
+
+.folder-picker-row--active {
+	background: var(--color-primary-light, #e8f0f7);
+	color: var(--color-primary-text, #00679c);
+	font-weight: 600;
+}
+
+.folder-picker-create {
+	display: flex;
+	gap: 8px;
+	margin-top: 14px;
+}
+
+.folder-picker-input {
+	flex: 1;
+	min-width: 0;
+}
+
+.folder-picker-submit {
+	background: var(--color-primary, #00679c);
+	border: 0;
+	border-radius: var(--border-radius-pill, 22px);
+	color: var(--color-primary-text, #fff);
+	cursor: pointer;
+	font-size: 14px;
+	font-weight: 600;
+	padding: 8px 16px;
+	white-space: nowrap;
+}
+
+.folder-picker-submit:disabled {
+	cursor: default;
+	opacity: 0.5;
+}
 </style>

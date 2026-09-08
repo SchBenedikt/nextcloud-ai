@@ -810,7 +810,10 @@ class ApiController extends OCSController {
         }
         // Optional text search across chat titles and message content.
         $search = trim((string)($this->requestParam('search') ?? ''));
-        return new DataResponse($this->chatStore->list($user, $search !== '' ? $search : null));
+        // Archived chats are always included: the sidebar splits them into
+        // its own section and would otherwise never see them again (Issue #87).
+        // The dashboard widget reads the store directly and keeps hiding them.
+        return new DataResponse($this->chatStore->list($user, $search !== '' ? $search : null, true));
     }
 
     #[NoAdminRequired]

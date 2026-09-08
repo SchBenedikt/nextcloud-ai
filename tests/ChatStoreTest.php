@@ -254,20 +254,20 @@ final class ChatStoreTest extends TestCase {
                 self::assertTrue($chat['archived']);
             }
         }
-    }
+    }	public function testMetaCreatesUnknownFolderAndRejectsMissingChat(): void {
+		$seed = json_encode([
+			['id' => 'a', 'title' => 'A', 'created' => 1, 'updated' => 1, 'messages' => []],
+		], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+		$written = null;
+		[$store] = $this->chatFileHarness($seed, $written);
 
-    public function testMetaRejectsUnknownFolderAndMissingChat(): void {
-        $seed = json_encode([
-            ['id' => 'a', 'title' => 'A', 'created' => 1, 'updated' => 1, 'messages' => []],
-        ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
-        $written = null;
-        [$store] = $this->chatFileHarness($seed, $written);
-
-        // Assigning to a folder that was never created must be refused.
-        self::assertFalse($store->setMeta('alice', 'a', ['folder' => 'Missing']));
-        // Unknown chat ids return false as well.
-        self::assertFalse($store->setMeta('alice', 'nope', ['pinned' => true]));
-    }
+		// Assigning to a folder that was never created creates it on the fly,
+		// so the sidebar's "new folder" flow needs no separate round-trip.
+		self::assertTrue($store->setMeta('alice', 'a', ['folder' => 'Missing']));
+		self::assertSame('Missing', $store->listFolders('alice')[0]['name']);
+		// Unknown chat ids return false as well.
+		self::assertFalse($store->setMeta('alice', 'nope', ['pinned' => true]));
+	}
 
     public function testFolderRegistryCreateRenameDelete(): void {
         $seed = json_encode([
@@ -288,12 +288,50 @@ final class ChatStoreTest extends TestCase {
         self::assertTrue($store->renameFolder('alice', 'Work', 'Office'));
         self::assertSame('Office', $store->listFolders('alice')[0]['name']);
         $list = $store->list('alice');
-        self::assertSame('Office', $list[0]['folder']);
+        self::assertSame('Office', $list[0]['folder']);		// Deleting unassigns the chat.
+		self::assertTrue($store->deleteFolder('alice', 'Office'));
+		self::assertSame([], $store->listFolders('alice'));
+		$list = $store->list('alice');
+		self::assertSame('', $list[0]['folder']);
+	}
 
-        // Deleting unassigns the chat.
-        self::assertTrue($store->deleteFolder('alice', 'Office'));
-        self::assertSame([], $store->listFolders('alice'));
-        $list = $store->list('alice');
-        self::assertSame('', $list[0]['folder']);
-    }
+	public function testSetMetaAutoCreatesAnUnknownFolder(): void {
+		$seed = json_encode([
+			['id' => 'c1', 'title' => 'Work', 'created' => 1, 'updated' => 1, 'messages' => []],
+		], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+		$written = null;
+		$foldersWritten = null;
+		[$store] = $this->chatFileHarness($seed, $written, '[]', $foldersWritten);
+
+		// The sidebar lets the user type a new folder name directly; the
+		// assignment must create that folder instead of failing (Issue #87).
+		self::assertTrue($store->setMeta('alice', 'c1', ['folder' => 'Projekte']));
+
+		$saved = json_decode((string)$written, true);
+		self::assertSame('Projekte', $saved[0]['folder']);
+		$folders = json_decode((string)$foldersWritten, true);
+		self::assertCount(1, $folders);
+		self::assertSame('Projekte', $folders[0]['name']);
+	}
+
+	public function testListHidesArchivedChatsUnlessRequested(): void {
+		$seed = json_encode([
+			['id' => 'a1', 'title' => 'Active', 'created' => 1, 'updated' => 5, 'messages' => []],
+			['id' => 'a2', 'title' => 'Done', 'created' => 1, 'updated' => 4, 'archived' => true, 'messages' => []],
+		], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+		$written = null;
+		[$store] = $this->chatFileHarness($seed, $written);
+
+		// The dashboard widget keeps hiding archived chats ...
+		$default = $store->list('alice');
+		self::assertCount(1, $default);
+		self::assertSame('a1', $default[0]['id']);
+		self::assertFalse($default[0]['archived']);
+
+		// ... but the sidebar needs them back for its archive section.
+		$all = $store->list('alice', null, true);
+		self::assertCount(2, $all);
+		self::assertSame('a2', $all[1]['id']);
+		self::assertTrue($all[1]['archived']);
+	}
 }

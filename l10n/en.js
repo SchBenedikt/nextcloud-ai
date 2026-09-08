@@ -401,5 +401,10 @@ OC.L10N.register("eva_ai", {
   "Largest first": "Largest first",
   "Smallest first": "Smallest first",
   "Most chunks first": "Most chunks first",
-  "Folder": "Folder"
+  "Folder": "Folder",
+  "Choose a folder for this chat:": "Choose a folder for this chat:",
+  "New folder name": "New folder name",
+  "Create folder": "Create folder",
+  "No folder": "No folder",
+  "Folder: {folder}": "Folder: {folder}"
 }, "nplurals=2; plural=(n != 1);");

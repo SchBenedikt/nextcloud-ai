@@ -214,8 +214,10 @@ class ChatStore {
     /**
      * Update organisational chat metadata (Issue #87): pinned, folder and
      * archived. Only the keys present in $meta are touched, legacy chats
-     * without the fields keep working. Returns false when the chat or the
-     * target folder does not exist.
+     * without the fields keep working. Assigning a chat to a folder that does
+     * not exist yet creates that folder on the fly, so the UI can offer
+     * "type a new folder name" without a separate round-trip. Returns false
+     * only when the chat itself does not exist.
      */
     public function setMeta(string $user, string $id, array $meta): bool {
         return $this->withUserLock($user, function () use ($user, $id, $meta): bool {
@@ -233,10 +235,9 @@ class ChatStore {
                 if (array_key_exists('folder', $meta)) {
                     $folder = trim((string)$meta['folder']);
                     if ($folder !== '') {
-                        $known = $this->folderNamesLocked($user);
-                        if (!in_array($folder, $known, true)) {
-                            return false; // No such folder — refuse silently.
-                        }
+                        // Unknown names create the folder (Issue #87) so the
+                        // sidebar's "new folder" flow needs no extra API call.
+                        $this->createFolderLocked($user, $folder);
                     }
                     $chat['folder'] = $folder;
                 }
@@ -256,18 +257,27 @@ class ChatStore {
      */
     public function createFolder(string $user, string $name): array {
         return $this->withUserLock($user, function () use ($user, $name): array {
-            $folders = $this->foldersLocked($user);
-            $clean = $this->clipFolderName($name);
-            foreach ($folders as $folder) {
-                if (($folder['name'] ?? '') === $clean) {
-                    return $folder;
-                }
-            }
-            $folder = ['name' => $clean, 'created' => time()];
-            $folders[] = $folder;
-            $this->writeFoldersLocked($user, $folders);
-            return $folder;
+            return $this->createFolderLocked($user, $name);
         });
+    }
+
+    /**
+     * Create a folder while the per-user lock is already held. Names are
+     * trimmed, capped and de-duplicated; an existing folder is returned
+     * unchanged (idempotent). Callers must hold the user lock.
+     */
+    private function createFolderLocked(string $user, string $name): array {
+        $folders = $this->foldersLocked($user);
+        $clean = $this->clipFolderName($name);
+        foreach ($folders as $folder) {
+            if (($folder['name'] ?? '') === $clean) {
+                return $folder;
+            }
+        }
+        $folder = ['name' => $clean, 'created' => time()];
+        $folders[] = $folder;
+        $this->writeFoldersLocked($user, $folders);
+        return $folder;
     }
 
     /**
