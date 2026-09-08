@@ -48,7 +48,8 @@ class ApiController extends OCSController {
         private LockGuard $lockGuard,
         private \OCA\EvaAi\Service\UserDataService $userDataService,
         private \OCA\EvaAi\Service\ChatLearner $chatLearner,
-        private ICacheFactory $cacheFactory
+        private ICacheFactory $cacheFactory,
+        private \OCA\EvaAi\Service\IndexScheduler $indexScheduler
     ) {
         parent::__construct($appName, $request);
         $this->config->setUserId($this->userId);
@@ -91,7 +92,11 @@ class ApiController extends OCSController {
             return new DataResponse(['error' => 'Not logged in'], 401);
         }
         $this->knowledgeInitializer->ensureInitialized($user);
-        return new DataResponse($this->ragService->buildStatus($user));
+        $status = $this->ragService->buildStatus($user);
+        // Fair multi-user scheduling snapshot (Issue #142): global running
+        // count, limit and this user's queue position - cheap, no polling.
+        $status['scheduler'] = $this->indexScheduler->snapshot($user);
+        return new DataResponse($status);
     }
 
     /**

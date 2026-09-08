@@ -36,7 +36,8 @@ class Indexer {
         private EmailService $email,
         private LoggerInterface $logger,
         private ILockingProvider $lockingProvider,
-        private LockGuard $lockGuard
+        private LockGuard $lockGuard,
+        private IndexScheduler $scheduler
     ) {
     }
 
@@ -87,6 +88,20 @@ class Indexer {
         }
         if ($runId !== null && $this->config->get('index_run_id') !== $runId) {
             $this->lockingProvider->releaseLock($lockPath, ILockingProvider::LOCK_EXCLUSIVE);
+            return $result;
+        }
+
+        // Fair multi-user scheduling (Issue #142): the per-user claim above
+        // serializes work for one account; the global slot bounds how many
+        // accounts may run at the same time. When the instance limit is
+        // reached the user is queued FIFO and this call returns immediately
+        // with their queue position instead of competing for resources.
+        $slot = $this->scheduler->acquireSlot($userId);
+        if ($slot['state'] === 'queued') {
+            $this->lockingProvider->releaseLock($lockPath, ILockingProvider::LOCK_EXCLUSIVE);
+            $result['queued'] = true;
+            $result['queue_position'] = $slot['position'];
+            $result['error'] = null;
             return $result;
         }
 
@@ -166,6 +181,7 @@ class Indexer {
                     break;
                 }
                 $this->config->set('index_heartbeat', (string)time());
+                $this->scheduler->touchHeartbeat($userId);
                 $fileId = (int)$fileData['id'];
                 $seen[$fileId] = true;
                 $result['total_seen']++;
@@ -340,6 +356,7 @@ class Indexer {
                     }
                 }
             } finally {
+                $this->scheduler->releaseSlot($userId);
                 $this->lockingProvider->releaseLock($lockPath, ILockingProvider::LOCK_EXCLUSIVE);
             }
         }

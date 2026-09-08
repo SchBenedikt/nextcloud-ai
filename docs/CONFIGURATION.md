@@ -112,6 +112,9 @@ from an instance-wide value.
 | `index_job_started` | Unix timestamp when the current run claimed the scheduler lock. |
 | `index_job_max_seconds` | Wall-clock budget (seconds, default `50`) one periodic run may spend before the next cron tick continues (Issue #112). |
 | `index_job_last_user` | Last user finished by a periodic run; the next run rotates past it for fairness (Issue #112). |
+| `index_max_concurrent` | I | `2` | `1`–`16` | passes | Maximum index passes running concurrently across all users (Issue #142). Set via `occ config:app:set eva_ai index_max_concurrent …`. |
+| `index_scheduler_active` | JSON map `user → heartbeat` of currently running index slots (default `{}`, Issue #142); stale slots are reclaimed after 15 minutes. |
+| `index_scheduler_queue` | JSON FIFO list of users waiting behind the concurrency limit (default `[]`, Issue #142). |
 
 ## Settings page
 

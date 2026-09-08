@@ -234,6 +234,26 @@ final class FrontendContractTest extends TestCase {
         self::assertStringContainsString('Eva · Local', (string)file_get_contents(__DIR__ . '/../lib/TaskProcessing/EvaSummaryProvider.php'));
     }
 
+    public function testFairIndexSchedulingContract(): void {
+        // Issue #142: global concurrency limit + FIFO queue. The scheduler
+        // must bound running passes, expose queue state cheaply, and the
+        // indexer must hand a queued user back instead of competing.
+        $scheduler = (string)file_get_contents(__DIR__ . '/../lib/Service/IndexScheduler.php');
+        self::assertStringContainsString('acquireSlot', $scheduler);
+        self::assertStringContainsString("'queued'", $scheduler);
+        self::assertStringContainsString('queuedUsers', $scheduler);
+        self::assertStringContainsString('recoverStale', $scheduler);
+        self::assertStringContainsString('index_max_concurrent', $scheduler);
+        $indexer = (string)file_get_contents(__DIR__ . '/../lib/Service/Indexer.php');
+        self::assertStringContainsString('$this->scheduler->acquireSlot($userId)', $indexer);
+        self::assertStringContainsString('queue_position', $indexer);
+        self::assertStringContainsString('$this->scheduler->releaseSlot($userId)', $indexer);
+        $job = (string)file_get_contents(__DIR__ . '/../lib/BackgroundJob/IndexJob.php');
+        self::assertStringContainsString('queuedUsers(10)', $job);
+        $controller = (string)file_get_contents(__DIR__ . '/../lib/Controller/ApiController.php');
+        self::assertStringContainsString("\$status['scheduler'] = \$this->indexScheduler->snapshot(\$user)", $controller);
+    }
+
     public function testSettingsPersistExclusionsAndDoNotOverwriteFormDuringPolling(): void {
         $settings = (string)file_get_contents(__DIR__ . '/../src/views/SettingsView.vue');
         self::assertStringContainsString('async function persistExcludeList(list, previous)', $settings);

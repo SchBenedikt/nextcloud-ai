@@ -113,9 +113,11 @@ final class IndexerBoundedBatchTest extends TestCase {
         $embeddingCache = $this->createMock(EmbeddingCache::class);
         $email = $this->createMock(EmailService::class);
 
+        $scheduler = $this->createMock(\OCA\EvaAi\Service\IndexScheduler::class);
+        $scheduler->method('acquireSlot')->willReturn(['state' => 'running', 'position' => 0]);
         $indexer = new Indexer(
             $config, $rootFolder, $docMapper, $chunkMapper, $chunker, $ollama,
-            $embeddingCache, $email, $logger, $lockingProvider, $lockGuard
+            $embeddingCache, $email, $logger, $lockingProvider, $lockGuard, $scheduler
         );
 
         return [$indexer, $docMapper, $chunkMapper, $ollama];

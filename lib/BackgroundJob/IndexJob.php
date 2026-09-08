@@ -8,6 +8,7 @@ use OCA\EvaAi\Db\DocumentMapper;
 use OCA\EvaAi\Service\AgentStore;
 use OCA\EvaAi\Service\AppConfig;
 use OCA\EvaAi\Service\Indexer;
+use OCA\EvaAi\Service\IndexScheduler;
 use OCP\AppFramework\Utility\ITimeFactory;
 use OCP\BackgroundJob\TimedJob;
 use Psr\Log\LoggerInterface;
@@ -28,6 +29,7 @@ class IndexJob extends TimedJob {
         private Indexer $indexer,
         private DocumentMapper $documentMapper,
         private AgentStore $agentStore,
+        private IndexScheduler $scheduler,
         private LoggerInterface $logger
     ) {
         parent::__construct($time);
@@ -137,6 +139,33 @@ class IndexJob extends TimedJob {
                 // Remember the last user actually processed (even on failure)
                 // so the next run continues fairly after this user.
                 $this->config->set('index_job_last_user', $user);
+            }
+
+            // Fair drain of the scheduler queue (Issue #142): users queued
+            // behind the global concurrency limit are served in FIFO order as
+            // long as the time budget lasts. Each pass re-claims its slot via
+            // Indexer::run(), so a queue entry that just became 'running'
+            // moves to the back of the remaining picks.
+            if (time() - $startedAt < $budget) {
+                $drained = 0;
+                foreach ($this->scheduler->queuedUsers(10) as $queuedUser) {
+                    if (time() - $startedAt >= $budget) {
+                        break;
+                    }
+                    $drained++;
+                    $this->logger->info('eva_ai index job drains queued user', ['user' => $queuedUser]);
+                    try {
+                        $this->indexer->run($queuedUser);
+                    } catch (\Throwable $e) {
+                        $this->logger->warning('eva_ai index job drain failed for user', [
+                            'user' => $queuedUser,
+                            'exception' => $e->getMessage(),
+                        ]);
+                    }
+                }
+                if ($drained > 0) {
+                    $this->logger->info('eva_ai index job drained queue', ['users' => $drained]);
+                }
             }
         } finally {
             $this->config->setUserId(null);

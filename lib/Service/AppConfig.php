@@ -103,6 +103,14 @@ class AppConfig {
         // Round-robin continuation marker: the last user a periodic run
         // finished, so later users are not starved by earlier slow ones.
         'index_job_last_user' => '',
+        // Fair multi-user scheduling (Issue #142): how many index passes may
+        // run concurrently across all users. Instance-wide (not per user);
+        // the IndexScheduler clamps it to 1..16.
+        'index_max_concurrent' => '2',
+        // Scheduler queue state (Issue #142): JSON blobs kept at app scope so
+        // every worker sees the same FIFO order.
+        'index_scheduler_active' => '{}',
+        'index_scheduler_queue' => '[]',
     ];
 
     /**
