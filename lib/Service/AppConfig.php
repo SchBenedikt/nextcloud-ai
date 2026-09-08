@@ -23,6 +23,7 @@ class AppConfig {
         'exec_write_max_chars', 'exec_delete_mode',        'notify_on_complete',
         'mail_index_enabled', 'mail_index_max', 'talk_history_size',
         'talk_bot_trigger', 'talk_classify_all', 'exclude_paths',
+        'chat_retention_days', 'embed_batch_size',
     ];
 
     /**
@@ -53,6 +54,7 @@ class AppConfig {
         // Optional dedicated model for heavy text tasks (summarize, translate,
         // proofread, …). Empty means the chat chain is used (Issue #86).
         'summary_model' => '',
+        'embed_batch_size' => '24',
         'top_k' => '6',
         'chunk_size' => '900',
         'chunk_overlap' => '120',
@@ -73,6 +75,9 @@ class AppConfig {
         'talk_bot_trigger' => 'Eva',
         'talk_classify_all' => '0',
         'exclude_paths' => '',
+        // Automatic deletion of chats after N days of inactivity (0 = never,
+        // Issue: chat retention). The background job removes the chats.
+        'chat_retention_days' => '0',
         'index_running' => '0',
         'index_started' => '',
         'index_heartbeat' => '',
@@ -98,6 +103,14 @@ class AppConfig {
         // Round-robin continuation marker: the last user a periodic run
         // finished, so later users are not starved by earlier slow ones.
         'index_job_last_user' => '',
+        // Fair multi-user scheduling (Issue #142): how many index passes may
+        // run concurrently across all users. Instance-wide (not per user);
+        // the IndexScheduler clamps it to 1..16.
+        'index_max_concurrent' => '2',
+        // Scheduler queue state (Issue #142): JSON blobs kept at app scope so
+        // every worker sees the same FIFO order.
+        'index_scheduler_active' => '{}',
+        'index_scheduler_queue' => '[]',
     ];
 
     /**
@@ -116,6 +129,8 @@ class AppConfig {
         'exec_write_max_chars' => [1, 10000000],
         'mail_index_max' => [1, 500],
         'talk_history_size' => [1, 500],
+        'chat_retention_days' => [0, 3650],
+        'embed_batch_size' => [1, 200],
     ];
 
     private ?string $userId = null;

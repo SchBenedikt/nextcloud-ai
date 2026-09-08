@@ -22,6 +22,7 @@ use OCP\AppFramework\Http\StreamTraversableResponse;
 use OCP\AppFramework\Http\DataResponse;
 use OCP\AppFramework\Http\NotFoundResponse;
 use OCP\BackgroundJob\IJobList;
+use OCP\ICacheFactory;
 use OCP\App\IAppManager;
 use OCP\IRequest;
 use OCP\Lock\ILockingProvider;
@@ -45,9 +46,10 @@ class ApiController extends OCSController {
         private IAppManager $appManager,
         private KnowledgeInitializer $knowledgeInitializer,
         private LockGuard $lockGuard,
-        private \OCA\EvaAi\Service\ActionAudit $actionAudit,
         private \OCA\EvaAi\Service\UserDataService $userDataService,
-        private \OCA\EvaAi\Service\ChatLearner $chatLearner
+        private \OCA\EvaAi\Service\ChatLearner $chatLearner,
+        private ICacheFactory $cacheFactory,
+        private \OCA\EvaAi\Service\IndexScheduler $indexScheduler
     ) {
         parent::__construct($appName, $request);
         $this->config->setUserId($this->userId);
@@ -90,7 +92,145 @@ class ApiController extends OCSController {
             return new DataResponse(['error' => 'Not logged in'], 401);
         }
         $this->knowledgeInitializer->ensureInitialized($user);
-        return new DataResponse($this->ragService->buildStatus($user));
+        $status = $this->ragService->buildStatus($user);
+        // Fair multi-user scheduling snapshot (Issue #142): global running
+        // count, limit and this user's queue position - cheap, no polling.
+        $status['scheduler'] = $this->indexScheduler->snapshot($user);
+        return new DataResponse($status);
+    }
+
+    /**
+     * Dashboard summary (Issue: app home): document/chunk/size aggregates,
+     * chat counts + recent chats, folder count and a slim status snapshot.
+     */
+    #[NoAdminRequired]
+    public function stats(): DataResponse {
+        $user = $this->requireUser();
+        if ($user === null) {
+            return new DataResponse(['error' => 'Not logged in'], 401);
+        }
+        try {
+            $this->knowledgeInitializer->ensureInitialized($user);
+            $agg = $this->documentMapper->aggregateForUser($user);
+            $status = $this->ragService->buildStatus($user);
+            $chats = $this->chatStore->list($user, null, true);
+            $active = array_values(array_filter($chats, static fn($c) => empty($c['archived'])));
+            $recent = $active;
+            usort($recent, static fn($a, $b) => ($b['updated'] ?? 0) <=> ($a['updated'] ?? 0));
+            return new DataResponse([
+                'documents' => [
+                    'count' => $agg['count'],
+                    'chunks' => $agg['chunks'],
+                    'size' => $agg['size'],
+                ],
+                'chats' => [
+                    'total' => count($chats),
+                    'active' => count($active),
+                    'archived' => count($chats) - count($active),
+                    'recent' => array_slice($recent, 0, 6),
+                ],
+                'folders' => count($this->chatStore->listFolders($user)),
+                'status' => [
+                    'ollamaOnline' => (bool)($status['ollamaOnline'] ?? false),
+                    'ollamaError' => $status['ollamaError'] ?? null,
+                    'chatModel' => $status['chatModel'] ?? '',
+                    'embeddingModel' => $status['embeddingModel'] ?? '',
+                    'indexing' => (bool)($status['indexing'] ?? false),
+                    'lastFinished' => $status['lastFinished'] ?? null,
+                    'lastError' => $status['lastError'] ?? null,
+                ],
+            ]);
+        } catch (\Throwable $e) {
+            return new DataResponse(['error' => 'Unable to build dashboard summary'], 500);
+        }
+    }
+
+    /**
+     * Time-of-day aware greeting for the dashboard hero. The text is generated
+     * by the configured chat model once per user+period and cached for several
+     * hours, so a dashboard load never blocks on Ollama; when the model is
+     * unreachable a static greeting in the user's UI language is returned.
+     */
+    #[NoAdminRequired]
+    public function greeting(): DataResponse {
+        $user = $this->requireUser();
+        if ($user === null) {
+            return new DataResponse(['error' => 'Not logged in'], 401);
+        }
+        $this->config->setUserId($user);
+        $period = $this->dayPeriod();
+        $lang = $this->uiLanguage();
+        $cacheKey = 'greeting_' . substr(hash('sha256', $user), 0, 16) . '_' . $period;
+        $cache = $this->cacheFactory->createDistributed('eva_ai_greeting_');
+        $cached = $cache->get($cacheKey);
+        if (is_string($cached) && $cached !== '') {
+            return new DataResponse(['greeting' => $cached, 'period' => $period]);
+        }
+        $greeting = $this->generateGreeting($period, $lang);
+        if ($greeting === '') {
+            $greeting = $this->staticGreeting($period, $lang);
+        }
+        $cache->set($cacheKey, $greeting, 6 * 3600);
+        return new DataResponse(['greeting' => $greeting, 'period' => $period]);
+    }
+
+    /** 'night'|'morning'|'afternoon'|'evening' based on the server's clock. */
+    private function dayPeriod(): string {
+        $h = (int)date('G');
+        if ($h < 5) {
+            return 'night';
+        }
+        if ($h < 12) {
+            return 'morning';
+        }
+        if ($h < 18) {
+            return 'afternoon';
+        }
+        return 'evening';
+    }
+
+    /** The user's Nextcloud UI language ('de', 'en', ...). */
+    private function uiLanguage(): string {
+        try {
+            return \OCP\Server::get(\OCP\L10N\IFactory::class)->findLanguage('eva_ai');
+        } catch (\Throwable $e) {
+            return 'en';
+        }
+    }
+
+    /**
+     * One short AI-generated greeting sentence for the given period. Returns
+     * an empty string when Ollama is offline or produced no usable text.
+     */
+    private function generateGreeting(string $period, string $lang): string {
+        try {
+            $periodLabel = [
+                'night' => 'at night',
+                'morning' => 'in the morning',
+                'afternoon' => 'in the afternoon',
+                'evening' => 'in the evening',
+            ][$period] ?? $period;
+            $chat = $this->ollama->chat([
+                ['role' => 'system', 'content' => 'You are EVA, the friendly assistant built into the user\'s Nextcloud. Reply with ONE short, warm greeting sentence (max 12 words) appropriate for the current time of day, in the user\'s language. No markdown, no emojis, no quotes, no question, no explanation.'],
+                ['role' => 'user', 'content' => 'Current time of day: ' . $periodLabel . '. Language: ' . $lang],
+            ], [], 30);
+            if (isset($chat['error']) || empty($chat['answer'])) {
+                return '';
+            }
+            $text = trim((string)$chat['answer']);
+            $text = preg_replace('/["\r\n]+/', ' ', $text) ?? $text;
+            return mb_substr($text, 0, 120);
+        } catch (\Throwable $e) {
+            return '';
+        }
+    }
+
+    /** Static fallback greeting in the user's UI language. */
+    private function staticGreeting(string $period, string $lang): string {
+        $de = ['night' => 'Gute Nacht', 'morning' => 'Guten Morgen', 'afternoon' => 'Guten Tag', 'evening' => 'Guten Abend'];
+        $en = ['night' => 'Good night', 'morning' => 'Good morning', 'afternoon' => 'Good afternoon', 'evening' => 'Good evening'];
+        $map = str_starts_with($lang, 'de') ? $de : $en;
+        return $map[$period] ?? $map['morning'];
     }
 
     #[NoAdminRequired]
@@ -123,12 +263,14 @@ class ApiController extends OCSController {
             'notify_on_complete',
             'mail_index_enabled',
             'mail_index_max',
+            'embed_batch_size',
             'weather_tool_enabled',
             'talk_history_size',
             'talk_bot_trigger',
             'talk_classify_all',
             'exclude_paths',
             'index_enrolled',
+            'chat_retention_days',
         ];
         $validationErrors = [];
         $pending = [];
@@ -170,7 +312,7 @@ class ApiController extends OCSController {
             ], 400);
         }
         foreach ($pending as $key => $value) {
-                if (in_array($key, ['top_k', 'chunk_size', 'chunk_overlap', 'max_file_size', 'max_files_per_run', 'context_size', 'exec_write_max_chars', 'mail_index_max', 'talk_history_size'], true)) {
+                if (in_array($key, ['top_k', 'chunk_size', 'chunk_overlap', 'max_file_size', 'max_files_per_run', 'context_size', 'exec_write_max_chars', 'mail_index_max', 'talk_history_size', 'chat_retention_days', 'embed_batch_size'], true)) {
                     $value = (string)$value;
                 }
                 if ($key === 'exec_delete_mode') {
@@ -454,7 +596,43 @@ class ApiController extends OCSController {
         $search = (string)($this->requestParam('search') ?? '');
         $limit = max(1, min(500, (int)($this->requestParam('limit') ?? 100)));
         $offset = max(0, (int)($this->requestParam('offset') ?? 0));
-        $docs = $this->documentMapper->findByUser($user, $search, $limit, $offset);
+        // Document filters and sorting (Issue #88). Every value is validated
+        // and bounded server-side; unknown sort keys fall back to the default.
+        $filters = [];
+        $type = trim((string)($this->requestParam('type') ?? ''));
+        if ($type !== '') {
+            // MIME group (text) or full MIME type (application/pdf), safe charset.
+            if (preg_match('/^[a-z0-9.+-]+(?:\/[a-z0-9.+-]+)?$/i', $type)) {
+                $filters['type'] = $type;
+            }
+        }
+        $folder = trim((string)($this->requestParam('folder') ?? ''));
+        if ($folder !== '') {
+            // Relative folder path without traversal or wildcards.
+            $folder = trim($folder, '/');
+            if (preg_match('#^(?:[^/\\]{1,120}/)*[^/\\]{1,120}$#', $folder) && !str_contains($folder, '..')) {
+                $filters['folder'] = $folder;
+            }
+        }
+        $dateFrom = (int)($this->requestParam('dateFrom') ?? 0);
+        if ($dateFrom > 0) {
+            $filters['dateFrom'] = $dateFrom;
+        }
+        $dateTo = (int)($this->requestParam('dateTo') ?? 0);
+        if ($dateTo > 0) {
+            $filters['dateTo'] = $dateTo;
+        }
+        $sizeMin = (int)($this->requestParam('sizeMin') ?? 0);
+        if ($sizeMin > 0) {
+            $filters['sizeMin'] = $sizeMin;
+        }
+        $sizeMax = (int)($this->requestParam('sizeMax') ?? 0);
+        if ($sizeMax > 0) {
+            $filters['sizeMax'] = $sizeMax;
+        }
+        $sort = (string)($this->requestParam('sort') ?? '');
+        $dir = strtolower((string)($this->requestParam('dir') ?? 'desc'));
+        $docs = $this->documentMapper->findByUser($user, $search, $limit, $offset, $filters, $sort !== '' ? $sort : null, $dir);
         $out = array_map(static function ($d) {
             return [
                 'id' => (int)$d->getId(),
@@ -468,7 +646,7 @@ class ApiController extends OCSController {
         }, $docs);
         // Totals describe the whole filtered index, independent of the page
         // that was requested (Issue #74).
-        $aggregates = $this->documentMapper->aggregateForUser($user, $search);
+        $aggregates = $this->documentMapper->aggregateForUser($user, $search, $filters);
         return new DataResponse([
             'documents' => $out,
             'total' => $aggregates['count'],
@@ -531,7 +709,44 @@ class ApiController extends OCSController {
         if (!is_array($history)) {
             $history = [];
         }
-        return new DataResponse($this->ragService->ask($user, $message, $history));
+        // Per-chat folder scope (Issue #88) and custom instructions
+        // (Issue #90) are resolved from the chat's stored metadata.
+        $chatId = $this->requestParam('chatId');
+        $custom = $this->customFor($user, $chatId);
+        return new DataResponse($this->ragService->ask($user, $message, $history, $this->scopePathFor($user, $chatId), $custom['instructions'], $custom['persona']));
+    }
+
+    /**
+     * Resolve the folder scope stored on a chat (Issue #88). Empty string
+     * when the chat is unknown, missing or not scoped — the caller then
+     * falls back to the user's global index.
+     */
+    private function scopePathFor(?string $user, mixed $chatId): string {
+        if ($user === null || !is_string($chatId) || trim($chatId) === '') {
+            return '';
+        }
+        $chat = $this->chatStore->get($user, trim($chatId));
+        return $chat !== null ? trim((string)($chat['scopePath'] ?? '')) : '';
+    }
+
+    /**
+     * Resolve the custom instructions + persona stored on a chat (Issue #90).
+     * Empty strings when the chat is unknown or not customised — the caller
+     * then builds the default prompt.
+     * @return array{instructions:string,persona:string}
+     */
+    private function customFor(?string $user, mixed $chatId): array {
+        if ($user === null || !is_string($chatId) || trim($chatId) === '') {
+            return ['instructions' => '', 'persona' => ''];
+        }
+        $chat = $this->chatStore->get($user, trim($chatId));
+        if ($chat === null) {
+            return ['instructions' => '', 'persona' => ''];
+        }
+        return [
+            'instructions' => trim((string)($chat['instructions'] ?? '')),
+            'persona' => trim((string)($chat['persona'] ?? '')),
+        ];
     }
 
     /**
@@ -685,8 +900,13 @@ class ApiController extends OCSController {
         $body = json_decode((string)file_get_contents('php://input'), true);
         $message = trim((string)($body['message'] ?? ''));
         $history = isset($body['history']) && is_array($body['history']) ? $body['history'] : [];
+        // Per-chat folder scope (Issue #88) and custom instructions (Issue #90)
+        // are resolved once, outside the generator, so they cannot change
+        // mid-stream.
+        $scopePath = $this->scopePathFor($user, $body['chatId'] ?? null);
+        $custom = $this->customFor($user, $body['chatId'] ?? null);
 
-        $generator = (function () use ($user, $message, $history): \Generator {
+        $generator = (function () use ($user, $message, $history, $scopePath, $custom): \Generator {
             // Aber die PHP-Output-Buffering-Schicht (php.ini output_buffering)
             // würde jede erzeugte Zeile bis zum Ende puffern -> keine Live-Streams.
             // Deshalb entfernen wir hier alle Puffer und flush'eriessen wirklich.
@@ -702,7 +922,7 @@ class ApiController extends OCSController {
             }
             $gen = null;
             try {
-                $gen = $this->ragService->askStream($user, $message, $history);
+                $gen = $this->ragService->askStream($user, $message, $history, $scopePath, $custom['instructions'], $custom['persona']);
                 foreach ($gen as $line) {
                     if ($this->clientDisconnected()) {
                         return;
@@ -775,7 +995,10 @@ class ApiController extends OCSController {
         }
         // Optional text search across chat titles and message content.
         $search = trim((string)($this->requestParam('search') ?? ''));
-        return new DataResponse($this->chatStore->list($user, $search !== '' ? $search : null));
+        // Archived chats are always included: the sidebar splits them into
+        // its own section and would otherwise never see them again (Issue #87).
+        // The dashboard widget reads the store directly and keeps hiding them.
+        return new DataResponse($this->chatStore->list($user, $search !== '' ? $search : null, true));
     }
 
     #[NoAdminRequired]
@@ -850,7 +1073,18 @@ class ApiController extends OCSController {
             if ($role === '' || $text === '') {
                 return new DataResponse(['error' => 'role and text are required'], 400);
             }
-            $this->chatStore->append($user, $id, $role, $text);
+            // Optional follow-up suggestions (assistant messages only).
+            $followupsRaw = $this->requestParam('followups');
+            $followups = [];
+            if (is_array($followupsRaw)) {
+                $followups = array_slice(array_map('strval', $followupsRaw), 0, 3);
+            } elseif (is_string($followupsRaw) && $followupsRaw !== '') {
+                $decoded = json_decode($followupsRaw, true);
+                if (is_array($decoded)) {
+                    $followups = array_slice(array_map('strval', $decoded), 0, 3);
+                }
+            }
+            $this->chatStore->append($user, $id, $role, $text, $followups);
 
             // After an assistant message is saved, learn from the full chat.
             if ($role === 'assistant') {
@@ -888,6 +1122,125 @@ class ApiController extends OCSController {
             return new DataResponse(['ok' => true]);
         } catch (\Throwable $e) {
             return new DataResponse(['error' => 'Unable to persist chat data'], 500);
+        }
+    }
+
+    /**
+     * Update organisational chat metadata (Issue #87): pin/unpin, assign a
+     * folder, archive/unarchive.
+     *
+     * POST /api/chats/{id}/meta
+     * Body: { pinned?: bool, folder?: string, archived?: bool }
+     */
+    #[NoAdminRequired]
+    public function chatMeta(string $id): DataResponse {
+        $user = $this->requireUser();
+        if ($user === null) {
+            return new DataResponse(['error' => 'Not logged in'], 401);
+        }
+        $meta = [];
+        $body = $this->requestBody();
+        foreach (['pinned', 'archived'] as $flag) {
+            if (array_key_exists($flag, $body)) {
+                $meta[$flag] = !empty($body[$flag]);
+            }
+        }
+        if (array_key_exists('folder', $body)) {
+            $meta['folder'] = trim((string)$body['folder']);
+        }
+        if (array_key_exists('scopePath', $body)) {
+            $meta['scopePath'] = trim((string)$body['scopePath']);
+        }
+        if (array_key_exists('instructions', $body)) {
+            // Free-text custom instructions (Issue #90); capped server-side.
+            $meta['instructions'] = mb_substr(trim((string)$body['instructions']), 0, 2000);
+        }
+        if (array_key_exists('persona', $body)) {
+            // Preset persona slug (Issue #90); only known slugs are stored.
+            $persona = trim((string)$body['persona']);
+            $meta['persona'] = array_key_exists($persona, RagService::PERSONAS) ? $persona : '';
+        }
+        if ($meta === []) {
+            return new DataResponse(['error' => 'No metadata given'], 400);
+        }
+        try {
+            if (!$this->chatStore->setMeta($user, $id, $meta)) {
+                return new NotFoundResponse();
+            }
+            return new DataResponse(['ok' => true]);
+        } catch (\Throwable $e) {
+            return new DataResponse(['error' => 'Unable to persist chat data'], 500);
+        }
+    }
+
+    #[NoAdminRequired]
+    public function folders(): DataResponse {
+        $user = $this->requireUser();
+        if ($user === null) {
+            return new DataResponse(['error' => 'Not logged in'], 401);
+        }
+        try {
+            return new DataResponse($this->chatStore->listFolders($user));
+        } catch (\Throwable $e) {
+            return new DataResponse(['error' => 'Unable to read folders'], 500);
+        }
+    }
+
+    #[NoAdminRequired]
+    public function createFolder(): DataResponse {
+        $user = $this->requireUser();
+        if ($user === null) {
+            return new DataResponse(['error' => 'Not logged in'], 401);
+        }
+        $name = trim((string)$this->requestParam('name') ?? '');
+        if ($name === '') {
+            return new DataResponse(['error' => 'Folder name required'], 400);
+        }
+        try {
+            return new DataResponse($this->chatStore->createFolder($user, $name));
+        } catch (\Throwable $e) {
+            return new DataResponse(['error' => 'Unable to create folder'], 500);
+        }
+    }
+
+    #[NoAdminRequired]
+    public function renameFolder(): DataResponse {
+        $user = $this->requireUser();
+        if ($user === null) {
+            return new DataResponse(['error' => 'Not logged in'], 401);
+        }
+        $from = trim((string)$this->requestParam('from') ?? '');
+        $to = trim((string)$this->requestParam('to') ?? '');
+        if ($from === '' || $to === '') {
+            return new DataResponse(['error' => 'from and to are required'], 400);
+        }
+        try {
+            if (!$this->chatStore->renameFolder($user, $from, $to)) {
+                return new NotFoundResponse();
+            }
+            return new DataResponse(['ok' => true]);
+        } catch (\Throwable $e) {
+            return new DataResponse(['error' => 'Unable to rename folder'], 500);
+        }
+    }
+
+    #[NoAdminRequired]
+    public function deleteFolder(): DataResponse {
+        $user = $this->requireUser();
+        if ($user === null) {
+            return new DataResponse(['error' => 'Not logged in'], 401);
+        }
+        $name = trim((string)$this->requestParam('name') ?? '');
+        if ($name === '') {
+            return new DataResponse(['error' => 'Folder name required'], 400);
+        }
+        try {
+            if (!$this->chatStore->deleteFolder($user, $name)) {
+                return new NotFoundResponse();
+            }
+            return new DataResponse(['ok' => true]);
+        } catch (\Throwable $e) {
+            return new DataResponse(['error' => 'Unable to delete folder'], 500);
         }
     }
 
@@ -943,7 +1296,16 @@ class ApiController extends OCSController {
             $history[] = ['role' => $m['role'] ?? 'user', 'content' => $m['text'] ?? ''];
         }
 
-        $gen = $this->ragService->askStream($user, $targetMessage, $history);
+        // Re-apply the chat's custom instructions and persona on regenerate
+        // (Issue #90), resolved from the stored metadata.
+        $gen = $this->ragService->askStream(
+            $user,
+            $targetMessage,
+            $history,
+            trim((string)($chat['scopePath'] ?? '')),
+            trim((string)($chat['instructions'] ?? '')),
+            trim((string)($chat['persona'] ?? ''))
+        );
         return new StreamTraversableResponse($gen, 'application/x-ndjson');
     }
 
@@ -1005,44 +1367,4 @@ class ApiController extends OCSController {
         return $response;
     }
 
-    /** Per-user action history (Issue #150): metadata only, never file content. */
-    #[NoAdminRequired]
-    public function audit(): DataResponse {
-        $user = $this->requireUser();
-        if ($user === null) {
-            return new DataResponse(['error' => 'Not logged in'], 401);
-        }
-        $limit = max(1, min(500, (int)($this->requestParam('limit') ?? 100)));
-        return new DataResponse(['entries' => $this->actionAudit->list($user, $limit)]);
-    }
-
-    /** Let the user clear their own action history (Issue #150). */
-    #[NoAdminRequired]
-    public function clearAudit(): DataResponse {
-        $user = $this->requireUser();
-        if ($user === null) {
-            return new DataResponse(['error' => 'Not logged in'], 401);
-        }
-        return new DataResponse(['cleared' => $this->actionAudit->clear($user)]);
-    }
-
-    /**
-     * Admin aggregate (Issue #150): per-user audit-event counts. Metadata only
-     * - the actual entries stay per-user behind NoAdminRequired, so an admin
-     * sees which users have history and how much, never their file content.
-     * (No NoAdminRequired attribute: app controller methods are admin-only by
-     * default in Nextcloud.)
-     */
-    public function auditAdmin(): DataResponse {
-        $users = $this->documentMapper->distinctUserIds();
-        $rows = [];
-        foreach ($users as $user) {
-            $count = $this->actionAudit->count($user);
-            if ($count > 0) {
-                $rows[] = ['user' => $user, 'count' => $count];
-            }
-        }
-        usort($rows, static fn($a, $b) => $b['count'] <=> $a['count']);
-        return new DataResponse(['users' => $rows]);
-    }
 }

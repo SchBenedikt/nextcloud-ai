@@ -37,12 +37,15 @@ final class IndexJobSchedulingTest extends TestCase {
                 default => '',
             };
         });
+        $scheduler = $this->createMock(\OCA\EvaAi\Service\IndexScheduler::class);
+        $scheduler->method('queuedUsers')->willReturn([]);
         return new IndexJob(
             $this->createMock(ITimeFactory::class),
             $config,
             $this->createMock(Indexer::class),
             $this->createMock(DocumentMapper::class),
             $this->createMock(AgentStore::class),
+            $scheduler,
             $this->createMock(LoggerInterface::class)
         );
     }
@@ -88,12 +91,15 @@ final class IndexJobSchedulingTest extends TestCase {
         $config->method('get')->willReturnCallback(static function (string $key): string {
             return $key === 'index_job_max_seconds' ? '120' : '';
         });
+        $scheduler = $this->createMock(\OCA\EvaAi\Service\IndexScheduler::class);
+        $scheduler->method('queuedUsers')->willReturn([]);
         $job = new IndexJob(
             $this->createMock(ITimeFactory::class),
             $config,
             $this->createMock(Indexer::class),
             $this->createMock(DocumentMapper::class),
             $this->createMock(AgentStore::class),
+            $scheduler,
             $this->createMock(LoggerInterface::class)
         );
         $method = new \ReflectionMethod(IndexJob::class, 'budgetSeconds');
@@ -103,12 +109,15 @@ final class IndexJobSchedulingTest extends TestCase {
         $configSmall->method('get')->willReturnCallback(static function (string $key): string {
             return $key === 'index_job_max_seconds' ? '1' : '';
         });
+        $schedulerSmall = $this->createMock(\OCA\EvaAi\Service\IndexScheduler::class);
+        $schedulerSmall->method('queuedUsers')->willReturn([]);
         $jobSmall = new IndexJob(
             $this->createMock(ITimeFactory::class),
             $configSmall,
             $this->createMock(Indexer::class),
             $this->createMock(DocumentMapper::class),
             $this->createMock(AgentStore::class),
+            $schedulerSmall,
             $this->createMock(LoggerInterface::class)
         );
         // Below the floor the default is used so a tiny misconfiguration cannot

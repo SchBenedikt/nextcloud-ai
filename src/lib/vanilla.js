@@ -1,4 +1,4 @@
-import { mdiDownload } from '@mdi/js'
+import { mdiDownload, mdiTune } from '@mdi/js'
 import { translate as t } from './i18n'
 import { buildConfirmForm } from './confirmForms'
 import { escHtml, mdInline, mdToHtml, citedSources, copyText } from './chat-utils'
@@ -171,54 +171,11 @@ export function mountChat(root, opts = {}) {
 		}
 
 		if (m.sources && m.sources.length) {
-			const details = document.createElement('details')
-			details.className = 'rs'
-			const summary = document.createElement('summary')
-			summary.className = 'rs-sum'
-			summary.textContent = t('Sources') + ' (' + m.sources.length + ')'
-			details.appendChild(summary)
-			const list = document.createElement('div')
-			list.className = 'rs-list'
-			m.sources.forEach((item) => {
-				const src = item.src || item
-				const row = document.createElement('div')
-				row.className = 'rs-item'
-				const a = document.createElement('a')
-				a.href = src.url || '#'
-				a.target = '_blank'
-				a.rel = 'noopener'
-				const prefix = item.ref !== undefined ? '[' + item.ref + '] ' : ''
-				a.textContent = prefix + (src.path || src.name || '')
-				row.appendChild(a)
-				if (src.excerpts && src.excerpts.length) {
-					const ex = document.createElement('div')
-					ex.className = 'rs-excerpt'
-					ex.textContent = src.excerpts[0]
-					row.appendChild(ex)
-				}
-				list.appendChild(row)
-			})
-			details.appendChild(list)
-			wrap.appendChild(details)
+			wrap.appendChild(renderSources(m))
 		}
 
 		if (m.followups && m.followups.length) {
-			const chips = document.createElement('div')
-			chips.className = 'rfu'
-			m.followups.forEach((q) => {
-				const btn = document.createElement('button')
-				btn.type = 'button'
-				btn.className = 'rfu-btn'
-				btn.textContent = q
-				btn.addEventListener('click', () => {
-					const ta = document.querySelector('.chatview-root .chat-input')
-					if (ta) { ta.value = q; ta.dispatchEvent(new Event('input')) }
-					const sendBtn = document.querySelector('.chatview-root .chat-send')
-					if (sendBtn) sendBtn.click()
-				})
-				chips.appendChild(btn)
-			})
-			wrap.appendChild(chips)
+			wrap.appendChild(renderFollowups(m))
 		}
 
 		const linkUrl = (m.confirmation && m.confirmation.resolved && m.confirmation.resultUrl) || m.linkUrl
@@ -364,7 +321,32 @@ export function mountChat(root, opts = {}) {
 	exportBtn.append(exportIcon, exportLabel)
 	exportBtn.disabled = true
 	exportBtn.addEventListener('click', exportMarkdown)
-	head.append(h1, exportBtn)
+	const scopePill = document.createElement('span')
+	scopePill.className = 'pill pill-warn'
+	scopePill.hidden = true
+
+	// Per-chat custom instructions (Issue #90): a small header action that
+	// opens a dialog to pick a preset persona and/or free-text instructions.
+	const customizeBtn = document.createElement('button')
+	customizeBtn.className = 'export customize-btn'
+	customizeBtn.type = 'button'
+	customizeBtn.setAttribute('aria-label', t('Customize EVA for this chat'))
+	customizeBtn.title = t('Customize EVA for this chat')
+	const customizeIcon = document.createElementNS('http://www.w3.org/2000/svg', 'svg')
+	customizeIcon.classList.add('export-icon')
+	customizeIcon.setAttribute('viewBox', '0 0 24 24')
+	customizeIcon.setAttribute('aria-hidden', 'true')
+	const customizePath = document.createElementNS('http://www.w3.org/2000/svg', 'path')
+	customizePath.setAttribute('d', mdiTune)
+	customizeIcon.append(customizePath)
+	const customizeLabel = document.createElement('span')
+	customizeLabel.textContent = t('Customize')
+	customizeBtn.append(customizeIcon, customizeLabel)
+	const customizePill = document.createElement('span')
+	customizePill.className = 'pill pill-ok'
+	customizePill.hidden = true
+	customizeBtn.addEventListener('click', () => openCustomizeDialog())
+	head.append(h1, scopePill, customizePill, customizeBtn, exportBtn)
 
 	const scroll = document.createElement('div')
 	scroll.className = 'chat-log'
@@ -458,7 +440,77 @@ export function mountChat(root, opts = {}) {
 		} else if (ta) {
 			ta.remove()
 		}
+		// Once the answer is complete, (re-)render sources and follow-up
+		// chips: they only exist after the stream is done, and updateMessage
+		// runs incrementally while the DOM was built for an in-flight answer.
+		if (m.done) {
+			const oldSrc = wrap.querySelector('.rs')
+			if (oldSrc) oldSrc.remove()
+			const oldFu = wrap.querySelector('.rfu')
+			if (oldFu) oldFu.remove()
+			const anchor = wrap.querySelector('.rconfirm-link, .rconfirm')
+			if (m.sources && m.sources.length) {
+				const details = renderSources(m)
+				if (anchor) wrap.insertBefore(details, anchor)
+				else wrap.appendChild(details)
+			}
+			if (m.followups && m.followups.length) {
+				const chips = renderFollowups(m)
+				if (anchor) wrap.insertBefore(chips, anchor)
+				else wrap.appendChild(chips)
+			}
+		}
 		scroll.scrollTop = scroll.scrollHeight
+	}
+
+	function renderSources(m) {
+		const details = document.createElement('details')
+		details.className = 'rs'
+		const summary = document.createElement('summary')
+		summary.className = 'rs-sum'
+		summary.textContent = t('Sources') + ' (' + m.sources.length + ')'
+		details.appendChild(summary)
+		const list = document.createElement('div')
+		list.className = 'rs-list'
+		m.sources.forEach((item) => {
+			const src = item.src || item
+			const row = document.createElement('div')
+			row.className = 'rs-item'
+			const a = document.createElement('a')
+			a.href = src.url || '#'
+			a.target = '_blank'
+			a.rel = 'noopener'
+			const prefix = item.ref !== undefined ? '[' + item.ref + '] ' : ''
+			a.textContent = prefix + (src.path || src.name || '')
+			row.appendChild(a)
+			if (src.excerpts && src.excerpts.length) {
+				const ex = document.createElement('div')
+				ex.className = 'rs-excerpt'
+				ex.textContent = src.excerpts[0]
+				row.appendChild(ex)
+			}
+			list.appendChild(row)
+		})
+		details.appendChild(list)
+		return details
+	}
+
+	function renderFollowups(m) {
+		const chips = document.createElement('div')
+		chips.className = 'rfu'
+		m.followups.forEach((q) => {
+			const btn = document.createElement('button')
+			btn.type = 'button'
+			btn.className = 'rfu-btn'
+			btn.textContent = q
+			btn.addEventListener('click', () => {
+				if (sending) return
+				input.value = q
+				send()
+			})
+			chips.appendChild(btn)
+		})
+		return chips
 	}
 
 	function apiStream(path, body, onLine) {
@@ -508,25 +560,162 @@ export function mountChat(root, opts = {}) {
 		}
 	}
 
-	function saveMessage(role, text) {
+	function saveMessage(role, text, followups) {
 		if (!chatId) return Promise.resolve(false)
-		return api('POST', '/chats/' + chatId + '/messages', { role, text })
+		const body = { role, text }
+		// Follow-up suggestions are persisted for assistant messages so the
+		// chips survive a page reload.
+		if (role === 'assistant' && Array.isArray(followups) && followups.length) {
+			body.followups = followups
+		}
+		return api('POST', '/chats/' + chatId + '/messages', body)
 			.then(() => true)
 			.catch(() => false)
 	}
 
+	function refreshCustomizePill(chat) {
+		// Per-chat custom instructions (Issue #90): a subtle header indicator
+		// when a persona or free-text instructions are active on this chat.
+		const active = !!(chat && ((chat.persona && chat.persona !== 'default') || (chat.instructions && chat.instructions.trim())))
+		customizePill.hidden = !active
+		if (active) {
+			customizePill.textContent = chat.persona && chat.persona !== 'default' ? t('Persona: {name}', { name: personaLabel(chat.persona) }) : t('Customized')
+		}
+	}
+
 	function restoreServerChat(id) {
 		return api('GET', '/chats/' + id).then((chat) => {
+			// Per-chat folder scope (Issue #88): visible in the header so the
+			// user knows the answer only uses documents from that folder.
+			if (chat && chat.scopePath) {
+				scopePill.textContent = t('Scoped to {path}', { path: chat.scopePath })
+				scopePill.hidden = false
+			} else {
+				scopePill.hidden = true
+			}
+			refreshCustomizePill(chat)
 			messages.length = 0
 			trimmedMessages = (chat && chat.trimmed) ? parseInt(chat.trimmed, 10) || 0 : 0
-			;(chat.messages || []).forEach((m) => messages.push({
-				role: m.role === 'user' || m.role === 'assistant' ? m.role : 'assistant',
-				text: m.text || '',
-				thinking: '',
-				done: true,
-			}))
-			renderAll(messages)
+		;(chat.messages || []).forEach((m) => messages.push({
+			role: m.role === 'user' || m.role === 'assistant' ? m.role : 'assistant',
+			text: m.text || '',
+			thinking: '',
+			followups: Array.isArray(m.followups) ? m.followups : [],
+			done: true,
+		}))
+		renderAll(messages)
+	})
+}
+
+	function personaLabel(slug) {
+		const labels = {
+			'concise': t('Concise'),
+			'structured': t('Structured'),
+			'creative': t('Creative'),
+			'expert': t('Expert'),
+		}
+		return labels[slug] || t('Default')
+	}
+
+	function openCustomizeDialog() {
+		// Only meaningful once a chat exists; without one the instructions
+		// have nowhere to be stored.
+		if (!chatId) return
+		let current = { persona: '', instructions: '' }
+		try {
+			const raw = localStorage.getItem('eva-ai.customize.' + chatId)
+			if (raw) current = JSON.parse(raw) || current
+		} catch (_) { /* ignore */ }
+
+		const overlay = document.createElement('div')
+		overlay.className = 'customize-overlay'
+		const box = document.createElement('div')
+		box.className = 'customize-box'
+		box.setAttribute('role', 'dialog')
+		box.setAttribute('aria-modal', 'true')
+		box.setAttribute('aria-label', t('Customize EVA for this chat'))
+
+		const close = () => {
+			overlay.remove()
+			document.removeEventListener('keydown', onKey)
+		}
+		const onKey = (e) => {
+			if (e.key === 'Escape') close()
+		}
+
+		const h = document.createElement('h3')
+		h.textContent = t('Customize EVA for this chat')
+		const sub = document.createElement('p')
+		sub.className = 'customize-sub'
+		sub.textContent = t('Choose a preset style or write your own instructions. They are only applied to this chat.')
+
+		const personaField = document.createElement('label')
+		personaField.className = 'customize-field'
+		const personaLabelEl = document.createElement('span')
+		personaLabelEl.textContent = t('Style')
+		const personaSelect = document.createElement('select')
+		const personas = [
+			['default', t('Default')],
+			['concise', t('Concise')],
+			['structured', t('Structured')],
+			['creative', t('Creative')],
+			['expert', t('Expert')],
+		]
+		personas.forEach(([value, label]) => {
+			const opt = document.createElement('option')
+			opt.value = value
+			opt.textContent = label
+			personaSelect.append(opt)
 		})
+		personaSelect.value = current.persona && current.persona !== 'default' ? current.persona : 'default'
+		personaField.append(personaLabelEl, personaSelect)
+
+		const instrField = document.createElement('label')
+		instrField.className = 'customize-field'
+		const instrLabelEl = document.createElement('span')
+		instrLabelEl.textContent = t('Your instructions')
+		const instrTa = document.createElement('textarea')
+		instrTa.rows = 5
+		instrTa.maxLength = 2000
+		instrTa.placeholder = t('e.g. Always answer in German, structured with headings…')
+		instrTa.value = current.instructions || ''
+		instrField.append(instrLabelEl, instrTa)
+
+		const actions = document.createElement('div')
+		actions.className = 'customize-actions'
+		const saveBtn = document.createElement('button')
+		saveBtn.type = 'button'
+		saveBtn.className = 'cbtn'
+		saveBtn.textContent = t('Save')
+		const cancelBtn = document.createElement('button')
+		cancelBtn.type = 'button'
+		cancelBtn.className = 'cbtn cbtn-ghost'
+		cancelBtn.textContent = t('Cancel')
+		cancelBtn.addEventListener('click', close)
+		saveBtn.addEventListener('click', async () => {
+			const persona = personaSelect.value === 'default' ? '' : personaSelect.value
+			const instructions = instrTa.value.trim()
+			saveBtn.disabled = true
+			try {
+				await api('POST', '/chats/' + chatId + '/meta', { persona, instructions })
+				localStorage.setItem('eva-ai.customize.' + chatId, JSON.stringify({ persona, instructions }))
+				// Re-fetch to update the header pill with server truth.
+				api('GET', '/chats/' + chatId).then((chat) => refreshCustomizePill(chat)).catch(() => {})
+				close()
+			} catch (err) {
+				saveBtn.disabled = false
+				const errEl = document.createElement('div')
+				errEl.className = 'customize-err'
+				errEl.textContent = String(err && err.message ? err.message : err)
+				box.appendChild(errEl)
+			}
+		})
+		actions.append(cancelBtn, saveBtn)
+		box.append(h, sub, personaField, instrField, actions)
+		overlay.append(box)
+		document.body.appendChild(overlay)
+		document.addEventListener('keydown', onKey)
+		instrTa.focus()
 	}
 
 	if (chatId) {
@@ -552,7 +741,7 @@ export function mountChat(root, opts = {}) {
 		const targetMsg = messages[userIdx].text
 		messages.push({ role: 'assistant', text: '', thinking: '', done: false, tools: [] })
 		renderAll(messages)
-		apiStream(STREAM_URL, { message: targetMsg, history }, (ev) => {
+		apiStream(STREAM_URL, { message: targetMsg, history, chatId }, (ev) => {
 			const last = messages[messages.length - 1]
 			if (ev.type === 'thinking') {
 				last.thinking = (last.thinking || '') + (ev.delta || '')
@@ -580,7 +769,7 @@ export function mountChat(root, opts = {}) {
 				last.done = true
 				// Persist: truncate old messages and save new ones
 				api('POST', '/chats/' + chatId + '/regenerate', { messageIndex: userIdx, message: null })
-					.then(() => saveMessage('assistant', last.text))
+					.then(() => saveMessage('assistant', last.text, last.followups))
 					.then(() => { if (onRecent) onRecent() })
 					.catch(() => {})
 				sending = false
@@ -615,7 +804,7 @@ export function mountChat(root, opts = {}) {
 		}
 		messages.push({ role: 'assistant', text: '', thinking: '', done: false, tools: [] })
 		renderAll(messages)
-		apiStream(STREAM_URL, { message: newText.trim(), history }, (ev) => {
+		apiStream(STREAM_URL, { message: newText.trim(), history, chatId }, (ev) => {
 			const last = messages[messages.length - 1]
 			if (ev.type === 'thinking') {
 				last.thinking = (last.thinking || '') + (ev.delta || '')
@@ -642,7 +831,7 @@ export function mountChat(root, opts = {}) {
 				last.followups = ev.followups || []
 				last.done = true
 				api('POST', '/chats/' + chatId + '/regenerate', { messageIndex: userIdx, message: newText.trim() })
-					.then(() => saveMessage('assistant', last.text))
+					.then(() => saveMessage('assistant', last.text, last.followups))
 					.then(() => { if (onRecent) onRecent() })
 					.catch(() => {})
 				sending = false
@@ -677,7 +866,7 @@ export function mountChat(root, opts = {}) {
 		}
 
 		ensureChat().then(() => {
-			apiStream(STREAM_URL, { message: msg, history }, (ev) => {
+			apiStream(STREAM_URL, { message: msg, history, chatId }, (ev) => {
 				const last = messages[messages.length - 1]
 				if (!last || last.role !== 'assistant' || last.done) return
 				if (ev.type === 'thinking') {
@@ -719,7 +908,7 @@ export function mountChat(root, opts = {}) {
 					// once lets the per-user file lock acquire them in either order,
 					// which can swap the question and answer after a reload.
 					saveMessage('user', msg)
-						.then((savedUser) => savedUser ? saveMessage('assistant', last.text) : false)
+						.then((savedUser) => savedUser ? saveMessage('assistant', last.text, last.followups) : false)
 						.then((saved) => { if (saved && onRecent) onRecent() })
 						.catch(() => {})
 				} else if (ev.type === 'error') {

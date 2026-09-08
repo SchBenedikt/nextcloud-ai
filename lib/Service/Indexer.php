@@ -16,7 +16,11 @@ use OCP\Lock\ILockingProvider;
 use Psr\Log\LoggerInterface;
 
 class Indexer {
-    private const BATCH = 24;
+    /**
+     * Default embedding batch size (Issue #141). Users can tune it through
+     * the settings; 24 keeps memory bounded for the default models.
+     */
+    private const DEFAULT_BATCH = 24;
     private const MAX_DEPTH = 30;
     private const MAX_DECOMPRESSED_BYTES = 104857600; // 100MB limit for decompressed content
     private const MAX_ZIP_ENTRIES = 1000; // Maximum number of ZIP entries to process
@@ -32,7 +36,8 @@ class Indexer {
         private EmailService $email,
         private LoggerInterface $logger,
         private ILockingProvider $lockingProvider,
-        private LockGuard $lockGuard
+        private LockGuard $lockGuard,
+        private IndexScheduler $scheduler
     ) {
     }
 
@@ -83,6 +88,20 @@ class Indexer {
         }
         if ($runId !== null && $this->config->get('index_run_id') !== $runId) {
             $this->lockingProvider->releaseLock($lockPath, ILockingProvider::LOCK_EXCLUSIVE);
+            return $result;
+        }
+
+        // Fair multi-user scheduling (Issue #142): the per-user claim above
+        // serializes work for one account; the global slot bounds how many
+        // accounts may run at the same time. When the instance limit is
+        // reached the user is queued FIFO and this call returns immediately
+        // with their queue position instead of competing for resources.
+        $slot = $this->scheduler->acquireSlot($userId);
+        if ($slot['state'] === 'queued') {
+            $this->lockingProvider->releaseLock($lockPath, ILockingProvider::LOCK_EXCLUSIVE);
+            $result['queued'] = true;
+            $result['queue_position'] = $slot['position'];
+            $result['error'] = null;
             return $result;
         }
 
@@ -145,6 +164,10 @@ class Indexer {
             $stale = []; // Track files that should be removed from index
             $batch = [];
             $maxSize = $this->config->getInt('max_file_size', 20971520);
+            // Configurable bounded embedding batch (Issue #141): memory stays
+            // bounded independently of the library size, and operators can
+            // tune throughput vs. memory on weak hardware.
+            $batchSize = min(200, max(1, $this->config->getInt('embed_batch_size', self::DEFAULT_BATCH)));
             // Whether the filesystem walk completed fully. A bounded pass that
             // stops early (max_files_per_run reached) has an incomplete $seen
             // set and must NOT trigger deletion of 'missing' files (Issue #6).
@@ -158,6 +181,7 @@ class Indexer {
                     break;
                 }
                 $this->config->set('index_heartbeat', (string)time());
+                $this->scheduler->touchHeartbeat($userId);
                 $fileId = (int)$fileData['id'];
                 $seen[$fileId] = true;
                 $result['total_seen']++;
@@ -270,7 +294,7 @@ class Indexer {
                 $result['processed']++;
                 $result['changed']++;
 
-                if (count($batch) >= self::BATCH || $result['processed'] >= $maxFiles) {
+                if (count($batch) >= $batchSize || $result['processed'] >= $maxFiles) {
                     $this->flushBatch($batch, $result, $runId, $userId);
                 }
                 if ($result['processed'] >= $maxFiles) {
@@ -332,11 +356,201 @@ class Indexer {
                     }
                 }
             } finally {
+                $this->scheduler->releaseSlot($userId);
                 $this->lockingProvider->releaseLock($lockPath, ILockingProvider::LOCK_EXCLUSIVE);
             }
         }
 
         return $result;
+    }
+
+    /**
+     * Incremental single-file update triggered by a filesystem hook (Issue #79).
+     * Reuses the same extraction/chunking/embedding path as run(), but only
+     * touches the one file. Applies the user's scope, exclusions and the size
+     * cap; a file that is gone, out of scope or no longer indexable purges its
+     * stale index rows. Skips without error when a full index run holds the
+     * per-user lock (the periodic job reconciles that file later).
+     *
+     * @return array{processed:int,changed:int,skipped:int,deleted:int,error:?string}
+     */
+    public function reindexFile(string $userId, int $fileId): array {
+        $result = [
+            'processed' => 0,
+            'changed' => 0,
+            'skipped' => 0,
+            'deleted' => 0,
+            'cache_hits' => 0,
+            'cache_misses' => 0,
+            'ollama_requests' => 0,
+            'error' => null,
+        ];
+        $lockPath = LockGuard::indexLockPath($userId);
+        try {
+            $this->lockGuard->acquireIndexLock($userId, $lockPath);
+        } catch (\Throwable $e) {
+            // A full index run is in progress; it will pick this file up.
+            $result['error'] = 'Indexing is already running for this user.';
+            return $result;
+        }
+        try {
+            $this->config->setUserId($userId);
+            // Respect the per-user enrollment opt-out (Issue #49).
+            if ($this->config->hasIndexEnrollment($userId) && !$this->config->isIndexEnrolled($userId)) {
+                return $result;
+            }
+            $userFolder = $this->rootFolder->getUserFolder($userId);
+            $nodes = $userFolder->getById($fileId);
+            if (empty($nodes) || !($nodes[0] instanceof File)) {
+                // The file was deleted or moved out of reach: purge cached rows.
+                $this->purgeUserFile($userId, $fileId);
+                $result['deleted'] = 1;
+                return $result;
+            }
+            $file = $nodes[0];
+            $rel = $this->relativePath($userId, $file->getPath());
+
+            $scope = $this->config->get('scope_path');
+            if ($scope !== '' && $rel !== $scope && !str_starts_with($rel, $scope . '/')) {
+                $this->purgeUserFile($userId, $fileId);
+                $result['deleted'] = 1;
+                return $result;
+            }
+            if ($this->isPathExcluded($rel, $this->parseExcludePaths())) {
+                $this->purgeUserFile($userId, $fileId);
+                $result['deleted'] = 1;
+                return $result;
+            }
+
+            $maxSize = $this->config->getInt('max_file_size', 20971520);
+            if (!$this->isIndexable($file, $maxSize)) {
+                // Oversized/unsupported: drop a previously cached version.
+                if ($this->documentMapper->findByUserAndFile($userId, $fileId) !== null) {
+                    $this->purgeUserFile($userId, $fileId);
+                    $result['deleted'] = 1;
+                } else {
+                    $result['skipped']++;
+                }
+                return $result;
+            }
+
+            try {
+                $content = $this->extractText($file);
+            } catch (\Throwable $e) {
+                // Transient parser failure: keep the last-good version.
+                $result['error'] = 'Transient extraction failure';
+                $result['skipped']++;
+                return $result;
+            }
+            if ($content === '') {
+                if ((int)$file->getSize() === 0 && $this->documentMapper->findByUserAndFile($userId, $fileId) !== null) {
+                    $this->purgeUserFile($userId, $fileId);
+                    $result['deleted'] = 1;
+                } else {
+                    $result['skipped']++;
+                }
+                return $result;
+            }
+
+            $hash = md5($content);
+            $existing = $this->documentMapper->findByUserAndFile($userId, $fileId);
+            if ($existing !== null && (string)$existing->getContentHash() === $hash) {
+                // Same content (e.g. a rename or touch): refresh metadata only.
+                $existing->setPath($rel);
+                $existing->setName($file->getName());
+                $existing->setMime($file->getMimeType());
+                $existing->setSize($file->getSize());
+                $existing->setIndexedAt(time());
+                $this->documentMapper->update($existing);
+                $result['skipped']++;
+                return $result;
+            }
+
+            $chunks = $this->chunker->chunk($content);
+            if (empty($chunks)) {
+                $result['skipped']++;
+                return $result;
+            }
+
+            $oldDocId = $existing !== null ? (int)$existing->getId() : null;
+            $doc = new Document();
+            $doc->setUserId($userId);
+            $doc->setFileId($fileId);
+            $doc->setPath($rel);
+            $doc->setName($file->getName());
+            $doc->setMime($file->getMimeType());
+            $doc->setSize($file->getSize());
+            $doc->setContentHash($hash);
+            $doc->setChunkCount(count($chunks));
+            $doc->setIndexedAt(time());
+            $this->documentMapper->insert($doc);
+
+            $batch = [];
+            foreach ($chunks as $i => $c) {
+                $batch[] = ['docId' => (int)$doc->getId(), 'index' => $i, 'content' => $c['content'], 'tokens' => $c['tokens'], 'oldDocId' => $oldDocId];
+            }
+            $this->flushBatch($batch, $result);
+            $result['processed']++;
+            $result['changed']++;
+            return $result;
+        } catch (\Throwable $e) {
+            $this->logger->error('eva_ai incremental reindex failed', [
+                'userId' => $userId,
+                'fileId' => $fileId,
+                'exception' => $e->getMessage(),
+            ]);
+            $result['error'] = $e->getMessage();
+            return $result;
+        } finally {
+            try {
+                $this->lockingProvider->releaseLock($lockPath, ILockingProvider::LOCK_EXCLUSIVE);
+            } catch (\Throwable $e) {
+                // Lock may already be gone; nothing to recover here.
+            }
+        }
+    }
+
+    /**
+     * Purge every indexed document at/under a deleted folder path (Issue #79).
+     */
+    public function deleteByPathPrefix(string $userId, string $path): int {
+        $docs = $this->documentMapper->findByUserAndPathPrefix($userId, $path);
+        if ($docs === []) {
+            return 0;
+        }
+        $ids = array_map(static fn($d) => (int)$d->getId(), $docs);
+        $this->chunkMapper->deleteByDocumentIds($ids);
+        $this->documentMapper->deleteByIds($ids);
+        return count($ids);
+    }
+
+    /**
+     * Re-point stored document paths after a folder rename (Issue #79).
+     * Runs in PHP (not SQL string surgery) so path separators and LIKE
+     * wildcards in folder names are handled safely.
+     */
+    public function updatePathPrefix(string $userId, string $oldPrefix, string $newPrefix): int {
+        $docs = $this->documentMapper->findByUserAndPathPrefix($userId, $oldPrefix);
+        $updated = 0;
+        foreach ($docs as $doc) {
+            $old = (string)$doc->getPath();
+            $doc->setPath($newPrefix . substr($old, strlen($oldPrefix)));
+            $this->documentMapper->update($doc);
+            $updated++;
+        }
+        return $updated;
+    }
+
+    /**
+     * Remove the document row and all of its chunks for one user+file.
+     */
+    private function purgeUserFile(string $userId, int $fileId): void {
+        $doc = $this->documentMapper->findByUserAndFile($userId, $fileId);
+        if ($doc === null) {
+            return;
+        }
+        $this->chunkMapper->deleteByDocument((int)$doc->getId());
+        $this->documentMapper->deleteByUserAndFile($userId, $fileId);
     }
 
     /**
@@ -1258,7 +1472,7 @@ class Indexer {
             }
             $result['processed']++;
             $processedThisPass++;
-            if (count($batch) >= self::BATCH) {
+            if (count($batch) >= min(200, max(1, $this->config->getInt('embed_batch_size', self::DEFAULT_BATCH)))) {
                 $this->flushBatch($batch, $result, $runId, $userId);
             }
         }

@@ -95,6 +95,12 @@ class ToolPolicy {
         ],
 
         // ---- Contacts ----
+        'list_contacts' => [
+            'risk' => self::RISK_READONLY,
+            'surfaces' => [self::SURFACE_WEB, self::SURFACE_TALK, self::SURFACE_TASKPROCESSING, self::SURFACE_TASKPROCESSING_CONFIRMED, self::SURFACE_RAG],
+            'requiresConfirmation' => false,
+            'description' => 'List all contacts',
+        ],
         'find_contact' => [
             'risk' => self::RISK_READONLY,
             'surfaces' => [self::SURFACE_WEB, self::SURFACE_TALK, self::SURFACE_TASKPROCESSING, self::SURFACE_TASKPROCESSING_CONFIRMED, self::SURFACE_RAG],

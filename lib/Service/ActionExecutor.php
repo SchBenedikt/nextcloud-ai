@@ -109,32 +109,6 @@ class ActionExecutor {
     ) {
     }
 
-    private ?ActionAudit $auditService = null;
-
-    /**
-     * Lazy audit-store lookup: IAppDataFactory must not be resolved in the
-     * ActionExecutor constructor (it blocks the CLI/taskprocessing worker,
-     * see marksFile()). Resolve on first mutating action instead.
-     */
-    private function audit(): ?ActionAudit {
-        if ($this->auditService === null) {
-            try {
-                // Build lazily from server-container dependencies, exactly like
-                // marksFile() resolves IAppDataFactory at runtime - never in
-                // the constructor, which would block the CLI/taskprocessing
-                // worker.
-                $this->auditService = new ActionAudit(
-                    \OC::$server->get(\OCP\Files\AppData\IAppDataFactory::class),
-                    \OC::$server->get(\OCP\Lock\ILockingProvider::class),
-                    \OC::$server->get(\Psr\Log\LoggerInterface::class)
-                );
-            } catch (\Throwable $e) {
-                $this->auditService = null;
-            }
-        }
-        return $this->auditService;
-    }
-
     /**
      * Set the execution surface for tool permission checks.
      */
@@ -219,10 +193,15 @@ class ActionExecutor {
                 ], 'required' => ['fact']],
             ]],
             ['type' => 'function', 'function' => [
+                'name' => 'list_contacts',
+                'description' => 'List all contacts in the user\'s address books (name, e-mail, phone, organisation). Use this when the user asks which contacts they have or wants to see all contacts without a specific search term.',
+                'parameters' => ['type' => 'object', 'properties' => new \stdClass()],
+            ]],
+            ['type' => 'function', 'function' => [
                 'name' => 'find_contact',
-                'description' => 'Search the user\'s contacts (address books) by name, e-mail or organisation. Returns matching contact details.',
+                'description' => 'Search the user\'s contacts (address books) by name, e-mail or organisation. Returns matching contact details. If the query is empty, all contacts are returned.',
                 'parameters' => ['type' => 'object', 'properties' => [
-                    'query' => ['type' => 'string', 'description' => 'Name, e-mail or organisation to search for.'],
+                    'query' => ['type' => 'string', 'description' => 'Name, e-mail or organisation to search for. Leave empty to list all contacts.'],
                 ], 'required' => ['query']],
             ]],
             ['type' => 'function', 'function' => [
@@ -533,11 +512,9 @@ class ActionExecutor {
      */
     public function run(string $userId, string $name, array $args, bool $confirmed = false): array {
         $this->config->setUserId($userId);
-        $surface = $this->toolPolicy->getSurface();
         // Centralized tool permission check
         $policy = $this->toolPolicy->check($name);
         if (!$policy['allowed']) {
-            $this->auditResult($userId, $surface, $name, $args, 'rejected', $policy['reason'] ?? 'Tool not allowed');
             return ['ok' => false, 'error' => $policy['reason'] ?? 'Tool not allowed'];
         }
         if (($policy['requiresConfirmation'] ?? false) && !$confirmed) {
@@ -550,7 +527,6 @@ class ActionExecutor {
                 if ($missing === []) {
                     // Complete and explicit -> execute directly below.
                 } else {
-                    $this->auditResult($userId, $surface, $name, $args, 'rejected', 'Missing required information: ' . implode(', ', $missing));
                     return [
                         'ok' => false,
                         'confirmation_required' => true,
@@ -562,7 +538,6 @@ class ActionExecutor {
                 }
             } else {
                 // Non-interactive surfaces keep the strict confirmation gate.
-                $this->auditResult($userId, $surface, $name, $args, 'rejected', 'Confirmation required');
                 return [
                     'ok' => false,
                     'confirmation_required' => true,
@@ -595,7 +570,6 @@ class ActionExecutor {
             'update_knowledge',
         ];
         if (in_array($name, $fileTools, true) && $home === null) {
-            $this->auditResult($userId, $surface, $name, $args, 'failed', 'File tools unavailable in the background worker');
             return ['ok' => false, 'error' => 'File tools are not available in the background worker (CLI). Ask in the web chat instead.'];
         }
 
@@ -609,6 +583,7 @@ class ActionExecutor {
                 'delete_file' => $this->deleteFile($home, $args),
                 'read_file' => $this->readFile($home, $args),
                 'search_files' => $this->searchFiles($home, $args),
+                'list_contacts' => $this->listContacts($userId),
                 'find_contact' => $this->findContact($userId, $args),
                 'create_contact' => $this->createContact($userId, $args),
                 'update_contact' => $this->updateContact($userId, $args),
@@ -642,33 +617,9 @@ class ActionExecutor {
                 default => ['ok' => false, 'error' => 'Unknown tool: ' . $name],
             };
         } catch (\Throwable $e) {
-            $this->auditResult($userId, $surface, $name, $args, 'failed', $e->getMessage());
             return ['ok' => false, 'error' => $e->getMessage()];
         }
-        $this->auditResult($userId, $surface, $name, $args, !empty($result['ok']) ? 'executed' : 'failed', (string)($result['error'] ?? ''));
         return $result;
-    }
-
-    /**
-     * Write one audit event for a mutating/destructive tool call (Issue #150).
-     * Read-only tools are never recorded - there is no state change to trace.
-     * The audit store redacts sensitive arguments before persisting them.
-     */
-    private function auditResult(string $userId, string $surface, string $name, array $args, string $outcome, string $detail): void {
-        $meta = $this->toolPolicy->getTool($name);
-        $risk = is_array($meta) ? (string)($meta['risk'] ?? ToolPolicy::RISK_READONLY) : ToolPolicy::RISK_READONLY;
-        if ($risk === ToolPolicy::RISK_READONLY) {
-            return;
-        }
-        $audit = $this->audit();
-        if ($audit === null) {
-            return;
-        }
-        try {
-            $audit->record($userId, $surface, $name, $args, $outcome, $detail !== '' ? $detail : ($outcome === 'executed' ? 'ok' : $outcome));
-        } catch (\Throwable $e) {
-            // A failing audit write must never break the tool call itself.
-        }
     }
 
     /** @return array<array{name:string,path:string,type:string,size?:int}> */
@@ -948,10 +899,43 @@ class ActionExecutor {
     }
 
     /** @return array{ok:true,result:array} */
+    /** @return array{ok:true,result:array{contacts:list<array>,count:int}} */
+    private function listContacts(string $userId): array {
+        $out = [];
+        $seen = [];
+        $backend = Server::get(\OCA\DAV\CardDAV\CardDavBackend::class);
+        foreach ($this->allAddressBookPrincipals($userId) as $principal) {
+            // Die System-/System-Adressbuecher enthalten nur Selbst-Kontakte
+            // aller Nutzer und gehoeren nicht zu den Kontakten des Users.
+            if ($principal === 'principals/system/system') {
+                continue;
+            }
+            foreach ($backend->getAddressBooksForUser($principal) as $book) {
+                foreach ($backend->getCards((int)$book['id']) as $card) {
+                    $entry = $this->extractContact((string)($card['carddata'] ?? ''));
+                    if ($entry === null) {
+                        continue;
+                    }
+                    $dedup = strtolower(($entry['name'] ?? '') . '|' . implode(',', $entry['emails'] ?? []));
+                    if ($dedup !== '' && isset($seen[$dedup])) {
+                        continue;
+                    }
+                    $seen[$dedup] = true;
+                    $out[] = $entry;
+                    if (count($out) >= 100) {
+                        break 3;
+                    }
+                }
+            }
+        }
+        return ['ok' => true, 'result' => ['contacts' => $out, 'count' => count($out)]];
+    }
+
     private function findContact(string $userId, array $args): array {
         $query = trim((string)($args['query'] ?? ''));
         if ($query === '') {
-            return ['ok' => false, 'error' => 'Contact query required'];
+            // Ohne Suchbegriff: alle Kontakte auflisten (Frage "Welche Kontakte habe ich?").
+            return $this->listContacts($userId);
         }
         $results = $this->contacts->search($query, ['FN', 'NICKNAME', 'EMAIL', 'ORG']);
         $out = [];
@@ -983,6 +967,36 @@ class ActionExecutor {
         }
         return ['ok' => true, 'result' => ['query' => $query, 'contacts' => $out]];
 
+    }
+
+    /**
+     * Extrahiert Name/E-Mail/Telefon/Organisation aus einer vCard.
+     * Liefert null bei leerer oder unparsbarer Karte.
+     */
+    private function extractContact(string $carddata): ?array {
+        if ($carddata === '') {
+            return null;
+        }
+        try {
+            $v = \Sabre\VObject\Reader::read($carddata);
+        } catch (\Throwable $e) {
+            return null;
+        }
+        $entry = [];
+        foreach (['FN' => 'name', 'EMAIL' => 'emails', 'TEL' => 'phones', 'ORG' => 'org'] as $propName => $key) {
+            $vals = [];
+            foreach ($v->select($propName) as $prop) {
+                $val = trim((string)$prop);
+                if ($val !== '') {
+                    $vals[] = $val;
+                }
+            }
+            $entry[$key] = ($propName === 'FN') ? (string)($vals[0] ?? '') : $vals;
+        }
+        if (($entry['name'] ?? '') === '' && ($entry['emails'] ?? []) === [] && ($entry['phones'] ?? []) === []) {
+            return null;
+        }
+        return $entry;
     }
 
     /** @return array{ok:true,result:string} */

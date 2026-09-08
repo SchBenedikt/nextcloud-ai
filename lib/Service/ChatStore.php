@@ -36,21 +36,25 @@ class ChatStore {
     }
 
     /**
-     * List the user's chats, newest first.
+     * List the user's chats, newest first. Archived chats are hidden from the
+     * default list; pass $includeArchived to get them back (Issue #87).
      *
      * With $search the list is filtered to chats whose title or any message
      * contains the needle (case-insensitive); message hits add a short snippet
      * around the first match and a count of matching messages, so the chat list
      * can find content, not only titles (Issue #152).
      *
-     * @return list<array{id:string,title:string,created:int,updated:int,count:int,snippet?:string,matchCount?:int,trimmed?:int}>
+     * @return list<array{id:string,title:string,created:int,updated:int,count:int,pinned:bool,folder:string,archived:bool,snippet?:string,matchCount?:int,trimmed?:int}>
      */
-    public function list(string $user, ?string $search = null): array {
-        return $this->withUserLock($user, function () use ($user, $search): array {
+    public function list(string $user, ?string $search = null, bool $includeArchived = false): array {
+        return $this->withUserLock($user, function () use ($user, $search, $includeArchived): array {
             $all = $this->read($user);
             $needle = $search !== null ? mb_strtolower(trim($search)) : '';
             $out = [];
             foreach ($all as $chat) {
+                if (!$includeArchived && !empty($chat['archived'])) {
+                    continue;
+                }
                 $messages = $chat['messages'] ?? [];
                 $entry = [
                     'id' => $chat['id'] ?? '',
@@ -59,6 +63,17 @@ class ChatStore {
                     'updated' => $chat['updated'] ?? 0,
                     'count' => count($messages),
                     'trimmed' => (int)($chat['trimmed'] ?? 0),
+                    // Organisational metadata (Issue #87); missing on legacy
+                    // chats and defaulted so old data keeps working unchanged.
+                    'pinned' => !empty($chat['pinned']),
+                    'folder' => (string)($chat['folder'] ?? ''),
+                    'archived' => !empty($chat['archived']),
+                    // Per-chat RAG folder scope (Issue #88); empty = global.
+                    'scopePath' => (string)($chat['scopePath'] ?? ''),
+                    // Per-chat custom instructions (Issue #90): a free-text
+                    // system-prompt override plus an optional preset persona.
+                    'instructions' => (string)($chat['instructions'] ?? ''),
+                    'persona' => (string)($chat['persona'] ?? ''),
                 ];
                 if ($needle !== '') {
                     $titleHit = mb_strpos(mb_strtolower($entry['title']), $needle) !== false;
@@ -84,7 +99,8 @@ class ChatStore {
                 }
                 $out[] = $entry;
             }
-            usort($out, static fn($a, $b) => $b['updated'] <=> $a['updated']);
+            // Pinned chats first, then by most recently updated.
+            usort($out, static fn($a, $b) => ($b['pinned'] <=> $a['pinned']) ?: ($b['updated'] <=> $a['updated']));
             return $out;
         });
     }
@@ -152,6 +168,34 @@ class ChatStore {
     }
 
     /**
+     * Delete every chat whose last activity (updated) is older than $days
+     * days (Issue: chat retention). Chats are matched on their update
+     * timestamp so actively used conversations are never touched. Returns the
+     * number of removed chats; 0 when there is nothing to delete. A value of
+     * 0 or less disables the cleanup entirely.
+     */
+    public function deleteOlderThan(string $user, int $days): int {
+        if ($days <= 0) {
+            return 0;
+        }
+        $cutoff = time() - $days * 86400;
+        return $this->withUserLock($user, function () use ($user, $cutoff): int {
+            $all = $this->read($user);
+            if ($all === []) {
+                return 0;
+            }
+            // Chats without a usable timestamp are never deleted: their
+            // activity is unknown, so retention must not remove them.
+            $kept = array_values(array_filter($all, static fn($c) => (int)($c['updated'] ?? 0) <= 0 || (int)$c['updated'] > $cutoff));
+            $deleted = count($all) - count($kept);
+            if ($deleted > 0) {
+                $this->write($user, $kept);
+            }
+            return $deleted;
+        });
+    }
+
+    /**
      * Full export of every saved chat (messages included), used by the GDPR
      * data-export endpoint (Issue #83). Serialized like every other chat read.
      *
@@ -201,15 +245,242 @@ class ChatStore {
         });
     }
 
-    public function append(string $user, string $id, string $role, string $text): void {
+    /**
+     * Update organisational chat metadata (Issue #87): pinned, folder and
+     * archived. Only the keys present in $meta are touched, legacy chats
+     * without the fields keep working. Assigning a chat to a folder that does
+     * not exist yet creates that folder on the fly, so the UI can offer
+     * "type a new folder name" without a separate round-trip. Returns false
+     * only when the chat itself does not exist.
+     */
+    public function setMeta(string $user, string $id, array $meta): bool {
+        return $this->withUserLock($user, function () use ($user, $id, $meta): bool {
+            $all = $this->read($user);
+            foreach ($all as &$chat) {
+                if (($chat['id'] ?? '') !== $id) {
+                    continue;
+                }
+                if (array_key_exists('pinned', $meta)) {
+                    $chat['pinned'] = !empty($meta['pinned']);
+                }
+                if (array_key_exists('archived', $meta)) {
+                    $chat['archived'] = !empty($meta['archived']);
+                }
+                if (array_key_exists('folder', $meta)) {
+                    $folder = trim((string)$meta['folder']);
+                    if ($folder !== '') {
+                        // Unknown names create the folder (Issue #87) so the
+                        // sidebar's "new folder" flow needs no extra API call.
+                        $this->createFolderLocked($user, $folder);
+                    }
+                    $chat['folder'] = $folder;
+                }
+                if (array_key_exists('scopePath', $meta)) {
+                    // Per-chat retrieval scope (Issue #88): restricts RAG to
+                    // documents at/under this folder path. Empty clears it.
+                    $chat['scopePath'] = trim((string)$meta['scopePath']);
+                }
+                if (array_key_exists('instructions', $meta)) {
+                    // Per-chat custom instructions (Issue #90). Capped to the
+                    // same limit RagService enforces when building prompts.
+                    $chat['instructions'] = mb_substr(trim((string)$meta['instructions']), 0, 2000);
+                }
+                if (array_key_exists('persona', $meta)) {
+                    // Preset persona slug (Issue #90); validated against the
+                    // known set in RagService, stored verbatim here.
+                    $chat['persona'] = trim((string)$meta['persona']);
+                }
+                $chat['updated'] = time();
+                unset($chat);
+                $this->write($user, $all);
+                return true;
+            }
+            unset($chat);
+            return false;
+        });
+    }
+
+    /**
+     * Create a folder. Names are trimmed, capped and de-duplicated; a folder
+     * that already exists is returned unchanged (idempotent).
+     */
+    public function createFolder(string $user, string $name): array {
+        return $this->withUserLock($user, function () use ($user, $name): array {
+            return $this->createFolderLocked($user, $name);
+        });
+    }
+
+    /**
+     * Create a folder while the per-user lock is already held. Names are
+     * trimmed, capped and de-duplicated; an existing folder is returned
+     * unchanged (idempotent). Callers must hold the user lock.
+     */
+    private function createFolderLocked(string $user, string $name): array {
+        $folders = $this->foldersLocked($user);
+        $clean = $this->clipFolderName($name);
+        foreach ($folders as $folder) {
+            if (($folder['name'] ?? '') === $clean) {
+                return $folder;
+            }
+        }
+        $folder = ['name' => $clean, 'created' => time()];
+        $folders[] = $folder;
+        $this->writeFoldersLocked($user, $folders);
+        return $folder;
+    }
+
+    /**
+     * Rename a folder (and every chat assigned to it). Returns false when the
+     * source folder does not exist or the new name is already taken.
+     */
+    public function renameFolder(string $user, string $from, string $to): bool {
+        return $this->withUserLock($user, function () use ($user, $from, $to): bool {
+            $folders = $this->foldersLocked($user);
+            $clean = $this->clipFolderName($to);
+            $found = false;
+            foreach ($folders as &$folder) {
+                if (($folder['name'] ?? '') === $from) {
+                    if (in_array($clean, array_column($folders, 'name'), true)) {
+                        return false;
+                    }
+                    $folder['name'] = $clean;
+                    $found = true;
+                    break;
+                }
+            }
+            unset($folder);
+            if (!$found) {
+                return false;
+            }
+            $this->writeFoldersLocked($user, $folders);
+            // Re-point chats that were assigned to the old folder name.
+            $all = $this->read($user);
+            foreach ($all as &$chat) {
+                if (($chat['folder'] ?? '') === $from) {
+                    $chat['folder'] = $clean;
+                }
+            }
+            unset($chat);
+            $this->write($user, $all);
+            return true;
+        });
+    }
+
+    /**
+     * Delete a folder and unassign every chat that referenced it.
+     * Returns false when the folder does not exist.
+     */
+    public function deleteFolder(string $user, string $name): bool {
+        return $this->withUserLock($user, function () use ($user, $name): bool {
+            $folders = $this->foldersLocked($user);
+            $kept = array_values(array_filter($folders, static fn($f) => ($f['name'] ?? '') !== $name));
+            if (count($kept) === count($folders)) {
+                return false;
+            }
+            $this->writeFoldersLocked($user, $kept);
+            $all = $this->read($user);
+            foreach ($all as &$chat) {
+                if (($chat['folder'] ?? '') === $name) {
+                    $chat['folder'] = '';
+                }
+            }
+            unset($chat);
+            $this->write($user, $all);
+            return true;
+        });
+    }
+
+    /**
+     * All folders of the user, sorted by name.
+     *
+     * @return list<array{name:string,created:int}>
+     */
+    public function listFolders(string $user): array {
+        return $this->withUserLock($user, function () use ($user): array {
+            $folders = $this->foldersLocked($user);
+            usort($folders, static fn($a, $b) => strcasecmp((string)($a['name'] ?? ''), (string)($b['name'] ?? '')));
+            return $folders;
+        });
+    }
+
+    /** Folder names already sorted (used inside the user lock). */
+    private function folderNamesLocked(string $user): array {
+        return array_values(array_map(
+            static fn($f) => (string)($f['name'] ?? ''),
+            $this->foldersLocked($user)
+        ));
+    }
+
+    /**
+     * The folder registry lives next to chats.json so the two can be read and
+     * written atomically under the same per-user lock (Issue #87).
+     *
+     * @return list<array{name:string,created:int}>
+     */
+    private function foldersLocked(string $user): array {
+        try {
+            $raw = $this->foldersFile($user)->getContent();
+        } catch (NotFoundException $e) {
+            return [];
+        } catch (\Throwable $e) {
+            $this->logger->warning('eva_ai: folder registry unreadable', ['exception' => $e->getMessage()]);
+            return [];
+        }
+        $data = json_decode($raw, true);
+        return is_array($data) ? $data : [];
+    }
+
+    private function writeFoldersLocked(string $user, array $folders): void {
+        $this->foldersFile($user)->putContent(
+            json_encode($folders, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR)
+        );
+    }
+
+    private function foldersFile(string $user): \OCP\Files\SimpleFS\ISimpleFile {
+        $uidFolder = $this->userFolderFor($user);
+        if (!$uidFolder->fileExists('folders.json')) {
+            $uidFolder->newFile('folders.json', '[]');
+        }
+        return $uidFolder->getFile('folders.json');
+    }
+
+    private function clipFolderName(string $name): string {
+        $clean = trim(preg_replace('/\s+/', ' ', $name) ?? '');
+        if (mb_strlen($clean) > 60) {
+            $clean = mb_substr($clean, 0, 60) . '…';
+        }
+        return $clean === '' ? 'Unbenannt' : $clean;
+    }
+
+    /**
+     * The user's chat namespace folder (shared by chats.json and folders.json).
+     */
+    private function userFolderFor(string $user): \OCP\Files\SimpleFS\ISimpleFolder {
+        $appdata = $this->appDataFactory->get('eva_ai');
+        try {
+            $chats = $appdata->getFolder('chats');
+        } catch (NotFoundException $e) {
+            $chats = $appdata->newFolder('chats');
+        }
+        $this->copyLegacyChatData($chats);
+        return $this->folderFor($chats, $user);
+    }
+
+    public function append(string $user, string $id, string $role, string $text, array $followups = []): void {
         if ($role !== 'user' && $role !== 'assistant') {
             return;
         }
-        $this->withUserLock($user, function () use ($user, $id, $role, $text): void {
+        $this->withUserLock($user, function () use ($user, $id, $role, $text, $followups): void {
             $all = $this->read($user);
             foreach ($all as &$chat) {
                 if (($chat['id'] ?? '') === $id) {
-                    $chat['messages'][] = ['role' => $role, 'text' => $text];
+                    $message = ['role' => $role, 'text' => $text];
+                    // Follow-up suggestions belong to assistant messages and
+                    // must survive a reload so the chips stay usable.
+                    if ($role === 'assistant' && $followups !== []) {
+                        $message['followups'] = array_values(array_slice(array_filter($followups, 'is_string'), 0, 3));
+                    }
+                    $chat['messages'][] = $message;
                     $chat['updated'] = time();
                     $messageCount = count($chat['messages']);
                     if ($messageCount > self::MAX_MESSAGES) {
@@ -344,14 +615,7 @@ class ChatStore {
     }
 
     private function rootFor(string $user): \OCP\Files\SimpleFS\ISimpleFile {
-        $appdata = $this->appDataFactory->get('eva_ai');
-        try {
-            $chats = $appdata->getFolder('chats');
-        } catch (NotFoundException $e) {
-            $chats = $appdata->newFolder('chats');
-        }
-        $this->copyLegacyChatData($chats);
-        $uidFolder = $this->folderFor($chats, $user);
+        $uidFolder = $this->userFolderFor($user);
         if (!$uidFolder->fileExists('chats.json')) {
             $uidFolder->newFile('chats.json', '[]');
         }

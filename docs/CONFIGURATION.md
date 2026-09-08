@@ -51,6 +51,7 @@ Legend: **P** = personal setting (per-user override possible),
 | `chunk_overlap` | P | `120` | `0`–`5000` | characters | Overlap between consecutive chunks. |
 | `max_file_size` | P | `20971520` | `1048576`–`2147483648` | bytes | Files larger than this are skipped during indexing. |
 | `max_files_per_run` | P | `40` | `1`–`10000` | files | Files processed per indexing pass (bounds job duration). |
+| `embed_batch_size` | P | `24` | `1`–`200` | chunks | Chunks embedded per batch (bounds peak memory independent of library size). |
 | `scope_path` | P | `''` | path, no `..` | – | Only index files below this path (e.g. `/Documents`). Empty = entire home. |
 | `exclude_paths` | P | `''` | comma-separated paths, no `..` | – | Path prefixes to skip (e.g. `/.trash,/Photos`). |
 | `index_user` | I | `''` | user id | – | Legacy instance-wide background-job user; not changeable from Settings. |
@@ -81,6 +82,7 @@ Resetting a user's index clears that user's cached vectors.
 | `talk_classify_all` | P | `0` | `1`/`0` | – | `0` = heuristic pre-filter decides before any LLM call (Issue #77, default); `1` = classify every room message via the LLM (legacy, higher cost/privacy exposure). |
 | `weather_tool_enabled` | P | `1` | `1`/`0` | – | `0` disables the weather tool (external Open-Meteo requests) everywhere (Issue #69). |
 | `index_enrolled` | P/S | `0` | `1`/`0` | – | Per-user opt-in for recurring background indexing. |
+| `chat_retention_days` | P | `0` | `0`–`3650` | days | Automatically delete chats not used for this many days (`0` = keep everything). The daily `ChatCleanupJob` applies it per user. |
 
 ### Internal per-user runtime state (S)
 
@@ -110,6 +112,9 @@ from an instance-wide value.
 | `index_job_started` | Unix timestamp when the current run claimed the scheduler lock. |
 | `index_job_max_seconds` | Wall-clock budget (seconds, default `50`) one periodic run may spend before the next cron tick continues (Issue #112). |
 | `index_job_last_user` | Last user finished by a periodic run; the next run rotates past it for fairness (Issue #112). |
+| `index_max_concurrent` | I | `2` | `1`–`16` | passes | Maximum index passes running concurrently across all users (Issue #142). Set via `occ config:app:set eva_ai index_max_concurrent …`. |
+| `index_scheduler_active` | JSON map `user → heartbeat` of currently running index slots (default `{}`, Issue #142); stale slots are reclaimed after 15 minutes. |
+| `index_scheduler_queue` | JSON FIFO list of users waiting behind the concurrency limit (default `[]`, Issue #142). |
 
 ## Settings page
 

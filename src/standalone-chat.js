@@ -291,10 +291,10 @@ import { escHtml, mdInline, mdToHtml, citedSources, copyText } from './lib/chat-
 				btn.className = 'rfu-btn'
 				btn.textContent = q
 				btn.addEventListener('click', function () {
-					var inp = document.querySelector('.eva-inp')
-					if (inp) { inp.value = q; inp.dispatchEvent(new Event('input')) }
-					var sendBtn = document.querySelector('.eva-send')
-					if (sendBtn) sendBtn.click()
+					// Fill the input and use the same send path as a manual submit.
+					if (sending) return
+					els.input.value = q
+					send()
 				})
 				chips.appendChild(btn)
 			})
@@ -427,7 +427,76 @@ import { escHtml, mdInline, mdToHtml, citedSources, copyText } from './lib/chat-
 		} else if (ta) {
 			ta.remove()
 		}
+		// Once the answer is complete, (re-)render sources and follow-up
+		// chips: they only exist after the stream is done.
+		if (m.done) {
+			var oldSrc = wrap.querySelector('.rs')
+			if (oldSrc) oldSrc.remove()
+			var oldFu = wrap.querySelector('.rfu')
+			if (oldFu) oldFu.remove()
+			var anchor = wrap.querySelector('.rconfirm-link, .rconfirm')
+			if (m.sources && m.sources.length) {
+				var ds = renderSources(m)
+				if (anchor) wrap.insertBefore(ds, anchor)
+				else wrap.appendChild(ds)
+			}
+			if (m.followups && m.followups.length) {
+				var fu = renderFollowups(m)
+				if (anchor) wrap.insertBefore(fu, anchor)
+				else wrap.appendChild(fu)
+			}
+		}
 		els.msgs.scrollTop = els.msgs.scrollHeight
+	}
+
+	function renderSources(m) {
+		var details = document.createElement('details')
+		details.className = 'rs'
+		var sumEl = document.createElement('summary')
+		sumEl.className = 'rs-sum'
+		sumEl.textContent = tr('Sources') + ' (' + m.sources.length + ')'
+		details.appendChild(sumEl)
+		var list = document.createElement('div')
+		list.className = 'rs-list'
+		m.sources.forEach(function (item) {
+			var src = item.src || item
+			var row = document.createElement('div')
+			row.className = 'rs-item'
+			var a = document.createElement('a')
+			a.href = src.url || '#'
+			a.target = '_blank'
+			a.rel = 'noopener'
+			var prefix = item.ref !== undefined ? '[' + item.ref + '] ' : ''
+			a.textContent = prefix + (src.path || src.name || '')
+			row.appendChild(a)
+			if (src.excerpts && src.excerpts.length) {
+				var ex = document.createElement('div')
+				ex.className = 'rs-excerpt'
+				ex.textContent = src.excerpts[0]
+				row.appendChild(ex)
+			}
+			list.appendChild(row)
+		})
+		details.appendChild(list)
+		return details
+	}
+
+	function renderFollowups(m) {
+		var chips = document.createElement('div')
+		chips.className = 'rfu'
+		m.followups.forEach(function (q) {
+			var btn = document.createElement('button')
+			btn.type = 'button'
+			btn.className = 'rfu-btn'
+			btn.textContent = q
+			btn.addEventListener('click', function () {
+				if (sending) return
+				els.input.value = q
+				send()
+			})
+			chips.appendChild(btn)
+		})
+		return chips
 	}
 
 	function apiStream(body, onLine) {
@@ -475,9 +544,15 @@ import { escHtml, mdInline, mdToHtml, citedSources, copyText } from './lib/chat-
 		els.err.style.display = msg ? 'block' : 'none'
 	}
 
-	function saveMessage(role, text) {
+	function saveMessage(role, text, followups) {
 		if (!chatId) return Promise.resolve(false)
-		return api('POST', '/chats/' + encodeURIComponent(chatId) + '/messages', { role: role, text: text })
+		var body = { role: role, text: text }
+		// Follow-up suggestions are persisted for assistant messages so the
+		// chips survive a page reload.
+		if (role === 'assistant' && Array.isArray(followups) && followups.length) {
+			body.followups = followups
+		}
+		return api('POST', '/chats/' + encodeURIComponent(chatId) + '/messages', body)
 			.then(function () { return true })
 			.catch(function () { return false })
 	}
@@ -500,6 +575,7 @@ import { escHtml, mdInline, mdToHtml, citedSources, copyText } from './lib/chat-
 					role: m.role === 'user' || m.role === 'assistant' ? m.role : 'assistant',
 					text: m.text || '',
 					thinking: '',
+					followups: Array.isArray(m.followups) ? m.followups : [],
 					done: true,
 				})
 			})
@@ -617,7 +693,7 @@ import { escHtml, mdInline, mdToHtml, citedSources, copyText } from './lib/chat-
 					last.sources = citedSources(last.text, ev.sources || [])
 					last.followups = ev.followups || []
 					last.done = true
-					Promise.all([saveMessage('user', msg), saveMessage('assistant', last.text)])
+					Promise.all([saveMessage('user', msg), saveMessage('assistant', last.text, last.followups)])
 						.then(renderChatListAgain)
 						.catch(function () {})
 				} else if (ev.type === 'error') {

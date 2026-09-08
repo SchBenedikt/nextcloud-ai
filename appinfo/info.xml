@@ -34,6 +34,7 @@
     </optional-apps>
     <background-jobs>
         <job>OCA\EvaAi\BackgroundJob\IndexJob</job>
+        <job>OCA\EvaAi\BackgroundJob\ChatCleanupJob</job>
     </background-jobs>
     <repair-steps>
         <step>OCA\EvaAi\Migration\MigrateLegacyAppIdRepairStep</step>

@@ -78,8 +78,6 @@ class PageController extends Controller {
         }
         if ($standalone !== null) {
             \OCP\Util::addScript('eva_ai', $standalone);
-        } else {
-            \OCP\Util::addScript('eva_ai', 'chat');
         }
         \OCP\Util::addHeader('meta', [
             'name' => 'requesttoken',

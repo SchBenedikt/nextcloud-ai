@@ -37,6 +37,8 @@ final class RuntimeIntegrationTest extends TestCase {
         $appConfig->method('get')->willReturnMap([
             ['index_enabled', '0'],
             ['mail_index_enabled', '0'],
+            ['index_cancel_requested', ''],
+            ['index_run_id', ''],
         ]);
         $appConfig->method('getInt')->willReturnMap([
             ['index_max_files', 0],
@@ -102,7 +104,7 @@ final class RuntimeIntegrationTest extends TestCase {
 
         // Write tools must be blocked on Talk
         $blocked = ['create_file', 'write_file', 'delete_file', 'rename_file',
-                     'create_folder', 'create_event', 'update_event', 'delete_event',
+                     'create_folder', 'create_calendar_event', 'update_calendar_event', 'delete_calendar_event',
                      'create_contact', 'update_contact', 'delete_contact',
                      'create_share', 'update_share', 'delete_share'];
         foreach ($blocked as $tool) {
@@ -118,7 +120,7 @@ final class RuntimeIntegrationTest extends TestCase {
         $policy->setSurface(ToolPolicy::SURFACE_TALK);
 
         $allowed = ['list_files', 'read_file', 'search_files', 'find_contact',
-                     'list_calendars', 'list_events', 'current_time'];
+                     'list_calendars', 'list_calendar_events', 'current_time'];
         foreach ($allowed as $tool) {
             $result = $policy->check($tool);
             self::assertTrue($result['allowed'], "Tool '$tool' must be allowed on Talk surface");
@@ -234,7 +236,7 @@ final class RuntimeIntegrationTest extends TestCase {
         $config = $this->createMock(\OCA\EvaAi\Service\AppConfig::class);
         $config->method('getInt')->willReturn(1);
         $policy = new ToolPolicy($config);
-        $policy->setSurface(ToolPolicy::SURFACE_TASK);
+        $policy->setSurface(ToolPolicy::SURFACE_TASKPROCESSING);
 
         // TaskProcessing should be read-only like Talk
         $result = $policy->check('create_file');

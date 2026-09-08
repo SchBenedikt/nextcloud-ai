@@ -24,6 +24,32 @@ class DocumentMapper extends QBMapper {
         return $rows[0] ?? null;
     }
 
+    /**
+     * Documents at or under a relative folder path (Issue #79). Used by the
+     * incremental hook path for folder renames/deletes.
+     *
+     * @return list<Document>
+     */
+    public function findByUserAndPathPrefix(string $userId, string $path): array {
+        $prefix = trim($path, '/');
+        if ($prefix === '') {
+            return [];
+        }
+        $qb = $this->db->getQueryBuilder();
+        $escaped = $this->escapeLike($prefix) . '/%';
+        $qb->select('*')
+            ->from('eva_ai_documents')
+            ->where($qb->expr()->eq('user_id', $qb->createNamedParameter($userId)))
+            ->andWhere(
+                $qb->expr()->orX(
+                    $qb->expr()->eq('path', $qb->createNamedParameter($prefix)),
+                    $qb->expr()->like('path', $qb->createNamedParameter($escaped))
+                )
+            )
+            ->setMaxResults(10000);
+        return $this->findEntities($qb);
+    }
+
     public function hashesForUser(string $userId): array {
         $qb = $this->db->getQueryBuilder();
         $qb->select('file_id', 'content_hash')
@@ -102,24 +128,98 @@ class DocumentMapper extends QBMapper {
     }
 
     /**
+     * Shared WHERE clause for the document list and its aggregates so the
+     * summary never depends on the requested page (Issue #74) and every filter
+     * applies to both (Issue #88).
+     *
+     * Supported filters (all validated/bounded in the controller):
+     *  - type: MIME group ("text", "application") or full MIME type
+     *  - folder: relative folder path prefix ("Documents/Notes")
+     *  - dateFrom/dateTo: indexed_at unix timestamps (inclusive)
+     *  - sizeMin/sizeMax: file size in bytes (inclusive)
+     */
+    private function applyFilters(IQueryBuilder $qb, string $userId, ?string $search, array $filters): void {
+        $qb->andWhere($qb->expr()->eq('user_id', $qb->createNamedParameter($userId)));
+        if ($search !== null && $search !== '') {
+            $qb->andWhere(
+                $qb->expr()->like('path', $qb->createNamedParameter('%' . $search . '%'))
+            );
+        }
+        if (isset($filters['type']) && $filters['type'] !== '') {
+            $type = $filters['type'];
+            if (str_contains($type, '/')) {
+                // Exact MIME type (e.g. application/pdf).
+                $qb->andWhere($qb->expr()->eq('mime', $qb->createNamedParameter($type)));
+            } else {
+                // MIME group (e.g. text/* or application/*).
+                $qb->andWhere($qb->expr()->like('mime', $qb->createNamedParameter($type . '/%')));
+            }
+        }
+        if (isset($filters['folder']) && $filters['folder'] !== '') {
+            $folder = trim($filters['folder'], '/');
+            $qb->andWhere(
+                $qb->expr()->like('path', $qb->createNamedParameter($this->escapeLike($folder) . '/%'))
+            );
+        }
+        if (isset($filters['dateFrom'])) {
+            $qb->andWhere(
+                $qb->expr()->gte('indexed_at', $qb->createNamedParameter((int)$filters['dateFrom'], IQueryBuilder::PARAM_INT))
+            );
+        }
+        if (isset($filters['dateTo'])) {
+            $qb->andWhere(
+                $qb->expr()->lte('indexed_at', $qb->createNamedParameter((int)$filters['dateTo'], IQueryBuilder::PARAM_INT))
+            );
+        }
+        if (isset($filters['sizeMin'])) {
+            $qb->andWhere(
+                $qb->expr()->gte('size', $qb->createNamedParameter((int)$filters['sizeMin'], IQueryBuilder::PARAM_INT))
+            );
+        }
+        if (isset($filters['sizeMax'])) {
+            $qb->andWhere(
+                $qb->expr()->lte('size', $qb->createNamedParameter((int)$filters['sizeMax'], IQueryBuilder::PARAM_INT))
+            );
+        }
+    }
+
+    /**
+     * Validate a sort key and direction; unknown values fall back to the
+     * default so the API can never be used to inject SQL.
+     *
+     * @return array{0:string,1:string} [column, direction]
+     */
+    private function resolveSort(?string $sort, string $dir): array {
+        $columns = [
+            'name' => 'name',
+            'date' => 'indexed_at',
+            'size' => 'size',
+            'chunks' => 'chunk_count',
+            'path' => 'path',
+        ];
+        $column = $columns[$sort ?? ''] ?? 'indexed_at';
+        $direction = strtolower($dir) === 'asc' ? 'ASC' : 'DESC';
+        return [$column, $direction];
+    }
+
+    private function escapeLike(string $value): string {
+        return addcslashes($value, '%_\\');
+    }
+
+    /**
      * Full-index aggregates for the documents list, applying the same search
      * filter as {@see findByUser()} and {@see countForUser()} so the summary
      * never depends on the requested page (Issue #74).
      *
      * @return array{count:int,chunks:int,size:int}
      */
-    public function aggregateForUser(string $userId, ?string $search = null): array {
+    public function aggregateForUser(string $userId, ?string $search = null, array $filters = []): array {
         $qb = $this->db->getQueryBuilder();
         $qb->selectAlias($qb->createFunction('COUNT(*)'), 'doc_count')
             ->selectAlias($qb->createFunction('COALESCE(SUM(chunk_count), 0)'), 'chunk_sum')
             ->selectAlias($qb->createFunction('COALESCE(SUM(size), 0)'), 'size_sum')
-            ->from('eva_ai_documents')
-            ->where($qb->expr()->eq('user_id', $qb->createNamedParameter($userId)));
-        if ($search !== null && $search !== '') {
-            $qb->andWhere(
-                $qb->expr()->like('path', $qb->createNamedParameter('%' . $search . '%'))
-            );
-        }
+            ->from('eva_ai_documents');
+        $this->applyFilters($qb, $userId, $search, $filters);
         $row = $qb->executeQuery()->fetch();
         if ($row === false || $row === null) {
             return ['count' => 0, 'chunks' => 0, 'size' => 0];
@@ -131,17 +231,13 @@ class DocumentMapper extends QBMapper {
         ];
     }
 
-    public function findByUser(string $userId, ?string $search = null, ?int $limit = 100, ?int $offset = 0): array {
+    public function findByUser(string $userId, ?string $search = null, ?int $limit = 100, ?int $offset = 0, array $filters = [], ?string $sort = null, string $dir = 'DESC'): array {
         $qb = $this->db->getQueryBuilder();
         $qb->select('*')
-            ->from('eva_ai_documents')
-            ->where($qb->expr()->eq('user_id', $qb->createNamedParameter($userId)));
-        if ($search !== null && $search !== '') {
-            $qb->andWhere(
-                $qb->expr()->like('path', $qb->createNamedParameter('%' . $search . '%'))
-            );
-        }
-        $qb->orderBy('indexed_at', 'DESC')
+            ->from('eva_ai_documents');
+        $this->applyFilters($qb, $userId, $search, $filters);
+        [$column, $direction] = $this->resolveSort($sort, $dir);
+        $qb->orderBy($column, $direction)
             ->addOrderBy('id', 'DESC')
             ->setMaxResults($limit)
             ->setFirstResult($offset);

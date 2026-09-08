@@ -39,6 +39,43 @@
 
 		<section class="docs-toolbar">
 			<NcTextField v-model="search" :label="$t('Search documents')" :label-outside="true" :placeholder="$t('File name or path')" :disabled="loadingMore" @keydown.enter="load" />
+			<label class="docs-filter">
+				<span class="docs-filter-label">{{ $t('Type') }}</span>
+				<select v-model="filterType" :disabled="loadingMore" @change="load">
+					<option value="">{{ $t('All types') }}</option>
+					<option value="text">text/*</option>
+					<option value="application">application/*</option>
+					<option value="image">image/*</option>
+					<option value="audio">audio/*</option>
+					<option value="video">video/*</option>
+					<option value="message">message/*</option>
+				</select>
+			</label>
+			<label class="docs-filter">
+				<span class="docs-filter-label">{{ $t('Folder') }}</span>
+				<input v-model="filterFolder" type="text" :placeholder="$t('Folder path')" :disabled="loadingMore" @keydown.enter="load" />
+			</label>
+			<label class="docs-filter">
+				<span class="docs-filter-label">{{ $t('Minimum size') }}</span>
+				<select v-model="filterSize" :disabled="loadingMore" @change="load">
+					<option value="">{{ $t('Any size') }}</option>
+					<option value="10000">≥ 10 KB</option>
+					<option value="100000">≥ 100 KB</option>
+					<option value="1000000">≥ 1 MB</option>
+				</select>
+			</label>
+			<label class="docs-filter">
+				<span class="docs-filter-label">{{ $t('Sort') }}</span>
+				<select v-model="filterSort" :disabled="loadingMore" @change="load">
+					<option value="date-desc">{{ $t('Newest first') }}</option>
+					<option value="date-asc">{{ $t('Oldest first') }}</option>
+					<option value="name-asc">{{ $t('Name A–Z') }}</option>
+					<option value="name-desc">{{ $t('Name Z–A') }}</option>
+					<option value="size-desc">{{ $t('Largest first') }}</option>
+					<option value="size-asc">{{ $t('Smallest first') }}</option>
+					<option value="chunks-desc">{{ $t('Most chunks first') }}</option>
+				</select>
+			</label>
 			<NcButton type="secondary" :loading="loading" :disabled="loadingMore" @click="load">{{ $t('Refresh') }}</NcButton>
 		</section>
 
@@ -141,6 +178,11 @@ export default {
 		const totalChunks = ref(0)
 		const totalSize = ref(0)
 		const search = ref('')
+		// Document filters and sorting (Issue #88).
+		const filterType = ref('')
+		const filterFolder = ref('')
+		const filterSize = ref('')
+		const filterSort = ref('date-desc')
 		const loading = ref(false)
 		const loadingMore = ref(false)
 		const pageSize = 100
@@ -220,7 +262,18 @@ export default {
 			}
 			const offset = append ? docs.value.length : 0
 			try {
-				const data = await api('GET', 'documents', { search: search.value, limit: pageSize, offset })
+				const [sort, dir] = filterSort.value.split('-')
+				const params = {
+					search: search.value,
+					limit: pageSize,
+					offset,
+					sort,
+					dir,
+				}
+				if (filterType.value) params.type = filterType.value
+				if (filterFolder.value.trim()) params.folder = filterFolder.value.trim()
+				if (filterSize.value) params.sizeMin = Number(filterSize.value)
+				const data = await api('GET', 'documents', params)
 				const incoming = Array.isArray(data?.documents) ? data.documents : []
 				docs.value = append ? docs.value.concat(incoming) : incoming
 				total.value = Number.isFinite(Number(data?.total)) ? Number(data.total) : docs.value.length
@@ -369,7 +422,7 @@ export default {
 			if (statusTimer !== null) window.clearInterval(statusTimer)
 		})
 
-		return { docs, total, totalChunks, totalSize, search, loading, loadingMore, hasMore, loadMoreError, indexing, stopping, indexStatus, indexingActive, progress, expanded, chunkCache, load, loadMore, loadStatus, toggle, startIndex, startMailIndex, stopIndex, fmtSize, fmtDate, mdiChevronDown, mdiChevronRight }
+		return { docs, total, totalChunks, totalSize, search, filterType, filterFolder, filterSize, filterSort, loading, loadingMore, hasMore, loadMoreError, indexing, stopping, indexStatus, indexingActive, progress, expanded, chunkCache, load, loadMore, loadStatus, toggle, startIndex, startMailIndex, stopIndex, fmtSize, fmtDate, mdiChevronDown, mdiChevronRight }
 	},
 }
 </script>
@@ -404,8 +457,27 @@ export default {
 .summary-label { display: block; color: var(--color-text-maxcontrast); font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: .04em; }
 .summary-card strong { display: block; margin-top: 3px; font-size: 20px; }
 .summary-card small { display: block; margin-top: 4px; color: var(--color-text-maxcontrast); font-size: 12px; }
-.docs-toolbar { display: flex; align-items: flex-end; gap: 12px; margin-bottom: 20px; padding-bottom: 20px; border-bottom: 1px solid var(--color-border); }
+.docs-toolbar { display: flex; align-items: flex-end; gap: 12px; margin-bottom: 20px; padding-bottom: 20px; border-bottom: 1px solid var(--color-border); flex-wrap: wrap; }
 .docs-toolbar > :first-child { flex: 1; min-width: 0; }
+
+.docs-filter {
+	display: flex;
+	flex-direction: column;
+	gap: 4px;
+	font-size: 12px;
+	color: var(--color-text-maxcontrast, #666);
+}
+.docs-filter select,
+.docs-filter input {
+	background: var(--color-main-background, #fff);
+	border: 1px solid var(--color-border, #ddd);
+	border-radius: var(--border-radius, 3px);
+	color: var(--color-main-text, #111);
+	font-size: 13px;
+	max-width: 150px;
+	padding: 6px 8px;
+}
+.docs-filter input { max-width: 170px; }
 
 .docs-body {
 	background: var(--color-main-background);

@@ -41,7 +41,7 @@ class AgentInteractionProvider implements ISynchronousProvider {
 
 	private const READ_ONLY_TOOLS = [
 		'list_files', 'read_file', 'search_files',
-		'find_contact', 'read_profile',
+		'list_contacts', 'find_contact', 'read_profile',
 		'list_calendars', 'list_calendar_events', 'find_free_slots',
 		'search_mails', 'list_mails', 'read_mail', 'unread_mail_count',
 		'list_shares', 'list_tasks', 'recent_activity', 'server_status',
