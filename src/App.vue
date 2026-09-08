@@ -1,5 +1,10 @@
 <template>
-	<NcContent class="eva-ai-app" :app-name="'eva_ai'">
+	<NcContent v-if="adminMode" class="eva-ai-admin" :app-name="'eva_ai'">
+		<NcAppContent>
+			<AdminView />
+		</NcAppContent>
+	</NcContent>
+	<NcContent v-else class="eva-ai-app" :app-name="'eva_ai'">
 		<NcAppNavigation :title="$t('Eva · v') + buildVersion" @close-navigation="mobileOpen = false">
 			<template #search>
 				<NcAppNavigationSearch v-model="chatFilter" :label="$t('Search chats')" :placeholder="$t('Search chats')" />
@@ -169,6 +174,7 @@ import ChatView from './views/ChatView.vue'
 import DocumentsView from './views/DocumentsView.vue'
 import SettingsView from './views/SettingsView.vue'
 import FileContextChatView from './views/FileContextChatView.vue'
+import AdminView from './views/AdminView.vue'
 import { mdiChatProcessing, mdiFileDocumentOutline, mdiTune, mdiTrashCanOutline, mdiMessagePlus, mdiPencilOutline, mdiChevronDown, mdiViewDashboardOutline, mdiPinOutline, mdiPinOffOutline, mdiFolderOutline, mdiFolderPlusOutline, mdiFolderRemoveOutline, mdiFolderSearchOutline, mdiFolderOffOutline, mdiArchiveOutline, mdiArchiveArrowUpOutline } from '@mdi/js'
 import { NcCounterBubble } from '@nextcloud/vue'
 import NcAppNavigationSearch from '@nextcloud/vue/components/NcAppNavigationSearch'
@@ -180,9 +186,13 @@ import { translate as t } from './lib/i18n'
 
 export default {
 	name: 'EvaAiApp',
-	components: { HomeView, ChatView, DocumentsView, SettingsView, FileContextChatView, NcCounterBubble, NcAppNavigationSearch, NcActionButton, NcActionSeparator, NcIconSvgWrapper },
-	setup() {
-		const params = new URLSearchParams(window.location.search)
+	components: { HomeView, ChatView, DocumentsView, SettingsView, FileContextChatView, AdminView, NcCounterBubble, NcAppNavigationSearch, NcActionButton, NcActionSeparator, NcIconSvgWrapper },		setup() {
+			// Admin settings form (Issue #82): the template mounts the same app
+			// with data-admin="1" and renders the admin dashboard instead.
+			const rootEl = document.getElementById('eva_ai-root')
+			const isAdminMode = !!(rootEl && rootEl.dataset && rootEl.dataset.admin === '1')
+
+			const params = new URLSearchParams(window.location.search)
 		const initialFileIdsParam = params.get('fileIds')
 		const initialFileIds = initialFileIdsParam
 			? initialFileIdsParam.split(',').map((x) => parseInt(x, 10)).filter((x) => Number.isFinite(x) && x > 0)
@@ -521,7 +531,7 @@ export default {
 		})
 
 		return {
-			view, mobileOpen, buildVersion,
+			view, adminMode: isAdminMode, mobileOpen, buildVersion,
 			chats, folders, currentChat, busy, chatFilter, apiError, showArchived,
 			pinnedChats, folderGroups, plainChats, navItems, listChats, activeChats, archivedChats,
 			folderPickerOpen, folderChat, newFolderName, collapsedFolders, toggleFolder,

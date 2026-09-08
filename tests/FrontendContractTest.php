@@ -429,4 +429,43 @@ final class FrontendContractTest extends TestCase {
         $executor = (string)file_get_contents(__DIR__ . '/../lib/Service/ActionExecutor.php');
         self::assertStringNotContainsString('auditResult', $executor);
     }
+
+    public function testAdminDashboardSurfaceAndAdminOnlyRoutes(): void {
+        // Issue #82: an admin dashboard exists with per-user overview and
+        // management, and every endpoint is admin-gated via #[AdminRequired].
+        $adminView = (string)file_get_contents(__DIR__ . '/../src/views/AdminView.vue');
+        self::assertStringContainsString('admin/overview', $adminView);
+        self::assertStringContainsString('/reindex', $adminView);
+        self::assertStringContainsString('/reset', $adminView);
+        self::assertStringContainsString('/enrollment', $adminView);
+        self::assertStringContainsString('user.documents', $adminView);
+        self::assertStringContainsString('user.chunks', $adminView);
+        self::assertStringContainsString('user.lastIndexedAt', $adminView);
+        self::assertStringContainsString('user.enrolled', $adminView);
+
+        $controller = (string)file_get_contents(__DIR__ . '/../lib/Controller/AdminController.php');
+        self::assertStringContainsString('#[AdminRequired]', $controller);
+        self::assertStringContainsString('public function overview()', $controller);
+        self::assertStringContainsString('public function reindex(string $userId)', $controller);
+        self::assertStringContainsString('public function reset(string $userId)', $controller);
+        self::assertStringContainsString('public function setEnrollment(string $userId)', $controller);
+        self::assertStringContainsString('aggregatePerUser()', $controller);
+
+        // The admin view must never show personal file content, only counts.
+        self::assertStringNotContainsString('user.files', $adminView);
+        self::assertStringNotContainsString('user.path', $adminView);
+
+        $routes = (string)file_get_contents(__DIR__ . '/../appinfo/routes.php');
+        self::assertStringContainsString("admin#overview", $routes);
+        self::assertStringContainsString("admin#reindex", $routes);
+        self::assertStringContainsString("admin#reset", $routes);
+        self::assertStringContainsString("admin#setEnrollment", $routes);
+
+        $mapper = (string)file_get_contents(__DIR__ . '/../lib/Db/DocumentMapper.php');
+        self::assertStringContainsString('public function aggregatePerUser()', $mapper);
+
+        $infoXml = (string)file_get_contents(__DIR__ . '/../appinfo/info.xml');
+        self::assertStringContainsString('Settings\\Admin', $infoXml);
+        self::assertStringContainsString('Settings\\AdminSection', $infoXml);
+    }
 }

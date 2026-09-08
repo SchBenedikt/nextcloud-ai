@@ -231,6 +231,43 @@ class DocumentMapper extends QBMapper {
         ];
     }
 
+    /**
+     * Per-user aggregates for the admin overview (Issue #82). Returns one row
+     * per user that owns at least one indexed document: document count, total
+     * chunks (summed from the document rows) and the most recent indexed_at.
+     *
+     * @return array<int,array{user_id:string,documents:int,chunks:int,last_indexed_at:?int}>
+     */
+    public function aggregatePerUser(): array {
+        $qb = $this->db->getQueryBuilder();
+        $qb->select('user_id')
+            ->selectAlias($qb->createFunction('COUNT(*)'), 'documents')
+            ->selectAlias($qb->createFunction('COALESCE(SUM(chunk_count), 0)'), 'chunks')
+            ->selectAlias($qb->createFunction('MAX(indexed_at)'), 'last_indexed_at')
+            ->from('eva_ai_documents')
+            ->groupBy('user_id')
+            ->orderBy('user_id', 'ASC');
+        $result = $qb->executeQuery();
+        $rows = $result->fetchAll();
+        $result->closeCursor();
+        $out = [];
+        foreach ($rows as $row) {
+            $userId = (string)($row['user_id'] ?? '');
+            if ($userId === '') {
+                continue;
+            }
+            $out[] = [
+                'user_id' => $userId,
+                'documents' => (int)($row['documents'] ?? 0),
+                'chunks' => (int)($row['chunks'] ?? 0),
+                'last_indexed_at' => ($row['last_indexed_at'] !== null && $row['last_indexed_at'] !== false)
+                    ? (int)$row['last_indexed_at']
+                    : null,
+            ];
+        }
+        return $out;
+    }
+
     public function findByUser(string $userId, ?string $search = null, ?int $limit = 100, ?int $offset = 0, array $filters = [], ?string $sort = null, string $dir = 'DESC'): array {
         $qb = $this->db->getQueryBuilder();
         $qb->select('*')

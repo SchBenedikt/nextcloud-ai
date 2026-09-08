@@ -221,6 +221,46 @@ class IndexScheduler {
         }
     }
 
+    /**
+     * Global scheduler state for the admin overview (Issue #82): how many
+     * users are running/queued and which ones, without exposing per-user
+     * internals.
+     *
+     * @return array{running:int,queued:int,limit:int,runningUsers:list<string>,queuedUsers:list<string>}
+     */
+    public function overview(): array {
+        $this->lock();
+        try {
+            $active = $this->readActive();
+            $this->reclaimStaleLocked($active);
+            $queue = $this->readQueue();
+            $runningUsers = [];
+            foreach ($active as $user => $entry) {
+                if ((string)$user !== '') {
+                    $runningUsers[] = (string)$user;
+                }
+            }
+            sort($runningUsers);
+            $queuedUsers = [];
+            foreach ($queue as $entry) {
+                $user = (string)($entry['user'] ?? '');
+                if ($user !== '' && !isset($active[$user])) {
+                    $queuedUsers[] = $user;
+                }
+            }
+            sort($queuedUsers);
+            return [
+                'running' => count($runningUsers),
+                'queued' => count($queuedUsers),
+                'limit' => $this->maxConcurrent(),
+                'runningUsers' => $runningUsers,
+                'queuedUsers' => $queuedUsers,
+            ];
+        } finally {
+            $this->unlock();
+        }
+    }
+
     /** @param list<array{user:string,queuedAt:int}> $queue */
     private function dropUserLocked(array &$queue, string $userId): void {
         $queue = array_values(array_filter(
