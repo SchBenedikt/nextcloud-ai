@@ -56,7 +56,13 @@ class EVAWidget implements IWidget, IAPIWidget, IAPIWidgetV2 {
         \OCP\Util::addStyle('eva_ai', 'widget');
     }
 
-    /** @return list<WidgetItem> */
+    /**
+     * Build the widget items.
+     *
+     * @return array{items: list<WidgetItem>, hasChats: bool} The items plus
+     *         whether the user actually has (non-empty) chats — the empty
+     *         state text must only be shown when there really are none.
+     */
     private function items(string $userId, ?string $since, int $limit): array {
         $appUrl = $this->urlGenerator->linkToRouteAbsolute('eva_ai.page.index');
         $docsUrl = $this->urlGenerator->linkToRouteAbsolute('eva_ai.page.documents');
@@ -77,12 +83,14 @@ class EVAWidget implements IWidget, IAPIWidget, IAPIWidgetV2 {
         // chat id itself so new conversations surface as new widget items
         // without confusing the dashboard's delta tracking.
         $chatLimit = $limit > 0 ? max(0, $limit - count($items)) : 0;
+        $hasChats = false;
         if ($chatLimit > 0) {
             try {
                 $chats = $this->chatStore->list($userId);
                 // Empty conversations (accidental "New chat" clicks) are not
                 // interesting as recent chats.
                 $chats = array_values(array_filter($chats, static fn($c) => (int)($c['count'] ?? 0) > 0));
+                $hasChats = count($chats) > 0;
                 $chats = array_slice($chats, 0, $chatLimit);
                 foreach ($chats as $chat) {
                     $items[] = new WidgetItem(
@@ -98,7 +106,7 @@ class EVAWidget implements IWidget, IAPIWidget, IAPIWidgetV2 {
             }
         }
 
-        if (count($items) === 1 && $limit !== 1) {
+        if (!$hasChats && $limit !== 1) {
             // No chats (or chat store unavailable): offer the documents view
             // so the widget is still useful instead of showing an empty list.
             $items[] = new WidgetItem(
@@ -113,18 +121,22 @@ class EVAWidget implements IWidget, IAPIWidget, IAPIWidgetV2 {
         if ($limit > 0) {
             $items = array_slice($items, 0, $limit);
         }
-        return $items;
+        return ['items' => $items, 'hasChats' => $hasChats];
     }
 
     public function getItems(string $userId, ?string $since = null, int $limit = 7): array {
-        return $this->items($userId, $since, $limit);
+        return $this->items($userId, $since, $limit)['items'];
     }
 
     public function getItemsV2(string $userId, ?string $since = null, int $limit = 7): WidgetItems {
+        $result = $this->items($userId, $since, $limit);
+        $emptyState = $result['hasChats']
+            ? '' // Chats exist — showing "no chats yet" above them would be wrong.
+            : $this->l10n->t('No chats yet — start a new one.');
         return new WidgetItems(
-            $this->items($userId, $since, $limit),
-            $this->l10n->t('No chats yet — start a new one.'),
-            $this->l10n->t('No chats yet — start a new one.'),
+            $result['items'],
+            $emptyState,
+            $emptyState,
         );
     }
 }

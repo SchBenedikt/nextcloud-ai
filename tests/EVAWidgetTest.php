@@ -105,4 +105,19 @@ final class EVAWidgetTest extends TestCase {
         self::assertSame('http://localhost/nextcloud/apps/eva_ai/', $widget->getUrl());
         self::assertSame('eva_ai', $widget->getId());
     }
+
+    public function testEmptyStateMessageOnlyWhenThereAreNoChats(): void {
+        // With chats, the dashboard must not show "no chats yet" above them.
+        $withChats = $this->widget([$this->chat('c1', 'Frage', 3)]);
+        $itemsWithChats = $withChats->getItemsV2('alice', null, 7);
+        self::assertSame('', $itemsWithChats->getEmptyContentMessage());
+        self::assertSame('', $itemsWithChats->getHalfEmptyContentMessage());
+
+        // Without chats, the hint is shown and the documents fallback appears.
+        $noChats = $this->widget([]);
+        $itemsNoChats = $noChats->getItemsV2('alice', null, 7);
+        self::assertSame('No chats yet — start a new one.', $itemsNoChats->getEmptyContentMessage());
+        self::assertSame('No chats yet — start a new one.', $itemsNoChats->getHalfEmptyContentMessage());
+        self::assertSame('Your documents', $itemsNoChats->getItems()[1]->getTitle());
+    }
 }
