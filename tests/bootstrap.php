@@ -56,6 +56,11 @@ if ($ocpRoot !== null) {
     if (is_dir($ocpRoot . '/apps/dav/lib')) {
         $loader->addPsr4('OCA\\DAV\\', $ocpRoot . '/apps/dav/lib/');
     }
+    // The Talk bot tests construct real Talk events; register the Talk
+    // (spreed) app classes when it is installed.
+    if (is_dir($ocpRoot . '/apps/spreed/lib')) {
+        $loader->addPsr4('OCA\\Talk\\', $ocpRoot . '/apps/spreed/lib/');
+    }
     define('EVA_AI_OCP_AVAILABLE', true);
 } else {
     define('EVA_AI_OCP_AVAILABLE', false);

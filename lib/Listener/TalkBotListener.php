@@ -9,6 +9,7 @@ use OCA\EvaAi\Service\AppConfig;
 use OCA\EvaAi\Service\Ollama;
 use OCA\EvaAi\Service\RagService;
 use OCA\EvaAi\Service\TalkContextReader;
+use OCA\EvaAi\Service\TalkRoomState;
 use OCA\EvaAi\Service\ToolPolicy;
 use OCA\Talk\Events\BotInvokeEvent;
 use OCA\Talk\Model\Bot;
@@ -47,6 +48,7 @@ PROMPT;
         private ActionExecutor $executor,
         private AppConfig $appConfig,
         private RagService $ragService,
+        private TalkRoomState $roomState,
         private LoggerInterface $logger,
     ) {
     }
@@ -81,9 +83,26 @@ PROMPT;
 
         $this->appConfig->setUserId($userId);
 
-        // Selektive Antwort-Logik: Nur antworten wenn angesprochen.
         $roomId = (int)($data['target']['id'] ?? 0);
         $explicit = $this->isExplicitlyMentioned($content);
+
+        // Per-room enable/disable (Issue #85): a disabled room stays silent
+        // for everything except the /start command itself, so the bot can
+        // always be re-enabled from the chat.
+        if (!$this->roomState->isEnabled($roomId)
+            && !$this->parseSlashCommand($content)['start']) {
+            return;
+        }
+
+        // Deterministic slash commands (Issue #85): handled before any LLM
+        // classification, so @Eva /help etc. never depend on the model.
+        $command = $this->parseSlashCommand($content);
+        if ($command['name'] !== '') {
+            $this->handleSlashCommand($event, $command, $userId, $roomId);
+            return;
+        }
+
+        // Selektive Antwort-Logik: Nur antworten wenn angesprochen.
         if (!$this->shouldRespond($content, $userId, $roomId, $explicit)) {
             return; // Stille – keine Antwort.
         }
@@ -111,6 +130,96 @@ PROMPT;
             $this->logger->error('eva_ai talk bot failed', ['exception' => $e]);
             $event->addAnswer("Uups, da ist bei mir ein Fehler aufgetreten. Bitte versuche es gleich nochmal.");
         }
+    }
+
+    /**
+     * Parse a deterministic slash command (Issue #85). The mention itself is
+     * stripped first, so "@Eva /help", "@Eva /summarize" and "@eva /status"
+     * all work. Returns an empty name for plain messages.
+     *
+     * @return array{name:string,arg:string,start:bool}
+     */
+    private function parseSlashCommand(string $content): array {
+        $clean = $this->stripMention($content);
+        if (!preg_match('~^/([a-z]+)(?:\s+(.*))?$~iu', trim($clean), $m)) {
+            return ['name' => '', 'arg' => '', 'start' => false];
+        }
+        $name = strtolower($m[1]);
+        $allowed = ['help', 'summarize', 'status', 'stop', 'start'];
+        if (!in_array($name, $allowed, true)) {
+            return ['name' => '', 'arg' => '', 'start' => false];
+        }
+        return ['name' => $name, 'arg' => trim((string)($m[2] ?? '')), 'start' => $name === 'start'];
+    }
+
+    private function handleSlashCommand(BotInvokeEvent $event, array $command, string $userId, int $roomId): void {
+        switch ($command['name']) {
+            case 'help':
+                $event->addAnswer(
+                    "Hier sind meine Befehle:\n"
+                    . "- @Eva /help – diese Hilfe\n"
+                    . "- @Eva /summarize – fasse die letzten Nachrichten im Raum zusammen\n"
+                    . "- @Eva /status – Index- und Modellstatus\n"
+                    . "- @Eva /stop – pausiere mich für diesen Raum\n"
+                    . "- @Eva /start – aktiviere mich wieder für diesen Raum\n\n"
+                    . "Du kannst mich auch einfach mit @Eva ansprechen und deine Frage stellen."
+                );
+                return;
+            case 'stop':
+                $this->roomState->setEnabled($roomId, false);
+                $event->addAnswer("Okay, ich bin für diesen Raum pausiert. Sag @Eva /start, um mich wieder zu aktivieren.");
+                return;
+            case 'start':
+                $this->roomState->setEnabled($roomId, true);
+                $event->addAnswer("Ich bin wieder aktiv für diesen Raum! 🎉");
+                return;
+            case 'status':
+                $status = $this->ragService->buildStatus($userId);
+                $lines = [];
+                $lines[] = 'Ollama: ' . ((bool)($status['ollamaOnline'] ?? false) ? '✅ online' : '❌ offline');
+                $lines[] = 'Chat-Modell: ' . ($status['chatModel'] ?? '') . ((bool)($status['chatModelInstalled'] ?? false) ? ' ✅' : ' ⚠️');
+                $lines[] = 'Embedding-Modell: ' . ($status['embeddingModel'] ?? '') . ((bool)($status['embeddingModelInstalled'] ?? false) ? ' ✅' : ' ⚠️');
+                $lines[] = 'Dokumente im Index: ' . (int)($status['documents'] ?? 0);
+                $lines[] = 'Index läuft gerade: ' . ((bool)($status['indexing'] ?? false) ? 'ja' : 'nein');
+                $event->addAnswer(implode("\n", $lines));
+                return;
+            case 'summarize':
+                $summary = $this->summarizeRoom($roomId, $userId);
+                $event->addAnswer($summary);
+                return;
+        }
+    }
+
+    /**
+     * Summarize the recent room messages deterministically (Issue #85):
+     * reuses the Talk history reader for the last N messages and asks the
+     * configured chat model to condense them. Falls back to a clear message
+     * when there is nothing to summarize or the model is unreachable.
+     */
+    private function summarizeRoom(int $roomId, string $userId): string {
+        $history = $roomId > 0 ? $this->contextReader->buildHistoryMessages($roomId) : [];
+        // buildHistoryMessages returns role/content pairs; keep only user text
+        // for the summary input and bound it like the regular chat history.
+        $texts = [];
+        foreach ($history as $h) {
+            $c = trim((string)($h['content'] ?? ''));
+            if ($c !== '' && ($h['role'] ?? '') === 'user') {
+                $texts[] = $c;
+            }
+        }
+        if ($texts === []) {
+            return "In diesem Raum gibt es noch keine Nachrichten zum Zusammenfassen.";
+        }
+        $joined = mb_substr(implode("\n", array_slice($texts, -40)), 0, 12000);
+        $messages = [
+            ['role' => 'system', 'content' => 'Du bist EVA. Fasse die folgenden Chat-Nachrichten auf Deutsch in 3-6 Sätzen zusammen. Nenne die wichtigsten Themen und Ergebnisse, ohne Details zu erfinden.'],
+            ['role' => 'user', 'content' => $joined],
+        ];
+        $resp = $this->ollama->chat($messages, []);
+        if (isset($resp['error']) || trim((string)($resp['answer'] ?? '')) === '') {
+            return "Die Zusammenfassung ist gerade nicht möglich (Modell nicht erreichbar).";
+        }
+        return trim((string)$resp['answer']);
     }
 
     /** Prüft, ob EVA explizit per @Mention oder Custom-Trigger angesprochen wurde. */

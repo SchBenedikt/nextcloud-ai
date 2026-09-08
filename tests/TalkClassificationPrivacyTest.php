@@ -43,12 +43,15 @@ final class TalkClassificationPrivacyTest extends TestCase {
             };
         });
         $ollama = $this->createMock(Ollama::class);
+        $roomState = $this->createMock(\OCA\EvaAi\Service\TalkRoomState::class);
+        $roomState->method('isEnabled')->willReturn(true);
         $listener = new TalkBotListener(
             $ollama,
             $this->createMock(TalkContextReader::class),
             $this->createMock(ActionExecutor::class),
             $config,
             $this->createMock(RagService::class),
+            $roomState,
             $this->createMock(LoggerInterface::class)
         );
         return [$listener, $ollama, $config];
