@@ -92,6 +92,52 @@ class ApiController extends OCSController {
         return new DataResponse($this->ragService->buildStatus($user));
     }
 
+    /**
+     * Dashboard summary (Issue: app home): document/chunk/size aggregates,
+     * chat counts + recent chats, folder count and a slim status snapshot.
+     */
+    #[NoAdminRequired]
+    public function stats(): DataResponse {
+        $user = $this->requireUser();
+        if ($user === null) {
+            return new DataResponse(['error' => 'Not logged in'], 401);
+        }
+        try {
+            $this->knowledgeInitializer->ensureInitialized($user);
+            $agg = $this->documentMapper->aggregateForUser($user);
+            $status = $this->ragService->buildStatus($user);
+            $chats = $this->chatStore->list($user, null, true);
+            $active = array_values(array_filter($chats, static fn($c) => empty($c['archived'])));
+            $recent = $active;
+            usort($recent, static fn($a, $b) => ($b['updated'] ?? 0) <=> ($a['updated'] ?? 0));
+            return new DataResponse([
+                'documents' => [
+                    'count' => $agg['count'],
+                    'chunks' => $agg['chunks'],
+                    'size' => $agg['size'],
+                ],
+                'chats' => [
+                    'total' => count($chats),
+                    'active' => count($active),
+                    'archived' => count($chats) - count($active),
+                    'recent' => array_slice($recent, 0, 6),
+                ],
+                'folders' => count($this->chatStore->listFolders($user)),
+                'status' => [
+                    'ollamaOnline' => (bool)($status['ollamaOnline'] ?? false),
+                    'ollamaError' => $status['ollamaError'] ?? null,
+                    'chatModel' => $status['chatModel'] ?? '',
+                    'embeddingModel' => $status['embeddingModel'] ?? '',
+                    'indexing' => (bool)($status['indexing'] ?? false),
+                    'lastFinished' => $status['lastFinished'] ?? null,
+                    'lastError' => $status['lastError'] ?? null,
+                ],
+            ]);
+        } catch (\Throwable $e) {
+            return new DataResponse(['error' => 'Unable to build dashboard summary'], 500);
+        }
+    }
+
     #[NoAdminRequired]
     public function settings(): DataResponse {
         $user = $this->requireUser();

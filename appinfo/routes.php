@@ -12,6 +12,7 @@ return [
     ],
     'ocs' => [
         ['name' => 'api#status', 'url' => '/api/status', 'verb' => 'GET'],
+        ['name' => 'api#stats', 'url' => '/api/stats', 'verb' => 'GET'],
         ['name' => 'api#settings', 'url' => '/api/settings', 'verb' => 'GET'],
         ['name' => 'api#saveSettings', 'url' => '/api/settings', 'verb' => 'PUT'],
         ['name' => 'api#startIndex', 'url' => '/api/index', 'verb' => 'POST'],

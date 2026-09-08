@@ -97,6 +97,14 @@
 			<template #footer>
 				<ul class="nav-footer">
 					<NcAppNavigationItem
+						:name="$t('Home')"
+						:active="view === 'home'"
+						@click="navigate('home')">
+						<template #icon>
+							<svg width="16" height="16" viewBox="0 0 24 24"><path :d="mdiViewDashboardOutline" fill="currentColor" /></svg>
+						</template>
+					</NcAppNavigationItem>
+					<NcAppNavigationItem
 						:name="$t('Documents')"
 						:active="view === 'docs'"
 						@click="navigate('docs')">
@@ -116,7 +124,8 @@
 			</template>
 		</NcAppNavigation>
 		<NcAppContent>
-			<ChatView v-if="view === 'chat'" :chat-id="currentChat" @chat-updated="loadChats" />
+			<HomeView v-if="view === 'home'" @new-chat="newChat" @navigate="navigate" @open-chat="selectChat" />
+			<ChatView v-else-if="view === 'chat'" :chat-id="currentChat" @chat-updated="loadChats" />
 			<FileContextChatView v-else-if="view === 'fileContext'" :file-ids="fileContextIds" />
 			<DocumentsView v-else-if="view === 'docs'" />
 			<SettingsView v-else />
@@ -154,11 +163,12 @@
 
 <script>
 import { ref, computed, watch, onMounted, onBeforeUnmount } from 'vue'
+import HomeView from './views/HomeView.vue'
 import ChatView from './views/ChatView.vue'
 import DocumentsView from './views/DocumentsView.vue'
 import SettingsView from './views/SettingsView.vue'
 import FileContextChatView from './views/FileContextChatView.vue'
-import { mdiChatProcessing, mdiFileDocumentOutline, mdiTune, mdiTrashCanOutline, mdiMessagePlus, mdiPencilOutline, mdiChevronDown, mdiPinOutline, mdiPinOffOutline, mdiFolderOutline, mdiFolderPlusOutline, mdiFolderRemoveOutline, mdiFolderSearchOutline, mdiFolderOffOutline, mdiArchiveOutline, mdiArchiveArrowUpOutline } from '@mdi/js'
+import { mdiChatProcessing, mdiFileDocumentOutline, mdiTune, mdiTrashCanOutline, mdiMessagePlus, mdiPencilOutline, mdiChevronDown, mdiViewDashboardOutline, mdiPinOutline, mdiPinOffOutline, mdiFolderOutline, mdiFolderPlusOutline, mdiFolderRemoveOutline, mdiFolderSearchOutline, mdiFolderOffOutline, mdiArchiveOutline, mdiArchiveArrowUpOutline } from '@mdi/js'
 import { NcCounterBubble } from '@nextcloud/vue'
 import NcAppNavigationSearch from '@nextcloud/vue/components/NcAppNavigationSearch'
 import NcActionButton from '@nextcloud/vue/components/NcActionButton'
@@ -169,7 +179,7 @@ import { translate as t } from './lib/i18n'
 
 export default {
 	name: 'EvaAiApp',
-	components: { ChatView, DocumentsView, SettingsView, FileContextChatView, NcCounterBubble, NcAppNavigationSearch, NcActionButton, NcActionSeparator, NcIconSvgWrapper },
+	components: { HomeView, ChatView, DocumentsView, SettingsView, FileContextChatView, NcCounterBubble, NcAppNavigationSearch, NcActionButton, NcActionSeparator, NcIconSvgWrapper },
 	setup() {
 		const params = new URLSearchParams(window.location.search)
 		const initialFileIdsParam = params.get('fileIds')
@@ -181,17 +191,17 @@ export default {
 			? 'settings'
 			: path.endsWith('/documents')
 				? 'docs'
-				: 'chat'
+				: 'home'
+		// Deep links from the dashboard widget (?chat=new | ?chat=<id>): they
+		// land on the chat view, everything else starts on the dashboard.
+		const initialChatParam = params.get('chat')
 		const initial = params.get('view') === 'fileContext'
 			? 'fileContext'
 			: params.get('view') === 'docs'
 				? 'docs'
 				: params.get('view') === 'settings'
 					? 'settings'
-					: pathView
-		// Deep links from the dashboard widget (?chat=new | ?chat=<id>).
-		// Handled in onMounted after the chat list has been loaded.
-		const initialChatParam = params.get('chat')
+					: (initialChatParam ? 'chat' : pathView)
 		const view = ref(initial)
 		const fileContextIds = ref(initialFileIds)
 		const mobileOpen = ref(false)
@@ -338,7 +348,11 @@ export default {
 			} else {
 				url.searchParams.delete('chat')
 			}
-			url.pathname = nextView === 'chat' ? appRootPath() : appRootPath() + '/' + (nextView === 'docs' ? 'documents' : nextView)
+			// 'home' and 'chat' share the app root path; only docs/settings
+			// get their own suffix.
+			url.pathname = nextView === 'chat' || nextView === 'home'
+				? appRootPath()
+				: appRootPath() + '/' + (nextView === 'docs' ? 'documents' : nextView)
 			window.history.pushState({}, '', url.toString())
 		}
 
@@ -474,7 +488,8 @@ export default {
 			if (typeof window !== 'undefined' && window.addEventListener) {
 				window.addEventListener('popstate', () => {
 					const current = window.location.pathname.replace(/\/+$/, '')
-					view.value = current.endsWith('/settings') ? 'settings' : current.endsWith('/documents') ? 'docs' : 'chat'
+					const hasChat = new URLSearchParams(window.location.search).get('chat')
+					view.value = current.endsWith('/settings') ? 'settings' : current.endsWith('/documents') ? 'docs' : (hasChat ? 'chat' : 'home')
 				})
 				window.addEventListener('eva-ai:chats-cleared', () => {
 					currentChat.value = null
@@ -508,7 +523,7 @@ export default {
 			fileContextIds, itemName, itemTip,
 			newChat, selectChat, renameChat, deleteChat, loadChats, navigate, updateChatMeta, pickFolder, pickScope, assignTarget, createAndAssign,
 			pickerMode,
-			mdiChatProcessing, mdiFileDocumentOutline, mdiTune, mdiTrashCanOutline, mdiMessagePlus, mdiPencilOutline, mdiChevronDown,
+			mdiChatProcessing, mdiFileDocumentOutline, mdiTune, mdiTrashCanOutline, mdiMessagePlus, mdiPencilOutline, mdiChevronDown, mdiViewDashboardOutline,
 			mdiPinOutline, mdiPinOffOutline, mdiFolderOutline, mdiFolderPlusOutline, mdiFolderRemoveOutline, mdiFolderSearchOutline, mdiFolderOffOutline, mdiArchiveOutline, mdiArchiveArrowUpOutline,
 		}
 	},

@@ -110,8 +110,19 @@ final class FrontendContractTest extends TestCase {
 		self::assertStringContainsString('@click.stop="updateChatMeta(item.chat.id, { pinned:', $app);
 		self::assertStringContainsString('@click.stop="updateChatMeta(item.chat.id, { archived:', $app);
         self::assertStringContainsString("return requestApi('GET', '/chats')", $app);
-        self::assertStringContainsString("return requestApi('GET', '/folders')", $app);
-        self::assertStringContainsString("requestApi('POST', '/chats/' + encodeURIComponent(id) + '/meta', meta)", $app);
+        self::assertStringContainsString("return requestApi('GET', '/folders')", $app);		self::assertStringContainsString("requestApi('POST', '/chats/' + encodeURIComponent(id) + '/meta', meta)", $app);
+		// The app starts on a modern dashboard home view with a stats API.
+		self::assertStringContainsString('HomeView', $app);
+		self::assertStringContainsString("view === 'home'", $app);
+		self::assertStringContainsString('mdiViewDashboardOutline', $app);
+		$home = (string)file_get_contents(__DIR__ . '/../src/views/HomeView.vue');
+		self::assertStringContainsString("api('GET', '/stats')", $home);
+		self::assertStringContainsString('Recent chats', $home);
+		self::assertStringContainsString('stat-grid', $home);
+		self::assertStringContainsString('ollamaOnline', $home);
+		self::assertStringContainsString('$emit(\'open-chat\', c.id)', $home);
+		self::assertStringContainsString('public function stats(): DataResponse', (string)file_get_contents(__DIR__ . '/../lib/Controller/ApiController.php'));
+		self::assertStringContainsString("'url' => '/api/stats'", (string)file_get_contents(__DIR__ . '/../appinfo/routes.php'));
         $settings = (string)file_get_contents(__DIR__ . '/../src/views/SettingsView.vue');
         self::assertStringContainsString("api('DELETE', 'chats')", $settings);
         self::assertStringContainsString("new CustomEvent('eva-ai:chats-cleared')", $settings);
