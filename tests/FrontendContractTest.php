@@ -35,9 +35,17 @@ final class FrontendContractTest extends TestCase {
         self::assertStringContainsString("'totalSize' => \$aggregates['size']", $controller);
         $mapper = (string)file_get_contents(__DIR__ . '/../lib/Db/DocumentMapper.php');
         self::assertStringContainsString('countForUser(string $userId, ?string $search = null)', $mapper);
-        self::assertStringContainsString('aggregateForUser(string $userId, ?string $search = null)', $mapper);
+        self::assertStringContainsString('aggregateForUser(string $userId, ?string $search = null, array $filters = [])', $mapper);
         self::assertStringContainsString("like('path'", $mapper);
         self::assertStringContainsString("addOrderBy('id', 'DESC')", $mapper);
+        // Issue #88: filters and sorting on the documents list.
+        self::assertStringContainsString('private function applyFilters(IQueryBuilder $qb, string $userId, ?string $search, array $filters): void', $mapper);
+        self::assertStringContainsString('private function resolveSort(?string $sort, string $dir): array', $mapper);
+        self::assertStringContainsString('private function escapeLike(string $value): string', $mapper);
+        self::assertStringContainsString('->expr()->eq(\'mime\'', $mapper);
+        self::assertStringContainsString("escapeLike(\$folder) . '/%'", $mapper);
+        self::assertStringContainsString("filters['type'] = \$type", $controller);
+        self::assertStringContainsString("filters['folder'] = \$folder", $controller);
     }
 
     public function testAppSharesContentWidthAndProvidesSearchableChatActions(): void {
@@ -66,22 +74,26 @@ final class FrontendContractTest extends TestCase {
         self::assertStringContainsString('box-sizing: border-box;', $app);
         self::assertStringContainsString('display: block;', $app);
         self::assertStringContainsString('width: 100%;', $app);
-        $chatActions = (string)file_get_contents(__DIR__ . '/../src/components/ChatActions.vue');
-        self::assertStringContainsString(':path="mdiPencilOutline"', $chatActions);
-        self::assertStringContainsString(':path="mdiTrashCanOutline"', $chatActions);
-        self::assertStringContainsString('mdiPinOffOutline : mdiPinOutline', $chatActions);
-        self::assertStringContainsString('mdiArchiveArrowUpOutline : mdiArchiveOutline', $chatActions);
-        self::assertStringContainsString(':path="mdiFolderPlusOutline"', $chatActions);
+        // The chat context menu must be rendered as direct NcActionButton
+        // children of the navigation item: NcActions only detects menu entries
+        // whose component name starts with "NcAction", so wrapping them in a
+        // custom component would silently hide the three-dot menu (Issue #87).
+        self::assertStringContainsString(':path="mdiPencilOutline"', $app);
+        self::assertStringContainsString(':path="mdiTrashCanOutline"', $app);
+        self::assertStringContainsString('mdiPinOffOutline : mdiPinOutline', $app);
+        self::assertStringContainsString('mdiArchiveArrowUpOutline', $app);
+        self::assertStringContainsString(':path="mdiFolderPlusOutline"', $app);
         self::assertStringNotContainsString('<svg width="20" height="20"', $app);
         self::assertStringNotContainsString('allow-collapse', $app);
         self::assertStringNotContainsString('chatsOpen', $app);
         self::assertStringContainsString('pinnedChats', $app);
         self::assertStringContainsString('archivedChats', $app);
         self::assertStringContainsString(':force-menu="true"', $app);
-        self::assertStringContainsString(':close-after-click="true"', $chatActions);
-        self::assertStringContainsString('@rename="renameChat(c.id)"', $app);
-        self::assertStringContainsString('@delete="deleteChat(c.id)"', $app);
-        self::assertStringContainsString('@meta="updateChatMeta"', $app);
+        self::assertStringContainsString(':close-after-click="true"', $app);
+        self::assertStringContainsString('@click.stop="renameChat(c.id)"', $app);
+        self::assertStringContainsString('@click.stop="deleteChat(c.id)"', $app);
+        self::assertStringContainsString('@click.stop="updateChatMeta(c.id, { pinned:', $app);
+        self::assertStringContainsString('@click.stop="updateChatMeta(c.id, { archived:', $app);
         self::assertStringContainsString("return requestApi('GET', '/chats')", $app);
         self::assertStringContainsString("return requestApi('GET', '/folders')", $app);
         self::assertStringContainsString("requestApi('POST', '/chats/' + encodeURIComponent(id) + '/meta', meta)", $app);

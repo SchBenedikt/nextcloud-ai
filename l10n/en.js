@@ -389,5 +389,17 @@ OC.L10N.register("eva_ai", {
   "Add to folder": "Add to folder",
   "Archive chat": "Archive chat",
   "Unarchive chat": "Unarchive chat",
-  "The chat could not be updated: {error}": "The chat could not be updated: {error}"
+  "The chat could not be updated: {error}": "The chat could not be updated: {error}",
+  "All types": "All types",
+  "Minimum size": "Minimum size",
+  "Any size": "Any size",
+  "Sort": "Sort",
+  "Newest first": "Newest first",
+  "Oldest first": "Oldest first",
+  "Name A–Z": "Name A–Z",
+  "Name Z–A": "Name Z–A",
+  "Largest first": "Largest first",
+  "Smallest first": "Smallest first",
+  "Most chunks first": "Most chunks first",
+  "Folder": "Folder"
 }, "nplurals=2; plural=(n != 1);");

@@ -453,7 +453,43 @@ class ApiController extends OCSController {
         $search = (string)($this->requestParam('search') ?? '');
         $limit = max(1, min(500, (int)($this->requestParam('limit') ?? 100)));
         $offset = max(0, (int)($this->requestParam('offset') ?? 0));
-        $docs = $this->documentMapper->findByUser($user, $search, $limit, $offset);
+        // Document filters and sorting (Issue #88). Every value is validated
+        // and bounded server-side; unknown sort keys fall back to the default.
+        $filters = [];
+        $type = trim((string)($this->requestParam('type') ?? ''));
+        if ($type !== '') {
+            // MIME group (text) or full MIME type (application/pdf), safe charset.
+            if (preg_match('/^[a-z0-9.+-]+(?:\/[a-z0-9.+-]+)?$/i', $type)) {
+                $filters['type'] = $type;
+            }
+        }
+        $folder = trim((string)($this->requestParam('folder') ?? ''));
+        if ($folder !== '') {
+            // Relative folder path without traversal or wildcards.
+            $folder = trim($folder, '/');
+            if (preg_match('#^(?:[^/\\]{1,120}/)*[^/\\]{1,120}$#', $folder) && !str_contains($folder, '..')) {
+                $filters['folder'] = $folder;
+            }
+        }
+        $dateFrom = (int)($this->requestParam('dateFrom') ?? 0);
+        if ($dateFrom > 0) {
+            $filters['dateFrom'] = $dateFrom;
+        }
+        $dateTo = (int)($this->requestParam('dateTo') ?? 0);
+        if ($dateTo > 0) {
+            $filters['dateTo'] = $dateTo;
+        }
+        $sizeMin = (int)($this->requestParam('sizeMin') ?? 0);
+        if ($sizeMin > 0) {
+            $filters['sizeMin'] = $sizeMin;
+        }
+        $sizeMax = (int)($this->requestParam('sizeMax') ?? 0);
+        if ($sizeMax > 0) {
+            $filters['sizeMax'] = $sizeMax;
+        }
+        $sort = (string)($this->requestParam('sort') ?? '');
+        $dir = strtolower((string)($this->requestParam('dir') ?? 'desc'));
+        $docs = $this->documentMapper->findByUser($user, $search, $limit, $offset, $filters, $sort !== '' ? $sort : null, $dir);
         $out = array_map(static function ($d) {
             return [
                 'id' => (int)$d->getId(),
@@ -467,7 +503,7 @@ class ApiController extends OCSController {
         }, $docs);
         // Totals describe the whole filtered index, independent of the page
         // that was requested (Issue #74).
-        $aggregates = $this->documentMapper->aggregateForUser($user, $search);
+        $aggregates = $this->documentMapper->aggregateForUser($user, $search, $filters);
         return new DataResponse([
             'documents' => $out,
             'total' => $aggregates['count'],
