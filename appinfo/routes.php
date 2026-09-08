@@ -45,5 +45,10 @@ return [
         ['name' => 'api#fileContextStatus', 'url' => '/api/fileContextStatus', 'verb' => 'POST'],
         ['name' => 'api#knowledge', 'url' => '/api/knowledge', 'verb' => 'GET'],
         ['name' => 'api#saveKnowledge', 'url' => '/api/knowledge', 'verb' => 'PUT'],
+        // Admin-only endpoints (Issue #82): overview + per-user management.
+        ['name' => 'admin#overview', 'url' => '/api/admin/overview', 'verb' => 'GET'],
+        ['name' => 'admin#reindex', 'url' => '/api/admin/users/{userId}/reindex', 'verb' => 'POST'],
+        ['name' => 'admin#reset', 'url' => '/api/admin/users/{userId}/reset', 'verb' => 'POST'],
+        ['name' => 'admin#setEnrollment', 'url' => '/api/admin/users/{userId}/enrollment', 'verb' => 'POST'],
     ],
 ];

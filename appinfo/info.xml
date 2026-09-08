@@ -54,4 +54,8 @@
             <order>20</order>
         </navigation>
     </navigations>
+    <settings>
+        <admin>OCA\EvaAi\Settings\Admin</admin>
+        <admin-section>OCA\EvaAi\Settings\AdminSection</admin-section>
+    </settings>
 </info>
