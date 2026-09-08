@@ -902,6 +902,113 @@ class ApiController extends OCSController {
     }
 
     /**
+     * Update organisational chat metadata (Issue #87): pin/unpin, assign a
+     * folder, archive/unarchive.
+     *
+     * POST /api/chats/{id}/meta
+     * Body: { pinned?: bool, folder?: string, archived?: bool }
+     */
+    #[NoAdminRequired]
+    public function chatMeta(string $id): DataResponse {
+        $user = $this->requireUser();
+        if ($user === null) {
+            return new DataResponse(['error' => 'Not logged in'], 401);
+        }
+        $meta = [];
+        $body = $this->requestBody();
+        foreach (['pinned', 'archived'] as $flag) {
+            if (array_key_exists($flag, $body)) {
+                $meta[$flag] = !empty($body[$flag]);
+            }
+        }
+        if (array_key_exists('folder', $body)) {
+            $meta['folder'] = trim((string)$body['folder']);
+        }
+        if ($meta === []) {
+            return new DataResponse(['error' => 'No metadata given'], 400);
+        }
+        try {
+            if (!$this->chatStore->setMeta($user, $id, $meta)) {
+                return new NotFoundResponse();
+            }
+            return new DataResponse(['ok' => true]);
+        } catch (\Throwable $e) {
+            return new DataResponse(['error' => 'Unable to persist chat data'], 500);
+        }
+    }
+
+    #[NoAdminRequired]
+    public function folders(): DataResponse {
+        $user = $this->requireUser();
+        if ($user === null) {
+            return new DataResponse(['error' => 'Not logged in'], 401);
+        }
+        try {
+            return new DataResponse($this->chatStore->listFolders($user));
+        } catch (\Throwable $e) {
+            return new DataResponse(['error' => 'Unable to read folders'], 500);
+        }
+    }
+
+    #[NoAdminRequired]
+    public function createFolder(): DataResponse {
+        $user = $this->requireUser();
+        if ($user === null) {
+            return new DataResponse(['error' => 'Not logged in'], 401);
+        }
+        $name = trim((string)$this->requestParam('name') ?? '');
+        if ($name === '') {
+            return new DataResponse(['error' => 'Folder name required'], 400);
+        }
+        try {
+            return new DataResponse($this->chatStore->createFolder($user, $name));
+        } catch (\Throwable $e) {
+            return new DataResponse(['error' => 'Unable to create folder'], 500);
+        }
+    }
+
+    #[NoAdminRequired]
+    public function renameFolder(): DataResponse {
+        $user = $this->requireUser();
+        if ($user === null) {
+            return new DataResponse(['error' => 'Not logged in'], 401);
+        }
+        $from = trim((string)$this->requestParam('from') ?? '');
+        $to = trim((string)$this->requestParam('to') ?? '');
+        if ($from === '' || $to === '') {
+            return new DataResponse(['error' => 'from and to are required'], 400);
+        }
+        try {
+            if (!$this->chatStore->renameFolder($user, $from, $to)) {
+                return new NotFoundResponse();
+            }
+            return new DataResponse(['ok' => true]);
+        } catch (\Throwable $e) {
+            return new DataResponse(['error' => 'Unable to rename folder'], 500);
+        }
+    }
+
+    #[NoAdminRequired]
+    public function deleteFolder(): DataResponse {
+        $user = $this->requireUser();
+        if ($user === null) {
+            return new DataResponse(['error' => 'Not logged in'], 401);
+        }
+        $name = trim((string)$this->requestParam('name') ?? '');
+        if ($name === '') {
+            return new DataResponse(['error' => 'Folder name required'], 400);
+        }
+        try {
+            if (!$this->chatStore->deleteFolder($user, $name)) {
+                return new NotFoundResponse();
+            }
+            return new DataResponse(['ok' => true]);
+        } catch (\Throwable $e) {
+            return new DataResponse(['error' => 'Unable to delete folder'], 500);
+        }
+    }
+
+    /**
      * Truncate a chat after a given message index and re-run the assistant.
      * Used for regenerate (truncate after user msg, re-ask) and edit
      * (truncate after edited user msg, re-ask).

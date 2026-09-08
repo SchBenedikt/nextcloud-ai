@@ -100,12 +100,13 @@ final class ChatStoreTest extends TestCase {
         $store->create('alice');
     }
 
-    private function chatFileHarness(string $json, ?string &$written): array {
+    private function chatFileHarness(string $json, ?string &$written, string $foldersJson = '[]', ?string &$foldersWritten = null): array {
         $factory = $this->createMock(IAppDataFactory::class);
         $appData = $this->createMock(IAppData::class);
         $chats = $this->createMock(ISimpleFolder::class);
         $userFolder = $this->createMock(ISimpleFolder::class);
         $file = $this->createMock(ISimpleFile::class);
+        $foldersFile = $this->createMock(ISimpleFile::class);
         $logger = $this->createMock(LoggerInterface::class);
         $lockingProvider = $this->createMock(ILockingProvider::class);
         $lockingProvider->method('acquireLock');
@@ -116,14 +117,22 @@ final class ChatStoreTest extends TestCase {
         $chats->method('getFolder')
             ->with(substr(hash('sha256', 'alice'), 0, 40))
             ->willReturn($userFolder);
-        $userFolder->method('fileExists')->with('chats.json')->willReturn(true);
-        $userFolder->method('getFile')->with('chats.json')->willReturn($file);
+        $userFolder->method('fileExists')->willReturnCallback(static fn(string $name): bool => $name === 'chats.json' || $name === 'folders.json');
+        $userFolder->method('getFile')->willReturnCallback(static function (string $name) use ($file, $foldersFile) {
+            return $name === 'folders.json' ? $foldersFile : $file;
+        });
         $file->method('getContent')->willReturnCallback(static function () use (&$written, $json): string {
             // Subsequent reads observe what was written (like a real file).
             return $written ?? $json;
         });
         $file->method('putContent')->willReturnCallback(static function (string $content) use (&$written): void {
             $written = $content;
+        });
+        $foldersFile->method('getContent')->willReturnCallback(static function () use (&$foldersWritten, $foldersJson): string {
+            return $foldersWritten ?? $foldersJson;
+        });
+        $foldersFile->method('putContent')->willReturnCallback(static function (string $content) use (&$foldersWritten): void {
+            $foldersWritten = $content;
         });
 
         return [new ChatStore($factory, $logger, $lockingProvider), $file];
@@ -199,5 +208,92 @@ final class ChatStoreTest extends TestCase {
         self::assertCount(2, $all);
         self::assertSame('other', $all[0]['id']);
         self::assertArrayNotHasKey('snippet', $all[0]);
+    }
+
+    public function testMetaPinningFolderAndArchivingPersistAndListFiltersArchived(): void {
+        $seed = json_encode([
+            ['id' => 'a', 'title' => 'A', 'created' => 1, 'updated' => 1, 'messages' => []],
+            ['id' => 'b', 'title' => 'B', 'created' => 1, 'updated' => 2, 'messages' => []],
+        ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+        $written = null;
+        $foldersWritten = null;
+        [$store] = $this->chatFileHarness($seed, $written, '[]', $foldersWritten);
+
+        // Folders must exist before a chat can be assigned to one.
+        $store->createFolder('alice', 'Work');
+        self::assertTrue($store->setMeta('alice', 'a', ['pinned' => true, 'folder' => 'Work']));
+        self::assertTrue($store->setMeta('alice', 'b', ['archived' => true]));
+
+        // Pinned chats sort first; archived chats are hidden from the list.
+        $list = $store->list('alice');
+        self::assertCount(1, $list);
+        self::assertSame('a', $list[0]['id']);
+        self::assertTrue($list[0]['pinned']);
+        self::assertSame('Work', $list[0]['folder']);
+        self::assertFalse($list[0]['archived']);
+
+        // Include-archived mode returns everything.
+        $all = $store->list('alice', null, true);
+        self::assertCount(2, $all);
+        $archived = null;
+        foreach ($all as $entry) {
+            if ($entry['id'] === 'b') {
+                $archived = $entry;
+            }
+        }
+        self::assertTrue($archived['archived']);
+
+        // Legacy chats without the new fields default to unpinned/no folder.
+        $saved = json_decode((string)$written, true);
+        foreach ($saved as $chat) {
+            if ($chat['id'] === 'a') {
+                self::assertTrue($chat['pinned']);
+                self::assertSame('Work', $chat['folder']);
+            }
+            if ($chat['id'] === 'b') {
+                self::assertTrue($chat['archived']);
+            }
+        }
+    }
+
+    public function testMetaRejectsUnknownFolderAndMissingChat(): void {
+        $seed = json_encode([
+            ['id' => 'a', 'title' => 'A', 'created' => 1, 'updated' => 1, 'messages' => []],
+        ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+        $written = null;
+        [$store] = $this->chatFileHarness($seed, $written);
+
+        // Assigning to a folder that was never created must be refused.
+        self::assertFalse($store->setMeta('alice', 'a', ['folder' => 'Missing']));
+        // Unknown chat ids return false as well.
+        self::assertFalse($store->setMeta('alice', 'nope', ['pinned' => true]));
+    }
+
+    public function testFolderRegistryCreateRenameDelete(): void {
+        $seed = json_encode([
+            ['id' => 'a', 'title' => 'A', 'created' => 1, 'updated' => 1, 'messages' => []],
+        ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+        $written = null;
+        $foldersWritten = null;
+        [$store] = $this->chatFileHarness($seed, $written, '[]', $foldersWritten);
+
+        $store->createFolder('alice', 'Work');
+        $store->createFolder('alice', 'Work'); // idempotent
+        $store->setMeta('alice', 'a', ['folder' => 'Work']);
+
+        self::assertCount(1, $store->listFolders('alice'));
+        self::assertSame('Work', $store->listFolders('alice')[0]['name']);
+
+        // Renaming re-points the chat.
+        self::assertTrue($store->renameFolder('alice', 'Work', 'Office'));
+        self::assertSame('Office', $store->listFolders('alice')[0]['name']);
+        $list = $store->list('alice');
+        self::assertSame('Office', $list[0]['folder']);
+
+        // Deleting unassigns the chat.
+        self::assertTrue($store->deleteFolder('alice', 'Office'));
+        self::assertSame([], $store->listFolders('alice'));
+        $list = $store->list('alice');
+        self::assertSame('', $list[0]['folder']);
     }
 }

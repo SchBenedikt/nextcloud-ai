@@ -22,10 +22,35 @@
 			<template #list>
 				<li class="chat-list-heading">
 					<span>{{ $t('Chats') }}</span>
-					<NcCounterBubble :count="chats.length" />
+					<NcCounterBubble :count="activeChats.length" />
 				</li>
+				<template v-if="!chatFilter.trim()">
+					<li v-if="pinnedChats.length" class="chat-list-heading">
+						<span>{{ $t('Pinned') }}</span>
+					</li>
+					<NcAppNavigationItem
+						v-for="c in pinnedChats"
+						:key="c.id"
+						:name="itemName(c)"
+						:active="view === 'chat' && c.id === currentChat"
+						:force-menu="true"
+						:title="itemTip(c)"
+						@click="selectChat(c.id)">
+						<template #icon>
+							<svg width="16" height="16" viewBox="0 0 24 24"><path :d="mdiChatProcessing" fill="currentColor" /></svg>
+						</template>
+						<template #actions>
+							<ChatActions
+								:chat="c"
+								:folders="folders"
+								@rename="renameChat(c.id)"
+								@delete="deleteChat(c.id)"
+								@meta="updateChatMeta" />
+						</template>
+					</NcAppNavigationItem>
+				</template>
 				<NcAppNavigationItem
-					v-for="c in filteredChats"
+					v-for="c in listChats"
 					:key="c.id"
 					:name="itemName(c)"
 					:active="view === 'chat' && c.id === currentChat"
@@ -36,19 +61,44 @@
 						<svg width="16" height="16" viewBox="0 0 24 24"><path :d="mdiChatProcessing" fill="currentColor" /></svg>
 					</template>
 					<template #actions>
-						<NcActionButton :aria-label="$t('Rename chat')" :close-after-click="true" @click.stop="renameChat(c.id)">
-							<template #icon><NcIconSvgWrapper :path="mdiPencilOutline" :size="16" aria-hidden="true" /></template>
-							{{ $t('Rename chat') }}
-						</NcActionButton>
-						<NcActionButton :aria-label="$t('Delete chat')" :close-after-click="true" @click.stop="deleteChat(c.id)">
-							<template #icon><NcIconSvgWrapper :path="mdiTrashCanOutline" :size="16" aria-hidden="true" /></template>
-							{{ $t('Delete chat') }}
-						</NcActionButton>
+						<ChatActions
+							:chat="c"
+							:folders="folders"
+							@rename="renameChat(c.id)"
+							@delete="deleteChat(c.id)"
+							@meta="updateChatMeta" />
 					</template>
 				</NcAppNavigationItem>
 				<li v-if="apiError" class="chat-list-error" role="alert">{{ apiError }}</li>
 				<li v-if="!chats.length" class="chat-list-empty">{{ $t('No chats yet — start a new one.') }}</li>
-				<li v-else-if="!filteredChats.length" class="chat-list-empty">{{ $t('No chats match your search.') }}</li>
+				<li v-else-if="!listChats.length && !pinnedChats.length" class="chat-list-empty">{{ $t('No chats match your search.') }}</li>
+				<template v-if="!chatFilter.trim() && archivedChats.length">
+					<li class="chat-list-heading chat-list-heading--archived" @click="showArchived = !showArchived">
+						<span>{{ $t('Archived') }} ({{ archivedChats.length }})</span>
+						<svg width="16" height="16" viewBox="0 0 24 24" :class="{ rotated: showArchived }"><path :d="mdiChevronDown" fill="currentColor" /></svg>
+					</li>
+					<NcAppNavigationItem
+						v-for="c in archivedChats"
+						v-show="showArchived"
+						:key="c.id"
+						:name="itemName(c)"
+						:active="view === 'chat' && c.id === currentChat"
+						:force-menu="true"
+						:title="itemTip(c)"
+						@click="selectChat(c.id)">
+						<template #icon>
+							<svg width="16" height="16" viewBox="0 0 24 24"><path :d="mdiChatProcessing" fill="currentColor" /></svg>
+						</template>
+						<template #actions>
+							<ChatActions
+								:chat="c"
+								:folders="folders"
+								@rename="renameChat(c.id)"
+								@delete="deleteChat(c.id)"
+								@meta="updateChatMeta" />
+						</template>
+					</NcAppNavigationItem>
+				</template>
 			</template>
 			<template #footer>
 				<ul class="nav-footer">
@@ -86,7 +136,8 @@ import ChatView from './views/ChatView.vue'
 import DocumentsView from './views/DocumentsView.vue'
 import SettingsView from './views/SettingsView.vue'
 import FileContextChatView from './views/FileContextChatView.vue'
-import { mdiChatProcessing, mdiFileDocumentOutline, mdiTune, mdiTrashCanOutline, mdiMessagePlus, mdiPencilOutline } from '@mdi/js'
+import ChatActions from './components/ChatActions.vue'
+import { mdiChatProcessing, mdiFileDocumentOutline, mdiTune, mdiTrashCanOutline, mdiMessagePlus, mdiPencilOutline, mdiChevronDown } from '@mdi/js'
 import { NcCounterBubble } from '@nextcloud/vue'
 import NcAppNavigationSearch from '@nextcloud/vue/components/NcAppNavigationSearch'
 import NcIconSvgWrapper from '@nextcloud/vue/components/NcIconSvgWrapper'
@@ -95,7 +146,7 @@ import { translate as t } from './lib/i18n'
 
 export default {
 	name: 'EvaAiApp',
-	components: { ChatView, DocumentsView, SettingsView, FileContextChatView, NcCounterBubble, NcAppNavigationSearch, NcIconSvgWrapper },
+	components: { ChatView, DocumentsView, SettingsView, FileContextChatView, ChatActions, NcCounterBubble, NcAppNavigationSearch, NcIconSvgWrapper },
 	setup() {
 		const params = new URLSearchParams(window.location.search)
 		const initialFileIdsParam = params.get('fileIds')
@@ -124,10 +175,26 @@ export default {
 		const buildVersion = appVersion
 
 		const chats = ref([])
+		const folders = ref([])
 		const currentChat = ref(null)
 		const busy = ref(false)
 		const chatFilter = ref('')
 		const apiError = ref('')
+		const showArchived = ref(false)
+		// Sidebar sections (Issue #87): pinned on top, active chats in the
+		// middle, archived chats collapsed at the bottom.
+		const pinnedChats = computed(() => chats.value.filter((c) => c.pinned && !c.archived))
+		const listChats = computed(() => {
+			const query = chatFilter.value.trim().toLowerCase()
+			if (query) {
+				// Searching: one flat result list (the pinned section is hidden).
+				if (searchResults.value) return searchResults.value.filter((c) => !c.archived)
+				return chats.value.filter((chat) => !chat.archived && String(chat.title || '').toLowerCase().includes(query))
+			}
+			return chats.value.filter((c) => !c.pinned && !c.archived)
+		})
+		const activeChats = computed(() => chats.value.filter((c) => !c.archived))
+		const archivedChats = computed(() => chats.value.filter((c) => c.archived))
 		// Message-content search results (null while not searching). The server
 		// matches chat titles AND message text (Issue #152), so results may
 		// carry a snippet + matchCount from the first content hit.
@@ -148,13 +215,6 @@ export default {
 		watch(chatFilter, () => {
 			if (searchTimer !== null) window.clearTimeout(searchTimer)
 			searchTimer = window.setTimeout(searchMessages, 220)
-		})
-		const filteredChats = computed(() => {
-			const query = chatFilter.value.trim().toLowerCase()
-			if (!query) return chats.value
-			if (searchResults.value) return searchResults.value
-			// Instant title-only fallback while the server search is in flight.
-			return chats.value.filter((chat) => String(chat.title || '').toLowerCase().includes(query))
 		})
 		// For content hits show the matched excerpt instead of an unrelated
 		// auto-generated title; the real title stays visible on hover.
@@ -203,6 +263,25 @@ export default {
 				apiError.value = t('Chat list unavailable: {error}', { error: errMsg(error) })
 				return []
 			})
+		}
+
+		const loadFolders = () => {
+			return requestApi('GET', '/folders').then((list) => {
+				if (Array.isArray(list)) folders.value = list
+			}).catch(() => {
+				// Folder list is auxiliary — the chat list must not break.
+			})
+		}
+
+		// Apply pinned/folder/archived metadata and refresh both lists.
+		const updateChatMeta = async (id, meta) => {
+			try {
+				await requestApi('POST', '/chats/' + encodeURIComponent(id) + '/meta', meta)
+				await loadChats()
+				await loadFolders()
+			} catch (error) {
+				apiError.value = t('The chat could not be updated: {error}', { error: errMsg(error) })
+			}
 		}
 
 		const newChat = async () => {
@@ -257,6 +336,7 @@ export default {
 		}
 
 		onMounted(() => {
+			loadFolders()
 			loadChats().then(() => {
 				// Dashboard deep links: ?chat=new starts a conversation,
 				// ?chat=<id> opens an existing one.
@@ -297,10 +377,11 @@ export default {
 
 		return {
 			view, mobileOpen, buildVersion,
-			chats, currentChat, busy, chatFilter, filteredChats, apiError,
+			chats, folders, currentChat, busy, chatFilter, apiError, showArchived,
+			pinnedChats, listChats, activeChats, archivedChats,
 			fileContextIds, itemName, itemTip,
-			newChat, selectChat, renameChat, deleteChat, loadChats, navigate,
-			mdiChatProcessing, mdiFileDocumentOutline, mdiTune, mdiTrashCanOutline, mdiMessagePlus, mdiPencilOutline,
+			newChat, selectChat, renameChat, deleteChat, loadChats, navigate, updateChatMeta,
+			mdiChatProcessing, mdiFileDocumentOutline, mdiTune, mdiTrashCanOutline, mdiMessagePlus, mdiPencilOutline, mdiChevronDown,
 		}
 	},
 }
@@ -340,6 +421,19 @@ export default {
 	list-style: none;
 	padding: 8px var(--app-navigation-padding, 8px) 4px;
 	text-transform: uppercase;
+}
+
+.chat-list-heading--archived {
+	cursor: pointer;
+	user-select: none;
+}
+
+.chat-list-heading--archived svg {
+	transition: transform 0.15s ease;
+}
+
+.chat-list-heading--archived svg.rotated {
+	transform: rotate(180deg);
 }
 
 .chat-list-error {

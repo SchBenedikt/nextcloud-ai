@@ -379,5 +379,15 @@ OC.L10N.register("eva_ai", {
   "Edit your message:": "Edit your message:",
   "Start a new conversation": "Start a new conversation",
   "%s messages": "%s messages",
-  "Export everything EVA stores about you. Sensitive values are redacted before anything is saved.": "Export everything EVA stores about you, or review and clear the action history. Sensitive values are redacted before anything is saved."
+  "Export everything EVA stores about you. Sensitive values are redacted before anything is saved.": "Export everything EVA stores about you, or review and clear the action history. Sensitive values are redacted before anything is saved.",
+  "Pinned": "Pinned",
+  "Archived": "Archived",
+  "Pin chat": "Pin chat",
+  "Unpin chat": "Unpin chat",
+  "Remove from folder": "Remove from folder",
+  "Move to folder": "Move to folder",
+  "Add to folder": "Add to folder",
+  "Archive chat": "Archive chat",
+  "Unarchive chat": "Unarchive chat",
+  "The chat could not be updated: {error}": "The chat could not be updated: {error}"
 }, "nplurals=2; plural=(n != 1);");

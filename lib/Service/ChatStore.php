@@ -36,30 +36,39 @@ class ChatStore {
     }
 
     /**
-     * List the user's chats, newest first.
+     * List the user's chats, newest first. Archived chats are hidden from the
+     * default list; pass $includeArchived to get them back (Issue #87).
      *
      * With $search the list is filtered to chats whose title or any message
      * contains the needle (case-insensitive); message hits add a short snippet
      * around the first match and a count of matching messages, so the chat list
      * can find content, not only titles (Issue #152).
      *
-     * @return list<array{id:string,title:string,created:int,updated:int,count:int,snippet?:string,matchCount?:int,trimmed?:int}>
+     * @return list<array{id:string,title:string,created:int,updated:int,count:int,pinned:bool,folder:string,archived:bool,snippet?:string,matchCount?:int,trimmed?:int}>
      */
-    public function list(string $user, ?string $search = null): array {
-        return $this->withUserLock($user, function () use ($user, $search): array {
+    public function list(string $user, ?string $search = null, bool $includeArchived = false): array {
+        return $this->withUserLock($user, function () use ($user, $search, $includeArchived): array {
             $all = $this->read($user);
             $needle = $search !== null ? mb_strtolower(trim($search)) : '';
             $out = [];
             foreach ($all as $chat) {
+                if (!$includeArchived && !empty($chat['archived'])) {
+                    continue;
+                }
                 $messages = $chat['messages'] ?? [];
                 $entry = [
                     'id' => $chat['id'] ?? '',
                     'title' => $chat['title'] ?? 'Neuer Chat',
                     'created' => $chat['created'] ?? 0,
                     'updated' => $chat['updated'] ?? 0,
-                'count' => count($messages),
-                'trimmed' => (int)($chat['trimmed'] ?? 0),
-            ];
+                    'count' => count($messages),
+                    'trimmed' => (int)($chat['trimmed'] ?? 0),
+                    // Organisational metadata (Issue #87); missing on legacy
+                    // chats and defaulted so old data keeps working unchanged.
+                    'pinned' => !empty($chat['pinned']),
+                    'folder' => (string)($chat['folder'] ?? ''),
+                    'archived' => !empty($chat['archived']),
+                ];
                 if ($needle !== '') {
                     $titleHit = mb_strpos(mb_strtolower($entry['title']), $needle) !== false;
                     $snippet = null;
@@ -84,7 +93,8 @@ class ChatStore {
                 }
                 $out[] = $entry;
             }
-            usort($out, static fn($a, $b) => $b['updated'] <=> $a['updated']);
+            // Pinned chats first, then by most recently updated.
+            usort($out, static fn($a, $b) => ($b['pinned'] <=> $a['pinned']) ?: ($b['updated'] <=> $a['updated']));
             return $out;
         });
     }
@@ -199,6 +209,202 @@ class ChatStore {
             unset($chat);
             $this->write($user, $all);
         });
+    }
+
+    /**
+     * Update organisational chat metadata (Issue #87): pinned, folder and
+     * archived. Only the keys present in $meta are touched, legacy chats
+     * without the fields keep working. Returns false when the chat or the
+     * target folder does not exist.
+     */
+    public function setMeta(string $user, string $id, array $meta): bool {
+        return $this->withUserLock($user, function () use ($user, $id, $meta): bool {
+            $all = $this->read($user);
+            foreach ($all as &$chat) {
+                if (($chat['id'] ?? '') !== $id) {
+                    continue;
+                }
+                if (array_key_exists('pinned', $meta)) {
+                    $chat['pinned'] = !empty($meta['pinned']);
+                }
+                if (array_key_exists('archived', $meta)) {
+                    $chat['archived'] = !empty($meta['archived']);
+                }
+                if (array_key_exists('folder', $meta)) {
+                    $folder = trim((string)$meta['folder']);
+                    if ($folder !== '') {
+                        $known = $this->folderNamesLocked($user);
+                        if (!in_array($folder, $known, true)) {
+                            return false; // No such folder — refuse silently.
+                        }
+                    }
+                    $chat['folder'] = $folder;
+                }
+                $chat['updated'] = time();
+                unset($chat);
+                $this->write($user, $all);
+                return true;
+            }
+            unset($chat);
+            return false;
+        });
+    }
+
+    /**
+     * Create a folder. Names are trimmed, capped and de-duplicated; a folder
+     * that already exists is returned unchanged (idempotent).
+     */
+    public function createFolder(string $user, string $name): array {
+        return $this->withUserLock($user, function () use ($user, $name): array {
+            $folders = $this->foldersLocked($user);
+            $clean = $this->clipFolderName($name);
+            foreach ($folders as $folder) {
+                if (($folder['name'] ?? '') === $clean) {
+                    return $folder;
+                }
+            }
+            $folder = ['name' => $clean, 'created' => time()];
+            $folders[] = $folder;
+            $this->writeFoldersLocked($user, $folders);
+            return $folder;
+        });
+    }
+
+    /**
+     * Rename a folder (and every chat assigned to it). Returns false when the
+     * source folder does not exist or the new name is already taken.
+     */
+    public function renameFolder(string $user, string $from, string $to): bool {
+        return $this->withUserLock($user, function () use ($user, $from, $to): bool {
+            $folders = $this->foldersLocked($user);
+            $clean = $this->clipFolderName($to);
+            $found = false;
+            foreach ($folders as &$folder) {
+                if (($folder['name'] ?? '') === $from) {
+                    if (in_array($clean, array_column($folders, 'name'), true)) {
+                        return false;
+                    }
+                    $folder['name'] = $clean;
+                    $found = true;
+                    break;
+                }
+            }
+            unset($folder);
+            if (!$found) {
+                return false;
+            }
+            $this->writeFoldersLocked($user, $folders);
+            // Re-point chats that were assigned to the old folder name.
+            $all = $this->read($user);
+            foreach ($all as &$chat) {
+                if (($chat['folder'] ?? '') === $from) {
+                    $chat['folder'] = $clean;
+                }
+            }
+            unset($chat);
+            $this->write($user, $all);
+            return true;
+        });
+    }
+
+    /**
+     * Delete a folder and unassign every chat that referenced it.
+     * Returns false when the folder does not exist.
+     */
+    public function deleteFolder(string $user, string $name): bool {
+        return $this->withUserLock($user, function () use ($user, $name): bool {
+            $folders = $this->foldersLocked($user);
+            $kept = array_values(array_filter($folders, static fn($f) => ($f['name'] ?? '') !== $name));
+            if (count($kept) === count($folders)) {
+                return false;
+            }
+            $this->writeFoldersLocked($user, $kept);
+            $all = $this->read($user);
+            foreach ($all as &$chat) {
+                if (($chat['folder'] ?? '') === $name) {
+                    $chat['folder'] = '';
+                }
+            }
+            unset($chat);
+            $this->write($user, $all);
+            return true;
+        });
+    }
+
+    /**
+     * All folders of the user, sorted by name.
+     *
+     * @return list<array{name:string,created:int}>
+     */
+    public function listFolders(string $user): array {
+        return $this->withUserLock($user, function () use ($user): array {
+            $folders = $this->foldersLocked($user);
+            usort($folders, static fn($a, $b) => strcasecmp((string)($a['name'] ?? ''), (string)($b['name'] ?? '')));
+            return $folders;
+        });
+    }
+
+    /** Folder names already sorted (used inside the user lock). */
+    private function folderNamesLocked(string $user): array {
+        return array_values(array_map(
+            static fn($f) => (string)($f['name'] ?? ''),
+            $this->foldersLocked($user)
+        ));
+    }
+
+    /**
+     * The folder registry lives next to chats.json so the two can be read and
+     * written atomically under the same per-user lock (Issue #87).
+     *
+     * @return list<array{name:string,created:int}>
+     */
+    private function foldersLocked(string $user): array {
+        try {
+            $raw = $this->foldersFile($user)->getContent();
+        } catch (NotFoundException $e) {
+            return [];
+        } catch (\Throwable $e) {
+            $this->logger->warning('eva_ai: folder registry unreadable', ['exception' => $e->getMessage()]);
+            return [];
+        }
+        $data = json_decode($raw, true);
+        return is_array($data) ? $data : [];
+    }
+
+    private function writeFoldersLocked(string $user, array $folders): void {
+        $this->foldersFile($user)->putContent(
+            json_encode($folders, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR)
+        );
+    }
+
+    private function foldersFile(string $user): \OCP\Files\SimpleFS\ISimpleFile {
+        $uidFolder = $this->userFolderFor($user);
+        if (!$uidFolder->fileExists('folders.json')) {
+            $uidFolder->newFile('folders.json', '[]');
+        }
+        return $uidFolder->getFile('folders.json');
+    }
+
+    private function clipFolderName(string $name): string {
+        $clean = trim(preg_replace('/\s+/', ' ', $name) ?? '');
+        if (mb_strlen($clean) > 60) {
+            $clean = mb_substr($clean, 0, 60) . '…';
+        }
+        return $clean === '' ? 'Unbenannt' : $clean;
+    }
+
+    /**
+     * The user's chat namespace folder (shared by chats.json and folders.json).
+     */
+    private function userFolderFor(string $user): \OCP\Files\SimpleFS\ISimpleFolder {
+        $appdata = $this->appDataFactory->get('eva_ai');
+        try {
+            $chats = $appdata->getFolder('chats');
+        } catch (NotFoundException $e) {
+            $chats = $appdata->newFolder('chats');
+        }
+        $this->copyLegacyChatData($chats);
+        return $this->folderFor($chats, $user);
     }
 
     public function append(string $user, string $id, string $role, string $text, array $followups = []): void {
@@ -350,14 +556,7 @@ class ChatStore {
     }
 
     private function rootFor(string $user): \OCP\Files\SimpleFS\ISimpleFile {
-        $appdata = $this->appDataFactory->get('eva_ai');
-        try {
-            $chats = $appdata->getFolder('chats');
-        } catch (NotFoundException $e) {
-            $chats = $appdata->newFolder('chats');
-        }
-        $this->copyLegacyChatData($chats);
-        $uidFolder = $this->folderFor($chats, $user);
+        $uidFolder = $this->userFolderFor($user);
         if (!$uidFolder->fileExists('chats.json')) {
             $uidFolder->newFile('chats.json', '[]');
         }

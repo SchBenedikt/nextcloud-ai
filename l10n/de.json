@@ -380,7 +380,17 @@
         "Edit your message:": "Nachricht bearbeiten:",
         "Start a new conversation": "Neue Unterhaltung starten",
         "%s messages": "%s Nachrichten",
-        "Export everything EVA stores about you. Sensitive values are redacted before anything is saved.": "Exportiere alles, was EVA über dich speichert, oder prüfe und leere den Aktionsverlauf. Vertrauliche Werte werden vor dem Speichern unkenntlich gemacht."
+        "Export everything EVA stores about you. Sensitive values are redacted before anything is saved.": "Exportiere alles, was EVA über dich speichert, oder prüfe und leere den Aktionsverlauf. Vertrauliche Werte werden vor dem Speichern unkenntlich gemacht.",
+        "Pinned": "Angepinnt",
+        "Archived": "Archiviert",
+        "Pin chat": "Chat anpinnen",
+        "Unpin chat": "Chat lösen",
+        "Remove from folder": "Aus Ordner entfernen",
+        "Move to folder": "In Ordner verschieben",
+        "Add to folder": "Zu Ordner hinzufügen",
+        "Archive chat": "Chat archivieren",
+        "Unarchive chat": "Chat aus Archiv holen",
+        "The chat could not be updated: {error}": "Der Chat konnte nicht aktualisiert werden: {error}"
     },
     "pluralForm": "nplurals=2; plural=(n != 1);"
 }
