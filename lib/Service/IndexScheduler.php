@@ -113,6 +113,25 @@ class IndexScheduler {
         }
     }
 
+    /**
+     * List of users currently holding a running slot (heartbeat live). Used
+     * by the admin "stop background indexing" action to request cancellation
+     * of every in-flight pass in one call.
+     *
+     * @return list<string>
+     */
+    public function activeUsers(): array {
+        $this->lock();
+        try {
+            $active = $this->readActive();
+            $this->reclaimStaleLocked($active);
+            $this->writeActive($active);
+            return array_values(array_map('strval', array_keys($active)));
+        } finally {
+            $this->unlock();
+        }
+    }
+
     /** Refresh the heartbeat of a live slot so it is not reclaimed as stale. */
     public function touchHeartbeat(string $userId): void {
         $this->lock();

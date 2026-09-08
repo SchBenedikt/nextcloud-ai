@@ -46,6 +46,15 @@ class IndexJob extends TimedJob {
     protected function run($argument): void {
         // The scheduler lock is global; the actual progress/settings are per user.
         $this->config->setUserId(null);
+        if ($this->config->get('index_job_stop_requested') === '1') {
+            // An admin asked to stop the periodic background run. The previous
+            // tick already aborted at the next user boundary; this tick just
+            // acknowledges the request (clears it) and stays idle, so the
+            // cancel takes effect immediately instead of after a queued tick.
+            $this->config->set('index_job_stop_requested', '0');
+            $this->logger->info('eva_ai index job: stop acknowledged, periodic run stays idle');
+            return;
+        }
         if ($this->config->get('index_job_running') === '1') {
             $started = (int)$this->config->get('index_job_started');
             // Only reclaim a stale lock. A running pass now holds the lock for
@@ -93,6 +102,13 @@ class IndexJob extends TimedJob {
             $startedAt = time();
             $budget = $this->budgetSeconds();
             foreach ($users as $user) {
+                // Admin stop request (Issue: background indexing cannot be
+                // stopped): abort at the next user boundary so the running
+                // tick frees the global job lock promptly.
+                if ($this->config->get('index_job_stop_requested') === '1') {
+                    $this->logger->info('eva_ai index job: stop requested, aborting at user boundary');
+                    break;
+                }
                 // Existing installations are migrated lazily: a user with
                 // indexed data is enrolled unless they already explicitly
                 // chose an enrollment value (including 0).
@@ -146,10 +162,10 @@ class IndexJob extends TimedJob {
             // long as the time budget lasts. Each pass re-claims its slot via
             // Indexer::run(), so a queue entry that just became 'running'
             // moves to the back of the remaining picks.
-            if (time() - $startedAt < $budget) {
+            if (time() - $startedAt < $budget && $this->config->get('index_job_stop_requested') !== '1') {
                 $drained = 0;
                 foreach ($this->scheduler->queuedUsers(10) as $queuedUser) {
-                    if (time() - $startedAt >= $budget) {
+                    if (time() - $startedAt >= $budget || $this->config->get('index_job_stop_requested') === '1') {
                         break;
                     }
                     $drained++;

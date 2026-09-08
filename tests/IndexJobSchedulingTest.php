@@ -86,6 +86,36 @@ final class IndexJobSchedulingTest extends TestCase {
         self::assertSame(['a', 'b', 'c'], $method->invoke($job, ['a', 'b', 'c']));
     }
 
+    public function testStopRequestIsAcknowledgedWithoutIndexing(): void {
+        $config = $this->createMock(AppConfig::class);
+        $config->method('get')->willReturnCallback(static function (string $key): string {
+            return match ($key) {
+                'index_job_stop_requested' => '1',
+                'index_job_running' => '0',
+                default => '',
+            };
+        });
+        $config->expects(self::once())->method('set')->with('index_job_stop_requested', '0');
+        $scheduler = $this->createMock(\OCA\EvaAi\Service\IndexScheduler::class);
+        $scheduler->expects(self::never())->method('queuedUsers');
+        $indexer = $this->createMock(Indexer::class);
+        $indexer->expects(self::never())->method('run');
+        $agentStore = $this->createMock(AgentStore::class);
+        $agentStore->expects(self::never())->method('purgeOlderThan');
+
+        $job = new IndexJob(
+            $this->createMock(ITimeFactory::class),
+            $config,
+            $indexer,
+            $this->createMock(DocumentMapper::class),
+            $agentStore,
+            $scheduler,
+            $this->createMock(LoggerInterface::class)
+        );
+        $method = new \ReflectionMethod(IndexJob::class, 'run');
+        $method->invoke($job, null);
+    }
+
     public function testBudgetFloorAndCeilingAreBounded(): void {
         $config = $this->createMock(AppConfig::class);
         $config->method('get')->willReturnCallback(static function (string $key): string {
