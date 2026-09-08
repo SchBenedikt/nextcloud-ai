@@ -34,6 +34,7 @@ composer test
 | `tests/ToolPolicySecurityTest.php` | Tool registration, risk classification, surface isolation, prompt-injection rejection |
 | `tests/TaskProcessingContractTest.php` | Unique provider IDs, correct task-type IDs, input/output shape contracts |
 | `tests/FrontendContractTest.php` | Vue navigation, settings, document pagination and generated frontend contracts |
+| `tests/RagQualityEvaluationTest.php` | Deterministic RAG quality evaluation over synthetic fixtures (see [QUALITY.md](QUALITY.md)) |
 
 ### How the bootstrap works
 
