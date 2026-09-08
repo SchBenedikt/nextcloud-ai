@@ -67,6 +67,9 @@ class EVAWidget implements IWidget, IAPIWidget, IAPIWidgetV2 {
         $appUrl = $this->urlGenerator->linkToRouteAbsolute('eva_ai.page.index');
         $docsUrl = $this->urlGenerator->linkToRouteAbsolute('eva_ai.page.documents');
         $icon = $this->urlGenerator->getAbsoluteURL($this->urlGenerator->imagePath('eva_ai', 'app.svg'));
+        // Distinct green "+" icon so the primary action stands out from the
+        // blue chat bubbles of the conversation history.
+        $newChatIcon = $this->urlGenerator->getAbsoluteURL($this->urlGenerator->imagePath('eva_ai', 'new-chat.svg'));
 
         $items = [
             // Always-on action: opens the app and starts a fresh conversation.
@@ -74,7 +77,7 @@ class EVAWidget implements IWidget, IAPIWidget, IAPIWidgetV2 {
                 $this->l10n->t('New chat'),
                 $this->l10n->t('Start a new conversation'),
                 $appUrl . '?chat=new',
-                $icon,
+                $newChatIcon,
                 'eva-new-chat',
             ),
         ];

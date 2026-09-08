@@ -32,7 +32,7 @@ final class EVAWidgetTest extends TestCase {
         });
         $url = $this->createMock(IURLGenerator::class);
         $url->method('linkToRouteAbsolute')->willReturn('http://localhost/nextcloud/apps/eva_ai/');
-        $url->method('imagePath')->willReturn('apps/eva_ai/img/app.svg');
+        $url->method('imagePath')->willReturnCallback(static fn(string $app, string $file): string => '/apps/eva_ai/img/' . $file);
         $url->method('getAbsoluteURL')->willReturnCallback(static fn(string $p): string => 'http://localhost' . $p);
         $store = $this->createMock(ChatStore::class);
         $store->method('list')->willReturn($chats);
@@ -56,6 +56,9 @@ final class EVAWidgetTest extends TestCase {
         self::assertSame('New chat', $items[0]->getTitle());
         self::assertSame('http://localhost/nextcloud/apps/eva_ai/?chat=new', $items[0]->getLink());
         self::assertSame('eva-new-chat', $items[0]->getSinceId());
+        // The primary action uses the distinct "+" icon, not the chat bubble.
+        self::assertSame('http://localhost/apps/eva_ai/img/new-chat.svg', $items[0]->getIconUrl());
+        self::assertSame('http://localhost/apps/eva_ai/img/app.svg', $items[1]->getIconUrl());
     }
 
     public function testRecentChatsAreDeepLinkedAndCounted(): void {
