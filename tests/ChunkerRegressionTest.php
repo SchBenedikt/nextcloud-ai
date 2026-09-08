@@ -74,4 +74,44 @@ final class ChunkerRegressionTest extends TestCase {
         self::assertSame([], $chunker->chunk(''));
         self::assertSame([], $chunker->chunk("   \n\t  "));
     }
+
+    public function testHeadingIsKeptAsSectionContextInEveryChunk(): void {
+        // A heading anchors a section: every chunk of that section carries the
+        // heading as a prefix so retrieval keeps structural context (Issue #147).
+        $chunker = $this->chunker(60, 0);
+        $text = "# Budget 2026\n\nErster Satz hier. Zweiter Satz hier. Dritter Satz hier. Vierter Satz hier.";
+
+        $chunks = $chunker->chunk($text);
+
+        self::assertGreaterThan(1, count($chunks));
+        foreach ($chunks as $chunk) {
+            self::assertStringContainsString('# Budget 2026', (string)$chunk['content']);
+            self::assertLessThanOrEqual(60 + 1, mb_strlen((string)$chunk['content']), 'chunk with heading stays within budget');
+        }
+    }
+
+    public function testHeadingStartsANewChunkInsteadOfBuryingTheHeading(): void {
+        $chunker = $this->chunker(200, 0);
+        $text = "Einleitung ohne Struktur. " . str_repeat('Text. ', 40)
+            . "\n\n## Wichtiger Abschnitt\n\n" . str_repeat('Inhalt. ', 60);
+
+        $chunks = $chunker->chunk($text);
+
+        self::assertGreaterThan(1, count($chunks));
+        // The heading itself must not be buried inside a body chunk.
+        foreach ($chunks as $chunk) {
+            if (mb_strpos((string)$chunk['content'], '## Wichtiger Abschnitt') !== false) {
+                self::assertStringStartsWith('## Wichtiger Abschnitt', trim((string)$chunk['content']));
+            }
+        }
+    }
+
+    public function testHeadingOnlySectionIsPreserved(): void {
+        $chunker = $this->chunker(60, 0);
+        $chunks = $chunker->chunk("# Leerer Abschnitt\n\n# Naechster Abschnitt\n\nHier steht Text.");
+
+        self::assertGreaterThanOrEqual(2, count($chunks));
+        self::assertStringContainsString('# Leerer Abschnitt', (string)$chunks[0]['content']);
+        self::assertStringContainsString('# Naechster Abschnitt', (string)$chunks[1]['content']);
+    }
 }

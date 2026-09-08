@@ -28,7 +28,6 @@ class UserDataService {
     public function __construct(
         private AppConfig $config,
         private ChatStore $chatStore,
-        private ActionAudit $audit,
         private DocumentMapper $documentMapper,
         private ChunkMapper $chunkMapper,
         private EmbeddingCache $embeddingCache,
@@ -110,11 +109,6 @@ class UserDataService {
             $this->chatStore->deleteUserData($userId);
         } catch (\Throwable $e) {
             $this->logger->warning('eva_ai: chat cleanup failed on account deletion', ['user' => $userId]);
-        }
-        try {
-            $this->audit->deleteUserData($userId);
-        } catch (\Throwable $e) {
-            $this->logger->warning('eva_ai: audit cleanup failed on account deletion', ['user' => $userId]);
         }
         $this->deleteAiMarksFolder($userId);
         // KNOWLEDGE.md inside the home folder (if the folder still exists).

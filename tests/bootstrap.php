@@ -24,6 +24,7 @@ $loader = require __DIR__ . '/../vendor/autoload.php';
 $roots = [
     getenv('NEXTCLOUD_ROOT') ?: '',
     '/var/www/nextcloud',
+    '/var/www/html/nextcloud',
 ];
 $ocpRoot = null;
 foreach ($roots as $root) {

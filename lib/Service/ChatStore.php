@@ -57,9 +57,9 @@ class ChatStore {
                     'title' => $chat['title'] ?? 'Neuer Chat',
                     'created' => $chat['created'] ?? 0,
                     'updated' => $chat['updated'] ?? 0,
-                    'count' => count($messages),
-                    'trimmed' => (int)($chat['trimmed'] ?? 0),
-                ];
+                'count' => count($messages),
+                'trimmed' => (int)($chat['trimmed'] ?? 0),
+            ];
                 if ($needle !== '') {
                     $titleHit = mb_strpos(mb_strtolower($entry['title']), $needle) !== false;
                     $snippet = null;
@@ -201,15 +201,21 @@ class ChatStore {
         });
     }
 
-    public function append(string $user, string $id, string $role, string $text): void {
+    public function append(string $user, string $id, string $role, string $text, array $followups = []): void {
         if ($role !== 'user' && $role !== 'assistant') {
             return;
         }
-        $this->withUserLock($user, function () use ($user, $id, $role, $text): void {
+        $this->withUserLock($user, function () use ($user, $id, $role, $text, $followups): void {
             $all = $this->read($user);
             foreach ($all as &$chat) {
                 if (($chat['id'] ?? '') === $id) {
-                    $chat['messages'][] = ['role' => $role, 'text' => $text];
+                    $message = ['role' => $role, 'text' => $text];
+                    // Follow-up suggestions belong to assistant messages and
+                    // must survive a reload so the chips stay usable.
+                    if ($role === 'assistant' && $followups !== []) {
+                        $message['followups'] = array_values(array_slice(array_filter($followups, 'is_string'), 0, 3));
+                    }
+                    $chat['messages'][] = $message;
                     $chat['updated'] = time();
                     $messageCount = count($chat['messages']);
                     if ($messageCount > self::MAX_MESSAGES) {

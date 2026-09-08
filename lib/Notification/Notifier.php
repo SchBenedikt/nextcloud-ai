@@ -35,7 +35,12 @@ class Notifier implements INotifier {
 			$params = $notification->getSubjectParameters();
 			$notification->setParsedSubject('EVA answer ready');
 			$notification->setParsedMessage((string)($params['text'] ?? ''));
-			$notification->setIcon($this->urlGenerator->imagePath('eva_ai', 'app.svg'));
+			// NC >= 30 verlangt absolute URLs fuer das Icon; relative Pfade
+			// werfen InvalidValueException (subklasse von \InvalidArgumentException)
+			// und lassen die Benachrichtigung mit Log-Spam scheitern.
+			$notification->setIcon($this->urlGenerator->getAbsoluteURL(
+				$this->urlGenerator->imagePath('eva_ai', 'app.svg')
+			));
 			return $notification;
 		}
 

@@ -115,6 +115,9 @@ export default {
 				: params.get('view') === 'settings'
 					? 'settings'
 					: pathView
+		// Deep links from the dashboard widget (?chat=new | ?chat=<id>).
+		// Handled in onMounted after the chat list has been loaded.
+		const initialChatParam = params.get('chat')
 		const view = ref(initial)
 		const fileContextIds = ref(initialFileIds)
 		const mobileOpen = ref(false)
@@ -177,6 +180,13 @@ export default {
 			const url = new URL(window.location.href)
 			url.searchParams.delete('view')
 			url.searchParams.delete('fileIds')
+			if (nextView === 'chat' && currentChat.value) {
+				// Keep the open conversation in the URL so refresh and
+				// dashboard links land on the same chat.
+				url.searchParams.set('chat', currentChat.value)
+			} else {
+				url.searchParams.delete('chat')
+			}
 			url.pathname = nextView === 'chat' ? appRootPath() : appRootPath() + '/' + (nextView === 'docs' ? 'documents' : nextView)
 			window.history.pushState({}, '', url.toString())
 		}
@@ -247,7 +257,15 @@ export default {
 		}
 
 		onMounted(() => {
-			loadChats()
+			loadChats().then(() => {
+				// Dashboard deep links: ?chat=new starts a conversation,
+				// ?chat=<id> opens an existing one.
+				if (initialChatParam === 'new') {
+					newChat()
+				} else if (initialChatParam && chats.value.some((c) => c.id === initialChatParam)) {
+					currentChat.value = initialChatParam
+				}
+			})
 			if (typeof window !== 'undefined' && window.addEventListener) {
 				window.addEventListener('popstate', () => {
 					const current = window.location.pathname.replace(/\/+$/, '')

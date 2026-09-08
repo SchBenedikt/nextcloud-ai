@@ -45,7 +45,6 @@ class ApiController extends OCSController {
         private IAppManager $appManager,
         private KnowledgeInitializer $knowledgeInitializer,
         private LockGuard $lockGuard,
-        private \OCA\EvaAi\Service\ActionAudit $actionAudit,
         private \OCA\EvaAi\Service\UserDataService $userDataService,
         private \OCA\EvaAi\Service\ChatLearner $chatLearner
     ) {
@@ -850,7 +849,18 @@ class ApiController extends OCSController {
             if ($role === '' || $text === '') {
                 return new DataResponse(['error' => 'role and text are required'], 400);
             }
-            $this->chatStore->append($user, $id, $role, $text);
+            // Optional follow-up suggestions (assistant messages only).
+            $followupsRaw = $this->requestParam('followups');
+            $followups = [];
+            if (is_array($followupsRaw)) {
+                $followups = array_slice(array_map('strval', $followupsRaw), 0, 3);
+            } elseif (is_string($followupsRaw) && $followupsRaw !== '') {
+                $decoded = json_decode($followupsRaw, true);
+                if (is_array($decoded)) {
+                    $followups = array_slice(array_map('strval', $decoded), 0, 3);
+                }
+            }
+            $this->chatStore->append($user, $id, $role, $text, $followups);
 
             // After an assistant message is saved, learn from the full chat.
             if ($role === 'assistant') {
@@ -1005,44 +1015,4 @@ class ApiController extends OCSController {
         return $response;
     }
 
-    /** Per-user action history (Issue #150): metadata only, never file content. */
-    #[NoAdminRequired]
-    public function audit(): DataResponse {
-        $user = $this->requireUser();
-        if ($user === null) {
-            return new DataResponse(['error' => 'Not logged in'], 401);
-        }
-        $limit = max(1, min(500, (int)($this->requestParam('limit') ?? 100)));
-        return new DataResponse(['entries' => $this->actionAudit->list($user, $limit)]);
-    }
-
-    /** Let the user clear their own action history (Issue #150). */
-    #[NoAdminRequired]
-    public function clearAudit(): DataResponse {
-        $user = $this->requireUser();
-        if ($user === null) {
-            return new DataResponse(['error' => 'Not logged in'], 401);
-        }
-        return new DataResponse(['cleared' => $this->actionAudit->clear($user)]);
-    }
-
-    /**
-     * Admin aggregate (Issue #150): per-user audit-event counts. Metadata only
-     * - the actual entries stay per-user behind NoAdminRequired, so an admin
-     * sees which users have history and how much, never their file content.
-     * (No NoAdminRequired attribute: app controller methods are admin-only by
-     * default in Nextcloud.)
-     */
-    public function auditAdmin(): DataResponse {
-        $users = $this->documentMapper->distinctUserIds();
-        $rows = [];
-        foreach ($users as $user) {
-            $count = $this->actionAudit->count($user);
-            if ($count > 0) {
-                $rows[] = ['user' => $user, 'count' => $count];
-            }
-        }
-        usort($rows, static fn($a, $b) => $b['count'] <=> $a['count']);
-        return new DataResponse(['users' => $rows]);
-    }
 }

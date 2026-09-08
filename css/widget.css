@@ -1,5 +1,44 @@
-/* EVA AI dashboard widget icon */
+/* EVA AI dashboard widget */
 .icon-eva-ai {
-    background-image: url('../img/eva-icon.svg');
-    background-size: 16px 16px;
+	background-image: url('../img/eva-icon.svg');
+	background-size: 16px 16px;
+}
+.eva-widget {
+	padding: 8px 0;
+	font-size: 13px;
+}
+.eva-widget-status {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	margin-bottom: 8px;
+	font-weight: 600;
+}
+.eva-dot {
+	width: 8px;
+	height: 8px;
+	border-radius: 50%;
+	display: inline-block;
+}
+.eva-online { background: var(--color-success, #46ba61); }
+.eva-offline { background: var(--color-error, #e9322d); }
+.eva-widget-info {
+	margin-bottom: 10px;
+	line-height: 1.6;
+}
+.eva-widget-info strong {
+	font-weight: 700;
+}
+.eva-widget-btn {
+	display: block;
+	text-align: center;
+	padding: 6px 12px;
+	background: var(--color-primary, #0082c9);
+	color: #fff;
+	border-radius: var(--border-radius, 3px);
+	text-decoration: none;
+	font-weight: 600;
+}
+.eva-widget-btn:hover {
+	background: var(--color-primary-element, #006aa8);
 }

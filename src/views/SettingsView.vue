@@ -351,7 +351,7 @@
 				<div class="section-heading">
 					<div>
 						<h3>{{ $t('Privacy & data') }}</h3>
-						<p>{{ $t('Export everything EVA stores about you, or review and clear the action history. Sensitive values are redacted before anything is saved.') }}</p>
+						<p>{{ $t('Export everything EVA stores about you. Sensitive values are redacted before anything is saved.') }}</p>
 					</div>
 				</div>
 				<div class="index-actions">
@@ -360,29 +360,6 @@
 						<p>{{ $t('Your chats, personal knowledge and a metadata list of indexed documents as one JSON file (GDPR export).') }}</p>
 					</div>
 					<NcButton type="secondary" :disabled="exporting" :loading="exporting" @click="downloadExport">{{ $t('Download') }}</NcButton>
-				</div>
-				<div class="field field-wide" style="margin-top: 16px;">
-					<div class="section-heading" style="padding: 0;">
-						<div>
-							<h4 style="margin: 0;">{{ $t('Action history') }}</h4>
-							<p>{{ $t('Recent tool actions on your account: time, tool, outcome and the surface they ran on.') }}</p>
-						</div>
-						<div class="section-actions">
-							<NcButton v-if="auditEntries.length" type="tertiary-no-background" :disabled="clearing" :loading="clearing" @click="clearAudit">{{ $t('Clear action history') }}</NcButton>
-						</div>
-					</div>
-					<div v-if="auditLoading" class="action-hint">{{ $t('Loading action history…') }}</div>
-					<div v-else-if="auditEntries.length === 0" class="help-box">
-						<span>{{ $t('No recorded actions yet. Mutating tool calls will appear here after you use EVA.') }}</span>
-					</div>
-					<ul v-else class="audit-list">
-						<li v-for="entry in auditEntries" :key="entry.id" class="audit-row">
-							<span class="audit-outcome" :class="'outcome-' + entry.outcome">{{ entry.outcome }}</span>
-							<span class="audit-tool">{{ entry.tool }}</span>
-							<span class="audit-detail">{{ entry.detail }}</span>
-							<time class="audit-time" :title="new Date(entry.ts * 1000).toISOString()">{{ new Date(entry.ts * 1000).toLocaleString() }}</time>
-						</li>
-					</ul>
 				</div>
 			</section>
 			</fieldset>
@@ -799,41 +776,11 @@ export default {
 			}
 		}
 
-		const auditEntries = ref([])
-		const auditLoading = ref(false)
 		const exporting = ref(false)
-		const clearing = ref(false)
 		const knowledgeContent = ref('')
 		const knowledgeOriginal = ref('')
 		const savingKnowledge = ref(false)
 		const knowledgeSaved = ref(false)
-
-		async function loadAudit() {
-			if (auditLoading.value) return
-			auditLoading.value = true
-			try {
-				const response = await api('GET', 'audit', { limit: 100 })
-				auditEntries.value = Array.isArray(response?.entries) ? response.entries : []
-			} catch (error) {
-				auditEntries.value = []
-			} finally {
-				auditLoading.value = false
-			}
-		}
-
-		async function clearAudit() {
-			if (clearing.value) return
-			clearing.value = true
-			try {
-				await api('DELETE', 'audit')
-				auditEntries.value = []
-				setMessage('success', t('The action history was cleared.'))
-			} catch (error) {
-				setMessage('error', t('The action history could not be cleared: {error}', { error: errMsg(error) }))
-			} finally {
-				clearing.value = false
-			}
-		}
 
 		async function loadKnowledge() {
 			try {
@@ -892,7 +839,6 @@ export default {
 		})
 		onMounted(async () => {
 			await loadStatus(true)
-			await loadAudit()
 			await loadKnowledge()
 			statusTimer = window.setInterval(loadStatus, 3000)
 		})
@@ -904,7 +850,7 @@ export default {
 		return {
 			f, status, limits, availableModels, embeddingModels, chatModels, embeddingInstalledHint, chatInstalledHint, modelLoading, modelError, checkOut, saving, checking, indexing, resetting, deletingChats, stopping, saved, loadError, message, validationErrors, resetConfirm, chatsDeleteConfirm,
 			newExcludePath, excludeError, excludeList, actionsEnabled, notificationsEnabled, weatherEnabled, mailIndexEnabled, indexEnrolled, actionsDisabled, busy, indexingActive, settingsLocked, maxFileSizeMb,
-			auditEntries, auditLoading, exporting, clearing, loadAudit, clearAudit, downloadExport,
+			exporting, downloadExport,
 			knowledgeContent, knowledgeOriginal, savingKnowledge, knowledgeSaved, saveKnowledgeContent,
 			formatNumber, loadStatus, save, checkOllama, addExclude, removeExclude, startIndex, startMailIndex, stopIndex, resetIndex, deleteAllChats,
 		}

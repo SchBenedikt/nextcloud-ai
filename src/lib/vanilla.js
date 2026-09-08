@@ -171,54 +171,11 @@ export function mountChat(root, opts = {}) {
 		}
 
 		if (m.sources && m.sources.length) {
-			const details = document.createElement('details')
-			details.className = 'rs'
-			const summary = document.createElement('summary')
-			summary.className = 'rs-sum'
-			summary.textContent = t('Sources') + ' (' + m.sources.length + ')'
-			details.appendChild(summary)
-			const list = document.createElement('div')
-			list.className = 'rs-list'
-			m.sources.forEach((item) => {
-				const src = item.src || item
-				const row = document.createElement('div')
-				row.className = 'rs-item'
-				const a = document.createElement('a')
-				a.href = src.url || '#'
-				a.target = '_blank'
-				a.rel = 'noopener'
-				const prefix = item.ref !== undefined ? '[' + item.ref + '] ' : ''
-				a.textContent = prefix + (src.path || src.name || '')
-				row.appendChild(a)
-				if (src.excerpts && src.excerpts.length) {
-					const ex = document.createElement('div')
-					ex.className = 'rs-excerpt'
-					ex.textContent = src.excerpts[0]
-					row.appendChild(ex)
-				}
-				list.appendChild(row)
-			})
-			details.appendChild(list)
-			wrap.appendChild(details)
+			wrap.appendChild(renderSources(m))
 		}
 
 		if (m.followups && m.followups.length) {
-			const chips = document.createElement('div')
-			chips.className = 'rfu'
-			m.followups.forEach((q) => {
-				const btn = document.createElement('button')
-				btn.type = 'button'
-				btn.className = 'rfu-btn'
-				btn.textContent = q
-				btn.addEventListener('click', () => {
-					const ta = document.querySelector('.chatview-root .chat-input')
-					if (ta) { ta.value = q; ta.dispatchEvent(new Event('input')) }
-					const sendBtn = document.querySelector('.chatview-root .chat-send')
-					if (sendBtn) sendBtn.click()
-				})
-				chips.appendChild(btn)
-			})
-			wrap.appendChild(chips)
+			wrap.appendChild(renderFollowups(m))
 		}
 
 		const linkUrl = (m.confirmation && m.confirmation.resolved && m.confirmation.resultUrl) || m.linkUrl
@@ -458,7 +415,77 @@ export function mountChat(root, opts = {}) {
 		} else if (ta) {
 			ta.remove()
 		}
+		// Once the answer is complete, (re-)render sources and follow-up
+		// chips: they only exist after the stream is done, and updateMessage
+		// runs incrementally while the DOM was built for an in-flight answer.
+		if (m.done) {
+			const oldSrc = wrap.querySelector('.rs')
+			if (oldSrc) oldSrc.remove()
+			const oldFu = wrap.querySelector('.rfu')
+			if (oldFu) oldFu.remove()
+			const anchor = wrap.querySelector('.rconfirm-link, .rconfirm')
+			if (m.sources && m.sources.length) {
+				const details = renderSources(m)
+				if (anchor) wrap.insertBefore(details, anchor)
+				else wrap.appendChild(details)
+			}
+			if (m.followups && m.followups.length) {
+				const chips = renderFollowups(m)
+				if (anchor) wrap.insertBefore(chips, anchor)
+				else wrap.appendChild(chips)
+			}
+		}
 		scroll.scrollTop = scroll.scrollHeight
+	}
+
+	function renderSources(m) {
+		const details = document.createElement('details')
+		details.className = 'rs'
+		const summary = document.createElement('summary')
+		summary.className = 'rs-sum'
+		summary.textContent = t('Sources') + ' (' + m.sources.length + ')'
+		details.appendChild(summary)
+		const list = document.createElement('div')
+		list.className = 'rs-list'
+		m.sources.forEach((item) => {
+			const src = item.src || item
+			const row = document.createElement('div')
+			row.className = 'rs-item'
+			const a = document.createElement('a')
+			a.href = src.url || '#'
+			a.target = '_blank'
+			a.rel = 'noopener'
+			const prefix = item.ref !== undefined ? '[' + item.ref + '] ' : ''
+			a.textContent = prefix + (src.path || src.name || '')
+			row.appendChild(a)
+			if (src.excerpts && src.excerpts.length) {
+				const ex = document.createElement('div')
+				ex.className = 'rs-excerpt'
+				ex.textContent = src.excerpts[0]
+				row.appendChild(ex)
+			}
+			list.appendChild(row)
+		})
+		details.appendChild(list)
+		return details
+	}
+
+	function renderFollowups(m) {
+		const chips = document.createElement('div')
+		chips.className = 'rfu'
+		m.followups.forEach((q) => {
+			const btn = document.createElement('button')
+			btn.type = 'button'
+			btn.className = 'rfu-btn'
+			btn.textContent = q
+			btn.addEventListener('click', () => {
+				if (sending) return
+				input.value = q
+				send()
+			})
+			chips.appendChild(btn)
+		})
+		return chips
 	}
 
 	function apiStream(path, body, onLine) {
@@ -508,9 +535,15 @@ export function mountChat(root, opts = {}) {
 		}
 	}
 
-	function saveMessage(role, text) {
+	function saveMessage(role, text, followups) {
 		if (!chatId) return Promise.resolve(false)
-		return api('POST', '/chats/' + chatId + '/messages', { role, text })
+		const body = { role, text }
+		// Follow-up suggestions are persisted for assistant messages so the
+		// chips survive a page reload.
+		if (role === 'assistant' && Array.isArray(followups) && followups.length) {
+			body.followups = followups
+		}
+		return api('POST', '/chats/' + chatId + '/messages', body)
 			.then(() => true)
 			.catch(() => false)
 	}
@@ -519,15 +552,16 @@ export function mountChat(root, opts = {}) {
 		return api('GET', '/chats/' + id).then((chat) => {
 			messages.length = 0
 			trimmedMessages = (chat && chat.trimmed) ? parseInt(chat.trimmed, 10) || 0 : 0
-			;(chat.messages || []).forEach((m) => messages.push({
-				role: m.role === 'user' || m.role === 'assistant' ? m.role : 'assistant',
-				text: m.text || '',
-				thinking: '',
-				done: true,
-			}))
-			renderAll(messages)
-		})
-	}
+		;(chat.messages || []).forEach((m) => messages.push({
+			role: m.role === 'user' || m.role === 'assistant' ? m.role : 'assistant',
+			text: m.text || '',
+			thinking: '',
+			followups: Array.isArray(m.followups) ? m.followups : [],
+			done: true,
+		}))
+		renderAll(messages)
+	})
+}
 
 	if (chatId) {
 		restoreServerChat(chatId).catch(() => { /* falls Chat nicht existiert: leer starten */ })
@@ -580,7 +614,7 @@ export function mountChat(root, opts = {}) {
 				last.done = true
 				// Persist: truncate old messages and save new ones
 				api('POST', '/chats/' + chatId + '/regenerate', { messageIndex: userIdx, message: null })
-					.then(() => saveMessage('assistant', last.text))
+					.then(() => saveMessage('assistant', last.text, last.followups))
 					.then(() => { if (onRecent) onRecent() })
 					.catch(() => {})
 				sending = false
@@ -642,7 +676,7 @@ export function mountChat(root, opts = {}) {
 				last.followups = ev.followups || []
 				last.done = true
 				api('POST', '/chats/' + chatId + '/regenerate', { messageIndex: userIdx, message: newText.trim() })
-					.then(() => saveMessage('assistant', last.text))
+					.then(() => saveMessage('assistant', last.text, last.followups))
 					.then(() => { if (onRecent) onRecent() })
 					.catch(() => {})
 				sending = false
@@ -719,7 +753,7 @@ export function mountChat(root, opts = {}) {
 					// once lets the per-user file lock acquire them in either order,
 					// which can swap the question and answer after a reload.
 					saveMessage('user', msg)
-						.then((savedUser) => savedUser ? saveMessage('assistant', last.text) : false)
+						.then((savedUser) => savedUser ? saveMessage('assistant', last.text, last.followups) : false)
 						.then((saved) => { if (saved && onRecent) onRecent() })
 						.catch(() => {})
 				} else if (ev.type === 'error') {

@@ -180,7 +180,7 @@ final class FrontendContractTest extends TestCase {
     public function testChatMessagesArePersistedInQuestionThenAnswerOrder(): void {
         $source = (string)file_get_contents(__DIR__ . '/../src/lib/vanilla.js');
         self::assertStringContainsString(
-            "saveMessage('user', msg)\n\t\t\t\t\t\t.then((savedUser) => savedUser ? saveMessage('assistant', last.text) : false)",
+            "saveMessage('user', msg)\n\t\t\t\t\t\t.then((savedUser) => savedUser ? saveMessage('assistant', last.text, last.followups) : false)",
             $source
         );
         self::assertStringNotContainsString("Promise.all([saveMessage('user', msg)", $source);
@@ -255,4 +255,45 @@ final class FrontendContractTest extends TestCase {
         self::assertStringContainsString("ev.type === 'confirmation'", $standalone);
     }
 
+    public function testAppHandlesDashboardChatDeepLinks(): void {
+        // The dashboard widget links into the app via ?chat=new / ?chat=<id>;
+        // App.vue must read the param, create a fresh chat for "new" and keep
+        // the open chat id in the URL when navigating.
+        $app = (string)file_get_contents(__DIR__ . '/../src/App.vue');
+        self::assertStringContainsString("params.get('chat')", $app);
+        self::assertStringContainsString("initialChatParam === 'new'", $app);
+        self::assertStringContainsString("currentChat.value = initialChatParam", $app);
+        self::assertStringContainsString("url.searchParams.set('chat', currentChat.value)", $app);
+    }
+
+    public function testSettingsNoLongerOfferActionHistory(): void {
+        // The action-history feature was removed from the settings UI.
+        $settings = (string)file_get_contents(__DIR__ . '/../src/views/SettingsView.vue');
+        self::assertStringNotContainsString('Action history', $settings);
+        self::assertStringNotContainsString('loadAudit', $settings);
+        self::assertStringNotContainsString('clearAudit', $settings);
+    }
+
+    public function testCustomInstructionsButtonWasRemovedFromTheChatHeader(): void {
+        // The compass button (per-chat custom instructions) was removed again.
+        $vanilla = (string)file_get_contents(__DIR__ . '/../src/lib/vanilla.js');
+        self::assertStringNotContainsString('instrBtn', $vanilla);
+        self::assertStringNotContainsString('Custom instructions', $vanilla);
+        self::assertStringNotContainsString("chatInstructions", $vanilla);
+        $chatView = (string)file_get_contents(__DIR__ . '/../src/views/ChatView.vue');
+        self::assertStringNotContainsString("class='instr'", $chatView);
+    }
+
+    public function testActionAuditApiAndServiceWereRemoved(): void {
+        // The audit feature (Issue #150) was removed completely: no endpoints,
+        // no service, no routes, no executor hooks.
+        self::assertFileDoesNotExist(__DIR__ . '/../lib/Service/ActionAudit.php');
+        $controller = (string)file_get_contents(__DIR__ . '/../lib/Controller/ApiController.php');
+        self::assertStringNotContainsString('ActionAudit', $controller);
+        self::assertStringNotContainsString('function audit()', $controller);
+        $routes = (string)file_get_contents(__DIR__ . '/../appinfo/routes.php');
+        self::assertStringNotContainsString('api#audit', $routes);
+        $executor = (string)file_get_contents(__DIR__ . '/../lib/Service/ActionExecutor.php');
+        self::assertStringNotContainsString('auditResult', $executor);
+    }
 }
