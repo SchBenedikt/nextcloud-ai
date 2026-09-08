@@ -100,6 +100,43 @@ final class ChatStoreTest extends TestCase {
         $store->create('alice');
     }
 
+    public function testDeleteOlderThanRemovesOnlyInactiveChats(): void {
+        $now = time();
+        $json = json_encode([
+            ['id' => 'old', 'updated' => $now - 40 * 86400],
+            ['id' => 'recent', 'updated' => $now - 3600],
+            ['id' => 'ancient', 'updated' => $now - 100 * 86400],
+            ['id' => 'no-stamp', 'messages' => []],
+        ]);
+        $written = null;
+        [$store, $file] = $this->chatFileHarness($json, $written);
+
+        // Chats whose last activity is older than the retention window are
+        // removed; active and timestamp-less chats are kept. The file is only
+        // rewritten when something was actually deleted.
+        self::assertSame(2, $store->deleteOlderThan('alice', 30));
+        $kept = json_decode((string)$written, true);
+        self::assertSame(['recent', 'no-stamp'], array_column($kept, 'id'));
+
+        // A disabled retention (0) must never touch the stored chats.
+        $written = null;
+        self::assertSame(0, $store->deleteOlderThan('alice', 0));
+        self::assertNull($written);
+    }
+
+    public function testDeleteOlderThanKeepsEverythingInsideTheWindow(): void {
+        $now = time();
+        $json = json_encode([
+            ['id' => 'a', 'updated' => $now - 5 * 86400],
+            ['id' => 'b', 'updated' => $now - 6 * 86400 + 60],
+        ]);
+        $written = null;
+        [$store] = $this->chatFileHarness($json, $written);
+
+        self::assertSame(0, $store->deleteOlderThan('alice', 7));
+        self::assertNull($written);
+    }
+
     private function chatFileHarness(string $json, ?string &$written, string $foldersJson = '[]', ?string &$foldersWritten = null): array {
         $factory = $this->createMock(IAppDataFactory::class);
         $appData = $this->createMock(IAppData::class);

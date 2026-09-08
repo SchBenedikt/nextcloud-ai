@@ -438,7 +438,19 @@
         "{count} active conversations": "{count} aktive Unterhaltungen",
         "Dashboard unavailable: {error}": "Dashboard nicht verfügbar: {error}",
         "messages": "Nachrichten",
-        "System": "System"
+        "System": "System",
+        "Ask anything or start a new chat…": "Frag etwas oder starte einen neuen Chat…",
+        "Good night": "Gute Nacht",
+        "Automatically delete old chats": "Alte Chats automatisch löschen",
+        "Never delete automatically": "Nie automatisch löschen",
+        "After 7 days": "Nach 7 Tagen",
+        "After 14 days": "Nach 14 Tagen",
+        "After 30 days": "Nach 30 Tagen",
+        "After 60 days": "Nach 60 Tagen",
+        "After 90 days": "Nach 90 Tagen",
+        "After 180 days": "Nach 180 Tagen",
+        "After 365 days": "Nach 365 Tagen",
+        "Chats that have not been used for this many days are deleted automatically by the background job. 0 keeps everything.": "Chats, die länger als diese Anzahl Tage nicht genutzt wurden, werden automatisch vom Hintergrunddienst gelöscht. 0 behält alles."
     },
     "pluralForm": "nplurals=2; plural=(n != 1);"
 }

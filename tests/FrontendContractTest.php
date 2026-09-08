@@ -123,6 +123,32 @@ final class FrontendContractTest extends TestCase {
 		self::assertStringContainsString('$emit(\'open-chat\', c.id)', $home);
 		self::assertStringContainsString('public function stats(): DataResponse', (string)file_get_contents(__DIR__ . '/../lib/Controller/ApiController.php'));
 		self::assertStringContainsString("'url' => '/api/stats'", (string)file_get_contents(__DIR__ . '/../appinfo/routes.php'));
+		// Dynamic dashboard greeting + instant chat start from the hero.
+		self::assertStringContainsString("api('GET', '/greeting')", $home);
+		self::assertStringContainsString('aiGreeting', $home);
+		self::assertStringContainsString('staticGreeting', $home);
+		self::assertStringContainsString('hero-prompt', $home);
+		self::assertStringContainsString("emit('new-chat', text)", $home);
+		self::assertStringContainsString("public function greeting(): DataResponse", (string)file_get_contents(__DIR__ . '/../lib/Controller/ApiController.php'));
+		self::assertStringContainsString("'url' => '/api/greeting'", (string)file_get_contents(__DIR__ . '/../appinfo/routes.php'));
+		// Chat retention: per-user setting, store cleanup + background job.
+		self::assertStringContainsString('chat_retention_days', (string)file_get_contents(__DIR__ . '/../lib/Service/AppConfig.php'));
+		self::assertStringContainsString("public function deleteOlderThan(string \$user, int \$days): int", (string)file_get_contents(__DIR__ . '/../lib/Service/ChatStore.php'));
+		self::assertStringContainsString('class ChatCleanupJob', (string)file_get_contents(__DIR__ . '/../lib/BackgroundJob/ChatCleanupJob.php'));
+		self::assertStringContainsString('ChatCleanupJob', (string)file_get_contents(__DIR__ . '/../appinfo/info.xml'));
+		$settings = (string)file_get_contents(__DIR__ . '/../src/views/SettingsView.vue');
+		self::assertStringContainsString('Automatically delete old chats', $settings);
+		self::assertStringContainsString('Never delete automatically', $settings);
+		self::assertStringContainsString('After 30 days', $settings);
+		// The Start navigation item sits at the very top of the sidebar list,
+		// above the Chats heading (not only in the footer).
+		self::assertStringContainsString("<template #list>\n\t\t\t\t<NcAppNavigationItem\n\t\t\t\t\tclass=\"start-nav-item\"", $app);
+		self::assertStringContainsString('pendingPrompt', $app);
+		self::assertStringContainsString('@prompt-consumed="pendingPrompt = \'\'"', $app);
+		$chat = (string)file_get_contents(__DIR__ . '/../src/views/ChatView.vue');
+		self::assertStringContainsString('autoSend: { type: Boolean, default: false }', $chat);
+		self::assertStringContainsString('form.dispatchEvent(new Event(\'submit\'', $chat);
+		self::assertStringContainsString("emit('prompt-consumed')", $chat);
 		// Issue #79: incremental re-indexing via file hooks. All four node
 		// events must queue a debounced background reindex per user, and the
 		// Indexer must expose the single-file path.

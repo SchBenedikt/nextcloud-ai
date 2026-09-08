@@ -81,6 +81,7 @@ Resetting a user's index clears that user's cached vectors.
 | `talk_classify_all` | P | `0` | `1`/`0` | – | `0` = heuristic pre-filter decides before any LLM call (Issue #77, default); `1` = classify every room message via the LLM (legacy, higher cost/privacy exposure). |
 | `weather_tool_enabled` | P | `1` | `1`/`0` | – | `0` disables the weather tool (external Open-Meteo requests) everywhere (Issue #69). |
 | `index_enrolled` | P/S | `0` | `1`/`0` | – | Per-user opt-in for recurring background indexing. |
+| `chat_retention_days` | P | `0` | `0`–`3650` | days | Automatically delete chats not used for this many days (`0` = keep everything). The daily `ChatCleanupJob` applies it per user. |
 
 ### Internal per-user runtime state (S)
 

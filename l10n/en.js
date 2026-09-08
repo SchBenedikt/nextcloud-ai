@@ -437,5 +437,17 @@ OC.L10N.register("eva_ai", {
   "{count} active conversations": "{count} active conversations",
   "Dashboard unavailable: {error}": "Dashboard unavailable: {error}",
   "messages": "messages",
-  "System": "System"
+  "System": "System",
+  "Ask anything or start a new chat…": "Ask anything or start a new chat…",
+  "Good night": "Good night",
+  "Automatically delete old chats": "Automatically delete old chats",
+  "Never delete automatically": "Never delete automatically",
+  "After 7 days": "After 7 days",
+  "After 14 days": "After 14 days",
+  "After 30 days": "After 30 days",
+  "After 60 days": "After 60 days",
+  "After 90 days": "After 90 days",
+  "After 180 days": "After 180 days",
+  "After 365 days": "After 365 days",
+  "Chats that have not been used for this many days are deleted automatically by the background job. 0 keeps everything.": "Chats that have not been used for this many days are deleted automatically by the background job. 0 keeps everything."
 }, "nplurals=2; plural=(n != 1);");

@@ -20,6 +20,15 @@
 				</div>
 			</template>
 			<template #list>
+				<NcAppNavigationItem
+					class="start-nav-item"
+					:name="$t('Home')"
+					:active="view === 'home'"
+					@click="navigate('home')">
+					<template #icon>
+						<svg width="16" height="16" viewBox="0 0 24 24"><path :d="mdiViewDashboardOutline" fill="currentColor" /></svg>
+					</template>
+				</NcAppNavigationItem>
 				<li class="chat-list-heading">
 					<span>{{ $t('Chats') }}</span>
 					<NcCounterBubble :count="activeChats.length" />
@@ -97,14 +106,6 @@
 			<template #footer>
 				<ul class="nav-footer">
 					<NcAppNavigationItem
-						:name="$t('Home')"
-						:active="view === 'home'"
-						@click="navigate('home')">
-						<template #icon>
-							<svg width="16" height="16" viewBox="0 0 24 24"><path :d="mdiViewDashboardOutline" fill="currentColor" /></svg>
-						</template>
-					</NcAppNavigationItem>
-					<NcAppNavigationItem
 						:name="$t('Documents')"
 						:active="view === 'docs'"
 						@click="navigate('docs')">
@@ -125,7 +126,7 @@
 		</NcAppNavigation>
 		<NcAppContent>
 			<HomeView v-if="view === 'home'" @new-chat="newChat" @navigate="navigate" @open-chat="selectChat" />
-			<ChatView v-else-if="view === 'chat'" :chat-id="currentChat" @chat-updated="loadChats" />
+			<ChatView v-else-if="view === 'chat'" :chat-id="currentChat" :initial-prompt="pendingPrompt" :auto-send="!!pendingPrompt" @chat-updated="loadChats" @prompt-consumed="pendingPrompt = ''" />
 			<FileContextChatView v-else-if="view === 'fileContext'" :file-ids="fileContextIds" />
 			<DocumentsView v-else-if="view === 'docs'" />
 			<SettingsView v-else />
@@ -211,6 +212,9 @@ export default {
 		const folders = ref([])
 		const currentChat = ref(null)
 		const busy = ref(false)
+		// First message typed on the dashboard hero: passed to the chat view
+		// and sent automatically as soon as the conversation is open.
+		const pendingPrompt = ref('')
 		const chatFilter = ref('')
 		const apiError = ref('')
 		const showArchived = ref(false)
@@ -423,12 +427,13 @@ export default {
 			folderPickerOpen.value = true
 		}
 
-		const newChat = async () => {
+		const newChat = async (prompt = '') => {
 			if (busy.value) return
 			busy.value = true
 			try {
 				const c = await requestApi('POST', '/chats', {})
 				if (!c || !c.id) throw new Error(t('The server returned no chat ID.'))
+				pendingPrompt.value = String(prompt || '').trim()
 				await loadChats()
 				currentChat.value = c.id
 				navigate('chat')
@@ -521,7 +526,7 @@ export default {
 			pinnedChats, folderGroups, plainChats, navItems, listChats, activeChats, archivedChats,
 			folderPickerOpen, folderChat, newFolderName, collapsedFolders, toggleFolder,
 			fileContextIds, itemName, itemTip,
-			newChat, selectChat, renameChat, deleteChat, loadChats, navigate, updateChatMeta, pickFolder, pickScope, assignTarget, createAndAssign,
+			newChat, selectChat, renameChat, deleteChat, loadChats, navigate, updateChatMeta, pickFolder, pickScope, assignTarget, createAndAssign, pendingPrompt,
 			pickerMode,
 			mdiChatProcessing, mdiFileDocumentOutline, mdiTune, mdiTrashCanOutline, mdiMessagePlus, mdiPencilOutline, mdiChevronDown, mdiViewDashboardOutline,
 			mdiPinOutline, mdiPinOffOutline, mdiFolderOutline, mdiFolderPlusOutline, mdiFolderRemoveOutline, mdiFolderSearchOutline, mdiFolderOffOutline, mdiArchiveOutline, mdiArchiveArrowUpOutline,

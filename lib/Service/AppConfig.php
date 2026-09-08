@@ -23,6 +23,7 @@ class AppConfig {
         'exec_write_max_chars', 'exec_delete_mode',        'notify_on_complete',
         'mail_index_enabled', 'mail_index_max', 'talk_history_size',
         'talk_bot_trigger', 'talk_classify_all', 'exclude_paths',
+        'chat_retention_days',
     ];
 
     /**
@@ -73,6 +74,9 @@ class AppConfig {
         'talk_bot_trigger' => 'Eva',
         'talk_classify_all' => '0',
         'exclude_paths' => '',
+        // Automatic deletion of chats after N days of inactivity (0 = never,
+        // Issue: chat retention). The background job removes the chats.
+        'chat_retention_days' => '0',
         'index_running' => '0',
         'index_started' => '',
         'index_heartbeat' => '',
@@ -116,6 +120,7 @@ class AppConfig {
         'exec_write_max_chars' => [1, 10000000],
         'mail_index_max' => [1, 500],
         'talk_history_size' => [1, 500],
+        'chat_retention_days' => [0, 3650],
     ];
 
     private ?string $userId = null;

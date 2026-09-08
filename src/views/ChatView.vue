@@ -11,11 +11,31 @@ export default {
 	props: {
 		chatId: { type: String, default: null },
 		initialPrompt: { type: String, default: '' },
+		// When true the initialPrompt is sent immediately after the chat
+		// mounts instead of only being pre-filled into the input (Issue:
+		// start a new chat directly from the dashboard).
+		autoSend: { type: Boolean, default: false },
 	},
-	emits: ['chat-updated'],
+	emits: ['chat-updated', 'prompt-consumed'],
 	setup(props, { emit }) {
 		const root = ref(null)
 		let mounted = false
+
+		const applyInitialPrompt = () => {
+			if (!mounted || !root.value || !props.initialPrompt) return
+			const input = root.value.querySelector('#chatinput')
+			const form = root.value.querySelector('form.chatform')
+			if (!input || !form) return
+			input.value = props.initialPrompt
+			input.focus()
+			if (props.autoSend && input.value.trim()) {
+				// The vanilla chat listens on the form's submit event, so
+				// dispatching it runs the regular send flow (including chat
+				// creation fallback and streaming).
+				form.dispatchEvent(new Event('submit', { cancelable: true, bubbles: true }))
+			}
+			emit('prompt-consumed')
+		}
 
 		const mount = () => {
 			if (!root.value) return
@@ -26,16 +46,12 @@ export default {
 				onRecent: () => emit('chat-updated'),
 			})
 			mounted = true
+			applyInitialPrompt()
 		}
 
 		onMounted(mount)
-		watch(() => props.initialPrompt, (v) => {
-			if (!mounted || !v) return
-			const input = root.value && root.value.querySelector('#chatinput')
-			if (input) {
-				input.value = v
-				input.focus()
-			}
+		watch(() => props.initialPrompt, () => {
+			applyInitialPrompt()
 		})
 		watch(() => props.chatId, () => {
 			if (mounted) mount()

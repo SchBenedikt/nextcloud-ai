@@ -280,6 +280,20 @@
 						<p>{{ $t('Manage the conversations stored for your Nextcloud account. This does not affect indexed files.') }}</p>
 					</div>
 				</div>
+				<div class="field">
+					<label class="native-label" for="chat-retention">{{ $t('Automatically delete old chats') }}</label>
+					<select id="chat-retention" v-model="f.chat_retention_days" class="native-select">
+						<option value="0">{{ $t('Never delete automatically') }}</option>
+						<option value="7">{{ $t('After 7 days') }}</option>
+						<option value="14">{{ $t('After 14 days') }}</option>
+						<option value="30">{{ $t('After 30 days') }}</option>
+						<option value="60">{{ $t('After 60 days') }}</option>
+						<option value="90">{{ $t('After 90 days') }}</option>
+						<option value="180">{{ $t('After 180 days') }}</option>
+						<option value="365">{{ $t('After 365 days') }}</option>
+					</select>
+					<p class="field-help">{{ $t('Chats that have not been used for this many days are deleted automatically by the background job. 0 keeps everything.') }}</p>
+				</div>
 				<div class="index-actions chat-history-actions">
 					<div>
 						<strong>{{ $t('Delete all chats') }}</strong>
@@ -403,6 +417,7 @@ export default {
 			talk_history_size: '50',
 			talk_bot_trigger: 'Eva',
 			exclude_paths: '',
+			chat_retention_days: '0',
 		})
 		const status = ref(null)
 		const limits = ref({})

@@ -22,6 +22,7 @@ use OCP\AppFramework\Http\StreamTraversableResponse;
 use OCP\AppFramework\Http\DataResponse;
 use OCP\AppFramework\Http\NotFoundResponse;
 use OCP\BackgroundJob\IJobList;
+use OCP\ICacheFactory;
 use OCP\App\IAppManager;
 use OCP\IRequest;
 use OCP\Lock\ILockingProvider;
@@ -46,7 +47,8 @@ class ApiController extends OCSController {
         private KnowledgeInitializer $knowledgeInitializer,
         private LockGuard $lockGuard,
         private \OCA\EvaAi\Service\UserDataService $userDataService,
-        private \OCA\EvaAi\Service\ChatLearner $chatLearner
+        private \OCA\EvaAi\Service\ChatLearner $chatLearner,
+        private ICacheFactory $cacheFactory
     ) {
         parent::__construct($appName, $request);
         $this->config->setUserId($this->userId);
@@ -138,6 +140,94 @@ class ApiController extends OCSController {
         }
     }
 
+    /**
+     * Time-of-day aware greeting for the dashboard hero. The text is generated
+     * by the configured chat model once per user+period and cached for several
+     * hours, so a dashboard load never blocks on Ollama; when the model is
+     * unreachable a static greeting in the user's UI language is returned.
+     */
+    #[NoAdminRequired]
+    public function greeting(): DataResponse {
+        $user = $this->requireUser();
+        if ($user === null) {
+            return new DataResponse(['error' => 'Not logged in'], 401);
+        }
+        $this->config->setUserId($user);
+        $period = $this->dayPeriod();
+        $lang = $this->uiLanguage();
+        $cacheKey = 'greeting_' . substr(hash('sha256', $user), 0, 16) . '_' . $period;
+        $cache = $this->cacheFactory->createDistributed('eva_ai_greeting_');
+        $cached = $cache->get($cacheKey);
+        if (is_string($cached) && $cached !== '') {
+            return new DataResponse(['greeting' => $cached, 'period' => $period]);
+        }
+        $greeting = $this->generateGreeting($period, $lang);
+        if ($greeting === '') {
+            $greeting = $this->staticGreeting($period, $lang);
+        }
+        $cache->set($cacheKey, $greeting, 6 * 3600);
+        return new DataResponse(['greeting' => $greeting, 'period' => $period]);
+    }
+
+    /** 'night'|'morning'|'afternoon'|'evening' based on the server's clock. */
+    private function dayPeriod(): string {
+        $h = (int)date('G');
+        if ($h < 5) {
+            return 'night';
+        }
+        if ($h < 12) {
+            return 'morning';
+        }
+        if ($h < 18) {
+            return 'afternoon';
+        }
+        return 'evening';
+    }
+
+    /** The user's Nextcloud UI language ('de', 'en', ...). */
+    private function uiLanguage(): string {
+        try {
+            return \OCP\Server::get(\OCP\L10N\IFactory::class)->findLanguage('eva_ai');
+        } catch (\Throwable $e) {
+            return 'en';
+        }
+    }
+
+    /**
+     * One short AI-generated greeting sentence for the given period. Returns
+     * an empty string when Ollama is offline or produced no usable text.
+     */
+    private function generateGreeting(string $period, string $lang): string {
+        try {
+            $periodLabel = [
+                'night' => 'at night',
+                'morning' => 'in the morning',
+                'afternoon' => 'in the afternoon',
+                'evening' => 'in the evening',
+            ][$period] ?? $period;
+            $chat = $this->ollama->chat([
+                ['role' => 'system', 'content' => 'You are EVA, the friendly assistant built into the user\'s Nextcloud. Reply with ONE short, warm greeting sentence (max 12 words) appropriate for the current time of day, in the user\'s language. No markdown, no emojis, no quotes, no question, no explanation.'],
+                ['role' => 'user', 'content' => 'Current time of day: ' . $periodLabel . '. Language: ' . $lang],
+            ], [], 30);
+            if (isset($chat['error']) || empty($chat['answer'])) {
+                return '';
+            }
+            $text = trim((string)$chat['answer']);
+            $text = preg_replace('/["\r\n]+/', ' ', $text) ?? $text;
+            return mb_substr($text, 0, 120);
+        } catch (\Throwable $e) {
+            return '';
+        }
+    }
+
+    /** Static fallback greeting in the user's UI language. */
+    private function staticGreeting(string $period, string $lang): string {
+        $de = ['night' => 'Gute Nacht', 'morning' => 'Guten Morgen', 'afternoon' => 'Guten Tag', 'evening' => 'Guten Abend'];
+        $en = ['night' => 'Good night', 'morning' => 'Good morning', 'afternoon' => 'Good afternoon', 'evening' => 'Good evening'];
+        $map = str_starts_with($lang, 'de') ? $de : $en;
+        return $map[$period] ?? $map['morning'];
+    }
+
     #[NoAdminRequired]
     public function settings(): DataResponse {
         $user = $this->requireUser();
@@ -174,6 +264,7 @@ class ApiController extends OCSController {
             'talk_classify_all',
             'exclude_paths',
             'index_enrolled',
+            'chat_retention_days',
         ];
         $validationErrors = [];
         $pending = [];
@@ -215,7 +306,7 @@ class ApiController extends OCSController {
             ], 400);
         }
         foreach ($pending as $key => $value) {
-                if (in_array($key, ['top_k', 'chunk_size', 'chunk_overlap', 'max_file_size', 'max_files_per_run', 'context_size', 'exec_write_max_chars', 'mail_index_max', 'talk_history_size'], true)) {
+                if (in_array($key, ['top_k', 'chunk_size', 'chunk_overlap', 'max_file_size', 'max_files_per_run', 'context_size', 'exec_write_max_chars', 'mail_index_max', 'talk_history_size', 'chat_retention_days'], true)) {
                     $value = (string)$value;
                 }
                 if ($key === 'exec_delete_mode') {

@@ -6,12 +6,28 @@
 				<h1>{{ greeting }}</h1>
 				<p class="hero-sub">{{ $t('Your personal assistant for Nextcloud — ask your files, manage chats and stay on top of your knowledge base.') }}</p>
 			</div>
-			<div class="hero-actions">
-				<NcButton type="primary" :disabled="busy" @click="$emit('new-chat')">
+			<form class="hero-prompt" @submit.prevent="startChat">
+				<input
+					v-model="prompt"
+					class="hero-prompt-input"
+					type="text"
+					:placeholder="$t('Ask anything or start a new chat…')"
+					:disabled="busy"
+					aria-label="$t('Start a new chat')"
+				/>
+				<NcButton type="primary" native-type="submit" :disabled="busy || !prompt.trim()">
 					<template #icon>
 						<NcIconSvgWrapper :path="mdiMessagePlus" :size="18" aria-hidden="true" />
 					</template>
 					{{ $t('New chat') }}
+				</NcButton>
+			</form>
+			<div class="hero-actions">
+				<NcButton type="secondary" @click="$emit('new-chat')">
+					<template #icon>
+						<NcIconSvgWrapper :path="mdiMessagePlus" :size="18" aria-hidden="true" />
+					</template>
+					{{ $t('Start a new conversation') }}
 				</NcButton>
 				<NcButton type="secondary" @click="$emit('navigate', 'docs')">
 					<template #icon>
@@ -26,7 +42,7 @@
 
 		<section class="stat-grid" :aria-label="$t('Overview')">
 			<div class="stat-card" v-for="card in statCards" :key="card.label">
-				<span class="stat-icon" :style="{ background: card.tint }">
+				<span class="stat-icon">
 					<NcIconSvgWrapper :path="card.icon" :size="20" aria-hidden="true" />
 				</span>
 				<div class="stat-body">
@@ -125,18 +141,30 @@ export default {
 		const chatSummary = ref({ total: 0, active: 0, archived: 0, recent: [] })
 		const folders = ref(0)
 		const status = ref({})
+		const prompt = ref('')
+		const aiGreeting = ref('')
 
 		const online = computed(() => status.value.ollamaOnline === true)
 		const recent = computed(() => chatSummary.value.recent || [])
 		const activeChats = computed(() => chatSummary.value.active || 0)
 
-		const greeting = computed(() => {
+		// Static time-of-day fallback, replaced by the AI-generated greeting
+		// as soon as /api/greeting responds (offline -> stays static).
+		const staticGreeting = computed(() => {
 			const h = new Date().getHours()
-			if (h < 5) return t('Good evening')
+			if (h < 5) return t('Good night')
 			if (h < 12) return t('Good morning')
 			if (h < 18) return t('Good afternoon')
 			return t('Good evening')
 		})
+		const greeting = computed(() => aiGreeting.value || staticGreeting.value)
+
+		const startChat = () => {
+			const text = prompt.value.trim()
+			if (!text || busy.value) return
+			prompt.value = ''
+			emit('new-chat', text)
+		}
 
 		const statCards = computed(() => [
 			{
@@ -144,21 +172,18 @@ export default {
 				value: docs.value.count.toLocaleString(),
 				hint: t('Indexed files in your knowledge base'),
 				icon: mdiFileDocumentMultipleOutline,
-				tint: 'var(--eva-tint-blue, #e3f0fa)',
 			},
 			{
 				label: t('Text chunks'),
 				value: docs.value.chunks.toLocaleString(),
 				hint: t('Searchable sections'),
 				icon: mdiTextBoxOutline,
-				tint: 'var(--eva-tint-green, #e6f5ea)',
 			},
 			{
 				label: t('Indexed size'),
 				value: fmtSize(docs.value.size),
 				hint: t('Content currently available to EVA'),
 				icon: mdiDatabaseOutline,
-				tint: 'var(--eva-tint-purple, #f0e9fa)',
 			},
 			{
 				label: t('Chats'),
@@ -167,7 +192,6 @@ export default {
 					? t('{count} active · {folders} folders', { count: activeChats.value, folders: folders.value })
 					: t('{count} active conversations', { count: activeChats.value }),
 				icon: mdiMessageProcessingOutline,
-				tint: 'var(--eva-tint-amber, #fdf3e0)',
 			},
 		])
 
@@ -185,6 +209,14 @@ export default {
 			} finally {
 				busy.value = false
 			}
+			// AI-generated greeting (non-blocking; the static one stays until
+			// the response arrives or Ollama is offline).
+			api('GET', '/greeting')
+				.then((data) => {
+					const text = data && data.greeting ? String(data.greeting).trim() : ''
+					if (text) aiGreeting.value = text
+				})
+				.catch(() => { /* keep the static greeting */ })
 		}
 
 		function fmtSize(b) {
@@ -218,7 +250,7 @@ export default {
 
 		return {
 			busy, error, docs, chatSummary, folders, status, online, recent, activeChats,
-			greeting, statCards, fmtSize, fmtDate, isoDate,
+			greeting, statCards, fmtSize, fmtDate, isoDate, prompt, startChat,
 			mdiMessagePlus, mdiFileDocumentOutline, mdiMessageProcessingOutline, mdiChatProcessing, mdiFolderOutline, mdiFolderSearchOutline, mdiTune,
 		}
 	},
@@ -283,6 +315,34 @@ export default {
 .hero-actions {
 	display: flex;
 	gap: 8px;
+	margin-top: 14px;
+}
+
+.hero-prompt {
+	display: flex;
+	gap: 8px;
+	width: min(100%, 560px);
+	margin-top: 16px;
+}
+
+.hero-prompt-input {
+	flex: 1;
+	min-width: 0;
+	min-height: 42px;
+	padding: 8px 14px;
+	border: 2px solid var(--color-border, #ddd);
+	border-radius: var(--border-radius-large, 12px);
+	background: var(--color-main-background, #fff);
+	color: var(--color-main-text, #222);
+	font: inherit;
+	font-size: 14px;
+	box-sizing: border-box;
+}
+
+.hero-prompt-input:focus {
+	border-color: var(--color-primary-element, #00679c);
+	outline: 2px solid color-mix(in srgb, var(--color-primary-element, #00679c) 25%, transparent);
+	outline-offset: 1px;
 }
 
 .stat-grid {
@@ -309,7 +369,9 @@ export default {
 	height: 40px;
 	flex: none;
 	border-radius: var(--border-radius-large, 12px);
-	color: var(--color-primary-text, #00679c);
+	/* Neutral theme styling instead of the old per-card pastel tints. */
+	background: var(--color-background-hover, #f2f2f2);
+	color: var(--color-main-text, #222);
 }
 
 .stat-body {

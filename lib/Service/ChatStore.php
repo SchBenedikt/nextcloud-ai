@@ -164,6 +164,34 @@ class ChatStore {
     }
 
     /**
+     * Delete every chat whose last activity (updated) is older than $days
+     * days (Issue: chat retention). Chats are matched on their update
+     * timestamp so actively used conversations are never touched. Returns the
+     * number of removed chats; 0 when there is nothing to delete. A value of
+     * 0 or less disables the cleanup entirely.
+     */
+    public function deleteOlderThan(string $user, int $days): int {
+        if ($days <= 0) {
+            return 0;
+        }
+        $cutoff = time() - $days * 86400;
+        return $this->withUserLock($user, function () use ($user, $cutoff): int {
+            $all = $this->read($user);
+            if ($all === []) {
+                return 0;
+            }
+            // Chats without a usable timestamp are never deleted: their
+            // activity is unknown, so retention must not remove them.
+            $kept = array_values(array_filter($all, static fn($c) => (int)($c['updated'] ?? 0) <= 0 || (int)$c['updated'] > $cutoff));
+            $deleted = count($all) - count($kept);
+            if ($deleted > 0) {
+                $this->write($user, $kept);
+            }
+            return $deleted;
+        });
+    }
+
+    /**
      * Full export of every saved chat (messages included), used by the GDPR
      * data-export endpoint (Issue #83). Serialized like every other chat read.
      *
