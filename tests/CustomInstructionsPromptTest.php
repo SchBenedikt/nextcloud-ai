@@ -21,6 +21,13 @@ use Psr\Log\LoggerInterface;
  * test drives it via reflection against a RagService built from mocks.
  */
 final class CustomInstructionsPromptTest extends TestCase {
+    protected function setUp(): void {
+        parent::setUp();
+        if (!defined('EVA_AI_OCP_AVAILABLE') || !EVA_AI_OCP_AVAILABLE) {
+            $this->markTestSkipped('Nextcloud OCP interfaces are not available');
+        }
+    }
+
     private function service(): RagService {
         $config = $this->createMock(AppConfig::class);
         $config->method('get')->willReturn('');

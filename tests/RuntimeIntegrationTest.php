@@ -19,6 +19,12 @@ use ReflectionClass;
  * covering the key paths that the existing contract tests do not exercise.
  */
 final class RuntimeIntegrationTest extends TestCase {
+    protected function setUp(): void {
+        parent::setUp();
+        if (!defined('EVA_AI_OCP_AVAILABLE') || !EVA_AI_OCP_AVAILABLE) {
+            $this->markTestSkipped('Nextcloud OCP interfaces are not available');
+        }
+    }
 
     // ---- Indexing: start, cancel, restart, consistency ----
 
