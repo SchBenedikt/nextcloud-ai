@@ -722,27 +722,31 @@ export function mountChat(root, opts = {}) {
 		restoreServerChat(chatId).catch(() => { /* falls Chat nicht existiert: leer starten */ })
 	}
 
-	const regenerateMessage = (assistantIdx) => {
-		if (sending) return
-		const userIdx = assistantIdx - 1
-		if (userIdx < 0 || !messages[userIdx] || messages[userIdx].role !== 'user') return
-		if (!messages[assistantIdx] || messages[assistantIdx].role !== 'assistant') return
+	// Streams a server-side re-run (regenerate or edit) and persists the new
+	// answer. The /regenerate endpoint truncates the chat and applies the
+	// edited user text *before* the stream starts, so this is the single
+	// generation: we never duplicate the user message in the history (the
+	// server builds it from the stored messages) and never run Ollama twice.
+	// Confirmation events are surfaced as an inline panel exactly like in the
+	// normal send flow.
+	const streamRegenerateAnswer = (body) => {
+		if (!chatId) {
+			err.textContent = t('Chat could not be updated.')
+			err.style.display = 'block'
+			return
+		}
 		sending = true
 		sendBtn.disabled = true
 		err.style.display = 'none'
-		// Remove the assistant message and everything after it
-		messages.length = assistantIdx
-		renderAll(messages)
-		const history = []
-		for (let i = 0; i < messages.length; i++) {
-			const m = messages[i]
-			history.push({ role: m.role, content: m.text })
-		}
-		const targetMsg = messages[userIdx].text
 		messages.push({ role: 'assistant', text: '', thinking: '', done: false, tools: [] })
 		renderAll(messages)
-		apiStream(STREAM_URL, { message: targetMsg, history, chatId }, (ev) => {
+		const unlock = () => {
+			sending = false
+			sendBtn.disabled = false
+		}
+		apiStream(API_BASE + '/chats/' + chatId + '/regenerate', body, (ev) => {
 			const last = messages[messages.length - 1]
+			if (!last || last.role !== 'assistant' || last.done) return
 			if (ev.type === 'thinking') {
 				last.thinking = (last.thinking || '') + (ev.delta || '')
 				updateMessage(messages.length - 1)
@@ -761,27 +765,68 @@ export function mountChat(root, opts = {}) {
 						break
 					}
 				}
+				// Direct (no-dialog) executions still surface a created share
+				// link as a copyable chip in the bubble.
+				if (ev.ok && ev.url) last.linkUrl = ev.url
 				updateMessage(messages.length - 1)
+			} else if (ev.type === 'confirmation') {
+				// The server already committed truncation + edit; the inline
+				// panel below runs the tool on approve and persists the answer.
+				const missing = Array.isArray(ev.missing) ? ev.missing : []
+				last.confirmation = {
+					name: ev.name || '?',
+					arguments: ev.arguments || {},
+					risk: ev.risk || 'mutating',
+					missing,
+					resolved: false,
+				}
+				last.text = missing.length
+					? t('Some required details are missing - please complete them below.')
+					: t('Please review this action and confirm it explicitly.')
+				last.done = true
+				renderAll(messages)
+				scroll.scrollTop = scroll.scrollHeight
+				return
 			} else if (ev.type === 'done') {
 				last.text = ev.answer || last.text
 				last.sources = citedSources(last.text, ev.sources || [])
 				last.followups = ev.followups || []
 				last.done = true
-				// Persist: truncate old messages and save new ones
-				api('POST', '/chats/' + chatId + '/regenerate', { messageIndex: userIdx, message: null })
-					.then(() => saveMessage('assistant', last.text, last.followups))
+				updateMessage(messages.length - 1)
+				saveMessage('assistant', last.text, last.followups)
 					.then(() => { if (onRecent) onRecent() })
 					.catch(() => {})
-				sending = false
-				sendBtn.disabled = false
 			} else if (ev.type === 'error') {
 				last.text = '⚠️ ' + ev.message
 				last.done = true
-				sending = false
-				sendBtn.disabled = false
 			}
 			scroll.scrollTop = scroll.scrollHeight
+		}).catch((e) => {
+			const last = messages[messages.length - 1]
+			if (last && last.role === 'assistant' && !last.done) {
+				last.text = (last.text || '') + '⚠️ Error: ' + String(e && e.message ? e.message : e)
+				last.done = true
+				updateMessage(messages.length - 1)
+			}
+			err.textContent = t('Network error — see console.')
+			err.style.display = 'block'
+		}).finally(() => {
+			unlock()
+			input.focus()
+			scroll.scrollTop = scroll.scrollHeight
 		})
+	}
+
+	const regenerateMessage = (assistantIdx) => {
+		if (sending) return
+		const userIdx = assistantIdx - 1
+		if (userIdx < 0 || !messages[userIdx] || messages[userIdx].role !== 'user') return
+		if (!messages[assistantIdx] || messages[assistantIdx].role !== 'assistant') return
+		// Remove the assistant message and everything after it; the server
+		// commits the same truncation when the /regenerate stream starts.
+		messages.length = assistantIdx
+		renderAll(messages)
+		streamRegenerateAnswer({ messageIndex: userIdx, message: null })
 	}
 
 	const editMessage = (userIdx) => {
@@ -790,60 +835,12 @@ export function mountChat(root, opts = {}) {
 		const oldText = messages[userIdx].text
 		const newText = prompt(t('Edit your message:'), oldText)
 		if (newText === null || newText.trim() === '' || newText.trim() === oldText) return
-		sending = true
-		sendBtn.disabled = true
-		err.style.display = 'none'
-		// Truncate after the user message (remove the old assistant response)
+		// Truncate locally after the edited message; the server applies the
+		// same truncation and replacement before the /regenerate stream runs.
 		messages.length = userIdx + 1
 		messages[userIdx].text = newText.trim()
 		renderAll(messages)
-		const history = []
-		for (let i = 0; i < messages.length; i++) {
-			const m = messages[i]
-			history.push({ role: m.role, content: m.text })
-		}
-		messages.push({ role: 'assistant', text: '', thinking: '', done: false, tools: [] })
-		renderAll(messages)
-		apiStream(STREAM_URL, { message: newText.trim(), history, chatId }, (ev) => {
-			const last = messages[messages.length - 1]
-			if (ev.type === 'thinking') {
-				last.thinking = (last.thinking || '') + (ev.delta || '')
-				updateMessage(messages.length - 1)
-			} else if (ev.type === 'content') {
-				last.text += (ev.delta || '')
-				updateMessage(messages.length - 1)
-			} else if (ev.type === 'tool') {
-				last.tools = last.tools || []
-				last.tools.push({ name: ev.name || '?', state: 'running' })
-				updateMessage(messages.length - 1)
-			} else if (ev.type === 'tool_result') {
-				last.tools = last.tools || []
-				for (let t = last.tools.length - 1; t >= 0; t--) {
-					if (last.tools[t].name === ev.name && last.tools[t].state === 'running') {
-						last.tools[t].state = ev.ok ? 'ok' : 'bad'
-						break
-					}
-				}
-				updateMessage(messages.length - 1)
-			} else if (ev.type === 'done') {
-				last.text = ev.answer || last.text
-				last.sources = citedSources(last.text, ev.sources || [])
-				last.followups = ev.followups || []
-				last.done = true
-				api('POST', '/chats/' + chatId + '/regenerate', { messageIndex: userIdx, message: newText.trim() })
-					.then(() => saveMessage('assistant', last.text, last.followups))
-					.then(() => { if (onRecent) onRecent() })
-					.catch(() => {})
-				sending = false
-				sendBtn.disabled = false
-			} else if (ev.type === 'error') {
-				last.text = '⚠️ ' + ev.message
-				last.done = true
-				sending = false
-				sendBtn.disabled = false
-			}
-			scroll.scrollTop = scroll.scrollHeight
-		})
+		streamRegenerateAnswer({ messageIndex: userIdx, message: newText.trim() })
 	}
 
 	const send = () => {

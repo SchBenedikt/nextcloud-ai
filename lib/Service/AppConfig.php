@@ -111,6 +111,10 @@ class AppConfig {
         // every worker sees the same FIFO order.
         'index_scheduler_active' => '{}',
         'index_scheduler_queue' => '[]',
+        // Durable stop request for the periodic background IndexJob (admin
+        // action): the running tick aborts at the next user boundary and the
+        // following tick acknowledges (clears) the flag without starting.
+        'index_job_stop_requested' => '0',
     ];
 
     /**

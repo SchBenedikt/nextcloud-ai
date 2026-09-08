@@ -50,5 +50,6 @@ return [
         ['name' => 'admin#reindex', 'url' => '/api/admin/users/{userId}/reindex', 'verb' => 'POST'],
         ['name' => 'admin#reset', 'url' => '/api/admin/users/{userId}/reset', 'verb' => 'POST'],
         ['name' => 'admin#setEnrollment', 'url' => '/api/admin/users/{userId}/enrollment', 'verb' => 'POST'],
+        ['name' => 'admin#stopBackgroundIndex', 'url' => '/api/admin/stop', 'verb' => 'POST'],
     ],
 ];

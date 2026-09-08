@@ -16,7 +16,6 @@ import {
 	NcProgressBar,
 	NcModal,
 	NcInputField,
-	NcRichText,
 	NcAppNavigationSpacer,
 	NcActionButton,
 } from '@nextcloud/vue'
@@ -62,7 +61,6 @@ app.component('NcNoteCard', NcNoteCard)
 app.component('NcProgressBar', NcProgressBar)
 app.component('NcModal', NcModal)
 app.component('NcInputField', NcInputField)
-app.component('NcRichText', NcRichText)
 app.component('NcAppNavigationSpacer', NcAppNavigationSpacer)
 app.component('NcActionButton', NcActionButton)
 

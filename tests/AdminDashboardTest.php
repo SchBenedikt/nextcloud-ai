@@ -35,7 +35,7 @@ final class AdminDashboardTest extends TestCase {
 
     public function testAllEndpointsAreAdminRequired(): void {
         $reflection = new ReflectionClass(AdminController::class);
-        foreach (['overview', 'reindex', 'reset', 'setEnrollment'] as $method) {
+        foreach (['overview', 'reindex', 'reset', 'setEnrollment', 'stopBackgroundIndex'] as $method) {
             $m = $reflection->getMethod($method);
             $attributes = $m->getAttributes(AdminRequired::class);
             self::assertNotEmpty(
@@ -216,6 +216,38 @@ final class AdminDashboardTest extends TestCase {
         self::assertTrue($data['enrolled']);
     }
 
+    public function testStopBackgroundIndexFlagsAndCancelsActivePasses(): void {
+        $scheduler = $this->createMock(IndexScheduler::class);
+        $scheduler->method('activeUsers')->willReturn(['alice', 'bob']);
+        $scheduler->method('overview')->willReturn(['running' => 0, 'limit' => 2, 'queued' => 0]);
+
+        // setUserId switches the scope; index_job_stop_requested is stored at
+        // app scope (null) and each active user gets index_cancel_requested.
+        $config = $this->createMock(AppConfig::class);
+        $calls = [];
+        $config->method('set')->willReturnCallback(static function (string $key, string $value) use (&$calls): void {
+            $calls[] = ['set', $key, $value];
+        });
+        $config->method('setUserId')->willReturnCallback(static function (?string $uid) use (&$calls): void {
+            $calls[] = ['uid', $uid];
+        });
+
+        $controller = $this->controller(config: $config, scheduler: $scheduler);
+        $data = $controller->stopBackgroundIndex()->getData();
+
+        self::assertTrue($data['stopped']);
+        self::assertSame(['alice', 'bob'], $data['requestedFor']);
+        self::assertArrayHasKey('scheduler', $data);
+        self::assertContains(['set', 'index_job_stop_requested', '1'], $calls);
+        self::assertSame(2, count(array_filter(
+            $calls,
+            static fn(array $c): bool => $c[0] === 'set' && $c[1] === 'index_cancel_requested' && $c[2] === '1'
+        )));
+        // Cancel flags must be written in the active user's scope.
+        self::assertContains(['uid', 'alice'], $calls);
+        self::assertContains(['uid', 'bob'], $calls);
+    }
+
     /**
      * @param array<string,mixed> $overrides
      */
@@ -226,6 +258,7 @@ final class AdminDashboardTest extends TestCase {
         ?IUserManager $userManager = null,
         ?IJobList $jobList = null,
         ?IRequest $request = null,
+        ?IndexScheduler $scheduler = null,
     ): AdminController {
         return new AdminController(
             'eva_ai',
@@ -235,7 +268,7 @@ final class AdminDashboardTest extends TestCase {
             $indexer ?? $this->createMock(Indexer::class),
             $this->createMock(RagService::class),
             $this->createMock(Ollama::class),
-            $this->createMock(IndexScheduler::class),
+            $scheduler ?? $this->createMock(IndexScheduler::class),
             $jobList ?? $this->createMock(IJobList::class),
             $userManager ?? $this->createMock(IUserManager::class),
         );

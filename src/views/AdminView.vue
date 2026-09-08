@@ -7,6 +7,9 @@
 				<p class="page-intro">{{ $t('Overview of the RAG index per user with re-index, reset and enrollment management.') }}</p>
 			</div>
 			<div class="header-actions">
+				<NcButton v-if="(data?.scheduler?.running ?? 0) > 0" type="tertiary" :loading="stopping" @click="stopBackground">
+					{{ $t('Stop background indexing') }}
+				</NcButton>
 				<NcButton type="secondary" :loading="loading" @click="load">
 					{{ $t('Refresh') }}
 				</NcButton>
@@ -36,7 +39,11 @@
 				<div>
 					<span class="summary-label">{{ $t('Concurrent index passes') }}</span>
 					<strong>{{ data?.scheduler?.running ?? 0 }} / {{ data?.scheduler?.limit ?? 0 }}</strong>
-					<small>{{ $t('{count} waiting', { count: data?.scheduler?.queued ?? 0 }) }}</small>
+					<small v-if="(data?.scheduler?.running ?? 0) > 0">
+						{{ $t('{count} waiting', { count: data?.scheduler?.queued ?? 0 }) }}
+						· <button class="linklike" type="button" :disabled="stopping" @click="stopBackground">{{ $t('Stop') }}</button>
+					</small>
+					<small v-else>{{ $t('{count} waiting', { count: data?.scheduler?.queued ?? 0 }) }}</small>
 				</div>
 			</div>
 			<div class="summary-card">
@@ -117,8 +124,25 @@ export default {
 		const loadError = ref('')
 		const message = ref({ type: '', text: '' })
 		const busy = ref({}) // userId -> 'reindex' | 'reset' | 'enroll'
+		const stopping = ref(false)
 
 		const busyFor = (userId) => busy.value[userId] || ''
+
+		async function stopBackground() {
+			if (stopping.value) return
+			stopping.value = true
+			try {
+				const res = await apiPost('admin/stop', {})
+				flash('success', res?.requestedFor?.length
+					? t('Stop requested for {count} running pass(es).', { count: res.requestedFor.length })
+					: t('Background indexing stop requested.'))
+				await load()
+			} catch (e) {
+				flash('error', errMsg(e))
+			} finally {
+				stopping.value = false
+			}
+		}
 
 		async function load() {
 			loading.value = true
@@ -197,7 +221,7 @@ export default {
 
 		onMounted(load)
 
-		return { data, loading, loadError, message, busyFor, load, reindex, resetUser, toggleEnrollment, formatTime }
+		return { data, loading, loadError, message, busyFor, stopping, load, stopBackground, reindex, resetUser, toggleEnrollment, formatTime }
 	},
 }
 </script>
@@ -317,6 +341,15 @@ export default {
 	background: var(--color-background-dark);
 }
 .state-pill.state-running { color: var(--color-primary-text, #fff); background: var(--color-primary); }
+.linklike {
+	padding: 0;
+	border: 0;
+	background: transparent;
+	color: var(--color-primary, #00679c);
+	cursor: pointer;
+	font: inherit;
+	text-decoration: underline;
+}
 .state-pill.state-idle { opacity: .7; }
 .admin-actions {
 	display: flex;

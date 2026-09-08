@@ -78,6 +78,32 @@ class AdminController extends OCSController {
         ]);
     }
 
+    /**
+     * Stop the periodic background indexing run (cron IndexJob) instance-wide.
+     *
+     * The durable index_job_stop_requested flag aborts the running tick at its
+     * next user boundary and keeps the following tick idle. In-flight per-user
+     * passes (scheduler slots) additionally receive index_cancel_requested so
+     * each worker releases its claim promptly instead of finishing its whole
+     * file budget.
+     */
+    #[AdminRequired]
+    public function stopBackgroundIndex(): DataResponse {
+        $this->config->setUserId(null);
+        $this->config->set('index_job_stop_requested', '1');
+        $activeUsers = $this->scheduler->activeUsers();
+        foreach ($activeUsers as $uid) {
+            $this->config->setUserId($uid);
+            $this->config->set('index_cancel_requested', '1');
+        }
+        $this->config->setUserId(null);
+        return new DataResponse([
+            'stopped' => true,
+            'requestedFor' => $activeUsers,
+            'scheduler' => $this->scheduler->overview(),
+        ]);
+    }
+
     #[AdminRequired]
     public function reindex(string $userId): DataResponse {
         $user = $this->resolveUser($userId);
