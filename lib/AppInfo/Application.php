@@ -45,6 +45,13 @@ class Application extends App implements IBootstrap {
         $context->registerEventListener(\OCA\Talk\Events\BotInvokeEvent::class, \OCA\EvaAi\Listener\TalkBotListener::class);
         // GDPR-Erasure: Kontenloeschung raeumt alle eva_ai-Daten des Users ab (Issue #83).
         $context->registerEventListener(\OCP\User\Events\UserDeletedEvent::class, \OCA\EvaAi\Listener\UserDeletedListener::class);
+        // Incremental re-indexing via file hooks (Issue #79): edits, creates,
+        // renames and deletes queue a debounced background reindex per user
+        // instead of waiting for the next full scan.
+        $context->registerEventListener(\OCP\Files\Events\Node\NodeCreatedEvent::class, \OCA\EvaAi\Listener\FileChangeListener::class);
+        $context->registerEventListener(\OCP\Files\Events\Node\NodeWrittenEvent::class, \OCA\EvaAi\Listener\FileChangeListener::class);
+        $context->registerEventListener(\OCP\Files\Events\Node\NodeDeletedEvent::class, \OCA\EvaAi\Listener\FileChangeListener::class);
+        $context->registerEventListener(\OCP\Files\Events\Node\NodeRenamedEvent::class, \OCA\EvaAi\Listener\FileChangeListener::class);
         // Dashboard-Widget: EVA AI Quick-Chat und Status auf dem Dashboard.
         $context->registerDashboardWidget(\OCA\EvaAi\Dashboard\EVAWidget::class);
         // Talk-Bot wird zusaetzlich in boot() ueber TalkBotRegistrar registriert,

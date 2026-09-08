@@ -340,6 +340,195 @@ class Indexer {
     }
 
     /**
+     * Incremental single-file update triggered by a filesystem hook (Issue #79).
+     * Reuses the same extraction/chunking/embedding path as run(), but only
+     * touches the one file. Applies the user's scope, exclusions and the size
+     * cap; a file that is gone, out of scope or no longer indexable purges its
+     * stale index rows. Skips without error when a full index run holds the
+     * per-user lock (the periodic job reconciles that file later).
+     *
+     * @return array{processed:int,changed:int,skipped:int,deleted:int,error:?string}
+     */
+    public function reindexFile(string $userId, int $fileId): array {
+        $result = [
+            'processed' => 0,
+            'changed' => 0,
+            'skipped' => 0,
+            'deleted' => 0,
+            'cache_hits' => 0,
+            'cache_misses' => 0,
+            'ollama_requests' => 0,
+            'error' => null,
+        ];
+        $lockPath = LockGuard::indexLockPath($userId);
+        try {
+            $this->lockGuard->acquireIndexLock($userId, $lockPath);
+        } catch (\Throwable $e) {
+            // A full index run is in progress; it will pick this file up.
+            $result['error'] = 'Indexing is already running for this user.';
+            return $result;
+        }
+        try {
+            $this->config->setUserId($userId);
+            // Respect the per-user enrollment opt-out (Issue #49).
+            if ($this->config->hasIndexEnrollment($userId) && !$this->config->isIndexEnrolled($userId)) {
+                return $result;
+            }
+            $userFolder = $this->rootFolder->getUserFolder($userId);
+            $nodes = $userFolder->getById($fileId);
+            if (empty($nodes) || !($nodes[0] instanceof File)) {
+                // The file was deleted or moved out of reach: purge cached rows.
+                $this->purgeUserFile($userId, $fileId);
+                $result['deleted'] = 1;
+                return $result;
+            }
+            $file = $nodes[0];
+            $rel = $this->relativePath($userId, $file->getPath());
+
+            $scope = $this->config->get('scope_path');
+            if ($scope !== '' && $rel !== $scope && !str_starts_with($rel, $scope . '/')) {
+                $this->purgeUserFile($userId, $fileId);
+                $result['deleted'] = 1;
+                return $result;
+            }
+            if ($this->isPathExcluded($rel, $this->parseExcludePaths())) {
+                $this->purgeUserFile($userId, $fileId);
+                $result['deleted'] = 1;
+                return $result;
+            }
+
+            $maxSize = $this->config->getInt('max_file_size', 20971520);
+            if (!$this->isIndexable($file, $maxSize)) {
+                // Oversized/unsupported: drop a previously cached version.
+                if ($this->documentMapper->findByUserAndFile($userId, $fileId) !== null) {
+                    $this->purgeUserFile($userId, $fileId);
+                    $result['deleted'] = 1;
+                } else {
+                    $result['skipped']++;
+                }
+                return $result;
+            }
+
+            try {
+                $content = $this->extractText($file);
+            } catch (\Throwable $e) {
+                // Transient parser failure: keep the last-good version.
+                $result['error'] = 'Transient extraction failure';
+                $result['skipped']++;
+                return $result;
+            }
+            if ($content === '') {
+                if ((int)$file->getSize() === 0 && $this->documentMapper->findByUserAndFile($userId, $fileId) !== null) {
+                    $this->purgeUserFile($userId, $fileId);
+                    $result['deleted'] = 1;
+                } else {
+                    $result['skipped']++;
+                }
+                return $result;
+            }
+
+            $hash = md5($content);
+            $existing = $this->documentMapper->findByUserAndFile($userId, $fileId);
+            if ($existing !== null && (string)$existing->getContentHash() === $hash) {
+                // Same content (e.g. a rename or touch): refresh metadata only.
+                $existing->setPath($rel);
+                $existing->setName($file->getName());
+                $existing->setMime($file->getMimeType());
+                $existing->setSize($file->getSize());
+                $existing->setIndexedAt(time());
+                $this->documentMapper->update($existing);
+                $result['skipped']++;
+                return $result;
+            }
+
+            $chunks = $this->chunker->chunk($content);
+            if (empty($chunks)) {
+                $result['skipped']++;
+                return $result;
+            }
+
+            $oldDocId = $existing !== null ? (int)$existing->getId() : null;
+            $doc = new Document();
+            $doc->setUserId($userId);
+            $doc->setFileId($fileId);
+            $doc->setPath($rel);
+            $doc->setName($file->getName());
+            $doc->setMime($file->getMimeType());
+            $doc->setSize($file->getSize());
+            $doc->setContentHash($hash);
+            $doc->setChunkCount(count($chunks));
+            $doc->setIndexedAt(time());
+            $this->documentMapper->insert($doc);
+
+            $batch = [];
+            foreach ($chunks as $i => $c) {
+                $batch[] = ['docId' => (int)$doc->getId(), 'index' => $i, 'content' => $c['content'], 'tokens' => $c['tokens'], 'oldDocId' => $oldDocId];
+            }
+            $this->flushBatch($batch, $result);
+            $result['processed']++;
+            $result['changed']++;
+            return $result;
+        } catch (\Throwable $e) {
+            $this->logger->error('eva_ai incremental reindex failed', [
+                'userId' => $userId,
+                'fileId' => $fileId,
+                'exception' => $e->getMessage(),
+            ]);
+            $result['error'] = $e->getMessage();
+            return $result;
+        } finally {
+            try {
+                $this->lockingProvider->releaseLock($lockPath, ILockingProvider::LOCK_EXCLUSIVE);
+            } catch (\Throwable $e) {
+                // Lock may already be gone; nothing to recover here.
+            }
+        }
+    }
+
+    /**
+     * Purge every indexed document at/under a deleted folder path (Issue #79).
+     */
+    public function deleteByPathPrefix(string $userId, string $path): int {
+        $docs = $this->documentMapper->findByUserAndPathPrefix($userId, $path);
+        if ($docs === []) {
+            return 0;
+        }
+        $ids = array_map(static fn($d) => (int)$d->getId(), $docs);
+        $this->chunkMapper->deleteByDocumentIds($ids);
+        $this->documentMapper->deleteByIds($ids);
+        return count($ids);
+    }
+
+    /**
+     * Re-point stored document paths after a folder rename (Issue #79).
+     * Runs in PHP (not SQL string surgery) so path separators and LIKE
+     * wildcards in folder names are handled safely.
+     */
+    public function updatePathPrefix(string $userId, string $oldPrefix, string $newPrefix): int {
+        $docs = $this->documentMapper->findByUserAndPathPrefix($userId, $oldPrefix);
+        $updated = 0;
+        foreach ($docs as $doc) {
+            $old = (string)$doc->getPath();
+            $doc->setPath($newPrefix . substr($old, strlen($oldPrefix)));
+            $this->documentMapper->update($doc);
+            $updated++;
+        }
+        return $updated;
+    }
+
+    /**
+     * Remove the document row and all of its chunks for one user+file.
+     */
+    private function purgeUserFile(string $userId, int $fileId): void {
+        $doc = $this->documentMapper->findByUserAndFile($userId, $fileId);
+        if ($doc === null) {
+            return;
+        }
+        $this->chunkMapper->deleteByDocument((int)$doc->getId());
+        $this->documentMapper->deleteByUserAndFile($userId, $fileId);
+    }
+
+    /**
      * Generator-based file discovery: yields lightweight file metadata arrays
      * one at a time instead of loading the complete tree into memory.
      * Enables processing large file trees without materializing all File objects.

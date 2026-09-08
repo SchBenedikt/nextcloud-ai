@@ -24,6 +24,32 @@ class DocumentMapper extends QBMapper {
         return $rows[0] ?? null;
     }
 
+    /**
+     * Documents at or under a relative folder path (Issue #79). Used by the
+     * incremental hook path for folder renames/deletes.
+     *
+     * @return list<Document>
+     */
+    public function findByUserAndPathPrefix(string $userId, string $path): array {
+        $prefix = trim($path, '/');
+        if ($prefix === '') {
+            return [];
+        }
+        $qb = $this->db->getQueryBuilder();
+        $escaped = $this->escapeLike($prefix) . '/%';
+        $qb->select('*')
+            ->from('eva_ai_documents')
+            ->where($qb->expr()->eq('user_id', $qb->createNamedParameter($userId)))
+            ->andWhere(
+                $qb->expr()->orX(
+                    $qb->expr()->eq('path', $qb->createNamedParameter($prefix)),
+                    $qb->expr()->like('path', $qb->createNamedParameter($escaped))
+                )
+            )
+            ->setMaxResults(10000);
+        return $this->findEntities($qb);
+    }
+
     public function hashesForUser(string $userId): array {
         $qb = $this->db->getQueryBuilder();
         $qb->select('file_id', 'content_hash')

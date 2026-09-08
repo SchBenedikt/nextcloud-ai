@@ -123,6 +123,19 @@ final class FrontendContractTest extends TestCase {
 		self::assertStringContainsString('$emit(\'open-chat\', c.id)', $home);
 		self::assertStringContainsString('public function stats(): DataResponse', (string)file_get_contents(__DIR__ . '/../lib/Controller/ApiController.php'));
 		self::assertStringContainsString("'url' => '/api/stats'", (string)file_get_contents(__DIR__ . '/../appinfo/routes.php'));
+		// Issue #79: incremental re-indexing via file hooks. All four node
+		// events must queue a debounced background reindex per user, and the
+		// Indexer must expose the single-file path.
+		$appPhp = (string)file_get_contents(__DIR__ . '/../lib/AppInfo/Application.php');
+		self::assertStringContainsString('FileChangeListener', $appPhp);
+		self::assertStringContainsString('NodeCreatedEvent::class', $appPhp);
+		self::assertStringContainsString('NodeWrittenEvent::class', $appPhp);
+		self::assertStringContainsString('NodeDeletedEvent::class', $appPhp);
+		self::assertStringContainsString('NodeRenamedEvent::class', $appPhp);
+		self::assertStringContainsString('public function reindexFile(string $userId, int $fileId): array', (string)file_get_contents(__DIR__ . '/../lib/Service/Indexer.php'));
+		self::assertStringContainsString('scheduleAfter', (string)file_get_contents(__DIR__ . '/../lib/Listener/FileChangeListener.php'));
+		self::assertStringContainsString('markFile', (string)file_get_contents(__DIR__ . '/../lib/Listener/FileChangeListener.php'));
+		self::assertStringContainsString('class ReindexFileJob', (string)file_get_contents(__DIR__ . '/../lib/BackgroundJob/ReindexFileJob.php'));
         $settings = (string)file_get_contents(__DIR__ . '/../src/views/SettingsView.vue');
         self::assertStringContainsString("api('DELETE', 'chats')", $settings);
         self::assertStringContainsString("new CustomEvent('eva-ai:chats-cleared')", $settings);
