@@ -450,7 +450,23 @@
         "After 90 days": "After 90 days",
         "After 180 days": "After 180 days",
         "After 365 days": "After 365 days",
-        "Chats that have not been used for this many days are deleted automatically by the background job. 0 keeps everything.": "Chats that have not been used for this many days are deleted automatically by the background job. 0 keeps everything."
+        "Chats that have not been used for this many days are deleted automatically by the background job. 0 keeps everything.": "Chats that have not been used for this many days are deleted automatically by the background job. 0 keeps everything.",
+        "Customize EVA for this chat": "Customize EVA for this chat",
+        "Customize": "Customize",
+        "Persona: {name}": "Persona: {name}",
+        "Customized": "Customized",
+        "Default": "Default",
+        "Concise": "Concise",
+        "Structured": "Structured",
+        "Creative": "Creative",
+        "Expert": "Expert",
+        "Choose a preset style or write your own instructions. They are only applied to this chat.": "Choose a preset style or write your own instructions. They are only applied to this chat.",
+        "Style": "Style",
+        "Your instructions": "Your instructions",
+        "e.g. Always answer in German, structured with headings…": "e.g. Always answer in German, structured with headings…",
+        "Save": "Save",
+        "Embeddings per batch": "Embeddings per batch",
+        "Text chunks are embedded in batches to keep memory bounded. Default: 24.": "Text chunks are embedded in batches to keep memory bounded. Default: 24."
     },
     "pluralForm": "nplurals=2; plural=(n != 1);"
 }

@@ -258,6 +258,7 @@ class ApiController extends OCSController {
             'notify_on_complete',
             'mail_index_enabled',
             'mail_index_max',
+            'embed_batch_size',
             'weather_tool_enabled',
             'talk_history_size',
             'talk_bot_trigger',
@@ -306,7 +307,7 @@ class ApiController extends OCSController {
             ], 400);
         }
         foreach ($pending as $key => $value) {
-                if (in_array($key, ['top_k', 'chunk_size', 'chunk_overlap', 'max_file_size', 'max_files_per_run', 'context_size', 'exec_write_max_chars', 'mail_index_max', 'talk_history_size', 'chat_retention_days'], true)) {
+                if (in_array($key, ['top_k', 'chunk_size', 'chunk_overlap', 'max_file_size', 'max_files_per_run', 'context_size', 'exec_write_max_chars', 'mail_index_max', 'talk_history_size', 'chat_retention_days', 'embed_batch_size'], true)) {
                     $value = (string)$value;
                 }
                 if ($key === 'exec_delete_mode') {
@@ -703,9 +704,11 @@ class ApiController extends OCSController {
         if (!is_array($history)) {
             $history = [];
         }
-        // Per-chat folder scope (Issue #88): when the chat was bound to a
-        // folder, retrieval is restricted to documents under that path.
-        return new DataResponse($this->ragService->ask($user, $message, $history, $this->scopePathFor($user, $this->requestParam('chatId'))));
+        // Per-chat folder scope (Issue #88) and custom instructions
+        // (Issue #90) are resolved from the chat's stored metadata.
+        $chatId = $this->requestParam('chatId');
+        $custom = $this->customFor($user, $chatId);
+        return new DataResponse($this->ragService->ask($user, $message, $history, $this->scopePathFor($user, $chatId), $custom['instructions'], $custom['persona']));
     }
 
     /**
@@ -719,6 +722,26 @@ class ApiController extends OCSController {
         }
         $chat = $this->chatStore->get($user, trim($chatId));
         return $chat !== null ? trim((string)($chat['scopePath'] ?? '')) : '';
+    }
+
+    /**
+     * Resolve the custom instructions + persona stored on a chat (Issue #90).
+     * Empty strings when the chat is unknown or not customised — the caller
+     * then builds the default prompt.
+     * @return array{instructions:string,persona:string}
+     */
+    private function customFor(?string $user, mixed $chatId): array {
+        if ($user === null || !is_string($chatId) || trim($chatId) === '') {
+            return ['instructions' => '', 'persona' => ''];
+        }
+        $chat = $this->chatStore->get($user, trim($chatId));
+        if ($chat === null) {
+            return ['instructions' => '', 'persona' => ''];
+        }
+        return [
+            'instructions' => trim((string)($chat['instructions'] ?? '')),
+            'persona' => trim((string)($chat['persona'] ?? '')),
+        ];
     }
 
     /**
@@ -872,11 +895,13 @@ class ApiController extends OCSController {
         $body = json_decode((string)file_get_contents('php://input'), true);
         $message = trim((string)($body['message'] ?? ''));
         $history = isset($body['history']) && is_array($body['history']) ? $body['history'] : [];
-        // Per-chat folder scope (Issue #88) is resolved once, outside the
-        // generator, so it cannot change mid-stream.
+        // Per-chat folder scope (Issue #88) and custom instructions (Issue #90)
+        // are resolved once, outside the generator, so they cannot change
+        // mid-stream.
         $scopePath = $this->scopePathFor($user, $body['chatId'] ?? null);
+        $custom = $this->customFor($user, $body['chatId'] ?? null);
 
-        $generator = (function () use ($user, $message, $history, $scopePath): \Generator {
+        $generator = (function () use ($user, $message, $history, $scopePath, $custom): \Generator {
             // Aber die PHP-Output-Buffering-Schicht (php.ini output_buffering)
             // würde jede erzeugte Zeile bis zum Ende puffern -> keine Live-Streams.
             // Deshalb entfernen wir hier alle Puffer und flush'eriessen wirklich.
@@ -892,7 +917,7 @@ class ApiController extends OCSController {
             }
             $gen = null;
             try {
-                $gen = $this->ragService->askStream($user, $message, $history, $scopePath);
+                $gen = $this->ragService->askStream($user, $message, $history, $scopePath, $custom['instructions'], $custom['persona']);
                 foreach ($gen as $line) {
                     if ($this->clientDisconnected()) {
                         return;
@@ -1121,6 +1146,15 @@ class ApiController extends OCSController {
         if (array_key_exists('scopePath', $body)) {
             $meta['scopePath'] = trim((string)$body['scopePath']);
         }
+        if (array_key_exists('instructions', $body)) {
+            // Free-text custom instructions (Issue #90); capped server-side.
+            $meta['instructions'] = mb_substr(trim((string)$body['instructions']), 0, 2000);
+        }
+        if (array_key_exists('persona', $body)) {
+            // Preset persona slug (Issue #90); only known slugs are stored.
+            $persona = trim((string)$body['persona']);
+            $meta['persona'] = array_key_exists($persona, RagService::PERSONAS) ? $persona : '';
+        }
         if ($meta === []) {
             return new DataResponse(['error' => 'No metadata given'], 400);
         }
@@ -1257,7 +1291,16 @@ class ApiController extends OCSController {
             $history[] = ['role' => $m['role'] ?? 'user', 'content' => $m['text'] ?? ''];
         }
 
-        $gen = $this->ragService->askStream($user, $targetMessage, $history);
+        // Re-apply the chat's custom instructions and persona on regenerate
+        // (Issue #90), resolved from the stored metadata.
+        $gen = $this->ragService->askStream(
+            $user,
+            $targetMessage,
+            $history,
+            trim((string)($chat['scopePath'] ?? '')),
+            trim((string)($chat['instructions'] ?? '')),
+            trim((string)($chat['persona'] ?? ''))
+        );
         return new StreamTraversableResponse($gen, 'application/x-ndjson');
     }
 

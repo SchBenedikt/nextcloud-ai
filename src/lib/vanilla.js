@@ -1,4 +1,4 @@
-import { mdiDownload } from '@mdi/js'
+import { mdiDownload, mdiTune } from '@mdi/js'
 import { translate as t } from './i18n'
 import { buildConfirmForm } from './confirmForms'
 import { escHtml, mdInline, mdToHtml, citedSources, copyText } from './chat-utils'
@@ -324,7 +324,29 @@ export function mountChat(root, opts = {}) {
 	const scopePill = document.createElement('span')
 	scopePill.className = 'pill pill-warn'
 	scopePill.hidden = true
-	head.append(h1, scopePill, exportBtn)
+
+	// Per-chat custom instructions (Issue #90): a small header action that
+	// opens a dialog to pick a preset persona and/or free-text instructions.
+	const customizeBtn = document.createElement('button')
+	customizeBtn.className = 'export customize-btn'
+	customizeBtn.type = 'button'
+	customizeBtn.setAttribute('aria-label', t('Customize EVA for this chat'))
+	customizeBtn.title = t('Customize EVA for this chat')
+	const customizeIcon = document.createElementNS('http://www.w3.org/2000/svg', 'svg')
+	customizeIcon.classList.add('export-icon')
+	customizeIcon.setAttribute('viewBox', '0 0 24 24')
+	customizeIcon.setAttribute('aria-hidden', 'true')
+	const customizePath = document.createElementNS('http://www.w3.org/2000/svg', 'path')
+	customizePath.setAttribute('d', mdiTune)
+	customizeIcon.append(customizePath)
+	const customizeLabel = document.createElement('span')
+	customizeLabel.textContent = t('Customize')
+	customizeBtn.append(customizeIcon, customizeLabel)
+	const customizePill = document.createElement('span')
+	customizePill.className = 'pill pill-ok'
+	customizePill.hidden = true
+	customizeBtn.addEventListener('click', () => openCustomizeDialog())
+	head.append(h1, scopePill, customizePill, customizeBtn, exportBtn)
 
 	const scroll = document.createElement('div')
 	scroll.className = 'chat-log'
@@ -551,6 +573,16 @@ export function mountChat(root, opts = {}) {
 			.catch(() => false)
 	}
 
+	function refreshCustomizePill(chat) {
+		// Per-chat custom instructions (Issue #90): a subtle header indicator
+		// when a persona or free-text instructions are active on this chat.
+		const active = !!(chat && ((chat.persona && chat.persona !== 'default') || (chat.instructions && chat.instructions.trim())))
+		customizePill.hidden = !active
+		if (active) {
+			customizePill.textContent = chat.persona && chat.persona !== 'default' ? t('Persona: {name}', { name: personaLabel(chat.persona) }) : t('Customized')
+		}
+	}
+
 	function restoreServerChat(id) {
 		return api('GET', '/chats/' + id).then((chat) => {
 			// Per-chat folder scope (Issue #88): visible in the header so the
@@ -561,6 +593,7 @@ export function mountChat(root, opts = {}) {
 			} else {
 				scopePill.hidden = true
 			}
+			refreshCustomizePill(chat)
 			messages.length = 0
 			trimmedMessages = (chat && chat.trimmed) ? parseInt(chat.trimmed, 10) || 0 : 0
 		;(chat.messages || []).forEach((m) => messages.push({
@@ -573,6 +606,117 @@ export function mountChat(root, opts = {}) {
 		renderAll(messages)
 	})
 }
+
+	function personaLabel(slug) {
+		const labels = {
+			'concise': t('Concise'),
+			'structured': t('Structured'),
+			'creative': t('Creative'),
+			'expert': t('Expert'),
+		}
+		return labels[slug] || t('Default')
+	}
+
+	function openCustomizeDialog() {
+		// Only meaningful once a chat exists; without one the instructions
+		// have nowhere to be stored.
+		if (!chatId) return
+		let current = { persona: '', instructions: '' }
+		try {
+			const raw = localStorage.getItem('eva-ai.customize.' + chatId)
+			if (raw) current = JSON.parse(raw) || current
+		} catch (_) { /* ignore */ }
+
+		const overlay = document.createElement('div')
+		overlay.className = 'customize-overlay'
+		const box = document.createElement('div')
+		box.className = 'customize-box'
+		box.setAttribute('role', 'dialog')
+		box.setAttribute('aria-modal', 'true')
+		box.setAttribute('aria-label', t('Customize EVA for this chat'))
+
+		const close = () => {
+			overlay.remove()
+			document.removeEventListener('keydown', onKey)
+		}
+		const onKey = (e) => {
+			if (e.key === 'Escape') close()
+		}
+
+		const h = document.createElement('h3')
+		h.textContent = t('Customize EVA for this chat')
+		const sub = document.createElement('p')
+		sub.className = 'customize-sub'
+		sub.textContent = t('Choose a preset style or write your own instructions. They are only applied to this chat.')
+
+		const personaField = document.createElement('label')
+		personaField.className = 'customize-field'
+		const personaLabelEl = document.createElement('span')
+		personaLabelEl.textContent = t('Style')
+		const personaSelect = document.createElement('select')
+		const personas = [
+			['default', t('Default')],
+			['concise', t('Concise')],
+			['structured', t('Structured')],
+			['creative', t('Creative')],
+			['expert', t('Expert')],
+		]
+		personas.forEach(([value, label]) => {
+			const opt = document.createElement('option')
+			opt.value = value
+			opt.textContent = label
+			personaSelect.append(opt)
+		})
+		personaSelect.value = current.persona && current.persona !== 'default' ? current.persona : 'default'
+		personaField.append(personaLabelEl, personaSelect)
+
+		const instrField = document.createElement('label')
+		instrField.className = 'customize-field'
+		const instrLabelEl = document.createElement('span')
+		instrLabelEl.textContent = t('Your instructions')
+		const instrTa = document.createElement('textarea')
+		instrTa.rows = 5
+		instrTa.maxLength = 2000
+		instrTa.placeholder = t('e.g. Always answer in German, structured with headings…')
+		instrTa.value = current.instructions || ''
+		instrField.append(instrLabelEl, instrTa)
+
+		const actions = document.createElement('div')
+		actions.className = 'customize-actions'
+		const saveBtn = document.createElement('button')
+		saveBtn.type = 'button'
+		saveBtn.className = 'cbtn'
+		saveBtn.textContent = t('Save')
+		const cancelBtn = document.createElement('button')
+		cancelBtn.type = 'button'
+		cancelBtn.className = 'cbtn cbtn-ghost'
+		cancelBtn.textContent = t('Cancel')
+		cancelBtn.addEventListener('click', close)
+		saveBtn.addEventListener('click', async () => {
+			const persona = personaSelect.value === 'default' ? '' : personaSelect.value
+			const instructions = instrTa.value.trim()
+			saveBtn.disabled = true
+			try {
+				await api('POST', '/chats/' + chatId + '/meta', { persona, instructions })
+				localStorage.setItem('eva-ai.customize.' + chatId, JSON.stringify({ persona, instructions }))
+				// Re-fetch to update the header pill with server truth.
+				api('GET', '/chats/' + chatId).then((chat) => refreshCustomizePill(chat)).catch(() => {})
+				close()
+			} catch (err) {
+				saveBtn.disabled = false
+				const errEl = document.createElement('div')
+				errEl.className = 'customize-err'
+				errEl.textContent = String(err && err.message ? err.message : err)
+				box.appendChild(errEl)
+			}
+		})
+		actions.append(cancelBtn, saveBtn)
+		box.append(h, sub, personaField, instrField, actions)
+		overlay.append(box)
+		document.body.appendChild(overlay)
+		document.addEventListener('keydown', onKey)
+		instrTa.focus()
+	}
 
 	if (chatId) {
 		restoreServerChat(chatId).catch(() => { /* falls Chat nicht existiert: leer starten */ })

@@ -16,7 +16,11 @@ use OCP\Lock\ILockingProvider;
 use Psr\Log\LoggerInterface;
 
 class Indexer {
-    private const BATCH = 24;
+    /**
+     * Default embedding batch size (Issue #141). Users can tune it through
+     * the settings; 24 keeps memory bounded for the default models.
+     */
+    private const DEFAULT_BATCH = 24;
     private const MAX_DEPTH = 30;
     private const MAX_DECOMPRESSED_BYTES = 104857600; // 100MB limit for decompressed content
     private const MAX_ZIP_ENTRIES = 1000; // Maximum number of ZIP entries to process
@@ -145,6 +149,10 @@ class Indexer {
             $stale = []; // Track files that should be removed from index
             $batch = [];
             $maxSize = $this->config->getInt('max_file_size', 20971520);
+            // Configurable bounded embedding batch (Issue #141): memory stays
+            // bounded independently of the library size, and operators can
+            // tune throughput vs. memory on weak hardware.
+            $batchSize = min(200, max(1, $this->config->getInt('embed_batch_size', self::DEFAULT_BATCH)));
             // Whether the filesystem walk completed fully. A bounded pass that
             // stops early (max_files_per_run reached) has an incomplete $seen
             // set and must NOT trigger deletion of 'missing' files (Issue #6).
@@ -270,7 +278,7 @@ class Indexer {
                 $result['processed']++;
                 $result['changed']++;
 
-                if (count($batch) >= self::BATCH || $result['processed'] >= $maxFiles) {
+                if (count($batch) >= $batchSize || $result['processed'] >= $maxFiles) {
                     $this->flushBatch($batch, $result, $runId, $userId);
                 }
                 if ($result['processed'] >= $maxFiles) {
@@ -1447,7 +1455,7 @@ class Indexer {
             }
             $result['processed']++;
             $processedThisPass++;
-            if (count($batch) >= self::BATCH) {
+            if (count($batch) >= min(200, max(1, $this->config->getInt('embed_batch_size', self::DEFAULT_BATCH)))) {
                 $this->flushBatch($batch, $result, $runId, $userId);
             }
         }

@@ -369,6 +369,31 @@ final class ChatStoreTest extends TestCase {
 		self::assertSame('', $store->list('alice')[0]['scopePath']);
 	}
 
+	public function testCustomInstructionsAndPersonaMetaAreStoredAndListed(): void {
+		$seed = json_encode([
+			['id' => 's1', 'title' => 'Custom', 'created' => 1, 'updated' => 1, 'messages' => []],
+		], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+		$written = null;
+		[$store] = $this->chatFileHarness($seed, $written);
+
+		// Per-chat custom instructions (Issue #90): legacy chats default to none.
+		self::assertSame('', $store->list('alice')[0]['instructions']);
+		self::assertSame('', $store->list('alice')[0]['persona']);
+
+		self::assertTrue($store->setMeta('alice', 's1', [
+			'instructions' => 'Always answer in German.',
+			'persona' => 'concise',
+		]));
+		self::assertSame('Always answer in German.', $store->list('alice')[0]['instructions']);
+		self::assertSame('concise', $store->list('alice')[0]['persona']);
+
+		// Clearing works per field; an oversized instruction is capped.
+		self::assertTrue($store->setMeta('alice', 's1', ['instructions' => str_repeat('x', 5000)]));
+		self::assertSame(2000, mb_strlen($store->list('alice')[0]['instructions']));
+		self::assertTrue($store->setMeta('alice', 's1', ['persona' => '']));
+		self::assertSame('', $store->list('alice')[0]['persona']);
+	}
+
 	public function testListHidesArchivedChatsUnlessRequested(): void {
 		$seed = json_encode([
 			['id' => 'a1', 'title' => 'Active', 'created' => 1, 'updated' => 5, 'messages' => []],

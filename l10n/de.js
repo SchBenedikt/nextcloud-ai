@@ -449,5 +449,21 @@ OC.L10N.register("eva_ai", {
   "After 90 days": "Nach 90 Tagen",
   "After 180 days": "Nach 180 Tagen",
   "After 365 days": "Nach 365 Tagen",
-  "Chats that have not been used for this many days are deleted automatically by the background job. 0 keeps everything.": "Chats, die länger als diese Anzahl Tage nicht genutzt wurden, werden automatisch vom Hintergrunddienst gelöscht. 0 behält alles."
+  "Chats that have not been used for this many days are deleted automatically by the background job. 0 keeps everything.": "Chats, die länger als diese Anzahl Tage nicht genutzt wurden, werden automatisch vom Hintergrunddienst gelöscht. 0 behält alles.",
+  "Customize EVA for this chat": "EVA für diesen Chat anpassen",
+  "Customize": "Anpassen",
+  "Persona: {name}": "Persona: {name}",
+  "Customized": "Angepasst",
+  "Default": "Standard",
+  "Concise": "Kurz",
+  "Structured": "Strukturiert",
+  "Creative": "Kreativ",
+  "Expert": "Experte",
+  "Choose a preset style or write your own instructions. They are only applied to this chat.": "Wähle einen Stil oder schreibe eigene Anweisungen. Sie gelten nur für diesen Chat.",
+  "Style": "Stil",
+  "Your instructions": "Deine Anweisungen",
+  "e.g. Always answer in German, structured with headings…": "z. B. Antworte immer auf Deutsch, strukturiert mit Überschriften …",
+  "Save": "Speichern",
+  "Embeddings per batch": "Einbettungen pro Stapel",
+  "Text chunks are embedded in batches to keep memory bounded. Default: 24.": "Textabschnitte werden in Stapeln eingebettet, um den Speicherverbrauch zu begrenzen. Standard: 24."
 }, "nplurals=2; plural=(n != 1);");

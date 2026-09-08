@@ -51,6 +51,7 @@ Legend: **P** = personal setting (per-user override possible),
 | `chunk_overlap` | P | `120` | `0`–`5000` | characters | Overlap between consecutive chunks. |
 | `max_file_size` | P | `20971520` | `1048576`–`2147483648` | bytes | Files larger than this are skipped during indexing. |
 | `max_files_per_run` | P | `40` | `1`–`10000` | files | Files processed per indexing pass (bounds job duration). |
+| `embed_batch_size` | P | `24` | `1`–`200` | chunks | Chunks embedded per batch (bounds peak memory independent of library size). |
 | `scope_path` | P | `''` | path, no `..` | – | Only index files below this path (e.g. `/Documents`). Empty = entire home. |
 | `exclude_paths` | P | `''` | comma-separated paths, no `..` | – | Path prefixes to skip (e.g. `/.trash,/Photos`). |
 | `index_user` | I | `''` | user id | – | Legacy instance-wide background-job user; not changeable from Settings. |

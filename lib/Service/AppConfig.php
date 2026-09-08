@@ -23,7 +23,7 @@ class AppConfig {
         'exec_write_max_chars', 'exec_delete_mode',        'notify_on_complete',
         'mail_index_enabled', 'mail_index_max', 'talk_history_size',
         'talk_bot_trigger', 'talk_classify_all', 'exclude_paths',
-        'chat_retention_days',
+        'chat_retention_days', 'embed_batch_size',
     ];
 
     /**
@@ -54,6 +54,7 @@ class AppConfig {
         // Optional dedicated model for heavy text tasks (summarize, translate,
         // proofread, …). Empty means the chat chain is used (Issue #86).
         'summary_model' => '',
+        'embed_batch_size' => '24',
         'top_k' => '6',
         'chunk_size' => '900',
         'chunk_overlap' => '120',
@@ -121,6 +122,7 @@ class AppConfig {
         'mail_index_max' => [1, 500],
         'talk_history_size' => [1, 500],
         'chat_retention_days' => [0, 3650],
+        'embed_batch_size' => [1, 200],
     ];
 
     private ?string $userId = null;

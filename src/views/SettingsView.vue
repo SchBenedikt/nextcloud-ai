@@ -215,6 +215,10 @@
 						<NcTextField id="max-files" :label="$t('Files per indexing run')" :label-outside="true" v-model="f.max_files_per_run" type="number" />
 						<p class="field-help">{{ $t('Limits work per run so large accounts remain responsive. Default: 40.') }}</p>
 					</div>
+					<div class="field">
+						<NcTextField id="embed-batch" :label="$t('Embeddings per batch')" :label-outside="true" v-model="f.embed_batch_size" type="number" />
+						<p class="field-help">{{ $t('Text chunks are embedded in batches to keep memory bounded. Default: 24.') }}</p>
+					</div>
 				</div>
 				<div class="field-grid field-grid-three">
 					<div class="field">
@@ -410,6 +414,7 @@ export default {
 			chunk_overlap: '120',
 			max_file_size: '20971520',
 			max_files_per_run: '40',
+			embed_batch_size: '24',
 			mail_index_max: '25',
 			mail_index_enabled: '1',
 			index_enrolled: '0',
@@ -537,6 +542,7 @@ export default {
 				['chunk_size', 'Chunk size', ...effective('chunk_size', [128, 10000])],
 				['chunk_overlap', 'Chunk overlap', ...effective('chunk_overlap', [0, 5000])],
 				['max_files_per_run', 'Files per indexing run', ...effective('max_files_per_run', [1, 10000])],
+				['embed_batch_size', 'Embeddings per batch', ...effective('embed_batch_size', [1, 200])],
 				['mail_index_max', 'Emails per indexing run', ...effective('mail_index_max', [1, 500])],
 				['talk_history_size', 'Talk history size', ...effective('talk_history_size', [1, 500])],
 				['exec_write_max_chars', 'Maximum characters per file', ...effective('exec_write_max_chars', [1, 10000000])],

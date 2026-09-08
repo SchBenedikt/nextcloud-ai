@@ -364,4 +364,19 @@ export default {
 .chatview-root .head .export:focus-visible { outline: 2px solid var(--color-main-text, #222); outline-offset: 2px; }
 .chatview-root .head .export:disabled { opacity: .5; cursor: default; }
 .chatview-root .head .export-icon { width: 16px; height: 16px; fill: currentColor; }
+.chatview-root .head .customize-btn { min-width: 0; }
+
+/* Per-chat custom instructions dialog (Issue #90). */
+.customize-overlay { position: fixed; inset: 0; z-index: 2000; display: flex; align-items: center; justify-content: center; padding: 24px; background: rgba(0, 0, 0, .45); }
+.customize-box { width: min(480px, 100%); max-height: 90vh; overflow: auto; padding: 22px 24px; border-radius: var(--border-radius-large, 12px); background: var(--color-main-background, #fff); box-shadow: 0 8px 32px rgba(0, 0, 0, .25); color: var(--color-main-text, #222); }
+.customize-box h3 { margin: 0 0 6px; font-size: 17px; font-weight: 650; }
+.customize-sub { margin: 0 0 16px; font-size: 13px; line-height: 1.5; color: var(--color-text-maxcontrast, #555); }
+.customize-field { display: flex; flex-direction: column; gap: 6px; margin-bottom: 14px; font-size: 13px; font-weight: 600; }
+.customize-field select, .customize-field textarea { width: 100%; box-sizing: border-box; padding: 8px 10px; border: 1px solid var(--color-border, #ccd0d4); border-radius: var(--border-radius-element, 8px); background: var(--color-main-background, #fff); color: var(--color-main-text, #222); font: inherit; font-size: 13px; font-weight: 400; }
+.customize-field textarea { resize: vertical; min-height: 90px; }
+.customize-field select:focus-visible, .customize-field textarea:focus-visible { outline: 2px solid var(--color-main-text, #222); outline-offset: 1px; }
+.customize-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 4px; }
+.customize-actions .cbtn { padding-inline: 16px; }
+.chatview-root .cbtn-ghost { background: transparent; border: 1px solid var(--color-border, #ccd0d4); color: var(--color-main-text, #222); }
+.customize-err { margin-top: 10px; color: var(--color-error, #e9322d); font-size: 12px; white-space: pre-wrap; }
 </style>

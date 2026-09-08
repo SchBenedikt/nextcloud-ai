@@ -70,6 +70,10 @@ class ChatStore {
                     'archived' => !empty($chat['archived']),
                     // Per-chat RAG folder scope (Issue #88); empty = global.
                     'scopePath' => (string)($chat['scopePath'] ?? ''),
+                    // Per-chat custom instructions (Issue #90): a free-text
+                    // system-prompt override plus an optional preset persona.
+                    'instructions' => (string)($chat['instructions'] ?? ''),
+                    'persona' => (string)($chat['persona'] ?? ''),
                 ];
                 if ($needle !== '') {
                     $titleHit = mb_strpos(mb_strtolower($entry['title']), $needle) !== false;
@@ -275,6 +279,16 @@ class ChatStore {
                     // Per-chat retrieval scope (Issue #88): restricts RAG to
                     // documents at/under this folder path. Empty clears it.
                     $chat['scopePath'] = trim((string)$meta['scopePath']);
+                }
+                if (array_key_exists('instructions', $meta)) {
+                    // Per-chat custom instructions (Issue #90). Capped to the
+                    // same limit RagService enforces when building prompts.
+                    $chat['instructions'] = mb_substr(trim((string)$meta['instructions']), 0, 2000);
+                }
+                if (array_key_exists('persona', $meta)) {
+                    // Preset persona slug (Issue #90); validated against the
+                    // known set in RagService, stored verbatim here.
+                    $chat['persona'] = trim((string)$meta['persona']);
                 }
                 $chat['updated'] = time();
                 unset($chat);

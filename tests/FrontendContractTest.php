@@ -254,7 +254,12 @@ final class FrontendContractTest extends TestCase {
         self::assertStringContainsString('font-size: 18px;', $source);
         self::assertStringContainsString('width: min(100%, var(--eva-content-width, 1180px));', $source);
         self::assertStringNotContainsString('width: min(100%, 1540px);', $source);
-        self::assertStringNotContainsString('box-shadow:', $source);
+        // Message bubbles must stay flat (no shadows); the per-chat
+        // customization dialog is the only element that may use a shadow.
+        self::assertStringNotContainsString('.rm { box-shadow:', $source);
+        self::assertStringNotContainsString('.rb { box-shadow:', $source);
+        self::assertStringContainsString('.customize-box {', $source);
+        self::assertStringContainsString('box-shadow:', $source);
     }
 
     public function testNon2xxResponsesAreVisibleInsteadOfSilentNulls(): void {
@@ -374,14 +379,22 @@ final class FrontendContractTest extends TestCase {
         self::assertStringNotContainsString('clearAudit', $settings);
     }
 
-    public function testCustomInstructionsButtonWasRemovedFromTheChatHeader(): void {
-        // The compass button (per-chat custom instructions) was removed again.
+    public function testCustomInstructionsDialogInTheChatHeader(): void {
+        // Per-chat custom instructions (Issue #90): a "Customize" header
+        // action opens a dialog with persona presets and free-text
+        // instructions, persisted via the chat meta API.
         $vanilla = (string)file_get_contents(__DIR__ . '/../src/lib/vanilla.js');
+        self::assertStringContainsString('openCustomizeDialog', $vanilla);
+        self::assertStringContainsString("'/chats/' + chatId + '/meta'", $vanilla);
+        self::assertStringContainsString('personaSelect', $vanilla);
+        self::assertStringContainsString('customizePill', $vanilla);
+        // The old compass button must not come back.
         self::assertStringNotContainsString('instrBtn', $vanilla);
-        self::assertStringNotContainsString('Custom instructions', $vanilla);
         self::assertStringNotContainsString("chatInstructions", $vanilla);
         $chatView = (string)file_get_contents(__DIR__ . '/../src/views/ChatView.vue');
         self::assertStringNotContainsString("class='instr'", $chatView);
+        self::assertStringContainsString('.customize-overlay', $chatView);
+        self::assertStringContainsString('.customize-box', $chatView);
     }
 
     public function testActionAuditApiAndServiceWereRemoved(): void {
