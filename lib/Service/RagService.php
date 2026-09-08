@@ -35,15 +35,15 @@ class RagService {
      */
     public function setSurface(string $surface): void {
         $this->executor->setSurface($surface);
-    }
-
-    /**	 * @param array<int,array{role:string,content:string}> $history
+    }	/**	 * @param array<int,array{role:string,content:string}> $history
+	 * @param string|null $scopePath Restrict retrieval to documents at/under
+	 *        this folder path (per-chat folder scope, Issue #88).
 	 * @return array{answer:string,sources:array,model:string,error:?string,followups:string[]}
 	 */
-	public function ask(string $userId, string $message, array $history): array {
+	public function ask(string $userId, string $message, array $history, ?string $scopePath = null): array {
 		$this->config->setUserId($userId);
 		$topK = min($this->config->getInt('top_k', 6), (int)AppConfig::LIMITS['top_k'][1]);
-		$results = $this->searcher->search($userId, $this->searchQuery($message, $history), $topK);
+		$results = $this->searcher->search($userId, $this->searchQuery($message, $history), $topK, $scopePath);
 
 		// Revalidate per-document file access: the index is a cache of
 		// authorized data, not an independent authorization source (Issue #14).
@@ -108,7 +108,7 @@ class RagService {
      * @param array<int,array{role:string,content:string}> $history
      * @return \Generator<string,string,void,void>
      */
-    public function askStream(string $userId, string $message, array $history): \Generator {
+    public function askStream(string $userId, string $message, array $history, ?string $scopePath = null): \Generator {
         $this->config->setUserId($userId);
         try {
             if ($this->clientDisconnected()) {
@@ -119,7 +119,7 @@ class RagService {
                 return;
             }
             $topK = min($this->config->getInt('top_k', 6), (int)AppConfig::LIMITS['top_k'][1]);
-            $results = $this->searcher->search($userId, $this->searchQuery($message, $history), $topK);
+            $results = $this->searcher->search($userId, $this->searchQuery($message, $history), $topK, $scopePath);
             // Revalidate per-document file access before returning content (Issue #14).
             $results = $this->filterAccessible($userId, $results);
             [$context, $byDoc] = $this->buildContext($userId, $results);

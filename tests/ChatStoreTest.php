@@ -314,6 +314,24 @@ final class ChatStoreTest extends TestCase {
 		self::assertSame('Projekte', $folders[0]['name']);
 	}
 
+	public function testScopePathMetaIsStoredAndListed(): void {
+		$seed = json_encode([
+			['id' => 's1', 'title' => 'Scoped', 'created' => 1, 'updated' => 1, 'messages' => []],
+		], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+		$written = null;
+		[$store] = $this->chatFileHarness($seed, $written);
+
+		self::assertSame('', $store->list('alice')[0]['scopePath'], 'legacy chats default to no scope');
+
+		// "Chat with this folder" binds the chat's RAG retrieval (Issue #88).
+		self::assertTrue($store->setMeta('alice', 's1', ['scopePath' => 'Documents/Projekte']));
+		self::assertSame('Documents/Projekte', $store->list('alice')[0]['scopePath']);
+
+		// Empty string clears the scope again.
+		self::assertTrue($store->setMeta('alice', 's1', ['scopePath' => '']));
+		self::assertSame('', $store->list('alice')[0]['scopePath']);
+	}
+
 	public function testListHidesArchivedChatsUnlessRequested(): void {
 		$seed = json_encode([
 			['id' => 'a1', 'title' => 'Active', 'created' => 1, 'updated' => 5, 'messages' => []],

@@ -321,7 +321,10 @@ export function mountChat(root, opts = {}) {
 	exportBtn.append(exportIcon, exportLabel)
 	exportBtn.disabled = true
 	exportBtn.addEventListener('click', exportMarkdown)
-	head.append(h1, exportBtn)
+	const scopePill = document.createElement('span')
+	scopePill.className = 'pill pill-warn'
+	scopePill.hidden = true
+	head.append(h1, scopePill, exportBtn)
 
 	const scroll = document.createElement('div')
 	scroll.className = 'chat-log'
@@ -550,6 +553,14 @@ export function mountChat(root, opts = {}) {
 
 	function restoreServerChat(id) {
 		return api('GET', '/chats/' + id).then((chat) => {
+			// Per-chat folder scope (Issue #88): visible in the header so the
+			// user knows the answer only uses documents from that folder.
+			if (chat && chat.scopePath) {
+				scopePill.textContent = t('Scoped to {path}', { path: chat.scopePath })
+				scopePill.hidden = false
+			} else {
+				scopePill.hidden = true
+			}
 			messages.length = 0
 			trimmedMessages = (chat && chat.trimmed) ? parseInt(chat.trimmed, 10) || 0 : 0
 		;(chat.messages || []).forEach((m) => messages.push({
@@ -586,7 +597,7 @@ export function mountChat(root, opts = {}) {
 		const targetMsg = messages[userIdx].text
 		messages.push({ role: 'assistant', text: '', thinking: '', done: false, tools: [] })
 		renderAll(messages)
-		apiStream(STREAM_URL, { message: targetMsg, history }, (ev) => {
+		apiStream(STREAM_URL, { message: targetMsg, history, chatId }, (ev) => {
 			const last = messages[messages.length - 1]
 			if (ev.type === 'thinking') {
 				last.thinking = (last.thinking || '') + (ev.delta || '')
@@ -649,7 +660,7 @@ export function mountChat(root, opts = {}) {
 		}
 		messages.push({ role: 'assistant', text: '', thinking: '', done: false, tools: [] })
 		renderAll(messages)
-		apiStream(STREAM_URL, { message: newText.trim(), history }, (ev) => {
+		apiStream(STREAM_URL, { message: newText.trim(), history, chatId }, (ev) => {
 			const last = messages[messages.length - 1]
 			if (ev.type === 'thinking') {
 				last.thinking = (last.thinking || '') + (ev.delta || '')
@@ -711,7 +722,7 @@ export function mountChat(root, opts = {}) {
 		}
 
 		ensureChat().then(() => {
-			apiStream(STREAM_URL, { message: msg, history }, (ev) => {
+			apiStream(STREAM_URL, { message: msg, history, chatId }, (ev) => {
 				const last = messages[messages.length - 1]
 				if (!last || last.role !== 'assistant' || last.done) return
 				if (ev.type === 'thinking') {

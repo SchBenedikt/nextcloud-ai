@@ -23,9 +23,14 @@ class Searcher {
     }
 
     /**
+     * When $scopePath is set, retrieval is restricted to documents at or
+     * under that path (per-chat folder scope, Issue #88). The filter runs on
+     * the candidate rows before scoring, so out-of-scope chunks neither
+     * rank nor consume the topK budget.
+     *
      * @return array<int,array{chunk:array,doc:?array,cosine:float,lexical:float,score:float}>
      */
-    public function search(string $userId, string $query, int $topK): array {
+    public function search(string $userId, string $query, int $topK, ?string $scopePath = null): array {
         $topK = max(1, min($topK, (int)AppConfig::LIMITS['top_k'][1]));
         if (trim($query) === '') {
             return [];
@@ -33,6 +38,9 @@ class Searcher {
         [$queryVec, $err] = $this->ollama->embedQuery([$query], $userId);
         $queryVector = $err === null && is_array($queryVec) && isset($queryVec[0]) ? $queryVec[0] : null;
         $rows = $this->loadCandidates($userId, $query, $queryVector);
+        if ($scopePath !== null && trim($scopePath) !== '') {
+            $rows = $this->filterByScopePath($userId, $rows, $scopePath);
+        }
 
         $queryTokens = $this->tokens($query);
         $lexical = $this->lexicalBm25($rows, $queryTokens);
@@ -106,6 +114,43 @@ class Searcher {
         });
 
         return $this->diversify($results, $topK);
+    }
+
+    /**
+     * Drop candidate chunks whose document lives outside the folder scope.
+     * Paths are stored relative to the user root ("Documents/Example.md"),
+     * so the scope matches the folder itself and everything below it.
+     *
+     * @param array<int,array<string,mixed>> $rows
+     * @return array<int,array<string,mixed>>
+     */
+    private function filterByScopePath(string $userId, array $rows, string $scopePath): array {
+        $prefix = rtrim(trim($scopePath), '/');
+        if ($prefix === '') {
+            return $rows;
+        }
+        $docIds = [];
+        foreach ($rows as $row) {
+            $docIds[(int)$row['document_id']] = true;
+        }
+        if ($docIds === []) {
+            return [];
+        }
+        $paths = [];
+        foreach ($this->documentMapper->findByIds(array_keys($docIds)) as $doc) {
+            $paths[(int)$doc->getId()] = (string)$doc->getPath();
+        }
+        $out = [];
+        foreach ($rows as $row) {
+            $path = $paths[(int)$row['document_id']] ?? '';
+            if ($path === '') {
+                continue;
+            }
+            if ($path === $prefix || str_starts_with($path, $prefix . '/')) {
+                $out[] = $row;
+            }
+        }
+        return $out;
     }
 
     /**

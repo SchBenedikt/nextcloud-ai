@@ -566,7 +566,22 @@ class ApiController extends OCSController {
         if (!is_array($history)) {
             $history = [];
         }
-        return new DataResponse($this->ragService->ask($user, $message, $history));
+        // Per-chat folder scope (Issue #88): when the chat was bound to a
+        // folder, retrieval is restricted to documents under that path.
+        return new DataResponse($this->ragService->ask($user, $message, $history, $this->scopePathFor($user, $this->requestParam('chatId'))));
+    }
+
+    /**
+     * Resolve the folder scope stored on a chat (Issue #88). Empty string
+     * when the chat is unknown, missing or not scoped — the caller then
+     * falls back to the user's global index.
+     */
+    private function scopePathFor(?string $user, mixed $chatId): string {
+        if ($user === null || !is_string($chatId) || trim($chatId) === '') {
+            return '';
+        }
+        $chat = $this->chatStore->get($user, trim($chatId));
+        return $chat !== null ? trim((string)($chat['scopePath'] ?? '')) : '';
     }
 
     /**
@@ -720,8 +735,11 @@ class ApiController extends OCSController {
         $body = json_decode((string)file_get_contents('php://input'), true);
         $message = trim((string)($body['message'] ?? ''));
         $history = isset($body['history']) && is_array($body['history']) ? $body['history'] : [];
+        // Per-chat folder scope (Issue #88) is resolved once, outside the
+        // generator, so it cannot change mid-stream.
+        $scopePath = $this->scopePathFor($user, $body['chatId'] ?? null);
 
-        $generator = (function () use ($user, $message, $history): \Generator {
+        $generator = (function () use ($user, $message, $history, $scopePath): \Generator {
             // Aber die PHP-Output-Buffering-Schicht (php.ini output_buffering)
             // würde jede erzeugte Zeile bis zum Ende puffern -> keine Live-Streams.
             // Deshalb entfernen wir hier alle Puffer und flush'eriessen wirklich.
@@ -737,7 +755,7 @@ class ApiController extends OCSController {
             }
             $gen = null;
             try {
-                $gen = $this->ragService->askStream($user, $message, $history);
+                $gen = $this->ragService->askStream($user, $message, $history, $scopePath);
                 foreach ($gen as $line) {
                     if ($this->clientDisconnected()) {
                         return;
@@ -962,6 +980,9 @@ class ApiController extends OCSController {
         }
         if (array_key_exists('folder', $body)) {
             $meta['folder'] = trim((string)$body['folder']);
+        }
+        if (array_key_exists('scopePath', $body)) {
+            $meta['scopePath'] = trim((string)$body['scopePath']);
         }
         if ($meta === []) {
             return new DataResponse(['error' => 'No metadata given'], 400);

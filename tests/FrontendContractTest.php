@@ -91,8 +91,13 @@ final class FrontendContractTest extends TestCase {
 		self::assertStringContainsString('folderGroups', $app);
 		self::assertStringContainsString('plainChats', $app);
 		self::assertStringContainsString('NcModal v-if="folderPickerOpen"', $app);
-		self::assertStringContainsString('assignFolder(f.name)', $app);
-		self::assertStringContainsString('createAndAssign', $app);
+		self::assertStringContainsString('assignTarget(f.name)', $app);
+	self::assertStringContainsString('createAndAssign', $app);
+		// Per-chat folder scope ("Chat with this folder", Issue #88).
+		self::assertStringContainsString('pickScope(item.chat)', $app);
+		self::assertStringContainsString('scopePath', $app);
+		self::assertStringContainsString("updateChatMeta(item.chat.id, { scopePath: '' })", $app);
+		self::assertStringContainsString('mdiFolderSearchOutline', $app);
 		// Folders are expandable/collapsible sections (Issue #87 follow-up).
 		self::assertStringContainsString('collapsedFolders', $app);
 		self::assertStringContainsString('toggleFolder(item.folderName)', $app);
@@ -123,10 +128,15 @@ final class FrontendContractTest extends TestCase {
         $vanilla = (string)file_get_contents(__DIR__ . '/../src/lib/vanilla.js');
         $confirmForms = (string)file_get_contents(__DIR__ . '/../src/lib/confirmForms.js');
         self::assertStringContainsString("import { buildConfirmForm } from './confirmForms'", $vanilla);
-        self::assertStringContainsString('const conf = buildConfirmForm(m.confirmation)', $vanilla);
-        self::assertStringContainsString('create_share:', $confirmForms);
-        self::assertStringContainsString('delete_calendar_event:', $confirmForms);
-        self::assertStringContainsString('delete_file:', $confirmForms);
+        self::assertStringContainsString('const conf = buildConfirmForm(m.confirmation)', $vanilla);		self::assertStringContainsString('create_share:', $confirmForms);
+		self::assertStringContainsString('delete_calendar_event:', $confirmForms);
+		self::assertStringContainsString('delete_file:', $confirmForms);
+		// The chat stream carries the chat id so the server can resolve the
+		// per-chat folder scope, and scoped chats show a pill in the header
+		// (Issue #88).
+		self::assertStringContainsString('history, chatId }', $vanilla);
+		self::assertStringContainsString('Scoped to {path}', $vanilla);
+		self::assertStringContainsString('chat.scopePath', $vanilla);
         self::assertStringContainsString('buildShareForm', (string)file_get_contents(__DIR__ . '/../src/standalone-chat.js'));
         self::assertStringContainsString("return new DataResponse(['error' => 'Not logged in'], 401)", (string)file_get_contents(__DIR__ . '/../lib/Controller/ApiController.php'));
         $controller = (string)file_get_contents(__DIR__ . '/../lib/Controller/ApiController.php');

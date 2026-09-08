@@ -68,6 +68,8 @@ class ChatStore {
                     'pinned' => !empty($chat['pinned']),
                     'folder' => (string)($chat['folder'] ?? ''),
                     'archived' => !empty($chat['archived']),
+                    // Per-chat RAG folder scope (Issue #88); empty = global.
+                    'scopePath' => (string)($chat['scopePath'] ?? ''),
                 ];
                 if ($needle !== '') {
                     $titleHit = mb_strpos(mb_strtolower($entry['title']), $needle) !== false;
@@ -240,6 +242,11 @@ class ChatStore {
                         $this->createFolderLocked($user, $folder);
                     }
                     $chat['folder'] = $folder;
+                }
+                if (array_key_exists('scopePath', $meta)) {
+                    // Per-chat retrieval scope (Issue #88): restricts RAG to
+                    // documents at/under this folder path. Empty clears it.
+                    $chat['scopePath'] = trim((string)$meta['scopePath']);
                 }
                 $chat['updated'] = time();
                 unset($chat);

@@ -408,5 +408,13 @@ OC.L10N.register("eva_ai", {
   "No folder": "Kein Ordner",
   "Folder: {folder}": "Ordner: {folder}",
   "Expand folder": "Ordner aufklappen",
-  "Collapse folder": "Ordner zuklappen"
+  "Collapse folder": "Ordner zuklappen",
+  "Chat with folder": "Mit Ordner chatten",
+  "Change folder scope": "Ordner-Scope ändern",
+  "Remove folder scope": "Ordner-Scope entfernen",
+  "Only documents from this folder are used as context:": "Nur Dokumente aus diesem Ordner werden als Kontext verwendet:",
+  "No folder scope": "Kein Ordner-Scope",
+  "Scope to folder": "Auf Ordner begrenzen",
+  "Folder scope: {path}": "Ordner-Scope: {path}",
+  "Scoped to {path}": "Begrenzt auf {path}"
 }, "nplurals=2; plural=(n != 1);");

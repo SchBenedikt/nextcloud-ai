@@ -409,7 +409,15 @@
         "No folder": "No folder",
         "Folder: {folder}": "Folder: {folder}",
         "Expand folder": "Expand folder",
-        "Collapse folder": "Collapse folder"
+        "Collapse folder": "Collapse folder",
+        "Chat with folder": "Chat with folder",
+        "Change folder scope": "Change folder scope",
+        "Remove folder scope": "Remove folder scope",
+        "Only documents from this folder are used as context:": "Only documents from this folder are used as context:",
+        "No folder scope": "No folder scope",
+        "Scope to folder": "Scope to folder",
+        "Folder scope: {path}": "Folder scope: {path}",
+        "Scoped to {path}": "Scoped to {path}"
     },
     "pluralForm": "nplurals=2; plural=(n != 1);"
 }

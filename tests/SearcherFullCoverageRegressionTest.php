@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace OCA\EvaAi\Tests;
 
 use OCA\EvaAi\Db\ChunkMapper;
+use OCA\EvaAi\Db\Document;
 use OCA\EvaAi\Db\DocumentMapper;
 use OCA\EvaAi\Service\AppConfig;
 use OCA\EvaAi\Service\Ollama;
@@ -105,9 +106,46 @@ final class SearcherFullCoverageRegressionTest extends TestCase {
         self::assertContains(2, $ids);
         // The dense scan still covered the full index deterministically.
         self::assertSame([0, 2000, 4000, 6000, 8000], $pageCalls);
-    }
+    }	public function testFolderScopeRestrictsRetrievalToTheChosenPath(): void {
+		$chunkMapper = $this->createMock(ChunkMapper::class);
+		$documentMapper = $this->createMock(DocumentMapper::class);
+		$ollama = $this->createMock(Ollama::class);
 
-    public function testIndexWithinPoolKeepsFullChunkPath(): void {
+		$chunkMapper->method('countForUser')->with('alice')->willReturn(3);
+		$chunkMapper->method('chunksForUser')->willReturn([
+			['id' => 1, 'document_id' => 10, 'chunk_index' => 0, 'content' => 'Project notes about the budget.', 'embedding' => json_encode([1.0, 0.0])],
+			['id' => 2, 'document_id' => 11, 'chunk_index' => 0, 'content' => 'Project notes about the budget.', 'embedding' => json_encode([1.0, 0.0])],
+			['id' => 3, 'document_id' => 12, 'chunk_index' => 0, 'content' => 'Project notes about the budget.', 'embedding' => json_encode([1.0, 0.0])],
+		]);
+
+		// One doc inside the scoped folder, one directly in its parent, one
+		// completely outside — the scope is the folder AND everything below it.
+		$inside = new Document();
+		$inside->setId(10);
+		$inside->setPath('Documents/Projekte/Plan.md');
+		$sibling = new Document();
+		$sibling->setId(11);
+		$sibling->setPath('Documents/Notes.md');
+		$outside = new Document();
+		$outside->setId(12);
+		$outside->setPath('Private/Ideas.md');
+		$documentMapper->method('findByIds')->willReturn([$inside, $sibling, $outside]);
+		$ollama->method('embedQuery')->willReturn([[ [1.0, 0.0] ], null]);
+
+		$searcher = $this->searcher($chunkMapper, $documentMapper, $ollama);
+		$results = $searcher->search('alice', 'budget', 6, 'Documents/Projekte');
+
+		// Only the chunk from Documents/Projekte/Plan.md survives the scope.
+		self::assertCount(1, $results);
+		self::assertSame(1, $results[0]['chunkId']);
+		self::assertSame('Documents/Projekte/Plan.md', $results[0]['docPath']);
+
+		// Without a scope the same query sees all three documents.
+		$all = $searcher->search('alice', 'budget', 6);
+		self::assertCount(3, $all);
+	}
+
+	public function testIndexWithinPoolKeepsFullChunkPath(): void {
         $chunkMapper = $this->createMock(ChunkMapper::class);
         $documentMapper = $this->createMock(DocumentMapper::class);
         $ollama = $this->createMock(Ollama::class);

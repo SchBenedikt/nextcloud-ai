@@ -39,6 +39,7 @@
 					<NcAppNavigationItem
 						v-else
 						v-show="!item.archivedChat || showArchived"
+						:class="{ 'chat-item--nested': item.nested }"
 						:name="itemName(item.chat)"
 						:active="view === 'chat' && item.chat.id === currentChat"
 						:force-menu="true"
@@ -60,6 +61,14 @@
 							<NcActionButton v-if="!item.chat.archived" :aria-label="item.chat.folder ? $t('Move to folder') : $t('Add to folder')" :close-after-click="true" @click.stop="pickFolder(item.chat)">
 								<template #icon><NcIconSvgWrapper :path="mdiFolderPlusOutline" :size="16" aria-hidden="true" /></template>
 								{{ item.chat.folder ? $t('Move to folder') : $t('Add to folder') }}
+							</NcActionButton>
+							<NcActionButton v-if="!item.chat.archived" :aria-label="$t('Chat with folder')" :close-after-click="true" @click.stop="pickScope(item.chat)">
+								<template #icon><NcIconSvgWrapper :path="mdiFolderSearchOutline" :size="16" aria-hidden="true" /></template>
+								{{ item.chat.scopePath ? $t('Change folder scope') : $t('Chat with folder') }}
+							</NcActionButton>
+							<NcActionButton v-if="!item.chat.archived && item.chat.scopePath" :aria-label="$t('Remove folder scope')" :close-after-click="true" @click.stop="updateChatMeta(item.chat.id, { scopePath: '' })">
+								<template #icon><NcIconSvgWrapper :path="mdiFolderOffOutline" :size="16" aria-hidden="true" /></template>
+								{{ $t('Remove folder scope') }}
 							</NcActionButton>
 							<NcActionButton v-if="!item.chat.archived" :aria-label="$t('Archive chat')" :close-after-click="true" @click.stop="updateChatMeta(item.chat.id, { archived: true })">
 								<template #icon><NcIconSvgWrapper :path="mdiArchiveOutline" :size="16" aria-hidden="true" /></template>
@@ -112,22 +121,23 @@
 			<DocumentsView v-else-if="view === 'docs'" />
 			<SettingsView v-else />
 		</NcAppContent>
-		<NcModal v-if="folderPickerOpen" size="small" :name="$t('Move to folder')" @close="folderPickerOpen = false">
+		<NcModal v-if="folderPickerOpen" size="small" :name="pickerMode === 'scope' ? $t('Chat with folder') : $t('Move to folder')" @close="folderPickerOpen = false">
 			<div class="folder-picker">
-				<p class="folder-picker-hint">{{ $t('Choose a folder for this chat:') }}</p>
+				<p v-if="pickerMode === 'scope'" class="folder-picker-hint">{{ $t('Only documents from this folder are used as context:') }}</p>
+				<p v-else class="folder-picker-hint">{{ $t('Choose a folder for this chat:') }}</p>
 				<ul class="folder-picker-list">
-					<li v-if="folderChat && folderChat.folder">
-						<button type="button" class="folder-picker-row" @click="assignFolder('')">
+					<li v-if="pickerMode === 'scope' ? folderChat && folderChat.scopePath : folderChat && folderChat.folder">
+						<button type="button" class="folder-picker-row" @click="assignTarget('')">
 							<svg width="16" height="16" viewBox="0 0 24 24"><path :d="mdiFolderRemoveOutline" fill="currentColor" /></svg>
-							<span>{{ $t('No folder') }}</span>
+							<span>{{ pickerMode === 'scope' ? $t('No folder scope') : $t('No folder') }}</span>
 						</button>
 					</li>
 					<li v-for="f in folders" :key="f.name">
 						<button
 							type="button"
 							class="folder-picker-row"
-							:class="{ 'folder-picker-row--active': folderChat && folderChat.folder === f.name }"
-							@click="assignFolder(f.name)">
+							:class="{ 'folder-picker-row--active': pickerMode === 'scope' ? folderChat && folderChat.scopePath === f.name : folderChat && folderChat.folder === f.name }"
+							@click="assignTarget(f.name)">
 							<svg width="16" height="16" viewBox="0 0 24 24"><path :d="mdiFolderOutline" fill="currentColor" /></svg>
 							<span>{{ f.name }}</span>
 						</button>
@@ -135,7 +145,7 @@
 				</ul>
 				<form class="folder-picker-create" @submit.prevent="createAndAssign">
 					<input v-model="newFolderName" class="folder-picker-input" type="text" :placeholder="$t('New folder name')" />
-					<button type="submit" class="folder-picker-submit" :disabled="!newFolderName.trim()">{{ $t('Create folder') }}</button>
+					<button type="submit" class="folder-picker-submit" :disabled="!newFolderName.trim()">{{ pickerMode === 'scope' ? $t('Scope to folder') : $t('Create folder') }}</button>
 				</form>
 			</div>
 		</NcModal>
@@ -148,7 +158,7 @@ import ChatView from './views/ChatView.vue'
 import DocumentsView from './views/DocumentsView.vue'
 import SettingsView from './views/SettingsView.vue'
 import FileContextChatView from './views/FileContextChatView.vue'
-import { mdiChatProcessing, mdiFileDocumentOutline, mdiTune, mdiTrashCanOutline, mdiMessagePlus, mdiPencilOutline, mdiChevronDown, mdiPinOutline, mdiPinOffOutline, mdiFolderOutline, mdiFolderPlusOutline, mdiFolderRemoveOutline, mdiArchiveOutline, mdiArchiveArrowUpOutline } from '@mdi/js'
+import { mdiChatProcessing, mdiFileDocumentOutline, mdiTune, mdiTrashCanOutline, mdiMessagePlus, mdiPencilOutline, mdiChevronDown, mdiPinOutline, mdiPinOffOutline, mdiFolderOutline, mdiFolderPlusOutline, mdiFolderRemoveOutline, mdiFolderSearchOutline, mdiFolderOffOutline, mdiArchiveOutline, mdiArchiveArrowUpOutline } from '@mdi/js'
 import { NcCounterBubble } from '@nextcloud/vue'
 import NcAppNavigationSearch from '@nextcloud/vue/components/NcAppNavigationSearch'
 import NcActionButton from '@nextcloud/vue/components/NcActionButton'
@@ -208,8 +218,10 @@ export default {
 				// Private mode or quota — collapsing still works for this session.
 			}
 		}
-		// Folder picker modal (Issue #87).
+		// Folder picker modal (Issue #87). 'organize' assigns the chat's
+		// folder; 'scope' binds the chat's RAG retrieval to a folder (#88).
 		const folderPickerOpen = ref(false)
+		const pickerMode = ref('organize')
 		const folderChat = ref(null)
 		const newFolderName = ref('')
 		// Sidebar sections (Issue #87): pinned on top, folder groups, then the
@@ -247,7 +259,8 @@ export default {
 				const collapsed = !!collapsedFolders.value[group.name]
 				items.push({ type: 'heading', key: 'h-folder-' + group.name, label: group.name, icon: mdiFolderOutline, folder: true, folderName: group.name, count: group.chats.length, collapsed })
 				if (collapsed) continue
-				for (const c of group.chats) items.push({ type: 'chat', key: 'chat-' + c.id, chat: c })
+				// Chats inside a folder are visually nested under their heading.
+				for (const c of group.chats) items.push({ type: 'chat', key: 'chat-' + c.id, chat: c, nested: true })
 			}
 			for (const c of plainChats.value) items.push({ type: 'chat', key: 'chat-' + c.id, chat: c })
 			if (archivedChats.value.length) {
@@ -292,6 +305,7 @@ export default {
 			const title = chat.title || ''
 			const parts = [t('{title} · {count} messages', { title, count: chat.count })]
 			if (chat.folder) parts.push(t('Folder: {folder}', { folder: chat.folder }))
+			if (chat.scopePath) parts.push(t('Folder scope: {path}', { path: chat.scopePath }))
 			if (chat.snippet) parts.push(chat.snippet)
 			if (chat.matchCount) parts.push(t('{count} message matches', { count: chat.matchCount }))
 			return parts.join(' — ')
@@ -366,20 +380,30 @@ export default {
 
 		// Folder assignment (Issue #87): pick an existing folder, clear the
 		// assignment, or type a new name — unknown names create the folder.
-		const assignFolder = async (name) => {
+		// In 'scope' mode the same picker binds the chat's RAG scope instead
+		// ("Chat with this folder", Issue #88).
+		const assignTarget = async (name) => {
 			const id = folderChat.value && folderChat.value.id
 			if (!id) return
+			const mode = pickerMode.value
 			folderPickerOpen.value = false
 			newFolderName.value = ''
 			folderChat.value = null
-			await updateChatMeta(id, { folder: name })
+			await updateChatMeta(id, mode === 'scope' ? { scopePath: name } : { folder: name })
 		}
 		const createAndAssign = () => {
 			const name = newFolderName.value.trim()
 			if (!name) return
-			assignFolder(name)
+			assignTarget(name)
 		}
 		const pickFolder = (chat) => {
+			pickerMode.value = 'organize'
+			folderChat.value = chat
+			newFolderName.value = ''
+			folderPickerOpen.value = true
+		}
+		const pickScope = (chat) => {
+			pickerMode.value = 'scope'
 			folderChat.value = chat
 			newFolderName.value = ''
 			folderPickerOpen.value = true
@@ -482,9 +506,10 @@ export default {
 			pinnedChats, folderGroups, plainChats, navItems, listChats, activeChats, archivedChats,
 			folderPickerOpen, folderChat, newFolderName, collapsedFolders, toggleFolder,
 			fileContextIds, itemName, itemTip,
-			newChat, selectChat, renameChat, deleteChat, loadChats, navigate, updateChatMeta, pickFolder, assignFolder, createAndAssign,
+			newChat, selectChat, renameChat, deleteChat, loadChats, navigate, updateChatMeta, pickFolder, pickScope, assignTarget, createAndAssign,
+			pickerMode,
 			mdiChatProcessing, mdiFileDocumentOutline, mdiTune, mdiTrashCanOutline, mdiMessagePlus, mdiPencilOutline, mdiChevronDown,
-			mdiPinOutline, mdiPinOffOutline, mdiFolderOutline, mdiFolderPlusOutline, mdiFolderRemoveOutline, mdiArchiveOutline, mdiArchiveArrowUpOutline,
+			mdiPinOutline, mdiPinOffOutline, mdiFolderOutline, mdiFolderPlusOutline, mdiFolderRemoveOutline, mdiFolderSearchOutline, mdiFolderOffOutline, mdiArchiveOutline, mdiArchiveArrowUpOutline,
 		}
 	},
 }
@@ -524,11 +549,14 @@ export default {
 	list-style: none;
 	padding: 8px var(--app-navigation-padding, 8px) 4px;
 	text-transform: uppercase;
-}
+}	.chat-list-heading-icon {
+		flex: none;
+	}
 
-.chat-list-heading-icon {
-	flex: none;
-}	.chat-list-heading--folder {
+	/* Chats grouped inside a folder are indented under the folder heading. */
+	.chat-item--nested {
+		padding-left: 14px;
+	}	.chat-list-heading--folder {
 		cursor: pointer;
 		text-transform: none;
 		user-select: none;
