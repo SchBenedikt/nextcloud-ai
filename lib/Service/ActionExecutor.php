@@ -687,8 +687,13 @@ class ActionExecutor {
             }
             return ['ok' => false, 'error' => 'A folder with that name already exists at ' . $path];
         }
-        $folder->newFile($name, $content);
-        $this->markOwned($home, $path);
+        // The ownership marker is recorded BEFORE the file is created and
+        // finalized with the resulting node afterwards, so an interruption
+        // between the two leaves a pending record that reconciliation resolves
+        // instead of a missing grant (Issue #183).
+        $this->markOwnedPending($home, $path, function () use ($folder, $name, $content): void {
+            $folder->newFile($name, $content);
+        });
         return ['ok' => true, 'result' => 'Created ' . $path];
     }
 
@@ -727,9 +732,14 @@ class ActionExecutor {
             return ['ok' => false, 'error' => 'Folder path required'];
         }
         $existed = $home->nodeExists($path);
-        $this->ensureFolderPath($home, $path);
         if (!$existed) {
-            $this->markOwned($home, $path);
+            // Pending marker before the folder is created, finalize afterwards
+            // (Issue #183) — same crash-safe semantics as file creation.
+            $this->markOwnedPending($home, $path, function () use ($home, $path): void {
+                $this->ensureFolderPath($home, $path);
+            });
+        } else {
+            $this->ensureFolderPath($home, $path);
         }
         return ['ok' => true, 'result' => 'Created folder ' . $path];
     }
@@ -1398,11 +1408,33 @@ class ActionExecutor {
         return new FileOwnershipStore($this->marksFile($userId), $home, $this->lockingProvider, $userId);
     }
 
-    private function markOwned(Folder $home, string $path): void {
+    /**
+     * Run a filesystem-creating action between a pending ownership marker and
+     * its finalize (Issue #183):
+     * - beginPending runs before the action, so a crash leaves a truthful
+     *   pending record instead of a missing grant;
+     * - a failed action cancels the record;
+     * - a finalize failure keeps the pending record, which reconciliation
+     *   resolves on the next ownership check.
+     */
+    private function markOwnedPending(Folder $home, string $path, callable $action): void {
+        $store = $this->ownershipStore($home);
+        $token = $store->beginPending($path);
         try {
-            $this->ownershipStore($home)->remember($this->resolve($home, $path));
+            $action();
+            try {
+                $store->finalizePending($token, $home->get($path));
+            } catch (\Throwable $e) {
+                // The file exists and the pending record survives; the next
+                // ownership check reconciles it into a grant.
+            }
         } catch (\Throwable $e) {
-            // Missing markers must fail closed: the file cannot be deleted in own mode.
+            try {
+                $store->cancelPending($token);
+            } catch (\Throwable $ignored) {
+                // Never mask the original action failure.
+            }
+            throw $e;
         }
     }
 

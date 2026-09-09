@@ -485,11 +485,20 @@ class ChatStore {
         return $this->folderFor($chats, $user);
     }
 
-    public function append(string $user, string $id, string $role, string $text, array $followups = [], ?int $regenerateRev = null): void {
+    /**
+     * Append (or replace) a chat message.
+     *
+     * A pending tool confirmation (Issue #185) is persisted on the assistant
+     * message so a page reload can rebuild the inline confirmation panel.
+     * Saving another assistant message whose predecessor is an unresolved
+     * pending confirmation replaces that placeholder instead of appending a
+     * duplicate — that is how the confirmed answer is persisted.
+     */
+    public function append(string $user, string $id, string $role, string $text, array $followups = [], ?int $regenerateRev = null, ?array $confirmation = null): void {
         if ($role !== 'user' && $role !== 'assistant') {
             return;
         }
-        $this->withUserLock($user, function () use ($user, $id, $role, $text, $followups, $regenerateRev): void {
+        $this->withUserLock($user, function () use ($user, $id, $role, $text, $followups, $regenerateRev, $confirmation): void {
             $all = $this->read($user);
             foreach ($all as &$chat) {
                 if (($chat['id'] ?? '') === $id) {
@@ -498,6 +507,9 @@ class ChatStore {
                     // must survive a reload so the chips stay usable.
                     if ($role === 'assistant' && $followups !== []) {
                         $message['followups'] = array_values(array_slice(array_filter($followups, 'is_string'), 0, 3));
+                    }
+                    if ($role === 'assistant' && is_array($confirmation)) {
+                        $message['confirmation'] = $this->normalizeConfirmation($confirmation);
                     }
                     $pending = $chat['regenerate'] ?? null;
                     if ($regenerateRev !== null && is_array($pending)
@@ -521,7 +533,27 @@ class ChatStore {
                         // truncate this newer message.
                         unset($chat['regenerate']);
                     }
-                    $chat['messages'][] = $message;
+                    // An unresolved pending confirmation placeholder is replaced
+                    // by the confirmed answer instead of being duplicated, so
+                    // approving after a reload persists exactly one answer
+                    // (Issue #185).
+                    $replaceIndex = -1;
+                    if ($role === 'assistant') {
+                        for ($i = count($chat['messages']) - 1; $i >= 0; $i--) {
+                            $stored = $chat['messages'][$i];
+                            if (($stored['role'] ?? '') === 'assistant'
+                                && isset($stored['confirmation'])
+                                && empty($stored['confirmation']['resolved'])) {
+                                $replaceIndex = $i;
+                                break;
+                            }
+                        }
+                    }
+                    if ($replaceIndex >= 0) {
+                        $chat['messages'][$replaceIndex] = $message;
+                    } else {
+                        $chat['messages'][] = $message;
+                    }
                     $chat['updated'] = time();
                     $chat['rev'] = (int)($chat['rev'] ?? 0) + 1;
                     $messageCount = count($chat['messages']);
@@ -913,5 +945,89 @@ class ChatStore {
     private function displayTitle(array $chat): string {
         $title = (string)($chat['title'] ?? '');
         return $title === 'Neuer Chat' ? '' : $title;
+    }
+
+    /**
+     * Normalize a client-supplied confirmation payload (Issue #185) so only
+     * known, typed fields are persisted on a chat message. Resolved answers
+     * keep just the fields the UI needs to render the result link — the raw
+     * tool arguments (which may contain passwords or paths) are dropped once
+     * the action has run.
+     */
+    private function normalizeConfirmation(array $raw): array {
+        $name = is_string($raw['name'] ?? null) ? trim($raw['name']) : '';
+        if ($name === '') {
+            return ['resolved' => true];
+        }
+        $risk = (string)($raw['risk'] ?? 'mutating');
+        $risk = in_array($risk, ['mutating', 'destructive'], true) ? $risk : 'mutating';
+        $confirmation = [
+            'name' => $name,
+            'risk' => $risk,
+            'resolved' => !empty($raw['resolved']),
+        ];
+        // The idempotency token (Issue #185) survives resolution so a second
+        // confirmTool call for the same action can be rejected.
+        $token = is_string($raw['token'] ?? null) ? trim($raw['token']) : '';
+        if ($token !== '') {
+            $confirmation['token'] = $token;
+        }
+        if (!empty($confirmation['resolved'])) {
+            $url = (string)($raw['resultUrl'] ?? '');
+            if ($url !== '') {
+                $confirmation['resultUrl'] = $url;
+            }
+            return $confirmation;
+        }
+        $confirmation['arguments'] = is_array($raw['arguments'] ?? null) ? $raw['arguments'] : [];
+        $missing = $raw['missing'] ?? [];
+        $confirmation['missing'] = is_array($missing)
+            ? array_values(array_map('strval', array_slice($missing, 0, 10)))
+            : [];
+        return $confirmation;
+    }
+
+    /**
+     * Idempotency guard for tool confirmations (Issue #185): claim a pending
+     * confirmation token before executing its action so a second approve (e.g.
+     * after a reload) cannot run a mutating tool twice.
+     *
+     * @return string 'ok' when claimed, 'already' when the token is claimed or
+     *                resolved, 'none' when no pending confirmation carries it
+     */
+    public function claimConfirmation(string $user, string $id, string $token): string {
+        if ($token === '') {
+            return 'none';
+        }
+        return $this->withUserLock($user, function () use ($user, $id, $token): string {
+            $all = $this->read($user);
+            $changed = false;
+            $status = 'none';
+            foreach ($all as &$chat) {
+                if (($chat['id'] ?? '') !== $id) {
+                    continue;
+                }
+                for ($i = count($chat['messages']) - 1; $i >= 0; $i--) {
+                    $conf = $chat['messages'][$i]['confirmation'] ?? null;
+                    if (!is_array($conf) || ($conf['token'] ?? '') !== $token) {
+                        continue;
+                    }
+                    if (!empty($conf['resolved']) || !empty($conf['claim'])) {
+                        $status = 'already';
+                    } else {
+                        $chat['messages'][$i]['confirmation']['claim'] = true;
+                        $status = 'ok';
+                        $changed = true;
+                    }
+                    break;
+                }
+                break;
+            }
+            unset($chat);
+            if ($changed) {
+                $this->write($user, $all);
+            }
+            return $status;
+        });
     }
 }

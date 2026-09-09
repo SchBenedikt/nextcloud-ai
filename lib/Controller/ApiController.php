@@ -918,6 +918,22 @@ class ApiController extends OCSController {
             return new DataResponse(['error' => 'A tool name and argument object are required.'], 400);
         }
 
+        // Idempotency guard (Issue #185): a persisted pending confirmation
+        // carries a token; approving the same token twice (e.g. after a reload)
+        // must not run a mutating action again.
+        $chatId = (string)($this->requestParam('chatId') ?? '');
+        $confirmationToken = (string)($this->requestParam('confirmationToken') ?? '');
+        if ($chatId !== '' && $confirmationToken !== '') {
+            $claim = $this->chatStore->claimConfirmation($user, $chatId, $confirmationToken);
+            if ($claim === 'already') {
+                return new DataResponse([
+                    'ok' => false,
+                    'alreadyProcessed' => true,
+                    'error' => 'This action was already processed - reload the chat to see its result.',
+                ], 409);
+            }
+        }
+
         $this->executor->setSurface(\OCA\EvaAi\Service\ToolPolicy::SURFACE_WEB);
         $result = $this->executor->runConfirmed($user, $name, $args);
         return new DataResponse($result, !empty($result['ok']) ? 200 : 400);
@@ -1121,7 +1137,20 @@ class ApiController extends OCSController {
             } elseif (is_string($rawRegenerateRev) && $rawRegenerateRev !== '' && ctype_digit($rawRegenerateRev)) {
                 $regenerateRev = (int)$rawRegenerateRev;
             }
-            $this->chatStore->append($user, $id, $role, $text, $followups, $regenerateRev);
+            // Pending tool confirmation persisted with the assistant message so
+            // a reload can rebuild the inline panel (Issue #185). The store
+            // normalizes the payload and drops arguments after resolution.
+            $rawConfirmation = $this->requestParam('confirmation');
+            $confirmation = null;
+            if (is_array($rawConfirmation)) {
+                $confirmation = $rawConfirmation;
+            } elseif (is_string($rawConfirmation) && $rawConfirmation !== '') {
+                $decoded = json_decode($rawConfirmation, true);
+                if (is_array($decoded)) {
+                    $confirmation = $decoded;
+                }
+            }
+            $this->chatStore->append($user, $id, $role, $text, $followups, $regenerateRev, $confirmation);
             // Return the bumped revision so the client can validate later
             // regenerate/edit requests against the current state (Issue #182).
             $appended = $this->chatStore->getChat($user, $id);

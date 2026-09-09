@@ -346,7 +346,10 @@ import { escHtml, mdInline, mdToHtml, citedSources, copyText } from './lib/chat-
 				m.text = text
 				m.done = true
 				renderAll(messages)
-				saveMessage('assistant', m.text).then(renderChatListAgain)
+				// The resolved payload replaces the stored pending placeholder so
+				// approving after a reload does not duplicate the answer
+				// (Issue #185).
+				saveMessage('assistant', m.text, null, m.confirmation).then(renderChatListAgain)
 			}
 			approve.addEventListener('click', function () {
 				approve.disabled = true
@@ -358,8 +361,17 @@ import { escHtml, mdInline, mdToHtml, citedSources, copyText } from './lib/chat-
 					approve.textContent = tr('Confirm and run')
 					return
 				}
-				api('POST', '/confirmTool', { name: m.confirmation.name, arguments: args })
-					.then(function (result) {
+				// Wait for the pending placeholder (and its idempotency token) to
+				// be stored before running the action so the server-side claim can
+				// reject a duplicate approve after a reload (Issue #185).
+				Promise.resolve(m._pendingSave || true).then(function () {
+					return api('POST', '/confirmTool', {
+						name: m.confirmation.name,
+						arguments: args,
+						chatId: chatId,
+						confirmationToken: m.confirmation.token || '',
+					})
+				}).then(function (result) {
 						if (!result || !result.ok) {
 							finish('⚠️ ' + (result && result.error || tr('The action could not be completed.')))
 							return
@@ -540,7 +552,7 @@ import { escHtml, mdInline, mdToHtml, citedSources, copyText } from './lib/chat-
 		els.err.style.display = msg ? 'block' : 'none'
 	}
 
-	function saveMessage(role, text, followups) {
+	function saveMessage(role, text, followups, confirmation) {
 		if (!chatId) return Promise.resolve(false)
 		var body = { role: role, text: text }
 		// Follow-up suggestions are persisted for assistant messages so the
@@ -548,6 +560,9 @@ import { escHtml, mdInline, mdToHtml, citedSources, copyText } from './lib/chat-
 		if (role === 'assistant' && Array.isArray(followups) && followups.length) {
 			body.followups = followups
 		}
+		// A pending tool confirmation rides on the assistant message so a
+		// reload rebuilds the inline panel (Issue #185).
+		if (role === 'assistant' && confirmation) body.confirmation = confirmation
 		return api('POST', '/chats/' + encodeURIComponent(chatId) + '/messages', body)
 			.then(function () { return true })
 			.catch(function () { return false })
@@ -599,6 +614,9 @@ import { escHtml, mdInline, mdToHtml, citedSources, copyText } from './lib/chat-
 					text: m.text || '',
 					thinking: '',
 					followups: Array.isArray(m.followups) ? m.followups : [],
+					// A persisted pending confirmation re-renders the inline panel so
+					// approving after a reload still works (Issue #185).
+					confirmation: m.confirmation || null,
 					done: true,
 				})
 			})
@@ -724,7 +742,20 @@ import { escHtml, mdInline, mdToHtml, citedSources, copyText } from './lib/chat-
 					}
 					last.text = tr('Please review this action and confirm it explicitly.')
 					last.done = true
-					saveUserMessage(msg)
+					// Persist the pending confirmation with the placeholder so a
+					// reload rebuilds the panel instead of leaving a dangling
+					// question (Issue #185). The idempotency token makes approve
+					// safe: the same action cannot run twice after a reload.
+					last.confirmation.token = (window.crypto && crypto.randomUUID) ? crypto.randomUUID() : String(Date.now()) + '-' + Math.random().toString(36).slice(2)
+					last._pendingSave = saveUserMessage(msg)
+						.then(function (savedUser) { return savedUser ? saveMessage('assistant', last.text, null, {
+							name: last.confirmation.name,
+							arguments: last.confirmation.arguments,
+							risk: last.confirmation.risk,
+							token: last.confirmation.token,
+							resolved: false,
+						}) : false })
+						.catch(function () { return false })
 					renderAll(messages)
 				} else if (ev.type === 'done') {
 					last.text = ev.answer || last.text

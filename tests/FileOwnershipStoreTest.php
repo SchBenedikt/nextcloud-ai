@@ -55,6 +55,81 @@ final class FileOwnershipStoreTest extends TestCase {
         }
     }
 
+    public function testPendingMarkerFinalizesIntoAGrantAfterTheActionSucceeded(): void {
+        $node = $this->node(42);
+        $node->method('getCreationTime')->willReturn(time());
+        $raw = '{}';
+        $home = $this->homeMock(['/Notes/meeting.md' => $node], [42 => [$node]]);
+        $store = $this->pendingHarness($raw, $home);
+
+        $token = $store->beginPending('/Notes/meeting.md');
+        self::assertArrayHasKey('pending', json_decode($raw, true));
+        // Crash between the action and the finalize: nothing else runs.
+        // The next ownership check reconciles the pending record into a grant.
+        self::assertTrue($store->contains($node));
+        self::assertTrue($store->contains($node), 'grant stays durable after reconciliation');
+        $saved = json_decode($raw, true);
+        self::assertSame([42], $saved['file_ids']);
+        self::assertArrayNotHasKey('pending', $saved, 'resolved pending record is dropped');
+    }
+
+    public function testCrashBeforeCreateDropsPendingWhenThePathNeverExisted(): void {
+        $raw = '{}';
+        $home = $this->homeMock([], []);
+        $store = $this->pendingHarness($raw, $home);
+
+        $store->beginPending('/gone.md');
+        $report = $store->reconcile();
+
+        self::assertSame(['finalized' => 0, 'dropped' => 1, 'unknown' => 0], $report);
+        self::assertSame(['version' => 2, 'file_ids' => []], json_decode($raw, true));
+    }
+
+    public function testReplacementAtPendingPathIsNotGranted(): void {
+        $replacement = $this->node(43);
+        $replacement->method('getCreationTime')->willReturn(time() + 7200);
+        $raw = '{}';
+        $home = $this->homeMock(['/x.md' => $replacement], []);
+        $store = $this->pendingHarness($raw, $home);
+
+        $store->beginPending('/x.md');
+        $report = $store->reconcile();
+
+        self::assertSame(['finalized' => 0, 'dropped' => 0, 'unknown' => 1], $report, 'unrelated replacement stays explicitly unknown');
+        $saved = json_decode($raw, true);
+        self::assertSame([], $saved['file_ids']);
+        self::assertArrayHasKey('pending', $saved, 'unknown records are never silently dropped');
+    }
+
+    public function testReconcileKeepsPendingWhenTheStoreCannotBeRead(): void {
+        $raw = '{}';
+        $home = $this->createMock(Folder::class);
+        $home->method('nodeExists')->willThrowException(new \RuntimeException('storage error'));
+        $store = $this->pendingHarness($raw, $home);
+
+        $store->beginPending('/x.md');
+        $report = $store->reconcile();
+
+        self::assertSame(['finalized' => 0, 'dropped' => 0, 'unknown' => 1], $report);
+        self::assertArrayHasKey('pending', json_decode($raw, true));
+    }
+
+    public function testFinalizeAndCancelResolveThePendingRecordExplicitly(): void {
+        $node = $this->node(42);
+        $raw = '{}';
+        $home = $this->homeMock(['/a.md' => $node], []);
+        $store = $this->pendingHarness($raw, $home);
+
+        $kept = $store->beginPending('/a.md');
+        $cancelled = $store->beginPending('/b.md');
+        $store->finalizePending($kept, $node);
+        $store->cancelPending($cancelled);
+
+        $saved = json_decode($raw, true);
+        self::assertSame([42], $saved['file_ids']);
+        self::assertArrayNotHasKey('pending', $saved);
+    }
+
     public function testContendingRequestCannotReadOrOverwriteMarkers(): void {
         $file = $this->createMock(ISimpleFile::class);
         $file->expects(self::never())->method('getContent');
@@ -71,6 +146,41 @@ final class FileOwnershipStoreTest extends TestCase {
         $node = $this->createMock(Node::class);
         $node->method('getId')->willReturn($id);
         return $node;
+    }
+
+    private function homeMock(array $byPath, array $byId): Folder {
+        $home = $this->createMock(Folder::class);
+        $home->method('nodeExists')->willReturnCallback(static function (string $path) use ($byPath): bool {
+            return isset($byPath[$path]);
+        });
+        $home->method('get')->willReturnCallback(static function (string $path) use ($byPath) {
+            if (!isset($byPath[$path])) {
+                throw new \OCP\Files\NotFoundException();
+            }
+            return $byPath[$path];
+        });
+        $home->method('getById')->willReturnCallback(static function (int $id) use ($byId): array {
+            return $byId[$id] ?? [];
+        });
+        return $home;
+    }
+
+    private function pendingHarness(string &$raw, Folder $home): FileOwnershipStore {
+        $file = $this->createMock(ISimpleFile::class);
+        $file->method('putContent')->willReturnCallback(static function ($content) use (&$raw): void { $raw = $content; });
+        $file->method('getContent')->willReturnCallback(static function () use (&$raw): string { return $raw; });
+        $locked = false;
+        $locking = $this->createMock(\OCP\Lock\ILockingProvider::class);
+        $locking->method('acquireLock')->willReturnCallback(static function ($key) use (&$locked): void {
+            self::assertLessThanOrEqual(64, strlen($key));
+            self::assertFalse($locked);
+            $locked = true;
+        });
+        $locking->method('releaseLock')->willReturnCallback(static function () use (&$locked): void {
+            self::assertTrue($locked);
+            $locked = false;
+        });
+        return new FileOwnershipStore($file, $home, $locking, 'alice');
     }
 
     private function store(string &$raw, array &$visible): FileOwnershipStore {

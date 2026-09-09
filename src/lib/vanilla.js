@@ -264,8 +264,10 @@ export function mountChat(root, opts = {}) {
 				m.done = true
 				renderAll(messages)
 				// A regenerate confirmation must still commit the deferred
-				// truncation, so the revision token travels with the answer.
-				saveMessage('assistant', m.text, null, m.confirmation && m.confirmation.regenerateRev)
+				// truncation, so the revision token travels with the answer. The
+				// resolved payload replaces the stored pending placeholder
+				// (Issue #185) and keeps the result link for a later reload.
+				saveMessage('assistant', m.text, null, m.confirmation && m.confirmation.regenerateRev, m.confirmation)
 					.then(() => { if (onRecent) onRecent() })
 			}
 			const disableButtons = (disabled) => {
@@ -281,10 +283,15 @@ export function mountChat(root, opts = {}) {
 				}
 				errEl.style.display = 'none'
 				disableButtons(true)
-				api('POST', '/confirmTool', {
+				// Wait for the pending placeholder (and its idempotency token) to
+				// be stored before running the action so the server-side claim can
+				// reject a duplicate approve after a reload (Issue #185).
+				Promise.resolve(m._pendingSave || true).then(() => api('POST', '/confirmTool', {
 					name: m.confirmation.name,
 					arguments: conf ? conf.getArguments() : (m.confirmation.arguments || {}),
-				}).then((result) => {
+					chatId,
+					confirmationToken: m.confirmation.token || '',
+				})).then((result) => {
 					if (!result || !result.ok) {
 						finish('⚠️ ' + (result?.error || t('The action could not be completed.')))
 						return
@@ -593,7 +600,7 @@ export function mountChat(root, opts = {}) {
 		if (force || nearBottom) scroll.scrollTop = scroll.scrollHeight
 	}
 
-	function saveMessage(role, text, followups, regenerateRev) {
+	function saveMessage(role, text, followups, regenerateRev, confirmation) {
 		if (!chatId) return Promise.resolve(false)
 		const body = { role, text }
 		// Follow-up suggestions are persisted for assistant messages so the
@@ -604,6 +611,9 @@ export function mountChat(root, opts = {}) {
 		// A regenerate answer carries the stream's revision token so the server
 		// commits the deferred truncation with this message (Issue #182).
 		if (regenerateRev != null) body.regenerateRev = regenerateRev
+		// A pending (or resolved) tool confirmation rides on the assistant
+		// message so a reload rebuilds the panel (Issue #185).
+		if (role === 'assistant' && confirmation) body.confirmation = confirmation
 		return api('POST', '/chats/' + chatId + '/messages', body)
 			.then((resp) => {
 				// Keep the client's revision in sync so the next regenerate/edit
@@ -665,6 +675,9 @@ export function mountChat(root, opts = {}) {
 				text: m.text || '',
 				thinking: '',
 				followups: Array.isArray(m.followups) ? m.followups : [],
+				// A persisted pending confirmation re-renders the inline panel so
+				// approving after a reload still works (Issue #185).
+				confirmation: m.confirmation || null,
 				done: true,
 			}))
 			renderAll(messages)
@@ -998,7 +1011,23 @@ export function mountChat(root, opts = {}) {
 						? t('Some required details are missing - please complete them below.')
 						: t('Please review this action and confirm it explicitly.')
 					last.done = true
-					saveUserMessage(msg)
+					// Persist the pending confirmation with the placeholder so a
+					// reload rebuilds the inline panel instead of leaving a dangling
+					// question (Issue #185). The idempotency token makes approve
+					// safe: the same action cannot run twice after a reload. The user
+					// message is saved first so the placeholder stays the last
+					// stored assistant message.
+					last.confirmation.token = (window.crypto && crypto.randomUUID) ? crypto.randomUUID() : String(Date.now()) + '-' + Math.random().toString(36).slice(2)
+					last._pendingSave = saveUserMessage(msg)
+						.then((savedUser) => savedUser ? saveMessage('assistant', last.text, null, null, {
+							name: last.confirmation.name,
+							arguments: last.confirmation.arguments,
+							risk: last.confirmation.risk,
+							missing,
+							token: last.confirmation.token,
+							resolved: false,
+						}) : false)
+						.catch(() => false)
 					renderAll(messages)
 				} else if (ev.type === 'done') {
 					last.text = ev.answer || last.text

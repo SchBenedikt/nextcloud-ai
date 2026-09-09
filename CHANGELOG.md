@@ -21,6 +21,15 @@ follows [Semantic Versioning](https://semver.org/).
 - `occ eva_ai:repair-chats <user>` inspects a corrupt chat store and - after
   explicit `--yes` - backs the damaged file up and reconstructs a minimal valid
   store that keeps every parseable chat (#184).
+- A pending tool confirmation in the web and standalone chat is persisted with
+  the assistant message, so a reload rebuilds the inline panel instead of
+  leaving a dangling question; approving after a reload replaces the placeholder
+  (no duplicate answer) and a claim token prevents the same action from running
+  twice (#185).
+- Ownership markers are written before the filesystem action they record and
+  finalized with the resulting node afterwards, so an interruption between the
+  two leaves a pending record that the next ownership check reconciles into a
+  grant instead of a silently missing one (#183).
 
 ### Changed
 

@@ -220,6 +220,167 @@ final class ChatStoreTest extends TestCase {
         self::assertCount(4, json_decode($written, true));
     }
 
+    public function testPendingConfirmationIsPersistedOnTheAssistantMessage(): void {
+        $seed = json_encode([[
+            'id' => 'c1',
+            'title' => 'Pending',
+            'created' => 1,
+            'updated' => 1,
+            'rev' => 5,
+            'messages' => [
+                ['role' => 'user', 'text' => 'Create a share'],
+            ],
+        ]], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+        $written = null;
+        [$store] = $this->chatFileHarness($seed, $written);
+
+        $store->append('alice', 'c1', 'assistant', 'Please review this action.', [], null, [
+            'name' => 'create_share',
+            'arguments' => ['path' => '/Photos', 'password' => 'secret'],
+            'risk' => 'mutating',
+            'missing' => ['password'],
+            'resolved' => false,
+        ]);
+
+        $chat = json_decode((string)$written, true)[0];
+        $message = $chat['messages'][1];
+        self::assertSame('assistant', $message['role']);
+        self::assertArrayHasKey('confirmation', $message);
+        self::assertSame('create_share', $message['confirmation']['name']);
+        self::assertSame(['path' => '/Photos', 'password' => 'secret'], $message['confirmation']['arguments']);
+        self::assertSame(['password'], $message['confirmation']['missing']);
+        self::assertFalse($message['confirmation']['resolved']);
+        // A reload reads the same pending payload so the panel can be rebuilt.
+        $detail = $store->get('alice', 'c1');
+        self::assertSame('create_share', $detail['messages'][1]['confirmation']['name']);
+    }
+
+    public function testConfirmedAnswerReplacesThePendingPlaceholderInsteadOfDuplicatingIt(): void {
+        $seed = json_encode([[
+            'id' => 'c1',
+            'title' => 'Pending',
+            'created' => 1,
+            'updated' => 1,
+            'rev' => 5,
+            'messages' => [
+                ['role' => 'user', 'text' => 'Create a share'],
+                ['role' => 'assistant', 'text' => 'Please review this action.', 'confirmation' => [
+                    'name' => 'create_share',
+                    'arguments' => ['path' => '/Photos'],
+                    'risk' => 'mutating',
+                    'missing' => [],
+                    'resolved' => false,
+                ]],
+            ],
+        ]], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+        $written = null;
+        [$store] = $this->chatFileHarness($seed, $written);
+
+        $store->append('alice', 'c1', 'assistant', '✅ Share created: https://cloud.example/s/abc', [], null, [
+            'name' => 'create_share',
+            'risk' => 'mutating',
+            'resolved' => true,
+            'resultUrl' => 'https://cloud.example/s/abc',
+            'arguments' => ['path' => '/Photos'],
+        ]);
+
+        $chat = json_decode((string)$written, true)[0];
+        self::assertCount(2, $chat['messages'], 'the placeholder is replaced, not duplicated');
+        $message = $chat['messages'][1];
+        self::assertSame('✅ Share created: https://cloud.example/s/abc', $message['text']);
+        self::assertTrue($message['confirmation']['resolved']);
+        self::assertSame('https://cloud.example/s/abc', $message['confirmation']['resultUrl']);
+        // Arguments are dropped from the resolved payload (they may contain
+        // secrets) and only the result link is kept for the UI.
+        self::assertArrayNotHasKey('arguments', $message['confirmation']);
+        self::assertArrayNotHasKey('missing', $message['confirmation']);
+    }
+
+    public function testConfirmationTokenCanOnlyBeClaimedOnce(): void {
+        $seed = json_encode([[
+            'id' => 'c1',
+            'title' => 'Pending',
+            'created' => 1,
+            'updated' => 1,
+            'rev' => 5,
+            'messages' => [
+                ['role' => 'user', 'text' => 'Create a share'],
+                ['role' => 'assistant', 'text' => 'Please review this action.', 'confirmation' => [
+                    'name' => 'create_share',
+                    'arguments' => ['path' => '/Photos'],
+                    'risk' => 'mutating',
+                    'missing' => [],
+                    'resolved' => false,
+                    'token' => 'tok-abc',
+                ]],
+            ],
+        ]], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+        $written = null;
+        [$store] = $this->chatFileHarness($seed, $written);
+
+        self::assertSame('ok', $store->claimConfirmation('alice', 'c1', 'tok-abc'));
+        self::assertSame('already', $store->claimConfirmation('alice', 'c1', 'tok-abc'), 'second approve is rejected');
+        $saved = json_decode((string)$written, true)[0];
+        self::assertTrue($saved['messages'][1]['confirmation']['claim']);
+    }
+
+    public function testConfirmationClaimRejectsResolvedTokensAndUnknownTokensPassThrough(): void {
+        $seed = json_encode([[
+            'id' => 'c1',
+            'title' => 'Pending',
+            'created' => 1,
+            'updated' => 1,
+            'rev' => 5,
+            'messages' => [
+                ['role' => 'user', 'text' => 'Create a share'],
+                ['role' => 'assistant', 'text' => '✅ Share created: https://cloud.example/s/abc', 'confirmation' => [
+                    'name' => 'create_share',
+                    'risk' => 'mutating',
+                    'resolved' => true,
+                    'resultUrl' => 'https://cloud.example/s/abc',
+                    'token' => 'tok-resolved',
+                ]],
+            ],
+        ]], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+        $written = null;
+        [$store] = $this->chatFileHarness($seed, $written);
+
+        self::assertSame('already', $store->claimConfirmation('alice', 'c1', 'tok-resolved'));
+        self::assertSame('none', $store->claimConfirmation('alice', 'c1', 'tok-unknown'), 'no stored token means no claim to reject');
+        self::assertSame('none', $store->claimConfirmation('alice', 'c1', ''));
+    }
+
+    public function testPlainMessageAfterPendingConfirmationDoesNotReplaceIt(): void {
+        $seed = json_encode([[
+            'id' => 'c1',
+            'title' => 'Pending',
+            'created' => 1,
+            'updated' => 1,
+            'rev' => 5,
+            'messages' => [
+                ['role' => 'user', 'text' => 'Create a share'],
+                ['role' => 'assistant', 'text' => 'Please review this action.', 'confirmation' => [
+                    'name' => 'create_share',
+                    'arguments' => ['path' => '/Photos'],
+                    'risk' => 'mutating',
+                    'missing' => [],
+                    'resolved' => false,
+                ]],
+            ],
+        ]], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+        $written = null;
+        [$store] = $this->chatFileHarness($seed, $written);
+
+        // A follow-up user question appends after the pending placeholder
+        // instead of touching it — the pending panel stays answerable.
+        $store->append('alice', 'c1', 'user', 'Actually, never mind');
+
+        $chat = json_decode((string)$written, true)[0];
+        self::assertCount(3, $chat['messages']);
+        self::assertArrayHasKey('confirmation', $chat['messages'][1]);
+        self::assertSame('Actually, never mind', $chat['messages'][2]['text']);
+    }
+
     private function chatFileHarness(string $json, ?string &$written, string $foldersJson = '[]', ?string &$foldersWritten = null): array {
         $factory = $this->createMock(IAppDataFactory::class);
         $appData = $this->createMock(IAppData::class);
