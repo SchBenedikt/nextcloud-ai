@@ -165,6 +165,49 @@ final class ChatStoreTest extends TestCase {
         self::assertNull($foldersWritten);
     }
 
+    public function testUntitledChatsUseEmptyTitlesAndLegacyGermanDefaultIsNormalized(): void {
+        // New chats must not carry a hardcoded German default title: each
+        // client renders its own translated "New chat" placeholder instead.
+        $written = null;
+        [$store] = $this->chatFileHarness('[]', $written);
+        $created = $store->create('alice');
+        self::assertSame('', $created['title']);
+
+        // Legacy chats with the old literal default are normalized on read,
+        // while a real title is never touched.
+        $written = null;
+        $seed = json_encode([
+            ['id' => 'legacy', 'title' => 'Neuer Chat', 'created' => 1, 'updated' => 2, 'messages' => []],
+            ['id' => 'real', 'title' => 'Budget meeting', 'created' => 1, 'updated' => 1, 'messages' => []],
+        ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+        [$store2] = $this->chatFileHarness($seed, $written);
+        $titles = array_column($store2->list('alice', null, true), 'title');
+        self::assertSame(['', 'Budget meeting'], $titles);
+        self::assertSame('', $store2->get('alice', 'legacy')['title']);
+        self::assertSame('Budget meeting', $store2->get('alice', 'real')['title']);
+    }
+
+    public function testFirstUserMessageTitlesAnUntitledChat(): void {
+        // append() derives the title from the first user message, both for
+        // the new empty default and for legacy chats with the German literal.
+        foreach (['', 'Neuer Chat'] as $storedTitle) {
+            $seed = json_encode([[
+                'id' => 'c1',
+                'title' => $storedTitle,
+                'created' => 1,
+                'updated' => 1,
+                'messages' => [],
+            ]], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+            $written = null;
+            [$store] = $this->chatFileHarness($seed, $written);
+            $store->append('alice', 'c1', 'user', 'Budget meeting tomorrow');
+            $saved = json_decode((string)$written, true);
+            self::assertSame('Budget meeting tomorrow', $saved[0]['title']);
+            // The derived title is served as-is (no longer normalized away).
+            self::assertSame('Budget meeting tomorrow', $store->list('alice')[0]['title']);
+        }
+    }
+
     public function testNewChatDoesNotReuseArchivedOrCustomizedEmptyChats(): void {
         $written = null;
         [$store] = $this->chatFileHarness(json_encode([
@@ -453,5 +496,209 @@ final class ChatStoreTest extends TestCase {
 		self::assertCount(2, $all);
 		self::assertSame('a2', $all[1]['id']);
 		self::assertTrue($all[1]['archived']);
+	}
+
+	private function conversationSeed(): string {
+		return json_encode([
+			[
+				'id' => 'c1',
+				'title' => 'Conv',
+				'created' => 1,
+				'updated' => 1,
+				'rev' => 5,
+				'messages' => [
+					['role' => 'user', 'text' => 'q1'],
+					['role' => 'assistant', 'text' => 'a1'],
+					['role' => 'user', 'text' => 'q2'],
+					['role' => 'assistant', 'text' => 'a2'],
+				],
+			],
+		], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+	}
+
+	public function testFailedRegenerateLeavesStoredHistoryIntact(): void {
+		$written = null;
+		[$store] = $this->chatFileHarness($this->conversationSeed(), $written);
+
+		// Issue #182: beginRegenerate must not truncate anything; the
+		// truncation is committed only when the new answer is persisted.
+		$result = $store->beginRegenerate('alice', 'c1', 0, null, 5);
+		self::assertTrue($result['ok']);
+		self::assertSame(6, $result['rev']);
+		self::assertSame('q1', $result['targetText']);
+
+		// Model call fails -> nothing appended. The stored history is intact.
+		$chat = $store->get('alice', 'c1');
+		self::assertCount(4, $chat['messages']);
+		self::assertSame('a1', $chat['messages'][1]['text']);
+		self::assertSame('a2', $chat['messages'][3]['text']);
+		// The internal pending marker is never exposed to clients.
+		self::assertArrayNotHasKey('regenerate', $chat);
+	}
+
+	public function testSuccessfulRegenerateCommitsTruncationWithAnswerToken(): void {
+		$written = null;
+		[$store] = $this->chatFileHarness($this->conversationSeed(), $written);
+
+		$result = $store->beginRegenerate('alice', 'c1', 0, null, 5);
+		self::assertTrue($result['ok']);
+
+		// The streamed answer is persisted with the revision token, which
+		// commits the deferred truncation atomically.
+		$store->append('alice', 'c1', 'assistant', 'a1-new', [], $result['rev']);
+
+		$chat = $store->get('alice', 'c1');
+		self::assertCount(2, $chat['messages']);
+		self::assertSame('q1', $chat['messages'][0]['text']);
+		self::assertSame('a1-new', $chat['messages'][1]['text']);
+		// The commit bumped the revision; the client tracks it for the next
+		// regenerate/edit.
+		self::assertSame(7, $chat['rev']);
+	}
+
+	public function testRegenerateEditCommitsNewUserTextWithTheAnswer(): void {
+		$written = null;
+		[$store] = $this->chatFileHarness($this->conversationSeed(), $written);
+
+		$result = $store->beginRegenerate('alice', 'c1', 0, 'q1-edited', 5);
+		self::assertTrue($result['ok']);
+		self::assertSame('q1-edited', $result['targetText']);
+
+		// Before the answer is persisted the original user text stays stored.
+		self::assertSame('q1', $store->get('alice', 'c1')['messages'][0]['text']);
+
+		$store->append('alice', 'c1', 'assistant', 'a1-new', [], $result['rev']);
+		$chat = $store->get('alice', 'c1');
+		self::assertCount(2, $chat['messages']);
+		self::assertSame('q1-edited', $chat['messages'][0]['text']);
+		self::assertSame('a1-new', $chat['messages'][1]['text']);
+	}
+
+	public function testPlainAppendCancelsPendingRegenerateWithoutTruncating(): void {
+		$written = null;
+		[$store] = $this->chatFileHarness($this->conversationSeed(), $written);
+
+		$result = $store->beginRegenerate('alice', 'c1', 0, null, 5);
+		self::assertTrue($result['ok']);
+
+		// A newer user action (e.g. from another tab) supersedes the pending
+		// regeneration: the messages are never truncated.
+		$store->append('alice', 'c1', 'user', 'q3');
+		self::assertCount(5, $store->get('alice', 'c1')['messages']);
+
+		// A late answer carrying the old token can no longer truncate the
+		// newer message; it is appended as a plain message.
+		$store->append('alice', 'c1', 'assistant', 'a1-late', [], $result['rev']);
+		$chat = $store->get('alice', 'c1');
+		self::assertCount(6, $chat['messages']);
+		self::assertSame('q3', $chat['messages'][4]['text']);
+		self::assertSame('a1-late', $chat['messages'][5]['text']);
+	}
+
+	public function testRegenerateConflictsAndValidation(): void {
+		$written = null;
+		[$store] = $this->chatFileHarness($this->conversationSeed(), $written);
+
+		// Stale revision (chat was modified elsewhere) -> conflict.
+		self::assertSame('conflict', $store->beginRegenerate('alice', 'c1', 0, null, 4)['error']);
+
+		// Unknown chat -> not_found.
+		self::assertSame('not_found', $store->beginRegenerate('alice', 'nope', 0, null, 5)['error']);
+
+		// Invalid target (assistant message / out of range / empty edit) -> invalid.
+		self::assertSame('invalid', $store->beginRegenerate('alice', 'c1', 1, null, 5)['error']);
+		self::assertSame('invalid', $store->beginRegenerate('alice', 'c1', 99, null, 5)['error']);
+		self::assertSame('invalid', $store->beginRegenerate('alice', 'c1', 0, '   ', 5)['error']);
+
+		// First regenerate is allowed from the current revision.
+		$first = $store->beginRegenerate('alice', 'c1', 0, null, 5);
+		self::assertTrue($first['ok']);
+		// The same client (same base revision) may retry after a failure.
+		$retry = $store->beginRegenerate('alice', 'c1', 0, null, 5);
+		self::assertTrue($retry['ok']);
+		self::assertSame(7, $retry['rev']);
+		// A different base revision while a regeneration is pending -> conflict.
+		self::assertSame('conflict', $store->beginRegenerate('alice', 'c1', 0, null, 6)['error']);
+	}
+
+	public function testRepairStoreReportsCorruptionWithoutWritingAndAppliesWithBackup(): void {
+		$raw = '{"broken": tru'; // truncated/invalid JSON
+		$written = null;
+		$backup = null;
+		[$store] = $this->repairHarness($raw, $written, $backup);
+
+		// Dry run: corrupt store is preserved, nothing is written.
+		$report = $store->repairStore('alice', false);
+		self::assertSame('corrupt', $report['status']);
+		self::assertNull($written);
+		self::assertNull($backup);
+
+		// Apply: the damaged file is backed up first, then replaced with a
+		// minimal valid store (no parseable chats survived).
+		$report = $store->repairStore('alice', true);
+		self::assertSame('repaired', $report['status']);
+		self::assertSame(0, $report['kept']);
+		self::assertNotNull($report['backup']);
+		self::assertSame($raw, $backup);
+		self::assertSame([], json_decode((string)$written, true));
+		// The repaired store is usable again.
+		self::assertSame([], $store->list('alice'));
+	}
+
+	public function testRepairStoreKeepsParseableChatsAndLeavesValidStoreAlone(): void {
+		// Valid JSON but not a list (a single chat object): salvageable.
+		$raw = json_encode(['id' => 'c9', 'title' => 'Survivor', 'messages' => [['role' => 'user', 'text' => 'q']]]);
+		$written = null;
+		$backup = null;
+		[$store] = $this->repairHarness($raw, $written, $backup);
+
+		$report = $store->repairStore('alice', true);
+		self::assertSame('repaired', $report['status']);
+		self::assertSame(1, $report['kept']);
+		$recovered = json_decode((string)$written, true);
+		self::assertCount(1, $recovered);
+		self::assertSame('c9', $recovered[0]['id']);
+		self::assertSame('Survivor', $recovered[0]['title']);
+
+		// A valid store needs no repair.
+		$written = null;
+		$backup = null;
+		[$store2] = $this->repairHarness($this->conversationSeed(), $written, $backup);
+		$report = $store2->repairStore('alice', true);
+		self::assertSame('ok', $report['status']);
+		self::assertNull($written);
+		self::assertNull($backup);
+	}
+
+	private function repairHarness(string $raw, ?string &$written, ?string &$backup): array {
+		$factory = $this->createMock(IAppDataFactory::class);
+		$appData = $this->createMock(IAppData::class);
+		$chats = $this->createMock(ISimpleFolder::class);
+		$userFolder = $this->createMock(ISimpleFolder::class);
+		$file = $this->createMock(ISimpleFile::class);
+		$logger = $this->createMock(LoggerInterface::class);
+		$lockingProvider = $this->createMock(ILockingProvider::class);
+		$lockingProvider->method('acquireLock');
+		$lockingProvider->method('releaseLock');
+
+		$factory->method('get')->with('eva_ai')->willReturn($appData);
+		$appData->method('getFolder')->with('chats')->willReturn($chats);
+		$chats->method('getFolder')
+			->with(substr(hash('sha256', 'alice'), 0, 40))
+			->willReturn($userFolder);
+		$userFolder->method('fileExists')->willReturnCallback(static fn(string $name): bool => $name === 'chats.json');
+		$userFolder->method('getFile')->with('chats.json')->willReturn($file);
+		$userFolder->method('newFile')->willReturnCallback(static function (string $name, string $content) use (&$backup, $file) {
+			$backup = $content;
+			return $file;
+		});
+		$file->method('getContent')->willReturnCallback(static function () use (&$written, $raw): string {
+			return $written ?? $raw;
+		});
+		$file->method('putContent')->willReturnCallback(static function (string $content) use (&$written): void {
+			$written = $content;
+		});
+
+		return [new ChatStore($factory, $logger, $lockingProvider), $file];
 	}
 }

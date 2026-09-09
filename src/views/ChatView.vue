@@ -339,6 +339,7 @@ export default {
 }
 .chatview-root .cbtn:hover:not(:disabled) { filter: brightness(.95); }
 .chatview-root .cbtn:disabled { opacity: .6; cursor: default; }
+.chatview-root .cbtn-stop { background: var(--color-error, #e9322d); }
 .chatview-root .err { margin: 0 0 8px; color: var(--color-error, #e9322d); font-size: 13px; white-space: pre-wrap; }
 
 @media (min-width: 1400px) {

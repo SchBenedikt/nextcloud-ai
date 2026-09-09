@@ -12,9 +12,33 @@ follows [Semantic Versioning](https://semver.org/).
   streaming and tool calls, explicit quota errors and no automatic model fallback.
 - Optional bounded Tesseract OCR for images and scanned PDFs (#84).
 - Chunk provenance for headings, pages, slides and sheets; migration in 1.4.8 (#147).
+- The chat header now shows the real conversation title (restored from storage or
+  auto-derived from the first question) instead of a static placeholder, and
+  untitled chats display a translated "New chat" label instead of a hardcoded
+  German default that leaked into the English UI.
+- User messages get a copy button in the web and standalone chat, matching the
+  assistant answers.
+- `occ eva_ai:repair-chats <user>` inspects a corrupt chat store and - after
+  explicit `--yes` - backs the damaged file up and reconstructs a minimal valid
+  store that keeps every parseable chat (#184).
+
+### Changed
+
+- Streaming no longer yanks the scroll position: while an answer streams, the
+  chat only follows the bottom when the user is already near it, so reading
+  earlier context is not interrupted (web and standalone chat).
+- Regenerate/edit no longer truncates the stored history before the model
+  responds: the truncation and the optional user-text edit are committed
+  atomically with the persisted answer, so a failed model call or a reload
+  during regeneration never destroys the previous answer (#182). Regenerate
+  requests validate against the chat's revision, so two tabs editing the same
+  chat cannot silently overwrite each other - the stale tab gets an inline
+  "modified in another tab" notice instead.
 
 ### Fixed
 
+- Chat storage failures now distinguish a corrupt store (actionable message
+  pointing to `occ eva_ai:repair-chats`) from generic persistence errors (#184).
 - Use a shared Markdown parser for tables, nested lists/emphasis, safe links and
   streamed code fences, with matching chat styles and desktop/mobile browser checks.
 - Run Groq contracts against real Nextcloud interfaces in the PHP 8.2–8.4 CI matrix.

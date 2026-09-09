@@ -44,6 +44,14 @@ final class ChatRegenerateTest extends TestCase {
             ['alice', ['messageIndex' => 0, 'message' => []], $chat, 400],
         ] as [$user, $params, $stored, $status]) {
             [$controller, $store, $rag] = $this->controller($user, $params, $stored);
+            if ($user === null) {
+                $store->expects(self::never())->method('beginRegenerate');
+            } else {
+                $store->method('beginRegenerate')->willReturn(
+                    $stored === null ? ['ok' => false, 'error' => 'not_found'] : ['ok' => false, 'error' => 'invalid']
+                );
+            }
+            // Regenerate validation must never truncate, replace or call the model.
             $store->expects(self::never())->method('truncateAfter');
             $store->expects(self::never())->method('replaceMessage');
             $rag->expects(self::never())->method('askStream');
@@ -53,14 +61,43 @@ final class ChatRegenerateTest extends TestCase {
         }
     }
 
-    public function testRegenerateStreamsOnceWithStoredContextAndEditedPrompt(): void {
+    public function testConflictIsStreamedAsInlineErrorWithoutCallingTheModel(): void {
+        $chat = ['messages' => [['role' => 'user', 'text' => 'Hello'], ['role' => 'assistant', 'text' => 'Hi']], 'rev' => 3];
+        [$controller, $store, $rag] = $this->controller('alice', ['messageIndex' => 0, 'rev' => 3], $chat);
+        // Issue #182: a pending regeneration from another base revision is a
+        // concurrent-edit conflict; the stored history stays untouched.
+        $store->method('beginRegenerate')->with('alice', 'chat', 0, null, 3)
+            ->willReturn(['ok' => false, 'error' => 'conflict']);
+        $store->expects(self::never())->method('truncateAfter');
+        $store->expects(self::never())->method('replaceMessage');
+        $rag->expects(self::never())->method('askStream');
+        $response = $controller->chatRegenerate('chat');
+        self::assertSame(200, $response->getStatus());
+        $output = $this->createMock(IOutput::class);
+        $lines = [];
+        $output->method('setOutput')->willReturnCallback(static function (string $line) use (&$lines): void {
+            $lines[] = json_decode($line, true);
+        });
+        $response->callback($output);
+        self::assertSame('error', $lines[0]['type']);
+        self::assertStringContainsString('another tab', $lines[0]['message']);
+    }
+
+    public function testRegenerateStreamsLeadingTokenThenAnswerWithStoredContextAndEditedPrompt(): void {
         $chat = [
             'messages' => [['role' => 'user', 'text' => 'First'], ['role' => 'assistant', 'text' => 'Answer'], ['role' => 'user', 'text' => 'Old'], ['role' => 'assistant', 'text' => 'Obsolete']],
             'scopePath' => '/Work', 'instructions' => 'Be brief', 'persona' => 'editor',
+            'rev' => 4,
         ];
-        [$controller, $store, $rag] = $this->controller('alice', ['messageIndex' => 2, 'message' => ' Edited '], $chat);
-        $store->expects(self::once())->method('truncateAfter')->with('alice', 'chat', 3);
-        $store->expects(self::once())->method('replaceMessage')->with('alice', 'chat', 2, 'Edited');
+        [$controller, $store, $rag] = $this->controller('alice', ['messageIndex' => 2, 'message' => ' Edited ', 'rev' => 4], $chat);
+        // Issue #182: nothing is truncated up front; the client gets a
+        // revision token and the truncation is committed only when the
+        // persisted answer carries that token.
+        $store->method('beginRegenerate')->with('alice', 'chat', 2, 'Edited', 4)
+            ->willReturn(['ok' => true, 'rev' => 5, 'messageIndex' => 2, 'targetText' => 'Edited']);
+        $store->expects(self::never())->method('truncateAfter');
+        $store->expects(self::never())->method('replaceMessage');
+        $store->expects(self::once())->method('getChat')->with('alice', 'chat')->willReturn($chat);
         $line = "{\"type\":\"done\",\"answer\":\"New\"}\n";
         $rag->expects(self::once())->method('askStream')->with('alice', 'Edited', [
             ['role' => 'user', 'content' => 'First'], ['role' => 'assistant', 'content' => 'Answer'],
@@ -69,7 +106,14 @@ final class ChatRegenerateTest extends TestCase {
         self::assertSame(200, $response->getStatus());
         self::assertSame('no', (new \ReflectionProperty(\OCP\AppFramework\Http\Response::class, 'headers'))->getValue($response)['X-Accel-Buffering']);
         $output = $this->createMock(IOutput::class);
-        $output->expects(self::once())->method('setOutput')->with($line);
+        $lines = [];
+        $output->method('setOutput')->willReturnCallback(static function (string $line) use (&$lines): void {
+            $lines[] = json_decode($line, true);
+        });
         $response->callback($output);
+        self::assertSame('regenerate', $lines[0]['type']);
+        self::assertSame(5, $lines[0]['rev']);
+        self::assertSame('done', $lines[1]['type']);
+        self::assertSame('New', $lines[1]['answer']);
     }
 }

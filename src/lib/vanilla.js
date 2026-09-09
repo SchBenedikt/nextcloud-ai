@@ -20,6 +20,9 @@ export function mountChat(root, opts = {}) {
 
 	const { onRecent } = opts
 	let chatId = opts.chatId || null
+	// Title of the open chat (displayed in the header once known; null until
+	// a restored/new chat has told us its real title).
+	let chatTitle = null
 
 	const meta = (name) => {
 		const el = document.head.querySelector('meta[name="' + name + '"]')
@@ -30,9 +33,17 @@ export function mountChat(root, opts = {}) {
 	const STREAM_URL = meta('eva-ai-stream') || ''
 
 	const STORE_KEY = 'eva-ai.conv'
-	const history = []
 	const messages = []
 	let sending = false
+	let currentAbort = null
+	let stoppedByUser = false
+	// Monotonic per-chat revision (Issue #182): every persisted change bumps it
+	// server-side, and regenerate/edit requests validate against it so two tabs
+	// cannot silently overwrite each other. null until a chat is known.
+	let chatRev = null
+	// Revision handed back by the /regenerate stream; the persisted answer must
+	// carry it so the server commits the deferred truncation atomically.
+	let pendingRegenerateRev = null
 	const refs = []
 	let lastMd = 0
 	let trimmedMessages = 0
@@ -150,6 +161,12 @@ export function mountChat(root, opts = {}) {
 		if (m.role === 'user' && m.done) {
 			const actBar = document.createElement('div')
 			actBar.className = 'racts'
+			const cb2 = document.createElement('button')
+			cb2.className = 'ract'
+			cb2.title = t('Copy message')
+			cb2.textContent = '⧉'
+			cb2.addEventListener('click', () => copyText(String(m.text || ''), cb2))
+			actBar.appendChild(cb2)
 			const eb = document.createElement('button')
 			eb.className = 'ract'
 			eb.title = t('Edit message')
@@ -246,7 +263,10 @@ export function mountChat(root, opts = {}) {
 				m.text = text
 				m.done = true
 				renderAll(messages)
-				saveMessage('assistant', m.text).then(() => { if (onRecent) onRecent() })
+				// A regenerate confirmation must still commit the deferred
+				// truncation, so the revision token travels with the answer.
+				saveMessage('assistant', m.text, null, m.confirmation && m.confirmation.regenerateRev)
+					.then(() => { if (onRecent) onRecent() })
 			}
 			const disableButtons = (disabled) => {
 				approve.disabled = disabled
@@ -374,10 +394,14 @@ export function mountChat(root, opts = {}) {
 	input.type = 'text'
 	input.autocomplete = 'off'
 	input.placeholder = t('What do you want to do or know?')
+	input.setAttribute('aria-label', t('What do you want to do or know?'))
 	const sendBtn = document.createElement('button')
 	sendBtn.type = 'submit'
 	sendBtn.className = 'cbtn'
 	sendBtn.textContent = t('Send')
+	sendBtn.addEventListener('click', () => {
+		if (sending) stopStream()
+	})
 	form.append(input, sendBtn)
 
 	const err = document.createElement('div')
@@ -462,7 +486,7 @@ export function mountChat(root, opts = {}) {
 				else wrap.appendChild(chips)
 			}
 		}
-		scroll.scrollTop = scroll.scrollHeight
+		stickToBottom()
 	}
 
 	function renderSources(m) {
@@ -515,7 +539,7 @@ export function mountChat(root, opts = {}) {
 		return chips
 	}
 
-	function apiStream(path, body, onLine) {
+	function apiStream(path, body, onLine, signal) {
 		if (!path) return Promise.reject(new Error('No streaming endpoint'))
 		return fetch(path, {
 			method: 'POST',
@@ -526,6 +550,7 @@ export function mountChat(root, opts = {}) {
 				'requesttoken': REQUEST_TOKEN,
 			},
 			body: JSON.stringify(body),
+			signal,
 		}).then((r) => {
 			if (!r.ok || !r.body) {
 				return r.text().then((t) => { throw new Error('HTTP ' + r.status + ' ' + (t || '').slice(0, 200)) })
@@ -539,13 +564,36 @@ export function mountChat(root, opts = {}) {
 		try {
 			const c = await api('POST', '/chats', {})
 			chatId = (c && c.id) || null
+			if (c && c.rev != null) chatRev = parseInt(c.rev, 10) || null
 			return !!chatId
 		} catch (_) {
 			return false
 		}
 	}
 
-	function saveMessage(role, text, followups) {
+	// While a stream is running the send button turns into a Stop button.
+	// The server checks connection_aborted() between events, so aborting the
+	// fetch also stops the generation server-side.
+	const setStreamingUI = (active) => {
+		sendBtn.type = active ? 'button' : 'submit'
+		sendBtn.textContent = active ? t('Stop') : t('Send')
+		sendBtn.classList.toggle('cbtn-stop', active)
+	}
+	const stopStream = () => {
+		if (!sending) return
+		stoppedByUser = true
+		if (currentAbort) currentAbort.abort()
+	}
+
+	// Only follow the stream down while the user is already near the bottom:
+	// scrolling up to read earlier context must not be yanked back on every
+	// streamed delta.
+	const stickToBottom = (force = false) => {
+		const nearBottom = scroll.scrollHeight - scroll.scrollTop - scroll.clientHeight < 120
+		if (force || nearBottom) scroll.scrollTop = scroll.scrollHeight
+	}
+
+	function saveMessage(role, text, followups, regenerateRev) {
 		if (!chatId) return Promise.resolve(false)
 		const body = { role, text }
 		// Follow-up suggestions are persisted for assistant messages so the
@@ -553,10 +601,34 @@ export function mountChat(root, opts = {}) {
 		if (role === 'assistant' && Array.isArray(followups) && followups.length) {
 			body.followups = followups
 		}
+		// A regenerate answer carries the stream's revision token so the server
+		// commits the deferred truncation with this message (Issue #182).
+		if (regenerateRev != null) body.regenerateRev = regenerateRev
 		return api('POST', '/chats/' + chatId + '/messages', body)
-			.then(() => true)
+			.then((resp) => {
+				// Keep the client's revision in sync so the next regenerate/edit
+				// validates against the current stored state.
+				if (resp && resp.rev != null) chatRev = parseInt(resp.rev, 10) || null
+				return true
+			})
 			.catch(() => false)
 	}
+
+	// The server derives the title of an untitled chat from its first user
+	// message, so the header follows once that message has been persisted.
+	const refreshTitle = () => {
+		if (chatTitle !== null || !chatId) return
+		api('GET', '/chats/' + chatId).then((chat) => {
+			if (chat && chat.title) {
+				chatTitle = chat.title
+				h1.textContent = chat.title
+			}
+		}).catch(() => {})
+	}
+	const saveUserMessage = (text) => saveMessage('user', text).then((ok) => {
+		if (ok) refreshTitle()
+		return ok
+	})
 
 	function refreshCustomizePill(chat) {
 		// Per-chat custom instructions (Issue #90): a subtle header indicator
@@ -579,17 +651,24 @@ export function mountChat(root, opts = {}) {
 				scopePill.hidden = true
 			}
 			refreshCustomizePill(chat)
+			// The header shows the real chat title instead of the generic
+			// placeholder once the conversation has been given one.
+			if (chat && chat.title) {
+				chatTitle = chat.title
+				h1.textContent = chat.title
+			}
+			if (chat && chat.rev != null) chatRev = parseInt(chat.rev, 10) || null
 			messages.length = 0
 			trimmedMessages = (chat && chat.trimmed) ? parseInt(chat.trimmed, 10) || 0 : 0
-		;(chat.messages || []).forEach((m) => messages.push({
-			role: m.role === 'user' || m.role === 'assistant' ? m.role : 'assistant',
-			text: m.text || '',
-			thinking: '',
-			followups: Array.isArray(m.followups) ? m.followups : [],
-			done: true,
-		}))
-		renderAll(messages)
-	})
+			;(chat.messages || []).forEach((m) => messages.push({
+				role: m.role === 'user' || m.role === 'assistant' ? m.role : 'assistant',
+				text: m.text || '',
+				thinking: '',
+				followups: Array.isArray(m.followups) ? m.followups : [],
+				done: true,
+			}))
+			renderAll(messages)
+		})
 }
 
 	function personaLabel(slug) {
@@ -708,12 +787,14 @@ export function mountChat(root, opts = {}) {
 	}
 
 	// Streams a server-side re-run (regenerate or edit) and persists the new
-	// answer. The /regenerate endpoint truncates the chat and applies the
-	// edited user text *before* the stream starts, so this is the single
-	// generation: we never duplicate the user message in the history (the
-	// server builds it from the stored messages) and never run Ollama twice.
-	// Confirmation events are surfaced as an inline panel exactly like in the
-	// normal send flow.
+	// answer. The /regenerate endpoint validates the request and hands back a
+	// revision token without truncating anything; the truncation and the
+	// optional user-text edit are committed atomically with the persisted
+	// answer (Issue #182), so a failed model call never destroys the stored
+	// history. The server builds the history from the stored messages, so we
+	// never duplicate the user message or run the model twice. Confirmation
+	// events are surfaced as an inline panel exactly like in the normal send
+	// flow.
 	const streamRegenerateAnswer = (body) => {
 		if (!chatId) {
 			err.textContent = t('Chat could not be updated.')
@@ -721,16 +802,24 @@ export function mountChat(root, opts = {}) {
 			return
 		}
 		sending = true
-		sendBtn.disabled = true
+		currentAbort = new AbortController()
+		stoppedByUser = false
+		setStreamingUI(true)
 		err.style.display = 'none'
 		messages.push({ role: 'assistant', text: '', thinking: '', done: false, tools: [] })
 		renderAll(messages)
 		const unlock = () => {
 			sending = false
-			sendBtn.disabled = false
+			setStreamingUI(false)
 		}
-		apiStream(API_BASE + '/chats/' + chatId + '/regenerate', body, (ev) => {
+		apiStream(API_BASE + '/chats/' + chatId + '/regenerate', { ...body, rev: chatRev }, (ev) => {
 			const last = messages[messages.length - 1]
+			if (ev.type === 'regenerate') {
+				// The server commits the deferred truncation only when the
+				// persisted answer carries this revision token (Issue #182).
+				pendingRegenerateRev = ev.rev != null ? ev.rev : null
+				return
+			}
 			if (!last || last.role !== 'assistant' || last.done) return
 			if (ev.type === 'thinking') {
 				last.thinking = (last.thinking || '') + (ev.delta || '')
@@ -764,6 +853,9 @@ export function mountChat(root, opts = {}) {
 					risk: ev.risk || 'mutating',
 					missing,
 					resolved: false,
+					// The answer persisted after approval must still commit the
+					// deferred truncation (Issue #182).
+					regenerateRev: pendingRegenerateRev,
 				}
 				last.text = missing.length
 					? t('Some required details are missing - please complete them below.')
@@ -778,27 +870,46 @@ export function mountChat(root, opts = {}) {
 				last.followups = ev.followups || []
 				last.done = true
 				updateMessage(messages.length - 1)
-				saveMessage('assistant', last.text, last.followups)
+				// Persist with the regeneration token: the server truncates and
+				// applies the edit atomically with this message. Without the
+				// token (or after a failure) the stored history stays intact.
+				saveMessage('assistant', last.text, last.followups, pendingRegenerateRev)
 					.then(() => { if (onRecent) onRecent() })
 					.catch(() => {})
+				pendingRegenerateRev = null
 			} else if (ev.type === 'error') {
 				last.text = '⚠️ ' + ev.message
 				last.done = true
+				pendingRegenerateRev = null
 			}
-			scroll.scrollTop = scroll.scrollHeight
-		}).catch((e) => {
+			stickToBottom()
+		}, currentAbort.signal).catch((e) => {
 			const last = messages[messages.length - 1]
 			if (last && last.role === 'assistant' && !last.done) {
-				last.text = (last.text || '') + '⚠️ Error: ' + String(e && e.message ? e.message : e)
+				if (!stoppedByUser) {
+					last.text = (last.text || '') + '⚠️ Error: ' + String(e && e.message ? e.message : e)
+				}
 				last.done = true
 				updateMessage(messages.length - 1)
+				// Persist the partial answer when the user stopped the stream so
+				// a reload keeps the conversation instead of dropping it. The
+				// token commits the truncation with the partial text.
+				if (stoppedByUser && last.text.trim() !== '') {
+					saveMessage('assistant', last.text, null, pendingRegenerateRev).catch(() => {})
+				}
 			}
-			err.textContent = t('Network error — see console.')
-			err.style.display = 'block'
+			pendingRegenerateRev = null
+			if (!stoppedByUser) {
+				err.textContent = t('Network error — see console.')
+				err.style.display = 'block'
+			}
 		}).finally(() => {
+			stoppedByUser = false
+			currentAbort = null
+			pendingRegenerateRev = null
 			unlock()
 			input.focus()
-			scroll.scrollTop = scroll.scrollHeight
+			stickToBottom()
 		})
 	}
 
@@ -832,8 +943,10 @@ export function mountChat(root, opts = {}) {
 		const msg = input.value.trim()
 		if (!msg || sending) return
 		sending = true
+		currentAbort = new AbortController()
+		stoppedByUser = false
+		setStreamingUI(true)
 		input.value = ''
-		sendBtn.disabled = true
 		err.style.display = 'none'
 		if (emptyEl.parentNode) scroll.removeChild(emptyEl)
 
@@ -859,9 +972,15 @@ export function mountChat(root, opts = {}) {
 					last.tools = last.tools || []
 					last.tools.push({ name: ev.name || '?', state: 'running' })
 				} else if (ev.type === 'tool_result') {
+					// Match by name from the end: several tools can run in the
+					// same round, and their results may arrive in any order.
 					if (last.tools && last.tools.length) {
-						const t = last.tools[last.tools.length - 1]
-						t.state = ev.ok ? 'ok' : 'bad'
+						for (let t = last.tools.length - 1; t >= 0; t--) {
+							if (last.tools[t].name === ev.name && last.tools[t].state === 'running') {
+								last.tools[t].state = ev.ok ? 'ok' : 'bad'
+								break
+							}
+						}
 					}
 					// Direct (no-dialog) executions still surface a created share
 					// link as a copyable chip in the bubble.
@@ -879,7 +998,7 @@ export function mountChat(root, opts = {}) {
 						? t('Some required details are missing - please complete them below.')
 						: t('Please review this action and confirm it explicitly.')
 					last.done = true
-					saveMessage('user', msg)
+					saveUserMessage(msg)
 					renderAll(messages)
 				} else if (ev.type === 'done') {
 					last.text = ev.answer || last.text
@@ -889,34 +1008,49 @@ export function mountChat(root, opts = {}) {
 					// Persist the pair in conversation order. Sending both requests at
 					// once lets the per-user file lock acquire them in either order,
 					// which can swap the question and answer after a reload.
-					saveMessage('user', msg)
+					saveUserMessage(msg)
 						.then((savedUser) => savedUser ? saveMessage('assistant', last.text, last.followups) : false)
 						.then((saved) => { if (saved && onRecent) onRecent() })
 						.catch(() => {})
 				} else if (ev.type === 'error') {
 					last.text = '⚠️ ' + ev.message
 					last.done = true
-					saveMessage('user', msg)
+					saveUserMessage(msg)
 				}
 				updateMessage(messages.length - 1)
-			}).catch((e) => {
+			}, currentAbort.signal).catch((e) => {
 				const last = messages[messages.length - 1]
 				if (last && last.role === 'assistant' && !last.done) {
-					last.text = (last.text || '') + '⚠️ Error: ' + String(e && e.message ? e.message : e)
+					if (!stoppedByUser) {
+						last.text = (last.text || '') + '⚠️ Error: ' + String(e && e.message ? e.message : e)
+					}
 					last.done = true
 					updateMessage(messages.length - 1)
+					// Persist the partial answer when the user stopped the stream so
+					// a reload keeps the conversation instead of dropping it.
+					if (stoppedByUser && last.text.trim() !== '') {
+						saveUserMessage(msg)
+							.then((ok) => ok ? saveMessage('assistant', last.text) : false)
+							.catch(() => {})
+					}
 				}
-				err.textContent = t('Network error — see console.')
-				err.style.display = 'block'
+				if (!stoppedByUser) {
+					err.textContent = t('Network error — see console.')
+					err.style.display = 'block'
+				}
 			}).finally(() => {
+				stoppedByUser = false
+				currentAbort = null
 				sending = false
-				sendBtn.disabled = false
+				setStreamingUI(false)
 				input.focus()
-				scroll.scrollTop = scroll.scrollHeight
+				stickToBottom()
 			})
 		}).catch(() => {
+			stoppedByUser = false
+			currentAbort = null
 			sending = false
-			sendBtn.disabled = false
+			setStreamingUI(false)
 			err.textContent = t('Chat could not be created.')
 			err.style.display = 'block'
 		})

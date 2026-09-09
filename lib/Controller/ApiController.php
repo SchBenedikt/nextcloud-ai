@@ -85,6 +85,23 @@ class ApiController extends OCSController {
         return $this->userId ?: null;
     }
 
+    /**
+     * Map chat-storage failures to an actionable response (Issue #184). A
+     * corrupt store is preserved by design (the #173 fail-safe) and points
+     * the user to the admin recovery command instead of a generic 500.
+     */
+    private function chatErrorResponse(\Throwable $e): DataResponse {
+        $message = $e->getMessage();
+        if (str_contains($message, 'Invalid EVA chat data')
+            || str_contains($message, 'Invalid EVA folder registry')) {
+            return new DataResponse([
+                'error' => 'corrupt_store',
+                'message' => 'The EVA chat storage for this user is corrupt and was preserved. An administrator can recover it with: occ eva_ai:repair-chats <user>',
+            ], 500);
+        }
+        return new DataResponse(['error' => 'Unable to persist chat data'], 500);
+    }
+
     #[NoAdminRequired]
     public function status(): DataResponse {
         $user = $this->requireUser();
@@ -940,13 +957,13 @@ class ApiController extends OCSController {
                         return;
                     }
                     try {
-                    $ev = json_decode((string)$line, true);
-                    if (is_array($ev) && ($ev['type'] ?? '') === 'done') {
-                        $answer = (string)($ev['answer'] ?? '');
-                        if ($answer !== '' && $this->config->get('notify_on_complete') === '1') {
-                            $this->sendAnswerNotification($user, $answer);
+                        $ev = json_decode((string)$line, true);
+                        if (is_array($ev) && ($ev['type'] ?? '') === 'done') {
+                            $answer = (string)($ev['answer'] ?? '');
+                            if ($answer !== '' && $this->config->get('notify_on_complete') === '1') {
+                                $this->sendAnswerNotification($user, $answer);
+                            }
                         }
-                    }
                         yield $line;
                         if ($this->clientDisconnected()) {
                             return;
@@ -992,10 +1009,7 @@ class ApiController extends OCSController {
                 ->setDateTime(new \DateTime());
             $manager->notify($notification);
         } catch (\Throwable $e) {
-            try {
-                1;
-            } catch (\Throwable $ignored) {
-            }
+            // Notifications must never break the chat stream.
         }
     }
 
@@ -1023,7 +1037,7 @@ class ApiController extends OCSController {
             $chat = $this->chatStore->create($user, (string)($this->requestParam('title') ?? ''));
             return new DataResponse($chat);
         } catch (\Throwable $e) {
-            return new DataResponse(['error' => 'Unable to persist chat data'], 500);
+            return $this->chatErrorResponse($e);
         }
     }
 
@@ -1036,7 +1050,7 @@ class ApiController extends OCSController {
         try {
             return new DataResponse(['ok' => true, 'deleted' => $this->chatStore->deleteAll($user)]);
         } catch (\Throwable $e) {
-            return new DataResponse(['error' => 'Unable to persist chat data'], 500);
+            return $this->chatErrorResponse($e);
         }
     }
 
@@ -1046,7 +1060,11 @@ class ApiController extends OCSController {
         if ($user === null) {
             return new DataResponse(['error' => 'Not logged in'], 401);
         }
-        $chat = $this->chatStore->get($user, $id);
+        try {
+            $chat = $this->chatStore->get($user, $id);
+        } catch (\Throwable $e) {
+            return $this->chatErrorResponse($e);
+        }
         if ($chat === null) {
             return new NotFoundResponse();
         }
@@ -1065,7 +1083,7 @@ class ApiController extends OCSController {
             }
             return new DataResponse(['ok' => true]);
         } catch (\Throwable $e) {
-            return new DataResponse(['error' => 'Unable to persist chat data'], 500);
+            return $this->chatErrorResponse($e);
         }
     }
 
@@ -1096,7 +1114,18 @@ class ApiController extends OCSController {
                     $followups = array_slice(array_map('strval', $decoded), 0, 3);
                 }
             }
-            $this->chatStore->append($user, $id, $role, $text, $followups);
+            $rawRegenerateRev = $this->requestParam('regenerateRev');
+            $regenerateRev = null;
+            if (is_int($rawRegenerateRev)) {
+                $regenerateRev = $rawRegenerateRev;
+            } elseif (is_string($rawRegenerateRev) && $rawRegenerateRev !== '' && ctype_digit($rawRegenerateRev)) {
+                $regenerateRev = (int)$rawRegenerateRev;
+            }
+            $this->chatStore->append($user, $id, $role, $text, $followups, $regenerateRev);
+            // Return the bumped revision so the client can validate later
+            // regenerate/edit requests against the current state (Issue #182).
+            $appended = $this->chatStore->getChat($user, $id);
+            $rev = $appended !== null ? (int)($appended['rev'] ?? 0) : 0;
 
             // After an assistant message is saved, learn from the full chat.
             if ($role === 'assistant') {
@@ -1110,9 +1139,9 @@ class ApiController extends OCSController {
                 }
             }
 
-            return new DataResponse(['ok' => true]);
+            return new DataResponse(['ok' => true, 'rev' => $rev]);
         } catch (\Throwable $e) {
-            return new DataResponse(['error' => 'Unable to persist chat data'], 500);
+            return $this->chatErrorResponse($e);
         }
     }
 
@@ -1133,7 +1162,7 @@ class ApiController extends OCSController {
             $this->chatStore->setTitle($user, $id, $title);
             return new DataResponse(['ok' => true]);
         } catch (\Throwable $e) {
-            return new DataResponse(['error' => 'Unable to persist chat data'], 500);
+            return $this->chatErrorResponse($e);
         }
     }
 
@@ -1181,7 +1210,7 @@ class ApiController extends OCSController {
             }
             return new DataResponse(['ok' => true]);
         } catch (\Throwable $e) {
-            return new DataResponse(['error' => 'Unable to persist chat data'], 500);
+            return $this->chatErrorResponse($e);
         }
     }
 
@@ -1282,38 +1311,47 @@ class ApiController extends OCSController {
         $rawIndex = $this->requestParam('messageIndex', -1);
         $messageIndex = is_int($rawIndex) ? $rawIndex : -1;
         $rawText = $this->requestParam('message');
+        if ($rawText !== null && !is_string($rawText)) {
+            $body = json_encode(['type' => 'error', 'message' => 'A valid user message index and non-empty message are required']) . "\n";
+            return new StreamTraversableResponse(new \ArrayIterator([$body]), 400, $headers);
+        }
         $newText = is_string($rawText) ? trim($rawText) : null;
-
-        $chat = $this->chatStore->getChat($user, $id);
-        if ($chat === null) {
-            $body = json_encode(['type' => 'error', 'message' => 'Chat not found']) . "\n";
-            return new StreamTraversableResponse(new \ArrayIterator([$body]), 404, $headers);
+        // The revision the client loaded (Issue #182): a mismatch means the
+        // chat was modified in another tab and the regenerate is rejected.
+        $rawRev = $this->requestParam('rev');
+        $expectedRev = null;
+        if (is_int($rawRev)) {
+            $expectedRev = $rawRev;
+        } elseif (is_string($rawRev) && $rawRev !== '' && ctype_digit($rawRev)) {
+            $expectedRev = (int)$rawRev;
         }
 
-        $messages = $chat['messages'];
-        if ($messageIndex < 0 || $messageIndex >= count($messages)
-            || ($messages[$messageIndex]['role'] ?? '') !== 'user'
-            || ($rawText !== null && !is_string($rawText))
-            || $newText === ''
-            || ($newText === null && trim((string)($messages[$messageIndex]['text'] ?? '')) === '')) {
+        $result = $this->chatStore->beginRegenerate($user, $id, $messageIndex, $newText, $expectedRev);
+        if (!($result['ok'] ?? false)) {
+            $error = (string)($result['error'] ?? 'invalid');
+            if ($error === 'conflict') {
+                // Streamed with HTTP 200 like the normal error events so the
+                // chat UI can show the message inline instead of a network error.
+                $body = json_encode(['type' => 'error', 'message' => 'This chat was modified in another tab - reload to continue']) . "\n";
+                return new StreamTraversableResponse(new \ArrayIterator([$body]), 200, $headers);
+            }
+            if ($error === 'not_found') {
+                $body = json_encode(['type' => 'error', 'message' => 'Chat not found']) . "\n";
+                return new StreamTraversableResponse(new \ArrayIterator([$body]), 404, $headers);
+            }
             $body = json_encode(['type' => 'error', 'message' => 'A valid user message index and non-empty message are required']) . "\n";
             return new StreamTraversableResponse(new \ArrayIterator([$body]), 400, $headers);
         }
 
-        // Truncate after the target message index (keep messages 0..messageIndex).
-        $this->chatStore->truncateAfter($user, $id, $messageIndex + 1);
+        // Nothing has been truncated yet: the pending regeneration is committed
+        // by append() only when the new answer is persisted (Issue #182), so a
+        // failed model call leaves the stored history fully intact.
+        $chat = $this->chatStore->getChat($user, $id);
+        $messages = $chat['messages'] ?? [];
 
-        // If editing a user message, replace it.
-        if ($newText !== null && ($messages[$messageIndex]['role'] ?? '') === 'user') {
-            $this->chatStore->replaceMessage($user, $id, $messageIndex, $newText);
-            $targetMessage = $newText;
-        } else {
-            $targetMessage = $messages[$messageIndex]['text'] ?? '';
-        }
-
-        // Build history from remaining messages.
+        // Build history from the messages before the target (unchanged state).
         $history = [];
-        for ($i = 0; $i < $messageIndex; $i++) {
+        for ($i = 0; $i < $result['messageIndex']; $i++) {
             $m = $messages[$i];
             $history[] = ['role' => $m['role'] ?? 'user', 'content' => $m['text'] ?? ''];
         }
@@ -1322,13 +1360,20 @@ class ApiController extends OCSController {
         // (Issue #90), resolved from the stored metadata.
         $gen = $this->ragService->askStream(
             $user,
-            $targetMessage,
+            $result['targetText'],
             $history,
             trim((string)($chat['scopePath'] ?? '')),
             trim((string)($chat['instructions'] ?? '')),
             trim((string)($chat['persona'] ?? ''))
         );
-        return new StreamTraversableResponse($gen, 200, $headers);
+        // The leading regenerate event hands the client the revision that the
+        // persisted answer must carry to commit the truncation atomically.
+        $rev = (int)$result['rev'];
+        $stream = (function () use ($gen, $rev): \Generator {
+            yield json_encode(['type' => 'regenerate', 'rev' => $rev]) . "\n";
+            yield from $gen;
+        })();
+        return new StreamTraversableResponse($stream, 200, $headers);
     }
 
     #[NoAdminRequired]

@@ -260,6 +260,7 @@
         .form input:focus { border-color: var(--color-primary-element, #00679c); outline: none; background: var(--color-background-hover, #f1f2f4); }
         .form button { padding: 10px 18px; border: 0; border-radius: 8px; background: var(--color-primary-element, #00679c); color: var(--color-primary-element-text, #fff); font-size: 14px; font-weight: 600; cursor: pointer; }
         .form button:disabled { opacity: .6; cursor: default; }
+        .form button.stop { background: var(--color-error, #e9322d); }
         .err { color: var(--color-error, #e9322d); font-size: 13px; margin: 8px 4px 0; white-space: pre-wrap; }
         @media (max-width: 600px) {
             #content { padding: 18px 12px 20px; }

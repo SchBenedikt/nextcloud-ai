@@ -47,8 +47,12 @@ import { escHtml, mdInline, mdToHtml, citedSources, copyText } from './lib/chat-
 	var messages = []
 	var refs = []
 	var sending = false
+	var currentAbort = null
+	var stoppedByUser = false
 	var lastMd = 0
 	var chatId = null
+	// Title of the open chat (null until a restored/new chat reported one).
+	var chatTitle = null
 	var exportButton = document.getElementById('export')
 
 	function localizePage() {
@@ -242,6 +246,14 @@ import { escHtml, mdInline, mdToHtml, citedSources, copyText } from './lib/chat-
 			cb.addEventListener('click', function () { copyText(String(m.text || ''), cb) })
 			b.appendChild(cb)
 		}
+		if (m.role === 'user' && m.done) {
+			var cb2 = document.createElement('button')
+			cb2.className = 'rcopy'
+			cb2.title = tr('Copy message')
+			cb2.textContent = '⧉'
+			cb2.addEventListener('click', function () { copyText(String(m.text || ''), cb2) })
+			b.appendChild(cb2)
+		}
 		wrap.appendChild(b)
 
 		if (m.tools && m.tools.length) {
@@ -346,7 +358,7 @@ import { escHtml, mdInline, mdToHtml, citedSources, copyText } from './lib/chat-
 					approve.textContent = tr('Confirm and run')
 					return
 				}
-				api('POST', '/confirmTool', { name: m.confirmation.name, arguments: m.confirmation.arguments || {} })
+				api('POST', '/confirmTool', { name: m.confirmation.name, arguments: args })
 					.then(function (result) {
 						if (!result || !result.ok) {
 							finish('⚠️ ' + (result && result.error || tr('The action could not be completed.')))
@@ -448,7 +460,7 @@ import { escHtml, mdInline, mdToHtml, citedSources, copyText } from './lib/chat-
 				else wrap.appendChild(fu)
 			}
 		}
-		els.msgs.scrollTop = els.msgs.scrollHeight
+		stickToBottom()
 	}
 
 	function renderSources(m) {
@@ -501,7 +513,7 @@ import { escHtml, mdInline, mdToHtml, citedSources, copyText } from './lib/chat-
 		return chips
 	}
 
-	function apiStream(body, onLine) {
+	function apiStream(body, onLine, signal) {
 		if (!STREAM_URL) {
 			return Promise.reject(new Error(tr('No streaming endpoint')))
 		}
@@ -514,6 +526,7 @@ import { escHtml, mdInline, mdToHtml, citedSources, copyText } from './lib/chat-
 				'requesttoken': REQUEST_TOKEN,
 			},
 			body: JSON.stringify(body),
+			signal: signal,
 		}).then(function (r) {
 			if (!r.ok || !r.body) {
 				return r.text().then(function (t) { throw new Error('HTTP ' + r.status + ' ' + (t || '').slice(0, 200)) })
@@ -540,6 +553,33 @@ import { escHtml, mdInline, mdToHtml, citedSources, copyText } from './lib/chat-
 			.catch(function () { return false })
 	}
 
+	// Only follow the stream down while the user is already near the bottom:
+	// scrolling up to read earlier context must not be yanked back on every
+	// streamed delta.
+	function stickToBottom(force) {
+		var nearBottom = els.msgs.scrollHeight - els.msgs.scrollTop - els.msgs.clientHeight < 120
+		if (force || nearBottom) els.msgs.scrollTop = els.msgs.scrollHeight
+	}
+
+	// The server derives the title of an untitled chat from its first user
+	// message, so the header follows once that message has been persisted.
+	function refreshTitle() {
+		if (chatTitle !== null || !chatId) return
+		api('GET', '/chats/' + encodeURIComponent(chatId)).then(function (chat) {
+			if (chat && chat.title) {
+				chatTitle = chat.title
+				var heading = document.querySelector('.head h1')
+				if (heading) heading.textContent = chat.title
+			}
+		}).catch(function () {})
+	}
+	function saveUserMessage(text) {
+		return saveMessage('user', text).then(function (ok) {
+			if (ok) refreshTitle()
+			return ok
+		})
+	}
+
 	function ensureChat() {
 		if (chatId) return Promise.resolve(true)
 		return api('POST', '/chats', {})
@@ -562,6 +602,11 @@ import { escHtml, mdInline, mdToHtml, citedSources, copyText } from './lib/chat-
 					done: true,
 				})
 			})
+			// The header shows the real chat title instead of the generic
+			// placeholder once the conversation has been given one.
+			chatTitle = (chat && chat.title) || null
+			var heading = document.querySelector('.head h1')
+			if (heading) heading.textContent = chatTitle || tr('Chat with your files')
 			renderAll(messages)
 		})
 	}
@@ -581,7 +626,7 @@ import { escHtml, mdInline, mdToHtml, citedSources, copyText } from './lib/chat-
 			entry.className = 'chat-entry' + (c.id === chatId ? ' active' : '')
 			var t = document.createElement('span')
 			t.className = 't'
-			t.textContent = c.title
+			t.textContent = c.title || tr('New chat')
 			t.addEventListener('click', function () {
 				chatId = c.id
 				loadChat(c.id).then(renderChatListAgain)
@@ -631,8 +676,12 @@ import { escHtml, mdInline, mdToHtml, citedSources, copyText } from './lib/chat-
 		var msg = els.input.value.trim()
 		if (!msg || sending) return
 		sending = true
+		currentAbort = new AbortController()
+		stoppedByUser = false
 		els.input.value = ''
-		els.send.disabled = true
+		els.send.disabled = false
+		els.send.textContent = tr('Stop')
+		els.send.classList.add('stop')
 		showErr('')
 
 		messages.push({ role: 'user', text: msg })
@@ -645,7 +694,7 @@ import { escHtml, mdInline, mdToHtml, citedSources, copyText } from './lib/chat-
 		}
 
 		ensureChat().then(function () {
-			return apiStream({ message: msg, history: history }, function (ev) {
+			return apiStream({ message: msg, history: history, chatId: chatId }, function (ev) {
 				var last = messages[messages.length - 1]
 				if (!last || last.role !== 'assistant' || last.done) return
 				if (ev.type === 'thinking') {
@@ -656,9 +705,15 @@ import { escHtml, mdInline, mdToHtml, citedSources, copyText } from './lib/chat-
 					last.tools = last.tools || []
 					last.tools.push({ name: ev.name || '?', state: 'running' })
 				} else if (ev.type === 'tool_result') {
+					// Match by name from the end: several tools can run in the
+					// same round, and their results may arrive in any order.
 					if (last.tools && last.tools.length) {
-						var t = last.tools[last.tools.length - 1]
-						t.state = ev.ok ? 'ok' : 'bad'
+						for (var ti = last.tools.length - 1; ti >= 0; ti--) {
+							if (last.tools[ti].name === ev.name && last.tools[ti].state === 'running') {
+								last.tools[ti].state = ev.ok ? 'ok' : 'bad'
+								break
+							}
+						}
 					}
 				} else if (ev.type === 'confirmation') {
 					last.confirmation = {
@@ -669,36 +724,55 @@ import { escHtml, mdInline, mdToHtml, citedSources, copyText } from './lib/chat-
 					}
 					last.text = tr('Please review this action and confirm it explicitly.')
 					last.done = true
-					saveMessage('user', msg)
+					saveUserMessage(msg)
 					renderAll(messages)
 				} else if (ev.type === 'done') {
 					last.text = ev.answer || last.text
 					last.sources = citedSources(last.text, ev.sources || [])
 					last.followups = ev.followups || []
 					last.done = true
-					Promise.all([saveMessage('user', msg), saveMessage('assistant', last.text, last.followups)])
+					// Persist the pair in conversation order. Sending both requests
+					// at once lets the per-user file lock acquire them in either
+					// order, which can swap the question and answer after a reload.
+					saveUserMessage(msg)
+						.then(function (savedUser) { return savedUser ? saveMessage('assistant', last.text, last.followups) : false })
 						.then(renderChatListAgain)
 						.catch(function () {})
 				} else if (ev.type === 'error') {
 					last.text = '⚠️ ' + ev.message
 					last.done = true
-					saveMessage('user', msg)
+					saveUserMessage(msg)
 				}
 				updateMessage(messages.length - 1)
+			}, currentAbort.signal).catch(function (e) {
+				var last = messages[messages.length - 1]
+				if (last && last.role === 'assistant' && !last.done) {
+					if (!stoppedByUser) {
+						last.text = (last.text || '') + '⚠️ ' + tr('Error: {error}', { error: String(e && e.message ? e.message : e) })
+					}
+					last.done = true
+					updateMessage(messages.length - 1)
+					// Persist the partial answer when the user stopped the stream so
+					// a reload keeps the conversation instead of dropping it.
+					if (stoppedByUser && last.text.trim() !== '') {
+						saveUserMessage(msg)
+							.then(function (ok) { return ok ? saveMessage('assistant', last.text) : false })
+							.catch(function () {})
+					}
+				}
+				if (!stoppedByUser) {
+					showErr(tr('Network error — see console.'))
+				}
+			}).finally(function () {
+				stoppedByUser = false
+				currentAbort = null
+				sending = false
+				els.send.disabled = false
+				els.send.textContent = tr('Send')
+				els.send.classList.remove('stop')
+				els.input.focus()
+				stickToBottom()
 			})
-		}).catch(function (e) {
-			var last = messages[messages.length - 1]
-			if (last && last.role === 'assistant' && !last.done) {
-				last.text = (last.text || '') + '⚠️ ' + tr('Error: {error}', { error: String(e && e.message ? e.message : e) })
-				last.done = true
-				updateMessage(messages.length - 1)
-			}
-			showErr(tr('Network error — see console.'))
-		}).finally(function () {
-			sending = false
-			els.send.disabled = false
-			els.input.focus()
-			els.msgs.scrollTop = els.msgs.scrollHeight
 		})
 	}
 
@@ -706,7 +780,14 @@ import { escHtml, mdInline, mdToHtml, citedSources, copyText } from './lib/chat-
 		e.preventDefault()
 		send()
 	})
-	if (els.send) els.send.addEventListener('click', send)
+	if (els.send) els.send.addEventListener('click', function () {
+		if (sending) {
+			stoppedByUser = true
+			if (currentAbort) currentAbort.abort()
+			return
+		}
+		send()
+	})
 	if (els.newchat) els.newchat.addEventListener('click', function () {
 		if (els.newchat.disabled) return
 		els.newchat.disabled = true
