@@ -33,6 +33,8 @@ Legend: **P** = personal setting (per-user override possible),
 
 | Key | Scope | Default | Range / values | Unit | Effect |
 |---|---|---|---|---|---|
+| `chat_provider` | P | `ollama` | `ollama`, `groq` | – | Chat provider; embeddings remain on Ollama. |
+| `groq_model` | P | `openai/gpt-oss-20b` | `openai/gpt-oss-20b`, `openai/gpt-oss-120b` | – | Groq Free Plan model selection; no fallback. |
 | `ollama_url` | P | `http://127.0.0.1:11434` | plain `http(s)://host[:port]`, no path/credentials | – | Base URL of the Ollama HTTP API; trailing slashes are stripped. |
 | `chat_model` | P | `gemma4:cloud` | non-empty string | – | Model used for chat/generation. |
 | `chat_model_fallback` | P | `''` | comma-separated model names | – | Models tried in order when the primary chat model is unavailable (Issue #86). |
@@ -143,3 +145,50 @@ sudo -u www-data php occ config:list apps --app=eva_ai
 - **Talk bot does not appear** → run `occ eva_ai:talk:setup`, then activate the
   bot per conversation. If the bot stays silent on ordinary messages, check
   `talk_classify_all` (default `0` keeps human smalltalk away from the LLM).
+
+### Optional local OCR
+
+`ocr_enabled` is a per-user boolean (`0` by default, `1` to enable).
+`ocr_language` defaults to `eng`; use installed Tesseract language codes such as
+`deu+eng` (at most four identifiers). Settings report missing Tesseract/Poppler.
+Images and textless PDFs are processed locally. Hard limits: 20 MiB input,
+30 PDF pages, 25 megapixels per input image, 2 MiB extracted text and 60 seconds
+per file. PDFs are rendered one page at a time at no more than 2000 pixels per
+side. OCR errors preserve the last-good index. Install language packages on the
+server; the app never downloads documents or language data to a remote service.
+
+## Groq API credentials and free usage
+
+Select Groq in Settings, obtain a key from https://console.groq.com/keys, paste
+it into the password field, save and use Check connection. The connection check
+queries the model catalog; it does not generate tokens. Keys are encrypted with
+Nextcloud ICrypto in the current user's preferences (`groq_api_key_encrypted`).
+They are never inherited from an administrator, returned in settings or included
+in exports. A blank field preserves the saved key; the removal switch deletes it.
+`groq_api_key` and `remove_groq_api_key` are write-only settings request fields.
+Deleting EVA user data also removes the credential.
+
+Requests use the fixed HTTPS endpoint https://api.groq.com/openai/v1; redirects
+are disabled. Messages, retrieved excerpts and tool outputs leave your server.
+This also applies to Assistant tasks and Talk requests using that user's provider.
+Groq does not supply embeddings here: indexing and retrieval over indexed files
+still require Ollama. Empty-index chat does not require a local model.
+
+The model selection follows https://console.groq.com/docs/rate-limits (checked
+2026-09-09). Free accounts have request and token quotas; paid accounts may be
+billed by Groq even for these models. EVA never switches models automatically.
+HTTP 429 is surfaced as a quota error; shorten large conversations or retry later.
+Streaming, function calls and non-streaming generation share the same selection.
+Ollama context size and dedicated summary/fallback models do not apply to Groq.
+Groq generation is capped at 1024 output tokens per request.
+
+Groq requests use a conservative 28,000-byte serialized input budget (an estimate,
+not an exact token count). Older complete conversation turns are removed first;
+system instructions and the current turn, including tool calls/results, remain
+intact. If the current turn alone is too large, EVA asks for less context before
+sending it. Tool descriptions are shortened; tool names and schema constraints
+remain available. Saved chat history is unchanged. Groq uses local greeting and
+follow-up templates to avoid consuming the account quota for background requests.
+Rate-limit errors distinguish oversized requests from temporary limits and show
+numeric Limit/Used/Requested and Retry-After values when supplied by Groq, without
+exposing raw provider errors, organization IDs or credentials.

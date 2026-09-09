@@ -1,13 +1,17 @@
 # EVA (eva_ai) — Private RAG assistant for Nextcloud
 
-Chat with a **locally running** LLM (Ollama) about your own Nextcloud files. EVA
-indexes your files, splits them into chunks, creates embeddings and makes them
-searchable via **hybrid retrieval** (vector + BM25 with RRF fusion). Answers
-always cite the source file path the model took the information from.
+Chat with Ollama or an optional **Groq API key** about your Nextcloud files.
+EVA indexes files locally and combines vector search with BM25 retrieval.
 
-> 🔒 **Privacy by design:** everything runs on your own server — no external RAG
-> service, no external database, no cloud, no API keys. Only Ollama is involved,
-> and it runs locally too.
+Ollama remains the default provider. With Groq selected, messages, retrieved
+file excerpts and tool results are sent to Groq. Document embeddings still use
+Ollama. Ordinary chat with an empty document index works without Ollama.
+
+To use Groq, open **Settings → Chat provider → Groq**, paste your personal API
+key, choose GPT-OSS 20B or 120B, save, then check the connection. Both are listed
+on Groq's [Free Plan](https://console.groq.com/docs/rate-limits) as of 2026-09-09.
+Your account plan and quotas determine cost; EVA cannot enforce account billing.
+There is no automatic model fallback. See [configuration](docs/CONFIGURATION.md).
 
 ---
 
@@ -19,7 +23,7 @@ in **[docs/FEATURES.md](docs/FEATURES.md)**. Die vollständigen Ein- und
 Ausgabeparameter aller Modellwerkzeuge sind in **[TOOLS.md](TOOLS.md)**
 dokumentiert.
 
-- **Local & private**: pure PHP, no external AI service; only a local Ollama instance
+- **Provider choice**: Ollama by default; optional Groq chat with an encrypted personal API key
 - **Hybrid retrieval**: vector search + lexical search (BM25), fused with RRF
 - **Broad format support**: text (txt, md, code, csv, tsv, html, json, xml, yaml,
   toml, rtf, sql, …), PDF, Office (docx/xlsx/pptx incl. macro/template variants),

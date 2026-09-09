@@ -36,6 +36,10 @@ class Chunker {
         $chunks = [];
         foreach ($this->sectionsWithHeadings($text) as $section) {
             foreach ($this->chunkSection($section['heading'], $section['body'], $chunkSize, $overlap) as $c) {
+                $c['provenance'] = ['version' => 1, 'section' => mb_substr($section['heading'], 0, 200), 'section_offset' => $section['offset'], 'heading_path' => $section['headings']];
+                if (preg_match('/^\[Page (\d+)\]$/', $section['heading'], $match)) $c['provenance']['page'] = (int)$match[1];
+                if (preg_match('/^\[Slide (\d+)\]$/', $section['heading'], $match)) $c['provenance']['slide'] = (int)$match[1];
+                if (preg_match('/^\[Sheet: (.+)\]$/u', $section['heading'], $match)) $c['provenance']['sheet'] = mb_substr($match[1], 0, 100);
                 $chunks[] = $c;
             }
         }
@@ -54,18 +58,29 @@ class Chunker {
         $sections = [];
         $currentHeading = '';
         $currentBody = '';
+        $offset = 0;
+        $sectionOffset = 0;
+        $headings = [];
         foreach ($lines as $line) {
             $trimmed = trim($line);
-            if (preg_match('/^#{1,6}\s+\S/u', $trimmed)) {
+            if (preg_match('/^#{1,6}\s+\S/u', $trimmed) || preg_match('/^\[[^\]\r\n]{1,100}\]$/u', $trimmed)) {
                 // Start a new section: flush the previous one.
-                $sections[] = ['heading' => $currentHeading, 'body' => $currentBody];
+                $sections[] = ['heading' => $currentHeading, 'body' => $currentBody, 'offset' => $sectionOffset, 'headings' => array_values($headings)];
                 $currentHeading = $trimmed;
+                $sectionOffset = $offset;
+                if (preg_match('/^(#{1,6})\s+(.*)$/u', $trimmed, $match)) {
+                    $level = strlen($match[1]);
+                    $headings = array_filter($headings, static fn($key) => $key < $level, ARRAY_FILTER_USE_KEY);
+                    $headings[$level] = mb_substr($match[2], 0, 100);
+                }
+                $offset += mb_strlen($line) + 1;
                 $currentBody = '';
                 continue;
             }
             $currentBody .= ($currentBody === '' ? '' : "\n") . $line;
+            $offset += mb_strlen($line) + 1;
         }
-        $sections[] = ['heading' => $currentHeading, 'body' => $currentBody];
+        $sections[] = ['heading' => $currentHeading, 'body' => $currentBody, 'offset' => $sectionOffset, 'headings' => array_values($headings)];
         return $sections;
     }
 
@@ -132,13 +147,14 @@ class Chunker {
 
     private function splitSentences(string $text): array {
         // Keep punctuation with the sentence; normalise line breaks as separators.
-        $text = preg_replace('/\n/', ' ', $text);
-        $parts = preg_split('/(?<=[.!?:;])[ \t]+(?=\S)/u', $text) ?: [];
+        // Preserve line boundaries for rows and paragraphs.
+        $parts = preg_split('/(?<=[.!?:;])[ \t]+(?=\S)|(?<=\n)/u', $text) ?: [];
         $result = [];
         foreach ($parts as $p) {
+            $separator = str_ends_with($p, "\n") ? "\n" : ' ';
             $p = trim($p);
             if ($p !== '') {
-                $result[] = $p . ' ';
+                $result[] = $p . $separator;
             }
         }
         return $result;

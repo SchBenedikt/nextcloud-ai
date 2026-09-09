@@ -7,27 +7,49 @@ namespace OCA\EvaAi\Service;
 use OCP\Files\Folder;
 use OCP\Files\Node;
 use OCP\Files\SimpleFS\ISimpleFile;
+use OCP\Lock\ILockingProvider;
 
 /** File IDs survive renames; an unrelated replacement cannot inherit a path grant. */
 final class FileOwnershipStore {
-    public function __construct(private ISimpleFile $file, private Folder $home) {
+    public function __construct(
+        private ISimpleFile $file,
+        private Folder $home,
+        private ILockingProvider $lockingProvider,
+        private string $userId,
+    ) {
     }
 
     public function contains(Node $node): bool {
-        return in_array($node->getId(), $this->read(), true);
+        return $this->withLock(fn(): bool => in_array($node->getId(), $this->read(), true));
     }
 
     public function remember(Node $node): void {
-        $ids = $this->read();
-        $id = $node->getId();
-        if (is_int($id) && $id > 0 && !in_array($id, $ids, true)) {
-            $ids[] = $id;
-            $this->write($ids);
-        }
+        $this->withLock(function () use ($node): void {
+            $ids = $this->read();
+            $id = $node->getId();
+            if (is_int($id) && $id > 0 && !in_array($id, $ids, true)) {
+                $ids[] = $id;
+                $this->write($ids);
+            }
+        });
     }
 
     public function forget(int $id): void {
-        $this->write(array_values(array_filter($this->read(), static fn(int $candidate): bool => $candidate !== $id)));
+        $this->withLock(function () use ($id): void {
+            $this->write(array_values(array_filter($this->read(), static fn(int $candidate): bool => $candidate !== $id)));
+        });
+    }
+
+    // Reads may prune stale markers, so they need the same exclusive lock
+    // as updates. Use the shared provider to coordinate across app servers.
+    private function withLock(callable $operation): mixed {
+        $key = 'eva_ai/ownership/' . substr(hash('sha256', $this->userId), 0, 40);
+        $this->lockingProvider->acquireLock($key, ILockingProvider::LOCK_EXCLUSIVE);
+        try {
+            return $operation();
+        } finally {
+            $this->lockingProvider->releaseLock($key, ILockingProvider::LOCK_EXCLUSIVE);
+        }
     }
 
     /** @return list<int> */

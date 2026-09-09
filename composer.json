@@ -4,7 +4,8 @@
     "license": "AGPL-3.0-or-later",
     "type": "project",
     "require-dev": {
-        "phpunit/phpunit": "^10.5 || ^11.0"
+        "phpunit/phpunit": "^10.5 || ^11.0",
+        "psr/http-client": "^1.0"
     },
     "autoload": {
         "psr-4": {

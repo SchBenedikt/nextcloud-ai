@@ -3,3 +3,9 @@ ragtest.tmp.php
 *.tmp
 vendor/
 .phpunit.result.cache
+
+/node_modules
+
+/test-results/
+/playwright-report/
+/nextcloud-api/

@@ -6,6 +6,38 @@ follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+
+- Optional Groq chat with encrypted per-user API keys, GPT-OSS 20B/120B selection,
+  streaming and tool calls, explicit quota errors and no automatic model fallback.
+- Optional bounded Tesseract OCR for images and scanned PDFs (#84).
+- Chunk provenance for headings, pages, slides and sheets; migration in 1.4.8 (#147).
+
+### Fixed
+
+- Use a shared Markdown parser for tables, nested lists/emphasis, safe links and
+  streamed code fences, with matching chat styles and desktop/mobile browser checks.
+- Run Groq contracts against real Nextcloud interfaces in the PHP 8.2–8.4 CI matrix.
+
+- Bound Groq request history, avoid background greeting/follow-up API calls, and
+  report actual token limits/retry timing instead of a generic Free Plan error.
+
+- Atomically claim confirmed actions before execution and retain durable receipts
+  so concurrent confirmations cannot execute the same proposal twice (#179).
+
+
+### Fixed (September 8 review)
+
+- Correct regenerate/edit streaming responses and reject invalid message targets before changing history (#170).
+- Bound citation ranges and preserve first-mention order (#171); fix fenced-code boundaries and literal inline code/URLs (#172).
+- Preserve corrupt chat/folder storage instead of overwriting it, and serialize getChat reads (#173).
+- Keep archived/customized/scoped empty chats separate from New chat (#174).
+- Share a UTF-8-safe NDJSON reader between chat frontends, including final unterminated events and explicit parse errors (#175).
+- Serialize ownership-marker reads and updates with Nextcloud's shared locking provider (#176).
+- Use the longstanding callback response API for streaming on supported Nextcloud versions (#177).
+- Align frontend metadata with app version 1.4.7 and derive webpack's version from package metadata (#178).
+- Add frontend behavioral tests to npm test and CI. See docs/REVIEW-2026-09-08.md for validation and remaining limitations, including native confirmation concurrency (#179).
+
 ### Added (1.4.7)
 
 - **Provider capability layer (Issues #86/#148/#151):** EVA now reads each

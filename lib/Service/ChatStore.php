@@ -122,7 +122,11 @@ class ChatStore {
             // Keine doppelten leeren Chats: ein noch leerer Chat wird wiederverwendet.
             $all = $this->read($user);
             foreach ($all as $existing) {
-                if (count($existing['messages'] ?? []) === 0) {
+                if (count($existing['messages'] ?? []) === 0
+                    && empty($existing['archived']) && empty($existing['instructions'])
+                    && empty($existing['scopePath']) && empty($existing['folder'])
+                    && in_array($existing['persona'] ?? '', ['', 'default'], true)
+                    && ($title === null || $title === '' || ($existing['title'] ?? '') === $this->clipTitle($title))) {
                     $existing['reused'] = true;
                     return $existing;
                 }
@@ -424,10 +428,9 @@ class ChatStore {
             return [];
         } catch (\Throwable $e) {
             $this->logger->warning('eva_ai: folder registry unreadable', ['exception' => $e->getMessage()]);
-            return [];
+            throw $e;
         }
-        $data = json_decode($raw, true);
-        return is_array($data) ? $data : [];
+        return $this->decodeStoredList($raw, 'folder registry');
     }
 
     private function writeFoldersLocked(string $user, array $folders): void {
@@ -547,13 +550,7 @@ class ChatStore {
      * @return array{id:string,title:string,created:int,updated:int,messages:list<array{role:string,text:string}>}|null
      */
     public function getChat(string $user, string $id): ?array {
-        $all = $this->read($user);
-        foreach ($all as $chat) {
-            if (($chat['id'] ?? '') === $id) {
-                return $chat;
-            }
-        }
-        return null;
+        return $this->get($user, $id);
     }
 
     /** @return list<array{id:string,title:string,created:int,updated:int,messages:list<array{role:string,text:string}>}> */
@@ -566,8 +563,20 @@ class ChatStore {
             $this->logger->warning('eva_ai: chat folder not readable (permissions?)', ['user' => $user]);
             throw $e;
         }
-        $data = json_decode($raw, true);
-        return is_array($data) ? $data : [];
+        return $this->decodeStoredList($raw, 'chat data');
+    }
+
+    private function decodeStoredList(string $raw, string $label): array {
+        try {
+            $data = json_decode($raw, true, 512, JSON_THROW_ON_ERROR);
+        } catch (\JsonException $e) {
+            throw new \RuntimeException('Invalid EVA ' . $label . '; stored data was preserved.', 0, $e);
+        }
+        if (!str_starts_with(ltrim($raw), '[') || !is_array($data) || !array_is_list($data)
+            || count(array_filter($data, 'is_array')) !== count($data)) {
+            throw new \RuntimeException('Invalid EVA ' . $label . '; stored data was preserved.');
+        }
+        return $data;
     }
 
     private function write(string $user, array $data): void {

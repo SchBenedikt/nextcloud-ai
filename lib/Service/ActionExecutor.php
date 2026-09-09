@@ -105,7 +105,8 @@ class ActionExecutor {
         private EmailService $email,
         private SharesService $shares,
         private ActivityService $activity,
-        private ToolPolicy $toolPolicy
+        private ToolPolicy $toolPolicy,
+        private \OCP\Lock\ILockingProvider $lockingProvider
     ) {
     }
 
@@ -1394,7 +1395,7 @@ class ActionExecutor {
         if ($userId === '') {
             throw new \RuntimeException('No ownership namespace');
         }
-        return new FileOwnershipStore($this->marksFile($userId), $home);
+        return new FileOwnershipStore($this->marksFile($userId), $home, $this->lockingProvider, $userId);
     }
 
     private function markOwned(Folder $home, string $path): void {

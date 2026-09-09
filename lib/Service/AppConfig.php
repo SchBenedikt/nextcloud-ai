@@ -16,14 +16,14 @@ class AppConfig {
      * default (Issue #73).
      */
     private const USER_SETTINGS = [
-        'ollama_url', 'embedding_model', 'chat_model', 'chat_model_fallback',
+        'chat_provider', 'groq_model', 'ollama_url', 'embedding_model', 'chat_model', 'chat_model_fallback',
         'embedding_model_fallback', 'summary_model', 'top_k', 'chunk_size',
         'chunk_overlap', 'max_file_size', 'max_files_per_run', 'scope_path',
         'context_size', 'temperature', 'actions_enabled', 'exec_write_types',
         'exec_write_max_chars', 'exec_delete_mode',        'notify_on_complete',
         'mail_index_enabled', 'mail_index_max', 'talk_history_size',
         'talk_bot_trigger', 'talk_classify_all', 'exclude_paths',
-        'chat_retention_days', 'embed_batch_size',
+        'chat_retention_days', 'embed_batch_size', 'ocr_enabled', 'ocr_language',
     ];
 
     /**
@@ -43,6 +43,8 @@ class AppConfig {
 
     private const DEFAULTS = [
         'index_enabled' => '0',
+        'chat_provider' => 'ollama',
+        'groq_model' => 'openai/gpt-oss-20b',
         'ollama_url' => 'http://127.0.0.1:11434',
         'embedding_model' => 'nomic-embed-text',
         'chat_model' => 'gemma4:cloud',
@@ -55,6 +57,8 @@ class AppConfig {
         // proofread, …). Empty means the chat chain is used (Issue #86).
         'summary_model' => '',
         'embed_batch_size' => '24',
+        'ocr_enabled' => '0',
+        'ocr_language' => 'eng',
         'top_k' => '6',
         'chunk_size' => '900',
         'chunk_overlap' => '120',
@@ -154,6 +158,8 @@ class AppConfig {
     private function isUserStateKey(string $key): bool {
         return in_array($key, self::USER_STATE_KEYS, true);
     }
+
+    public function userId(): ?string { return $this->userId; }
 
     public function get(string $key): string {
         if ($this->userId !== null && $this->isUserSetting($key)) {
@@ -276,7 +282,7 @@ class AppConfig {
      * per-user runtime state) when their account is deleted (Issue #83).
      */
     public function deleteUserValues(string $userId): void {
-        foreach (self::USER_SCOPED_KEYS as $key) {
+        foreach ([...self::USER_SCOPED_KEYS, ProviderCredentials::KEY] as $key) {
             try {
                 $this->config->deleteUserValue($userId, self::APP, $key);
             } catch (\Throwable $e) {
@@ -318,6 +324,12 @@ class AppConfig {
      * malformed, non-numeric, or out-of-range values.
      */
     public function validateValue(string $key, mixed $value): ?string {
+        if ($key === 'chat_provider') return is_string($value) && in_array($value, ['ollama', 'groq'], true) ? null : 'must be ollama or groq';
+        if ($key === 'groq_model') return is_string($value) && in_array($value, Groq::MODELS, true) ? null : 'must be a supported Groq free-plan chat model';
+        if ($key === 'ocr_language') {
+            return is_string($value) && preg_match('/^[a-zA-Z0-9_]{1,24}(?:\+[a-zA-Z0-9_]{1,24}){0,3}$/D', $value)
+                ? null : 'must be a Tesseract language identifier or up to four identifiers joined with +';
+        }
         if ($key === 'exec_write_types') {
             if (!is_scalar($value)) {
                 return 'must be a comma-separated list of file extensions';
@@ -337,7 +349,7 @@ class AppConfig {
             }
             return null;
         }
-        if (in_array($key, ['actions_enabled', 'notify_on_complete', 'mail_index_enabled', 'index_enrolled', 'talk_classify_all'], true)) {
+        if (in_array($key, ['ocr_enabled', 'actions_enabled', 'notify_on_complete', 'mail_index_enabled', 'index_enrolled', 'talk_classify_all'], true)) {
             return is_scalar($value) && in_array((string)$value, ['0', '1', 'true', 'false', 'on', 'off'], true)
                 ? null : 'must be a boolean value';
         }

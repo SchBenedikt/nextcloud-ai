@@ -1,3 +1,5 @@
+import MarkdownIt from 'markdown-it'
+
 /**
  * Shared chat rendering utilities used by both the Vue vanilla mount
  * and the standalone page.  Extracted to eliminate duplication
@@ -10,72 +12,34 @@ export function escHtml(s) {
 		({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]))
 }
 
-/** Applies inline markdown formatting (code, bold, strikethrough, italic, links). */
+// One parser for both chat surfaces. HTML is displayed as text; images are
+// rendered as links so assistant output cannot trigger remote tracking loads.
+const markdown = new MarkdownIt({ html: false, linkify: true, breaks: true, typographer: false })
+markdown.renderer.rules.link_open = (tokens, index, options, env, self) => {
+	tokens[index].attrSet('target', '_blank')
+	tokens[index].attrSet('rel', 'noopener noreferrer')
+	return self.renderToken(tokens, index, options)
+}
+markdown.renderer.rules.image = (tokens, index) => {
+	const token = tokens[index]
+	const href = token.attrGet('src') || ''
+	const label = token.content || href
+	if (!markdown.validateLink(href) || /^data:/i.test(href)) return escHtml(label)
+	return '<a href="' + escHtml(href) + '" target="_blank" rel="noopener noreferrer">' + escHtml(label) + '</a>'
+}
+const fence = markdown.renderer.rules.fence
+markdown.renderer.rules.fence = (...args) => fence(...args).replace('<pre>', '<pre class="md-pre">')
+markdown.renderer.rules.table_open = () => '<div class="md-table-scroll" tabindex="0"><table>\n'
+markdown.renderer.rules.table_close = () => '</table></div>\n'
+
+/** Render raw inline Markdown, escaping HTML and rejecting unsafe links. */
 export function mdInline(text) {
-	return text
-		.replace(/`([^`]+)`/g, '<code>$1</code>')
-		.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
-		.replace(/~~([^~]+)~~/g, '<del>$1</del>')
-		.replace(/\*([^*]+)\*/g, '<em>$1</em>')
-		.replace(/\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g, '<a href="$2" target="_blank" rel="noopener">$1</a>')
-		.replace(/(^|[\s(])(https?:\/\/[^\s<]+)/g, '$1<a href="$2" target="_blank" rel="noopener">$2</a>')
+	return markdown.renderInline(String(text ?? ''))
 }
 
-/** Converts block-level markdown to HTML. */
+/** Render Markdown, including incomplete fenced code during streaming. */
 export function mdToHtml(src) {
-	const blocks = String(src || '').split(/(```+)/)
-	let html = ''
-	for (let i = 0; i < blocks.length; i++) {
-		if (i % 2 === 1) {
-			const fence = blocks[i]
-			if (fence[0] !== '`') continue
-			const body = blocks[++i] ?? ''
-			const nl = body.indexOf('\n')
-			const lang = (nl > 0 ? body.slice(0, nl) : '').trim().replace(/[^a-zA-Z0-9_+-]/g, '')
-			const code = body.slice(nl > 0 ? nl + 1 : 0).replace(/[ \t]+\n?$/, '')
-			html += '<pre class="md-pre"><code>' + escHtml(code) + '</code></pre>\n'
-			continue
-		}
-		const block = blocks[i]
-		if (!block) continue
-		const lines = block.split('\n')
-		let para = []
-		let listType = null
-		const flushPara = () => {
-			if (para.length) {
-				html += '<p>' + para.join('<br>') + '</p>\n'
-				para = []
-			}
-		}
-		const flushList = () => {
-			if (listType === 'ul' || listType === 'ol') {
-				html += '</' + listType + '>\n'
-				listType = null
-			}
-		}
-		for (const rawLine of lines) {
-			const s = rawLine.trim()
-			if (s === '') { flushPara(); flushList(); continue }
-			const h = /^(#{1,6})\s+(.*)$/.exec(s)
-			if (h) { flushPara(); flushList(); html += '<h' + h[1].length + '>' + mdInline(escHtml(h[2])) + '</h' + h[1].length + '>\n'; continue }
-			if (/^(-{3,}|\*{3,}|_{3,})$/.test(s)) { flushPara(); flushList(); html += '<hr>\n'; continue }
-			if (s[0] === '>') { flushPara(); flushList(); html += '<blockquote>' + mdInline(escHtml(s.slice(1).trim())) + '</blockquote>\n'; continue }
-			const ul = /^[-*+]\s+(.*)$/.exec(s)
-			const ol = /^(\d+)[.):]\s+(.*)$/.exec(s)
-			if (ul || ol) {
-				flushPara()
-				const type = ul ? 'ul' : 'ol'
-				if (listType !== type) { flushList(); html += '<' + type + '>\n'; listType = type }
-				html += '<li>' + mdInline(escHtml((ul ? ul[1] : ol[2]) || '')) + '</li>\n'
-				continue
-			}
-			flushList()
-			para.push(mdInline(escHtml(s)))
-		}
-		flushPara()
-		flushList()
-	}
-	return html
+	return markdown.render(String(src ?? ''))
 }
 
 /**
@@ -83,6 +47,7 @@ export function mdToHtml(src) {
  * Supports both single `[N]` and range `[1-3]` syntax.
  */
 export function citedSources(text, sources) {
+	sources = Array.isArray(sources) ? sources : []
 	const nums = new Set()
 	if (text) {
 		const re = /\[([\d,\s\-–]+)\]/g
@@ -92,17 +57,17 @@ export function citedSources(text, sources) {
 				if (!tok) return
 				const range = tok.match(/^(\d+)[-–](\d+)$/)
 				if (range) {
-					for (let n = parseInt(range[1], 10); n <= parseInt(range[2], 10); n++) nums.add(n)
+					const start = Math.max(1, Number(range[1]))
+					const end = Math.min(sources.length, Number(range[2]))
+					for (let n = start; n <= end; n++) nums.add(n)
 				} else {
 					const n = parseInt(tok, 10)
-					if (!isNaN(n)) nums.add(n)
+					if (n >= 1 && n <= sources.length) nums.add(n)
 				}
 			})
 		}
 	}
-	return (sources || [])
-		.map((src, i) => ({ ref: i + 1, src }))
-		.filter((x) => nums.has(x.ref))
+	return Array.from(nums, ref => ({ ref, src: sources[ref - 1] }))
 }
 
 /** Copies text to clipboard with fallback. */

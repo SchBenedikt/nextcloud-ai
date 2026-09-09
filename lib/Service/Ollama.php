@@ -58,8 +58,19 @@ class Ollama {
         private IClientService $clientService,
         private LoggerInterface $logger,
         private ICacheFactory $cacheFactory,
-        private EmbeddingCache $embeddingCache
+        private EmbeddingCache $embeddingCache,
+        private ?Groq $groq = null
     ) {
+    }
+
+    private function groqClient(): Groq {
+        return $this->groq ??= new Groq($this->config, $this->clientService, \OCP\Server::get(ProviderCredentials::class));
+    }
+    public function groqInfo(): array { return $this->groqClient()->info(); }
+    public function saveGroqKey(string $key): void { $this->groqClient()->saveKey($key); }
+    public function checkGroq(): array { return $this->groqClient()->check(); }
+    public function selectedChatModel(): string {
+        return $this->config->get('chat_provider') === 'groq' ? $this->config->get('groq_model') : $this->config->get('chat_model');
     }
 
     private function client() {
@@ -716,6 +727,10 @@ class Ollama {
      * @return array{answer?:string,error?:string,model?:string}
      */
     public function chat(array $messages, array $tools = [], ?int $timeout = null, ?callable $onProgress = null, ?string $preferredModel = null): array {
+        if ($this->config->get('chat_provider') === 'groq') {
+            if ($onProgress !== null) return $this->chatStreamingAccumulate($messages, $tools, $timeout, $this->config->get('groq_model'), $onProgress, null);
+            return $this->groqClient()->chat($messages, $tools, $timeout ?? self::CHAT_TIMEOUT);
+        }
         $model = $this->resolveChatModel($preferredModel);
         if ($model['error'] !== null) {
             return ['error' => $model['error']];
@@ -838,6 +853,10 @@ class Ollama {
      * @return \Generator<string,array{type:string,delta:string},void,void>
      */
     public function chatStream(array $messages, array $tools = [], ?int $timeout = null, ?string $preferredModel = null): \Generator {
+        if ($this->config->get('chat_provider') === 'groq') {
+            yield from $this->groqClient()->chatStream($messages, $tools, $timeout ?? self::CHAT_TIMEOUT);
+            return;
+        }
         $model = $this->resolveChatModel($preferredModel);
         if ($model['error'] !== null) {
             yield ['type' => 'error', 'delta' => $model['error']];

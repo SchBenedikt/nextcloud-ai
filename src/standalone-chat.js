@@ -1,3 +1,5 @@
+import './lib/markdown.css'
+import { readNdjson } from './lib/ndjson'
 /**
  * Standalone chat entry point (Issue #75).
  *
@@ -516,26 +518,7 @@ import { escHtml, mdInline, mdToHtml, citedSources, copyText } from './lib/chat-
 			if (!r.ok || !r.body) {
 				return r.text().then(function (t) { throw new Error('HTTP ' + r.status + ' ' + (t || '').slice(0, 200)) })
 			}
-			var reader = r.body.getReader()
-			var dec = new TextDecoder()
-			var buf = ''
-			function pump() {
-				return reader.read().then(function (res) {
-					if (res.done) return
-					buf += dec.decode(res.value, { stream: true })
-					var nl
-					while ((nl = buf.indexOf('\n')) >= 0) {
-						var line = buf.slice(0, nl).trim()
-						buf = buf.slice(nl + 1)
-						if (!line) continue
-						var ev
-						try { ev = JSON.parse(line) } catch (e) { continue }
-						if (ev) onLine(ev)
-					}
-					return pump()
-				})
-			}
-			return pump()
+			return readNdjson(r.body, onLine)
 		})
 	}
 
