@@ -25,7 +25,7 @@
         **Nextcloud Integration**
         Eva can perform actions directly within Nextcloud: search for files, create documents, rename items, and work with templates across your entire home space — including Notes and Contacts.
 
-        **Ollama & Groq Support**
+        **Ollama and Groq Support**
         Start fully local with Ollama (no configuration required) or optionally connect to Groq for cloud-hosted inference. Embeddings always run locally via Ollama.
 
         **Zero Configuration**
