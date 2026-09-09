@@ -30,6 +30,12 @@ follows [Semantic Versioning](https://semver.org/).
   finalized with the resulting node afterwards, so an interruption between the
   two leaves a pending record that the next ownership check reconciles into a
   grant instead of a silently missing one (#183).
+- Browser tests exercise the standalone chat end-to-end against a mocked API:
+  streaming render + ordered persistence, the confirmation panel with its
+  idempotency token, duplicate-approve rejection after a reload, and the stop
+  button (abort + partial-answer persistence) (#133).
+- The RAG quality baseline is documented with current German/English numbers,
+  methodology and CI thresholds in `docs/RAG-QUALITY-BASELINE.md` (#146).
 
 ### Changed
 

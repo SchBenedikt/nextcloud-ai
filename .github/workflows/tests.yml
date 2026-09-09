@@ -78,14 +78,14 @@ jobs:
       - name: Test frontend behavior
         run: npm test
 
+      - name: Build production bundles
+        run: npm run build
+
       - name: Install Chromium
         run: npx playwright install --with-deps chromium
 
-      - name: Verify Markdown in desktop and mobile browsers
+      - name: Verify Markdown and the chat flow in a browser
         run: npm run test:browser
-
-      - name: Build production bundles
-        run: npm run build
 
       - name: Verify expected bundles were emitted
         run: |
