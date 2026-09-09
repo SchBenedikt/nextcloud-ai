@@ -111,3 +111,16 @@ Run `composer test` for backend regressions, including regeneration, corrupt sto
 ownership locking and release metadata. The app owns its streaming response class
 because Nextcloud's similarly named response was introduced in version 33.
 See [the September 8 review](REVIEW-2026-09-08.md) for scope and remaining gaps.
+
+### Markdown regression checks
+
+Both chat surfaces share `src/lib/chat-utils.js` (markdown-it, HTML disabled)
+and `src/lib/markdown.css`. Unit tests cover tables, nested formatting, links,
+fences and unsafe content. Run `npm test`; browser rendering checks use
+`npx playwright install chromium` followed by `npm run test:browser`. The browser
+checks cover the shared renderer with each surface's CSS at mobile/desktop widths;
+they do not require a Nextcloud account and are not full authenticated chat E2E.
+
+Groq contract CI checks out Nextcloud's public interfaces and runs the seven
+provider tests with `--fail-on-skipped` on PHP 8.2, 8.3 and 8.4. The standalone
+PHP suite follows existing conventions and skips platform tests without OCP.

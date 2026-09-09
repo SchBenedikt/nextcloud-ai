@@ -15,6 +15,10 @@ follows [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- Use a shared Markdown parser for tables, nested lists/emphasis, safe links and
+  streamed code fences, with matching chat styles and desktop/mobile browser checks.
+- Run Groq contracts against real Nextcloud interfaces in the PHP 8.2–8.4 CI matrix.
+
 - Bound Groq request history, avoid background greeting/follow-up API calls, and
   report actual token limits/retry timing instead of a generic Free Plan error.
 

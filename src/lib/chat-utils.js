@@ -1,3 +1,5 @@
+import MarkdownIt from 'markdown-it'
+
 /**
  * Shared chat rendering utilities used by both the Vue vanilla mount
  * and the standalone page.  Extracted to eliminate duplication
@@ -10,93 +12,34 @@ export function escHtml(s) {
 		({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]))
 }
 
-/** Applies inline markdown formatting (code, bold, strikethrough, italic, links). */
+// One parser for both chat surfaces. HTML is displayed as text; images are
+// rendered as links so assistant output cannot trigger remote tracking loads.
+const markdown = new MarkdownIt({ html: false, linkify: true, breaks: true, typographer: false })
+markdown.renderer.rules.link_open = (tokens, index, options, env, self) => {
+	tokens[index].attrSet('target', '_blank')
+	tokens[index].attrSet('rel', 'noopener noreferrer')
+	return self.renderToken(tokens, index, options)
+}
+markdown.renderer.rules.image = (tokens, index) => {
+	const token = tokens[index]
+	const href = token.attrGet('src') || ''
+	const label = token.content || href
+	if (!markdown.validateLink(href) || /^data:/i.test(href)) return escHtml(label)
+	return '<a href="' + escHtml(href) + '" target="_blank" rel="noopener noreferrer">' + escHtml(label) + '</a>'
+}
+const fence = markdown.renderer.rules.fence
+markdown.renderer.rules.fence = (...args) => fence(...args).replace('<pre>', '<pre class="md-pre">')
+markdown.renderer.rules.table_open = () => '<div class="md-table-scroll" tabindex="0"><table>\n'
+markdown.renderer.rules.table_close = () => '</table></div>\n'
+
+/** Render raw inline Markdown, escaping HTML and rejecting unsafe links. */
 export function mdInline(text) {
-	// Tokenize before emitting HTML: later substitutions must never rewrite
-	// code contents, generated link labels, or href attributes.
-	const tokens = /`([^`]+)`|\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)|(https?:\/\/[^\s<]+)|\*\*([^*]+)\*\*|~~([^~]+)~~|\*([^*]+)\*/g
-	return text.replace(tokens, (match, code, label, href, url, bold, deleted, italic) => {
-		if (code !== undefined) return '<code>' + code + '</code>'
-		if (href !== undefined) return '<a href="' + href + '" target="_blank" rel="noopener">' + label + '</a>'
-		if (url !== undefined) return '<a href="' + url + '" target="_blank" rel="noopener">' + url + '</a>'
-		if (bold !== undefined) return '<strong>' + bold + '</strong>'
-		if (deleted !== undefined) return '<del>' + deleted + '</del>'
-		return '<em>' + italic + '</em>'
-	})
+	return markdown.renderInline(String(text ?? ''))
 }
 
-/** Converts block-level markdown to HTML. */
+/** Render Markdown, including incomplete fenced code during streaming. */
 export function mdToHtml(src) {
-	const blocks = []
-	let prose = []
-	let code = null
-	let fenceLength = 0
-	for (const line of String(src || '').split('\n')) {
-		const fence = /^\s{0,3}(`{3,})(.*)$/.exec(line)
-		if (code !== null) {
-			if (fence && fence[1].length >= fenceLength && fence[2].trim() === '') {
-				blocks.push({ code: code.join('\n') + (code.length ? '\n' : '') })
-				code = null
-			} else {
-				code.push(line)
-			}
-		} else if (fence) {
-			blocks.push({ text: prose.join('\n') })
-			prose = []
-			code = []
-			fenceLength = fence[1].length
-		} else {
-			prose.push(line)
-		}
-	}
-	if (code !== null) blocks.push({ code: code.join('\n') })
-	blocks.push({ text: prose.join('\n') })
-	let html = ''
-	for (const item of blocks) {
-		if (item.code !== undefined) {
-			html += '<pre class="md-pre"><code>' + escHtml(item.code) + '</code></pre>\n'
-			continue
-		}
-		const block = item.text
-		if (!block) continue
-		const lines = block.split('\n')
-		let para = []
-		let listType = null
-		const flushPara = () => {
-			if (para.length) {
-				html += '<p>' + para.join('<br>') + '</p>\n'
-				para = []
-			}
-		}
-		const flushList = () => {
-			if (listType === 'ul' || listType === 'ol') {
-				html += '</' + listType + '>\n'
-				listType = null
-			}
-		}
-		for (const rawLine of lines) {
-			const s = rawLine.trim()
-			if (s === '') { flushPara(); flushList(); continue }
-			const h = /^(#{1,6})\s+(.*)$/.exec(s)
-			if (h) { flushPara(); flushList(); html += '<h' + h[1].length + '>' + mdInline(escHtml(h[2])) + '</h' + h[1].length + '>\n'; continue }
-			if (/^(-{3,}|\*{3,}|_{3,})$/.test(s)) { flushPara(); flushList(); html += '<hr>\n'; continue }
-			if (s[0] === '>') { flushPara(); flushList(); html += '<blockquote>' + mdInline(escHtml(s.slice(1).trim())) + '</blockquote>\n'; continue }
-			const ul = /^[-*+]\s+(.*)$/.exec(s)
-			const ol = /^(\d+)[.):]\s+(.*)$/.exec(s)
-			if (ul || ol) {
-				flushPara()
-				const type = ul ? 'ul' : 'ol'
-				if (listType !== type) { flushList(); html += '<' + type + '>\n'; listType = type }
-				html += '<li>' + mdInline(escHtml((ul ? ul[1] : ol[2]) || '')) + '</li>\n'
-				continue
-			}
-			flushList()
-			para.push(mdInline(escHtml(s)))
-		}
-		flushPara()
-		flushList()
-	}
-	return html
+	return markdown.render(String(src ?? ''))
 }
 
 /**

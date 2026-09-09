@@ -1,3 +1,4 @@
+import './markdown.css'
 import { readNdjson } from './ndjson'
 import { mdiDownload, mdiTune } from '@mdi/js'
 import { translate as t } from './i18n'

@@ -1,0 +1,10 @@
+.rt { min-width: 0; overflow-wrap: anywhere; }
+.rt .md-table-scroll { max-width: 100%; overflow-x: auto; margin: 10px 0; }
+.rt table { border-collapse: collapse; width: max-content; min-width: 100%; }
+.rt th, .rt td { border: 1px solid var(--color-border, #ccc); padding: 7px 10px; text-align: left; }
+.rt th { font-weight: 600; background: var(--color-background-hover, #eee); }
+.rt td, .rt th { max-width: 32rem; overflow-wrap: anywhere; }
+.rt li > ul, .rt li > ol { margin-top: 4px; margin-bottom: 4px; }
+.rt blockquote > :last-child { margin-bottom: 0; }
+.rt pre.md-pre { max-width: 100%; overflow-x: auto; }
+.rt pre.md-pre code { white-space: pre; overflow-wrap: normal; word-break: normal; }

@@ -9,6 +9,10 @@ use OCP\Security\ICrypto;
 use PHPUnit\Framework\TestCase;
 
 final class GroqTest extends TestCase {
+    protected function setUp(): void {
+        if (!EVA_AI_OCP_AVAILABLE) self::markTestSkipped('Nextcloud interfaces unavailable; run the Groq API contract job');
+    }
+
     private function adapter(int $status, mixed $body, ?callable $inspect = null): Groq {
         $config = $this->createMock(AppConfig::class);
         $config->method('userId')->willReturn('alice');

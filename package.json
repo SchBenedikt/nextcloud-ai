@@ -9,7 +9,8 @@
   "scripts": {
     "build": "NODE_ENV=production webpack --config webpack.js",
     "dev": "NODE_ENV=development webpack --config webpack.js --watch",
-    "test": "node --test tests/*.test.cjs"
+    "test": "node --test tests/*.test.cjs",
+    "test:browser": "playwright test tests/browser --workers=1 --reporter=line"
   },
   "dependencies": {
     "@mdi/js": "^7.4.47",
@@ -20,12 +21,14 @@
     "@nextcloud/l10n": "^3.4.1",
     "@nextcloud/router": "^3.1.0",
     "@nextcloud/vue": "^9.9.0",
+    "markdown-it": "^15.0.1",
     "vue": "^3.5.41"
   },
   "devDependencies": {
     "@babel/core": "^8.0.1",
     "@babel/preset-env": "^8.0.2",
     "@nextcloud/browserslist-config": "^3.1.2",
+    "@playwright/test": "^1.63.0",
     "@vue/compiler-sfc": "^3.5.41",
     "babel-loader": "^10.1.1",
     "css-loader": "^7.1.4",

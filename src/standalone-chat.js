@@ -1,3 +1,4 @@
+import './lib/markdown.css'
 import { readNdjson } from './lib/ndjson'
 /**
  * Standalone chat entry point (Issue #75).

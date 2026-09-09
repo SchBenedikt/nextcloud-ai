@@ -69,6 +69,8 @@
 
 /*! @license DOMPurify 3.4.13 | (c) Cure53 and other contributors | Released under the Apache license 2.0 and Mozilla Public License 2.0 | github.com/cure53/DOMPurify/blob/3.4.13/LICENSE */
 
+/*! markdown-it 15.0.1 https://github.com/markdown-it/markdown-it @license MIT */
+
 /**
 * @vue/compiler-dom v3.5.41
 * (c) 2018-present Yuxi (Evan) You and Vue contributors
