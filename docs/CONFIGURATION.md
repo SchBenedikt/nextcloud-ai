@@ -181,3 +181,14 @@ HTTP 429 is surfaced as a quota error; shorten large conversations or retry late
 Streaming, function calls and non-streaming generation share the same selection.
 Ollama context size and dedicated summary/fallback models do not apply to Groq.
 Groq generation is capped at 1024 output tokens per request.
+
+Groq requests use a conservative 28,000-byte serialized input budget (an estimate,
+not an exact token count). Older complete conversation turns are removed first;
+system instructions and the current turn, including tool calls/results, remain
+intact. If the current turn alone is too large, EVA asks for less context before
+sending it. Tool descriptions are shortened; tool names and schema constraints
+remain available. Saved chat history is unchanged. Groq uses local greeting and
+follow-up templates to avoid consuming the account quota for background requests.
+Rate-limit errors distinguish oversized requests from temporary limits and show
+numeric Limit/Used/Requested and Retry-After values when supplied by Groq, without
+exposing raw provider errors, organization IDs or credentials.

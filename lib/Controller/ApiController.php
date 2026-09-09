@@ -203,6 +203,8 @@ class ApiController extends OCSController {
      * an empty string when Ollama is offline or produced no usable text.
      */
     private function generateGreeting(string $period, string $lang): string {
+        // Preserve the Groq quota for explicit user requests.
+        if ($this->config->get('chat_provider') === 'groq') return '';
         try {
             $periodLabel = [
                 'night' => 'at night',

@@ -15,6 +15,9 @@ follows [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- Bound Groq request history, avoid background greeting/follow-up API calls, and
+  report actual token limits/retry timing instead of a generic Free Plan error.
+
 - Atomically claim confirmed actions before execution and retain durable receipts
   so concurrent confirmations cannot execute the same proposal twice (#179).
 

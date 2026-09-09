@@ -66,6 +66,35 @@ final class GroqTest extends TestCase {
         self::assertCount(1, $events);
         self::assertSame('error', $events[0]['type']);
     }
+    public function testOversizedRequestReportsNumericDiagnosticsWithoutSensitiveDetails(): void {
+        $body = fopen('php://temp', 'w+');
+        fwrite($body, json_encode(['error' => ['message' => 'Request too large for organization private-org: Limit 8000, Requested 12000. secret diagnostic']]));
+        rewind($body);
+        $events = iterator_to_array($this->adapter(429, $body)->chatStream([], []));
+        self::assertStringContainsString('waiting alone will not help', $events[0]['delta']);
+        self::assertStringContainsString('Limit: 8000', $events[0]['delta']);
+        self::assertStringContainsString('Requested: 12000', $events[0]['delta']);
+        self::assertStringNotContainsString('private-org', $events[0]['delta']);
+        self::assertStringNotContainsString('secret', $events[0]['delta']);
+        self::assertFalse(is_resource($body));
+    }
+    public function testLargeHistoryDropsWholeOldTurnsAndPreservesCurrentToolExchange(): void {
+        $messages = [['role' => 'system', 'content' => 'Keep these safety rules.']];
+        for ($i = 0; $i < 8; $i++) {
+            $messages[] = ['role' => 'user', 'content' => 'old ' . str_repeat('x', 4000)];
+            $messages[] = ['role' => 'assistant', 'content' => str_repeat('y', 4000)];
+        }
+        $messages[] = ['role' => 'user', 'content' => 'Current request'];
+        $messages[] = ['role' => 'assistant', 'tool_calls' => [['id' => 'current', 'function' => ['name' => 'lookup', 'arguments' => []]]]];
+        $messages[] = ['role' => 'tool', 'content' => 'Current result'];
+        $result = $this->adapter(200, '{"choices":[{"message":{"content":"OK"}}]}', function ($payload) {
+            self::assertLessThanOrEqual(28000, strlen(json_encode($payload)));
+            self::assertSame('Keep these safety rules.', $payload['messages'][0]['content']);
+            self::assertSame('Current request', $payload['messages'][count($payload['messages']) - 3]['content']);
+            self::assertSame('current', end($payload['messages'])['tool_call_id']);
+        })->chat($messages, []);
+        self::assertSame('OK', $result['answer']);
+    }
     public function testCredentialsAreEncryptedAndIsolatedByUser(): void {
         $values = [];
         $config = $this->createMock(IConfig::class);

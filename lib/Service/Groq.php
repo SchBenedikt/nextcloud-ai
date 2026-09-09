@@ -4,6 +4,7 @@ declare(strict_types=1);
 namespace OCA\EvaAi\Service;
 
 use OCP\Http\Client\IClientService;
+use OCP\Http\Client\IResponse;
 
 /** Groq chat adapter. Embeddings deliberately remain on the local Ollama path. */
 class Groq {
@@ -21,19 +22,47 @@ class Groq {
             'timeout' => max(1, min(120, $timeout)), 'connect_timeout' => 10, 'read_timeout' => 30,
             'stream' => $stream, 'http_errors' => false, 'allow_redirects' => false];
     }
-    private function checkStatus(int $status): void {
+    private function checkResponse(IResponse $response): void {
+        $status = $response->getStatusCode();
         if ($status >= 200 && $status < 300) return;
+        $model = $this->config->get('groq_model');
+        if ($status === 429 || $status === 413) {
+            // Extract only numeric diagnostics. Never expose raw provider errors,
+            // organization IDs, request data or Authorization headers.
+            $body = $response->getBody();
+            try {
+                $raw = is_resource($body) ? stream_get_contents($body, 65536)
+                    : (is_object($body) && method_exists($body, 'read') ? $body->read(65536) : substr((string)$body, 0, 65536));
+            } finally {
+                if (is_resource($body)) fclose($body);
+                elseif (is_object($body) && method_exists($body, 'close')) $body->close();
+            }
+            $data = json_decode((string)$raw, true);
+            $detail = is_string($data['error']['message'] ?? null) ? $data['error']['message'] : '';
+            $numbers = [];
+            foreach (['Limit', 'Used', 'Requested'] as $label) {
+                if (preg_match('/\b' . $label . '\s*[:=]?\s*(\d{1,10})(?:\b|\.)/i', $detail, $match)) $numbers[$label] = (int)$match[1];
+            }
+            $oversized = $status === 413 || stripos($detail, 'request too large') !== false
+                || (isset($numbers['Limit'], $numbers['Requested']) && $numbers['Requested'] > $numbers['Limit']);
+            $message = $oversized
+                ? 'Groq (' . $model . '): this request exceeds the token limit. Reduce file context or shorten the message; waiting alone will not help.'
+                : 'Groq (' . $model . '): rate limit reached for this model/account. A short curl request can still fit while the chat context does not.';
+            foreach ($numbers as $label => $number) $message .= ' ' . $label . ': ' . $number . '.';
+            $retry = $response->getHeader('retry-after');
+            if (!$oversized && preg_match('/^\d{1,6}(?:\.\d{1,3})?$/D', $retry)) $message .= ' Retry after ' . $retry . ' seconds.';
+            throw new ProviderException($message);
+        }
         throw new ProviderException(match ($status) {
             401, 403 => 'Groq rejected the API key or model access. Check the saved key and account permissions.',
-            429 => 'Groq free-plan rate limit reached. Wait and retry; no fallback request was sent.',
-            400, 413 => 'Groq rejected the request. Try a shorter conversation or fewer tools.',
+            400 => 'Groq rejected the request. Try a shorter conversation or fewer tools.',
             default => 'Groq request failed (HTTP ' . $status . '). Please retry later.',
         });
     }
     public function check(): array {
         try {
             $response = $this->clients->newClient()->get(self::BASE . '/models', $this->options(false, 15));
-            $this->checkStatus($response->getStatusCode());
+            $this->checkResponse($response);
             $data = json_decode((string)$response->getBody(), true, 512, JSON_THROW_ON_ERROR);
             $models = array_values(array_intersect(self::MODELS, array_column($data['data'] ?? [], 'id')));
             $ok = in_array($this->config->get('groq_model'), $models, true);
@@ -72,8 +101,31 @@ class Groq {
         }
         $payload = ['model' => $model, 'messages' => $out, 'stream' => $stream, 'max_completion_tokens' => 1024,
             'temperature' => max(0.0, min(2.0, (float)$this->config->get('temperature')))];
-        if ($tools !== []) { $payload['tools'] = $tools; $payload['parallel_tool_calls'] = false; }
+        if ($tools !== []) {
+            $payload['tools'] = $this->compactDescriptions($tools);
+            $payload['parallel_tool_calls'] = false;
+        }
+        // Byte-based, conservative input budget, not a tokenizer claim. Drop
+        // oldest complete turns, never system instructions or the current turn
+        // (including assistant tool calls and their paired results).
+        while (strlen(json_encode($payload, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR)) > 28000) {
+            $users = array_keys(array_filter($payload['messages'], static fn($m) => $m['role'] === 'user'));
+            if (count($users) < 2) throw new ProviderException('Groq request context is too large. Reduce retrieved file context or shorten the current message. No request was sent.');
+            $start = $users[0]; $end = $users[1];
+            $payload['messages'] = array_values(array_filter($payload['messages'], static fn($m, $i) => $i < $start || $i >= $end || $m['role'] === 'system', ARRAY_FILTER_USE_BOTH));
+        }
         return $payload;
+    }
+    /** Preserve every tool and schema constraint; shorten explanatory prose only. */
+    private function compactDescriptions(array $value): array {
+        foreach ($value as $key => $item) {
+            if ($key === 'description' && is_string($item) && mb_strlen($item) > 160) {
+                $value[$key] = mb_substr($item, 0, 157) . '...';
+            } elseif (is_array($item)) {
+                $value[$key] = $this->compactDescriptions($item);
+            }
+        }
+        return $value;
     }
     private function calls(array $raw): array {
         return array_map(static function ($call) {
@@ -88,7 +140,7 @@ class Groq {
             $options = $this->options(false, $timeout);
             $options['json'] = $this->payload($messages, $tools, false);
             $response = $this->clients->newClient()->post(self::BASE . '/chat/completions', $options);
-            $this->checkStatus($response->getStatusCode());
+            $this->checkResponse($response);
             $data = json_decode((string)$response->getBody(), true, 512, JSON_THROW_ON_ERROR);
             if (in_array($data['choices'][0]['finish_reason'] ?? '', ['length', 'content_filter'], true)) throw new ProviderException('Groq could not complete the response; shorten the request');
             $message = $data['choices'][0]['message'] ?? null;
@@ -103,7 +155,7 @@ class Groq {
             $options = $this->options(true, $timeout);
             $options['json'] = $this->payload($messages, $tools, true);
             $response = $this->clients->newClient()->post(self::BASE . '/chat/completions', $options);
-            $this->checkStatus($response->getStatusCode());
+            $this->checkResponse($response);
             $body = $response->getBody();
             $buffer = '';
             $calls = [];

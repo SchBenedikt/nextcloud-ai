@@ -252,7 +252,9 @@ class RagService {
         }
         $sourceNames = array_values(array_unique($sourceNames));
 
-        $llm = $this->ollama->chat([
+        // Groq uses the existing local suggestion fallback to avoid a second
+        // token-consuming API call after every answer.
+        $llm = $this->config->get('chat_provider') === 'groq' ? [] : $this->ollama->chat([
             ['role' => 'system', 'content' =>
                 "You suggest follow-up questions for a chat assistant. Reply with ONLY a JSON array of 3 strings, each a short follow-up question in {$lang} that the user could ask next to deepen the conversation. The questions must be relevant to what was discussed (the last assistant answer and the recent conversation), they must not repeat the just-answered question, and they must not be generic placeholders. Never include anything besides the JSON array."
             ],
