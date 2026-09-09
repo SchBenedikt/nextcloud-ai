@@ -320,13 +320,16 @@ export default {
 		})
 		// For content hits show the matched excerpt instead of an unrelated
 		// auto-generated title; the real title stays visible on hover.
+		// Untitled chats get the translated placeholder instead of the legacy
+		// hardcoded German default the server used to store.
+		const displayTitle = (chat) => chat.title || t('New chat')
 		const itemName = (chat) => {
 			const query = chatFilter.value.trim().toLowerCase()
 			const titleHit = query && String(chat.title || '').toLowerCase().includes(query)
-			return !titleHit && chat.snippet ? chat.snippet : (chat.title || '')
+			return !titleHit && chat.snippet ? chat.snippet : displayTitle(chat)
 		}
 		const itemTip = (chat) => {
-			const title = chat.title || ''
+			const title = displayTitle(chat)
 			const parts = [t('{title} · {count} messages', { title, count: chat.count })]
 			if (chat.folder) parts.push(t('Folder: {folder}', { folder: chat.folder }))
 			if (chat.scopePath) parts.push(t('Folder scope: {path}', { path: chat.scopePath }))

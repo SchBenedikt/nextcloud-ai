@@ -45,6 +45,7 @@
         <command>OCA\EvaAi\Command\Mounts</command>
         <command>OCA\EvaAi\Command\Tool</command>
         <command>OCA\EvaAi\Command\TalkSetup</command>
+        <command>OCA\EvaAi\Command\RepairChats</command>
     </commands>
     <navigations>
         <navigation>

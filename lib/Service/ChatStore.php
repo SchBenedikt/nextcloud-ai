@@ -58,7 +58,10 @@ class ChatStore {
                 $messages = $chat['messages'] ?? [];
                 $entry = [
                     'id' => $chat['id'] ?? '',
-                    'title' => $chat['title'] ?? 'Neuer Chat',
+                    // Legacy chats store a hardcoded German default title; it
+                    // is normalized away here so each client can render its
+                    // own translated "New chat" placeholder instead.
+                    'title' => $this->displayTitle($chat),
                     'created' => $chat['created'] ?? 0,
                     'updated' => $chat['updated'] ?? 0,
                     'count' => count($messages),
@@ -110,6 +113,12 @@ class ChatStore {
         return $this->withUserLock($user, function () use ($user, $id): ?array {
             foreach ($this->read($user) as $chat) {
                 if (($chat['id'] ?? '') === $id) {
+                    // Same normalization as list(): the stored German default
+                    // title is a display detail, not stored truth.
+                    $chat['title'] = $this->displayTitle($chat);
+                    // The pending-regeneration marker is internal bookkeeping
+                    // and never exposed to clients (Issue #182).
+                    unset($chat['regenerate']);
                     return $chat;
                 }
             }
@@ -128,15 +137,20 @@ class ChatStore {
                     && in_array($existing['persona'] ?? '', ['', 'default'], true)
                     && ($title === null || $title === '' || ($existing['title'] ?? '') === $this->clipTitle($title))) {
                     $existing['reused'] = true;
+                    $existing['title'] = $this->displayTitle($existing);
                     return $existing;
                 }
             }
             $chat = [
                 'id' => 'c' . date('YmdHis') . '-' . bin2hex(random_bytes(4)),
-                'title' => $title !== null && $title !== '' ? $this->clipTitle($title) : 'Neuer Chat',
+                'title' => $title !== null && $title !== '' ? $this->clipTitle($title) : '',
                 'created' => time(),
                 'updated' => time(),
                 'messages' => [],
+                // Monotonic per-chat revision: every mutation bumps it, and
+                // regenerate/edit requests validate against it so concurrent
+                // edits cannot silently overwrite each other (Issue #182).
+                'rev' => 1,
             ];
             $all[] = $chat;
             $this->write($user, $all);
@@ -241,6 +255,7 @@ class ChatStore {
                 if (($chat['id'] ?? '') === $id) {
                     $chat['title'] = $this->clipTitle($title);
                     $chat['updated'] = time();
+                    $chat['rev'] = (int)($chat['rev'] ?? 0) + 1;
                     break;
                 }
             }
@@ -295,6 +310,7 @@ class ChatStore {
                     $chat['persona'] = trim((string)$meta['persona']);
                 }
                 $chat['updated'] = time();
+                $chat['rev'] = (int)($chat['rev'] ?? 0) + 1;
                 unset($chat);
                 $this->write($user, $all);
                 return true;
@@ -469,11 +485,11 @@ class ChatStore {
         return $this->folderFor($chats, $user);
     }
 
-    public function append(string $user, string $id, string $role, string $text, array $followups = []): void {
+    public function append(string $user, string $id, string $role, string $text, array $followups = [], ?int $regenerateRev = null): void {
         if ($role !== 'user' && $role !== 'assistant') {
             return;
         }
-        $this->withUserLock($user, function () use ($user, $id, $role, $text, $followups): void {
+        $this->withUserLock($user, function () use ($user, $id, $role, $text, $followups, $regenerateRev): void {
             $all = $this->read($user);
             foreach ($all as &$chat) {
                 if (($chat['id'] ?? '') === $id) {
@@ -483,8 +499,31 @@ class ChatStore {
                     if ($role === 'assistant' && $followups !== []) {
                         $message['followups'] = array_values(array_slice(array_filter($followups, 'is_string'), 0, 3));
                     }
+                    $pending = $chat['regenerate'] ?? null;
+                    if ($regenerateRev !== null && is_array($pending)
+                        && (int)($pending['rev'] ?? -1) === $regenerateRev) {
+                        // Regeneration succeeded: commit the deferred
+                        // truncation and the optional user-text edit atomically
+                        // with the new answer. A failed model call never
+                        // touched the stored history (Issue #182).
+                        $pendingIndex = (int)($pending['messageIndex'] ?? -1);
+                        if ($pendingIndex >= 0 && $pendingIndex < count($chat['messages'])) {
+                            if (($pending['newText'] ?? null) !== null) {
+                                $chat['messages'][$pendingIndex]['text'] = (string)$pending['newText'];
+                            }
+                            $chat['messages'] = array_slice($chat['messages'], 0, $pendingIndex + 1);
+                        }
+                        unset($chat['regenerate']);
+                    } elseif (is_array($pending)) {
+                        // A plain append supersedes a pending regeneration: the
+                        // stored messages were never truncated, so the marker is
+                        // dropped and a late regenerate answer can no longer
+                        // truncate this newer message.
+                        unset($chat['regenerate']);
+                    }
                     $chat['messages'][] = $message;
                     $chat['updated'] = time();
+                    $chat['rev'] = (int)($chat['rev'] ?? 0) + 1;
                     $messageCount = count($chat['messages']);
                     if ($messageCount > self::MAX_MESSAGES) {
                         $dropped = $messageCount - self::MAX_MESSAGES;
@@ -492,7 +531,9 @@ class ChatStore {
                         // Keep a durable counter so truncation is never silent.
                         $chat['trimmed'] = (int)($chat['trimmed'] ?? 0) + $dropped;
                     }
-                    if (isset($chat['messages'][0]['text']) && str_starts_with($chat['title'] ?? '', 'Neuer Chat')) {
+                    $storedTitle = $chat['title'] ?? '';
+                    if (isset($chat['messages'][0]['text'])
+                        && ($storedTitle === '' || str_starts_with($storedTitle, 'Neuer Chat'))) {
                         $chat['title'] = $this->clipTitle((string)$chat['messages'][0]['text']);
                     }
                     break;
@@ -507,6 +548,73 @@ class ChatStore {
      * Truncate a chat's messages after the given 0-based index (inclusive).
      * Messages at and after $fromIndex are removed.
      */
+    /**
+     * Begin a regenerate or edit (Issue #182): validate the target user
+     * message and record a pending regeneration token. The chat is NOT
+     * truncated here — the truncation and optional user-text edit are
+     * committed atomically by append() once the new assistant answer is
+     * persisted, so a failed model call leaves the stored history intact.
+     *
+     * $expectedRev is the revision the client loaded; when it does not match
+     * the stored revision the chat was modified elsewhere and the request is
+     * rejected (conflict). A pending regeneration from the same base revision
+     * (a retry after a failed stream) is allowed to replace the marker.
+     *
+     * @return array{ok:true,rev:int,messageIndex:int,targetText:string}|array{ok:false,error:string}
+     */
+    public function beginRegenerate(string $user, string $id, int $messageIndex, ?string $newText, ?int $expectedRev): array {
+        return $this->withUserLock($user, function () use ($user, $id, $messageIndex, $newText, $expectedRev): array {
+            $all = $this->read($user);
+            foreach ($all as &$chat) {
+                if (($chat['id'] ?? '') !== $id) {
+                    continue;
+                }
+                $messages = $chat['messages'] ?? [];
+                $currentRev = (int)($chat['rev'] ?? 0);
+                $validTarget = $messageIndex >= 0 && $messageIndex < count($messages)
+                    && ($messages[$messageIndex]['role'] ?? '') === 'user'
+                    && ($newText === null || trim($newText) !== '')
+                    && ($newText !== null || trim((string)($messages[$messageIndex]['text'] ?? '')) !== '');
+                if (!$validTarget) {
+                    return ['ok' => false, 'error' => 'invalid'];
+                }
+                $pending = $chat['regenerate'] ?? null;
+                if (is_array($pending)) {
+                    // A regeneration is already pending. The same client (same
+                    // base revision) may retry after a failed stream; anything
+                    // else means a concurrent edit and is rejected.
+                    if ($expectedRev === null || (int)($pending['baseRev'] ?? -1) !== $expectedRev) {
+                        return ['ok' => false, 'error' => 'conflict'];
+                    }
+                } elseif ($expectedRev !== null && $currentRev !== $expectedRev) {
+                    return ['ok' => false, 'error' => 'conflict'];
+                }
+                $rev = $currentRev + 1;
+                // On a retry the base revision stays the original one: the
+                // retrying client still validates against the state it loaded,
+                // not against the revision the failed attempt bumped.
+                $baseRev = is_array($pending) ? (int)($pending['baseRev'] ?? $currentRev) : $currentRev;
+                $chat['regenerate'] = [
+                    'messageIndex' => $messageIndex,
+                    'newText' => $newText,
+                    'rev' => $rev,
+                    'baseRev' => $baseRev,
+                ];
+                $chat['rev'] = $rev;
+                $chat['updated'] = time();
+                unset($chat);
+                $this->write($user, $all);
+                return [
+                    'ok' => true,
+                    'rev' => $rev,
+                    'messageIndex' => $messageIndex,
+                    'targetText' => $newText ?? (string)($messages[$messageIndex]['text'] ?? ''),
+                ];
+            }
+            return ['ok' => false, 'error' => 'not_found'];
+        });
+    }
+
     public function truncateAfter(string $user, string $id, int $fromIndex): void {
         $this->withUserLock($user, function () use ($user, $id, $fromIndex): void {
             $all = $this->read($user);
@@ -515,6 +623,7 @@ class ChatStore {
                     if ($fromIndex >= 0 && $fromIndex < count($chat['messages'])) {
                         $chat['messages'] = array_slice($chat['messages'], 0, $fromIndex);
                         $chat['updated'] = time();
+                        $chat['rev'] = (int)($chat['rev'] ?? 0) + 1;
                     }
                     break;
                 }
@@ -535,6 +644,7 @@ class ChatStore {
                     if (isset($chat['messages'][$index])) {
                         $chat['messages'][$index]['text'] = $newText;
                         $chat['updated'] = time();
+                        $chat['rev'] = (int)($chat['rev'] ?? 0) + 1;
                     }
                     break;
                 }
@@ -590,6 +700,57 @@ class ChatStore {
             ]);
             throw $e;
         }
+    }
+
+    /**
+     * Admin recovery path for a corrupt chats.json (Issue #184). The corrupt
+     * file is preserved (the #173 fail-safe) and never silently overwritten:
+     * with $apply=false this only reports what a repair would do, with
+     * $apply=true the damaged file is backed up first and a minimal valid
+     * store (keeping every parseable chat) is written.
+     *
+     * @return array{status:string,backup:?string,kept:int,message:string}
+     */
+    public function repairStore(string $user, bool $apply = false): array {
+        return $this->withUserLock($user, function () use ($user, $apply): array {
+            $raw = $this->rootFor($user)->getContent();
+            try {
+                $this->decodeStoredList($raw, 'chat data');
+                return ['status' => 'ok', 'backup' => null, 'kept' => count($this->read($user)), 'message' => 'Chat storage is valid, nothing to repair.'];
+            } catch (\RuntimeException $e) {
+                // Fall through: the stored data is corrupt and preserved.
+            }
+            $decoded = json_decode($raw, true);
+            $kept = [];
+            if (is_array($decoded)) {
+                $candidates = array_is_list($decoded) ? $decoded : [$decoded];
+                foreach ($candidates as $candidate) {
+                    if (is_array($candidate) && is_string($candidate['id'] ?? null) && $candidate['id'] !== '') {
+                        $kept[] = $candidate;
+                    }
+                }
+            }
+            if (!$apply) {
+                return [
+                    'status' => 'corrupt',
+                    'backup' => null,
+                    'kept' => count($kept),
+                    'message' => 'Corrupt chat storage detected: would back up the file and reconstruct the store keeping ' . count($kept) . ' parseable chat(s). Re-run with --yes to apply.',
+                ];
+            }
+            $backupName = 'chats.json.corrupt-' . date('Ymd-His');
+            $folder = $this->userFolderFor($user);
+            if (!$folder->fileExists($backupName)) {
+                $folder->newFile($backupName, $raw);
+            }
+            $this->rootFor($user)->putContent(json_encode($kept, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR));
+            return [
+                'status' => 'repaired',
+                'backup' => $backupName,
+                'kept' => count($kept),
+                'message' => 'Repaired chat storage: backup written as ' . $backupName . ', store reconstructed keeping ' . count($kept) . ' parseable chat(s).',
+            ];
+        });
     }
 
     /**
@@ -741,6 +902,16 @@ class ChatStore {
         if (mb_strlen($clean) > self::MAX_TITLE) {
             $clean = mb_substr($clean, 0, self::MAX_TITLE) . '…';
         }
-        return $clean === '' ? 'Neuer Chat' : $clean;
+        return $clean;
+    }
+
+    /**
+     * The title a client should display. Untitled chats (and legacy chats
+     * with the old hardcoded German default) map to an empty string so each
+     * frontend can show its own translated placeholder.
+     */
+    private function displayTitle(array $chat): string {
+        $title = (string)($chat['title'] ?? '');
+        return $title === 'Neuer Chat' ? '' : $title;
     }
 }

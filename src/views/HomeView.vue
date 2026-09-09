@@ -13,7 +13,7 @@
 					type="text"
 					:placeholder="$t('Ask anything or start a new chat…')"
 					:disabled="busy"
-					aria-label="$t('Start a new chat')"
+					:aria-label="$t('Start a new chat')"
 				/>
 				<NcButton type="primary" native-type="submit" :disabled="busy || !prompt.trim()">
 					<template #icon>
