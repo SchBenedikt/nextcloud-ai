@@ -128,7 +128,7 @@ class RagService {
             $messages = $this->buildMessages($userId, $message, $history, $context, count($results), $tools !== [], $instructions, $persona);
 
             $answer = '';
-            $model = $this->config->get('chat_model');
+            $model = $this->ollama->selectedChatModel();
             $toolActivity = false;
             $toolFailure = false;
             for ($round = 0; $round < self::MAX_TOOL_ROUNDS; $round++) {
@@ -460,6 +460,7 @@ class RagService {
                 ];
             }
             $byDoc[$docId]['excerpts'][] = mb_substr($r['content'], 0, 300);
+            $byDoc[$docId]['locations'][] = ['chunkId' => $r['chunkId'], 'chunkIndex' => $r['chunkIndex'], 'provenance' => $r['provenance'] ?? []];
         }
         return [$context, $byDoc];
     }
@@ -707,6 +708,9 @@ class RagService {
                 'ollamaRequests' => (int)$this->config->get('last_index_ollama_requests'),
             ],
             'settings' => $this->config->all(),
+            'dependencies' => (new OcrService())->capabilities(),
+            'chatProvider' => $this->config->get('chat_provider'),
+            'groq' => $this->config->get('chat_provider') === 'groq' ? $this->ollama->groqInfo() : null,
             'limits' => $this->config->limits(),
         ];
     }

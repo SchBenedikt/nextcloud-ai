@@ -288,7 +288,7 @@ class Indexer {
                 $this->documentMapper->insert($doc);
 
                 foreach ($chunks as $i => $c) {
-                    $batch[] = ['docId' => (int)$doc->getId(), 'index' => $i, 'content' => $c['content'], 'tokens' => $c['tokens'], 'oldDocId' => $oldDocId];
+                    $batch[] = ['docId' => (int)$doc->getId(), 'index' => $i, 'content' => $c['content'], 'tokens' => $c['tokens'], 'provenance' => $c['provenance'] ?? [], 'oldDocId' => $oldDocId];
                 }
 
                 $result['processed']++;
@@ -487,7 +487,7 @@ class Indexer {
 
             $batch = [];
             foreach ($chunks as $i => $c) {
-                $batch[] = ['docId' => (int)$doc->getId(), 'index' => $i, 'content' => $c['content'], 'tokens' => $c['tokens'], 'oldDocId' => $oldDocId];
+                $batch[] = ['docId' => (int)$doc->getId(), 'index' => $i, 'content' => $c['content'], 'tokens' => $c['tokens'], 'provenance' => $c['provenance'] ?? [], 'oldDocId' => $oldDocId];
             }
             $this->flushBatch($batch, $result);
             $result['processed']++;
@@ -638,6 +638,7 @@ class Indexer {
         if ($mime === null) {
             return false;
         }
+        if (in_array($mime, ['image/png', 'image/jpeg', 'image/tiff', 'image/webp'], true) && $this->config->get('ocr_enabled') === '1') return true;
         if (str_starts_with($mime, 'text/')) {
             return true;
         }
@@ -710,6 +711,9 @@ class Indexer {
 
         $ext = strtolower(pathinfo($name, PATHINFO_EXTENSION));
 
+        if (in_array($mime, ['image/png', 'image/jpeg', 'image/tiff', 'image/webp'], true) && $this->config->get('ocr_enabled') === '1') {
+            return (new OcrService())->extract((string)$file->getContent(), $mime, $this->config->get('ocr_language'));
+        }
         // DOCX + Varianten (DOTX/DOCM) / ODT / EPUB / ODS / ODP: Zip-Container.
         if (in_array($ext, ['docx', 'docm', 'dotx'], true) || $mime === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' || $mime === 'application/vnd.openxmlformats-officedocument.wordprocessingml.template') {
             return $this->zipWebText($file, 'docx');
@@ -766,9 +770,10 @@ class Indexer {
         // PDF via pdftotext, wenn Poppler verfügbar ist.
         if ($ext === 'pdf' || $mime === 'application/pdf') {
             $txt = $this->pdfToText($file);
-            if ($txt !== null) {
-                return $this->normalize($txt);
+            if (trim((string)$txt) === '' && $this->config->get('ocr_enabled') === '1') {
+                $txt = (new OcrService())->extract((string)$file->getContent(), 'application/pdf', $this->config->get('ocr_language'));
             }
+            return $this->normalize((string)$txt);
         }
 
         // Unbekannte Formate: nur lesen, wenn offensichtlich Text (kein \0).
@@ -1203,7 +1208,10 @@ class Indexer {
             shell_exec(escapeshellarg($bin) . ' -enc UTF-8 ' . escapeshellarg($tmpIn) . ' ' . escapeshellarg($tmpOut) . ' 2>/dev/null');
             $txt = file_exists($tmpOut) ? (string)file_get_contents($tmpOut) : '';
             @unlink($tmpOut);
-            return $txt === '' ? NULL : $txt;
+            if ($txt === '') return null;
+            $pages = explode("\f", $txt);
+            if (trim(end($pages)) === '') array_pop($pages);
+            return implode("\n\n", array_map(static fn($page, $index) => '[Page ' . ($index + 1) . "]\n" . trim($page), $pages, array_keys($pages)));
         } finally {
             if (file_exists($tmpIn)) {
                 @unlink($tmpIn);
@@ -1314,7 +1322,7 @@ class Indexer {
 
         $perDoc = [];
         foreach ($batch as $i => $b) {
-            $perDoc[$b['docId']][] = ['index' => $b['index'], 'content' => $b['content'], 'tokens' => $b['tokens'], 'vec' => $vecs[$i], 'oldDocId' => $b['oldDocId']];
+            $perDoc[$b['docId']][] = ['index' => $b['index'], 'content' => $b['content'], 'tokens' => $b['tokens'], 'provenance' => $b['provenance'] ?? [], 'vec' => $vecs[$i], 'oldDocId' => $b['oldDocId']];
         }
         foreach ($perDoc as $docId => $chunks) {
             if ($this->cancellationRequested($runId)) {
@@ -1329,6 +1337,7 @@ class Indexer {
                 $chunk->setContent($c['content']);
                 $chunk->setEmbeddingArray($c['vec']);
                 $chunk->setTokenCount($c['tokens']);
+                $chunk->setProvenanceArray($c['provenance'] ?? []);
                 $this->chunkMapper->insert($chunk);
             }
             $doc = $this->documentMapper->findById($docId);
@@ -1468,7 +1477,7 @@ class Indexer {
             $doc->setIndexedAt(time());
             $this->documentMapper->insert($doc);
             foreach ($chunks as $i => $c) {
-                $batch[] = ['docId' => (int)$doc->getId(), 'index' => $i, 'content' => $c['content'], 'tokens' => $c['tokens'], 'oldDocId' => $oldDocId];
+                $batch[] = ['docId' => (int)$doc->getId(), 'index' => $i, 'content' => $c['content'], 'tokens' => $c['tokens'], 'provenance' => $c['provenance'] ?? [], 'oldDocId' => $oldDocId];
             }
             $result['processed']++;
             $processedThisPass++;
@@ -1611,7 +1620,10 @@ class Indexer {
 
     private function calculateConfigHash(): string {
         $configKey = implode('|', [
+            'provenance-v1',
             $this->config->get('embedding_model', 'default'),
+            $this->config->get('ocr_enabled', '0'),
+            $this->config->get('ocr_language', 'eng'),
             $this->config->get('embedding_model_fallback', ''),
             $this->config->get('chunk_size', '1000'),
             $this->config->get('chunk_overlap', '200'),

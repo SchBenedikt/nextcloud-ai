@@ -5,7 +5,7 @@ instance while an LLM executes tools on your behalf.
 
 ## 1. Threat model
 
-EVA gives a locally running LLM access to tools that can read and modify
+EVA gives the selected LLM access to tools that can read and modify
 Nextcloud data (files, contacts, calendars, mail, shares, tasks). The main risks
 are:
 
@@ -157,3 +157,15 @@ composer test
 ```
 
 CI runs the suite on PHP 8.2 / 8.3 / 8.4.
+
+## Optional Groq provider
+
+Groq receives conversation messages, retrieved file excerpts and tool results
+when the user selects it. Tool authorization and confirmation checks still run
+on the Nextcloud server. Embeddings remain on Ollama. Personal API keys use
+Nextcloud ICrypto at rest, are never inherited from other users and are omitted
+from settings responses and exports. Nextcloud administrators who control the
+server secret can decrypt stored credentials. Transport errors are sanitized to
+avoid exposing Authorization headers. HTTPS endpoint and allowed models are
+fixed; redirects and automatic model fallback are disabled. Account billing
+and free quotas are controlled by Groq, not EVA.

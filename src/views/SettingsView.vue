@@ -71,6 +71,28 @@
 					</div>
 				</div>
 
+				<div class="field">
+					<label class="native-label" for="chat-provider">{{ $t('Chat provider') }}</label>
+					<select id="chat-provider" v-model="f.chat_provider" class="native-select">
+						<option value="ollama">Ollama</option><option value="groq">Groq</option>
+					</select>
+				</div>
+				<div v-if="f.chat_provider === 'groq'" class="field-grid">
+					<p class="field-help">{{ $t('Groq sends your messages, retrieved file excerpts and tool results to Groq. Embeddings and document indexing still use Ollama.') }}</p>
+					<div class="field">
+						<label class="native-label" for="groq-model">{{ $t('Groq free-plan model') }}</label>
+						<select id="groq-model" v-model="f.groq_model" class="native-select">
+							<option value="openai/gpt-oss-20b">GPT OSS 20B</option><option value="openai/gpt-oss-120b">GPT OSS 120B</option>
+						</select>
+					</div>
+					<div class="field">
+						<NcTextField id="groq-api-key" v-model="groqKey" type="password" autocomplete="new-password" :label="$t('Groq API key')" :label-outside="true" />
+						<p class="field-help">{{ status?.groq?.keyConfigured ? $t('A key is saved. Leave blank to keep it.') : $t('Create a free Groq account and save your API key here.') }}</p>
+						<NcCheckboxRadioSwitch v-model="removeGroqKey" type="switch">{{ $t('Remove saved Groq API key on save') }}</NcCheckboxRadioSwitch>
+					</div>
+					<p class="field-help">{{ $t('Free usage depends on your Groq account and quotas. No automatic paid-model fallback is used.') }} <a href="https://console.groq.com/keys" target="_blank" rel="noopener noreferrer">{{ $t('Create API key') }}</a> · <a href="https://console.groq.com/docs/rate-limits" target="_blank" rel="noopener noreferrer">{{ $t('Groq limits') }}</a></p>
+				</div>
+
 				<div class="field-grid field-grid-wide">
 					<div class="field field-wide">
 						<NcTextField id="ollama-url" :label="$t('Ollama server URL')" :label-outside="true" v-model="f.ollama_url" type="url" :placeholder="$t('http://127.0.0.1:11434')" />
@@ -85,7 +107,7 @@
 						<p class="field-help">{{ $t('EVA discovers installed models automatically from the Ollama endpoint and separates embedding from chat models by their declared capabilities. Embedding models turn file text into searchable vectors.') }}</p>
 						<div v-if="!modelLoading && embeddingInstalledHint" class="model-hint">{{ embeddingInstalledHint }}</div>
 					</div>
-					<div class="field">
+					<div v-if="f.chat_provider !== 'groq'" class="field">
 						<label class="native-label" for="chat-model">{{ $t('Chat model') }}</label>
 						<select id="chat-model" v-model="f.chat_model" class="native-select" :disabled="modelLoading || !chatModels.length">
 							<option v-if="!chatModels.length" :value="f.chat_model">{{ modelLoading ? $t('Loading models…') : $t('No chat model found') }}</option>
@@ -94,7 +116,7 @@
 						<p class="field-help">{{ $t('EVA discovers installed chat models automatically from the Ollama endpoint.') }}</p>
 						<div v-if="!modelLoading && chatInstalledHint" class="model-hint">{{ chatInstalledHint }}</div>
 					</div>
-					<div class="field">
+					<div v-if="f.chat_provider !== 'groq'" class="field">
 						<label class="native-label" for="chat-model-fallback">{{ $t('Chat model fallbacks') }}</label>
 						<NcTextField id="chat-model-fallback" :label-outside="true" v-model="f.chat_model_fallback" :placeholder="$t('Optional, comma-separated')" />
 						<p class="field-help">{{ $t('If the chat model above is not installed, EVA tries these models in order before failing. (E.g. llama3.1, qwen2.5)') }}</p>
@@ -104,7 +126,7 @@
 						<NcTextField id="embedding-model-fallback" :label-outside="true" v-model="f.embedding_model_fallback" :placeholder="$t('Optional, comma-separated')" />
 						<p class="field-help">{{ $t('If the embedding model above is not installed, EVA tries these models in order before failing.') }}</p>
 					</div>
-					<div class="field">
+					<div v-if="f.chat_provider !== 'groq'" class="field">
 						<label class="native-label" for="summary-model">{{ $t('Heavy task model (optional)') }}</label>
 						<select id="summary-model" v-model="f.summary_model" class="native-select" :disabled="modelLoading">
 							<option value="">{{ $t('Use the chat model') }}</option>
@@ -234,6 +256,13 @@
 						<p class="field-help">{{ $t('Only used when Mail indexing is enabled. Default: 25.') }}</p>
 					</div>
 				</div>
+				<NcCheckboxRadioSwitch v-model="ocrEnabled" type="switch" :disabled="busy">
+					{{ $t('Read scanned documents with local OCR') }}
+				</NcCheckboxRadioSwitch>
+				<NcTextField v-if="ocrEnabled" v-model="f.ocr_language" :label="$t('OCR languages (for example eng or deu+eng)')" :disabled="busy" />
+				<p v-if="ocrEnabled && !status?.dependencies?.tesseract" class="field-help">{{ $t('OCR is unavailable: ask your administrator to install Tesseract and its language data.') }}</p>
+				<p v-if="ocrEnabled && (!status?.dependencies?.pdftoppm || !status?.dependencies?.pdfinfo)" class="field-help">{{ $t('Scanned PDFs also require Poppler (pdfinfo and pdftoppm).') }}</p>
+				<p class="field-help">{{ $t('OCR limits: 20 MiB, 30 PDF pages, 25 megapixels and 60 seconds per file. Failed extraction keeps the previous index.') }}</p>
 				<NcCheckboxRadioSwitch v-model="mailIndexEnabled" type="switch" class="native-toggle compact-switch" :description="$t('Include subject, sender and message text from the Nextcloud Mail app in search results.')">{{ $t('Index Mail messages') }}
 				</NcCheckboxRadioSwitch>
 				<NcCheckboxRadioSwitch v-model="indexEnrolled" type="switch" class="native-toggle compact-switch" :disabled="busy" :description="$t('Keep this account in the recurring background schedule, even when its index is currently empty. Starting indexing enables this automatically.')">{{ $t('Keep indexing this account in the background') }}
@@ -396,6 +425,8 @@ export default {
 	components: { NcCheckboxRadioSwitch },
 	setup() {
 		const f = ref({
+			chat_provider: 'ollama',
+			groq_model: 'openai/gpt-oss-20b',
 			ollama_url: 'http://127.0.0.1:11434',
 			embedding_model: 'nomic-embed-text',
 			chat_model: 'gemma4:cloud',
@@ -422,8 +453,12 @@ export default {
 			talk_history_size: '50',
 			talk_bot_trigger: 'Eva',
 			exclude_paths: '',
+			ocr_enabled: '0',
+			ocr_language: 'eng',
 			chat_retention_days: '0',
 		})
+		const groqKey = ref('')
+		const removeGroqKey = ref(false)
 		const status = ref(null)
 		const limits = ref({})
 		const availableModels = ref([])
@@ -549,7 +584,7 @@ export default {
 			]
 			if (!/^https?:\/\//i.test(f.value.ollama_url.trim())) errors.push('Ollama server URL must start with http:// or https://.')
 			if (!f.value.embedding_model.trim()) errors.push('Embedding model is required.')
-			if (!f.value.chat_model.trim()) errors.push('Chat model is required.')
+			if (f.value.chat_provider !== 'groq' && !f.value.chat_model.trim()) errors.push('Chat model is required.')
 			for (const [key, label, min, max] of numberRules) {
 				const value = Number(f.value[key])
 				if (!Number.isFinite(value) || value < min || value > max) errors.push(`${label} must be between ${min} and ${max}.`)
@@ -624,7 +659,10 @@ export default {
 			saved.value = false
 			message.value = { type: '', text: '' }
 			try {
-				const settings = await api('PUT', 'settings', { ...f.value })
+				const settings = await api('PUT', 'settings', { ...f.value, ...(groqKey.value ? { groq_api_key: groqKey.value } : {}), remove_groq_api_key: removeGroqKey.value })
+				if (status.value && (groqKey.value || removeGroqKey.value)) status.value.groq = { ...(status.value.groq || {}), keyConfigured: !removeGroqKey.value }
+				groqKey.value = ''
+				removeGroqKey.value = false
 				validationErrors.value = []
 				if (settings) fill(settings)
 				saved.value = true
@@ -651,6 +689,10 @@ export default {
 			}
 			try {
 				const data = await api('POST', 'check')
+				if (data.provider === 'groq') {
+					checkOut.value = { type: data.groq.ok ? 'success' : 'error', lines: [{ label: 'Groq', ok: data.groq.ok, detail: data.groq.ok ? t('Connected') : data.groq.error }] }
+					return
+				}
 				const lines = []
 				const server = data.server || {}
 				lines.push({ label: t('Server'), ok: !!server.ok, detail: server.ok ? (server.url || t('Reachable')) : (server.error || t('Not reachable')) })
@@ -868,8 +910,9 @@ export default {
 			if (modelTimer !== null) window.clearTimeout(modelTimer)
 		})
 
+		const ocrEnabled = computed({ get: () => f.value.ocr_enabled === '1', set: value => { f.value.ocr_enabled = value ? '1' : '0' } })
 		return {
-			f, status, limits, availableModels, embeddingModels, chatModels, embeddingInstalledHint, chatInstalledHint, modelLoading, modelError, checkOut, saving, checking, indexing, resetting, deletingChats, stopping, saved, loadError, message, validationErrors, resetConfirm, chatsDeleteConfirm,
+			groqKey, removeGroqKey, ocrEnabled, f, status, limits, availableModels, embeddingModels, chatModels, embeddingInstalledHint, chatInstalledHint, modelLoading, modelError, checkOut, saving, checking, indexing, resetting, deletingChats, stopping, saved, loadError, message, validationErrors, resetConfirm, chatsDeleteConfirm,
 			newExcludePath, excludeError, excludeList, actionsEnabled, notificationsEnabled, weatherEnabled, mailIndexEnabled, indexEnrolled, actionsDisabled, busy, indexingActive, settingsLocked, maxFileSizeMb,
 			exporting, downloadExport,
 			knowledgeContent, knowledgeOriginal, savingKnowledge, knowledgeSaved, saveKnowledgeContent,

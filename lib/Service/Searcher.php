@@ -35,6 +35,7 @@ class Searcher {
         if (trim($query) === '') {
             return [];
         }
+        if ($this->config->get('chat_provider') === 'groq' && $this->chunkMapper->countForUser($userId) === 0) return [];
         [$queryVec, $err] = $this->ollama->embedQuery([$query], $userId);
         $queryVector = $err === null && is_array($queryVec) && isset($queryVec[0]) ? $queryVec[0] : null;
         $rows = $this->loadCandidates($userId, $query, $queryVector);
@@ -96,6 +97,7 @@ class Searcher {
                 'chunkId' => (int)$row['id'],
                 'chunkIndex' => (int)$row['chunk_index'],
                 'content' => $row['content'],
+                'provenance' => json_decode((string)($row['provenance'] ?? '{}'), true) ?: [],
                 'documentId' => $docId,
                 'fileId' => $doc !== null ? (int)$doc->getFileId() : 0,
                 'docPath' => $doc?->getPath() ?? '',

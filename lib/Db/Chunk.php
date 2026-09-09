@@ -25,12 +25,19 @@ class Chunk extends Entity {
     protected ?int $chunkIndex = 0;
     protected ?string $content = '';
     protected ?string $embedding = '';
+    protected ?string $provenance = '{}';
     protected ?int $tokenCount = 0;
 
     public function __construct() {
         $this->addType('documentId', 'integer');
         $this->addType('chunkIndex', 'integer');
         $this->addType('tokenCount', 'integer');
+    }
+
+    public function setProvenanceArray(array $metadata): void {
+        $encoded = json_encode($metadata, JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR);
+        if (strlen($encoded) > 4096) throw new \InvalidArgumentException('Chunk provenance exceeds 4 KiB');
+        $this->setProvenance($encoded);
     }
 
     public function getEmbeddingArray(): array {

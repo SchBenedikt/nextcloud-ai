@@ -60,7 +60,7 @@ module.exports = (env) => {
 			new VueLoaderPlugin(),
 			new webpack.DefinePlugin({
 				appName: JSON.stringify('eva_ai'),
-				appVersion: JSON.stringify('1.4.0'),
+				appVersion: JSON.stringify(require('./package.json').version),
 			}),
 		],
 		performance: { hints: false },

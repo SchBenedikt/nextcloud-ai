@@ -134,6 +134,7 @@
 									<template v-else>
 										<div v-for="c in chunkCache.get(d.id).chunks" :key="c.index" class="docs-chunk">
 											<span class="docs-chunk-idx">#{{ c.index + 1 }}</span>
+											<span v-if="c.provenance?.section" class="docs-chunk-location">{{ c.provenance.section }}</span>
 											<span class="docs-chunk-text">{{ c.content }}</span>
 										</div>
 										<div v-if="!chunkCache.get(d.id).chunks.length" class="docs-chunk-loading">
@@ -336,6 +337,7 @@ export default {
 						return {
 							index: Number.isFinite(numericIndex) ? numericIndex : index,
 							content: String(chunk.content ?? ''),
+							provenance: chunk.provenance || {},
 						}
 					})
 					const reportedExpected = data?.document?.chunks
@@ -375,6 +377,7 @@ export default {
 						return {
 							index: Number.isFinite(numericIndex) ? numericIndex : base + index,
 							content: String(chunk.content ?? ''),
+							provenance: chunk.provenance || {},
 						}
 					})
 					setChunkState(id, { status: 'ready', chunks: [...state.chunks, ...more], expected: state.expected, error: '', loadingMore: false })

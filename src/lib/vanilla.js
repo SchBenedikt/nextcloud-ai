@@ -1,3 +1,4 @@
+import { readNdjson } from './ndjson'
 import { mdiDownload, mdiTune } from '@mdi/js'
 import { translate as t } from './i18n'
 import { buildConfirmForm } from './confirmForms'
@@ -528,24 +529,7 @@ export function mountChat(root, opts = {}) {
 			if (!r.ok || !r.body) {
 				return r.text().then((t) => { throw new Error('HTTP ' + r.status + ' ' + (t || '').slice(0, 200)) })
 			}
-			const reader = r.body.getReader()
-			const dec = new TextDecoder()
-			let buf = ''
-			const pump = () => reader.read().then(({ done, value }) => {
-				if (done) return
-				buf += dec.decode(value, { stream: true })
-				let nl
-				while ((nl = buf.indexOf('\n')) >= 0) {
-					const line = buf.slice(0, nl).trim()
-					buf = buf.slice(nl + 1)
-					if (!line) continue
-					let ev
-					try { ev = JSON.parse(line) } catch (_) { continue }
-					if (ev) onLine(ev)
-				}
-				return pump()
-			})
-			return pump()
+			return readNdjson(r.body, onLine)
 		})
 	}
 

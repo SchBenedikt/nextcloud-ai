@@ -164,6 +164,10 @@ class AgentInteractionProvider implements ISynchronousProvider {
 		$history = $state['history'];
 		$pending = $state['pending'];
 
+		if (!empty($state['execution']) && (($state['execution']['status'] ?? '') !== 'completed' || $confirmation === 1)) {
+			return ['output' => (string)$state['execution']['output'], 'conversation_token' => $token, 'actions' => ''];
+		}
+
 		if ($confirmation === 1 && $prompt === '') {
 			// Letzten bekannten User-Prompt aus der History wiederverwenden,
 			// damit die Bestaetigungs-Task den Kontext behaelt.
@@ -343,17 +347,24 @@ class AgentInteractionProvider implements ISynchronousProvider {
 		// than WEB: a background worker must never inherit web-only privileges.
 		$this->executor->setSurface(ToolPolicy::SURFACE_TASKPROCESSING_CONFIRMED);
 
-		// Idempotency: if the user confirms again (double-click on the dialog,
-		// or the assistant re-sends the confirmation) while nothing is pending
-		// and an answer already exists in the history, simply say that
-		// everything is done - no LLM call, no new tool proposal, no spam.
-		if ($pending === [] && $this->historyHasAssistantAnswer($history)) {
+		if ($pending === []) {
+			$previous = 'No actions were pending; nothing was executed.';
+			foreach (array_reverse($history) as $message) {
+				if (($message['role'] ?? '') === 'assistant') {
+					$previous = (string)$message['content'];
+					break;
+				}
+			}
+			return ['output' => $previous, 'conversation_token' => $token, 'actions' => ''];
+		}
+		// The durable claim is committed before the first side effect. A crash
+		// leaves an explicit unknown outcome, never an automatically replayable proposal.
+		$claim = $this->store->claim($userId, $token, $pending);
+		if ($claim === null) {
+			$state = $this->store->load($userId, $token);
 			return [
-				'output' => 'Alles erledigt – die bestätigten Aktionen habe ich bereits ausgeführt. Gibt es noch etwas, das ich für dich tun kann?',
-				'conversation_token' => $token,
-				// 'actions' is mandatory in the outputShape: empty string keeps
-				// agency_pending_actions at null (no confirmation dialog)
-				'actions' => '',
+				'output' => (string)($state['execution']['output'] ?? 'The proposal changed or was already claimed; no action was executed by this request.'),
+				'conversation_token' => $token, 'actions' => '',
 			];
 		}
 
@@ -413,9 +424,9 @@ class AgentInteractionProvider implements ISynchronousProvider {
 				? 'Some confirmed actions failed. Results: '
 				: 'The confirmed actions completed. Results: ')
 				. json_encode($executed, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
-		$this->store->save($userId, $token, array_merge($history, [
+		$this->store->complete($userId, $token, $claim['claim'], array_merge($history, [
 			['role' => 'assistant', 'content' => $fallback],
-		]), []);
+		]), $executed, $fallback);
 		$answer = $fallback;
 		try {
 			$chat = $this->ollama->chat($finalMessages, []);
@@ -429,7 +440,12 @@ class AgentInteractionProvider implements ISynchronousProvider {
 		$newHistory = array_merge($history, [
 			['role' => 'assistant', 'content' => $answer],
 		]);
-		$this->store->save($userId, $token, $newHistory, []);
+		try {
+			$this->store->complete($userId, $token, $claim['claim'], $newHistory, $executed, $answer);
+		} catch (\Throwable $e) {
+			// A newer proposal may already exist; preserve its state and the durable fallback.
+			$this->logger->warning('eva_ai: optional agent summary persistence failed', ['exception' => $e]);
+		}
 
 		// 'actions' is mandatory in the outputShape; empty string keeps
 		// agency_pending_actions at null (no confirmation dialog).

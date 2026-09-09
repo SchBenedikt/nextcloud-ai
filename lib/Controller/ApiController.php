@@ -18,7 +18,7 @@ use OCA\EvaAi\Service\RagService;
 use OCA\EvaAi\Service\KnowledgeInitializer;
 use OCP\AppFramework\OCSController;
 use OCP\AppFramework\Http\Attribute\NoAdminRequired;
-use OCP\AppFramework\Http\StreamTraversableResponse;
+use OCA\EvaAi\Http\StreamTraversableResponse;
 use OCP\AppFramework\Http\DataResponse;
 use OCP\AppFramework\Http\NotFoundResponse;
 use OCP\BackgroundJob\IJobList;
@@ -255,7 +255,7 @@ class ApiController extends OCSController {
             return new DataResponse(['error' => 'Settings are locked while indexing is running.'], 409);
         }
         $allowed = [
-            'ollama_url', 'embedding_model', 'chat_model', 'chat_model_fallback',
+            'chat_provider', 'groq_model', 'ollama_url', 'embedding_model', 'chat_model', 'chat_model_fallback',
             'embedding_model_fallback', 'summary_model', 'top_k', 'chunk_size',
             'chunk_overlap', 'max_file_size', 'max_files_per_run', 'scope_path', 'context_size', 'temperature',
             'actions_enabled',
@@ -263,7 +263,7 @@ class ApiController extends OCSController {
             'notify_on_complete',
             'mail_index_enabled',
             'mail_index_max',
-            'embed_batch_size',
+            'embed_batch_size', 'ocr_enabled', 'ocr_language',
             'weather_tool_enabled',
             'talk_history_size',
             'talk_bot_trigger',
@@ -304,6 +304,12 @@ class ApiController extends OCSController {
                 'validationErrors' => array_values($validationErrors),
             ], 400);
         }
+        $groqKey = $this->requestParam('groq_api_key');
+        $removeGroqKey = $this->requestParam('remove_groq_api_key', false);
+        if (($groqKey !== null && (!is_string($groqKey) || ($groqKey !== '' && !preg_match('/^gsk_[A-Za-z0-9_-]{16,256}$/D', $groqKey))))
+            || !in_array($removeGroqKey, [true, false, 0, 1, '0', '1'], true)) {
+            return new DataResponse(['error' => 'Invalid Groq credential input.'], 400);
+        }
         $roleErrors = $this->validateModelRoles($pending);
         if ($roleErrors !== []) {
             return new DataResponse([
@@ -311,6 +317,8 @@ class ApiController extends OCSController {
                 'validationErrors' => array_values($roleErrors),
             ], 400);
         }
+        if ($removeGroqKey) $this->ollama->saveGroqKey('');
+        elseif (is_string($groqKey) && $groqKey !== '') $this->ollama->saveGroqKey($groqKey);
         foreach ($pending as $key => $value) {
                 if (in_array($key, ['top_k', 'chunk_size', 'chunk_overlap', 'max_file_size', 'max_files_per_run', 'context_size', 'exec_write_max_chars', 'mail_index_max', 'talk_history_size', 'chat_retention_days', 'embed_batch_size'], true)) {
                     $value = (string)$value;
@@ -321,7 +329,7 @@ class ApiController extends OCSController {
                 if ($key === 'exec_write_types') {
                     $value = $this->config->normalizeValue($key, $value);
                 }
-                if ($key === 'notify_on_complete' || $key === 'mail_index_enabled' || $key === 'index_enrolled' || $key === 'weather_tool_enabled' || $key === 'talk_classify_all') {
+                if ($key === 'ocr_enabled' || $key === 'notify_on_complete' || $key === 'mail_index_enabled' || $key === 'index_enrolled' || $key === 'weather_tool_enabled' || $key === 'talk_classify_all') {
                     $value = in_array((string)$value, ['1', 'true', 'on'], true) ? '1' : '0';
                 }
                 if ($key === 'temperature') {
@@ -348,7 +356,7 @@ class ApiController extends OCSController {
      */
     private function validateModelRoles(array $pending): array {
         $modelKeys = ['embedding_model', 'chat_model', 'summary_model'];
-        if (!array_intersect(array_keys($pending), $modelKeys + ['ollama_url'])) {
+        if (!array_intersect(array_keys($pending), [...$modelKeys, 'ollama_url'])) {
             return [];
         }
         $errors = [];
@@ -381,6 +389,7 @@ class ApiController extends OCSController {
                 'summary_model' => 'chat',
             ];
             foreach ($expect as $key => $role) {
+                if (($pending['chat_provider'] ?? $this->config->get('chat_provider')) === 'groq' && $role === 'chat') continue;
                 if (!isset($pending[$key]) || !is_scalar($pending[$key])) {
                     continue;
                 }
@@ -688,6 +697,7 @@ class ApiController extends OCSController {
             'chunks' => array_map(static fn($c) => [
                 'index' => (int)$c['chunk_index'],
                 'content' => (string)$c['content'],
+                'provenance' => json_decode((string)($c['provenance'] ?? '{}'), true) ?: [],
             ], $rows),
         ]);
     }
@@ -1257,25 +1267,35 @@ class ApiController extends OCSController {
      */
     #[NoAdminRequired]
     public function chatRegenerate(string $id): StreamTraversableResponse {
+        $headers = [
+            'Content-Type' => 'application/x-ndjson',
+            'Cache-Control' => 'no-cache, no-store, must-revalidate',
+            'X-Accel-Buffering' => 'no',
+        ];
         $user = $this->requireUser();
         if ($user === null) {
             $body = json_encode(['type' => 'error', 'message' => 'Not logged in']) . "\n";
-            return new StreamTraversableResponse(new \ArrayIterator([$body]), 'application/x-ndjson');
+            return new StreamTraversableResponse(new \ArrayIterator([$body]), 401, $headers);
         }
-        $body = json_decode((string)file_get_contents('php://input'), true);
-        $messageIndex = (int)($body['messageIndex'] ?? -1);
-        $newText = isset($body['message']) ? trim((string)$body['message']) : null;
+        $rawIndex = $this->requestParam('messageIndex', -1);
+        $messageIndex = is_int($rawIndex) ? $rawIndex : -1;
+        $rawText = $this->requestParam('message');
+        $newText = is_string($rawText) ? trim($rawText) : null;
 
         $chat = $this->chatStore->getChat($user, $id);
         if ($chat === null) {
             $body = json_encode(['type' => 'error', 'message' => 'Chat not found']) . "\n";
-            return new StreamTraversableResponse(new \ArrayIterator([$body]), 'application/x-ndjson');
+            return new StreamTraversableResponse(new \ArrayIterator([$body]), 404, $headers);
         }
 
         $messages = $chat['messages'];
-        if ($messageIndex < 0 || $messageIndex >= count($messages)) {
-            $body = json_encode(['type' => 'error', 'message' => 'Invalid message index']) . "\n";
-            return new StreamTraversableResponse(new \ArrayIterator([$body]), 'application/x-ndjson');
+        if ($messageIndex < 0 || $messageIndex >= count($messages)
+            || ($messages[$messageIndex]['role'] ?? '') !== 'user'
+            || ($rawText !== null && !is_string($rawText))
+            || $newText === ''
+            || ($newText === null && trim((string)($messages[$messageIndex]['text'] ?? '')) === '')) {
+            $body = json_encode(['type' => 'error', 'message' => 'A valid user message index and non-empty message are required']) . "\n";
+            return new StreamTraversableResponse(new \ArrayIterator([$body]), 400, $headers);
         }
 
         // Truncate after the target message index (keep messages 0..messageIndex).
@@ -1306,7 +1326,7 @@ class ApiController extends OCSController {
             trim((string)($chat['instructions'] ?? '')),
             trim((string)($chat['persona'] ?? ''))
         );
-        return new StreamTraversableResponse($gen, 'application/x-ndjson');
+        return new StreamTraversableResponse($gen, 200, $headers);
     }
 
     #[NoAdminRequired]
@@ -1348,6 +1368,7 @@ class ApiController extends OCSController {
         if ($user === null) {
             return new DataResponse(['error' => 'Not logged in'], 401);
         }
+        if ($this->config->get('chat_provider') === 'groq') return new DataResponse(['provider' => 'groq', 'groq' => $this->ollama->checkGroq()]);
         return new DataResponse($this->ollama->testAll());
     }
 

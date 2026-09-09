@@ -12,31 +12,52 @@ export function escHtml(s) {
 
 /** Applies inline markdown formatting (code, bold, strikethrough, italic, links). */
 export function mdInline(text) {
-	return text
-		.replace(/`([^`]+)`/g, '<code>$1</code>')
-		.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
-		.replace(/~~([^~]+)~~/g, '<del>$1</del>')
-		.replace(/\*([^*]+)\*/g, '<em>$1</em>')
-		.replace(/\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g, '<a href="$2" target="_blank" rel="noopener">$1</a>')
-		.replace(/(^|[\s(])(https?:\/\/[^\s<]+)/g, '$1<a href="$2" target="_blank" rel="noopener">$2</a>')
+	// Tokenize before emitting HTML: later substitutions must never rewrite
+	// code contents, generated link labels, or href attributes.
+	const tokens = /`([^`]+)`|\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)|(https?:\/\/[^\s<]+)|\*\*([^*]+)\*\*|~~([^~]+)~~|\*([^*]+)\*/g
+	return text.replace(tokens, (match, code, label, href, url, bold, deleted, italic) => {
+		if (code !== undefined) return '<code>' + code + '</code>'
+		if (href !== undefined) return '<a href="' + href + '" target="_blank" rel="noopener">' + label + '</a>'
+		if (url !== undefined) return '<a href="' + url + '" target="_blank" rel="noopener">' + url + '</a>'
+		if (bold !== undefined) return '<strong>' + bold + '</strong>'
+		if (deleted !== undefined) return '<del>' + deleted + '</del>'
+		return '<em>' + italic + '</em>'
+	})
 }
 
 /** Converts block-level markdown to HTML. */
 export function mdToHtml(src) {
-	const blocks = String(src || '').split(/(```+)/)
+	const blocks = []
+	let prose = []
+	let code = null
+	let fenceLength = 0
+	for (const line of String(src || '').split('\n')) {
+		const fence = /^\s{0,3}(`{3,})(.*)$/.exec(line)
+		if (code !== null) {
+			if (fence && fence[1].length >= fenceLength && fence[2].trim() === '') {
+				blocks.push({ code: code.join('\n') + (code.length ? '\n' : '') })
+				code = null
+			} else {
+				code.push(line)
+			}
+		} else if (fence) {
+			blocks.push({ text: prose.join('\n') })
+			prose = []
+			code = []
+			fenceLength = fence[1].length
+		} else {
+			prose.push(line)
+		}
+	}
+	if (code !== null) blocks.push({ code: code.join('\n') })
+	blocks.push({ text: prose.join('\n') })
 	let html = ''
-	for (let i = 0; i < blocks.length; i++) {
-		if (i % 2 === 1) {
-			const fence = blocks[i]
-			if (fence[0] !== '`') continue
-			const body = blocks[++i] ?? ''
-			const nl = body.indexOf('\n')
-			const lang = (nl > 0 ? body.slice(0, nl) : '').trim().replace(/[^a-zA-Z0-9_+-]/g, '')
-			const code = body.slice(nl > 0 ? nl + 1 : 0).replace(/[ \t]+\n?$/, '')
-			html += '<pre class="md-pre"><code>' + escHtml(code) + '</code></pre>\n'
+	for (const item of blocks) {
+		if (item.code !== undefined) {
+			html += '<pre class="md-pre"><code>' + escHtml(item.code) + '</code></pre>\n'
 			continue
 		}
-		const block = blocks[i]
+		const block = item.text
 		if (!block) continue
 		const lines = block.split('\n')
 		let para = []
@@ -83,6 +104,7 @@ export function mdToHtml(src) {
  * Supports both single `[N]` and range `[1-3]` syntax.
  */
 export function citedSources(text, sources) {
+	sources = Array.isArray(sources) ? sources : []
 	const nums = new Set()
 	if (text) {
 		const re = /\[([\d,\s\-–]+)\]/g
@@ -92,17 +114,17 @@ export function citedSources(text, sources) {
 				if (!tok) return
 				const range = tok.match(/^(\d+)[-–](\d+)$/)
 				if (range) {
-					for (let n = parseInt(range[1], 10); n <= parseInt(range[2], 10); n++) nums.add(n)
+					const start = Math.max(1, Number(range[1]))
+					const end = Math.min(sources.length, Number(range[2]))
+					for (let n = start; n <= end; n++) nums.add(n)
 				} else {
 					const n = parseInt(tok, 10)
-					if (!isNaN(n)) nums.add(n)
+					if (n >= 1 && n <= sources.length) nums.add(n)
 				}
 			})
 		}
 	}
-	return (sources || [])
-		.map((src, i) => ({ ref: i + 1, src }))
-		.filter((x) => nums.has(x.ref))
+	return Array.from(nums, ref => ({ ref, src: sources[ref - 1] }))
 }
 
 /** Copies text to clipboard with fallback. */

@@ -50,8 +50,8 @@ jobs:
       - name: Install frontend dependencies
         run: npm ci
 
-      - name: Test Files action behavior
-        run: node --test tests/filesaction.test.cjs
+      - name: Test frontend behavior
+        run: npm test
 
       - name: Build production bundles
         run: npm run build

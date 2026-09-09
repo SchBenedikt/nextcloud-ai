@@ -137,6 +137,46 @@ final class ChatStoreTest extends TestCase {
         self::assertNull($written);
     }
 
+    public function testCorruptChatDataIsNeverOverwritten(): void {
+        foreach (['{"broken":', 'null', '{"unexpected":"object"}', '[null]'] as $json) {
+            $written = null;
+            [$store, $file] = $this->chatFileHarness($json, $written);
+            $file->expects(self::never())->method('putContent');
+            try {
+                $store->create('alice');
+                self::fail('Corrupt chat data must abort the mutation');
+            } catch (\RuntimeException $e) {
+                self::assertStringContainsString('Invalid EVA', $e->getMessage());
+            }
+            self::assertNull($written);
+        }
+    }
+
+    public function testCorruptFolderRegistryIsNeverOverwritten(): void {
+        $written = null;
+        $foldersWritten = null;
+        [$store] = $this->chatFileHarness('[]', $written, '{"broken":', $foldersWritten);
+        try {
+            $store->createFolder('alice', 'Work');
+            self::fail('Corrupt folder data must abort the mutation');
+        } catch (\RuntimeException $e) {
+            self::assertStringContainsString('Invalid EVA', $e->getMessage());
+        }
+        self::assertNull($foldersWritten);
+    }
+
+    public function testNewChatDoesNotReuseArchivedOrCustomizedEmptyChats(): void {
+        $written = null;
+        [$store] = $this->chatFileHarness(json_encode([
+            ['id' => 'archived', 'archived' => true, 'messages' => []],
+            ['id' => 'custom', 'instructions' => 'Translate everything', 'messages' => []],
+            ['id' => 'scoped', 'scopePath' => '/Work', 'messages' => []],
+        ]), $written);
+        $chat = $store->create('alice');
+        self::assertNotContains($chat['id'], ['archived', 'custom', 'scoped']);
+        self::assertCount(4, json_decode($written, true));
+    }
+
     private function chatFileHarness(string $json, ?string &$written, string $foldersJson = '[]', ?string &$foldersWritten = null): array {
         $factory = $this->createMock(IAppDataFactory::class);
         $appData = $this->createMock(IAppData::class);

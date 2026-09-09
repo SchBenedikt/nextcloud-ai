@@ -55,6 +55,18 @@ final class FileOwnershipStoreTest extends TestCase {
         }
     }
 
+    public function testContendingRequestCannotReadOrOverwriteMarkers(): void {
+        $file = $this->createMock(ISimpleFile::class);
+        $file->expects(self::never())->method('getContent');
+        $file->expects(self::never())->method('putContent');
+        $locking = $this->createMock(\OCP\Lock\ILockingProvider::class);
+        $locking->method('acquireLock')->willThrowException(new \RuntimeException('lock busy'));
+        $locking->expects(self::never())->method('releaseLock');
+        $store = new FileOwnershipStore($file, $this->createMock(Folder::class), $locking, 'alice');
+        $this->expectExceptionMessage('lock busy');
+        $store->remember($this->node(42));
+    }
+
     private function node(int $id): Node {
         $node = $this->createMock(Node::class);
         $node->method('getId')->willReturn($id);
@@ -63,10 +75,24 @@ final class FileOwnershipStoreTest extends TestCase {
 
     private function store(string &$raw, array &$visible): FileOwnershipStore {
         $file = $this->createMock(ISimpleFile::class);
-        $file->method('getContent')->willReturnCallback(static function () use (&$raw): string { return $raw; });
         $file->method('putContent')->willReturnCallback(static function ($content) use (&$raw): void { $raw = $content; });
         $home = $this->createMock(Folder::class);
         $home->method('getById')->willReturnCallback(static function ($id) use (&$visible): array { return $visible[$id] ?? []; });
-        return new FileOwnershipStore($file, $home);
+        $locked = false;
+        $locking = $this->createMock(\OCP\Lock\ILockingProvider::class);
+        $locking->method('acquireLock')->willReturnCallback(static function ($key) use (&$locked): void {
+            self::assertLessThanOrEqual(64, strlen($key));
+            self::assertFalse($locked);
+            $locked = true;
+        });
+        $locking->method('releaseLock')->willReturnCallback(static function () use (&$locked): void {
+            self::assertTrue($locked);
+            $locked = false;
+        });
+        $file->method('getContent')->willReturnCallback(static function () use (&$raw, &$locked): string {
+            self::assertTrue($locked, 'Marker reads must hold the shared lock');
+            return $raw;
+        });
+        return new FileOwnershipStore($file, $home, $locking, 'alice');
     }
 }

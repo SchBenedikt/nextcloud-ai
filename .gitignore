@@ -3,3 +3,5 @@ ragtest.tmp.php
 *.tmp
 vendor/
 .phpunit.result.cache
+
+/node_modules

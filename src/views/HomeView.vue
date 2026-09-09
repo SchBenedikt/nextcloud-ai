@@ -90,6 +90,10 @@
 					<button class="panel-link" type="button" @click="$emit('navigate', 'settings')">{{ $t('Settings') }}</button>
 				</div>
 				<ul class="status-list">
+                    <li v-if="status.chatProvider === 'groq'">
+                        <span class="status-label">Groq</span>
+                        <span class="status-value">{{ status.groq?.keyConfigured ? $t('API key saved') : $t('API key missing') }}</span>
+                    </li>
 					<li>
 						<span class="status-dot" :class="online ? 'status-dot--ok' : 'status-dot--bad'"></span>
 						<span class="status-label">{{ $t('Ollama connection') }}</span>
@@ -101,7 +105,7 @@
 					</li>
 					<li>
 						<span class="status-label">{{ $t('Chat model') }}</span>
-						<span class="status-value status-value--mono">{{ status.chatModel || '—' }}</span>
+						<span class="status-value status-value--mono">{{ (status.chatProvider === 'groq' ? status.groq?.model : status.chatModel) || '—' }}</span>
 					</li>
 					<li>
 						<span class="status-label">{{ $t('Embedding model') }}</span>

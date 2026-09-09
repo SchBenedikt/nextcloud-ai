@@ -24,9 +24,10 @@ final class AgentConfirmationTest extends TestCase {
                 ->willReturn(['ok' => false, 'error' => 'Permission denied']);
             $saved = false;
             $store = $this->createMock(AgentStore::class);
-            $store->expects(self::exactly(2))->method('save')->willReturnCallback(
-                static function ($user, $token, $history, $pending) use (&$saved): void {
-                    self::assertSame([], $pending);
+            $store->method('claim')->willReturn(['claim' => 'test-claim']);
+            $store->expects(self::exactly(2))->method('complete')->willReturnCallback(
+                static function ($user, $token, $claim, $history, $results, $output) use (&$saved): void {
+                    self::assertSame('test-claim', $claim);
                     self::assertStringContainsString('Permission denied', $history[count($history) - 1]['content']);
                     $saved = true;
                 }
