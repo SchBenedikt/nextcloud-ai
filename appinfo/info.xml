@@ -3,20 +3,61 @@
       xsi:noNamespaceSchemaLocation="https://apps.nextcloud.com/schema/apps/info.xsd">
     <id>eva_ai</id>
     <name>Eva</name>
-    <summary>RAG assistant over your files with Ollama or Groq</summary>
+    <summary>Private AI assistant — RAG chat over your Nextcloud files with Ollama or Groq</summary>
     <description>
-        Index your own Nextcloud files as a knowledge base and chat about them with a
-        Large Language Model via Ollama or optional Groq API. The app reads your files, splits
-        them into chunks, creates embeddings and makes them searchable via RAG.
-        Answers always name the source (file path) the model took the information from.
+        Eva AI turns your Nextcloud into a private, searchable knowledge base powered by Large Language Models. Ask questions in natural language and get instant, cited answers drawn from your own files — fully local with Ollama, or optionally via Groq for cloud-hosted inference.
 
-        - Pure PHP and local retrieval. Optional Groq sends messages, file excerpts and tool results to Groq; embeddings use Ollama.
-        - Text files (txt, md, code, csv, tsv, html, json, xml, yaml, toml, rtf, sql, ...), PDF,
-        Office (docx/xlsx/pptx incl. macro/template variants), OpenDocument (odt, ods, odp), EPUB and more.
-        - Hybrid retrieval: vector search + lexical search (BM25), RRF fusion.
-        - The chat can optionally perform actions on the Nextcloud (create, rename, search
-        files and templates) across the whole home space, incl. Notes and Contacts.
-        - No configuration required: embedding and chat model come from your local Ollama instance.
+        ## Why Eva AI?
+
+        Your data stays yours. No third-party indexing, no external databases, no cloud required. Eva runs entirely within your Nextcloud instance, giving you full control over your files and conversations.
+
+        ## Key Features
+
+        **Intelligent File Indexing**
+        Eva automatically reads, chunks, and embeds your files for semantic search. Supports a wide range of formats: plain text (txt, md, csv, json, xml, yaml, sql, ...), PDF, Microsoft Office (docx/xlsx/pptx with macros and templates), OpenDocument (odt/ods/odp), EPUB, and more.
+
+        **Hybrid Retrieval Engine**
+        Combines vector-based semantic search with lexical search (BM25) using Reciprocal Rank Fusion (RRF) to deliver the most relevant results — even for exact-match queries.
+
+        **Cited Sources**
+        Every answer includes the exact file path where the information was found, so you can always verify the source.
+
+        **Nextcloud Integration**
+        Eva can perform actions directly within Nextcloud: search for files, create documents, rename items, and work with templates across your entire home space — including Notes and Contacts.
+
+        **Ollama & Groq Support**
+        Start fully local with Ollama (no configuration required) or optionally connect to Groq for cloud-hosted inference. Embeddings always run locally via Ollama.
+
+        **Zero Configuration**
+        Just install and go. Eva automatically detects your local Ollama instance and selects appropriate models.
+
+        **Talk Integration**
+        Optionally integrate with Nextcloud Talk for conversational AI within your chat rooms.
+
+        ## Requirements
+
+        - Nextcloud 30–35
+        - PHP 8.2+
+        - [Ollama](https://ollama.com) running locally (default: http://localhost:11434)
+        - Optional: Groq API key for cloud-hosted inference
+
+        ## Get Started
+
+        1. Install the app
+        2. Ensure Ollama is running on your server
+        3. Open Eva from the left sidebar
+        4. Start chatting with your files
+
+        ## Privacy
+
+        With Ollama, all processing happens on your server. Your files never leave your infrastructure. No analytics, no telemetry, no external calls.
+
+        ## Support
+
+        - GitHub: https://github.com/SchBenedikt/nextcloud-ai
+        - Issues: https://github.com/SchBenedikt/nextcloud-ai/issues
+
+        Licensed under AGPL-3.0-or-later.
     </description>
     <version>1.4.8</version>
     <licence>agpl</licence>
