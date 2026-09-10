@@ -91,6 +91,14 @@ class ApiController extends OCSController {
      * the user to the admin recovery command instead of a generic 500.
      */
     private function chatErrorResponse(\Throwable $e): DataResponse {
+        // A temporarily locked chat store is a busy condition, not an error:
+        // the page load fires several chat reads in parallel and a crashed
+        // request can hold the lock until the backend TTL expires. A 503 lets
+        // the frontend show "please retry" instead of taking the app down
+        // with an opaque 500.
+        if ($e instanceof \OCA\EvaAi\Service\ChatStoreBusyException) {
+            return new DataResponse(['error' => 'busy', 'message' => $e->getMessage()], 503);
+        }
         $message = $e->getMessage();
         if (str_contains($message, 'Invalid EVA chat data')
             || str_contains($message, 'Invalid EVA folder registry')) {
@@ -158,6 +166,9 @@ class ApiController extends OCSController {
                 ],
             ]);
         } catch (\Throwable $e) {
+            if ($e instanceof \OCA\EvaAi\Service\ChatStoreBusyException) {
+                return new DataResponse(['error' => 'busy', 'message' => $e->getMessage()], 503);
+            }
             return new DataResponse(['error' => 'Unable to build dashboard summary'], 500);
         }
     }
@@ -1050,7 +1061,11 @@ class ApiController extends OCSController {
         // Archived chats are always included: the sidebar splits them into
         // its own section and would otherwise never see them again (Issue #87).
         // The dashboard widget reads the store directly and keeps hiding them.
-        return new DataResponse($this->chatStore->list($user, $search !== '' ? $search : null, true));
+        try {
+            return new DataResponse($this->chatStore->list($user, $search !== '' ? $search : null, true));
+        } catch (\Throwable $e) {
+            return $this->chatErrorResponse($e);
+        }
     }
 
     #[NoAdminRequired]
@@ -1262,7 +1277,7 @@ class ApiController extends OCSController {
         try {
             return new DataResponse($this->chatStore->listFolders($user));
         } catch (\Throwable $e) {
-            return new DataResponse(['error' => 'Unable to read folders'], 500);
+            return $this->chatErrorResponse($e);
         }
     }
 

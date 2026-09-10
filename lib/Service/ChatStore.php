@@ -105,7 +105,7 @@ class ChatStore {
             // Pinned chats first, then by most recently updated.
             usort($out, static fn($a, $b) => ($b['pinned'] <=> $a['pinned']) ?: ($b['updated'] <=> $a['updated']));
             return $out;
-        });
+        }, ILockingProvider::LOCK_SHARED);
     }
 
     /** @return array|null */
@@ -123,7 +123,7 @@ class ChatStore {
                 }
             }
             return null;
-        });
+        }, ILockingProvider::LOCK_SHARED);
     }
 
     public function create(string $user, ?string $title = null): array {
@@ -222,7 +222,7 @@ class ChatStore {
     public function exportAll(string $user): array {
         return $this->withUserLock($user, function () use ($user): array {
             return $this->read($user);
-        });
+        }, ILockingProvider::LOCK_SHARED);
     }
 
     /**
@@ -420,7 +420,7 @@ class ChatStore {
             $folders = $this->foldersLocked($user);
             usort($folders, static fn($a, $b) => strcasecmp((string)($a['name'] ?? ''), (string)($b['name'] ?? '')));
             return $folders;
-        });
+        }, ILockingProvider::LOCK_SHARED);
     }
 
     /** Folder names already sorted (used inside the user lock). */
@@ -785,6 +785,16 @@ class ChatStore {
         });
     }
 
+    // How often and how long to wait for the per-user lock before giving up.
+    // Page loads fire several chat reads in parallel; Nextcloud's lock
+    // acquisition is non-blocking, so without retries a short write would make
+    // every read fail instantly. Reads retry briefly and then degrade to a
+    // lock-free read (a page must never stall or 500); writes retry longer
+    // because serializing them is a correctness requirement.
+    private const LOCK_RETRY_ATTEMPTS_EXCLUSIVE = 6;
+    private const LOCK_RETRY_ATTEMPTS_SHARED = 3;
+    private const LOCK_RETRY_BASE_USLEEP = 100000; // 100 ms, growing per attempt
+
     /**
      * Serialize all chat reads and mutations for one user across the whole
      * cluster. A node-local flock() in the temp directory let two app servers
@@ -792,28 +802,67 @@ class ChatStore {
      * deployments (Issue #78). Nextcloud's locking provider coordinates via a
      * shared backend (database or distributed cache), so the read-modify-write
      * of one user's chat file is atomic on every node.
+     *
+     * $mode distinguishes reads (LOCK_SHARED) from mutations (LOCK_EXCLUSIVE):
+     * several parallel reads may run at the same time, so the chat list,
+     * stats and folders on one page load no longer trip over each other.
+     * When the lock stays unavailable (a crashed request can hold it until
+     * the backend TTL expires), reads degrade to a lock-free read that is
+     * served only when the stored JSON is intact - a torn read during an
+     * active write reports busy instead of corrupting or 500-ing. Mutations
+     * never run unlocked and surface a busy error instead.
      */
-    private function withUserLock(string $user, callable $operation): mixed {
+    private function withUserLock(string $user, callable $operation, int $mode = ILockingProvider::LOCK_EXCLUSIVE): mixed {
         $lockPath = 'eva_ai/chat/' . $this->namespaceFor($user);
-        try {
-            $this->lockingProvider->acquireLock($lockPath, ILockingProvider::LOCK_EXCLUSIVE);
-        } catch (\Throwable $e) {
-            $this->logger->warning('eva_ai: chat lock could not be acquired', [
-                'user' => $user,
-                'exception' => $e->getMessage(),
-            ]);
-            throw new \RuntimeException('Unable to acquire the EVA chat lock');
-        }
-        try {
-            return $operation();
-        } finally {
+        $attempts = $mode === ILockingProvider::LOCK_SHARED
+            ? self::LOCK_RETRY_ATTEMPTS_SHARED
+            : self::LOCK_RETRY_ATTEMPTS_EXCLUSIVE;
+        $acquired = false;
+        for ($attempt = 0; $attempt < $attempts; $attempt++) {
             try {
-                $this->lockingProvider->releaseLock($lockPath, ILockingProvider::LOCK_EXCLUSIVE);
+                $this->lockingProvider->acquireLock($lockPath, $mode);
+                $acquired = true;
+                break;
             } catch (\Throwable $e) {
-                // A lock that was already released (e.g. expired TTL on a
-                // crashed node) must not mask the operation's own result.
+                if ($attempt < $attempts - 1) {
+                    // Backoff: short collisions (a concurrent write) resolve
+                    // within a few hundred milliseconds.
+                    usleep(self::LOCK_RETRY_BASE_USLEEP * ($attempt + 1));
+                    continue;
+                }
+                $this->logger->warning('eva_ai: chat lock could not be acquired', [
+                    'user' => $user,
+                    'mode' => $mode === ILockingProvider::LOCK_SHARED ? 'shared' : 'exclusive',
+                    'exception' => $e->getMessage(),
+                ]);
             }
         }
+        if ($acquired) {
+            try {
+                return $operation();
+            } finally {
+                try {
+                    $this->lockingProvider->releaseLock($lockPath, $mode);
+                } catch (\Throwable $e) {
+                    // A lock that was already released (e.g. expired TTL on a
+                    // crashed node) must not mask the operation's own result.
+                }
+            }
+        }
+        if ($mode === ILockingProvider::LOCK_SHARED) {
+            // Reads never mutate the store: serve the current file whenever it
+            // is intact. A read racing an active write can only fail JSON
+            // decoding, which is reported as busy - never as a hard error.
+            try {
+                return $operation();
+            } catch (\Throwable $e) {
+                $this->logger->warning('eva_ai: chat lock busy, degraded read failed', [
+                    'user' => $user,
+                    'exception' => $e->getMessage(),
+                ]);
+            }
+        }
+        throw new ChatStoreBusyException('Chat storage is busy (another request is writing it). Please try again.');
     }
 
     private function rootFor(string $user): \OCP\Files\SimpleFS\ISimpleFile {
