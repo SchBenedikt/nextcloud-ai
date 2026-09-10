@@ -4,62 +4,66 @@
     <id>eva_ai</id>
     <name>Eva</name>
     <summary>Private AI assistant — RAG chat over your Nextcloud files with Ollama or Groq</summary>
+    <!-- IMPORTANT: keep the description flush-left. CommonMark (which the App
+          Store uses to render this field) turns any line indented by four or
+          more spaces into a code block, so indenting the copy makes the whole
+          store listing render as source code. See docs/VERSIONING.md. -->
     <description>
-        Eva AI turns your Nextcloud into a private, searchable knowledge base powered by Large Language Models. Ask questions in natural language and get instant, cited answers drawn from your own files — fully local with Ollama, or optionally via Groq for cloud-hosted inference.
+Eva AI turns your Nextcloud into a private, searchable knowledge base powered by Large Language Models. Ask questions in natural language and get instant, cited answers drawn from your own files — fully local with Ollama, or optionally via Groq for cloud-hosted inference.
 
-        ## Why Eva AI?
+## Why Eva AI?
 
-        Your data stays yours. No third-party indexing, no external databases, no cloud required. Eva runs entirely within your Nextcloud instance, giving you full control over your files and conversations.
+Your data stays yours. No third-party indexing, no external databases, no cloud required. Eva runs entirely within your Nextcloud instance, giving you full control over your files and conversations.
 
-        ## Key Features
+## Key Features
 
-        **Intelligent File Indexing**
-        Eva automatically reads, chunks, and embeds your files for semantic search. Supports a wide range of formats: plain text (txt, md, csv, json, xml, yaml, sql, ...), PDF, Microsoft Office (docx/xlsx/pptx with macros and templates), OpenDocument (odt/ods/odp), EPUB, and more.
+**Intelligent File Indexing**
+Eva automatically reads, chunks, and embeds your files for semantic search. Supports a wide range of formats: plain text (txt, md, csv, json, xml, yaml, sql, ...), PDF, Microsoft Office (docx/xlsx/pptx with macros and templates), OpenDocument (odt/ods/odp), EPUB, and more.
 
-        **Hybrid Retrieval Engine**
-        Combines vector-based semantic search with lexical search (BM25) using Reciprocal Rank Fusion (RRF) to deliver the most relevant results — even for exact-match queries.
+**Hybrid Retrieval Engine**
+Combines vector-based semantic search with lexical search (BM25) using Reciprocal Rank Fusion (RRF) to deliver the most relevant results — even for exact-match queries.
 
-        **Cited Sources**
-        Every answer includes the exact file path where the information was found, so you can always verify the source.
+**Cited Sources**
+Every answer includes the exact file path where the information was found, so you can always verify the source.
 
-        **Nextcloud Integration**
-        Eva can perform actions directly within Nextcloud: search for files, create documents, rename items, and work with templates across your entire home space — including Notes and Contacts.
+**Nextcloud Integration**
+Eva can perform actions directly within Nextcloud: search for files, create documents, rename items, and work with templates across your entire home space — including Notes and Contacts.
 
-        **Ollama and Groq Support**
-        Start fully local with Ollama (no configuration required) or optionally connect to Groq for cloud-hosted inference. Embeddings always run locally via Ollama.
+**Ollama and Groq Support**
+Start fully local with Ollama (no configuration required) or optionally connect to Groq for cloud-hosted inference. Embeddings always run locally via Ollama.
 
-        **Zero Configuration**
-        Just install and go. Eva automatically detects your local Ollama instance and selects appropriate models.
+**Zero Configuration**
+Just install and go. Eva automatically detects your local Ollama instance and selects appropriate models.
 
-        **Talk Integration**
-        Optionally integrate with Nextcloud Talk for conversational AI within your chat rooms.
+**Talk Integration**
+Optionally integrate with Nextcloud Talk for conversational AI within your chat rooms.
 
-        ## Requirements
+## Requirements
 
-        - Nextcloud 30–35
-        - PHP 8.2+
-        - [Ollama](https://ollama.com) running locally (default: http://localhost:11434)
-        - Optional: Groq API key for cloud-hosted inference
+- Nextcloud 30–35
+- PHP 8.2+
+- [Ollama](https://ollama.com) running locally (default: http://localhost:11434)
+- Optional: Groq API key for cloud-hosted inference
 
-        ## Get Started
+## Get Started
 
-        1. Install the app
-        2. Ensure Ollama is running on your server
-        3. Open Eva from the left sidebar
-        4. Start chatting with your files
+1. Install the app
+2. Ensure Ollama is running on your server
+3. Open Eva from the left sidebar
+4. Start chatting with your files
 
-        ## Privacy
+## Privacy
 
-        With Ollama, all processing happens on your server. Your files never leave your infrastructure. No analytics, no telemetry, no external calls.
+With Ollama, all processing happens on your server. Your files never leave your infrastructure. No analytics, no telemetry, no external calls.
 
-        ## Support
+## Support
 
-        - GitHub: https://github.com/SchBenedikt/nextcloud-ai
-        - Issues: https://github.com/SchBenedikt/nextcloud-ai/issues
+- GitHub: https://github.com/SchBenedikt/nextcloud-ai
+- Issues: https://github.com/SchBenedikt/nextcloud-ai/issues
 
-        Licensed under AGPL-3.0-or-later.
+Licensed under AGPL-3.0-or-later.
     </description>
-    <version>1.4.8</version>
+    <version>1.4.9</version>
     <licence>agpl</licence>
     <author>Benedikt Schächner</author>
     <namespace>EvaAi</namespace>

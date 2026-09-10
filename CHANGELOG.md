@@ -74,6 +74,16 @@ follows [Semantic Versioning](https://semver.org/).
 - Use a shared Markdown parser for tables, nested lists/emphasis, safe links and
   streamed code fences, with matching chat styles and desktop/mobile browser checks.
 - Run Groq contracts against real Nextcloud interfaces in the PHP 8.2–8.4 CI matrix.
+- The app page no longer fails with an intermittent HTTP 500 when the chat store
+  is briefly locked: page-load reads now take a shared lock, retry on contention
+  and degrade to a lock-free read of the intact file, while mutations still
+  require the exclusive lock and report a friendly 503 "busy" instead of a 500.
+- The App Store listing renders as text again: the `info.xml` description is
+  flush-left, because CommonMark turned its four-space indentation into a code
+  block.
+- App version bumped to 1.4.9 so the new mtime migration actually runs on
+  update; `tests/ReleaseMetadataTest` now fails when a migration targets a
+  version above `info.xml`, and `docs/VERSIONING.md` documents the rules.
 
 - Bound Groq request history, avoid background greeting/follow-up API calls, and
   report actual token limits/retry timing instead of a generic Free Plan error.
