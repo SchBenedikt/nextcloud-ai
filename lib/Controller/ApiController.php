@@ -283,6 +283,7 @@ class ApiController extends OCSController {
             'mail_index_enabled',
             'mail_index_max',
             'embed_batch_size', 'ocr_enabled', 'ocr_language',
+            'ollama_keep_alive', 'followups_mode',
             'weather_tool_enabled',
             'talk_history_size',
             'talk_bot_trigger',
@@ -353,6 +354,15 @@ class ApiController extends OCSController {
                 }
                 if ($key === 'temperature') {
                     $value = (string)max(0.0, min(2.0, (float)$value));
+                }
+                if ($key === 'ollama_keep_alive' || $key === 'followups_mode') {
+                    $value = trim((string)$value);
+                    if ($key === 'ollama_keep_alive' && $value === '') {
+                        $value = '5m'; // Ollama server default
+                    }
+                    if ($key === 'followups_mode' && !in_array($value, ['fast', 'llm'], true)) {
+                        $value = 'fast';
+                    }
                 }
                 if ($key === 'talk_bot_trigger') {
                     $value = trim((string)$value);
@@ -1403,6 +1413,17 @@ class ApiController extends OCSController {
             yield from $gen;
         })();
         return new StreamTraversableResponse($stream, 200, $headers);
+    }
+
+    #[NoAdminRequired]
+    public function calendars(): DataResponse {
+        $user = $this->requireUser();
+        if ($user === null) {
+            return new DataResponse(['error' => 'Not logged in'], 401);
+        }
+        // Read-only calendar metadata for the tool-confirmation dialogs
+        // (calendar picker). Empty list when the calendar backend is absent.
+        return new DataResponse(['calendars' => $this->ragService->calendarList($user)]);
     }
 
     #[NoAdminRequired]

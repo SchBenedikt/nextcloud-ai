@@ -37,6 +37,7 @@ return [
         ['name' => 'api#renameFolder', 'url' => '/api/folders/rename', 'verb' => 'POST'],
         ['name' => 'api#deleteFolder', 'url' => '/api/folders/delete', 'verb' => 'POST'],
         ['name' => 'api#models', 'url' => '/api/models', 'verb' => 'GET'],
+        ['name' => 'api#calendars', 'url' => '/api/calendars', 'verb' => 'GET'],
         ['name' => 'api#check', 'url' => '/api/check', 'verb' => 'POST'],
         ['name' => 'api#exportData', 'url' => '/api/export', 'verb' => 'GET'],
         ['name' => 'api#streamChat', 'url' => '/api/streamChat', 'verb' => 'POST'],

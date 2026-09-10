@@ -44,7 +44,28 @@ class Searcher {
         }
 
         $queryTokens = $this->tokens($query);
-        $lexical = $this->lexicalBm25($rows, $queryTokens);
+
+        // Filename/path context for lexical scoring: a query that names a file
+        // ("budget.xlsx", "Rechnung Maerz") must match even when the chunk body
+        // never repeats the name. Collected once for all candidate rows.
+        $docIds = [];
+        foreach ($rows as $row) {
+            $docIds[(int)$row['document_id']] = true;
+        }
+        $docMeta = [];
+        $docs = $this->documentMapper->findByIds(array_keys($docIds));
+        foreach ($docs as $d) {
+            $docMeta[(int)$d->getId()] = $d;
+        }
+        $docFields = [];
+        foreach ($docMeta as $docId => $doc) {
+            $docFields[$docId] = [
+                'name' => mb_strtolower((string)$doc->getName()),
+                'path' => mb_strtolower((string)$doc->getPath()),
+            ];
+        }
+
+        $lexical = $this->lexicalBm25($rows, $queryTokens, $docFields);
 
         $dense = [];
         foreach ($rows as $i => $row) {
@@ -68,17 +89,6 @@ class Searcher {
         $denseRank = array_keys($dense);
         $lexPos = array_flip($lexRank);
         $densePos = array_flip($denseRank);
-
-        $docIds = [];
-        foreach ($rows as $row) {
-            $docIds[(int)$row['document_id']] = true;
-        }
-        $docMeta = [];
-        // Batched lookup via findEntities is not ideal; use mapper query.
-        $docs = $this->documentMapper->findByIds(array_keys($docIds));
-        foreach ($docs as $d) {
-            $docMeta[(int)$d->getId()] = $d;
-        }
 
         $results = [];
         foreach ($rows as $i => $row) {
@@ -311,39 +321,86 @@ class Searcher {
         return array_values(array_unique($out));
     }
 
-    /** @param array<int,array<string,mixed>> $rows @param string[] $queryTokens */
-    private function lexicalBm25(array $rows, array $queryTokens): array {
+    /**
+     * @param array<int,array<string,mixed>> $rows
+     * @param string[] $queryTokens
+     * @param array<int,array{name:string,path:string}> $docFields lowercased
+     *        document name/path per document id, for the filename bonus
+     */
+    private function lexicalBm25(array $rows, array $queryTokens, array $docFields = []): array {
         // BM25 (k1=1.5, b=0.75) over each chunk treated as its own doc.
         $k1 = 1.5;
         $b = 0.75;
-        $avgdl = 1.0;
         $lengths = [];
         $scores = [];
         $total = 0;
+        // Lowercase every chunk once up front: document frequency and term
+        // frequency then come from a single substr_count pass per term instead
+        // of an extra mb_stripos pre-pass plus a repeated mb_strtolower per
+        // (term, row) pair. Same scores, roughly half the scanning work on
+        // large candidate pools.
+        $lowered = [];
         foreach ($rows as $i => $row) {
             $len = $this->tokenCount(strlen($row['content']));
             $lengths[$i] = $len;
             $total += $len;
+            $lowered[$i] = mb_strtolower($row['content']);
         }
         $N = count($rows);
         $avgdl = $N > 0 ? max(1.0, $total / $N) : 1.0;
+        $docRows = [];
+        foreach ($rows as $i => $row) {
+            $docRows[(int)$row['document_id']][] = $i;
+        }
 
         foreach ($queryTokens as $term) {
             $df = 0;
-            foreach ($rows as $row) {
-                if (mb_stripos($row['content'], $term) !== false) {
+            $tfs = [];
+            foreach ($lowered as $i => $lower) {
+                $tf = substr_count($lower, $term);
+                if ($tf !== 0) {
+                    $tfs[$i] = $tf;
                     $df++;
                 }
             }
-            $idf = log(1 + (($N - $df + 0.5) / max(0.5, $df + 0.5)));
-            foreach ($rows as $i => $row) {
-                $tf = substr_count(mb_strtolower($row['content']), $term);
-                if ($tf === 0) {
-                    continue;
+            // Filename/path matches count toward the document frequency too,
+            // so a term that occurs only in file names still gets an idf.
+            $fieldMatches = [];
+            foreach ($docFields as $docId => $fields) {
+                $weight = 0.0;
+                if (str_contains($fields['name'], $term)) {
+                    $weight = max($weight, 0.5);
                 }
+                if (str_contains($fields['path'], $term)) {
+                    $weight = max($weight, 0.3);
+                }
+                if ($weight > 0.0) {
+                    $fieldMatches[$docId] = $weight;
+                    $df++;
+                }
+            }
+            if ($df === 0) {
+                continue;
+            }
+            $idf = log(1 + (($N - $df + 0.5) / max(0.5, $df + 0.5)));
+            foreach ($tfs as $i => $tf) {
                 $len = $lengths[$i] ?? 1;
                 $denom = $tf + $k1 * (1 - $b + $b * $len / $avgdl);
                 $scores[$i] = ($scores[$i] ?? 0.0) + $idf * (($k1 + 1) * $tf) / $denom;
+            }
+
+            // Filename/path bonus: the token also occurs in the stored file
+            // name or path of some documents. Give every chunk of those
+            // documents a lexical contribution so "find budget.xlsx" works
+            // even though the chunk body never contains the name. The weights
+            // stay below a single body occurrence, so a literal body match
+            // always outranks a bare filename match. A name match weighs more
+            // than a folder path match (the name is the more specific
+            // evidence).
+            foreach ($fieldMatches as $docId => $weight) {
+                foreach ($docRows[$docId] ?? [] as $i) {
+                    $scores[$i] = ($scores[$i] ?? 0.0) + $weight * $idf;
+                }
             }
         }
         return $scores;

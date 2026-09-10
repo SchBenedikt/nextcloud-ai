@@ -21,6 +21,8 @@ use OCP\AppFramework\Db\Entity;
  * @method void setMime(?string $mime)
  * @method int getSize()
  * @method void setSize(int $size)
+ * @method int getFileMtime()
+ * @method void setFileMtime(int $mtime)
  * @method string getContentHash()
  * @method void setContentHash(string $hash)
  * @method int getChunkCount()
@@ -35,6 +37,7 @@ class Document extends Entity {
     protected ?string $name = '';
     protected ?string $mime = null;
     protected ?int $size = 0;
+    protected ?int $fileMtime = 0;
     protected ?string $contentHash = '';
     protected ?int $chunkCount = 0;
     protected ?int $indexedAt = null;
@@ -42,6 +45,7 @@ class Document extends Entity {
     public function __construct() {
         $this->addType('fileId', 'integer');
         $this->addType('size', 'integer');
+        $this->addType('fileMtime', 'integer');
         $this->addType('chunkCount', 'integer');
         $this->addType('indexedAt', 'integer');
     }

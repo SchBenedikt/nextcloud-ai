@@ -39,9 +39,23 @@ follows [Semantic Versioning](https://semver.org/).
 - Controlled-backend tests cover the Ollama streaming client: malformed lines,
   tool-call arguments split across chunks, UTF-8 split at read boundaries and
   connection errors, all deterministic without a live server (#134).
+- Faster incremental indexing: every document now stores the indexed file's
+  modification time, and full passes skip files whose mtime+size fingerprint is
+  unchanged without re-reading or re-parsing them - renames and touches still
+  refresh the stored metadata, and the content hash stays authoritative for
+  changed files (migration in 1.4.9).
+- Filename/path-aware retrieval: a query that names a file (e.g. "Budget
+  2026.xlsx") now matches lexically via the stored name/path even when the
+  chunk text never repeats the name, while literal body matches always
+  outrank the name bonus.
+- Deeper extraction: PDF text keeps the physical layout (`-layout`) so tables
+  and columns stay structured; HTML/EPUB titles and `h1`-`h6` headings become
+  markdown section anchors that the chunker carries into every chunk.
 
 ### Changed
 
+- The home/start page no longer shows the quick prompt input field: it belongs
+  to the chat view, while the overview keeps its action buttons and stats.
 - Streaming no longer yanks the scroll position: while an answer streams, the
   chat only follows the bottom when the user is already near it, so reading
   earlier context is not interrupted (web and standalone chat).

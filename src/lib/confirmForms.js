@@ -53,16 +53,19 @@ const FORMS = {
 		title: 'Create a calendar event',
 		fields: [
 			F('summary', 'Summary', 'text', { required: true, full: true }),
-			F('start', 'Start', 'datetime', { required: true }),
-			F('end', 'End', 'datetime'),
+			F('start', 'Start date', 'date', { required: true }),
+			F('start_time', 'Start time', 'time'),
+			F('end', 'End date', 'date'),
+			F('end_time', 'End time', 'time'),
 			F('duration_minutes', 'Duration (minutes)', 'number'),
 			F('location', 'Location', 'text'),
-			F('calendar', 'Calendar', 'text'),
+			F('calendar', 'Calendar', 'calendar'),
 			F('categories', 'Categories', 'text'),
 			F('reminder_minutes', 'Reminder (minutes before)', 'number'),
 			F('description', 'Description', 'textarea', { full: true }),
 		],
 	},
+
 	update_calendar_event: {
 		title: 'Update a calendar event',
 		fields: [
@@ -198,9 +201,15 @@ function toPickerValue(value, fieldType) {
 	if (fieldType === 'date') {
 		const iso = /^(\d{4})-(\d{1,2})-(\d{1,2})$/.exec(raw)
 		if (iso) return { type: 'date', value: iso[1] + '-' + iso[2].padStart(2, '0') + '-' + iso[3].padStart(2, '0') }
+		const dateTime = /^(\d{4})-(\d{1,2})-(\d{1,2})[T ]/.exec(raw)
+		if (dateTime) return { type: 'date', value: dateTime[1] + '-' + dateTime[2].padStart(2, '0') + '-' + dateTime[3].padStart(2, '0') }
 		const de = /^(\d{1,2})\.(\d{1,2})\.(\d{4})$/.exec(raw)
 		if (de) return { type: 'date', value: de[3] + '-' + de[2].padStart(2, '0') + '-' + de[1].padStart(2, '0') }
 		return { type: 'text', value: raw }
+	}
+	if (fieldType === 'time') {
+		const time = /^(\d{1,2}):(\d{2})/.exec(raw)
+		return time ? { type: 'time', value: time[1].padStart(2, '0') + ':' + time[2] } : { type: 'time', value: '' }
 	}
 	if (fieldType === 'datetime') {
 		const m = /^(\d{4})-(\d{1,2})-(\d{1,2})[T ](\d{1,2}):(\d{2})/.exec(raw)
@@ -239,6 +248,16 @@ export function buildConfirmForm(conf) {
 	if ((conf && conf.name) === 'create_share' && !args.type) args.type = 'link'
 
 	const state = { ...args }
+	// Split model-provided ISO/local datetimes into native date and time fields
+	// so the editable form remains useful even when only `start` was supplied.
+	for (const prefix of ['start', 'end']) {
+		const raw = String(state[prefix] || '')
+		const match = /^(\d{4}-\d{2}-\d{2})[T ](\d{2}:\d{2})/.exec(raw)
+		if (match) {
+			state[prefix] = match[1]
+			state[prefix + '_time'] = match[2]
+		}
+	}
 	const wrap = document.createElement('div')
 	wrap.className = 'rconfirm-form'
 	const registry = []
@@ -246,6 +265,7 @@ export function buildConfirmForm(conf) {
 	const nativeType = (field, picker) => {
 		if (field.type === 'password') return 'password'
 		if (field.type === 'number') return 'number'
+		if (field.type === 'time') return 'time'
 		if (picker.type === 'date') return 'date'
 		if (picker.type === 'datetime') return 'datetime-local'
 		return 'text'
@@ -268,15 +288,46 @@ export function buildConfirmForm(conf) {
 			control.checked = !!state[field.key]
 			row.append(control, document.createElement('span'))
 			row.lastChild.textContent = field.label
-		} else if (field.type === 'select') {
+		} else if (field.type === 'select' || field.type === 'calendar') {
 			control = document.createElement('select')
-			;(field.options || []).forEach((opt) => {
-				const o = document.createElement('option')
-				o.value = opt.value
-				o.textContent = opt.label
-				control.appendChild(o)
-			})
-			if (state[field.key] !== undefined && state[field.key] !== null) control.value = state[field.key]
+			if (field.type === 'calendar') {
+				const loading = document.createElement('option')
+				loading.value = state[field.key] || ''
+				loading.textContent = t('Loading…')
+				control.appendChild(loading)
+				const apiMeta = document.head.querySelector('meta[name="eva-ai-api"]')
+				const tokenMeta = document.head.querySelector('meta[name="requesttoken"]')
+				const apiUrl = apiMeta ? apiMeta.getAttribute('content') : ''
+				fetch(apiUrl + '/calendars', { credentials: 'same-origin', headers: { 'OCS-APIRequest': 'true', 'Accept': 'application/json', 'requesttoken': tokenMeta ? tokenMeta.getAttribute('content') : '' } })
+					.then((response) => response.json())
+					.then((payload) => {
+						const calendars = payload?.ocs?.data?.calendars || payload?.calendars || []
+						control.innerHTML = ''
+						calendars.filter((cal) => !cal.readOnly).forEach((cal) => {
+							const option = document.createElement('option')
+							option.value = cal.uri || cal.id || cal.displayname
+							option.textContent = cal.displayname || cal.uri
+							control.appendChild(option)
+						})
+						if (state[field.key]) control.value = state[field.key]
+						updateState()
+					})
+					.catch(() => {
+						control.innerHTML = ''
+						const option = document.createElement('option')
+						option.value = state[field.key] || ''
+						option.textContent = state[field.key] || t('Calendar')
+						control.appendChild(option)
+					})
+			} else {
+				;(field.options || []).forEach((opt) => {
+					const o = document.createElement('option')
+					o.value = opt.value
+					o.textContent = opt.label
+					control.appendChild(o)
+				})
+			}
+			if (state[field.key] !== undefined && state[field.key] !== null && field.type !== 'calendar') control.value = state[field.key]
 			const cap = document.createElement('span')
 			cap.textContent = field.label + (field.required ? ' *' : '')
 			row.append(cap, control)
@@ -324,6 +375,13 @@ export function buildConfirmForm(conf) {
 			}
 			out[field.key] = getValue()
 		})
+		// Combine native date/time controls into the backend's supported values.
+		if (conf && conf.name === 'create_calendar_event') {
+			if (out.start) out.start = out.start_time ? out.start + ' ' + out.start_time : out.start
+			if (out.end) out.end = out.end_time ? out.end + ' ' + out.end_time : out.end
+			delete out.start_time
+			delete out.end_time
+		}
 		// "public" is the backend alias for link shares (legacy form behavior).
 		if ((conf && conf.name) === 'create_share' && out.type === 'link') out.type = 'public'
 		return out
