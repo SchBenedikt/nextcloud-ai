@@ -23,6 +23,14 @@ class EmbeddingCache {
 
     private ?ICache $store = null;
     private bool $initialized = false;
+    /**
+     * Process-local memo of the per-user+model dimension guard. With it, a
+     * batch of N get() calls issues N cache reads instead of 2N; misses fall
+     * through to the stored value, so correctness is unchanged (the vector
+     * entry itself still carries and validates the dimension).
+     * @var array<string,int|null>
+     */
+    private array $dimensionMemo = [];
 
     public function __construct(
         private ICacheFactory $cacheFactory,
@@ -37,7 +45,14 @@ class EmbeddingCache {
         try {
             $store = $this->store();
             $entry = $store->get($key);
-            $expectedDimension = $store->get($this->dimensionKey($userId));
+            $memoKey = $this->dimensionKey($userId);
+            if (!array_key_exists($memoKey, $this->dimensionMemo)) {
+                $this->dimensionMemo[$memoKey] = $store->get($this->dimensionKey($userId));
+                $this->dimensionMemo[$memoKey] = is_int($this->dimensionMemo[$memoKey]) || is_numeric($this->dimensionMemo[$memoKey])
+                    ? (int)$this->dimensionMemo[$memoKey]
+                    : null;
+            }
+            $expectedDimension = $this->dimensionMemo[$memoKey];
         } catch (\Throwable $e) {
             return null;
         }
@@ -96,6 +111,10 @@ class EmbeddingCache {
             $dimensionKey = $this->dimensionKey($entries[0]['userId']);
             $store->set($dimensionKey, $dimension, self::TTL);
             $writtenKeys[] = $dimensionKey;
+            // A newly published dimension invalidates the read-side memo so
+            // the next get() re-reads the guard instead of trusting a stale
+            // value from before this write.
+            unset($this->dimensionMemo[$dimensionKey]);
         } catch (\Throwable $e) {
             // A cache outage must never make indexing fail. Remove entries
             // written by this attempt so a failed update cannot advertise a

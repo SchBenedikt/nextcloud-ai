@@ -831,6 +831,62 @@ final class ChatStoreTest extends TestCase {
 		self::assertNull($backup);
 	}
 
+	/**
+	 * A page load fires the chat list, stats and folders endpoints in parallel.
+	 * Reads therefore take a shared lock and, when it stays unavailable (a
+	 * concurrent write, or a crashed writer holding it until the backend TTL
+	 * expires), they degrade to a lock-free read of the intact file instead of
+	 * failing the whole page load with a 500 (Issue #185).
+	 */
+	public function testReadsDegradeToLockFreeAccessWhenTheLockIsUnavailable(): void {
+		[$store, $lockingProvider] = $this->storeWithChatFile(json_encode([
+			['id' => 'one', 'title' => 'One', 'messages' => []],
+		]));
+
+		$lockingProvider->expects(self::atLeastOnce())
+			->method('acquireLock')
+			->with('eva_ai/chat/' . substr(hash('sha256', 'alice'), 0, 40), ILockingProvider::LOCK_SHARED)
+			->willThrowException(new \RuntimeException('lock held elsewhere'));
+
+		$chats = $store->list('alice');
+
+		self::assertCount(1, $chats);
+		self::assertSame('one', $chats[0]['id']);
+	}
+
+	/** Mutations must never run unlocked: they report busy instead of racing. */
+	public function testMutationsReportBusyWhenTheLockCannotBeAcquired(): void {
+		[$store, $lockingProvider] = $this->storeWithChatFile('[]');
+		$lockingProvider->method('acquireLock')
+			->willThrowException(new \RuntimeException('lock held elsewhere'));
+
+		$this->expectException(\OCA\EvaAi\Service\ChatStoreBusyException::class);
+		$store->create('alice');
+	}
+
+	/** @return array{0:ChatStore,1:ILockingProvider} */
+	private function storeWithChatFile(string $content): array {
+		$factory = $this->createMock(IAppDataFactory::class);
+		$appData = $this->createMock(IAppData::class);
+		$chats = $this->createMock(ISimpleFolder::class);
+		$userFolder = $this->createMock(ISimpleFolder::class);
+		$file = $this->createMock(ISimpleFile::class);
+		$logger = $this->createMock(LoggerInterface::class);
+		$lockingProvider = $this->createMock(ILockingProvider::class);
+		$lockingProvider->method('releaseLock');
+
+		$factory->method('get')->with('eva_ai')->willReturn($appData);
+		$appData->method('getFolder')->with('chats')->willReturn($chats);
+		$chats->method('getFolder')
+			->with(substr(hash('sha256', 'alice'), 0, 40))
+			->willReturn($userFolder);
+		$userFolder->method('fileExists')->willReturnCallback(static fn(string $name): bool => $name === 'chats.json');
+		$userFolder->method('getFile')->with('chats.json')->willReturn($file);
+		$file->method('getContent')->willReturn($content);
+
+		return [new ChatStore($factory, $logger, $lockingProvider), $lockingProvider];
+	}
+
 	private function repairHarness(string $raw, ?string &$written, ?string &$backup): array {
 		$factory = $this->createMock(IAppDataFactory::class);
 		$appData = $this->createMock(IAppData::class);

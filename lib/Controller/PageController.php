@@ -67,7 +67,7 @@ class PageController extends Controller {
         $candidates = [];
         foreach (glob($jsDir . '/eva_ai_standalone*.js') ?: [] as $file) {
             $base = basename($file);
-            if (!str_starts_with($base, 'eva_ai_standalone') || str_ends_with($base, '.map')) {
+            if ($base !== 'eva_ai_standalone.js' || str_ends_with($base, '.map')) {
                 continue;
             }
             $candidates[$file] = filemtime($file);
@@ -109,7 +109,11 @@ class PageController extends Controller {
         $candidates = [];
         foreach (glob($jsDir . '/eva_ai-main*.js') ?: [] as $file) {
             $base = basename($file);
-            if (!str_starts_with($base, 'eva_ai-main') || str_ends_with($base, '.map')) {
+            // Only the webpack main bundle qualifies; leftover artifacts from
+            // older build configurations (e.g. eva_ai-main-groq.*.js) must
+            // never be picked as the app bundle.
+            if ($base !== 'eva_ai-main.js'
+                || str_ends_with($base, '.map')) {
                 continue;
             }
             $candidates[$file] = filemtime($file);

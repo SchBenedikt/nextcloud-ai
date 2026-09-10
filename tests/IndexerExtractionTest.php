@@ -157,6 +157,41 @@ final class IndexerExtractionTest extends TestCase {
         self::assertStringContainsString('Speaker note about slide one', $text);
     }
 
+    public function testHtmlKeepsTitleAndHeadingsAsStructuralAnchors(): void {
+        $file = $this->mockFile(
+            'bericht.html',
+            'text/html',
+            '<html><head><title>Quartalsbericht 2026</title></head><body>'
+            . '<h1>Einfuehrung</h1><p>Eroeffnender Absatz ueber die Lage.</p>'
+            . '<h2>Kennzahlen</h2><p>Der Umsatz stieg um zwoelf Prozent.</p>'
+            . '<script>var schmutz = 1;</script><style>.x{color:red}</style>'
+            . '</body></html>'
+        );
+        $text = $this->invokeExtract($this->extractor(), $file);
+
+        self::assertStringContainsString('# Quartalsbericht 2026', $text);
+        self::assertStringContainsString('# Einfuehrung', $text);
+        self::assertStringContainsString('## Kennzahlen', $text);
+        self::assertStringContainsString('Der Umsatz stieg um zwoelf Prozent.', $text);
+        self::assertStringNotContainsString('<script>', $text);
+        self::assertStringNotContainsString('schmutz', $text);
+        self::assertStringNotContainsString('color:red', $text);
+    }
+
+    public function testEpubKeepsChapterTitleAndHeadings(): void {
+        $epub = $this->zipBytes([
+            'OEBPS/chapter1.xhtml' => '<html><head><title>Kapitel Eins</title></head><body>'
+                . '<h2>Abschnitt A</h2><p>Inhalt von Kapitel eins.</p>'
+                . '</body></html>',
+        ]);
+        $file = $this->mockFile('buch.epub', 'application/epub+zip', $epub);
+        $text = $this->invokeExtract($this->extractor(), $file);
+
+        self::assertStringContainsString('# Kapitel Eins', $text);
+        self::assertStringContainsString('## Abschnitt A', $text);
+        self::assertStringContainsString('Inhalt von Kapitel eins.', $text);
+    }
+
     public function testOdfKeepsSheetNames(): void {
         $ods = $this->zipBytes([
             'content.xml' => '<?xml version="1.0"?><office:document-content '

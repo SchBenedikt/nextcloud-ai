@@ -24,6 +24,7 @@ class AppConfig {
         'mail_index_enabled', 'mail_index_max', 'talk_history_size',
         'talk_bot_trigger', 'talk_classify_all', 'exclude_paths',
         'chat_retention_days', 'embed_batch_size', 'ocr_enabled', 'ocr_language',
+        'ollama_keep_alive', 'followups_mode',
     ];
 
     /**
@@ -57,6 +58,14 @@ class AppConfig {
         // proofread, …). Empty means the chat chain is used (Issue #86).
         'summary_model' => '',
         'embed_batch_size' => '24',
+        // How long Ollama keeps a model resident after the last request
+        // ('5m', '30m', '1h', -1 = never unload). The default matches the
+        // Ollama server default; a higher value avoids paying model load
+        // latency on every chat message when the instance chats regularly.
+        'ollama_keep_alive' => '5m',
+        // 'fast' renders follow-up chips from language-aware templates without
+        // a second model call; 'llm' generates them with a small extra request.
+        'followups_mode' => 'fast',
         'ocr_enabled' => '0',
         'ocr_language' => 'eng',
         'top_k' => '6',
@@ -140,6 +149,9 @@ class AppConfig {
         'chat_retention_days' => [0, 3650],
         'embed_batch_size' => [1, 200],
     ];
+
+    /** Accepted formats for the Ollama keep_alive setting (Issue: model residency). */
+    private const KEEP_ALIVE_PATTERN = '/^(?:-1|(?:[1-9][0-9]{0,4}(?:ms|s|m|h)?))$/D';
 
     private ?string $userId = null;
 
@@ -384,6 +396,14 @@ class AppConfig {
             && is_scalar($value) && trim((string)$value) !== ''
             && preg_match('/^[A-Za-z0-9][A-Za-z0-9._:+-]{0,127}$/', trim((string)$value)) !== 1) {
             return 'must be a model name or empty';
+        }
+        if ($key === 'ollama_keep_alive'
+            && (!is_scalar($value) || preg_match(self::KEEP_ALIVE_PATTERN, trim((string)$value)) !== 1)) {
+            return 'must be -1, seconds, or a duration like 10m, 1h, 500ms';
+        }
+        if ($key === 'followups_mode'
+            && (!is_scalar($value) || !in_array((string)$value, ['fast', 'llm'], true))) {
+            return 'must be fast or llm';
         }
         if (!array_key_exists($key, self::LIMITS)) {
             return null;

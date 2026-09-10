@@ -12,6 +12,67 @@ import { readNdjson } from './lib/ndjson'
  */
 import { escHtml, mdInline, mdToHtml, citedSources, copyText } from './lib/chat-utils'
 
+function buildCalendarForm(args, tr) {
+	var form = document.createElement('div')
+	form.className = 'rconfirm-form'
+	var fields = {}
+	function add(key, label, type, value, required) {
+		var row = document.createElement('label')
+		row.className = 'rconfirm-field'
+		var caption = document.createElement('span')
+		caption.textContent = label + (required ? ' *' : '')
+		var input = document.createElement('input')
+		input.type = type
+		input.value = value || ''
+		row.appendChild(caption)
+		row.appendChild(input)
+		form.appendChild(row)
+		fields[key] = input
+	}
+	var startMatch = /^(\d{4}-\d{2}-\d{2})[T ](\d{2}:\d{2})/.exec(String(args.start || ''))
+	if (startMatch) { args.start = startMatch[1]; args.start_time = startMatch[2] }
+	var endMatch = /^(\d{4}-\d{2}-\d{2})[T ](\d{2}:\d{2})/.exec(String(args.end || ''))
+	if (endMatch) { args.end = endMatch[1]; args.end_time = endMatch[2] }
+	add('start', tr('Start'), 'date', args.start, true)
+	add('start_time', tr('Start time'), 'time', args.start_time, false)
+	add('end', tr('End'), 'date', args.end, false)
+	add('end_time', tr('End time'), 'time', args.end_time, false)
+	var calendar = document.createElement('label')
+	calendar.className = 'rconfirm-field'
+	var calendarLabel = document.createElement('span')
+	calendarLabel.textContent = tr('Calendar')
+	var select = document.createElement('select')
+	var loading = document.createElement('option')
+	loading.textContent = tr('Loading…')
+	select.appendChild(loading)
+	calendar.appendChild(calendarLabel)
+	calendar.appendChild(select)
+	form.appendChild(calendar)
+	fields.calendar = select
+	fetch((meta('eva-ai-api') || '') + '/calendars', { credentials: 'same-origin', headers: { 'OCS-APIRequest': 'true', 'Accept': 'application/json', 'requesttoken': REQUEST_TOKEN } })
+		.then(function (r) { return r.json() })
+		.then(function (payload) {
+			var calendars = payload && payload.ocs && payload.ocs.data && payload.ocs.data.calendars || payload && payload.calendars || []
+			select.innerHTML = ''
+			calendars.filter(function (cal) { return !cal.readOnly }).forEach(function (cal) {
+				var option = document.createElement('option')
+				option.value = cal.uri || cal.id || cal.displayname
+				option.textContent = cal.displayname || cal.uri
+				select.appendChild(option)
+			})
+			if (args.calendar) select.value = args.calendar
+		})
+		.catch(function () {})
+	form.__sync = function () {
+		if (!fields.start.value.trim()) return false
+		args.start = fields.start.value + (fields.start_time.value ? ' ' + fields.start_time.value : '')
+		args.end = fields.end.value ? fields.end.value + (fields.end_time.value ? ' ' + fields.end_time.value : '') : ''
+		args.calendar = fields.calendar.value
+		return true
+	}
+	return form
+}
+
 ;(function () {
 	'use strict'
 
@@ -50,6 +111,25 @@ import { escHtml, mdInline, mdToHtml, citedSources, copyText } from './lib/chat-
 	var currentAbort = null
 	var stoppedByUser = false
 	var lastMd = 0
+	// Coalesce DOM updates during token streaming: several NDJSON events can
+	// arrive within one animation frame, and every updateMessage rebuilds the
+	// tool rows and re-renders Markdown. One update per frame keeps the
+	// perceived latency identical while removing redundant reflows.
+	var pendingUpdateIdx = null
+	var updateScheduled = false
+	function scheduleUpdate(i) {
+		pendingUpdateIdx = i
+		if (updateScheduled) return
+		updateScheduled = true
+		var flush = function () {
+			updateScheduled = false
+			var idx = pendingUpdateIdx
+			pendingUpdateIdx = null
+			if (idx !== null) updateMessage(idx)
+		}
+		if (typeof requestAnimationFrame === 'function') requestAnimationFrame(flush)
+		else flush()
+	}
 	var chatId = null
 	// Title of the open chat (null until a restored/new chat reported one).
 	var chatTitle = null
@@ -324,10 +404,13 @@ import { escHtml, mdInline, mdToHtml, citedSources, copyText } from './lib/chat-
 			label.textContent = tr('EVA wants to run: {tool}', { tool: m.confirmation.name })
 			var args = m.confirmation.arguments || {}
 			var shareForm = m.confirmation.name === 'create_share' ? buildShareForm(args) : null
+			var calendarForm = m.confirmation.name === 'create_calendar_event' ? buildCalendarForm(args, tr) : null
 			var details = document.createElement('pre')
 			details.className = 'rconfirm-args'
-			if (shareForm) {
-				details.textContent = tr('Review the share details before creating it. You can change the path, recipient, password and expiration date.')
+			if (shareForm || calendarForm) {
+				details.textContent = shareForm
+					? tr('Review the share details before creating it. You can change the path, recipient, password and expiration date.')
+					: tr('Please review the calendar event details before creating it.')
 			} else {
 				details.textContent = JSON.stringify(args, null, 2)
 			}
@@ -355,7 +438,8 @@ import { escHtml, mdInline, mdToHtml, citedSources, copyText } from './lib/chat-
 				approve.disabled = true
 				reject.disabled = true
 				approve.textContent = tr('Running…')
-				if (shareForm && shareForm.__sync && !shareForm.__sync()) {
+				var editableForm = shareForm || calendarForm
+				if (editableForm && editableForm.__sync && !editableForm.__sync()) {
 					approve.disabled = false
 					reject.disabled = false
 					approve.textContent = tr('Confirm and run')
@@ -389,6 +473,7 @@ import { escHtml, mdInline, mdToHtml, citedSources, copyText } from './lib/chat-
 			panel.appendChild(label)
 			panel.appendChild(details)
 			if (shareForm) panel.appendChild(shareForm)
+			if (calendarForm) panel.appendChild(calendarForm)
 			panel.appendChild(actions)
 			wrap.appendChild(panel)
 		}
@@ -774,7 +859,9 @@ import { escHtml, mdInline, mdToHtml, citedSources, copyText } from './lib/chat-
 					last.done = true
 					saveUserMessage(msg)
 				}
-				updateMessage(messages.length - 1)
+				// One coalesced update per frame instead of one DOM rebuild per
+				// NDJSON event; terminal states still update immediately.
+				scheduleUpdate(messages.length - 1)
 			}, currentAbort.signal).catch(function (e) {
 				var last = messages[messages.length - 1]
 				if (last && last.role === 'assistant' && !last.done) {

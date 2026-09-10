@@ -48,6 +48,27 @@ export function mountChat(root, opts = {}) {
 	let lastMd = 0
 	let trimmedMessages = 0
 
+	// Coalesce DOM updates during token streaming: several NDJSON events can
+	// arrive within one animation frame, and every updateMessage rebuilds the
+	// tool rows and re-renders Markdown. Scheduling one update per frame keeps
+	// the perceived latency identical while removing redundant reflows on
+	// fast models and high-frequency streams.
+	let pendingUpdateIdx = null
+	let updateScheduled = false
+	function scheduleUpdate(i) {
+		pendingUpdateIdx = i
+		if (updateScheduled) return
+		updateScheduled = true
+		const flush = () => {
+			updateScheduled = false
+			const idx = pendingUpdateIdx
+			pendingUpdateIdx = null
+			if (idx !== null && Number.isInteger(idx)) updateMessage(idx)
+		}
+		if (typeof requestAnimationFrame === 'function') requestAnimationFrame(flush)
+		else flush()
+	}
+
 	function api(method, path, body) {
 		return new Promise((resolve, reject) => {
 			const opts = {
@@ -836,14 +857,14 @@ export function mountChat(root, opts = {}) {
 			if (!last || last.role !== 'assistant' || last.done) return
 			if (ev.type === 'thinking') {
 				last.thinking = (last.thinking || '') + (ev.delta || '')
-				updateMessage(messages.length - 1)
+				scheduleUpdate(messages.length - 1)
 			} else if (ev.type === 'content') {
 				last.text += (ev.delta || '')
-				updateMessage(messages.length - 1)
+				scheduleUpdate(messages.length - 1)
 			} else if (ev.type === 'tool') {
 				last.tools = last.tools || []
 				last.tools.push({ name: ev.name || '?', state: 'running' })
-				updateMessage(messages.length - 1)
+				scheduleUpdate(messages.length - 1)
 			} else if (ev.type === 'tool_result') {
 				last.tools = last.tools || []
 				for (let t = last.tools.length - 1; t >= 0; t--) {
@@ -855,7 +876,7 @@ export function mountChat(root, opts = {}) {
 				// Direct (no-dialog) executions still surface a created share
 				// link as a copyable chip in the bubble.
 				if (ev.ok && ev.url) last.linkUrl = ev.url
-				updateMessage(messages.length - 1)
+				scheduleUpdate(messages.length - 1)
 			} else if (ev.type === 'confirmation') {
 				// The server already committed truncation + edit; the inline
 				// panel below runs the tool on approve and persists the answer.
@@ -1046,7 +1067,9 @@ export function mountChat(root, opts = {}) {
 					last.done = true
 					saveUserMessage(msg)
 				}
-				updateMessage(messages.length - 1)
+				// One coalesced update per frame instead of one DOM rebuild per
+				// NDJSON event; terminal states below still update immediately.
+				scheduleUpdate(messages.length - 1)
 			}, currentAbort.signal).catch((e) => {
 				const last = messages[messages.length - 1]
 				if (last && last.role === 'assistant' && !last.done) {

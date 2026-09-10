@@ -43,6 +43,8 @@ Legend: **P** = personal setting (per-user override possible),
 | `summary_model` | P | `''` | model name or empty | – | Optional dedicated model for heavy text tasks (summarize, translate, proofread, …). Empty = the chat model chain is used (Issue #86). |
 | `temperature` | P | `0.1` | `0`–`2` | – | Sampling temperature passed to Ollama (`options.temperature`). Lower = more deterministic. |
 | `context_size` | P | `12288` | `256`–`131072` | tokens | Context window passed to Ollama (`options.num_ctx`). |
+| `ollama_keep_alive` | P | `5m` | `-1`, seconds, or `500ms`/`10m`/`1h` | – | How long Ollama keeps a model resident after a request (`keep_alive` on every chat/embed call). Higher values avoid model reload latency between messages; `-1` never unloads. |
+| `followups_mode` | P | `fast` | `fast`, `llm` | – | `fast` renders follow-up chips from language-aware templates without an extra model call after each answer; `llm` generates them with a small additional request. |
 
 ### Retrieval & indexing
 

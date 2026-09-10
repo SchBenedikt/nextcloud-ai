@@ -53,8 +53,7 @@ final class FrontendContractTest extends TestCase {
         self::assertStringContainsString('--eva-content-width: clamp(1180px, 78vw, 1680px);', $app);
         self::assertStringContainsString('v-model="chatFilter"', $app);
         self::assertStringContainsString('NcAppNavigationSearch', $app);
-        self::assertStringContainsString(':placeholder="$t(\'Search chats\')"', $app);
-        self::assertStringContainsString('<div class="new-chat-container">', $app);
+        self::assertStringContainsString(':placeholder="$t(\'Search chats\')"', $app);		self::assertStringContainsString('<div class="new-chat-container">', $app);
         self::assertStringContainsString('display: block;', $app);
         self::assertStringContainsString('width: 100%;', $app);
         self::assertStringContainsString('max-width: 100%;', $app);
@@ -127,8 +126,8 @@ final class FrontendContractTest extends TestCase {
 		self::assertStringContainsString("api('GET', '/greeting')", $home);
 		self::assertStringContainsString('aiGreeting', $home);
 		self::assertStringContainsString('staticGreeting', $home);
-		self::assertStringContainsString('hero-prompt', $home);
-		self::assertStringContainsString("emit('new-chat', text)", $home);
+		self::assertStringNotContainsString('hero-prompt', $home);
+		self::assertStringNotContainsString("emit('new-chat', text)", $home);
 		self::assertStringContainsString("public function greeting(): DataResponse", (string)file_get_contents(__DIR__ . '/../lib/Controller/ApiController.php'));
 		self::assertStringContainsString("'url' => '/api/greeting'", (string)file_get_contents(__DIR__ . '/../appinfo/routes.php'));
 		// Chat retention: per-user setting, store cleanup + background job.
@@ -179,6 +178,10 @@ final class FrontendContractTest extends TestCase {
         $confirmForms = (string)file_get_contents(__DIR__ . '/../src/lib/confirmForms.js');
         self::assertStringContainsString("import { buildConfirmForm } from './confirmForms'", $vanilla);
         self::assertStringContainsString('const conf = buildConfirmForm(m.confirmation)', $vanilla);		self::assertStringContainsString('create_share:', $confirmForms);
+		self::assertStringContainsString('create_calendar_event:', $confirmForms);
+		self::assertStringContainsString("F('start_time', 'Start time', 'time')", $confirmForms);
+		self::assertStringContainsString("F('calendar', 'Calendar', 'calendar')", $confirmForms);
+		self::assertStringContainsString("'/calendars'", $confirmForms);
 		self::assertStringContainsString('delete_calendar_event:', $confirmForms);
 		self::assertStringContainsString('delete_file:', $confirmForms);
 		// The chat stream carries the chat id so the server can resolve the

@@ -81,6 +81,33 @@ class Ollama {
         return $this->config->ollamaUrl();
     }
 
+    /**
+     * How long Ollama should keep the model resident after a request
+     * (Issue: model residency). A cold model load on every chat message costs
+     * seconds; a longer keep_alive amortises that for regularly used
+     * instances. Validated by AppConfig::validateValue, so a malformed value
+     * simply falls back to Ollama's server default here.
+     */
+    private function keepAlive(): ?string {
+        $value = trim($this->config->get('ollama_keep_alive'));
+        if ($value === '' || preg_match('/^(?:-1|(?:[1-9][0-9]{0,4}(?:ms|s|m|h)?))$/', $value) !== 1) {
+            return null;
+        }
+        return $value;
+    }
+
+    /**
+     * Shared sampler/context options for /api/chat requests. Both call sites
+     * (streaming and non-streaming) must produce identical payloads so cache
+     * behaviour and generation parameters never diverge between paths.
+     */
+    private function ollamaOptions(): array {
+        return [
+            'temperature' => max(0.0, min(2.0, (float)$this->config->get('temperature'))),
+            'num_ctx' => max(256, min(131072, (int)$this->config->get('context_size'))),
+        ];
+    }
+
     /** @return array|string[] error => message on failure */
     public function ping(): array {
         try {
@@ -586,8 +613,13 @@ class Ollama {
         $modelName = $model['model'] ?? '';
         try {
             $this->lastEmbeddingStats['ollama_requests'] = 1;
+            $payload = ['model' => $modelName, 'input' => $missTexts];
+            $keepAlive = $this->keepAlive();
+            if ($keepAlive !== null) {
+                $payload['keep_alive'] = $keepAlive;
+            }
             $r = $this->client()->post($this->base() . '/api/embed', [
-                'json' => ['model' => $modelName, 'input' => $missTexts],
+                'json' => $payload,
                 // Keep cancellation responsive while allowing a cold model
                 // enough time to produce a normal batch response.
                 'timeout' => 30,
@@ -650,12 +682,17 @@ class Ollama {
             $out = [];
             foreach ($texts as $t) {
                 $this->lastEmbeddingStats['ollama_requests']++;
+                $payload = ['model' => $modelName, 'prompt' => $t];
+                $keepAlive = $this->keepAlive();
+                if ($keepAlive !== null) {
+                    $payload['keep_alive'] = $keepAlive;
+                }
                 $r = $this->client()->post($this->base() . '/api/embeddings', [
-                    'json' => ['model' => $modelName, 'prompt' => $t],
+                    'json' => $payload,
                     'timeout' => 30,
                     'read_timeout' => 5,
                 ]);
-            $data = json_decode((string)$r->getBody(), true);
+                $data = json_decode((string)$r->getBody(), true);
                 if (isset($data['embedding'])) {
                     $out[] = $data['embedding'];
                 } else {
@@ -746,11 +783,12 @@ class Ollama {
             'model' => $modelName,
             'messages' => $messages,
             'stream' => false,
-            'options' => [
-                'temperature' => max(0.0, min(2.0, (float)$this->config->get('temperature'))),
-                'num_ctx' => max(256, min(131072, (int)$this->config->get('context_size'))),
-            ],
+            'options' => $this->ollamaOptions(),
         ];
+        $keepAlive = $this->keepAlive();
+        if ($keepAlive !== null) {
+            $payload['keep_alive'] = $keepAlive;
+        }
         if ($tools !== []) {
             $payload['tools'] = $this->normalizePayload($tools);
         }
@@ -871,11 +909,12 @@ class Ollama {
             'model' => $modelName,
             'messages' => $messages,
             'stream' => true,
-            'options' => [
-                'temperature' => max(0.0, min(2.0, (float)$this->config->get('temperature'))),
-                'num_ctx' => max(256, min(131072, (int)$this->config->get('context_size'))),
-            ],
+            'options' => $this->ollamaOptions(),
         ];
+        $keepAlive = $this->keepAlive();
+        if ($keepAlive !== null) {
+            $payload['keep_alive'] = $keepAlive;
+        }
         if ($tools !== []) {
             $payload['tools'] = $this->normalizePayload($tools);
         }

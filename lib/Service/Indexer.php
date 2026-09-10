@@ -234,6 +234,40 @@ class Indexer {
                     }
                     continue;
                 }
+                $path = $this->relativePath($userId, $file->getPath());
+                $name = $file->getName();
+                $mime = $file->getMimeType();
+                $size = $file->getSize();
+                $fileMtime = (int)($fileData['mtime'] ?? 0);
+
+                // Check if document already exists to preserve old version on failure
+                $existingDoc = $this->documentMapper->findByUserAndFile($userId, $fileId);
+                $oldDocId = $existingDoc !== null ? (int)$existingDoc->getId() : null;
+
+                // Fast path: a file whose mtime AND size match the stored
+                // fingerprint is unchanged, so skip the content read, the
+                // parser and embedding entirely. Renames and touches keep
+                // mtime, so the metadata-only refresh below still keeps the
+                // stored path/name current. The content hash stays the
+                // authority for everything that changed. (A write within the
+                // same second that leaves both values identical would be
+                // missed; the next mtime-changing write repairs it.)
+                if ($existingDoc !== null
+                    && (string)$existingDoc->getContentHash() !== ''
+                    && (int)$existingDoc->getSize() === $size
+                    && (int)$existingDoc->getFileMtime() === $fileMtime
+                    && $fileMtime > 0) {
+                    $existingDoc->setPath($path);
+                    $existingDoc->setName($name);
+                    $existingDoc->setMime($mime);
+                    $existingDoc->setSize($size);
+                    $existingDoc->setFileMtime($fileMtime);
+                    $existingDoc->setIndexedAt(time());
+                    $this->documentMapper->update($existingDoc);
+                    $result['skipped']++;
+                    continue;
+                }
+
                 try {
                     $content = $this->extractText($actualFile);
                 } catch (\Throwable $e) {
@@ -256,7 +290,18 @@ class Indexer {
 
                 $hash = md5($content);
                 if (($hashes[$fileId] ?? null) === $hash) {
+                    // Same content (e.g. a touch or a same-size edit): keep the
+                    // stored chunks and refresh metadata so renames propagate.
                     $result['skipped']++;
+                    if ($existingDoc !== null) {
+                        $existingDoc->setPath($path);
+                        $existingDoc->setName($name);
+                        $existingDoc->setMime($mime);
+                        $existingDoc->setSize($size);
+                        $existingDoc->setFileMtime($fileMtime);
+                        $existingDoc->setIndexedAt(time());
+                        $this->documentMapper->update($existingDoc);
+                    }
                     continue;
                 }
 
@@ -266,15 +311,6 @@ class Indexer {
                     continue;
                 }
 
-                $path = $this->relativePath($userId, $file->getPath());
-                $name = $file->getName();
-                $mime = $file->getMimeType();
-                $size = $file->getSize();
-
-                // Check if document already exists to preserve old version on failure
-                $existingDoc = $this->documentMapper->findByUserAndFile($userId, $fileId);
-                $oldDocId = $existingDoc !== null ? (int)$existingDoc->getId() : null;
-                
                 $doc = new Document();
                 $doc->setUserId($userId);
                 $doc->setFileId($fileId);
@@ -282,6 +318,7 @@ class Indexer {
                 $doc->setName($name);
                 $doc->setMime($mime);
                 $doc->setSize($size);
+                $doc->setFileMtime($fileMtime);
                 $doc->setContentHash($hash);
                 $doc->setChunkCount(count($chunks));
                 $doc->setIndexedAt(time());
@@ -460,6 +497,7 @@ class Indexer {
                 $existing->setName($file->getName());
                 $existing->setMime($file->getMimeType());
                 $existing->setSize($file->getSize());
+                $existing->setFileMtime((int)$file->getMTime());
                 $existing->setIndexedAt(time());
                 $this->documentMapper->update($existing);
                 $result['skipped']++;
@@ -480,6 +518,7 @@ class Indexer {
             $doc->setName($file->getName());
             $doc->setMime($file->getMimeType());
             $doc->setSize($file->getSize());
+            $doc->setFileMtime((int)$file->getMTime());
             $doc->setContentHash($hash);
             $doc->setChunkCount(count($chunks));
             $doc->setIndexedAt(time());
@@ -562,30 +601,51 @@ class Indexer {
         if ($depth > self::MAX_DEPTH) {
             return;
         }
-        foreach ($folder->getDirectoryListing() as $node) {
-            if ($node instanceof Folder) {
-                $name = $node->getName();
-                if (in_array($name, ['Thumbnails', '.appdata'], true) || str_starts_with($name, '.')) {
-                    continue;
-                }
-                $childPath = $relativePath === '' ? $name : $relativePath . '/' . $name;
-                if ($this->isPathExcluded($childPath, $excludePaths)) {
-                    continue;
-                }
-                yield from $this->collectFilesGenerator($node, $depth + 1, $childPath, $excludePaths);
-            } elseif ($node instanceof File) {
-                if (str_starts_with($node->getName(), '.')) {
-                    continue;
-                }
-                yield [
-                    'id' => $node->getId(),
-                    'path' => $node->getPath(),
-                    'name' => $node->getName(),
-                    'size' => $node->getSize(),
-                    'mime' => $node->getMimeType()
-                ];
+        // Directory listing order is provider-dependent and sorting each
+        // folder separately is not enough: an old root folder could hide a
+        // newer file in a later subtree. Collect only lightweight metadata,
+        // then sort the complete candidate set globally by modification time.
+        // File contents are still read and embedded one at a time below.
+        $files = [];
+        $collect = function (Folder $current, int $currentDepth, string $currentPath) use (&$collect, &$files, $excludePaths): void {
+            if ($currentDepth > self::MAX_DEPTH) {
+                return;
             }
+            $nodes = $current->getDirectoryListing();
+            foreach ($nodes as $node) {
+                if ($node instanceof Folder) {
+                    $name = $node->getName();
+                    if (in_array($name, ['Thumbnails', '.appdata'], true) || str_starts_with($name, '.')) {
+                        continue;
+                    }
+                    $childPath = $currentPath === '' ? $name : $currentPath . '/' . $name;
+                    if ($this->isPathExcluded($childPath, $excludePaths)) {
+                        continue;
+                    }
+                    $collect($node, $currentDepth + 1, $childPath);
+                } elseif ($node instanceof File && !str_starts_with($node->getName(), '.')) {
+                    $files[] = [
+                        'id' => $node->getId(),
+                        'path' => $node->getPath(),
+                        'name' => $node->getName(),
+                        'size' => $node->getSize(),
+                        'mime' => $node->getMimeType(),
+                        'mtime' => method_exists($node, 'getMTime') ? (int)$node->getMTime() : 0,
+                    ];
+                }
+            }
+        };
+        $collect($folder, $depth, $relativePath);
+        usort($files, static function (array $a, array $b): int {
+            if ($a['mtime'] !== $b['mtime']) {
+                return $b['mtime'] <=> $a['mtime'];
+            }
+            return strcasecmp((string)$a['path'], (string)$b['path']);
+        });
+        foreach ($files as $file) {
+            yield $file;
         }
+        return;
     }
 
     /**
@@ -701,10 +761,7 @@ class Indexer {
         if (str_starts_with($mime, 'text/')) {
             $raw = (string)$file->getContent();
             if ($mime === 'text/html' || $mime === 'application/xhtml+xml' || str_ends_with($name, '.html') || str_ends_with($name, '.htm')) {
-                $raw = preg_replace('/<script\b[^>]*>.*?<\/script>/is', ' ', $raw ?? '');
-                $raw = preg_replace('/<style\b[^>]*>.*?<\/style>/is', ' ', $raw ?? '');
-                $raw = preg_replace('/<[^>]+>/', ' ', $raw ?? '');
-                $raw = html_entity_decode($raw ?? '', ENT_QUOTES | ENT_HTML5, 'UTF-8');
+                return $this->htmlText($raw);
             }
             return $this->normalize($raw ?? '');
         }
@@ -795,10 +852,7 @@ class Indexer {
         if (str_starts_with($lower, 'text/')) {
             $raw = $blob;
             if ($lower === 'text/html' || $lower === 'application/xhtml+xml') {
-                $raw = preg_replace('/<script\b[^>]*>.*?<\/script>/is', ' ', $raw ?? '');
-                $raw = preg_replace('/<style\b[^>]*>.*?<\/style>/is', ' ', $raw ?? '');
-                $raw = preg_replace('/<[^>]+>/', ' ', $raw ?? '');
-                $raw = html_entity_decode($raw ?? '', ENT_QUOTES | ENT_HTML5, 'UTF-8');
+                return $this->htmlText($raw);
             }
             return $this->normalize($raw ?? '');
         }
@@ -830,7 +884,10 @@ class Indexer {
         }
         try {
             file_put_contents($tmpIn, $blob);
-            $output = shell_exec(escapeshellarg($bin) . ' -enc UTF-8 ' . escapeshellarg($tmpIn) . ' - 2>/dev/null');
+            // -layout keeps column/table structure instead of one
+            // undifferentiated text run, which measurably improves
+            // retrieval on tabular PDFs.
+            $output = shell_exec(escapeshellarg($bin) . ' -layout -enc UTF-8 ' . escapeshellarg($tmpIn) . ' - 2>/dev/null');
             return (is_string($output) && trim($output) !== '') ? $output : null;
         } finally {
             @unlink($tmpIn);
@@ -1139,10 +1196,7 @@ class Indexer {
             if ($html === '') {
                 continue;
             }
-            $html = preg_replace('/<script\b[^>]*>.*?<\/script>/is', ' ', $html ?? '');
-            $html = preg_replace('/<style\b[^>]*>.*?<\/style>/is', ' ', $html ?? '');
-            $html = preg_replace('/<[^>]+>/', ' ', $html ?? '');
-            $out .= ' ' . html_entity_decode($html ?? '', ENT_QUOTES | ENT_HTML5, 'UTF-8');
+            $out .= ' ' . $this->htmlText($html);
         }
         return $out;
     }
@@ -1205,7 +1259,9 @@ class Indexer {
         }
         try {
             file_put_contents($tmpIn, $file->getContent());
-            shell_exec(escapeshellarg($bin) . ' -enc UTF-8 ' . escapeshellarg($tmpIn) . ' ' . escapeshellarg($tmpOut) . ' 2>/dev/null');
+            // -layout preserves the physical layout (columns, tables) so
+            // tabular PDFs stay structured instead of flowing into one run.
+            shell_exec(escapeshellarg($bin) . ' -layout -enc UTF-8 ' . escapeshellarg($tmpIn) . ' ' . escapeshellarg($tmpOut) . ' 2>/dev/null');
             $txt = file_exists($tmpOut) ? (string)file_get_contents($tmpOut) : '';
             @unlink($tmpOut);
             if ($txt === '') return null;
@@ -1253,6 +1309,33 @@ class Indexer {
         } finally {
             @exec('rm -rf ' . escapeshellarg($tmpDir));
         }
+    }
+
+    /**
+     * HTML/EPUB chapter -> searchable text with structure preserved: the
+     * document <title> becomes a top-level markdown heading and every
+     * <h1>-<h6> becomes a #..###### heading line. The Chunker treats those
+     * lines as section anchors, so retrieved chunks keep their section
+     * context instead of an undifferentiated text wall.
+     */
+    private function htmlText(string $html): string {
+        $title = '';
+        if (preg_match('/<title\b[^>]*>(.*?)<\/title>/is', $html, $m)) {
+            $title = trim(html_entity_decode(strip_tags($m[1]), ENT_QUOTES | ENT_HTML5, 'UTF-8'));
+        }
+        $html = preg_replace('/<script\b[^>]*>.*?<\/script>/is', ' ', $html ?? '');
+        $html = preg_replace('/<style\b[^>]*>.*?<\/style>/is', ' ', $html ?? '');
+        // Turn headings into markdown anchors BEFORE stripping tags.
+        $html = preg_replace_callback('/<h([1-6])\b[^>]*>/i', static function (array $m): string {
+            return "\n\n" . str_repeat('#', (int)$m[1]) . ' ';
+        }, $html ?? '');
+        $html = preg_replace('/<\/h[1-6]>/i', "\n\n", $html ?? '');
+        $html = preg_replace('/<[^>]+>/', ' ', $html ?? '');
+        $text = $this->normalize(html_entity_decode($html ?? '', ENT_QUOTES | ENT_HTML5, 'UTF-8'));
+        if ($title !== '') {
+            $text = '# ' . $title . ($text !== '' ? "\n\n" . $text : '');
+        }
+        return $text;
     }
 
     private function normalize(string $text): string {
