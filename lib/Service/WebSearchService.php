@@ -41,7 +41,57 @@ class WebSearchService {
     private const MAX_SNIPPET_CHARS = 600;
     private const MAX_TITLE_CHARS = 200;
     /** Hard ceiling regardless of configuration. */
-    private const ABSOLUTE_MAX_RESULTS = 10;
+    private const ABSOLUTE_MAX_RESULTS = 20;
+    /**
+     * Page-content enrichment bounds. Fetching the real page text is what makes
+     * an answer correct rather than a snippet paraphrase of a snippet, but it
+     * costs one request per result, so both the number of pages and the text
+     * taken from each are hard-capped independently of configuration.
+     */
+    private const ABSOLUTE_MAX_CONTENT_PAGES = 8;
+    private const ABSOLUTE_MAX_CONTENT_CHARS = 8000;
+    /** Fetched pages must stay well inside the search timeout to keep chat responsive. */
+    private const CONTENT_FETCH_TIMEOUT_CEILING = 8;
+    /**
+     * Class/id fragments that mark navigation, promotion or social chrome. They
+     * are matched inside the attribute value, so "site-header-main" counts too.
+     * Kept deliberately narrow: an over-eager marker would delete real content as
+     * often as it deletes a menu.
+     */
+    private const CHROME_MARKERS = [
+        'sidebar', 'breadcrumb', 'breadcrumbs', 'mw-panel', 'mw-portlet', 'p-lang',
+        'vector-dropdown', 'vector-menu', 'site-header', 'site-footer', 'page-header',
+        'cookie', 'consent', 'newsletter', 'advert', 'social-share', 'share-buttons',
+        'comments', 'skip-link', 'language-list', 'nav-menu', 'navbar',
+        'table-of-contents', 'toc-list',
+    ];
+
+    /**
+     * Filler words that appear in nearly every page. Keeping them in the term
+     * set would score every result equally and flatten the ranking, so they are
+     * dropped before scoring (English and German, which EVA answers in).
+     */
+    private const STOP_WORDS = [
+        'the', 'and', 'for', 'with', 'from', 'that', 'this', 'these', 'those',
+        'are', 'was', 'were', 'has', 'have', 'had', 'not', 'but', 'you', 'your',
+        'how', 'what', 'when', 'where', 'which', 'who', 'why', 'can', 'will',
+        'into', 'over', 'its', 'about', 'more', 'most', 'does', 'did',
+        'der', 'die', 'das', 'den', 'dem', 'des', 'ein', 'eine', 'einen',
+        'einem', 'eines', 'und', 'oder', 'aber', 'für', 'mit', 'von', 'ist',
+        'sind', 'war', 'wie', 'was', 'wer', 'wann', 'wo', 'dass', 'sich',
+        'nicht', 'auch', 'bei', 'eine', 'einer', 'über', 'kann', 'wird',
+    ];
+
+    /**
+     * Hosts that almost always add noise to an answer: social walls, content
+     * farms and link aggregators. They are pushed to the back of the ranking
+     * instead of being removed, so an explicit question about them still works.
+     */
+    private const LOW_VALUE_HOSTS = [
+        'pinterest.', 'facebook.', 'instagram.', 'tiktok.', 'quora.',
+        'answers.yahoo.', 'slideshare.', 'scribd.', 'w3schools.',
+        'geeksforgeeks.org', 'javatpoint.', 'tutorialspoint.',
+    ];
 
     /**
      * A real browser user agent. DuckDuckGo serves an anti-bot "anomaly"
@@ -136,7 +186,7 @@ class WebSearchService {
     }
 
     public function maxResults(): int {
-        $configured = $this->config->getInt('web_search_max_results', 5);
+        $configured = $this->config->getInt('web_search_max_results', 8);
         return max(1, min(self::ABSOLUTE_MAX_RESULTS, $configured));
     }
 
@@ -189,6 +239,13 @@ class WebSearchService {
             return ['ok' => false, 'provider' => $provider, 'results' => [], 'error' => $this->emptyResultError($provider)];
         }
 
+        // Order by real relevance against the query, keep the best `$count`,
+        // then read those pages so the model works from their actual content
+        // instead of a search-engine teaser.
+        $results = $this->rankResults($results, $query);
+        $results = array_slice($results, 0, $count);
+        $results = $this->enrichWithPageContent($results);
+
         return ['ok' => true, 'provider' => $provider, 'results' => $results, 'error' => null];
     }
 
@@ -205,6 +262,402 @@ class WebSearchService {
     }
 
     /**
+     * Order results by how well they answer the query.
+     *
+     * Search engines already rank, but their order mixes in pages that merely
+     * mention a word. Scoring term matches in the title, the snippet and the URL
+     * path moves the pages that really cover the topic to the top and pushes
+     * known low-value hosts to the back. The sort is stable, so equally relevant
+     * results keep the engine's own order.
+     *
+     * @param list<array{title:string,url:string,snippet:string}> $results
+     * @return list<array{title:string,url:string,snippet:string}>
+     */
+    private function rankResults(array $results, string $query): array {
+        $terms = $this->queryTerms($query);
+        if ($terms === [] || count($results) < 2) {
+            return array_values($results);
+        }
+
+        $scored = [];
+        foreach ($results as $index => $result) {
+            $title = mb_strtolower((string)($result['title'] ?? ''));
+            $snippet = mb_strtolower((string)($result['snippet'] ?? ''));
+            $path = mb_strtolower((string)(parse_url((string)($result['url'] ?? ''), PHP_URL_PATH) ?? ''));
+
+            $score = 0;
+            foreach ($terms as $term) {
+                if (mb_strpos($title, $term) !== false) {
+                    $score += 3;
+                }
+                if (mb_strpos($snippet, $term) !== false) {
+                    $score += 1;
+                }
+                if (mb_strpos($path, $term) !== false) {
+                    $score += 1;
+                }
+            }
+            // Covering every term in the title is the strongest signal that a
+            // page is about the topic rather than a passing mention.
+            if ($score >= 3 * count($terms)) {
+                $score += 5;
+            }
+            if ($this->isLowValueHost((string)($result['url'] ?? ''))) {
+                $score -= 6;
+            }
+            $scored[] = ['score' => $score, 'index' => $index, 'result' => $result];
+        }
+
+        usort($scored, static function (array $a, array $b): int {
+            return ($b['score'] <=> $a['score']) ?: ($a['index'] <=> $b['index']);
+        });
+
+        return array_values(array_map(static fn(array $row): array => $row['result'], $scored));
+    }
+
+    /**
+     * Split a query into comparable terms. Very short tokens are dropped because
+     * they appear in almost every page and would flatten the ranking.
+     *
+     * @return list<string>
+     */
+    private function queryTerms(string $query): array {
+        $terms = preg_split('/[^\p{L}\p{N}]+/u', mb_strtolower($query)) ?: [];
+        $terms = array_filter($terms, static function (string $term): bool {
+            return mb_strlen($term) >= 3 && !in_array($term, self::STOP_WORDS, true);
+        });
+        return array_values(array_unique($terms));
+    }
+
+    private function isLowValueHost(string $url): bool {
+        $host = mb_strtolower((string)(parse_url($url, PHP_URL_HOST) ?? ''));
+        if ($host === '') {
+            return false;
+        }
+        foreach (self::LOW_VALUE_HOSTS as $needle) {
+            if (str_contains($host, $needle)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /**
+     * Replace the search-engine teaser with the readable text of each page.
+     *
+     * This is the difference between "a page about X exists" and knowing what it
+     * says. Pages are fetched in parallel and bounded by count, per-page size and
+     * a short timeout; a page that cannot be read keeps its snippet instead of
+     * failing the whole search, so the model always gets the best text available.
+     *
+     * @param list<array{title:string,url:string,snippet:string}> $results
+     * @return list<array{title:string,url:string,snippet:string,content:string}>
+     */
+    private function enrichWithPageContent(array $results): array {
+        $enriched = [];
+        foreach ($results as $result) {
+            $enriched[] = $result + ['content' => ''];
+        }
+        if (!$this->fetchContent() || $enriched === []) {
+            return $enriched;
+        }
+
+        $limit = min(count($enriched), self::ABSOLUTE_MAX_CONTENT_PAGES);
+        $targets = [];
+        for ($index = 0; $index < $limit; $index++) {
+            $url = (string)($enriched[$index]['url'] ?? '');
+            if ($url !== '' && $this->isFetchablePage($url)) {
+                $targets[$index] = $url;
+            }
+        }
+        if ($targets === []) {
+            return $enriched;
+        }
+
+        $maxChars = $this->contentChars();
+        foreach ($this->fetchMany($targets) as $index => $html) {
+            $text = $this->extractReadableText($html);
+            if ($text !== '') {
+                $enriched[$index]['content'] = $this->clamp($text, $maxChars);
+            }
+        }
+
+        return $enriched;
+    }
+
+    /**
+     * Only fetch URLs that can plausibly yield readable text. Binary documents
+     * and media would waste a request and produce nothing useful.
+     */
+    private function isFetchablePage(string $url): bool {
+        if (!$this->isSafeHttpUrl($url)) {
+            return false;
+        }
+        $path = mb_strtolower((string)(parse_url($url, PHP_URL_PATH) ?? ''));
+        foreach ([
+            '.pdf', '.zip', '.gz', '.tar', '.rar', '.7z', '.dmg', '.exe',
+            '.png', '.jpg', '.jpeg', '.gif', '.webp', '.svg', '.ico',
+            '.mp3', '.mp4', '.avi', '.mov', '.mkv', '.webm',
+            '.doc', '.docx', '.xls', '.xlsx', '.ppt', '.pptx',
+        ] as $extension) {
+            if (str_ends_with($path, $extension)) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    /**
+     * Fetch several URLs at once. Parallel requests keep a multi-page search
+     * inside one short timeout instead of summing one timeout per page, which is
+     * what makes enriching every result affordable in a chat request.
+     *
+     * @param array<int,string> $urls index => url
+     * @return array<int,string> index => body, only for successful fetches
+     */
+    private function fetchMany(array $urls): array {
+        $multi = curl_multi_init();
+        $timeout = max(3, min(self::CONTENT_FETCH_TIMEOUT_CEILING, $this->timeout()));
+        $handles = [];
+        foreach ($urls as $index => $url) {
+            $ch = curl_init($url);
+            if ($ch === false) {
+                continue;
+            }
+            curl_setopt_array($ch, [
+                CURLOPT_RETURNTRANSFER => true,
+                CURLOPT_TIMEOUT => $timeout,
+                CURLOPT_CONNECTTIMEOUT => min(4, $timeout),
+                CURLOPT_FOLLOWLOCATION => true,
+                CURLOPT_MAXREDIRS => 3,
+                CURLOPT_SSL_VERIFYPEER => true,
+                CURLOPT_SSL_VERIFYHOST => 2,
+                CURLOPT_ENCODING => '',
+                CURLOPT_USERAGENT => self::BROWSER_USER_AGENT,
+                CURLOPT_HTTPHEADER => [
+                    'Accept: text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+                    'Accept-Language: en-US,en;q=0.9,de;q=0.8',
+                ],
+            ]);
+            curl_multi_add_handle($multi, $ch);
+            $handles[$index] = $ch;
+        }
+
+        $bodies = [];
+        if ($handles === []) {
+            curl_multi_close($multi);
+            return $bodies;
+        }
+
+        $running = 0;
+        do {
+            $status = curl_multi_exec($multi, $running);
+            if ($running > 0) {
+                curl_multi_select($multi, 1.0);
+            }
+        } while ($running > 0 && $status === CURLM_OK);
+
+        foreach ($handles as $index => $ch) {
+            $httpCode = (int)curl_getinfo($ch, CURLINFO_RESPONSE_CODE);
+            $body = curl_multi_getcontent($ch);
+            if ($httpCode >= 200 && $httpCode < 300 && is_string($body) && $body !== '') {
+                $bodies[$index] = $body;
+            }
+            curl_multi_remove_handle($multi, $ch);
+            // No curl_close(): handles are freed automatically since PHP 8.0 and
+            // the call is deprecated in 8.5.
+        }
+        curl_multi_close($multi);
+
+        return $bodies;
+    }
+
+    /**
+     * Turn a fetched HTML page into plain readable text.
+     *
+     * Scripts, styles, navigation and forms carry no answer text, and leaving
+     * them in would push the real content out of the context window, so they are
+     * removed before the markup is stripped. A marked main container wins over
+     * the whole body, which drops menus and sidebars.
+     */
+    private function extractReadableText(string $html): string {
+        if ($html === '') {
+            return '';
+        }
+        if (class_exists(\DOMDocument::class)) {
+            $text = $this->extractTextWithDom($html);
+            if ($text !== '') {
+                return $text;
+            }
+        }
+        return $this->extractTextWithRegex($html);
+    }
+
+    /**
+     * Read a page with a real DOM parse.
+     *
+     * Patterns cannot tell a layout wrapper <div> from a navigation <div>, and
+     * getting that wrong either keeps menus or deletes the article. The DOM pass
+     * removes the element types and the class/id keywords that never carry answer
+     * text, prefers a marked main container, and only then reads the text.
+     */
+    private function extractTextWithDom(string $html): string {
+        $document = new \DOMDocument();
+        $previous = libxml_use_internal_errors(true);
+        $loaded = $document->loadHTML('<?xml encoding="UTF-8">' . $html);
+        libxml_clear_errors();
+        libxml_use_internal_errors($previous);
+        if ($loaded === false) {
+            return '';
+        }
+
+        $xpath = new \DOMXPath($document);
+        $root = $this->findContentRoot($xpath);
+        if ($root === null) {
+            return '';
+        }
+
+        // The content and everything that contains it are protected: an outer
+        // element's class name says nothing about the text inside it. Without
+        // this, a class such as "skin-vector-2022" on <html> or a generic
+        // "page-header" wrapper would delete the whole article.
+        $protected = [];
+        for ($node = $root; $node !== null; $node = $node->parentNode) {
+            $protected[] = $node;
+        }
+
+        // Element types that never carry answer text.
+        $this->removeNodes($xpath->query(
+            '//script|//style|//noscript|//svg|//template|//iframe|//form'
+            . '|//nav|//footer|//header|//aside|//button|//select|//option|//label|//input'
+        ), $protected);
+
+        // Chrome by class/id: sidebars, cookie banners and language pickers are
+        // plain <div>s, which is exactly what a tag-based rule misses.
+        $conditions = [];
+        foreach (self::CHROME_MARKERS as $marker) {
+            $literal = '"' . $marker . '"';
+            $conditions[] = 'contains(@class, ' . $literal . ')';
+            $conditions[] = 'contains(@id, ' . $literal . ')';
+        }
+        $this->removeNodes($xpath->query('//*[' . implode(' or ', $conditions) . ']'), $protected);
+
+        return $this->normaliseText((string)$root->textContent);
+    }
+
+    /**
+     * The element that holds the page's own content.
+     *
+     * Among the candidates the one with the most text wins, because a page can
+     * carry several "content" containers (a teaser box, a promo sidebar, the
+     * article) and only the article carries the substance. Depth breaks ties, so
+     * the more specific container wins when two of them hold the same text. The
+     * body is only a fallback when the page marks no container at all.
+     */
+    private function findContentRoot(\DOMXPath $xpath): ?\DOMNode {
+        $containers = $xpath->query(
+            '//article|//main|//*[@role="main"]|//*[@id="mw-content-text"]'
+            . '|//*[contains(@class, "mw-parser-output")]'
+            . '|//*[contains(@class, "post-content")]|//*[contains(@class, "entry-content")]'
+            . '|//*[contains(@class, "article-body")]|//*[contains(@class, "markdown-body")]'
+        );
+        $body = $xpath->query('//body')->item(0);
+        if ($containers === false || $containers->length === 0) {
+            return $body;
+        }
+
+        $best = null;
+        $bestLength = -1;
+        $bestDepth = -1;
+        foreach ($containers as $node) {
+            $length = mb_strlen($node->textContent);
+            $depth = 0;
+            for ($parent = $node->parentNode; $parent !== null; $parent = $parent->parentNode) {
+                $depth++;
+            }
+            if ($length > $bestLength || ($length === $bestLength && $depth > $bestDepth)) {
+                $bestLength = $length;
+                $bestDepth = $depth;
+                $best = $node;
+            }
+        }
+
+        // A candidate that holds almost nothing is a teaser, not the article;
+        // the body is a better starting point when the page has real text.
+        if ($best !== null && $body !== null) {
+            $bodyLength = mb_strlen($body->textContent);
+            if ($bestLength < 200 && $bodyLength > $bestLength) {
+                return $body;
+            }
+        }
+
+        return $best;
+    }
+
+    /**
+     * Remove a node list from its document. The list is copied first because
+     * removing while iterating a live node list skips every other node, and
+     * protected nodes (the content root and its ancestors) are never touched.
+     *
+     * @param \DOMNodeList|false $nodes
+     * @param list<\DOMNode> $protected
+     */
+    private function removeNodes($nodes, array $protected = []): void {
+        if ($nodes === false || $nodes->length === 0) {
+            return;
+        }
+        $remove = [];
+        foreach ($nodes as $node) {
+            if (in_array($node, $protected, true)) {
+                continue;
+            }
+            $remove[] = $node;
+        }
+        foreach ($remove as $node) {
+            if ($node->parentNode !== null) {
+                $node->parentNode->removeChild($node);
+            }
+        }
+    }
+
+    /**
+     * Last-resort extraction for installs without ext-dom. It keeps the page
+     * text, but cannot tell a wrapper element from a navigation element.
+     */
+    private function extractTextWithRegex(string $html): string {
+        $text = preg_replace(
+            '/<(script|style|noscript|svg|nav|footer|form|iframe|template)\b[^>]*>.*?<\/\1>/is',
+            ' ',
+            $html
+        ) ?? $html;
+        $text = preg_replace('/<!--.*?-->/s', ' ', $text) ?? $text;
+        if (preg_match('/<(article|main)\b[^>]*>(.*?)<\/\1>/is', $text, $match)) {
+            $text = $match[2];
+        }
+        return $this->normaliseText(strip_tags($text));
+    }
+
+    /**
+     * Collapse a page's whitespace into single spaces. U+00A0 arrives from
+     * &nbsp; and is not matched by \s, so it is normalised explicitly or the
+     * text keeps invisible gaps.
+     */
+    private function normaliseText(string $text): string {
+        $text = html_entity_decode($text, ENT_QUOTES | ENT_HTML5, 'UTF-8');
+        return trim(preg_replace('/[\s\x{00A0}]+/u', ' ', $text) ?? '');
+    }
+
+    /** Read each result page and include its text, unless disabled. */
+    private function fetchContent(): bool {
+        return $this->config->get('web_search_fetch_content') !== '0';
+    }
+
+    private function contentChars(): int {
+        $configured = $this->config->getInt('web_search_content_chars', 2000);
+        return max(200, min(self::ABSOLUTE_MAX_CONTENT_CHARS, $configured));
+    }
+
+    /**
      * DuckDuckGo — no API key required.
      *
      * DuckDuckGo has no official free web-search API, so EVA uses the same
@@ -216,46 +669,71 @@ class WebSearchService {
      * @return list<array{title:string,url:string,snippet:string}>
      */
     private function searchDuckDuckGo(string $query, int $count): array {
-        // Strategy 1: the HTML endpoint. This is the only endpoint that
-        // returns title, URL and snippet together for arbitrary queries, which
-        // is why it must be tried first - the Instant Answers API below only
-        // covers encyclopedic queries and would otherwise mask real results.
+        // Every endpoint is queried and the results are merged, instead of
+        // stopping at the first one that answers. That is what makes the result
+        // set broad: the HTML page carries the web hits, the lightweight page
+        // adds ones the HTML page dropped, and Instant Answers contributes the
+        // encyclopedic entry the plain result list often lacks.
+        $collected = [];
+
+        // Strategy 1: the HTML endpoint. This is the only endpoint that returns
+        // title, URL and snippet together for arbitrary queries.
         $html = $this->fetchDuckDuckGoHtml('https://html.duckduckgo.com/html/', [
             'q' => $query,
             'kl' => 'wt-wt',
         ]);
         if ($html !== null) {
-            $results = $this->parseDuckDuckGoResults($html, $count);
-            if ($results === []) {
-                $results = $this->parseDuckDuckGoLinks($html, $count);
+            $found = $this->parseDuckDuckGoResults($html, self::ABSOLUTE_MAX_RESULTS);
+            if ($found === []) {
+                $found = $this->parseDuckDuckGoLinks($html, self::ABSOLUTE_MAX_RESULTS);
             }
-            if ($results !== []) {
-                return array_slice($results, 0, $count);
-            }
+            $collected = array_merge($collected, $found);
         }
 
-        // Strategy 2: the lightweight endpoint. It is a plain HTML form, so
-        // the query belongs in the POST body exactly like in a browser.
+        // Strategy 2: the lightweight endpoint. It is a plain HTML form, so the
+        // query belongs in the POST body exactly like in a browser.
         $html = $this->fetchDuckDuckGoHtml('https://lite.duckduckgo.com/lite/', [
             'q' => $query,
             'kl' => 'wt-wt',
         ], true);
         if ($html !== null) {
-            $results = $this->parseDuckDuckGoLiteResults($html, $count);
-            if ($results !== []) {
-                return array_slice($results, 0, $count);
-            }
+            $collected = array_merge($collected, $this->parseDuckDuckGoLiteResults($html, self::ABSOLUTE_MAX_RESULTS));
         }
 
         // Strategy 3: the documented Instant Answers JSON API. It answers from
-        // every server IP but only covers known entities, so it is the last
-        // resort rather than the first.
-        $results = $this->searchDuckDuckGoInstant($query, $count);
-        if ($results !== []) {
-            return array_slice($results, 0, $count);
-        }
+        // every server IP but only covers known entities.
+        $collected = array_merge($collected, $this->searchDuckDuckGoInstant($query, self::ABSOLUTE_MAX_RESULTS));
 
-        return [];
+        return $this->deduplicate($collected, $count);
+    }
+
+    /**
+     * Collapse duplicate URLs across providers and endpoints, keeping the entry
+     * with the richest text so a merged result is never worse than the best of
+     * its sources.
+     *
+     * @param list<array{title:string,url:string,snippet:string}> $results
+     * @return list<array{title:string,url:string,snippet:string}>
+     */
+    private function deduplicate(array $results, int $count): array {
+        $byUrl = [];
+        foreach ($results as $result) {
+            $url = (string)($result['url'] ?? '');
+            if ($url === '' || !$this->isSafeHttpUrl($url) || $this->isDuckDuckGoHost($url)) {
+                continue;
+            }
+            if (!isset($byUrl[$url])) {
+                $byUrl[$url] = $result;
+                continue;
+            }
+            if (mb_strlen((string)($result['snippet'] ?? '')) > mb_strlen((string)($byUrl[$url]['snippet'] ?? ''))) {
+                $byUrl[$url]['snippet'] = $result['snippet'];
+            }
+            if ((string)($byUrl[$url]['title'] ?? '') === '') {
+                $byUrl[$url]['title'] = $result['title'];
+            }
+        }
+        return array_slice(array_values($byUrl), 0, $count);
     }
 
     /**
@@ -797,7 +1275,8 @@ class WebSearchService {
         $body = curl_exec($ch);
         $status = (int)curl_getinfo($ch, CURLINFO_RESPONSE_CODE);
         $error = curl_error($ch);
-        curl_close($ch);
+        // No curl_close(): the handle is freed automatically (PHP 8.0+) and the
+        // function is deprecated in PHP 8.5.
 
         if ($body === false) {
             throw new ProviderException('The web search endpoint is unreachable: ' . $error);

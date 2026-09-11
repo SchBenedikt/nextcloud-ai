@@ -60,6 +60,10 @@ class AppConfig {
         'web_search_max_results',
         'web_search_timeout',
         'web_search_safe_search',
+        // Content enrichment: reading the result pages is what turns a list of
+        // teasers into an answer, but it costs one request per page.
+        'web_search_fetch_content',
+        'web_search_content_chars',
     ];
 
     public function isAdminSetting(string $key): bool {
@@ -122,9 +126,11 @@ class AppConfig {
         'web_search_enabled' => '0',
         'web_search_provider' => 'duckduckgo',
         'web_search_url' => '',
-        'web_search_max_results' => '5',
+        'web_search_max_results' => '8',
         'web_search_timeout' => '10',
         'web_search_safe_search' => '1',
+        'web_search_fetch_content' => '1',
+        'web_search_content_chars' => '2000',
         'index_running' => '0',
         'index_started' => '',
         'index_heartbeat' => '',
@@ -182,8 +188,9 @@ class AppConfig {
         'talk_history_size' => [1, 500],
         'chat_retention_days' => [0, 3650],
         'embed_batch_size' => [1, 200],
-        'web_search_max_results' => [1, 10],
+        'web_search_max_results' => [1, 20],
         'web_search_timeout' => [1, 30],
+        'web_search_content_chars' => [200, 8000],
     ];
 
     /** Accepted formats for the Ollama keep_alive setting (Issue: model residency). */
@@ -414,7 +421,7 @@ class AppConfig {
             }
             return null;
         }
-        if (in_array($key, ['ocr_enabled', 'actions_enabled', 'notify_on_complete', 'mail_index_enabled', 'index_enrolled', 'talk_classify_all', 'weather_tool_enabled', 'web_search_enabled', 'web_search_safe_search'], true)) {
+        if (in_array($key, ['ocr_enabled', 'actions_enabled', 'notify_on_complete', 'mail_index_enabled', 'index_enrolled', 'talk_classify_all', 'weather_tool_enabled', 'web_search_enabled', 'web_search_safe_search', 'web_search_fetch_content'], true)) {
             return is_scalar($value) && in_array((string)$value, ['0', '1', 'true', 'false', 'on', 'off'], true)
                 ? null : 'must be a boolean value';
         }
@@ -458,7 +465,12 @@ class AppConfig {
             && (!is_scalar($value) || !in_array((string)$value, ['fast', 'llm'], true))) {
             return 'must be fast or llm';
         }
-        if (self::isAdminSettingStatic($key) && $key !== 'web_search_provider' && $key !== 'web_search_url' && $key !== 'web_search_max_results' && $key !== 'web_search_timeout') {
+        if (self::isAdminSettingStatic($key)
+            && $key !== 'web_search_provider'
+            && $key !== 'web_search_url'
+            && $key !== 'web_search_max_results'
+            && $key !== 'web_search_timeout'
+            && $key !== 'web_search_content_chars') {
             // Any remaining admin-scope key is a boolean toggle.
             return is_scalar($value) && in_array((string)$value, ['0', '1', 'true', 'false', 'on', 'off'], true)
                 ? null : 'must be a boolean value';

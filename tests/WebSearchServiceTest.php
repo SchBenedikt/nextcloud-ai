@@ -100,9 +100,10 @@ final class WebSearchServiceTest extends TestCase {
     }
 
     public function testMaxResultsIsClampedToASafeRange(): void {
-        self::assertSame(10, $this->service(['web_search_max_results' => '99'])->maxResults());
+        self::assertSame(20, $this->service(['web_search_max_results' => '99'])->maxResults());
         self::assertSame(1, $this->service(['web_search_max_results' => '0'])->maxResults());
         self::assertSame(5, $this->service(['web_search_max_results' => '5'])->maxResults());
+        self::assertSame(8, $this->service()->maxResults(), 'the default widens the result set');
     }
 
     public function testSearxngUrlIsNormalizedWithoutTrailingSlash(): void {
@@ -359,6 +360,159 @@ HTML;
         foreach (['https://nextcloud.com/', 'https://duckduckgo.com.evil.test/', 'https://notduckduckgo.com/'] as $external) {
             self::assertFalse($this->callPrivate($service, 'isDuckDuckGoHost', [$external]), $external . ' must not count as DuckDuckGo');
         }
+    }
+
+    // ---- Ranking and content enrichment ----
+
+    /**
+     * Search engines return pages that merely mention a word. The result that
+     * matches every query term in its title must come first, or the model reads
+     * the wrong page.
+     */
+    public function testRankingPrefersPagesThatMatchTheQuery(): void {
+        $service = $this->service();
+        $out = $this->callPrivate($service, 'rankResults', [[
+            ['title' => 'Unrelated news', 'url' => 'https://a.example/', 'snippet' => 'nothing here'],
+            ['title' => 'Python asyncio tutorial', 'url' => 'https://b.example/', 'snippet' => 'async guide'],
+        ], 'python asyncio tutorial']);
+
+        self::assertSame('https://b.example/', $out[0]['url']);
+    }
+
+    public function testRankingPushesLowValueHostsBack(): void {
+        $service = $this->service();
+        $out = $this->callPrivate($service, 'rankResults', [[
+            ['title' => 'Asyncio guide', 'url' => 'https://www.w3schools.com/python/asyncio', 'snippet' => ''],
+            ['title' => 'Asyncio guide', 'url' => 'https://realpython.com/asyncio', 'snippet' => ''],
+        ], 'asyncio']);
+
+        self::assertSame('https://realpython.com/asyncio', $out[0]['url']);
+    }
+
+    /** Equally relevant results must keep the search engine's own order. */
+    public function testRankingIsStableForEqualScores(): void {
+        $service = $this->service();
+        $out = $this->callPrivate($service, 'rankResults', [[
+            ['title' => 'First', 'url' => 'https://one.example/', 'snippet' => ''],
+            ['title' => 'Second', 'url' => 'https://two.example/', 'snippet' => ''],
+        ], 'zzz qqq']);
+
+        self::assertSame(['https://one.example/', 'https://two.example/'], array_column($out, 'url'));
+    }
+
+    public function testQueryTermsIgnoreShortNoiseWords(): void {
+        $service = $this->service();
+        self::assertSame(['nextcloud', 'release'], $this->callPrivate($service, 'queryTerms', ['nextcloud 8 of the release']));
+    }
+
+    /**
+     * Page text is what grounds an answer, so the extraction has to keep the
+     * content and drop navigation, scripts and footers - and it must never leak
+     * script bodies into the model context.
+     */
+    public function testPageTextExtractionKeepsContentAndDropsChrome(): void {
+        $service = $this->service();
+        $html = '<html><head><title>T</title><style>.x{}</style></head><body>'
+            . '<nav>Menu</nav><article><h1>Heading</h1><p>Real&nbsp;content here.</p></article>'
+            . '<script>alert(1)</script><footer>Footer</footer></body></html>';
+
+        $text = $this->callPrivate($service, 'extractReadableText', [$html]);
+
+        self::assertStringContainsString('Heading', $text);
+        self::assertStringContainsString('Real content here.', $text);
+        self::assertStringNotContainsString('Menu', $text);
+        self::assertStringNotContainsString('alert(1)', $text);
+        self::assertStringNotContainsString('Footer', $text);
+    }
+
+    /**
+     * Wikipedia-style pages put a language picker above the article. Leaving it
+     * in wastes the whole per-page character budget on navigation.
+     */
+    public function testWikiStyleLanguageChromeIsStrippedFromContent(): void {
+        $service = $this->service();
+        $html = '<html><body>'
+            . '<div id="p-lang" class="vector-menu"><a href="#">24 languages</a> العربية Català</div>'
+            . '<div class="mw-parser-output"><p>Nextcloud is a suite of client-server software.</p></div>'
+            . '</body></html>';
+
+        $text = $this->callPrivate($service, 'extractReadableText', [$html]);
+
+        self::assertStringContainsString('suite of client-server software', $text);
+        self::assertStringNotContainsString('24 languages', $text);
+    }
+
+    /**
+     * A wrapper's class name must never delete the content inside it.
+     *
+     * "skin-vector-2022" sits on <html> and generic "page-header" wrappers are
+     * everywhere, so without protecting the content root and its ancestors the
+     * whole article disappeared and only the page title survived.
+     */
+    public function testChromeMarkersNeverDeleteTheContentRoot(): void {
+        $service = $this->service();
+        $html = '<html class="skin-vector-2022"><body>'
+            . '<div class="page-header"><h1>Title</h1></div>'
+            . '<main><div class="mw-parser-output"><p>The article body text.</p></div></main>'
+            . '</body></html>';
+
+        $text = $this->callPrivate($service, 'extractReadableText', [$html]);
+
+        self::assertStringContainsString('The article body text.', $text);
+    }
+
+    /** Without ext-dom the extraction must still be safe and useful. */
+    public function testRegexFallbackStripsScriptsAndKeepsText(): void {
+        $service = $this->service();
+        $text = $this->callPrivate($service, 'extractTextWithRegex', [
+            '<html><body><script>bad()</script><nav>Menu</nav><p>Keep me.</p></body></html>',
+        ]);
+
+        self::assertStringContainsString('Keep me.', $text);
+        self::assertStringNotContainsString('bad()', $text);
+        self::assertStringNotContainsString('Menu', $text);
+    }
+
+    public function testBinaryDocumentsAreNotFetched(): void {
+        $service = $this->service();
+        self::assertTrue($this->callPrivate($service, 'isFetchablePage', ['https://example.org/guide.html']));
+        foreach ([
+            'https://example.org/paper.pdf',
+            'https://example.org/picture.PNG',
+            'https://example.org/archive.zip',
+            'javascript:alert(1)',
+        ] as $binary) {
+            self::assertFalse($this->callPrivate($service, 'isFetchablePage', [$binary]), $binary . ' must not be fetched');
+        }
+    }
+
+    /**
+     * The same page often arrives from several endpoints; merging them must keep
+     * the richest text and must still drop DuckDuckGo's own links.
+     */
+    public function testDuplicatesAreMergedAcrossEndpoints(): void {
+        $service = $this->service();
+        $out = $this->callPrivate($service, 'deduplicate', [[
+            ['title' => 'A', 'url' => 'https://example.org/a', 'snippet' => 'short'],
+            ['title' => 'A longer', 'url' => 'https://example.org/a', 'snippet' => 'a much longer and richer snippet'],
+            ['title' => 'B', 'url' => 'https://example.org/b', 'snippet' => 'b'],
+            ['title' => 'Ad', 'url' => 'https://duckduckgo.com/y.js?ad_domain=x', 'snippet' => 'ad'],
+        ], 10]);
+
+        self::assertCount(2, $out);
+        self::assertSame('a much longer and richer snippet', $out[0]['snippet']);
+    }
+
+    public function testContentEnrichmentHonoursConfiguration(): void {
+        $results = [['title' => 'T', 'url' => 'https://example.org/a', 'snippet' => 's']];
+
+        $off = $this->service(['web_search_fetch_content' => '0']);
+        $out = $this->callPrivate($off, 'enrichWithPageContent', [$results]);
+        self::assertSame('', $out[0]['content'], 'page fetching can be switched off');
+
+        self::assertSame(2000, $this->callPrivate($off, 'contentChars', []), 'default per-page text length');
+        self::assertSame(200, $this->callPrivate($this->service(['web_search_content_chars' => '10']), 'contentChars', []));
+        self::assertSame(8000, $this->callPrivate($this->service(['web_search_content_chars' => '99999']), 'contentChars', []));
     }
 
     /**

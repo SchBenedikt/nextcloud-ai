@@ -118,14 +118,22 @@ instance cannot send anything to a search service (Issue #187). Web results are
 marked as external sources and must be cited as links - they are never presented
 as one of the user's indexed files.
 
+Every provider's results are merged and re-ranked by how well each hit matches
+the query (matched terms in the title weigh most, then the snippet and URL path;
+known low-value hosts are pushed to the back). The kept results are then fetched
+in parallel and enriched with the readable text of the page itself, so the answer
+is grounded in the source rather than in a search-engine teaser.
+
 | Key | Scope | Default | Range / values | Unit | Effect |
 |---|---|---|---|---|---|
 | `web_search_enabled` | P | `0` | `1`/`0` | – | Per-user opt-in. `1` exposes the `web_search` tool to the chat model. Off by default; enabling it means queries leave the server. |
 | `web_search_provider` | P | `duckduckgo` | `duckduckgo`, `searxng`, `brave`, `tavily` | – | Per-user. Search backend. `duckduckgo` is free and needs no API key; `searxng` is self-hosted; `brave` and `tavily` are hosted APIs that need admin-configured credentials. |
 | `web_search_url` | I | `''` | `http(s)://host[:port][/path]` or empty | – | **Admin only.** Base URL of the SearxNG instance (JSON output must be enabled there). Required when users choose the `searxng` provider. |
-| `web_search_max_results` | I | `5` | `1`–`10` | results | **Admin only.** Maximum results per search across all providers; hard-capped in code so a chat cannot flood its context. |
+| `web_search_max_results` | I | `8` | `1`–`20` | results | **Admin only.** Maximum results per search across all providers; hard-capped in code so a chat cannot flood its context. |
 | `web_search_timeout` | I | `10` | `1`–`30` | seconds | **Admin only.** HTTP timeout for one search request. |
 | `web_search_safe_search` | I | `1` | `1`/`0` | – | **Admin only.** Ask the provider to filter adult results. |
+| `web_search_fetch_content` | I | `1` | `1`/`0` | – | **Admin only.** `1` fetches the ranked result pages in parallel and adds their readable text as `content`, so the model answers from the page instead of a teaser. `0` keeps only the search-engine snippets (faster, less traffic to third-party sites). |
+| `web_search_content_chars` | I | `2000` | `200`–`8000` | characters | **Admin only.** Maximum readable text taken from each fetched page; hard-capped in code. |
 | `web_search_api_key` | I | – | 8–256 chars | – | **Admin only, write-only.** Encrypted API key for `brave`/`tavily`. Send it as `web_search_api_key`; clear it with `remove_web_search_api_key`. It is never read back. |
 
 ### Internal per-user runtime state (S)

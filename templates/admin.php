@@ -24,7 +24,9 @@ $apiBase = $_['apiBase'];
 
 $weatherEnabled = ($admin['weather_tool_enabled'] ?? '1') === '1';
 $webSearchUrl = $admin['web_search_url'] ?? '';
-$webSearchMaxResults = $admin['web_search_max_results'] ?? '5';
+$webSearchMaxResults = $admin['web_search_max_results'] ?? '8';
+$webSearchFetchContent = ($admin['web_search_fetch_content'] ?? '1') === '1';
+$webSearchContentChars = $admin['web_search_content_chars'] ?? '2000';
 $webSearchSafeSearch = ($admin['web_search_safe_search'] ?? '1') === '1';
 $webSearchKeyConfigured = $_['webSearchKeyConfigured'];
 $indexMaxConcurrent = $admin['index_max_concurrent'] ?? '2';
@@ -132,10 +134,10 @@ $indexJobMaxSeconds = $admin['index_job_max_seconds'] ?? '50';
 		<p>
 			<label for="eva-websearch-max"><?php p($l->t('Maximum results per search')); ?></label><br>
 			<input type="number" id="eva-websearch-max" name="web_search_max_results"
-				   min="1" max="10" value="<?php p($webSearchMaxResults); ?>"
+				   min="1" max="20" value="<?php p($webSearchMaxResults); ?>"
 				   style="width:100px;">
 			<br>
-			<em><?php p($l->t('Between 1 and 10. Every result is added to the model context.')); ?></em>
+			<em><?php p($l->t('Between 1 and 20. Every result is added to the model context.')); ?></em>
 		</p>
 
 		<p>
@@ -145,6 +147,24 @@ $indexJobMaxSeconds = $admin['index_job_max_seconds'] ?? '50';
 			</label>
 			<br>
 			<em><?php p($l->t('Ask the provider to filter adult results.')); ?></em>
+		</p>
+
+		<p>
+			<label>
+				<input type="checkbox" id="eva-fetch-content-toggle" name="web_search_fetch_content" value="1" <?php p($webSearchFetchContent ? 'checked' : ''); ?>>
+				<?php p($l->t('Read the result pages')); ?>
+			</label>
+			<br>
+			<em><?php p($l->t('Fetch the ranked result pages in parallel and give the model their readable text instead of a search-engine teaser. Turn it off to keep the search to a single request.')); ?></em>
+		</p>
+
+		<p>
+			<label for="eva-content-chars"><?php p($l->t('Text per page (characters)')); ?></label><br>
+			<input type="number" id="eva-content-chars" name="web_search_content_chars"
+				   min="200" max="8000" value="<?php p($webSearchContentChars); ?>"
+				   style="width:100px;">
+			<br>
+			<em><?php p($l->t('Between 200 and 8000. More text gives more accurate answers but uses more of the model context.')); ?></em>
 		</p>
 	</div>
 

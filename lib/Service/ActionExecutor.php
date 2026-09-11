@@ -469,7 +469,7 @@ class ActionExecutor {
             ]],
             ['type' => 'function', 'function' => [
                 'name' => 'web_search',
-                'description' => 'Search the public web for current information that is not in the indexed files (news, releases, prices, documentation, current events). Use this whenever you need up-to-date information your indexed files do not contain. The returned results include a URL for every hit; cite the URLs you actually used as markdown links.',
+                'description' => 'Search the public web for current information that is not in the indexed files (news, releases, prices, documentation, current events). Use this whenever you need up-to-date information your indexed files do not contain. Each hit has a `title`, `url`, `snippet` and `content` (the readable text of the page itself - prefer it over the snippet, it is the source). Ground your answer in `content` where present, cite the URLs you actually used as markdown links, and say so when the pages do not answer the question.',
                 'parameters' => ['type' => 'object', 'properties' => [
                     'query' => ['type' => 'string', 'description' => 'The search query, in the user\'s language. Keep it short and specific - it is sent to an external search engine.'],
                 ], 'required' => ['query']],
@@ -1646,7 +1646,9 @@ class ActionExecutor {
         if (!$result['ok']) {
             return ['ok' => false, 'error' => (string)($result['error'] ?? 'Web search failed.')];
         }
-        $results = array_slice($result['results'], 0, 8);
+        // The service already ranks and bounds the list; this only guards the
+        // tool result against a misconfigured limit.
+        $results = array_slice($result['results'], 0, 20);
         if ($results === []) {
             return ['ok' => true, 'result' => ['query' => $query, 'provider' => $result['provider'], 'results' => []]];
         }
@@ -1718,7 +1720,8 @@ class ActionExecutor {
         ]);
         $r = curl_exec($ch);
         $err = curl_errno($ch);
-        curl_close($ch);
+        // No curl_close(): the handle is freed automatically (PHP 8.0+) and the
+        // function is deprecated in PHP 8.5.
         return $err === 0 && is_string($r) && $r !== '' ? $r : null;
     }
 }
