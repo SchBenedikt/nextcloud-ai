@@ -46,7 +46,11 @@ return [
         ['name' => 'api#fileContextStatus', 'url' => '/api/fileContextStatus', 'verb' => 'POST'],
         ['name' => 'api#knowledge', 'url' => '/api/knowledge', 'verb' => 'GET'],
         ['name' => 'api#saveKnowledge', 'url' => '/api/knowledge', 'verb' => 'PUT'],
-        // Admin-only endpoints (Issue #82): overview + per-user management.
+        // Admin-only endpoints (Issue #82): instance settings, overview and
+        // per-user management. The settings routes were missing, so the admin
+        // page's save buttons used to hit a 404 and silently changed nothing.
+        ['name' => 'admin#getSettings', 'url' => '/api/admin/settings', 'verb' => 'GET'],
+        ['name' => 'admin#saveSettings', 'url' => '/api/admin/settings', 'verb' => 'PUT'],
         ['name' => 'admin#overview', 'url' => '/api/admin/overview', 'verb' => 'GET'],
         ['name' => 'admin#reindex', 'url' => '/api/admin/users/{userId}/reindex', 'verb' => 'POST'],
         ['name' => 'admin#reset', 'url' => '/api/admin/users/{userId}/reset', 'verb' => 'POST'],

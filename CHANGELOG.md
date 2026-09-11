@@ -8,6 +8,14 @@ follows [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- The admin page now configures indexing throughput: how many index passes run
+  in parallel (`index_max_concurrent`, 1–16) and how many seconds one cron run
+  may spend indexing (`index_job_max_seconds`, 10–600). Both keys were
+  previously only settable through `occ config:app:set`.
+- Per-account indexing can be switched on or off directly in the admin account
+  table, and the account table now shows the indexing state, document and chunk
+  counts and the last error at a glance.
+
 - Optional per-user web search grounding: DuckDuckGo (free, no API key),
   self-hosted SearxNG, Brave or Tavily. It is off by default and the model only
   calls it when the indexed files cannot answer a question (#187).
@@ -64,6 +72,18 @@ follows [Semantic Versioning](https://semver.org/).
 
 ### Changed
 
+- The admin settings page was rebuilt with native Nextcloud elements only
+  (section, grid tables, native inputs and buttons) and no inline styles, so it
+  follows the active theme including dark mode. Feedback is shown inline and as
+  a native notification.
+- Background indexing makes real progress on large libraries: the periodic job
+  now drives bounded passes for each selected account until its fair share of
+  the run budget is spent, instead of stopping after a single pass. On a settled
+  library an unchanged file is also skipped without fetching its file node, so
+  the per-file cost of a full scan drops to the metadata check.
+- Liveness heartbeats are throttled to a short interval instead of being written
+  once per indexed file, removing a database write and a global scheduler lock
+  per file.
 - The home/start page no longer shows the quick prompt input field: it belongs
   to the chat view, while the overview keeps its action buttons and stats.
 - Streaming no longer yanks the scroll position: while an answer streams, the
@@ -79,6 +99,11 @@ follows [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- The admin settings save endpoint did not exist as a route, so every "Save"
+  button on the admin page hit a 404 and silently changed nothing. The settings
+  routes are registered again.
+- Save feedback on the admin page no longer reports success when the request
+  failed: HTTP errors and validation errors are surfaced with the concrete reason.
 - DuckDuckGo web search returned no results: requests were sent without the
   headers and gzip support a browser sends, so DuckDuckGo answered with its
   anti-bot interstitial instead of results. The result parser also assumed a

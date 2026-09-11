@@ -38,31 +38,35 @@ final class IndexerBoundedBatchTest extends TestCase {
     /**
      * @param list<File> $files
      * @param int $batchSize
+     * @param (callable():AppConfig)|null $configFactory lets a test supply its
+     *        own recording config mock instead of the plain one
      * @return array{0:Indexer,1:DocumentMapper,2:ChunkMapper,3:Ollama}
      */
-    private function harness(array $files, int $batchSize): array {
-        $config = $this->createMock(AppConfig::class);
-        $config->method('get')->willReturnCallback(static function (string $key, ?string $default = null): string {
-            return match ($key) {
-                'scope_path' => '',
-                'exclude_paths' => '',
-                'index_cancel_requested' => '0',
-                'index_running' => '0',
-                'index_run_id' => '',
-                default => $default ?? '',
-            };
-        });
-        $config->method('getInt')->willReturnCallback(static function (string $key, ?int $default = null) use ($batchSize): int {
-            return match ($key) {
-                'embed_batch_size' => $batchSize,
-                'max_file_size' => 20971520,
-                'max_files_per_run' => 10000,
-                default => $default ?? 0,
-            };
-        });
-        $config->method('setUserId');
-        $config->method('set');
-        $config->method('tryClaimIndex')->willReturn(true);
+    private function harness(array $files, int $batchSize, ?callable $configFactory = null): array {
+        $config = $configFactory !== null ? $configFactory() : $this->createMock(AppConfig::class);
+        if ($configFactory === null) {
+            $config->method('get')->willReturnCallback(static function (string $key, ?string $default = null): string {
+                return match ($key) {
+                    'scope_path' => '',
+                    'exclude_paths' => '',
+                    'index_cancel_requested' => '0',
+                    'index_running' => '0',
+                    'index_run_id' => '',
+                    default => $default ?? '',
+                };
+            });
+            $config->method('getInt')->willReturnCallback(static function (string $key, ?int $default = null) use ($batchSize): int {
+                return match ($key) {
+                    'embed_batch_size' => $batchSize,
+                    'max_file_size' => 20971520,
+                    'max_files_per_run' => 10000,
+                    default => $default ?? 0,
+                };
+            });
+            $config->method('setUserId');
+            $config->method('set');
+            $config->method('tryClaimIndex')->willReturn(true);
+        }
         $config->method('hasIndexEnrollment')->willReturn(false);
         $config->method('isIndexEnrolled')->willReturn(true);
 
@@ -160,6 +164,63 @@ final class IndexerBoundedBatchTest extends TestCase {
         self::assertSame(120, $totalEmbedded, 'every chunk must be embedded exactly once');
         self::assertLessThanOrEqual(5, $maxBatchSeen, 'no embedding batch may exceed the configured size of 5');
         self::assertSame(0, $result['error'] ?? 0);
+    }
+
+    /**
+     * Heartbeat bookkeeping must not scale with the file count. The index loop
+     * used to write the heartbeat config value and take the global scheduler
+     * lock for every file; on a library of thousands of files that dominated
+     * the run. Heartbeats are now throttled to a short interval, so a large
+     * batch performs a handful of writes instead of one per file.
+     */
+    public function testHeartbeatWritesDoNotScaleWithFileCount(): void {
+        $heartbeatWrites = 0;
+        $configFactory = function () use (&$heartbeatWrites): AppConfig {
+            $config = $this->createMock(AppConfig::class);
+            $config->method('get')->willReturnCallback(static function (string $key, ?string $default = null): string {
+                return match ($key) {
+                    'scope_path' => '',
+                    'exclude_paths' => '',
+                    'index_cancel_requested' => '0',
+                    'index_running' => '0',
+                    'index_run_id' => '',
+                    default => $default ?? '',
+                };
+            });
+            $config->method('getInt')->willReturnCallback(static function (string $key, ?int $default = null): int {
+                return match ($key) {
+                    'embed_batch_size' => 200,
+                    'max_file_size' => 20971520,
+                    'max_files_per_run' => 10000,
+                    default => $default ?? 0,
+                };
+            });
+            $config->method('setUserId');
+            $config->method('set')->willReturnCallback(
+                static function (string $key, string $value) use (&$heartbeatWrites): void {
+                    if ($key === 'index_heartbeat') {
+                        $heartbeatWrites++;
+                    }
+                }
+            );
+            $config->method('tryClaimIndex')->willReturn(true);
+            return $config;
+        };
+
+        $files = [];
+        for ($i = 1; $i <= 120; $i++) {
+            $files[] = $this->file($i);
+        }
+        [$indexer] = $this->harness($files, 200, $configFactory);
+
+        $result = $indexer->run('alice', 10000, 'files');
+
+        self::assertSame(120, $result['processed']);
+        self::assertLessThan(
+            10,
+            $heartbeatWrites,
+            'heartbeat writes must be throttled, not one per file (' . $heartbeatWrites . ' for 120 files)'
+        );
     }
 
     public function testDefaultBatchSizeIsTwentyFour(): void {

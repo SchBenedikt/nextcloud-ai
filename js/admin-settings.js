@@ -1,17 +1,20 @@
 /**
- * Eva AI admin settings — lightweight JS for the native Nextcloud admin page.
+ * Eva AI admin settings — behaviour for the native Nextcloud admin page.
  *
- * Handles form submissions, per-user reindex/reset, and the background
- * index stop action via OCS AJAX requests. Uses only native DOM APIs.
+ * Uses only native DOM APIs and, when available, Nextcloud's own OC.Notification
+ * for feedback. Every interaction talks to the admin-only OCS endpoints under
+ * /ocs/v2.php/apps/eva_ai/api/admin/, so a non-admin cannot reach them.
  */
 (function () {
 	'use strict'
 
 	var root = document.getElementById('eva-ai-admin')
-	if (!root) return
+	if (!root) {
+		return
+	}
 	var apiBase = root.dataset.apiBase || '/ocs/v2.php/apps/eva_ai/api/'
 
-	// ── Helpers ──────────────────────────────────────────────────────
+	// ── Helpers ──────────────────────────────────────────────────────────
 
 	function ocsToken() {
 		return document.head.dataset.requesttoken || ''
@@ -30,145 +33,231 @@
 			opts.body = JSON.stringify(body)
 		}
 		return fetch(apiBase + path, opts).then(function (res) {
-			if (!res.ok) throw new Error('HTTP ' + res.status)
-			return res.json()
+			return res.json().then(function (data) {
+				if (!res.ok) {
+					var detail = data && data.validationErrors && data.validationErrors.length
+						? ' ' + data.validationErrors.join(' ')
+						: ''
+					throw new Error((data && data.error ? data.error : 'HTTP ' + res.status) + detail)
+				}
+				return data
+			})
 		})
 	}
 
-	function setStatus(el, type, msg) {
-		if (!el) return
-		el.textContent = msg
-		el.style.color = type === 'success'
-			? 'var(--color-success, #46ba61)'
-			: type === 'error'
-				? 'var(--color-error, #e9322d)'
-				: 'var(--color-text-maxcontrast, #999)'
-		window.setTimeout(function () {
-			el.textContent = ''
-			el.style.color = ''
-		}, 4000)
+	function el(id) {
+		return document.getElementById(id)
 	}
 
-	// ── Tool settings save ───────────────────────────────────────────
+	function value(id) {
+		var node = el(id)
+		return node === null ? null : node.value
+	}
 
-	var toolsSaveBtn = document.getElementById('eva-tools-save')
-	if (toolsSaveBtn) {
-		toolsSaveBtn.addEventListener('click', function () {
-			var statusEl = document.getElementById('eva-tools-status')
-			toolsSaveBtn.disabled = true
-			setStatus(statusEl, 'info', 'Saving\u2026')
+	function checked(id) {
+		var node = el(id)
+		return node !== null && node.checked
+	}
 
-			var payload = {
-				weather_tool_enabled: document.getElementById('eva-weather-toggle').checked ? '1' : '0',
-				web_search_url: document.getElementById('eva-websearch-url').value,
-				web_search_max_results: document.getElementById('eva-websearch-max').value,
-				web_search_safe_search: document.getElementById('eva-safesearch-toggle').checked ? '1' : '0',
-				web_search_fetch_content: document.getElementById('eva-fetch-content-toggle').checked ? '1' : '0',
-				web_search_content_chars: document.getElementById('eva-content-chars').value,
+	/**
+	 * Feedback in the inline status span, plus a native notification when the
+	 * Nextcloud toast API is present. The span is always updated so feedback
+	 * survives even if notifications are unavailable.
+	 */
+	function setStatus(id, type, message) {
+		var node = el(id)
+		if (node !== null) {
+			node.textContent = message
+			node.classList.remove('eva-status-text--ok', 'eva-status-text--error')
+			if (type === 'success') {
+				node.classList.add('eva-status-text--ok')
+			} else if (type === 'error') {
+				node.classList.add('eva-status-text--error')
 			}
+		}
+		if (type === 'success' && window.OC && OC.Notification && OC.Notification.showTemporary) {
+			OC.Notification.showTemporary(message)
+		}
+	}
 
-			var apiKey = document.getElementById('eva-websearch-key')
-			if (apiKey && apiKey.value) {
-				payload.web_search_api_key = apiKey.value
-			}
-			var removeKey = document.getElementById('eva-remove-websearch-key')
-			if (removeKey) {
-				payload.remove_web_search_api_key = removeKey.checked
-			}
-
+	/**
+	 * Wire one save button. Field getters that return null are omitted from the
+	 * payload, so a section only ever writes the settings it actually shows.
+	 */
+	function bindSave(buttonId, statusId, collect, onSuccess) {
+		var button = el(buttonId)
+		if (button === null) {
+			return
+		}
+		button.addEventListener('click', function () {
+			button.disabled = true
+			setStatus(statusId, 'info', 'Saving…')
+			var payload = collect()
 			api('PUT', 'admin/settings', payload)
 				.then(function () {
-					setStatus(statusEl, 'success', 'Saved.')
-					if (apiKey) apiKey.value = ''
-					if (removeKey) removeKey.checked = false
+					setStatus(statusId, 'success', 'Saved.')
+					if (typeof onSuccess === 'function') {
+						onSuccess()
+					}
 				})
 				.catch(function (err) {
-					setStatus(statusEl, 'error', 'Could not save: ' + err.message)
+					setStatus(statusId, 'error', 'Could not save: ' + err.message)
 				})
 				.finally(function () {
-					toolsSaveBtn.disabled = false
+					button.disabled = false
 				})
 		})
 	}
 
-	// ── Scheduler settings save ──────────────────────────────────────
+	// ── Indexing performance ─────────────────────────────────────────────
 
-	var schedSaveBtn = document.getElementById('eva-scheduler-save')
-	if (schedSaveBtn) {
-		schedSaveBtn.addEventListener('click', function () {
-			var statusEl = document.getElementById('eva-scheduler-status')
-			schedSaveBtn.disabled = true
-			setStatus(statusEl, 'info', 'Saving\u2026')
+	bindSave('eva-index-save', 'eva-index-status', function () {
+		var payload = {}
+		var concurrent = value('eva-max-concurrent')
+		var budget = value('eva-job-budget')
+		if (concurrent !== null) {
+			payload.index_max_concurrent = concurrent
+		}
+		if (budget !== null) {
+			payload.index_job_max_seconds = budget
+		}
+		return payload
+	})
 
-			var concurrent = document.getElementById('eva-max-concurrent')
-			var budget = document.getElementById('eva-job-budget')
-			var payload = {}
-			if (concurrent) payload.index_max_concurrent = concurrent.value
-			if (budget) payload.index_job_max_seconds = budget.value
+	// ── Web search infrastructure ────────────────────────────────────────
 
-			api('PUT', 'admin/settings', payload)
-				.then(function () {
-					setStatus(statusEl, 'success', 'Saved.')
-				})
-				.catch(function (err) {
-					setStatus(statusEl, 'error', 'Could not save: ' + err.message)
-				})
-				.finally(function () {
-					schedSaveBtn.disabled = false
-				})
-		})
-	}
+	bindSave('eva-websearch-save', 'eva-websearch-status', function () {
+		var payload = {
+			web_search_url: value('eva-websearch-url'),
+			web_search_max_results: value('eva-websearch-max'),
+			web_search_timeout: value('eva-websearch-timeout'),
+			web_search_content_chars: value('eva-content-chars'),
+			web_search_safe_search: checked('eva-safesearch-toggle') ? '1' : '0',
+			web_search_fetch_content: checked('eva-fetch-content-toggle') ? '1' : '0',
+		}
+		var apiKey = value('eva-websearch-key')
+		if (apiKey) {
+			payload.web_search_api_key = apiKey
+		}
+		if (checked('eva-remove-websearch-key')) {
+			payload.remove_web_search_api_key = true
+		}
+		return payload
+	}, function () {
+		// Clear the secret fields once the key was stored, so a second save
+		// cannot resend a key the administrator already saved.
+		var key = el('eva-websearch-key')
+		var remove = el('eva-remove-websearch-key')
+		if (key !== null) {
+			key.value = ''
+		}
+		if (remove !== null) {
+			remove.checked = false
+		}
+	})
 
-	// ── Per-user reindex / reset ─────────────────────────────────────
+	// ── Tools ────────────────────────────────────────────────────────────
 
-	root.addEventListener('click', function (e) {
-		var btn = e.target.closest('.eva-btn-reindex, .eva-btn-reset')
-		if (!btn) return
-		var userId = btn.dataset.user
-		if (!userId) return
+	bindSave('eva-tools-save', 'eva-tools-status', function () {
+		return {
+			weather_tool_enabled: checked('eva-weather-toggle') ? '1' : '0',
+		}
+	})
 
-		var isReset = btn.classList.contains('eva-btn-reset')
-		if (isReset && !window.confirm('Delete the complete index for ' + userId + '? This removes indexed documents and vectors. Original Nextcloud files stay untouched.')) {
+	// ── Per-user enrollment toggle ───────────────────────────────────────
+
+	root.addEventListener('change', function (event) {
+		var toggle = event.target
+		if (!toggle || !toggle.classList.contains('eva-enroll-toggle')) {
+			return
+		}
+		var userId = toggle.dataset.user
+		if (!userId) {
+			return
+		}
+		var enabled = toggle.checked
+		toggle.disabled = true
+		api('POST', 'admin/users/' + encodeURIComponent(userId) + '/enrollment', { enabled: enabled })
+			.then(function () {
+				if (window.OC && OC.Notification && OC.Notification.showTemporary) {
+					OC.Notification.showTemporary(
+						enabled ? 'Indexing enabled for ' + userId : 'Indexing disabled for ' + userId
+					)
+				}
+			})
+			.catch(function (err) {
+				toggle.checked = !enabled
+				window.alert('Could not change enrollment: ' + err.message)
+			})
+			.finally(function () {
+				toggle.disabled = false
+			})
+	})
+
+	// ── Per-user re-index / delete ───────────────────────────────────────
+
+	root.addEventListener('click', function (event) {
+		var button = event.target.closest('.eva-btn-reindex, .eva-btn-reset')
+		if (!button) {
+			return
+		}
+		var userId = button.dataset.user
+		if (!userId) {
+			return
+		}
+		var isReset = button.classList.contains('eva-btn-reset')
+		if (isReset && !window.confirm(
+			'Delete the complete index for ' + userId + '? '
+			+ 'This removes indexed documents and their vectors. Original Nextcloud files stay untouched.'
+		)) {
 			return
 		}
 
-		btn.disabled = true
+		button.disabled = true
 		var action = isReset
-			? 'users/' + encodeURIComponent(userId) + '/reset'
-			: 'users/' + encodeURIComponent(userId) + '/reindex'
+			? 'admin/users/' + encodeURIComponent(userId) + '/reset'
+			: 'admin/users/' + encodeURIComponent(userId) + '/reindex'
 		api('POST', action)
 			.then(function (data) {
 				if (isReset) {
 					var result = data.result || {}
-					alert('Index deleted: ' + (result.documents || 0) + ' documents and ' + (result.chunks || 0) + ' chunks removed.')
+					window.alert(
+						'Index deleted: ' + (result.documents || 0) + ' documents and '
+						+ (result.chunks || 0) + ' chunks removed.'
+					)
 				} else {
-					alert('Reindex queued for ' + userId + '.')
+					window.alert('Re-index queued for ' + userId + '.')
 				}
 				window.location.reload()
 			})
 			.catch(function (err) {
-				alert('Action failed: ' + err.message)
-				btn.disabled = false
+				window.alert('Action failed: ' + err.message)
+				button.disabled = false
 			})
 	})
 
-	// ── Stop background indexing ─────────────────────────────────────
+	// ── Stop background indexing ─────────────────────────────────────────
 
-	var stopBtn = document.getElementById('eva-stop-background')
-	if (stopBtn) {
-		stopBtn.addEventListener('click', function () {
-			var statusEl = document.getElementById('eva-background-status')
-			stopBtn.disabled = true
-			setStatus(statusEl, 'info', 'Stopping\u2026')
-
+	var stopButton = el('eva-stop-background')
+	if (stopButton !== null) {
+		stopButton.addEventListener('click', function () {
+			stopButton.disabled = true
+			setStatus('eva-background-status', 'info', 'Stopping…')
 			api('POST', 'admin/stop')
 				.then(function (data) {
-					setStatus(statusEl, 'success', 'Stop requested. Active passes: ' + (data.requestedFor || []).join(', '))
-					window.setTimeout(function () { window.location.reload() }, 1500)
+					var users = (data.requestedFor || [])
+					setStatus(
+						'eva-background-status',
+						'success',
+						'Stop requested for ' + (users.length ? users.join(', ') : 'the next run') + '.'
+					)
+					window.setTimeout(function () {
+						window.location.reload()
+					}, 1500)
 				})
 				.catch(function (err) {
-					setStatus(statusEl, 'error', 'Could not stop: ' + err.message)
-					stopBtn.disabled = false
+					setStatus('eva-background-status', 'error', 'Could not stop: ' + err.message)
+					stopButton.disabled = false
 				})
 		})
 	}

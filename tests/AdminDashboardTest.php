@@ -36,7 +36,7 @@ final class AdminDashboardTest extends TestCase {
 
     public function testAllEndpointsAreAdminRequired(): void {
         $reflection = new ReflectionClass(AdminController::class);
-        foreach (['overview', 'reindex', 'reset', 'setEnrollment', 'stopBackgroundIndex'] as $method) {
+        foreach (['getSettings', 'saveSettings', 'overview', 'reindex', 'reset', 'setEnrollment', 'stopBackgroundIndex'] as $method) {
             $m = $reflection->getMethod($method);
             $attributes = $m->getAttributes(AdminRequired::class);
             self::assertNotEmpty(
@@ -247,6 +247,56 @@ final class AdminDashboardTest extends TestCase {
         // Cancel flags must be written in the active user's scope.
         self::assertContains(['uid', 'alice'], $calls);
         self::assertContains(['uid', 'bob'], $calls);
+    }
+
+    /**
+     * The admin page exposes indexing throughput fields. They must actually be
+     * stored: previously the save endpoint did not exist as a route and the two
+     * keys were missing from the admin scope, so both fields silently saved
+     * nothing.
+     */
+    public function testSaveSettingsPersistsIndexingThroughput(): void {
+        $request = $this->createMock(IRequest::class);
+        $request->method('getParam')->willReturnCallback(
+            static fn(string $key, $default = null) => match ($key) {
+                'index_max_concurrent' => '4',
+                'index_job_max_seconds' => '120',
+                default => null,
+            }
+        );
+
+        $config = $this->createMock(AppConfig::class);
+        $config->method('validateValue')->willReturn(null);
+        $config->method('adminAll')->willReturn([]);
+        $config->expects(self::exactly(2))->method('set')->willReturnCallback(
+            static function (string $key, string $value): void {
+                self::assertContains($key, ['index_max_concurrent', 'index_job_max_seconds']);
+                self::assertContains($value, ['4', '120']);
+            }
+        );
+
+        $controller = $this->controller(request: $request, config: $config);
+        $response = $controller->saveSettings();
+
+        self::assertSame(200, $response->getStatus());
+    }
+
+    /** Out-of-range values must be rejected before anything is stored. */
+    public function testSaveSettingsRejectsInvalidIndexingThroughput(): void {
+        $request = $this->createMock(IRequest::class);
+        $request->method('getParam')->willReturnCallback(
+            static fn(string $key, $default = null) => $key === 'index_max_concurrent' ? '99' : null
+        );
+
+        $config = $this->createMock(AppConfig::class);
+        $config->method('validateValue')->willReturn('must be between 1 and 16');
+        $config->expects(self::never())->method('set');
+
+        $controller = $this->controller(request: $request, config: $config);
+        $response = $controller->saveSettings();
+
+        self::assertSame(400, $response->getStatus());
+        self::assertArrayHasKey('validationErrors', $response->getData());
     }
 
     /**

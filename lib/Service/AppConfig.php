@@ -64,6 +64,11 @@ class AppConfig {
         // teasers into an answer, but it costs one request per page.
         'web_search_fetch_content',
         'web_search_content_chars',
+        // Indexing throughput controls. These were previously only reachable
+        // through `occ config:app:set`; the admin page exposed fields for them
+        // that silently saved nothing because they were missing here.
+        'index_max_concurrent',
+        'index_job_max_seconds',
     ];
 
     public function isAdminSetting(string $key): bool {
@@ -191,6 +196,8 @@ class AppConfig {
         'web_search_max_results' => [1, 20],
         'web_search_timeout' => [1, 30],
         'web_search_content_chars' => [200, 8000],
+        'index_max_concurrent' => [1, 16],
+        'index_job_max_seconds' => [10, 600],
     ];
 
     /** Accepted formats for the Ollama keep_alive setting (Issue: model residency). */
@@ -465,34 +472,33 @@ class AppConfig {
             && (!is_scalar($value) || !in_array((string)$value, ['fast', 'llm'], true))) {
             return 'must be fast or llm';
         }
-        if (self::isAdminSettingStatic($key)
-            && $key !== 'web_search_provider'
-            && $key !== 'web_search_url'
-            && $key !== 'web_search_max_results'
-            && $key !== 'web_search_timeout'
-            && $key !== 'web_search_content_chars') {
+        // Numeric limits are validated by range before the generic admin-scope
+        // fallback, so an admin-scope integer (index_max_concurrent,
+        // index_job_max_seconds, web_search_max_results, …) is range-checked
+        // instead of being rejected as a non-boolean.
+        if (array_key_exists($key, self::LIMITS)) {
+            [$min, $max] = self::LIMITS[$key];
+            if ($key === 'temperature') {
+                if (!is_numeric($value)) {
+                    return 'must be a number';
+                }
+                $number = (float)$value;
+            } else {
+                if ((is_array($value) || is_object($value) || filter_var($value, FILTER_VALIDATE_INT) === false)
+                    && !(is_string($value) && preg_match('/^-?\\d+$/', $value))) {
+                    return 'must be an integer';
+                }
+                $number = (int)$value;
+            }
+            if ($number < $min || $number > $max) {
+                return 'must be between ' . $min . ' and ' . $max;
+            }
+            return null;
+        }
+        if (self::isAdminSettingStatic($key)) {
             // Any remaining admin-scope key is a boolean toggle.
             return is_scalar($value) && in_array((string)$value, ['0', '1', 'true', 'false', 'on', 'off'], true)
                 ? null : 'must be a boolean value';
-        }
-        if (!array_key_exists($key, self::LIMITS)) {
-            return null;
-        }
-        [$min, $max] = self::LIMITS[$key];
-        if ($key === 'temperature') {
-            if (!is_numeric($value)) {
-                return 'must be a number';
-            }
-            $number = (float)$value;
-        } else {
-            if ((is_array($value) || is_object($value) || filter_var($value, FILTER_VALIDATE_INT) === false)
-                && !(is_string($value) && preg_match('/^-?\\d+$/', $value))) {
-                return 'must be an integer';
-            }
-            $number = (int)$value;
-        }
-        if ($number < $min || $number > $max) {
-            return 'must be between ' . $min . ' and ' . $max;
         }
         return null;
     }

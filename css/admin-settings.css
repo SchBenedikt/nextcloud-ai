@@ -1,36 +1,210 @@
 /**
- * Eva AI admin settings — minimal CSS using Nextcloud design system variables.
- * All visual styling comes from Nextcloud's native .section, .grid, .settings-hint,
- * button.primary, button.secondary classes. This file only adds minor layout
- * helpers that Nextcloud's core does not cover.
+ * Eva AI admin settings — layout helpers on top of Nextcloud's native design
+ * system. Sections, headings, grid tables, inputs and buttons are styled by
+ * core; this file only adds the layout and status helpers the admin page needs.
+ * Everything is expressed with Nextcloud CSS variables, so the page follows
+ * the user's theme (including dark mode) automatically.
  */
 
-/* Status colors for the overview table */
-.eva-status-ok {
-	color: var(--color-success, #46ba61);
+/* ── Status chips in the page header ─────────────────────────────────── */
+
+.eva-chip-row {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 8px;
+	margin: 4px 0 16px;
 }
 
-.eva-status-error {
-	color: var(--color-error, #e9322d);
-}
-
-/* Web search config subsection: slightly indented when toggled off */
-#eva-websearch-config {
-	margin-left: 20px;
-	margin-top: 4px;
-	transition: opacity 0.15s;
-}
-
-/* Per-user table button spacing */
-table.grid button + button {
-	margin-left: 4px;
-}
-
-/* Status messages next to save buttons */
-#eva-tools-status,
-#eva-scheduler-status,
-#eva-background-status {
-	margin-left: 8px;
+.eva-chip {
+	display: inline-flex;
+	align-items: center;
+	gap: 6px;
+	padding: 4px 10px;
+	border-radius: var(--border-radius-pill, 100px);
+	border: 1px solid var(--color-border);
+	background-color: var(--color-background-dark);
+	color: var(--color-text-maxcontrast);
 	font-size: 13px;
 	font-weight: 600;
+	line-height: 1.6;
+}
+
+.eva-chip--ok {
+	color: var(--color-success);
+	border-color: var(--color-success);
+}
+
+.eva-chip--error {
+	color: var(--color-error);
+	border-color: var(--color-error);
+}
+
+.eva-chip--busy {
+	color: var(--color-primary-element);
+	border-color: var(--color-primary-element);
+}
+
+.eva-chip--idle {
+	color: var(--color-text-maxcontrast);
+}
+
+/* ── Inline status pills inside tables ───────────────────────────────── */
+
+.eva-status {
+	display: inline-flex;
+	align-items: center;
+	gap: 6px;
+	font-weight: 600;
+	white-space: nowrap;
+}
+
+.eva-status::before {
+	content: '';
+	display: inline-block;
+	width: 8px;
+	height: 8px;
+	border-radius: 50%;
+	background-color: currentColor;
+	flex: 0 0 auto;
+}
+
+.eva-status--ok {
+	color: var(--color-success);
+}
+
+.eva-status--error {
+	color: var(--color-error);
+}
+
+.eva-status--busy {
+	color: var(--color-primary-element);
+}
+
+.eva-status--idle {
+	color: var(--color-text-maxcontrast);
+}
+
+/* ── Form layout: two columns of fields that collapse on narrow screens ── */
+
+.eva-field-grid {
+	display: grid;
+	grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+	gap: 16px 24px;
+	margin: 12px 0 4px;
+	max-width: 760px;
+}
+
+.eva-field {
+	display: flex;
+	flex-direction: column;
+	gap: 5px;
+}
+
+.eva-field--wide {
+	grid-column: 1 / -1;
+}
+
+.eva-field > label {
+	font-weight: 600;
+	color: var(--color-main-text);
+}
+
+.eva-field input[type='text'],
+.eva-field input[type='url'],
+.eva-field input[type='number'],
+.eva-field input[type='password'] {
+	width: 100%;
+	max-width: 420px;
+}
+
+.eva-field-hint {
+	margin: 0;
+	color: var(--color-text-maxcontrast);
+	font-size: 13px;
+	line-height: 1.5;
+}
+
+/* ── Native checkbox rows with a readable label ──────────────────────── */
+
+.eva-checkbox {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	margin: 6px 0;
+}
+
+.eva-checkbox > span {
+	font-weight: 600;
+	color: var(--color-main-text);
+}
+
+.eva-indent {
+	margin-left: 26px;
+}
+
+/* ── Tables ──────────────────────────────────────────────────────────── */
+
+.eva-provider-table {
+	max-width: 760px;
+}
+
+.eva-user-table td,
+.eva-user-table th {
+	vertical-align: top;
+}
+
+.eva-actions {
+	display: flex;
+	align-items: center;
+	flex-wrap: wrap;
+	gap: 10px;
+	margin: 12px 0 24px;
+}
+
+.eva-actions--inline {
+	margin: 8px 0 0;
+	gap: 6px;
+}
+
+.eva-actions .eva-status-text {
+	margin: 0;
+}
+
+.eva-status-text {
+	font-size: 13px;
+	font-weight: 600;
+	color: var(--color-text-maxcontrast);
+}
+
+.eva-status-text.eva-status-text--ok {
+	color: var(--color-success);
+}
+
+.eva-status-text.eva-status-text--error {
+	color: var(--color-error);
+}
+
+/* ── Small helpers ───────────────────────────────────────────────────── */
+
+.eva-muted {
+	color: var(--color-text-maxcontrast);
+}
+
+.eva-error {
+	color: var(--color-error);
+	font-size: 13px;
+}
+
+.eva-mono {
+	font-family: var(--font-face-monospace, monospace);
+	font-size: 13px;
+}
+
+.eva-block {
+	display: block;
+}
+
+.eva-empty {
+	color: var(--color-text-maxcontrast);
+	font-style: italic;
 }
