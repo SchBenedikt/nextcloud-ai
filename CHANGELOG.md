@@ -11,6 +11,13 @@ follows [Semantic Versioning](https://semver.org/).
 - Optional per-user web search grounding: DuckDuckGo (free, no API key),
   self-hosted SearxNG, Brave or Tavily. It is off by default and the model only
   calls it when the indexed files cannot answer a question (#187).
+- Web search now answers from the sources themselves: all search endpoints are
+  merged, the hits are re-ranked by how well they match the query, and the top
+  pages are fetched in parallel so their readable text reaches the model as
+  `content` instead of a search-engine teaser. Sponsored/internal links and
+  navigation, script and footer markup are stripped. Up to 20 results and up to
+  8000 characters per page can be configured (`web_search_fetch_content`,
+  `web_search_content_chars`).
 - Optional Groq chat with encrypted per-user API keys, GPT-OSS 20B/120B selection,
   streaming and tool calls, explicit quota errors and no automatic model fallback.
 - Optional bounded Tesseract OCR for images and scanned PDFs (#84).

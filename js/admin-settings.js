@@ -63,6 +63,8 @@
 				web_search_url: document.getElementById('eva-websearch-url').value,
 				web_search_max_results: document.getElementById('eva-websearch-max').value,
 				web_search_safe_search: document.getElementById('eva-safesearch-toggle').checked ? '1' : '0',
+				web_search_fetch_content: document.getElementById('eva-fetch-content-toggle').checked ? '1' : '0',
+				web_search_content_chars: document.getElementById('eva-content-chars').value,
 			}
 
 			var apiKey = document.getElementById('eva-websearch-key')

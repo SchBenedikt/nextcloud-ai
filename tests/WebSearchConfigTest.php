@@ -58,9 +58,13 @@ final class WebSearchConfigTest extends TestCase {
         self::assertSame('0', $config->get('web_search_enabled'), 'web search must be opt-in');
         self::assertSame('duckduckgo', $config->get('web_search_provider'), 'DuckDuckGo is the free default');
         self::assertSame('', $config->get('web_search_url'));
-        self::assertSame('5', $config->get('web_search_max_results'));
+        self::assertSame('8', $config->get('web_search_max_results'));
         self::assertSame('10', $config->get('web_search_timeout'));
         self::assertSame('1', $config->get('web_search_safe_search'));
+        // Reading the result pages is on by default: it is what makes an answer
+        // correct rather than a paraphrase of a teaser.
+        self::assertSame('1', $config->get('web_search_fetch_content'));
+        self::assertSame('2000', $config->get('web_search_content_chars'));
         self::assertSame('1', $config->get('weather_tool_enabled'));
     }
 
@@ -143,7 +147,8 @@ final class WebSearchConfigTest extends TestCase {
     public function testLimitsCoverTheWebSearchRanges(): void {
         [$config] = $this->harness();
         $limits = $config->limits();
-        self::assertSame([1, 10], $limits['web_search_max_results']);
+        self::assertSame([1, 20], $limits['web_search_max_results']);
         self::assertSame([1, 30], $limits['web_search_timeout']);
+        self::assertSame([200, 8000], $limits['web_search_content_chars']);
     }
 }
