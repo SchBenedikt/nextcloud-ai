@@ -102,6 +102,15 @@ key or admin configuration. For self-hosted or paid providers (SearxNG, Brave,
 Tavily), the administrator configures the URL or API key in the Eva AI admin
 settings. The API key is encrypted and never returned to any client.
 
+> **DuckDuckGo from a server:** EVA talks to the same endpoints a browser does,
+> in order: the HTML search page, the lightweight page, then the Instant Answers
+> API. DuckDuckGo answers automated traffic and many data-center IP ranges with
+> an anti-bot page instead of results. When that happens EVA reports it (and the
+> Instant Answers API still covers encyclopedic queries), but for reliable
+> results on a hosted server use a self-hosted **SearxNG** URL, or a **Brave** or
+> **Tavily** API key. You can check the effective behaviour with
+> `occ eva_ai:tool <user> web_search '{"query":"nextcloud"}'`.
+
 The chat model decides when to search: it has to call the `web_search` tool
 explicitly, and while `web_search_enabled` is `0` that tool is removed from every
 surface (web, Talk, Assistant and RAG) and blocked at dispatch, so a switched-off

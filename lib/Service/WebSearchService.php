@@ -43,6 +43,20 @@ class WebSearchService {
     /** Hard ceiling regardless of configuration. */
     private const ABSOLUTE_MAX_RESULTS = 10;
 
+    /**
+     * A real browser user agent. DuckDuckGo serves an anti-bot "anomaly"
+     * interstitial to obviously scripted clients, so its plain-text endpoints
+     * are always called with a browser-like identity (Issue #187).
+     */
+    private const BROWSER_USER_AGENT = 'Mozilla/5.0 (X11; Linux x86_64; rv:128.0) Gecko/20100101 Firefox/128.0';
+
+    /**
+     * Why the last DuckDuckGo attempt failed. DuckDuckGo only reports this
+     * generically ("anomaly"), so the precise reason is kept here and surfaced
+     * to the caller instead of silently returning zero results.
+     */
+    private ?string $lastDuckDuckGoError = null;
+
     public function __construct(
         private AppConfig $config,
         private IConfig $rawConfig,
@@ -66,7 +80,9 @@ class WebSearchService {
 
     public function provider(): string {
         $provider = $this->config->get('web_search_provider');
-        return in_array($provider, self::PROVIDERS, true) ? $provider : 'searxng';
+        // Fall back to the same provider the settings UI and AppConfig default
+        // to, so an unset or stale value behaves exactly like a fresh install.
+        return in_array($provider, self::PROVIDERS, true) ? $provider : 'duckduckgo';
     }
 
     /** True when the selected provider has everything it needs to run. */
@@ -147,6 +163,7 @@ class WebSearchService {
             return ['ok' => false, 'provider' => $provider, 'results' => [], 'error' => 'Web search is disabled by the administrator.'];
         }
         $count = max(1, min(self::ABSOLUTE_MAX_RESULTS, $limit ?? $this->maxResults()));
+        $this->lastDuckDuckGoError = null;
 
         try {
             $results = match ($provider) {
@@ -166,128 +183,270 @@ class WebSearchService {
             return ['ok' => false, 'provider' => $provider, 'results' => [], 'error' => 'Web search failed.'];
         }
 
+        // An empty result set must never be reported as success: the model
+        // would then claim the web had no answer. Say why instead.
+        if ($results === []) {
+            return ['ok' => false, 'provider' => $provider, 'results' => [], 'error' => $this->emptyResultError($provider)];
+        }
+
         return ['ok' => true, 'provider' => $provider, 'results' => $results, 'error' => null];
     }
 
     /**
-     * DuckDuckGo instant answers — no API key required.
+     * Explain why a provider produced no results. For DuckDuckGo the concrete
+     * cause (anti-bot page, unreachable endpoint) is much more useful than a
+     * generic "no results", because the fix differs entirely.
+     */
+    private function emptyResultError(string $provider): string {
+        if ($provider === 'duckduckgo' && $this->lastDuckDuckGoError !== null) {
+            return $this->lastDuckDuckGoError;
+        }
+        return 'The web search provider returned no results for this query.';
+    }
+
+    /**
+     * DuckDuckGo — no API key required.
      *
-     * Uses the DuckDuckGo HTML search page which returns results without
-     * any authentication. This is the recommended free provider for privacy-
-     * conscious instances that do not want to host SearxNG.
+     * DuckDuckGo has no official free web-search API, so EVA uses the same
+     * plain-text endpoints a browser does, in order of how much real content
+     * they return. Every attempt records a diagnostic reason in
+     * $lastDuckDuckGoError, so an anti-bot response is reported precisely
+     * instead of silently returning zero results (Issue #187).
      *
      * @return list<array{title:string,url:string,snippet:string}>
      */
     private function searchDuckDuckGo(string $query, int $count): array {
-        // Strategy 1 (primary): DuckDuckGo Instant Answers JSON API.
-        // Works reliably from any server without authentication. Provides
-        // factual summaries, related topics and source URLs for encyclopedic
-        // queries. This is the most robust strategy for server-side usage.
-        $results = $this->searchDuckDuckGoInstant($query, $count);
-        if ($results !== []) {
-            return array_slice($results, 0, $count);
-        }
-
-        // Strategy 2: DuckDuckGo HTML endpoint (may be blocked by CAPTCHA
-        // on some server IPs). We attempt it anyway because it works from
-        // many hosting environments and returns actual web search results.
-        $url = 'https://html.duckduckgo.com/html/?' . http_build_query([
+        // Strategy 1: the HTML endpoint. This is the only endpoint that
+        // returns title, URL and snippet together for arbitrary queries, which
+        // is why it must be tried first - the Instant Answers API below only
+        // covers encyclopedic queries and would otherwise mask real results.
+        $html = $this->fetchDuckDuckGoHtml('https://html.duckduckgo.com/html/', [
             'q' => $query,
             'kl' => 'wt-wt',
         ]);
-
-        try {
-            $body = $this->httpGet($url, [
-                'User-Agent: Mozilla/5.0 (X11; Linux x86_64; rv:128.0) Gecko/20100101 Firefox/128.0',
-                'Accept: text/html,application/xhtml+xml',
-                'Accept-Language: en-US,en;q=0.9',
-            ]);
-
-            // Skip if DuckDuckGo returned a CAPTCHA/anomaly page.
-            if (stripos($body, 'captcha') !== false || stripos($body, 'anomaly') !== false) {
-                // CAPTCHA detected — fall through.
-                $this->logger->debug('eva_ai: DuckDuckGo HTML returned CAPTCHA, falling back');
-            } else {
-                // Parse structured result blocks (result__a + result__snippet).
-                $results = $this->parseDuckDuckGoResults($body, $count);
-
-                // Broader link extraction if structured parsing found nothing.
-                if ($results === []) {
-                    $results = $this->parseDuckDuckGoLinks($body, $count);
-                }
-
-                if ($results !== []) {
-                    return array_slice($results, 0, $count);
-                }
+        if ($html !== null) {
+            $results = $this->parseDuckDuckGoResults($html, $count);
+            if ($results === []) {
+                $results = $this->parseDuckDuckGoLinks($html, $count);
             }
-        } catch (\Throwable $e) {
-            // HTML endpoint may be blocked (CAPTCHA/bot detection).
-            $this->logger->debug('eva_ai: DuckDuckGo HTML failed: ' . $e->getMessage());
-        }
-
-        // Strategy 3: Startpage as a free fallback (no API key needed).
-        // Startpage proxies Google results without tracking. It works
-        // from most server IPs where DuckDuckGo is blocked.
-        try {
-            $results = $this->searchStartpage($query, $count);
             if ($results !== []) {
                 return array_slice($results, 0, $count);
             }
-        } catch (\Throwable $e) {
-            $this->logger->debug('eva_ai: Startpage fallback failed: ' . $e->getMessage());
+        }
+
+        // Strategy 2: the lightweight endpoint. It is a plain HTML form, so
+        // the query belongs in the POST body exactly like in a browser.
+        $html = $this->fetchDuckDuckGoHtml('https://lite.duckduckgo.com/lite/', [
+            'q' => $query,
+            'kl' => 'wt-wt',
+        ], true);
+        if ($html !== null) {
+            $results = $this->parseDuckDuckGoLiteResults($html, $count);
+            if ($results !== []) {
+                return array_slice($results, 0, $count);
+            }
+        }
+
+        // Strategy 3: the documented Instant Answers JSON API. It answers from
+        // every server IP but only covers known entities, so it is the last
+        // resort rather than the first.
+        $results = $this->searchDuckDuckGoInstant($query, $count);
+        if ($results !== []) {
+            return array_slice($results, 0, $count);
         }
 
         return [];
     }
 
     /**
-     * Strategy 1: Parse DuckDuckGo HTML result blocks.
-     * Looks for the result__a links and nearby result__snippet text.
+     * Fetch one DuckDuckGo endpoint with a browser-like request.
+     *
+     * Returns null when DuckDuckGo served its anti-bot interstitial or the
+     * request failed, so the caller can try the next strategy. The reason is
+     * kept in $lastDuckDuckGoError.
+     *
+     * @param array<string,string> $fields
      */
-    private function parseDuckDuckGoResults(string $html, int $count): array {
-        $results = [];
+    private function fetchDuckDuckGoHtml(string $endpoint, array $fields, bool $post = false): ?string {
+        $headers = $this->browserHeaders($endpoint);
+        try {
+            $body = $post
+                ? $this->httpPost($endpoint, http_build_query($fields), $headers)
+                : $this->httpGet($endpoint . '?' . http_build_query($fields), $headers);
+        } catch (\Throwable $e) {
+            $this->lastDuckDuckGoError = 'The DuckDuckGo endpoint is unreachable: ' . $e->getMessage();
+            $this->logger->debug('eva_ai: DuckDuckGo request failed: ' . $e->getMessage());
+            return null;
+        }
 
-        // Extract all links with class "result__a" (the main result title links).
-        if (preg_match_all(
-            '/<a[^>]*class="result__a"[^>]*href="([^"]+)"[^>]*>(.*?)<\/a>/si',
-            $html,
-            $linkMatches,
-            PREG_SET_ORDER
-        )) {
-            // Also extract all snippets.
-            preg_match_all(
-                '/<a[^>]*class="result__snippet"[^>]*>(.*?)<\/a>/si',
-                $html,
-                $snippetMatches,
-                PREG_SET_ORDER
-            );
+        if ($this->isDuckDuckGoAnomaly($body)) {
+            $this->lastDuckDuckGoError = 'DuckDuckGo answered with its anti-bot page instead of results. '
+                . 'DuckDuckGo blocks many server and data-center IP ranges; a self-hosted SearxNG URL '
+                . 'or a Brave/Tavily API key is more reliable on a server.';
+            $this->logger->info('eva_ai: DuckDuckGo returned the anti-bot interstitial');
+            return null;
+        }
 
-            $snippets = [];
-            foreach ($snippetMatches as $sm) {
-                $snippets[] = $this->clamp(strip_tags(html_entity_decode($sm[1], ENT_QUOTES, 'UTF-8')), self::MAX_SNIPPET_CHARS);
-            }
+        return $body;
+    }
 
-            $i = 0;
-            foreach ($linkMatches as $linkMatch) {
-                $rawUrl = trim(html_entity_decode($linkMatch[1], ENT_QUOTES, 'UTF-8'));
-                $realUrl = $this->extractDuckDuckGoUrl($rawUrl);
-                if (!$this->isSafeHttpUrl($realUrl)) {
+    /**
+     * DuckDuckGo's own hosts. Its result pages interleave sponsored hits
+     * (duckduckgo.com/y.js?ad_domain=…) and internal aggregation links
+     * (duckduckgo.com/c/…) with the real web results. Those are tracking
+     * redirects rather than sources, so they are dropped: otherwise they rank
+     * first in document order and the model would cite ad redirects.
+     */
+    private function isDuckDuckGoHost(string $url): bool {
+        $host = strtolower((string)(parse_url($url, PHP_URL_HOST) ?? ''));
+        return $host === 'duckduckgo.com' || str_ends_with($host, '.duckduckgo.com');
+    }
+
+    /**
+     * Detect DuckDuckGo's "anomaly" interstitial. It carries a JS challenge and
+     * no result markup at all, so its presence is a reliable rejection signal.
+     */
+    private function isDuckDuckGoAnomaly(string $body): bool {
+        if (stripos($body, 'anomaly.js') !== false || stripos($body, 'anomaly-modal') !== false) {
+            return true;
+        }
+        // Any result markup means the query was answered normally.
+        if (stripos($body, 'result__a') !== false
+            || stripos($body, 'result-link') !== false
+            || stripos($body, 'result__snippet') !== false) {
+            return false;
+        }
+        return stripos($body, 'captcha') !== false
+            || stripos($body, '/anomaly') !== false
+            || stripos($body, 'challenge') !== false;
+    }
+
+    /**
+     * Headers a real browser sends for a top-level navigation. Without them
+     * DuckDuckGo classifies the request as a bot and serves the interstitial.
+     *
+     * @return list<string>
+     */
+    private function browserHeaders(string $endpoint = ''): array {
+        $headers = [
+            'Accept: text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
+            'Accept-Language: en-US,en;q=0.9,de;q=0.8',
+            'Cache-Control: no-cache',
+            'Pragma: no-cache',
+            'Sec-Fetch-Dest: document',
+            'Sec-Fetch-Mode: navigate',
+            'Sec-Fetch-Site: none',
+            'Sec-Fetch-User: ?1',
+            'Upgrade-Insecure-Requests: 1',
+            'DNT: 1',
+            'Connection: keep-alive',
+        ];
+        $parts = parse_url($endpoint);
+        if (is_array($parts) && isset($parts['scheme'], $parts['host'])) {
+            $headers[] = 'Origin: ' . $parts['scheme'] . '://' . $parts['host'];
+            $headers[] = 'Referer: ' . $endpoint;
+        }
+        return $headers;
+    }
+
+    /**
+     * Parse the lightweight endpoint. Its markup uses single-quoted classes,
+     * so it is matched structurally instead of assuming an attribute order.
+     *
+     * @return list<array{title:string,url:string,snippet:string}>
+     */
+    private function parseDuckDuckGoLiteResults(string $html, int $count): array {
+        $links = [];
+        if (preg_match_all('/<a\b([^>]*)>(.*?)<\/a>/si', $html, $matches, PREG_SET_ORDER)) {
+            foreach ($matches as $match) {
+                if (stripos($match[1], 'result-link') === false) {
                     continue;
                 }
-                $title = $this->clamp(strip_tags(html_entity_decode($linkMatch[2], ENT_QUOTES, 'UTF-8')), self::MAX_TITLE_CHARS);
-                $snippet = $snippets[$i] ?? '';
-                $results[] = [
-                    'title' => $title !== '' ? $title : $realUrl,
-                    'url' => $realUrl,
-                    'snippet' => $snippet,
-                ];
-                $i++;
-                if (count($results) >= $count) {
-                    break;
+                if (!preg_match('/href\s*=\s*["\']([^"\']*)["\']/i', $match[1], $href)) {
+                    continue;
                 }
+                $url = $this->extractDuckDuckGoUrl(html_entity_decode(trim($href[1]), ENT_QUOTES, 'UTF-8'));
+                if (!$this->isSafeHttpUrl($url) || $this->isDuckDuckGoHost($url)) {
+                    continue;
+                }
+                $title = $this->clamp(strip_tags(html_entity_decode($match[2], ENT_QUOTES, 'UTF-8')), self::MAX_TITLE_CHARS);
+                if ($title === '') {
+                    continue;
+                }
+                $links[] = ['title' => $title, 'url' => $url];
             }
         }
 
+        // Snippets live in separate table cells; pair them by position.
+        $snippets = [];
+        if (preg_match_all('/class=["\']result-snippet["\'][^>]*>(.*?)<\/td>/si', $html, $snippetMatches, PREG_SET_ORDER)) {
+            foreach ($snippetMatches as $snippetMatch) {
+                $snippets[] = $this->clamp(strip_tags(html_entity_decode($snippetMatch[1], ENT_QUOTES, 'UTF-8')), self::MAX_SNIPPET_CHARS);
+            }
+        }
+
+        $results = [];
+        foreach ($links as $index => $link) {
+            $results[] = [
+                'title' => $link['title'],
+                'url' => $link['url'],
+                'snippet' => $snippets[$index] ?? '',
+            ];
+            if (count($results) >= $count) {
+                break;
+            }
+        }
+        return $results;
+    }
+
+    /**
+     * Parse the HTML endpoint. Real DuckDuckGo markup places `rel` before
+     * `class` and `href` after it, so the anchor is matched structurally
+     * instead of assuming one attribute order (Issue #187).
+     *
+     * @return list<array{title:string,url:string,snippet:string}>
+     */
+    private function parseDuckDuckGoResults(string $html, int $count): array {
+        $links = [];
+        if (preg_match_all('/<a\b([^>]*)>(.*?)<\/a>/si', $html, $matches, PREG_SET_ORDER)) {
+            foreach ($matches as $match) {
+                if (stripos($match[1], 'result__a') === false) {
+                    continue;
+                }
+                if (!preg_match('/href\s*=\s*["\']([^"\']*)["\']/i', $match[1], $href)) {
+                    continue;
+                }
+                $url = $this->extractDuckDuckGoUrl(html_entity_decode(trim($href[1]), ENT_QUOTES, 'UTF-8'));
+                if (!$this->isSafeHttpUrl($url) || $this->isDuckDuckGoHost($url)) {
+                    continue;
+                }
+                $title = $this->clamp(strip_tags(html_entity_decode($match[2], ENT_QUOTES, 'UTF-8')), self::MAX_TITLE_CHARS);
+                $links[] = ['title' => $title !== '' ? $title : $url, 'url' => $url];
+            }
+        }
+
+        // Snippets are separate anchors; pair them by document order.
+        $snippets = [];
+        if (preg_match_all('/<a\b([^>]*)>(.*?)<\/a>/si', $html, $snippetMatches, PREG_SET_ORDER)) {
+            foreach ($snippetMatches as $match) {
+                if (stripos($match[1], 'result__snippet') === false) {
+                    continue;
+                }
+                $snippets[] = $this->clamp(strip_tags(html_entity_decode($match[2], ENT_QUOTES, 'UTF-8')), self::MAX_SNIPPET_CHARS);
+            }
+        }
+
+        $results = [];
+        foreach ($links as $index => $link) {
+            $results[] = [
+                'title' => $link['title'],
+                'url' => $link['url'],
+                'snippet' => $snippets[$index] ?? '',
+            ];
+            if (count($results) >= $count) {
+                break;
+            }
+        }
         return $results;
     }
 
@@ -312,8 +471,8 @@ class WebSearchService {
                 if (!$this->isSafeHttpUrl($realUrl)) {
                     continue;
                 }
-                // Skip DuckDuckGo internal links (navigation, settings, etc.).
-                if (str_contains($realUrl, 'duckduckgo.com')) {
+                // Skip DuckDuckGo internal links (navigation, settings, ads).
+                if ($this->isDuckDuckGoHost($realUrl)) {
                     continue;
                 }
                 // Skip very short link text (likely icons or navigation).
@@ -459,87 +618,20 @@ class WebSearchService {
             }
         }
 
-        // Deduplicate by URL to avoid showing the same source twice.
+        // Deduplicate by URL and drop DuckDuckGo's own aggregation links, so
+        // only real external sources reach the model.
         $seen = [];
         $unique = [];
         foreach ($results as $r) {
             $key = $r['url'];
-            if (!isset($seen[$key])) {
-                $seen[$key] = true;
-                $unique[] = $r;
+            if (isset($seen[$key]) || $this->isDuckDuckGoHost($key)) {
+                continue;
             }
+            $seen[$key] = true;
+            $unique[] = $r;
         }
 
         return array_slice($unique, 0, $count);
-    }
-
-    /**
-     * Startpage.com: free, privacy-respecting search proxy that works
-     * from server IPs without any API key. Used as a fallback when
-     * DuckDuckGo is blocked by CAPTCHA.
-     *
-     * @return list<array{title:string,url:string,snippet:string}>
-     */
-    private function searchStartpage(string $query, int $count): array {
-        $url = 'https://www.startpage.com/sp/search';
-        $body = $this->httpPost($url, http_build_query([
-            'query' => $query,
-            'cat' => 'web',
-            'language' => 'english',
-        ]), [
-            'Content-Type: application/x-www-form-urlencoded',
-            'User-Agent: Mozilla/5.0 (X11; Linux x86_64; rv:128.0) Gecko/20100101 Firefox/128.0',
-            'Accept: text/html',
-        ]);
-
-        $results = [];
-
-        // Extract result blocks: <a class="result-title result-link" href="URL">TITLE</a>
-        if (preg_match_all(
-            '/<a[^>]*class="[^"]*result-title[^"]*result-link[^"]*"[^>]*href="([^"]+)"[^>]*>(.*?)<\/a>/si',
-            $body,
-            $matches,
-            PREG_SET_ORDER
-        )) {
-            foreach ($matches as $match) {
-                $rawUrl = trim(html_entity_decode($match[1], ENT_QUOTES, 'UTF-8'));
-                if (!$this->isSafeHttpUrl($rawUrl)) {
-                    continue;
-                }
-                // Clean title: strip inline <style> tags and CSS content.
-                $title = $match[2];
-                $title = preg_replace('/<style[^>]*>.*?<\/style>/si', '', $title);
-                $title = strip_tags($title);
-                $title = $this->clamp(trim($title), self::MAX_TITLE_CHARS);
-                if ($title === '') {
-                    continue;
-                }
-                $results[] = [
-                    'title' => $title,
-                    'url' => $rawUrl,
-                    'snippet' => '', // Startpage snippets need separate extraction.
-                ];
-                if (count($results) >= $count) {
-                    break;
-                }
-            }
-        }
-
-        // Try to extract descriptions for results that have empty snippets.
-        if ($results !== []) {
-            // Startpage uses <p class="w-gl__description"> for snippets.
-            if (preg_match_all('/<p[^>]*class="[^"]*description[^"]*"[^>]*>(.*?)<\/p>/si', $body, $descMatches)) {
-                foreach (array_values($descMatches[1]) as $i => $desc) {
-                    if (!isset($results[$i])) break;
-                    $text = $this->clamp(strip_tags(html_entity_decode($desc, ENT_QUOTES, 'UTF-8')), self::MAX_SNIPPET_CHARS);
-                    if ($text !== '') {
-                        $results[$i]['snippet'] = $text;
-                    }
-                }
-            }
-        }
-
-        return $results;
     }
 
     /** @return list<array{title:string,url:string,snippet:string}> */
@@ -691,7 +783,11 @@ class WebSearchService {
             CURLOPT_SSL_VERIFYPEER => true,
             CURLOPT_SSL_VERIFYHOST => 2,
             CURLOPT_HTTPHEADER => $headers,
-            CURLOPT_USERAGENT => 'EVA-Nextcloud-WebSearch/1.0',
+            CURLOPT_USERAGENT => self::BROWSER_USER_AGENT,
+            // Transparently accept and decode gzip/deflate. DuckDuckGo and most
+            // other search front-ends treat a client that cannot handle
+            // compression as a bot and answer with a challenge page.
+            CURLOPT_ENCODING => '',
         ];
         if ($method === 'POST') {
             $options[CURLOPT_POST] = true;
