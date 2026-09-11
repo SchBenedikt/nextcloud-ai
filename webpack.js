@@ -27,7 +27,7 @@ module.exports = (env) => {
 				return chunkData.chunk.name + '.js'
 			},
 			publicPath: '/apps/eva_ai/js/',
-			clean: { keep: /^header\.js$|^eva_ai-main|^eva_ai_filesaction|^eva_ai_standalone|\.map$|\.LICENSE\.txt$/ },
+			clean: { keep: /^header\.js$|^admin-settings|^eva_ai-main|^eva_ai_filesaction|^eva_ai_standalone|\.map$|\.LICENSE\.txt$/ },
 		},
 		devtool: isProd ? 'source-map' : 'eval-cheap-module-source-map',
 		module: {

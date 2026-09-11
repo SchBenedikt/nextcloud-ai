@@ -1,0 +1,36 @@
+/**
+ * Eva AI admin settings — minimal CSS using Nextcloud design system variables.
+ * All visual styling comes from Nextcloud's native .section, .grid, .settings-hint,
+ * button.primary, button.secondary classes. This file only adds minor layout
+ * helpers that Nextcloud's core does not cover.
+ */
+
+/* Status colors for the overview table */
+.eva-status-ok {
+	color: var(--color-success, #46ba61);
+}
+
+.eva-status-error {
+	color: var(--color-error, #e9322d);
+}
+
+/* Web search config subsection: slightly indented when toggled off */
+#eva-websearch-config {
+	margin-left: 20px;
+	margin-top: 4px;
+	transition: opacity 0.15s;
+}
+
+/* Per-user table button spacing */
+table.grid button + button {
+	margin-left: 4px;
+}
+
+/* Status messages next to save buttons */
+#eva-tools-status,
+#eva-scheduler-status,
+#eva-background-status {
+	margin-left: 8px;
+	font-size: 13px;
+	font-weight: 600;
+}

@@ -24,6 +24,11 @@ class AppConfig {
         'mail_index_enabled', 'mail_index_max', 'talk_history_size',
         'talk_bot_trigger', 'talk_classify_all', 'exclude_paths',
         'chat_retention_days', 'embed_batch_size', 'ocr_enabled', 'ocr_language',
+        'ollama_keep_alive', 'followups_mode',
+        // Web search: each user can enable/disable and choose their provider.
+        // DuckDuckGo works without any API key; SearxNG/Brave/Tavily need
+        // credentials configured at instance level.
+        'web_search_enabled', 'web_search_provider',
     ];
 
     /**
@@ -41,6 +46,26 @@ class AppConfig {
     /** All keys that are stored on the per-user scope. */
     private const USER_SCOPED_KEYS = [...self::USER_SETTINGS, ...self::USER_STATE_KEYS];
 
+    /**
+     * Instance-wide keys that only an administrator may read or change.
+     * Per-user web search settings (enabled, provider) have moved to USER_SETTINGS
+     * so each user can individually enable DuckDuckGo or other providers.
+     * Admin-only: weather tool, instance-wide web search infra (URL, key, limits).
+     */
+    public const ADMIN_SETTINGS = [
+        'weather_tool_enabled',
+        // Instance-level web search infrastructure: SearxNG URL, API keys,
+        // result limits. Individual users choose whether to use them.
+        'web_search_url',
+        'web_search_max_results',
+        'web_search_timeout',
+        'web_search_safe_search',
+    ];
+
+    public function isAdminSetting(string $key): bool {
+        return in_array($key, self::ADMIN_SETTINGS, true);
+    }
+
     private const DEFAULTS = [
         'index_enabled' => '0',
         'chat_provider' => 'ollama',
@@ -57,6 +82,14 @@ class AppConfig {
         // proofread, …). Empty means the chat chain is used (Issue #86).
         'summary_model' => '',
         'embed_batch_size' => '24',
+        // How long Ollama keeps a model resident after the last request
+        // ('5m', '30m', '1h', -1 = never unload). The default matches the
+        // Ollama server default; a higher value avoids paying model load
+        // latency on every chat message when the instance chats regularly.
+        'ollama_keep_alive' => '5m',
+        // 'fast' renders follow-up chips from language-aware templates without
+        // a second model call; 'llm' generates them with a small extra request.
+        'followups_mode' => 'fast',
         'ocr_enabled' => '0',
         'ocr_language' => 'eng',
         'top_k' => '6',
@@ -82,6 +115,16 @@ class AppConfig {
         // Automatic deletion of chats after N days of inactivity (0 = never,
         // Issue: chat retention). The background job removes the chats.
         'chat_retention_days' => '0',
+        // Privacy-sensitive switches that only an administrator controls.
+        // Opt-in by design: the weather and web search tools call external
+        // services, so a fresh install never sends anything off the server.
+        'weather_tool_enabled' => '1',
+        'web_search_enabled' => '0',
+        'web_search_provider' => 'duckduckgo',
+        'web_search_url' => '',
+        'web_search_max_results' => '5',
+        'web_search_timeout' => '10',
+        'web_search_safe_search' => '1',
         'index_running' => '0',
         'index_started' => '',
         'index_heartbeat' => '',
@@ -139,7 +182,12 @@ class AppConfig {
         'talk_history_size' => [1, 500],
         'chat_retention_days' => [0, 3650],
         'embed_batch_size' => [1, 200],
+        'web_search_max_results' => [1, 10],
+        'web_search_timeout' => [1, 30],
     ];
+
+    /** Accepted formats for the Ollama keep_alive setting (Issue: model residency). */
+    private const KEEP_ALIVE_PATTERN = '/^(?:-1|(?:[1-9][0-9]{0,4}(?:ms|s|m|h)?))$/D';
 
     private ?string $userId = null;
 
@@ -349,7 +397,24 @@ class AppConfig {
             }
             return null;
         }
-        if (in_array($key, ['ocr_enabled', 'actions_enabled', 'notify_on_complete', 'mail_index_enabled', 'index_enrolled', 'talk_classify_all'], true)) {
+        if ($key === 'web_search_provider') {
+            return is_string($value) && in_array($value, WebSearchService::PROVIDERS, true)
+                ? null : 'must be one of: ' . implode(', ', WebSearchService::PROVIDERS);
+        }
+        if ($key === 'web_search_url') {
+            if (!is_scalar($value)) {
+                return 'must be an http(s) URL or empty';
+            }
+            $url = trim((string)$value);
+            if ($url === '') {
+                return null;
+            }
+            if (preg_match('~^https?://[^\s]+$~i', $url) !== 1) {
+                return 'must be an http(s) URL or empty';
+            }
+            return null;
+        }
+        if (in_array($key, ['ocr_enabled', 'actions_enabled', 'notify_on_complete', 'mail_index_enabled', 'index_enrolled', 'talk_classify_all', 'weather_tool_enabled', 'web_search_enabled', 'web_search_safe_search'], true)) {
             return is_scalar($value) && in_array((string)$value, ['0', '1', 'true', 'false', 'on', 'off'], true)
                 ? null : 'must be a boolean value';
         }
@@ -385,6 +450,19 @@ class AppConfig {
             && preg_match('/^[A-Za-z0-9][A-Za-z0-9._:+-]{0,127}$/', trim((string)$value)) !== 1) {
             return 'must be a model name or empty';
         }
+        if ($key === 'ollama_keep_alive'
+            && (!is_scalar($value) || preg_match(self::KEEP_ALIVE_PATTERN, trim((string)$value)) !== 1)) {
+            return 'must be -1, seconds, or a duration like 10m, 1h, 500ms';
+        }
+        if ($key === 'followups_mode'
+            && (!is_scalar($value) || !in_array((string)$value, ['fast', 'llm'], true))) {
+            return 'must be fast or llm';
+        }
+        if (self::isAdminSettingStatic($key) && $key !== 'web_search_provider' && $key !== 'web_search_url' && $key !== 'web_search_max_results' && $key !== 'web_search_timeout') {
+            // Any remaining admin-scope key is a boolean toggle.
+            return is_scalar($value) && in_array((string)$value, ['0', '1', 'true', 'false', 'on', 'off'], true)
+                ? null : 'must be a boolean value';
+        }
         if (!array_key_exists($key, self::LIMITS)) {
             return null;
         }
@@ -405,6 +483,25 @@ class AppConfig {
             return 'must be between ' . $min . ' and ' . $max;
         }
         return null;
+    }
+
+    private static function isAdminSettingStatic(string $key): bool {
+        return in_array($key, self::ADMIN_SETTINGS, true);
+    }
+
+    /**
+     * Read the instance-wide admin settings (web search, weather tool).
+     * The web search API key is intentionally absent: it is write-only and
+     * surfaced only as a boolean through the admin API.
+     *
+     * @return array<string,string>
+     */
+    public function adminAll(): array {
+        $out = [];
+        foreach (self::ADMIN_SETTINGS as $key) {
+            $out[$key] = $this->get($key);
+        }
+        return $out;
     }
 
     /**
