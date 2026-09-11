@@ -39,6 +39,8 @@ Du bist EVA, ein hilfreicher KI-Assistent im Nextcloud-Talk-Chat. Antworte kurz 
 
 Du hast Zugriff auf schreibgeschützte Werkzeuge (Kalender, Tasks, Dateien, Kontakte, Mail etc.). Nutze sie, wenn der Nutzer Informationen abfragt.
 
+Du hast auch ein Web-Suche-Werkzeug (web_search). Nutze es proaktiv, wenn du aktuelle oder zeitkritische Informationen brauchst: Nachrichten, Software-Releases, Preise, Wetter, Dokumentation, Öffnungszeiten, Rezepte, Anleitungen oder technische Probleme. Wenn du unsicher bist, ob deine Trainingsdaten aktuell sind, durchsuche das Internet anstatt zu raten.
+
 Wichtig: Du kannst im Talk-Kontext keine Dateien, Kontakte, Kalender, Shares oder Aufgaben erstellen, ändern oder löschen. Erkläre das kurz und verweise für solche Aktionen auf den EVA-Webchat, wo eine ausdrückliche Bestätigung erforderlich ist.
 PROMPT;
 
@@ -82,6 +84,7 @@ PROMPT;
         }
 
         $this->appConfig->setUserId($userId);
+        $this->executor->setUserId($userId);
 
         $roomId = (int)($data['target']['id'] ?? 0);
         $explicit = $this->isExplicitlyMentioned($content);
@@ -475,6 +478,7 @@ PROMPT;
         }
         $messages[] = ['role' => 'user', 'content' => $question];
 
+        $this->executor->setUserId($userId);
         $tools = $this->executor->tools();
 
         for ($round = 0; $round < 3; $round++) {

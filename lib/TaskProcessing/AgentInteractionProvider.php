@@ -211,6 +211,7 @@ class AgentInteractionProvider implements ISynchronousProvider {
 		// Proposal calls are intentionally visible to the model so the native
 		// Assistant can present them for approval. They are never executed in
 		// this phase; proposalPhase executes only its explicit readonly allowlist.
+		$this->executor->setUserId($userId);
 		$tools = $this->executor->toolsForSurface(ToolPolicy::SURFACE_WEB);
 		if ($ragEnabled && $prompt !== '') {
 			$this->injectRagContext($messages, $userId, $prompt);
@@ -272,6 +273,7 @@ class AgentInteractionProvider implements ISynchronousProvider {
 		$seen = [];
 		$answer = '';
 		$confirmedTools = [];
+		$this->executor->setUserId($userId);
 		foreach ($this->executor->toolsForSurface(ToolPolicy::SURFACE_TASKPROCESSING_CONFIRMED) as $tool) {
 			$name = (string)($tool['function']['name'] ?? '');
 			if ($name !== '') {

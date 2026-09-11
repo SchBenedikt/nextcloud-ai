@@ -469,7 +469,7 @@ class ActionExecutor {
             ]],
             ['type' => 'function', 'function' => [
                 'name' => 'web_search',
-                'description' => 'Search the public web for current information that is not in the indexed files (news, releases, prices, documentation). Only available when the administrator enabled web search. The returned results include a URL for every hit; cite the URLs you actually used as markdown links.',
+                'description' => 'Search the public web for current information that is not in the indexed files (news, releases, prices, documentation, current events). Use this whenever you need up-to-date information your indexed files do not contain. The returned results include a URL for every hit; cite the URLs you actually used as markdown links.',
                 'parameters' => ['type' => 'object', 'properties' => [
                     'query' => ['type' => 'string', 'description' => 'The search query, in the user\'s language. Keep it short and specific - it is sent to an external search engine.'],
                 ], 'required' => ['query']],
