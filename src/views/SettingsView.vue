@@ -186,9 +186,6 @@
 						{{ $t('Any file in my Files') }}
 					</NcCheckboxRadioSwitch>
 				</div>
-				<NcCheckboxRadioSwitch v-model="weatherEnabled" type="switch" class="native-toggle compact-switch" :description="$t('The weather tool queries the external Open-Meteo services (geocoding + forecast). Turn it off to keep all tool traffic on your own server.')">
-					{{ $t('Allow weather forecasts') }}
-				</NcCheckboxRadioSwitch>
 				<NcCheckboxRadioSwitch v-model="notificationsEnabled" type="switch" class="native-toggle compact-switch" :description="$t('Uses Nextcloud Notifications when background or Talk work finishes.')">
 					{{ $t('Notify me when a long answer is ready') }}
 				</NcCheckboxRadioSwitch>
@@ -397,6 +394,66 @@
 			<section class="settings-section">
 				<div class="section-heading">
 					<div>
+						<h3>{{ $t('Web search') }}</h3>
+						<p>{{ $t('Let EVA search the web when your indexed files cannot answer a question. DuckDuckGo works out of the box with no API key.') }}</p>
+					</div>
+				</div>
+				<NcCheckboxRadioSwitch v-model="userWebSearchEnabled" type="switch" class="native-toggle" :description="$t('Web search sends your question to an external search engine. The model only uses it as a fallback when your indexed files cannot answer.')">
+					{{ $t('Enable web search') }}
+				</NcCheckboxRadioSwitch>
+				<div v-if="userWebSearchEnabled" class="admin-subsection">
+					<div class="field">
+						<label class="native-label" for="user-web-search-provider">{{ $t('Search provider') }}</label>
+						<select id="user-web-search-provider" v-model="f.web_search_provider" class="native-select">
+							<option value="duckduckgo">{{ $t('DuckDuckGo (free, no API key)') }}</option>
+							<option value="searxng">{{ $t('SearxNG (self-hosted)') }}</option>
+							<option value="brave">{{ $t('Brave Search (requires admin setup)') }}</option>
+							<option value="tavily">{{ $t('Tavily (requires admin setup)') }}</option>
+						</select>
+						<p v-if="f.web_search_provider !== 'duckduckgo'" class="field-help">{{ $t('SearxNG, Brave and Tavily require the administrator to configure the URL or API key in the Eva AI admin settings.') }}</p>
+					</div>
+				</div>
+			</section>
+
+			<section v-if="isAdminMode" class="settings-section">
+				<div class="section-heading">
+					<div>
+						<h3>{{ $t('Instance-wide settings') }}</h3>
+						<p>{{ $t('These settings apply to all users. Web search provider selection is per-user above.') }}</p>
+					</div>
+				</div>
+				<NcCheckboxRadioSwitch v-model="weatherEnabled" type="switch" class="native-toggle" :disabled="savingAdmin" :description="$t('The weather tool queries the external Open-Meteo services (geocoding + forecast). Turn it off to keep all tool traffic on your own server.')">
+					{{ $t('Allow weather forecasts for all users') }}
+				</NcCheckboxRadioSwitch>
+				<div class="admin-subsection">
+					<p class="field-help" style="margin-bottom:12px;">{{ $t('Instance-level web search infrastructure: configure the SearxNG URL, API keys for Brave/Tavily, and result limits below. Individual users choose their provider in the Web search section above.') }}</p>
+					<div v-if="admin.web_search_provider === 'searxng' || true" class="field">
+						<NcTextField id="web-search-url" v-model="admin.web_search_url" type="url" :label="$t('SearxNG base URL')" :label-outside="true" :disabled="savingAdmin" :placeholder="$t('https://searx.example.org')" />
+						<p class="field-help">{{ $t('Required when users choose SearxNG as their provider.') }}</p>
+					</div>
+					<div class="field">
+						<NcTextField id="web-search-key" v-model="webSearchKey" type="password" autocomplete="new-password" :label="$t('Brave / Tavily API key')" :label-outside="true" :disabled="savingAdmin" :placeholder="webSearchKeyStored ? $t('A key is stored - leave empty to keep it') : $t('Paste the API key')" />
+						<p class="field-help">{{ $t('Required when users choose Brave or Tavily. Stored encrypted, never shown.') }}</p>
+					</div>
+					<NcCheckboxRadioSwitch v-model="removeWebSearchKey" type="checkbox" :disabled="savingAdmin">
+						{{ $t('Remove the stored API key') }}
+					</NcCheckboxRadioSwitch>
+					<div class="field">
+						<NcTextField id="web-search-max" v-model="admin.web_search_max_results" type="number" :label="$t('Maximum results per search')" :label-outside="true" :disabled="savingAdmin" />
+						<p class="field-help">{{ $t('Between 1 and 10. Every result is added to the model context.') }}</p>
+					</div>
+					<NcCheckboxRadioSwitch v-model="webSearchSafeSearch" type="switch" class="native-toggle compact-switch" :disabled="savingAdmin" :description="$t('Ask the provider to filter adult results.')">
+						{{ $t('Safe search') }}
+					</NcCheckboxRadioSwitch>
+				</div>
+				<div class="inline-actions">
+					<NcButton type="primary" :loading="savingAdmin" @click="saveAdminSettings">{{ $t('Save instance settings') }}</NcButton>
+				</div>
+			</section>
+
+			<section class="settings-section">
+				<div class="section-heading">
+					<div>
 						<h3>{{ $t('Privacy & data') }}</h3>
 						<p>{{ $t('Export everything EVA stores about you. Sensitive values are redacted before anything is saved.') }}</p>
 					</div>
@@ -456,6 +513,8 @@ export default {
 			ocr_enabled: '0',
 			ocr_language: 'eng',
 			chat_retention_days: '0',
+			web_search_enabled: '0',
+			web_search_provider: 'duckduckgo',
 		})
 		const groqKey = ref('')
 		const removeGroqKey = ref(false)
@@ -493,10 +552,76 @@ export default {
 			get: () => f.value.notify_on_complete === '1',
 			set: value => { f.value.notify_on_complete = value ? '1' : '0' },
 		})
-		const weatherEnabled = computed({
-			get: () => f.value.weather_tool_enabled === undefined || f.value.weather_tool_enabled === null || f.value.weather_tool_enabled === '1',
-			set: value => { f.value.weather_tool_enabled = value ? '1' : '0' },
+		const userWebSearchEnabled = computed({
+			get: () => f.value.web_search_enabled === '1',
+			set: value => { f.value.web_search_enabled = value ? '1' : '0' },
 		})
+		// Admin settings form (Issue #82/#187): the same bundle is mounted inside
+		// the Nextcloud admin settings with data-admin="1". Instance-wide switches
+		// (weather tool, web search) are admin-only and live on their own endpoint,
+		// so they are loaded and saved separately from the personal settings.
+		const isAdminMode = (() => {
+			const rootEl = document.getElementById('eva_ai-root')
+			return !!(rootEl && rootEl.dataset && rootEl.dataset.admin === '1')
+		})()
+		const admin = ref({
+			weather_tool_enabled: '1',
+			web_search_url: '',
+			web_search_max_results: '5',
+			web_search_timeout: '10',
+			web_search_safe_search: '1',
+		})
+		const webSearchKey = ref('')
+		const removeWebSearchKey = ref(false)
+		const webSearchKeyStored = ref(false)
+		const webSearchReady = ref(false)
+		const savingAdmin = ref(false)
+		const weatherEnabled = computed({
+			get: () => admin.value.weather_tool_enabled === '1',
+			set: value => { admin.value.weather_tool_enabled = value ? '1' : '0' },
+		})
+
+		const webSearchSafeSearch = computed({
+			get: () => admin.value.web_search_safe_search === '1',
+			set: value => { admin.value.web_search_safe_search = value ? '1' : '0' },
+		})
+
+		function fillAdmin(data) {
+			if (!data || typeof data !== 'object') return
+			Object.keys(admin.value).forEach(key => {
+				if (data[key] !== undefined && data[key] !== null) admin.value[key] = String(data[key])
+			})
+			webSearchKeyStored.value = !!data.web_search_key_configured
+			webSearchReady.value = !!data.web_search_configured
+		}
+
+		async function loadAdminSettings() {
+			if (!isAdminMode) return
+			try {
+				fillAdmin(await api('GET', 'admin/settings'))
+			} catch (error) {
+				setMessage('error', t('The instance-wide settings could not be loaded: {error}', { error: errMsg(error) }))
+			}
+		}
+
+		async function saveAdminSettings() {
+			if (savingAdmin.value) return false
+			savingAdmin.value = true
+			try {
+				const payload = { ...admin.value, remove_web_search_api_key: removeWebSearchKey.value }
+				if (webSearchKey.value) payload.web_search_api_key = webSearchKey.value
+				fillAdmin(await api('PUT', 'admin/settings', payload))
+				webSearchKey.value = ''
+				removeWebSearchKey.value = false
+				setMessage('success', t('Instance-wide settings were saved.'))
+				return true
+			} catch (error) {
+				setMessage('error', t('The instance-wide settings could not be saved: {error}', { error: errMsg(error) }))
+				return false
+			} finally {
+				savingAdmin.value = false
+			}
+		}
 		const mailIndexEnabled = computed({
 			get: () => f.value.mail_index_enabled === '1',
 			set: value => { f.value.mail_index_enabled = value ? '1' : '0' },
@@ -902,6 +1027,7 @@ export default {
 		})
 		onMounted(async () => {
 			await loadStatus(true)
+			await loadAdminSettings()
 			await loadKnowledge()
 			statusTimer = window.setInterval(loadStatus, 3000)
 		})
@@ -914,6 +1040,7 @@ export default {
 		return {
 			groqKey, removeGroqKey, ocrEnabled, f, status, limits, availableModels, embeddingModels, chatModels, embeddingInstalledHint, chatInstalledHint, modelLoading, modelError, checkOut, saving, checking, indexing, resetting, deletingChats, stopping, saved, loadError, message, validationErrors, resetConfirm, chatsDeleteConfirm,
 			newExcludePath, excludeError, excludeList, actionsEnabled, notificationsEnabled, weatherEnabled, mailIndexEnabled, indexEnrolled, actionsDisabled, busy, indexingActive, settingsLocked, maxFileSizeMb,
+			isAdminMode, admin, userWebSearchEnabled, webSearchSafeSearch, webSearchKey, removeWebSearchKey, webSearchKeyStored, webSearchReady, savingAdmin, saveAdminSettings, loadAdminSettings,
 			exporting, downloadExport,
 			knowledgeContent, knowledgeOriginal, savingKnowledge, knowledgeSaved, saveKnowledgeContent,
 			formatNumber, loadStatus, save, checkOllama, addExclude, removeExclude, startIndex, startMailIndex, stopIndex, resetIndex, deleteAllChats,
@@ -1031,6 +1158,8 @@ export default {
 .choice-danger :deep(.checkbox-radio-switch__text) { color: var(--color-error); }
 .choice-group em { color: var(--color-success); font-size: 11px; font-style: normal; font-weight: 600; }
 .compact-switch { margin-top: 18px; }
+.admin-subsection { margin: 16px 0 4px; padding: 14px 16px; border: 1px solid var(--color-border); border-radius: 10px; background: var(--color-background-hover); }
+.admin-subsection .field + .field { margin-top: 14px; }
 
 .exclude-paths { margin-top: 22px; padding-top: 18px; border-top: 1px solid var(--color-border); }
 .sub-heading span { display: block; margin-top: -2px; color: var(--color-text-maxcontrast); font-size: 12px; }

@@ -8,6 +8,9 @@ follows [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- Optional per-user web search grounding: DuckDuckGo (free, no API key),
+  self-hosted SearxNG, Brave or Tavily. It is off by default and the model only
+  calls it when the indexed files cannot answer a question (#187).
 - Optional Groq chat with encrypted per-user API keys, GPT-OSS 20B/120B selection,
   streaming and tool calls, explicit quota errors and no automatic model fallback.
 - Optional bounded Tesseract OCR for images and scanned PDFs (#84).
@@ -69,6 +72,12 @@ follows [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- DuckDuckGo web search returned no results: requests were sent without the
+  headers and gzip support a browser sends, so DuckDuckGo answered with its
+  anti-bot interstitial instead of results. The result parser also assumed a
+  single attribute order. Both are fixed, sponsored and internal DuckDuckGo
+  links are filtered out of the results, and an empty result set now reports
+  the concrete reason instead of silently claiming success (#187).
 - Chat storage failures now distinguish a corrupt store (actionable message
   pointing to `occ eva_ai:repair-chats`) from generic persistence errors (#184).
 - Use a shared Markdown parser for tables, nested lists/emphasis, safe links and

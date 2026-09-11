@@ -10,6 +10,7 @@ use OCA\EvaAi\Service\Indexer;
 use OCA\EvaAi\Service\IndexScheduler;
 use OCA\EvaAi\Service\Ollama;
 use OCA\EvaAi\Service\RagService;
+use OCA\EvaAi\Service\WebSearchService;
 use OCP\AppFramework\Http\Attribute\AdminRequired;
 use OCP\AppFramework\Http\DataResponse;
 use OCP\AppFramework\OCSController;
@@ -35,8 +36,117 @@ class AdminController extends OCSController {
         private IndexScheduler $scheduler,
         private IJobList $jobList,
         private IUserManager $userManager,
+        private WebSearchService $webSearch,
     ) {
         parent::__construct($appName, $request);
+    }
+
+    /**
+     * Instance-wide settings that only an administrator may read.
+     *
+     * Web search enabled/provider have moved to per-user settings so each
+     * user can individually enable DuckDuckGo (free, no API key) or other
+     * providers. Admin-only: weather tool, instance search infrastructure.
+     */
+    #[AdminRequired]
+    public function getSettings(): DataResponse {
+        $this->config->setUserId(null);
+        return new DataResponse($this->adminSettingsPayload());
+    }
+
+    /**
+     * Save instance-wide settings. Unknown keys are ignored, every value is
+     * validated before it is stored, and the web search API key is write-only.
+     */
+    #[AdminRequired]
+    public function saveSettings(): DataResponse {
+        $this->config->setUserId(null);
+
+        $validationErrors = [];
+        $pending = [];
+        foreach (AppConfig::ADMIN_SETTINGS as $key) {
+            $value = $this->param($key);
+            if ($value === null) {
+                continue;
+            }
+            if (!is_scalar($value)) {
+                $validationErrors[$key] = $key . ' must be a scalar value.';
+                continue;
+            }
+            $error = $this->config->validateValue($key, $value);
+            if ($error !== null) {
+                $validationErrors[$key] = $key . ' ' . $error . '.';
+                continue;
+            }
+            $pending[$key] = (string)$value;
+        }
+
+        $apiKey = $this->param('web_search_api_key');
+        $removeApiKey = $this->boolParam('remove_web_search_api_key', false);
+        if ($apiKey !== null && !is_scalar($apiKey)) {
+            $validationErrors['web_search_api_key'] = 'web_search_api_key must be a string.';
+        }
+
+        if ($validationErrors !== []) {
+            return new DataResponse([
+                'error' => 'Invalid settings.',
+                'validationErrors' => array_values($validationErrors),
+            ], 400);
+        }
+
+        foreach ($pending as $key => $value) {
+            if (in_array($key, ['weather_tool_enabled', 'web_search_enabled', 'web_search_safe_search'], true)) {
+                $value = in_array(strtolower($value), ['1', 'true', 'on'], true) ? '1' : '0';
+            }
+            $this->config->set($key, $value);
+        }
+
+        try {
+            if ($removeApiKey) {
+                $this->webSearch->saveApiKey('');
+            } elseif (is_scalar($apiKey) && trim((string)$apiKey) !== '') {
+                $this->webSearch->saveApiKey((string)$apiKey);
+            }
+        } catch (\InvalidArgumentException $e) {
+            return new DataResponse([
+                'error' => 'Invalid settings.',
+                'validationErrors' => ['web_search_api_key must be 8-256 characters: letters, digits, dot, underscore or dash.'],
+            ], 400);
+        }
+
+        return new DataResponse($this->adminSettingsPayload());
+    }
+
+    /**
+     * Admin settings payload. The API key itself is never returned - only
+     * whether one is stored - so a leaked admin response cannot leak a secret.
+     *
+     * @return array<string,mixed>
+     */
+    private function adminSettingsPayload(): array {
+        return $this->config->adminAll() + [
+            'web_search_providers' => WebSearchService::PROVIDERS,
+            'web_search_key_configured' => $this->webSearch->hasApiKey(),
+            'web_search_configured' => $this->webSearch->isConfigured(),
+        ];
+    }
+
+    /**
+     * Read a scalar parameter from the query/form first, then the JSON body
+     * (the Vue client sends PUT bodies for settings).
+     */
+    private function param(string $key): mixed
+    {
+        $value = $this->request->getParam($key, null);
+        if ($value !== null && $value !== '') {
+            return $value;
+        }
+        $raw = (string)file_get_contents('php://input');
+        $decoded = $raw !== '' ? json_decode($raw, true) : null;
+        if (is_array($decoded) && array_key_exists($key, $decoded)) {
+            return $decoded[$key];
+        }
+        return null;
     }
 
     #[AdminRequired]

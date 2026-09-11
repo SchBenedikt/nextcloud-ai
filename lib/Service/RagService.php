@@ -51,6 +51,7 @@ class RagService {
 
 		[$context, $byDoc] = $this->buildContext($userId, $results);
 
+		$this->executor->setUserId($userId);
 		$tools = $this->actionsEnabled() ? $this->executor->tools() : [];
 		$messages = $this->buildMessages($userId, $message, $history, $context, count($results), $tools !== [], $instructions, $persona, $this->dateContext($userId));
 
@@ -127,6 +128,7 @@ class RagService {
             $results = $this->filterAccessible($userId, $results);
             [$context, $byDoc] = $this->buildContext($userId, $results);
 
+$this->executor->setUserId($userId);
             $tools = $this->actionsEnabled() ? $this->executor->tools() : [];
             $messages = $this->buildMessages($userId, $message, $history, $context, count($results), $tools !== [], $instructions, $persona, $this->dateContext($userId));
 
@@ -497,6 +499,15 @@ class RagService {
     ];
 
     /**
+     * True when web search is enabled. The tool is registered on every surface
+     * but only exposed to the model once enabled (ToolPolicy::check), so the
+     * prompt must advertise it only in that case.
+     */
+    private function webSearchAvailable(): bool {
+        return $this->config->getInt('web_search_enabled', 0) === 1;
+    }
+
+    /**
      * @param array<int,array{role:string,content:string}> $history
      * @return array<int,array{role:string,content:string}>
      */
@@ -523,6 +534,9 @@ class RagService {
             . "If the user's question is not clearly in one language, answer in the user's Nextcloud UI language (" . $this->uiLanguage() . ")."
             . ($actions
                 ? " You also have tools that work on the user's Nextcloud account: files (create, read, rename, delete, search, list), notes, contacts, calendar events, mail (search, read, list, unread count), shares (create link/user/group shares, expiry, note, delete), tasks/to-dos (create, list, update, complete, delete) and the activity feed. Use them when the user asks to create, save, find, share or schedule something. For shares always give the link URL after creating. Run the tool, then briefly confirm what you did. If a tool needs the file path, use the easiest path (e.g. \"/Readme.md\" or \"Documents/Plan.pdf\"). Never use tools for anything else."
+                . ($this->webSearchAvailable()
+                    ? " You have the `web_search` tool that searches the internet in real-time. USE IT PROACTIVELY whenever you need current, external, or time-sensitive information: news, software releases, prices, weather forecasts, documentation, opening hours, recipes, how-to guides, technical problems, or anything not in the indexed files. When you are unsure whether your training data is current, search the web rather than guessing. Never use it for questions the user's files already answer, and never use it to look up the user's own data. Web results are external sources: cite the specific URLs you actually used as Markdown links and make clear they are from the web, never present a web result as one of the user's files. Do not send personal or confidential details in a search query."
+                    : "")
                 : "")
             . $dateBlock;
 

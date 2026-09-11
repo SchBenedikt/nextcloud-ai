@@ -11,6 +11,7 @@ use OCA\EvaAi\Service\Indexer;
 use OCA\EvaAi\Service\IndexScheduler;
 use OCA\EvaAi\Service\Ollama;
 use OCA\EvaAi\Service\RagService;
+use OCA\EvaAi\Service\WebSearchService;
 use OCP\AppFramework\Http\Attribute\AdminRequired;
 use OCP\BackgroundJob\IJobList;
 use OCP\IRequest;
@@ -271,6 +272,7 @@ final class AdminDashboardTest extends TestCase {
             $scheduler ?? $this->createMock(IndexScheduler::class),
             $jobList ?? $this->createMock(IJobList::class),
             $userManager ?? $this->createMock(IUserManager::class),
+            $this->createMock(WebSearchService::class),
         );
     }
 }

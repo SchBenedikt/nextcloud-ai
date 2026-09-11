@@ -27,7 +27,9 @@ Values are plain strings; booleans use `1`/`0`; sizes are stored in **bytes**
 
 Legend: **P** = personal setting (per-user override possible),
 **I** = instance-wide only, **S** = internal per-user runtime state,
-**G** = global scheduler state.
+**G** = global scheduler state. Keys marked **Admin only** are readable and
+writable exclusively through the admin settings endpoint; the user settings
+endpoint rejects them.
 
 ### Connection & models
 
@@ -84,9 +86,47 @@ Resetting a user's index clears that user's cached vectors.
 | `talk_history_size` | P | `50` | `1`–`500` | messages | Number of previous Talk messages sent as bot context. |
 | `talk_bot_trigger` | P | `Eva` | non-empty string | – | Trigger word (with `@`) the Talk bot reacts to. |
 | `talk_classify_all` | P | `0` | `1`/`0` | – | `0` = heuristic pre-filter decides before any LLM call (Issue #77, default); `1` = classify every room message via the LLM (legacy, higher cost/privacy exposure). |
-| `weather_tool_enabled` | P | `1` | `1`/`0` | – | `0` disables the weather tool (external Open-Meteo requests) everywhere (Issue #69). |
+| `weather_tool_enabled` | I | `1` | `1`/`0` | – | **Admin only.** `0` disables the weather tool (external Open-Meteo requests) everywhere (Issue #69). Read and written through the admin settings API only, so a regular user cannot flip it. |
 | `index_enrolled` | P/S | `0` | `1`/`0` | – | Per-user opt-in for recurring background indexing. |
 | `chat_retention_days` | P | `0` | `0`–`3650` | days | Automatically delete chats not used for this many days (`0` = keep everything). The daily `ChatCleanupJob` applies it per user. |
+
+### Web search
+
+Web search lets the chat model look up information on the internet when the
+user's own indexed files cannot answer a question. It is **off by default** and
+opt-in per user: each user can individually enable it and choose their provider
+in the personal Eva AI settings.
+
+**DuckDuckGo** is the default provider — it works immediately without any API
+key or admin configuration. For self-hosted or paid providers (SearxNG, Brave,
+Tavily), the administrator configures the URL or API key in the Eva AI admin
+settings. The API key is encrypted and never returned to any client.
+
+> **DuckDuckGo from a server:** EVA talks to the same endpoints a browser does,
+> in order: the HTML search page, the lightweight page, then the Instant Answers
+> API. DuckDuckGo answers automated traffic and many data-center IP ranges with
+> an anti-bot page instead of results. When that happens EVA reports it (and the
+> Instant Answers API still covers encyclopedic queries), but for reliable
+> results on a hosted server use a self-hosted **SearxNG** URL, or a **Brave** or
+> **Tavily** API key. You can check the effective behaviour with
+> `occ eva_ai:tool <user> web_search '{"query":"nextcloud"}'`.
+
+The chat model decides when to search: it has to call the `web_search` tool
+explicitly, and while `web_search_enabled` is `0` that tool is removed from every
+surface (web, Talk, Assistant and RAG) and blocked at dispatch, so a switched-off
+instance cannot send anything to a search service (Issue #187). Web results are
+marked as external sources and must be cited as links - they are never presented
+as one of the user's indexed files.
+
+| Key | Scope | Default | Range / values | Unit | Effect |
+|---|---|---|---|---|---|
+| `web_search_enabled` | P | `0` | `1`/`0` | – | Per-user opt-in. `1` exposes the `web_search` tool to the chat model. Off by default; enabling it means queries leave the server. |
+| `web_search_provider` | P | `duckduckgo` | `duckduckgo`, `searxng`, `brave`, `tavily` | – | Per-user. Search backend. `duckduckgo` is free and needs no API key; `searxng` is self-hosted; `brave` and `tavily` are hosted APIs that need admin-configured credentials. |
+| `web_search_url` | I | `''` | `http(s)://host[:port][/path]` or empty | – | **Admin only.** Base URL of the SearxNG instance (JSON output must be enabled there). Required when users choose the `searxng` provider. |
+| `web_search_max_results` | I | `5` | `1`–`10` | results | **Admin only.** Maximum results per search across all providers; hard-capped in code so a chat cannot flood its context. |
+| `web_search_timeout` | I | `10` | `1`–`30` | seconds | **Admin only.** HTTP timeout for one search request. |
+| `web_search_safe_search` | I | `1` | `1`/`0` | – | **Admin only.** Ask the provider to filter adult results. |
+| `web_search_api_key` | I | – | 8–256 chars | – | **Admin only, write-only.** Encrypted API key for `brave`/`tavily`. Send it as `web_search_api_key`; clear it with `remove_web_search_api_key`. It is never read back. |
 
 ### Internal per-user runtime state (S)
 

@@ -122,6 +122,7 @@ class TextToTextChatWithToolsProvider implements ISynchronousProvider {
 
 		// Never forward the caller's `tools` input. ActionExecutor applies the
 		// central ToolPolicy to the current TaskProcessing surface.
+		$this->executor->setUserId($userId);
 		$tools = $this->executor->tools();
 
 		$chat = $this->ollama->chat($messages, $tools);

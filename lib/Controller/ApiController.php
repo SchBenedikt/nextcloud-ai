@@ -295,13 +295,19 @@ class ApiController extends OCSController {
             'mail_index_max',
             'embed_batch_size', 'ocr_enabled', 'ocr_language',
             'ollama_keep_alive', 'followups_mode',
-            'weather_tool_enabled',
+            // Instance-wide switches (weather tool, web search) are NOT stored
+            // here: they are admin-only and live on the admin settings
+            // endpoint, so a regular user cannot change them (Issue #187).
             'talk_history_size',
             'talk_bot_trigger',
             'talk_classify_all',
             'exclude_paths',
             'index_enrolled',
             'chat_retention_days',
+            // Per-user web search settings (Issue #187): each user may
+            // individually enable web search and choose their provider.
+            'web_search_enabled',
+            'web_search_provider',
         ];
         $validationErrors = [];
         $pending = [];
@@ -360,11 +366,17 @@ class ApiController extends OCSController {
                 if ($key === 'exec_write_types') {
                     $value = $this->config->normalizeValue($key, $value);
                 }
-                if ($key === 'ocr_enabled' || $key === 'notify_on_complete' || $key === 'mail_index_enabled' || $key === 'index_enrolled' || $key === 'weather_tool_enabled' || $key === 'talk_classify_all') {
+                if ($key === 'ocr_enabled' || $key === 'notify_on_complete' || $key === 'mail_index_enabled' || $key === 'index_enrolled' || $key === 'talk_classify_all' || $key === 'web_search_enabled') {
                     $value = in_array((string)$value, ['1', 'true', 'on'], true) ? '1' : '0';
                 }
                 if ($key === 'temperature') {
                     $value = (string)max(0.0, min(2.0, (float)$value));
+                }
+                if ($key === 'web_search_provider') {
+                    $value = trim((string)$value);
+                    if (!in_array($value, ['duckduckgo', 'searxng', 'brave', 'tavily'], true)) {
+                        $value = 'duckduckgo';
+                    }
                 }
                 if ($key === 'ollama_keep_alive' || $key === 'followups_mode') {
                     $value = trim((string)$value);
