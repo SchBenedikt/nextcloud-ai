@@ -499,18 +499,18 @@ $this->executor->setUserId($userId);
     ];
 
     /**
-     * @param array<int,array{role:string,content:string}> $history
-     * @return array<int,array{role:string,content:string}>
-     */
-    /**
-     * True when the admin enabled web search for this instance. The tool is
-     * registered on every surface but only exposed to the model once enabled
-     * (ToolPolicy::check), so the prompt must advertise it only in that case.
+     * True when web search is enabled. The tool is registered on every surface
+     * but only exposed to the model once enabled (ToolPolicy::check), so the
+     * prompt must advertise it only in that case.
      */
     private function webSearchAvailable(): bool {
         return $this->config->getInt('web_search_enabled', 0) === 1;
     }
 
+    /**
+     * @param array<int,array{role:string,content:string}> $history
+     * @return array<int,array{role:string,content:string}>
+     */
     private function buildMessages(string $userId, string $message, array $history, string $context, int $sourceCount, bool $actions = false, ?string $instructions = null, ?string $persona = null, ?string $currentDate = null): array {
         $sourceCount = max(1, $sourceCount);
         $knowledge = $this->knowledgeFor($userId);

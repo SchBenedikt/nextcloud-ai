@@ -6,22 +6,6 @@
 				<h1>{{ greeting }}</h1>
 				<p class="hero-sub">{{ $t('Your personal assistant for Nextcloud — ask your files, manage chats and stay on top of your knowledge base.') }}</p>
 			</div>
-			<form class="hero-prompt" @submit.prevent="startChat">
-				<input
-					v-model="prompt"
-					class="hero-prompt-input"
-					type="text"
-					:placeholder="$t('Ask anything or start a new chat…')"
-					:disabled="busy"
-					:aria-label="$t('Start a new chat')"
-				/>
-				<NcButton type="primary" native-type="submit" :disabled="busy || !prompt.trim()">
-					<template #icon>
-						<NcIconSvgWrapper :path="mdiMessagePlus" :size="18" aria-hidden="true" />
-					</template>
-					{{ $t('New chat') }}
-				</NcButton>
-			</form>
 			<div class="hero-actions">
 				<NcButton type="secondary" @click="$emit('new-chat')">
 					<template #icon>
@@ -145,7 +129,6 @@ export default {
 		const chatSummary = ref({ total: 0, active: 0, archived: 0, recent: [] })
 		const folders = ref(0)
 		const status = ref({})
-		const prompt = ref('')
 		const aiGreeting = ref('')
 
 		const online = computed(() => status.value.ollamaOnline === true)
@@ -162,13 +145,6 @@ export default {
 			return t('Good evening')
 		})
 		const greeting = computed(() => aiGreeting.value || staticGreeting.value)
-
-		const startChat = () => {
-			const text = prompt.value.trim()
-			if (!text || busy.value) return
-			prompt.value = ''
-			emit('new-chat', text)
-		}
 
 		const statCards = computed(() => [
 			{
@@ -254,7 +230,7 @@ export default {
 
 		return {
 			busy, error, docs, chatSummary, folders, status, online, recent, activeChats,
-			greeting, statCards, fmtSize, fmtDate, isoDate, prompt, startChat,
+			greeting, statCards, fmtSize, fmtDate, isoDate,
 			mdiMessagePlus, mdiFileDocumentOutline, mdiMessageProcessingOutline, mdiChatProcessing, mdiFolderOutline, mdiFolderSearchOutline, mdiTune,
 		}
 	},
@@ -320,33 +296,6 @@ export default {
 	display: flex;
 	gap: 8px;
 	margin-top: 14px;
-}
-
-.hero-prompt {
-	display: flex;
-	gap: 8px;
-	width: min(100%, 560px);
-	margin-top: 16px;
-}
-
-.hero-prompt-input {
-	flex: 1;
-	min-width: 0;
-	min-height: 42px;
-	padding: 8px 14px;
-	border: 2px solid var(--color-border, #ddd);
-	border-radius: var(--border-radius-large, 12px);
-	background: var(--color-main-background, #fff);
-	color: var(--color-main-text, #222);
-	font: inherit;
-	font-size: 14px;
-	box-sizing: border-box;
-}
-
-.hero-prompt-input:focus {
-	border-color: var(--color-primary-element, #00679c);
-	outline: 2px solid color-mix(in srgb, var(--color-primary-element, #00679c) 25%, transparent);
-	outline-offset: 1px;
 }
 
 .stat-grid {

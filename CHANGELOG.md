@@ -42,9 +42,23 @@ follows [Semantic Versioning](https://semver.org/).
 - Controlled-backend tests cover the Ollama streaming client: malformed lines,
   tool-call arguments split across chunks, UTF-8 split at read boundaries and
   connection errors, all deterministic without a live server (#134).
+- Faster incremental indexing: every document now stores the indexed file's
+  modification time, and full passes skip files whose mtime+size fingerprint is
+  unchanged without re-reading or re-parsing them - renames and touches still
+  refresh the stored metadata, and the content hash stays authoritative for
+  changed files (migration in 1.4.9).
+- Filename/path-aware retrieval: a query that names a file (e.g. "Budget
+  2026.xlsx") now matches lexically via the stored name/path even when the
+  chunk text never repeats the name, while literal body matches always
+  outrank the name bonus.
+- Deeper extraction: PDF text keeps the physical layout (`-layout`) so tables
+  and columns stay structured; HTML/EPUB titles and `h1`-`h6` headings become
+  markdown section anchors that the chunker carries into every chunk.
 
 ### Changed
 
+- The home/start page no longer shows the quick prompt input field: it belongs
+  to the chat view, while the overview keeps its action buttons and stats.
 - Streaming no longer yanks the scroll position: while an answer streams, the
   chat only follows the bottom when the user is already near it, so reading
   earlier context is not interrupted (web and standalone chat).
@@ -69,6 +83,16 @@ follows [Semantic Versioning](https://semver.org/).
 - Use a shared Markdown parser for tables, nested lists/emphasis, safe links and
   streamed code fences, with matching chat styles and desktop/mobile browser checks.
 - Run Groq contracts against real Nextcloud interfaces in the PHP 8.2–8.4 CI matrix.
+- The app page no longer fails with an intermittent HTTP 500 when the chat store
+  is briefly locked: page-load reads now take a shared lock, retry on contention
+  and degrade to a lock-free read of the intact file, while mutations still
+  require the exclusive lock and report a friendly 503 "busy" instead of a 500.
+- The App Store listing renders as text again: the `info.xml` description is
+  flush-left, because CommonMark turned its four-space indentation into a code
+  block.
+- App version bumped to 1.4.9 so the new mtime migration actually runs on
+  update; `tests/ReleaseMetadataTest` now fails when a migration targets a
+  version above `info.xml`, and `docs/VERSIONING.md` documents the rules.
 
 - Bound Groq request history, avoid background greeting/follow-up API calls, and
   report actual token limits/retry timing instead of a generic Free Plan error.
