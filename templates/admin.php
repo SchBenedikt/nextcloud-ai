@@ -2,9 +2,11 @@
 /**
  * Eva AI admin settings — native Nextcloud admin page.
  *
- * Uses only native Nextcloud HTML elements: section, h2, h3, p,
- * table.grid, native input, select, button.
- * Follows the same pattern as the Social app admin settings.
+ * Server-rendered with only native Nextcloud elements and classes:
+ * div.section, h2/h3, p.settings-hint, table.grid, native input/select/button.
+ * The layout follows the Social app admin page: one section per topic, a
+ * hint paragraph under each heading and a native grid table for status data.
+ * Layout only uses CSS classes from css/admin-settings.css — no inline styles.
  */
 
 declare(strict_types=1);
@@ -21,205 +23,285 @@ $totalDocuments = $_['totalDocuments'];
 $totalChunks = $_['totalChunks'];
 $scheduler = $_['scheduler'];
 $apiBase = $_['apiBase'];
+$providers = $_['webSearchProviders'] ?? [];
 
 $weatherEnabled = ($admin['weather_tool_enabled'] ?? '1') === '1';
 $webSearchUrl = $admin['web_search_url'] ?? '';
+$webSearchApiKeyConfigured = !empty($_['webSearchKeyConfigured']);
+$webSearchProviders = $providers;
 $webSearchMaxResults = $admin['web_search_max_results'] ?? '8';
+$webSearchTimeout = $admin['web_search_timeout'] ?? '10';
+$webSearchSafeSearch = ($admin['web_search_safe_search'] ?? '1') === '1';
 $webSearchFetchContent = ($admin['web_search_fetch_content'] ?? '1') === '1';
 $webSearchContentChars = $admin['web_search_content_chars'] ?? '2000';
-$webSearchSafeSearch = ($admin['web_search_safe_search'] ?? '1') === '1';
-$webSearchKeyConfigured = $_['webSearchKeyConfigured'];
 $indexMaxConcurrent = $admin['index_max_concurrent'] ?? '2';
 $indexJobMaxSeconds = $admin['index_job_max_seconds'] ?? '50';
+
+$schedulerRunning = (int)($scheduler['running'] ?? 0);
+$schedulerQueued = (int)($scheduler['queued'] ?? 0);
+$schedulerLimit = (int)($scheduler['limit'] ?? 2);
+
+/** Providers that work without an API key supply their own description. */
+$providerKeyRequired = [
+	'duckduckgo' => false,
+	'searxng' => false,
+	'brave' => true,
+	'tavily' => true,
+];
+$providerLabels = [
+	'duckduckgo' => $l->t('DuckDuckGo — free, no key, works out of the box'),
+	'searxng' => $l->t('SearxNG — self-hosted, no third party involved'),
+	'brave' => $l->t('Brave Search API — hosted, requires an API key'),
+	'tavily' => $l->t('Tavily — hosted, tuned for AI grounding, requires an API key'),
+];
 ?>
 
 <div id="eva-ai-admin" class="section" data-api-base="<?php p($apiBase); ?>">
 
 	<h2><?php p($l->t('Eva AI')); ?></h2>
 	<p class="settings-hint">
-		<?php p($l->t('Eva AI runs a private knowledge base powered by local or cloud language models. Configure the instance below.')); ?>
+		<?php p($l->t('Eva AI answers questions from the files and mail of this instance. Configure the language models, the background indexer and the optional external tools here.')); ?>
 	</p>
 
-	<!-- ====== Instance overview ====== -->
-	<h3><?php p($l->t('Instance overview')); ?></h3>
+	<p class="eva-chip-row">
+		<span class="eva-chip <?php p($ollamaOnline ? 'eva-chip--ok' : 'eva-chip--error'); ?>">
+			<?php p($ollamaOnline ? $l->t('Language model connected') : $l->t('Language model unavailable')); ?>
+		</span>
+		<span class="eva-chip <?php p($schedulerRunning > 0 ? 'eva-chip--busy' : 'eva-chip--idle'); ?>">
+			<?php p($schedulerRunning > 0
+				? $l->n('%n index pass running', '%n index passes running', $schedulerRunning)
+				: $l->t('Indexer idle')); ?>
+		</span>
+		<span class="eva-chip eva-chip--idle">
+			<?php p($l->n('%n indexed account', '%n indexed accounts', (int)$userCount)); ?>
+		</span>
+	</p>
+
+	<h3><?php p($l->t('Instance status')); ?></h3>
+	<p class="settings-hint">
+		<?php p($l->t('Live information about the services Eva AI depends on. Nothing here changes a setting.')); ?>
+	</p>
 
 	<table class="grid">
 		<thead>
 			<tr>
-				<th><?php p($l->t('Service')); ?></th>
-				<th><?php p($l->t('Status')); ?></th>
-				<th><?php p($l->t('Detail')); ?></th>
+				<th scope="col"><?php p($l->t('Service')); ?></th>
+				<th scope="col"><?php p($l->t('Status')); ?></th>
+				<th scope="col"><?php p($l->t('Detail')); ?></th>
 			</tr>
 		</thead>
 		<tbody>
 			<tr>
-				<td><strong><?php p($l->t('Ollama')); ?></strong></td>
+				<td><strong><?php p($l->t('Language model server')); ?></strong></td>
 				<td>
-					<?php if ($ollamaOnline): ?>
-						<span style="color:var(--color-success);">✓ <?php p($l->t('Connected')); ?></span>
-					<?php else: ?>
-						<span style="color:var(--color-error);">✗ <?php p($l->t('Not connected')); ?></span>
-					<?php endif; ?>
+					<span class="eva-status <?php p($ollamaOnline ? 'eva-status--ok' : 'eva-status--error'); ?>">
+						<?php p($ollamaOnline ? $l->t('Connected') : $l->t('Not connected')); ?>
+					</span>
 				</td>
-				<td><?php p($ollamaUrl); ?></td>
+				<td class="eva-mono"><?php p($ollamaUrl); ?></td>
 			</tr>
 			<tr>
-				<td><strong><?php p($l->t('Users')); ?></strong></td>
-				<td><?php p((string)$userCount); ?></td>
-				<td><?php p($l->t('enrolled in indexing')); ?></td>
+				<td><strong><?php p($l->t('Web search')); ?></strong></td>
+				<td>
+					<span class="eva-status <?php p(!empty($_['webSearchConfigured']) ? 'eva-status--ok' : 'eva-status--idle'); ?>">
+						<?php p(!empty($_['webSearchConfigured']) ? $l->t('Ready') : $l->t('Not configured')); ?>
+					</span>
+				</td>
+				<td>
+					<?php if ($webSearchApiKeyConfigured): ?>
+						<?php p($l->t('An API key is stored for the hosted providers.')); ?>
+					<?php else: ?>
+						<?php p($l->t('No API key stored. DuckDuckGo and SearxNG work without one.')); ?>
+					<?php endif; ?>
+				</td>
 			</tr>
 			<tr>
 				<td><strong><?php p($l->t('Knowledge base')); ?></strong></td>
-				<td><?php p((string)$totalDocuments); ?> <?php p($l->t('documents')); ?></td>
-				<td><?php p((string)$totalChunks); ?> <?php p($l->t('chunks')); ?></td>
+				<td><?php p($l->t('%s documents', [(string)$totalDocuments])); ?></td>
+				<td><?php p($l->t('%s text chunks', [(string)$totalChunks])); ?></td>
 			</tr>
 			<tr>
 				<td><strong><?php p($l->t('Background indexing')); ?></strong></td>
-				<td><?php p($scheduler['running'] ?? 0); ?> / <?php p((string)($scheduler['limit'] ?? 2)); ?></td>
-				<td><?php p($l->t('concurrent passes')); ?></td>
+				<td><?php p($schedulerRunning . ' / ' . $schedulerLimit); ?></td>
+				<td>
+					<?php p($l->t('passes running')); ?>
+					<?php if ($schedulerQueued > 0): ?>
+						— <?php p($l->n('%n waiting in the queue', '%n waiting in the queue', $schedulerQueued)); ?>
+					<?php endif; ?>
+				</td>
 			</tr>
 		</tbody>
 	</table>
 
-	<!-- ====== Tools & integrations ====== -->
-	<h3><?php p($l->t('Tools & integrations')); ?></h3>
+	<h3><?php p($l->t('Indexing performance')); ?></h3>
 	<p class="settings-hint">
-		<?php p($l->t('Instance-wide switches. Each user configures their own web search provider in the personal Eva AI settings.')); ?>
+		<?php p($l->t('The background indexer runs on Nextcloud cron. These values bound how much work one cron run may do, so a large library is indexed steadily without slowing the instance down.')); ?>
 	</p>
 
-	<p>
-		<label>
-			<input type="checkbox" id="eva-weather-toggle" name="weather_tool_enabled" value="1" <?php p($weatherEnabled ? 'checked' : ''); ?>>
-			<?php p($l->t('Allow weather forecasts for all users')); ?>
-		</label>
-		<br>
-		<em><?php p($l->t('The weather tool queries external Open-Meteo services. Turn it off to keep all tool traffic on your own server.')); ?></em>
-	</p>
+	<div class="eva-field-grid">
+		<div class="eva-field">
+			<label for="eva-max-concurrent"><?php p($l->t('Parallel index passes')); ?></label>
+			<input type="number" id="eva-max-concurrent" name="index_max_concurrent"
+				min="1" max="16" step="1" value="<?php p($indexMaxConcurrent); ?>">
+			<p class="eva-field-hint">
+				<?php p($l->t('How many accounts may be indexed at the same time. 1–16, default 2. Raise it only if the server has spare CPU and the model server can take the load.')); ?>
+			</p>
+		</div>
 
-	<p>
-		<label>
-			<input type="checkbox" id="eva-websearch-toggle" name="web_search_infra_enabled" value="1" checked>
-			<?php p($l->t('Web search infrastructure')); ?>
-		</label>
-		<br>
-		<em><?php p($l->t('Configure the SearxNG URL and API keys below. Users choose their own provider (DuckDuckGo is free, no key needed) in their personal settings.')); ?></em>
-	</p>
-
-	<div id="eva-websearch-config">
-		<p>
-			<label for="eva-websearch-url"><?php p($l->t('SearxNG base URL')); ?></label><br>
-			<input type="url" id="eva-websearch-url" name="web_search_url"
-				   value="<?php p($webSearchUrl); ?>"
-				   placeholder="https://searx.example.org"
-				   style="width:400px;">
-			<br>
-			<em><?php p($l->t('Required when users choose SearxNG. The instance must return JSON results.')); ?></em>
-		</p>
-
-		<p>
-			<label for="eva-websearch-key"><?php p($l->t('Brave / Tavily API key')); ?></label><br>
-			<input type="password" id="eva-websearch-key" name="web_search_api_key"
-				   placeholder="<?php p($webSearchKeyConfigured ? $l->t('A key is stored — leave empty to keep it') : $l->t('Paste the API key')); ?>"
-				   autocomplete="new-password"
-				   style="width:400px;">
-			<br>
-			<em><?php p($l->t('Required when users choose Brave or Tavily. Stored encrypted, never shown.')); ?></em>
-			<br>
-			<label>
-				<input type="checkbox" id="eva-remove-websearch-key" name="remove_web_search_api_key">
-				<?php p($l->t('Remove the stored API key')); ?>
-			</label>
-		</p>
-
-		<p>
-			<label for="eva-websearch-max"><?php p($l->t('Maximum results per search')); ?></label><br>
-			<input type="number" id="eva-websearch-max" name="web_search_max_results"
-				   min="1" max="20" value="<?php p($webSearchMaxResults); ?>"
-				   style="width:100px;">
-			<br>
-			<em><?php p($l->t('Between 1 and 20. Every result is added to the model context.')); ?></em>
-		</p>
-
-		<p>
-			<label>
-				<input type="checkbox" id="eva-safesearch-toggle" name="web_search_safe_search" value="1" <?php p($webSearchSafeSearch ? 'checked' : ''); ?>>
-				<?php p($l->t('Safe search')); ?>
-			</label>
-			<br>
-			<em><?php p($l->t('Ask the provider to filter adult results.')); ?></em>
-		</p>
-
-		<p>
-			<label>
-				<input type="checkbox" id="eva-fetch-content-toggle" name="web_search_fetch_content" value="1" <?php p($webSearchFetchContent ? 'checked' : ''); ?>>
-				<?php p($l->t('Read the result pages')); ?>
-			</label>
-			<br>
-			<em><?php p($l->t('Fetch the ranked result pages in parallel and give the model their readable text instead of a search-engine teaser. Turn it off to keep the search to a single request.')); ?></em>
-		</p>
-
-		<p>
-			<label for="eva-content-chars"><?php p($l->t('Text per page (characters)')); ?></label><br>
-			<input type="number" id="eva-content-chars" name="web_search_content_chars"
-				   min="200" max="8000" value="<?php p($webSearchContentChars); ?>"
-				   style="width:100px;">
-			<br>
-			<em><?php p($l->t('Between 200 and 8000. More text gives more accurate answers but uses more of the model context.')); ?></em>
-		</p>
+		<div class="eva-field">
+			<label for="eva-job-budget"><?php p($l->t('Time budget per cron run')); ?></label>
+			<input type="number" id="eva-job-budget" name="index_job_max_seconds"
+				min="10" max="600" step="5" value="<?php p($indexJobMaxSeconds); ?>">
+			<p class="eva-field-hint">
+				<?php p($l->t('Seconds one cron run may spend indexing before it hands back to the next tick. 10–600, default 50. The budget is shared fairly across all accounts.')); ?>
+			</p>
+		</div>
 	</div>
 
-	<p>
+	<p class="eva-actions">
+		<button type="button" id="eva-index-save" class="primary"><?php p($l->t('Save indexing settings')); ?></button>
+		<span id="eva-index-status" class="eva-status-text" role="status" aria-live="polite"></span>
+	</p>
+
+	<h3><?php p($l->t('Web search')); ?></h3>
+	<p class="settings-hint">
+		<?php p($l->t('Web search is opt-in and off by default. Each user turns it on and picks a provider in their personal Eva AI settings; the options below provide the instance-wide infrastructure for everyone.')); ?>
+	</p>
+
+	<table class="grid eva-provider-table">
+		<thead>
+			<tr>
+				<th scope="col"><?php p($l->t('Provider')); ?></th>
+				<th scope="col"><?php p($l->t('API key')); ?></th>
+			</tr>
+		</thead>
+		<tbody>
+			<?php foreach ($webSearchProviders as $provider): ?>
+				<tr>
+					<td><?php p($providerLabels[$provider] ?? $provider); ?></td>
+					<td>
+						<?php if ($providerKeyRequired[$provider] ?? false): ?>
+							<?php p($l->t('required')); ?>
+						<?php else: ?>
+							<?php p($l->t('not required')); ?>
+						<?php endif; ?>
+					</td>
+				</tr>
+			<?php endforeach; ?>
+		</tbody>
+	</table>
+
+	<div class="eva-field-grid">
+		<div class="eva-field eva-field--wide">
+			<label for="eva-websearch-url"><?php p($l->t('SearxNG base URL')); ?></label>
+			<input type="url" id="eva-websearch-url" name="web_search_url"
+				value="<?php p($webSearchUrl); ?>"
+				placeholder="https://searx.example.org">
+			<p class="eva-field-hint">
+				<?php p($l->t('Required when a user selects SearxNG. The instance must return JSON results (enable the json format in its settings).')); ?>
+			</p>
+		</div>
+
+		<div class="eva-field eva-field--wide">
+			<label for="eva-websearch-key"><?php p($l->t('Brave / Tavily API key')); ?></label>
+			<input type="password" id="eva-websearch-key" name="web_search_api_key"
+				autocomplete="new-password"
+				placeholder="<?php p($webSearchApiKeyConfigured
+					? $l->t('A key is stored — leave empty to keep it')
+					: $l->t('Paste the API key')); ?>">
+			<p class="eva-field-hint">
+				<?php p($l->t('Required when a user selects Brave or Tavily. Stored encrypted and never shown again.')); ?>
+			</p>
+			<label class="eva-checkbox">
+				<input type="checkbox" id="eva-remove-websearch-key" name="remove_web_search_api_key" value="1">
+				<span><?php p($l->t('Remove the stored API key')); ?></span>
+			</label>
+		</div>
+
+		<div class="eva-field">
+			<label for="eva-websearch-max"><?php p($l->t('Maximum results per search')); ?></label>
+			<input type="number" id="eva-websearch-max" name="web_search_max_results"
+				min="1" max="20" step="1" value="<?php p($webSearchMaxResults); ?>">
+			<p class="eva-field-hint">
+				<?php p($l->t('1–20, default 8. Every result is added to the model context.')); ?>
+			</p>
+		</div>
+
+		<div class="eva-field">
+			<label for="eva-websearch-timeout"><?php p($l->t('Search timeout')); ?></label>
+			<input type="number" id="eva-websearch-timeout" name="web_search_timeout"
+				min="1" max="30" step="1" value="<?php p($webSearchTimeout); ?>">
+			<p class="eva-field-hint">
+				<?php p($l->t('Seconds before a search is given up. 1–30, default 10.')); ?>
+			</p>
+		</div>
+
+		<div class="eva-field">
+			<label for="eva-content-chars"><?php p($l->t('Text per result page')); ?></label>
+			<input type="number" id="eva-content-chars" name="web_search_content_chars"
+				min="200" max="8000" step="100" value="<?php p($webSearchContentChars); ?>">
+			<p class="eva-field-hint">
+				<?php p($l->t('Characters read from each result page. 200–8000, default 2000. More text means more accurate answers and a larger context.')); ?>
+			</p>
+		</div>
+	</div>
+
+	<label class="eva-checkbox">
+		<input type="checkbox" id="eva-safesearch-toggle" name="web_search_safe_search" value="1"
+			<?php p($webSearchSafeSearch ? 'checked' : ''); ?>>
+		<span><?php p($l->t('Ask the provider to filter adult results')); ?></span>
+	</label>
+
+	<label class="eva-checkbox">
+		<input type="checkbox" id="eva-fetch-content-toggle" name="web_search_fetch_content" value="1"
+			<?php p($webSearchFetchContent ? 'checked' : ''); ?>>
+		<span><?php p($l->t('Read the result pages and give the model their real text')); ?></span>
+	</label>
+	<p class="settings-hint eva-indent">
+		<?php p($l->t('Enabling this fetches the ranked pages in parallel and is what makes answers accurate rather than a paraphrase of a search teaser. Turn it off to keep a search to a single request.')); ?>
+	</p>
+
+	<p class="eva-actions">
+		<button type="button" id="eva-websearch-save" class="primary"><?php p($l->t('Save web search settings')); ?></button>
+		<span id="eva-websearch-status" class="eva-status-text" role="status" aria-live="polite"></span>
+	</p>
+
+	<h3><?php p($l->t('Tools')); ?></h3>
+	<p class="settings-hint">
+		<?php p($l->t('Instance-wide switches for tools that contact services outside this server.')); ?>
+	</p>
+
+	<label class="eva-checkbox">
+		<input type="checkbox" id="eva-weather-toggle" name="weather_tool_enabled" value="1"
+			<?php p($weatherEnabled ? 'checked' : ''); ?>>
+		<span><?php p($l->t('Allow weather forecasts for all users')); ?></span>
+	</label>
+	<p class="settings-hint eva-indent">
+		<?php p($l->t('The weather tool queries the external Open-Meteo service. Turn it off to keep all tool traffic on your own server.')); ?>
+	</p>
+
+	<p class="eva-actions">
 		<button type="button" id="eva-tools-save" class="primary"><?php p($l->t('Save tool settings')); ?></button>
-		<span id="eva-tools-status"></span>
+		<span id="eva-tools-status" class="eva-status-text" role="status" aria-live="polite"></span>
 	</p>
 
-	<!-- ====== Indexing schedule ====== -->
-	<h3><?php p($l->t('Indexing schedule')); ?></h3>
+	<h3><?php p($l->t('Accounts and indexing')); ?></h3>
 	<p class="settings-hint">
-		<?php p($l->t('Control how the background indexer runs across all users on this instance.')); ?>
-	</p>
-
-	<p>
-		<label for="eva-max-concurrent"><?php p($l->t('Maximum concurrent index passes')); ?></label><br>
-		<input type="number" id="eva-max-concurrent" name="index_max_concurrent"
-			   min="1" max="16" value="<?php p($indexMaxConcurrent); ?>"
-			   style="width:100px;">
-		<br>
-		<em><?php p($l->t('How many users may be indexed in parallel. Default: 2.')); ?></em>
-	</p>
-
-	<p>
-		<label for="eva-job-budget"><?php p($l->t('Per-run time budget (seconds)')); ?></label><br>
-		<input type="number" id="eva-job-budget" name="index_job_max_seconds"
-			   min="10" max="600" value="<?php p($indexJobMaxSeconds); ?>"
-			   style="width:100px;">
-		<br>
-		<em><?php p($l->t('Maximum wall-clock seconds one periodic run may spend. Default: 50.')); ?></em>
-	</p>
-
-	<p>
-		<button type="button" id="eva-scheduler-save" class="primary"><?php p($l->t('Save scheduler settings')); ?></button>
-		<span id="eva-scheduler-status"></span>
-	</p>
-
-	<!-- ====== Per-user indexing ====== -->
-	<h3><?php p($l->t('Per-user indexing')); ?></h3>
-	<p class="settings-hint">
-		<?php p($l->t('Manage which users have an indexed knowledge base and trigger re-indexing or reset.')); ?>
+		<?php p($l->t('Manage which accounts build a knowledge base, re-index one account now or delete its index. Original Nextcloud files are never modified.')); ?>
 	</p>
 
 	<?php if (empty($users)): ?>
-		<p><em><?php p($l->t('No users have enrolled in indexing yet.')); ?></em></p>
+		<p class="eva-empty"><?php p($l->t('No account has enrolled in indexing yet.')); ?></p>
 	<?php else: ?>
-		<table class="grid">
+		<table class="grid eva-user-table">
 			<thead>
 				<tr>
-					<th><?php p($l->t('User')); ?></th>
-					<th><?php p($l->t('Documents')); ?></th>
-					<th><?php p($l->t('Chunks')); ?></th>
-					<th><?php p($l->t('Last indexed')); ?></th>
-					<th><?php p($l->t('Status')); ?></th>
-					<th><?php p($l->t('Actions')); ?></th>
+					<th scope="col"><?php p($l->t('Account')); ?></th>
+					<th scope="col"><?php p($l->t('Indexing')); ?></th>
+					<th scope="col"><?php p($l->t('Documents')); ?></th>
+					<th scope="col"><?php p($l->t('Chunks')); ?></th>
+					<th scope="col"><?php p($l->t('Last indexed')); ?></th>
+					<th scope="col"><?php p($l->t('Actions')); ?></th>
 				</tr>
 			</thead>
 			<tbody>
@@ -228,39 +310,62 @@ $indexJobMaxSeconds = $admin['index_job_max_seconds'] ?? '50';
 					<td>
 						<strong><?php p($user['displayName']); ?></strong>
 						<?php if ($user['displayName'] !== $user['userId']): ?>
-							<br><small style="color:var(--color-text-maxcontrast);"><?php p($user['userId']); ?></small>
+							<span class="eva-muted eva-block"><?php p($user['userId']); ?></span>
 						<?php endif; ?>
+					</td>
+					<td>
+						<label class="eva-checkbox">
+							<input type="checkbox" class="eva-enroll-toggle"
+								data-user="<?php p($user['userId']); ?>"
+								value="1" <?php p($user['enrolled'] ? 'checked' : ''); ?>
+								<?php if ($user['indexing']) p('disabled'); ?>>
+							<span><?php p($l->t('Enabled')); ?></span>
+						</label>
 					</td>
 					<td><?php p((string)$user['documents']); ?></td>
 					<td><?php p((string)$user['chunks']); ?></td>
 					<td>
 						<?php if ($user['lastIndexedAt'] !== null): ?>
-							<?php p(gmdate('Y-m-d H:i', (int)$user['lastIndexedAt'])); ?>
+							<span class="eva-mono"><?php p(gmdate('Y-m-d H:i', (int)$user['lastIndexedAt'])); ?></span>
 						<?php else: ?>
-							<em>—</em>
+							<span class="eva-muted">—</span>
 						<?php endif; ?>
 					</td>
 					<td>
-						<?php if ($user['indexing']): ?>
-							<span class="warning"><?php p($l->t('Indexing')); ?></span>
-						<?php elseif ($user['enrolled']): ?>
-							<span style="color:var(--color-success);"><?php p($l->t('Enrolled')); ?></span>
-						<?php else: ?>
-							<span style="color:var(--color-text-maxcontrast);"><?php p($l->t('Inactive')); ?></span>
-						<?php endif; ?>
+						<span class="eva-status <?php
+							if ($user['indexing']) {
+								p('eva-status--busy');
+							} elseif ($user['enrolled']) {
+								p('eva-status--ok');
+							} else {
+								p('eva-status--idle');
+							}
+						?>">
+							<?php
+							if ($user['indexing']) {
+								p($l->t('Indexing'));
+							} elseif ($user['enrolled']) {
+								p($l->t('Enrolled'));
+							} else {
+								p($l->t('Inactive'));
+							}
+							?>
+						</span>
 						<?php if ($user['error'] !== ''): ?>
-							<br><small style="color:var(--color-error);"><?php p($user['error']); ?></small>
+							<span class="eva-error eva-block"><?php p($user['error']); ?></span>
 						<?php endif; ?>
-					</td>
-					<td>
-						<button type="button" class="eva-btn-reindex" data-user="<?php p($user['userId']); ?>"
+						<span class="eva-actions eva-actions--inline">
+							<button type="button" class="secondary eva-btn-reindex"
+								data-user="<?php p($user['userId']); ?>"
 								<?php if ($user['indexing']) p('disabled'); ?>>
-							<?php p($l->t('Reindex')); ?>
-						</button>
-						<button type="button" class="eva-btn-reset" data-user="<?php p($user['userId']); ?>"
+								<?php p($l->t('Re-index now')); ?>
+							</button>
+							<button type="button" class="secondary eva-btn-reset"
+								data-user="<?php p($user['userId']); ?>"
 								<?php if ($user['indexing']) p('disabled'); ?>>
-							<?php p($l->t('Reset')); ?>
-						</button>
+								<?php p($l->t('Delete index')); ?>
+							</button>
+						</span>
 					</td>
 				</tr>
 			<?php endforeach; ?>
@@ -268,8 +373,8 @@ $indexJobMaxSeconds = $admin['index_job_max_seconds'] ?? '50';
 		</table>
 	<?php endif; ?>
 
-	<p style="margin-top:12px;">
+	<p class="eva-actions">
 		<button type="button" id="eva-stop-background" class="secondary"><?php p($l->t('Stop background indexing')); ?></button>
-		<span id="eva-background-status"></span>
+		<span id="eva-background-status" class="eva-status-text" role="status" aria-live="polite"></span>
 	</p>
 </div>

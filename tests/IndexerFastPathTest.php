@@ -39,8 +39,10 @@ final class IndexerFastPathTest extends TestCase {
     /**
      * @param list<File> $files
      * @param array<int,?Document> $stored fileId => existing document (or null)
+     * @param (callable(Folder):void)|null $configureUserFolder lets a test set
+     *        its own expectations on the user folder (e.g. getById never called)
      */
-    private function harness(array $files, array $stored): array {
+    private function harness(array $files, array $stored, ?callable $configureUserFolder = null): array {
         $config = $this->createMock(AppConfig::class);
         $config->method('get')->willReturnCallback(static function (string $key, ?string $default = null): string {
             return match ($key) {
@@ -70,14 +72,18 @@ final class IndexerFastPathTest extends TestCase {
         $userFolder = $this->createMock(Folder::class);
         $rootFolder->method('getUserFolder')->with('alice')->willReturn($userFolder);
         $userFolder->method('getDirectoryListing')->willReturn($files);
-        $userFolder->method('getById')->willReturnCallback(static function (int $id) use ($files): array {
-            foreach ($files as $f) {
-                if ($f->getId() === $id) {
-                    return [$f];
+        if ($configureUserFolder !== null) {
+            $configureUserFolder($userFolder);
+        } else {
+            $userFolder->method('getById')->willReturnCallback(static function (int $id) use ($files): array {
+                foreach ($files as $f) {
+                    if ($f->getId() === $id) {
+                        return [$f];
+                    }
                 }
-            }
-            return [];
-        });
+                return [];
+            });
+        }
 
         $docMapper = $this->createMock(DocumentMapper::class);
         $docMapper->method('hashesForUser')->willReturnCallback(static function () use ($stored): array {
@@ -184,6 +190,30 @@ final class IndexerFastPathTest extends TestCase {
 
         self::assertSame(1, $result['processed'], 'the changed file must be re-extracted and re-embedded');
         self::assertSame(0, $result['skipped']);
+        self::assertNull($result['error']);
+    }
+
+    /**
+     * A large settled library must not pay a file-node lookup per file. The
+     * fingerprint is known from the directory walk, so an unchanged file is
+     * skipped without ever fetching the node.
+     */
+    public function testUnchangedFileIsSkippedWithoutFetchingTheFileNode(): void {
+        $fileA = $this->file(1, 1000, 'old library content one');
+        $fileA->expects($this->never())->method('getContent');
+        $storedA = $this->storedDoc(1, 1000, 128, md5('old library content one'));
+
+        [$indexer, $docMapper] = $this->harness([$fileA], [1 => $storedA], function (Folder $folder): void {
+            $folder->expects($this->never())->method('getById');
+        });
+
+        $docMapper->expects($this->never())->method('insert');
+        $docMapper->expects($this->once())->method('update');
+
+        $result = $indexer->run('alice', 10000, 'files');
+
+        self::assertSame(0, $result['processed']);
+        self::assertSame(1, $result['skipped']);
         self::assertNull($result['error']);
     }
 

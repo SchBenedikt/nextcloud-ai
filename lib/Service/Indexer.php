@@ -25,6 +25,18 @@ class Indexer {
     private const MAX_DECOMPRESSED_BYTES = 104857600; // 100MB limit for decompressed content
     private const MAX_ZIP_ENTRIES = 1000; // Maximum number of ZIP entries to process
 
+    /**
+     * Liveness heartbeats are throttled to this interval. The index loop used
+     * to write the per-user heartbeat value and take the global scheduler lock
+     * for every single file - a database write plus a global lock per file on a
+     * library of thousands of files. Ten seconds keeps stale-run detection and
+     * the admin status view accurate while removing that per-file overhead.
+     */
+    private const HEARTBEAT_INTERVAL_SECONDS = 10;
+
+    /** Wall-clock timestamp of the last heartbeat write for this pass. */
+    private int $lastHeartbeatAt = 0;
+
     public function __construct(
         private AppConfig $config,
         private IRootFolder $rootFolder,
@@ -108,6 +120,9 @@ class Indexer {
         $this->config->set('index_running', '1');
         $this->config->set('index_started', (string)time());
         $this->config->set('index_heartbeat', (string)time());
+        // A new pass starts with a fresh heartbeat window, so the first file
+        // always refreshes liveness instead of inheriting the previous pass.
+        $this->lastHeartbeatAt = 0;
         $this->config->set('last_index_error', '');
         $this->config->set('last_index_cache_hits', '0');
         $this->config->set('last_index_cache_misses', '0');
@@ -180,8 +195,7 @@ class Indexer {
                     $completed = false;
                     break;
                 }
-                $this->config->set('index_heartbeat', (string)time());
-                $this->scheduler->touchHeartbeat($userId);
+                $this->maybeTouchHeartbeat($userId, $runId);
                 $fileId = (int)$fileData['id'];
                 $seen[$fileId] = true;
                 $result['total_seen']++;
@@ -213,8 +227,47 @@ class Indexer {
                     continue;
                 }
 
+                // The walk already carries path, name, mime, size and mtime,
+                // so the stored fingerprint can be checked *before* the file
+                // node is fetched. On a settled library nearly every file is
+                // unchanged, and this removes one getById() database read per
+                // file - the dominant per-file cost of a full scan.
+                $path = $this->relativePath($userId, $file->getPath());
+                $name = $file->getName();
+                $mime = $file->getMimeType();
+                $size = $file->getSize();
+                $fileMtime = (int)($fileData['mtime'] ?? 0);
+
+                // Check if document already exists to preserve old version on failure
+                $existingDoc = $this->documentMapper->findByUserAndFile($userId, $fileId);
+                $oldDocId = $existingDoc !== null ? (int)$existingDoc->getId() : null;
+
+                // Fast path: a file whose mtime AND size match the stored
+                // fingerprint is unchanged, so skip the file fetch, the content
+                // read, the parser and embedding entirely. Renames and touches
+                // keep mtime, so the metadata-only refresh below still keeps the
+                // stored path/name current. The content hash stays the authority
+                // for everything that changed. (A write within the same second
+                // that leaves both values identical would be missed; the next
+                // mtime-changing write repairs it.)
+                if ($existingDoc !== null
+                    && (string)$existingDoc->getContentHash() !== ''
+                    && (int)$existingDoc->getSize() === $size
+                    && (int)$existingDoc->getFileMtime() === $fileMtime
+                    && $fileMtime > 0) {
+                    $existingDoc->setPath($path);
+                    $existingDoc->setName($name);
+                    $existingDoc->setMime($mime);
+                    $existingDoc->setSize($size);
+                    $existingDoc->setFileMtime($fileMtime);
+                    $existingDoc->setIndexedAt(time());
+                    $this->documentMapper->update($existingDoc);
+                    $result['skipped']++;
+                    continue;
+                }
+
                 try {
-                    // Get the actual file for content extraction
+                    // Only a file that really changed is fetched for content.
                     $actualFile = $root->getById($fileId);
                     if (empty($actualFile) || !($actualFile[0] instanceof File)) {
                         $result['skipped']++;
@@ -232,39 +285,6 @@ class Indexer {
                     if (isset($hashes[$fileId])) {
                         $stale[$fileId] = true;
                     }
-                    continue;
-                }
-                $path = $this->relativePath($userId, $file->getPath());
-                $name = $file->getName();
-                $mime = $file->getMimeType();
-                $size = $file->getSize();
-                $fileMtime = (int)($fileData['mtime'] ?? 0);
-
-                // Check if document already exists to preserve old version on failure
-                $existingDoc = $this->documentMapper->findByUserAndFile($userId, $fileId);
-                $oldDocId = $existingDoc !== null ? (int)$existingDoc->getId() : null;
-
-                // Fast path: a file whose mtime AND size match the stored
-                // fingerprint is unchanged, so skip the content read, the
-                // parser and embedding entirely. Renames and touches keep
-                // mtime, so the metadata-only refresh below still keeps the
-                // stored path/name current. The content hash stays the
-                // authority for everything that changed. (A write within the
-                // same second that leaves both values identical would be
-                // missed; the next mtime-changing write repairs it.)
-                if ($existingDoc !== null
-                    && (string)$existingDoc->getContentHash() !== ''
-                    && (int)$existingDoc->getSize() === $size
-                    && (int)$existingDoc->getFileMtime() === $fileMtime
-                    && $fileMtime > 0) {
-                    $existingDoc->setPath($path);
-                    $existingDoc->setName($name);
-                    $existingDoc->setMime($mime);
-                    $existingDoc->setSize($size);
-                    $existingDoc->setFileMtime($fileMtime);
-                    $existingDoc->setIndexedAt(time());
-                    $this->documentMapper->update($existingDoc);
-                    $result['skipped']++;
                     continue;
                 }
 
@@ -1688,12 +1708,29 @@ class Indexer {
     /**
      * Calculate a hash of the current indexing configuration to detect changes
      * that require index rebuilds (embedding model, chunking settings, etc.)
-     */
-    private function touchHeartbeat(?string $runId = null): void {
+     */    private function touchHeartbeat(?string $runId = null): void
+    {
         if ($runId !== null && $this->config->get('index_run_id') !== $runId) {
             return;
         }
         $this->config->set('index_heartbeat', (string)time());
+    }
+
+    /**
+     * Refresh liveness at most once per HEARTBEAT_INTERVAL_SECONDS. Both the
+     * per-user heartbeat and the scheduler slot are refreshed so a crashed
+     * worker is still reclaimed, but a large library no longer pays a database
+     * write and a global scheduler lock for every single file.
+     */
+    private function maybeTouchHeartbeat(string $userId, ?string $runId): void
+    {
+        $now = time();
+        if ($now - $this->lastHeartbeatAt < self::HEARTBEAT_INTERVAL_SECONDS) {
+            return;
+        }
+        $this->lastHeartbeatAt = $now;
+        $this->touchHeartbeat($runId);
+        $this->scheduler->touchHeartbeat($userId);
     }
 
     private function cancellationRequested(?string $runId = null): bool {

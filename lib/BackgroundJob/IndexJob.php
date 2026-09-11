@@ -43,6 +43,14 @@ class IndexJob extends TimedJob {
      */
     private const DEFAULT_MAX_SECONDS = 50;
 
+    /**
+     * Upper bound on the bounded passes one user may run within a single cron
+     * tick. Together with the per-user time slice below this is what lets a
+     * library of thousands of files catch up in a handful of cron runs rather
+     * than at a fixed 40 files per run.
+     */
+    private const MAX_PASSES_PER_USER = 200;
+
     protected function run($argument): void {
         // The scheduler lock is global; the actual progress/settings are per user.
         $this->config->setUserId(null);
@@ -101,6 +109,10 @@ class IndexJob extends TimedJob {
 
             $startedAt = time();
             $budget = $this->budgetSeconds();
+            // Fair slice of the tick per user. Every selected user gets a share
+            // (at least a few seconds), so one huge library cannot starve the
+            // others while still being indexed pass after pass within its slice.
+            $perUserCap = max(5, intdiv($budget, max(1, count($users))));
             foreach ($users as $user) {
                 // Admin stop request (Issue: background indexing cannot be
                 // stopped): abort at the next user boundary so the running
@@ -143,9 +155,26 @@ class IndexJob extends TimedJob {
                     ]);
                     break;
                 }
-                $this->logger->info('eva_ai index job start', ['user' => $user]);
+                $this->logger->info('eva_ai index job start', [
+                    'user' => $user,
+                    'slice_seconds' => $perUserCap,
+                ]);
+                $userDeadline = min($startedAt + $budget, time() + $perUserCap);
                 try {
-                    $this->indexer->run($user);
+                    $passes = 0;
+                    do {
+                        $pass = $this->indexer->run($user);
+                        $passes++;
+                        // An error, an empty pass or a scheduler queue hand-off
+                        // means this user's current scope is indexed: move on
+                        // instead of spinning on no-op passes.
+                        if (($pass['error'] ?? null) !== null
+                            || (int)($pass['processed'] ?? 0) === 0
+                            || !empty($pass['queued'])
+                            || $this->config->get('index_job_stop_requested') === '1') {
+                            break;
+                        }
+                    } while ($passes < self::MAX_PASSES_PER_USER && time() < $userDeadline);
                 } catch (\Throwable $e) {
                     $this->logger->warning('eva_ai index job failed for user', [
                         'user' => $user,
