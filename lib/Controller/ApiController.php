@@ -91,6 +91,14 @@ class ApiController extends OCSController {
      * the user to the admin recovery command instead of a generic 500.
      */
     private function chatErrorResponse(\Throwable $e): DataResponse {
+        // A temporarily locked chat store is a busy condition, not an error:
+        // the page load fires several chat reads in parallel and a crashed
+        // request can hold the lock until the backend TTL expires. A 503 lets
+        // the frontend show "please retry" instead of taking the app down
+        // with an opaque 500.
+        if ($e instanceof \OCA\EvaAi\Service\ChatStoreBusyException) {
+            return new DataResponse(['error' => 'busy', 'message' => $e->getMessage()], 503);
+        }
         $message = $e->getMessage();
         if (str_contains($message, 'Invalid EVA chat data')
             || str_contains($message, 'Invalid EVA folder registry')) {
@@ -158,6 +166,9 @@ class ApiController extends OCSController {
                 ],
             ]);
         } catch (\Throwable $e) {
+            if ($e instanceof \OCA\EvaAi\Service\ChatStoreBusyException) {
+                return new DataResponse(['error' => 'busy', 'message' => $e->getMessage()], 503);
+            }
             return new DataResponse(['error' => 'Unable to build dashboard summary'], 500);
         }
     }
@@ -283,13 +294,20 @@ class ApiController extends OCSController {
             'mail_index_enabled',
             'mail_index_max',
             'embed_batch_size', 'ocr_enabled', 'ocr_language',
-            'weather_tool_enabled',
+            'ollama_keep_alive', 'followups_mode',
+            // Instance-wide switches (weather tool, web search) are NOT stored
+            // here: they are admin-only and live on the admin settings
+            // endpoint, so a regular user cannot change them (Issue #187).
             'talk_history_size',
             'talk_bot_trigger',
             'talk_classify_all',
             'exclude_paths',
             'index_enrolled',
             'chat_retention_days',
+            // Per-user web search settings (Issue #187): each user may
+            // individually enable web search and choose their provider.
+            'web_search_enabled',
+            'web_search_provider',
         ];
         $validationErrors = [];
         $pending = [];
@@ -348,11 +366,26 @@ class ApiController extends OCSController {
                 if ($key === 'exec_write_types') {
                     $value = $this->config->normalizeValue($key, $value);
                 }
-                if ($key === 'ocr_enabled' || $key === 'notify_on_complete' || $key === 'mail_index_enabled' || $key === 'index_enrolled' || $key === 'weather_tool_enabled' || $key === 'talk_classify_all') {
+                if ($key === 'ocr_enabled' || $key === 'notify_on_complete' || $key === 'mail_index_enabled' || $key === 'index_enrolled' || $key === 'talk_classify_all' || $key === 'web_search_enabled') {
                     $value = in_array((string)$value, ['1', 'true', 'on'], true) ? '1' : '0';
                 }
                 if ($key === 'temperature') {
                     $value = (string)max(0.0, min(2.0, (float)$value));
+                }
+                if ($key === 'web_search_provider') {
+                    $value = trim((string)$value);
+                    if (!in_array($value, ['duckduckgo', 'searxng', 'brave', 'tavily'], true)) {
+                        $value = 'duckduckgo';
+                    }
+                }
+                if ($key === 'ollama_keep_alive' || $key === 'followups_mode') {
+                    $value = trim((string)$value);
+                    if ($key === 'ollama_keep_alive' && $value === '') {
+                        $value = '5m'; // Ollama server default
+                    }
+                    if ($key === 'followups_mode' && !in_array($value, ['fast', 'llm'], true)) {
+                        $value = 'fast';
+                    }
                 }
                 if ($key === 'talk_bot_trigger') {
                     $value = trim((string)$value);
@@ -1040,7 +1073,11 @@ class ApiController extends OCSController {
         // Archived chats are always included: the sidebar splits them into
         // its own section and would otherwise never see them again (Issue #87).
         // The dashboard widget reads the store directly and keeps hiding them.
-        return new DataResponse($this->chatStore->list($user, $search !== '' ? $search : null, true));
+        try {
+            return new DataResponse($this->chatStore->list($user, $search !== '' ? $search : null, true));
+        } catch (\Throwable $e) {
+            return $this->chatErrorResponse($e);
+        }
     }
 
     #[NoAdminRequired]
@@ -1252,7 +1289,7 @@ class ApiController extends OCSController {
         try {
             return new DataResponse($this->chatStore->listFolders($user));
         } catch (\Throwable $e) {
-            return new DataResponse(['error' => 'Unable to read folders'], 500);
+            return $this->chatErrorResponse($e);
         }
     }
 
@@ -1403,6 +1440,17 @@ class ApiController extends OCSController {
             yield from $gen;
         })();
         return new StreamTraversableResponse($stream, 200, $headers);
+    }
+
+    #[NoAdminRequired]
+    public function calendars(): DataResponse {
+        $user = $this->requireUser();
+        if ($user === null) {
+            return new DataResponse(['error' => 'Not logged in'], 401);
+        }
+        // Read-only calendar metadata for the tool-confirmation dialogs
+        // (calendar picker). Empty list when the calendar backend is absent.
+        return new DataResponse(['calendars' => $this->ragService->calendarList($user)]);
     }
 
     #[NoAdminRequired]

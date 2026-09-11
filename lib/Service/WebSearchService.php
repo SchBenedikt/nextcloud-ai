@@ -51,6 +51,15 @@ class WebSearchService {
     ) {
     }
 
+    /**
+     * Forward the user identity to the internal AppConfig so per-user
+     * settings (e.g. web_search_enabled, web_search_provider) are
+     * resolved correctly.
+     */
+    public function setUserId(?string $userId): void {
+        $this->config->setUserId($userId);
+    }
+
     public function isEnabled(): bool {
         return $this->config->get('web_search_enabled') === '1';
     }
@@ -170,35 +179,65 @@ class WebSearchService {
      * @return list<array{title:string,url:string,snippet:string}>
      */
     private function searchDuckDuckGo(string $query, int $count): array {
-        // DuckDuckGo lite HTML endpoint — returns simple, parseable result pages.
-        // No API key required. Multiple parsing strategies ensure resilience
-        // against minor HTML layout changes.
+        // Strategy 1 (primary): DuckDuckGo Instant Answers JSON API.
+        // Works reliably from any server without authentication. Provides
+        // factual summaries, related topics and source URLs for encyclopedic
+        // queries. This is the most robust strategy for server-side usage.
+        $results = $this->searchDuckDuckGoInstant($query, $count);
+        if ($results !== []) {
+            return array_slice($results, 0, $count);
+        }
+
+        // Strategy 2: DuckDuckGo HTML endpoint (may be blocked by CAPTCHA
+        // on some server IPs). We attempt it anyway because it works from
+        // many hosting environments and returns actual web search results.
         $url = 'https://html.duckduckgo.com/html/?' . http_build_query([
             'q' => $query,
             'kl' => 'wt-wt',
         ]);
 
-        // Use a browser-like User-Agent to avoid getting blocked.
-        $body = $this->httpGet($url, [
-            'User-Agent: Mozilla/5.0 (X11; Linux x86_64; rv:128.0) Gecko/20100101 Firefox/128.0',
-            'Accept: text/html,application/xhtml+xml',
-            'Accept-Language: en-US,en;q=0.9',
-        ]);
+        try {
+            $body = $this->httpGet($url, [
+                'User-Agent: Mozilla/5.0 (X11; Linux x86_64; rv:128.0) Gecko/20100101 Firefox/128.0',
+                'Accept: text/html,application/xhtml+xml',
+                'Accept-Language: en-US,en;q=0.9',
+            ]);
 
-        // Strategy 1: Parse structured result blocks (result__a + result__snippet).
-        $results = $this->parseDuckDuckGoResults($body, $count);
+            // Skip if DuckDuckGo returned a CAPTCHA/anomaly page.
+            if (stripos($body, 'captcha') !== false || stripos($body, 'anomaly') !== false) {
+                // CAPTCHA detected — fall through.
+                $this->logger->debug('eva_ai: DuckDuckGo HTML returned CAPTCHA, falling back');
+            } else {
+                // Parse structured result blocks (result__a + result__snippet).
+                $results = $this->parseDuckDuckGoResults($body, $count);
 
-        // Strategy 2: Extract any result links and their surrounding text.
-        if ($results === []) {
-            $results = $this->parseDuckDuckGoLinks($body, $count);
+                // Broader link extraction if structured parsing found nothing.
+                if ($results === []) {
+                    $results = $this->parseDuckDuckGoLinks($body, $count);
+                }
+
+                if ($results !== []) {
+                    return array_slice($results, 0, $count);
+                }
+            }
+        } catch (\Throwable $e) {
+            // HTML endpoint may be blocked (CAPTCHA/bot detection).
+            $this->logger->debug('eva_ai: DuckDuckGo HTML failed: ' . $e->getMessage());
         }
 
-        // Strategy 3: Fallback to DuckDuckGo instant answers JSON API.
-        if ($results === []) {
-            $results = $this->searchDuckDuckGoInstant($query, $count);
+        // Strategy 3: Startpage as a free fallback (no API key needed).
+        // Startpage proxies Google results without tracking. It works
+        // from most server IPs where DuckDuckGo is blocked.
+        try {
+            $results = $this->searchStartpage($query, $count);
+            if ($results !== []) {
+                return array_slice($results, 0, $count);
+            }
+        } catch (\Throwable $e) {
+            $this->logger->debug('eva_ai: Startpage fallback failed: ' . $e->getMessage());
         }
 
-        return $results;
+        return [];
     }
 
     /**
@@ -335,25 +374,60 @@ class WebSearchService {
 
         $results = [];
 
-        // Abstract (direct answer).
-        $abstract = trim((string)($json['AbstractText'] ?? ''));
-        $abstractUrl = (string)($json['AbstractURL'] ?? '');
-        if ($abstract !== '' && $this->isSafeHttpUrl($abstractUrl)) {
+        // Direct answer (Answer field from DuckDuckGo Instant Answers).
+        $answer = trim((string)($json['Answer'] ?? ''));
+        $answerUrl = (string)($json['AnswerURL'] ?? '');
+        if ($answer !== '' && $this->isSafeHttpUrl($answerUrl)) {
             $results[] = [
                 'title' => $this->clamp((string)($json['Heading'] ?? $query), self::MAX_TITLE_CHARS),
+                'url' => $answerUrl,
+                'snippet' => $this->clamp($answer, self::MAX_SNIPPET_CHARS),
+            ];
+        }
+
+        // Abstract (encyclopedic summary).
+        $abstract = trim((string)($json['AbstractText'] ?? ''));
+        $abstractUrl = (string)($json['AbstractURL'] ?? '');
+        $abstractSource = (string)($json['AbstractSource'] ?? '');
+        if ($abstract !== '' && $this->isSafeHttpUrl($abstractUrl)) {
+            $title = $this->clamp((string)($json['Heading'] ?? $query), self::MAX_TITLE_CHARS);
+            if ($abstractSource !== '') {
+                $title .= ' (' . $this->clamp($abstractSource, 40) . ')';
+            }
+            $results[] = [
+                'title' => $title,
                 'url' => $abstractUrl,
                 'snippet' => $this->clamp($abstract, self::MAX_SNIPPET_CHARS),
             ];
         }
 
-        // Related topics.
+        // Infobox data: extract key facts if available.
+        $infobox = $json['Infobox'] ?? null;
+        if (is_array($infobox) && isset($infobox['content']) && is_array($infobox['content'])) {
+            foreach ($infobox['content'] as $field) {
+                if (!is_array($field)) continue;
+                $fieldLabel = trim((string)($field['label'] ?? ''));
+                $fieldValue = trim((string)($field['value'] ?? ''));
+                $fieldUrl = (string)($field['data_type'] === 'url' ? $field['value'] : '');
+                if ($fieldValue !== '' && $fieldLabel !== '') {
+                    $snippet = $fieldLabel . ': ' . $fieldValue;
+                    $results[] = [
+                        'title' => $this->clamp($fieldLabel . ' - ' . ($json['Heading'] ?? $query), self::MAX_TITLE_CHARS),
+                        'url' => $this->isSafeHttpUrl($fieldUrl) ? $fieldUrl : ($abstractUrl !== ''
+                            ? $abstractUrl : 'https://duckduckgo.com/?q=' . urlencode($query)),
+                        'snippet' => $this->clamp($snippet, self::MAX_SNIPPET_CHARS),
+                    ];
+                }
+            }
+        }
+
+        // Related topics — flat list and grouped sub-topics.
         $topics = $json['RelatedTopics'] ?? [];
         if (is_array($topics)) {
             foreach ($topics as $topic) {
                 if (!is_array($topic)) {
                     continue;
                 }
-                // Some related topics are grouped with a sub-array.
                 $subTopics = $topic['Topics'] ?? ($topic['SubTopics'] ?? []);
                 if (is_array($subTopics) && count($subTopics) > 0) {
                     foreach ($subTopics as $sub) {
@@ -385,7 +459,87 @@ class WebSearchService {
             }
         }
 
-        return array_slice($results, 0, $count);
+        // Deduplicate by URL to avoid showing the same source twice.
+        $seen = [];
+        $unique = [];
+        foreach ($results as $r) {
+            $key = $r['url'];
+            if (!isset($seen[$key])) {
+                $seen[$key] = true;
+                $unique[] = $r;
+            }
+        }
+
+        return array_slice($unique, 0, $count);
+    }
+
+    /**
+     * Startpage.com: free, privacy-respecting search proxy that works
+     * from server IPs without any API key. Used as a fallback when
+     * DuckDuckGo is blocked by CAPTCHA.
+     *
+     * @return list<array{title:string,url:string,snippet:string}>
+     */
+    private function searchStartpage(string $query, int $count): array {
+        $url = 'https://www.startpage.com/sp/search';
+        $body = $this->httpPost($url, http_build_query([
+            'query' => $query,
+            'cat' => 'web',
+            'language' => 'english',
+        ]), [
+            'Content-Type: application/x-www-form-urlencoded',
+            'User-Agent: Mozilla/5.0 (X11; Linux x86_64; rv:128.0) Gecko/20100101 Firefox/128.0',
+            'Accept: text/html',
+        ]);
+
+        $results = [];
+
+        // Extract result blocks: <a class="result-title result-link" href="URL">TITLE</a>
+        if (preg_match_all(
+            '/<a[^>]*class="[^"]*result-title[^"]*result-link[^"]*"[^>]*href="([^"]+)"[^>]*>(.*?)<\/a>/si',
+            $body,
+            $matches,
+            PREG_SET_ORDER
+        )) {
+            foreach ($matches as $match) {
+                $rawUrl = trim(html_entity_decode($match[1], ENT_QUOTES, 'UTF-8'));
+                if (!$this->isSafeHttpUrl($rawUrl)) {
+                    continue;
+                }
+                // Clean title: strip inline <style> tags and CSS content.
+                $title = $match[2];
+                $title = preg_replace('/<style[^>]*>.*?<\/style>/si', '', $title);
+                $title = strip_tags($title);
+                $title = $this->clamp(trim($title), self::MAX_TITLE_CHARS);
+                if ($title === '') {
+                    continue;
+                }
+                $results[] = [
+                    'title' => $title,
+                    'url' => $rawUrl,
+                    'snippet' => '', // Startpage snippets need separate extraction.
+                ];
+                if (count($results) >= $count) {
+                    break;
+                }
+            }
+        }
+
+        // Try to extract descriptions for results that have empty snippets.
+        if ($results !== []) {
+            // Startpage uses <p class="w-gl__description"> for snippets.
+            if (preg_match_all('/<p[^>]*class="[^"]*description[^"]*"[^>]*>(.*?)<\/p>/si', $body, $descMatches)) {
+                foreach (array_values($descMatches[1]) as $i => $desc) {
+                    if (!isset($results[$i])) break;
+                    $text = $this->clamp(strip_tags(html_entity_decode($desc, ENT_QUOTES, 'UTF-8')), self::MAX_SNIPPET_CHARS);
+                    if ($text !== '') {
+                        $results[$i]['snippet'] = $text;
+                    }
+                }
+            }
+        }
+
+        return $results;
     }
 
     /** @return list<array{title:string,url:string,snippet:string}> */

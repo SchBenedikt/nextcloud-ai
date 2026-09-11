@@ -287,9 +287,25 @@ class ToolPolicy {
             'requiresConfirmation' => false,
             'description' => 'Get weather forecast',
         ],
+        // Read-only but privacy-relevant: the query leaves the instance. It is
+        // therefore opt-in per instance and gated in check() below (Issue #187).
+        'web_search' => [
+            'risk' => self::RISK_READONLY,
+            'surfaces' => [self::SURFACE_WEB, self::SURFACE_TALK, self::SURFACE_TASKPROCESSING, self::SURFACE_TASKPROCESSING_CONFIRMED, self::SURFACE_RAG],
+            'requiresConfirmation' => false,
+            'description' => 'Search the web for current information',
+        ],
     ];
 
     private string $activeSurface = self::SURFACE_WEB;
+
+    /**
+     * Forward the user identity to the internal AppConfig so per-user
+     * settings (e.g. web_search_enabled) are resolved correctly.
+     */
+    public function setUserId(?string $userId): void {
+        $this->appConfig->setUserId($userId);
+    }
 
     /**
      * Set the execution surface for the current context.
@@ -331,6 +347,17 @@ class ToolPolicy {
             return [
                 'allowed' => false,
                 'reason' => 'Weather tool disabled by configuration',
+            ];
+        }
+
+        // Privacy opt-out (Issue #187): the web search tool sends the query to
+        // a third-party or admin-hosted search service. It is opt-in per
+        // instance, and this single check removes it from every tool surface,
+        // blocks dispatch and skips it in the agent proposal phase.
+        if ($toolName === 'web_search' && $this->appConfig->getInt('web_search_enabled', 0) !== 1) {
+            return [
+                'allowed' => false,
+                'reason' => 'Web search disabled by configuration',
             ];
         }
 
@@ -379,9 +406,16 @@ class ToolPolicy {
     public function toolsForSurface(): array {
         $result = [];
         foreach (self::TOOLS as $name => $meta) {
-            if (in_array($this->activeSurface, $meta['surfaces'], true)) {
-                $result[$name] = $meta;
+            if (!in_array($this->activeSurface, $meta['surfaces'], true)) {
+                continue;
             }
+            // Respect configuration gates (e.g. a disabled weather or web
+            // search tool) so a caller can never re-expose a switched-off
+            // tool by listing the surface itself.
+            if (!($this->check($name)['allowed'] ?? false)) {
+                continue;
+            }
+            $result[$name] = $meta;
         }
         return $result;
     }

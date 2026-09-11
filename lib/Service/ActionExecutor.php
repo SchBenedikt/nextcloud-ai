@@ -106,8 +106,20 @@ class ActionExecutor {
         private SharesService $shares,
         private ActivityService $activity,
         private ToolPolicy $toolPolicy,
+        private WebSearchService $webSearch,
         private \OCP\Lock\ILockingProvider $lockingProvider
     ) {
+    }
+
+    /**
+     * Set the user context on both the internal AppConfig and ToolPolicy
+     * so per-user settings (e.g. web_search_enabled) are resolved correctly.
+     * Must be called before tools() and run().
+     */
+    public function setUserId(?string $userId): void {
+        $this->config->setUserId($userId);
+        $this->toolPolicy->setUserId($userId);
+        $this->webSearch->setUserId($userId);
     }
 
     /**
@@ -455,6 +467,13 @@ class ActionExecutor {
                     'location' => ['type' => 'string', 'description' => 'City or place, e.g. "Berlin" or "München".'],
                 ], 'required' => ['location']],
             ]],
+            ['type' => 'function', 'function' => [
+                'name' => 'web_search',
+                'description' => 'Search the public web for current information that is not in the indexed files (news, releases, prices, documentation). Only available when the administrator enabled web search. The returned results include a URL for every hit; cite the URLs you actually used as markdown links.',
+                'parameters' => ['type' => 'object', 'properties' => [
+                    'query' => ['type' => 'string', 'description' => 'The search query, in the user\'s language. Keep it short and specific - it is sent to an external search engine.'],
+                ], 'required' => ['query']],
+            ]],
         ];
         // Ollama akzeptiert leere "properties" nur als leeres OBJEKT {}
         foreach ($output as &$t) {
@@ -512,7 +531,7 @@ class ActionExecutor {
      * @return array{ok:bool,result?:mixed,error?:string,confirmation_required?:bool,tool?:string,risk?:string}
      */
     public function run(string $userId, string $name, array $args, bool $confirmed = false): array {
-        $this->config->setUserId($userId);
+        $this->setUserId($userId);
         // Centralized tool permission check
         $policy = $this->toolPolicy->check($name);
         if (!$policy['allowed']) {
@@ -599,6 +618,7 @@ class ActionExecutor {
                 'find_free_slots' => $this->calendar->findFreeSlots($userId, $args),
                 'current_time' => $this->currentTime($userId),
                 'weather' => $this->weather($args),
+                'web_search' => $this->runWebSearch($args),
                 'search_mails' => $this->searchMails($userId, $args),
                 'list_mails' => $this->listMails($userId, $args),
                 'read_mail' => $this->readMail($userId, $args),
@@ -1610,6 +1630,37 @@ class ActionExecutor {
             return ['ok' => false, 'error' => 'Mail access failed: ' . $e->getMessage()];
         }
         return ['ok' => true, 'result' => ['unread' => $n]];
+    }
+
+    /**
+     * Ground an answer with external search results (Issue #187). The model
+     * decides when to call this; a failed search is reported as a normal tool
+     * error so the answer still falls back to the local sources.
+     */
+    private function runWebSearch(array $args): array {
+        $query = trim((string)($args['query'] ?? ''));
+        if ($query === '') {
+            return ['ok' => false, 'error' => 'query required'];
+        }
+        $result = $this->webSearch->search($query);
+        if (!$result['ok']) {
+            return ['ok' => false, 'error' => (string)($result['error'] ?? 'Web search failed.')];
+        }
+        $results = array_slice($result['results'], 0, 8);
+        if ($results === []) {
+            return ['ok' => true, 'result' => ['query' => $query, 'provider' => $result['provider'], 'results' => []]];
+        }
+        return [
+            'ok' => true,
+            'result' => [
+                'query' => $query,
+                'provider' => $result['provider'],
+                // `external: true` marks these as links outside the Nextcloud
+                // instance so callers never confuse them with indexed files.
+                'external' => true,
+                'results' => $results,
+            ],
+        ];
     }
 
     private function weather(array $args): array {
