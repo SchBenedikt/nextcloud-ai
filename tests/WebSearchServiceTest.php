@@ -686,6 +686,33 @@ HTML;
         );
     }
 
+    /**
+     * An <img> that is not a picture must not become an embedded image: the
+     * live product returned "…/article/image/jpeg" (a responsive-image MIME
+     * fragment) and a wiki link used as a source.
+     */
+    public function testOnlyRealImageResourcesSurviveTheImgPass(): void {
+        $service = $this->service(['web_search_images' => '1']);
+        foreach ([['https://a.example.org/2025/09/article/image/jpeg', false],
+            ['https://a.example.org/2025/09/article/image/png', false],
+            ['https://github.com/nextcloud/server/wiki/Some-Page', false],
+            ['https://a.example.org/2025/09/hub-10.jpg', true],
+            ['https://images.example.org/photo-1234?w=800&h=450&fit=crop', true]] as [$url, $expected]) {
+            self::assertSame(
+                $expected,
+                $this->callPrivate($service, 'looksLikeImageResource', [$url]),
+                $url
+            );
+        }
+
+        $html = '<html><body><article><p>Text.</p>'
+            . '<img src="/2025/09/article/image/jpeg" width="900" height="500">'
+            . '<img src="/2025/09/hub-10.jpg" width="900" height="500">'
+            . '</article></body></html>';
+        $page = $this->callPrivate($service, 'extractPage', [$html, 'https://a.example.org/2025/09/article/']);
+        self::assertSame(['https://a.example.org/2025/09/hub-10.jpg'], array_column($page['images'], 'url'));
+    }
+
     public function testImagesCanBeSwitchedOff(): void {
         $service = $this->service(['web_search_images' => '0']);
         $html = '<html><head><meta property="og:image" content="/media/hero.png"></head>'
