@@ -72,8 +72,15 @@
 				<div class="field">
 					<label class="native-label" for="chat-provider">{{ $t('Chat provider') }}</label>
 					<select id="chat-provider" v-model="f.chat_provider" class="native-select">
-						<option value="ollama">Ollama</option><option value="groq">Groq</option>
+						<option value="ollama">Ollama</option><option value="groq">Groq</option><option value="custom">{{ $t('Custom OpenAI-compatible provider') }}</option>
 					</select>
+				</div>
+				<div v-if="f.chat_provider !== 'ollama' && f.chat_provider !== 'groq'" class="field-grid">
+					<NcTextField id="custom-provider-id" v-model="f.chat_provider" :label="$t('Provider ID')" :label-outside="true" placeholder="openai" />
+					<NcTextField id="custom-provider-url" v-model="f.custom_provider_url" type="url" :label="$t('OpenAI-compatible endpoint')" :label-outside="true" placeholder="https://api.openai.com/v1" />
+					<NcTextField id="custom-provider-model" v-model="f.custom_provider_model" :label="$t('Model')" :label-outside="true" placeholder="gpt-4o-mini" />
+					<NcTextField id="custom-provider-key" v-model="customProviderKey" type="password" autocomplete="new-password" :label="$t('Provider API key')" :label-outside="true" />
+					<p class="field-help">{{ $t('Works with OpenAI, Azure OpenAI, Mistral, Together, DeepSeek, OpenRouter and any compatible self-hosted endpoint. Credentials are encrypted per user.') }}</p>
 				</div>
 				<div v-if="f.chat_provider === 'groq'" class="field-grid">
 					<p class="field-help">{{ $t('Groq sends your messages, retrieved file excerpts and tool results to Groq. Embeddings and document indexing still use Ollama.') }}</p>
@@ -518,6 +525,8 @@ export default {
 		const f = ref({
 			chat_provider: 'ollama',
 			groq_model: 'openai/gpt-oss-20b',
+			custom_provider_url: '',
+			custom_provider_model: '',
 			ollama_url: 'http://127.0.0.1:11434',
 			embedding_model: 'nomic-embed-text',
 			chat_model: 'gemma4:cloud',
@@ -567,6 +576,7 @@ export default {
 			proactive_schedules: '[]',
 		})
 		const groqKey = ref('')
+		const customProviderKey = ref('')
 		const removeGroqKey = ref(false)
 		const status = ref(null)
 		const limits = ref({})
@@ -924,9 +934,10 @@ export default {
 			const values = changedOnly
 				? Object.fromEntries(keys.map(key => [key, f.value[key]]))
 				: { ...f.value }
-			const settings = await api('PUT', 'settings', { ...values, ...(groqKey.value ? { groq_api_key: groqKey.value } : {}), remove_groq_api_key: removeGroqKey.value })
+			const settings = await api('PUT', 'settings', { ...values, ...(groqKey.value ? { groq_api_key: groqKey.value } : {}), ...(customProviderKey.value ? { custom_provider_api_key: customProviderKey.value } : {}), remove_groq_api_key: removeGroqKey.value })
 				if (status.value && (groqKey.value || removeGroqKey.value)) status.value.groq = { ...(status.value.groq || {}), keyConfigured: !removeGroqKey.value }
 				groqKey.value = ''
+				customProviderKey.value = ''
 				removeGroqKey.value = false
 				validationErrors.value = []
 				if (settings) fill(settings)
@@ -1204,7 +1215,7 @@ export default {
 
 		const ocrEnabled = computed({ get: () => f.value.ocr_enabled === '1', set: value => { f.value.ocr_enabled = value ? '1' : '0' } })
 		return {
-			groqKey, removeGroqKey, ocrEnabled, f, status, limits, availableModels, embeddingModels, chatModels, embeddingInstalledHint, chatInstalledHint, modelLoading, modelError, checkOut, saving, checking, indexing, resetting, deletingChats, stopping, saved, loadError, message, validationErrors, resetConfirm, chatsDeleteConfirm,
+			groqKey, customProviderKey, removeGroqKey, ocrEnabled, f, status, limits, availableModels, embeddingModels, chatModels, embeddingInstalledHint, chatInstalledHint, modelLoading, modelError, checkOut, saving, checking, indexing, resetting, deletingChats, stopping, saved, loadError, message, validationErrors, resetConfirm, chatsDeleteConfirm,
 			newExcludePath, excludeError, excludeList, actionsEnabled, notificationsEnabled, userWeatherEnabled, mailIndexEnabled, talkIndexEnabled, talkWriteEnabled, indexEnrolled, actionsDisabled, busy, indexingActive, settingsLocked, maxFileSizeMb,
 			isAdminMode, admin, userWebSearchEnabled, userWebSearchSafeSearch, userWebSearchImages, userWebSearchBrowser, userWebSearchFetchContent, webSearchKey, removeWebSearchKey, webSearchKeyStored, webSearchReady, savingAdmin, saveAdminSettings, loadAdminSettings,
 			proactiveEnabled, proactiveBriefings, briefingDraft, weekdays, dayName, addBriefing, removeBriefing, toggleBriefing,

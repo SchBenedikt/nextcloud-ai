@@ -30,4 +30,24 @@ class ProviderCredentials {
             throw new ProviderException('The Groq API key cannot be decrypted; save it again');
         }
     }
+
+    /** Generic encrypted credential storage for user-configured providers. */
+    public function saveCustom(string $userId, string $providerId, string $key): void {
+        if ($userId === '') throw new ProviderException('An authenticated user is required');
+        $providerId = preg_replace('/[^a-z0-9_-]/i', '', $providerId) ?: 'default';
+        $name = 'provider_' . $providerId . '_api_key';
+        if ($key === '') { $this->config->deleteUserValue($userId, AppConfig::APP, $name); return; }
+        if (strlen($key) > 512) throw new \InvalidArgumentException('Provider API key is too long');
+        $this->config->setUserValue($userId, AppConfig::APP, $name, $this->crypto->encrypt($key));
+    }
+    public function customConfigured(string $userId, string $providerId): bool {
+        $providerId = preg_replace('/[^a-z0-9_-]/i', '', $providerId) ?: 'default';
+        return $userId !== '' && $this->config->getUserValue($userId, AppConfig::APP, 'provider_' . $providerId . '_api_key', '') !== '';
+    }
+    public function getCustom(string $userId, string $providerId): string {
+        $providerId = preg_replace('/[^a-z0-9_-]/i', '', $providerId) ?: 'default';
+        $value = $this->config->getUserValue($userId, AppConfig::APP, 'provider_' . $providerId . '_api_key', '');
+        if ($value === '') throw new ProviderException('Save the provider API key in Settings first');
+        try { return $this->crypto->decrypt($value); } catch (\Throwable) { throw new ProviderException('The provider API key cannot be decrypted; save it again'); }
+    }
 }

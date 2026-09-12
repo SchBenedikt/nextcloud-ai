@@ -16,7 +16,7 @@ class AppConfig {
      * default (Issue #73).
      */
     private const USER_SETTINGS = [
-        'chat_provider', 'groq_model', 'ollama_url', 'embedding_model', 'chat_model', 'chat_model_fallback',
+        'chat_provider', 'groq_model', 'custom_provider_url', 'custom_provider_model', 'ollama_url', 'embedding_model', 'chat_model', 'chat_model_fallback',
         'embedding_model_fallback', 'summary_model', 'top_k', 'chunk_size',
         'chunk_overlap', 'max_file_size', 'max_files_per_run', 'scope_path',
         'context_size', 'temperature', 'actions_enabled', 'exec_write_types',
@@ -96,6 +96,8 @@ class AppConfig {
         'index_enabled' => '0',
         'chat_provider' => 'ollama',
         'groq_model' => 'openai/gpt-oss-20b',
+        'custom_provider_url' => '',
+        'custom_provider_model' => '',
         'ollama_url' => 'http://127.0.0.1:11434',
         'embedding_model' => 'nomic-embed-text',
         'chat_model' => 'gemma4:cloud',
@@ -485,7 +487,9 @@ class AppConfig {
      * malformed, non-numeric, or out-of-range values.
      */
     public function validateValue(string $key, mixed $value): ?string {
-        if ($key === 'chat_provider') return is_string($value) && in_array($value, ['ollama', 'groq'], true) ? null : 'must be ollama or groq';
+        if ($key === 'chat_provider') return is_string($value) && (in_array($value, ['ollama', 'groq'], true) || preg_match('/^[a-z][a-z0-9_-]{1,31}$/', $value) === 1) ? null : 'must be Ollama, Groq or a custom provider id';
+        if ($key === 'custom_provider_model') return is_string($value) && strlen(trim($value)) <= 128 ? null : 'must be a model name';
+        if ($key === 'custom_provider_url') return is_string($value) && ($value === '' || preg_match('~^https?://[^\s]+$~i', $value) === 1) ? null : 'must be an http(s) URL';
         if ($key === 'groq_model') return is_string($value) && in_array($value, Groq::MODELS, true) ? null : 'must be a supported Groq free-plan chat model';
         if ($key === 'ocr_language') {
             return is_string($value) && preg_match('/^[a-zA-Z0-9_]{1,24}(?:\+[a-zA-Z0-9_]{1,24}){0,3}$/D', $value)

@@ -85,11 +85,17 @@ class Ollama {
     private function groqClient(): Groq {
         return $this->groq ??= new Groq($this->config, $this->clientService, \OCP\Server::get(ProviderCredentials::class), $this->usageMetrics);
     }
+    private function openAiCompatible(): OpenAICompatible {
+        return new OpenAICompatible($this->config, $this->clientService, \OCP\Server::get(ProviderCredentials::class), $this->usageMetrics);
+    }
     public function groqInfo(): array { return $this->groqClient()->info(); }
     public function saveGroqKey(string $key): void { $this->groqClient()->saveKey($key); }
     public function checkGroq(): array { return $this->groqClient()->check(); }
     public function selectedChatModel(): string {
-        return $this->config->get('chat_provider') === 'groq' ? $this->config->get('groq_model') : $this->config->get('chat_model');
+        $provider = $this->config->get('chat_provider');
+        if ($provider === 'groq') return $this->config->get('groq_model');
+        if ($provider !== 'ollama') return $this->config->get('custom_provider_model');
+        return $this->config->get('chat_model');
     }
 
     private function client() {
@@ -917,6 +923,10 @@ class Ollama {
             if ($onProgress !== null) return $this->chatStreamingAccumulate($messages, $tools, $timeout, $this->config->get('groq_model'), $onProgress, null);
             return $this->groqClient()->chat($messages, $tools, $timeout ?? self::CHAT_TIMEOUT);
         }
+        if ($this->config->get('chat_provider') !== 'ollama') {
+            if ($onProgress !== null) { $result = $this->openAiCompatible()->chat($messages, $tools, $timeout ?? self::CHAT_TIMEOUT); if (isset($result['answer'])) $onProgress(1.0); return $result; }
+            return $this->openAiCompatible()->chat($messages, $tools, $timeout ?? self::CHAT_TIMEOUT);
+        }
         $model = $this->resolveChatModel($preferredModel);
         if ($model['error'] !== null) {
             return ['error' => $model['error']];
@@ -1059,6 +1069,14 @@ class Ollama {
     public function chatStream(array $messages, array $tools = [], ?int $timeout = null, ?string $preferredModel = null): \Generator {
         if ($this->config->get('chat_provider') === 'groq') {
             yield from $this->groqClient()->chatStream($messages, $tools, $timeout ?? self::CHAT_TIMEOUT);
+            return;
+        }
+        if ($this->config->get('chat_provider') !== 'ollama') {
+            $result = $this->openAiCompatible()->chat($messages, $tools, $timeout ?? self::CHAT_TIMEOUT);
+            if (isset($result['error'])) yield ['type' => 'error', 'delta' => $result['error']];
+            elseif (($result['tool_calls'] ?? []) !== []) yield ['type' => 'tool_calls', 'tool_calls' => $result['tool_calls'], 'raw' => $result['raw_tool_calls'] ?? [], 'model' => $result['model'] ?? ''];
+            else yield ['type' => 'content', 'delta' => $result['answer'] ?? ''];
+            yield ['type' => 'finished', 'model' => $result['model'] ?? ''];
             return;
         }
         $model = $this->resolveChatModel($preferredModel);
