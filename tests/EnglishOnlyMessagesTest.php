@@ -107,6 +107,30 @@ final class EnglishOnlyMessagesTest extends TestCase {
         self::assertSame([], $offenders, 'task provider prompts must be English');
     }
 
+    /**
+     * The Talk bot's own words reach the conversation, so they are part of the
+     * app's visible language. They used to be hardcoded German, which an English
+     * chat saw verbatim.
+     */
+    public function testTheTalkBotSpeaksEnglish(): void
+    {
+        $source = $this->withoutComments((string)file_get_contents(dirname(__DIR__) . '/lib/Listener/TalkBotListener.php'));
+        $german = [
+            'Du bist',
+            'Ich kann leider',
+            'Uups',
+            'Bitte versuche',
+            'Quellen:',
+            'Hier sind meine Befehle',
+            'In diesem Raum',
+            'Leider habe ich gerade',
+            'Das konnte ich leider nicht verstehen',
+        ];
+        foreach ($german as $phrase) {
+            self::assertStringNotContainsString($phrase, $source, 'the Talk bot must answer in English: ' . $phrase);
+        }
+    }
+
     /** Every prompt should name its language rule, so the answer language is kept. */
     public function testTaskProviderPromptsKeepTheAnswerLanguageRule(): void
     {

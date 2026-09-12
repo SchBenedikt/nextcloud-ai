@@ -510,6 +510,18 @@ class ApiController extends OCSController {
         return $this->queueIndex('mail');
     }
 
+    /**
+     * Index the user's Nextcloud Talk chat histories.
+     *
+     * An explicit start always runs, even when the automatic Talk indexing
+     * toggle is off: the user asked for it now. Only rooms the user is a member
+     * of are read, and membership is checked again at answer time.
+     */
+    #[NoAdminRequired]
+    public function startTalkIndex(): DataResponse {
+        return $this->queueIndex('talk');
+    }
+
     #[NoAdminRequired]
     public function stopIndex(): DataResponse {
         $user = $this->requireUser();

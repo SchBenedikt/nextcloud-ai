@@ -252,6 +252,14 @@
 						<NcTextField id="mail-index-max" :label="$t('Emails per indexing run')" :label-outside="true" v-model="f.mail_index_max" type="number" />
 						<p class="field-help">{{ $t('Only used when Mail indexing is enabled. Default: 25.') }}</p>
 					</div>
+					<div class="field">
+						<NcTextField id="talk-index-max-rooms" :label="$t('Nextcloud Talk chats per indexing run')" :label-outside="true" v-model="f.talk_index_max_rooms" type="number" />
+						<p class="field-help">{{ $t('Only used when Talk indexing is enabled. Default: 20.') }}</p>
+					</div>
+					<div class="field">
+						<NcTextField id="talk-index-max-messages" :label="$t('Messages per Nextcloud Talk chat')" :label-outside="true" v-model="f.talk_index_max_messages" type="number" />
+						<p class="field-help">{{ $t('How far back in each chat to index. Default: 200.') }}</p>
+					</div>
 				</div>
 				<NcCheckboxRadioSwitch v-model="ocrEnabled" type="switch" :disabled="busy">
 					{{ $t('Read scanned documents with local OCR') }}
@@ -261,6 +269,8 @@
 				<p v-if="ocrEnabled && (!status?.dependencies?.pdftoppm || !status?.dependencies?.pdfinfo)" class="field-help">{{ $t('Scanned PDFs also require Poppler (pdfinfo and pdftoppm).') }}</p>
 				<p class="field-help">{{ $t('OCR limits: 20 MiB, 30 PDF pages, 25 megapixels and 60 seconds per file. Failed extraction keeps the previous index.') }}</p>
 				<NcCheckboxRadioSwitch v-model="mailIndexEnabled" type="switch" class="native-toggle compact-switch" :description="$t('Include subject, sender and message text from the Nextcloud Mail app in search results.')">{{ $t('Index Mail messages') }}
+				</NcCheckboxRadioSwitch>
+				<NcCheckboxRadioSwitch v-model="talkIndexEnabled" type="switch" class="native-toggle compact-switch" :description="$t('Include the chat histories of your Nextcloud Talk conversations in search results, so older parts of a conversation can be quoted in an answer. Only chats you are a member of are indexed, and only your own chat becomes context in a Talk answer.')">{{ $t('Index Nextcloud Talk chat histories') }}
 				</NcCheckboxRadioSwitch>
 				<NcCheckboxRadioSwitch v-model="indexEnrolled" type="switch" class="native-toggle compact-switch" :disabled="busy" :description="$t('Keep this account in the recurring background schedule, even when its index is currently empty. Starting indexing enables this automatically.')">{{ $t('Keep indexing this account in the background') }}
 				</NcCheckboxRadioSwitch>
@@ -290,6 +300,7 @@
 					<div class="button-group">
 						<NcButton type="primary" :loading="indexing" :disabled="settingsLocked" @click="startIndex">{{ $t('Save & start indexing') }}</NcButton>
 						<NcButton type="secondary" :disabled="settingsLocked" @click="startMailIndex">{{ $t('Only index emails') }}</NcButton>
+						<NcButton type="secondary" :disabled="settingsLocked" @click="startTalkIndex">{{ $t('Only index Nextcloud Talk chats') }}</NcButton>
 						<NcButton type="tertiary-no-background" :disabled="settingsLocked" @click="resetConfirm = true">{{ $t('Delete index') }}</NcButton>
 					</div>
 				</div>
@@ -506,6 +517,9 @@ export default {
 			embed_batch_size: '24',
 			mail_index_max: '25',
 			mail_index_enabled: '1',
+			talk_index_enabled: '0',
+			talk_index_max_rooms: '20',
+			talk_index_max_messages: '200',
 			index_enrolled: '0',
 			scope_path: '',
 			talk_history_size: '50',
@@ -627,6 +641,10 @@ export default {
 			get: () => f.value.mail_index_enabled === '1',
 			set: value => { f.value.mail_index_enabled = value ? '1' : '0' },
 		})
+		const talkIndexEnabled = computed({
+			get: () => f.value.talk_index_enabled === '1',
+			set: value => { f.value.talk_index_enabled = value ? '1' : '0' },
+		})
 		const indexEnrolled = computed({
 			get: () => f.value.index_enrolled === '1',
 			set: value => { f.value.index_enrolled = value ? '1' : '0' },
@@ -705,6 +723,8 @@ export default {
 				['max_files_per_run', 'Files per indexing run', ...effective('max_files_per_run', [1, 10000])],
 				['embed_batch_size', 'Embeddings per batch', ...effective('embed_batch_size', [1, 200])],
 				['mail_index_max', 'Emails per indexing run', ...effective('mail_index_max', [1, 500])],
+				['talk_index_max_rooms', 'Chats per indexing run', ...effective('talk_index_max_rooms', [1, 200])],
+				['talk_index_max_messages', 'Messages per chat', ...effective('talk_index_max_messages', [10, 1000])],
 				['talk_history_size', 'Talk history size', ...effective('talk_history_size', [1, 500])],
 				['exec_write_max_chars', 'Maximum characters per file', ...effective('exec_write_max_chars', [1, 10000000])],
 			]
@@ -933,6 +953,26 @@ export default {
 			}
 		}
 
+		async function startTalkIndex() {
+			if (settingsLocked.value) return
+			const savedSuccessfully = await save()
+			if (!savedSuccessfully) {
+				setMessage('error', t('Chat indexing was not started because the settings could not be saved.'))
+				return
+			}
+			indexing.value = true
+			setMessage('info', t('Indexing your Nextcloud Talk chat histories is being queued in the background.'))
+			try {
+				const response = await api('POST', 'talkIndex')
+				status.value = response?.status || status.value
+				setMessage('info', t('Chat indexing was queued. You can leave this page safely.'))
+			} catch (error) {
+				setMessage('error', t('Chat indexing could not be queued: {error}', { error: errMsg(error) }))
+			} finally {
+				indexing.value = false
+			}
+		}
+
 		async function stopIndex() {
 			if (stopping.value) return
 			stopping.value = true
@@ -1040,11 +1080,11 @@ export default {
 		const ocrEnabled = computed({ get: () => f.value.ocr_enabled === '1', set: value => { f.value.ocr_enabled = value ? '1' : '0' } })
 		return {
 			groqKey, removeGroqKey, ocrEnabled, f, status, limits, availableModels, embeddingModels, chatModels, embeddingInstalledHint, chatInstalledHint, modelLoading, modelError, checkOut, saving, checking, indexing, resetting, deletingChats, stopping, saved, loadError, message, validationErrors, resetConfirm, chatsDeleteConfirm,
-			newExcludePath, excludeError, excludeList, actionsEnabled, notificationsEnabled, weatherEnabled, mailIndexEnabled, indexEnrolled, actionsDisabled, busy, indexingActive, settingsLocked, maxFileSizeMb,
+			newExcludePath, excludeError, excludeList, actionsEnabled, notificationsEnabled, weatherEnabled, mailIndexEnabled, talkIndexEnabled, indexEnrolled, actionsDisabled, busy, indexingActive, settingsLocked, maxFileSizeMb,
 			isAdminMode, admin, userWebSearchEnabled, webSearchSafeSearch, webSearchKey, removeWebSearchKey, webSearchKeyStored, webSearchReady, savingAdmin, saveAdminSettings, loadAdminSettings,
 			exporting, downloadExport,
 			knowledgeContent, knowledgeOriginal, savingKnowledge, knowledgeSaved, saveKnowledgeContent,
-			formatNumber, loadStatus, save, checkOllama, addExclude, removeExclude, startIndex, startMailIndex, stopIndex, resetIndex, deleteAllChats,
+			formatNumber, loadStatus, save, checkOllama, addExclude, removeExclude, startIndex, startMailIndex, startTalkIndex, stopIndex, resetIndex, deleteAllChats,
 		}
 	},
 }

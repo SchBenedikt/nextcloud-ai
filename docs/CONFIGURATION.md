@@ -64,6 +64,9 @@ endpoint rejects them.
 | `index_enabled` | I | `0` | `1`/`0` | – | Legacy instance-wide indexer switch. |
 | `mail_index_enabled` | P | `1` | `1`/`0` | – | Index emails into RAG. |
 | `mail_index_max` | P | `25` | `1`–`500` | emails/pass | Emails indexed per pass. |
+| `talk_index_enabled` | P | `0` | `1`/`0` | – | Index the user's Nextcloud Talk chat histories, so older parts of a conversation can be quoted in an answer. Off by default because a chat log is the most personal content in an instance. Use the "Only index Nextcloud Talk chats" button (`POST /ocs/v2.php/apps/eva_ai/api/talkIndex`) to index them once regardless of this switch. |
+| `talk_index_max_rooms` | P | `20` | `1`–`200` | chats/pass | Talk chats indexed per pass. |
+| `talk_index_max_messages` | P | `200` | `10`–`1000` | messages | How far back into each chat to index. |
 
 Embedding vectors are cached in Nextcloud's distributed cache for up to 30 days
 (user-isolated, content-derived keys; document text is never stored in the key).
@@ -140,6 +143,8 @@ is grounded in the source rather than in a search-engine teaser.
 **Search modes.** The `web_search` tool takes a `mode`: `web` (the configured provider), `news` (Bing News and Google News RSS, which need no key and carry the publication date and the source name; the language and region follow the asking user's own language) or `all` (both merged). Results are ordered with the best and most recent first, and a dated current page outranks an undated one of equal relevance, so a question about something current is answered from the web rather than from the model's older training data.
 
 **Reading a page.** The `open_website` tool reads a single http(s) page in full (up to 20000 characters) with the passages that match a query, plus its images and publication date. It is gated by the same `web_search_enabled` switch as the search itself.
+
+**Pictures.** The `search_images` tool finds pictures of a subject in the keyless public image index and returns them ready to embed (the picture, a caption, a thumbnail that always loads and the page it was found on). It exists because a text search answers a picture request with pages, which is why the model used to reply that it cannot display images. It uses the same `web_search_enabled` switch and is individual-result independent of `web_search_images` (which attaches page images to *search results*); a query that itself asks for a logo or an icon keeps those pictures instead of having them filtered as chrome. The page a shown picture came from is added to the answer's Sources list.
 | `web_search_api_key` | I | – | 8–256 chars | – | **Admin only, write-only.** Encrypted API key for `brave`/`tavily`. Send it as `web_search_api_key`; clear it with `remove_web_search_api_key`. It is never read back. |
 
 ### Internal per-user runtime state (S)

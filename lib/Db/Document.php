@@ -29,8 +29,15 @@ use OCP\AppFramework\Db\Entity;
  * @method void setChunkCount(int $count)
  * @method ?int getIndexedAt()
  * @method void setIndexedAt(?int $ts)
+ * @method string getSource()
+ * @method void setSource(string $source)
  */
 class Document extends Entity {
+    /** Producer of a row: an indexed file, a mail message, a Talk transcript. */
+    public const SOURCE_FILES = 'files';
+    public const SOURCE_MAIL = 'mail';
+    public const SOURCE_TALK = 'talk';
+
     protected ?string $userId = null;
     protected ?int $fileId = null;
     protected ?string $path = '';
@@ -41,6 +48,7 @@ class Document extends Entity {
     protected ?string $contentHash = '';
     protected ?int $chunkCount = 0;
     protected ?int $indexedAt = null;
+    protected ?string $source = self::SOURCE_FILES;
 
     public function __construct() {
         $this->addType('fileId', 'integer');

@@ -11,6 +11,7 @@ use OCA\EvaAi\Service\Ollama;
 use OCA\EvaAi\Service\RagService;
 use OCA\EvaAi\Service\TalkContextReader;
 use OCA\EvaAi\Service\TalkRoomState;
+use OCA\EvaAi\Service\TalkTranscriptService;
 use OCA\Talk\Events\BotInvokeEvent;
 use OCA\Talk\Model\Bot;
 use PHPUnit\Framework\TestCase;
@@ -65,6 +66,8 @@ final class TalkSlashCommandsTest extends TestCase {
             ['role' => 'user', 'content' => 'Erster Beitrag über das Projekt Alpha.'],
             ['role' => 'user', 'content' => 'Zweiter Beitrag: nächste Woche Review.'],
         ]);
+        $transcripts = $this->createMock(TalkTranscriptService::class);
+        $transcripts->method('recall')->willReturn([]);
         $listener = new TalkBotListener(
             $ollama,
             $contextReader,
@@ -72,6 +75,7 @@ final class TalkSlashCommandsTest extends TestCase {
             $config,
             $this->createMock(RagService::class),
             $roomState,
+            $transcripts,
             $this->createMock(LoggerInterface::class)
         );
         return [$listener, $ollama, $roomState];
@@ -109,11 +113,11 @@ final class TalkSlashCommandsTest extends TestCase {
 
         $stop = $this->event('@Eva /stop');
         $listener->handle($stop);
-        self::assertStringContainsString('pausiert', $this->answers($stop)[0]);
+        self::assertStringContainsString('paused', $this->answers($stop)[0]);
 
         $start = $this->event('@Eva /start');
         $listener->handle($start);
-        self::assertStringContainsString('aktiv', $this->answers($start)[0]);
+        self::assertStringContainsString('active', $this->answers($start)[0]);
 
         self::assertSame([[7, false], [7, true]], $calls);
     }

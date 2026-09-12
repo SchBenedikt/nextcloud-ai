@@ -146,7 +146,7 @@ final class IndexerFastPathTest extends TestCase {
         $scheduler->method('acquireSlot')->willReturn(['state' => 'running', 'position' => 0]);
         $indexer = new Indexer(
             $config, $rootFolder, $docMapper, $chunkMapper, $chunker, $ollama,
-            $embeddingCache, $email, $logger, $lockingProvider, $lockGuard, $scheduler
+            $embeddingCache, $email, $this->talkTranscripts(), $logger, $lockingProvider, $lockGuard, $scheduler
         );
 
         return [$indexer, $docMapper, $chunkMapper, $ollama];
@@ -274,5 +274,14 @@ final class IndexerFastPathTest extends TestCase {
 
         $result = $indexer->run('alice', 10000, 'files');
         self::assertSame(1, $result['processed'], 'empty stored hash forces a re-embed');
+    }
+
+    /** Talk indexing is not exercised here; a mock keeps the constructor honest. */
+    private function talkTranscripts(): \OCA\EvaAi\Service\TalkTranscriptService
+    {
+        $mock = $this->createMock(\OCA\EvaAi\Service\TalkTranscriptService::class);
+        $mock->method('isAvailable')->willReturn(false);
+        $mock->method('roomsForUser')->willReturn([]);
+        return $mock;
     }
 }

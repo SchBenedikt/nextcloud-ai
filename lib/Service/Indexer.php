@@ -42,6 +42,17 @@ class Indexer {
      */
     private const MAX_EXTRACT_CHARS = 2000000;
 
+    /**
+     * File-id base for indexed Talk rooms.
+     *
+     * A room is not a file, so it is stored under a synthetic negative file id,
+     * exactly like a mail message. The two producers must not share numbers: a
+     * mail message id and a Talk room id are unrelated sequences that both start
+     * at 1, so mail keeps `-messageId` and Talk uses this offset, which no real
+     * message id reaches.
+     */
+    private const TALK_FILE_ID_BASE = 1000000000;
+
     /** Wall-clock timestamp of the last heartbeat write for this pass. */
     private int $lastHeartbeatAt = 0;
 
@@ -54,6 +65,7 @@ class Indexer {
         private Ollama $ollama,
         private EmbeddingCache $embeddingCache,
         private EmailService $email,
+        private TalkTranscriptService $talkTranscripts,
         private LoggerInterface $logger,
         private ILockingProvider $lockingProvider,
         private LockGuard $lockGuard,
@@ -67,7 +79,7 @@ class Indexer {
      */
     public function run(string $userId, ?int $maxFiles = null, string $mode = 'all', bool $keepRunning = false, ?string $runId = null): array {
         $this->config->setUserId($userId);
-        $mode = in_array($mode, ['all', 'files', 'mail'], true) ? $mode : 'all';
+        $mode = in_array($mode, ['all', 'files', 'mail', 'talk'], true) ? $mode : 'all';
         $maxFiles = $maxFiles ?? min(10000, max(1, $this->config->getInt('max_files_per_run', 40)));
         $result = [
             'processed' => 0,
@@ -138,8 +150,8 @@ class Indexer {
         $this->config->set('last_index_ollama_requests', '0');
         
         // Calculate the file-index configuration hash only for file passes.
-        // A mail-only request must not invalidate the user's file index.
-        if ($mode !== 'mail') {
+        // A mail- or Talk-only request must not invalidate the user's file index.
+        if ($mode === 'all' || $mode === 'files') {
             $currentConfigHash = $this->calculateConfigHash();
             $storedConfigHash = $this->config->get('index_config_hash');
 
@@ -160,7 +172,7 @@ class Indexer {
 
         $cancelled = false;
         try {
-            if ($mode !== 'mail') {
+            if ($mode === 'all' || $mode === 'files') {
                 $userFolder = $this->rootFolder->getUserFolder($userId);
             $scope = $this->config->get('scope_path');
             $root = $userFolder;
@@ -401,7 +413,7 @@ class Indexer {
             if ($this->cancellationRequested($runId)) {
                 $cancelled = true;
             }
-            if (!$cancelled && $mode !== 'mail') {
+            if (!$cancelled && ($mode === 'all' || $mode === 'files')) {
                 if ($completed) {
                     // Full traversal: safe to remove files that are no longer
                     // present. With a bounded pass that ended early the seen set
@@ -413,8 +425,11 @@ class Indexer {
                 }
             }
             }
-            if (!$cancelled && $mode !== 'files') {
+            if (!$cancelled && ($mode === 'all' || $mode === 'mail')) {
                 $this->indexEmails($userId, $result, $maxFiles, $mode === 'mail', $runId);
+            }
+            if (!$cancelled && ($mode === 'all' || $mode === 'talk')) {
+                $this->indexTalkRooms($userId, $result, $runId, $mode === 'talk');
             }
 
             if ($result['error'] === null && $result['processed'] === 0 && $result['total_seen'] > 0) {
@@ -1916,6 +1931,7 @@ class Indexer {
             $doc->setPath('mail://' . $msgId);
             $doc->setName('mail ' . $msgId . ' - ' . ($mail['subject'] ?? ''));
             $doc->setMime('message/rfc822');
+            $doc->setSource(Document::SOURCE_MAIL);
             $doc->setSize(mb_strlen($content));
             $doc->setContentHash($hash);
             $doc->setChunkCount(count($chunks));
@@ -1942,9 +1958,13 @@ class Indexer {
     }
 
     /**
-     * Remove indexed mail documents (negative file ids) whose message was
-     * deleted from the Mail account. Privacy fix: deleted emails must stop
-     * being searchable through the RAG index even without a full reindex.
+     * Remove indexed mail documents whose message was deleted from the Mail
+     * account. Privacy fix: deleted emails must stop being searchable through
+     * the RAG index even without a full reindex.
+     *
+     * Only rows with source=mail are considered: the mail and Talk indexes share
+     * the negative file-id space, so reconciliation must never touch another
+     * producer's rows.
      */
     private function reconcileMailIndex(string $userId): void {
         try {
@@ -1954,7 +1974,7 @@ class Indexer {
             return;
         }
         $currentSet = array_flip($current);
-        $stored = $this->documentMapper->mailFileIdsForUser($userId);
+        $stored = $this->documentMapper->fileIdsForSource($userId, Document::SOURCE_MAIL);
         foreach ($stored as $fileId) {
             $msgId = -$fileId;
             if (!isset($currentSet[$msgId])) {
@@ -1965,6 +1985,154 @@ class Indexer {
                 ]);
             }
         }
+    }
+
+    /**
+     * Index the user's Nextcloud Talk chat histories.
+     *
+     * One room becomes one document, because a conversation is only meaningful as
+     * a whole: chunking happens afterwards like for any other text. The pass is
+     * opt-in (`talk_index_enabled`) and bounded by `talk_index_max_rooms`, so a
+     * user in hundreds of rooms cannot turn one click into an unbounded job.
+     *
+     * Membership is decided by Talk at the moment of indexing, so only rooms the
+     * user is currently in are ever written for that user.
+     */
+    private function indexTalkRooms(string $userId, array &$result, ?string $runId = null, bool $force = false): void {
+        if (!$force && $this->config->get('talk_index_enabled') !== '1') {
+            return;
+        }
+        if (!$this->talkTranscripts->isAvailable()) {
+            return;
+        }
+        $maxRooms = max(1, min(200, $this->config->getInt('talk_index_max_rooms', 20)));
+        $rooms = $this->talkTranscripts->roomsForUser($userId, $maxRooms);
+        if ($rooms === []) {
+            // Nothing to do; reconciliation still runs so rooms the user left
+            // stop being searchable.
+            $this->reconcileTalkIndex($userId, []);
+            return;
+        }
+        $hashes = $this->documentMapper->hashesForUser($userId);
+        $batch = [];
+        $currentRoomIds = [];
+        foreach ($rooms as $room) {
+            $this->touchHeartbeat($runId);
+            if ($this->cancellationRequested($runId)) {
+                return;
+            }
+            $roomId = (int)$room['id'];
+            $currentRoomIds[] = $roomId;
+            $fileId = self::talkFileId($roomId);
+            try {
+                $transcript = $this->talkTranscripts->transcript($userId, $roomId);
+            } catch (\Throwable $e) {
+                // One unreadable room must never stop the pass: skip it and keep
+                // indexing the rest.
+                $this->logger->warning('eva_ai: skipped Talk room ' . $roomId . ': ' . $e->getMessage());
+                continue;
+            }
+            if ($transcript === null) {
+                continue;
+            }
+            $content = $this->normalize($transcript['text']);
+            if (trim($content) === '') {
+                continue;
+            }
+            if (mb_strlen($content) > self::MAX_EXTRACT_CHARS) {
+                $content = mb_substr($content, 0, self::MAX_EXTRACT_CHARS);
+            }
+            $hash = md5($content);
+            if (($hashes[$fileId] ?? null) === $hash) {
+                $result['skipped']++;
+                continue;
+            }
+            $chunks = $this->chunker->chunk($content);
+            if ($chunks === []) {
+                continue;
+            }
+            $existingDoc = $this->documentMapper->findByUserAndFile($userId, $fileId);
+            $oldDocId = $existingDoc !== null ? (int)$existingDoc->getId() : null;
+            $doc = new Document();
+            $doc->setUserId($userId);
+            $doc->setFileId($fileId);
+            $doc->setPath('talk://' . $roomId);
+            $doc->setName('Talk: ' . $transcript['name']);
+            $doc->setMime('text/x-talk');
+            $doc->setSize(mb_strlen($content));
+            $doc->setFileMtime(time());
+            $doc->setContentHash($hash);
+            $doc->setChunkCount(count($chunks));
+            $doc->setIndexedAt(time());
+            $doc->setSource(Document::SOURCE_TALK);
+            $this->documentMapper->insert($doc);
+            foreach ($chunks as $i => $c) {
+                $batch[] = [
+                    'docId' => (int)$doc->getId(),
+                    'index' => $i,
+                    'content' => $c['content'],
+                    'tokens' => $c['tokens'],
+                    'provenance' => $c['provenance'] ?? [],
+                    'oldDocId' => $oldDocId,
+                ];
+            }
+            $result['processed']++;
+            if (count($batch) >= min(200, max(1, $this->config->getInt('embed_batch_size', self::DEFAULT_BATCH)))) {
+                $this->flushBatch($batch, $result, $runId, $userId);
+            }
+        }
+        $result['total_seen'] += count($currentRoomIds);
+        $this->flushBatch($batch, $result, $runId, $userId);
+
+        if ($this->cancellationRequested($runId)) {
+            return;
+        }
+        $this->reconcileTalkIndex($userId, $currentRoomIds);
+    }
+
+    /**
+     * Drop indexed rooms the user is no longer a member of.
+     *
+     * A conversation the user left must stop being searchable for them, and
+     * leaving a room is not a file event, so nothing else would clean it up.
+     *
+     * @param int[] $currentRoomIds rooms present in this pass
+     */
+    private function reconcileTalkIndex(string $userId, array $currentRoomIds): void {
+        $current = array_flip(array_map('intval', $currentRoomIds));
+        try {
+            $stored = $this->documentMapper->fileIdsForSource($userId, Document::SOURCE_TALK);
+        } catch (\Throwable $e) {
+            $this->logger->warning('eva_ai: Talk reconciliation failed: ' . $e->getMessage());
+            return;
+        }
+        foreach ($stored as $fileId) {
+            $roomId = self::talkRoomId($fileId);
+            if ($roomId <= 0 || isset($current[$roomId])) {
+                continue;
+            }
+            // A stored room that the user is still in but that was not indexed in
+            // this pass is kept: the pass may have been bounded by maxRooms.
+            if ($this->talkTranscripts->isMember($userId, $roomId)) {
+                continue;
+            }
+            $this->removeStaleDocument($userId, $fileId);
+        }
+    }
+
+    /** The synthetic file id of an indexed room. */
+    public static function talkFileId(int $roomId): int
+    {
+        return -(self::TALK_FILE_ID_BASE + $roomId);
+    }
+
+    /** The room id behind a synthetic file id; 0 when it is not a Talk row. */
+    public static function talkRoomId(int $fileId): int
+    {
+        if ($fileId > -self::TALK_FILE_ID_BASE) {
+            return 0;
+        }
+        return -$fileId - self::TALK_FILE_ID_BASE;
     }
 
     private function cleanupRemoved(string $userId, array $seen, array $stale): void {

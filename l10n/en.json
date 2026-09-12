@@ -563,7 +563,22 @@
         "Web": "Web",
         "News": "News",
         "Web and news": "Web and news",
-        "Run search": "Run search"
+        "Run search": "Run search",
+        "Chat indexing could not be queued: {error}": "Chat indexing could not be queued: {error}",
+        "Chat indexing is running": "Chat indexing is running",
+        "Chat indexing queued. It continues even if you close the website.": "Chat indexing queued. It continues even if you close the website.",
+        "Chat indexing was not started because the settings could not be saved.": "Chat indexing was not started because the settings could not be saved.",
+        "Chat indexing was queued. You can leave this page safely.": "Chat indexing was queued. You can leave this page safely.",
+        "How far back in each chat to index. Default: 200.": "How far back in each chat to index. Default: 200.",
+        "Include the chat histories of your Nextcloud Talk conversations in search results, so older parts of a conversation can be quoted in an answer. Only chats you are a member of are indexed, and only your own chat becomes context in a Talk answer.": "Include the chat histories of your Nextcloud Talk conversations in search results, so older parts of a conversation can be quoted in an answer. Only chats you are a member of are indexed, and only your own chat becomes context in a Talk answer.",
+        "Index Nextcloud Talk chat histories": "Index Nextcloud Talk chat histories",
+        "Index Talk chats": "Index Talk chats",
+        "Indexing your Nextcloud Talk chat histories is being queued in the background.": "Indexing your Nextcloud Talk chat histories is being queued in the background.",
+        "Indexing your Nextcloud Talk chat histories is being queued in the background …": "Indexing your Nextcloud Talk chat histories is being queued in the background …",
+        "Messages per Nextcloud Talk chat": "Messages per Nextcloud Talk chat",
+        "Nextcloud Talk chats per indexing run": "Nextcloud Talk chats per indexing run",
+        "Only index Nextcloud Talk chats": "Only index Nextcloud Talk chats",
+        "Only used when Talk indexing is enabled. Default: 20.": "Only used when Talk indexing is enabled. Default: 20."
     },
     "pluralForm": "nplurals=2; plural=(n != 1);"
 }

@@ -3,7 +3,7 @@ import { readNdjson } from './ndjson'
 import { mdiDownload, mdiTune } from '@mdi/js'
 import { translate as t } from './i18n'
 import { buildConfirmForm } from './confirmForms'
-import { escHtml, mdInline, mdToHtml, citedSources, copyText } from './chat-utils'
+import { escHtml, mdInline, mdToHtml, citedSources, copyText, installImageFallback } from './chat-utils'
 
 /* EvaAi – Vanilla-Chat-Mount.
  * Wird von ChatView.vue aufgerufen und rendert den kompletten Chat
@@ -158,6 +158,7 @@ export function mountChat(root, opts = {}) {
 		textEl.className = 'rt'
 		if (m.role === 'assistant' && m.text && m.done) {
 			textEl.innerHTML = mdToHtml(m.text)
+			installImageFallback(textEl)
 		} else {
 			textEl.textContent = m.text || (m.role === 'assistant' ? '…' : '')
 		}
@@ -465,6 +466,7 @@ export function mountChat(root, opts = {}) {
 			const now = Date.now()
 			if (m.done) {
 				rt.innerHTML = m.text ? mdToHtml(m.text) : ''
+				installImageFallback(rt)
 			} else if (now - lastMd > 200) {
 				lastMd = now
 				rt.innerHTML = m.text ? mdToHtml(m.text) : '…'

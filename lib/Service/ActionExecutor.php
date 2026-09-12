@@ -480,6 +480,18 @@ class ActionExecutor {
                 ], 'required' => ['query']],
             ]],
             ['type' => 'function', 'function' => [
+                'name' => 'search_images',
+                'description' => 'Find pictures of a subject on the web and show them to the user. You CAN display pictures: whenever the user asks to see images, photos, pictures or a logo of something ("show me pictures of X", "zeig mir Bilder von X", "wie sieht X aus", "what does X look like"), call this tool. NEVER reply that you are unable to show images. '
+                    . 'Every hit carries `url` (the picture itself - embed it with markdown image syntax `![title](url)`), `title` (a caption, use it as the alt text), `page` (the page the picture was found on - link it) and `preview` (a thumbnail that always loads). '
+                    . 'Embed two to four pictures with `![title](url)` so they appear in the answer, then one short sentence about them. '
+                    . 'When the user asks for a picture together with facts (e.g. "show me pictures of the Eiffel Tower and tell me when it was built"), also run a web_search for the facts and mention the source. '
+                    . 'Use the words the user used as the query; do not send personal or confidential details.',
+                'parameters' => ['type' => 'object', 'properties' => [
+                    'query' => ['type' => 'string', 'description' => 'What the pictures should show, e.g. "golden retriever puppy" or "Nextcloud Hub logo".'],
+                    'count' => ['type' => 'integer', 'description' => 'Optional number of pictures (1-12, default 6).'],
+                ], 'required' => ['query']],
+            ]],
+            ['type' => 'function', 'function' => [
                 'name' => 'open_website',
                 'description' => 'Open one web page and read its full text, so you can work with a source instead of its search snippet. Use it after a web_search when a result looks relevant but the snippet is too short, when you need a detail (a number, a date, a quote) from a named page, or to check what a source really says. Returns the readable article text, the passages that match `query`, the page images and the publication date. Only http(s) pages can be opened.',
                 'parameters' => ['type' => 'object', 'properties' => [
@@ -632,6 +644,7 @@ class ActionExecutor {
                 'current_time' => $this->currentTime($userId),
                 'weather' => $this->weather($args),
                 'web_search' => $this->runWebSearch($args),
+                'search_images' => $this->runImageSearch($args),
                 'open_website' => $this->openWebsite($args),
                 'search_mails' => $this->searchMails($userId, $args),
                 'list_mails' => $this->listMails($userId, $args),
@@ -1644,6 +1657,42 @@ class ActionExecutor {
             return ['ok' => false, 'error' => 'Mail access failed: ' . $e->getMessage()];
         }
         return ['ok' => true, 'result' => ['unread' => $n]];
+    }
+
+    /**
+     * Pictures for the answer, not pages about them.
+     *
+     * A text search returns pages, so a model asked to "show pictures of X"
+     * used to answer that it cannot display images. This returns pictures the
+     * model can embed, each with a caption and the page it came from, and the
+     * source list below the answer shows where they came from.
+     */
+    private function runImageSearch(array $args): array {
+        $query = trim((string)($args['query'] ?? ''));
+        if ($query === '') {
+            return ['ok' => false, 'error' => 'query required'];
+        }
+        $count = isset($args['count']) ? (int)$args['count'] : null;
+        $result = $this->webSearch->searchImages($query, $count);
+        if (!$result['ok']) {
+            return ['ok' => false, 'error' => (string)($result['error'] ?? 'The image search failed.')];
+        }
+        return [
+            'ok' => true,
+            'result' => [
+                'query' => $query,
+                'provider' => $result['provider'],
+                // `external: true` marks these as links outside the Nextcloud
+                // instance so callers never confuse them with indexed files.
+                'external' => true,
+                'images' => array_map(static fn(array $image): array => [
+                    'url' => $image['url'],
+                    'preview' => $image['preview'],
+                    'title' => $image['title'],
+                    'page' => $image['page'],
+                ], $result['images']),
+            ],
+        ];
     }
 
     /**

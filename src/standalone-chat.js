@@ -10,7 +10,7 @@ import { readNdjson } from './lib/ndjson'
  * The standalone page pre-defines its DOM in standalone.php; this script
  * wires up event handlers, sidebar management and chat persistence.
  */
-import { escHtml, mdInline, mdToHtml, citedSources, copyText } from './lib/chat-utils'
+import { escHtml, mdInline, mdToHtml, citedSources, copyText, installImageFallback } from './lib/chat-utils'
 
 function buildCalendarForm(args, tr) {
 	var form = document.createElement('div')
@@ -314,6 +314,7 @@ function buildCalendarForm(args, tr) {
 		t.className = 'rt'
 		if (m.role === 'assistant' && m.text && m.done) {
 			t.innerHTML = mdToHtml(m.text)
+			installImageFallback(t)
 		} else {
 			t.textContent = m.text || (m.role === 'assistant' ? '…' : '')
 		}
@@ -512,6 +513,7 @@ function buildCalendarForm(args, tr) {
 			var now = Date.now()
 			if (m.done) {
 				rt.innerHTML = m.text ? mdToHtml(m.text) : ''
+				installImageFallback(rt)
 			} else if (now - lastMd > 200) {
 				lastMd = now
 				rt.innerHTML = m.text ? mdToHtml(m.text) : '…'

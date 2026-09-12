@@ -55,6 +55,34 @@ markdown.renderer.rules.fence = (...args) => fence(...args).replace('<pre>', '<p
 markdown.renderer.rules.table_open = () => '<div class="md-table-scroll" tabindex="0"><table>\n'
 markdown.renderer.rules.table_close = () => '</table></div>\n'
 
+/**
+ * Show a link instead of a broken picture when a remote image cannot load.
+ *
+ * Pictures in an answer come from other people's servers, so some of them are
+ * blocked, moved or hotlink-protected. Without this the user sees a broken-image
+ * icon and no way to reach the picture; with it the alt text becomes a link to
+ * the same URL. `error` does not bubble, so the listener is registered in the
+ * capture phase.
+ *
+ * @param {HTMLElement} container element whose images should degrade
+ */
+export function installImageFallback(container) {
+	if (!container || container.dataset.imageFallback === 'on') return container
+	container.dataset.imageFallback = 'on'
+	container.addEventListener('error', (event) => {
+		const img = event.target
+		if (!img || img.tagName !== 'IMG' || !img.classList.contains('md-image')) return
+		const link = document.createElement('a')
+		link.className = 'md-image-fallback'
+		link.href = img.getAttribute('src') || '#'
+		link.target = '_blank'
+		link.rel = 'noopener noreferrer'
+		link.textContent = img.getAttribute('alt') || img.getAttribute('src') || ''
+		img.replaceWith(link)
+	}, true)
+	return container
+}
+
 /** Render raw inline Markdown, escaping HTML and rejecting unsafe links. */
 export function mdInline(text) {
 	return markdown.renderInline(String(text ?? ''))
