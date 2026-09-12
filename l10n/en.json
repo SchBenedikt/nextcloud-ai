@@ -31,6 +31,7 @@
         "Allow resharing": "Allow resharing",
         "Allow weather forecasts": "Allow weather forecasts",
         "Allow weather forecasts for all users": "Allow weather forecasts for all users",
+        "Weather uses the external Open-Meteo geocoding and forecast service. This is an instance-wide privacy switch.": "Weather uses the external Open-Meteo geocoding and forecast service. This is an instance-wide privacy switch.",
         "Allows EVA to delete any file in your Files when you explicitly ask for it. Use with care.": "Allows deletion of any file after explicit confirmation. Use with care.",
         "Answer creativity": "Answer creativity",
         "Any file in my Files": "Any file in my Files",

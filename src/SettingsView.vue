@@ -447,7 +447,7 @@
 				</div>
 				<div class="admin-subsection">
 					<NcCheckboxRadioSwitch v-model="admin.weather_tool_enabled" type="switch" class="native-toggle compact-switch" :disabled="savingAdmin">
-						{{ $t('Enable weather forecasts for all users') }}
+						{{ $t('Allow weather forecasts for all users') }}
 					</NcCheckboxRadioSwitch>
 					<p class="field-help">{{ $t('Weather uses the external Open-Meteo geocoding and forecast service. This is an instance-wide privacy switch.') }}</p>
 					<p class="field-help" style="margin-bottom:12px;">{{ $t('Instance-level web search infrastructure: configure the SearxNG URL, API keys for Brave/Tavily, and result limits below. Individual users choose their provider in the Web search section above.') }}</p>
