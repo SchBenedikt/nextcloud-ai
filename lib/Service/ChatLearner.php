@@ -34,11 +34,11 @@ class ChatLearner {
 
     /** Keyword patterns for category detection */
     private const CATEGORY_PATTERNS = [
-        'preferences' => '/\b(like|prefer|love|hate|enjoy|favourite|favorite|avourite|dislike|always use|never use|usually|normally|style|taste)\b/i',
-        'projects'    => '/\b(project|sprint|release|deploy|roadmap|milestone|epic|feature branch|version \d|v\d|launch|deadline)\b/i',
-        'people'      => '/\b(colleague|coworker|team lead|manager|reports to|works with|my team|our team|partner|client|stakeholder)\b/i',
-        'skills'      => '/\b(speciali[sz]e|expertise|proficient|experienced in|certified|learned|studied|degree|qualification|tech stack)\b/i',
-        'work'        => '/\b(job|role|position|department|company|office|remote|salary|contract|freelance|client|project manager|engineer|developer|designer|analyst)\b/i',
+        'preferences' => '/\b(like|prefer|love|hate|enjoy|favourite|favorite|avourite|dislike|always use|never use|usually|normally|style|taste|mag|liebe|hasse|bevorzuge|nutze meistens|verwende meistens|immer nutzen|nie nutzen|geschmack)\b/iu',
+        'projects'    => '/\b(project|sprint|release|deploy|roadmap|milestone|epic|feature branch|version \d|v\d|launch|deadline|projekt|veröffentlichung|bereitstellung|meilenstein|frist)\b/iu',
+        'people'      => '/\b(colleague|coworker|team lead|manager|reports to|works with|my team|our team|partner|client|stakeholder|kolleg(?:e|in|en|innen)|teamleitung|vorgesetzt(?:e|er|en)|arbeite mit|mein team|unser team|kunde(?:n)?|ansprechpartner)\b/iu',
+        'skills'      => '/\b(speciali[sz]e|expertise|proficient|experienced in|certified|learned|studied|degree|qualification|tech stack|spezialisiere|erfahrung mit|zertifiziert|gelernt|studiert|abschluss|kenntnisse|technologie[- ]stack)\b/iu',
+        'work'        => '/\b(job|role|position|department|company|office|remote|salary|contract|freelance|client|project manager|engineer|developer|designer|analyst|beruf|rolle|stelle|abteilung|unternehmen|büro|homeoffice|gehalt|vertrag|freiberuflich|projektmanager|entwickler(?:in)?|designer(?:in)?|analyst(?:in)?)\b/iu',
     ];
 
     public function __construct(
@@ -93,7 +93,10 @@ class ChatLearner {
             }
             // Look for personal statements: sentences with first-person pronouns
             // that reveal facts about the user.
-            $sentences = preg_split('/[.!?]+/', $text) ?: [];
+            // Keep sentence punctuation. The question check below is a privacy
+            // guard: a request such as "I want ...?" must not become a stored
+            // personal fact simply because the delimiter was discarded.
+            $sentences = preg_split('/(?<=[.!?])\s+/u', $text) ?: [];
             foreach ($sentences as $sentence) {
                 $s = trim($sentence);
                 if ($s === '' || mb_strlen($s) < 15) {
@@ -113,7 +116,7 @@ class ChatLearner {
      */
     private function isPersonalFact(string $sentence): bool {
         // Must contain first-person indicators.
-        $firstPerson = '/\b(I |my |me |we |our |I\'m |I am |I work|I like|I prefer|I use|I have|I need|I want|I usually|I always|I never|I speciali[sz]e)\b/i';
+        $firstPerson = '/\b(I |my |me |we |our |I\'m |I am |I work|I like|I prefer|I use|I have|I need|I want|I usually|I always|I never|I speciali[sz]e|ich |mein(?:e|en|em|er|es)? |mir |mich |wir |unser(?:e|en|em|er|es)? |ich bin|ich arbeite|ich mag|ich bevorzuge|ich nutze|ich verwende|ich habe|ich brauche|ich möchte|ich will|ich lerne|ich kann)\b/iu';
         if (!preg_match($firstPerson, $sentence)) {
             return false;
         }
