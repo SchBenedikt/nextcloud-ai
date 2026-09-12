@@ -358,6 +358,16 @@ final class OpenIssuesPendingContractTest extends TestCase {
 		self::assertStringContainsString("backgroundChat/resume", $routes);
 	}
 
+	public function testExternalConnectorsAreBoundedAndConfirmationReady(): void {
+		$executor = (string)file_get_contents(__DIR__ . '/../lib/Service/ActionExecutor.php');
+		$policy = (string)file_get_contents(__DIR__ . '/../lib/Service/ToolPolicy.php');
+		self::assertStringContainsString('safeConnectorUrl', $executor);
+		self::assertStringContainsString("'https'", $executor);
+		self::assertStringContainsString('count($params) > 50', $executor);
+		self::assertStringContainsString("'call_external_connector'", $policy);
+		self::assertStringContainsString("'configure_external_connector'", $policy);
+	}
+
 	private function sliceBetween(string $haystack, string $start, string $end): string {
 		$s = strpos($haystack, $start);
 		self::assertNotFalse($s, "start marker '$start' not found");

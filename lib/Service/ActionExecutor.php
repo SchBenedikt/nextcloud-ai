@@ -86,6 +86,8 @@ class ActionExecutor {
         'restore_file_version' => ['file_id', 'version_id'],
         'call_app_api' => ['app_id', 'path', 'method'],
         'run_safe_command' => ['command'],
+        'configure_external_connector' => ['id', 'base_url'],
+        'call_external_connector' => ['id', 'path', 'method'],
         'create_scheduled_briefing' => ['prompt', 'time', 'days'],
         'update_scheduled_briefing' => ['briefing_id'],
         'delete_scheduled_briefing' => ['briefing_id'],
@@ -692,6 +694,31 @@ class ActionExecutor {
                     'max_chars' => ['type' => 'integer', 'minimum' => 1000, 'maximum' => 2000000, 'description' => 'Characters to return in this page (default 2,000,000).'],
                 ], 'required' => ['url']],
             ]],
+            ['type' => 'function', 'function' => [
+                'name' => 'list_external_connectors',
+                'description' => 'List the user-configured external HTTPS connectors (names, hosts and capabilities; never secrets).',
+                'parameters' => ['type' => 'object', 'properties' => new \stdClass()],
+            ]],
+            ['type' => 'function', 'function' => [
+                'name' => 'configure_external_connector',
+                'description' => 'Create or update a named external HTTPS connector. The token is encrypted and never shown to EVA; use this only when the user explicitly asks to connect an external service.',
+                'parameters' => ['type' => 'object', 'properties' => [
+                    'id' => ['type' => 'string', 'description' => 'Stable connector id, lowercase letters, numbers, underscore or hyphen (max 40).'],
+                    'name' => ['type' => 'string', 'description' => 'Human-readable connector name.'],
+                    'base_url' => ['type' => 'string', 'description' => 'HTTPS base URL of the external service.'],
+                    'token' => ['type' => 'string', 'description' => 'Optional bearer token; encrypted at rest and never returned.'],
+                ], 'required' => ['id', 'base_url']],
+            ]],
+            ['type' => 'function', 'function' => [
+                'name' => 'call_external_connector',
+                'description' => 'Call a configured external connector. Requests are HTTPS-only, host-pinned, bounded and always require user confirmation; response values are returned for this run only.',
+                'parameters' => ['type' => 'object', 'properties' => [
+                    'id' => ['type' => 'string'],
+                    'path' => ['type' => 'string', 'description' => 'Relative path below the connector base URL, e.g. /api/status.'],
+                    'method' => ['type' => 'string', 'enum' => ['GET', 'POST', 'PUT', 'PATCH', 'DELETE']],
+                    'params' => ['type' => 'object', 'description' => 'Query parameters for GET or JSON body fields for other methods.'],
+                ], 'required' => ['id', 'path', 'method']],
+            ]],
         ];
         // Ollama akzeptiert leere "properties" nur als leeres OBJEKT {}
         foreach ($output as &$t) {
@@ -853,6 +880,9 @@ class ActionExecutor {
                 'web_search' => $this->runWebSearch($args),
                 'search_images' => $this->runImageSearch($args),
                 'open_website' => $this->openWebsite($args),
+                'list_external_connectors' => $this->listExternalConnectors(),
+                'configure_external_connector' => $this->configureExternalConnector($args),
+                'call_external_connector' => $this->callExternalConnector($args),
                 'list_talk_rooms' => $this->listTalkRooms($userId, $args),
                 'read_talk_chat' => $this->readTalkChat($userId, $args),
                 'send_talk_message' => $this->sendTalkMessage($userId, $args),
@@ -2629,6 +2659,59 @@ class ActionExecutor {
                 'results' => $results,
             ],
         ];
+    }
+
+    private function connectorRows(): array {
+        $user = $this->config->userId() ?? '';
+        if ($user === '') return [];
+        $raw = Server::get(\OCP\IConfig::class)->getUserValue($user, AppConfig::APP, 'external_connectors', '{}');
+        $rows = json_decode($raw, true);
+        return is_array($rows) ? $rows : [];
+    }
+
+    private function listExternalConnectors(): array {
+        $out = [];
+        foreach ($this->connectorRows() as $id => $row) {
+            if (!is_array($row)) continue;
+            $out[] = ['id' => (string)$id, 'name' => (string)($row['name'] ?? $id), 'base_url' => (string)($row['base_url'] ?? ''), 'token_configured' => !empty($row['token_configured']), 'updated_at' => (int)($row['updated_at'] ?? 0)];
+        }
+        return ['ok' => true, 'result' => ['connectors' => $out]];
+    }
+
+    private function configureExternalConnector(array $args): array {
+        $id = strtolower(trim((string)($args['id'] ?? '')));
+        $base = rtrim(trim((string)($args['base_url'] ?? '')), '/');
+        if (!preg_match('/^[a-z0-9][a-z0-9_-]{0,39}$/D', $id) || !$this->safeConnectorUrl($base)) return ['ok' => false, 'error' => 'Connector id or base_url is invalid; use a public HTTPS URL.'];
+        $name = trim((string)($args['name'] ?? $id));
+        if ($name === '') $name = $id;
+        $rows = $this->connectorRows();
+        $rows[$id] = ['name' => mb_substr($name, 0, 120), 'base_url' => $base, 'token_configured' => isset($args['token']) && trim((string)$args['token']) !== '', 'updated_at' => time()];
+        $user = $this->config->userId() ?? '';
+        Server::get(\OCP\IConfig::class)->setUserValue($user, AppConfig::APP, 'external_connectors', json_encode($rows, JSON_UNESCAPED_SLASHES) ?: '{}');
+        if (array_key_exists('token', $args)) Server::get(ProviderCredentials::class)->saveCustom($user, 'connector_' . $id, trim((string)$args['token']));
+        return ['ok' => true, 'result' => ['id' => $id, 'name' => $name, 'base_url' => $base, 'token_configured' => $rows[$id]['token_configured']]];
+    }
+
+    private function callExternalConnector(array $args): array {
+        $id = strtolower(trim((string)($args['id'] ?? ''))); $path = trim((string)($args['path'] ?? '')); $method = strtoupper(trim((string)($args['method'] ?? ''))); $params = $args['params'] ?? [];
+        if (!preg_match('/^[a-z0-9][a-z0-9_-]{0,39}$/D', $id) || !in_array($method, ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'], true) || !is_array($params) || count($params) > 50 || $path === '' || str_contains($path, '..') || preg_match('/[\r\n]/', $path)) return ['ok' => false, 'error' => 'Invalid connector request.'];
+        $row = $this->connectorRows()[$id] ?? null; if (!is_array($row) || !$this->safeConnectorUrl((string)($row['base_url'] ?? ''))) return ['ok' => false, 'error' => 'Connector is not configured or its host is no longer allowed.'];
+        $url = rtrim((string)$row['base_url'], '/') . '/' . ltrim($path, '/');
+        if (!$this->safeConnectorUrl($url)) return ['ok' => false, 'error' => 'Connector path leaves the configured HTTPS host.'];
+        try {
+            $client = Server::get(\OCP\Http\Client\IClientService::class)->newClient(); $headers = ['Accept' => 'application/json']; $user = $this->config->userId() ?? '';
+            if (!empty($row['token_configured'])) $headers['Authorization'] = 'Bearer ' . Server::get(ProviderCredentials::class)->getCustom($user, 'connector_' . $id);
+            $options = ['headers' => $headers, 'timeout' => 20, 'allow_redirects' => ['max' => 0]];
+            if ($method === 'GET') $options['query'] = $params; elseif ($params !== []) { $headers['Content-Type'] = 'application/json'; $options['body'] = json_encode($params, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES); $options['headers'] = $headers; }
+            $response = $client->{strtolower($method)}($url, $options); $body = $response->getBody(); if (is_resource($body)) $body = stream_get_contents($body); $body = mb_substr((string)$body, 0, 50000); $data = json_decode($body, true);
+            return ['ok' => $response->getStatusCode() >= 200 && $response->getStatusCode() < 300, 'result' => ['status' => $response->getStatusCode(), 'data' => $data ?? $body, 'connector' => $id, 'method' => $method, 'path' => $path]];
+        } catch (\Throwable) { return ['ok' => false, 'error' => 'External connector request failed.']; }
+    }
+
+    private function safeConnectorUrl(string $url): bool {
+        $parts = parse_url($url); $host = strtolower((string)($parts['host'] ?? ''));
+        if (($parts['scheme'] ?? '') !== 'https' || $host === '' || isset($parts['user']) || isset($parts['pass']) || !filter_var($host, FILTER_VALIDATE_DOMAIN, FILTER_FLAG_HOSTNAME)) return false;
+        $ip = gethostbyname($host); return $ip === $host || filter_var($ip, FILTER_VALIDATE_IP, FILTER_FLAG_NO_PRIV_RANGE | FILTER_FLAG_NO_RES_RANGE) !== false;
     }
 
     private function weather(array $args): array {
