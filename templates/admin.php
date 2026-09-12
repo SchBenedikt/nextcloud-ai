@@ -26,21 +26,11 @@ $scheduler = $_['scheduler'];
 $apiBase = $_['apiBase'];
 $providers = $_['webSearchProviders'] ?? [];
 
-$weatherEnabled = ($admin['weather_tool_enabled'] ?? '1') === '1';
 $webSearchUrl = $admin['web_search_url'] ?? '';
 $webSearchApiKeyConfigured = !empty($_['webSearchKeyConfigured']);
 $webSearchProviders = $providers;
-$webSearchMaxResults = $admin['web_search_max_results'] ?? '8';
-$webSearchTimeout = $admin['web_search_timeout'] ?? '10';
-$webSearchSafeSearch = ($admin['web_search_safe_search'] ?? '1') === '1';
-$webSearchFetchContent = ($admin['web_search_fetch_content'] ?? '1') === '1';
-$webSearchContentChars = $admin['web_search_content_chars'] ?? '2000';
-$webSearchCandidates = $admin['web_search_candidates'] ?? '12';
-$webSearchImages = ($admin['web_search_images'] ?? '1') === '1';
-$webSearchBrowser = ($admin['web_search_browser'] ?? '0') === '1';
 $webSearchBrowserNode = $admin['web_search_browser_node'] ?? '';
 $webSearchBrowserBrowsersPath = $admin['web_search_browser_browsers_path'] ?? '';
-$webSearchBrowserTimeout = $admin['web_search_browser_timeout'] ?? '20';
 // '' means a browser is usable; anything else is the reason it is not, so the
 // switch never looks like it is doing something when it cannot.
 $webSearchBrowserStatus = (string)($_['webSearchBrowserStatus'] ?? '');
@@ -257,94 +247,11 @@ $providerLabels = [
 				<span><?php p($l->t('Remove the stored API key')); ?></span>
 			</label>
 		</div>
-
-		<div class="eva-field">
-			<label for="eva-websearch-max"><?php p($l->t('Maximum results per search')); ?></label>
-			<input type="number" id="eva-websearch-max" name="web_search_max_results"
-				min="1" max="20" step="1" value="<?php p($webSearchMaxResults); ?>">
-			<p class="eva-field-hint">
-				<?php p($l->t('1–20, default 8. Every result is added to the model context.')); ?>
-			</p>
-		</div>
-
-		<div class="eva-field">
-			<label for="eva-websearch-timeout"><?php p($l->t('Search timeout')); ?></label>
-			<input type="number" id="eva-websearch-timeout" name="web_search_timeout"
-				min="1" max="30" step="1" value="<?php p($webSearchTimeout); ?>">
-			<p class="eva-field-hint">
-				<?php p($l->t('Seconds before a search is given up. 1–30, default 10.')); ?>
-			</p>
-		</div>
-
-		<div class="eva-field">
-			<label for="eva-content-chars"><?php p($l->t('Text per result page')); ?></label>
-			<input type="number" id="eva-content-chars" name="web_search_content_chars"
-				min="200" max="8000" step="100" value="<?php p($webSearchContentChars); ?>">
-			<p class="eva-field-hint">
-				<?php p($l->t('Characters read from each result page. 200–8000, default 2000. More text means more accurate answers and a larger context.')); ?>
-			</p>
-		</div>
-
-		<div class="eva-field">
-			<label for="eva-candidates"><?php p($l->t('Pages compared before choosing')); ?></label>
-			<input type="number" id="eva-candidates" name="web_search_candidates"
-				min="3" max="20" step="1" value="<?php p($webSearchCandidates); ?>">
-			<p class="eva-field-hint">
-				<?php p($l->t('How many hits are read and scored before the best ones are returned. 3–20, default 12. A larger field costs one page fetch per candidate but stops the search from trusting the first hits.')); ?>
-			</p>
-		</div>
 	</div>
 
-	<label class="eva-checkbox">
-		<input type="checkbox" id="eva-safesearch-toggle" name="web_search_safe_search" value="1"
-			<?php p($webSearchSafeSearch ? 'checked' : ''); ?>>
-		<span><?php p($l->t('Ask the provider to filter adult results')); ?></span>
-	</label>
-
-	<label class="eva-checkbox">
-		<input type="checkbox" id="eva-fetch-content-toggle" name="web_search_fetch_content" value="1"
-			<?php p($webSearchFetchContent ? 'checked' : ''); ?>>
-		<span><?php p($l->t('Read the result pages and give the model their real text')); ?></span>
-	</label>
 	<p class="settings-hint eva-indent">
-		<?php p($l->t('Enabling this fetches the ranked pages in parallel and is what makes answers accurate rather than a paraphrase of a search teaser. Turn it off to keep a search to a single request.')); ?>
+		<?php p($l->t('Search limits, page reading, images, safe search and browser rendering are configured by each user in personal Eva AI settings. This page only stores shared provider credentials and browser infrastructure.')); ?>
 	</p>
-
-	<label class="eva-checkbox">
-		<input type="checkbox" id="eva-images-toggle" name="web_search_images" value="1"
-			<?php p($webSearchImages ? 'checked' : ''); ?>>
-		<span><?php p($l->t('Show images from the result pages')); ?></span>
-	</label>
-	<p class="settings-hint eva-indent">
-		<?php p($l->t('Adds up to three images per result (the page\'s own preview image and pictures inside the article) so the assistant can show a figure instead of describing it. Icons, logos and tracking pixels are filtered out. No extra request is made: the images come from the pages already being read.')); ?>
-	</p>
-
-	<label class="eva-checkbox">
-		<input type="checkbox" id="eva-browser-toggle" name="web_search_browser" value="1"
-			<?php p($webSearchBrowser ? 'checked' : ''); ?>>
-		<span><?php p($l->t('Read pages that need JavaScript in a real browser')); ?></span>
-	</label>
-	<p class="settings-hint eva-indent">
-		<?php p($l->t('Many sites deliver their article only after their own scripts have run; a plain request sees an empty shell, so an answer built from it is a guess. With this on, a page whose text did not arrive is loaded in a headless Chromium and read normally. Only such pages are rendered (at most four per search), so ordinary pages are unaffected.')); ?>
-	</p>
-	<p class="settings-hint eva-indent eva-browser-state<?php p($webSearchBrowserStatus === '' ? ' is-ok' : ' is-missing'); ?>" id="eva-browser-status">
-		<?php
-		if ($webSearchBrowserStatus === '') {
-			p($l->t('Node.js, Playwright and a Chromium build were found, so pages can be rendered.'));
-		} else {
-			p($l->t('Not usable yet: %s', [$webSearchBrowserStatus]));
-		}
-		?>
-	</p>
-
-	<?php if ($webSearchBrowserStatus !== '') { ?>
-	<p class="settings-hint eva-indent eva-browser-help" id="eva-browser-help">
-		<?php p($l->t('Searched for a browser in: %s', [$webSearchBrowserDetectedPath === '' ? $l->t('(no home directory could be determined)') : $webSearchBrowserDetectedPath])); ?>
-		<br>
-		<?php p($l->t('Install command:')); ?>
-		<code><?php p($webSearchBrowserInstallCommand); ?></code>
-	</p>
-	<?php } ?>
 
 	<div class="eva-field">
 		<label for="eva-browser-node"><?php p($l->t('Node.js path')); ?></label>
@@ -361,15 +268,6 @@ $providerLabels = [
 			placeholder="<?php p($webSearchBrowserDetectedPath); ?>" value="<?php p($webSearchBrowserBrowsersPath); ?>">
 		<p class="eva-field-hint">
 			<?php p($l->t('Leave empty to use Playwright\'s own location for the user the web server runs as. Set it when the browser build lives elsewhere - for example in a shared directory, or when the app runs as a user whose home directory the browser installer did not use. The placeholder shows the path that is used right now.')); ?>
-		</p>
-	</div>
-
-	<div class="eva-field">
-		<label for="eva-browser-timeout"><?php p($l->t('Browser timeout')); ?></label>
-		<input type="number" id="eva-browser-timeout" name="web_search_browser_timeout"
-			min="3" max="60" step="1" value="<?php p($webSearchBrowserTimeout); ?>">
-		<p class="eva-field-hint">
-			<?php p($l->t('Seconds a rendered page may take before the browser is stopped. 3-60, default 20.')); ?>
 		</p>
 	</div>
 
@@ -403,19 +301,10 @@ $providerLabels = [
 		<?php p($l->t('Instance-wide switches for tools that contact services outside this server.')); ?>
 	</p>
 
-	<label class="eva-checkbox">
-		<input type="checkbox" id="eva-weather-toggle" name="weather_tool_enabled" value="1"
-			<?php p($weatherEnabled ? 'checked' : ''); ?>>
-		<span><?php p($l->t('Allow weather forecasts for all users')); ?></span>
-	</label>
-	<p class="settings-hint eva-indent">
-		<?php p($l->t('The weather tool queries the external Open-Meteo service. Turn it off to keep all tool traffic on your own server.')); ?>
+	<p class="settings-hint">
+		<?php p($l->t('Tool permissions, including weather forecasts and file actions, are configured by each user in personal Eva AI settings.')); ?>
 	</p>
 
-	<p class="eva-actions">
-		<button type="button" id="eva-tools-save" class="primary"><?php p($l->t('Save tool settings')); ?></button>
-		<span id="eva-tools-status" class="eva-status-text" role="status" aria-live="polite"></span>
-	</p>
 
 	<h3><?php p($l->t('Accounts and indexing')); ?></h3>
 	<p class="settings-hint">

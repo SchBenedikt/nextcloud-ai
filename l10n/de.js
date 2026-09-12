@@ -212,8 +212,8 @@ OC.L10N.register("eva_ai", {
     "Headline": "Titelzeile",
     "Heavy task model (optional)": "Modell für schwere Aufgaben (optional)",
     "Home": "Start",
-        "I would like to perform these actions: {actions}. Shall I?": "Ich möchte folgende Aktionen ausführen: {actions}. Soll ich?",
-"Idle": "Bereit",
+    "I would like to perform these actions: {actions}. Shall I?": "Ich möchte folgende Aktionen ausführen: {actions}. Soll ich?",
+    "Idle": "Bereit",
     "If the chat model above is not installed, EVA tries these models in order before failing. (E.g. llama3.1, qwen2.5)": "Falls das obige Chat-Modell nicht installiert ist, versucht EVA diese Modelle der Reihe nach, bevor es abbricht. (z. B. llama3.1, qwen2.5)",
     "If the embedding model above is not installed, EVA tries these models in order before failing.": "Falls das obige Einbettungsmodell nicht installiert ist, versucht EVA diese Modelle der Reihe nach, bevor es abbricht.",
     "In progress": "In Bearbeitung",
@@ -581,8 +581,7 @@ OC.L10N.register("eva_ai", {
     "Only index Nextcloud Talk chats": "Nur Nextcloud-Talk-Chats indizieren",
     "Only used when Talk indexing is enabled. Default: 20.": "Wird nur verwendet, wenn die Talk-Indizierung aktiviert ist. Standard: 20.",
     "Let EVA post to Nextcloud Talk for me": "EVA in meinem Namen in Nextcloud Talk schreiben lassen",
-    "Let EVA answer and write in your Nextcloud Talk conversations for you. A message posted this way appears under your name, exactly as if you had typed it, so EVA only posts when you explicitly ask it to. Enabling this also lets EVA read a chat on request.": "Lass EVA in deinen Nextcloud-Talk-Unterhaltungen für dich antworten und schreiben. Eine so gesendete Nachricht erscheint unter deinem Namen, genau als hättest du sie selbst getippt - EVA schreibt deshalb nur, wenn du es ausdrücklich verlangst. Damit darf EVA einen Chat auch auf Anfrage lesen."
-,
+    "Let EVA answer and write in your Nextcloud Talk conversations for you. A message posted this way appears under your name, exactly as if you had typed it, so EVA only posts when you explicitly ask it to. Enabling this also lets EVA read a chat on request.": "Lass EVA in deinen Nextcloud-Talk-Unterhaltungen für dich antworten und schreiben. Eine so gesendete Nachricht erscheint unter deinem Namen, genau als hättest du sie selbst getippt - EVA schreibt deshalb nur, wenn du es ausdrücklich verlangst. Damit darf EVA einen Chat auch auf Anfrage lesen.",
     "Results per search": "Ergebnisse pro Suche",
     "How many search results are considered.": "Wie viele Suchergebnisse berücksichtigt werden.",
     "Search timeout (seconds)": "Such-Timeout (Sekunden)",
@@ -596,8 +595,11 @@ OC.L10N.register("eva_ai", {
     "Read page content during searches": "Seiteninhalt bei Suchen lesen",
     "Collect and show images": "Bilder sammeln und anzeigen",
     "Use the full browser for JavaScript pages": "Vollständigen Browser für JavaScript-Seiten verwenden",
-    "Result limits, page reading, safe search, images and browser rendering are now personal settings above. This section only contains shared provider infrastructure.": "Ergebnislimits, Seitenlesen, sichere Suche, Bilder und Browser-Darstellung sind jetzt oben persönliche Einstellungen. Dieser Bereich enthält nur noch die gemeinsame Anbieter-Infrastruktur."
-,
+    "Result limits, page reading, safe search, images and browser rendering are now personal settings above. This section only contains shared provider infrastructure.": "Ergebnislimits, Seitenlesen, sichere Suche, Bilder und Browser-Darstellung sind jetzt oben persönliche Einstellungen. Dieser Bereich enthält nur noch die gemeinsame Anbieter-Infrastruktur.",
     "Changes save automatically": "Änderungen werden automatisch gespeichert",
-    "Instance settings save automatically.": "Instanz-Einstellungen werden automatisch gespeichert."
+    "Instance settings save automatically.": "Instanz-Einstellungen werden automatisch gespeichert.",
+    "Allow weather forecasts for me": "Wettervorhersagen für mich erlauben",
+    "The weather tool uses external Open-Meteo services for geocoding and forecasts.": "Das Wetterwerkzeug verwendet externe Open-Meteo-Dienste für Geokodierung und Vorhersagen.",
+    "Tool permissions, including weather forecasts and file actions, are configured by each user in personal Eva AI settings.": "Berechtigungen für Werkzeuge, einschließlich Wettervorhersagen und Dateiaktionen, werden von jedem Benutzer in den persönlichen Eva-AI-Einstellungen festgelegt.",
+    "Search limits, page reading, images, safe search and browser rendering are configured by each user in personal Eva AI settings. This page only stores shared provider credentials and browser infrastructure.": "Suchlimits, Seitenlesen, Bilder, sichere Suche und Browserdarstellung werden von jedem Benutzer in den persönlichen Eva-AI-Einstellungen festgelegt. Diese Seite speichert nur gemeinsame Anbieterzugänge und Browser-Infrastruktur."
 }, "nplurals=2; plural=(n != 1);");

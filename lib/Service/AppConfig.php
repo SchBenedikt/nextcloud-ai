@@ -31,6 +31,7 @@ class AppConfig {
         // message is an act in somebody's name, so the user opts in.
         'talk_write_enabled',
         'chat_retention_days', 'embed_batch_size', 'ocr_enabled', 'ocr_language',
+        'weather_tool_enabled',
         'ollama_keep_alive', 'followups_mode',
         // Web search: each user can enable/disable and choose their provider.
         // DuckDuckGo works without any API key; SearxNG/Brave/Tavily need
@@ -59,10 +60,9 @@ class AppConfig {
      * Instance-wide keys that only an administrator may read or change.
      * Per-user web search settings (enabled, provider) have moved to USER_SETTINGS
      * so each user can individually enable DuckDuckGo or other providers.
-     * Admin-only: weather tool, instance-wide web search infra (URL, key, limits).
+     * Admin-only: instance-wide web search infrastructure and index throughput.
      */
     public const ADMIN_SETTINGS = [
-        'weather_tool_enabled',
         // Instance-level web search infrastructure: SearxNG URL, API keys,
         // result limits. Individual users choose whether to use them.
         'web_search_url',

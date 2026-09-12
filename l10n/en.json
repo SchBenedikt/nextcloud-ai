@@ -213,7 +213,8 @@
         "Headline": "Headline",
         "Heavy task model (optional)": "Heavy task model (optional)",
         "Home": "Home",
-        "I would like to perform these actions: {actions}. Shall I?": "I would like to perform these actions: {actions}. Shall I?", "Idle": "Idle",
+        "I would like to perform these actions: {actions}. Shall I?": "I would like to perform these actions: {actions}. Shall I?",
+        "Idle": "Idle",
         "If the chat model above is not installed, EVA tries these models in order before failing. (E.g. llama3.1, qwen2.5)": "If the chat model above is not installed, EVA tries these models in order before failing. (E.g. llama3.1, qwen2.5)",
         "If the embedding model above is not installed, EVA tries these models in order before failing.": "If the embedding model above is not installed, EVA tries these models in order before failing.",
         "In progress": "In progress",
@@ -287,7 +288,8 @@
         "Never delete automatically": "Never delete automatically",
         "New chat": "New chat",
         "New chat title:": "New chat title:",
-        "Untitled folder": "Untitled folder", "New folder name": "New folder name",
+        "Untitled folder": "Untitled folder",
+        "New folder name": "New folder name",
         "New name": "New name",
         "Newest first": "Newest first",
         "Nextcloud group": "Nextcloud group",
@@ -580,8 +582,7 @@
         "Only index Nextcloud Talk chats": "Only index Nextcloud Talk chats",
         "Only used when Talk indexing is enabled. Default: 20.": "Only used when Talk indexing is enabled. Default: 20.",
         "Let EVA post to Nextcloud Talk for me": "Let EVA post to Nextcloud Talk for me",
-        "Let EVA answer and write in your Nextcloud Talk conversations for you. A message posted this way appears under your name, exactly as if you had typed it, so EVA only posts when you explicitly ask it to. Enabling this also lets EVA read a chat on request.": "Let EVA answer and write in your Nextcloud Talk conversations for you. A message posted this way appears under your name, exactly as if you had typed it, so EVA only posts when you explicitly ask it to. Enabling this also lets EVA read a chat on request."
-,
+        "Let EVA answer and write in your Nextcloud Talk conversations for you. A message posted this way appears under your name, exactly as if you had typed it, so EVA only posts when you explicitly ask it to. Enabling this also lets EVA read a chat on request.": "Let EVA answer and write in your Nextcloud Talk conversations for you. A message posted this way appears under your name, exactly as if you had typed it, so EVA only posts when you explicitly ask it to. Enabling this also lets EVA read a chat on request.",
         "Results per search": "Results per search",
         "How many search results are considered.": "How many search results are considered.",
         "Search timeout (seconds)": "Search timeout (seconds)",
@@ -595,10 +596,13 @@
         "Read page content during searches": "Read page content during searches",
         "Collect and show images": "Collect and show images",
         "Use the full browser for JavaScript pages": "Use the full browser for JavaScript pages",
-        "Result limits, page reading, safe search, images and browser rendering are now personal settings above. This section only contains shared provider infrastructure.": "Result limits, page reading, safe search, images and browser rendering are now personal settings above. This section only contains shared provider infrastructure."
-,
+        "Result limits, page reading, safe search, images and browser rendering are now personal settings above. This section only contains shared provider infrastructure.": "Result limits, page reading, safe search, images and browser rendering are now personal settings above. This section only contains shared provider infrastructure.",
         "Changes save automatically": "Changes save automatically",
-        "Instance settings save automatically.": "Instance settings save automatically."
+        "Instance settings save automatically.": "Instance settings save automatically.",
+        "Allow weather forecasts for me": "Allow weather forecasts for me",
+        "The weather tool uses external Open-Meteo services for geocoding and forecasts.": "The weather tool uses external Open-Meteo services for geocoding and forecasts.",
+        "Tool permissions, including weather forecasts and file actions, are configured by each user in personal Eva AI settings.": "Tool permissions, including weather forecasts and file actions, are configured by each user in personal Eva AI settings.",
+        "Search limits, page reading, images, safe search and browser rendering are configured by each user in personal Eva AI settings. This page only stores shared provider credentials and browser infrastructure.": "Search limits, page reading, images, safe search and browser rendering are configured by each user in personal Eva AI settings. This page only stores shared provider credentials and browser infrastructure."
     },
     "pluralForm": "nplurals=2; plural=(n != 1);"
 }

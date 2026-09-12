@@ -151,17 +151,8 @@
 	bindSave('eva-websearch-save', 'eva-websearch-status', function () {
 		var payload = {
 			web_search_url: value('eva-websearch-url'),
-			web_search_max_results: value('eva-websearch-max'),
-			web_search_timeout: value('eva-websearch-timeout'),
-			web_search_content_chars: value('eva-content-chars'),
-			web_search_candidates: value('eva-candidates'),
-			web_search_safe_search: checked('eva-safesearch-toggle') ? '1' : '0',
-			web_search_fetch_content: checked('eva-fetch-content-toggle') ? '1' : '0',
-			web_search_images: checked('eva-images-toggle') ? '1' : '0',
-			web_search_browser: checked('eva-browser-toggle') ? '1' : '0',
 			web_search_browser_node: value('eva-browser-node'),
 			web_search_browser_browsers_path: value('eva-browser-browsers-path'),
-			web_search_browser_timeout: value('eva-browser-timeout'),
 		}
 		var apiKey = value('eva-websearch-key')
 		if (apiKey) {
@@ -349,12 +340,6 @@
 	}
 
 	// ── Tools ────────────────────────────────────────────────────────────
-
-	bindSave('eva-tools-save', 'eva-tools-status', function () {
-		return {
-			weather_tool_enabled: checked('eva-weather-toggle') ? '1' : '0',
-		}
-	})
 
 	// ── Per-user enrollment toggle ───────────────────────────────────────
 

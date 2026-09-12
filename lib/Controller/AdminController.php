@@ -49,7 +49,7 @@ class AdminController extends OCSController {
      *
      * Web search enabled/provider have moved to per-user settings so each
      * user can individually enable DuckDuckGo (free, no API key) or other
-     * providers. Admin-only: weather tool, instance search infrastructure.
+     * providers. Admin-only: instance search infrastructure and index throughput.
      */
     #[AdminRequired]
     public function getSettings(): DataResponse {
