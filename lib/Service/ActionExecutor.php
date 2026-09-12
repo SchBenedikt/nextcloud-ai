@@ -540,10 +540,10 @@ class ActionExecutor {
             ]],
             ['type' => 'function', 'function' => [
                 'name' => 'discover_app_api',
-                'description' => 'Discover the installed Nextcloud API routes of an enabled app so you can plan a supported action. This is read-only and never executes a route.',
+                'description' => 'Discover the installed Nextcloud API routes of an enabled app so you can plan a supported action. Set include_internal=true to learn non-OCS app routes as well. This is read-only and never executes a route.',
                 'parameters' => ['type' => 'object', 'properties' => [
                     'app_id' => ['type' => 'string', 'description' => 'Optional Nextcloud app id, e.g. deck, bookmarks, forms. Omit to summarize all enabled app routes.'],
-                    'include_internal' => ['type' => 'boolean', 'description' => 'Include internal non-OCS routes (default false).'],
+                    'include_internal' => ['type' => 'boolean', 'description' => 'Include internal non-OCS routes (default false). Required before calling a non-OCS route.'],
                 ]],
             ]],
             ['type' => 'function', 'function' => [
@@ -553,10 +553,10 @@ class ActionExecutor {
             ]],
             ['type' => 'function', 'function' => [
                 'name' => 'call_app_api',
-                'description' => 'Call an OCS endpoint of an enabled Nextcloud app in the current user session. Read methods are allowed; POST, PUT, PATCH and DELETE always require explicit confirmation.',
+                'description' => 'Call a discovered endpoint of an enabled Nextcloud app in the current user session. OCS and other same-origin app routes are supported when discovered first. Read methods are allowed; POST, PUT, PATCH and DELETE always require explicit confirmation.',
                 'parameters' => ['type' => 'object', 'properties' => [
                     'app_id' => ['type' => 'string', 'description' => 'Enabled Nextcloud app id, e.g. deck or bookmarks.'],
-                    'path' => ['type' => 'string', 'description' => 'Same-origin OCS path beginning with /ocs/v1.php/apps/{app_id}/ or /ocs/v2.php/apps/{app_id}/.'],
+                    'path' => ['type' => 'string', 'description' => 'Same-origin route path returned by discover_app_api. OCS paths begin with /ocs/v1.php/apps/{app_id}/ or /ocs/v2.php/apps/{app_id}/; internal app routes must have been discovered with include_internal=true.'],
                     'method' => ['type' => 'string', 'enum' => ['GET', 'POST', 'PUT', 'PATCH', 'DELETE']],
                     'params' => ['type' => 'object', 'description' => 'Query/body parameters for the OCS endpoint. Never include credentials.'],
                 ], 'required' => ['app_id', 'path', 'method']],
@@ -1041,7 +1041,7 @@ class ActionExecutor {
                 'comments' => ['protocols' => ['OCS Comments API', 'server-side ICommentsManager'], 'eva_tools' => ['list_comments', 'add_comment', 'delete_comment']],
                 'systemtags' => ['protocols' => ['server-side ISystemTagManager/ISystemTagObjectMapper', 'OCS Files Tags API'], 'eva_tools' => ['list_system_tags', 'tag_file', 'untag_file']],
                 'files_versions' => ['protocols' => ['server-side IVersionManager'], 'eva_tools' => ['list_file_versions', 'restore_file_version']],
-                '_generic' => ['protocols' => ['Nextcloud route metadata / OCS discovery'], 'eva_tools' => ['discover_app_api'], 'status' => 'discovery only; unknown routes are never invoked generically'],
+                '_generic' => ['protocols' => ['Nextcloud route metadata, OCS and app-specific routes'], 'eva_tools' => ['discover_app_api', 'call_app_api'], 'status' => 'unknown app routes can be learned and invoked through the confirmation-gated generic adapter'],
             ];
             $availableApis = [];
             foreach ($apiCatalog as $app => $metadata) if (in_array($app, $apps, true)) $availableApis[$app] = $metadata;
@@ -1058,7 +1058,7 @@ class ActionExecutor {
                     'notes' => in_array('notes', $apps, true),
                 ],
                 'api_catalog' => $availableApis,
-                'next_step' => 'Plan with the protocols and EVA tools listed above. Prefer a dedicated EVA adapter; for an enabled app without one, call list_learned_app_apis or discover_app_api first, then use the exact same-origin OCS route with call_app_api. Generic calls are always confirmation-gated interactively and require the encrypted app token in background runs.',
+                'next_step' => 'Plan with the protocols and EVA tools listed above. Prefer a dedicated EVA adapter; for an enabled app without one, call list_learned_app_apis or discover_app_api first (include_internal=true when needed), then use the exact same-origin discovered route with call_app_api. Generic calls are always confirmation-gated interactively and require the encrypted app token in background runs.',
             ];
         } catch (\Throwable $e) {
             return ['ok' => false, 'error' => 'Nextcloud capability discovery is unavailable.'];
@@ -1068,7 +1068,7 @@ class ActionExecutor {
     /**
      * Read route metadata from Nextcloud's router without invoking controllers.
      * This gives the agent a safe way to learn an installed app's API surface;
-     * execution still goes through the same-origin OCS path and its normal
+     * execution still goes through a same-origin app path and its normal
      * Nextcloud authentication/permission checks.
      */
     private function discoverAppApi(array $args): array {
@@ -1114,7 +1114,7 @@ class ActionExecutor {
             usort($routes, static fn (array $a, array $b): int => strcmp($a['name'], $b['name']));
             if (count($routes) > 300) $routes = array_slice($routes, 0, 300);
             $this->rememberAppApi($appId, $routes);
-            return ['ok' => true, 'result' => ['app_id' => $appId !== '' ? $appId : null, 'route_count' => count($routes), 'routes' => $routes, 'execution_policy' => 'Discovery never executes a route. Use the exact same-origin OCS path with call_app_api; interactive calls require confirmation and background calls require the encrypted app token.']];
+            return ['ok' => true, 'result' => ['app_id' => $appId !== '' ? $appId : null, 'route_count' => count($routes), 'routes' => $routes, 'execution_policy' => 'Discovery never executes a route. Use the exact same-origin path with call_app_api; non-OCS routes must be discovered with include_internal=true. Interactive calls require confirmation and background calls require the encrypted app token.']];
         } catch (\Throwable) {
             return ['ok' => false, 'error' => 'Nextcloud app API discovery is unavailable.'];
         }
@@ -1160,11 +1160,35 @@ class ActionExecutor {
             return ['ok' => false, 'error' => 'A valid app_id and HTTP method are required.'];
         }
         if (!is_array($params) || count($params) > 50) return ['ok' => false, 'error' => 'params must be an object with at most 50 fields.'];
-        $prefixes = ['/ocs/v1.php/apps/' . $appId . '/', '/ocs/v2.php/apps/' . $appId . '/'];
-        $validPath = false;
-        foreach ($prefixes as $prefix) if (str_starts_with($path, $prefix)) $validPath = true;
-        if (!$validPath || str_contains($path, '..') || preg_match('/[\r\n]/', $path)) {
-            return ['ok' => false, 'error' => 'Only same-origin OCS app paths for the selected app are allowed.'];
+        $ocsPrefixes = ['/ocs/v1.php/apps/' . $appId . '/', '/ocs/v2.php/apps/' . $appId . '/'];
+        $isOcsPath = false;
+        foreach ($ocsPrefixes as $prefix) if (str_starts_with($path, $prefix)) $isOcsPath = true;
+        if (str_contains($path, '..') || preg_match('/[\r\n]/', $path) || !str_starts_with($path, '/')) {
+            return ['ok' => false, 'error' => 'Only same-origin app paths without traversal are allowed.'];
+        }
+        // Non-OCS routes are accepted only after the agent has explicitly
+        // discovered and cached that app's route metadata. This permits
+        // unknown apps to be learned safely without turning call_app_api into
+        // an arbitrary internal HTTP proxy. OCS paths retain the historical
+        // prefix check for backwards compatibility with existing clients.
+        if (!$isOcsPath) {
+            $knownRoute = false;
+            try {
+                $learned = json_decode($this->config->get('learned_app_apis'), true);
+                $routes = is_array($learned[$appId]['routes'] ?? null) ? $learned[$appId]['routes'] : [];
+                foreach ($routes as $route) {
+                    if (!is_array($route) || (bool)($route['ocs'] ?? false)) continue;
+                    $routePath = (string)($route['path'] ?? '');
+                    $methods = is_array($route['methods'] ?? null) ? array_map('strtoupper', $route['methods']) : [];
+                    if ($routePath !== '' && $this->matchesDiscoveredRoute($routePath, $path) && ($methods === [] || in_array($method, $methods, true))) {
+                        $knownRoute = true;
+                        break;
+                    }
+                }
+            } catch (\Throwable) { /* treat malformed learning cache as empty */ }
+            if (!$knownRoute) {
+                return ['ok' => false, 'error' => 'This non-OCS route has not been discovered yet. Call discover_app_api with include_internal=true first.'];
+            }
         }
         try {
             $appManager = Server::get(\OCP\App\IAppManager::class);
@@ -1206,6 +1230,14 @@ class ActionExecutor {
             $decoded = json_decode($body, true);
             return ['ok' => $response->getStatusCode() >= 200 && $response->getStatusCode() < 300, 'result' => ['status' => $response->getStatusCode(), 'data' => $decoded ?? $body, 'path' => $path, 'method' => $method]];
         } catch (\Throwable) { return ['ok' => false, 'error' => 'The app API request failed in the current user context.']; }
+    }
+
+    /** Match a concrete request path against a Nextcloud route template. */
+    private function matchesDiscoveredRoute(string $template, string $path): bool {
+        $quoted = preg_quote(rtrim($template, '/'), '#');
+        $quoted = preg_replace('/\\\\\{[^}]+\\\\\}/', '[^/]+', $quoted) ?? $quoted;
+        $pattern = '#^' . $quoted . '/?$#';
+        return preg_match($pattern, $path) === 1;
     }
 
     private function briefingRows(): array {
