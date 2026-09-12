@@ -916,8 +916,8 @@ class ApiController extends OCSController {
         if ($user === null) return new DataResponse(['error' => 'Not logged in'], 401);
         $id = trim((string)($this->requestParam('id') ?? ''));
         if ($id === '') return new DataResponse(['error' => 'Queue id required'], 400);
-        $this->backgroundChatQueue->complete($user, $id);
-        return new DataResponse(['ok' => true]);
+        if (!$this->backgroundChatQueue->cancel($user, $id)) return new DataResponse(['error' => 'Background job not found'], 404);
+        return new DataResponse(['ok' => true, 'cancelRequested' => true]);
     }
 
     /**
