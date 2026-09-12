@@ -31,11 +31,12 @@ class Notifier implements INotifier {
 			throw new UnknownNotificationException();
 		}
 
-		if (in_array($notification->getSubject(), ['answer_ready', 'scheduled_briefing'], true)) {
+		if (in_array($notification->getSubject(), ['answer_ready', 'scheduled_briefing', 'background_failed'], true)) {
 			$params = $notification->getSubjectParameters();
-			$notification->setParsedSubject($notification->getSubject() === 'scheduled_briefing'
+			$subject = $notification->getSubject();
+			$notification->setParsedSubject($subject === 'scheduled_briefing'
 				? 'EVA scheduled briefing'
-				: 'EVA answer ready');
+				: ($subject === 'background_failed' ? 'EVA task failed' : 'EVA answer ready'));
 			$notification->setParsedMessage((string)($params['text'] ?? ''));
 			// NC >= 30 verlangt absolute URLs fuer das Icon; relative Pfade
 			// werfen InvalidValueException (subklasse von \InvalidArgumentException)
