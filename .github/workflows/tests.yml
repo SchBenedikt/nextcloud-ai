@@ -75,6 +75,11 @@ jobs:
       - name: Install frontend dependencies
         run: npm ci
 
+      # The web search's page renderer is driven by these tests, so the browser
+      # has to be present before them and not only before the Playwright suite.
+      - name: Install Chromium
+        run: npx playwright install --with-deps chromium
+
       - name: Test frontend behavior
         run: npm test
 
@@ -93,9 +98,6 @@ jobs:
             git --no-pager diff --stat -- js/
             exit 1
           fi
-
-      - name: Install Chromium
-        run: npx playwright install --with-deps chromium
 
       - name: Verify Markdown and the chat flow in a browser
         run: npm run test:browser

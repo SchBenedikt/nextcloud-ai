@@ -66,7 +66,23 @@ function render(request, timeoutMs = 90000) {
   })
 }
 
-test('a page whose text only exists after JS runs is read correctly', async () => {
+/**
+ * Playwright without its browser binary is a setup problem, not a defect.
+ *
+ * CI installs Chromium before this file runs, so the skip is for a contributor's
+ * machine; every other failure still fails, which is what keeps the suite from
+ * going quietly green when the renderer itself is broken.
+ */
+function skipWithoutBrowser(t, result) {
+  const message = String((result && result.error) || '')
+  if (/Executable doesn't exist|playwright install/i.test(message)) {
+    t.skip('Chromium is not installed here - run "npx playwright install chromium"')
+    return true
+  }
+  return false
+}
+
+test('a page whose text only exists after JS runs is read correctly', async (t) => {
   const routes = {
     '/client-side': (res) => {
       res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' })
@@ -85,6 +101,7 @@ test('a page whose text only exists after JS runs is read correctly', async () =
 
   await withServer(routes, async (base) => {
     const result = await render({ urls: [base + '/client-side'], timeoutMs: 20000 })
+    if (skipWithoutBrowser(t, result)) return
 
     assert.equal(result.ok, true, JSON.stringify(result))
     const page = result.pages['0']
@@ -99,7 +116,7 @@ test('a page whose text only exists after JS runs is read correctly', async () =
   })
 })
 
-test('the final URL is reported so the caller can re-check a redirect', async () => {
+test('the final URL is reported so the caller can re-check a redirect', async (t) => {
   const routes = {
     '/start': (res) => {
       res.writeHead(302, { location: '/landed' })
@@ -113,6 +130,7 @@ test('the final URL is reported so the caller can re-check a redirect', async ()
 
   await withServer(routes, async (base) => {
     const result = await render({ urls: [base + '/start'], timeoutMs: 20000 })
+    if (skipWithoutBrowser(t, result)) return
     const page = result.pages['0']
     assert.equal(page.ok, true, JSON.stringify(page))
     assert.equal(page.finalUrl, base + '/landed')
@@ -120,7 +138,7 @@ test('the final URL is reported so the caller can re-check a redirect', async ()
   })
 })
 
-test('several URLs share one browser and keep their own result', async () => {
+test('several URLs share one browser and keep their own result', async (t) => {
   const routes = {}
   for (const name of ['eins', 'zwei', 'drei']) {
     routes['/' + name] = (res) => {
@@ -140,6 +158,7 @@ test('several URLs share one browser and keep their own result', async () => {
   await withServer(routes, async (base) => {
     const urls = ['/eins', '/zwei', '/drei'].map((p) => base + p)
     const result = await render({ urls, timeoutMs: 20000, concurrency: 3 })
+    if (skipWithoutBrowser(t, result)) return
 
     assert.equal(result.ok, true, JSON.stringify(result))
     // Index order is the caller's order, which is how a result is matched back to
@@ -159,11 +178,12 @@ test('a non-http scheme is refused before anything is launched', async () => {
   assert.deepEqual(result.pages, {})
 })
 
-test('an unreachable URL fails that page without failing the request', async () => {
+test('an unreachable URL fails that page without failing the request', async (t) => {
   const result = await render(
     { urls: ['http://127.0.0.1:9/nowhere'], timeoutMs: 8000, concurrency: 1 },
     60000,
   )
+  if (skipWithoutBrowser(t, result)) return
   // Port 9 (discard) refuses immediately, so the page must report an error and
   // the caller must still get a well-formed response it can act on.
   assert.equal(result.ok, true, JSON.stringify(result))
