@@ -638,8 +638,11 @@ export function mountChat(root, opts = {}) {
 			const item = items.find((entry) => entry && entry.chatId === chatId)
 			if (!item) { agentStatusPill.hidden = true; return }
 			const state = String(item.status || 'pending')
+			const progress = state === 'running' && item.phase === 'tool' && item.tool
+				? ` · ${String(item.tool)}`
+				: ''
 			agentStatusPill.textContent = state === 'running'
-				? t('EVA is continuing this chat in the background')
+				? t('EVA is continuing this chat in the background') + progress
 				: state === 'failed'
 					? t('Background EVA run failed after retries')
 					: t('EVA will continue this chat in the background')
