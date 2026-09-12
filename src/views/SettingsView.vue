@@ -418,20 +418,22 @@
 					<span>{{ $t('Indexed content stays in Nextcloud and is sent to the Ollama server configured above. Review your indexing scope before enabling Mail or Talk features.') }}</span>
 				</div>
 				<div class="admin-subsection">
-					<div class="briefing-heading"><div><h4>{{ $t('Scheduled briefings') }}</h4><p>{{ $t('EVA can prepare recurring, read-only answers and deliver them in your Nextcloud notifications.') }}</p></div><span class="briefing-count">{{ proactiveBriefings.length }} / 20</span></div>
+					<div class="briefing-heading"><div><h4>{{ $t('Scheduled briefings') }}</h4><p>{{ $t('EVA can prepare recurring answers and deliver them in your Nextcloud notifications. They are read-only unless you explicitly enable actions per briefing.') }}</p></div><span class="briefing-count">{{ proactiveBriefings.length }} / 20</span></div>
 					<NcCheckboxRadioSwitch v-model="proactiveEnabled" type="switch" class="native-toggle">{{ $t('Let EVA send scheduled notifications') }}</NcCheckboxRadioSwitch>
-					<div v-if="proactiveEnabled" class="briefing-note"><strong>{{ $t('How this works') }}</strong><span>{{ $t('Briefings use your server cron and your account timezone. EVA only reads information and sends the result as a notification; it never changes files, calendar entries or messages.') }}</span></div>
+					<div v-if="proactiveEnabled" class="briefing-note"><strong>{{ $t('How this works') }}</strong><span>{{ $t('Briefings use your server cron and account timezone. Every briefing is read-only by default. If you enable actions on one briefing, EVA may perform the requested changes automatically and reports the result in the notification.') }}</span></div>
 					<div v-if="proactiveEnabled" class="briefing-editor">
 						<div v-if="!proactiveBriefings.length" class="briefing-empty"><strong>{{ $t('No briefings yet') }}</strong><span>{{ $t('Add your first briefing below, for example a morning calendar summary or a weekly file digest.') }}</span></div>
 						<div v-for="briefing in proactiveBriefings" :key="briefing.id" class="briefing-card">
-							<div class="briefing-card-top"><div class="briefing-time"><span>{{ briefing.time }}</span><small>{{ briefing.days.map(dayName).join(' · ') }}</small></div><div class="briefing-card-actions"><button type="button" class="briefing-toggle" :class="{ active: briefing.enabled !== false }" :aria-label="$t('Toggle briefing')" @click="toggleBriefing(briefing.id)"><span></span></button><NcButton type="tertiary-no-background" @click="removeBriefing(briefing.id)">{{ $t('Remove') }}</NcButton></div></div>
-							<p class="briefing-prompt">{{ briefing.prompt }}</p><small class="briefing-next">{{ briefing.enabled === false ? $t('Paused') : $t('Runs on {days} at {time}', { days: briefing.days.map(dayName).join(', '), time: briefing.time }) }}</small>
+							<div class="briefing-card-top"><div class="briefing-time"><span>{{ briefing.time }}</span><small>{{ briefing.days.map(dayName).join(' · ') }}</small></div><div class="briefing-card-actions"><button type="button" class="briefing-toggle" :class="{ active: briefing.enabled !== false }" :aria-label="$t('Toggle briefing')" @click="toggleBriefing(briefing.id)"><span></span></button><NcButton type="tertiary-no-background" @click="toggleBriefingActions(briefing.id)">{{ briefing.allow_actions ? $t('Disable actions') : $t('Enable actions') }}</NcButton><NcButton type="tertiary-no-background" @click="removeBriefing(briefing.id)">{{ $t('Remove') }}</NcButton></div></div>
+							<p class="briefing-prompt">{{ briefing.prompt }}</p><small class="briefing-next">{{ briefing.enabled === false ? $t('Paused') : $t('Runs on {days} at {time}', { days: briefing.days.map(dayName).join(', '), time: briefing.time }) }} <span v-if="briefing.allow_actions" class="briefing-action-badge">{{ $t('Actions enabled') }}</span></small>
 						</div>
 						<div class="briefing-form"><div class="briefing-form-title"><strong>{{ $t('Create a briefing') }}</strong><span>{{ $t('Choose what EVA should prepare and when you want it.') }}</span></div>
 						<div class="field-grid">
 							<div class="field field-wide"><NcTextField v-model="briefingDraft.prompt" :label="$t('What should EVA do?')" :label-outside="true" :placeholder="$t('For example: summarize my calendar for today')" /><p class="field-help">{{ $t('Write a question or instruction in plain language. You can ask about files, calendar, tasks or your knowledge base.') }}</p></div>
 							<NcTextField v-model="briefingDraft.time" type="time" :label="$t('Time')" :label-outside="true" />
 						</div>
+						<NcCheckboxRadioSwitch v-model="briefingDraft.allow_actions" type="switch">{{ $t('Allow EVA to perform requested actions automatically') }}</NcCheckboxRadioSwitch>
+						<p v-if="briefingDraft.allow_actions" class="field-help briefing-action-warning">{{ $t('Use only for prompts you trust. EVA will execute needed changes in the background without a second dialog; generic app APIs still need the encrypted Nextcloud app token.') }}</p>
 						<div><span class="native-label">{{ $t('Repeat on') }}</span><div class="weekday-picker"><label v-for="day in weekdays" :key="day.value" :class="{ selected: briefingDraft.days.includes(day.value) }"><input v-model="briefingDraft.days" type="checkbox" :value="day.value" /> <span>{{ day.label }}</span></label></div></div>
 						<div class="briefing-form-actions"><NcButton type="primary" :disabled="!briefingDraft.prompt.trim() || !briefingDraft.days.length" @click="addBriefing">{{ $t('Add briefing') }}</NcButton><span>{{ $t('{count} slots remaining', { count: Math.max(0, 20 - proactiveBriefings.length) }) }}</span></div></div>
 					</div>
@@ -633,7 +635,7 @@ export default {
 			{ value: 1, label: t('Mon') }, { value: 2, label: t('Tue') }, { value: 3, label: t('Wed') },
 			{ value: 4, label: t('Thu') }, { value: 5, label: t('Fri') }, { value: 6, label: t('Sat') }, { value: 7, label: t('Sun') },
 		]
-		const briefingDraft = ref({ prompt: '', time: '08:00', days: [1, 2, 3, 4, 5] })
+		const briefingDraft = ref({ prompt: '', time: '08:00', days: [1, 2, 3, 4, 5], allow_actions: false })
 		const proactiveBriefings = computed(() => {
 			try { const rows = JSON.parse(f.value.proactive_schedules || '[]'); return Array.isArray(rows) ? rows : [] } catch (_) { return [] }
 		})
@@ -642,11 +644,12 @@ export default {
 		function addBriefing() {
 			const prompt = briefingDraft.value.prompt.trim()
 			if (!prompt || !/^([01]\\d|2[0-3]):[0-5]\\d$/.test(briefingDraft.value.time) || !briefingDraft.value.days.length) return
-			writeBriefings([...proactiveBriefings.value, { id: `briefing-${Date.now()}`, prompt, time: briefingDraft.value.time, days: [...new Set(briefingDraft.value.days)].sort(), enabled: true }])
+			writeBriefings([...proactiveBriefings.value, { id: `briefing-${Date.now()}`, prompt, time: briefingDraft.value.time, days: [...new Set(briefingDraft.value.days)].sort(), enabled: true, allow_actions: briefingDraft.value.allow_actions === true }])
 			briefingDraft.value.prompt = ''
 		}
 		function removeBriefing(id) { writeBriefings(proactiveBriefings.value.filter(item => item.id !== id)) }
 		function toggleBriefing(id) { writeBriefings(proactiveBriefings.value.map(item => item.id === id ? { ...item, enabled: item.enabled === false } : item)) }
+		function toggleBriefingActions(id) { writeBriefings(proactiveBriefings.value.map(item => item.id === id ? { ...item, allow_actions: item.allow_actions !== true } : item)) }
 		const userWeatherEnabled = computed({
 			get: () => f.value.weather_tool_enabled === '1',
 			set: value => { f.value.weather_tool_enabled = value ? '1' : '0' },
@@ -1230,7 +1233,7 @@ export default {
 			groqKey, customProviderKey, removeGroqKey, ocrEnabled, f, status, limits, availableModels, embeddingModels, chatModels, embeddingInstalledHint, chatInstalledHint, modelLoading, modelError, checkOut, saving, checking, indexing, resetting, deletingChats, stopping, saved, loadError, message, validationErrors, resetConfirm, chatsDeleteConfirm,
 			newExcludePath, excludeError, excludeList, actionsEnabled, notificationsEnabled, userWeatherEnabled, mailIndexEnabled, talkIndexEnabled, talkWriteEnabled, indexEnrolled, actionsDisabled, busy, indexingActive, settingsLocked, maxFileSizeMb,
 			isAdminMode, admin, userWebSearchEnabled, userWebSearchSafeSearch, userWebSearchImages, userWebSearchBrowser, userWebSearchFetchContent, webSearchKey, removeWebSearchKey, webSearchKeyStored, webSearchReady, savingAdmin, saveAdminSettings, loadAdminSettings,
-			proactiveEnabled, proactiveBriefings, briefingDraft, weekdays, dayName, addBriefing, removeBriefing, toggleBriefing,
+			proactiveEnabled, proactiveBriefings, briefingDraft, weekdays, dayName, addBriefing, removeBriefing, toggleBriefing, toggleBriefingActions,
 			exporting, downloadExport,
 			knowledgeContent, knowledgeOriginal, savingKnowledge, knowledgeSaved, saveKnowledgeContent,
 			formatNumber, loadStatus, save, checkOllama, addExclude, removeExclude, startIndex, startMailIndex, startTalkIndex, stopIndex, resetIndex, deleteAllChats,
