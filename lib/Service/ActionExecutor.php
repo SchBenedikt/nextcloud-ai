@@ -78,6 +78,7 @@ class ActionExecutor {
         'delete_comment' => ['comment_id'],
         'tag_file' => ['file_id', 'tag'],
         'untag_file' => ['file_id', 'tag'],
+        'restore_file_version' => ['file_id', 'version_id'],
     ];
 
     /**
@@ -509,6 +510,21 @@ class ActionExecutor {
                 ], 'required' => ['file_id', 'tag']],
             ]],
             ['type' => 'function', 'function' => [
+                'name' => 'list_file_versions',
+                'description' => 'List available versions of a file. Use the numeric file id from list_files/search_files.',
+                'parameters' => ['type' => 'object', 'properties' => [
+                    'file_id' => ['type' => 'string', 'description' => 'Numeric Nextcloud file id.'],
+                ], 'required' => ['file_id']],
+            ]],
+            ['type' => 'function', 'function' => [
+                'name' => 'restore_file_version',
+                'description' => 'Restore a selected file version. This replaces the current file and always requires confirmation.',
+                'parameters' => ['type' => 'object', 'properties' => [
+                    'file_id' => ['type' => 'string', 'description' => 'Numeric Nextcloud file id.'],
+                    'version_id' => ['type' => 'string', 'description' => 'Version/revision id returned by list_file_versions.'],
+                ], 'required' => ['file_id', 'version_id']],
+            ]],
+            ['type' => 'function', 'function' => [
                 'name' => 'server_status',
                 'description' => 'Get technical status info of the Nextcloud server (version, PHP, database, app version, Ollama connectivity, user). Use when the user asks about the system, server or setup.',
                 'parameters' => ['type' => 'object', 'properties' => new \stdClass()],
@@ -758,6 +774,8 @@ class ActionExecutor {
                 'list_system_tags' => $this->listSystemTags($args),
                 'tag_file' => $this->tagFile($userId, $args, false),
                 'untag_file' => $this->tagFile($userId, $args, true),
+                'list_file_versions' => $this->listFileVersions($home, $args),
+                'restore_file_version' => $this->restoreFileVersion($home, $args),
                 'server_status' => $this->serverStatus($userId),
                 'list_nextcloud_capabilities' => $this->listNextcloudCapabilities(),
                 'update_knowledge' => $this->updateKnowledge($home, $args),
@@ -815,6 +833,64 @@ class ActionExecutor {
             else $services['mapper']->assignTags($fileId, 'files', (string)$tag->getId());
             return ['ok' => true, 'result' => ['file_id' => (int)$fileId, 'tag' => (string)$tag->getName(), 'removed' => $remove]];
         } catch (\Throwable) { return ['ok' => false, 'error' => 'The system tag could not be changed. Check file access and tag permissions.']; }
+    }
+
+    private function versionManager(): ?object {
+        $class = '\\OCA\\Files_Versions\\Versions\\IVersionManager';
+        if (!interface_exists($class)) return null;
+        try { return Server::get($class); } catch (\Throwable) { return null; }
+    }
+
+    private function fileById(?Folder $home, array $args): ?File {
+        $id = trim((string)($args['file_id'] ?? ''));
+        if ($home === null || !ctype_digit($id) || (int)$id < 1) return null;
+        try {
+            foreach ($home->getById((int)$id) as $node) if ($node instanceof File) return $node;
+        } catch (\Throwable) { }
+        return null;
+    }
+
+    private function listFileVersions(?Folder $home, array $args): array {
+        $manager = $this->versionManager();
+        $file = $this->fileById($home, $args);
+        if ($manager === null) return ['ok' => false, 'error' => 'The Nextcloud files versions app is not available.'];
+        if ($file === null) return ['ok' => false, 'error' => 'File not found or not accessible.'];
+        try {
+            $user = $this->userManager->get($this->config->userId() ?? '');
+            if ($user === null) return ['ok' => false, 'error' => 'User not found.'];
+            $versions = $manager->getVersionsForFile($user, $file);
+            $out = [];
+            foreach ($versions as $version) {
+                $out[] = [
+                    'version_id' => (string)$version->getRevisionId(),
+                    'timestamp' => $version->getTimestamp(),
+                    'date' => gmdate(DATE_ATOM, $version->getTimestamp()),
+                    'size' => $version->getSize(),
+                    'name' => $version->getSourceFileName(),
+                    'mime_type' => $version->getMimeType(),
+                ];
+            }
+            return ['ok' => true, 'result' => ['file_id' => (int)$file->getId(), 'path' => $file->getPath(), 'versions' => $out]];
+        } catch (\Throwable) { return ['ok' => false, 'error' => 'File versions could not be read.']; }
+    }
+
+    private function restoreFileVersion(?Folder $home, array $args): array {
+        $manager = $this->versionManager();
+        $file = $this->fileById($home, $args);
+        $revision = trim((string)($args['version_id'] ?? ''));
+        if ($manager === null) return ['ok' => false, 'error' => 'The Nextcloud files versions app is not available.'];
+        if ($file === null || $revision === '') return ['ok' => false, 'error' => 'A valid file_id and version_id are required.'];
+        try {
+            $user = $this->userManager->get($this->config->userId() ?? '');
+            if ($user === null) return ['ok' => false, 'error' => 'User not found.'];
+            $version = null;
+            foreach ($manager->getVersionsForFile($user, $file) as $candidate) {
+                if ((string)$candidate->getRevisionId() === $revision) { $version = $candidate; break; }
+            }
+            if ($version === null) return ['ok' => false, 'error' => 'That version does not belong to this file or is no longer available.'];
+            $manager->rollback($version);
+            return ['ok' => true, 'result' => ['file_id' => (int)$file->getId(), 'version_id' => $revision, 'restored' => true]];
+        } catch (\Throwable) { return ['ok' => false, 'error' => 'The file version could not be restored. Check locks and permissions.']; }
     }
 
     private function commentData(\OCP\Comments\IComment $comment): array {
@@ -885,6 +961,7 @@ class ActionExecutor {
                 'forms' => ['protocols' => ['Forms OCS API'], 'eva_tools' => [], 'status' => 'discovery only; no dedicated EVA adapter installed'],
                 'comments' => ['protocols' => ['OCS Comments API', 'server-side ICommentsManager'], 'eva_tools' => ['list_comments', 'add_comment', 'delete_comment']],
                 'systemtags' => ['protocols' => ['server-side ISystemTagManager/ISystemTagObjectMapper', 'OCS Files Tags API'], 'eva_tools' => ['list_system_tags', 'tag_file', 'untag_file']],
+                'files_versions' => ['protocols' => ['server-side IVersionManager'], 'eva_tools' => ['list_file_versions', 'restore_file_version']],
             ];
             $availableApis = [];
             foreach ($apiCatalog as $app => $metadata) if (in_array($app, $apps, true)) $availableApis[$app] = $metadata;
