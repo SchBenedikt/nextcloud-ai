@@ -552,6 +552,11 @@ class ActionExecutor {
                 'parameters' => ['type' => 'object', 'properties' => new \stdClass()],
             ]],
             ['type' => 'function', 'function' => [
+                'name' => 'list_learned_file_locations',
+                'description' => 'List bounded file and folder paths EVA learned from earlier Nextcloud searches and listings. Use this to navigate directly before doing another broad search.',
+                'parameters' => ['type' => 'object', 'properties' => new \stdClass()],
+            ]],
+            ['type' => 'function', 'function' => [
                 'name' => 'call_app_api',
                 'description' => 'Call a discovered endpoint of an enabled Nextcloud app in the current user session. OCS and other same-origin app routes are supported when discovered first. Read methods are allowed; POST, PUT, PATCH and DELETE always require explicit confirmation.',
                 'parameters' => ['type' => 'object', 'properties' => [
@@ -852,6 +857,7 @@ class ActionExecutor {
                 'list_nextcloud_capabilities' => $this->listNextcloudCapabilities(),
                 'discover_app_api' => $this->discoverAppApi($args),
                 'list_learned_app_apis' => $this->listLearnedAppApis(),
+                'list_learned_file_locations' => $this->listLearnedFileLocations(),
                 'call_app_api' => $this->callAppApi($args),
                 'list_scheduled_briefings' => $this->listScheduledBriefings(),
                 'create_scheduled_briefing' => $this->createScheduledBriefing($args),
@@ -1317,6 +1323,7 @@ class ActionExecutor {
         $out = [];
         $count = 0;
         $this->walk($folder, $out, 0, $count, $rootLen);
+        $this->rememberFileLocations($out);
         return ['ok' => true, 'result' => $out];
     }
 
@@ -1502,6 +1509,7 @@ class ActionExecutor {
         $visited = 0;
         $truncated = false;
         $this->searchWalk($home, mb_strtolower($query), $matches, $visited, $truncated, 0, '');
+        $this->rememberFileLocations($matches);
         return ['ok' => true, 'result' => [
             'query' => $query,
             'matches' => $matches,
@@ -1513,6 +1521,30 @@ class ActionExecutor {
                 'max_text_file_bytes' => self::MAX_SEARCH_FILE_BYTES,
             ],
         ]];
+    }
+
+    /** Store only paths/types and timestamps; never file contents. */
+    private function rememberFileLocations(array $rows): void {
+        try {
+            $known = json_decode($this->config->get('learned_file_locations'), true);
+            $known = is_array($known) ? $known : [];
+            $now = time();
+            foreach ($rows as $row) {
+                if (!is_array($row)) continue;
+                $path = trim((string)($row['path'] ?? ''));
+                if ($path === '' || mb_strlen($path) > 1000 || str_contains($path, '..')) continue;
+                $known[$path] = ['type' => (string)($row['type'] ?? 'file'), 'last_seen' => $now];
+            }
+            uasort($known, static fn(array $a, array $b): int => ((int)($b['last_seen'] ?? 0)) <=> ((int)($a['last_seen'] ?? 0)));
+            $this->config->set('learned_file_locations', json_encode(array_slice($known, 0, 500, true), JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) ?: '{}');
+        } catch (\Throwable) { /* learning is best effort */ }
+    }
+
+    private function listLearnedFileLocations(): array {
+        try {
+            $known = json_decode($this->config->get('learned_file_locations'), true);
+            return ['ok' => true, 'result' => ['locations' => is_array($known) ? array_slice($known, 0, 200, true) : [], 'note' => 'Only paths and types are stored; refresh with list_files or search_files when a location may have changed.']];
+        } catch (\Throwable) { return ['ok' => true, 'result' => ['locations' => []]]; }
     }
 
     /**
