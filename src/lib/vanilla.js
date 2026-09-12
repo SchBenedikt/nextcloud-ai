@@ -641,7 +641,7 @@ export function mountChat(root, opts = {}) {
 			agentStatusPill.textContent = state === 'running'
 				? t('EVA is continuing this chat in the background')
 				: state === 'failed'
-					? t('Background EVA run failed — retrying automatically')
+					? t('Background EVA run failed after retries')
 					: t('EVA will continue this chat in the background')
 			agentStatusPill.hidden = false
 		}).catch(() => { /* optional status must never block chat use */ })

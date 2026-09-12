@@ -29,10 +29,16 @@ final class BackgroundChatQueue {
         }
         return $this->withLock($user, function () use ($user, $chatId, $message, $cleanHistory): ?string {
             $items = $this->read($user);
+            // Keep terminal failures long enough for the UI/API to show them,
+            // but garbage-collect old records so they cannot fill the queue.
+            $cutoff = time() - 86400;
+            $items = array_values(array_filter($items, static fn(array $item): bool =>
+                ($item['status'] ?? '') !== 'failed' || (int)($item['finishedAt'] ?? 0) > $cutoff));
             foreach ($items as $item) {
                 if (($item['chatId'] ?? '') === $chatId && ($item['message'] ?? '') === $message && in_array(($item['status'] ?? ''), ['pending', 'running'], true)) return (string)$item['id'];
             }
-            if (count($items) >= self::MAX_ITEMS) return null;
+            $active = count(array_filter($items, static fn(array $item): bool => in_array(($item['status'] ?? ''), ['pending', 'running'], true)));
+            if ($active >= self::MAX_ITEMS) return null;
             $id = is_string($requestedId) && preg_match('/^[A-Za-z0-9_-]{8,80}$/D', $requestedId) === 1
                 ? $requestedId : 'bg_' . date('YmdHis') . '_' . bin2hex(random_bytes(5));
             $items[] = ['id' => $id, 'chatId' => $chatId, 'message' => $message, 'history' => $cleanHistory, 'status' => 'pending', 'attempts' => 0, 'created' => time(), 'availableAt' => time() + 15];
@@ -81,8 +87,19 @@ final class BackgroundChatQueue {
     }
     public function retry(string $user, string $id, string $error): void {
         $this->mutate($user, function (array $items) use ($id, $error): array {
-            foreach ($items as &$item) if (($item['id'] ?? '') === $id) { $attempts = (int)($item['attempts'] ?? 1); if ($attempts >= 3) { $item['status'] = 'failed'; $item['error'] = mb_substr($error, 0, 500); } else { $item['status'] = 'pending'; $item['availableAt'] = time() + min(300, 30 * $attempts); } }
-            return array_values(array_filter($items, static fn(array $i): bool => ($i['status'] ?? '') !== 'failed'));
+            foreach ($items as &$item) if (($item['id'] ?? '') === $id) {
+                $attempts = (int)($item['attempts'] ?? 1);
+                if ($attempts >= 3) {
+                    $item['status'] = 'failed';
+                    $item['error'] = mb_substr($error, 0, 500);
+                    $item['finishedAt'] = time();
+                } else {
+                    $item['status'] = 'pending';
+                    $item['availableAt'] = time() + min(300, 30 * $attempts);
+                }
+            }
+            unset($item);
+            return $items;
         });
     }
     public function users(): array { try { return array_values(array_unique(array_filter(array_map('strval', $this->config->getUsersForUserValue(AppConfig::APP, self::KEY))))); } catch (\Throwable) { return []; } }
