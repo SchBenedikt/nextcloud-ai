@@ -45,6 +45,14 @@ follows [Semantic Versioning](https://semver.org/).
   a link to the full-size original; `data:`, `javascript:` and every other unsafe
   scheme still fall back to text.
 
+- A news search answers with current coverage. Age used to count only -1 for
+  anything older than three years, which a single matching word (+1 to +3)
+  outweighed, so `mode: news` returned 2016 and 2018 pages above this year's
+  articles. Currency is now weighted by mode: a plain web search still treats
+  age as a tie-breaker (the 2019 article that explains a topic can still win),
+  while a news search ranks a three-day-old item far above an old one and
+  demotes an undated item, because an undated news item cannot be shown to be
+  current. A future date is treated as a wrong date, not as freshness.
 - Web search now picks the best results instead of the first ones. Every
   provider is asked for more hits than are returned, the candidates are read,
   and a second ranking pass scores them on what their pages actually say

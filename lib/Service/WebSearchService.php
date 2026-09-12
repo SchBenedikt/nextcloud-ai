@@ -369,10 +369,10 @@ class WebSearchService {
         // then read, and a second pass re-ranks them on what they actually say.
         // Only after that are the best `$count` kept, so the returned list is
         // chosen by evidence rather than by the engine's order.
-        $results = $this->rankResults($results, $query);
+        $results = $this->rankResults($results, $query, false, $mode);
         $results = array_slice($results, 0, min(count($results), self::ABSOLUTE_MAX_CONTENT_PAGES));
         $results = $this->enrichWithPageContent($results, $query);
-        $results = $this->rankResults($results, $query, true);
+        $results = $this->rankResults($results, $query, true, $mode);
         $results = array_slice($results, 0, $count);
 
         return ['ok' => true, 'provider' => $provider, 'mode' => $mode, 'results' => $results, 'error' => null];
@@ -489,7 +489,7 @@ class WebSearchService {
      * @param list<array{title:string,url:string,snippet:string}> $results
      * @return list<array{title:string,url:string,snippet:string}>
      */
-    private function rankResults(array $results, string $query, bool $useContent = false): array {
+    private function rankResults(array $results, string $query, bool $useContent = false, string $mode = 'web'): array {
         $terms = $this->queryTerms($query);
         if ($terms === [] || count($results) < 2) {
             return array_values($results);
@@ -568,20 +568,8 @@ class WebSearchService {
 
             // Recency. A chat model answers a current question from what it was
             // trained on, which is exactly how users end up with outdated
-            // answers. A dated, recent page therefore outranks an undated or
-            // old one of otherwise equal relevance. It stays a tie-breaker: an
-            // older page that answers the question still wins.
-            $published = (int)($result['published'] ?? 0);
-            if ($published > 0) {
-                $ageDays = (time() - $published) / 86400;
-                if ($ageDays <= self::FRESH_DAYS) {
-                    $score += 4;
-                } elseif ($ageDays <= self::RECENT_DAYS) {
-                    $score += 2;
-                } elseif ($ageDays > 3 * self::RECENT_DAYS) {
-                    $score -= 1;
-                }
-            }
+            // answers, so how old a page is has to weigh in.
+            $score += $this->recencyScore((int)($result['published'] ?? 0), $mode);
 
             // Diversity: five hits from one domain describe one source, not
             // five answers. Repeats are demoted, never removed, so a genuinely
@@ -601,6 +589,47 @@ class WebSearchService {
         });
 
         return array_values(array_map(static fn(array $row): array => $row['result'], $scored));
+    }
+
+    /**
+     * How much a page's age counts, which depends entirely on what was asked.
+     *
+     * In **web** mode currency is a tie-breaker: someone asking about a protocol
+     * or a technique wants the best explanation, and the 2019 article that
+     * explains it should still win, so age only nudges the order.
+     *
+     * In **news** mode currency *is* the question. A two-year-old post is not
+     * news, and an item with no date at all is stale by definition. Both an old
+     * and an undated item therefore have to lose by more than any amount of term
+     * overlap can win, or "show me the latest" quietly returns the same stale
+     * pages the model already knew - which is the exact failure this ranking
+     * exists to prevent.
+     */
+    private function recencyScore(int $published, string $mode): int {
+        $news = $mode === 'news';
+        if ($published <= 0) {
+            // Only news feeds carry dates reliably; an undated web hit must not
+            // be punished for a page that simply does not declare one.
+            return $news ? -4 : 0;
+        }
+        $ageDays = (time() - $published) / 86400;
+        if ($ageDays < 0) {
+            // A date in the future is a wrong date, not a fresh document.
+            return $news ? -4 : 0;
+        }
+        if ($ageDays <= self::FRESH_DAYS) {
+            return $news ? 14 : 4;
+        }
+        if ($ageDays <= 90) {
+            return $news ? 9 : 3;
+        }
+        if ($ageDays <= self::RECENT_DAYS) {
+            return $news ? 3 : 2;
+        }
+        if ($ageDays <= 3 * self::RECENT_DAYS) {
+            return $news ? -7 : 0;
+        }
+        return $news ? -16 : -2;
     }
 
     /**

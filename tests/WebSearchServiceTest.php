@@ -850,6 +850,72 @@ HTML;
         self::assertSame('https://new.example.org/b', $ranked[0]['url']);
     }
 
+    /**
+     * A news search must not answer with years-old pages. A dated 2018 article
+     * that matches the query perfectly still loses to current coverage, because
+     * the whole point of asking for news is currency - this is the failure the
+     * user actually saw, where a 2016/2018 item ranked in the top six.
+     */
+    public function testNewsRankingPutsOldArticlesBelowCurrentOnes(): void {
+        $service = $this->service();
+        // The old page is the *better* textual match (it covers both terms in
+        // its title and its path), so only currency can decide.
+        $results = [
+            [
+                'title' => 'Nextcloud release guide',
+                'url' => 'https://old.example.org/nextcloud-release-guide',
+                'snippet' => 'nextcloud release',
+                'published' => strtotime('2015-05-20'),
+            ],
+            [
+                'title' => 'Nextcloud news',
+                'url' => 'https://new.example.org/nextcloud-news',
+                'snippet' => 'nextcloud announce',
+                'published' => time() - 86400 * 3,
+            ],
+        ];
+        $web = $this->callPrivate($service, 'rankResults', [$results, 'nextcloud release', false, 'web']);
+        $news = $this->callPrivate($service, 'rankResults', [$results, 'nextcloud release', false, 'news']);
+        // On the web index relevance keeps the eleven-year-old page on top...
+        self::assertSame('https://old.example.org/nextcloud-release-guide', $web[0]['url']);
+        // ...but in a news search the current one has to win.
+        self::assertSame('https://new.example.org/nextcloud-news', $news[0]['url']);
+    }
+
+    /**
+     * A news feed item with no date cannot be shown to be current, so it ranks
+     * below a dated recent one instead of competing with it on text alone.
+     */
+    public function testNewsRankingDemotesUndatedItems(): void {
+        $service = $this->service();
+        $results = [
+            ['title' => 'Nextcloud release notes', 'url' => 'https://a.example.org/x', 'snippet' => 'nextcloud release'],
+            [
+                'title' => 'Nextcloud release notes',
+                'url' => 'https://b.example.org/y',
+                'snippet' => 'nextcloud release',
+                'published' => time() - 86400 * 2,
+            ],
+        ];
+        $news = $this->callPrivate($service, 'rankResults', [$results, 'nextcloud release', false, 'news']);
+        self::assertSame('https://b.example.org/y', $news[0]['url']);
+    }
+
+    /** Recency must stay a tie-breaker on the web index. */
+    public function testWebRankingStillLetsTheBetterOldPageWin(): void {
+        $service = $this->service();
+        self::assertSame(4, $this->callPrivate($service, 'recencyScore', [time() - 86400, 'web']));
+        self::assertSame(0, $this->callPrivate($service, 'recencyScore', [time() - 86400 * 400, 'web']));
+        self::assertSame(-2, $this->callPrivate($service, 'recencyScore', [strtotime('2004-01-01'), 'web']));
+        // An undated web hit is not punished for a missing declaration.
+        self::assertSame(0, $this->callPrivate($service, 'recencyScore', [0, 'web']));
+        // The same old page loses heavily when currency is the question.
+        self::assertSame(-16, $this->callPrivate($service, 'recencyScore', [strtotime('2015-01-01'), 'news']));
+        self::assertSame(-4, $this->callPrivate($service, 'recencyScore', [0, 'news']));
+        // A wrong future date is not freshness.
+        self::assertSame(-4, $this->callPrivate($service, 'recencyScore', [time() + 86400 * 30, 'news']));
+    }
+
     /** News and web can be merged without losing the richer record. */
     public function testMergingKeepsTheDateFromTheNewsCopy(): void {
         $service = $this->service();
