@@ -264,6 +264,8 @@ export default {
 .chatview-root .rs-list { margin-top: 4px; padding: 6px 0 0 10px; border-left: 2px solid var(--color-border, #ccc); }
 .chatview-root .rs-item { margin-bottom: 6px; }
 .chatview-root .rs-item a { color: var(--color-primary-element, #00679c); text-decoration: none; }
+/* A source with nothing to open is named, not linked, so it must not look like a link. */
+.chatview-root .rs-item .rs-plain { color: var(--color-main-text, #222); }
 .chatview-root .rs-excerpt { margin-top: 2px; padding: 4px 8px; background: var(--color-background-dark, #f5f5f5); border-radius: 4px; font-size: 11px; line-height: 1.4; white-space: pre-wrap; word-break: break-word; }
 .chatview-root .rs-badge { display: inline-block; margin-right: 6px; padding: 1px 6px; border-radius: 8px; background: var(--color-primary-element-light, #e5f0f7); color: var(--color-primary-element, #00679c); font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; vertical-align: 1px; }
 .chatview-root .rs-host { display: block; margin-left: 0; color: var(--color-text-maxcontrast, #555); font-size: 11px; }

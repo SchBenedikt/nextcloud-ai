@@ -4,6 +4,30 @@ All notable changes to **EVA (eva_ai)** are documented here.
 Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); the project
 follows [Semantic Versioning](https://semver.org/).
 
+## [1.9.1] - 2026-09-12
+
+### Fixed
+
+- **An answer source with nothing to open no longer looks like a link.** An
+  indexed mail message or Talk room has no page in the file tree, so the source
+  list fell back to `href="#"` - a link that appears clickable and only jumps to
+  the top of the page. Such a source is now named as plain text, while files and
+  web pages keep their link and the web badge.
+- **Indexed mail and indexed Talk histories can no longer delete each other.**
+  Both live in a synthetic negative file-id space, so a reconciliation pass that
+  selected every negative id handed one producer's rows to the other; each pass
+  now selects its own `source`. Related boundaries: an empty mailbox is no longer
+  read as "every message was deleted" (which would wipe the mail index when the
+  Mail app is merely unreachable), and a pass bounded by `talk_index_max_rooms`
+  no longer drops rooms outside the bound.
+- **A Talk transcript stops being quoted the moment the user leaves the room.**
+  Room membership is re-checked at answer time, not only at index time, and an
+  unverifiable membership fails closed and purges the stale transcript.
+- **The Talk bot no longer goes silent on a decorated answer.** The yes/no
+  classification now reads the word rather than the first characters, so
+  `**Ja**`, `"yes"` and `1. Yes, ...` are answers instead of refusals, while a
+  clear no still keeps the bot quiet.
+
 ## [1.9.0] - 2026-09-12
 
 ### Added

@@ -194,6 +194,9 @@
         .rs-list { margin-top: 4px; padding: 6px 10px; background: var(--color-background-dark, #f3f3f3); border-radius: 6px; }
         .rs-item { margin-bottom: 6px; }
         .rs-item a { color: var(--color-primary-element, #00679c); text-decoration: none; }
+        /* A source with nothing to open is named, not linked, so it must not look
+           like a link. */
+        .rs-item .rs-plain { color: var(--color-main-text, #222); }
         .rs-excerpt { margin-top: 2px; padding: 4px 8px; background: var(--color-main-background, #fff); border-radius: 4px; font-size: 11px; line-height: 1.4; white-space: pre-wrap; word-break: break-word; color: var(--color-text-maxcontrast, #555); }
         .rs-badge { display: inline-block; margin-right: 6px; padding: 1px 6px; border-radius: 8px; background: var(--color-primary-element-light, #e5f0f7); color: var(--color-primary-element, #00679c); font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; vertical-align: 1px; }
         .rs-host { display: block; color: var(--color-text-maxcontrast, #555); font-size: 11px; }
