@@ -560,6 +560,16 @@ class WebSearchService {
             return [];
         }
         $queryTerms = $this->queryTerms($query);
+		// A named-person image search must never silently return an unrelated
+		// stock image merely because the engine supplied malformed/weak metadata.
+		// Two identity terms (for example "Angela Merkel") are a strong enough
+		// signal; generic visual words such as photo and portrait do not count.
+		$identityTerms = array_values(array_filter($queryTerms, static fn(string $term): bool => !in_array($term, [
+			'image', 'images', 'picture', 'pictures', 'photo', 'photos', 'portrait', 'porträt', 'bilder', 'bild', 'foto', 'fotos',
+		], true)));
+		preg_match_all('/\b\p{Lu}[\p{L}\-]{1,}\b/u', $query, $properNames);
+		$namedPersonSearch = count($identityTerms) >= 2 && count($identityTerms) <= 4
+			&& count($properNames[0] ?? []) >= 2;
         $markers = $this->imageChromeMarkers($query);
         $candidates = [];
         $seen = [];
@@ -600,7 +610,15 @@ class WebSearchService {
             if (!$this->isSafeHttpUrl($page)) {
                 $page = '';
             }
-            $candidates[] = [
+			$identityHaystack = mb_strtolower($title . ' ' . $page);
+			$identityHits = 0;
+			foreach ($identityTerms as $term) {
+				if (str_contains($identityHaystack, $term)) $identityHits++;
+			}
+			if ($namedPersonSearch && $identityHits < 2) {
+				continue;
+			}
+			$candidates[] = [
                 'url' => $url,
                 'preview' => $preview,
                 'title' => $title !== '' ? $title : $query,
@@ -609,7 +627,7 @@ class WebSearchService {
                 // text to score); the engine order is kept, but a title that
                 // mentions the query is preferred so an unrelated hit sitting
                 // above the real ones does not win the first picture.
-                'score' => $this->imageTitleScore($title, $queryTerms),
+				'score' => $this->imageTitleScore($title, $queryTerms) + $identityHits * 4,
             ];
         }
         // Stable: engine order is the tie-breaker, a query-matching title wins.

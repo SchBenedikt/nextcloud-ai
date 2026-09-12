@@ -8,6 +8,9 @@ return [
         ['name' => 'page#app', 'url' => '/app', 'verb' => 'GET'],
         ['name' => 'page#settings', 'url' => '/settings', 'verb' => 'GET'],
         ['name' => 'page#documents', 'url' => '/documents', 'verb' => 'GET'],
+		// The Metrics view is a first-class SPA route. Without this server-side
+		// route, refreshing /apps/eva_ai/metrics bypasses Vue and returns 404.
+        ['name' => 'page#metrics', 'url' => '/metrics', 'verb' => 'GET'],
         ['name' => 'page#standalone', 'url' => '/standalone', 'verb' => 'GET'],
     ],
     'ocs' => [
