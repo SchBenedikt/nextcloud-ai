@@ -377,6 +377,30 @@ class ToolPolicy {
             'requiresConfirmation' => true,
             'description' => 'Call an enabled app OCS API in the current user context',
         ],
+        'list_scheduled_briefings' => [
+            'risk' => self::RISK_READONLY,
+            'surfaces' => [self::SURFACE_WEB, self::SURFACE_TALK, self::SURFACE_RAG],
+            'requiresConfirmation' => false,
+            'description' => 'List the user\'s EVA scheduled briefings',
+        ],
+        'create_scheduled_briefing' => [
+            'risk' => self::RISK_MUTATING,
+            'surfaces' => [self::SURFACE_WEB],
+            'requiresConfirmation' => true,
+            'description' => 'Create an EVA scheduled briefing',
+        ],
+        'update_scheduled_briefing' => [
+            'risk' => self::RISK_MUTATING,
+            'surfaces' => [self::SURFACE_WEB],
+            'requiresConfirmation' => true,
+            'description' => 'Update an EVA scheduled briefing',
+        ],
+        'delete_scheduled_briefing' => [
+            'risk' => self::RISK_DESTRUCTIVE,
+            'surfaces' => [self::SURFACE_WEB],
+            'requiresConfirmation' => true,
+            'description' => 'Delete an EVA scheduled briefing',
+        ],
         'current_time' => [
             'risk' => self::RISK_READONLY,
             'surfaces' => [self::SURFACE_WEB, self::SURFACE_TALK, self::SURFACE_TASKPROCESSING, self::SURFACE_TASKPROCESSING_CONFIRMED, self::SURFACE_RAG],
