@@ -492,6 +492,17 @@
 				</div>
 			</section>
 
+			<section class="settings-section">
+				<div class="section-heading"><div><h3>{{ $t('External connectors') }}</h3><p>{{ $t('Connect an external HTTPS service for EVA to discover and use with confirmation.') }}</p></div></div>
+				<div v-if="connectorsLoading" class="field-help">{{ $t('Loading connectors…') }}</div>
+				<div v-for="connector in connectors" :key="connector.id" class="connector-row">
+					<div><strong>{{ connector.name }}</strong><small>{{ connector.base_url }} · {{ connector.discovered_endpoint_count || 0 }} {{ $t('learned endpoints') }}</small></div>
+					<div class="connector-actions"><NcButton type="tertiary-no-background" :disabled="connectorsBusy" @click="discoverConnector(connector.id)">{{ $t('Discover API') }}</NcButton><NcButton type="tertiary-no-background" :disabled="connectorsBusy" @click="removeConnector(connector.id)">{{ $t('Remove') }}</NcButton></div>
+				</div>
+			<div class="connector-form"><NcTextField v-model="connectorDraft.id" :label="$t('Connector ID')" :label-outside="true" placeholder="todo" /><NcTextField v-model="connectorDraft.name" :label="$t('Name')" :label-outside="true" placeholder="Todo service" /><NcTextField v-model="connectorDraft.base_url" type="url" :label="$t('HTTPS base URL')" :label-outside="true" placeholder="https://api.example.com" /><NcTextField v-model="connectorDraft.token" type="password" autocomplete="new-password" :label="$t('Bearer token (optional)')" :label-outside="true" /><NcButton type="primary" :disabled="connectorsBusy || !connectorDraft.id || !connectorDraft.base_url" @click="saveConnector">{{ $t('Save connector') }}</NcButton></div>
+				<p class="field-help">{{ $t('Only public HTTPS hosts are accepted. Tokens are encrypted and never shown again. Every external action requires confirmation.') }}</p>
+			</section>
+
 			<section v-if="isAdminMode" class="settings-section">
 				<div class="section-heading">
 					<div>
@@ -693,6 +704,27 @@ export default {
 		const userWebSearchBrowser = computed({ get: () => f.value.web_search_browser === '1', set: v => { f.value.web_search_browser = v ? '1' : '0' } })
 		const userWebSearchFetchContent = computed({ get: () => f.value.web_search_fetch_content === '1', set: v => { f.value.web_search_fetch_content = v ? '1' : '0' } })
 		const userWebSearchSafeSearch = computed({ get: () => f.value.web_search_safe_search === '1', set: v => { f.value.web_search_safe_search = v ? '1' : '0' } })
+		const connectors = ref([])
+		const connectorsLoading = ref(false)
+		const connectorsBusy = ref(false)
+		const connectorDraft = ref({ id: '', name: '', base_url: '', token: '' })
+		async function loadConnectors() {
+			connectorsLoading.value = true
+			try { const data = await api('GET', 'connectors'); connectors.value = Array.isArray(data?.result?.connectors) ? data.result.connectors : [] } catch (_) { connectors.value = [] } finally { connectorsLoading.value = false }
+		}
+		async function saveConnector() {
+			connectorsBusy.value = true
+			try { await api('PUT', 'connectors', { ...connectorDraft.value }); connectorDraft.value = { id: '', name: '', base_url: '', token: '' }; await loadConnectors(); setMessage('success', t('External connector saved.')) } catch (error) { setMessage('error', t('Could not save connector: {error}', { error: errMsg(error) })) } finally { connectorsBusy.value = false }
+		}
+		async function removeConnector(id) {
+			if (!window.confirm(t('Remove connector {id}?', { id }))) return
+			connectorsBusy.value = true
+			try { await api('DELETE', 'connectors', { id }); await loadConnectors(); setMessage('success', t('External connector removed.')) } catch (error) { setMessage('error', t('Could not remove connector: {error}', { error: errMsg(error) })) } finally { connectorsBusy.value = false }
+		}
+		async function discoverConnector(id) {
+			connectorsBusy.value = true
+			try { const result = await api('POST', 'connectors/discover', { id }); setMessage('success', t('Discovered {count} endpoints.', { count: result?.result?.endpoints?.length || 0 })); await loadConnectors() } catch (error) { setMessage('error', t('API discovery failed: {error}', { error: errMsg(error) })) } finally { connectorsBusy.value = false }
+		}
 		// Admin settings form (Issue #82/#187): the same bundle is mounted inside
 		// the Nextcloud admin settings with data-admin="1". Only shared provider
 		// infrastructure is loaded and saved through the admin endpoint; tool
@@ -1264,6 +1296,7 @@ export default {
 			await loadHealth()
 			await loadAdminSettings()
 			await loadKnowledge()
+			await loadConnectors()
 			formReady.value = true
 			adminReady.value = isAdminMode
 			// Status is informational; polling every few seconds created needless
@@ -1290,6 +1323,7 @@ export default {
 			groqKey, customProviderKey, removeGroqKey, ocrEnabled, f, status, health, healthLoading, statusTimer, limits, availableModels, embeddingModels, chatModels, embeddingInstalledHint, chatInstalledHint, modelLoading, modelError, checkOut, saving, checking, indexing, resetting, deletingChats, stopping, saved, loadError, message, validationErrors, resetConfirm, chatsDeleteConfirm,
 			newExcludePath, excludeError, excludeList, actionsEnabled, backgroundActionsEnabled, notificationsEnabled, learningEnabled, safeCommandsEnabled, mailIndexEnabled, talkIndexEnabled, talkWriteEnabled, indexEnrolled, actionsDisabled, busy, indexingActive, settingsLocked, maxFileSizeMb,
 			isAdminMode, admin, userWebSearchEnabled, userWebSearchSafeSearch, userWebSearchImages, userWebSearchBrowser, userWebSearchFetchContent, webSearchKey, removeWebSearchKey, webSearchKeyStored, webSearchReady, savingAdmin, saveAdminSettings, loadAdminSettings,
+			connectors, connectorsLoading, connectorsBusy, connectorDraft, saveConnector, removeConnector, discoverConnector,
 			proactiveEnabled, proactiveBriefings, briefingDraft, weekdays, dayName, addBriefing, removeBriefing, toggleBriefing, toggleBriefingActions,
 			exporting, downloadExport,
 			knowledgeContent, knowledgeOriginal, savingKnowledge, knowledgeSaved, saveKnowledgeContent,
@@ -1478,6 +1512,12 @@ export default {
 .knowledge-editor { width: 100%; min-height: 200px; padding: 12px; border: 2px solid var(--color-border); border-radius: var(--border-radius-large, 8px); background: var(--color-main-background); color: var(--color-main-text); font: inherit; font-size: 13px; line-height: 1.6; resize: vertical; box-sizing: border-box; font-family: var(--font-family-monospace, monospace); }
 .knowledge-editor:focus { border-color: var(--color-primary-element); outline: 2px solid color-mix(in srgb, var(--color-primary-element) 25%, transparent); outline-offset: 1px; }
 .knowledge-editor:disabled { opacity: .65; cursor: not-allowed; }
+.connector-row { display:flex; align-items:center; justify-content:space-between; gap:16px; padding:12px 0; border-bottom:1px solid var(--color-border); }
+.connector-row strong, .connector-row small { display:block; overflow-wrap:anywhere; }
+.connector-row small { color:var(--color-text-maxcontrast); margin-top:3px; }
+.connector-actions { display:flex; gap:6px; flex-shrink:0; }
+.connector-form { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:10px; align-items:end; margin-top:16px; }
+@media (max-width:760px) { .connector-row { align-items:flex-start; flex-direction:column; } .connector-form { grid-template-columns:1fr; } }
 
 @media (max-width: 800px) {
 	.page-header { align-items: flex-start; flex-direction: column; }
