@@ -208,6 +208,9 @@
 				<NcCheckboxRadioSwitch v-model="notificationsEnabled" type="switch" class="native-toggle compact-switch" :description="$t('Uses Nextcloud Notifications when background or Talk work finishes.')">
 					{{ $t('Notify me when a long answer is ready') }}
 				</NcCheckboxRadioSwitch>
+				<NcCheckboxRadioSwitch v-model="learningEnabled" type="switch" class="native-toggle compact-switch" :description="$t('Let EVA learn explicit preferences and facts from completed chats. You can edit or delete the personal knowledge below at any time.')">
+					{{ $t('Learn from my conversations') }}
+				</NcCheckboxRadioSwitch>
 			</section>
 
 			<section class="settings-section">
@@ -551,7 +554,8 @@ export default {
 			embedding_model_fallback: '',
 			summary_model: '',
 			temperature: '0.1',
-			actions_enabled: '1',
+			 actions_enabled: '1',
+			learning_enabled: '1',
 			background_actions_enabled: '0',
 			agent_max_tool_rounds: '16',
 			notify_on_complete: '1',
@@ -639,6 +643,10 @@ export default {
 		const notificationsEnabled = computed({
 			get: () => f.value.notify_on_complete === '1',
 			set: value => { f.value.notify_on_complete = value ? '1' : '0' },
+		})
+		const learningEnabled = computed({
+			get: () => f.value.learning_enabled === '1',
+			set: value => { f.value.learning_enabled = value ? '1' : '0' },
 		})
 		const proactiveEnabled = computed({
 			get: () => f.value.proactive_enabled === '1',
@@ -1135,6 +1143,13 @@ export default {
 				const response = await api('POST', 'indexStop')
 				status.value = response?.status || status.value
 				setMessage('info', response?.stopping ? t('Stop requested. Indexing will finish the current cancellable request and then release its lock.') : t('Indexing is stopped.'))
+				// Keep the stop button pending while the worker releases its claim;
+				// a single immediate poll otherwise makes the UI look stopped while
+				// indexing is still writing files.
+				for (let i = 0; i < 30 && status.value?.indexStopping; i++) {
+					await new Promise(resolve => window.setTimeout(resolve, 1000))
+					await loadStatus()
+				}
 			} catch (error) {
 				setMessage('error', t('Indexing could not be stopped: {error}', { error: errMsg(error) }))
 			} finally {
@@ -1241,7 +1256,7 @@ export default {
 		const ocrEnabled = computed({ get: () => f.value.ocr_enabled === '1', set: value => { f.value.ocr_enabled = value ? '1' : '0' } })
 		return {
 			groqKey, customProviderKey, removeGroqKey, ocrEnabled, f, status, limits, availableModels, embeddingModels, chatModels, embeddingInstalledHint, chatInstalledHint, modelLoading, modelError, checkOut, saving, checking, indexing, resetting, deletingChats, stopping, saved, loadError, message, validationErrors, resetConfirm, chatsDeleteConfirm,
-			newExcludePath, excludeError, excludeList, actionsEnabled, backgroundActionsEnabled, notificationsEnabled, mailIndexEnabled, talkIndexEnabled, talkWriteEnabled, indexEnrolled, actionsDisabled, busy, indexingActive, settingsLocked, maxFileSizeMb,
+			newExcludePath, excludeError, excludeList, actionsEnabled, backgroundActionsEnabled, notificationsEnabled, learningEnabled, mailIndexEnabled, talkIndexEnabled, talkWriteEnabled, indexEnrolled, actionsDisabled, busy, indexingActive, settingsLocked, maxFileSizeMb,
 			isAdminMode, admin, userWebSearchEnabled, userWebSearchSafeSearch, userWebSearchImages, userWebSearchBrowser, userWebSearchFetchContent, webSearchKey, removeWebSearchKey, webSearchKeyStored, webSearchReady, savingAdmin, saveAdminSettings, loadAdminSettings,
 			proactiveEnabled, proactiveBriefings, briefingDraft, weekdays, dayName, addBriefing, removeBriefing, toggleBriefing, toggleBriefingActions,
 			exporting, downloadExport,

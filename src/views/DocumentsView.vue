@@ -260,6 +260,10 @@ export default {
 				const response = await api('POST', 'indexStop') || {}
 				indexStatus.value = response.status || indexStatus.value
 				progress.value = response?.stopping ? t('Stop requested. Indexing will finish the current cancellable request and then release its lock.') : t('Indexing stopped.')
+				for (let i = 0; i < 30 && indexStatus.value?.indexStopping; i++) {
+					await new Promise(resolve => window.setTimeout(resolve, 1000))
+					await loadStatus()
+				}
 			} catch (e) {
 				progress.value = t('Indexing could not be stopped: {error}', { error: errMsg(e) })
 			} finally {
