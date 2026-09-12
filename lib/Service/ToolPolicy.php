@@ -449,6 +449,24 @@ class ToolPolicy {
             'requiresConfirmation' => false,
             'description' => 'Open and read one web page',
         ],
+        'list_external_connectors' => [
+            'risk' => self::RISK_READONLY,
+            'surfaces' => [self::SURFACE_WEB, self::SURFACE_TASKPROCESSING, self::SURFACE_TASKPROCESSING_CONFIRMED],
+            'requiresConfirmation' => false,
+            'description' => 'List configured external HTTPS connectors',
+        ],
+        'configure_external_connector' => [
+            'risk' => self::RISK_MUTATING,
+            'surfaces' => [self::SURFACE_WEB, self::SURFACE_TASKPROCESSING_CONFIRMED],
+            'requiresConfirmation' => true,
+            'description' => 'Configure a named external HTTPS connector',
+        ],
+        'call_external_connector' => [
+            'risk' => self::RISK_MUTATING,
+            'surfaces' => [self::SURFACE_WEB, self::SURFACE_TASKPROCESSING_CONFIRMED],
+            'requiresConfirmation' => true,
+            'description' => 'Call a configured external connector endpoint',
+        ],
         // An image search sends the query to the same external index as a web
         // search and is gated by the same switch. It exists as its own tool
         // because a text search cannot satisfy "show me pictures of X" - the
