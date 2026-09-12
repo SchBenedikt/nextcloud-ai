@@ -120,6 +120,13 @@ class ApiController extends OCSController {
         }
         $this->knowledgeInitializer->ensureInitialized($user);
         $status = $this->ragService->buildStatus($user);
+        try {
+            $status['genericApi'] = [
+                'tokenConfigured' => \OCP\Server::get(\OCA\EvaAi\Service\ProviderCredentials::class)->nextcloudTokenConfigured($user),
+            ];
+        } catch (\Throwable) {
+            $status['genericApi'] = ['tokenConfigured' => false];
+        }
         // Fair multi-user scheduling snapshot (Issue #142): global running
         // count, limit and this user's queue position - cheap, no polling.
         $status['scheduler'] = $this->indexScheduler->snapshot($user);
@@ -403,6 +410,20 @@ class ApiController extends OCSController {
             }
             if ($removeCustomKey) $credentials->saveCustom($user, $providerId, '');
             elseif (is_string($customKey) && $customKey !== '') $credentials->saveCustom($user, $providerId, $customKey);
+        }
+        $nextcloudToken = $this->requestParam('nextcloud_api_token');
+        $removeNextcloudToken = $this->requestParam('remove_nextcloud_api_token', false);
+        if ($nextcloudToken !== null && (!is_string($nextcloudToken) || strlen($nextcloudToken) > 512 || preg_match('/\s/', $nextcloudToken))) {
+            return new DataResponse(['error' => 'Invalid Nextcloud app token input.'], 400);
+        }
+        if (!in_array($removeNextcloudToken, [true, false, 0, 1, '0', '1'], true)) {
+            return new DataResponse(['error' => 'Invalid Nextcloud app token input.'], 400);
+        }
+        if ($removeNextcloudToken || (is_string($nextcloudToken) && $nextcloudToken !== '')) {
+            \OCP\Server::get(\OCA\EvaAi\Service\ProviderCredentials::class)->saveNextcloudToken(
+                $user,
+                $removeNextcloudToken ? '' : $nextcloudToken
+            );
         }
         foreach ($pending as $key => $value) {
                 if (in_array($key, ['top_k', 'chunk_size', 'chunk_overlap', 'max_file_size', 'max_files_per_run', 'context_size', 'exec_write_max_chars', 'mail_index_max', 'talk_history_size', 'talk_index_max_rooms', 'talk_index_max_messages', 'chat_retention_days', 'embed_batch_size', 'web_search_max_results', 'web_search_timeout', 'web_search_content_chars', 'web_search_candidates', 'web_search_browser_timeout'], true)) {
