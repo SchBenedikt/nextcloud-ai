@@ -404,21 +404,22 @@
 					<span>{{ $t('Indexed content stays in Nextcloud and is sent to the Ollama server configured above. Review your indexing scope before enabling Mail or Talk features.') }}</span>
 				</div>
 				<div class="admin-subsection">
-					<h4>{{ $t('Scheduled briefings') }}</h4>
+					<div class="briefing-heading"><div><h4>{{ $t('Scheduled briefings') }}</h4><p>{{ $t('EVA can prepare recurring, read-only answers and deliver them in your Nextcloud notifications.') }}</p></div><span class="briefing-count">{{ proactiveBriefings.length }} / 20</span></div>
 					<NcCheckboxRadioSwitch v-model="proactiveEnabled" type="switch" class="native-toggle">{{ $t('Let EVA send scheduled notifications') }}</NcCheckboxRadioSwitch>
-					<p class="field-help">{{ $t('Create up to 20 read-only briefings. EVA sends the answer as a Nextcloud notification at the selected local time; cron frequency can delay delivery slightly.') }}</p>
+					<div v-if="proactiveEnabled" class="briefing-note"><strong>{{ $t('How this works') }}</strong><span>{{ $t('Briefings use your server cron and your account timezone. EVA only reads information and sends the result as a notification; it never changes files, calendar entries or messages.') }}</span></div>
 					<div v-if="proactiveEnabled" class="briefing-editor">
-						<div v-for="briefing in proactiveBriefings" :key="briefing.id" class="briefing-row">
-							<strong>{{ briefing.time }}</strong><span>{{ briefing.prompt }}</span>
-							<small>{{ briefing.days.map(dayName).join(', ') }}</small>
-							<NcButton type="tertiary-no-background" @click="removeBriefing(briefing.id)">{{ $t('Remove') }}</NcButton>
+						<div v-if="!proactiveBriefings.length" class="briefing-empty"><strong>{{ $t('No briefings yet') }}</strong><span>{{ $t('Add your first briefing below, for example a morning calendar summary or a weekly file digest.') }}</span></div>
+						<div v-for="briefing in proactiveBriefings" :key="briefing.id" class="briefing-card">
+							<div class="briefing-card-top"><div class="briefing-time"><span>{{ briefing.time }}</span><small>{{ briefing.days.map(dayName).join(' · ') }}</small></div><div class="briefing-card-actions"><button type="button" class="briefing-toggle" :class="{ active: briefing.enabled !== false }" :aria-label="$t('Toggle briefing')" @click="toggleBriefing(briefing.id)"><span></span></button><NcButton type="tertiary-no-background" @click="removeBriefing(briefing.id)">{{ $t('Remove') }}</NcButton></div></div>
+							<p class="briefing-prompt">{{ briefing.prompt }}</p><small class="briefing-next">{{ briefing.enabled === false ? $t('Paused') : $t('Runs on {days} at {time}', { days: briefing.days.map(dayName).join(', '), time: briefing.time }) }}</small>
 						</div>
+						<div class="briefing-form"><div class="briefing-form-title"><strong>{{ $t('Create a briefing') }}</strong><span>{{ $t('Choose what EVA should prepare and when you want it.') }}</span></div>
 						<div class="field-grid">
-							<NcTextField v-model="briefingDraft.prompt" :label="$t('What should EVA do?')" :label-outside="true" :placeholder="$t('For example: summarize my calendar for today')" />
+							<div class="field field-wide"><NcTextField v-model="briefingDraft.prompt" :label="$t('What should EVA do?')" :label-outside="true" :placeholder="$t('For example: summarize my calendar for today')" /><p class="field-help">{{ $t('Write a question or instruction in plain language. You can ask about files, calendar, tasks or your knowledge base.') }}</p></div>
 							<NcTextField v-model="briefingDraft.time" type="time" :label="$t('Time')" :label-outside="true" />
 						</div>
-						<div class="weekday-picker"><label v-for="day in weekdays" :key="day.value"><input v-model="briefingDraft.days" type="checkbox" :value="day.value" /> {{ day.label }}</label></div>
-						<NcButton type="secondary" :disabled="!briefingDraft.prompt.trim() || !briefingDraft.days.length" @click="addBriefing">{{ $t('Add briefing') }}</NcButton>
+						<div><span class="native-label">{{ $t('Repeat on') }}</span><div class="weekday-picker"><label v-for="day in weekdays" :key="day.value" :class="{ selected: briefingDraft.days.includes(day.value) }"><input v-model="briefingDraft.days" type="checkbox" :value="day.value" /> <span>{{ day.label }}</span></label></div></div>
+						<div class="briefing-form-actions"><NcButton type="primary" :disabled="!briefingDraft.prompt.trim() || !briefingDraft.days.length" @click="addBriefing">{{ $t('Add briefing') }}</NcButton><span>{{ $t('{count} slots remaining', { count: Math.max(0, 20 - proactiveBriefings.length) }) }}</span></div></div>
 					</div>
 				</div>
 			</section>
@@ -626,6 +627,7 @@ export default {
 			briefingDraft.value.prompt = ''
 		}
 		function removeBriefing(id) { writeBriefings(proactiveBriefings.value.filter(item => item.id !== id)) }
+		function toggleBriefing(id) { writeBriefings(proactiveBriefings.value.map(item => item.id === id ? { ...item, enabled: item.enabled === false } : item)) }
 		const userWeatherEnabled = computed({
 			get: () => f.value.weather_tool_enabled === '1',
 			set: value => { f.value.weather_tool_enabled = value ? '1' : '0' },
@@ -1205,7 +1207,7 @@ export default {
 			groqKey, removeGroqKey, ocrEnabled, f, status, limits, availableModels, embeddingModels, chatModels, embeddingInstalledHint, chatInstalledHint, modelLoading, modelError, checkOut, saving, checking, indexing, resetting, deletingChats, stopping, saved, loadError, message, validationErrors, resetConfirm, chatsDeleteConfirm,
 			newExcludePath, excludeError, excludeList, actionsEnabled, notificationsEnabled, userWeatherEnabled, mailIndexEnabled, talkIndexEnabled, talkWriteEnabled, indexEnrolled, actionsDisabled, busy, indexingActive, settingsLocked, maxFileSizeMb,
 			isAdminMode, admin, userWebSearchEnabled, userWebSearchSafeSearch, userWebSearchImages, userWebSearchBrowser, userWebSearchFetchContent, webSearchKey, removeWebSearchKey, webSearchKeyStored, webSearchReady, savingAdmin, saveAdminSettings, loadAdminSettings,
-			proactiveEnabled, proactiveBriefings, briefingDraft, weekdays, dayName, addBriefing, removeBriefing,
+			proactiveEnabled, proactiveBriefings, briefingDraft, weekdays, dayName, addBriefing, removeBriefing, toggleBriefing,
 			exporting, downloadExport,
 			knowledgeContent, knowledgeOriginal, savingKnowledge, knowledgeSaved, saveKnowledgeContent,
 			formatNumber, loadStatus, save, checkOllama, addExclude, removeExclude, startIndex, startMailIndex, startTalkIndex, stopIndex, resetIndex, deleteAllChats,
@@ -1325,6 +1327,35 @@ export default {
 .compact-switch { margin-top: 18px; }
 .admin-subsection { margin: 16px 0 4px; padding: 14px 16px; border: 1px solid var(--color-border); border-radius: 10px; background: var(--color-background-hover); }
 .admin-subsection .field + .field { margin-top: 14px; }
+.briefing-heading { display:flex; align-items:flex-start; justify-content:space-between; gap:16px; }
+.briefing-heading h4 { margin:0; font-size:15px; }
+.briefing-heading p { margin:4px 0 0; color:var(--color-text-maxcontrast); font-size:12px; line-height:1.5; }
+.briefing-count { padding:4px 9px; border-radius:999px; background:var(--color-main-background); color:var(--color-text-maxcontrast); font-size:11px; font-weight:700; white-space:nowrap; }
+.briefing-note { display:flex; gap:8px; margin:16px 0; padding:11px 12px; border-left:3px solid var(--color-primary-element); background:color-mix(in srgb,var(--color-primary-element) 8%,var(--color-main-background)); font-size:12px; line-height:1.5; }
+.briefing-note strong { color:var(--color-primary-element); white-space:nowrap; }
+.briefing-note span { color:var(--color-text-maxcontrast); }
+.briefing-editor { display:grid; gap:10px; margin-top:16px; }
+.briefing-empty { display:flex; flex-direction:column; gap:3px; padding:18px; border:1px dashed var(--color-border); border-radius:10px; text-align:center; color:var(--color-text-maxcontrast); font-size:12px; }
+.briefing-empty strong { color:var(--color-main-text); font-size:13px; }
+.briefing-card { padding:14px; border:1px solid var(--color-border); border-radius:11px; background:var(--color-main-background); box-shadow:0 1px 2px color-mix(in srgb,var(--color-main-text) 5%,transparent); }
+.briefing-card-top,.briefing-card-actions,.briefing-form-actions { display:flex; align-items:center; justify-content:space-between; gap:10px; }
+.briefing-time { display:flex; align-items:baseline; gap:10px; }
+.briefing-time span { font-size:20px; font-weight:750; letter-spacing:-.03em; }
+.briefing-time small,.briefing-next { color:var(--color-text-maxcontrast); font-size:11px; }
+.briefing-prompt { margin:10px 0 5px; font-size:14px; line-height:1.45; }
+.briefing-toggle { width:36px; height:21px; padding:2px; border:0; border-radius:999px; background:var(--color-border); cursor:pointer; }
+.briefing-toggle span { display:block; width:17px; height:17px; border-radius:50%; background:var(--color-main-background); transition:transform .15s; }
+.briefing-toggle.active { background:var(--color-primary-element); }
+.briefing-toggle.active span { transform:translateX(15px); }
+.briefing-form { display:grid; gap:14px; margin-top:6px; padding:16px; border:1px solid color-mix(in srgb,var(--color-primary-element) 30%,var(--color-border)); border-radius:11px; background:color-mix(in srgb,var(--color-primary-element) 4%,var(--color-main-background)); }
+.briefing-form-title { display:flex; flex-direction:column; gap:3px; }
+.briefing-form-title span { color:var(--color-text-maxcontrast); font-size:12px; }
+.weekday-picker { display:flex; flex-wrap:wrap; gap:7px; margin-top:7px; }
+.weekday-picker label { display:inline-flex; align-items:center; gap:5px; padding:7px 10px; border:1px solid var(--color-border); border-radius:999px; background:var(--color-main-background); color:var(--color-text-maxcontrast); font-size:12px; cursor:pointer; }
+.weekday-picker label.selected { border-color:var(--color-primary-element); background:color-mix(in srgb,var(--color-primary-element) 14%,var(--color-main-background)); color:var(--color-main-text); font-weight:700; }
+.weekday-picker input { accent-color:var(--color-primary-element); }
+.briefing-form-actions { justify-content:flex-start; }
+.briefing-form-actions span { color:var(--color-text-maxcontrast); font-size:11px; }
 
 .exclude-paths { margin-top: 22px; padding-top: 18px; border-top: 1px solid var(--color-border); }
 .sub-heading span { display: block; margin-top: -2px; color: var(--color-text-maxcontrast); font-size: 12px; }
