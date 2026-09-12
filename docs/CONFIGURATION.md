@@ -186,6 +186,7 @@ from an instance-wide value.
 | `proactive_schedule_runs` | JSON map of the last delivered local time slot per scheduled briefing; prevents duplicate notifications after cron retries. |
 | `background_chat_queue` | Internal per-user queue for chat requests handed to the background worker when a browser tab closes; never configure manually. |
 | `learned_app_apis` | Internal per-user JSON cache of sanitized Nextcloud OCS route metadata learned by EVA; credentials and response bodies are never stored, and the cache is refreshed by `discover_app_api`. |
+| `learned_file_locations` | Internal per-user JSON cache of bounded file/folder paths discovered during EVA listings and searches; only path, type and last-seen time are stored. |
 
 | Key | Meaning |
 |---|---|
