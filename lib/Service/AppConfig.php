@@ -27,6 +27,9 @@ class AppConfig {
         // parts of a conversation. Off by default: a chat log is the most
         // personal data in the instance and must be opted into.
         'talk_index_enabled', 'talk_index_max_rooms', 'talk_index_max_messages',
+        // Posting into Talk as the signed-in user. Off by default: writing a
+        // message is an act in somebody's name, so the user opts in.
+        'talk_write_enabled',
         'chat_retention_days', 'embed_batch_size', 'ocr_enabled', 'ocr_language',
         'ollama_keep_alive', 'followups_mode',
         // Web search: each user can enable/disable and choose their provider.
@@ -134,6 +137,7 @@ class AppConfig {
         'mail_index_enabled' => '1',
         'mail_index_max' => '25',
         'talk_index_enabled' => '0',
+        'talk_write_enabled' => '0',
         'talk_index_max_rooms' => '20',
         'talk_index_max_messages' => '200',
         'talk_history_size' => '50',
@@ -557,7 +561,7 @@ class AppConfig {
             }
             return 'must be an absolute path or a command name, without spaces';
         }
-        if (in_array($key, ['ocr_enabled', 'actions_enabled', 'notify_on_complete', 'mail_index_enabled', 'talk_index_enabled', 'index_enrolled', 'talk_classify_all', 'weather_tool_enabled', 'web_search_enabled', 'web_search_safe_search', 'web_search_fetch_content', 'web_search_images', 'web_search_browser'], true)) {
+        if (in_array($key, ['ocr_enabled', 'actions_enabled', 'notify_on_complete', 'mail_index_enabled', 'talk_index_enabled', 'talk_write_enabled', 'index_enrolled', 'talk_classify_all', 'weather_tool_enabled', 'web_search_enabled', 'web_search_safe_search', 'web_search_fetch_content', 'web_search_images', 'web_search_browser'], true)) {
             return is_scalar($value) && in_array((string)$value, ['0', '1', 'true', 'false', 'on', 'off'], true)
                 ? null : 'must be a boolean value';
         }

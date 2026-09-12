@@ -353,6 +353,50 @@ Gets the weather forecast (today + 2 days) for a place. Useful for planning outd
 |---|---|---|---|
 | `location` | string | yes | City or place, e.g. `Berlin` or `München`. |
 
+## Nextcloud Talk
+
+These tools work on the conversations the signed-in user is a member of. Talk is
+an optional dependency: without it they are not offered at all. A room is named
+by its name, its token or its numeric id, and it is always resolved against the
+user's own room list — a room they are not in cannot be read or written, and an
+ambiguous name is reported instead of being guessed.
+
+### list_talk_rooms
+Lists the user's Talk conversations, most recently active first.
+
+| Parameter | Type | Required | Description |
+|---|---|---|---|
+| `limit` | integer | no | Optional maximum number of rooms (default 25, maximum 100). |
+
+Each entry carries `name`, `token`, `id`, `type` (`one-to-one`, `group`,
+`public`) and `lastActivity`.
+
+### read_talk_chat
+Reads the recent messages of one room, oldest first, each dated and attributed to
+its author. Use it whenever the question is about what was said or decided in a
+chat — the indexed history is a snapshot, this is the conversation as it is now.
+
+| Parameter | Type | Required | Description |
+|---|---|---|---|
+| `room` | string | yes | Name, token or numeric id, e.g. `Projekt Alpha`. |
+| `limit` | integer | no | Number of recent messages to read (5–200, default 50). |
+
+### send_talk_message
+Posts a message into one of those rooms **as the signed-in user**: it appears under
+their name, exactly as if they had typed it, with no bot label. Only use it when
+the user explicitly asks EVA to write, answer, announce or forward something in a
+chat, and use their own wording.
+
+| Parameter | Type | Required | Description |
+|---|---|---|---|
+| `room` | string | yes | Name, token or numeric id of the room to post into. |
+| `message` | string | yes | The exact message to post (at most 4000 characters). |
+
+This tool only exists when the user has switched **“Let EVA post to Nextcloud
+Talk for me”** on in the EVA AI settings (`talk_write_enabled`). It is not
+offered on the Talk surface itself, and it requires confirmation. With the switch
+off, the answer is `Posting to Nextcloud Talk is switched off.`
+
 ---
 
 ## Notes on behaviour
@@ -360,6 +404,10 @@ Gets the weather forecast (today + 2 days) for a place. Useful for planning outd
 - **Read-only vs. write tools:** mutating or destructive operations (create/update/delete, shares, file writes) always require an explicit user confirmation in the chat before they are executed.
 - **Background worker (CLI) limitation:** file tools (`list_files`, `create_file`, `create_note`, `create_folder`, `rename_file`, `delete_file`, `read_file`, `search_files`, `update_knowledge`) are not available in background `taskprocessing:worker` runs, because the user's file mount is not set up there. They work in the regular web chat.
 - **Multi-step tasks:** Eva combines several tools in one task run (up to 4 tool rounds) until it can answer.
+- **Writing in somebody's name:** `send_talk_message` is the only tool that acts
+  *as* the user in a place other people can see. It is off until the user enables
+  it, it never runs on the Talk surface, and its policy entry disappears with the
+  switch so the model is not even offered it while it is disabled.
 
 ## Safe tool exposure
 

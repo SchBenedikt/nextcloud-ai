@@ -67,6 +67,8 @@ class ActionExecutor {
         'create_share' => ['path'],
         'update_share' => ['share_id'],
         'delete_share' => ['share_id'],
+        // Talk
+        'send_talk_message' => ['room', 'message'],
         // Tasks
         'create_task' => ['title'],
         'update_task' => ['task_id'],
@@ -107,6 +109,7 @@ class ActionExecutor {
         private ActivityService $activity,
         private ToolPolicy $toolPolicy,
         private WebSearchService $webSearch,
+        private TalkChatService $talkChat,
         private \OCP\Lock\ILockingProvider $lockingProvider
     ) {
     }
@@ -494,6 +497,29 @@ class ActionExecutor {
                 ], 'required' => ['query']],
             ]],
             ['type' => 'function', 'function' => [
+                'name' => 'list_talk_rooms',
+                'description' => 'List the Nextcloud Talk conversations the user is a member of, most recently active first. Each entry carries `name`, `token`, `id`, `type` (one-to-one, group, public) and `lastActivity`. Use it first when the user refers to a chat by name ("the project room", "mein Chat mit Anna") instead of naming a token, and before read_talk_chat or send_talk_message. Only the user\'s own rooms are ever returned.',
+                'parameters' => ['type' => 'object', 'properties' => [
+                    'limit' => ['type' => 'integer', 'description' => 'Optional maximum number of rooms (default 25).'],
+                ]],
+            ]],
+            ['type' => 'function', 'function' => [
+                'name' => 'read_talk_chat',
+                'description' => 'Read the recent messages of one Nextcloud Talk conversation, oldest first, each dated and attributed to its author. Use this whenever the user asks about the content of a chat ("what did we agree in X?", "was hat Anna im Projekt-Chat geschrieben?", "worum ging es heute in Y?") - the indexed chat history may be older than the conversation, so the current messages come from here. `room` takes the name, token or id from `list_talk_rooms`. Only rooms the user is a member of can be read; a room they left answers as if it did not exist.',
+                'parameters' => ['type' => 'object', 'properties' => [
+                    'room' => ['type' => 'string', 'description' => 'The room to read: its name, token or numeric id (see list_talk_rooms).'],
+                    'limit' => ['type' => 'integer', 'description' => 'Optional number of recent messages to read (5-200, default 50).'],
+                ], 'required' => ['room']],
+            ]],
+            ['type' => 'function', 'function' => [
+                'name' => 'send_talk_message',
+                'description' => 'Post a message into a Nextcloud Talk conversation as the user who is asking. It appears under their name, exactly as if they had typed it - there is no bot label, so only do this when the user explicitly asks you to write, send, answer, announce or forward something in a chat ("schreib in den Projekt-Chat, dass ...", "tell the team in X that ...", "antworten im Chat Y: ..."). `room` takes the name, token or id from `list_talk_rooms`. Use the user\'s own wording for the message and do not add anything to it; afterwards state which room you posted in. Posting is only possible when the user has enabled it in the EVA AI settings.',
+                'parameters' => ['type' => 'object', 'properties' => [
+                    'room' => ['type' => 'string', 'description' => 'The room to post into: its name, token or numeric id (see list_talk_rooms).'],
+                    'message' => ['type' => 'string', 'description' => 'The exact message to post.'],
+                ], 'required' => ['room', 'message']],
+            ]],
+            ['type' => 'function', 'function' => [
                 'name' => 'open_website',
                 'description' => 'Open one web page and read its full text, so you can work with a source instead of its search snippet. Use it after a web_search when a result looks relevant but the snippet is too short, when you need a detail (a number, a date, a quote) from a named page, or to check what a source really says. Returns the readable article text, the passages that match `query`, the page images and the publication date. Only http(s) pages can be opened.',
                 'parameters' => ['type' => 'object', 'properties' => [
@@ -648,6 +674,9 @@ class ActionExecutor {
                 'web_search' => $this->runWebSearch($args),
                 'search_images' => $this->runImageSearch($args),
                 'open_website' => $this->openWebsite($args),
+                'list_talk_rooms' => $this->listTalkRooms($userId, $args),
+                'read_talk_chat' => $this->readTalkChat($userId, $args),
+                'send_talk_message' => $this->sendTalkMessage($userId, $args),
                 'search_mails' => $this->searchMails($userId, $args),
                 'list_mails' => $this->listMails($userId, $args),
                 'read_mail' => $this->readMail($userId, $args),
@@ -1726,6 +1755,72 @@ class ActionExecutor {
                 'highlights' => $page['highlights'],
                 'images' => $page['images'],
                 'text' => $page['text'],
+            ],
+        ];
+    }
+
+    /**
+     * The user's Talk rooms, so the model can pick the right one by name.
+     */
+    private function listTalkRooms(string $userId, array $args): array
+    {
+        $limit = (int)($args['limit'] ?? 25);
+        $rooms = $this->talkChat->rooms($userId, $limit);
+        if ($rooms === []) {
+            return [
+                'ok' => false,
+                'error' => 'No Nextcloud Talk rooms found. Either Talk is not installed, or the user is not a member of any room.',
+            ];
+        }
+        return ['ok' => true, 'result' => $rooms];
+    }
+
+    /**
+     * Read one Talk room's recent messages. The room is resolved against the
+     * user's own room list, so a name from the model can never reach a room the
+     * user is not in.
+     */
+    private function readTalkChat(string $userId, array $args): array
+    {
+        $room = trim((string)($args['room'] ?? ''));
+        if ($room === '') {
+            return ['ok' => false, 'error' => 'room required'];
+        }
+        $limit = (int)($args['limit'] ?? 50);
+        $result = $this->talkChat->read($userId, $room, $limit);
+        if (!$result['ok']) {
+            return ['ok' => false, 'error' => (string)($result['error'] ?? 'The chat could not be read.')];
+        }
+        return [
+            'ok' => true,
+            'result' => [
+                'room' => $result['room'],
+                'messages' => $result['messages'],
+                'text' => $result['text'],
+            ],
+        ];
+    }
+
+    /**
+     * Post into a Talk room as the asking user.
+     */
+    private function sendTalkMessage(string $userId, array $args): array
+    {
+        $room = trim((string)($args['room'] ?? ''));
+        $message = trim((string)($args['message'] ?? ''));
+        if ($room === '' || $message === '') {
+            return ['ok' => false, 'error' => 'room and message required'];
+        }
+        $result = $this->talkChat->send($userId, $room, $message);
+        if (!$result['ok']) {
+            return ['ok' => false, 'error' => (string)($result['error'] ?? 'The message could not be posted.')];
+        }
+        return [
+            'ok' => true,
+            'result' => [
+                'room' => $result['room'],
+                'messageId' => $result['messageId'],
+                'sentAt' => $result['sentAt'],
             ],
         ];
     }

@@ -77,6 +77,27 @@ messages per chat are read. How the whole path works, what is deliberately left
 out, and how to verify it on a live instance:
 [TALK-INDEXING.md](TALK-INDEXING.md) and `occ eva_ai:talk <user>`.
 
+#### Reading and posting in a chat on request
+
+The index is a snapshot; a question like "what did we agree in the project room?"
+is answered from the conversation as it is now. Three tools do that, and they are
+usable from the web chat as well as from the Nextcloud Assistant:
+
+| Tool | What it does | When it is offered |
+| --- | --- | --- |
+| `list_talk_rooms` | The signed-in user's conversations, most recently active first | Talk is installed |
+| `read_talk_chat` | The recent messages of one room, oldest first, dated and attributed | Talk is installed |
+| `send_talk_message` | Posts a message into one of those rooms **as the signed-in user** | The user enabled `talk_write_enabled` |
+
+A room named in a prompt ("the project room") is matched against the user's own
+room list - name, token or id - and never looked up directly, so a conversation
+the user is not in cannot be read or written. An ambiguous name returns the
+candidates instead of picking one, and membership is checked again when the room
+is read. Posting goes through Talk itself with the user as the author, so the
+message appears exactly as if they had typed it; the switch for it is per user
+and off by default, the tool is not offered on the Talk surface, and it is
+described to the model only once it is on.
+
 ### Command Line and Background Jobs
 
 `occ` commands support setup, indexing, resetting the index, mount overviews,

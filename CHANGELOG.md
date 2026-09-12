@@ -4,6 +4,51 @@ All notable changes to **EVA (eva_ai)** are documented here.
 Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); the project
 follows [Semantic Versioning](https://semver.org/).
 
+## [1.12.0] - 2026-09-12
+
+### Added
+
+- **EVA can read and write Nextcloud Talk conversations on request.** Three new
+  tools work from the web chat and from the Nextcloud Assistant:
+  `list_talk_rooms` (the conversations the signed-in user is in, most recently
+  active first), `read_talk_chat` (the recent messages of one room, oldest first,
+  dated and attributed) and `send_talk_message` (posts a message into one of
+  those rooms **as the signed-in user**, with no bot label). The index is a
+  snapshot; these tools answer "what did we agree in the project room?" from the
+  conversation as it is now, including parts that were never indexed.
+- `talk_write_enabled`: a per-user switch (personal settings, "Let EVA post to
+  Nextcloud Talk for me") that allows posting. Off by default, because a message
+  written in somebody's name is an act rather than a lookup. Reading a chat needs
+  no switch.
+- The system prompt describes the Talk tools, so a chat question reaches for
+  `read_talk_chat` instead of guessing from the index, and it mentions posting
+  only once the user has enabled it.
+
+### Security
+
+- **A room reference is never a room lookup.** A name, a token or an id from the
+  model is matched against the rooms Talk reports for that user, so a prompt
+  naming somebody else's conversation resolves to nothing. An ambiguous name
+  returns the candidates instead of picking one; reading re-checks membership at
+  read time and fails closed; posting resolves the user's participant record and
+  is refused when they are not in the room.
+- Posting is gated at the policy boundary (`ToolPolicy`), not only in the
+  service: while the switch is off the tool is absent from every surface, blocked
+  at dispatch and skipped in the agent proposal phase. It is also not offered on
+  the Talk surface itself, where the bot would otherwise post into the room as the
+  person who just asked it a question.
+- The Talk tools are hidden entirely on an instance without Talk, instead of
+  being offered and failing at call time.
+
+### Documentation
+
+- [docs/TALK-INDEXING.md](docs/TALK-INDEXING.md): a section on the live read and
+  write path - how a room is resolved, why posting is opt-in, and the `occ`
+  commands that read a room and post a message by hand.
+- [TOOLS.md](TOOLS.md): the three Talk tools with their parameters, and a note
+  that `send_talk_message` is the only tool that acts in the user's name in a
+  place other people can see.
+
 ## [1.11.0] - 2026-09-12
 
 ### Fixed

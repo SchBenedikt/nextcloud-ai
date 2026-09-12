@@ -579,5 +579,7 @@ OC.L10N.register("eva_ai", {
     "Messages per Nextcloud Talk chat": "Messages per Nextcloud Talk chat",
     "Nextcloud Talk chats per indexing run": "Nextcloud Talk chats per indexing run",
     "Only index Nextcloud Talk chats": "Only index Nextcloud Talk chats",
-    "Only used when Talk indexing is enabled. Default: 20.": "Only used when Talk indexing is enabled. Default: 20."
+    "Only used when Talk indexing is enabled. Default: 20.": "Only used when Talk indexing is enabled. Default: 20.",
+    "Let EVA post to Nextcloud Talk for me": "Let EVA post to Nextcloud Talk for me",
+    "Let EVA answer and write in your Nextcloud Talk conversations for you. A message posted this way appears under your name, exactly as if you had typed it, so EVA only posts when you explicitly ask it to. Enabling this also lets EVA read a chat on request.": "Let EVA answer and write in your Nextcloud Talk conversations for you. A message posted this way appears under your name, exactly as if you had typed it, so EVA only posts when you explicitly ask it to. Enabling this also lets EVA read a chat on request."
 }, "nplurals=2; plural=(n != 1);");

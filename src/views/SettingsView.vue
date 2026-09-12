@@ -272,6 +272,8 @@
 				</NcCheckboxRadioSwitch>
 				<NcCheckboxRadioSwitch v-model="talkIndexEnabled" type="switch" class="native-toggle compact-switch" :description="$t('Include the chat histories of your Nextcloud Talk conversations in search results, so older parts of a conversation can be quoted in an answer. Only chats you are a member of are indexed, and only your own chat becomes context in a Talk answer.')">{{ $t('Index Nextcloud Talk chat histories') }}
 				</NcCheckboxRadioSwitch>
+				<NcCheckboxRadioSwitch v-model="talkWriteEnabled" type="switch" class="native-toggle compact-switch" :description="$t('Let EVA answer and write in your Nextcloud Talk conversations for you. A message posted this way appears under your name, exactly as if you had typed it, so EVA only posts when you explicitly ask it to. Enabling this also lets EVA read a chat on request.')">{{ $t('Let EVA post to Nextcloud Talk for me') }}
+				</NcCheckboxRadioSwitch>
 				<NcCheckboxRadioSwitch v-model="indexEnrolled" type="switch" class="native-toggle compact-switch" :disabled="busy" :description="$t('Keep this account in the recurring background schedule, even when its index is currently empty. Starting indexing enables this automatically.')">{{ $t('Keep indexing this account in the background') }}
 				</NcCheckboxRadioSwitch>
 
@@ -518,6 +520,7 @@ export default {
 			mail_index_max: '25',
 			mail_index_enabled: '1',
 			talk_index_enabled: '0',
+			talk_write_enabled: '0',
 			talk_index_max_rooms: '20',
 			talk_index_max_messages: '200',
 			index_enrolled: '0',
@@ -644,6 +647,10 @@ export default {
 		const talkIndexEnabled = computed({
 			get: () => f.value.talk_index_enabled === '1',
 			set: value => { f.value.talk_index_enabled = value ? '1' : '0' },
+		})
+		const talkWriteEnabled = computed({
+			get: () => f.value.talk_write_enabled === '1',
+			set: value => { f.value.talk_write_enabled = value ? '1' : '0' },
 		})
 		const indexEnrolled = computed({
 			get: () => f.value.index_enrolled === '1',
@@ -1080,7 +1087,7 @@ export default {
 		const ocrEnabled = computed({ get: () => f.value.ocr_enabled === '1', set: value => { f.value.ocr_enabled = value ? '1' : '0' } })
 		return {
 			groqKey, removeGroqKey, ocrEnabled, f, status, limits, availableModels, embeddingModels, chatModels, embeddingInstalledHint, chatInstalledHint, modelLoading, modelError, checkOut, saving, checking, indexing, resetting, deletingChats, stopping, saved, loadError, message, validationErrors, resetConfirm, chatsDeleteConfirm,
-			newExcludePath, excludeError, excludeList, actionsEnabled, notificationsEnabled, weatherEnabled, mailIndexEnabled, talkIndexEnabled, indexEnrolled, actionsDisabled, busy, indexingActive, settingsLocked, maxFileSizeMb,
+			newExcludePath, excludeError, excludeList, actionsEnabled, notificationsEnabled, weatherEnabled, mailIndexEnabled, talkIndexEnabled, talkWriteEnabled, indexEnrolled, actionsDisabled, busy, indexingActive, settingsLocked, maxFileSizeMb,
 			isAdminMode, admin, userWebSearchEnabled, webSearchSafeSearch, webSearchKey, removeWebSearchKey, webSearchKeyStored, webSearchReady, savingAdmin, saveAdminSettings, loadAdminSettings,
 			exporting, downloadExport,
 			knowledgeContent, knowledgeOriginal, savingKnowledge, knowledgeSaved, saveKnowledgeContent,
