@@ -56,6 +56,7 @@ class AppConfig {
         'last_index_ollama_requests', 'last_index_failed', 'index_config_hash', 'index_mode',
         'index_cancel_requested', 'index_run_id', 'index_enrolled', 'knowledge_initialized',
         'proactive_schedule_runs',
+        'background_chat_queue',
     ];
 
     /** All keys that are stored on the per-user scope. */
@@ -137,6 +138,7 @@ class AppConfig {
         'proactive_schedules' => '[]',
         'proactive_enabled' => '0',
         'proactive_schedule_runs' => '{}',
+        'background_chat_queue' => '[]',
         'mail_index_enabled' => '1',
         'mail_index_max' => '25',
         // Talk context is part of the assistant's normal background context.

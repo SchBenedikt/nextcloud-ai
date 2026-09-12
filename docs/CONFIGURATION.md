@@ -182,6 +182,7 @@ from an instance-wide value.
 ### Global scheduler state (G)
 
 | `proactive_schedule_runs` | JSON map of the last delivered local time slot per scheduled briefing; prevents duplicate notifications after cron retries. |
+| `background_chat_queue` | Internal per-user queue for chat requests handed to the background worker when a browser tab closes; never configure manually. |
 
 | Key | Meaning |
 |---|---|

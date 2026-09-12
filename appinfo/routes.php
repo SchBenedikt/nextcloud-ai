@@ -30,6 +30,7 @@ return [
         ['name' => 'api#documents', 'url' => '/api/documents', 'verb' => 'GET'],
         ['name' => 'api#documentChunks', 'url' => '/api/documentChunks', 'verb' => 'POST'],
         ['name' => 'api#chat', 'url' => '/api/chat', 'verb' => 'POST'],
+        ['name' => 'api#backgroundChat', 'url' => '/api/backgroundChat', 'verb' => 'POST'],
         ['name' => 'api#chats', 'url' => '/api/chats', 'verb' => 'GET'],
         ['name' => 'api#createChat', 'url' => '/api/chats', 'verb' => 'POST'],
         ['name' => 'api#deleteAllChats', 'url' => '/api/chats', 'verb' => 'DELETE'],

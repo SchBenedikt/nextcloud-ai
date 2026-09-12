@@ -50,7 +50,8 @@ class ApiController extends OCSController {
         private \OCA\EvaAi\Service\ChatLearner $chatLearner,
         private ICacheFactory $cacheFactory,
         private \OCA\EvaAi\Service\IndexScheduler $indexScheduler,
-        private \OCA\EvaAi\Service\UsageMetrics $usageMetrics
+        private \OCA\EvaAi\Service\UsageMetrics $usageMetrics,
+        private \OCA\EvaAi\Service\BackgroundChatQueue $backgroundChatQueue
     ) {
         parent::__construct($appName, $request);
         $this->config->setUserId($this->userId);
@@ -850,6 +851,30 @@ class ApiController extends OCSController {
         $chatId = $this->requestParam('chatId');
         $custom = $this->customFor($user, $chatId);
         return new DataResponse($this->ragService->ask($user, $message, $history, $this->scopePathFor($user, $chatId), $custom['instructions'], $custom['persona']));
+    }
+
+    /** Queue a chat request so a closed browser tab cannot lose it. */
+    #[NoAdminRequired]
+    public function backgroundChat(): DataResponse {
+        $user = $this->requireUser();
+        if ($user === null) return new DataResponse(['error' => 'Not logged in'], 401);
+        $chatId = trim((string)($this->requestParam('chatId') ?? ''));
+        $message = trim((string)($this->requestParam('message') ?? ''));
+        $history = $this->requestParam('history', []);
+        if (is_string($history)) $history = json_decode($history, true) ?? [];
+        if ($chatId === '' || $message === '' || !is_array($history)) return new DataResponse(['error' => 'chatId, message and history are required'], 400);
+        $chat = $this->chatStore->get($user, $chatId);
+        if ($chat === null) return new DataResponse(['error' => 'Chat not found'], 404);
+        // pagehide may fire before the normal user-message persistence call;
+        // append it only when it is not already the final stored user message.
+        $stored = $chat['messages'] ?? [];
+        $last = $stored !== [] ? $stored[count($stored) - 1] : null;
+        if (($last['role'] ?? '') !== 'user' || trim((string)($last['text'] ?? '')) !== $message) {
+            $this->chatStore->append($user, $chatId, 'user', $message);
+        }
+        $id = $this->backgroundChatQueue->enqueue($user, $chatId, $message, $history);
+        if ($id === null) return new DataResponse(['error' => 'Background queue is full or the message is too large'], 429);
+        return new DataResponse(['queued' => true, 'id' => $id]);
     }
 
     /**
