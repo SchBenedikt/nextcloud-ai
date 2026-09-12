@@ -77,12 +77,13 @@ class Ollama {
         private LoggerInterface $logger,
         private ICacheFactory $cacheFactory,
         private EmbeddingCache $embeddingCache,
-        private ?Groq $groq = null
+        private ?Groq $groq = null,
+        private ?UsageMetrics $usageMetrics = null
     ) {
     }
 
     private function groqClient(): Groq {
-        return $this->groq ??= new Groq($this->config, $this->clientService, \OCP\Server::get(ProviderCredentials::class));
+        return $this->groq ??= new Groq($this->config, $this->clientService, \OCP\Server::get(ProviderCredentials::class), $this->usageMetrics);
     }
     public function groqInfo(): array { return $this->groqClient()->info(); }
     public function saveGroqKey(string $key): void { $this->groqClient()->saveKey($key); }
@@ -941,6 +942,7 @@ class Ollama {
             $payload['tools'] = $this->normalizePayload($tools);
         }
         $totalTimeout = $timeout ?? self::CHAT_TIMEOUT;
+        $startedAt = microtime(true);
         try {
             $r = $this->client()->post($this->base() . '/api/chat', [
                 'json' => $payload,
@@ -953,6 +955,8 @@ class Ollama {
             $msg = $data['message'] ?? [];
             $rawToolCalls = $msg['tool_calls'] ?? [];
             $toolCalls = $this->normalizeToolCalls($rawToolCalls);
+            $answer = (string)($msg['content'] ?? '');
+            $this->recordUsage($modelName, $messages, $answer, $data, $startedAt);
             if (isset($msg['content']) && $msg['content'] !== '') {
                 return [
                     'answer' => $msg['content'],
@@ -1032,6 +1036,20 @@ class Ollama {
         return 'Ollama error: ' . $message;
     }
 
+    /** @param array<int,array{role?:string,content?:string}> $messages */
+    private function recordUsage(string $model, array $messages, string $answer, array $data, float $startedAt): void {
+        $this->usageMetrics?->recordChat(
+            $this->config->userId(),
+            'ollama',
+            (string)($data['model'] ?? $model),
+            $messages,
+            $answer,
+            isset($data['prompt_eval_count']) ? (int)$data['prompt_eval_count'] : null,
+            isset($data['eval_count']) ? (int)$data['eval_count'] : null,
+            (int)round((microtime(true) - $startedAt) * 1000),
+        );
+    }
+
     /**
      * Streaming chat: yields ['type' => 'thinking'|'content', 'delta' => string]
      * events as tokens arrive from Ollama (NDJSON stream).
@@ -1067,6 +1085,8 @@ class Ollama {
             $payload['tools'] = $this->normalizePayload($tools);
         }
         $body = null;
+        $startedAt = microtime(true);
+        $streamAnswer = '';
         try {
             if ($this->clientDisconnected()) {
                 return;
@@ -1138,6 +1158,12 @@ class Ollama {
                             return;
                         }
                         $doneModel = isset($obj['model']) ? (string)$obj['model'] : '';
+                        $usageData = [
+                            'model' => $doneModel !== '' ? $doneModel : $modelName,
+                            'prompt_eval_count' => isset($obj['prompt_eval_count']) ? (int)$obj['prompt_eval_count'] : null,
+                            'eval_count' => isset($obj['eval_count']) ? (int)$obj['eval_count'] : null,
+                        ];
+                        $this->recordUsage($modelName, $messages, $streamAnswer, $usageData, $startedAt);
                         if ($streamCalls !== []) {
                             ksort($streamCalls);
                             $rawToolCalls = array_values($streamCalls);
@@ -1159,6 +1185,7 @@ class Ollama {
                     }
                     $content = (string)($msg['content'] ?? '');
                     if ($content !== '') {
+                        $streamAnswer .= $content;
                         if ($this->clientDisconnected()) {
                             return;
                         }

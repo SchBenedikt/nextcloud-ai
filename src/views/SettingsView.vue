@@ -613,8 +613,13 @@ export default {
 			const adminReady = ref(false)
 			let autoSaveTimer = null
 			let adminAutoSaveTimer = null
+			let autoSaveDirty = false
+			let adminAutoSaveDirty = false
+			let ignoreNextFormChange = false
+			let ignoreNextAdminChange = false
 		function fillAdmin(data) {
 			if (!data || typeof data !== 'object') return
+			if (adminReady.value) ignoreNextAdminChange = true
 			Object.keys(admin.value).forEach(key => {
 				if (data[key] !== undefined && data[key] !== null) admin.value[key] = String(data[key])
 			})
@@ -633,6 +638,7 @@ export default {
 
 		async function saveAdminSettings() {
 			if (savingAdmin.value) return false
+			adminAutoSaveDirty = false
 			savingAdmin.value = true
 			try {
 				const payload = { ...admin.value, remove_web_search_api_key: removeWebSearchKey.value }
@@ -651,15 +657,39 @@ export default {
 		}
 
 		function queueAutoSave() {
-			if (!formReady.value || settingsLocked.value) return
+			if (ignoreNextFormChange) {
+				ignoreNextFormChange = false
+				return
+			}
+			if (!formReady.value) return
+			autoSaveDirty = true
 			window.clearTimeout(autoSaveTimer)
-			autoSaveTimer = window.setTimeout(() => save(), 700)
+			autoSaveTimer = window.setTimeout(() => {
+				if (!autoSaveDirty) return
+				if (settingsLocked.value) {
+					queueAutoSave()
+					return
+				}
+				save()
+			}, 700)
 		}
 
 		function queueAdminAutoSave() {
-			if (!adminReady.value || savingAdmin.value) return
+			if (ignoreNextAdminChange) {
+				ignoreNextAdminChange = false
+				return
+			}
+			if (!adminReady.value) return
+			adminAutoSaveDirty = true
 			window.clearTimeout(adminAutoSaveTimer)
-			adminAutoSaveTimer = window.setTimeout(() => saveAdminSettings(), 700)
+			adminAutoSaveTimer = window.setTimeout(() => {
+				if (!adminAutoSaveDirty) return
+				if (savingAdmin.value) {
+					queueAdminAutoSave()
+					return
+				}
+				saveAdminSettings()
+			}, 700)
 		}
 		const mailIndexEnabled = computed({
 			get: () => f.value.mail_index_enabled === '1',
@@ -800,6 +830,7 @@ export default {
 
 		function fill(settings = status.value?.settings) {
 			if (!settings) return
+			if (formReady.value) ignoreNextFormChange = true
 			Object.keys(f.value).forEach(key => {
 				if (settings[key] !== undefined && settings[key] !== null) {
 					f.value[key] = String(settings[key])
