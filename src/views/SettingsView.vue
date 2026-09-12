@@ -407,8 +407,19 @@
 					<h4>{{ $t('Scheduled briefings') }}</h4>
 					<NcCheckboxRadioSwitch v-model="proactiveEnabled" type="switch" class="native-toggle">{{ $t('Let EVA send scheduled notifications') }}</NcCheckboxRadioSwitch>
 					<p class="field-help">{{ $t('Create up to 20 read-only briefings. EVA sends the answer as a Nextcloud notification at the selected local time; cron frequency can delay delivery slightly.') }}</p>
-					<NcTextField v-if="proactiveEnabled" id="proactive-schedules" v-model="f.proactive_schedules" type="textarea" :label="$t('Scheduled briefing JSON')" :label-outside="true" />
-					<p v-if="proactiveEnabled" class="field-help"><code>[{"id":"morning","prompt":"Summarize my calendar today","time":"08:00","days":[1,2,3,4,5],"enabled":true}]</code></p>
+					<div v-if="proactiveEnabled" class="briefing-editor">
+						<div v-for="briefing in proactiveBriefings" :key="briefing.id" class="briefing-row">
+							<strong>{{ briefing.time }}</strong><span>{{ briefing.prompt }}</span>
+							<small>{{ briefing.days.map(dayName).join(', ') }}</small>
+							<NcButton type="tertiary-no-background" @click="removeBriefing(briefing.id)">{{ $t('Remove') }}</NcButton>
+						</div>
+						<div class="field-grid">
+							<NcTextField v-model="briefingDraft.prompt" :label="$t('What should EVA do?')" :label-outside="true" :placeholder="$t('For example: summarize my calendar for today')" />
+							<NcTextField v-model="briefingDraft.time" type="time" :label="$t('Time')" :label-outside="true" />
+						</div>
+						<div class="weekday-picker"><label v-for="day in weekdays" :key="day.value"><input v-model="briefingDraft.days" type="checkbox" :value="day.value" /> {{ day.label }}</label></div>
+						<NcButton type="secondary" :disabled="!briefingDraft.prompt.trim() || !briefingDraft.days.length" @click="addBriefing">{{ $t('Add briefing') }}</NcButton>
+					</div>
 				</div>
 			</section>
 
@@ -598,6 +609,23 @@ export default {
 			get: () => f.value.proactive_enabled === '1',
 			set: value => { f.value.proactive_enabled = value ? '1' : '0' },
 		})
+		const weekdays = [
+			{ value: 1, label: t('Mon') }, { value: 2, label: t('Tue') }, { value: 3, label: t('Wed') },
+			{ value: 4, label: t('Thu') }, { value: 5, label: t('Fri') }, { value: 6, label: t('Sat') }, { value: 7, label: t('Sun') },
+		]
+		const briefingDraft = ref({ prompt: '', time: '08:00', days: [1, 2, 3, 4, 5] })
+		const proactiveBriefings = computed(() => {
+			try { const rows = JSON.parse(f.value.proactive_schedules || '[]'); return Array.isArray(rows) ? rows : [] } catch (_) { return [] }
+		})
+		const dayName = day => (weekdays.find(item => item.value === Number(day)) || {}).label || String(day)
+		function writeBriefings(rows) { f.value.proactive_schedules = JSON.stringify(rows.slice(0, 20)) }
+		function addBriefing() {
+			const prompt = briefingDraft.value.prompt.trim()
+			if (!prompt || !/^([01]\\d|2[0-3]):[0-5]\\d$/.test(briefingDraft.value.time) || !briefingDraft.value.days.length) return
+			writeBriefings([...proactiveBriefings.value, { id: `briefing-${Date.now()}`, prompt, time: briefingDraft.value.time, days: [...new Set(briefingDraft.value.days)].sort(), enabled: true }])
+			briefingDraft.value.prompt = ''
+		}
+		function removeBriefing(id) { writeBriefings(proactiveBriefings.value.filter(item => item.id !== id)) }
 		const userWeatherEnabled = computed({
 			get: () => f.value.weather_tool_enabled === '1',
 			set: value => { f.value.weather_tool_enabled = value ? '1' : '0' },
@@ -1177,6 +1205,7 @@ export default {
 			groqKey, removeGroqKey, ocrEnabled, f, status, limits, availableModels, embeddingModels, chatModels, embeddingInstalledHint, chatInstalledHint, modelLoading, modelError, checkOut, saving, checking, indexing, resetting, deletingChats, stopping, saved, loadError, message, validationErrors, resetConfirm, chatsDeleteConfirm,
 			newExcludePath, excludeError, excludeList, actionsEnabled, notificationsEnabled, userWeatherEnabled, mailIndexEnabled, talkIndexEnabled, talkWriteEnabled, indexEnrolled, actionsDisabled, busy, indexingActive, settingsLocked, maxFileSizeMb,
 			isAdminMode, admin, userWebSearchEnabled, userWebSearchSafeSearch, userWebSearchImages, userWebSearchBrowser, userWebSearchFetchContent, webSearchKey, removeWebSearchKey, webSearchKeyStored, webSearchReady, savingAdmin, saveAdminSettings, loadAdminSettings,
+			proactiveEnabled, proactiveBriefings, briefingDraft, weekdays, dayName, addBriefing, removeBriefing,
 			exporting, downloadExport,
 			knowledgeContent, knowledgeOriginal, savingKnowledge, knowledgeSaved, saveKnowledgeContent,
 			formatNumber, loadStatus, save, checkOllama, addExclude, removeExclude, startIndex, startMailIndex, startTalkIndex, stopIndex, resetIndex, deleteAllChats,
