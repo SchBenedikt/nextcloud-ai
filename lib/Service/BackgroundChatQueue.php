@@ -60,6 +60,25 @@ final class BackgroundChatQueue {
     }
 
     public function complete(string $user, string $id): void { $this->mutate($user, static fn(array $items): array => array_values(array_filter($items, static fn(array $i): bool => ($i['id'] ?? '') !== $id))); }
+    /** Return queue progress without exposing the stored conversation history. */
+    public function status(string $user): array {
+        return $this->withLock($user, function () use ($user): array {
+            $out = [];
+            foreach ($this->read($user) as $item) {
+                $out[] = [
+                    'id' => (string)($item['id'] ?? ''),
+                    'chatId' => (string)($item['chatId'] ?? ''),
+                    'status' => in_array(($item['status'] ?? ''), ['pending', 'running', 'failed'], true) ? (string)$item['status'] : 'pending',
+                    'attempts' => max(0, (int)($item['attempts'] ?? 0)),
+                    'created' => max(0, (int)($item['created'] ?? 0)),
+                    'claimedAt' => max(0, (int)($item['claimedAt'] ?? 0)),
+                    'message' => mb_strimwidth((string)($item['message'] ?? ''), 0, 240, '…'),
+                    'error' => mb_strimwidth((string)($item['error'] ?? ''), 0, 500, '…'),
+                ];
+            }
+            return $out;
+        }, ILockingProvider::LOCK_SHARED) ?? [];
+    }
     public function retry(string $user, string $id, string $error): void {
         $this->mutate($user, function (array $items) use ($id, $error): array {
             foreach ($items as &$item) if (($item['id'] ?? '') === $id) { $attempts = (int)($item['attempts'] ?? 1); if ($attempts >= 3) { $item['status'] = 'failed'; $item['error'] = mb_substr($error, 0, 500); } else { $item['status'] = 'pending'; $item['availableAt'] = time() + min(300, 30 * $attempts); } }
