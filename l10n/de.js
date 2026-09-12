@@ -322,6 +322,8 @@ OC.L10N.register("eva_ai", {
     "Notice": "Hinweis",
     "Notify me when a long answer is ready": "Benachrichtige mich, wenn eine lange Antwort bereit ist",
     "Learn from my conversations": "Aus meinen Unterhaltungen lernen",
+    "Allow safe local diagnostics": "Sichere lokale Diagnosen erlauben",
+    "Allow only explicitly confirmed, read-only diagnostics such as disk space and version checks. Shell scripts, pipes and file changes remain blocked.": "Nur ausdrücklich bestätigte, schreibgeschützte Diagnosen wie Speicherplatz- und Versionsprüfungen erlauben. Shell-Skripte, Pipes und Dateiänderungen bleiben blockiert.",
     "System healthy": "System ist in Ordnung",
     "System needs attention": "System benötigt Aufmerksamkeit",
     "Provider: {state}": "Anbieter: {state}",
