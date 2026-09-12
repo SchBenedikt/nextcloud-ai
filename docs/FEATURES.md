@@ -48,7 +48,10 @@ worker.
 
 Tool definitions or system instructions passed by the caller do not widen
 permissions. EVA uses its own central tool policy. Write actions are only
-executed in the dedicated confirmed Assistant step.
+executed in the dedicated confirmed Assistant step. When the caller asks for a
+Talk conversation as context, each room id is verified against Talk's
+participant list before a single message reaches the model, and the indexed
+older history of those rooms supplements the recent messages.
 
 ### Nextcloud Talk
 
@@ -58,6 +61,19 @@ deliberately **read-only**: file, contact, calendar, share, and task changes are
 not offered there. Particularly sensitive read tools such as profile,
 share-listing, and server-status access are also blocked. Automatically included
 Talk history is capped in size.
+
+The bot reacts when it is addressed (`@Eva` mention, configured trigger, or a
+message that really is a question to it) and stays silent otherwise. Besides the
+few most recent messages of the room, it uses the **indexed history of that same
+room**: the older passages matching the question are retrieved and added as
+context, so an answer can refer to something said weeks ago. Only rooms the user
+is a member of are indexed and retrieved, the lookup is scoped to the room, and
+membership is checked again at answer time.
+
+Indexing the chat histories is a separate, per-user decision. A switch includes
+them in the regular indexing pass, and a dedicated button ("Only index Nextcloud
+Talk chats") indexes them immediately, with bounds on how many chats and how many
+messages per chat are read.
 
 ### Command Line and Background Jobs
 
@@ -78,9 +94,12 @@ envelope (subject, sender, recipients, date) and its readable body, and a
 mailbox contributes every message it contains. Roughly 35 further text formats
 are recognised by extension, among them `patch`, `diff`, `json5`, `tf`,
 `proto`, `graphql`, `svelte`, `dart`, `rss`, `kml` and `gpx`. Emails from the
-Nextcloud Mail app are included in the index when that app is installed. Size,
-path, and count limits prevent a single run from consuming unbounded resources,
-and a file that cannot be read is skipped instead of stopping the run.
+Nextcloud Mail app are included in the index when that app is installed, and so
+can be the user's Nextcloud Talk chat histories (see above). Each of these
+non-file sources is stored under its own source marker, so a cleanup pass for one
+of them can never remove entries of another. Size, path, and count limits prevent
+a single run from consuming unbounded resources, and a file that cannot be read
+is skipped instead of stopping the run.
 
 On first authenticated launch EVA may create a clearly marked, editable profile
 section in `KNOWLEDGE.md`. It contains only the intended baseline data and does

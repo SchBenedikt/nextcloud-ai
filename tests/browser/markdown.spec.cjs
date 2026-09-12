@@ -51,6 +51,17 @@ for (const surface of ['vue', 'standalone']) {
       }
       expect(remoteRequests.filter(url => url.startsWith('data:') || url.startsWith('javascript:'))).toEqual([])
 
+      // A picture whose host blocks or drops the request degrades to a link with
+      // its alt text, so the user can still reach the picture instead of staring
+      // at a broken-image icon.
+      await page.evaluate(() => {
+        const rt = document.querySelector('.rt')
+        rt.innerHTML = mdToHtml('![Golden Retriever](https://blocked.invalid/missing.jpg)')
+        installImageFallback(rt)
+      })
+      await expect(page.locator('.rt a.md-image-fallback')).toHaveText('Golden Retriever')
+      await expect(page.locator('.rt img')).toHaveCount(0)
+
       // Growing a streamed code fence must never turn its contents into HTML.
       for (const part of ['```html\n<img', '```html\n<img src=x>\n```\n**Fertig**']) {
         await page.evaluate(text => { document.querySelector('.rt').innerHTML = mdToHtml(text) }, part)

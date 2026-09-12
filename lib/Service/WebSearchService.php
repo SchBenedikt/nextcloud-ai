@@ -55,6 +55,7 @@ class WebSearchService {
      * the source name - which is what lets an answer say how old it is.
      */
     private const BING_WEB_ENDPOINT = 'https://www.bing.com/search';
+    private const BING_IMAGE_ENDPOINT = 'https://www.bing.com/images/search';
     private const BING_NEWS_ENDPOINT = 'https://www.bing.com/news/search';
     private const GOOGLE_NEWS_ENDPOINT = 'https://news.google.com/rss/search';
     /** Ask the feed endpoints for XML explicitly, whatever the user agent implies. */
@@ -98,6 +99,9 @@ class WebSearchService {
     private const DEFAULT_CANDIDATES = 12;
     /** Images offered per result, and the size below which one is an icon. */
     private const MAX_IMAGES_PER_RESULT = 3;
+    /** Pictures returned by a dedicated image search, and its hard ceiling. */
+    private const DEFAULT_IMAGES = 6;
+    private const ABSOLUTE_MAX_IMAGES = 12;
     private const MIN_IMAGE_DIMENSION = 200;
     /**
      * src fragments that mark toolbars, logos, avatars and tracking pixels.
@@ -376,6 +380,169 @@ class WebSearchService {
         $results = array_slice($results, 0, $count);
 
         return ['ok' => true, 'provider' => $provider, 'mode' => $mode, 'results' => $results, 'error' => null];
+    }
+
+    /**
+     * Search for pictures of a subject.
+     *
+     * A text search is the wrong instrument for "show me pictures of X": its
+     * results are pages, and the model ends up answering that it cannot display
+     * images. This asks an image index instead and returns pictures that are
+     * meant to be embedded, each with a title and the page it comes from.
+     *
+     * No API key is used: the image index is the public HTML one, exactly like
+     * the web search fallbacks, so the feature works out of the box.
+     *
+     * @return array{ok:bool,provider:string,query:string,images:list<array{url:string,preview:string,title:string,page:string}>,error:?string}
+     */
+    public function searchImages(string $query, ?int $limit = null): array {
+        $query = trim($query);
+        $provider = 'bing-images';
+        $empty = ['provider' => $provider, 'query' => $query, 'images' => []];
+        if ($query === '') {
+            return $empty + ['ok' => false, 'error' => 'A search query is required.'];
+        }
+        if (!$this->isEnabled()) {
+            return $empty + ['ok' => false, 'error' => 'Web search is disabled by the administrator.'];
+        }
+        if (!$this->imagesEnabled()) {
+            return $empty + ['ok' => false, 'error' => 'Image search is disabled by the administrator.'];
+        }
+        $count = max(1, min(self::ABSOLUTE_MAX_IMAGES, $limit ?? self::DEFAULT_IMAGES));
+
+        $endpoint = self::BING_IMAGE_ENDPOINT . '?' . http_build_query([
+            'q' => $query,
+            'form' => 'HDRSC2',
+            'first' => 1,
+            'count' => max(20, $count * 4),
+        ]);
+        try {
+            $html = $this->httpGet($endpoint, $this->browserHeaders(self::BING_IMAGE_ENDPOINT));
+        } catch (\Throwable $e) {
+            return $empty + ['ok' => false, 'error' => 'The image search failed: ' . $e->getMessage()];
+        }
+        $images = $this->parseBingImages($html, $count, $query);
+        if ($images === []) {
+            return $empty + ['ok' => false, 'error' => 'The image search returned no usable pictures for "' . $query . '".'];
+        }
+        return ['ok' => true, 'provider' => $provider, 'query' => $query, 'images' => $images, 'error' => null];
+    }
+
+    /**
+     * Pull the picture entries out of an image-search page.
+     *
+     * Each hit sits in an `m="…"` attribute holding HTML-escaped JSON, so the
+     * entry is decoded rather than pattern-matched: `murl` is the picture, `turl`
+     * a thumbnail the engine serves, `t` the title and `purl` the page the
+     * picture was found on. Chrome (logos, icons, tracking pixels) is dropped by
+     * the same markers the page extractor uses, and only http(s) survives.
+     *
+     * @return list<array{url:string,preview:string,title:string,page:string}>
+     */
+    private function parseBingImages(string $html, int $count, string $query): array {
+        if (!preg_match_all('/\bm="([^"]+)"/i', $html, $matches)) {
+            return [];
+        }
+        $queryTerms = $this->queryTerms($query);
+        $markers = $this->imageChromeMarkers($query);
+        $candidates = [];
+        $seen = [];
+        foreach ($matches[1] as $raw) {
+            $raw = html_entity_decode($raw, ENT_QUOTES | ENT_HTML5, 'UTF-8');
+            if (!str_contains($raw, 'murl')) {
+                continue;
+            }
+            $data = json_decode($raw, true);
+            if (!is_array($data)) {
+                continue;
+            }
+            $url = trim((string)($data['murl'] ?? ''));
+            if (!$this->isSafeHttpUrl($url)) {
+                continue;
+            }
+            $lower = strtolower($url);
+            $skip = false;
+            foreach ($markers as $marker) {
+                if (str_contains($lower, $marker)) {
+                    $skip = true;
+                    break;
+                }
+            }
+            if ($skip || isset($seen[$lower])) {
+                continue;
+            }
+            $seen[$lower] = true;
+            $preview = trim((string)($data['turl'] ?? ''));
+            if (!$this->isSafeHttpUrl($preview)) {
+                $preview = $url;
+            }
+            $title = $this->clamp(
+                trim(preg_replace('/\s+/u', ' ', $this->stripBingHighlightMarks((string)($data['t'] ?? ''))) ?? ''),
+                self::MAX_TITLE_CHARS,
+            );
+            $page = trim((string)($data['purl'] ?? ''));
+            if (!$this->isSafeHttpUrl($page)) {
+                $page = '';
+            }
+            $candidates[] = [
+                'url' => $url,
+                'preview' => $preview,
+                'title' => $title !== '' ? $title : $query,
+                'page' => $page,
+                // Relevance is not scored from the picture itself (there is no
+                // text to score); the engine order is kept, but a title that
+                // mentions the query is preferred so an unrelated hit sitting
+                // above the real ones does not win the first picture.
+                'score' => $this->imageTitleScore($title, $queryTerms),
+            ];
+        }
+        // Stable: engine order is the tie-breaker, a query-matching title wins.
+        usort($candidates, static fn(array $a, array $b): int => $b['score'] <=> $a['score']);
+        $out = [];
+        foreach (array_slice($candidates, 0, $count) as $c) {
+            unset($c['score']);
+            $out[] = $c;
+        }
+        return $out;
+    }
+
+    /**
+     * Chrome markers that apply to this query.
+     *
+     * The marker list exists to strip a page's own furniture (logos, avatars,
+     * sprites) from article images. In an explicit image search the query is the
+     * user's intent, so a query that asks for a logo or an icon must not have the
+     * word "logo"/"icon" filter its own results away - that is exactly how
+     * "show me pictures of a Nextcloud Hub logo" came back almost empty.
+     *
+     * @return list<string>
+     */
+    private function imageChromeMarkers(string $query): array
+    {
+        $needle = mb_strtolower($query);
+        return array_values(array_filter(
+            self::IMAGE_CHROME_MARKERS,
+            static fn(string $marker): bool => !str_contains($needle, $marker),
+        ));
+    }
+
+    /** Removes the private-use highlight markers the image index wraps query words in. */    private function stripBingHighlightMarks(string $text): string {
+        return trim(preg_replace('/[\x{E000}-\x{F8FF}]/u', '', $text) ?? $text);
+    }
+
+    /** @param list<string> $queryTerms */
+    private function imageTitleScore(string $title, array $queryTerms): int {
+        if ($title === '' || $queryTerms === []) {
+            return 0;
+        }
+        $haystack = mb_strtolower($title);
+        $score = 0;
+        foreach ($queryTerms as $term) {
+            if (str_contains($haystack, $term)) {
+                $score += mb_strlen($term) >= 5 ? 2 : 1;
+            }
+        }
+        return $score;
     }
 
     /**

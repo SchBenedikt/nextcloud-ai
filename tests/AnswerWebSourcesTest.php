@@ -133,6 +133,31 @@ final class AnswerWebSourcesTest extends TestCase {
     }
 
     /**
+     * A picture is embedded in the answer, but the page it was found on is the
+     * source the user can check, so it is listed too.
+     */
+    public function testImagesListThePageTheyCameFrom(): void {
+        $service = $this->service();
+        $this->collect($service, 'collectToolSources', ['search_images', [
+            'ok' => true,
+            'result' => [
+                'query' => 'golden retriever',
+                'external' => true,
+                'images' => [
+                    ['url' => 'https://cdn.example.org/dog.jpg', 'title' => 'Golden Retriever', 'page' => 'https://example.org/dogs'],
+                    ['url' => 'https://cdn.example.org/dog2.jpg', 'title' => 'Puppy', 'page' => 'https://example.org/dogs'],
+                    ['url' => 'https://cdn.example.org/orphan.jpg', 'title' => 'No page', 'page' => ''],
+                ],
+            ],
+        ]]);
+        $sources = $this->call($service, 'answerSources', [[]]);
+
+        self::assertCount(1, $sources, 'the same page is listed once');
+        self::assertSame('https://example.org/dogs', $sources[0]['url']);
+        self::assertTrue($sources[0]['external']);
+    }
+
+    /**
      * The collector is per request, never shared. Were it static, one user's
      * retrieved pages would appear as sources under another user's answer.
      */

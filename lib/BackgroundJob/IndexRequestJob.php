@@ -37,7 +37,7 @@ class IndexRequestJob extends QueuedJob {
         $mode = is_array($argument) ? (string)($argument['mode'] ?? 'all') : 'all';
         $runId = is_array($argument) ? (string)($argument['runId'] ?? '') : '';
         $waitForCancellation = is_array($argument) && !empty($argument['waitForCancellation']);
-        if ($userId === '' || (!$waitForCancellation && $runId === '') || !in_array($mode, ['all', 'files', 'mail'], true)) {
+        if ($userId === '' || (!$waitForCancellation && $runId === '') || !in_array($mode, ['all', 'files', 'mail', 'talk'], true)) {
             return;
         }
 

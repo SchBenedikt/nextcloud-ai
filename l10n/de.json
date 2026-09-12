@@ -563,7 +563,22 @@
         "Web": "Web",
         "News": "Nachrichten",
         "Web and news": "Web und Nachrichten",
-        "Run search": "Suche starten"
+        "Run search": "Suche starten",
+        "Chat indexing could not be queued: {error}": "Chat-Indizierung konnte nicht eingereiht werden: {error}",
+        "Chat indexing is running": "Chat-Indizierung läuft",
+        "Chat indexing queued. It continues even if you close the website.": "Chat-Indizierung eingereiht. Sie läuft weiter, auch wenn du die Seite schließt.",
+        "Chat indexing was not started because the settings could not be saved.": "Die Chat-Indizierung wurde nicht gestartet, weil die Einstellungen nicht gespeichert werden konnten.",
+        "Chat indexing was queued. You can leave this page safely.": "Die Chat-Indizierung wurde eingereiht. Du kannst diese Seite verlassen.",
+        "How far back in each chat to index. Default: 200.": "Wie weit in jeden Chat zurück indiziert wird. Standard: 200.",
+        "Include the chat histories of your Nextcloud Talk conversations in search results, so older parts of a conversation can be quoted in an answer. Only chats you are a member of are indexed, and only your own chat becomes context in a Talk answer.": "Nimm die Chatverläufe deiner Nextcloud-Talk-Unterhaltungen in die Suchergebnisse auf, damit ältere Teile einer Unterhaltung in einer Antwort zitiert werden können. Indiziert werden nur Chats, in denen du Mitglied bist, und nur dein eigener Chat wird im Talk-Kontext verwendet.",
+        "Index Nextcloud Talk chat histories": "Nextcloud-Talk-Chatverläufe indizieren",
+        "Index Talk chats": "Talk-Chats indizieren",
+        "Indexing your Nextcloud Talk chat histories is being queued in the background.": "Deine Nextcloud-Talk-Chatverläufe werden im Hintergrund zur Indizierung eingereiht.",
+        "Indexing your Nextcloud Talk chat histories is being queued in the background …": "Deine Nextcloud-Talk-Chatverläufe werden im Hintergrund zur Indizierung eingereiht …",
+        "Messages per Nextcloud Talk chat": "Nachrichten pro Nextcloud-Talk-Chat",
+        "Nextcloud Talk chats per indexing run": "Nextcloud-Talk-Chats pro Indizierungslauf",
+        "Only index Nextcloud Talk chats": "Nur Nextcloud-Talk-Chats indizieren",
+        "Only used when Talk indexing is enabled. Default: 20.": "Wird nur verwendet, wenn die Talk-Indizierung aktiviert ist. Standard: 20."
     },
     "pluralForm": "nplurals=2; plural=(n != 1);"
 }

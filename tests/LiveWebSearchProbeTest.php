@@ -151,6 +151,25 @@ final class LiveWebSearchProbeTest extends TestCase {
         self::assertGreaterThan(0, count($result['results']));
     }
 
+    public function testLiveImageSearchReturnsEmbeddablePictures(): void
+    {
+        $service = $this->service($this->defaults());
+        $queries = ['golden retriever', 'Nextcloud Hub logo', 'Brandenburger Tor'];
+        foreach ($queries as $query) {
+            $result = $service->searchImages($query, 4);
+            echo "\n[live][images] query=\"$query\" ok=" . var_export($result['ok'], true)
+                . ' error=' . (string)$result['error'] . "\n";
+            if (!$result['ok']) {
+                continue;
+            }
+            foreach ($result['images'] as $img) {
+                echo '  ' . substr((string)$img['title'], 0, 50) . "\n      " . $img['url']
+                    . "\n      preview: " . $img['preview'] . ' page: ' . $img['page'] . "\n";
+            }
+            self::assertGreaterThan(0, count($result['images']), 'no pictures for ' . $query);
+        }
+    }
+
     public function testLiveOpenPageReadsAnArticleInDepth(): void
     {
         $service = $this->service($this->defaults());

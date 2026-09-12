@@ -10,6 +10,7 @@ use OCA\EvaAi\Service\Ollama;
 use OCA\EvaAi\Service\RagService;
 use OCA\EvaAi\Service\TalkContextReader;
 use OCA\EvaAi\Service\TalkRoomState;
+use OCA\EvaAi\Service\TalkTranscriptService;
 use OCA\EvaAi\Service\ToolPolicy;
 use OCA\Talk\Events\BotInvokeEvent;
 use OCA\Talk\Model\Bot;
@@ -35,13 +36,13 @@ use Psr\Log\LoggerInterface;
  */
 class TalkBotListener implements IEventListener {
     private const SYSTEM_PROMPT = <<<'PROMPT'
-Du bist EVA, ein hilfreicher KI-Assistent im Nextcloud-Talk-Chat. Antworte kurz und freundlich (1-3 Sätze) auf Deutsch.
+You are EVA, a helpful assistant in a Nextcloud Talk conversation. Answer briefly and in a friendly tone (1-3 sentences), in the language of the message you are answering.
 
-Du hast Zugriff auf schreibgeschützte Werkzeuge (Kalender, Tasks, Dateien, Kontakte, Mail etc.). Nutze sie, wenn der Nutzer Informationen abfragt.
+You have read-only tools (calendar, tasks, files, contacts, mail, …). Use them when the user asks for information.
 
-Du hast auch ein Web-Suche-Werkzeug (web_search). Nutze es proaktiv, wenn du aktuelle oder zeitkritische Informationen brauchst: Nachrichten, Software-Releases, Preise, Wetter, Dokumentation, Öffnungszeiten, Rezepte, Anleitungen oder technische Probleme. Wenn du unsicher bist, ob deine Trainingsdaten aktuell sind, durchsuche das Internet anstatt zu raten.
+You also have a web search tool (`web_search`), a page reader (`open_website`) and an image search tool (`search_images`). Use the web search proactively when you need current or time-critical information: news, software releases, prices, weather, documentation, opening hours, recipes, how-to guides or technical problems. When you are unsure whether your training data is still current, search the internet instead of guessing. When the user asks to see pictures of something, use `search_images` and embed the pictures with Markdown image syntax - you can display images, so never answer that you cannot.
 
-Wichtig: Du kannst im Talk-Kontext keine Dateien, Kontakte, Kalender, Shares oder Aufgaben erstellen, ändern oder löschen. Erkläre das kurz und verweise für solche Aktionen auf den EVA-Webchat, wo eine ausdrückliche Bestätigung erforderlich ist.
+Important: in Talk you cannot create, change or delete files, contacts, calendar entries, shares or tasks. Say so briefly and point to the EVA web chat for those actions, where an explicit confirmation is required.
 PROMPT;
 
     public function __construct(
@@ -51,6 +52,7 @@ PROMPT;
         private AppConfig $appConfig,
         private RagService $ragService,
         private TalkRoomState $roomState,
+        private TalkTranscriptService $talkTranscripts,
         private LoggerInterface $logger,
     ) {
     }
@@ -79,7 +81,7 @@ PROMPT;
         $actorName = (string)($data['actor']['name'] ?? '');
         $userId = $this->extractUserId($data['actor']['id'] ?? '');
         if ($userId === null) {
-            $event->addAnswer("Ich kann leider nur Antworten, wenn ich weiss, von wem die Frage kommt.");
+            $event->addAnswer('I can only answer when I can tell who is asking.');
             return;
         }
 
@@ -117,7 +119,7 @@ PROMPT;
         $history = $roomId > 0 ? $this->contextReader->buildHistoryMessages($roomId) : [];
 
         try {
-            $answer = $this->generateAnswerWithRag($history, $cleanContent, $actorName, $userId);
+            $answer = $this->generateAnswerWithRag($history, $cleanContent, $actorName, $userId, $roomId);
             if (trim($answer) === '') {
                 // Ohne Antwort NUR posten, wenn EVA explizit angesprochen wurde
                 // (z.B. "@Eva …"). Bei einer rein klassifizierten Nachricht
@@ -125,13 +127,13 @@ PROMPT;
                 if (!$explicit) {
                     return;
                 }
-                $event->addAnswer("Da fällt mir gerade nichts Passendes ein. Kannst du die Frage anders stellen?");
+                $event->addAnswer('I cannot think of a good answer right now. Could you rephrase the question?');
                 return;
             }
             $event->addAnswer($answer);
         } catch (\Throwable $e) {
             $this->logger->error('eva_ai talk bot failed', ['exception' => $e]);
-            $event->addAnswer("Uups, da ist bei mir ein Fehler aufgetreten. Bitte versuche es gleich nochmal.");
+            $event->addAnswer('Something went wrong on my side. Please try again in a moment.');
         }
     }
 
@@ -159,22 +161,22 @@ PROMPT;
         switch ($command['name']) {
             case 'help':
                 $event->addAnswer(
-                    "Hier sind meine Befehle:\n"
-                    . "- @Eva /help – diese Hilfe\n"
-                    . "- @Eva /summarize – fasse die letzten Nachrichten im Raum zusammen\n"
-                    . "- @Eva /status – Index- und Modellstatus\n"
-                    . "- @Eva /stop – pausiere mich für diesen Raum\n"
-                    . "- @Eva /start – aktiviere mich wieder für diesen Raum\n\n"
-                    . "Du kannst mich auch einfach mit @Eva ansprechen und deine Frage stellen."
+                    "These are my commands:\n"
+                    . "- @Eva /help - this help\n"
+                    . "- @Eva /summarize - summarize the recent messages in this room\n"
+                    . "- @Eva /status - index and model status\n"
+                    . "- @Eva /stop - pause me for this room\n"
+                    . "- @Eva /start - activate me again for this room\n\n"
+                    . "You can also simply mention @Eva and ask your question."
                 );
                 return;
             case 'stop':
                 $this->roomState->setEnabled($roomId, false);
-                $event->addAnswer("Okay, ich bin für diesen Raum pausiert. Sag @Eva /start, um mich wieder zu aktivieren.");
+                $event->addAnswer('Okay, I am paused for this room. Say @Eva /start to activate me again.');
                 return;
             case 'start':
                 $this->roomState->setEnabled($roomId, true);
-                $event->addAnswer("Ich bin wieder aktiv für diesen Raum! 🎉");
+                $event->addAnswer('I am active in this room again!');
                 return;
             case 'status':
                 $status = $this->ragService->buildStatus($userId);
@@ -211,16 +213,16 @@ PROMPT;
             }
         }
         if ($texts === []) {
-            return "In diesem Raum gibt es noch keine Nachrichten zum Zusammenfassen.";
+            return 'There are no messages in this room to summarize yet.';
         }
         $joined = mb_substr(implode("\n", array_slice($texts, -40)), 0, 12000);
         $messages = [
-            ['role' => 'system', 'content' => 'Du bist EVA. Fasse die folgenden Chat-Nachrichten auf Deutsch in 3-6 Sätzen zusammen. Nenne die wichtigsten Themen und Ergebnisse, ohne Details zu erfinden.'],
+            ['role' => 'system', 'content' => 'You are EVA. Summarize the following chat messages in 3-6 sentences, in the language the messages are written in. Name the most important topics and results without inventing details.'],
             ['role' => 'user', 'content' => $joined],
         ];
         $resp = $this->ollama->chat($messages, []);
         if (isset($resp['error']) || trim((string)($resp['answer'] ?? '')) === '') {
-            return "Die Zusammenfassung ist gerade nicht möglich (Modell nicht erreichbar).";
+            return 'The summary is not possible right now (the model is unreachable).';
         }
         return trim((string)$resp['answer']);
     }
@@ -299,8 +301,13 @@ PROMPT;
         if (str_contains($text, '?')) {
             return true;
         }
-        // Typische Aufforderungen an einen Assistenten.
-        if (preg_match('/(?:bitte|kannst du|könntest du|hilf mir|erklär|zusammenfass|erinner|termin|wetter|wie viel|was ist|wer ist)/u', $text)) {
+        // Typische Aufforderungen an einen Assistenten (deutsch und englisch,
+        // damit der Bot die Sprache des Raums nicht voraussetzt).
+        if (preg_match(
+            '/(?:bitte|kannst du|könntest du|hilf mir|erklär|zusammenfass|erinner|termin|wetter|wie viel|was ist|wer ist'
+            . '|please|can you|could you|help me|explain|summar|remind|schedule|appointment|weather|how much|how many|what is|what are|who is)/u',
+            $text
+        )) {
             return true;
         }
         return false;
@@ -317,16 +324,16 @@ PROMPT;
         $participantInfo = $participants !== [] ? "\nChat-Teilnehmer: " . implode(', ', $participants) . "\n" : "\nKeine Teilnehmer-Informationen verfügbar.\n";
 
         $messages = [
-            ['role' => 'system', 'content' => 'Du bist ein KI-Assistent namens "' . $triggerName . '". '
-                . 'Dein Name ist also: ' . $triggerName . '. '
+            ['role' => 'system', 'content' => 'You are an AI assistant named "' . $triggerName . '". '
+                . 'So your name is: ' . $triggerName . '. '
                 . $participantInfo . ' '
-                . 'ANTWORTE NUR mit "ja" oder "nein". '
-                . 'Ist diese Nachricht für DICH (den KI-Assistenten) bestimmt? '
-                . 'Ja, wenn: eine Frage an dich gerichtet ist, eine Aktion von dir erwartet wird, '
-                . 'oder klar erkennbar an die KI gerichtet ist. '
-                . 'Nein, wenn: eine Nachricht an eine andere Person, Smalltalk zwischen anderen, '
-                . 'oder eine Bemerkung die nicht an die KI gerichtet ist. '
-                . 'Wenn eine echte Person mit demselben Namen im Chat ist und du unsicher bist, antworte mit "nein".'],
+                . 'ANSWER ONLY with "yes" or "no". '
+                . 'Is this message meant for YOU (the AI assistant)? '
+                . 'Yes when: a question is addressed to you, an action is expected from you, '
+                . 'or the message is clearly directed at the AI. '
+                . 'No when: the message is for another person, small talk between others, '
+                . 'or a remark that is not directed at the AI. '
+                . 'If a real person with the same name is in the chat and you are unsure, answer "no".'],
             ['role' => 'user', 'content' => $content],
         ];
 
@@ -337,7 +344,9 @@ PROMPT;
         }
 
         $answer = strtolower(trim((string)($resp['answer'] ?? '')));
-        return str_starts_with($answer, 'ja');
+        // Accept both languages: a small model sometimes answers in the language
+        // of the chat, and a German "ja" must not be read as a refusal.
+        return str_starts_with($answer, 'ja') || str_starts_with($answer, 'yes');
     }
 
     /**
@@ -435,9 +444,14 @@ PROMPT;
      *
      * @param list<array{role:string,content:string}> $history
      */
-    private function generateAnswerWithRag(array $history, string $question, string $actorName, string $userId): string {
+    private function generateAnswerWithRag(array $history, string $question, string $actorName, string $userId, int $roomId = 0): string {
+        // Older messages of THIS room, when its history is indexed: the live
+        // history above only covers the last few messages, so a question about
+        // something said earlier is answered from the retrieved passages.
+        $recall = $this->talkHistoryContext($userId, $roomId, $question);
+
         // RagService::ask() macht Vector-Search + Tool-Execution + LLM-Antwort
-        $result = $this->ragService->ask($userId, $question, $history);
+        $result = $this->ragService->ask($userId, $question, $history, null, null, null, $recall);
 
         if (isset($result['error']) && $result['error'] !== '') {
             $this->logger->warning('eva_ai talk: rag error: ' . $result['error']);
@@ -452,14 +466,38 @@ PROMPT;
         if ($sources !== []) {
             $sourceRefs = [];
             foreach ($sources as $s) {
-                $sourceRefs[] = (string)($s['name'] ?? $s['path'] ?? 'Quelle');
+                $sourceRefs[] = (string)($s['name'] ?? $s['path'] ?? 'Source');
             }
             if ($sourceRefs !== []) {
-                $answer .= "\n\n_Quellen: " . implode(', ', $sourceRefs) . "_";
+                $answer .= "\n\n_Sources: " . implode(', ', $sourceRefs) . "_";
             }
         }
 
         return $answer;
+    }
+
+    /**
+     * Indexed older passages of the room the question was asked in.
+     *
+     * Returns an empty string when Talk histories are not indexed for this user
+     * or the room has no matching older messages, so the live history alone is
+     * used - the answer never depends on the index being present.
+     */
+    private function talkHistoryContext(string $userId, int $roomId, string $question): string
+    {
+        if ($roomId <= 0) {
+            return '';
+        }
+        try {
+            $passages = $this->talkTranscripts->recall($userId, $roomId, $question, 4);
+        } catch (\Throwable $e) {
+            $this->logger->warning('eva_ai talk: history recall failed: ' . $e->getMessage());
+            return '';
+        }
+        if ($passages === []) {
+            return '';
+        }
+        return implode("\n---\n", $passages);
     }
 
     /**
@@ -469,7 +507,7 @@ PROMPT;
      * @param list<array{role:string,content:string}> $history
      */
     private function fallbackAnswer(array $history, string $question, string $actorName, string $userId): string {
-        $system = self::SYSTEM_PROMPT . "\nAktueller Sprecher: " . ($actorName !== '' ? $actorName : $userId);
+        $system = self::SYSTEM_PROMPT . "\nCurrent speaker: " . ($actorName !== '' ? $actorName : $userId);
         $messages = [
             ['role' => 'system', 'content' => $system],
         ];
@@ -485,7 +523,7 @@ PROMPT;
             $chat = $this->ollama->chat($messages, $tools);
             if (isset($chat['error'])) {
                 $this->logger->warning('eva_ai talk: fallback ollama error: ' . $chat['error']);
-                return "Leider habe ich gerade ein Verbindungsproblem zur KI.";
+                return 'I currently have a connection problem to the AI.';
             }
 
             $answer = (string)($chat['answer'] ?? '');
@@ -513,7 +551,7 @@ PROMPT;
                 $messages[] = ['role' => 'tool', 'content' => json_encode($res, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES)];
             }
             if (!$ranAny) {
-                return $answer !== '' ? $answer : "Das konnte ich leider nicht verstehen.";
+                return $answer !== '' ? $answer : 'Sorry, I did not understand that.';
             }
         }
 

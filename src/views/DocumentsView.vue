@@ -9,12 +9,13 @@
 			<div class="header-actions">
 				<NcButton type="primary" :loading="indexing" :disabled="indexingActive" @click="startIndex">{{ $t('Index files & emails') }}</NcButton>
 				<NcButton type="secondary" :disabled="indexingActive" @click="startMailIndex">{{ $t('Only emails') }}</NcButton>
+				<NcButton type="secondary" :disabled="indexingActive" @click="startTalkIndex">{{ $t('Index Talk chats') }}</NcButton>
 				<NcButton v-if="indexingActive" type="tertiary-no-background" :loading="stopping" :disabled="indexStatus?.indexStopping" @click="stopIndex">{{ $t('Stop') }}</NcButton>
 			</div>
 		</header>
 
 		<div v-if="indexingActive" class="callout indexing-callout" role="status">
-			<strong>{{ indexStatus?.indexStopping ? $t('Stopping indexing…') : indexStatus?.indexMode === 'mail' ? $t('Email indexing is running') : $t('Indexing is running') }}</strong>
+			<strong>{{ indexStatus?.indexStopping ? $t('Stopping indexing…') : indexStatus?.indexMode === 'mail' ? $t('Email indexing is running') : indexStatus?.indexMode === 'talk' ? $t('Chat indexing is running') : $t('Indexing is running') }}</strong>
 			<span>{{ $t('The job continues on the server even if you close this page.') }}</span>
 		</div>
 		<div v-if="progress" class="callout" role="status">{{ progress }}</div>
@@ -237,6 +238,21 @@ export default {
 			}
 		}
 
+		const startTalkIndex = async () => {
+			if (indexingActive.value) return
+			indexing.value = true
+			progress.value = t('Indexing your Nextcloud Talk chat histories is being queued in the background …')
+			try {
+				const response = await api('POST', 'talkIndex') || {}
+				indexStatus.value = response.status || indexStatus.value
+				progress.value = t('Chat indexing queued. It continues even if you close the website.')
+			} catch (e) {
+				progress.value = t('Chat indexing could not be queued: {error}', { error: errMsg(e) })
+			} finally {
+				indexing.value = false
+			}
+		}
+
 		const stopIndex = async () => {
 			if (stopping.value) return
 			stopping.value = true
@@ -425,7 +441,7 @@ export default {
 			if (statusTimer !== null) window.clearInterval(statusTimer)
 		})
 
-		return { docs, total, totalChunks, totalSize, search, filterType, filterFolder, filterSize, filterSort, loading, loadingMore, hasMore, loadMoreError, indexing, stopping, indexStatus, indexingActive, progress, expanded, chunkCache, load, loadMore, loadStatus, toggle, startIndex, startMailIndex, stopIndex, fmtSize, fmtDate, mdiChevronDown, mdiChevronRight }
+		return { docs, total, totalChunks, totalSize, search, filterType, filterFolder, filterSize, filterSort, loading, loadingMore, hasMore, loadMoreError, indexing, stopping, indexStatus, indexingActive, progress, expanded, chunkCache, load, loadMore, loadStatus, toggle, startIndex, startMailIndex, startTalkIndex, stopIndex, fmtSize, fmtDate, mdiChevronDown, mdiChevronRight }
 	},
 }
 </script>

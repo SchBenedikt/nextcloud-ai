@@ -119,16 +119,23 @@ class DocumentMapper extends QBMapper {
     }
 
     /**
-     * File IDs of indexed mail documents (negative ids) for a user.
-     * Mail reconciliation removes entries whose message no longer exists (Issue #15).
+     * File IDs of indexed non-file entries of one producer for a user.
+     *
+     * Reconciliation removes entries whose origin no longer exists (a deleted
+     * mail message, a Talk room the user left). It must filter by `source`: the
+     * mail and Talk indexes both use synthetic negative file ids, so a query on
+     * "negative file id" alone would hand the mail reconciliation the Talk rooms
+     * and delete them.
+     *
      * @return int[]
      */
-    public function mailFileIdsForUser(string $userId): array {
+    public function fileIdsForSource(string $userId, string $source): array {
         $qb = $this->db->getQueryBuilder();
         $qb->select('file_id')
             ->from('eva_ai_documents')
             ->where($qb->expr()->eq('user_id', $qb->createNamedParameter($userId)))
-            ->andWhere($qb->expr()->lt('file_id', $qb->createNamedParameter(0, IQueryBuilder::PARAM_INT)));
+            ->andWhere($qb->expr()->lt('file_id', $qb->createNamedParameter(0, IQueryBuilder::PARAM_INT)))
+            ->andWhere($qb->expr()->eq('source', $qb->createNamedParameter($source)));
         $result = $qb->executeQuery();
         $ids = [];
         while ($row = $result->fetch()) {

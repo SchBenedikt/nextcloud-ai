@@ -128,7 +128,7 @@ final class IndexerBoundedBatchTest extends TestCase {
         $scheduler->method('acquireSlot')->willReturn(['state' => 'running', 'position' => 0]);
         $indexer = new Indexer(
             $config, $rootFolder, $docMapper, $chunkMapper, $chunker, $ollama,
-            $embeddingCache, $email, $logger, $lockingProvider, $lockGuard, $scheduler
+            $embeddingCache, $email, $this->talkTranscripts(), $logger, $lockingProvider, $lockGuard, $scheduler
         );
 
         return [$indexer, $docMapper, $chunkMapper, $ollama];
@@ -315,5 +315,14 @@ final class IndexerBoundedBatchTest extends TestCase {
 
         self::assertNotNull($result['error'], 'a dead model server must not look like a clean pass');
         self::assertSame(2, $result['processed'], 'the files are still pending, not silently dropped');
+    }
+
+    /** Talk indexing is not exercised here; a mock keeps the constructor honest. */
+    private function talkTranscripts(): \OCA\EvaAi\Service\TalkTranscriptService
+    {
+        $mock = $this->createMock(\OCA\EvaAi\Service\TalkTranscriptService::class);
+        $mock->method('isAvailable')->willReturn(false);
+        $mock->method('roomsForUser')->willReturn([]);
+        return $mock;
     }
 }

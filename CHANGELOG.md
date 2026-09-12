@@ -4,6 +4,55 @@ All notable changes to **EVA (eva_ai)** are documented here.
 Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); the project
 follows [Semantic Versioning](https://semver.org/).
 
+## [1.9.0] - 2026-09-12
+
+### Added
+
+- **Image search.** Asking to see pictures ("zeig mir Bilder von X", "show me
+  pictures of X", "what does X look like") now returns and embeds real pictures.
+  A dedicated `search_images` tool finds them in a keyless image index, ranked so
+  a title that mentions what was asked for wins over engine order, and the pages
+  the pictures come from are added to the Sources list. A text search is the
+  wrong instrument for a picture request, which is how the model used to end up
+  telling users it cannot display images; it is now told explicitly that it can,
+  and refusal is named as wrong.
+- **A picture that cannot be loaded degrades to a link** with its caption instead
+  of leaving a broken-image icon, because remote hosts block hotlinking and move
+  files. Both chat surfaces install the fallback.
+- **Nextcloud Talk chat histories can be indexed** and answered from. A new
+  button in the settings and the documents view (
+  `POST /ocs/v2.php/apps/eva_ai/api/talkIndex`) indexes the conversations the
+  user is a member of, one document per chat, with its own switch
+  (`talk_index_enabled`), room and message bounds
+  (`talk_index_max_rooms`, `talk_index_max_messages`) and a Notes-app-style
+  "only index chats now" action that runs regardless of the switch.
+- **Answers in Talk use the indexed history.** When the bot is addressed in a
+  room, it still sees the recent messages live, and now also the older passages
+  of *that same room* that match the question - so "what did we decide about X
+  last month?" can be answered. Rooms are checked against Talk's participant
+  list at answer time, and the lookup is scoped to the room, so one conversation
+  can never surface in another.
+- **The Assistant uses the same history.** Its Talk context now verifies room
+  membership instead of trusting the room ids it is handed, and adds the
+  indexed older passages for the question on top of the recent window.
+- Index entries carry a **source** (`files`, `mail`, `talk`). The mail and Talk
+  indexes both live in the synthetic negative file-id space, so reconciliation
+  now filters by source - otherwise a mail cleanup pass would have deleted the
+  Talk rooms (and vice versa).
+
+### Fixed
+
+- The Assistant answered **without any file context** whenever the run-status key
+  behind the RAG gate had been reset, even though the user's documents were
+  indexed: the gate now counts the real documents.
+- The Talk bot answered in hardcoded German regardless of the conversation's
+  language, including its system prompt, slash-command replies, summary prompt
+  and fallback errors. All of them are English now and the answer follows the
+  language of the message; the regression guard covers this file too.
+- The Talk bot's response pre-filter only knew German trigger words, so an
+  English conversation that asked a question in plain words was classified as
+  small talk. It now recognises both languages.
+
 ## [1.8.0] - 2026-09-12
 
 ### Added

@@ -18,6 +18,9 @@ return [
         ['name' => 'api#saveSettings', 'url' => '/api/settings', 'verb' => 'PUT'],
         ['name' => 'api#startIndex', 'url' => '/api/index', 'verb' => 'POST'],
         ['name' => 'api#startMailIndex', 'url' => '/api/mailIndex', 'verb' => 'POST'],
+        // Index the user's Nextcloud Talk chat histories on demand (the button
+        // in the settings/documents view), independent of the automatic pass.
+        ['name' => 'api#startTalkIndex', 'url' => '/api/talkIndex', 'verb' => 'POST'],
         ['name' => 'api#stopIndex', 'url' => '/api/indexStop', 'verb' => 'POST'],
         ['name' => 'api#resetIndex', 'url' => '/api/indexReset', 'verb' => 'POST'],
         ['name' => 'api#documents', 'url' => '/api/documents', 'verb' => 'GET'],

@@ -305,6 +305,16 @@ class ToolPolicy {
             'requiresConfirmation' => false,
             'description' => 'Open and read one web page',
         ],
+        // An image search sends the query to the same external index as a web
+        // search and is gated by the same switch. It exists as its own tool
+        // because a text search cannot satisfy "show me pictures of X" - the
+        // model would answer that it cannot display images.
+        'search_images' => [
+            'risk' => self::RISK_READONLY,
+            'surfaces' => [self::SURFACE_WEB, self::SURFACE_TALK, self::SURFACE_TASKPROCESSING, self::SURFACE_TASKPROCESSING_CONFIRMED, self::SURFACE_RAG],
+            'requiresConfirmation' => false,
+            'description' => 'Find pictures of a subject on the web',
+        ],
     ];
 
     private string $activeSurface = self::SURFACE_WEB;
@@ -364,7 +374,7 @@ class ToolPolicy {
         // a third-party or admin-hosted search service. It is opt-in per
         // instance, and this single check removes it from every tool surface,
         // blocks dispatch and skips it in the agent proposal phase.
-        if (in_array($toolName, ['web_search', 'open_website'], true)
+        if (in_array($toolName, ['web_search', 'open_website', 'search_images'], true)
             && $this->appConfig->getInt('web_search_enabled', 0) !== 1) {
             return [
                 'allowed' => false,

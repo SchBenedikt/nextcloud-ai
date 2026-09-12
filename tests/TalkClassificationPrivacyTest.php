@@ -45,6 +45,8 @@ final class TalkClassificationPrivacyTest extends TestCase {
         $ollama = $this->createMock(Ollama::class);
         $roomState = $this->createMock(\OCA\EvaAi\Service\TalkRoomState::class);
         $roomState->method('isEnabled')->willReturn(true);
+        $transcripts = $this->createMock(\OCA\EvaAi\Service\TalkTranscriptService::class);
+        $transcripts->method('recall')->willReturn([]);
         $listener = new TalkBotListener(
             $ollama,
             $this->createMock(TalkContextReader::class),
@@ -52,6 +54,7 @@ final class TalkClassificationPrivacyTest extends TestCase {
             $config,
             $this->createMock(RagService::class),
             $roomState,
+            $transcripts,
             $this->createMock(LoggerInterface::class)
         );
         return [$listener, $ollama, $config];
