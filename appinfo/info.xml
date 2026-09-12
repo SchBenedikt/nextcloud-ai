@@ -18,13 +18,13 @@ Your data stays yours. No third-party indexing, no external databases, no cloud 
 ## Key Features
 
 **Intelligent File Indexing**
-Eva automatically reads, chunks, and embeds your files for semantic search. Supports a wide range of formats: plain text (txt, md, csv, json, xml, yaml, sql, ...), PDF, Microsoft Office (docx/xlsx/pptx with macros and templates), OpenDocument (odt/ods/odp), EPUB, and more.
+Eva automatically reads, chunks, and embeds your files for semantic search. Supports a wide range of formats: plain text (txt, md, csv, json, xml, yaml, sql, ...), PDF, Microsoft Office (docx/xlsx/pptx with macros and templates), OpenDocument (odt/ods/odp), EPUB, saved mail (eml, mbox), web archives (mht/mhtml), Jupyter notebooks (ipynb), and many more. A file that cannot be read is skipped instead of stopping the run.
 
 **Hybrid Retrieval Engine**
 Combines vector-based semantic search with lexical search (BM25) using Reciprocal Rank Fusion (RRF) to deliver the most relevant results — even for exact-match queries.
 
 **Cited Sources**
-Every answer includes the exact file path where the information was found, so you can always verify the source.
+Every answer includes the exact file path where the information was found, so you can always verify the source. Answers that used the web list the pages they actually retrieved, with their site and an excerpt, marked as web sources.
 
 **Nextcloud Integration**
 Eva can perform actions directly within Nextcloud: search for files, create documents, rename items, and work with templates across your entire home space — including Notes and Contacts.

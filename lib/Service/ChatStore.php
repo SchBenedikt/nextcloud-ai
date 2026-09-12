@@ -468,7 +468,11 @@ class ChatStore {
         if (mb_strlen($clean) > 60) {
             $clean = mb_substr($clean, 0, 60) . '…';
         }
-        return $clean === '' ? 'Unbenannt' : $clean;
+        // A folder name is user data, so it is stored as given. An empty name
+        // used to be replaced with the German word "Unbenannt", which every user
+        // then saw regardless of their language; each client now shows its own
+        // translated placeholder for an empty name (issue #190).
+        return $clean;
     }
 
     /**
