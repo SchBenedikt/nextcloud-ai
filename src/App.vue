@@ -125,6 +125,12 @@
 						<template #icon><svg width="16" height="16" viewBox="0 0 24 24"><path d="M5 19V5h2v14H5zm6 0V9h2v10h-2zm6 0V3h2v16h-2z" fill="currentColor" /></svg></template>
 					</NcAppNavigationItem>
 					<NcAppNavigationItem
+						:name="'Agent runs'"
+						:active="view === 'runs'"
+						@click="navigate('runs')">
+						<template #icon><svg width="16" height="16" viewBox="0 0 24 24"><path d="M12 2a10 10 0 1 0 10 10h-2a8 8 0 1 1-8-8V2zm1 0v9h9v2h-11V2h2z" fill="currentColor" /></svg></template>
+					</NcAppNavigationItem>
+					<NcAppNavigationItem
 						:name="$t('Settings')"
 						:active="view === 'settings'"
 						@click="navigate('settings')">
@@ -141,6 +147,7 @@
 			<FileContextChatView v-else-if="view === 'fileContext'" :file-ids="fileContextIds" />
 			<DocumentsView v-else-if="view === 'docs'" />
 			<MetricsView v-else-if="view === 'metrics'" />
+			<AgentRunsView v-else-if="view === 'runs'" />
 			<SettingsView v-else />
 		</NcAppContent>
 		<NcModal v-if="folderPickerOpen" size="small" :name="pickerMode === 'scope' ? $t('Chat with folder') : $t('Move to folder')" @close="folderPickerOpen = false">
@@ -181,6 +188,7 @@ import ChatView from './views/ChatView.vue'
 import DocumentsView from './views/DocumentsView.vue'
 import MetricsView from './views/MetricsView.vue'
 import SettingsView from './views/SettingsView.vue'
+import AgentRunsView from './views/AgentRunsView.vue'
 import FileContextChatView from './views/FileContextChatView.vue'
 import AdminView from './views/AdminView.vue'
 import { mdiChatProcessing, mdiFileDocumentOutline, mdiTune, mdiTrashCanOutline, mdiMessagePlus, mdiPencilOutline, mdiChevronDown, mdiViewDashboardOutline, mdiPinOutline, mdiPinOffOutline, mdiFolderOutline, mdiFolderPlusOutline, mdiFolderRemoveOutline, mdiFolderSearchOutline, mdiFolderOffOutline, mdiArchiveOutline, mdiArchiveArrowUpOutline } from '@mdi/js'
@@ -194,7 +202,7 @@ import { translate as t } from './lib/i18n'
 
 export default {
 	name: 'EvaAiApp',
-	components: { HomeView, ChatView, DocumentsView, MetricsView, SettingsView, FileContextChatView, AdminView, NcCounterBubble, NcAppNavigationSearch, NcActionButton, NcActionSeparator, NcIconSvgWrapper },		setup() {
+	components: { HomeView, ChatView, DocumentsView, MetricsView, SettingsView, AgentRunsView, FileContextChatView, AdminView, NcCounterBubble, NcAppNavigationSearch, NcActionButton, NcActionSeparator, NcIconSvgWrapper },		setup() {
 			// Admin settings form (Issue #82): the template mounts the same app
 			// with data-admin="1" and renders the admin dashboard instead.
 			const rootEl = document.getElementById('eva_ai-root')
@@ -212,6 +220,7 @@ export default {
 				? 'docs'
 					: path.endsWith('/metrics')
 						? 'metrics'
+							: path.endsWith('/runs') ? 'runs'
 						: 'home'
 		// Deep links from the dashboard widget (?chat=new | ?chat=<id>): they
 		// land on the chat view, everything else starts on the dashboard.
@@ -224,6 +233,8 @@ export default {
 					? 'settings'
 					: params.get('view') === 'metrics'
 						? 'metrics'
+					: params.get('view') === 'runs'
+						? 'runs'
 					: (initialChatParam ? 'chat' : pathView)
 		const view = ref(initial)
 		const fileContextIds = ref(initialFileIds)
@@ -374,7 +385,7 @@ export default {
 
 		const appRootPath = () => {
 			const current = window.location.pathname.replace(/\/+$/, '')
-			return current.replace(/\/(settings|documents|metrics|app|standalone)$/, '') || current
+			return current.replace(/\/(settings|documents|metrics|runs|app|standalone)$/, '') || current
 		}
 		const navigate = (nextView) => {
 			view.value = nextView
@@ -530,7 +541,7 @@ export default {
 				window.addEventListener('popstate', () => {
 					const current = window.location.pathname.replace(/\/+$/, '')
 					const hasChat = new URLSearchParams(window.location.search).get('chat')
-					view.value = current.endsWith('/settings') ? 'settings' : current.endsWith('/documents') ? 'docs' : (hasChat ? 'chat' : 'home')
+					view.value = current.endsWith('/settings') ? 'settings' : current.endsWith('/documents') ? 'docs' : current.endsWith('/metrics') ? 'metrics' : current.endsWith('/runs') ? 'runs' : (hasChat ? 'chat' : 'home')
 				})
 				window.addEventListener('eva-ai:chats-cleared', () => {
 					currentChat.value = null
