@@ -31,6 +31,8 @@ class ActionExecutor {
     private const MAX_LIST_DEPTH = 2;
     private const MAX_LIST_ENTRIES = 300;
     private const MAX_READ_CHARS = 20000;
+    private const MAX_READ_CHUNK_CHARS = 100000;
+    private const MAX_READ_FILE_BYTES = 8388608; // 8 MB safety limit
     private const MAX_WRITE_CHARS = 100000;
     private const KNOWLEDGE_MAX_CHARS = 60000;
     private const KNOWLEDGE_TARGET_CHARS = 45000;
@@ -200,9 +202,11 @@ class ActionExecutor {
             ]],
             ['type' => 'function', 'function' => [
                 'name' => 'read_file',
-                'description' => 'Read the text content of a file in the user\'s home (max 20k characters).',
+                'description' => 'Read a text file in the user\'s home in pages. The default page is 20k characters; when has_more is true, call again with next_offset until the requested file is fully read.',
                 'parameters' => ['type' => 'object', 'properties' => [
                     'path' => ['type' => 'string', 'description' => 'Relative path, e.g. "Documents/Notes.md".'],
+                    'offset' => ['type' => 'integer', 'minimum' => 0, 'description' => 'Character offset for the page, normally the previous response\'s next_offset.'],
+                    'max_chars' => ['type' => 'integer', 'minimum' => 1, 'maximum' => 100000, 'description' => 'Characters to return (default 20000, maximum 100000).'],
                 ], 'required' => ['path']],
             ]],
             ['type' => 'function', 'function' => [
@@ -1486,17 +1490,35 @@ class ActionExecutor {
         if (!$node instanceof File) {
             return ['ok' => false, 'error' => 'Not a file'];
         }
-        if ($node->getSize() > self::MAX_READ_CHARS * 4) {
+        if ($node->getSize() > self::MAX_READ_FILE_BYTES) {
             return ['ok' => false, 'error' => 'File too large to read'];
         }
         $content = (string)$node->getContent();
         if (strpos($content, "\0") !== false) {
             return ['ok' => false, 'error' => 'File is not text'];
         }
-        if (mb_strlen($content) > self::MAX_READ_CHARS) {
-            $content = mb_substr($content, 0, self::MAX_READ_CHARS) . "\n…(truncated)";
+        $offset = filter_var($args['offset'] ?? 0, FILTER_VALIDATE_INT);
+        $maxChars = filter_var($args['max_chars'] ?? self::MAX_READ_CHARS, FILTER_VALIDATE_INT);
+        if ($offset === false || $offset < 0) {
+            return ['ok' => false, 'error' => 'offset must be a non-negative integer'];
         }
-        return ['ok' => true, 'result' => ['path' => $path, 'content' => $content]];
+        if ($maxChars === false || $maxChars < 1 || $maxChars > self::MAX_READ_CHUNK_CHARS) {
+            return ['ok' => false, 'error' => 'max_chars must be between 1 and ' . self::MAX_READ_CHUNK_CHARS];
+        }
+        $totalChars = mb_strlen($content);
+        if ($offset > $totalChars) {
+            return ['ok' => false, 'error' => 'offset is beyond the end of the file'];
+        }
+        $page = mb_substr($content, $offset, $maxChars);
+        $nextOffset = $offset + mb_strlen($page);
+        return ['ok' => true, 'result' => [
+            'path' => $path,
+            'content' => $page,
+            'offset' => $offset,
+            'next_offset' => $nextOffset,
+            'total_chars' => $totalChars,
+            'has_more' => $nextOffset < $totalChars,
+        ]];
     }
 
     /** @return array{ok:true,result:array} */
