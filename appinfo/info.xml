@@ -80,6 +80,7 @@ Licensed under AGPL-3.0-or-later.
     <background-jobs>
         <job>OCA\EvaAi\BackgroundJob\IndexJob</job>
         <job>OCA\EvaAi\BackgroundJob\ChatCleanupJob</job>
+        <job>OCA\EvaAi\BackgroundJob\ProactiveBriefingJob</job>
     </background-jobs>
     <repair-steps>
         <step>OCA\EvaAi\Migration\MigrateLegacyAppIdRepairStep</step>

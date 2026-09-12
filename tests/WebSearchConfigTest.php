@@ -11,8 +11,8 @@ use PHPUnit\Framework\TestCase;
 
 /**
  * Web search settings are per-user (each user can enable DuckDuckGo for free),
- * while web search infrastructure (URLs, API keys and browser paths) remains
- * admin-scoped. Tool permissions are personal settings.
+ * while the weather tool and web search infrastructure (URLs, API keys, limits)
+ * remain admin-scoped. Tests verify the scope boundaries are correctly enforced.
  */
 final class WebSearchConfigTest extends TestCase {
     protected function setUp(): void {
@@ -95,6 +95,7 @@ final class WebSearchConfigTest extends TestCase {
         foreach (AppConfig::ADMIN_SETTINGS as $key) {
             self::assertArrayHasKey($key, $payload);
         }
+        self::assertSame('1', $payload['weather_tool_enabled']);
         self::assertArrayNotHasKey('web_search_api_key', $payload);
     }
 
@@ -103,15 +104,17 @@ final class WebSearchConfigTest extends TestCase {
         $config->setUserId('alice');
         $config->set('weather_tool_enabled', '0');
 
-        self::assertSame('0', $user['alice']['weather_tool_enabled'], 'the value must be per-user');
-        self::assertFalse(isset($app['weather_tool_enabled']), 'no instance-wide value should be created');
+        self::assertSame('0', $app['weather_tool_enabled'], 'the value must be instance-wide');
+        self::assertFalse(isset($user['alice']['weather_tool_enabled']), 'no per-user override may be created');
         self::assertSame('0', $config->get('weather_tool_enabled'));
     }
 
     public function testAPerUserValueCannotOverrideAnAdminSwitch(): void {
         [$config] = $this->harness([], ['alice' => ['weather_tool_enabled' => '0']]);
         $config->setUserId('alice');
-        self::assertSame('0', $config->get('weather_tool_enabled'));
+        // Weather tool is an admin setting; even if a user value somehow existed,
+        // the admin default stays in force.
+        self::assertSame('1', $config->get('weather_tool_enabled'));
     }
 
     public function testValidateValueAcceptsValidWebSearchSettings(): void {

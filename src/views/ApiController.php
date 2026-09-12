@@ -296,13 +296,12 @@ class ApiController extends OCSController {
             return new DataResponse(['error' => 'Settings are locked while indexing is running.'], 409);
         }
         $allowed = [
-            'chat_provider', 'groq_model', 'custom_provider_url', 'custom_provider_model', 'ollama_url', 'embedding_model', 'chat_model', 'chat_model_fallback',
+            'chat_provider', 'groq_model', 'ollama_url', 'embedding_model', 'chat_model', 'chat_model_fallback',
             'embedding_model_fallback', 'summary_model', 'top_k', 'chunk_size',
             'chunk_overlap', 'max_file_size', 'max_files_per_run', 'scope_path', 'context_size', 'temperature',
             'actions_enabled', 'weather_tool_enabled',
             'exec_write_types', 'exec_write_max_chars', 'exec_delete_mode',
             'notify_on_complete',
-            'proactive_enabled', 'proactive_schedules',
             'mail_index_enabled',
             'mail_index_max',
             'embed_batch_size', 'ocr_enabled', 'ocr_language',
@@ -350,12 +349,6 @@ class ApiController extends OCSController {
                 && preg_match('~(^|[\\\\/])\\.\\.?([\\\\/]|$)~', (string)$value)) {
                 $validationErrors[$key] = $key . ' may not contain relative path traversal.';
             }
-            if ($key === 'proactive_schedules') {
-                $scheduleError = $this->validateProactiveSchedules($value);
-                if ($scheduleError !== null) {
-                    $validationErrors[$key] = $scheduleError;
-                }
-            }
         }
         if ($validationErrors !== []) {
             return new DataResponse([
@@ -378,16 +371,6 @@ class ApiController extends OCSController {
         }
         if ($removeGroqKey) $this->ollama->saveGroqKey('');
         elseif (is_string($groqKey) && $groqKey !== '') $this->ollama->saveGroqKey($groqKey);
-        $customKey = $this->requestParam('custom_provider_api_key');
-        $removeCustomKey = $this->requestParam('remove_custom_provider_api_key', false);
-        $providerId = (string)($pending['chat_provider'] ?? $this->config->get('chat_provider'));
-        if ($customKey !== null && (!is_string($customKey) || strlen($customKey) > 512)) return new DataResponse(['error' => 'Invalid custom provider credential input.'], 400);
-        if (!in_array($removeCustomKey, [true, false, 0, 1, '0', '1'], true)) return new DataResponse(['error' => 'Invalid custom provider credential input.'], 400);
-        if ($providerId !== 'ollama' && $providerId !== 'groq') {
-            $credentials = \OCP\Server::get(\OCA\EvaAi\Service\ProviderCredentials::class);
-            if ($removeCustomKey) $credentials->saveCustom($user, $providerId, '');
-            elseif (is_string($customKey) && $customKey !== '') $credentials->saveCustom($user, $providerId, $customKey);
-        }
         foreach ($pending as $key => $value) {
                 if (in_array($key, ['top_k', 'chunk_size', 'chunk_overlap', 'max_file_size', 'max_files_per_run', 'context_size', 'exec_write_max_chars', 'mail_index_max', 'talk_history_size', 'talk_index_max_rooms', 'talk_index_max_messages', 'chat_retention_days', 'embed_batch_size', 'web_search_max_results', 'web_search_timeout', 'web_search_content_chars', 'web_search_candidates', 'web_search_browser_timeout'], true)) {
                     $value = (string)$value;
@@ -398,7 +381,7 @@ class ApiController extends OCSController {
                 if ($key === 'exec_write_types') {
                     $value = $this->config->normalizeValue($key, $value);
                 }
-                if ($key === 'ocr_enabled' || $key === 'notify_on_complete' || $key === 'proactive_enabled' || $key === 'mail_index_enabled' || $key === 'index_enrolled' || $key === 'talk_classify_all' || $key === 'talk_index_enabled' || $key === 'talk_write_enabled' || $key === 'weather_tool_enabled' || $key === 'web_search_enabled' || $key === 'web_search_safe_search' || $key === 'web_search_fetch_content' || $key === 'web_search_images' || $key === 'web_search_browser') {
+                if ($key === 'ocr_enabled' || $key === 'notify_on_complete' || $key === 'mail_index_enabled' || $key === 'index_enrolled' || $key === 'talk_classify_all' || $key === 'talk_index_enabled' || $key === 'talk_write_enabled' || $key === 'weather_tool_enabled' || $key === 'web_search_enabled' || $key === 'web_search_safe_search' || $key === 'web_search_fetch_content' || $key === 'web_search_images' || $key === 'web_search_browser') {
                     $value = in_array((string)$value, ['1', 'true', 'on'], true) ? '1' : '0';
                 }
                 if ($key === 'temperature') {
@@ -428,32 +411,6 @@ class ApiController extends OCSController {
                 $this->config->set($key, (string)$value);
         }
         return new DataResponse($this->config->all());
-    }
-
-    /** Validate the small, deliberately data-only scheduler format. */
-    private function validateProactiveSchedules(mixed $value): ?string {
-        if (!is_string($value) || strlen($value) > 20000) {
-            return 'Scheduled briefings must be a small JSON list.';
-        }
-        $rows = json_decode($value, true);
-        if (!is_array($rows) || count($rows) > 20) {
-            return 'Scheduled briefings must contain at most 20 entries.';
-        }
-        foreach ($rows as $row) {
-            if (!is_array($row)
-                || preg_match('/^[a-zA-Z0-9_-]{1,64}$/', (string)($row['id'] ?? '')) !== 1
-                || !is_string($row['prompt'] ?? null) || mb_strlen(trim((string)$row['prompt'])) < 1 || mb_strlen((string)$row['prompt']) > 2000
-                || preg_match('/^(?:[01]\\d|2[0-3]):[0-5]\\d$/', (string)($row['time'] ?? '')) !== 1
-                || !is_array($row['days'] ?? null) || $row['days'] === []) {
-                return 'Every scheduled briefing needs an id, prompt, HH:MM time and at least one weekday.';
-            }
-            foreach ($row['days'] as $day) {
-                if (!is_int($day) && !ctype_digit((string)$day) || (int)$day < 1 || (int)$day > 7) {
-                    return 'Scheduled briefing weekdays must be between 1 (Monday) and 7 (Sunday).';
-                }
-            }
-        }
-        return null;
     }
 
     /**

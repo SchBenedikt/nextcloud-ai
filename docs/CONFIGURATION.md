@@ -86,6 +86,8 @@ Resetting a user's index clears that user's cached vectors.
 | Key | Scope | Default | Range / values | Unit | Effect |
 |---|---|---|---|---|---|
 | `notify_on_complete` | P | `1` | `1`/`0` | – | Send an "AI answer ready" notification (Notifications app). |
+| `proactive_enabled` | P | `0` | `1`/`0` | – | Opt in to scheduled, read-only EVA briefings. |
+| `proactive_schedules` | P | `[]` | JSON | max. 20 | Briefings with `id`, `prompt`, local `HH:MM` time and ISO weekdays (`1` = Monday … `7` = Sunday). |
 | `talk_history_size` | P | `50` | `1`–`500` | messages | Number of previous Talk messages sent as bot context. |
 | `talk_write_enabled` | P | `0` | `1`/`0` | – | Allow EVA to post messages into a Nextcloud Talk chat as the signed-in user (`send_talk_message`). Off by default: a message written in the user's name is an act, not a lookup, so each user opts in themselves. Reading a chat (`read_talk_chat`) stays available either way, and only rooms the user is a member of can be resolved. See [TALK-INDEXING.md](TALK-INDEXING.md). |
 | `talk_bot_trigger` | P | `Eva` | non-empty string | – | Trigger word (with `@`) the Talk bot reacts to. |
@@ -178,6 +180,8 @@ from an instance-wide value.
 | `knowledge_initialized` | `1` once the per-user `KNOWLEDGE.md` has been created. |
 
 ### Global scheduler state (G)
+
+| `proactive_schedule_runs` | JSON map of the last delivered local time slot per scheduled briefing; prevents duplicate notifications after cron retries. |
 
 | Key | Meaning |
 |---|---|
@@ -284,3 +288,14 @@ follow-up templates to avoid consuming the account quota for background requests
 Rate-limit errors distinguish oversized requests from temporary limits and show
 numeric Limit/Used/Requested and Retry-After values when supplied by Groq, without
 exposing raw provider errors, organization IDs or credentials.
+
+### OpenAI-compatible providers
+
+Set `chat_provider` to any lower-case provider id (for example `openai`,
+`mistral`, `deepseek`, `openrouter` or `company-gateway`). Configure
+`custom_provider_url` with the provider's `/v1` endpoint and
+`custom_provider_model` with its model name. The write-only
+`custom_provider_api_key` request field is encrypted per user; it is never
+returned by the settings API. EVA sends the standard `/chat/completions`
+payload, including tools, so any compatible hosted or self-hosted gateway can
+be used without a code change.

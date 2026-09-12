@@ -72,15 +72,8 @@
 				<div class="field">
 					<label class="native-label" for="chat-provider">{{ $t('Chat provider') }}</label>
 					<select id="chat-provider" v-model="f.chat_provider" class="native-select">
-						<option value="ollama">Ollama</option><option value="groq">Groq</option><option value="custom">{{ $t('Custom OpenAI-compatible provider') }}</option>
+						<option value="ollama">Ollama</option><option value="groq">Groq</option>
 					</select>
-				</div>
-				<div v-if="f.chat_provider !== 'ollama' && f.chat_provider !== 'groq'" class="field-grid">
-					<NcTextField id="custom-provider-id" v-model="f.chat_provider" :label="$t('Provider ID')" :label-outside="true" placeholder="openai" />
-					<NcTextField id="custom-provider-url" v-model="f.custom_provider_url" type="url" :label="$t('OpenAI-compatible endpoint')" :label-outside="true" placeholder="https://api.openai.com/v1" />
-					<NcTextField id="custom-provider-model" v-model="f.custom_provider_model" :label="$t('Model')" :label-outside="true" placeholder="gpt-4o-mini" />
-					<NcTextField id="custom-provider-key" v-model="customProviderKey" type="password" autocomplete="new-password" :label="$t('Provider API key')" :label-outside="true" />
-					<p class="field-help">{{ $t('Works with OpenAI, Azure OpenAI, Mistral, Together, DeepSeek, OpenRouter and any compatible self-hosted endpoint. Credentials are encrypted per user.') }}</p>
 				</div>
 				<div v-if="f.chat_provider === 'groq'" class="field-grid">
 					<p class="field-help">{{ $t('Groq sends your messages, retrieved file excerpts and tool results to Groq. Embeddings and document indexing still use Ollama.') }}</p>
@@ -410,25 +403,6 @@
 					<strong>{{ $t('Privacy reminder') }}</strong>
 					<span>{{ $t('Indexed content stays in Nextcloud and is sent to the Ollama server configured above. Review your indexing scope before enabling Mail or Talk features.') }}</span>
 				</div>
-				<div class="admin-subsection">
-					<div class="briefing-heading"><div><h4>{{ $t('Scheduled briefings') }}</h4><p>{{ $t('EVA can prepare recurring, read-only answers and deliver them in your Nextcloud notifications.') }}</p></div><span class="briefing-count">{{ proactiveBriefings.length }} / 20</span></div>
-					<NcCheckboxRadioSwitch v-model="proactiveEnabled" type="switch" class="native-toggle">{{ $t('Let EVA send scheduled notifications') }}</NcCheckboxRadioSwitch>
-					<div v-if="proactiveEnabled" class="briefing-note"><strong>{{ $t('How this works') }}</strong><span>{{ $t('Briefings use your server cron and your account timezone. EVA only reads information and sends the result as a notification; it never changes files, calendar entries or messages.') }}</span></div>
-					<div v-if="proactiveEnabled" class="briefing-editor">
-						<div v-if="!proactiveBriefings.length" class="briefing-empty"><strong>{{ $t('No briefings yet') }}</strong><span>{{ $t('Add your first briefing below, for example a morning calendar summary or a weekly file digest.') }}</span></div>
-						<div v-for="briefing in proactiveBriefings" :key="briefing.id" class="briefing-card">
-							<div class="briefing-card-top"><div class="briefing-time"><span>{{ briefing.time }}</span><small>{{ briefing.days.map(dayName).join(' · ') }}</small></div><div class="briefing-card-actions"><button type="button" class="briefing-toggle" :class="{ active: briefing.enabled !== false }" :aria-label="$t('Toggle briefing')" @click="toggleBriefing(briefing.id)"><span></span></button><NcButton type="tertiary-no-background" @click="removeBriefing(briefing.id)">{{ $t('Remove') }}</NcButton></div></div>
-							<p class="briefing-prompt">{{ briefing.prompt }}</p><small class="briefing-next">{{ briefing.enabled === false ? $t('Paused') : $t('Runs on {days} at {time}', { days: briefing.days.map(dayName).join(', '), time: briefing.time }) }}</small>
-						</div>
-						<div class="briefing-form"><div class="briefing-form-title"><strong>{{ $t('Create a briefing') }}</strong><span>{{ $t('Choose what EVA should prepare and when you want it.') }}</span></div>
-						<div class="field-grid">
-							<div class="field field-wide"><NcTextField v-model="briefingDraft.prompt" :label="$t('What should EVA do?')" :label-outside="true" :placeholder="$t('For example: summarize my calendar for today')" /><p class="field-help">{{ $t('Write a question or instruction in plain language. You can ask about files, calendar, tasks or your knowledge base.') }}</p></div>
-							<NcTextField v-model="briefingDraft.time" type="time" :label="$t('Time')" :label-outside="true" />
-						</div>
-						<div><span class="native-label">{{ $t('Repeat on') }}</span><div class="weekday-picker"><label v-for="day in weekdays" :key="day.value" :class="{ selected: briefingDraft.days.includes(day.value) }"><input v-model="briefingDraft.days" type="checkbox" :value="day.value" /> <span>{{ day.label }}</span></label></div></div>
-						<div class="briefing-form-actions"><NcButton type="primary" :disabled="!briefingDraft.prompt.trim() || !briefingDraft.days.length" @click="addBriefing">{{ $t('Add briefing') }}</NcButton><span>{{ $t('{count} slots remaining', { count: Math.max(0, 20 - proactiveBriefings.length) }) }}</span></div></div>
-					</div>
-				</div>
 			</section>
 
 			<section class="settings-section">
@@ -525,8 +499,6 @@ export default {
 		const f = ref({
 			chat_provider: 'ollama',
 			groq_model: 'openai/gpt-oss-20b',
-			custom_provider_url: '',
-			custom_provider_model: '',
 			ollama_url: 'http://127.0.0.1:11434',
 			embedding_model: 'nomic-embed-text',
 			chat_model: 'gemma4:cloud',
@@ -572,11 +544,8 @@ export default {
 			web_search_images: '1',
 			web_search_browser: '1',
 			web_search_browser_timeout: '30',
-			proactive_enabled: '0',
-			proactive_schedules: '[]',
 		})
 		const groqKey = ref('')
-		const customProviderKey = ref('')
 		const removeGroqKey = ref(false)
 		const status = ref(null)
 		const limits = ref({})
@@ -595,10 +564,6 @@ export default {
 		const loadError = ref('')
 		const message = ref({ type: '', text: '' })
 		const validationErrors = ref([])
-		// Keep the last server-confirmed form state. Autosave sends only values that
-		// changed since then, so a broken or incomplete unrelated field cannot stop
-		// a user from enabling a browser, images, or another independent tool.
-		const persistedSettings = ref({})
 		const resetConfirm = ref(false)
 		const chatsDeleteConfirm = ref(false)
 		const newExcludePath = ref('')
@@ -616,28 +581,6 @@ export default {
 			get: () => f.value.notify_on_complete === '1',
 			set: value => { f.value.notify_on_complete = value ? '1' : '0' },
 		})
-		const proactiveEnabled = computed({
-			get: () => f.value.proactive_enabled === '1',
-			set: value => { f.value.proactive_enabled = value ? '1' : '0' },
-		})
-		const weekdays = [
-			{ value: 1, label: t('Mon') }, { value: 2, label: t('Tue') }, { value: 3, label: t('Wed') },
-			{ value: 4, label: t('Thu') }, { value: 5, label: t('Fri') }, { value: 6, label: t('Sat') }, { value: 7, label: t('Sun') },
-		]
-		const briefingDraft = ref({ prompt: '', time: '08:00', days: [1, 2, 3, 4, 5] })
-		const proactiveBriefings = computed(() => {
-			try { const rows = JSON.parse(f.value.proactive_schedules || '[]'); return Array.isArray(rows) ? rows : [] } catch (_) { return [] }
-		})
-		const dayName = day => (weekdays.find(item => item.value === Number(day)) || {}).label || String(day)
-		function writeBriefings(rows) { f.value.proactive_schedules = JSON.stringify(rows.slice(0, 20)) }
-		function addBriefing() {
-			const prompt = briefingDraft.value.prompt.trim()
-			if (!prompt || !/^([01]\\d|2[0-3]):[0-5]\\d$/.test(briefingDraft.value.time) || !briefingDraft.value.days.length) return
-			writeBriefings([...proactiveBriefings.value, { id: `briefing-${Date.now()}`, prompt, time: briefingDraft.value.time, days: [...new Set(briefingDraft.value.days)].sort(), enabled: true }])
-			briefingDraft.value.prompt = ''
-		}
-		function removeBriefing(id) { writeBriefings(proactiveBriefings.value.filter(item => item.id !== id)) }
-		function toggleBriefing(id) { writeBriefings(proactiveBriefings.value.map(item => item.id === id ? { ...item, enabled: item.enabled === false } : item)) }
 		const userWeatherEnabled = computed({
 			get: () => f.value.weather_tool_enabled === '1',
 			set: value => { f.value.weather_tool_enabled = value ? '1' : '0' },
@@ -713,10 +656,6 @@ export default {
 			}
 		}
 
-		function changedSettingKeys() {
-			return Object.keys(f.value).filter(key => String(f.value[key]) !== String(persistedSettings.value[key] ?? ''))
-		}
-
 		function queueAutoSave() {
 			if (ignoreNextFormChange) {
 				ignoreNextFormChange = false
@@ -725,14 +664,13 @@ export default {
 			if (!formReady.value) return
 			autoSaveDirty = true
 			window.clearTimeout(autoSaveTimer)
-			autoSaveTimer = window.setTimeout(async () => {
+			autoSaveTimer = window.setTimeout(() => {
 				if (!autoSaveDirty) return
 				if (settingsLocked.value) {
 					queueAutoSave()
 					return
 				}
-				autoSaveDirty = false
-				await save({ changedOnly: true })
+				save()
 			}, 700)
 		}
 
@@ -831,9 +769,8 @@ export default {
 			message.value = { type, text }
 		}
 
-		function validate(keys = null) {
+		function validate() {
 			const errors = []
-			const includes = key => keys === null || keys.includes(key)
 			const effective = (key, fallback) => limits.value[key] || fallback
 			const numberRules = [
 				['top_k', 'Sources per answer', ...effective('top_k', [1, 8])],
@@ -849,17 +786,16 @@ export default {
 				['talk_history_size', 'Talk history size', ...effective('talk_history_size', [1, 500])],
 				['exec_write_max_chars', 'Maximum characters per file', ...effective('exec_write_max_chars', [1, 10000000])],
 			]
-			if (includes('ollama_url') && !/^https?:\/\//i.test(f.value.ollama_url.trim())) errors.push('Ollama server URL must start with http:// or https://.')
-			if (includes('embedding_model') && !f.value.embedding_model.trim()) errors.push('Embedding model is required.')
-			if ((includes('chat_provider') || includes('chat_model')) && f.value.chat_provider !== 'groq' && !f.value.chat_model.trim()) errors.push('Chat model is required.')
+			if (!/^https?:\/\//i.test(f.value.ollama_url.trim())) errors.push('Ollama server URL must start with http:// or https://.')
+			if (!f.value.embedding_model.trim()) errors.push('Embedding model is required.')
+			if (f.value.chat_provider !== 'groq' && !f.value.chat_model.trim()) errors.push('Chat model is required.')
 			for (const [key, label, min, max] of numberRules) {
-				if (!includes(key)) continue
 				const value = Number(f.value[key])
 				if (!Number.isFinite(value) || value < min || value > max) errors.push(`${label} must be between ${min} and ${max}.`)
 			}
 			const fileSizeMb = Number(maxFileSizeMb.value)
-			if (includes('max_file_size') && (!Number.isFinite(fileSizeMb) || fileSizeMb < 1 || fileSizeMb > 2048)) errors.push('Maximum file size must be between 1 and 2048 MB.')
-			if ((includes('chunk_overlap') || includes('chunk_size')) && Number(f.value.chunk_overlap) > Number(f.value.chunk_size)) errors.push('Chunk overlap cannot be larger than chunk size.')
+			if (!Number.isFinite(fileSizeMb) || fileSizeMb < 1 || fileSizeMb > 2048) errors.push('Maximum file size must be between 1 and 2048 MB.')
+			if (Number(f.value.chunk_overlap) > Number(f.value.chunk_size)) errors.push('Chunk overlap cannot be larger than chunk size.')
 			return errors
 		}
 
@@ -898,7 +834,6 @@ export default {
 			Object.keys(f.value).forEach(key => {
 				if (settings[key] !== undefined && settings[key] !== null) {
 					f.value[key] = String(settings[key])
-					persistedSettings.value[key] = String(settings[key])
 				}
 			})
 		}
@@ -918,11 +853,9 @@ export default {
 			}
 		}
 
-		async function save({ changedOnly = false } = {}) {
+		async function save() {
 			if (saving.value) return false
-			const keys = changedOnly ? changedSettingKeys() : Object.keys(f.value)
-			if (keys.length === 0 && !groqKey.value && !removeGroqKey.value) return true
-			validationErrors.value = validate(changedOnly ? keys : null)
+			validationErrors.value = validate()
 			if (validationErrors.value.length) {
 				setMessage('error', t('Please correct the highlighted settings before saving.'))
 				return false
@@ -931,13 +864,9 @@ export default {
 			saved.value = false
 			message.value = { type: '', text: '' }
 			try {
-			const values = changedOnly
-				? Object.fromEntries(keys.map(key => [key, f.value[key]]))
-				: { ...f.value }
-			const settings = await api('PUT', 'settings', { ...values, ...(groqKey.value ? { groq_api_key: groqKey.value } : {}), ...(customProviderKey.value ? { custom_provider_api_key: customProviderKey.value } : {}), remove_groq_api_key: removeGroqKey.value })
+				const settings = await api('PUT', 'settings', { ...f.value, ...(groqKey.value ? { groq_api_key: groqKey.value } : {}), remove_groq_api_key: removeGroqKey.value })
 				if (status.value && (groqKey.value || removeGroqKey.value)) status.value.groq = { ...(status.value.groq || {}), keyConfigured: !removeGroqKey.value }
 				groqKey.value = ''
-				customProviderKey.value = ''
 				removeGroqKey.value = false
 				validationErrors.value = []
 				if (settings) fill(settings)
@@ -1215,10 +1144,9 @@ export default {
 
 		const ocrEnabled = computed({ get: () => f.value.ocr_enabled === '1', set: value => { f.value.ocr_enabled = value ? '1' : '0' } })
 		return {
-			groqKey, customProviderKey, removeGroqKey, ocrEnabled, f, status, limits, availableModels, embeddingModels, chatModels, embeddingInstalledHint, chatInstalledHint, modelLoading, modelError, checkOut, saving, checking, indexing, resetting, deletingChats, stopping, saved, loadError, message, validationErrors, resetConfirm, chatsDeleteConfirm,
+			groqKey, removeGroqKey, ocrEnabled, f, status, limits, availableModels, embeddingModels, chatModels, embeddingInstalledHint, chatInstalledHint, modelLoading, modelError, checkOut, saving, checking, indexing, resetting, deletingChats, stopping, saved, loadError, message, validationErrors, resetConfirm, chatsDeleteConfirm,
 			newExcludePath, excludeError, excludeList, actionsEnabled, notificationsEnabled, userWeatherEnabled, mailIndexEnabled, talkIndexEnabled, talkWriteEnabled, indexEnrolled, actionsDisabled, busy, indexingActive, settingsLocked, maxFileSizeMb,
-			isAdminMode, admin, userWebSearchEnabled, userWebSearchSafeSearch, userWebSearchImages, userWebSearchBrowser, userWebSearchFetchContent, webSearchKey, removeWebSearchKey, webSearchKeyStored, webSearchReady, savingAdmin, saveAdminSettings, loadAdminSettings,
-			proactiveEnabled, proactiveBriefings, briefingDraft, weekdays, dayName, addBriefing, removeBriefing, toggleBriefing,
+			isAdminMode, admin, userWebSearchEnabled, userWebSearchSafeSearch, webSearchKey, removeWebSearchKey, webSearchKeyStored, webSearchReady, savingAdmin, saveAdminSettings, loadAdminSettings,
 			exporting, downloadExport,
 			knowledgeContent, knowledgeOriginal, savingKnowledge, knowledgeSaved, saveKnowledgeContent,
 			formatNumber, loadStatus, save, checkOllama, addExclude, removeExclude, startIndex, startMailIndex, startTalkIndex, stopIndex, resetIndex, deleteAllChats,
@@ -1338,35 +1266,6 @@ export default {
 .compact-switch { margin-top: 18px; }
 .admin-subsection { margin: 16px 0 4px; padding: 14px 16px; border: 1px solid var(--color-border); border-radius: 10px; background: var(--color-background-hover); }
 .admin-subsection .field + .field { margin-top: 14px; }
-.briefing-heading { display:flex; align-items:flex-start; justify-content:space-between; gap:16px; }
-.briefing-heading h4 { margin:0; font-size:15px; }
-.briefing-heading p { margin:4px 0 0; color:var(--color-text-maxcontrast); font-size:12px; line-height:1.5; }
-.briefing-count { padding:4px 9px; border-radius:999px; background:var(--color-main-background); color:var(--color-text-maxcontrast); font-size:11px; font-weight:700; white-space:nowrap; }
-.briefing-note { display:flex; gap:8px; margin:16px 0; padding:11px 12px; border-left:3px solid var(--color-primary-element); background:color-mix(in srgb,var(--color-primary-element) 8%,var(--color-main-background)); font-size:12px; line-height:1.5; }
-.briefing-note strong { color:var(--color-primary-element); white-space:nowrap; }
-.briefing-note span { color:var(--color-text-maxcontrast); }
-.briefing-editor { display:grid; gap:10px; margin-top:16px; }
-.briefing-empty { display:flex; flex-direction:column; gap:3px; padding:18px; border:1px dashed var(--color-border); border-radius:10px; text-align:center; color:var(--color-text-maxcontrast); font-size:12px; }
-.briefing-empty strong { color:var(--color-main-text); font-size:13px; }
-.briefing-card { padding:14px; border:1px solid var(--color-border); border-radius:11px; background:var(--color-main-background); box-shadow:0 1px 2px color-mix(in srgb,var(--color-main-text) 5%,transparent); }
-.briefing-card-top,.briefing-card-actions,.briefing-form-actions { display:flex; align-items:center; justify-content:space-between; gap:10px; }
-.briefing-time { display:flex; align-items:baseline; gap:10px; }
-.briefing-time span { font-size:20px; font-weight:750; letter-spacing:-.03em; }
-.briefing-time small,.briefing-next { color:var(--color-text-maxcontrast); font-size:11px; }
-.briefing-prompt { margin:10px 0 5px; font-size:14px; line-height:1.45; }
-.briefing-toggle { width:36px; height:21px; padding:2px; border:0; border-radius:999px; background:var(--color-border); cursor:pointer; }
-.briefing-toggle span { display:block; width:17px; height:17px; border-radius:50%; background:var(--color-main-background); transition:transform .15s; }
-.briefing-toggle.active { background:var(--color-primary-element); }
-.briefing-toggle.active span { transform:translateX(15px); }
-.briefing-form { display:grid; gap:14px; margin-top:6px; padding:16px; border:1px solid color-mix(in srgb,var(--color-primary-element) 30%,var(--color-border)); border-radius:11px; background:color-mix(in srgb,var(--color-primary-element) 4%,var(--color-main-background)); }
-.briefing-form-title { display:flex; flex-direction:column; gap:3px; }
-.briefing-form-title span { color:var(--color-text-maxcontrast); font-size:12px; }
-.weekday-picker { display:flex; flex-wrap:wrap; gap:7px; margin-top:7px; }
-.weekday-picker label { display:inline-flex; align-items:center; gap:5px; padding:7px 10px; border:1px solid var(--color-border); border-radius:999px; background:var(--color-main-background); color:var(--color-text-maxcontrast); font-size:12px; cursor:pointer; }
-.weekday-picker label.selected { border-color:var(--color-primary-element); background:color-mix(in srgb,var(--color-primary-element) 14%,var(--color-main-background)); color:var(--color-main-text); font-weight:700; }
-.weekday-picker input { accent-color:var(--color-primary-element); }
-.briefing-form-actions { justify-content:flex-start; }
-.briefing-form-actions span { color:var(--color-text-maxcontrast); font-size:11px; }
 
 .exclude-paths { margin-top: 22px; padding-top: 18px; border-top: 1px solid var(--color-border); }
 .sub-heading span { display: block; margin-top: -2px; color: var(--color-text-maxcontrast); font-size: 12px; }

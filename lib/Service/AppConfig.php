@@ -16,11 +16,15 @@ class AppConfig {
      * default (Issue #73).
      */
     private const USER_SETTINGS = [
-        'chat_provider', 'groq_model', 'ollama_url', 'embedding_model', 'chat_model', 'chat_model_fallback',
+        'chat_provider', 'groq_model', 'custom_provider_url', 'custom_provider_model', 'ollama_url', 'embedding_model', 'chat_model', 'chat_model_fallback',
         'embedding_model_fallback', 'summary_model', 'top_k', 'chunk_size',
         'chunk_overlap', 'max_file_size', 'max_files_per_run', 'scope_path',
         'context_size', 'temperature', 'actions_enabled', 'exec_write_types',
         'exec_write_max_chars', 'exec_delete_mode',        'notify_on_complete',
+        // Personal, opt-in scheduled briefings/reminders. Definitions are JSON;
+        // delivery timestamps deliberately live in runtime state below.
+        'proactive_schedules',
+        'proactive_enabled',
         'mail_index_enabled', 'mail_index_max', 'talk_history_size',
         'talk_bot_trigger', 'talk_classify_all', 'exclude_paths',
         // Indexing Nextcloud Talk chat histories so answers can quote older
@@ -51,6 +55,7 @@ class AppConfig {
         'last_index_total', 'last_index_error', 'last_index_cache_hits', 'last_index_cache_misses',
         'last_index_ollama_requests', 'last_index_failed', 'index_config_hash', 'index_mode',
         'index_cancel_requested', 'index_run_id', 'index_enrolled', 'knowledge_initialized',
+        'proactive_schedule_runs',
     ];
 
     /** All keys that are stored on the per-user scope. */
@@ -60,7 +65,7 @@ class AppConfig {
      * Instance-wide keys that only an administrator may read or change.
      * Per-user web search settings (enabled, provider) have moved to USER_SETTINGS
      * so each user can individually enable DuckDuckGo or other providers.
-     * Admin-only: instance-wide web search infrastructure and index throughput.
+     * Admin-only: weather tool, instance-wide web search infra (URL, key, limits).
      */
     public const ADMIN_SETTINGS = [
         // Instance-level web search infrastructure: SearxNG URL, API keys,
@@ -91,6 +96,8 @@ class AppConfig {
         'index_enabled' => '0',
         'chat_provider' => 'ollama',
         'groq_model' => 'openai/gpt-oss-20b',
+        'custom_provider_url' => '',
+        'custom_provider_model' => '',
         'ollama_url' => 'http://127.0.0.1:11434',
         'embedding_model' => 'nomic-embed-text',
         'chat_model' => 'gemma4:cloud',
@@ -127,6 +134,9 @@ class AppConfig {
         'exec_write_max_chars' => '100000',
         'exec_delete_mode' => 'own',
         'notify_on_complete' => '1',
+        'proactive_schedules' => '[]',
+        'proactive_enabled' => '0',
+        'proactive_schedule_runs' => '{}',
         'mail_index_enabled' => '1',
         'mail_index_max' => '25',
         // Talk context is part of the assistant's normal background context.
@@ -477,7 +487,9 @@ class AppConfig {
      * malformed, non-numeric, or out-of-range values.
      */
     public function validateValue(string $key, mixed $value): ?string {
-        if ($key === 'chat_provider') return is_string($value) && in_array($value, ['ollama', 'groq'], true) ? null : 'must be ollama or groq';
+        if ($key === 'chat_provider') return is_string($value) && (in_array($value, ['ollama', 'groq'], true) || preg_match('/^[a-z][a-z0-9_-]{1,31}$/', $value) === 1) ? null : 'must be Ollama, Groq or a custom provider id';
+        if ($key === 'custom_provider_model') return is_string($value) && strlen(trim($value)) <= 128 ? null : 'must be a model name';
+        if ($key === 'custom_provider_url') return is_string($value) && ($value === '' || preg_match('~^https?://[^\s]+$~i', $value) === 1) ? null : 'must be an http(s) URL';
         if ($key === 'groq_model') return is_string($value) && in_array($value, Groq::MODELS, true) ? null : 'must be a supported Groq free-plan chat model';
         if ($key === 'ocr_language') {
             return is_string($value) && preg_match('/^[a-zA-Z0-9_]{1,24}(?:\+[a-zA-Z0-9_]{1,24}){0,3}$/D', $value)
@@ -557,7 +569,7 @@ class AppConfig {
             }
             return 'must be an absolute path or a command name, without spaces';
         }
-        if (in_array($key, ['ocr_enabled', 'actions_enabled', 'notify_on_complete', 'mail_index_enabled', 'talk_index_enabled', 'talk_write_enabled', 'index_enrolled', 'talk_classify_all', 'weather_tool_enabled', 'web_search_enabled', 'web_search_safe_search', 'web_search_fetch_content', 'web_search_images', 'web_search_browser'], true)) {
+        if (in_array($key, ['ocr_enabled', 'actions_enabled', 'notify_on_complete', 'proactive_enabled', 'mail_index_enabled', 'talk_index_enabled', 'talk_write_enabled', 'index_enrolled', 'talk_classify_all', 'weather_tool_enabled', 'web_search_enabled', 'web_search_safe_search', 'web_search_fetch_content', 'web_search_images', 'web_search_browser'], true)) {
             return is_scalar($value) && in_array((string)$value, ['0', '1', 'true', 'false', 'on', 'off'], true)
                 ? null : 'must be a boolean value';
         }

@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace OCA\EvaAi\AppInfo;
 
 use OCA\EvaAi\BackgroundJob\IndexJob;
+use OCA\EvaAi\BackgroundJob\ProactiveBriefingJob;
 use OCP\AppFramework\App;
 use OCP\AppFramework\Bootstrap\IBootContext;
 use OCP\AppFramework\Bootstrap\IBootstrap;
@@ -64,7 +65,11 @@ class Application extends App implements IBootstrap {
         // the job is also (re-)added by the index API endpoint on demand.
         try {
             $container = $context->getAppContainer();
-            $container->get(IJobList::class)->add(IndexJob::class);
+            $jobs = $container->get(IJobList::class);
+            $jobs->add(IndexJob::class);
+            // Existing installations do not re-read info.xml until the next
+            // enable/upgrade, therefore register the new opt-in job here too.
+            $jobs->add(ProactiveBriefingJob::class);
         } catch (\Throwable $e) {
             // Non-fatal: indexing is also triggered explicitly via the API.
         }

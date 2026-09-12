@@ -2392,8 +2392,9 @@ class WebSearchService {
      *
      * Both need no API key and both carry what a web result lacks - the
      * publication date and the source name. Bing's items link straight to the
-     * publisher; Google's items are redirect links that open the article in a
-     * browser, so they are kept but never preferred over a direct link.
+     * publisher. Google items are only headline references: EU requests often
+     * land on Google's consent wall, so their redirect URLs are never fetched
+     * or rendered as if they were article sources.
      *
      * @return list<array{title:string,url:string,snippet:string,published:int,source:string,news:bool}>
      */
