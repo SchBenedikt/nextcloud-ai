@@ -1019,7 +1019,7 @@ class ActionExecutor {
                     'notes' => in_array('notes', $apps, true),
                 ],
                 'api_catalog' => $availableApis,
-                'next_step' => 'Plan with the protocols and EVA tools listed above. Use only a dedicated EVA tool for an action; discovery-only apps are not callable through a generic HTTP proxy and require a dedicated adapter before writes are allowed.',
+                'next_step' => 'Plan with the protocols and EVA tools listed above. Prefer a dedicated EVA adapter; for an enabled app without one, call list_learned_app_apis or discover_app_api first, then use the exact same-origin OCS route with call_app_api. Generic calls are always confirmation-gated interactively and require the encrypted app token in background runs.',
             ];
         } catch (\Throwable $e) {
             return ['ok' => false, 'error' => 'Nextcloud capability discovery is unavailable.'];
@@ -1029,7 +1029,8 @@ class ActionExecutor {
     /**
      * Read route metadata from Nextcloud's router without invoking controllers.
      * This gives the agent a safe way to learn an installed app's API surface;
-     * execution still goes through dedicated adapters and normal middleware.
+     * execution still goes through the same-origin OCS path and its normal
+     * Nextcloud authentication/permission checks.
      */
     private function discoverAppApi(array $args): array {
         $appId = strtolower(trim((string)($args['app_id'] ?? '')));
@@ -1074,7 +1075,7 @@ class ActionExecutor {
             usort($routes, static fn (array $a, array $b): int => strcmp($a['name'], $b['name']));
             if (count($routes) > 300) $routes = array_slice($routes, 0, 300);
             $this->rememberAppApi($appId, $routes);
-            return ['ok' => true, 'result' => ['app_id' => $appId !== '' ? $appId : null, 'route_count' => count($routes), 'routes' => $routes, 'execution_policy' => 'Routes are discovery-only. Use a dedicated EVA adapter; unknown writes are not invoked generically.']];
+            return ['ok' => true, 'result' => ['app_id' => $appId !== '' ? $appId : null, 'route_count' => count($routes), 'routes' => $routes, 'execution_policy' => 'Discovery never executes a route. Use the exact same-origin OCS path with call_app_api; interactive calls require confirmation and background calls require the encrypted app token.']];
         } catch (\Throwable) {
             return ['ok' => false, 'error' => 'Nextcloud app API discovery is unavailable.'];
         }
