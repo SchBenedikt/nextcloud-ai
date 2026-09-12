@@ -902,6 +902,14 @@ class ApiController extends OCSController {
         return new DataResponse(['queued' => true, 'id' => $id]);
     }
 
+    /** Inspect queued background-agent work without exposing conversation history. */
+    #[NoAdminRequired]
+    public function backgroundChatStatus(): DataResponse {
+        $user = $this->requireUser();
+        if ($user === null) return new DataResponse(['error' => 'Not logged in'], 401);
+        return new DataResponse(['items' => $this->backgroundChatQueue->status($user)]);
+    }
+
     #[NoAdminRequired]
     public function cancelBackgroundChat(): DataResponse {
         $user = $this->requireUser();
