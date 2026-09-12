@@ -24,6 +24,19 @@ use Psr\Log\LoggerInterface;
  * internal `talk://12` marker as a link would send the user to a dead dav URL.
  */
 final class TalkSourceAccessTest extends TestCase {
+    /**
+     * The answer path is reached through reflection, but the collaborators it
+     * is handed - the logger, the root folder, the URL generator - are real OCP
+     * types, so without a Nextcloud checkout there is nothing to mock.
+     */
+    protected function setUp(): void
+    {
+        parent::setUp();
+        if (!defined('EVA_AI_OCP_AVAILABLE') || !EVA_AI_OCP_AVAILABLE) {
+            $this->markTestSkipped('Nextcloud OCP interfaces are not available');
+        }
+    }
+
     /** @param array<string,mixed> $overrides */
     private function service(?TalkTranscriptService $transcripts, array &$removed = []): RagService
     {
