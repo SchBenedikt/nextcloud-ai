@@ -69,7 +69,7 @@ class RagService {
 	 *        the room's indexed chat history). It is wrapped as untrusted data
 	 *        like the file context, so it can never act as instructions.
 	 */
-	public function ask(string $userId, string $message, array $history, ?string $scopePath = null, ?string $instructions = null, ?string $persona = null, ?string $extraContext = null): array {
+	public function ask(string $userId, string $message, array $history, ?string $scopePath = null, ?string $instructions = null, ?string $persona = null, ?string $extraContext = null, bool $allowActions = true): array {
 		$this->config->setUserId($userId);
 		$this->toolSources = [];
 		$this->toolImages = [];
@@ -83,7 +83,10 @@ class RagService {
 		[$context, $byDoc] = $this->buildContext($userId, $results);
 
 		$this->executor->setUserId($userId);
-		$tools = $this->actionsEnabled() ? $this->executor->tools() : [];
+		// Callers such as scheduled/read-only briefings can explicitly disable
+		// action tools. A prompt instruction alone is not a security boundary:
+		// the model must never receive mutating tools for a read-only run.
+		$tools = $allowActions && $this->actionsEnabled() ? $this->executor->tools() : [];
 		$messages = $this->buildMessages($userId, $message, $history, $context, count($results), $tools !== [], $instructions, $persona, $this->dateContext($userId), $extraContext);
 
 		for ($round = 0; $round < self::MAX_TOOL_ROUNDS; $round++) {

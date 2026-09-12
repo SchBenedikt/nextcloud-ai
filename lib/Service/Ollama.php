@@ -78,15 +78,18 @@ class Ollama {
         private ICacheFactory $cacheFactory,
         private EmbeddingCache $embeddingCache,
         private ?Groq $groq = null,
-        private ?UsageMetrics $usageMetrics = null
+        private ?UsageMetrics $usageMetrics = null,
+        private ?ProviderCredentials $providerCredentials = null
     ) {
     }
 
     private function groqClient(): Groq {
-        return $this->groq ??= new Groq($this->config, $this->clientService, \OCP\Server::get(ProviderCredentials::class), $this->usageMetrics);
+        $credentials = $this->providerCredentials ?? \OCP\Server::get(ProviderCredentials::class);
+        return $this->groq ??= new Groq($this->config, $this->clientService, $credentials, $this->usageMetrics);
     }
     private function openAiCompatible(): OpenAICompatible {
-        return new OpenAICompatible($this->config, $this->clientService, \OCP\Server::get(ProviderCredentials::class), $this->usageMetrics);
+        $credentials = $this->providerCredentials ?? \OCP\Server::get(ProviderCredentials::class);
+        return new OpenAICompatible($this->config, $this->clientService, $credentials, $this->usageMetrics);
     }
     public function groqInfo(): array { return $this->groqClient()->info(); }
     public function saveGroqKey(string $key): void { $this->groqClient()->saveKey($key); }
