@@ -6,6 +6,7 @@ namespace OCA\EvaAi\BackgroundJob;
 
 use OCA\EvaAi\Service\AppConfig;
 use OCA\EvaAi\Service\RagService;
+use OCA\EvaAi\Service\ToolPolicy;
 use OCP\AppFramework\Utility\ITimeFactory;
 use OCP\BackgroundJob\TimedJob;
 use OCP\IConfig;
@@ -15,8 +16,9 @@ use Psr\Log\LoggerInterface;
 
 /**
  * Delivers explicitly configured EVA briefings through Nextcloud's notification
- * centre. Schedules are strictly opt-in and can only read information; a cron
- * task must never make a change in the user's name.
+ * centre. Schedules are strictly opt-in and read-only by default. A schedule
+ * may explicitly opt into autonomous actions; that opt-in is kept per
+ * schedule and the agent still fails closed when an app token is unavailable.
  */
 final class ProactiveBriefingJob extends TimedJob {
     public function __construct(
@@ -73,6 +75,7 @@ final class ProactiveBriefingJob extends TimedJob {
             if ($id === '' || $prompt === '' || preg_match('/^(?:[01]\\d|2[0-3]):[0-5]\\d$/', $time) !== 1 || !in_array($weekday, $days, true)) {
                 continue;
             }
+            $allowActions = ($schedule['allow_actions'] ?? false) === true;
             // A cron run can arrive a few minutes late, but it must never send
             // the same briefing twice after retries or concurrent workers.
             $slot = $now->format('Y-m-d') . ' ' . $time;
@@ -80,10 +83,13 @@ final class ProactiveBriefingJob extends TimedJob {
                 continue;
             }
             try {
-                // The final boolean is an enforcement boundary, not merely a
-                // model instruction: scheduled briefings must never receive
-                // action tools even when a prompt tries to elicit one.
-                $answer = $this->rag->ask($userId, "Scheduled EVA briefing. Answer the following request concisely. You are in read-only scheduled mode: never execute, propose, or request confirmation for actions.\n\n" . $prompt, [], '', '', '', null, false);
+                if ($allowActions) {
+                    $this->rag->setSurface(ToolPolicy::SURFACE_TASKPROCESSING_CONFIRMED);
+                }
+                $mode = $allowActions
+                    ? 'This briefing explicitly allows autonomous actions. Execute only actions needed for the request, and do not invent extra work.'
+                    : 'You are in read-only scheduled mode: never execute, propose, or request confirmation for actions.';
+                $answer = $this->rag->ask($userId, "Scheduled EVA briefing. Answer the following request concisely. " . $mode . "\n\n" . $prompt, [], '', '', '', null, $allowActions, $allowActions);
                 $text = trim((string)($answer['answer'] ?? ''));
                 if ($text === '') {
                     throw new \RuntimeException('empty model answer');

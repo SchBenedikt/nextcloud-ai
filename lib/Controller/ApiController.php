@@ -484,6 +484,9 @@ class ApiController extends OCSController {
                 || !is_array($row['days'] ?? null) || $row['days'] === []) {
                 return 'Every scheduled briefing needs an id, prompt, HH:MM time and at least one weekday.';
             }
+            if (array_key_exists('allow_actions', $row) && !is_bool($row['allow_actions'])) {
+                return 'Scheduled briefing allow_actions must be a boolean.';
+            }
             foreach ($row['days'] as $day) {
                 if (!is_int($day) && !ctype_digit((string)$day) || (int)$day < 1 || (int)$day > 7) {
                     return 'Scheduled briefing weekdays must be between 1 (Monday) and 7 (Sunday).';

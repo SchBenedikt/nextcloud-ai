@@ -658,7 +658,14 @@
         "Nextcloud app token for background API actions": "Nextcloud app token for background API actions",
         "A token is saved. Leave blank to keep it.": "A token is saved. Leave blank to keep it.",
         "Optional: create a Nextcloud app password to let scheduled EVA tasks call enabled app APIs without an open browser session. It is encrypted and never sent to the AI model.": "Optional: create a Nextcloud app password to let scheduled EVA tasks call enabled app APIs without an open browser session. It is encrypted and never sent to the AI model.",
-        "Remove saved Nextcloud app token on save": "Remove saved Nextcloud app token on save"
+        "Remove saved Nextcloud app token on save": "Remove saved Nextcloud app token on save",
+        "EVA can prepare recurring answers and deliver them in your Nextcloud notifications. They are read-only unless you explicitly enable actions per briefing.": "EVA can prepare recurring answers and deliver them in your Nextcloud notifications. They are read-only unless you explicitly enable actions per briefing.",
+        "Briefings use your server cron and account timezone. Every briefing is read-only by default. If you enable actions on one briefing, EVA may perform the requested changes automatically and reports the result in the notification.": "Briefings use your server cron and account timezone. Every briefing is read-only by default. If you enable actions on one briefing, EVA may perform the requested changes automatically and reports the result in the notification.",
+        "Actions enabled": "Actions enabled",
+        "Allow EVA to perform requested actions automatically": "Allow EVA to perform requested actions automatically",
+        "Use only for prompts you trust. EVA will execute needed changes in the background without a second dialog; generic app APIs still need the encrypted Nextcloud app token.": "Use only for prompts you trust. EVA will execute needed changes in the background without a second dialog; generic app APIs still need the encrypted Nextcloud app token.",
+        "Enable actions": "Enable actions",
+        "Disable actions": "Disable actions"
     },
     "pluralForm": "nplurals=2; plural=(n != 1);"
 }

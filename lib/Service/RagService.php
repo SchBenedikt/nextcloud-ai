@@ -70,7 +70,7 @@ class RagService {
 	 *        the room's indexed chat history). It is wrapped as untrusted data
 	 *        like the file context, so it can never act as instructions.
 	 */
-	public function ask(string $userId, string $message, array $history, ?string $scopePath = null, ?string $instructions = null, ?string $persona = null, ?string $extraContext = null, bool $allowActions = true): array {
+	public function ask(string $userId, string $message, array $history, ?string $scopePath = null, ?string $instructions = null, ?string $persona = null, ?string $extraContext = null, bool $allowActions = true, bool $autonomousActions = false): array {
 		$this->config->setUserId($userId);
 		$this->toolSources = [];
 		$this->toolImages = [];
@@ -117,7 +117,9 @@ class RagService {
 					: $tc['arguments'];
 				$res = $seenToolCalls[$fingerprint] > self::MAX_IDENTICAL_TOOL_CALLS
 					? ['ok' => false, 'error' => 'The same tool call was already attempted twice; choose a different next step.']
-					: $this->executor->run($userId, $tc['name'], $toolArgs);
+					: ($autonomousActions
+						? $this->executor->runConfirmed($userId, $tc['name'], $toolArgs)
+						: $this->executor->run($userId, $tc['name'], $toolArgs));
 				$this->collectToolSources($tc['name'], $res);
 				if (!empty($res['confirmation_required'])) {
 					return [

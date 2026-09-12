@@ -658,7 +658,14 @@
         "Nextcloud app token for background API actions": "Nextcloud-App-Token für API-Aktionen im Hintergrund",
         "A token is saved. Leave blank to keep it.": "Ein Token ist gespeichert. Leer lassen, um es beizubehalten.",
         "Optional: create a Nextcloud app password to let scheduled EVA tasks call enabled app APIs without an open browser session. It is encrypted and never sent to the AI model.": "Optional: Erstelle ein Nextcloud-App-Passwort, damit geplante EVA-Aufgaben aktivierte App-APIs ohne offene Browsersitzung aufrufen können. Es wird verschlüsselt und niemals an das KI-Modell gesendet.",
-        "Remove saved Nextcloud app token on save": "Gespeichertes Nextcloud-App-Token beim Speichern entfernen"
+        "Remove saved Nextcloud app token on save": "Gespeichertes Nextcloud-App-Token beim Speichern entfernen",
+        "EVA can prepare recurring answers and deliver them in your Nextcloud notifications. They are read-only unless you explicitly enable actions per briefing.": "EVA kann wiederkehrende Antworten vorbereiten und als Nextcloud-Benachrichtigungen senden. Sie sind standardmäßig schreibgeschützt, außer du aktivierst Aktionen für ein Briefing ausdrücklich.",
+        "Briefings use your server cron and account timezone. Every briefing is read-only by default. If you enable actions on one briefing, EVA may perform the requested changes automatically and reports the result in the notification.": "Briefings verwenden den Server-Cron und deine Zeitzone. Jedes Briefing ist standardmäßig schreibgeschützt. Wenn du Aktionen aktivierst, darf EVA die angeforderten Änderungen automatisch ausführen und das Ergebnis in der Benachrichtigung melden.",
+        "Actions enabled": "Aktionen aktiviert",
+        "Allow EVA to perform requested actions automatically": "EVA erlauben, angeforderte Aktionen automatisch auszuführen",
+        "Use only for prompts you trust. EVA will execute needed changes in the background without a second dialog; generic app APIs still need the encrypted Nextcloud app token.": "Verwende dies nur für vertrauenswürdige Anweisungen. EVA führt notwendige Änderungen im Hintergrund ohne einen zweiten Dialog aus; generische App-APIs benötigen weiterhin das verschlüsselte Nextcloud-App-Token.",
+        "Enable actions": "Aktionen aktivieren",
+        "Disable actions": "Aktionen deaktivieren"
     },
     "pluralForm": "nplurals=2; plural=(n != 1);"
 }
