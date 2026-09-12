@@ -69,6 +69,8 @@ class WebSearchService {
         'logo', 'icon', 'avatar', 'sprite', 'badge', 'pixel', 'tracking',
         'spinner', 'placeholder', 'blank.gif', '1x1', 'button', 'banner-ad',
     ];
+    /** File names that make an <img> a picture rather than a layout artefact. */
+    private const IMAGE_EXTENSIONS = ['jpg', 'jpeg', 'png', 'gif', 'webp', 'avif', 'svg', 'bmp'];
     /** Fetched pages must stay well inside the search timeout to keep chat responsive. */
     private const CONTENT_FETCH_TIMEOUT_CEILING = 8;
     /**
@@ -897,8 +899,9 @@ class WebSearchService {
                     if ($candidate === '') {
                         continue;
                     }
-                    $url = $this->resolveImageUrl($candidate, $baseUrl);
-                    if ($url !== null) {
+                    $resolved = $this->resolveImageUrl($candidate, $baseUrl);
+                    if ($resolved !== null && $this->looksLikeImageResource($resolved)) {
+                        $url = $resolved;
                         break;
                     }
                 }
@@ -945,8 +948,9 @@ class WebSearchService {
             $url = null;
             foreach (['src', 'data-src', 'data-original', 'data-lazy-src'] as $attribute) {
                 if (preg_match('/\b' . $attribute . '\s*=\s*["\']([^"\']+)["\']/i', $tag, $srcMatch)) {
-                    $url = $this->resolveImageUrl($srcMatch[1], $baseUrl);
-                    if ($url !== null) {
+                    $resolved = $this->resolveImageUrl($srcMatch[1], $baseUrl);
+                    if ($resolved !== null && $this->looksLikeImageResource($resolved)) {
+                        $url = $resolved;
                         break;
                     }
                 }
@@ -967,6 +971,33 @@ class WebSearchService {
             ];
         }
         return array_slice(array_values($images), 0, self::MAX_IMAGES_PER_RESULT);
+    }
+
+    /**
+     * Whether a resolved URL really points at a picture.
+     *
+     * Article pages are full of <img> tags that are not pictures: responsive
+     * image plugins leave a MIME fragment in src ("…/image/jpeg"), and some
+     * layouts use a page link as the image source. Embedding those would show a
+     * broken image in an answer, so an <img> is accepted only when its path ends
+     * in an image file name, or when the URL carries a size or format hint - the
+     * extension-less CDN thumbnails ("…/photo-1234?w=800") that are real
+     * pictures. A declared og:image/twitter:image is trusted as-is, because the
+     * publisher chose it deliberately.
+     */
+    private function looksLikeImageResource(string $url): bool {
+        $path = mb_strtolower((string)(parse_url($url, PHP_URL_PATH) ?? ''));
+        if (preg_match('~/(?:image|img|mime)/(?:jpe?g|png|gif|webp|avif|svg)$~', $path) === 1) {
+            return false;
+        }
+        foreach (self::IMAGE_EXTENSIONS as $extension) {
+            if (str_ends_with($path, '.' . $extension)) {
+                return true;
+            }
+        }
+        $query = mb_strtolower((string)(parse_url($url, PHP_URL_QUERY) ?? ''));
+        return $query !== ''
+            && preg_match('/(?:^|[&?])(?:w|h|width|height|resize|fit|format|auto|q)=/', $query) === 1;
     }
 
     /**
