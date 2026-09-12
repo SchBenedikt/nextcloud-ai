@@ -49,7 +49,8 @@ class ApiController extends OCSController {
         private \OCA\EvaAi\Service\UserDataService $userDataService,
         private \OCA\EvaAi\Service\ChatLearner $chatLearner,
         private ICacheFactory $cacheFactory,
-        private \OCA\EvaAi\Service\IndexScheduler $indexScheduler
+        private \OCA\EvaAi\Service\IndexScheduler $indexScheduler,
+        private \OCA\EvaAi\Service\UsageMetrics $usageMetrics
     ) {
         parent::__construct($appName, $request);
         $this->config->setUserId($this->userId);
@@ -171,6 +172,16 @@ class ApiController extends OCSController {
             }
             return new DataResponse(['error' => 'Unable to build dashboard summary'], 500);
         }
+    }
+
+    /** Privacy-preserving model usage for the signed-in user. */
+    #[NoAdminRequired]
+    public function metrics(): DataResponse {
+        $user = $this->requireUser();
+        if ($user === null) {
+            return new DataResponse(['error' => 'Not logged in'], 401);
+        }
+        return new DataResponse($this->usageMetrics->summaryForUser($user));
     }
 
     /**
@@ -295,9 +306,8 @@ class ApiController extends OCSController {
             'mail_index_max',
             'embed_batch_size', 'ocr_enabled', 'ocr_language',
             'ollama_keep_alive', 'followups_mode',
-            // Instance-wide switches (weather tool, web search) are NOT stored
-            // here: they are admin-only and live on the admin settings
-            // endpoint, so a regular user cannot change them (Issue #187).
+            // Shared provider infrastructure stays on the admin endpoint;
+            // tool permissions and web search behavior are user settings.
             'talk_history_size',
             'talk_bot_trigger',
             'talk_classify_all',

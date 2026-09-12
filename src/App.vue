@@ -119,6 +119,12 @@
 						</template>
 					</NcAppNavigationItem>
 					<NcAppNavigationItem
+						:name="$t('Metrics')"
+						:active="view === 'metrics'"
+						@click="navigate('metrics')">
+						<template #icon><svg width="16" height="16" viewBox="0 0 24 24"><path d="M5 19V5h2v14H5zm6 0V9h2v10h-2zm6 0V3h2v16h-2z" fill="currentColor" /></svg></template>
+					</NcAppNavigationItem>
+					<NcAppNavigationItem
 						:name="$t('Settings')"
 						:active="view === 'settings'"
 						@click="navigate('settings')">
@@ -134,6 +140,7 @@
 			<ChatView v-else-if="view === 'chat'" :chat-id="currentChat" :initial-prompt="pendingPrompt" :auto-send="!!pendingPrompt" @chat-updated="loadChats" @prompt-consumed="pendingPrompt = ''" />
 			<FileContextChatView v-else-if="view === 'fileContext'" :file-ids="fileContextIds" />
 			<DocumentsView v-else-if="view === 'docs'" />
+			<MetricsView v-else-if="view === 'metrics'" />
 			<SettingsView v-else />
 		</NcAppContent>
 		<NcModal v-if="folderPickerOpen" size="small" :name="pickerMode === 'scope' ? $t('Chat with folder') : $t('Move to folder')" @close="folderPickerOpen = false">
@@ -172,6 +179,7 @@ import { ref, computed, watch, onMounted, onBeforeUnmount } from 'vue'
 import HomeView from './views/HomeView.vue'
 import ChatView from './views/ChatView.vue'
 import DocumentsView from './views/DocumentsView.vue'
+import MetricsView from './views/MetricsView.vue'
 import SettingsView from './views/SettingsView.vue'
 import FileContextChatView from './views/FileContextChatView.vue'
 import AdminView from './views/AdminView.vue'
@@ -186,7 +194,7 @@ import { translate as t } from './lib/i18n'
 
 export default {
 	name: 'EvaAiApp',
-	components: { HomeView, ChatView, DocumentsView, SettingsView, FileContextChatView, AdminView, NcCounterBubble, NcAppNavigationSearch, NcActionButton, NcActionSeparator, NcIconSvgWrapper },		setup() {
+	components: { HomeView, ChatView, DocumentsView, MetricsView, SettingsView, FileContextChatView, AdminView, NcCounterBubble, NcAppNavigationSearch, NcActionButton, NcActionSeparator, NcIconSvgWrapper },		setup() {
 			// Admin settings form (Issue #82): the template mounts the same app
 			// with data-admin="1" and renders the admin dashboard instead.
 			const rootEl = document.getElementById('eva_ai-root')
@@ -202,7 +210,9 @@ export default {
 			? 'settings'
 			: path.endsWith('/documents')
 				? 'docs'
-				: 'home'
+					: path.endsWith('/metrics')
+						? 'metrics'
+						: 'home'
 		// Deep links from the dashboard widget (?chat=new | ?chat=<id>): they
 		// land on the chat view, everything else starts on the dashboard.
 		const initialChatParam = params.get('chat')
@@ -212,6 +222,8 @@ export default {
 				? 'docs'
 				: params.get('view') === 'settings'
 					? 'settings'
+					: params.get('view') === 'metrics'
+						? 'metrics'
 					: (initialChatParam ? 'chat' : pathView)
 		const view = ref(initial)
 		const fileContextIds = ref(initialFileIds)
@@ -362,7 +374,7 @@ export default {
 
 		const appRootPath = () => {
 			const current = window.location.pathname.replace(/\/+$/, '')
-			return current.replace(/\/(settings|documents|app|standalone)$/, '') || current
+			return current.replace(/\/(settings|documents|metrics|app|standalone)$/, '') || current
 		}
 		const navigate = (nextView) => {
 			view.value = nextView

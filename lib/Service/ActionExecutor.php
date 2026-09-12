@@ -459,6 +459,11 @@ class ActionExecutor {
                 'parameters' => ['type' => 'object', 'properties' => new \stdClass()],
             ]],
             ['type' => 'function', 'function' => [
+                'name' => 'list_nextcloud_capabilities',
+                'description' => 'Discover which Nextcloud apps are enabled and which EVA integrations are available before planning a task. This is read-only and never exposes secrets. Use it when the user asks EVA to work with a Nextcloud feature you have not used before.',
+                'parameters' => ['type' => 'object', 'properties' => new \stdClass()],
+            ]],
+            ['type' => 'function', 'function' => [
                 'name' => 'current_time',
                 'description' => 'Get the current date and time in the user\'s timezone. IMPORTANT: as an AI model you do not know today\'s date - always call this tool before computing dates, deadlines, appointments or relative times.',
                 'parameters' => ['type' => 'object', 'properties' => []],
@@ -693,6 +698,7 @@ class ActionExecutor {
                 'delete_task' => $this->calendar->deleteTask($userId, $args),
                 'recent_activity' => $this->activity->recent($userId, $args),
                 'server_status' => $this->serverStatus($userId),
+                'list_nextcloud_capabilities' => $this->listNextcloudCapabilities(),
                 'update_knowledge' => $this->updateKnowledge($home, $args),
                 default => ['ok' => false, 'error' => 'Unknown tool: ' . $name],
             };
@@ -700,6 +706,30 @@ class ActionExecutor {
             return ['ok' => false, 'error' => $e->getMessage()];
         }
         return $result;
+    }
+
+    /** Read-only capability discovery for agent planning; never returns secrets. */
+    private function listNextcloudCapabilities(): array {
+        try {
+            $manager = Server::get(\OCP\App\IAppManager::class);
+            $apps = array_values(array_unique(array_map('strval', $manager->getEnabledApps())));
+            sort($apps, SORT_STRING);
+            return [
+                'ok' => true,
+                'enabled_apps' => $apps,
+                'eva_integrations' => [
+                    'files' => in_array('files', $apps, true),
+                    'calendar' => in_array('calendar', $apps, true),
+                    'contacts' => in_array('contacts', $apps, true),
+                    'mail' => in_array('mail', $apps, true),
+                    'spreed' => in_array('spreed', $apps, true),
+                    'notes' => in_array('notes', $apps, true),
+                ],
+                'next_step' => 'Use only a dedicated EVA tool for a discovered integration; unsupported app actions require an explicit future integration.',
+            ];
+        } catch (\Throwable $e) {
+            return ['ok' => false, 'error' => 'Nextcloud capability discovery is unavailable.'];
+        }
     }
 
     /** @return array<array{name:string,path:string,type:string,size?:int}> */

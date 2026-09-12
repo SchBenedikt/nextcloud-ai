@@ -12,7 +12,7 @@ class Groq {
     // General-purpose production chat models on the published Free Plan, 2026-09-09.
     // No Compound built-in tools, enterprise models or automatic paid fallback.
     public const MODELS = ['openai/gpt-oss-20b', 'openai/gpt-oss-120b'];
-    public function __construct(private AppConfig $config, private IClientService $clients, private ProviderCredentials $credentials) {}
+    public function __construct(private AppConfig $config, private IClientService $clients, private ProviderCredentials $credentials, private ?UsageMetrics $usageMetrics = null) {}
     public function info(): array {
         return ['name' => 'groq', 'models' => self::MODELS, 'keyConfigured' => $this->credentials->configured($this->config->userId() ?? ''), 'model' => $this->config->get('groq_model')];
     }
@@ -105,6 +105,11 @@ class Groq {
             $payload['tools'] = $this->compactDescriptions($tools);
             $payload['parallel_tool_calls'] = false;
         }
+        if ($stream) {
+            // Groq includes exact usage in the final stream event when this is
+            // requested; older endpoints simply fall back to the UI estimate.
+            $payload['stream_options'] = ['include_usage' => true];
+        }
         // Byte-based, conservative input budget, not a tokenizer claim. Drop
         // oldest complete turns, never system instructions or the current turn
         // (including assistant tool calls and their paired results).
@@ -136,6 +141,7 @@ class Groq {
         }, $raw);
     }
     public function chat(array $messages, array $tools, int $timeout = 120): array {
+        $startedAt = microtime(true);
         try {
             $options = $this->options(false, $timeout);
             $options['json'] = $this->payload($messages, $tools, false);
@@ -146,11 +152,17 @@ class Groq {
             $message = $data['choices'][0]['message'] ?? null;
             if (!is_array($message)) throw new ProviderException('Groq returned no answer');
             $raw = $message['tool_calls'] ?? [];
-            return ['answer' => (string)($message['content'] ?? ''), 'model' => $this->config->get('groq_model'), 'tool_calls' => $this->calls($raw), 'raw_tool_calls' => $raw];
+            $answer = (string)($message['content'] ?? '');
+            $usage = $data['usage'] ?? [];
+            $this->usageMetrics?->recordChat($this->config->userId(), 'groq', $this->config->get('groq_model'), $messages, $answer, isset($usage['prompt_tokens']) ? (int)$usage['prompt_tokens'] : null, isset($usage['completion_tokens']) ? (int)$usage['completion_tokens'] : null, (int)round((microtime(true) - $startedAt) * 1000));
+            return ['answer' => $answer, 'model' => $this->config->get('groq_model'), 'tool_calls' => $this->calls($raw), 'raw_tool_calls' => $raw, 'usage' => $usage];
         } catch (\Throwable $e) { return ['error' => $this->safeError($e)]; }
     }
     public function chatStream(array $messages, array $tools, int $timeout = 120): \Generator {
         $body = null;
+        $startedAt = microtime(true);
+        $streamAnswer = '';
+        $usage = [];
         try {
             $options = $this->options(true, $timeout);
             $options['json'] = $this->payload($messages, $tools, true);
@@ -172,9 +184,13 @@ class Groq {
                     if ($data === '[DONE]') { $finished = true; break 2; }
                     $event = json_decode($data, true, 512, JSON_THROW_ON_ERROR);
                     if (isset($event['error'])) throw new ProviderException('Groq stream reported an error');
+                    if (is_array($event['usage'] ?? null)) $usage = $event['usage'];
                     if (in_array($event['choices'][0]['finish_reason'] ?? '', ['length', 'content_filter'], true)) throw new ProviderException('Groq could not complete the response; no tool calls were released');
                     $delta = $event['choices'][0]['delta'] ?? [];
-                    if (!empty($delta['content'])) yield ['type' => 'content', 'delta' => $delta['content']];
+                    if (!empty($delta['content'])) {
+                        $streamAnswer .= (string)$delta['content'];
+                        yield ['type' => 'content', 'delta' => $delta['content']];
+                    }
                     foreach ($delta['tool_calls'] ?? [] as $call) {
                         $index = (int)($call['index'] ?? 0);
                         if ($index < 0 || $index > 31) throw new ProviderException('Groq returned too many tool calls');
@@ -187,6 +203,7 @@ class Groq {
             }
             if (!$finished) throw new ProviderException('Groq stream ended before completion; no tool calls were executed');
             ksort($calls); $raw = array_values($calls);
+            $this->usageMetrics?->recordChat($this->config->userId(), 'groq', $this->config->get('groq_model'), $messages, $streamAnswer, isset($usage['prompt_tokens']) ? (int)$usage['prompt_tokens'] : null, isset($usage['completion_tokens']) ? (int)$usage['completion_tokens'] : null, (int)round((microtime(true) - $startedAt) * 1000));
             if ($raw !== []) yield ['type' => 'tool_calls', 'tool_calls' => $this->calls($raw), 'raw' => $raw, 'model' => $this->config->get('groq_model')];
             else yield ['type' => 'finished', 'model' => $this->config->get('groq_model')];
         } catch (\Throwable $e) { yield ['type' => 'error', 'delta' => $this->safeError($e)]; }
