@@ -116,6 +116,22 @@ class WebSearchService {
     /** Fetched pages must stay well inside the search timeout to keep chat responsive. */
     private const CONTENT_FETCH_TIMEOUT_CEILING = 8;
     /**
+     * Below this many characters a statically fetched page is treated as a shell
+     * rather than an article, and a browser is given a chance at it.
+     *
+     * Chosen from the shapes that actually occur: a client-rendered app ships a
+     * few hundred bytes of markup around an empty container, while a cookie wall
+     * leaves a short banner. A page that already yields real prose is never
+     * rendered, which is what keeps the added cost attached to the pages that
+     * actually need it.
+     */
+    private const THIN_PAGE_CHARS = 400;
+    /**
+     * How many thin pages one search may render. Rendering costs seconds per
+     * page, so this is what stops an unlucky query from turning into a minute.
+     */
+    private const ABSOLUTE_MAX_RENDER_PAGES = 4;
+    /**
      * How many redirect hops a fetched page may take. Each hop is validated as if
      * it were a fresh user-supplied URL, because a public address that redirects
      * to 127.0.0.1 is exactly how an SSRF guard is bypassed.
@@ -195,6 +211,7 @@ class WebSearchService {
         private AppConfig $config,
         private IConfig $rawConfig,
         private ICrypto $crypto,
+        private BrowserRenderer $renderer,
         private LoggerInterface $logger,
     ) {
     }
@@ -288,6 +305,53 @@ class WebSearchService {
     /** Whether page images are collected and offered to the model. */
     private function imagesEnabled(): bool {
         return $this->config->get('web_search_images') !== '0';
+    }
+
+    /**
+     * Whether a page may be read through a real browser when a plain fetch is not
+     * enough. Off unless an administrator switched it on *and* the server can
+     * actually run it - see BrowserRenderer for why the second half matters.
+     */
+    private function browserRendering(): bool
+    {
+        return $this->renderer->isAvailable();
+    }
+
+    /**
+     * Whether a browser is available for reading JavaScript-only pages, as a
+     * sentence for the admin settings screen: '' when it works, otherwise the
+     * concrete missing piece.
+     *
+     * Exposed rather than inferred in the template, because "switched on" and
+     * "actually usable" are different things: an administrator who enables this
+     * without Node installed would otherwise see a setting that quietly does
+     * nothing.
+     */
+    public function browserStatus(): string
+    {
+        return $this->renderer->unavailableReason();
+    }
+
+    /**
+     * Read pages in a real browser, under this service's own URL policy.
+     *
+     * The policy is passed in rather than reimplemented: the renderer runs the
+     * same checks on the way in *and* on the URL the browser finally settled on,
+     * because a redirect is a fresh request that a browser makes on its own.
+     *
+     * @param array<int,string> $urls index => url
+     * @return array<int,array{html:string,text:string,title:string,finalUrl:string}>
+     */
+    private function renderMany(array $urls): array
+    {
+        if ($urls === [] || !$this->browserRendering()) {
+            return [];
+        }
+        return $this->renderer->renderMany(
+            $urls,
+            fn(string $candidate): bool => $this->isFetchablePage($candidate),
+            $this->imagesEnabled(),
+        );
     }
 
     private function timeout(): int {
@@ -567,12 +631,26 @@ class WebSearchService {
 
         $bodies = $this->fetchMany([$url]);
         $html = (string)($bodies[0] ?? '');
-        if ($html === '') {
-            return $empty + ['ok' => false, 'error' => 'The page could not be loaded.'];
+        $page = $html === '' ? ['text' => '', 'images' => []] : $this->extractPage($html, $url);
+        $text = $page['text'];
+
+        // A plainly fetched page can be empty for two very different reasons: it
+        // refuses scripted clients, or its text only exists once its own scripts
+        // have run. Both are answered by the same thing - asking a browser - so
+        // the fallback covers an empty body as well as a thin one.
+        if ($this->browserRendering() && mb_strlen($text) < self::THIN_PAGE_CHARS) {
+            $rendered = $this->renderMany([$url]);
+            $renderedHtml = (string)($rendered[0]['html'] ?? '');
+            if ($renderedHtml !== '') {
+                $renderedPage = $this->extractPage($renderedHtml, $url);
+                if (mb_strlen($renderedPage['text']) > mb_strlen($text)) {
+                    $page = $renderedPage;
+                    $html = $renderedHtml;
+                    $text = $renderedPage['text'];
+                }
+            }
         }
 
-        $page = $this->extractPage($html, $url);
-        $text = $page['text'];
         if ($text === '') {
             return $empty + ['ok' => false, 'error' => 'The page contained no readable text (it may require JavaScript or a login).'];
         }
@@ -864,7 +942,31 @@ class WebSearchService {
         $maxChars = $this->contentChars();
         $wantContent = $this->fetchContent();
         $wantImages = $this->imagesEnabled();
-        foreach ($this->fetchMany($targets) as $index => $html) {
+        $bodies = $this->fetchMany($targets);
+
+        // Pages whose text did not arrive are handed to a browser, in one batch
+        // and bounded in number. This is deliberately the *second* pass: the
+        // cheap fetch answers most results, and rendering only the remainder is
+        // what keeps a search inside its time budget.
+        if ($this->browserRendering()) {
+            $thin = [];
+            foreach ($targets as $index => $url) {
+                $candidate = isset($bodies[$index]) ? $this->extractPage((string)$bodies[$index], $url) : ['text' => ''];
+                if (mb_strlen((string)($candidate['text'] ?? '')) < self::THIN_PAGE_CHARS) {
+                    $thin[$index] = $url;
+                }
+            }
+            if ($thin !== []) {
+                $thin = \array_slice($thin, 0, self::ABSOLUTE_MAX_RENDER_PAGES, true);
+                foreach ($this->renderMany($thin) as $index => $page) {
+                    if (isset($page['html'])) {
+                        $bodies[$index] = $page['html'];
+                    }
+                }
+            }
+        }
+
+        foreach ($bodies as $index => $html) {
             // One parse yields both the readable text and the page's images, so
             // collecting images costs no extra request and no extra DOM pass.
             $page = $this->extractPage($html, (string)($enriched[$index]['url'] ?? ''));

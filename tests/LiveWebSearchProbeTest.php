@@ -27,7 +27,7 @@ final class LiveWebSearchProbeTest extends TestCase {
     }
 
     /** @param array<string,string> $values */
-    private function service(array $values): WebSearchService {
+    private function service(array $values, ?\OCA\EvaAi\Service\BrowserRenderer $renderer = null): WebSearchService {
         $config = $this->createMock(AppConfig::class);
         $config->method('get')->willReturnCallback(
             static fn(string $key): string => $values[$key] ?? ''
@@ -35,10 +35,15 @@ final class LiveWebSearchProbeTest extends TestCase {
         $config->method('getInt')->willReturnCallback(
             static fn(string $key, ?int $default = null): int => isset($values[$key]) ? (int)$values[$key] : (int)($default ?? 0)
         );
+        if ($renderer === null) {
+            $renderer = $this->createMock(\OCA\EvaAi\Service\BrowserRenderer::class);
+            $renderer->method('isAvailable')->willReturn(false);
+        }
         return new WebSearchService(
             $config,
             $this->createMock(IConfig::class),
             $this->createMock(ICrypto::class),
+            $renderer,
             $this->createMock(LoggerInterface::class),
         );
     }
@@ -183,5 +188,71 @@ final class LiveWebSearchProbeTest extends TestCase {
             . ' images=' . count($page['images']) . ' published=' . var_export($page['published'], true) . "\n";
         echo '[live][page] highlights=' . substr($page['highlights'], 0, 200) . "\n";
         self::assertGreaterThan(200, strlen($page['text']));
+    }
+
+    /**
+     * The same page read twice: once as a plain HTTP GET, once in a real browser.
+     *
+     * The point is the comparison. For a client-rendered page the static body is
+     * a shell with almost nothing in it, and the difference between the two
+     * numbers is the whole reason browser rendering exists. Run with
+     * `EVA_AI_LIVE_WEB=1`; it is a probe, not a CI test.
+     */
+    public function testLiveAJavaScriptPageIsOnlyReadableInABrowser(): void
+    {
+        $renderer = new \OCA\EvaAi\Service\BrowserRenderer(
+            (static function (): AppConfig {
+                return new class extends AppConfig {
+                    public function __construct() {}
+                    public function get(string $key): string {
+                        if ($key === \OCA\EvaAi\Service\BrowserRenderer::ENABLED_KEY) {
+                            return '1';
+                        }
+                        // Empty, not '0': an empty Node path means "find node on
+                        // PATH", while any other value is treated as a path.
+                        return '';
+                    }
+                    public function getInt(string $key, ?int $default = null): int {
+                        return $key === 'web_search_browser_timeout' ? 30 : (int)($default ?? 0);
+                    }
+                };
+            })(),
+            $this->createMock(LoggerInterface::class),
+        );
+        if (!$renderer->isAvailable()) {
+            self::markTestSkipped('browser rendering unavailable: ' . $renderer->unavailableReason());
+        }
+
+        $values = $this->defaults();
+        $values['web_search_browser'] = '1';
+        $staticService = $this->service($values);
+        $browserService = $this->service($values, $renderer);
+
+        $urls = [
+            'https://vuejs.org/guide/introduction.html',
+            'https://angular.dev/overview',
+            'https://www.reddit.com/r/nextcloud/',
+        ];
+
+        $best = 0;
+        foreach ($urls as $url) {
+            $static = $staticService->openPage($url);
+            $browser = $browserService->openPage($url);
+            $staticChars = $static['ok'] ? strlen($static['text']) : 0;
+            $browserChars = $browser['ok'] ? strlen($browser['text']) : 0;
+            echo "\n[live][render] $url\n"
+                . '  static:  ok=' . var_export($static['ok'], true) . ' chars=' . $staticChars
+                . ' error=' . (string)$static['error'] . "\n"
+                . '  browser: ok=' . var_export($browser['ok'], true) . ' chars=' . $browserChars
+                . ' error=' . (string)$browser['error'] . "\n";
+            if ($browser['ok']) {
+                echo '  browser text: ' . substr(preg_replace('/\s+/', ' ', $browser['text']) ?? '', 0, 220) . "\n";
+            }
+            $best = max($best, $browserChars);
+        }
+
+        // At least one real page has to come back with a substantial body through
+        // the browser, otherwise the feature is not actually working on the web.
+        self::assertGreaterThan(500, $best, 'no page produced readable text through the browser');
     }
 }

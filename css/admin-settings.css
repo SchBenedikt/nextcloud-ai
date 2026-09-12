@@ -289,3 +289,14 @@ table.grid th {
 	color: var(--color-text-maxcontrast);
 	font-style: italic;
 }
+
+/* Whether the server can actually run a browser for pages that need
+   JavaScript. "Ready" and "not usable yet" have to be distinguishable at a
+   glance, because the switch can be on while the capability is missing. */
+.eva-browser-state.is-ok {
+	color: var(--color-success-text, #1e7b31);
+}
+
+.eva-browser-state.is-missing {
+	color: var(--color-warning-text, #a35d00);
+}

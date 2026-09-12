@@ -127,6 +127,7 @@ class Admin implements ISettings {
             'webSearchConfigured' => $this->webSearch->isConfigured(),
             'webSearchKeyConfigured' => $this->webSearch->hasApiKey(),
             'webSearchProviders' => WebSearchService::PROVIDERS,
+            'webSearchBrowserStatus' => $this->webSearch->browserStatus(),
         ]);
     }
 

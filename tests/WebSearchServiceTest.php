@@ -32,6 +32,7 @@ final class WebSearchServiceTest extends TestCase {
         array $values = [],
         ?IConfig $rawConfig = null,
         ?ICrypto $crypto = null,
+        ?\OCA\EvaAi\Service\BrowserRenderer $renderer = null,
     ): WebSearchService {
         $config = $this->createMock(AppConfig::class);
         $config->method('get')->willReturnCallback(
@@ -40,10 +41,17 @@ final class WebSearchServiceTest extends TestCase {
         $config->method('getInt')->willReturnCallback(
             static fn(string $key, ?int $default = null): int => isset($values[$key]) ? (int)$values[$key] : (int)($default ?? 0)
         );
+        // Rendering is unavailable unless a test asks for it, so every existing
+        // test keeps exercising the static fetch path on its own.
+        if ($renderer === null) {
+            $renderer = $this->createMock(\OCA\EvaAi\Service\BrowserRenderer::class);
+            $renderer->method('isAvailable')->willReturn(false);
+        }
         return new WebSearchService(
             $config,
             $rawConfig ?? $this->createMock(IConfig::class),
             $crypto ?? $this->createMock(ICrypto::class),
+            $renderer,
             $this->createMock(LoggerInterface::class),
         );
     }
