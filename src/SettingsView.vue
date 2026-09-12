@@ -403,13 +403,6 @@
 					<strong>{{ $t('Privacy reminder') }}</strong>
 					<span>{{ $t('Indexed content stays in Nextcloud and is sent to the Ollama server configured above. Review your indexing scope before enabling Mail or Talk features.') }}</span>
 				</div>
-				<div class="admin-subsection">
-					<h4>{{ $t('Scheduled briefings') }}</h4>
-					<NcCheckboxRadioSwitch v-model="proactiveEnabled" type="switch" class="native-toggle">{{ $t('Let EVA send scheduled notifications') }}</NcCheckboxRadioSwitch>
-					<p class="field-help">{{ $t('Create up to 20 read-only briefings. EVA sends the answer as a Nextcloud notification at the selected local time; cron frequency can delay delivery slightly.') }}</p>
-					<NcTextField v-if="proactiveEnabled" id="proactive-schedules" v-model="f.proactive_schedules" type="textarea" :label="$t('Scheduled briefing JSON')" :label-outside="true" />
-					<p v-if="proactiveEnabled" class="field-help"><code>[{"id":"morning","prompt":"Summarize my calendar today","time":"08:00","days":[1,2,3,4,5],"enabled":true}]</code></p>
-				</div>
 			</section>
 
 			<section class="settings-section">
@@ -551,8 +544,6 @@ export default {
 			web_search_images: '1',
 			web_search_browser: '1',
 			web_search_browser_timeout: '30',
-			proactive_enabled: '0',
-			proactive_schedules: '[]',
 		})
 		const groqKey = ref('')
 		const removeGroqKey = ref(false)
@@ -573,10 +564,6 @@ export default {
 		const loadError = ref('')
 		const message = ref({ type: '', text: '' })
 		const validationErrors = ref([])
-		// Keep the last server-confirmed form state. Autosave sends only values that
-		// changed since then, so a broken or incomplete unrelated field cannot stop
-		// a user from enabling a browser, images, or another independent tool.
-		const persistedSettings = ref({})
 		const resetConfirm = ref(false)
 		const chatsDeleteConfirm = ref(false)
 		const newExcludePath = ref('')
@@ -593,10 +580,6 @@ export default {
 		const notificationsEnabled = computed({
 			get: () => f.value.notify_on_complete === '1',
 			set: value => { f.value.notify_on_complete = value ? '1' : '0' },
-		})
-		const proactiveEnabled = computed({
-			get: () => f.value.proactive_enabled === '1',
-			set: value => { f.value.proactive_enabled = value ? '1' : '0' },
 		})
 		const userWeatherEnabled = computed({
 			get: () => f.value.weather_tool_enabled === '1',
@@ -673,10 +656,6 @@ export default {
 			}
 		}
 
-		function changedSettingKeys() {
-			return Object.keys(f.value).filter(key => String(f.value[key]) !== String(persistedSettings.value[key] ?? ''))
-		}
-
 		function queueAutoSave() {
 			if (ignoreNextFormChange) {
 				ignoreNextFormChange = false
@@ -685,14 +664,13 @@ export default {
 			if (!formReady.value) return
 			autoSaveDirty = true
 			window.clearTimeout(autoSaveTimer)
-			autoSaveTimer = window.setTimeout(async () => {
+			autoSaveTimer = window.setTimeout(() => {
 				if (!autoSaveDirty) return
 				if (settingsLocked.value) {
 					queueAutoSave()
 					return
 				}
-				autoSaveDirty = false
-				await save({ changedOnly: true })
+				save()
 			}, 700)
 		}
 
@@ -791,9 +769,8 @@ export default {
 			message.value = { type, text }
 		}
 
-		function validate(keys = null) {
+		function validate() {
 			const errors = []
-			const includes = key => keys === null || keys.includes(key)
 			const effective = (key, fallback) => limits.value[key] || fallback
 			const numberRules = [
 				['top_k', 'Sources per answer', ...effective('top_k', [1, 8])],
@@ -809,17 +786,16 @@ export default {
 				['talk_history_size', 'Talk history size', ...effective('talk_history_size', [1, 500])],
 				['exec_write_max_chars', 'Maximum characters per file', ...effective('exec_write_max_chars', [1, 10000000])],
 			]
-			if (includes('ollama_url') && !/^https?:\/\//i.test(f.value.ollama_url.trim())) errors.push('Ollama server URL must start with http:// or https://.')
-			if (includes('embedding_model') && !f.value.embedding_model.trim()) errors.push('Embedding model is required.')
-			if ((includes('chat_provider') || includes('chat_model')) && f.value.chat_provider !== 'groq' && !f.value.chat_model.trim()) errors.push('Chat model is required.')
+			if (!/^https?:\/\//i.test(f.value.ollama_url.trim())) errors.push('Ollama server URL must start with http:// or https://.')
+			if (!f.value.embedding_model.trim()) errors.push('Embedding model is required.')
+			if (f.value.chat_provider !== 'groq' && !f.value.chat_model.trim()) errors.push('Chat model is required.')
 			for (const [key, label, min, max] of numberRules) {
-				if (!includes(key)) continue
 				const value = Number(f.value[key])
 				if (!Number.isFinite(value) || value < min || value > max) errors.push(`${label} must be between ${min} and ${max}.`)
 			}
 			const fileSizeMb = Number(maxFileSizeMb.value)
-			if (includes('max_file_size') && (!Number.isFinite(fileSizeMb) || fileSizeMb < 1 || fileSizeMb > 2048)) errors.push('Maximum file size must be between 1 and 2048 MB.')
-			if ((includes('chunk_overlap') || includes('chunk_size')) && Number(f.value.chunk_overlap) > Number(f.value.chunk_size)) errors.push('Chunk overlap cannot be larger than chunk size.')
+			if (!Number.isFinite(fileSizeMb) || fileSizeMb < 1 || fileSizeMb > 2048) errors.push('Maximum file size must be between 1 and 2048 MB.')
+			if (Number(f.value.chunk_overlap) > Number(f.value.chunk_size)) errors.push('Chunk overlap cannot be larger than chunk size.')
 			return errors
 		}
 
@@ -858,7 +834,6 @@ export default {
 			Object.keys(f.value).forEach(key => {
 				if (settings[key] !== undefined && settings[key] !== null) {
 					f.value[key] = String(settings[key])
-					persistedSettings.value[key] = String(settings[key])
 				}
 			})
 		}
@@ -878,11 +853,9 @@ export default {
 			}
 		}
 
-		async function save({ changedOnly = false } = {}) {
+		async function save() {
 			if (saving.value) return false
-			const keys = changedOnly ? changedSettingKeys() : Object.keys(f.value)
-			if (keys.length === 0 && !groqKey.value && !removeGroqKey.value) return true
-			validationErrors.value = validate(changedOnly ? keys : null)
+			validationErrors.value = validate()
 			if (validationErrors.value.length) {
 				setMessage('error', t('Please correct the highlighted settings before saving.'))
 				return false
@@ -891,10 +864,7 @@ export default {
 			saved.value = false
 			message.value = { type: '', text: '' }
 			try {
-			const values = changedOnly
-				? Object.fromEntries(keys.map(key => [key, f.value[key]]))
-				: { ...f.value }
-			const settings = await api('PUT', 'settings', { ...values, ...(groqKey.value ? { groq_api_key: groqKey.value } : {}), remove_groq_api_key: removeGroqKey.value })
+				const settings = await api('PUT', 'settings', { ...f.value, ...(groqKey.value ? { groq_api_key: groqKey.value } : {}), remove_groq_api_key: removeGroqKey.value })
 				if (status.value && (groqKey.value || removeGroqKey.value)) status.value.groq = { ...(status.value.groq || {}), keyConfigured: !removeGroqKey.value }
 				groqKey.value = ''
 				removeGroqKey.value = false
@@ -1176,7 +1146,7 @@ export default {
 		return {
 			groqKey, removeGroqKey, ocrEnabled, f, status, limits, availableModels, embeddingModels, chatModels, embeddingInstalledHint, chatInstalledHint, modelLoading, modelError, checkOut, saving, checking, indexing, resetting, deletingChats, stopping, saved, loadError, message, validationErrors, resetConfirm, chatsDeleteConfirm,
 			newExcludePath, excludeError, excludeList, actionsEnabled, notificationsEnabled, userWeatherEnabled, mailIndexEnabled, talkIndexEnabled, talkWriteEnabled, indexEnrolled, actionsDisabled, busy, indexingActive, settingsLocked, maxFileSizeMb,
-			isAdminMode, admin, userWebSearchEnabled, userWebSearchSafeSearch, userWebSearchImages, userWebSearchBrowser, userWebSearchFetchContent, webSearchKey, removeWebSearchKey, webSearchKeyStored, webSearchReady, savingAdmin, saveAdminSettings, loadAdminSettings,
+			isAdminMode, admin, userWebSearchEnabled, userWebSearchSafeSearch, webSearchKey, removeWebSearchKey, webSearchKeyStored, webSearchReady, savingAdmin, saveAdminSettings, loadAdminSettings,
 			exporting, downloadExport,
 			knowledgeContent, knowledgeOriginal, savingKnowledge, knowledgeSaved, saveKnowledgeContent,
 			formatNumber, loadStatus, save, checkOllama, addExclude, removeExclude, startIndex, startMailIndex, startTalkIndex, stopIndex, resetIndex, deleteAllChats,

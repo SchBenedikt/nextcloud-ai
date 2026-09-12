@@ -21,6 +21,10 @@ class AppConfig {
         'chunk_overlap', 'max_file_size', 'max_files_per_run', 'scope_path',
         'context_size', 'temperature', 'actions_enabled', 'exec_write_types',
         'exec_write_max_chars', 'exec_delete_mode',        'notify_on_complete',
+        // Personal, opt-in scheduled briefings/reminders. Definitions are JSON;
+        // delivery timestamps deliberately live in runtime state below.
+        'proactive_schedules',
+        'proactive_enabled',
         'mail_index_enabled', 'mail_index_max', 'talk_history_size',
         'talk_bot_trigger', 'talk_classify_all', 'exclude_paths',
         // Indexing Nextcloud Talk chat histories so answers can quote older
@@ -51,6 +55,7 @@ class AppConfig {
         'last_index_total', 'last_index_error', 'last_index_cache_hits', 'last_index_cache_misses',
         'last_index_ollama_requests', 'last_index_failed', 'index_config_hash', 'index_mode',
         'index_cancel_requested', 'index_run_id', 'index_enrolled', 'knowledge_initialized',
+        'proactive_schedule_runs',
     ];
 
     /** All keys that are stored on the per-user scope. */
@@ -60,7 +65,7 @@ class AppConfig {
      * Instance-wide keys that only an administrator may read or change.
      * Per-user web search settings (enabled, provider) have moved to USER_SETTINGS
      * so each user can individually enable DuckDuckGo or other providers.
-     * Admin-only: instance-wide web search infrastructure and index throughput.
+     * Admin-only: weather tool, instance-wide web search infra (URL, key, limits).
      */
     public const ADMIN_SETTINGS = [
         // Instance-level web search infrastructure: SearxNG URL, API keys,
@@ -127,6 +132,9 @@ class AppConfig {
         'exec_write_max_chars' => '100000',
         'exec_delete_mode' => 'own',
         'notify_on_complete' => '1',
+        'proactive_schedules' => '[]',
+        'proactive_enabled' => '0',
+        'proactive_schedule_runs' => '{}',
         'mail_index_enabled' => '1',
         'mail_index_max' => '25',
         // Talk context is part of the assistant's normal background context.
@@ -557,7 +565,7 @@ class AppConfig {
             }
             return 'must be an absolute path or a command name, without spaces';
         }
-        if (in_array($key, ['ocr_enabled', 'actions_enabled', 'notify_on_complete', 'mail_index_enabled', 'talk_index_enabled', 'talk_write_enabled', 'index_enrolled', 'talk_classify_all', 'weather_tool_enabled', 'web_search_enabled', 'web_search_safe_search', 'web_search_fetch_content', 'web_search_images', 'web_search_browser'], true)) {
+        if (in_array($key, ['ocr_enabled', 'actions_enabled', 'notify_on_complete', 'proactive_enabled', 'mail_index_enabled', 'talk_index_enabled', 'talk_write_enabled', 'index_enrolled', 'talk_classify_all', 'weather_tool_enabled', 'web_search_enabled', 'web_search_safe_search', 'web_search_fetch_content', 'web_search_images', 'web_search_browser'], true)) {
             return is_scalar($value) && in_array((string)$value, ['0', '1', 'true', 'false', 'on', 'off'], true)
                 ? null : 'must be a boolean value';
         }

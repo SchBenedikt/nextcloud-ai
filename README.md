@@ -40,24 +40,6 @@ Combines **vector-based semantic search** with **lexical search (BM25)** using R
 
 Every answer includes the exact **file path** where the information was found, so you can always verify the source. When the answer also used the web, the pages that were actually retrieved are listed as **web sources** with their site and a short excerpt, marked "Web" so they are never confused with your own files.
 
-### Agentic file discovery and private learning
-
-EVA does not need a file to be indexed before it can help with it. In an
-authenticated web chat it can safely list folders, search file names and bounded
-text, and open readable files from the signed-in user's own Nextcloud home. This
-lets it discover how a personal workspace is organised before it answers. These
-are read-only operations; creating, renaming, sharing, or deleting data remains
-an explicit confirmation step. Facts that a user states about themselves can be
-kept in their private `KNOWLEDGE.md`, which they can edit or delete at any time.
-
-### Usage metrics
-
-The **Metrics** view shows private per-user request, input-token, output-token,
-and total-token usage. It includes daily bars, input/output composition, and a
-model comparison chart. EVA stores model/provider metadata and aggregate token
-counts only; prompts, answers, file content, and tool arguments are never added
-to usage metrics.
-
 ### Nextcloud Integration
 
 Eva can perform actions directly within Nextcloud:
