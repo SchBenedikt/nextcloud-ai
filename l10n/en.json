@@ -30,7 +30,7 @@
         "Allow file actions": "Allow file actions",
         "Allow background actions after I close the page": "Allow background actions after I close the page",
         "EVA is continuing this chat in the background": "EVA is continuing this chat in the background",
-        "Background EVA run failed — retrying automatically": "Background EVA run failed — retrying automatically",
+        "Background EVA run failed after retries": "Background EVA run failed after retries",
         "EVA will continue this chat in the background": "EVA will continue this chat in the background",
         "When a chat continues after you close the page, EVA may execute requested changes without an open confirmation dialog.": "When a chat continues after you close the page, EVA may execute requested changes without an open confirmation dialog.",
         "Background actions are opt-in. EVA still follows the request and never invents unrelated changes. Disable this switch to keep queued chats read-only.": "Background actions are opt-in. EVA still follows the request and never invents unrelated changes. Disable this switch to keep queued chats read-only.",
