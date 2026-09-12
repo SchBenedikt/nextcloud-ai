@@ -1266,7 +1266,17 @@ export default {
 			await loadKnowledge()
 			formReady.value = true
 			adminReady.value = isAdminMode
-			statusTimer = window.setInterval(() => { loadStatus(); if (Date.now() % 15000 < 3000) loadHealth() }, 3000)
+			// Status is informational; polling every few seconds created needless
+			// PHP/database work on production instances with many open settings tabs.
+			// Ten seconds is still responsive while keeping the page lightweight.
+			let lastHealthPoll = 0
+			statusTimer = window.setInterval(() => {
+				loadStatus()
+				if (Date.now() - lastHealthPoll >= 60000) {
+					lastHealthPoll = Date.now()
+					loadHealth()
+				}
+			}, 10000)
 		})
 		onUnmounted(() => {
 			if (statusTimer !== null) window.clearInterval(statusTimer)
