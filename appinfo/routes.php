@@ -17,6 +17,7 @@ return [
         ['name' => 'api#status', 'url' => '/api/status', 'verb' => 'GET'],
         ['name' => 'api#stats', 'url' => '/api/stats', 'verb' => 'GET'],
         ['name' => 'api#metrics', 'url' => '/api/metrics', 'verb' => 'GET'],
+        ['name' => 'api#health', 'url' => '/api/health', 'verb' => 'GET'],
         ['name' => 'api#greeting', 'url' => '/api/greeting', 'verb' => 'GET'],
         ['name' => 'api#settings', 'url' => '/api/settings', 'verb' => 'GET'],
         ['name' => 'api#saveSettings', 'url' => '/api/settings', 'verb' => 'PUT'],

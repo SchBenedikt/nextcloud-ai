@@ -78,6 +78,7 @@ Resetting a user's index clears that user's cached vectors.
 |---|---|---|---|---|---|
 | `actions_enabled` | P | `1` | `1`/`0` | – | `1` = chat tools enabled; `0` = read-only chat. |
 | `background_actions_enabled` | P | `0` | `1`/`0` | – | Explicit opt-in for queued chats to execute requested mutating tools after the browser closes. Requires `actions_enabled=1`; disabled queued jobs remain read-only. |
+| `learning_enabled` | P | `1` | `1`/`0` | – | Allow EVA to learn explicit preferences and facts from completed chats. The personal knowledge file remains editable and deletable by the user. |
 | `agent_max_tool_rounds` | P | `16` | `4`–`32` | steps | Maximum model/tool rounds in one request. Higher values allow longer multi-tool workflows; duplicate-call protection still applies. |
 | `exec_write_types` | P | `''` (all) | `*`, empty, or ≤32 extensions `md,txt,…` | – | Allowed extensions for AI-created files. |
 | `exec_write_max_chars` | P | `100000` | `1`–`10000000` | characters | Maximum size of AI-created file contents. |

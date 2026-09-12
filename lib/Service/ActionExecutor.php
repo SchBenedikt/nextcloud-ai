@@ -33,6 +33,8 @@ class ActionExecutor {
     private const MAX_READ_CHARS = 20000;
     private const MAX_READ_CHUNK_CHARS = 100000;
     private const MAX_READ_FILE_BYTES = 8388608; // 8 MB safety limit
+    private const LEARNED_API_TTL = 2592000; // refresh route metadata monthly
+    private const APP_API_TIMEOUT = 30;
     private const MAX_WRITE_CHARS = 100000;
     private const KNOWLEDGE_MAX_CHARS = 60000;
     private const KNOWLEDGE_TARGET_CHARS = 45000;
@@ -1191,7 +1193,8 @@ class ActionExecutor {
             $knownRoute = false;
             try {
                 $learned = json_decode($this->config->get('learned_app_apis'), true);
-                $routes = is_array($learned[$appId]['routes'] ?? null) ? $learned[$appId]['routes'] : [];
+                $learnedAt = (int)($learned[$appId]['updated'] ?? 0);
+                $routes = ($learnedAt > 0 && $learnedAt >= time() - self::LEARNED_API_TTL && is_array($learned[$appId]['routes'] ?? null)) ? $learned[$appId]['routes'] : [];
                 foreach ($routes as $route) {
                     if (!is_array($route) || (bool)($route['ocs'] ?? false)) continue;
                     $routePath = (string)($route['path'] ?? '');
@@ -1230,7 +1233,7 @@ class ActionExecutor {
                     return ['ok' => false, 'error' => 'No browser session or encrypted Nextcloud app token is available for this API action.'];
                 }
             }
-            $options = ['headers' => $headers, 'allow_redirects' => ['max' => 0, 'protocols' => ['https', 'http']]];
+            $options = ['headers' => $headers, 'timeout' => self::APP_API_TIMEOUT, 'allow_redirects' => ['max' => 0, 'protocols' => ['https', 'http']]];
             if ($method === 'GET') $options['query'] = $params;
             elseif ($params !== []) $options['body'] = $params;
             $response = match ($method) {
