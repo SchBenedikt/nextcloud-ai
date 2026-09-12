@@ -69,6 +69,39 @@ class DocumentMapper extends QBMapper {
      * Used by the background job for independent per-user indexing (Issue #7).
      * @return string[]
      */
+    /**
+     * Per-file index state for one user, keyed by file id.
+     *
+     * A full scan otherwise issues one findByUserAndFile() query *and* one
+     * UPDATE per file just to discover that nothing changed - several thousand
+     * round trips on a settled library before any embedding happens. One bulk
+     * read replaces all of them, and the caller decides whether a metadata
+     * refresh is actually needed.
+     *
+     * @return array<int,array{id:int,content_hash:string,size:int,file_mtime:int,path:string,name:string,mime:string}>
+     */
+    public function stateForUser(string $userId): array {
+        $qb = $this->db->getQueryBuilder();
+        $qb->select('id', 'file_id', 'content_hash', 'size', 'file_mtime', 'path', 'name', 'mime')
+            ->from('eva_ai_documents')
+            ->where($qb->expr()->eq('user_id', $qb->createNamedParameter($userId)));
+        $result = $qb->executeQuery();
+        $map = [];
+        while ($row = $result->fetch()) {
+            $map[(int)$row['file_id']] = [
+                'id' => (int)$row['id'],
+                'content_hash' => (string)($row['content_hash'] ?? ''),
+                'size' => (int)($row['size'] ?? 0),
+                'file_mtime' => (int)($row['file_mtime'] ?? 0),
+                'path' => (string)($row['path'] ?? ''),
+                'name' => (string)($row['name'] ?? ''),
+                'mime' => (string)($row['mime'] ?? ''),
+            ];
+        }
+        $result->closeCursor();
+        return $map;
+    }
+
     public function distinctUserIds(): array {
         $qb = $this->db->getQueryBuilder();
         $qb->selectDistinct('user_id')

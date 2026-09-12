@@ -40,9 +40,13 @@ final class IndexerBoundedBatchTest extends TestCase {
      * @param int $batchSize
      * @param (callable():AppConfig)|null $configFactory lets a test supply its
      *        own recording config mock instead of the plain one
+     * @param (callable(array):array)|null $embed replaces the default embedding
+     *        response. It is passed in rather than re-stubbed afterwards because
+     *        a second stub for the same method never runs - PHPUnit keeps the
+     *        first configured return value.
      * @return array{0:Indexer,1:DocumentMapper,2:ChunkMapper,3:Ollama}
      */
-    private function harness(array $files, int $batchSize, ?callable $configFactory = null): array {
+    private function harness(array $files, int $batchSize, ?callable $configFactory = null, ?callable $embed = null): array {
         $config = $configFactory !== null ? $configFactory() : $this->createMock(AppConfig::class);
         if ($configFactory === null) {
             $config->method('get')->willReturnCallback(static function (string $key, ?string $default = null): string {
@@ -85,6 +89,7 @@ final class IndexerBoundedBatchTest extends TestCase {
 
         $docMapper = $this->createMock(DocumentMapper::class);
         $docMapper->method('hashesForUser')->willReturn([]);
+        $docMapper->method('stateForUser')->willReturn([]);
         $docMapper->method('findByUserAndFile')->willReturn(null);
         $docMapper->method('insert')->willReturnCallback(static function (Document $d): Document {
             $d->setId((int)$d->getFileId());
@@ -106,9 +111,11 @@ final class IndexerBoundedBatchTest extends TestCase {
         $ollama = $this->createMock(Ollama::class);
         // Return exactly as many vectors as texts were submitted, so the
         // batch accounting in flushBatch() sees a consistent response.
-        $ollama->method('embedBatch')->willReturnCallback(static function (array $texts): array {
-            return [array_map(static fn() => [1.0, 0.0], $texts), null];
-        });
+        $ollama->method('embedBatch')->willReturnCallback(
+            $embed ?? static function (array $texts): array {
+                return [array_map(static fn() => [1.0, 0.0], $texts), null];
+            }
+        );
         $ollama->method('lastEmbeddingStats')->willReturn(['cache_hits' => 0, 'cache_misses' => 0, 'ollama_requests' => 0]);
 
         $logger = $this->createMock(LoggerInterface::class);
@@ -144,13 +151,15 @@ final class IndexerBoundedBatchTest extends TestCase {
         for ($i = 1; $i <= 120; $i++) {
             $files[] = $this->file($i);
         }
-        [$indexer, $docMapper, $chunkMapper, $ollama] = $this->harness($files, 5);
 
         // Record every embedBatch call: the chunk count must never exceed the
         // configured batch size, even though 120 chunks are processed in total.
         $maxBatchSeen = 0;
         $totalEmbedded = 0;
-        $ollama->method('embedBatch')->willReturnCallback(
+        [$indexer, $docMapper, $chunkMapper, $ollama] = $this->harness(
+            $files,
+            5,
+            null,
             static function (array $texts) use (&$maxBatchSeen, &$totalEmbedded): array {
                 $maxBatchSeen = max($maxBatchSeen, count($texts));
                 $totalEmbedded += count($texts);
@@ -229,10 +238,11 @@ final class IndexerBoundedBatchTest extends TestCase {
         for ($i = 1; $i <= 60; $i++) {
             $files[] = $this->file($i);
         }
-        [$indexer, $docMapper, $chunkMapper, $ollama] = $this->harness($files, 24);
-
         $maxBatchSeen = 0;
-        $ollama->method('embedBatch')->willReturnCallback(
+        [$indexer, $docMapper, $chunkMapper, $ollama] = $this->harness(
+            $files,
+            24,
+            null,
             static function (array $texts) use (&$maxBatchSeen): array {
                 $maxBatchSeen = max($maxBatchSeen, count($texts));
                 return [array_map(static fn() => [1.0, 0.0], $texts), null];
@@ -242,5 +252,68 @@ final class IndexerBoundedBatchTest extends TestCase {
         $result = $indexer->run('alice', 10000, 'files');
         self::assertSame(60, $result['processed']);
         self::assertLessThanOrEqual(24, $maxBatchSeen);
+    }
+
+    /**
+     * A document the embedding model refuses is skipped, not fatal.
+     *
+     * The whole point of a background index is that it keeps going: one
+     * unreadable file must not stop the pass, must not be reported as a run
+     * error, and must not take the other documents in its batch with it.
+     */
+    public function testADocumentTheModelRefusesIsSkippedWithoutFailingThePass(): void {
+        $files = [];
+        for ($i = 1; $i <= 6; $i++) {
+            $files[] = $this->file($i);
+        }
+        // The third chunk comes back as an empty slot, as embedBatch() reports
+        // a text the model rejected even on its own.
+        $seen = 0;
+        [$indexer, $docMapper, $chunkMapper, $ollama] = $this->harness(
+            $files,
+            100,
+            null,
+            static function (array $texts) use (&$seen): array {
+                $vectors = [];
+                foreach ($texts as $text) {
+                    $seen++;
+                    $vectors[] = $seen === 3 ? null : [1.0, 0.0];
+                }
+                return [$vectors, null];
+            }
+        );
+
+        $discarded = [];
+        $chunkMapper->method('deleteByDocumentIds')->willReturnCallback(
+            static function (array $ids) use (&$discarded): void {
+                $discarded = array_merge($discarded, $ids);
+            }
+        );
+
+        $result = $indexer->run('alice', 10000, 'files');
+
+        self::assertSame(5, $result['processed'], 'the other five files are still indexed: ' . json_encode($result));
+        self::assertNull($result['error'], 'a refused document is not a run failure: ' . json_encode($result));
+        self::assertSame(1, $result['failed'] ?? 0, 'the refused file is counted as failed');
+        self::assertCount(1, $discarded, 'only the refused document is rolled back');
+    }
+
+    /**
+     * A real embedding outage must still surface as an error. Skipping every
+     * file silently would report a successful pass that indexed nothing.
+     */
+    public function testAnEmbeddingOutageIsStillReportedAsAnError(): void {
+        $files = [$this->file(1), $this->file(2)];
+        [$indexer, $docMapper, $chunkMapper, $ollama] = $this->harness(
+            $files,
+            100,
+            null,
+            static fn(array $texts): array => [null, 'connection refused']
+        );
+
+        $result = $indexer->run('alice', 10000, 'files');
+
+        self::assertNotNull($result['error'], 'a dead model server must not look like a clean pass');
+        self::assertSame(2, $result['processed'], 'the files are still pending, not silently dropped');
     }
 }

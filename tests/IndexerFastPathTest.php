@@ -93,6 +93,26 @@ final class IndexerFastPathTest extends TestCase {
             }
             return $map;
         });
+        // The pass reads all per-file state in one query; the mock mirrors the
+        // same $stored fixture so the fast path can be exercised without a DB.
+        $docMapper->method('stateForUser')->willReturnCallback(static function () use ($stored): array {
+            $map = [];
+            foreach ($stored as $fileId => $doc) {
+                if ($doc === null) {
+                    continue;
+                }
+                $map[$fileId] = [
+                    'id' => (int)$doc->getId(),
+                    'content_hash' => (string)$doc->getContentHash(),
+                    'size' => (int)$doc->getSize(),
+                    'file_mtime' => (int)$doc->getFileMtime(),
+                    'path' => (string)$doc->getPath(),
+                    'name' => (string)$doc->getName(),
+                    'mime' => (string)($doc->getMime() ?? ''),
+                ];
+            }
+            return $map;
+        });
         $docMapper->method('findByUserAndFile')->willReturnCallback(
             static function (string $userId, int $fileId) use ($stored): ?Document {
                 return $stored[$fileId] ?? null;
@@ -167,15 +187,40 @@ final class IndexerFastPathTest extends TestCase {
         [$indexer, $docMapper] = $this->harness([$fileA], [1 => $storedA]);
 
         $docMapper->expects($this->never())->method('insert');
-        $docMapper->expects($this->once())->method('update');
+        // Nothing changed, not even the stored path - so a re-scan of a settled
+        // library writes nothing. A database write per file was the second half
+        // of the per-file cost on a full pass.
+        $docMapper->expects($this->never())->method('update');
 
         $result = $indexer->run('alice', 10000, 'files');
 
         self::assertSame(0, $result['processed'], 'nothing may be re-embedded');
         self::assertSame(1, $result['skipped'], 'the unchanged file is skipped via the fast path');
         self::assertNull($result['error']);
-        // Metadata was refreshed, so the stored row still matches current state.
+        // Metadata was already correct, so the stored row still matches.
         self::assertSame(1000, $storedA->getFileMtime());
+    }
+
+    /**
+     * A rename preserves mtime and size, so the fast path still applies - but
+     * the stored path must be updated, or search would report the old location.
+     */
+    public function testRenamedFileRefreshesStoredMetadata(): void {
+        $fileA = $this->file(1, 1000, 'old library content one');
+        $fileA->expects($this->never())->method('getContent');
+        $storedA = $this->storedDoc(1, 1000, 128, md5('old library content one'));
+        $storedA->setPath('old-name.txt');
+
+        [$indexer, $docMapper] = $this->harness([$fileA], [1 => $storedA]);
+
+        $docMapper->expects($this->never())->method('insert');
+        $docMapper->expects($this->once())->method('update')->with($storedA);
+
+        $result = $indexer->run('alice', 10000, 'files');
+
+        self::assertSame(0, $result['processed']);
+        self::assertSame(1, $result['skipped']);
+        self::assertSame('doc-1.txt', $storedA->getPath(), 'the rename must reach the database');
     }
 
     public function testChangedMtimeFallsThroughToFullReindex(): void {
@@ -208,7 +253,7 @@ final class IndexerFastPathTest extends TestCase {
         });
 
         $docMapper->expects($this->never())->method('insert');
-        $docMapper->expects($this->once())->method('update');
+        $docMapper->expects($this->never())->method('update');
 
         $result = $indexer->run('alice', 10000, 'files');
 

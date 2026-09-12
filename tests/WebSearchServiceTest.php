@@ -507,8 +507,10 @@ HTML;
         $results = [['title' => 'T', 'url' => 'https://example.org/a', 'snippet' => 's']];
 
         $off = $this->service(['web_search_fetch_content' => '0']);
-        $out = $this->callPrivate($off, 'enrichWithPageContent', [$results]);
+        $out = $this->callPrivate($off, 'enrichWithPageContent', [$results, 'query']);
         self::assertSame('', $out[0]['content'], 'page fetching can be switched off');
+        self::assertSame([], $out[0]['images'], 'the result shape always carries an images list');
+        self::assertSame('', $out[0]['highlights']);
 
         self::assertSame(2000, $this->callPrivate($off, 'contentChars', []), 'default per-page text length');
         self::assertSame(200, $this->callPrivate($this->service(['web_search_content_chars' => '10']), 'contentChars', []));
@@ -538,5 +540,161 @@ HTML;
             'no results',
             $this->callPrivate($service, 'emptyResultError', ['brave'])
         );
+    }
+
+    // ---- Choosing the best hits, not the first ones ----
+
+    /**
+     * Once the pages have been read, the ranking must prefer the page that
+     * actually covers the query over the one the engine listed first.
+     */
+    public function testContentAwareRankingPromotesTheBetterPage(): void {
+        $service = $this->service();
+        $results = [
+            [
+                'title' => 'Unrelated news roundup',
+                'url' => 'https://news.example.org/roundup',
+                'snippet' => 'A roundup of everything.',
+                'content' => 'Nothing here mentions the topic at all.',
+            ],
+            [
+                'title' => 'Installing the widget',
+                'url' => 'https://docs.example.org/install',
+                'snippet' => 'Steps for the installation.',
+                'content' => 'The installation of the widget requires two steps. The widget configuration is documented below.',
+            ],
+        ];
+
+        $ranked = $this->callPrivate($service, 'rankResults', [$results, 'widget installation', true]);
+        self::assertSame('https://docs.example.org/install', $ranked[0]['url'], 'the page that answers the query wins');
+
+        // Without content the engine order is preserved rather than invented.
+        $metadataOnly = $this->callPrivate($service, 'rankResults', [[$results[0], $results[1]], 'widget installation', false]);
+        self::assertCount(2, $metadataOnly);
+    }
+
+    /**
+     * A page that could not be fetched must not outrank one that was: the
+     * unread hit is an assumption, the read hit is evidence.
+     */
+    public function testUnreadableCandidateIsDemotedBelowAReadableOne(): void {
+        $service = $this->service();
+        $results = [
+            [
+                'title' => 'Widget installation',
+                'url' => 'https://one.example.org/a',
+                'snippet' => 'Widget installation',
+                'content' => '',
+            ],
+            [
+                'title' => 'Widget installation guide',
+                'url' => 'https://two.example.org/b',
+                'snippet' => 'Widget installation guide',
+                'content' => 'How to do the widget installation safely.',
+            ],
+        ];
+        $ranked = $this->callPrivate($service, 'rankResults', [$results, 'widget installation', true]);
+        self::assertSame('https://two.example.org/b', $ranked[0]['url']);
+    }
+
+    /** Repeating one domain must not crowd out other sources. */
+    public function testRepeatedHostIsDemotedForDiversity(): void {
+        $service = $this->service();
+        $results = [
+            ['title' => 'Widget', 'url' => 'https://same.example.org/1', 'snippet' => 'widget'],
+            ['title' => 'Widget', 'url' => 'https://same.example.org/2', 'snippet' => 'widget'],
+            ['title' => 'Widget', 'url' => 'https://same.example.org/3', 'snippet' => 'widget'],
+            ['title' => 'Widget', 'url' => 'https://other.example.org/a', 'snippet' => 'widget'],
+        ];
+        $ranked = $this->callPrivate($service, 'rankResults', [$results, 'widget']);
+        self::assertSame('https://same.example.org/1', $ranked[0]['url'], 'the first hit of the domain keeps its lead');
+        self::assertSame('https://other.example.org/a', $ranked[1]['url'], 'another source is promoted above repeats');
+    }
+
+    public function testCandidateLimitAlwaysCoversTheRequestedResults(): void {
+        $service = $this->service(['web_search_candidates' => '4']);
+        self::assertSame(4, $this->callPrivate($service, 'candidateLimit', [2]));
+        self::assertSame(8, $this->callPrivate($service, 'candidateLimit', [8]), 'never below the result count');
+
+        $default = $this->service();
+        self::assertSame(12, $this->callPrivate($default, 'candidateLimit', [5]));
+
+        $clamped = $this->service(['web_search_candidates' => '999']);
+        self::assertSame(20, $this->callPrivate($clamped, 'candidateLimit', [1]), 'hard-capped');
+    }
+
+    // ---- Images ----
+
+    public function testImagesAreCollectedFromTheArticleAndTheHeroTag(): void {
+        $service = $this->service(['web_search_images' => '1']);
+        $html = '<html><head>'
+            . '<meta property="og:image" content="/media/hero.png">'
+            . '</head><body><article><p>Text that mentions nothing.</p>'
+            . '<img src="../gallery/figure-1.png" width="800" height="600" alt="A figure">'
+            . '<img src="/static/logo.png" width="800" height="600" alt="Logo">'
+            . '<img src="/img/spacer.gif" width="1" height="1">'
+            . '<img data-src="/lazy/real-shot.jpg" width="640" height="480" alt="Lazy">'
+            . '</article></body></html>';
+
+        $page = $this->callPrivate($service, 'extractPage', [$html, 'https://docs.example.org/guide/page.html']);
+        $urls = array_column($page['images'], 'url');
+
+        self::assertContains('https://docs.example.org/media/hero.png', $urls, 'the page hero image leads');
+        self::assertContains('https://docs.example.org/gallery/figure-1.png', $urls, 'relative paths resolve');
+        self::assertContains('https://docs.example.org/lazy/real-shot.jpg', $urls, 'lazy-loaded images are read');
+        foreach ($urls as $url) {
+            self::assertStringNotContainsString('logo', $url, 'logos are chrome');
+            self::assertStringNotContainsString('spacer', $url, 'spacers are not content');
+        }
+    }
+
+    public function testImageUrlsRejectPseudoSchemesAndCredentials(): void {
+        $service = $this->service(['web_search_images' => '1']);
+        self::assertNull($this->callPrivate($service, 'resolveImageUrl', ['javascript:alert(1)', 'https://a.example.org/x']));
+        self::assertNull($this->callPrivate($service, 'resolveImageUrl', ['data:image/png;base64,AAAA', 'https://a.example.org/x']));
+        self::assertNull($this->callPrivate($service, 'resolveImageUrl', ['https://user:pass@a.example.org/x.png', 'https://a.example.org/x']));
+        self::assertSame(
+            'https://cdn.example.org/pic.png',
+            $this->callPrivate($service, 'resolveImageUrl', ['https://cdn.example.org/pic.png', 'https://a.example.org/x'])
+        );
+        self::assertSame(
+            'https://cdn.example.org/pic.png',
+            $this->callPrivate($service, 'resolveImageUrl', ['//cdn.example.org/pic.png', 'https://a.example.org/x'])
+        );
+    }
+
+    public function testImagesCanBeSwitchedOff(): void {
+        $service = $this->service(['web_search_images' => '0']);
+        $html = '<html><head><meta property="og:image" content="/media/hero.png"></head>'
+            . '<body><article><img src="/media/hero.png" width="900" height="400"></article></body></html>';
+        $page = $this->callPrivate($service, 'extractPage', [$html, 'https://docs.example.org/']);
+        self::assertSame([], $page['images']);
+    }
+
+    // ---- Highlights ----
+
+    public function testHighlightsPickTheSentencesThatMentionTheQuery(): void {
+        $service = $this->service();
+        $content = 'This introduction is long and talks about the weather in springtime across the region. '
+            . 'The licence fee for the widget is 42 euros and is billed annually to the operator. '
+            . 'A final paragraph repeats the weather of the earlier introduction once more.';
+        $highlight = (string)$this->callPrivate($service, 'highlights', [$content, 'widget licence fee']);
+        self::assertStringContainsString('42 euros', $highlight);
+        self::assertStringNotContainsString('weather in springtime', $highlight);
+    }
+
+    public function testHighlightsAreEmptyWithoutUsableTerms(): void {
+        $service = $this->service();
+        self::assertSame('', $this->callPrivate($service, 'highlights', ['Some text', 'the and for']));
+        self::assertSame('', $this->callPrivate($service, 'highlights', ['', 'widget']));
+    }
+
+    public function testExtractReadableTextStillReturnsPageText(): void {
+        $service = $this->service();
+        $html = '<html><body><article><h1>Title</h1><p>The body text.</p>'
+            . '<nav>Menu</nav></article></body></html>';
+        $text = $this->callPrivate($service, 'extractReadableText', [$html]);
+        self::assertStringContainsString('The body text.', $text);
+        self::assertStringNotContainsString('Menu', $text);
     }
 }

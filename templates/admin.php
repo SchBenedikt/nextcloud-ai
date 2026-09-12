@@ -16,6 +16,7 @@ declare(strict_types=1);
 
 $admin = $_['adminSettings'];
 $ollamaOnline = $_['ollamaOnline'];
+$ollamaError = $_['ollamaError'] ?? '';
 $ollamaUrl = $_['ollamaUrl'];
 $users = $_['users'];
 $userCount = $_['userCount'];
@@ -34,8 +35,12 @@ $webSearchTimeout = $admin['web_search_timeout'] ?? '10';
 $webSearchSafeSearch = ($admin['web_search_safe_search'] ?? '1') === '1';
 $webSearchFetchContent = ($admin['web_search_fetch_content'] ?? '1') === '1';
 $webSearchContentChars = $admin['web_search_content_chars'] ?? '2000';
+$webSearchCandidates = $admin['web_search_candidates'] ?? '12';
+$webSearchImages = ($admin['web_search_images'] ?? '1') === '1';
 $indexMaxConcurrent = $admin['index_max_concurrent'] ?? '2';
 $indexJobMaxSeconds = $admin['index_job_max_seconds'] ?? '50';
+$indexJobInterval = $admin['index_job_interval_minutes'] ?? '5';
+$lastIndexFailed = (int)($admin['last_index_failed'] ?? 0);
 
 $schedulerRunning = (int)($scheduler['running'] ?? 0);
 $schedulerQueued = (int)($scheduler['queued'] ?? 0);
@@ -98,7 +103,12 @@ $providerLabels = [
 						<?php p($ollamaOnline ? $l->t('Connected') : $l->t('Not connected')); ?>
 					</span>
 				</td>
-				<td class="eva-mono"><?php p($ollamaUrl); ?></td>
+				<td>
+					<span class="eva-mono"><?php p($ollamaUrl); ?></span>
+					<?php if (!$ollamaOnline && $ollamaError !== ''): ?>
+						<span class="eva-error eva-block"><?php p($ollamaError); ?></span>
+					<?php endif; ?>
+				</td>
 			</tr>
 			<tr>
 				<td><strong><?php p($l->t('Web search')); ?></strong></td>
@@ -118,7 +128,14 @@ $providerLabels = [
 			<tr>
 				<td><strong><?php p($l->t('Knowledge base')); ?></strong></td>
 				<td><?php p($l->t('%s documents', [(string)$totalDocuments])); ?></td>
-				<td><?php p($l->t('%s text chunks', [(string)$totalChunks])); ?></td>
+				<td>
+					<?php p($l->t('%s text chunks', [(string)$totalChunks])); ?>
+					<?php if ($lastIndexFailed > 0): ?>
+						<span class="eva-block eva-muted">
+							<?php p($l->t('%s files were skipped and are retried on the next run', [(string)$lastIndexFailed])); ?>
+						</span>
+					<?php endif; ?>
+				</td>
 			</tr>
 			<tr>
 				<td><strong><?php p($l->t('Background indexing')); ?></strong></td>
@@ -154,6 +171,15 @@ $providerLabels = [
 				min="10" max="600" step="5" value="<?php p($indexJobMaxSeconds); ?>">
 			<p class="eva-field-hint">
 				<?php p($l->t('Seconds one cron run may spend indexing before it hands back to the next tick. 10–600, default 50. The budget is shared fairly across all accounts.')); ?>
+			</p>
+		</div>
+
+		<div class="eva-field">
+			<label for="eva-job-interval"><?php p($l->t('Cron run frequency')); ?></label>
+			<input type="number" id="eva-job-interval" name="index_job_interval_minutes"
+				min="1" max="60" step="1" value="<?php p($indexJobInterval); ?>">
+			<p class="eva-field-hint">
+				<?php p($l->t('Minutes between runs, 1–60, default 5. Together with the time budget this is how fast a large library is caught up. Takes effect after the next app update.')); ?>
 			</p>
 		</div>
 	</div>
@@ -244,6 +270,15 @@ $providerLabels = [
 				<?php p($l->t('Characters read from each result page. 200–8000, default 2000. More text means more accurate answers and a larger context.')); ?>
 			</p>
 		</div>
+
+		<div class="eva-field">
+			<label for="eva-candidates"><?php p($l->t('Pages compared before choosing')); ?></label>
+			<input type="number" id="eva-candidates" name="web_search_candidates"
+				min="3" max="20" step="1" value="<?php p($webSearchCandidates); ?>">
+			<p class="eva-field-hint">
+				<?php p($l->t('How many hits are read and scored before the best ones are returned. 3–20, default 12. A larger field costs one page fetch per candidate but stops the search from trusting the first hits.')); ?>
+			</p>
+		</div>
 	</div>
 
 	<label class="eva-checkbox">
@@ -259,6 +294,15 @@ $providerLabels = [
 	</label>
 	<p class="settings-hint eva-indent">
 		<?php p($l->t('Enabling this fetches the ranked pages in parallel and is what makes answers accurate rather than a paraphrase of a search teaser. Turn it off to keep a search to a single request.')); ?>
+	</p>
+
+	<label class="eva-checkbox">
+		<input type="checkbox" id="eva-images-toggle" name="web_search_images" value="1"
+			<?php p($webSearchImages ? 'checked' : ''); ?>>
+		<span><?php p($l->t('Show images from the result pages')); ?></span>
+	</label>
+	<p class="settings-hint eva-indent">
+		<?php p($l->t('Adds up to three images per result (the page\'s own preview image and pictures inside the article) so the assistant can show a figure instead of describing it. Icons, logos and tracking pixels are filtered out. No extra request is made: the images come from the pages already being read.')); ?>
 	</p>
 
 	<p class="eva-actions">
@@ -297,7 +341,7 @@ $providerLabels = [
 			<thead>
 				<tr>
 					<th scope="col"><?php p($l->t('Account')); ?></th>
-					<th scope="col"><?php p($l->t('Indexing')); ?></th>
+					<th scope="col"><?php p($l->t('Background indexing')); ?></th>
 					<th scope="col"><?php p($l->t('Documents')); ?></th>
 					<th scope="col"><?php p($l->t('Chunks')); ?></th>
 					<th scope="col"><?php p($l->t('Last indexed')); ?></th>
@@ -332,27 +376,32 @@ $providerLabels = [
 						<?php endif; ?>
 					</td>
 					<td>
-						<span class="eva-status <?php
-							if ($user['indexing']) {
-								p('eva-status--busy');
-							} elseif ($user['enrolled']) {
-								p('eva-status--ok');
-							} else {
-								p('eva-status--idle');
-							}
-						?>">
-							<?php
-							if ($user['indexing']) {
-								p($l->t('Indexing'));
-							} elseif ($user['enrolled']) {
-								p($l->t('Enrolled'));
-							} else {
-								p($l->t('Inactive'));
-							}
-							?>
-						</span>
+						<?php
+						// An account with an index but no recurring enrollment is not
+						// "inactive": it holds documents. Only a truly empty, unenrolled
+						// account is inactive.
+						if ($user['indexing']) {
+							$stateClass = 'eva-status--busy';
+							$stateLabel = $l->t('Indexing');
+						} elseif ($user['enrolled']) {
+							$stateClass = 'eva-status--ok';
+							$stateLabel = $l->t('Enrolled');
+						} elseif ((int)$user['documents'] > 0) {
+							$stateClass = 'eva-status--ok';
+							$stateLabel = $l->t('Indexed');
+						} else {
+							$stateClass = 'eva-status--idle';
+							$stateLabel = $l->t('Inactive');
+						}
+						?>
+						<span class="eva-status <?php p($stateClass); ?>"><?php p($stateLabel); ?></span>
 						<?php if ($user['error'] !== ''): ?>
 							<span class="eva-error eva-block"><?php p($user['error']); ?></span>
+						<?php endif; ?>
+						<?php if ((int)($user['failed'] ?? 0) > 0): ?>
+							<span class="eva-block eva-muted">
+								<?php p($l->t('%s files skipped', [(string)(int)$user['failed']])); ?>
+							</span>
 						<?php endif; ?>
 						<span class="eva-actions eva-actions--inline">
 							<button type="button" class="secondary eva-btn-reindex"

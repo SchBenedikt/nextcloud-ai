@@ -21,10 +21,16 @@
 	}
 
 	function api(method, path, body) {
+		// OCS answers with XML unless JSON is requested, and a failed XML parse
+		// used to surface as "Could not save: Unexpected token '<'…" even while
+		// the write had already succeeded. Ask for JSON explicitly and treat a
+		// non-JSON body as an error on its own terms.
+		var url = apiBase + path + (path.indexOf('?') === -1 ? '?format=json' : '&format=json')
 		var opts = {
 			method: method,
 			headers: {
 				'OCS-APIREQUEST': 'true',
+				Accept: 'application/json',
 				requesttoken: ocsToken(),
 			},
 		}
@@ -32,15 +38,27 @@
 			opts.headers['Content-Type'] = 'application/json'
 			opts.body = JSON.stringify(body)
 		}
-		return fetch(apiBase + path, opts).then(function (res) {
-			return res.json().then(function (data) {
-				if (!res.ok) {
-					var detail = data && data.validationErrors && data.validationErrors.length
-						? ' ' + data.validationErrors.join(' ')
-						: ''
-					throw new Error((data && data.error ? data.error : 'HTTP ' + res.status) + detail)
+		return fetch(url, opts).then(function (res) {
+			return res.text().then(function (raw) {
+				var data = null
+				try {
+					data = raw === '' ? null : JSON.parse(raw)
+				} catch (parseError) {
+					if (res.ok) {
+						throw new Error('the server did not return JSON (HTTP ' + res.status + ')')
+					}
+					data = null
 				}
-				return data
+				if (!res.ok || (data && data.ocs && data.ocs.meta && data.ocs.meta.status === 'failure')) {
+					var payload = data && data.ocs ? data.ocs.data : data
+					var detail = payload && payload.validationErrors && payload.validationErrors.length
+						? ' ' + payload.validationErrors.join(' ')
+						: ''
+					var message = payload && payload.error ? payload.error : 'HTTP ' + res.status
+					throw new Error(message + detail)
+				}
+				// Unwrap the OCS envelope so callers see the data payload directly.
+				return data && data.ocs ? data.ocs.data : data
 			})
 		})
 	}
@@ -121,6 +139,10 @@
 		if (budget !== null) {
 			payload.index_job_max_seconds = budget
 		}
+		var interval = value('eva-job-interval')
+		if (interval !== null) {
+			payload.index_job_interval_minutes = interval
+		}
 		return payload
 	})
 
@@ -132,8 +154,10 @@
 			web_search_max_results: value('eva-websearch-max'),
 			web_search_timeout: value('eva-websearch-timeout'),
 			web_search_content_chars: value('eva-content-chars'),
+			web_search_candidates: value('eva-candidates'),
 			web_search_safe_search: checked('eva-safesearch-toggle') ? '1' : '0',
 			web_search_fetch_content: checked('eva-fetch-content-toggle') ? '1' : '0',
+			web_search_images: checked('eva-images-toggle') ? '1' : '0',
 		}
 		var apiKey = value('eva-websearch-key')
 		if (apiKey) {

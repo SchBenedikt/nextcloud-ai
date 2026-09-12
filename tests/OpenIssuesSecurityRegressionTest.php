@@ -135,8 +135,16 @@ final class OpenIssuesSecurityRegressionTest extends TestCase {
 
     public function testEmbeddingCancellationIsBoundedAndDiscardsStagedRows(): void {
         $ollama = (string)file_get_contents(__DIR__ . '/../lib/Service/Ollama.php');
-        self::assertStringContainsString("'read_timeout' => 5", $ollama);
-        self::assertGreaterThanOrEqual(3, substr_count($ollama, "'read_timeout' => 5"));
+        // The total embedding deadline may now grow with the batch (a cold model
+        // needs the time), but it must stay bounded and every embedding request
+        // must still carry a read timeout, or "stop indexing" would hang on a
+        // silent server.
+        self::assertMatchesRegularExpression('/EMBED_READ_TIMEOUT\\s*=\\s*(\\d+)/', $ollama);
+        preg_match('/EMBED_READ_TIMEOUT\\s*=\\s*(\\d+)/', $ollama, $matches);
+        self::assertGreaterThanOrEqual(1, (int)$matches[1]);
+        self::assertLessThanOrEqual(60, (int)$matches[1]);
+        self::assertGreaterThanOrEqual(2, substr_count($ollama, "'read_timeout' => self::EMBED_READ_TIMEOUT"));
+        self::assertStringContainsString('EMBED_TIMEOUT_CEILING', $ollama);
 
         $indexer = (string)file_get_contents(__DIR__ . '/../lib/Service/Indexer.php');
         self::assertStringContainsString('private function discardStagedBatch', $indexer);

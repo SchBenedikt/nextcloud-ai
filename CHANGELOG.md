@@ -8,6 +8,45 @@ follows [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- Web search now picks the best results instead of the first ones. Every
+  provider is asked for more hits than are returned, the candidates are read,
+  and a second ranking pass scores them on what their pages actually say
+  (term coverage in the body, exact phrase matches) before the best are kept.
+  A hit that could not be read is demoted below one that was, and repeated
+  domains are demoted so five hits from one site cannot crowd out other
+  sources. `web_search_candidates` (3–20, default 12) sets the field size.
+- Web search results carry `highlights`: the passages of the page that mention
+  the query, so a long page's answer survives the per-page text limit instead
+  of being cut off after the introduction.
+- Web search can return images from the result pages (the page's own preview
+  image plus pictures inside the article, up to three per result) and the
+  assistant can embed them in its answer. The images come from the pages that
+  are already being read, so they cost no extra request. Icons, logos,
+  spacers, tracking pixels and any non-http(s) URL are filtered out.
+  Controlled by `web_search_images` (default on).
+- The admin page configures how often the background indexer runs
+  (`index_job_interval_minutes`, 1–60, default 5 instead of 15).
+- The admin page shows how many files the last indexing pass had to skip, both
+  per account and in total.
+
+### Changed
+
+- A single unreadable or unembeddable file can no longer end an indexing pass.
+  The batch is halved until the offending input stands alone, that one document
+  is skipped (its previous index entry stays searchable) and the rest of the
+  batch is indexed as usual. A failing extraction is counted as skipped rather
+  than as a run error, so the background index no longer stops on one bad file.
+- A model server that is genuinely unreachable still reports an error instead
+  of silently skipping every document, and a malformed batch response still
+  falls back to the per-text endpoint.
+- Indexing a large library issues far fewer database round trips: the per-file
+  index state is read in one query instead of one query per file, and a file
+  whose metadata is unchanged is no longer rewritten on every pass.
+
+## [1.5.0] - 2026-09-12
+
+### Added
+
 - The admin page now configures indexing throughput: how many index passes run
   in parallel (`index_max_concurrent`, 1–16) and how many seconds one cron run
   may spend indexing (`index_job_max_seconds`, 10–600). Both keys were

@@ -53,6 +53,24 @@ class Ollama {
     /** @var array{cache_hits:int,cache_misses:int,ollama_requests:int} */
     private array $lastEmbeddingStats = ['cache_hits' => 0, 'cache_misses' => 0, 'ollama_requests' => 0];
 
+    /** Floor for one embedding request; a cold model load alone can take a while. */
+    private const EMBED_TIMEOUT_FLOOR = 30;
+    /** Ceiling so a stalled request cannot occupy a worker indefinitely. */
+    private const EMBED_TIMEOUT_CEILING = 300;
+    /**
+     * Budgeted seconds per input text when sizing the request deadline. Local
+     * embedding models realistically need around a second per text, and slower
+     * hardware more, so the deadline is not derived from a best case.
+     */
+    private const EMBED_SECONDS_PER_TEXT = 10;
+    /**
+     * Seconds without any progress before an embedding request is dropped.
+     * The total deadline above is what lets a slow model finish a cold batch;
+     * this bound is what keeps an admin "stop indexing" request responsive when
+     * the model server has stopped answering altogether.
+     */
+    private const EMBED_READ_TIMEOUT = 45;
+
     public function __construct(
         private AppConfig $config,
         private IClientService $clientService,
@@ -569,6 +587,11 @@ class Ollama {
      * Embed a batch of texts, reusing user-isolated cached vectors where
      * possible. Duplicate misses are coalesced into one model input.
      *
+     * A position that could not be embedded (the model rejected that input even
+     * on its own) is reported as a `null` slot rather than as a batch error, so
+     * one bad document cannot block the rest of the index pass. A `null` return
+     * plus a non-null error still means the whole request failed.
+     *
      * @param string[] $texts
      * @return array{0: array|null, 1: ?string} [vectors[], error]
      */
@@ -612,31 +635,28 @@ class Ollama {
         }
         $modelName = $model['model'] ?? '';
         try {
-            $this->lastEmbeddingStats['ollama_requests'] = 1;
-            $payload = ['model' => $modelName, 'input' => $missTexts];
-            $keepAlive = $this->keepAlive();
-            if ($keepAlive !== null) {
-                $payload['keep_alive'] = $keepAlive;
-            }
-            $r = $this->client()->post($this->base() . '/api/embed', [
-                'json' => $payload,
-                // Keep cancellation responsive while allowing a cold model
-                // enough time to produce a normal batch response.
-                'timeout' => 30,
-                'read_timeout' => 5,
-            ]);
-            $data = json_decode((string)$r->getBody(), true);
-            $embs = $data['embeddings'] ?? null;
-            if (!is_array($embs) || count($embs) !== count($missTexts)) {
-                // Fallback: per-text, retaining the same coalesced miss set.
+            [$embs, $error] = $this->embedWithBisect($modelName, $missTexts);
+            if ($embs === null) {
+                if ($error !== null) {
+                    return [null, $error];
+                }
+                // The endpoint answered, but with an unusable shape. Fall back
+                // to the per-text endpoint once, retaining the same coalesced
+                // miss set.
                 [$embs, $error] = $this->embedBatchLegacy($missTexts);
                 if ($error !== null || !is_array($embs)) {
                     return [null, $error ?? 'Unexpected embedding response'];
                 }
             }
 
+            // An empty slot means the model rejected that one input even on its
+            // own. Those documents are skipped by the caller; they never take
+            // the rest of the batch down with them.
             $dimension = null;
             foreach ($embs as $vector) {
+                if ($vector === null) {
+                    continue;
+                }
                 if (!$this->isNumericVector($vector)) {
                     return [null, 'Invalid embedding vector returned'];
                 }
@@ -649,6 +669,9 @@ class Ollama {
             $cacheEntries = [];
             $missKeys = array_keys($misses);
             foreach ($missTexts as $i => $text) {
+                if (($embs[$i] ?? null) === null) {
+                    continue;
+                }
                 $vector = array_map('floatval', $embs[$i]);
                 foreach ($missIndices[$missKeys[$i]] as $index) {
                     $vectors[$index] = $vector;
@@ -664,6 +687,130 @@ class Ollama {
             $this->logger->error('eva_ai embed batch failed', ['exception' => $e]);
             return [null, $e->getMessage()];
         }
+    }
+
+    /**
+     * Deadline for one embedding request, scaled with the number of inputs.
+     *
+     * A fixed 30 second cap is what made large libraries fail to index: a
+     * healthy but modest model server needs roughly a second per embedding, so
+     * a 24-text batch exceeded the cap, the request was aborted, and the whole
+     * index pass stopped after its first batch. The deadline therefore grows
+     * with the batch and is only bounded so a stalled request cannot hang a
+     * worker forever.
+     */
+    private function embedTimeout(int $textCount): int {
+        return max(self::EMBED_TIMEOUT_FLOOR, min(self::EMBED_TIMEOUT_CEILING, 10 + $textCount * self::EMBED_SECONDS_PER_TEXT));
+    }
+
+    /**
+     * Send one embedding request and report whether a failure may be retried
+     * with a smaller batch.
+     *
+     * @param list<string> $texts
+     * @return array{0:array|null,1:?string,2:bool,3:bool} embeddings, error, retryable, inputRejected
+     */
+    private function requestEmbeddings(string $modelName, array $texts): array {
+        $payload = ['model' => $modelName, 'input' => array_values($texts)];
+        $keepAlive = $this->keepAlive();
+        if ($keepAlive !== null) {
+            $payload['keep_alive'] = $keepAlive;
+        }
+        try {
+            $this->lastEmbeddingStats['ollama_requests']++;
+            $r = $this->client()->post($this->base() . '/api/embed', [
+                'json' => $payload,
+                'timeout' => $this->embedTimeout(count($texts)),
+                'read_timeout' => self::EMBED_READ_TIMEOUT,
+                'connect_timeout' => 10,
+            ]);
+            $data = json_decode((string)$r->getBody(), true);
+            $embs = $data['embeddings'] ?? null;
+            if (!is_array($embs) || count($embs) !== count($texts)) {
+                // Shape problem, not a transport problem: the caller falls back
+                // to the legacy endpoint instead of bisecting.
+                return [null, null, false, false];
+            }
+            return [$embs, null, false, false];
+        } catch (\Throwable $e) {
+            $this->logger->error('eva_ai embed batch failed', [
+                'exception' => $e,
+                'texts' => count($texts),
+                'timeout' => $this->embedTimeout(count($texts)),
+            ]);
+            return [null, $e->getMessage(), true, $this->isInputRejection($e)];
+        }
+    }
+
+    /**
+     * Decide whether a failed embedding request was refused because of its
+     * input rather than because the server could not serve it.
+     *
+     * A 4xx from the model server means "this text is not something I can
+     * embed", so the document is skipped. A timeout, a refused connection or a
+     * 5xx means the server is overloaded or down, and skipping every document in
+     * silence would report a successful pass that indexed nothing - so that case
+     * stays a real error the admin can see.
+     */
+    private function isInputRejection(\Throwable $e): bool {
+        if (!$e instanceof \GuzzleHttp\Exception\BadResponseException) {
+            return false;
+        }
+        $status = $e->getResponse()->getStatusCode();
+        return $status >= 400 && $status < 500;
+    }
+
+    /**
+     * Embed texts, halving the batch on a transport failure.
+     *
+     * A timeout or a dropped connection is usually a capacity problem, not a
+     * broken input, so retrying the same batch smaller lets a slow model server
+     * still make progress. Without this, one slow batch aborted the entire
+     * index pass and the staged documents were discarded.
+     *
+     * @param list<string> $texts
+     * @return array{0:array|null,1:?string}
+     */
+    private function embedWithBisect(string $modelName, array $texts): array {
+        [$embs, $error, $retryable, $inputRejected] = $this->requestEmbeddings($modelName, $texts);
+        if ($embs !== null) {
+            return [$embs, null];
+        }
+        if (!$retryable) {
+            // A malformed response is not a capacity problem; the caller falls
+            // back to the per-text endpoint by signalling "no error, no data".
+            return [null, null];
+        }
+        if (count($texts) <= 1) {
+            if (!$inputRejected) {
+                // Alone, the request still failed, but the cause is the server
+                // (timeout, refused connection, 5xx): that must surface as an
+                // error, not as a quietly skipped document.
+                return [null, $error];
+            }
+            // The model itself refused this input. Report it as an empty slot
+            // instead of failing the batch: the indexer skips that one document
+            // and keeps the rest of the pass running - a single file must never
+            // stall the whole background index.
+            $this->logger->warning('eva_ai: skipping an unembeddable text', [
+                'reason' => $error,
+                'chars' => mb_strlen((string)($texts[0] ?? '')),
+            ]);
+            return [[null], null];
+        }
+
+        $half = intdiv(count($texts), 2);
+        $out = [];
+        foreach ([array_slice(array_values($texts), 0, $half), array_slice(array_values($texts), $half)] as $part) {
+            [$partEmbs, $partError] = $this->embedWithBisect($modelName, $part);
+            if ($partEmbs === null) {
+                return [null, $partError];
+            }
+            foreach ($partEmbs as $vector) {
+                $out[] = $vector;
+            }
+        }
+        return [$out, null];
     }
 
     /** @return array{cache_hits:int,cache_misses:int,ollama_requests:int} */
@@ -689,8 +836,9 @@ class Ollama {
                 }
                 $r = $this->client()->post($this->base() . '/api/embeddings', [
                     'json' => $payload,
-                    'timeout' => 30,
-                    'read_timeout' => 5,
+                    'timeout' => $this->embedTimeout(1),
+                    'read_timeout' => self::EMBED_READ_TIMEOUT,
+                    'connect_timeout' => 10,
                 ]);
                 $data = json_decode((string)$r->getBody(), true);
                 if (isset($data['embedding'])) {

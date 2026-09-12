@@ -55,7 +55,7 @@ class Indexer {
 
     /**
      * Perform one bounded indexing pass for a user.
-     * @return array{processed:int,changed:int,skipped:int,total_seen:int,cache_hits:int,cache_misses:int,ollama_requests:int,error:?string}
+     * @return array{processed:int,changed:int,skipped:int,failed:int,total_seen:int,cache_hits:int,cache_misses:int,ollama_requests:int,error:?string}
      */
     public function run(string $userId, ?int $maxFiles = null, string $mode = 'all', bool $keepRunning = false, ?string $runId = null): array {
         $this->config->setUserId($userId);
@@ -65,6 +65,7 @@ class Indexer {
             'processed' => 0,
             'changed' => 0,
             'skipped' => 0,
+            'failed' => 0,
             'total_seen' => 0,
             'cache_hits' => 0,
             'cache_misses' => 0,
@@ -174,7 +175,13 @@ class Indexer {
 
             $excludePaths = $this->parseExcludePaths();
 
-            $hashes = $this->documentMapper->hashesForUser($userId);
+            // One bulk read supplies both the change fingerprints and the
+            // stored metadata, so a full scan no longer issues a query per file.
+            $docState = $this->documentMapper->stateForUser($userId);
+            $hashes = [];
+            foreach ($docState as $stateFileId => $stateRow) {
+                $hashes[$stateFileId] = $stateRow['content_hash'];
+            }
             $seen = [];
             $stale = []; // Track files that should be removed from index
             $batch = [];
@@ -238,9 +245,13 @@ class Indexer {
                 $size = $file->getSize();
                 $fileMtime = (int)($fileData['mtime'] ?? 0);
 
-                // Check if document already exists to preserve old version on failure
-                $existingDoc = $this->documentMapper->findByUserAndFile($userId, $fileId);
-                $oldDocId = $existingDoc !== null ? (int)$existingDoc->getId() : null;
+                // Stored state comes from the one bulk read that opened this
+                // pass, so discovering "unchanged" costs no query at all.
+                $state = $docState[$fileId] ?? null;
+                // The entity is fetched only when something really changed and
+                // the old row has to be replaced (preserving it on failure).
+                $existingDoc = null;
+                $oldDocId = $state !== null ? $state['id'] : null;
 
                 // Fast path: a file whose mtime AND size match the stored
                 // fingerprint is unchanged, so skip the file fetch, the content
@@ -250,18 +261,28 @@ class Indexer {
                 // for everything that changed. (A write within the same second
                 // that leaves both values identical would be missed; the next
                 // mtime-changing write repairs it.)
-                if ($existingDoc !== null
-                    && (string)$existingDoc->getContentHash() !== ''
-                    && (int)$existingDoc->getSize() === $size
-                    && (int)$existingDoc->getFileMtime() === $fileMtime
+                if ($state !== null
+                    && $state['content_hash'] !== ''
+                    && $state['size'] === $size
+                    && $state['file_mtime'] === $fileMtime
                     && $fileMtime > 0) {
-                    $existingDoc->setPath($path);
-                    $existingDoc->setName($name);
-                    $existingDoc->setMime($mime);
-                    $existingDoc->setSize($size);
-                    $existingDoc->setFileMtime($fileMtime);
-                    $existingDoc->setIndexedAt(time());
-                    $this->documentMapper->update($existingDoc);
+                    // A settled library re-scans with zero writes. Only a rename
+                    // or a mime change actually needs to reach the database.
+                    if ($state['path'] !== $path || $state['name'] !== $name || $state['mime'] !== $mime) {
+                        $existingDoc = $this->documentMapper->findByUserAndFile($userId, $fileId);
+                        if ($existingDoc !== null) {
+                            $existingDoc->setPath($path);
+                            $existingDoc->setName($name);
+                            $existingDoc->setMime($mime);
+                            $existingDoc->setSize($size);
+                            $existingDoc->setFileMtime($fileMtime);
+                            $existingDoc->setIndexedAt(time());
+                            $this->documentMapper->update($existingDoc);
+                        }
+                        $docState[$fileId]['path'] = $path;
+                        $docState[$fileId]['name'] = $name;
+                        $docState[$fileId]['mime'] = $mime;
+                    }
                     $result['skipped']++;
                     continue;
                 }
@@ -291,10 +312,12 @@ class Indexer {
                 try {
                     $content = $this->extractText($actualFile);
                 } catch (\Throwable $e) {
-                    // Parser/decompressor/OCR failures are transient. Preserve
-                    // the last-good version and retry on a later pass.
+                    // A single unreadable file must never end the pass. Count it
+                    // as skipped (not as a run error) so the background index
+                    // keeps going and the admin page does not report a failure;
+                    // the last-good index entry is preserved and retried later.
                     $result['skipped']++;
-                    $result['error'] ??= 'Transient extraction failure for ' . $file->getPath();
+                    $result['failed']++;
                     $this->logger->warning('eva_ai: extraction failed; preserving previous index', ['file' => $file->getPath(), 'e' => $e->getMessage()]);
                     continue;
                 }
@@ -313,6 +336,7 @@ class Indexer {
                     // Same content (e.g. a touch or a same-size edit): keep the
                     // stored chunks and refresh metadata so renames propagate.
                     $result['skipped']++;
+                    $existingDoc ??= $this->documentMapper->findByUserAndFile($userId, $fileId);
                     if ($existingDoc !== null) {
                         $existingDoc->setPath($path);
                         $existingDoc->setName($name);
@@ -345,7 +369,7 @@ class Indexer {
                 $this->documentMapper->insert($doc);
 
                 foreach ($chunks as $i => $c) {
-                    $batch[] = ['docId' => (int)$doc->getId(), 'index' => $i, 'content' => $c['content'], 'tokens' => $c['tokens'], 'provenance' => $c['provenance'] ?? [], 'oldDocId' => $oldDocId];
+                    $batch[] = ['docId' => (int)$doc->getId(), 'index' => $i, 'content' => $c['content'], 'tokens' => $c['tokens'], 'provenance' => $c['provenance'] ?? [], 'oldDocId' => $oldDocId, 'path' => $path];
                 }
 
                 $result['processed']++;
@@ -405,6 +429,7 @@ class Indexer {
                     }
                     $this->config->set('last_index_processed', (string)$result['processed']);
                     $this->config->set('last_index_total', (string)$result['total_seen']);
+                    $this->config->set('last_index_failed', (string)($result['failed'] ?? 0));
                     $this->config->set('last_index_cache_hits', (string)$result['cache_hits']);
                     $this->config->set('last_index_cache_misses', (string)$result['cache_misses']);
                     $this->config->set('last_index_ollama_requests', (string)$result['ollama_requests']);
@@ -1424,8 +1449,41 @@ class Indexer {
         }
 
         $perDoc = [];
+        $failedDocs = [];
+        $failedFiles = [];
         foreach ($batch as $i => $b) {
+            // A null vector means the model could not embed this document even
+            // when it was sent alone. Skipping just that document keeps the rest
+            // of the batch - and therefore the whole background pass - running;
+            // the previous version of the file stays searchable. This is the
+            // difference between one unreadable file and an index that stalls.
+            if (($vecs[$i] ?? null) === null) {
+                $failedDocs[(int)$b['docId']] = true;
+                $failedFiles[(string)($b['path'] ?? $b['docId'])] = true;
+                continue;
+            }
             $perDoc[$b['docId']][] = ['index' => $b['index'], 'content' => $b['content'], 'tokens' => $b['tokens'], 'provenance' => $b['provenance'] ?? [], 'vec' => $vecs[$i], 'oldDocId' => $b['oldDocId']];
+        }
+        if ($failedDocs !== []) {
+            // Drop only the staged replacements; the old documents are untouched
+            // and remain available to search.
+            $ids = array_keys($failedDocs);
+            $this->chunkMapper->deleteByDocumentIds($ids);
+            $this->documentMapper->deleteByIds($ids);
+            // The counters describe what the index actually contains: a rolled
+            // back document is not "processed", it is "failed". Reporting it as
+            // both would overstate progress on every pass.
+            $dropped = count($failedFiles);
+            $result['failed'] = ($result['failed'] ?? 0) + $dropped;
+            $result['processed'] = max(0, $result['processed'] - $dropped);
+            $result['changed'] = max(0, $result['changed'] - $dropped);
+            $this->logger->warning('eva_ai: skipped documents the embedding model could not process', [
+                'documents' => count($failedDocs),
+            ]);
+        }
+        if ($perDoc === []) {
+            $batch = [];
+            return;
         }
         foreach ($perDoc as $docId => $chunks) {
             if ($this->cancellationRequested($runId)) {
