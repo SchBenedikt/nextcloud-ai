@@ -94,6 +94,7 @@ class Ollama {
     public function groqInfo(): array { return $this->groqClient()->info(); }
     public function saveGroqKey(string $key): void { $this->groqClient()->saveKey($key); }
     public function checkGroq(): array { return $this->groqClient()->check(); }
+    public function checkCustomProvider(): array { return $this->openAiCompatible()->check(); }
     public function selectedChatModel(): string {
         $provider = $this->config->get('chat_provider');
         if ($provider === 'groq') return $this->config->get('groq_model');

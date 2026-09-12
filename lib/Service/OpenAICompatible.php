@@ -9,6 +9,17 @@ class OpenAICompatible {
     public function __construct(private AppConfig $config, private IClientService $clients, private ProviderCredentials $credentials, private ?UsageMetrics $usage = null) {}
     private function provider(): string { return (string)$this->config->get('chat_provider'); }
     private function endpoint(): string { return rtrim((string)$this->config->get('custom_provider_url'), '/') . '/chat/completions'; }
+    public function check(): array {
+        try {
+            $base = rtrim((string)$this->config->get('custom_provider_url'), '/');
+            $response = $this->clients->newClient()->get($base . '/models', ['headers' => ['Authorization' => 'Bearer ' . $this->credentials->getCustom($this->config->userId() ?? '', $this->provider())], 'timeout' => 15, 'http_errors' => false]);
+            $status = $response->getStatusCode();
+            if ($status < 200 || $status >= 300) return ['ok' => false, 'error' => 'Provider returned HTTP ' . $status . '.'];
+            $data = json_decode((string)$response->getBody(), true);
+            $models = array_values(array_filter(array_map(static fn($row) => (string)($row['id'] ?? ''), is_array($data['data'] ?? null) ? $data['data'] : [])));
+            return ['ok' => true, 'models' => $models, 'model' => (string)$this->config->get('custom_provider_model')];
+        } catch (\Throwable $e) { return ['ok' => false, 'models' => [], 'error' => $e instanceof ProviderException ? $e->getMessage() : 'Provider connection failed. Check endpoint and key.']; }
+    }
     public function chat(array $messages, array $tools = [], int $timeout = 120): array {
         $id = $this->provider();
         try {

@@ -1117,6 +1117,7 @@ $this->executor->setUserId($userId);
         );
         $caps = $this->ollama->capabilities();
         $statusMeta = $ollamaStatus['meta'] ?? ['version' => 1, 'checkedAt' => time(), 'latencyMs' => null, 'fromCache' => false];
+        $chatProvider = (string)$this->config->get('chat_provider');
 
         return [
             'enabled' => true,
@@ -1125,14 +1126,17 @@ $this->executor->setUserId($userId);
             'ollamaUrl' => $this->config->ollamaUrl(),
             'models' => $installedNames,
             'embeddingModel' => $this->config->get('embedding_model'),
-            'chatModel' => $this->config->get('chat_model'),
+            'chatModel' => $chatProvider === 'groq' ? $this->config->get('groq_model') : ($chatProvider !== 'ollama' ? $this->config->get('custom_provider_model') : $this->config->get('chat_model')),
+            // Custom providers are checked explicitly through /api/check; do
+            // not perform a blocking network call on every dashboard poll.
+            'chatProviderOnline' => $chatProvider === 'ollama' ? (bool)($ping['ok'] ?? false) : null,
             'chatModelInstalled' => $isInstalled($this->config->get('chat_model')),
             'embeddingModelInstalled' => $isInstalled($this->config->get('embedding_model')),
             // Versioned provider health/capability snapshot (Issue #151):
             // everything here is metadata - no prompts, files or user content.
             'provider' => [
                 'version' => 1,
-                'online' => (bool)($ping['ok'] ?? false),
+                'online' => $chatProvider === 'ollama' ? (bool)($ping['ok'] ?? false) : null,
                 'checkedAt' => (int)$statusMeta['checkedAt'],
                 'latencyMs' => $statusMeta['latencyMs'] ?? null,
                 'fromCache' => (bool)($statusMeta['fromCache'] ?? false),

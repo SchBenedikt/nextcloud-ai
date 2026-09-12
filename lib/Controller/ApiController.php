@@ -1567,6 +1567,7 @@ class ApiController extends OCSController {
             return new DataResponse(['error' => 'Not logged in'], 401);
         }
         if ($this->config->get('chat_provider') === 'groq') return new DataResponse(['provider' => 'groq', 'groq' => $this->ollama->checkGroq()]);
+        if ($this->config->get('chat_provider') !== 'ollama') return new DataResponse(['provider' => $this->config->get('chat_provider'), 'custom' => $this->ollama->checkCustomProvider()]);
         return new DataResponse($this->ollama->testAll());
     }
 
