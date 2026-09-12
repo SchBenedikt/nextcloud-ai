@@ -112,6 +112,11 @@ class AdminController extends OCSController {
             'provider' => $provider,
             'mode' => $mode,
             'enabled' => $this->webSearch->isEnabled(),
+            // How many pages needed the browser. A search that returns results
+            // says nothing about whether rendering is working - this does, and
+            // it is the question an administrator testing the setting has.
+            'renderedPages' => $this->webSearch->lastRenderedPages(),
+            'browserStatus' => $this->webSearch->browserStatus(),
             'results' => $rows,
         ]);
     }

@@ -39,10 +39,16 @@ $webSearchCandidates = $admin['web_search_candidates'] ?? '12';
 $webSearchImages = ($admin['web_search_images'] ?? '1') === '1';
 $webSearchBrowser = ($admin['web_search_browser'] ?? '0') === '1';
 $webSearchBrowserNode = $admin['web_search_browser_node'] ?? '';
+$webSearchBrowserBrowsersPath = $admin['web_search_browser_browsers_path'] ?? '';
 $webSearchBrowserTimeout = $admin['web_search_browser_timeout'] ?? '20';
 // '' means a browser is usable; anything else is the reason it is not, so the
 // switch never looks like it is doing something when it cannot.
 $webSearchBrowserStatus = (string)($_['webSearchBrowserStatus'] ?? '');
+// Where the browser was searched for, and the command that installs it. Both
+// come from the server rather than from a hardcoded default in this template,
+// because the path depends on the account the web server runs as.
+$webSearchBrowserDetectedPath = (string)($_['webSearchBrowserBrowsersPath'] ?? '');
+$webSearchBrowserInstallCommand = (string)($_['webSearchBrowserInstallCommand'] ?? '');
 $indexMaxConcurrent = $admin['index_max_concurrent'] ?? '2';
 $indexJobMaxSeconds = $admin['index_job_max_seconds'] ?? '50';
 $indexJobInterval = $admin['index_job_interval_minutes'] ?? '5';
@@ -324,12 +330,21 @@ $providerLabels = [
 	<p class="settings-hint eva-indent eva-browser-state<?php p($webSearchBrowserStatus === '' ? ' is-ok' : ' is-missing'); ?>" id="eva-browser-status">
 		<?php
 		if ($webSearchBrowserStatus === '') {
-			p($l->t('Node.js and Playwright were found, so a browser can be used.'));
+			p($l->t('Node.js, Playwright and a Chromium build were found, so pages can be rendered.'));
 		} else {
 			p($l->t('Not usable yet: %s', [$webSearchBrowserStatus]));
 		}
 		?>
 	</p>
+
+	<?php if ($webSearchBrowserStatus !== '') { ?>
+	<p class="settings-hint eva-indent eva-browser-help" id="eva-browser-help">
+		<?php p($l->t('Searched for a browser in: %s', [$webSearchBrowserDetectedPath === '' ? $l->t('(no home directory could be determined)') : $webSearchBrowserDetectedPath])); ?>
+		<br>
+		<?php p($l->t('Install command:')); ?>
+		<code><?php p($webSearchBrowserInstallCommand); ?></code>
+	</p>
+	<?php } ?>
 
 	<div class="eva-field">
 		<label for="eva-browser-node"><?php p($l->t('Node.js path')); ?></label>
@@ -337,6 +352,15 @@ $providerLabels = [
 			placeholder="node" value="<?php p($webSearchBrowserNode); ?>">
 		<p class="eva-field-hint">
 			<?php p($l->t('Leave empty to use the node command from PATH. Set an absolute path when the web server process has almost no PATH - that is the usual reason a browser is reported as missing.')); ?>
+		</p>
+	</div>
+
+	<div class="eva-field">
+		<label for="eva-browser-browsers-path"><?php p($l->t('Playwright browsers path')); ?></label>
+		<input type="text" id="eva-browser-browsers-path" name="web_search_browser_browsers_path"
+			placeholder="<?php p($webSearchBrowserDetectedPath); ?>" value="<?php p($webSearchBrowserBrowsersPath); ?>">
+		<p class="eva-field-hint">
+			<?php p($l->t('Leave empty to use Playwright\'s own location for the user the web server runs as. Set it when the browser build lives elsewhere - for example in a shared directory, or when the app runs as a user whose home directory the browser installer did not use. The placeholder shows the path that is used right now.')); ?>
 		</p>
 	</div>
 

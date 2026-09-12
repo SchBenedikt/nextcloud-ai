@@ -25,6 +25,8 @@ use Psr\Log\LoggerInterface;
 final class BrowserRendererTest extends TestCase {
     /** @var list<string> */
     private array $tempFiles = [];
+    /** @var list<string> */
+    private array $tempDirs = [];
 
     protected function setUp(): void
     {
@@ -42,6 +44,7 @@ final class BrowserRendererTest extends TestCase {
             }
         }
         $this->tempFiles = [];
+        $this->removeBrowserDirectories();
         parent::tearDown();
     }
 
@@ -51,8 +54,12 @@ final class BrowserRendererTest extends TestCase {
      * `scriptPath()` is the only seam needed: everything else - the process
      * handling, the parsing, the URL checks - is the real implementation.
      */
-    private function renderer(array $values, string $script, ?LoggerInterface $logger = null): BrowserRenderer
-    {
+    private function renderer(
+        array $values,
+        string $script,
+        ?LoggerInterface $logger = null,
+        bool $playwrightInstalled = true,
+    ): BrowserRenderer {
         $config = $this->createMock(AppConfig::class);
         $config->method('get')->willReturnCallback(
             static fn(string $key): string => $values[$key] ?? ''
@@ -60,11 +67,12 @@ final class BrowserRendererTest extends TestCase {
         $config->method('getInt')->willReturnCallback(
             static fn(string $key, ?int $default = null): int => isset($values[$key]) ? (int)$values[$key] : (int)($default ?? 0)
         );
-        return new class($config, $logger ?? $this->createMock(LoggerInterface::class), $script) extends BrowserRenderer {
+        return new class($config, $logger ?? $this->createMock(LoggerInterface::class), $script, $playwrightInstalled) extends BrowserRenderer {
             public function __construct(
                 AppConfig $config,
                 LoggerInterface $logger,
                 private string $stubScript,
+                private bool $stubPlaywrightInstalled,
             ) {
                 parent::__construct($config, $logger);
             }
@@ -73,7 +81,47 @@ final class BrowserRendererTest extends TestCase {
             {
                 return $this->stubScript;
             }
+
+            protected function hasPlaywright(): bool
+            {
+                return $this->stubPlaywrightInstalled;
+            }
         };
+    }
+
+    /**
+     * An installed-looking browser build.
+     *
+     * The layout mirrors what Playwright unpacks - a revision directory with the
+     * binary inside an architecture-named one - so these cases assert against the
+     * real lookup rather than against a single hardcoded path. It is a temp file,
+     * not Chromium: what is being tested is that a browser is *found* and handed
+     * to the renderer, which the stub script stands in for.
+     */
+    private function browserDirectory(): string
+    {
+        $base = sys_get_temp_dir() . '/eva-playwright-' . bin2hex(random_bytes(4));
+        $binary = $base . '/chromium-9999/chrome-linux/chrome';
+        if (!is_dir(\dirname($binary)) && !mkdir(\dirname($binary), 0700, true)) {
+            self::fail('could not create the browser fixture');
+        }
+        file_put_contents($binary, "#!/bin/sh\nexit 0\n");
+        chmod($binary, 0700);
+        $this->tempDirs[] = $base;
+        return $base;
+    }
+
+    /** A renderer that is switched on, has a browser and a script of the caller's choosing. */
+    private function rendererWithBrowser(array $values, string $script): BrowserRenderer
+    {
+        return $this->renderer(
+            $values + [
+                'web_search_browser' => '1',
+                'web_search_browser_node' => $this->nodePath(),
+                'web_search_browser_browsers_path' => $this->browserDirectory(),
+            ],
+            $script,
+        );
     }
 
     /**
@@ -107,6 +155,20 @@ final class BrowserRendererTest extends TestCase {
     private function nodePath(): string
     {
         return PHP_BINARY;
+    }
+
+    private function removeBrowserDirectories(): void
+    {
+        foreach ($this->tempDirs as $base) {
+            $binary = $base . '/chromium-9999/chrome-linux/chrome';
+            if (is_file($binary)) {
+                @unlink($binary);
+            }
+            @rmdir($base . '/chromium-9999/chrome-linux');
+            @rmdir($base . '/chromium-9999');
+            @rmdir($base);
+        }
+        $this->tempDirs = [];
     }
 
     /** @param array<string,mixed> $pages */
@@ -150,6 +212,133 @@ final class BrowserRendererTest extends TestCase {
         self::assertSame($this->nodePath(), $renderer->nodeBinary());
     }
 
+    /**
+     * The package and the browser are separate downloads, so "Playwright is
+     * installed" is not the same as "a browser can be launched". Without this
+     * distinction the settings page reports a ready feature that fails on the
+     * first page it tries to read.
+     */
+    public function testAMissingBrowserBuildIsNamedAsTheReasonWithTheCommandThatFixesIt(): void
+    {
+        $empty = sys_get_temp_dir() . '/eva-playwright-empty-' . bin2hex(random_bytes(4));
+        @mkdir($empty, 0700, true);
+        $this->tempDirs[] = $empty;
+
+        $renderer = $this->renderer(
+            [
+                'web_search_browser' => '1',
+                'web_search_browser_node' => $this->nodePath(),
+                'web_search_browser_browsers_path' => $empty,
+            ],
+            $this->stub('exit(0);'),
+        );
+
+        self::assertFalse($renderer->isAvailable());
+        self::assertNull($renderer->browserExecutable());
+        $reason = $renderer->unavailableReason();
+        self::assertStringContainsString('Chromium', $reason);
+        // A diagnosis that does not say what to run leaves the admin guessing
+        // between two installations, so the command is part of the message.
+        self::assertStringContainsString('playwright install chromium', $reason);
+        self::assertStringContainsString($empty, $reason);
+    }
+
+    /** A missing package is reported as such, not as a missing browser. */
+    public function testAMissingPlaywrightPackageIsReportedSeparately(): void
+    {
+        $renderer = $this->renderer(
+            ['web_search_browser' => '1', 'web_search_browser_node' => $this->nodePath()],
+            $this->stub('exit(0);'),
+            null,
+            false,
+        );
+
+        self::assertStringContainsString('Playwright package is missing', $renderer->unavailableReason());
+    }
+
+    public function testTheInstalledBrowserIsFoundInTheRevisionLayout(): void
+    {
+        $base = $this->browserDirectory();
+        $renderer = $this->renderer(
+            [
+                'web_search_browser' => '1',
+                'web_search_browser_node' => $this->nodePath(),
+                'web_search_browser_browsers_path' => $base,
+            ],
+            $this->stub('exit(0);'),
+        );
+
+        self::assertTrue($renderer->isAvailable());
+        self::assertSame($base . '/chromium-9999/chrome-linux/chrome', $renderer->browserExecutable());
+        self::assertSame('', $renderer->unavailableReason());
+    }
+
+    /**
+     * The child process has to look in the same place this class checked. The web
+     * server's environment usually has no HOME, and a renderer that searches a
+     * different directory is the failure that looks like "the browser is broken".
+     */
+    public function testTheCheckedBrowsersDirectoryIsExportedToTheRenderer(): void
+    {
+        $base = $this->browserDirectory();
+        // The stub answers with the environment it was handed as the page title,
+        // which is the one channel the wrapper reads back from a child process.
+        $renderer = $this->renderBrowserPathProbe($base);
+
+        $pages = $renderer->renderMany(['https://a.example/'], static fn(): bool => true);
+
+        self::assertCount(1, $pages);
+        self::assertSame($base, $pages[0]['title']);
+    }
+
+    /**
+     * A renderer whose stub script answers with the PLAYWRIGHT_BROWSERS_PATH it
+     * was given, so the value that actually reached the child can be asserted.
+     */
+    private function renderBrowserPathProbe(string $browsersPath): BrowserRenderer
+    {
+        return $this->renderer(
+            [
+                'web_search_browser' => '1',
+                'web_search_browser_node' => $this->nodePath(),
+                'web_search_browser_browsers_path' => $browsersPath,
+            ],
+            $this->stub(
+                $this->drainStdin()
+                . '$path = (string)getenv("PLAYWRIGHT_BROWSERS_PATH");'
+                . ' fwrite(STDOUT, json_encode(["ok" => true, "pages" => ["0" => ['
+                . '"ok" => true, "finalUrl" => "https://a.example/", "title" => $path, "html" => "<p>x</p>", "text" => "x"]]]));'
+            ),
+        );
+    }
+
+    /**
+     * Resolution order, highest first: the setting, the environment, the web
+     * server account's home. Asserted because the path decides which browser
+     * loads, and a wrong guess here is invisible until a page fails to render.
+     */
+    public function testTheBrowsersPathResolutionOrder(): void
+    {
+        $previous = getenv('PLAYWRIGHT_BROWSERS_PATH');
+        putenv('PLAYWRIGHT_BROWSERS_PATH=/tmp/eva-from-environment');
+        try {
+            $fromEnvironment = $this->renderer(['web_search_browser' => '1'], $this->stub('exit(0);'));
+            self::assertSame('/tmp/eva-from-environment', $fromEnvironment->browsersPath());
+
+            $fromSetting = $this->renderer(
+                ['web_search_browser' => '1', 'web_search_browser_browsers_path' => '/tmp/eva-from-setting'],
+                $this->stub('exit(0);'),
+            );
+            self::assertSame('/tmp/eva-from-setting', $fromSetting->browsersPath());
+        } finally {
+            if ($previous === false) {
+                putenv('PLAYWRIGHT_BROWSERS_PATH');
+            } else {
+                putenv('PLAYWRIGHT_BROWSERS_PATH=' . $previous);
+            }
+        }
+    }
+
     public function testTheTimeoutIsClampedToTheHardBounds(): void
     {
         $low = $this->renderer(['web_search_browser_timeout' => '1'], $this->stub('exit(0);'));
@@ -164,13 +353,10 @@ final class BrowserRendererTest extends TestCase {
         // The renderer reports pages by position in the batch it was given; the
         // caller needs them back under its own indexes, which is how a page is
         // matched to the search hit it came from.
-        $renderer = $this->renderer(
-            ['web_search_browser' => '1', 'web_search_browser_node' => $this->nodePath()],
-            $this->stubPages([
-                '0' => ['ok' => true, 'finalUrl' => 'https://a.example/x', 'title' => 'A', 'html' => '<p>alpha</p>', 'text' => 'alpha'],
-                '1' => ['ok' => true, 'finalUrl' => 'https://b.example/y', 'title' => 'B', 'html' => '<p>beta</p>', 'text' => 'beta'],
-            ]),
-        );
+        $renderer = $this->rendererWithBrowser([], $this->stubPages([
+            '0' => ['ok' => true, 'finalUrl' => 'https://a.example/x', 'title' => 'A', 'html' => '<p>alpha</p>', 'text' => 'alpha'],
+            '1' => ['ok' => true, 'finalUrl' => 'https://b.example/y', 'title' => 'B', 'html' => '<p>beta</p>', 'text' => 'beta'],
+        ]));
 
         $pages = $renderer->renderMany(
             [7 => 'https://a.example/x', 9 => 'https://b.example/y'],
@@ -190,12 +376,9 @@ final class BrowserRendererTest extends TestCase {
      */
     public function testAPageThatLandedOnADisallowedAddressIsDiscarded(): void
     {
-        $renderer = $this->renderer(
-            ['web_search_browser' => '1', 'web_search_browser_node' => $this->nodePath()],
-            $this->stubPages([
-                '0' => ['ok' => true, 'finalUrl' => 'http://127.0.0.1:8080/admin', 'title' => 'internal', 'html' => '<p>secret</p>', 'text' => 'secret'],
-            ]),
-        );
+        $renderer = $this->rendererWithBrowser([], $this->stubPages([
+            '0' => ['ok' => true, 'finalUrl' => 'http://127.0.0.1:8080/admin', 'title' => 'internal', 'html' => '<p>secret</p>', 'text' => 'secret'],
+        ]));
 
         $pages = $renderer->renderMany(
             ['https://public.example/redirect'],
@@ -208,12 +391,9 @@ final class BrowserRendererTest extends TestCase {
     /** A URL the caller already rejects is never handed to a browser at all. */
     public function testARejectedUrlIsNeverRendered(): void
     {
-        $renderer = $this->renderer(
-            ['web_search_browser' => '1', 'web_search_browser_node' => $this->nodePath()],
-            $this->stubPages([
-                '0' => ['ok' => true, 'finalUrl' => 'http://127.0.0.1/', 'title' => 'x', 'html' => '<p>x</p>', 'text' => 'x'],
-            ]),
-        );
+        $renderer = $this->rendererWithBrowser([], $this->stubPages([
+            '0' => ['ok' => true, 'finalUrl' => 'http://127.0.0.1/', 'title' => 'x', 'html' => '<p>x</p>', 'text' => 'x'],
+        ]));
 
         $pages = $renderer->renderMany(['http://127.0.0.1/'], static fn(): bool => false);
         self::assertSame([], $pages);
@@ -221,10 +401,7 @@ final class BrowserRendererTest extends TestCase {
 
     public function testJunkOutputProducesNoResultsInsteadOfAnError(): void
     {
-        $renderer = $this->renderer(
-            ['web_search_browser' => '1', 'web_search_browser_node' => $this->nodePath()],
-            $this->stub($this->drainStdin() . 'echo "this is not json";'),
-        );
+        $renderer = $this->rendererWithBrowser([], $this->stub($this->drainStdin() . 'echo "this is not json";'));
 
         self::assertSame([], $renderer->renderMany(['https://example.org/'], static fn(): bool => true));
     }
@@ -235,8 +412,8 @@ final class BrowserRendererTest extends TestCase {
      */
     public function testAHangingRendererIsKilledAtTheDeadline(): void
     {
-        $renderer = $this->renderer(
-            ['web_search_browser' => '1', 'web_search_browser_node' => $this->nodePath(), 'web_search_browser_timeout' => '3'],
+        $renderer = $this->rendererWithBrowser(
+            ['web_search_browser_timeout' => '3'],
             $this->stub($this->drainStdin() . 'sleep(30);'),
         );
 

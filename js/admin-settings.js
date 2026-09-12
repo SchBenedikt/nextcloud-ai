@@ -160,6 +160,7 @@
 			web_search_images: checked('eva-images-toggle') ? '1' : '0',
 			web_search_browser: checked('eva-browser-toggle') ? '1' : '0',
 			web_search_browser_node: value('eva-browser-node'),
+			web_search_browser_browsers_path: value('eva-browser-browsers-path'),
 			web_search_browser_timeout: value('eva-browser-timeout'),
 		}
 		var apiKey = value('eva-websearch-key')
@@ -219,6 +220,21 @@
 		summary.textContent = results.length + ' result' + (results.length === 1 ? '' : 's')
 			+ ' from ' + (data.provider || '?') + ' (mode: ' + (data.mode || 'web') + ')'
 		box.appendChild(summary)
+
+		// Whether the browser did any work is the one fact a search result list
+		// cannot show: rendering can be switched on and silently never used.
+		var rendered = typeof data.renderedPages === 'number' ? data.renderedPages : 0
+		var browserNote = document.createElement('p')
+		browserNote.className = 'settings-hint'
+		if (data.browserStatus) {
+			browserNote.textContent = 'No page was read in a browser: ' + data.browserStatus
+		} else if (rendered > 0) {
+			browserNote.textContent = rendered + ' page' + (rendered === 1 ? '' : 's')
+				+ ' needed the browser: their text only exists after JavaScript has run, so these results would have been empty without it.'
+		} else {
+			browserNote.textContent = 'No page needed the browser this time - every result was readable with a plain request. That is normal; it says nothing about whether rendering works.'
+		}
+		box.appendChild(browserNote)
 
 		if (results.length === 0) {
 			var none = document.createElement('p')

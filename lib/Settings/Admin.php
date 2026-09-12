@@ -128,6 +128,8 @@ class Admin implements ISettings {
             'webSearchKeyConfigured' => $this->webSearch->hasApiKey(),
             'webSearchProviders' => WebSearchService::PROVIDERS,
             'webSearchBrowserStatus' => $this->webSearch->browserStatus(),
+            'webSearchBrowserBrowsersPath' => $this->webSearch->browserBrowsersPath(),
+            'webSearchBrowserInstallCommand' => $this->webSearch->browserInstallCommand(),
         ]);
     }
 

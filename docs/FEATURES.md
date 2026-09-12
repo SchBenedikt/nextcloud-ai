@@ -262,10 +262,12 @@ knowledge search and should be enabled based on your own privacy requirements.
   page the reader opens is fetched and quoted - including its pictures - which
   makes the source, not the model's memory, the authority for current topics.
 - Reading pages that require JavaScript is a separate, admin-only opt-in
-  (`web_search_browser`). It needs Node.js and the `playwright` package on the
-  server; the settings page reports whether both were found and names the
-  missing piece when they were not. Without it, such a page yields no text at
-  all rather than wrong text - the answer simply has less to stand on.
+  (`web_search_browser`). It needs Node.js, the `playwright` package and a
+  downloaded Chromium build on the server; the settings page reports which of the
+  three was found and names the missing one, and `occ eva_ai:browser` reports the
+  same from the command line (see [BROWSER-RENDERING.md](BROWSER-RENDERING.md)).
+  Without it, such a page yields no text at all rather than wrong text - the
+  answer simply has less to stand on.
 - Confirmed actions are protected against accidental execution but not
   guaranteed as distributed exactly-once transactions. Concurrent requests or
   infrastructure errors may still require a re-check of state.

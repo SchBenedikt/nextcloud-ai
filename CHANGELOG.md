@@ -4,6 +4,35 @@ All notable changes to **EVA (eva_ai)** are documented here.
 Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); the project
 follows [Semantic Versioning](https://semver.org/).
 
+## [1.10.1] - 2026-09-12
+
+### Fixed
+
+- **Browser rendering reported itself ready when it could not work.** Playwright
+  ships as an npm package that downloads its browsers separately, so installing
+  the package alone leaves a feature that looks available, is silently never
+  used, and costs a process spawn per page for nothing. The settings page now
+  checks for a Chromium build as well and reports the one missing piece, and
+  `web_search_browser_browsers_path` points the app at a browser installed
+  somewhere other than the web server account's home directory.
+- **The renderer now searches the directory that was actually checked.** The web
+  server's environment usually has no `HOME`, so a child process could look in a
+  different place than the app had just verified. The browsers path is pinned for
+  the renderer, which makes the diagnosis and the execution agree by construction.
+
+### Added
+
+- `occ eva_ai:browser` reports what the server has (Node.js, renderer script,
+  browsers path, Chromium build, page timeout) and renders the URLs it is given,
+  so "can this server read JavaScript pages" is answerable from the shell and
+  usable as a deployment check; it exits non-zero when rendering is not usable.
+- The admin test search states how many of its result pages needed the browser,
+  which is the one thing a result list cannot show: a setting that is on and
+  never used looks exactly like one that is working.
+- [docs/BROWSER-RENDERING.md](docs/BROWSER-RENDERING.md): the install commands
+  for Node.js, Playwright and Chromium, how to verify each step, and what each
+  failure message means.
+
 ## [1.10.0] - 2026-09-12
 
 ### Added
