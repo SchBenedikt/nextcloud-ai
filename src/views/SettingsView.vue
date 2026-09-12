@@ -564,6 +564,10 @@ export default {
 		const loadError = ref('')
 		const message = ref({ type: '', text: '' })
 		const validationErrors = ref([])
+		// Keep the last server-confirmed form state. Autosave sends only values that
+		// changed since then, so a broken or incomplete unrelated field cannot stop
+		// a user from enabling a browser, images, or another independent tool.
+		const persistedSettings = ref({})
 		const resetConfirm = ref(false)
 		const chatsDeleteConfirm = ref(false)
 		const newExcludePath = ref('')
@@ -656,6 +660,10 @@ export default {
 			}
 		}
 
+		function changedSettingKeys() {
+			return Object.keys(f.value).filter(key => String(f.value[key]) !== String(persistedSettings.value[key] ?? ''))
+		}
+
 		function queueAutoSave() {
 			if (ignoreNextFormChange) {
 				ignoreNextFormChange = false
@@ -664,13 +672,14 @@ export default {
 			if (!formReady.value) return
 			autoSaveDirty = true
 			window.clearTimeout(autoSaveTimer)
-			autoSaveTimer = window.setTimeout(() => {
+			autoSaveTimer = window.setTimeout(async () => {
 				if (!autoSaveDirty) return
 				if (settingsLocked.value) {
 					queueAutoSave()
 					return
 				}
-				save()
+				autoSaveDirty = false
+				await save({ changedOnly: true })
 			}, 700)
 		}
 
@@ -769,8 +778,9 @@ export default {
 			message.value = { type, text }
 		}
 
-		function validate() {
+		function validate(keys = null) {
 			const errors = []
+			const includes = key => keys === null || keys.includes(key)
 			const effective = (key, fallback) => limits.value[key] || fallback
 			const numberRules = [
 				['top_k', 'Sources per answer', ...effective('top_k', [1, 8])],
@@ -786,16 +796,17 @@ export default {
 				['talk_history_size', 'Talk history size', ...effective('talk_history_size', [1, 500])],
 				['exec_write_max_chars', 'Maximum characters per file', ...effective('exec_write_max_chars', [1, 10000000])],
 			]
-			if (!/^https?:\/\//i.test(f.value.ollama_url.trim())) errors.push('Ollama server URL must start with http:// or https://.')
-			if (!f.value.embedding_model.trim()) errors.push('Embedding model is required.')
-			if (f.value.chat_provider !== 'groq' && !f.value.chat_model.trim()) errors.push('Chat model is required.')
+			if (includes('ollama_url') && !/^https?:\/\//i.test(f.value.ollama_url.trim())) errors.push('Ollama server URL must start with http:// or https://.')
+			if (includes('embedding_model') && !f.value.embedding_model.trim()) errors.push('Embedding model is required.')
+			if ((includes('chat_provider') || includes('chat_model')) && f.value.chat_provider !== 'groq' && !f.value.chat_model.trim()) errors.push('Chat model is required.')
 			for (const [key, label, min, max] of numberRules) {
+				if (!includes(key)) continue
 				const value = Number(f.value[key])
 				if (!Number.isFinite(value) || value < min || value > max) errors.push(`${label} must be between ${min} and ${max}.`)
 			}
 			const fileSizeMb = Number(maxFileSizeMb.value)
-			if (!Number.isFinite(fileSizeMb) || fileSizeMb < 1 || fileSizeMb > 2048) errors.push('Maximum file size must be between 1 and 2048 MB.')
-			if (Number(f.value.chunk_overlap) > Number(f.value.chunk_size)) errors.push('Chunk overlap cannot be larger than chunk size.')
+			if (includes('max_file_size') && (!Number.isFinite(fileSizeMb) || fileSizeMb < 1 || fileSizeMb > 2048)) errors.push('Maximum file size must be between 1 and 2048 MB.')
+			if ((includes('chunk_overlap') || includes('chunk_size')) && Number(f.value.chunk_overlap) > Number(f.value.chunk_size)) errors.push('Chunk overlap cannot be larger than chunk size.')
 			return errors
 		}
 
@@ -834,6 +845,7 @@ export default {
 			Object.keys(f.value).forEach(key => {
 				if (settings[key] !== undefined && settings[key] !== null) {
 					f.value[key] = String(settings[key])
+					persistedSettings.value[key] = String(settings[key])
 				}
 			})
 		}
@@ -853,9 +865,11 @@ export default {
 			}
 		}
 
-		async function save() {
+		async function save({ changedOnly = false } = {}) {
 			if (saving.value) return false
-			validationErrors.value = validate()
+			const keys = changedOnly ? changedSettingKeys() : Object.keys(f.value)
+			if (keys.length === 0 && !groqKey.value && !removeGroqKey.value) return true
+			validationErrors.value = validate(changedOnly ? keys : null)
 			if (validationErrors.value.length) {
 				setMessage('error', t('Please correct the highlighted settings before saving.'))
 				return false
@@ -864,7 +878,10 @@ export default {
 			saved.value = false
 			message.value = { type: '', text: '' }
 			try {
-				const settings = await api('PUT', 'settings', { ...f.value, ...(groqKey.value ? { groq_api_key: groqKey.value } : {}), remove_groq_api_key: removeGroqKey.value })
+			const values = changedOnly
+				? Object.fromEntries(keys.map(key => [key, f.value[key]]))
+				: { ...f.value }
+			const settings = await api('PUT', 'settings', { ...values, ...(groqKey.value ? { groq_api_key: groqKey.value } : {}), remove_groq_api_key: removeGroqKey.value })
 				if (status.value && (groqKey.value || removeGroqKey.value)) status.value.groq = { ...(status.value.groq || {}), keyConfigured: !removeGroqKey.value }
 				groqKey.value = ''
 				removeGroqKey.value = false
