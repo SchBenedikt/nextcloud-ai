@@ -127,7 +127,7 @@ is grounded in the source rather than in a search-engine teaser.
 | Key | Scope | Default | Range / values | Unit | Effect |
 |---|---|---|---|---|---|
 | `web_search_enabled` | P | `0` | `1`/`0` | – | Per-user opt-in. `1` exposes the `web_search` tool to the chat model. Off by default; enabling it means queries leave the server. |
-| `web_search_provider` | P | `duckduckgo` | `duckduckgo`, `searxng`, `brave`, `tavily` | – | Per-user. Search backend. `duckduckgo` is free and needs no API key; `searxng` is self-hosted; `brave` and `tavily` are hosted APIs that need admin-configured credentials. |
+| `web_search_provider` | P | `duckduckgo` | `duckduckgo`, `bing`, `searxng`, `brave`, `tavily` | – | Per-user. Web index. `duckduckgo` and `bing` are free and need no API key; `searxng` is self-hosted; `brave` and `tavily` are hosted APIs that need admin-configured credentials. News articles are not tied to this choice: they always come from the free news feeds (see below). |
 | `web_search_url` | I | `''` | `http(s)://host[:port][/path]` or empty | – | **Admin only.** Base URL of the SearxNG instance (JSON output must be enabled there). Required when users choose the `searxng` provider. |
 | `web_search_max_results` | I | `8` | `1`–`20` | results | **Admin only.** Maximum results per search across all providers; hard-capped in code so a chat cannot flood its context. |
 | `web_search_timeout` | I | `10` | `1`–`30` | seconds | **Admin only.** HTTP timeout for one search request. |
@@ -136,6 +136,10 @@ is grounded in the source rather than in a search-engine teaser.
 | `web_search_content_chars` | I | `2000` | `200`–`8000` | characters | **Admin only.** Maximum readable text taken from each fetched page; hard-capped in code. |
 | `web_search_candidates` | I | `12` | `3`–`20` | results | **Admin only.** How many engine hits are read and scored before the best ones are returned. A larger field costs one page fetch per extra candidate but lets the ranking reject the wrong first hits instead of trusting them. Never below `web_search_max_results`. |
 | `web_search_images` | I | `1` | `1`/`0` | – | **Admin only.** `1` attaches up to three images per result (the page's Open Graph/Twitter image plus in-article images), so the assistant can show the actual figure instead of describing it. Only images inside the fetched article container are used; icons, logos and tracking pixels are filtered. |
+
+**Search modes.** The `web_search` tool takes a `mode`: `web` (the configured provider), `news` (Bing News and Google News RSS, which need no key and carry the publication date and the source name; the language and region follow the asking user's own language) or `all` (both merged). Results are ordered with the best and most recent first, and a dated current page outranks an undated one of equal relevance, so a question about something current is answered from the web rather than from the model's older training data.
+
+**Reading a page.** The `open_website` tool reads a single http(s) page in full (up to 20000 characters) with the passages that match a query, plus its images and publication date. It is gated by the same `web_search_enabled` switch as the search itself.
 | `web_search_api_key` | I | – | 8–256 chars | – | **Admin only, write-only.** Encrypted API key for `brave`/`tavily`. Send it as `web_search_api_key`; clear it with `remove_web_search_api_key`. It is never read back. |
 
 ### Internal per-user runtime state (S)

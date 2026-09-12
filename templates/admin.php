@@ -49,12 +49,14 @@ $schedulerLimit = (int)($scheduler['limit'] ?? 2);
 /** Providers that work without an API key supply their own description. */
 $providerKeyRequired = [
 	'duckduckgo' => false,
+	'bing' => false,
 	'searxng' => false,
 	'brave' => true,
 	'tavily' => true,
 ];
 $providerLabels = [
 	'duckduckgo' => $l->t('DuckDuckGo — free, no key, works out of the box'),
+	'bing' => $l->t('Bing (RSS results) — free, no key, an alternative web index'),
 	'searxng' => $l->t('SearxNG — self-hosted, no third party involved'),
 	'brave' => $l->t('Brave Search API — hosted, requires an API key'),
 	'tavily' => $l->t('Tavily — hosted, tuned for AI grounding, requires an API key'),
@@ -309,6 +311,26 @@ $providerLabels = [
 		<button type="button" id="eva-websearch-save" class="primary"><?php p($l->t('Save web search settings')); ?></button>
 		<span id="eva-websearch-status" class="eva-status-text" role="status" aria-live="polite"></span>
 	</p>
+
+	<h3><?php p($l->t('Test the web search')); ?></h3>
+	<p class="settings-hint">
+		<?php p($l->t('Run a real search and see exactly what the assistant would receive: the ranked results, how much page text was read, and the pictures found. This uses your own account settings, so enable web search and pick a provider in your personal Eva AI settings first.')); ?>
+	</p>
+
+	<div class="eva-test-row">
+		<input type="text" id="eva-test-query" class="eva-test-input"
+			placeholder="<?php p($l->t('e.g. Nextcloud Hub release notes')); ?>"
+			aria-label="<?php p($l->t('Search query to test')); ?>">
+		<select id="eva-test-mode" aria-label="<?php p($l->t('Which index to search')); ?>">
+			<option value="web"><?php p($l->t('Web')); ?></option>
+			<option value="news"><?php p($l->t('News')); ?></option>
+			<option value="all"><?php p($l->t('Web and news')); ?></option>
+		</select>
+		<button type="button" id="eva-test-run" class="secondary eva-test-button"><?php p($l->t('Run search')); ?></button>
+		<span id="eva-test-status" class="eva-status-text" role="status" aria-live="polite"></span>
+	</div>
+
+	<div id="eva-test-results" class="eva-test-results" hidden></div>
 
 	<h3><?php p($l->t('Tools')); ?></h3>
 	<p class="settings-hint">

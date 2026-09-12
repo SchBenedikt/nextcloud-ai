@@ -6,5 +6,18 @@
 .rt td, .rt th { max-width: 32rem; overflow-wrap: anywhere; }
 .rt li > ul, .rt li > ol { margin-top: 4px; margin-bottom: 4px; }
 .rt blockquote > :last-child { margin-bottom: 0; }
+/* Pictures from a web search: bounded so a large figure cannot break the
+   chat layout, with a subtle frame that works in both themes. */
+.rt .md-image-link { display: inline-block; max-width: 100%; }
+.rt img.md-image {
+	display: block;
+	max-width: 100%;
+	height: auto;
+	max-height: 26rem;
+	margin: 8px 0;
+	border: 1px solid var(--color-border, #ccc);
+	border-radius: var(--border-radius-large, 8px);
+	background: var(--color-background-dark, #f5f5f5);
+}
 .rt pre.md-pre { max-width: 100%; overflow-x: auto; }
 .rt pre.md-pre code { white-space: pre; overflow-wrap: normal; word-break: normal; }

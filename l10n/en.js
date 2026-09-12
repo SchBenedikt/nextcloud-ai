@@ -550,5 +550,17 @@ OC.L10N.register("eva_ai", {
     "Show images from the result pages": "Show images from the result pages",
     "Adds up to three images per result (the page's own preview image and pictures inside the article) so the assistant can show a figure instead of describing it. Icons, logos and tracking pixels are filtered out. No extra request is made: the images come from the pages already being read.": "Adds up to three images per result (the page's own preview image and pictures inside the article) so the assistant can show a figure instead of describing it. Icons, logos and tracking pixels are filtered out. No extra request is made: the images come from the pages already being read.",
     "%s files were skipped and are retried on the next run": "%s files were skipped and are retried on the next run",
-    "%s files skipped": "%s files skipped"
+    "%s files skipped": "%s files skipped",
+    "Bing (free, no API key)": "Bing (free, no API key)",
+    "News articles come from free news feeds and work with every provider; the web index is what differs. SearxNG, Brave and Tavily require the administrator to configure the URL or API key in the Eva AI admin settings.": "News articles come from free news feeds and work with every provider; the web index is what differs. SearxNG, Brave and Tavily require the administrator to configure the URL or API key in the Eva AI admin settings.",
+    "Bing (RSS results) — free, no key, an alternative web index": "Bing (RSS results) — free, no key, an alternative web index",
+    "Test the web search": "Test the web search",
+    "Run a real search and see exactly what the assistant would receive: the ranked results, how much page text was read, and the pictures found. This uses your own account settings, so enable web search and pick a provider in your personal Eva AI settings first.": "Run a real search and see exactly what the assistant would receive: the ranked results, how much page text was read, and the pictures found. This uses your own account settings, so enable web search and pick a provider in your personal Eva AI settings first.",
+    "e.g. Nextcloud Hub release notes": "e.g. Nextcloud Hub release notes",
+    "Search query to test": "Search query to test",
+    "Which index to search": "Which index to search",
+    "Web": "Web",
+    "News": "News",
+    "Web and news": "Web and news",
+    "Run search": "Run search"
 }, "nplurals=2; plural=(n != 1);");

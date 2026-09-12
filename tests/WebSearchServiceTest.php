@@ -89,7 +89,10 @@ final class WebSearchServiceTest extends TestCase {
         // unset or stale stored value has to resolve to it as well.
         $service = $this->service(['web_search_provider' => 'not-a-provider']);
         self::assertSame('duckduckgo', $service->provider());
-        self::assertSame(WebSearchService::PROVIDERS, ['duckduckgo', 'searxng', 'brave', 'tavily']);
+        self::assertSame(WebSearchService::PROVIDERS, ['duckduckgo', 'bing', 'searxng', 'brave', 'tavily']);
+        // News is a mode, not a provider: it works with every provider because
+        // it reads the free news feeds rather than the web index.
+        self::assertSame(WebSearchService::MODES, ['web', 'news', 'all']);
     }
 
     public function testAnEmptyQueryIsRejected(): void {
@@ -762,6 +765,110 @@ HTML;
         $service = $this->service();
         self::assertSame('', $this->callPrivate($service, 'highlights', ['Some text', 'the and for']));
         self::assertSame('', $this->callPrivate($service, 'highlights', ['', 'widget']));
+    }
+
+    // ---- News feeds and the Bing provider ----
+
+    /**
+     * Bing publishes the publisher URL encoded inside an apiclick redirect; the
+     * reader must end up at the article, not at a tracking page.
+     */
+    public function testBingRedirectLinksAreUnwrapped(): void {
+        $service = $this->service();
+        self::assertSame(
+            'https://www.heise.de/news/nextcloud-1234.html',
+            $this->callPrivate($service, 'decodeFeedUrl', [
+                'http://www.bing.com/news/apiclick.aspx?ref=FexRss&aid=&url=https%3a%2f%2fwww.heise.de%2fnews%2fnextcloud-1234.html',
+            ])
+        );
+        // A plain link, an absent parameter and an unsafe target are unchanged
+        // or resolved to the link itself - never to something unsafe.
+        self::assertSame('https://example.org/a', $this->callPrivate($service, 'decodeFeedUrl', ['https://example.org/a']));
+        self::assertSame(
+            'https://www.bing.com/x?y=1',
+            $this->callPrivate($service, 'decodeFeedUrl', ['https://www.bing.com/x?y=1'])
+        );
+        self::assertSame(
+            'https://www.bing.com/x?url=javascript%3Aalert(1)',
+            $this->callPrivate($service, 'decodeFeedUrl', ['https://www.bing.com/x?url=javascript%3Aalert(1)'])
+        );
+    }
+
+    /**
+     * A news item carries the publication date and the source name, which is
+     * what lets an answer state how current it is instead of implying that it
+     * is.
+     */
+    public function testNewsFeedItemsCarryDateAndSource(): void {
+        $service = $this->service();
+        $xml = '<?xml version="1.0"?>'
+            . '<rss version="2.0"><channel><title>"nextcloud" - News</title>'
+            . '<item><title>Nextcloud Hub 26 Winter ist da</title>'
+            . '<link>http://www.bing.com/news/apiclick.aspx?ref=FexRss&amp;url=https%3a%2f%2fwww.heise.de%2fnews%2fhub26.html</link>'
+            . '<description>Die neue Version bringt eine schnellere Suche.</description>'
+            . '<pubDate>Fri, 11 Sep 2026 21:12:00 GMT</pubDate>'
+            . '<source url="https://www.heise.de">heise online</source></item>'
+            . '<item><title>Zweiter Artikel</title><link>https://example.org/b</link>'
+            . '<description>Ohne Datum.</description></item>'
+            . '</channel></rss>';
+        $rows = $this->callPrivate($service, 'parseRssResults', [$xml, 'news', 10]);
+
+        self::assertCount(2, $rows);
+        self::assertSame('https://www.heise.de/news/hub26.html', $rows[0]['url']);
+        self::assertSame('heise online', $rows[0]['source']);
+        self::assertTrue($rows[0]['news']);
+        self::assertSame(strtotime('Fri, 11 Sep 2026 21:12:00 GMT'), $rows[0]['published']);
+        // An item without a date is still usable; the date is simply unknown.
+        self::assertSame(0, $rows[1]['published']);
+        self::assertSame('example.org', $rows[1]['source']);
+    }
+
+    public function testUnparseableFeedYieldsNothing(): void {
+        $service = $this->service();
+        self::assertSame([], $this->callPrivate($service, 'parseRssResults', ['<html>blocked</html>', 'news', 10]));
+        self::assertSame([], $this->callPrivate($service, 'parseRssResults', ['', 'web', 10]));
+    }
+
+    /**
+     * A dated, recent page must outrank an undated one of equal relevance: this
+     * is what stops a question about something current from being answered with
+     * what the model remembers.
+     */
+    public function testRecentResultsOutrankUndatedOnes(): void {
+        $service = $this->service();
+        $results = [
+            ['title' => 'Widget release notes', 'url' => 'https://old.example.org/a', 'snippet' => 'widget release'],
+            [
+                'title' => 'Widget release notes',
+                'url' => 'https://new.example.org/b',
+                'snippet' => 'widget release',
+                'published' => time() - 86400 * 3,
+            ],
+        ];
+        $ranked = $this->callPrivate($service, 'rankResults', [$results, 'widget release']);
+        self::assertSame('https://new.example.org/b', $ranked[0]['url']);
+    }
+
+    /** News and web can be merged without losing the richer record. */
+    public function testMergingKeepsTheDateFromTheNewsCopy(): void {
+        $service = $this->service();
+        $merged = $this->callPrivate($service, 'mergeByUrl', [
+            [['title' => 'A', 'url' => 'https://example.org/a', 'snippet' => 'web teaser']],
+            [['title' => 'A', 'url' => 'https://example.org/a', 'snippet' => 'a much longer news teaser', 'published' => 123, 'source' => 'Example', 'news' => true]],
+            5,
+        ]);
+        self::assertCount(1, $merged);
+        self::assertSame('a much longer news teaser', $merged[0]['snippet']);
+        self::assertSame(123, $merged[0]['published']);
+        self::assertSame('Example', $merged[0]['source']);
+    }
+
+    /** An unknown mode must fall back to a web search rather than fail. */
+    public function testUnknownModeFallsBackToWebSearch(): void {
+        $service = $this->service(['web_search_enabled' => '1', 'web_search_provider' => 'brave']);
+        $result = $service->search('nextcloud', 3, 'nonsense');
+        self::assertFalse($result['ok']);
+        self::assertSame('web', $result['mode']);
     }
 
     public function testExtractReadableTextStillReturnsPageText(): void {

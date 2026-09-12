@@ -12,7 +12,15 @@ use OCP\L10N\IFactory;
 use Psr\Log\LoggerInterface;
 
 class RagService {
-    private const MAX_TOOL_ROUNDS = 4;
+    /**
+     * How many model/tool rounds one question may use.
+     *
+     * A single answer often needs more than one step: a search, a refined
+     * search, reading a page, then a lookup in the user's files. Four rounds was
+     * low enough that a question needing a second search ran out of budget and
+     * returned nothing at all.
+     */
+    private const MAX_TOOL_ROUNDS = 8;
 
     public function __construct(
         private AppConfig $config,
@@ -96,15 +104,29 @@ class RagService {
 				$messages[] = ['role' => 'tool', 'content' => json_encode($res, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES)];
 			}
 
-		}
+		}        // All rounds were spent on tools. Ask once more with the tools disabled:
+        // the model already gathered everything it needs, and this forces it to
+        // answer with that instead of returning nothing. Turning a completed
+        // tool chain into an empty reply was the worst possible outcome.
+        $final = $this->ollama->chat($messages, []);
+        $answer = trim((string)($final['answer'] ?? ''));
+        if ($answer !== '') {
+            return [
+                'answer' => $answer,
+                'sources' => array_values($byDoc),
+                'model' => $final['model'] ?? $this->config->get('chat_model'),
+                'error' => null,
+                'followups' => $this->suggestFollowups($userId, $answer, $byDoc, $history, $message),
+            ];
+        }
 
-		return [
-			'answer' => '',
-			'sources' => array_values($byDoc),
-			'model' => $this->config->get('chat_model'),
-			'error' => 'Maximale Anzahl an Tool-Schritten erreicht.',
-			'followups' => [],
-		];
+        return [
+            'answer' => '',
+            'sources' => array_values($byDoc),
+            'model' => $this->config->get('chat_model'),
+            'error' => 'The model used all of its steps without producing an answer. Try rephrasing the question.',
+            'followups' => [],
+        ];
 	}
 
     /**
@@ -535,7 +557,12 @@ $this->executor->setUserId($userId);
             . ($actions
                 ? " You also have tools that work on the user's Nextcloud account: files (create, read, rename, delete, search, list), notes, contacts, calendar events, mail (search, read, list, unread count), shares (create link/user/group shares, expiry, note, delete), tasks/to-dos (create, list, update, complete, delete) and the activity feed. Use them when the user asks to create, save, find, share or schedule something. For shares always give the link URL after creating. Run the tool, then briefly confirm what you did. If a tool needs the file path, use the easiest path (e.g. \"/Readme.md\" or \"Documents/Plan.pdf\"). Never use tools for anything else."
                 . ($this->webSearchAvailable()
-                    ? " You have the `web_search` tool that searches the internet in real-time. USE IT PROACTIVELY whenever you need current, external, or time-sensitive information: news, software releases, prices, weather forecasts, documentation, opening hours, recipes, how-to guides, technical problems, or anything not in the indexed files. When you are unsure whether your training data is current, search the web rather than guessing. Never use it for questions the user's files already answer, and never use it to look up the user's own data. Web results are external sources: cite the specific URLs you actually used as Markdown links and make clear they are from the web, never present a web result as one of the user's files. Do not send personal or confidential details in a search query."
+                    ? " You have the `web_search` tool that searches the internet and the news in real-time, and the `open_website` tool that reads one page in full. "
+                        . "USE THEM PROACTIVELY whenever you need current, external, or time-sensitive information: news, software releases, versions, prices, weather forecasts, documentation, opening hours, recipes, how-to guides, technical problems, or anything not in the indexed files. "
+                        . "Your training data has a cut-off date and is always older than the web: for anything that can have changed since — releases, prices, office holders, schedules, statistics, \"the latest\", \"this year\", anything after your knowledge is not fresh — the search results are the truth and your memory is not. Never answer such a question from memory, and never present something you remember as current. "
+                        . "Search more than once when needed: if the first results do not answer the question, call the tool AGAIN with a different query (shorter, other words, the exact product or event name, the year), set `mode` to \"news\" for recent coverage, and use `open_website` to read the most promising page in full before you give up. Several searches for one question are expected, not a failure. "
+                        . "Always state which sources you used and how recent they are, prefer the newest dated result, and say plainly when the web does not answer the question. "
+                        . "Never use these tools for questions the user's files already answer, and never use them to look up the user's own data. Web results are external sources: cite the specific URLs you actually used as Markdown links and make clear they are from the web, never present a web result as one of the user's files. Do not send personal or confidential details in a search query."
                     : "")
                 : "")
             . $dateBlock;

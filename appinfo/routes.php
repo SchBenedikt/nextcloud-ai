@@ -56,5 +56,8 @@ return [
         ['name' => 'admin#reset', 'url' => '/api/admin/users/{userId}/reset', 'verb' => 'POST'],
         ['name' => 'admin#setEnrollment', 'url' => '/api/admin/users/{userId}/enrollment', 'verb' => 'POST'],
         ['name' => 'admin#stopBackgroundIndex', 'url' => '/api/admin/stop', 'verb' => 'POST'],
+        // Live check of the configured web search from the admin page, so a
+        // broken provider is visible before it is used in a chat.
+        ['name' => 'admin#testWebSearch', 'url' => '/api/admin/websearch/test', 'verb' => 'POST'],
     ],
 ];

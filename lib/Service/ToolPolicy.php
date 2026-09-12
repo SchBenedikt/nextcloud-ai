@@ -295,6 +295,16 @@ class ToolPolicy {
             'requiresConfirmation' => false,
             'description' => 'Search the web for current information',
         ],
+        // Reading one page the user can already reach is the same disclosure as
+        // searching, so it is gated by the same switch: the URL is validated by
+        // the service, which never allows a non-http(s) or credential-bearing
+        // address and never follows more than a few redirects.
+        'open_website' => [
+            'risk' => self::RISK_READONLY,
+            'surfaces' => [self::SURFACE_WEB, self::SURFACE_TALK, self::SURFACE_TASKPROCESSING, self::SURFACE_TASKPROCESSING_CONFIRMED, self::SURFACE_RAG],
+            'requiresConfirmation' => false,
+            'description' => 'Open and read one web page',
+        ],
     ];
 
     private string $activeSurface = self::SURFACE_WEB;
@@ -354,7 +364,8 @@ class ToolPolicy {
         // a third-party or admin-hosted search service. It is opt-in per
         // instance, and this single check removes it from every tool surface,
         // blocks dispatch and skips it in the agent proposal phase.
-        if ($toolName === 'web_search' && $this->appConfig->getInt('web_search_enabled', 0) !== 1) {
+        if (in_array($toolName, ['web_search', 'open_website'], true)
+            && $this->appConfig->getInt('web_search_enabled', 0) !== 1) {
             return [
                 'allowed' => false,
                 'reason' => 'Web search disabled by configuration',

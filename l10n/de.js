@@ -550,5 +550,17 @@ OC.L10N.register("eva_ai", {
     "Show images from the result pages": "Bilder aus den Ergebnis-Seiten anzeigen",
     "Adds up to three images per result (the page's own preview image and pictures inside the article) so the assistant can show a figure instead of describing it. Icons, logos and tracking pixels are filtered out. No extra request is made: the images come from the pages already being read.": "Fügt bis zu drei Bilder pro Ergebnis hinzu (das eigene Vorschaubild der Seite und Bilder im Artikel), damit der Assistent eine Abbildung zeigen kann, statt sie zu beschreiben. Symbole, Logos und Zählpixel werden herausgefiltert. Es entsteht keine zusätzliche Anfrage: Die Bilder stammen aus den ohnehin gelesenen Seiten.",
     "%s files were skipped and are retried on the next run": "%s Dateien wurden übersprungen und werden beim nächsten Lauf erneut versucht",
-    "%s files skipped": "%s Dateien übersprungen"
+    "%s files skipped": "%s Dateien übersprungen",
+    "Bing (free, no API key)": "Bing (kostenlos, kein API-Schlüssel)",
+    "News articles come from free news feeds and work with every provider; the web index is what differs. SearxNG, Brave and Tavily require the administrator to configure the URL or API key in the Eva AI admin settings.": "Nachrichtenartikel stammen aus kostenlosen Nachrichten-Feeds und funktionieren mit jedem Anbieter; nur der Web-Index unterscheidet sich. SearxNG, Brave und Tavily erfordern, dass der Administrator die URL oder den API-Schlüssel in den Eva-AI-Admin-Einstellungen konfiguriert.",
+    "Bing (RSS results) — free, no key, an alternative web index": "Bing (RSS-Ergebnisse) — kostenlos, ohne Schlüssel, ein alternativer Web-Index",
+    "Test the web search": "Die Websuche testen",
+    "Run a real search and see exactly what the assistant would receive: the ranked results, how much page text was read, and the pictures found. This uses your own account settings, so enable web search and pick a provider in your personal Eva AI settings first.": "Führe eine echte Suche aus und sieh genau, was der Assistent erhalten würde: die sortierten Ergebnisse, wie viel Seitentext gelesen wurde und welche Bilder gefunden wurden. Dabei gelten deine eigenen Kontoeinstellungen, aktiviere die Websuche also zuerst in deinen persönlichen Eva-AI-Einstellungen und wähle einen Anbieter.",
+    "e.g. Nextcloud Hub release notes": "z. B. Nextcloud Hub Versionshinweise",
+    "Search query to test": "Test-Suchbegriff",
+    "Which index to search": "Welcher Index durchsucht wird",
+    "Web": "Web",
+    "News": "Nachrichten",
+    "Web and news": "Web und Nachrichten",
+    "Run search": "Suche starten"
 }, "nplurals=2; plural=(n != 1);");

@@ -406,11 +406,12 @@
 						<label class="native-label" for="user-web-search-provider">{{ $t('Search provider') }}</label>
 						<select id="user-web-search-provider" v-model="f.web_search_provider" class="native-select">
 							<option value="duckduckgo">{{ $t('DuckDuckGo (free, no API key)') }}</option>
+							<option value="bing">{{ $t('Bing (free, no API key)') }}</option>
 							<option value="searxng">{{ $t('SearxNG (self-hosted)') }}</option>
 							<option value="brave">{{ $t('Brave Search (requires admin setup)') }}</option>
 							<option value="tavily">{{ $t('Tavily (requires admin setup)') }}</option>
 						</select>
-						<p v-if="f.web_search_provider !== 'duckduckgo'" class="field-help">{{ $t('SearxNG, Brave and Tavily require the administrator to configure the URL or API key in the Eva AI admin settings.') }}</p>
+						<p class="field-help">{{ $t('News articles come from free news feeds and work with every provider; the web index is what differs. SearxNG, Brave and Tavily require the administrator to configure the URL or API key in the Eva AI admin settings.') }}</p>
 					</div>
 				</div>
 			</section>
