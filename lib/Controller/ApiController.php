@@ -936,6 +936,44 @@ class ApiController extends OCSController {
         return new DataResponse(['queued' => true, 'id' => $id]);
     }
 
+    #[NoAdminRequired]
+    public function externalConnectors(): DataResponse {
+        $user = $this->requireUser();
+        if ($user === null) return new DataResponse(['error' => 'Not logged in'], 401);
+        return new DataResponse($this->executor->run($user, 'list_external_connectors', []));
+    }
+
+    #[NoAdminRequired]
+    public function saveExternalConnector(): DataResponse {
+        $user = $this->requireUser();
+        if ($user === null) return new DataResponse(['error' => 'Not logged in'], 401);
+        $body = $this->requestBody();
+        $result = $this->executor->runConfirmed($user, 'configure_external_connector', $body);
+        return new DataResponse($result, ($result['ok'] ?? false) ? 200 : 400);
+    }
+
+    #[NoAdminRequired]
+    public function discoverExternalConnector(): DataResponse {
+        $user = $this->requireUser();
+        if ($user === null) return new DataResponse(['error' => 'Not logged in'], 401);
+        $result = $this->executor->run($user, 'discover_external_connector', $this->requestBody());
+        return new DataResponse($result, ($result['ok'] ?? false) ? 200 : 400);
+    }
+
+    #[NoAdminRequired]
+    public function deleteExternalConnector(): DataResponse {
+        $user = $this->requireUser();
+        if ($user === null) return new DataResponse(['error' => 'Not logged in'], 401);
+        $id = strtolower(trim((string)($this->requestParam('id') ?? $this->requestBody()['id'] ?? '')));
+        if (!preg_match('/^[a-z0-9][a-z0-9_-]{0,39}$/D', $id)) return new DataResponse(['error' => 'Valid connector id required'], 400);
+        $config = \OCP\Server::get(\OCP\IConfig::class);
+        $raw = json_decode($config->getUserValue($user, AppConfig::APP, 'external_connectors', '{}'), true);
+        if (!is_array($raw) || !array_key_exists($id, $raw)) return new DataResponse(['error' => 'Connector not found'], 404);
+        unset($raw[$id]); $config->setUserValue($user, AppConfig::APP, 'external_connectors', json_encode($raw, JSON_UNESCAPED_SLASHES) ?: '{}');
+        \OCP\Server::get(\OCA\EvaAi\Service\ProviderCredentials::class)->saveCustom($user, 'connector_' . $id, '');
+        return new DataResponse(['ok' => true, 'deleted' => $id]);
+    }
+
     /** Inspect queued background-agent work without exposing conversation history. */
     #[NoAdminRequired]
     public function backgroundChatStatus(): DataResponse {
