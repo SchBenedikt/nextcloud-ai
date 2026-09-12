@@ -51,7 +51,11 @@ final class BackgroundChatJob extends TimedJob {
                 $this->queue->complete($user, $id);
             } catch (\Throwable $e) {
                 $this->logger->warning('eva_ai: background chat failed', ['user' => $user, 'job' => $id, 'exception' => $e]);
-                $this->queue->retry($user, $id, $e->getMessage());
+                if ($this->queue->retry($user, $id, $e->getMessage())) {
+                    $notification = $this->notifications->createNotification();
+                    $notification->setApp(AppConfig::APP)->setUser($user)->setObject('chat', (string)($item['chatId'] ?? ''))->setSubject('background_failed', ['text' => mb_strimwidth($e->getMessage(), 0, 400, '…')])->setLink($this->urls->linkToRouteAbsolute('eva_ai.page.app') . '?chat=' . rawurlencode((string)($item['chatId'] ?? '')))->setDateTime(new \DateTime());
+                    $this->notifications->notify($notification);
+                }
             }
         }
     }

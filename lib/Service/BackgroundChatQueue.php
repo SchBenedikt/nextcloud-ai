@@ -85,22 +85,29 @@ final class BackgroundChatQueue {
             return $out;
         }, ILockingProvider::LOCK_SHARED) ?? [];
     }
-    public function retry(string $user, string $id, string $error): void {
-        $this->mutate($user, function (array $items) use ($id, $error): array {
+    /** Retry a failed run; returns true when the item became terminal. */
+    public function retry(string $user, string $id, string $error): bool {
+        return (bool)$this->withLock($user, function () use ($user, $id, $error): bool {
+            $items = $this->read($user);
+            $terminal = false;
+            $found = false;
             foreach ($items as &$item) if (($item['id'] ?? '') === $id) {
+                $found = true;
                 $attempts = (int)($item['attempts'] ?? 1);
                 if ($attempts >= 3) {
                     $item['status'] = 'failed';
                     $item['error'] = mb_substr($error, 0, 500);
                     $item['finishedAt'] = time();
+                    $terminal = true;
                 } else {
                     $item['status'] = 'pending';
                     $item['availableAt'] = time() + min(300, 30 * $attempts);
                 }
             }
             unset($item);
-            return $items;
-        });
+            if ($found) $this->write($user, $items);
+            return $terminal;
+        }) ?? false;
     }
     public function users(): array { try { return array_values(array_unique(array_filter(array_map('strval', $this->config->getUsersForUserValue(AppConfig::APP, self::KEY))))); } catch (\Throwable) { return []; } }
 
