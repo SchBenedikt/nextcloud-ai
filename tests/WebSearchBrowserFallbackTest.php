@@ -95,6 +95,61 @@ final class WebSearchBrowserFallbackTest extends TestCase {
         self::assertFalse($captured('file:///etc/passwd'), 'a non-http scheme must be refused');
     }
 
+    /**
+     * Pages that never carry the article are refused by the same policy.
+     *
+     * A Google News item is a redirect link, and the page it actually lands on is
+     * Google's consent interstitial: measured live, that is ~1,400 characters of
+     * cookie notice instead of the article, and a batch of three of them consumed
+     * the whole render budget and returned nothing. The consent host is refused
+     * for the second half of the same reason - a redirect that ends there must
+     * not become quotable text.
+     */
+    public function testTheUrlPolicyRefusesIntermediariesThatNeverCarryTheArticle(): void
+    {
+        $captured = null;
+        $renderer = $this->createMock(BrowserRenderer::class);
+        $renderer->method('isAvailable')->willReturn(true);
+        $renderer->method('renderMany')->willReturnCallback(
+            static function (array $urls, callable $isAllowed, bool $withImages) use (&$captured): array {
+                $captured = $isAllowed;
+                return [];
+            }
+        );
+
+        $service = $this->service(['web_search_enabled' => '1'], $renderer);
+        $this->callPrivate($service, 'renderMany', [['https://example.org/a']]);
+
+        self::assertIsCallable($captured, 'the renderer was not given a URL policy');
+        self::assertFalse(
+            $captured('https://news.google.com/rss/articles/CBMiakFVX3lxTE1WTzZKWDBWUUVnZmpP?oc=5'),
+            'a Google News redirect must never be fetched or rendered',
+        );
+        self::assertFalse(
+            $captured('https://consent.google.com/m?continue=https://news.google.com/&gl=DE&m=0'),
+            'a consent interstitial must never become article text',
+        );
+        self::assertTrue(
+            $captured('https://www.heise.de/en/news/Nextcloud-Hub-10-12345.html'),
+            'a publisher link must still be readable',
+        );
+    }
+
+    /** Asking for such a link fails before anything is fetched or rendered. */
+    public function testOpeningAnAggregatorRedirectIsRefusedBeforeAnyFetch(): void
+    {
+        $renderer = $this->createMock(BrowserRenderer::class);
+        $renderer->method('isAvailable')->willReturn(true);
+        $renderer->expects(self::never())->method('renderMany');
+
+        $service = $this->service(['web_search_enabled' => '1'], $renderer);
+        $result = $service->openPage('https://news.google.com/rss/articles/CBMiakFVX3lxTE1WTzZKWDBWUUVnZmpP?oc=5');
+
+        self::assertFalse($result['ok']);
+        self::assertSame('', $result['text']);
+        self::assertStringContainsString('cannot be opened', (string)$result['error']);
+    }
+
     /** The administrator's image choice reaches the renderer, which uses it to decide what to load. */
     public function testTheImageSettingIsForwarded(): void
     {

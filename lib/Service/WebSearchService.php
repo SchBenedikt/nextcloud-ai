@@ -1092,6 +1092,9 @@ class WebSearchService {
         if (!$this->isFetchableUrl($url)) {
             return false;
         }
+        if ($this->isAggregatorRedirect($url)) {
+            return false;
+        }
         $path = mb_strtolower((string)(parse_url($url, PHP_URL_PATH) ?? ''));
         foreach ([
             '.pdf', '.zip', '.gz', '.tar', '.rar', '.7z', '.dmg', '.exe',
@@ -1104,6 +1107,34 @@ class WebSearchService {
             }
         }
         return true;
+    }
+
+    /**
+     * Hosts that never serve the article the result claims to point at.
+     *
+     * Measured on a live instance: a Google News item is a redirect link, and
+     * rendering it lands on Google's consent interstitial - "Before you continue"
+     * with ~1,400 characters of cookie notice, not the article. A batch of three
+     * such links spent an entire 26-second render budget and produced nothing.
+     * They are headline references with a date and a publication, which is worth
+     * keeping in the list, but spending a fetch or a render on them is not, and
+     * the consent text must never be quotable as if it were the article.
+     */
+    private const UNREADABLE_HOSTS = ['news.google.com', 'consent.google.com'];
+
+    /** Whether a URL is a known intermediary that never carries the article itself. */
+    private function isAggregatorRedirect(string $url): bool
+    {
+        $host = mb_strtolower((string)(parse_url($url, PHP_URL_HOST) ?? ''));
+        if ($host === '') {
+            return false;
+        }
+        foreach (self::UNREADABLE_HOSTS as $blocked) {
+            if ($host === $blocked || str_ends_with($host, '.' . $blocked)) {
+                return true;
+            }
+        }
+        return false;
     }
 
     /**
