@@ -1,5 +1,20 @@
 # Changelog
 
+## Unreleased
+
+### Fixed
+
+- User-owned web-search settings now save independently. An invalid unrelated
+  model or indexing field can no longer prevent changing the provider, browser
+  renderer, page-image collection, or other search options.
+- Chat learning recognises German first-person statements while retaining the
+  safeguards that ignore assistant messages and questions.
+
+### Changed
+
+- The Metrics view now has the same content width as Settings and adds an
+  input/output token composition chart plus a model-usage comparison chart.
+
 All notable changes to **EVA (eva_ai)** are documented here.
 Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); the project
 follows [Semantic Versioning](https://semver.org/).
