@@ -684,10 +684,12 @@ class ActionExecutor {
             ]],
             ['type' => 'function', 'function' => [
                 'name' => 'open_website',
-                'description' => 'Open one web page and read its full text, so you can work with a source instead of its search snippet. Use it after a web_search when a result looks relevant but the snippet is too short, when you need a detail (a number, a date, a quote) from a named page, or to check what a source really says. Returns the readable article text, the passages that match `query`, the page images and the publication date. Only http(s) pages can be opened.',
+                'description' => 'Open one web page and read its text in pages. Use it after web_search when a result looks relevant or you need a detail. When has_more=true, call again with next_offset until has_more=false to fully read a long source. Returns readable text, matching passages, images and publication date. Only http(s) pages can be opened.',
                 'parameters' => ['type' => 'object', 'properties' => [
                     'url' => ['type' => 'string', 'description' => 'The full http(s) URL of the page, usually taken from a previous web_search result.'],
                     'query' => ['type' => 'string', 'description' => 'Optional: what you are looking for on that page. The most relevant passages are returned first.'],
+                    'offset' => ['type' => 'integer', 'minimum' => 0, 'description' => 'Character offset from a previous response next_offset (default 0).'],
+                    'max_chars' => ['type' => 'integer', 'minimum' => 1000, 'maximum' => 2000000, 'description' => 'Characters to return in this page (default 2,000,000).'],
                 ], 'required' => ['url']],
             ]],
         ];
@@ -2485,7 +2487,9 @@ class ActionExecutor {
             return ['ok' => false, 'error' => 'url required'];
         }
         $query = trim((string)($args['query'] ?? ''));
-        $page = $this->webSearch->openPage($url, $query);
+        $offset = max(0, (int)($args['offset'] ?? 0));
+        $maxChars = isset($args['max_chars']) ? (int)$args['max_chars'] : null;
+        $page = $this->webSearch->openPage($url, $query, $offset, $maxChars);
         if (!$page['ok']) {
             return ['ok' => false, 'error' => (string)($page['error'] ?? 'The page could not be opened.')];
         }
@@ -2497,6 +2501,10 @@ class ActionExecutor {
                 'external' => true,
                 'published' => $page['published'],
                 'truncated' => $page['truncated'],
+                'offset' => $page['offset'],
+                'next_offset' => $page['next_offset'],
+                'total_chars' => $page['total_chars'],
+                'has_more' => $page['has_more'],
                 'highlights' => $page['highlights'],
                 'images' => $page['images'],
                 'text' => $page['text'],

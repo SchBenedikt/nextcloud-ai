@@ -687,11 +687,13 @@ class WebSearchService {
      * guessing at it. The text budget is deliberately far larger than the one
      * used during a search, because reading one page deeply is the whole point.
      *
-     * @return array{ok:bool,url:string,title:string,text:string,highlights:string,images:list<array{url:string,alt:string,width:int,height:int}>,published:?int,truncated:bool,error:?string}
+     * @return array{ok:bool,url:string,title:string,text:string,highlights:string,images:list<array{url:string,alt:string,width:int,height:int}>,published:?int,truncated:bool,offset:int,next_offset:?int,total_chars:int,has_more:bool,error:?string}
      */
-    public function openPage(string $url, string $query = ''): array {
+    public function openPage(string $url, string $query = '', int $offset = 0, ?int $maxChars = null): array {
         $url = trim($url);
-        $empty = ['url' => $url, 'title' => '', 'text' => '', 'highlights' => '', 'images' => [], 'published' => null, 'truncated' => false];
+        $offset = max(0, $offset);
+        $limit = max(1000, min(self::ABSOLUTE_MAX_OPEN_CHARS, $maxChars ?? self::ABSOLUTE_MAX_OPEN_CHARS));
+        $empty = ['url' => $url, 'title' => '', 'text' => '', 'highlights' => '', 'images' => [], 'published' => null, 'truncated' => false, 'offset' => $offset, 'next_offset' => null, 'total_chars' => 0, 'has_more' => false];
         if (!$this->isEnabled()) {
             return $empty + ['ok' => false, 'error' => 'Web search is disabled by the administrator.'];
         }
@@ -735,17 +737,23 @@ class WebSearchService {
             return $empty + ['ok' => false, 'error' => 'The page contained no readable text (it may require JavaScript or a login).'];
         }
 
-        $limit = self::ABSOLUTE_MAX_OPEN_CHARS;
         $published = $this->publishedTimestamp($html);
+        $totalChars = mb_strlen($text);
+        $slice = mb_substr($text, $offset, $limit);
+        $nextOffset = ($offset + mb_strlen($slice)) < $totalChars ? $offset + mb_strlen($slice) : null;
         return [
             'ok' => true,
             'url' => $url,
             'title' => $this->clamp($this->pageTitle($html), self::MAX_TITLE_CHARS),
-            'text' => mb_substr($text, 0, $limit),
-            'highlights' => $this->highlights($text, $query),
+            'text' => $slice,
+            'highlights' => $this->highlights($slice, $query),
             'images' => $page['images'],
             'published' => $published > 0 ? $published : null,
-            'truncated' => mb_strlen($text) > $limit,
+            'truncated' => $nextOffset !== null,
+            'offset' => $offset,
+            'next_offset' => $nextOffset,
+            'total_chars' => $totalChars,
+            'has_more' => $nextOffset !== null,
             'error' => null,
         ];
     }
