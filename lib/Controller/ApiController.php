@@ -363,6 +363,18 @@ class ApiController extends OCSController {
                 'validationErrors' => array_values($validationErrors),
             ], 400);
         }
+        $selectedProvider = (string)($pending['chat_provider'] ?? $this->config->get('chat_provider'));
+        if ($selectedProvider !== 'ollama' && $selectedProvider !== 'groq') {
+            $customUrl = trim((string)($pending['custom_provider_url'] ?? $this->config->get('custom_provider_url')));
+            $customModel = trim((string)($pending['custom_provider_model'] ?? $this->config->get('custom_provider_model')));
+            if ($customUrl === '' || $customModel === '') {
+                return new DataResponse(['error' => 'Custom provider requires both an endpoint URL and model name.'], 400);
+            }
+            $parts = parse_url($customUrl);
+            if ($parts === false || isset($parts['user']) || isset($parts['pass']) || isset($parts['query']) || isset($parts['fragment']) || empty($parts['host'])) {
+                return new DataResponse(['error' => 'Custom provider endpoint must be a plain URL without credentials, query or fragment.'], 400);
+            }
+        }
         $groqKey = $this->requestParam('groq_api_key');
         $removeGroqKey = $this->requestParam('remove_groq_api_key', false);
         if (($groqKey !== null && (!is_string($groqKey) || ($groqKey !== '' && !preg_match('/^gsk_[A-Za-z0-9_-]{16,256}$/D', $groqKey))))
@@ -385,6 +397,9 @@ class ApiController extends OCSController {
         if (!in_array($removeCustomKey, [true, false, 0, 1, '0', '1'], true)) return new DataResponse(['error' => 'Invalid custom provider credential input.'], 400);
         if ($providerId !== 'ollama' && $providerId !== 'groq') {
             $credentials = \OCP\Server::get(\OCA\EvaAi\Service\ProviderCredentials::class);
+            if (!$removeCustomKey && (!is_string($customKey) || $customKey === '') && !$credentials->customConfigured($user, $providerId)) {
+                return new DataResponse(['error' => 'Save an API key for the selected custom provider first.'], 400);
+            }
             if ($removeCustomKey) $credentials->saveCustom($user, $providerId, '');
             elseif (is_string($customKey) && $customKey !== '') $credentials->saveCustom($user, $providerId, $customKey);
         }
@@ -1552,6 +1567,7 @@ class ApiController extends OCSController {
             return new DataResponse(['error' => 'Not logged in'], 401);
         }
         if ($this->config->get('chat_provider') === 'groq') return new DataResponse(['provider' => 'groq', 'groq' => $this->ollama->checkGroq()]);
+        if ($this->config->get('chat_provider') !== 'ollama') return new DataResponse(['provider' => $this->config->get('chat_provider'), 'custom' => $this->ollama->checkCustomProvider()]);
         return new DataResponse($this->ollama->testAll());
     }
 

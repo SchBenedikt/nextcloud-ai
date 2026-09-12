@@ -69,7 +69,7 @@ class RagService {
 	 *        the room's indexed chat history). It is wrapped as untrusted data
 	 *        like the file context, so it can never act as instructions.
 	 */
-	public function ask(string $userId, string $message, array $history, ?string $scopePath = null, ?string $instructions = null, ?string $persona = null, ?string $extraContext = null): array {
+	public function ask(string $userId, string $message, array $history, ?string $scopePath = null, ?string $instructions = null, ?string $persona = null, ?string $extraContext = null, bool $allowActions = true): array {
 		$this->config->setUserId($userId);
 		$this->toolSources = [];
 		$this->toolImages = [];
@@ -83,7 +83,10 @@ class RagService {
 		[$context, $byDoc] = $this->buildContext($userId, $results);
 
 		$this->executor->setUserId($userId);
-		$tools = $this->actionsEnabled() ? $this->executor->tools() : [];
+		// Callers such as scheduled/read-only briefings can explicitly disable
+		// action tools. A prompt instruction alone is not a security boundary:
+		// the model must never receive mutating tools for a read-only run.
+		$tools = $allowActions && $this->actionsEnabled() ? $this->executor->tools() : [];
 		$messages = $this->buildMessages($userId, $message, $history, $context, count($results), $tools !== [], $instructions, $persona, $this->dateContext($userId), $extraContext);
 
 		for ($round = 0; $round < self::MAX_TOOL_ROUNDS; $round++) {
@@ -1114,6 +1117,7 @@ $this->executor->setUserId($userId);
         );
         $caps = $this->ollama->capabilities();
         $statusMeta = $ollamaStatus['meta'] ?? ['version' => 1, 'checkedAt' => time(), 'latencyMs' => null, 'fromCache' => false];
+        $chatProvider = (string)$this->config->get('chat_provider');
 
         return [
             'enabled' => true,
@@ -1122,14 +1126,17 @@ $this->executor->setUserId($userId);
             'ollamaUrl' => $this->config->ollamaUrl(),
             'models' => $installedNames,
             'embeddingModel' => $this->config->get('embedding_model'),
-            'chatModel' => $this->config->get('chat_model'),
+            'chatModel' => $chatProvider === 'groq' ? $this->config->get('groq_model') : ($chatProvider !== 'ollama' ? $this->config->get('custom_provider_model') : $this->config->get('chat_model')),
+            // Custom providers are checked explicitly through /api/check; do
+            // not perform a blocking network call on every dashboard poll.
+            'chatProviderOnline' => $chatProvider === 'ollama' ? (bool)($ping['ok'] ?? false) : null,
             'chatModelInstalled' => $isInstalled($this->config->get('chat_model')),
             'embeddingModelInstalled' => $isInstalled($this->config->get('embedding_model')),
             // Versioned provider health/capability snapshot (Issue #151):
             // everything here is metadata - no prompts, files or user content.
             'provider' => [
                 'version' => 1,
-                'online' => (bool)($ping['ok'] ?? false),
+                'online' => $chatProvider === 'ollama' ? (bool)($ping['ok'] ?? false) : null,
                 'checkedAt' => (int)$statusMeta['checkedAt'],
                 'latencyMs' => $statusMeta['latencyMs'] ?? null,
                 'fromCache' => (bool)($statusMeta['fromCache'] ?? false),

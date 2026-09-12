@@ -80,7 +80,10 @@ final class ProactiveBriefingJob extends TimedJob {
                 continue;
             }
             try {
-                $answer = $this->rag->ask($userId, "Scheduled EVA briefing. Answer the following request concisely. You are in read-only scheduled mode: never execute, propose, or request confirmation for actions.\n\n" . $prompt, [], '', '', '');
+                // The final boolean is an enforcement boundary, not merely a
+                // model instruction: scheduled briefings must never receive
+                // action tools even when a prompt tries to elicit one.
+                $answer = $this->rag->ask($userId, "Scheduled EVA briefing. Answer the following request concisely. You are in read-only scheduled mode: never execute, propose, or request confirmation for actions.\n\n" . $prompt, [], '', '', '', null, false);
                 $text = trim((string)($answer['answer'] ?? ''));
                 if ($text === '') {
                     throw new \RuntimeException('empty model answer');
