@@ -29,6 +29,8 @@
         "Allow editing": "Allow editing",
         "Allow file actions": "Allow file actions",
         "Allow background actions after I close the page": "Allow background actions after I close the page",
+        "Maximum agent steps per request": "Maximum agent steps per request",
+        "How many model/tool steps EVA may chain before it must summarize. Allowed range: 4–32; higher values help complex tasks but use more time and tokens.": "How many model/tool steps EVA may chain before it must summarize. Allowed range: 4–32; higher values help complex tasks but use more time and tokens.",
         "EVA is continuing this chat in the background": "EVA is continuing this chat in the background",
         "Background EVA run failed after retries": "Background EVA run failed after retries",
         "EVA will continue this chat in the background": "EVA will continue this chat in the background",

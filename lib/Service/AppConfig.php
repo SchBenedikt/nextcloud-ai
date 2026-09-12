@@ -19,7 +19,7 @@ class AppConfig {
         'chat_provider', 'groq_model', 'custom_provider_url', 'custom_provider_model', 'ollama_url', 'embedding_model', 'chat_model', 'chat_model_fallback',
         'embedding_model_fallback', 'summary_model', 'top_k', 'chunk_size',
         'chunk_overlap', 'max_file_size', 'max_files_per_run', 'scope_path',
-        'context_size', 'temperature', 'actions_enabled', 'background_actions_enabled', 'exec_write_types',
+        'context_size', 'temperature', 'actions_enabled', 'background_actions_enabled', 'agent_max_tool_rounds', 'exec_write_types',
         'exec_write_max_chars', 'exec_delete_mode',        'notify_on_complete',
         // Personal, opt-in scheduled briefings/reminders. Definitions are JSON;
         // delivery timestamps deliberately live in runtime state below.
@@ -140,6 +140,7 @@ class AppConfig {
         // required before a queued request may execute mutating tools after
         // the browser has closed.
         'background_actions_enabled' => '0',
+        'agent_max_tool_rounds' => '16',
         'exec_write_types' => '',
         'exec_write_max_chars' => '100000',
         'exec_delete_mode' => 'own',
@@ -244,6 +245,7 @@ class AppConfig {
         'max_files_per_run' => [1, 10000],
         'context_size' => [256, 131072],
         'temperature' => [0.0, 2.0],
+        'agent_max_tool_rounds' => [4, 32],
         'exec_write_max_chars' => [1, 10000000],
         'mail_index_max' => [1, 500],
         'talk_index_max_rooms' => [1, 200],
