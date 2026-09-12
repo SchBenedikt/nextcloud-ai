@@ -335,6 +335,18 @@ class ToolPolicy {
             'requiresConfirmation' => true,
             'description' => 'Remove a system tag from a Nextcloud file',
         ],
+        'list_file_versions' => [
+            'risk' => self::RISK_READONLY,
+            'surfaces' => [self::SURFACE_WEB, self::SURFACE_TALK, self::SURFACE_TASKPROCESSING, self::SURFACE_TASKPROCESSING_CONFIRMED, self::SURFACE_RAG],
+            'requiresConfirmation' => false,
+            'description' => 'List available versions of a Nextcloud file',
+        ],
+        'restore_file_version' => [
+            'risk' => self::RISK_DESTRUCTIVE,
+            'surfaces' => [self::SURFACE_WEB, self::SURFACE_TASKPROCESSING_CONFIRMED],
+            'requiresConfirmation' => true,
+            'description' => 'Restore a previous version of a Nextcloud file',
+        ],
         'server_status' => [
             'risk' => self::RISK_READONLY,
             'surfaces' => [self::SURFACE_WEB, self::SURFACE_TASKPROCESSING, self::SURFACE_TASKPROCESSING_CONFIRMED, self::SURFACE_RAG],
