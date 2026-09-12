@@ -317,6 +317,24 @@ class ToolPolicy {
             'requiresConfirmation' => true,
             'description' => 'Delete a Nextcloud comment',
         ],
+        'list_system_tags' => [
+            'risk' => self::RISK_READONLY,
+            'surfaces' => [self::SURFACE_WEB, self::SURFACE_TALK, self::SURFACE_TASKPROCESSING, self::SURFACE_TASKPROCESSING_CONFIRMED, self::SURFACE_RAG],
+            'requiresConfirmation' => false,
+            'description' => 'List visible Nextcloud system tags',
+        ],
+        'tag_file' => [
+            'risk' => self::RISK_MUTATING,
+            'surfaces' => [self::SURFACE_WEB, self::SURFACE_TASKPROCESSING_CONFIRMED],
+            'requiresConfirmation' => true,
+            'description' => 'Assign a system tag to a Nextcloud file',
+        ],
+        'untag_file' => [
+            'risk' => self::RISK_MUTATING,
+            'surfaces' => [self::SURFACE_WEB, self::SURFACE_TASKPROCESSING_CONFIRMED],
+            'requiresConfirmation' => true,
+            'description' => 'Remove a system tag from a Nextcloud file',
+        ],
         'server_status' => [
             'risk' => self::RISK_READONLY,
             'surfaces' => [self::SURFACE_WEB, self::SURFACE_TASKPROCESSING, self::SURFACE_TASKPROCESSING_CONFIRMED, self::SURFACE_RAG],
