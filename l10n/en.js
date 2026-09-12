@@ -321,6 +321,8 @@ OC.L10N.register("eva_ai", {
     "Not reachable": "Not reachable",
     "Notice": "Notice",
     "Notify me when a long answer is ready": "Notify me when a long answer is ready",
+    "Learn from my conversations": "Learn from my conversations",
+    "Let EVA learn explicit preferences and facts from completed chats. You can edit or delete the personal knowledge below at any time.": "Let EVA learn explicit preferences and facts from completed chats. You can edit or delete the personal knowledge below at any time.",
     "Number of recent Talk messages sent as context. Default: 50.": "Number of recent Talk messages sent as context. Default: 50.",
     "OCR is unavailable: ask your administrator to install Tesseract and its language data.": "OCR is unavailable: ask your administrator to install Tesseract and its language data.",
     "OCR languages (for example eng or deu+eng)": "OCR languages (for example eng or deu+eng)",

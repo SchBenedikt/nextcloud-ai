@@ -192,6 +192,31 @@ class ApiController extends OCSController {
         return new DataResponse($this->usageMetrics->summaryForUser($user));
     }
 
+    /** Lightweight diagnostics for troubleshooting a slow or incomplete install. */
+    #[NoAdminRequired]
+    public function health(): DataResponse {
+        $user = $this->requireUser();
+        if ($user === null) return new DataResponse(['error' => 'Not logged in'], 401);
+        $provider = $this->ollama->status();
+        $queue = $this->backgroundChatQueue->status($user);
+        $activeQueue = count(array_filter($queue, static fn(array $item): bool => in_array($item['status'] ?? '', ['pending', 'running'], true)));
+        $lastIndexError = (string)$this->config->get('index_error');
+        $checks = [
+            'provider' => (bool)($provider['ping']['ok'] ?? false),
+            'chat_model' => $this->ollama->selectedChatModel() !== '',
+            'index' => $lastIndexError === '',
+            'queue' => $activeQueue < 10,
+        ];
+        return new DataResponse([
+            'ok' => !in_array(false, $checks, true),
+            'checks' => $checks,
+            'provider' => ['online' => $checks['provider'], 'model' => $this->ollama->selectedChatModel(), 'latency_ms' => $provider['meta']['latencyMs'] ?? null],
+            'queue' => ['active' => $activeQueue, 'total' => count($queue)],
+            'index' => ['last_error' => $lastIndexError !== '' ? $lastIndexError : null],
+            'generated_at' => time(),
+        ], !in_array(false, $checks, true) ? 200 : 503);
+    }
+
     /**
      * Time-of-day aware greeting for the dashboard hero. The text is generated
      * by the configured chat model once per user+period and cached for several
@@ -307,7 +332,7 @@ class ApiController extends OCSController {
             'chat_provider', 'groq_model', 'custom_provider_url', 'custom_provider_model', 'ollama_url', 'embedding_model', 'chat_model', 'chat_model_fallback',
             'embedding_model_fallback', 'summary_model', 'top_k', 'chunk_size',
             'chunk_overlap', 'max_file_size', 'max_files_per_run', 'scope_path', 'context_size', 'temperature',
-            'actions_enabled', 'background_actions_enabled', 'agent_max_tool_rounds',
+            'actions_enabled', 'background_actions_enabled', 'learning_enabled', 'agent_max_tool_rounds',
             'exec_write_types', 'exec_write_max_chars', 'exec_delete_mode',
             'notify_on_complete',
             'proactive_enabled', 'proactive_schedules',
@@ -435,7 +460,7 @@ class ApiController extends OCSController {
                 if ($key === 'exec_write_types') {
                     $value = $this->config->normalizeValue($key, $value);
                 }
-                if ($key === 'ocr_enabled' || $key === 'notify_on_complete' || $key === 'proactive_enabled' || $key === 'mail_index_enabled' || $key === 'index_enrolled' || $key === 'talk_classify_all' || $key === 'talk_index_enabled' || $key === 'talk_write_enabled' || $key === 'background_actions_enabled' || $key === 'web_search_enabled' || $key === 'web_search_safe_search' || $key === 'web_search_fetch_content' || $key === 'web_search_images' || $key === 'web_search_browser') {
+                if ($key === 'ocr_enabled' || $key === 'notify_on_complete' || $key === 'proactive_enabled' || $key === 'mail_index_enabled' || $key === 'index_enrolled' || $key === 'talk_classify_all' || $key === 'talk_index_enabled' || $key === 'talk_write_enabled' || $key === 'background_actions_enabled' || $key === 'learning_enabled' || $key === 'web_search_enabled' || $key === 'web_search_safe_search' || $key === 'web_search_fetch_content' || $key === 'web_search_images' || $key === 'web_search_browser') {
                     $value = in_array((string)$value, ['1', 'true', 'on'], true) ? '1' : '0';
                 }
                 if ($key === 'temperature') {
@@ -1339,7 +1364,7 @@ class ApiController extends OCSController {
             if ($role === 'assistant') {
                 try {
                     $fullChat = $this->chatStore->getChat($user, $id);
-                    if ($fullChat !== null && count($fullChat['messages']) >= 4) {
+                    if ($fullChat !== null && count($fullChat['messages']) >= 4 && $this->config->get('learning_enabled') === '1') {
                         $this->chatLearner->learnFromChat($user, $fullChat['messages']);
                     }
                 } catch (\Throwable $e) {

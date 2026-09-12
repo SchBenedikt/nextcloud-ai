@@ -187,6 +187,9 @@
 				<NcCheckboxRadioSwitch v-model="notificationsEnabled" type="switch" class="native-toggle compact-switch" :description="$t('Uses Nextcloud Notifications when background or Talk work finishes.')">
 					{{ $t('Notify me when a long answer is ready') }}
 				</NcCheckboxRadioSwitch>
+				<NcCheckboxRadioSwitch v-model="learningEnabled" type="switch" class="native-toggle compact-switch" :description="$t('Let EVA learn explicit preferences and facts from completed chats. You can edit or delete the personal knowledge below at any time.')">
+					{{ $t('Learn from my conversations') }}
+				</NcCheckboxRadioSwitch>
 			</section>
 
 			<section class="settings-section">
@@ -508,6 +511,7 @@ export default {
 			summary_model: '',
 			temperature: '0.1',
 			actions_enabled: '1',
+			learning_enabled: '1',
 			notify_on_complete: '1',
 			exec_write_types: '',
 			exec_write_max_chars: '100000',
@@ -580,6 +584,10 @@ export default {
 		const notificationsEnabled = computed({
 			get: () => f.value.notify_on_complete === '1',
 			set: value => { f.value.notify_on_complete = value ? '1' : '0' },
+		})
+		const learningEnabled = computed({
+			get: () => f.value.learning_enabled === '1',
+			set: value => { f.value.learning_enabled = value ? '1' : '0' },
 		})
 		const userWebSearchEnabled = computed({
 			get: () => f.value.web_search_enabled === '1',
@@ -1142,7 +1150,7 @@ export default {
 		const ocrEnabled = computed({ get: () => f.value.ocr_enabled === '1', set: value => { f.value.ocr_enabled = value ? '1' : '0' } })
 		return {
 			groqKey, removeGroqKey, ocrEnabled, f, status, limits, availableModels, embeddingModels, chatModels, embeddingInstalledHint, chatInstalledHint, modelLoading, modelError, checkOut, saving, checking, indexing, resetting, deletingChats, stopping, saved, loadError, message, validationErrors, resetConfirm, chatsDeleteConfirm,
-			newExcludePath, excludeError, excludeList, actionsEnabled, notificationsEnabled, mailIndexEnabled, talkIndexEnabled, talkWriteEnabled, indexEnrolled, actionsDisabled, busy, indexingActive, settingsLocked, maxFileSizeMb,
+			newExcludePath, excludeError, excludeList, actionsEnabled, notificationsEnabled, learningEnabled, mailIndexEnabled, talkIndexEnabled, talkWriteEnabled, indexEnrolled, actionsDisabled, busy, indexingActive, settingsLocked, maxFileSizeMb,
 			isAdminMode, admin, userWebSearchEnabled, userWebSearchSafeSearch, webSearchKey, removeWebSearchKey, webSearchKeyStored, webSearchReady, savingAdmin, saveAdminSettings, loadAdminSettings,
 			exporting, downloadExport,
 			knowledgeContent, knowledgeOriginal, savingKnowledge, knowledgeSaved, saveKnowledgeContent,
