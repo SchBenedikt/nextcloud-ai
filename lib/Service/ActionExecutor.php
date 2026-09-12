@@ -1244,8 +1244,28 @@ class ActionExecutor {
             if (is_resource($body)) $body = stream_get_contents($body);
             $body = mb_substr((string)$body, 0, 50000);
             $decoded = json_decode($body, true);
-            return ['ok' => $response->getStatusCode() >= 200 && $response->getStatusCode() < 300, 'result' => ['status' => $response->getStatusCode(), 'data' => $decoded ?? $body, 'path' => $path, 'method' => $method]];
+            $status = $response->getStatusCode();
+            $ok = $status >= 200 && $status < 300;
+            if ($ok) $this->rememberAppApiPattern($appId, $method, $path, array_keys($params));
+            return ['ok' => $ok, 'result' => ['status' => $status, 'data' => $decoded ?? $body, 'path' => $path, 'method' => $method]];
         } catch (\Throwable) { return ['ok' => false, 'error' => 'The app API request failed in the current user context.']; }
+    }
+
+    /** Remember only reusable call shape, never parameter values or response data. */
+    private function rememberAppApiPattern(string $appId, string $method, string $path, array $paramKeys): void {
+        if ($appId === '' || $path === '') return;
+        try {
+            $known = json_decode($this->config->get('learned_app_apis'), true);
+            if (!is_array($known) || !is_array($known[$appId] ?? null)) return;
+            $patterns = is_array($known[$appId]['patterns'] ?? null) ? $known[$appId]['patterns'] : [];
+            $keys = array_values(array_unique(array_filter(array_map('strval', $paramKeys), static fn(string $key): bool => preg_match('/^[A-Za-z0-9_.-]{1,80}$/', $key) === 1)));
+            $entry = ['method' => $method, 'path' => $path, 'params' => $keys, 'last_used' => time()];
+            $fingerprint = $method . ' ' . $path;
+            $patterns = array_values(array_filter($patterns, static fn($row): bool => is_array($row) && (($row['method'] ?? '') . ' ' . ($row['path'] ?? '')) !== $fingerprint));
+            array_unshift($patterns, $entry);
+            $known[$appId]['patterns'] = array_slice($patterns, 0, 50);
+            $this->config->set('learned_app_apis', json_encode($known, JSON_UNESCAPED_SLASHES) ?: '{}');
+        } catch (\Throwable) { /* Learning is best effort and must not break the action. */ }
     }
 
     /** Match a concrete request path against a Nextcloud route template. */
