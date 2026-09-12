@@ -77,6 +77,7 @@ Resetting a user's index clears that user's cached vectors.
 | Key | Scope | Default | Range / values | Unit | Effect |
 |---|---|---|---|---|---|
 | `actions_enabled` | P | `1` | `1`/`0` | – | `1` = chat tools enabled; `0` = read-only chat. |
+| `background_actions_enabled` | P | `0` | `1`/`0` | – | Explicit opt-in for queued chats to execute requested mutating tools after the browser closes. Requires `actions_enabled=1`; disabled queued jobs remain read-only. |
 | `exec_write_types` | P | `''` (all) | `*`, empty, or ≤32 extensions `md,txt,…` | – | Allowed extensions for AI-created files. |
 | `exec_write_max_chars` | P | `100000` | `1`–`10000000` | characters | Maximum size of AI-created file contents. |
 | `exec_delete_mode` | P | `own` | `off`/`own`/`all` | – | `own` = delete only EVA-created files; `all` = also user files (with confirmation); `off` = deletion disabled. |

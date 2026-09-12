@@ -19,7 +19,7 @@ class AppConfig {
         'chat_provider', 'groq_model', 'custom_provider_url', 'custom_provider_model', 'ollama_url', 'embedding_model', 'chat_model', 'chat_model_fallback',
         'embedding_model_fallback', 'summary_model', 'top_k', 'chunk_size',
         'chunk_overlap', 'max_file_size', 'max_files_per_run', 'scope_path',
-        'context_size', 'temperature', 'actions_enabled', 'exec_write_types',
+        'context_size', 'temperature', 'actions_enabled', 'background_actions_enabled', 'exec_write_types',
         'exec_write_max_chars', 'exec_delete_mode',        'notify_on_complete',
         // Personal, opt-in scheduled briefings/reminders. Definitions are JSON;
         // delivery timestamps deliberately live in runtime state below.
@@ -136,6 +136,10 @@ class AppConfig {
         'context_size' => '12288',
         'temperature' => '0.1',
         'actions_enabled' => '1',
+        // Background chat is read-only by default. An explicit opt-in is
+        // required before a queued request may execute mutating tools after
+        // the browser has closed.
+        'background_actions_enabled' => '0',
         'exec_write_types' => '',
         'exec_write_max_chars' => '100000',
         'exec_delete_mode' => 'own',
@@ -577,7 +581,7 @@ class AppConfig {
             }
             return 'must be an absolute path or a command name, without spaces';
         }
-        if (in_array($key, ['ocr_enabled', 'actions_enabled', 'notify_on_complete', 'proactive_enabled', 'mail_index_enabled', 'talk_index_enabled', 'talk_write_enabled', 'index_enrolled', 'talk_classify_all', 'weather_tool_enabled', 'web_search_enabled', 'web_search_safe_search', 'web_search_fetch_content', 'web_search_images', 'web_search_browser'], true)) {
+        if (in_array($key, ['ocr_enabled', 'actions_enabled', 'background_actions_enabled', 'notify_on_complete', 'proactive_enabled', 'mail_index_enabled', 'talk_index_enabled', 'talk_write_enabled', 'index_enrolled', 'talk_classify_all', 'weather_tool_enabled', 'web_search_enabled', 'web_search_safe_search', 'web_search_fetch_content', 'web_search_images', 'web_search_browser'], true)) {
             return is_scalar($value) && in_array((string)$value, ['0', '1', 'true', 'false', 'on', 'off'], true)
                 ? null : 'must be a boolean value';
         }
