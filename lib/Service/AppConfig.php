@@ -77,6 +77,7 @@ class AppConfig {
         // settings page reports whether the server can actually do it.
         'web_search_browser',
         'web_search_browser_node',
+        'web_search_browser_browsers_path',
         'web_search_browser_timeout',
         // Indexing throughput controls. These were previously only reachable
         // through `occ config:app:set`; the admin page exposed fields for them
@@ -163,6 +164,10 @@ class AppConfig {
         // administrator should decide that rather than discover it.
         'web_search_browser' => '0',
         'web_search_browser_node' => '',
+        // Empty means Playwright's own location (the web server account's
+        // ~/.cache/ms-playwright). It is only needed when the browser build
+        // lives somewhere that account's home does not point at.
+        'web_search_browser_browsers_path' => '',
         'web_search_browser_timeout' => '20',
         'index_running' => '0',
         'index_started' => '',
@@ -461,6 +466,23 @@ class AppConfig {
                 return 'must be an http(s) URL or empty';
             }
             return null;
+        }
+        if ($key === 'web_search_browser_browsers_path') {
+            if (!is_scalar($value)) {
+                return 'must be a path to the Playwright browsers directory, or empty';
+            }
+            $path = trim((string)$value);
+            if ($path === '') {
+                return null;
+            }
+            // Passed to the renderer as an environment variable rather than
+            // through a shell, and still restricted to a plain absolute path:
+            // this value chooses every executable the browser loads, so nothing
+            // with whitespace or metacharacters belongs in it.
+            if (preg_match('~^/[A-Za-z0-9._/+\-]{1,255}$~', $path) === 1) {
+                return null;
+            }
+            return 'must be an absolute path without spaces, or empty';
         }
         if ($key === 'web_search_browser_node') {
             if (!is_scalar($value)) {

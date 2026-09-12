@@ -199,6 +199,15 @@ class WebSearchService {
     private ?string $lastDuckDuckGoError = null;
 
     /**
+     * How many pages the last search read through a real browser.
+     *
+     * The interesting number for anyone checking whether rendering works: a
+     * switch that is on and a browser that is never used look identical from
+     * outside, and this is what tells them apart.
+     */
+    private int $lastRenderedPages = 0;
+
+    /**
      * Host name => is public, for the lifetime of one request. A search resolves
      * the same host several times (every result link, every image on it), and a
      * DNS lookup per occurrence would be pure latency.
@@ -333,6 +342,35 @@ class WebSearchService {
     }
 
     /**
+     * Where the browser builds are searched for, for the admin settings screen.
+     *
+     * Shown because it is the one piece of the setup an administrator has to get
+     * right and cannot guess: it is derived from the web server account's home
+     * directory, which is rarely the account they are logged in as.
+     */
+    public function browserBrowsersPath(): string
+    {
+        return $this->renderer->browsersPath();
+    }
+
+    /** The command that installs the browser build, for the admin settings screen. */
+    public function browserInstallCommand(): string
+    {
+        return $this->renderer->installCommand();
+    }
+
+    /**
+     * How many pages of the last search were read in a real browser.
+     *
+     * Reported by the admin test search so that "switched on" can be told apart
+     * from "actually doing something".
+     */
+    public function lastRenderedPages(): int
+    {
+        return $this->lastRenderedPages;
+    }
+
+    /**
      * Read pages in a real browser, under this service's own URL policy.
      *
      * The policy is passed in rather than reimplemented: the renderer runs the
@@ -347,11 +385,16 @@ class WebSearchService {
         if ($urls === [] || !$this->browserRendering()) {
             return [];
         }
-        return $this->renderer->renderMany(
+        $pages = $this->renderer->renderMany(
             $urls,
             fn(string $candidate): bool => $this->isFetchablePage($candidate),
             $this->imagesEnabled(),
         );
+        // Counted here rather than at each call site: a page that came back from
+        // the browser is the same fact wherever it was asked for, and the count
+        // is what the admin test reports.
+        $this->lastRenderedPages += \count($pages);
+        return $pages;
     }
 
     private function timeout(): int {
