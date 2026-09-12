@@ -1269,26 +1269,39 @@ class ActionExecutor {
             $decoded = json_decode($body, true);
             $status = $response->getStatusCode();
             $ok = $status >= 200 && $status < 300;
-            if ($ok) $this->rememberAppApiPattern($appId, $method, $path, array_keys($params));
+            if ($ok) $this->rememberAppApiPattern($appId, $method, $path, array_keys($params), is_array($decoded) ? $this->shapeOf($decoded) : ['type' => 'string']);
             return ['ok' => $ok, 'result' => ['status' => $status, 'data' => $decoded ?? $body, 'path' => $path, 'method' => $method]];
         } catch (\Throwable) { return ['ok' => false, 'error' => 'The app API request failed in the current user context.']; }
     }
 
     /** Remember only reusable call shape, never parameter values or response data. */
-    private function rememberAppApiPattern(string $appId, string $method, string $path, array $paramKeys): void {
+    private function rememberAppApiPattern(string $appId, string $method, string $path, array $paramKeys, array $responseShape = []): void {
         if ($appId === '' || $path === '') return;
         try {
             $known = json_decode($this->config->get('learned_app_apis'), true);
             if (!is_array($known) || !is_array($known[$appId] ?? null)) return;
             $patterns = is_array($known[$appId]['patterns'] ?? null) ? $known[$appId]['patterns'] : [];
             $keys = array_values(array_unique(array_filter(array_map('strval', $paramKeys), static fn(string $key): bool => preg_match('/^[A-Za-z0-9_.-]{1,80}$/', $key) === 1)));
-            $entry = ['method' => $method, 'path' => $path, 'params' => $keys, 'last_used' => time()];
+            $entry = ['method' => $method, 'path' => $path, 'params' => $keys, 'response_shape' => $responseShape, 'last_used' => time()];
             $fingerprint = $method . ' ' . $path;
             $patterns = array_values(array_filter($patterns, static fn($row): bool => is_array($row) && (($row['method'] ?? '') . ' ' . ($row['path'] ?? '')) !== $fingerprint));
             array_unshift($patterns, $entry);
             $known[$appId]['patterns'] = array_slice($patterns, 0, 50);
             $this->config->set('learned_app_apis', json_encode($known, JSON_UNESCAPED_SLASHES) ?: '{}');
         } catch (\Throwable) { /* Learning is best effort and must not break the action. */ }
+    }
+
+    /** Return only JSON shape metadata; never retain response values. */
+    private function shapeOf(mixed $value, int $depth = 0): array {
+        if ($depth >= 3) return ['type' => is_array($value) ? 'object' : gettype($value)];
+        if (!is_array($value)) return ['type' => gettype($value)];
+        $keys = [];
+        foreach (array_slice($value, 0, 40, true) as $key => $child) {
+            $name = (string)$key;
+            if (preg_match('/^[A-Za-z0-9_.-]{1,80}$/', $name) !== 1) continue;
+            $keys[$name] = $this->shapeOf($child, $depth + 1);
+        }
+        return ['type' => array_is_list($value) ? 'array' : 'object', 'keys' => $keys];
     }
 
     /** Match a concrete request path against a Nextcloud route template. */
