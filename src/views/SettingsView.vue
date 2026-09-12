@@ -173,6 +173,10 @@
 				<NcCheckboxRadioSwitch v-model="backgroundActionsEnabled" type="switch" class="native-toggle" :disabled="actionsDisabled" :description="$t('When a chat continues after you close the page, EVA may execute requested changes without an open confirmation dialog.')">
 					{{ $t('Allow background actions after I close the page') }}
 				</NcCheckboxRadioSwitch>
+				<div class="field" style="max-width: 360px; margin-top: 12px;">
+					<NcTextField id="agent-max-tool-rounds" v-model="f.agent_max_tool_rounds" type="number" :label="$t('Maximum agent steps per request')" :label-outside="true" :disabled="actionsDisabled" />
+					<p class="field-help">{{ $t('How many model/tool steps EVA may chain before it must summarize. Allowed range: 4–32; higher values help complex tasks but use more time and tokens.') }}</p>
+				</div>
 				<div class="warning-note" :class="{ 'is-disabled': actionsDisabled }">
 					<strong>{{ actionsDisabled ? $t('Actions are disabled') : $t('Actions can change your files') }}</strong>
 					<span>{{ actionsDisabled ? $t('The fields below are inactive until you enable file actions.') : $t('Complete, explicit requests run directly. EVA only asks when information is missing or a target is unclear.') }}</span>
@@ -549,6 +553,7 @@ export default {
 			temperature: '0.1',
 			actions_enabled: '1',
 			background_actions_enabled: '0',
+			agent_max_tool_rounds: '16',
 			notify_on_complete: '1',
 			exec_write_types: '',
 			exec_write_max_chars: '100000',

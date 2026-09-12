@@ -28,6 +28,8 @@ OC.L10N.register("eva_ai", {
     "Allow editing": "Bearbeiten erlauben",
     "Allow file actions": "Dateiaktionen erlauben",
     "Allow background actions after I close the page": "Hintergrundaktionen nach dem Schließen der Seite erlauben",
+    "Maximum agent steps per request": "Maximale Agentenschritte pro Anfrage",
+    "How many model/tool steps EVA may chain before it must summarize. Allowed range: 4–32; higher values help complex tasks but use more time and tokens.": "Wie viele Modell-/Tool-Schritte EVA verketten darf, bevor eine Zusammenfassung nötig ist. Erlaubter Bereich: 4–32; höhere Werte helfen bei komplexen Aufgaben, benötigen aber mehr Zeit und Tokens.",
     "EVA is continuing this chat in the background": "EVA setzt diesen Chat im Hintergrund fort",
     "Background EVA run failed after retries": "Hintergrundlauf von EVA nach mehreren Versuchen fehlgeschlagen",
     "EVA will continue this chat in the background": "EVA setzt diesen Chat im Hintergrund fort",

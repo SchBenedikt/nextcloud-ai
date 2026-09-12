@@ -99,6 +99,7 @@ class RagService {
 		[$context, $byDoc] = $this->buildContext($userId, $results);
 
 		$this->executor->setUserId($userId);
+		$maxToolRounds = max((int)AppConfig::LIMITS['agent_max_tool_rounds'][0], min($this->config->getInt('agent_max_tool_rounds', self::MAX_TOOL_ROUNDS), (int)AppConfig::LIMITS['agent_max_tool_rounds'][1]));
 		// Callers such as scheduled/read-only briefings can explicitly disable
 		// action tools. A prompt instruction alone is not a security boundary:
 		// the model must never receive mutating tools for a read-only run.
@@ -106,7 +107,7 @@ class RagService {
 		$messages = $this->buildMessages($userId, $message, $history, $context, count($results), $tools !== [], $instructions, $persona, $this->dateContext($userId), $extraContext);
 		$seenToolCalls = [];
 
-		for ($round = 0; $round < self::MAX_TOOL_ROUNDS; $round++) {
+		for ($round = 0; $round < $maxToolRounds; $round++) {
 			$chat = $this->ollama->chat($messages, $tools);
 			if (isset($chat['error'])) {
 				return ['answer' => '', 'sources' => $this->answerSources($byDoc), 'model' => $this->config->get('chat_model'), 'error' => $chat['error'], 'followups' => []];
@@ -216,7 +217,8 @@ $this->executor->setUserId($userId);
             $toolActivity = false;
             $toolFailure = false;
             $seenToolCalls = [];
-            for ($round = 0; $round < self::MAX_TOOL_ROUNDS; $round++) {
+			$maxToolRounds = max((int)AppConfig::LIMITS['agent_max_tool_rounds'][0], min($this->config->getInt('agent_max_tool_rounds', self::MAX_TOOL_ROUNDS), (int)AppConfig::LIMITS['agent_max_tool_rounds'][1]));
+			for ($round = 0; $round < $maxToolRounds; $round++) {
                 $toolCalls = [];
                 $rawToolCalls = [];
                 foreach ($this->ollama->chatStream($messages, $tools) as $ev) {
