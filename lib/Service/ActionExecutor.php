@@ -76,6 +76,8 @@ class ActionExecutor {
         'delete_task' => ['task_id'],
         'add_comment' => ['object_type', 'object_id', 'message'],
         'delete_comment' => ['comment_id'],
+        'tag_file' => ['file_id', 'tag'],
+        'untag_file' => ['file_id', 'tag'],
     ];
 
     /**
@@ -113,7 +115,8 @@ class ActionExecutor {
         private WebSearchService $webSearch,
         private TalkChatService $talkChat,
         private \OCP\Lock\ILockingProvider $lockingProvider,
-        private ?\OCP\Comments\ICommentsManagerFactory $commentsFactory = null
+        private ?\OCP\Comments\ICommentsManagerFactory $commentsFactory = null,
+        private ?\OCP\SystemTag\ISystemTagManagerFactory $systemTagFactory = null
     ) {
     }
 
@@ -483,6 +486,29 @@ class ActionExecutor {
                 ], 'required' => ['comment_id']],
             ]],
             ['type' => 'function', 'function' => [
+                'name' => 'list_system_tags',
+                'description' => 'List visible Nextcloud system tags. Use this before tagging files so you reuse the exact existing tag name.',
+                'parameters' => ['type' => 'object', 'properties' => [
+                    'search' => ['type' => 'string', 'description' => 'Optional name fragment.'],
+                ]],
+            ]],
+            ['type' => 'function', 'function' => [
+                'name' => 'tag_file',
+                'description' => 'Assign an existing or user-assignable system tag to a file. This changes file metadata and requires confirmation.',
+                'parameters' => ['type' => 'object', 'properties' => [
+                    'file_id' => ['type' => 'string', 'description' => 'Numeric Nextcloud file id.'],
+                    'tag' => ['type' => 'string', 'description' => 'Exact system tag name.'],
+                ], 'required' => ['file_id', 'tag']],
+            ]],
+            ['type' => 'function', 'function' => [
+                'name' => 'untag_file',
+                'description' => 'Remove a system tag from a file. This changes file metadata and requires confirmation.',
+                'parameters' => ['type' => 'object', 'properties' => [
+                    'file_id' => ['type' => 'string', 'description' => 'Numeric Nextcloud file id.'],
+                    'tag' => ['type' => 'string', 'description' => 'Exact system tag name.'],
+                ], 'required' => ['file_id', 'tag']],
+            ]],
+            ['type' => 'function', 'function' => [
                 'name' => 'server_status',
                 'description' => 'Get technical status info of the Nextcloud server (version, PHP, database, app version, Ollama connectivity, user). Use when the user asks about the system, server or setup.',
                 'parameters' => ['type' => 'object', 'properties' => new \stdClass()],
@@ -729,6 +755,9 @@ class ActionExecutor {
                 'list_comments' => $this->listComments($args),
                 'add_comment' => $this->addComment($userId, $args),
                 'delete_comment' => $this->deleteComment($args),
+                'list_system_tags' => $this->listSystemTags($args),
+                'tag_file' => $this->tagFile($userId, $args, false),
+                'untag_file' => $this->tagFile($userId, $args, true),
                 'server_status' => $this->serverStatus($userId),
                 'list_nextcloud_capabilities' => $this->listNextcloudCapabilities(),
                 'update_knowledge' => $this->updateKnowledge($home, $args),
@@ -747,6 +776,45 @@ class ActionExecutor {
         } catch (\Throwable) {
             return null;
         }
+    }
+
+    private function systemTagServices(): ?array {
+        try {
+            $factory = $this->systemTagFactory ?? Server::get(\OCP\SystemTag\ISystemTagManagerFactory::class);
+            return ['manager' => $factory->getManager(), 'mapper' => $factory->getObjectMapper()];
+        } catch (\Throwable) { return null; }
+    }
+
+    private function listSystemTags(array $args): array {
+        $services = $this->systemTagServices();
+        if ($services === null) return ['ok' => false, 'error' => 'Nextcloud system tags are not available.'];
+        try {
+            $search = trim((string)($args['search'] ?? ''));
+            $user = $this->userManager->get($this->config->userId() ?? '');
+            $tags = $services['manager']->getAllTags(true, $search !== '' ? '%' . $search . '%' : null);
+            $out = [];
+            foreach ($tags as $tag) {
+                if ($user !== null && !$services['manager']->canUserSeeTag($tag, $user)) continue;
+                $out[] = ['id' => (string)$tag->getId(), 'name' => (string)$tag->getName(), 'user_visible' => (bool)$tag->isUserVisible(), 'user_assignable' => (bool)$tag->isUserAssignable(), 'color' => method_exists($tag, 'getColor') ? (string)$tag->getColor() : null];
+            }
+            return ['ok' => true, 'result' => ['tags' => $out]];
+        } catch (\Throwable) { return ['ok' => false, 'error' => 'System tags could not be read.']; }
+    }
+
+    private function tagFile(string $userId, array $args, bool $remove): array {
+        $services = $this->systemTagServices();
+        $fileId = trim((string)($args['file_id'] ?? '')); $name = trim((string)($args['tag'] ?? ''));
+        if ($services === null) return ['ok' => false, 'error' => 'Nextcloud system tags are not available.'];
+        if (!ctype_digit($fileId) || (int)$fileId < 1 || $name === '') return ['ok' => false, 'error' => 'A numeric file_id and non-empty tag are required'];
+        try {
+            $user = $this->userManager->get($userId);
+            if ($user === null) return ['ok' => false, 'error' => 'User not found'];
+            $tag = $services['manager']->getTag($name, true, true);
+            if (!$services['manager']->canUserAssignTag($tag, $user)) return ['ok' => false, 'error' => 'The user may not assign this system tag.'];
+            if ($remove) $services['mapper']->unassignTags($fileId, 'files', (string)$tag->getId());
+            else $services['mapper']->assignTags($fileId, 'files', (string)$tag->getId());
+            return ['ok' => true, 'result' => ['file_id' => (int)$fileId, 'tag' => (string)$tag->getName(), 'removed' => $remove]];
+        } catch (\Throwable) { return ['ok' => false, 'error' => 'The system tag could not be changed. Check file access and tag permissions.']; }
     }
 
     private function commentData(\OCP\Comments\IComment $comment): array {
@@ -816,6 +884,7 @@ class ActionExecutor {
                 'bookmarks' => ['protocols' => ['Bookmarks REST API'], 'eva_tools' => [], 'status' => 'discovery only; no dedicated EVA adapter installed'],
                 'forms' => ['protocols' => ['Forms OCS API'], 'eva_tools' => [], 'status' => 'discovery only; no dedicated EVA adapter installed'],
                 'comments' => ['protocols' => ['OCS Comments API', 'server-side ICommentsManager'], 'eva_tools' => ['list_comments', 'add_comment', 'delete_comment']],
+                'systemtags' => ['protocols' => ['server-side ISystemTagManager/ISystemTagObjectMapper', 'OCS Files Tags API'], 'eva_tools' => ['list_system_tags', 'tag_file', 'untag_file']],
             ];
             $availableApis = [];
             foreach ($apiCatalog as $app => $metadata) if (in_array($app, $apps, true)) $availableApis[$app] = $metadata;
