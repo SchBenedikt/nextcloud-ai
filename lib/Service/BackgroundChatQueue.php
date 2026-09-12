@@ -16,7 +16,7 @@ final class BackgroundChatQueue {
 
     public function __construct(private IConfig $config, private ILockingProvider $locks, private LoggerInterface $logger) {}
 
-    public function enqueue(string $user, string $chatId, string $message, array $history): ?string {
+    public function enqueue(string $user, string $chatId, string $message, array $history, ?string $requestedId = null): ?string {
         $message = trim($message);
         if ($user === '' || $chatId === '' || $message === '' || mb_strlen($message) > self::MAX_MESSAGE_CHARS) return null;
         $cleanHistory = [];
@@ -33,7 +33,8 @@ final class BackgroundChatQueue {
                 if (($item['chatId'] ?? '') === $chatId && ($item['message'] ?? '') === $message && in_array(($item['status'] ?? ''), ['pending', 'running'], true)) return (string)$item['id'];
             }
             if (count($items) >= self::MAX_ITEMS) return null;
-            $id = 'bg_' . date('YmdHis') . '_' . bin2hex(random_bytes(5));
+            $id = is_string($requestedId) && preg_match('/^[A-Za-z0-9_-]{8,80}$/D', $requestedId) === 1
+                ? $requestedId : 'bg_' . date('YmdHis') . '_' . bin2hex(random_bytes(5));
             $items[] = ['id' => $id, 'chatId' => $chatId, 'message' => $message, 'history' => $cleanHistory, 'status' => 'pending', 'attempts' => 0, 'created' => time(), 'availableAt' => time() + 15];
             $this->write($user, $items);
             return $id;

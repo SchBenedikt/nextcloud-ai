@@ -861,6 +861,7 @@ class ApiController extends OCSController {
         $chatId = trim((string)($this->requestParam('chatId') ?? ''));
         $message = trim((string)($this->requestParam('message') ?? ''));
         $history = $this->requestParam('history', []);
+        $requestId = $this->requestParam('requestId');
         if (is_string($history)) $history = json_decode($history, true) ?? [];
         if ($chatId === '' || $message === '' || !is_array($history)) return new DataResponse(['error' => 'chatId, message and history are required'], 400);
         $chat = $this->chatStore->get($user, $chatId);
@@ -872,9 +873,19 @@ class ApiController extends OCSController {
         if (($last['role'] ?? '') !== 'user' || trim((string)($last['text'] ?? '')) !== $message) {
             $this->chatStore->append($user, $chatId, 'user', $message);
         }
-        $id = $this->backgroundChatQueue->enqueue($user, $chatId, $message, $history);
+        $id = $this->backgroundChatQueue->enqueue($user, $chatId, $message, $history, is_string($requestId) ? $requestId : null);
         if ($id === null) return new DataResponse(['error' => 'Background queue is full or the message is too large'], 429);
         return new DataResponse(['queued' => true, 'id' => $id]);
+    }
+
+    #[NoAdminRequired]
+    public function cancelBackgroundChat(): DataResponse {
+        $user = $this->requireUser();
+        if ($user === null) return new DataResponse(['error' => 'Not logged in'], 401);
+        $id = trim((string)($this->requestParam('id') ?? ''));
+        if ($id === '') return new DataResponse(['error' => 'Queue id required'], 400);
+        $this->backgroundChatQueue->complete($user, $id);
+        return new DataResponse(['ok' => true]);
     }
 
     /**

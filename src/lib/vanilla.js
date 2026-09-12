@@ -38,6 +38,7 @@ export function mountChat(root, opts = {}) {
 	let currentAbort = null
 	let stoppedByUser = false
 	let queuedOnUnload = false
+	let backgroundRequestId = null
 	// Monotonic per-chat revision (Issue #182): every persisted change bumps it
 	// server-side, and regenerate/edit requests validate against it so two tabs
 	// cannot silently overwrite each other. null until a chat is known.
@@ -702,11 +703,17 @@ export function mountChat(root, opts = {}) {
 			fetch(API_BASE + '/backgroundChat', {
 				method: 'POST', credentials: 'same-origin', keepalive: true,
 				headers: { 'OCS-APIRequest': 'true', 'Content-Type': 'application/json', 'Accept': 'application/json', 'requesttoken': REQUEST_TOKEN },
-				body: JSON.stringify({ chatId, message: lastUser.text, history }),
+				body: JSON.stringify({ chatId, message: lastUser.text, history, requestId: backgroundRequestId }),
 			}).catch(() => {})
 		} catch (_) {}
 	}
 	if (typeof window !== 'undefined') window.addEventListener('pagehide', queueOnPageHide)
+	const cancelBackgroundJob = () => {
+		if (!backgroundRequestId) return
+		const id = backgroundRequestId
+		backgroundRequestId = null
+		api('DELETE', '/backgroundChat', { id }).catch(() => {})
+	}
 
 	function refreshCustomizePill(chat) {
 		// Per-chat custom instructions (Issue #90): a subtle header indicator
@@ -883,6 +890,8 @@ export function mountChat(root, opts = {}) {
 			return
 		}
 		sending = true
+		backgroundRequestId = (window.crypto && crypto.randomUUID) ? crypto.randomUUID().replace(/[^A-Za-z0-9_-]/g, '') : ('bg_' + Date.now() + '_' + Math.random().toString(36).slice(2))
+		queuedOnUnload = false
 		currentAbort = new AbortController()
 		stoppedByUser = false
 		setStreamingUI(true)
@@ -1067,6 +1076,7 @@ export function mountChat(root, opts = {}) {
 					// link as a copyable chip in the bubble.
 					if (ev.ok && ev.url) last.linkUrl = ev.url
 				} else if (ev.type === 'confirmation') {
+					cancelBackgroundJob()
 					const missing = Array.isArray(ev.missing) ? ev.missing : []
 					last.confirmation = {
 						name: ev.name || '?',
@@ -1098,6 +1108,7 @@ export function mountChat(root, opts = {}) {
 						.catch(() => false)
 					renderAll(messages)
 				} else if (ev.type === 'done') {
+					cancelBackgroundJob()
 					last.text = ev.answer || last.text
 					last.sources = citedSources(last.text, ev.sources || [])
 					last.followups = ev.followups || []
@@ -1110,6 +1121,7 @@ export function mountChat(root, opts = {}) {
 						.then((saved) => { if (saved && onRecent) onRecent() })
 						.catch(() => {})
 				} else if (ev.type === 'error') {
+					cancelBackgroundJob()
 					last.text = '⚠️ ' + ev.message
 					last.done = true
 					saveUserMessage(msg)
@@ -1134,6 +1146,7 @@ export function mountChat(root, opts = {}) {
 					}
 				}
 				if (!stoppedByUser) {
+					cancelBackgroundJob()
 					err.textContent = t('Network error — see console.')
 					err.style.display = 'block'
 				}
