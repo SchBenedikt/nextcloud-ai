@@ -8,6 +8,7 @@ use OCA\EvaAi\Service\AppConfig;
 use OCA\EvaAi\Service\ProviderException;
 use OCA\EvaAi\Service\WebSearchService;
 use OCP\IConfig;
+use PHPUnit\Framework\Attributes\DataProvider;
 use OCP\Security\ICrypto;
 use PHPUnit\Framework\TestCase;
 use Psr\Log\LoggerInterface;
@@ -878,5 +879,116 @@ HTML;
         $text = $this->callPrivate($service, 'extractReadableText', [$html]);
         self::assertStringContainsString('The body text.', $text);
         self::assertStringNotContainsString('Menu', $text);
+    }
+
+    // ---- open_website must not become an SSRF primitive ----
+
+    /**
+     * The model can name any URL for `open_website`, so internal targets have to
+     * be refused before the request is made. Without this the assistant could be
+     * asked to fetch the local Ollama port, the cloud metadata service or a host
+     * on the internal network and would repeat what it read in the chat.
+     */
+    #[DataProvider('internalUrls')]
+    public function testInternalAddressesAreNotFetchable(string $url): void {
+        $service = $this->service();
+        self::assertFalse(
+            $this->callPrivate($service, 'isFetchableUrl', [$url]),
+            $url . ' must not be fetchable'
+        );
+    }
+
+    /** @return iterable<string,array{string}> */
+    public static function internalUrls(): iterable {
+        yield 'loopback ipv4' => ['http://127.0.0.1:11434/api/tags'];
+        yield 'localhost name' => ['http://localhost/nextcloud/index.php'];
+        yield 'localhost subdomain' => ['http://evil.localhost/'];
+        yield 'class c private' => ['http://192.168.1.10/router'];
+        yield 'class a private' => ['http://10.0.0.5/'];
+        yield 'link local metadata' => ['http://169.254.169.254/latest/meta-data/'];
+        yield 'ipv6 loopback' => ['http://[::1]:8080/'];
+        yield 'mapped loopback' => ['http://[::ffff:127.0.0.1]/'];
+        yield 'unspecified' => ['http://0.0.0.0/'];
+        yield 'internal suffix' => ['http://wiki.internal/secret'];
+        yield 'lan suffix' => ['http://nas.lan/'];
+        yield 'localhost dot suffix' => ['http://db.home.arpa/'];
+        yield 'credentials' => ['https://user:pass@example.org/'];
+        yield 'file scheme' => ['file:///etc/passwd'];
+        yield 'gopher scheme' => ['gopher://example.org/'];
+    }
+
+    /**
+     * A redirect is the usual way around a host check: a public address answers
+     * with a Location pointing at the internal one. `isSafeHttpUrl` therefore
+     * decides every hop, and `resolveRedirect` returns null for a target that
+     * must not be fetched instead of a URL.
+     */
+    public function testRedirectToAnInternalAddressIsRefused(): void {
+        $service = $this->service();
+        self::assertNull(
+            $this->callPrivate($service, 'resolveRedirect', ['https://example.org/start', 'http://127.0.0.1/admin'])
+        );
+        self::assertNull(
+            $this->callPrivate($service, 'resolveRedirect', ['https://example.org/start', '//169.254.169.254/'])
+        );
+        self::assertNull(
+            $this->callPrivate($service, 'resolveRedirect', ['https://example.org/start', 'file:///etc/passwd'])
+        );
+        self::assertNull(
+            $this->callPrivate($service, 'resolveRedirect', ['https://example.org/start', ''])
+        );
+    }
+
+    /** A relative Location is still followed, or ordinary redirects would break. */
+    public function testRelativeRedirectTargetsAreResolvedAgainstTheBase(): void {
+        $service = $this->service();
+        self::assertSame(
+            'https://example.org/de/docs/intro',
+            $this->callPrivate($service, 'resolveRedirect', ['https://example.org/de/docs', '/de/docs/intro'])
+        );
+        self::assertSame(
+            'https://example.org/de/docs/intro',
+            $this->callPrivate($service, 'resolveRedirect', ['https://example.org/de/docs/page', 'intro'])
+        );
+        self::assertSame(
+            'https://example.com/lib.js',
+            $this->callPrivate($service, 'resolveRedirect', ['https://example.org/de/docs', '//example.com/lib.js'])
+        );
+    }
+
+    /**
+     * Only cURL follows redirects for the fetch itself, and it must be told not
+     * to: if it did, the Location header would never be validated.
+     */
+    public function testPageFetchesDoNotLetCurlFollowRedirects(): void {
+        $source = (string)file_get_contents(__DIR__ . '/../lib/Service/WebSearchService.php');
+        $fetch = substr($source, (int)strpos($source, 'private function fetchManyOnce'));
+        $fetch = substr($fetch, 0, (int)strpos($fetch, 'private function extractReadableText'));
+        self::assertStringContainsString('CURLOPT_FOLLOWLOCATION => false', $fetch);
+    }
+
+    /** A host that does not resolve must fail closed rather than be attempted. */
+    public function testUnresolvableHostIsRefused(): void {
+        $service = $this->service();
+        self::assertFalse($this->callPrivate($service, 'isFetchableUrl', ['https://no-such-host.invalid/x']));
+    }
+
+    /** A public address stays fetchable, or the guard would break every search. */
+    public function testPublicAddressesRemainFetchable(): void {
+        $service = $this->service();
+        self::assertTrue($this->callPrivate($service, 'isFetchableUrl', ['https://93.184.216.34/page']));
+        self::assertTrue($this->callPrivate($service, 'isFetchableUrl', ['https://[2606:2800:220:1:248:1893:25c8:1946]/page']));
+        self::assertTrue($this->callPrivate($service, 'isFetchableUrl', ['https://example.org/']));
+    }
+
+    /**
+     * A URL that is only shown must not need DNS: search hits and the images on
+     * a result page are rendered by the user's browser, and resolving them
+     * server-side would drop them whenever lookup failed for an unrelated host.
+     */
+    public function testDisplayOnlyUrlsAreNotResolvedServerSide(): void {
+        $service = $this->service();
+        self::assertTrue($this->callPrivate($service, 'isSafeHttpUrl', ['https://blog.example.org/wp-content/hero.jpg']));
+        self::assertFalse($this->callPrivate($service, 'isFetchableUrl', ['https://blog.example.org/wp-content/hero.jpg']));
     }
 }

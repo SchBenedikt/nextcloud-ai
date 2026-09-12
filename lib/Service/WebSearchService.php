@@ -112,6 +112,18 @@ class WebSearchService {
     /** Fetched pages must stay well inside the search timeout to keep chat responsive. */
     private const CONTENT_FETCH_TIMEOUT_CEILING = 8;
     /**
+     * How many redirect hops a fetched page may take. Each hop is validated as if
+     * it were a fresh user-supplied URL, because a public address that redirects
+     * to 127.0.0.1 is exactly how an SSRF guard is bypassed.
+     */
+    private const MAX_PAGE_REDIRECTS = 3;
+    /**
+     * Host suffixes that never leave the machine or the local network. They are
+     * rejected by name so a name that only resolves inside the LAN is caught even
+     * when its address record is cached somewhere unexpected.
+     */
+    private const INTERNAL_HOST_SUFFIXES = ['.localhost', '.local', '.internal', '.home.arpa', '.lan', '.intranet'];
+    /**
      * Class/id fragments that mark navigation, promotion or social chrome. They
      * are matched inside the attribute value, so "site-header-main" counts too.
      * Kept deliberately narrow: an over-eager marker would delete real content as
@@ -165,6 +177,15 @@ class WebSearchService {
      * to the caller instead of silently returning zero results.
      */
     private ?string $lastDuckDuckGoError = null;
+
+    /**
+     * Host name => is public, for the lifetime of one request. A search resolves
+     * the same host several times (every result link, every image on it), and a
+     * DNS lookup per occurrence would be pure latency.
+     *
+     * @var array<string,bool>
+     */
+    private array $hostCache = [];
 
     public function __construct(
         private AppConfig $config,
@@ -373,7 +394,7 @@ class WebSearchService {
         if (!$this->isEnabled()) {
             return $empty + ['ok' => false, 'error' => 'Web search is disabled by the administrator.'];
         }
-        if (!$this->isSafeHttpUrl($url) || !$this->isFetchablePage($url)) {
+        if (!$this->isFetchablePage($url)) {
             return $empty + ['ok' => false, 'error' => 'That URL cannot be opened. Only http(s) pages with readable content are supported.'];
         }
 
@@ -727,7 +748,7 @@ class WebSearchService {
      * and media would waste a request and produce nothing useful.
      */
     private function isFetchablePage(string $url): bool {
-        if (!$this->isSafeHttpUrl($url)) {
+        if (!$this->isFetchableUrl($url)) {
             return false;
         }
         $path = mb_strtolower((string)(parse_url($url, PHP_URL_PATH) ?? ''));
@@ -753,20 +774,101 @@ class WebSearchService {
      * @return array<int,string> index => body, only for successful fetches
      */
     private function fetchMany(array $urls): array {
+        $bodies = [];
+        $pending = [];
+        foreach ($urls as $index => $url) {
+            // The starting URL is validated here as well as by the caller, so no
+            // fetch path can reach this method with an internal address.
+            if ($this->isFetchableUrl($url)) {
+                $pending[$index] = $url;
+            }
+        }
+
+        // Redirects are followed by hand rather than by cURL. `FOLLOWLOCATION`
+        // would jump to whatever the next hop names - including 127.0.0.1 or the
+        // metadata service - without giving this code a chance to look at it. One
+        // batched request per hop keeps the parallelism and closes that hole.
+        for ($hop = 0; $hop <= self::MAX_PAGE_REDIRECTS && $pending !== []; $hop++) {
+            $responses = $this->fetchManyOnce($pending);
+            $next = [];
+            foreach ($responses as $index => $response) {
+                $status = (int)$response['status'];
+                if ($status >= 300 && $status < 400) {
+                    $target = $this->resolveRedirect($pending[$index], (string)$response['location']);
+                    // The last hop's redirect is not followed: a page that needs
+                    // more hops than the budget is dropped, not chased.
+                    if ($target !== null && $hop < self::MAX_PAGE_REDIRECTS) {
+                        $next[$index] = $target;
+                    }
+                    continue;
+                }
+                if ($status >= 200 && $status < 300 && $response['body'] !== '') {
+                    // Keep the caller's index, which identifies the result the
+                    // body belongs to.
+                    $bodies[$index] = $response['body'];
+                }
+            }
+            $pending = $next;
+        }
+
+        return $bodies;
+    }
+
+    /**
+     * Absolute, still-public URL of a redirect target, or null when the target is
+     * relative junk, another scheme, or an address that must not be fetched.
+     */
+    private function resolveRedirect(string $baseUrl, string $location): ?string {
+        $location = trim($location);
+        if ($location === '') {
+            return null;
+        }
+        if (preg_match('~^[a-z][a-z0-9+.\-]*:~i', $location) === 1) {
+            $absolute = $location;
+        } elseif (str_starts_with($location, '//')) {
+            $absolute = (string)(parse_url($baseUrl, PHP_URL_SCHEME) ?: 'https') . ':' . $location;
+        } else {
+            $parts = parse_url($baseUrl);
+            if (!is_array($parts) || !isset($parts['scheme'], $parts['host'])) {
+                return null;
+            }
+            $authority = $parts['scheme'] . '://' . $parts['host']
+                . (isset($parts['port']) ? ':' . $parts['port'] : '');
+            if (str_starts_with($location, '/')) {
+                $absolute = $authority . $location;
+            } else {
+                $directory = (string)(parse_url($baseUrl, PHP_URL_PATH) ?? '/');
+                $directory = substr($directory, 0, (int)strrpos($directory, '/') + 1) ?: '/';
+                $absolute = $authority . $directory . $location;
+            }
+        }
+        return $this->isFetchableUrl($absolute) ? $absolute : null;
+    }
+
+    /**
+     * One batch of parallel GETs. Redirects are reported rather than followed, and
+     * each response is returned with its status so the caller can decide.
+     *
+     * @param array<int,string> $urls index => url
+     * @return array<int,array{status:int,body:string,location:string}>
+     */
+    private function fetchManyOnce(array $urls): array {
         $multi = curl_multi_init();
         $timeout = max(3, min(self::CONTENT_FETCH_TIMEOUT_CEILING, $this->timeout()));
         $handles = [];
+        $locations = [];
         foreach ($urls as $index => $url) {
             $ch = curl_init($url);
             if ($ch === false) {
                 continue;
             }
+            $locations[$index] = '';
             curl_setopt_array($ch, [
                 CURLOPT_RETURNTRANSFER => true,
                 CURLOPT_TIMEOUT => $timeout,
                 CURLOPT_CONNECTTIMEOUT => min(4, $timeout),
-                CURLOPT_FOLLOWLOCATION => true,
-                CURLOPT_MAXREDIRS => 3,
+                // Deliberately off: every hop is validated by fetchMany instead.
+                CURLOPT_FOLLOWLOCATION => false,
                 CURLOPT_SSL_VERIFYPEER => true,
                 CURLOPT_SSL_VERIFYHOST => 2,
                 CURLOPT_ENCODING => '',
@@ -775,15 +877,21 @@ class WebSearchService {
                     'Accept: text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
                     'Accept-Language: en-US,en;q=0.9,de;q=0.8',
                 ],
+                CURLOPT_HEADERFUNCTION => function ($ch, string $header) use (&$locations, $index): int {
+                    if (preg_match('~^location:\s*(.+?)\s*$~i', $header, $match) === 1) {
+                        $locations[$index] = $match[1];
+                    }
+                    return strlen($header);
+                },
             ]);
             curl_multi_add_handle($multi, $ch);
             $handles[$index] = $ch;
         }
 
-        $bodies = [];
+        $responses = [];
         if ($handles === []) {
             curl_multi_close($multi);
-            return $bodies;
+            return $responses;
         }
 
         $running = 0;
@@ -795,18 +903,19 @@ class WebSearchService {
         } while ($running > 0 && $status === CURLM_OK);
 
         foreach ($handles as $index => $ch) {
-            $httpCode = (int)curl_getinfo($ch, CURLINFO_RESPONSE_CODE);
             $body = curl_multi_getcontent($ch);
-            if ($httpCode >= 200 && $httpCode < 300 && is_string($body) && $body !== '') {
-                $bodies[$index] = $body;
-            }
+            $responses[$index] = [
+                'status' => (int)curl_getinfo($ch, CURLINFO_RESPONSE_CODE),
+                'body' => is_string($body) ? $body : '',
+                'location' => (string)($locations[$index] ?? ''),
+            ];
             curl_multi_remove_handle($multi, $ch);
             // No curl_close(): handles are freed automatically since PHP 8.0 and
             // the call is deprecated in 8.5.
         }
         curl_multi_close($multi);
 
-        return $bodies;
+        return $responses;
     }
 
     /**
@@ -2101,6 +2210,105 @@ class WebSearchService {
         }
         // Credentials in the URL would leak into the rendered link.
         return !isset($parts['user']) && !isset($parts['pass']);
+    }
+
+    /**
+     * Whether the server may fetch this URL itself.
+     *
+     * Stricter than {@see isSafeHttpUrl()}, and deliberately separate from it: a
+     * URL that is only ever *shown* (a search hit's link, an image the browser
+     * loads from the result page) must not be resolved server-side, or an
+     * unrelated DNS outage would silently empty the answer. A URL the server
+     * really requests has to point at a public address, so a model-named target
+     * like http://127.0.0.1, the cloud metadata service (169.254.169.254) or a
+     * host on the internal network cannot be read and repeated back in the chat.
+     */
+    private function isFetchableUrl(string $url): bool {
+        if (!$this->isSafeHttpUrl($url)) {
+            return false;
+        }
+        return $this->isPublicHost((string)parse_url($url, PHP_URL_HOST));
+    }
+
+    /**
+     * Whether a host resolves only to publicly routable addresses.
+     *
+     * Checked per address and not per name: a host is refused when *any* of its
+     * addresses is private, so a DNS answer that mixes a public address with an
+     * internal one cannot be used to reach the internal one. A host that does not
+     * resolve at all is refused too - the fetch would fail anyway, and failing
+     * closed is what keeps this a guard rather than a hint.
+     */
+    private function isPublicHost(string $host): bool {
+        $host = trim($host, '[]');
+        if ($host === '') {
+            return false;
+        }
+        $lowered = mb_strtolower(trim($host, '.'));
+        if ($lowered === 'localhost' || $lowered === 'metadata') {
+            return false;
+        }
+        foreach (self::INTERNAL_HOST_SUFFIXES as $suffix) {
+            if (str_ends_with($lowered, $suffix)) {
+                return false;
+            }
+        }
+
+        $cached = $this->hostCache[$lowered] ?? null;
+        if ($cached !== null) {
+            return $cached;
+        }
+        $public = $this->resolvesToPublicAddress($lowered);
+        $this->hostCache[$lowered] = $public;
+        return $public;
+    }
+
+    private function resolvesToPublicAddress(string $host): bool {
+        // A literal address needs no lookup; a name needs at least one answer.
+        if (filter_var($host, FILTER_VALIDATE_IP) !== false) {
+            return $this->isPublicAddress($host);
+        }
+        $addresses = [];
+        foreach ((array)@gethostbynamel($host) as $ipv4) {
+            $addresses[] = (string)$ipv4;
+        }
+        if (function_exists('dns_get_record')) {
+            foreach ((array)@dns_get_record($host, DNS_AAAA) as $record) {
+                if (isset($record['ipv6'])) {
+                    $addresses[] = (string)$record['ipv6'];
+                }
+            }
+        }
+        if ($addresses === []) {
+            return false;
+        }
+        foreach ($addresses as $address) {
+            if (!$this->isPublicAddress($address)) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    /** Reject loopback, link-local, private and otherwise reserved addresses. */
+    private function isPublicAddress(string $address): bool {
+        // An IPv4-mapped IPv6 address (::ffff:127.0.0.1) must be judged on the
+        // address it really points at, or the guard only checks the wrapper.
+        if (preg_match('/^::ffff:(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})$/i', $address, $mapped) === 1) {
+            $address = $mapped[1];
+        }
+        if (filter_var($address, FILTER_VALIDATE_IP) === false) {
+            return false;
+        }
+        // 0.0.0.0/8 and ::/128 reach the local host on many systems.
+        if ($address === '::' || $address === '::1' || str_starts_with($address, '0.')) {
+            return false;
+        }
+        return filter_var(
+            $address,
+            FILTER_VALIDATE_IP,
+            FILTER_FLAG_NO_PRIV_RANGE | FILTER_FLAG_NO_RES_RANGE
+        ) !== false;
     }
 
     private function clamp(string $value, int $max): string {

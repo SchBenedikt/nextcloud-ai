@@ -25,10 +25,32 @@ for (const surface of ['vue', 'standalone']) {
       await expect(page.locator('.rt ol li ul li')).toHaveText('Unterpunkt')
       await expect(page.locator('.rt pre code')).toHaveText('const html = "<b>literal</b>";\n')
       await expect(page.locator('.rt pre code')).toHaveCSS('white-space', 'pre')
-      await expect(page.locator('.rt img, .rt script')).toHaveCount(0)
+      // Raw HTML stays inert: no script element, and nothing executed.
+      await expect(page.locator('.rt script')).toHaveCount(0)
       expect(await page.evaluate(() => window.markdownXss)).toBeUndefined()
-      expect(remoteRequests).toEqual([])
       expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true)
+
+      // A picture from a web search really is displayed, wrapped in a link to
+      // the original, and carries the two guards that make a remote image safe:
+      // no referrer, and no load until the user scrolls to it.
+      const picture = page.locator('.rt a.md-image-link img.md-image')
+      await expect(picture).toHaveCount(1)
+      await expect(picture).toHaveAttribute('src', 'https://example.com/pixel.png')
+      await expect(picture).toHaveAttribute('alt', 'Kein Tracking')
+      await expect(picture).toHaveAttribute('loading', 'lazy')
+      await expect(picture).toHaveAttribute('referrerpolicy', 'no-referrer')
+      await expect(page.locator('.rt a.md-image-link')).toHaveAttribute('href', 'https://example.com/pixel.png')
+      // Bounded so a large figure cannot overflow the chat column.
+      expect(await picture.evaluate(el => el.getBoundingClientRect().width <= window.innerWidth)).toBe(true)
+
+      // A picture with an unsafe source degrades to text instead of loading.
+      for (const unsafe of ['![x](javascript:alert(1))', '![x](data:image/gif;base64,R0lGOD)']) {
+        await page.evaluate(text => { document.querySelector('.rt').innerHTML = mdToHtml(text) }, unsafe)
+        await expect(page.locator('.rt img')).toHaveCount(0)
+        await expect(page.locator('.rt')).toContainText('x')
+      }
+      expect(remoteRequests.filter(url => url.startsWith('data:') || url.startsWith('javascript:'))).toEqual([])
+
       // Growing a streamed code fence must never turn its contents into HTML.
       for (const part of ['```html\n<img', '```html\n<img src=x>\n```\n**Fertig**']) {
         await page.evaluate(text => { document.querySelector('.rt').innerHTML = mdToHtml(text) }, part)

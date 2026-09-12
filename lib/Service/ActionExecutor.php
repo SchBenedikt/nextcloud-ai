@@ -1647,11 +1647,6 @@ class ActionExecutor {
     }
 
     /**
-     * Ground an answer with external search results (Issue #187). The model
-     * decides when to call this; a failed search is reported as a normal tool
-     * error so the answer still falls back to the local sources.
-     */
-    /**
      * Read one page in full for the model.
      *
      * Search results only carry a bounded excerpt, so a detail that sits deeper
@@ -1684,6 +1679,11 @@ class ActionExecutor {
         ];
     }
 
+    /**
+     * Ground an answer with external search results (Issue #187). The model
+     * decides when to call this; a failed search is reported as a normal tool
+     * error so the answer still falls back to the local sources.
+     */
     private function runWebSearch(array $args): array {
         $query = trim((string)($args['query'] ?? ''));
         if ($query === '') {

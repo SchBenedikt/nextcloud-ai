@@ -66,6 +66,22 @@ follows [Semantic Versioning](https://semver.org/).
 - The admin page shows how many files the last indexing pass had to skip, both
   per account and in total.
 
+### Security
+
+- `open_website` and every other server-side page fetch can no longer be pointed
+  at the local machine or the internal network. The new tool lets the *model*
+  choose a URL, which made URL validation a security boundary rather than a
+  formatting rule: `http://127.0.0.1`, the cloud metadata service
+  (`169.254.169.254`), `192.168.x.x`/`10.x.x.x`, `[::1]`, `localhost` and
+  `.local`/`.internal` names are now refused before any request is made, a host
+  is refused when **any** of its addresses is private, and a name that does not
+  resolve fails closed. Redirects are followed by hand instead of by cURL
+  (`CURLOPT_FOLLOWLOCATION` off), so every hop is validated too — otherwise a
+  public URL could simply redirect to `127.0.0.1` and bypass the check.
+  URLs that are only displayed (search hits, result-page images the browser
+  loads) are deliberately exempt: resolving them server-side would drop images
+  whenever an unrelated lookup failed.
+
 ### Changed
 
 - A single unreadable or unembeddable file can no longer end an indexing pass.
