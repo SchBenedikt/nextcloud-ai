@@ -85,7 +85,7 @@ class RagService {
 	 *        the room's indexed chat history). It is wrapped as untrusted data
 	 *        like the file context, so it can never act as instructions.
 	 */
-	public function ask(string $userId, string $message, array $history, ?string $scopePath = null, ?string $instructions = null, ?string $persona = null, ?string $extraContext = null, bool $allowActions = true, bool $autonomousActions = false): array {
+	public function ask(string $userId, string $message, array $history, ?string $scopePath = null, ?string $instructions = null, ?string $persona = null, ?string $extraContext = null, bool $allowActions = true, bool $autonomousActions = false, ?callable $shouldStop = null): array {
 		$this->config->setUserId($userId);
 		$this->toolSources = [];
 		$this->toolImages = [];
@@ -108,6 +108,7 @@ class RagService {
 		$seenToolCalls = [];
 
 		for ($round = 0; $round < $maxToolRounds; $round++) {
+			if ($shouldStop !== null && $shouldStop()) return ['answer' => '', 'sources' => $this->answerSources($byDoc), 'model' => $this->config->get('chat_model'), 'error' => 'cancelled', 'followups' => []];
 			$chat = $this->ollama->chat($messages, $tools);
 			if (isset($chat['error'])) {
 				return ['answer' => '', 'sources' => $this->answerSources($byDoc), 'model' => $this->config->get('chat_model'), 'error' => $chat['error'], 'followups' => []];
@@ -126,6 +127,7 @@ class RagService {
 			}
 			$messages[] = ['role' => 'assistant', 'content' => $chat['answer'] ?? '', 'tool_calls' => $this->canonicalToolCalls($chat['raw_tool_calls'] ?? [])];
 			foreach ($toolCalls as $tc) {
+				if ($shouldStop !== null && $shouldStop()) return ['answer' => '', 'sources' => $this->answerSources($byDoc), 'model' => $chat['model'] ?? $this->config->get('chat_model'), 'error' => 'cancelled', 'followups' => []];
 				$fingerprint = hash('sha256', (string)($tc['name'] ?? '') . ':' . json_encode($tc['arguments'] ?? [], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES));
 				$seenToolCalls[$fingerprint] = ($seenToolCalls[$fingerprint] ?? 0) + 1;
 				$toolArgs = $tc['name'] === 'create_calendar_event'

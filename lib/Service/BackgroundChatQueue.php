@@ -33,7 +33,8 @@ final class BackgroundChatQueue {
             // but garbage-collect old records so they cannot fill the queue.
             $cutoff = time() - 86400;
             $items = array_values(array_filter($items, static fn(array $item): bool =>
-                ($item['status'] ?? '') !== 'failed' || (int)($item['finishedAt'] ?? 0) > $cutoff));
+                (($item['status'] ?? '') !== 'failed' || (int)($item['finishedAt'] ?? 0) > $cutoff)
+                && (($item['status'] ?? '') !== 'cancelled' || (int)($item['finishedAt'] ?? 0) > $cutoff)));
             foreach ($items as $item) {
                 if (($item['chatId'] ?? '') === $chatId && ($item['message'] ?? '') === $message && in_array(($item['status'] ?? ''), ['pending', 'running'], true)) return (string)$item['id'];
             }
@@ -54,7 +55,7 @@ final class BackgroundChatQueue {
             foreach ($items as &$item) {
                 $status = (string)($item['status'] ?? 'pending');
                 $stale = $status === 'running' && $now - (int)($item['claimedAt'] ?? 0) > 600;
-                if (($status === 'pending' || $stale) && (int)($item['availableAt'] ?? 0) <= $now) {
+                if (($status === 'pending' || $stale) && empty($item['cancelRequested']) && (int)($item['availableAt'] ?? 0) <= $now) {
                     $item['status'] = 'running'; $item['claimedAt'] = $now; $item['attempts'] = (int)($item['attempts'] ?? 0) + 1; $changed = true;
                     $claimed = $item; break;
                 }
@@ -74,7 +75,7 @@ final class BackgroundChatQueue {
                 $out[] = [
                     'id' => (string)($item['id'] ?? ''),
                     'chatId' => (string)($item['chatId'] ?? ''),
-                    'status' => in_array(($item['status'] ?? ''), ['pending', 'running', 'failed'], true) ? (string)$item['status'] : 'pending',
+                    'status' => in_array(($item['status'] ?? ''), ['pending', 'running', 'failed', 'cancelled'], true) ? (string)$item['status'] : 'pending',
                     'attempts' => max(0, (int)($item['attempts'] ?? 0)),
                     'created' => max(0, (int)($item['created'] ?? 0)),
                     'claimedAt' => max(0, (int)($item['claimedAt'] ?? 0)),
@@ -84,6 +85,29 @@ final class BackgroundChatQueue {
             }
             return $out;
         }, ILockingProvider::LOCK_SHARED) ?? [];
+    }
+
+    /** Request cancellation; running workers observe this flag between steps. */
+    public function cancel(string $user, string $id): bool {
+        return (bool)$this->withLock($user, function () use ($user, $id): bool {
+            $items = $this->read($user); $changed = false; $found = false;
+            foreach ($items as &$item) if (($item['id'] ?? '') === $id) {
+                $found = true; $changed = true;
+                if (($item['status'] ?? '') === 'running') $item['cancelRequested'] = true;
+                else { $item['status'] = 'cancelled'; $item['finishedAt'] = time(); }
+            }
+            unset($item);
+            if ($changed) $this->write($user, $items);
+            return $found;
+        }) ?? false;
+    }
+
+    /** Fast, lock-protected cancellation check used by the model/tool loop. */
+    public function isCancellationRequested(string $user, string $id): bool {
+        return (bool)$this->withLock($user, function () use ($user, $id): bool {
+            foreach ($this->read($user) as $item) if (($item['id'] ?? '') === $id) return !empty($item['cancelRequested']) || ($item['status'] ?? '') === 'cancelled';
+            return false;
+        }, ILockingProvider::LOCK_SHARED);
     }
     /** Retry a failed run; returns true when the item became terminal. */
     public function retry(string $user, string $id, string $error): bool {
