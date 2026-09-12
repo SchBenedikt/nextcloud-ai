@@ -72,6 +72,12 @@ class AppConfig {
         // and whether page images are collected and offered to the model.
         'web_search_candidates',
         'web_search_images',
+        // Reading pages that only exist after JavaScript has run. This runs a
+        // headless browser process on the server, so it is opt-in and the
+        // settings page reports whether the server can actually do it.
+        'web_search_browser',
+        'web_search_browser_node',
+        'web_search_browser_timeout',
         // Indexing throughput controls. These were previously only reachable
         // through `occ config:app:set`; the admin page exposed fields for them
         // that silently saved nothing because they were missing here.
@@ -153,6 +159,11 @@ class AppConfig {
         // wrong page, so the ranking must see enough candidates to reject them.
         'web_search_candidates' => '12',
         'web_search_images' => '1',
+        // Off by default: it needs Node and Playwright on the server, and an
+        // administrator should decide that rather than discover it.
+        'web_search_browser' => '0',
+        'web_search_browser_node' => '',
+        'web_search_browser_timeout' => '20',
         'index_running' => '0',
         'index_started' => '',
         'index_heartbeat' => '',
@@ -217,6 +228,7 @@ class AppConfig {
         'web_search_timeout' => [1, 30],
         'web_search_content_chars' => [200, 8000],
         'web_search_candidates' => [3, 20],
+        'web_search_browser_timeout' => [3, 60],
         'index_max_concurrent' => [1, 16],
         'index_job_max_seconds' => [10, 600],
         'index_job_interval_minutes' => [1, 60],
@@ -450,7 +462,28 @@ class AppConfig {
             }
             return null;
         }
-        if (in_array($key, ['ocr_enabled', 'actions_enabled', 'notify_on_complete', 'mail_index_enabled', 'talk_index_enabled', 'index_enrolled', 'talk_classify_all', 'weather_tool_enabled', 'web_search_enabled', 'web_search_safe_search', 'web_search_fetch_content', 'web_search_images'], true)) {
+        if ($key === 'web_search_browser_node') {
+            if (!is_scalar($value)) {
+                return 'must be a path to the Node.js executable, or empty';
+            }
+            $path = trim((string)$value);
+            if ($path === '') {
+                return null;
+            }
+            // This value becomes the executable of a child process. It is passed
+            // to proc_open as an argument array, so no shell ever parses it, and
+            // it is still restricted to a plain path or command name: a stored
+            // value with spaces or shell metacharacters can only be a mistake or
+            // an attempt to smuggle one.
+            if (preg_match('~^/[A-Za-z0-9._/+\-]{1,255}$~', $path) === 1) {
+                return null;
+            }
+            if (preg_match('~^[A-Za-z0-9._+\-]{1,64}$~', $path) === 1) {
+                return null;
+            }
+            return 'must be an absolute path or a command name, without spaces';
+        }
+        if (in_array($key, ['ocr_enabled', 'actions_enabled', 'notify_on_complete', 'mail_index_enabled', 'talk_index_enabled', 'index_enrolled', 'talk_classify_all', 'weather_tool_enabled', 'web_search_enabled', 'web_search_safe_search', 'web_search_fetch_content', 'web_search_images', 'web_search_browser'], true)) {
             return is_scalar($value) && in_array((string)$value, ['0', '1', 'true', 'false', 'on', 'off'], true)
                 ? null : 'must be a boolean value';
         }

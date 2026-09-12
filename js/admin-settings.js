@@ -158,6 +158,9 @@
 			web_search_safe_search: checked('eva-safesearch-toggle') ? '1' : '0',
 			web_search_fetch_content: checked('eva-fetch-content-toggle') ? '1' : '0',
 			web_search_images: checked('eva-images-toggle') ? '1' : '0',
+			web_search_browser: checked('eva-browser-toggle') ? '1' : '0',
+			web_search_browser_node: value('eva-browser-node'),
+			web_search_browser_timeout: value('eva-browser-timeout'),
 		}
 		var apiKey = value('eva-websearch-key')
 		if (apiKey) {

@@ -37,6 +37,12 @@ $webSearchFetchContent = ($admin['web_search_fetch_content'] ?? '1') === '1';
 $webSearchContentChars = $admin['web_search_content_chars'] ?? '2000';
 $webSearchCandidates = $admin['web_search_candidates'] ?? '12';
 $webSearchImages = ($admin['web_search_images'] ?? '1') === '1';
+$webSearchBrowser = ($admin['web_search_browser'] ?? '0') === '1';
+$webSearchBrowserNode = $admin['web_search_browser_node'] ?? '';
+$webSearchBrowserTimeout = $admin['web_search_browser_timeout'] ?? '20';
+// '' means a browser is usable; anything else is the reason it is not, so the
+// switch never looks like it is doing something when it cannot.
+$webSearchBrowserStatus = (string)($_['webSearchBrowserStatus'] ?? '');
 $indexMaxConcurrent = $admin['index_max_concurrent'] ?? '2';
 $indexJobMaxSeconds = $admin['index_job_max_seconds'] ?? '50';
 $indexJobInterval = $admin['index_job_interval_minutes'] ?? '5';
@@ -306,6 +312,42 @@ $providerLabels = [
 	<p class="settings-hint eva-indent">
 		<?php p($l->t('Adds up to three images per result (the page\'s own preview image and pictures inside the article) so the assistant can show a figure instead of describing it. Icons, logos and tracking pixels are filtered out. No extra request is made: the images come from the pages already being read.')); ?>
 	</p>
+
+	<label class="eva-checkbox">
+		<input type="checkbox" id="eva-browser-toggle" name="web_search_browser" value="1"
+			<?php p($webSearchBrowser ? 'checked' : ''); ?>>
+		<span><?php p($l->t('Read pages that need JavaScript in a real browser')); ?></span>
+	</label>
+	<p class="settings-hint eva-indent">
+		<?php p($l->t('Many sites deliver their article only after their own scripts have run; a plain request sees an empty shell, so an answer built from it is a guess. With this on, a page whose text did not arrive is loaded in a headless Chromium and read normally. Only such pages are rendered (at most four per search), so ordinary pages are unaffected.')); ?>
+	</p>
+	<p class="settings-hint eva-indent eva-browser-state<?php p($webSearchBrowserStatus === '' ? ' is-ok' : ' is-missing'); ?>" id="eva-browser-status">
+		<?php
+		if ($webSearchBrowserStatus === '') {
+			p($l->t('Node.js and Playwright were found, so a browser can be used.'));
+		} else {
+			p($l->t('Not usable yet: %s', [$webSearchBrowserStatus]));
+		}
+		?>
+	</p>
+
+	<div class="eva-field">
+		<label for="eva-browser-node"><?php p($l->t('Node.js path')); ?></label>
+		<input type="text" id="eva-browser-node" name="web_search_browser_node"
+			placeholder="node" value="<?php p($webSearchBrowserNode); ?>">
+		<p class="eva-field-hint">
+			<?php p($l->t('Leave empty to use the node command from PATH. Set an absolute path when the web server process has almost no PATH - that is the usual reason a browser is reported as missing.')); ?>
+		</p>
+	</div>
+
+	<div class="eva-field">
+		<label for="eva-browser-timeout"><?php p($l->t('Browser timeout')); ?></label>
+		<input type="number" id="eva-browser-timeout" name="web_search_browser_timeout"
+			min="3" max="60" step="1" value="<?php p($webSearchBrowserTimeout); ?>">
+		<p class="eva-field-hint">
+			<?php p($l->t('Seconds a rendered page may take before the browser is stopped. 3-60, default 20.')); ?>
+		</p>
+	</div>
 
 	<p class="eva-actions">
 		<button type="button" id="eva-websearch-save" class="primary"><?php p($l->t('Save web search settings')); ?></button>

@@ -4,6 +4,35 @@ All notable changes to **EVA (eva_ai)** are documented here.
 Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); the project
 follows [Semantic Versioning](https://semver.org/).
 
+## [1.10.0] - 2026-09-12
+
+### Added
+
+- **Web search reads pages that need JavaScript.** A plain HTTP request reads the
+  bytes a server sends; it cannot run the page's scripts, so for a growing share
+  of the web it sees an empty shell - and an answer built from a shell is a guess
+  presented as a quotation. With the new `web_search_browser` setting on, a page
+  whose text did not arrive is loaded in a headless Chromium
+  (`bin/render-page.mjs`) and read through the same extraction as any other page.
+  Measured on real sites: `reddit.com/r/nextcloud/` returns no readable text at
+  all statically and 20,177 characters through the browser, while a site that
+  already delivers its article is never rendered at all. To stay inside a chat
+  turn, only pages under 400 characters of static text are rendered, at most four
+  per search, in a single browser process.
+- The admin settings page reports whether the server can actually run it, and
+  names the missing piece (Node.js, the Playwright package, or the executable
+  path) instead of offering a switch that would quietly do nothing. `occ`
+  config keys: `web_search_browser`, `web_search_browser_node`,
+  `web_search_browser_timeout`.
+
+### Security
+
+- Browser rendering is held to the same URL policy as every other fetch, applied
+  on the way in *and* to the address the browser finally settled on: a public URL
+  that redirects to an internal address has its content discarded, and a page
+  that cannot load is not a way to reach the local network. Content is only ever
+  read after both checks pass.
+
 ## [1.9.1] - 2026-09-12
 
 ### Fixed
