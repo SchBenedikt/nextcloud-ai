@@ -4,6 +4,20 @@ All notable changes to **EVA (eva_ai)** are documented here.
 Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); the project
 follows [Semantic Versioning](https://semver.org/).
 
+## [1.10.2] - 2026-09-12
+
+### Fixed
+
+- **Google News links are no longer fetched or rendered.** They are redirect
+  links that resolve to Google's consent interstitial, not to the article: a live
+  probe returned `consent.google.com`, titled "Before you continue", with ~1,400
+  characters of cookie notice. Three such results in one news search consumed the
+  entire 26-second render budget and produced nothing, and the interstitial text
+  could otherwise have been quoted as if it were the article. They stay in the
+  result list as headline references - the publication and date are real
+  information - but the URL policy now refuses aggregator and consent hosts on
+  every fetch and render path, including a redirect that lands there.
+
 ## [1.10.1] - 2026-09-12
 
 ### Fixed
