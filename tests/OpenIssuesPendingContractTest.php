@@ -348,6 +348,16 @@ final class OpenIssuesPendingContractTest extends TestCase {
 		self::assertStringContainsString('array_slice($value, 0, 40, true)', $executor);
 	}
 
+	public function testBackgroundRunsSupportPauseAndResume(): void {
+		$queue = (string)file_get_contents(__DIR__ . '/../lib/Service/BackgroundChatQueue.php');
+		$routes = (string)file_get_contents(__DIR__ . '/../appinfo/routes.php');
+		self::assertStringContainsString('public function pause(', $queue);
+		self::assertStringContainsString('public function resume(', $queue);
+		self::assertStringContainsString("'paused'", $queue);
+		self::assertStringContainsString("backgroundChat/pause", $routes);
+		self::assertStringContainsString("backgroundChat/resume", $routes);
+	}
+
 	private function sliceBetween(string $haystack, string $start, string $end): string {
 		$s = strpos($haystack, $start);
 		self::assertNotFalse($s, "start marker '$start' not found");

@@ -645,10 +645,17 @@ export function mountChat(root, opts = {}) {
 				? t('EVA is continuing this chat in the background') + progress
 				: state === 'failed'
 					? t('Background EVA run failed — click to retry')
+					: state === 'paused'
+						? t('Background EVA run paused — click to resume')
+						: state === 'pending'
+							? t('Background EVA run queued — click to pause')
 					: t('EVA will continue this chat in the background')
-			if (state === 'failed' && item.id) {
+			if (item.id && ['failed', 'paused', 'pending'].includes(state)) {
 				agentStatusPill.style.cursor = 'pointer'
-				agentStatusPill.onclick = () => api('POST', '/backgroundChat/retry', { id: item.id }).then(refreshBackgroundStatus).catch(() => {})
+				agentStatusPill.onclick = () => {
+					const action = state === 'failed' ? '/backgroundChat/retry' : state === 'paused' ? '/backgroundChat/resume' : '/backgroundChat/pause'
+					api('POST', action, { id: item.id }).then(refreshBackgroundStatus).catch(() => {})
+				}
 			} else {
 				agentStatusPill.style.cursor = ''
 				agentStatusPill.onclick = null

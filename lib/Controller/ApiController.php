@@ -954,6 +954,24 @@ class ApiController extends OCSController {
         return new DataResponse(['ok' => true, 'cancelRequested' => true]);
     }
 
+    #[NoAdminRequired]
+    public function pauseBackgroundChat(): DataResponse {
+        $user = $this->requireUser();
+        if ($user === null) return new DataResponse(['error' => 'Not logged in'], 401);
+        $id = trim((string)($this->requestParam('id') ?? ''));
+        if ($id === '' || !$this->backgroundChatQueue->pause($user, $id)) return new DataResponse(['error' => 'Pending background job not found'], 404);
+        return new DataResponse(['ok' => true, 'paused' => true]);
+    }
+
+    #[NoAdminRequired]
+    public function resumeBackgroundChat(): DataResponse {
+        $user = $this->requireUser();
+        if ($user === null) return new DataResponse(['error' => 'Not logged in'], 401);
+        $id = trim((string)($this->requestParam('id') ?? ''));
+        if ($id === '' || !$this->backgroundChatQueue->resume($user, $id)) return new DataResponse(['error' => 'Paused background job not found'], 404);
+        return new DataResponse(['ok' => true, 'resumed' => true]);
+    }
+
     /** Requeue a failed background run without losing its original context. */
     #[NoAdminRequired]
     public function retryBackgroundChat(): DataResponse {

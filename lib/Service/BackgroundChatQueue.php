@@ -37,9 +37,9 @@ final class BackgroundChatQueue {
                 (($item['status'] ?? '') !== 'failed' || (int)($item['finishedAt'] ?? 0) > $cutoff)
                 && (($item['status'] ?? '') !== 'cancelled' || (int)($item['finishedAt'] ?? 0) > $cutoff)));
             foreach ($items as $item) {
-                if (($item['chatId'] ?? '') === $chatId && ($item['message'] ?? '') === $message && in_array(($item['status'] ?? ''), ['pending', 'running'], true)) return (string)$item['id'];
+                if (($item['chatId'] ?? '') === $chatId && ($item['message'] ?? '') === $message && in_array(($item['status'] ?? ''), ['pending', 'running', 'paused'], true)) return (string)$item['id'];
             }
-            $active = count(array_filter($items, static fn(array $item): bool => in_array(($item['status'] ?? ''), ['pending', 'running'], true)));
+            $active = count(array_filter($items, static fn(array $item): bool => in_array(($item['status'] ?? ''), ['pending', 'running', 'paused'], true)));
             if ($active >= self::MAX_ITEMS) return null;
             $id = is_string($requestedId) && preg_match('/^[A-Za-z0-9_-]{8,80}$/D', $requestedId) === 1
                 ? $requestedId : 'bg_' . date('YmdHis') . '_' . bin2hex(random_bytes(5));
@@ -82,7 +82,7 @@ final class BackgroundChatQueue {
                 $out[] = [
                     'id' => (string)($item['id'] ?? ''),
                     'chatId' => (string)($item['chatId'] ?? ''),
-                    'status' => in_array(($item['status'] ?? ''), ['pending', 'running', 'failed', 'cancelled'], true) ? (string)$item['status'] : 'pending',
+                    'status' => in_array(($item['status'] ?? ''), ['pending', 'running', 'paused', 'failed', 'cancelled'], true) ? (string)$item['status'] : 'pending',
                     'attempts' => max(0, (int)($item['attempts'] ?? 0)),
                     'created' => max(0, (int)($item['created'] ?? 0)),
                     'claimedAt' => max(0, (int)($item['claimedAt'] ?? 0)),
@@ -123,6 +123,30 @@ final class BackgroundChatQueue {
             unset($item);
             if ($changed) $this->write($user, $items);
             return $found;
+        }) ?? false;
+    }
+
+    /** Pause a queued run before a worker claims it. */
+    public function pause(string $user, string $id): bool {
+        return (bool)$this->withLock($user, function () use ($user, $id): bool {
+            $items = $this->read($user); $found = false; $changed = false;
+            foreach ($items as &$item) if (($item['id'] ?? '') === $id) {
+                $found = true;
+                if (($item['status'] ?? '') === 'pending') { $item['status'] = 'paused'; $item['updatedAt'] = time(); $changed = true; }
+            }
+            unset($item); if ($changed) $this->write($user, $items); return $found;
+        }) ?? false;
+    }
+
+    /** Resume a paused run immediately; its deadline remains unchanged. */
+    public function resume(string $user, string $id): bool {
+        return (bool)$this->withLock($user, function () use ($user, $id): bool {
+            $items = $this->read($user); $found = false; $changed = false;
+            foreach ($items as &$item) if (($item['id'] ?? '') === $id) {
+                $found = true;
+                if (($item['status'] ?? '') === 'paused') { $item['status'] = 'pending'; $item['availableAt'] = time(); $item['updatedAt'] = time(); $changed = true; }
+            }
+            unset($item); if ($changed) $this->write($user, $items); return $found;
         }) ?? false;
     }
 

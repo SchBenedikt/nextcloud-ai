@@ -33,6 +33,8 @@ OC.L10N.register("eva_ai", {
     "EVA is continuing this chat in the background": "EVA setzt diesen Chat im Hintergrund fort",
     "Background EVA run failed after retries": "Hintergrundlauf von EVA nach mehreren Versuchen fehlgeschlagen",
     "Background EVA run failed — click to retry": "Hintergrundlauf von EVA fehlgeschlagen – zum Wiederholen klicken",
+    "Background EVA run paused — click to resume": "Hintergrundlauf von EVA pausiert – zum Fortsetzen klicken",
+    "Background EVA run queued — click to pause": "Hintergrundlauf von EVA wartet – zum Pausieren klicken",
     "EVA will continue this chat in the background": "EVA setzt diesen Chat im Hintergrund fort",
     "When a chat continues after you close the page, EVA may execute requested changes without an open confirmation dialog.": "Wenn ein Chat nach dem Schließen der Seite fortgesetzt wird, darf EVA angeforderte Änderungen ohne geöffneten Bestätigungsdialog ausführen.",
     "Background actions are opt-in. EVA still follows the request and never invents unrelated changes. Disable this switch to keep queued chats read-only.": "Hintergrundaktionen sind optional. EVA folgt weiterhin der Anfrage und erfindet keine fremden Änderungen. Deaktiviere den Schalter, damit Warteschlangen-Chats schreibgeschützt bleiben.",
