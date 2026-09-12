@@ -87,6 +87,7 @@ Resetting a user's index clears that user's cached vectors.
 |---|---|---|---|---|---|
 | `notify_on_complete` | P | `1` | `1`/`0` | – | Send an "AI answer ready" notification (Notifications app). |
 | `talk_history_size` | P | `50` | `1`–`500` | messages | Number of previous Talk messages sent as bot context. |
+| `talk_write_enabled` | P | `0` | `1`/`0` | – | Allow EVA to post messages into a Nextcloud Talk chat as the signed-in user (`send_talk_message`). Off by default: a message written in the user's name is an act, not a lookup, so each user opts in themselves. Reading a chat (`read_talk_chat`) stays available either way, and only rooms the user is a member of can be resolved. See [TALK-INDEXING.md](TALK-INDEXING.md). |
 | `talk_bot_trigger` | P | `Eva` | non-empty string | – | Trigger word (with `@`) the Talk bot reacts to. |
 | `talk_classify_all` | P | `0` | `1`/`0` | – | `0` = heuristic pre-filter decides before any LLM call (Issue #77, default); `1` = classify every room message via the LLM (legacy, higher cost/privacy exposure). |
 | `weather_tool_enabled` | I | `1` | `1`/`0` | – | **Admin only.** `0` disables the weather tool (external Open-Meteo requests) everywhere (Issue #69). Read and written through the admin settings API only, so a regular user cannot flip it. |

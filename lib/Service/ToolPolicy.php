@@ -18,6 +18,9 @@ class ToolPolicy {
 
     public function __construct(
         private AppConfig $appConfig,
+        // Optional so the policy stays constructible without Talk (and in
+        // tests): when it is absent the Talk gate below is simply skipped.
+        private ?TalkChatService $talkChat = null,
     ) {
     }
 
@@ -262,6 +265,33 @@ class ToolPolicy {
             'description' => 'Delete a task',
         ],
 
+        // ---- Talk ----
+        // Listing and reading a room is read-only, and the room is resolved
+        // against the user's own room list, so no prompt can reach a
+        // conversation the user is not in.
+        'list_talk_rooms' => [
+            'risk' => self::RISK_READONLY,
+            'surfaces' => [self::SURFACE_WEB, self::SURFACE_TALK, self::SURFACE_TASKPROCESSING, self::SURFACE_TASKPROCESSING_CONFIRMED, self::SURFACE_RAG],
+            'requiresConfirmation' => false,
+            'description' => 'List the user\'s Nextcloud Talk rooms',
+        ],
+        'read_talk_chat' => [
+            'risk' => self::RISK_READONLY,
+            'surfaces' => [self::SURFACE_WEB, self::SURFACE_TALK, self::SURFACE_TASKPROCESSING, self::SURFACE_TASKPROCESSING_CONFIRMED, self::SURFACE_RAG],
+            'requiresConfirmation' => false,
+            'description' => 'Read the recent messages of a Talk room',
+        ],
+        // Posting speaks as the user, so it needs their explicit opt-in
+        // (talk_write_enabled, checked below) and a confirmation. It is not
+        // offered on the Talk surface itself: there the bot would post into the
+        // room as the person who just asked it something.
+        'send_talk_message' => [
+            'risk' => self::RISK_MUTATING,
+            'surfaces' => [self::SURFACE_WEB, self::SURFACE_TASKPROCESSING_CONFIRMED],
+            'requiresConfirmation' => true,
+            'description' => 'Post a message into a Talk room as the user',
+        ],
+
         // ---- Utility ----
         'recent_activity' => [
             'risk' => self::RISK_READONLY,
@@ -379,6 +409,28 @@ class ToolPolicy {
             return [
                 'allowed' => false,
                 'reason' => 'Web search disabled by configuration',
+            ];
+        }
+
+        // The Talk tools only make sense on an instance that runs Talk; with
+        // no Talk they would be offered and then fail at call time.
+        if (in_array($toolName, ['list_talk_rooms', 'read_talk_chat', 'send_talk_message'], true)
+            && $this->talkChat !== null && !$this->talkChat->isAvailable()) {
+            return [
+                'allowed' => false,
+                'reason' => 'Nextcloud Talk is not installed or not enabled on this server',
+            ];
+        }
+
+        // Writing into a chat speaks in the user's name. The switch is per
+        // user and off by default, and this single check removes the tool from
+        // every surface, blocks dispatch and skips it in the agent proposal
+        // phase.
+        if ($toolName === 'send_talk_message'
+            && $this->appConfig->getInt('talk_write_enabled', 0) !== 1) {
+            return [
+                'allowed' => false,
+                'reason' => 'Posting to Nextcloud Talk is disabled in the EVA AI settings',
             ];
         }
 

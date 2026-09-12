@@ -579,5 +579,7 @@ OC.L10N.register("eva_ai", {
     "Messages per Nextcloud Talk chat": "Nachrichten pro Nextcloud-Talk-Chat",
     "Nextcloud Talk chats per indexing run": "Nextcloud-Talk-Chats pro Indizierungslauf",
     "Only index Nextcloud Talk chats": "Nur Nextcloud-Talk-Chats indizieren",
-    "Only used when Talk indexing is enabled. Default: 20.": "Wird nur verwendet, wenn die Talk-Indizierung aktiviert ist. Standard: 20."
+    "Only used when Talk indexing is enabled. Default: 20.": "Wird nur verwendet, wenn die Talk-Indizierung aktiviert ist. Standard: 20.",
+    "Let EVA post to Nextcloud Talk for me": "EVA in meinem Namen in Nextcloud Talk schreiben lassen",
+    "Let EVA answer and write in your Nextcloud Talk conversations for you. A message posted this way appears under your name, exactly as if you had typed it, so EVA only posts when you explicitly ask it to. Enabling this also lets EVA read a chat on request.": "Lass EVA in deinen Nextcloud-Talk-Unterhaltungen für dich antworten und schreiben. Eine so gesendete Nachricht erscheint unter deinem Namen, genau als hättest du sie selbst getippt - EVA schreibt deshalb nur, wenn du es ausdrücklich verlangst. Damit darf EVA einen Chat auch auf Anfrage lesen."
 }, "nplurals=2; plural=(n != 1);");

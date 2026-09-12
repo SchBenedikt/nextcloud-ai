@@ -301,6 +301,8 @@ class ApiController extends OCSController {
             'talk_history_size',
             'talk_bot_trigger',
             'talk_classify_all',
+            // Posting into Talk as the signed-in user (off by default).
+            'talk_write_enabled',
             'exclude_paths',
             'index_enrolled',
             'chat_retention_days',

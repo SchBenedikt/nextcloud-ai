@@ -127,6 +127,71 @@ is the difference between a permission decision and a broken index:
   refused: admin is not a member of room 4
 ```
 
+## Reading and writing a chat on request
+
+Indexing makes a conversation *searchable*. That is not the same as reading it:
+when the user asks "what did we agree in the project room?", the answer has to
+come from the conversation as it is now, not from a snapshot taken when the
+index was last built. The live path is therefore separate from the index, and it
+is the same path whether the question arrives in the web chat or in the
+Assistant.
+
+| Tool | What it does | Available when |
+| --- | --- | --- |
+| `list_talk_rooms` | The conversations the user is a member of, most recently active first (name, token, id, type) | Talk is installed |
+| `read_talk_chat` | The recent messages of one room, oldest first, dated and attributed | Talk is installed |
+| `send_talk_message` | Posts a message into one of those rooms **as the signed-in user** | The user switched `talk_write_enabled` on |
+
+```
+question ──▶ list_talk_rooms ──▶ the user's own rooms ──▶ resolve "the project room"
+                                          │
+                     read_talk_chat ◀──────┴──────▶ send_talk_message
+              (comments table, membership         (Talk's ChatManager, actor = the
+               re-checked at read time)             asking user, never a bot label)
+```
+
+1. **A room reference is resolved against the user's own room list.** A name, a
+token or a numeric id from the model is a *reference*: it is matched against the
+rooms Talk says this user is in (`TalkChatService::resolveRoom()`), never used to
+look a room up directly. A prompt naming somebody else's conversation therefore
+resolves to nothing instead of to their messages, and an ambiguous name returns
+the candidates rather than picking one.
+2. **Reading re-checks membership at read time.** `read_talk_chat` goes through
+the same transcript path the indexer uses, which asks Talk again and fails closed
+when the membership cannot be verified: leaving a room stops its history being
+quoted immediately.
+3. **Posting is an act in the user's name, so it is opt-in and confirmed.** The
+message is sent through Talk's own `ChatManager` with the user as the author
+(`Attendee::ACTOR_USERS`), so it appears exactly as if they had typed it - no bot
+badge, and Talk applies its own mention and rate-limit handling. The switch
+`talk_write_enabled` is per user and off by default, and the tool is not offered
+at all on the Talk surface itself: there the bot would be posting into the room
+as the very person who just asked it a question.
+4. **The prompt rules match the policy.** The system prompt only describes
+`send_talk_message` once the user has switched it on, and it tells the model to
+read a conversation only when it is part of the question. Chat content is
+treated as untrusted data, never as instructions.
+
+## Verifying reading and posting by hand
+
+```bash
+# Which rooms does EVA see for this user, with their tokens?
+sudo -u www-data php /var/www/html/nextcloud/occ eva_ai:tool admin list_talk_rooms '{}'
+
+# Read the current messages of a room (name, token or id)
+sudo -u www-data php /var/www/html/nextcloud/occ eva_ai:tool admin read_talk_chat '{"room":"AI","limit":20}'
+
+# Post as the user - only works once talk_write_enabled is on for them
+sudo -u www-data php /var/www/html/nextcloud/occ eva_ai:tool admin send_talk_message \
+  '{"room":"AI","message":"Die Wartung beginnt um 18:00."}'
+```
+
+With the switch off, the third command answers
+`Posting to Nextcloud Talk is switched off.` and nothing is written - that is the
+intended state, not a failure. `send_talk_message` is also gated at the policy
+boundary (`ToolPolicy`), so the tool disappears from every surface and is skipped
+in the agent proposal phase while it is disabled.
+
 ## Failure modes worth knowing
 
 | Symptom | Cause and what to do |
