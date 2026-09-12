@@ -455,6 +455,12 @@ class ToolPolicy {
             'requiresConfirmation' => false,
             'description' => 'List configured external HTTPS connectors',
         ],
+        'discover_external_connector' => [
+            'risk' => self::RISK_READONLY,
+            'surfaces' => [self::SURFACE_WEB, self::SURFACE_TASKPROCESSING, self::SURFACE_TASKPROCESSING_CONFIRMED],
+            'requiresConfirmation' => false,
+            'description' => 'Discover a connector OpenAPI or Swagger description',
+        ],
         'configure_external_connector' => [
             'risk' => self::RISK_MUTATING,
             'surfaces' => [self::SURFACE_WEB, self::SURFACE_TASKPROCESSING_CONFIRMED],

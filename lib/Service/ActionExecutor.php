@@ -700,6 +700,13 @@ class ActionExecutor {
                 'parameters' => ['type' => 'object', 'properties' => new \stdClass()],
             ]],
             ['type' => 'function', 'function' => [
+                'name' => 'discover_external_connector',
+                'description' => 'Read a configured connector OpenAPI or Swagger description and return a bounded list of available paths and methods. Safe, read-only discovery; use it before calling an unfamiliar service.',
+                'parameters' => ['type' => 'object', 'properties' => [
+                    'id' => ['type' => 'string', 'description' => 'Configured connector id.'],
+                ], 'required' => ['id']],
+            ]],
+            ['type' => 'function', 'function' => [
                 'name' => 'configure_external_connector',
                 'description' => 'Create or update a named external HTTPS connector. The token is encrypted and never shown to EVA; use this only when the user explicitly asks to connect an external service.',
                 'parameters' => ['type' => 'object', 'properties' => [
@@ -881,6 +888,7 @@ class ActionExecutor {
                 'search_images' => $this->runImageSearch($args),
                 'open_website' => $this->openWebsite($args),
                 'list_external_connectors' => $this->listExternalConnectors(),
+                'discover_external_connector' => $this->discoverExternalConnector($args),
                 'configure_external_connector' => $this->configureExternalConnector($args),
                 'call_external_connector' => $this->callExternalConnector($args),
                 'list_talk_rooms' => $this->listTalkRooms($userId, $args),
@@ -2676,6 +2684,34 @@ class ActionExecutor {
             $out[] = ['id' => (string)$id, 'name' => (string)($row['name'] ?? $id), 'base_url' => (string)($row['base_url'] ?? ''), 'token_configured' => !empty($row['token_configured']), 'updated_at' => (int)($row['updated_at'] ?? 0)];
         }
         return ['ok' => true, 'result' => ['connectors' => $out]];
+    }
+
+    private function discoverExternalConnector(array $args): array {
+        $id = strtolower(trim((string)($args['id'] ?? ''))); $row = $this->connectorRows()[$id] ?? null;
+        if (!preg_match('/^[a-z0-9][a-z0-9_-]{0,39}$/D', $id) || !is_array($row) || !$this->safeConnectorUrl((string)($row['base_url'] ?? ''))) return ['ok' => false, 'error' => 'Connector is not configured.'];
+        $user = $this->config->userId() ?? ''; $headers = ['Accept' => 'application/json'];
+        try {
+            if (!empty($row['token_configured'])) $headers['Authorization'] = 'Bearer ' . Server::get(ProviderCredentials::class)->getCustom($user, 'connector_' . $id);
+            $client = Server::get(\OCP\Http\Client\IClientService::class)->newClient(); $found = null; $source = null;
+            foreach (['/openapi.json', '/swagger.json', '/.well-known/openapi.json'] as $candidate) {
+                $url = rtrim((string)$row['base_url'], '/') . $candidate; if (!$this->safeConnectorUrl($url)) continue;
+                $response = $client->get($url, ['headers' => $headers, 'timeout' => 15, 'allow_redirects' => ['max' => 0]]);
+                if ($response->getStatusCode() < 200 || $response->getStatusCode() >= 300) continue;
+                $body = $response->getBody(); if (is_resource($body)) $body = stream_get_contents($body); $decoded = json_decode(mb_substr((string)$body, 0, 200000), true);
+                if (is_array($decoded) && is_array($decoded['paths'] ?? null)) { $found = $decoded; $source = $candidate; break; }
+            }
+            if ($found === null) return ['ok' => false, 'error' => 'No OpenAPI or Swagger description was found.'];
+            $endpoints = [];
+            foreach (array_slice($found['paths'], 0, 100, true) as $path => $operations) {
+                if (!is_string($path) || !is_array($operations) || !str_starts_with($path, '/')) continue;
+                foreach ($operations as $method => $operation) if (in_array(strtoupper((string)$method), ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'], true)) {
+                    $endpoints[] = ['path' => mb_substr($path, 0, 300), 'method' => strtoupper((string)$method), 'operation_id' => is_array($operation) ? mb_substr((string)($operation['operationId'] ?? ''), 0, 120) : ''];
+                }
+            }
+            $rows = $this->connectorRows(); $rows[$id]['openapi'] = ['source' => $source, 'version' => mb_substr((string)($found['openapi'] ?? $found['swagger'] ?? ''), 0, 30), 'endpoints' => array_slice($endpoints, 0, 200), 'updated_at' => time()];
+            Server::get(\OCP\IConfig::class)->setUserValue($user, AppConfig::APP, 'external_connectors', json_encode($rows, JSON_UNESCAPED_SLASHES) ?: '{}');
+            return ['ok' => true, 'result' => ['connector' => $id, 'source' => $source, 'title' => mb_substr((string)($found['info']['title'] ?? ''), 0, 160), 'endpoints' => array_slice($endpoints, 0, 200)]];
+        } catch (\Throwable) { return ['ok' => false, 'error' => 'External API discovery failed.']; }
     }
 
     private function configureExternalConnector(array $args): array {

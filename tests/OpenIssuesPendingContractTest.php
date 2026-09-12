@@ -367,6 +367,9 @@ final class OpenIssuesPendingContractTest extends TestCase {
 		self::assertStringContainsString("'call_external_connector'", $policy);
 		self::assertStringContainsString("'configure_external_connector'", $policy);
 		self::assertStringContainsString('$ip !== $host', $executor);
+		self::assertStringContainsString('discoverExternalConnector', $executor);
+		self::assertStringContainsString("'/openapi.json'", $executor);
+		self::assertStringContainsString("'openapi'", $executor);
 	}
 
 	private function sliceBetween(string $haystack, string $start, string $end): string {
