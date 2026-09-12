@@ -41,11 +41,17 @@ final class BackgroundChatJob extends TimedJob {
                 $this->rag->setSurface(\OCA\EvaAi\Service\ToolPolicy::SURFACE_WEB);
                 $this->rag->setUserIdForExecution($user);
                 $backgroundActions = $this->rag->backgroundActionsEnabled($user);
-                $result = $this->rag->ask($user, (string)$item['message'], is_array($item['history'] ?? null) ? $item['history'] : [], (string)($chat['scopePath'] ?? ''), (string)($chat['instructions'] ?? ''), (string)($chat['persona'] ?? ''), null, $backgroundActions, $backgroundActions, fn(): bool => $this->queue->isCancellationRequested($user, $id), function (string $phase, ?string $tool) use ($user, $id): void {
+                $deadline = (int)($item['deadline'] ?? 0);
+                $result = $this->rag->ask($user, (string)$item['message'], is_array($item['history'] ?? null) ? $item['history'] : [], (string)($chat['scopePath'] ?? ''), (string)($chat['instructions'] ?? ''), (string)($chat['persona'] ?? ''), null, $backgroundActions, $backgroundActions, fn(): bool => $this->queue->isCancellationRequested($user, $id) || ($deadline > 0 && time() >= $deadline), function (string $phase, ?string $tool) use ($user, $id): void {
                     $this->queue->updateProgress($user, $id, $phase, $tool);
                 });
                 if (($result['error'] ?? null) === 'cancelled') {
-                    $this->queue->complete($user, $id);
+                    if ($deadline > 0 && time() >= $deadline) {
+                        $this->queue->markTimedOut($user, $id);
+                        $notification = $this->notifications->createNotification();
+                        $notification->setApp(AppConfig::APP)->setUser($user)->setObject('chat', $chatId)->setSubject('background_failed', ['text' => 'EVA background run exceeded its five-minute time limit.'])->setLink($this->urls->linkToRouteAbsolute('eva_ai.page.app') . '?chat=' . rawurlencode($chatId))->setDateTime(new \DateTime());
+                        $this->notifications->notify($notification);
+                    } else $this->queue->complete($user, $id);
                     continue;
                 }
                 $this->queue->updateProgress($user, $id, 'finalizing');

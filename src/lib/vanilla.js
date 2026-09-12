@@ -639,7 +639,7 @@ export function mountChat(root, opts = {}) {
 			if (!item) { agentStatusPill.hidden = true; return }
 			const state = String(item.status || 'pending')
 			const progress = state === 'running' && item.phase === 'tool' && item.tool
-				? ` · ${String(item.tool)}`
+				? ` · ${String(item.tool)} · step ${Number(item.steps || 0)}`
 				: ''
 			agentStatusPill.textContent = state === 'running'
 				? t('EVA is continuing this chat in the background') + progress
