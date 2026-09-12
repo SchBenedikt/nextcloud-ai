@@ -44,6 +44,7 @@ class RagService {
         private ActionExecutor $executor,
         private IRootFolder $rootFolder,
         private IFactory $l10nFactory,
+        private TalkTranscriptService $talkTranscripts,
         private LoggerInterface $logger
     ) {
     }
@@ -584,12 +585,27 @@ $this->executor->setUserId($userId);
             return [];
         }
         $checked = [];
+        $checkedRooms = [];
         $staleDocIds = [];
         $out = [];
         foreach ($results as $r) {
             $fileId = (int)($r['fileId'] ?? 0);
             if ($fileId <= 0) {
-                // Mail documents (negative ids) are reconciled separately.
+                // Non-file sources. Mail is reconciled by the mail pass; an indexed
+                // Talk transcript is checked here, because it is a cache of what the
+                // user was allowed to read and leaving a room must stop it being
+                // quoted right away - not at the next indexing pass. Unverifiable
+                // membership fails closed.
+                $roomId = $this->talkRoomId((string)($r['docPath'] ?? ''));
+                if ($roomId > 0) {
+                    if (!isset($checkedRooms[$roomId])) {
+                        $checkedRooms[$roomId] = $this->isRoomMember($userId, $roomId);
+                    }
+                    if (!$checkedRooms[$roomId]) {
+                        $staleDocIds[(int)$r['documentId']] = true;
+                        continue;
+                    }
+                }
                 $out[] = $r;
                 continue;
             }
@@ -629,6 +645,32 @@ $this->executor->setUserId($userId);
     }
 
     /**
+     * The room id behind an indexed transcript path, or 0 for anything else.
+     *
+     * Indexed Talk rooms live under `talk://<roomId>` while a mail message uses
+     * `mail://<messageId>`; both share the synthetic negative file-id space, so
+     * the path is what tells them apart here.
+     */
+    private function talkRoomId(string $path): int
+    {
+        if (!str_starts_with($path, 'talk://')) {
+            return 0;
+        }
+        $roomId = (int)substr($path, strlen('talk://'));
+        return $roomId > 0 ? $roomId : 0;
+    }
+
+    /** Whether the user is currently a participant of the room (fail closed). */
+    private function isRoomMember(string $userId, int $roomId): bool
+    {
+        try {
+            return $this->talkTranscripts->isMember($userId, $roomId);
+        } catch (\Throwable $e) {
+            return false;
+        }
+    }
+
+    /**
      * @return array{0:string,1:array}
      */
     private function buildContext(string $userId, array $results): array {
@@ -639,10 +681,15 @@ $this->executor->setUserId($userId);
             $context .= "[{$idx}] (Source: {$r['docPath']})\n{$r['content']}\n\n";
             $docId = $r['documentId'];
             if (!isset($byDoc[$docId])) {
+                // A file source is opened through its file link; a mail or Talk
+                // transcript has no file, so it is listed by its readable name and
+                // carries no link (the raw marker would resolve to a dead dav URL).
+                $path = (string)$r['docPath'];
+                $isFile = preg_match('~^[a-z][a-z0-9+.\-]*://~i', $path) !== 1;
                 $byDoc[$docId] = [
-                    'path' => $r['docPath'],
+                    'path' => $isFile ? $r['docPath'] : $r['docName'],
                     'name' => $r['docName'],
-                    'url' => $this->fileUrl($userId, $r['docPath']),
+                    'url' => $isFile ? $this->fileUrl($userId, $path) : '',
                     'excerpts' => [],
                 ];
             }
