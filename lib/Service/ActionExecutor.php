@@ -2711,7 +2711,12 @@ class ActionExecutor {
     private function safeConnectorUrl(string $url): bool {
         $parts = parse_url($url); $host = strtolower((string)($parts['host'] ?? ''));
         if (($parts['scheme'] ?? '') !== 'https' || $host === '' || isset($parts['user']) || isset($parts['pass']) || !filter_var($host, FILTER_VALIDATE_DOMAIN, FILTER_FLAG_HOSTNAME)) return false;
-        $ip = gethostbyname($host); return $ip === $host || filter_var($ip, FILTER_VALIDATE_IP, FILTER_FLAG_NO_PRIV_RANGE | FILTER_FLAG_NO_RES_RANGE) !== false;
+        // gethostbyname() returns the original hostname when DNS resolution
+        // fails. Treat that as unsafe rather than accidentally allowing an
+        // unverified endpoint; only a resolved, globally routable address is
+        // eligible for an external connector.
+        $ip = gethostbyname($host);
+        return $ip !== $host && filter_var($ip, FILTER_VALIDATE_IP, FILTER_FLAG_NO_PRIV_RANGE | FILTER_FLAG_NO_RES_RANGE) !== false;
     }
 
     private function weather(array $args): array {
