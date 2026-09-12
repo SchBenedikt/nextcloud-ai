@@ -1101,6 +1101,17 @@ class ActionExecutor {
                 $value = trim((string)$request->getHeader($header));
                 if ($value !== '') $headers[$header] = $value;
             }
+            // Background workers have no browser cookie. A user may opt in to
+            // an encrypted Nextcloud app-password; it is used only for this
+            // same-origin request and is never exposed to the model.
+            if (!isset($headers['Authorization']) && !isset($headers['Cookie'])) {
+                try {
+                    $token = Server::get(\OCA\EvaAi\Service\ProviderCredentials::class)->getNextcloudToken($this->config->userId() ?? '');
+                    $headers['Authorization'] = 'Basic ' . base64_encode(($this->config->userId() ?? '') . ':' . $token);
+                } catch (\Throwable) {
+                    return ['ok' => false, 'error' => 'No browser session or encrypted Nextcloud app token is available for this API action.'];
+                }
+            }
             $options = ['headers' => $headers, 'allow_redirects' => ['max' => 0, 'protocols' => ['https', 'http']]];
             if ($method === 'GET') $options['query'] = $params;
             elseif ($params !== []) $options['body'] = $params;

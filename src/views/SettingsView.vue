@@ -97,6 +97,13 @@
 					</div>
 					<p class="field-help">{{ $t('Free usage depends on your Groq account and quotas. No automatic paid-model fallback is used.') }} <a href="https://console.groq.com/keys" target="_blank" rel="noopener noreferrer">{{ $t('Create API key') }}</a> · <a href="https://console.groq.com/docs/rate-limits" target="_blank" rel="noopener noreferrer">{{ $t('Groq limits') }}</a></p>
 				</div>
+				<div class="field-grid generic-api-settings">
+					<div class="field field-wide">
+						<NcTextField id="nextcloud-api-token" v-model="nextcloudApiToken" type="password" autocomplete="new-password" :label="$t('Nextcloud app token for background API actions')" :label-outside="true" />
+						<p class="field-help">{{ status?.genericApi?.tokenConfigured ? $t('A token is saved. Leave blank to keep it.') : $t('Optional: create a Nextcloud app password to let scheduled EVA tasks call enabled app APIs without an open browser session. It is encrypted and never sent to the AI model.') }}</p>
+						<NcCheckboxRadioSwitch v-model="removeNextcloudApiToken" type="switch">{{ $t('Remove saved Nextcloud app token on save') }}</NcCheckboxRadioSwitch>
+					</div>
+				</div>
 
 				<div class="field-grid field-grid-wide">
 					<div class="field field-wide">
@@ -577,7 +584,9 @@ export default {
 		})
 		const groqKey = ref('')
 		const customProviderKey = ref('')
+		const nextcloudApiToken = ref('')
 		const removeGroqKey = ref(false)
+		const removeNextcloudApiToken = ref(false)
 		const status = ref(null)
 		const limits = ref({})
 		const availableModels = ref([])
@@ -921,7 +930,7 @@ export default {
 		async function save({ changedOnly = false } = {}) {
 			if (saving.value) return false
 			const keys = changedOnly ? changedSettingKeys() : Object.keys(f.value)
-			if (keys.length === 0 && !groqKey.value && !removeGroqKey.value) return true
+			if (keys.length === 0 && !groqKey.value && !removeGroqKey.value && !nextcloudApiToken.value && !removeNextcloudApiToken.value) return true
 			validationErrors.value = validate(changedOnly ? keys : null)
 			if (validationErrors.value.length) {
 				setMessage('error', t('Please correct the highlighted settings before saving.'))
@@ -934,11 +943,14 @@ export default {
 			const values = changedOnly
 				? Object.fromEntries(keys.map(key => [key, f.value[key]]))
 				: { ...f.value }
-			const settings = await api('PUT', 'settings', { ...values, ...(groqKey.value ? { groq_api_key: groqKey.value } : {}), ...(customProviderKey.value ? { custom_provider_api_key: customProviderKey.value } : {}), remove_groq_api_key: removeGroqKey.value })
+				const settings = await api('PUT', 'settings', { ...values, ...(groqKey.value ? { groq_api_key: groqKey.value } : {}), ...(customProviderKey.value ? { custom_provider_api_key: customProviderKey.value } : {}), ...(nextcloudApiToken.value ? { nextcloud_api_token: nextcloudApiToken.value } : {}), remove_groq_api_key: removeGroqKey.value, remove_nextcloud_api_token: removeNextcloudApiToken.value })
 				if (status.value && (groqKey.value || removeGroqKey.value)) status.value.groq = { ...(status.value.groq || {}), keyConfigured: !removeGroqKey.value }
+				if (status.value && (nextcloudApiToken.value || removeNextcloudApiToken.value)) status.value.genericApi = { ...(status.value.genericApi || {}), tokenConfigured: !removeNextcloudApiToken.value }
 				groqKey.value = ''
 				customProviderKey.value = ''
+				nextcloudApiToken.value = ''
 				removeGroqKey.value = false
+				removeNextcloudApiToken.value = false
 				validationErrors.value = []
 				if (settings) fill(settings)
 				saved.value = true

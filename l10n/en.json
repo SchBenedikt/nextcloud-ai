@@ -654,7 +654,11 @@
         "OpenAI-compatible endpoint": "OpenAI-compatible endpoint",
         "Provider API key": "Provider API key",
         "Model": "Model",
-        "Works with OpenAI, Azure OpenAI, Mistral, Together, DeepSeek, OpenRouter and any compatible self-hosted endpoint. Credentials are encrypted per user.": "Works with OpenAI, Azure OpenAI, Mistral, Together, DeepSeek, OpenRouter and any compatible self-hosted endpoint. Credentials are encrypted per user."
+        "Works with OpenAI, Azure OpenAI, Mistral, Together, DeepSeek, OpenRouter and any compatible self-hosted endpoint. Credentials are encrypted per user.": "Works with OpenAI, Azure OpenAI, Mistral, Together, DeepSeek, OpenRouter and any compatible self-hosted endpoint. Credentials are encrypted per user.",
+        "Nextcloud app token for background API actions": "Nextcloud app token for background API actions",
+        "A token is saved. Leave blank to keep it.": "A token is saved. Leave blank to keep it.",
+        "Optional: create a Nextcloud app password to let scheduled EVA tasks call enabled app APIs without an open browser session. It is encrypted and never sent to the AI model.": "Optional: create a Nextcloud app password to let scheduled EVA tasks call enabled app APIs without an open browser session. It is encrypted and never sent to the AI model.",
+        "Remove saved Nextcloud app token on save": "Remove saved Nextcloud app token on save"
     },
     "pluralForm": "nplurals=2; plural=(n != 1);"
 }
