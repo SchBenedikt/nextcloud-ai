@@ -542,5 +542,13 @@ OC.L10N.register("eva_ai", {
     "{model} · responded in {seconds}s": "{model} · Antwort in {seconds}s",
     "{model} · {count} dimensions": "{model} · {count} Dimensionen",
     "{path}, {count} chunks": "{path}, {count} Abschnitte",
-    "{title} · {count} messages": "{title} · {count} Nachrichten"
+    "{title} · {count} messages": "{title} · {count} Nachrichten",
+    "Cron run frequency": "Häufigkeit des Cron-Laufs",
+    "Minutes between runs, 1–60, default 5. Together with the time budget this is how fast a large library is caught up. Takes effect after the next app update.": "Minuten zwischen zwei Läufen, 1–60, Standard 5. Zusammen mit dem Zeitbudget bestimmt das, wie schnell eine große Bibliothek erfasst wird. Wirkt nach dem nächsten App-Update.",
+    "Pages compared before choosing": "Vor der Auswahl geprüfte Seiten",
+    "How many hits are read and scored before the best ones are returned. 3–20, default 12. A larger field costs one page fetch per candidate but stops the search from trusting the first hits.": "Wie viele Treffer gelesen und bewertet werden, bevor die besten zurückgegeben werden. 3–20, Standard 12. Ein größeres Feld kostet einen Seitenabruf pro Kandidat, verhindert aber, dass die Suche den ersten Treffern vertraut.",
+    "Show images from the result pages": "Bilder aus den Ergebnis-Seiten anzeigen",
+    "Adds up to three images per result (the page's own preview image and pictures inside the article) so the assistant can show a figure instead of describing it. Icons, logos and tracking pixels are filtered out. No extra request is made: the images come from the pages already being read.": "Fügt bis zu drei Bilder pro Ergebnis hinzu (das eigene Vorschaubild der Seite und Bilder im Artikel), damit der Assistent eine Abbildung zeigen kann, statt sie zu beschreiben. Symbole, Logos und Zählpixel werden herausgefiltert. Es entsteht keine zusätzliche Anfrage: Die Bilder stammen aus den ohnehin gelesenen Seiten.",
+    "%s files were skipped and are retried on the next run": "%s Dateien wurden übersprungen und werden beim nächsten Lauf erneut versucht",
+    "%s files skipped": "%s Dateien übersprungen"
 }, "nplurals=2; plural=(n != 1);");

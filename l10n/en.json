@@ -543,7 +543,15 @@
         "{model} · responded in {seconds}s": "{model} · responded in {seconds}s",
         "{model} · {count} dimensions": "{model} · {count} dimensions",
         "{path}, {count} chunks": "{path}, {count} chunks",
-        "{title} · {count} messages": "{title} · {count} messages"
+        "{title} · {count} messages": "{title} · {count} messages",
+        "Cron run frequency": "Cron run frequency",
+        "Minutes between runs, 1–60, default 5. Together with the time budget this is how fast a large library is caught up. Takes effect after the next app update.": "Minutes between runs, 1–60, default 5. Together with the time budget this is how fast a large library is caught up. Takes effect after the next app update.",
+        "Pages compared before choosing": "Pages compared before choosing",
+        "How many hits are read and scored before the best ones are returned. 3–20, default 12. A larger field costs one page fetch per candidate but stops the search from trusting the first hits.": "How many hits are read and scored before the best ones are returned. 3–20, default 12. A larger field costs one page fetch per candidate but stops the search from trusting the first hits.",
+        "Show images from the result pages": "Show images from the result pages",
+        "Adds up to three images per result (the page's own preview image and pictures inside the article) so the assistant can show a figure instead of describing it. Icons, logos and tracking pixels are filtered out. No extra request is made: the images come from the pages already being read.": "Adds up to three images per result (the page's own preview image and pictures inside the article) so the assistant can show a figure instead of describing it. Icons, logos and tracking pixels are filtered out. No extra request is made: the images come from the pages already being read.",
+        "%s files were skipped and are retried on the next run": "%s files were skipped and are retried on the next run",
+        "%s files skipped": "%s files skipped"
     },
     "pluralForm": "nplurals=2; plural=(n != 1);"
 }

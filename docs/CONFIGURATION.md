@@ -134,6 +134,8 @@ is grounded in the source rather than in a search-engine teaser.
 | `web_search_safe_search` | I | `1` | `1`/`0` | – | **Admin only.** Ask the provider to filter adult results. |
 | `web_search_fetch_content` | I | `1` | `1`/`0` | – | **Admin only.** `1` fetches the ranked result pages in parallel and adds their readable text as `content`, so the model answers from the page instead of a teaser. `0` keeps only the search-engine snippets (faster, less traffic to third-party sites). |
 | `web_search_content_chars` | I | `2000` | `200`–`8000` | characters | **Admin only.** Maximum readable text taken from each fetched page; hard-capped in code. |
+| `web_search_candidates` | I | `12` | `3`–`20` | results | **Admin only.** How many engine hits are read and scored before the best ones are returned. A larger field costs one page fetch per extra candidate but lets the ranking reject the wrong first hits instead of trusting them. Never below `web_search_max_results`. |
+| `web_search_images` | I | `1` | `1`/`0` | – | **Admin only.** `1` attaches up to three images per result (the page's Open Graph/Twitter image plus in-article images), so the assistant can show the actual figure instead of describing it. Only images inside the fetched article container are used; icons, logos and tracking pixels are filtered. |
 | `web_search_api_key` | I | – | 8–256 chars | – | **Admin only, write-only.** Encrypted API key for `brave`/`tavily`. Send it as `web_search_api_key`; clear it with `remove_web_search_api_key`. It is never read back. |
 
 ### Internal per-user runtime state (S)
@@ -149,6 +151,7 @@ from an instance-wide value.
 | `last_index_processed` / `last_index_total` | Progress counters of the last pass. |
 | `last_index_error` | Message of the last failed pass. |
 | `last_index_cache_hits` / `last_index_cache_misses` / `last_index_ollama_requests` | Embedding-cache and request counters of the last pass. |
+| `last_index_failed` | Files the last pass had to skip because they could not be read or embedded. A skipped file is retried on the next pass; its previous index entry stays searchable. |
 | `index_config_hash` | Hash of the user's indexing settings; a change forces re-embedding. |
 | `index_mode` | `idle`/`running`/`stopping` display state. |
 | `index_cancel_requested` | `1` when the user asked to stop a running pass. |
@@ -163,6 +166,7 @@ from an instance-wide value.
 | `index_job_running` | `1` while a periodic `IndexJob` run is active. |
 | `index_job_started` | Unix timestamp when the current run claimed the scheduler lock. |
 | `index_job_max_seconds` | Wall-clock budget (seconds, default `50`, range `10`–`600`) one periodic run may spend before the next cron tick continues (Issue #112). Shared fairly across all selected accounts within a run. Editable on the admin page (Indexing performance) or via `occ config:app:set eva_ai index_job_max_seconds …`. |
+| `index_job_interval_minutes` | How often the periodic `IndexJob` runs (minutes, default `5`, range `1`–`60`). Lower values index a large library sooner at the cost of more frequent background work; each tick is still bounded by `index_job_max_seconds`. |
 | `index_job_last_user` | Last user finished by a periodic run; the next run rotates past it for fairness (Issue #112). |
 | `index_max_concurrent` | I | `2` | `1`–`16` | passes | Maximum index passes running concurrently across all users (Issue #142). Editable on the admin page (Indexing performance) or via `occ config:app:set eva_ai index_max_concurrent …`. |
 | `index_scheduler_active` | JSON map `user → heartbeat` of currently running index slots (default `{}`, Issue #142); stale slots are reclaimed after 15 minutes. |

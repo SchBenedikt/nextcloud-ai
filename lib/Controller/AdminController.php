@@ -183,7 +183,8 @@ class AdminController extends OCSController {
             'users' => $users,
             'scheduler' => $this->scheduler->overview(),
             'ollama' => [
-                'online' => (bool)($this->ollama->status()['ping'] ?? false),
+                // ping is a detail array; the boolean lives in its 'ok' key.
+                'online' => (bool)($this->ollama->status()['ping']['ok'] ?? false),
             ],
         ]);
     }

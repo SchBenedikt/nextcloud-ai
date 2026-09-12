@@ -48,8 +48,27 @@ class WebSearchService {
      * costs one request per result, so both the number of pages and the text
      * taken from each are hard-capped independently of configuration.
      */
-    private const ABSOLUTE_MAX_CONTENT_PAGES = 8;
+    private const ABSOLUTE_MAX_CONTENT_PAGES = 20;
     private const ABSOLUTE_MAX_CONTENT_CHARS = 8000;
+    /**
+     * How many hits may be read and compared before the best are picked. The
+     * first hits a search engine returns are often the wrong page (a shop, a
+     * forum thread, an ad), so the ranking is given a field of candidates to
+     * choose from instead of the first few.
+     */
+    private const ABSOLUTE_MAX_CANDIDATES = 20;
+    private const DEFAULT_CANDIDATES = 12;
+    /** Images offered per result, and the size below which one is an icon. */
+    private const MAX_IMAGES_PER_RESULT = 3;
+    private const MIN_IMAGE_DIMENSION = 200;
+    /**
+     * src fragments that mark toolbars, logos, avatars and tracking pixels.
+     * A page's own article images almost never carry these in their name.
+     */
+    private const IMAGE_CHROME_MARKERS = [
+        'logo', 'icon', 'avatar', 'sprite', 'badge', 'pixel', 'tracking',
+        'spinner', 'placeholder', 'blank.gif', '1x1', 'button', 'banner-ad',
+    ];
     /** Fetched pages must stay well inside the search timeout to keep chat responsive. */
     private const CONTENT_FETCH_TIMEOUT_CEILING = 8;
     /**
@@ -190,6 +209,22 @@ class WebSearchService {
         return max(1, min(self::ABSOLUTE_MAX_RESULTS, $configured));
     }
 
+    /**
+     * How many hits to read and compare before the best ones are returned.
+     * Always at least the requested number of results, so the ranking has
+     * something to choose between.
+     */
+    private function candidateLimit(int $resultCount): int {
+        $configured = $this->config->getInt('web_search_candidates', self::DEFAULT_CANDIDATES);
+        $configured = max(3, min(self::ABSOLUTE_MAX_CANDIDATES, $configured));
+        return max($resultCount, $configured);
+    }
+
+    /** Whether page images are collected and offered to the model. */
+    private function imagesEnabled(): bool {
+        return $this->config->get('web_search_images') !== '0';
+    }
+
     private function timeout(): int {
         return max(1, min(30, $this->config->getInt('web_search_timeout', 10)));
     }
@@ -213,14 +248,18 @@ class WebSearchService {
             return ['ok' => false, 'provider' => $provider, 'results' => [], 'error' => 'Web search is disabled by the administrator.'];
         }
         $count = max(1, min(self::ABSOLUTE_MAX_RESULTS, $limit ?? $this->maxResults()));
+        // Ask the engine for more hits than are returned. The extra candidates
+        // are read and scored, and only then are the best ones kept: without a
+        // field to choose from, "best" inevitably collapses to "first".
+        $candidates = $this->candidateLimit($count);
         $this->lastDuckDuckGoError = null;
 
         try {
             $results = match ($provider) {
-                'duckduckgo' => $this->searchDuckDuckGo($query, $count),
-                'searxng' => $this->searchSearxng($query, $count),
-                'brave' => $this->searchBrave($query, $count),
-                'tavily' => $this->searchTavily($query, $count),
+                'duckduckgo' => $this->searchDuckDuckGo($query, $candidates),
+                'searxng' => $this->searchSearxng($query, $candidates),
+                'brave' => $this->searchBrave($query, $candidates),
+                'tavily' => $this->searchTavily($query, $candidates),
                 default => throw new ProviderException('Unsupported web search provider: ' . $provider),
             };
         } catch (ProviderException $e) {
@@ -239,12 +278,16 @@ class WebSearchService {
             return ['ok' => false, 'provider' => $provider, 'results' => [], 'error' => $this->emptyResultError($provider)];
         }
 
-        // Order by real relevance against the query, keep the best `$count`,
-        // then read those pages so the model works from their actual content
-        // instead of a search-engine teaser.
+        // Two-phase selection. First a cheap pass ranks on title, snippet and
+        // URL alone and picks the most promising candidates. Those pages are
+        // then read, and a second pass re-ranks them on what they actually say.
+        // Only after that are the best `$count` kept, so the returned list is
+        // chosen by evidence rather than by the engine's order.
         $results = $this->rankResults($results, $query);
+        $results = array_slice($results, 0, min(count($results), self::ABSOLUTE_MAX_CONTENT_PAGES));
+        $results = $this->enrichWithPageContent($results, $query);
+        $results = $this->rankResults($results, $query, true);
         $results = array_slice($results, 0, $count);
-        $results = $this->enrichWithPageContent($results);
 
         return ['ok' => true, 'provider' => $provider, 'results' => $results, 'error' => null];
     }
@@ -273,22 +316,38 @@ class WebSearchService {
      * @param list<array{title:string,url:string,snippet:string}> $results
      * @return list<array{title:string,url:string,snippet:string}>
      */
-    private function rankResults(array $results, string $query): array {
+    private function rankResults(array $results, string $query, bool $useContent = false): array {
         $terms = $this->queryTerms($query);
         if ($terms === [] || count($results) < 2) {
             return array_values($results);
         }
 
+        // The content score only means something once page text exists. When
+        // enrichment is off (or every fetch failed) this stays a metadata rank.
+        $contentAvailable = false;
+        if ($useContent) {
+            foreach ($results as $result) {
+                if (trim((string)($result['content'] ?? '')) !== '') {
+                    $contentAvailable = true;
+                    break;
+                }
+            }
+        }
+
         $scored = [];
+        $hostSeen = [];
         foreach ($results as $index => $result) {
+            $url = (string)($result['url'] ?? '');
             $title = mb_strtolower((string)($result['title'] ?? ''));
             $snippet = mb_strtolower((string)($result['snippet'] ?? ''));
-            $path = mb_strtolower((string)(parse_url((string)($result['url'] ?? ''), PHP_URL_PATH) ?? ''));
+            $path = mb_strtolower((string)(parse_url($url, PHP_URL_PATH) ?? ''));
 
             $score = 0;
+            $inTitle = 0;
             foreach ($terms as $term) {
                 if (mb_strpos($title, $term) !== false) {
                     $score += 3;
+                    $inTitle++;
                 }
                 if (mb_strpos($snippet, $term) !== false) {
                     $score += 1;
@@ -299,12 +358,51 @@ class WebSearchService {
             }
             // Covering every term in the title is the strongest signal that a
             // page is about the topic rather than a passing mention.
-            if ($score >= 3 * count($terms)) {
+            if ($inTitle === count($terms)) {
                 $score += 5;
             }
-            if ($this->isLowValueHost((string)($result['url'] ?? ''))) {
+
+            if ($contentAvailable) {
+                $content = mb_strtolower((string)($result['content'] ?? ''));
+                if ($content === '') {
+                    // A page that could not be read is unverified: it stays in
+                    // the list but never outranks a page we actually saw.
+                    $score -= 2;
+                } else {
+                    // Presence of the terms in the body is the real relevance
+                    // signal, and it is what lets a page ranked fifth by the
+                    // engine overtake a weaker first hit.
+                    $inContent = 0;
+                    foreach ($terms as $term) {
+                        if (mb_strpos($content, $term) !== false) {
+                            $score += 2;
+                            $inContent++;
+                        }
+                    }
+                    if ($inContent === count($terms)) {
+                        $score += 4;
+                    }
+                    if (mb_strpos($content, mb_strtolower($query)) !== false) {
+                        // The exact phrase in the body: a very strong match.
+                        $score += 4;
+                    }
+                }
+            }
+
+            if ($this->isLowValueHost($url)) {
                 $score -= 6;
             }
+
+            // Diversity: five hits from one domain describe one source, not
+            // five answers. Repeats are demoted, never removed, so a genuinely
+            // dominant source can still come first.
+            $host = mb_strtolower((string)(parse_url($url, PHP_URL_HOST) ?? ''));
+            if ($host !== '') {
+                $repeats = $hostSeen[$host] ?? 0;
+                $hostSeen[$host] = $repeats + 1;
+                $score -= 4 * $repeats;
+            }
+
             $scored[] = ['score' => $score, 'index' => $index, 'result' => $result];
         }
 
@@ -353,12 +451,15 @@ class WebSearchService {
      * @param list<array{title:string,url:string,snippet:string}> $results
      * @return list<array{title:string,url:string,snippet:string,content:string}>
      */
-    private function enrichWithPageContent(array $results): array {
+    private function enrichWithPageContent(array $results, string $query): array {
         $enriched = [];
         foreach ($results as $result) {
-            $enriched[] = $result + ['content' => ''];
+            $enriched[] = $result + ['content' => '', 'highlights' => '', 'images' => []];
         }
-        if (!$this->fetchContent() || $enriched === []) {
+        // Reading the page is what both the text and the images come from, so
+        // the single request-per-page switch governs the whole enrichment. With
+        // it off, nothing is fetched and nothing is sent anywhere.
+        if ($enriched === [] || !$this->fetchContent()) {
             return $enriched;
         }
 
@@ -375,14 +476,81 @@ class WebSearchService {
         }
 
         $maxChars = $this->contentChars();
+        $wantContent = $this->fetchContent();
+        $wantImages = $this->imagesEnabled();
         foreach ($this->fetchMany($targets) as $index => $html) {
-            $text = $this->extractReadableText($html);
-            if ($text !== '') {
-                $enriched[$index]['content'] = $this->clamp($text, $maxChars);
+            // One parse yields both the readable text and the page's images, so
+            // collecting images costs no extra request and no extra DOM pass.
+            $page = $this->extractPage($html, (string)($enriched[$index]['url'] ?? ''));
+            if ($wantContent && $page['text'] !== '') {
+                $full = $page['text'];
+                $enriched[$index]['content'] = $this->clamp($full, $maxChars);
+                // The passages that actually mention the query. A long page
+                // often buries its answer, and this is what keeps the model from
+                // grounding itself in the introduction instead.
+                $enriched[$index]['highlights'] = $this->highlights($full, $query);
+            }
+            if ($wantImages && $page['images'] !== []) {
+                $enriched[$index]['images'] = $page['images'];
             }
         }
 
         return $enriched;
+    }
+
+    /**
+     * The sentences of a page that best match the query.
+     *
+     * Page content is truncated to a fixed budget, so the part of a long
+     * document that answers the question can fall outside it. These passages are
+     * picked by term coverage instead, and are what the model should quote.
+     *
+     * @return string
+     */
+    private function highlights(string $content, string $query): string {
+        $terms = $this->queryTerms($query);
+        if ($terms === [] || $content === '') {
+            return '';
+        }
+        $sentences = preg_split('/(?<=[.!?])\s+|\n+/u', $content) ?: [];
+        $scored = [];
+        foreach ($sentences as $position => $sentence) {
+            $sentence = trim($sentence);
+            $length = mb_strlen($sentence);
+            if ($length < 40 || $length > 600) {
+                continue;
+            }
+            $lower = mb_strtolower($sentence);
+            $hits = 0;
+            foreach ($terms as $term) {
+                if (mb_strpos($lower, $term) !== false) {
+                    $hits++;
+                }
+            }
+            if ($hits === 0) {
+                continue;
+            }
+            // Prefer coverage first, then earlier sentences (introductions are
+            // more likely to define the topic than a trailing footnote).
+            $scored[] = ['hits' => $hits, 'position' => $position, 'sentence' => $sentence];
+        }
+        if ($scored === []) {
+            return '';
+        }
+        usort($scored, static function (array $a, array $b): int {
+            return ($b['hits'] <=> $a['hits']) ?: ($a['position'] <=> $b['position']);
+        });
+        $picked = array_slice($scored, 0, 3);
+        usort($picked, static fn(array $a, array $b): int => $a['position'] <=> $b['position']);
+        $out = '';
+        foreach ($picked as $row) {
+            $candidate = $out === '' ? $row['sentence'] : $out . ' … ' . $row['sentence'];
+            if (mb_strlen($candidate) > 1200) {
+                break;
+            }
+            $out = $candidate;
+        }
+        return $out;
     }
 
     /**
@@ -481,16 +649,36 @@ class WebSearchService {
      * the whole body, which drops menus and sidebars.
      */
     private function extractReadableText(string $html): string {
+        return $this->extractPage($html, '')['text'];
+    }
+
+    /**
+     * Read a fetched page once and take everything useful from it: the readable
+     * text and the page's own images.
+     *
+     * Both come out of a single DOM parse, because the images worth offering are
+     * exactly the ones inside the article container that the text pass already
+     * located - header logos and sidebar artwork are chrome, not content.
+     *
+     * @return array{text:string,images:list<array{url:string,alt:string,width:int,height:int}>}
+     */
+    private function extractPage(string $html, string $baseUrl): array {
         if ($html === '') {
-            return '';
+            return ['text' => '', 'images' => []];
         }
         if (class_exists(\DOMDocument::class)) {
-            $text = $this->extractTextWithDom($html);
-            if ($text !== '') {
-                return $text;
+            $page = $this->extractPageWithDom($html, $baseUrl);
+            // Keep the DOM result when it produced anything at all: a picture
+            // gallery can carry images without carrying much text, and falling
+            // back to the regex pass would drop them.
+            if ($page !== null && ($page['text'] !== '' || $page['images'] !== [])) {
+                return $page;
             }
         }
-        return $this->extractTextWithRegex($html);
+        return [
+            'text' => $this->extractTextWithRegex($html),
+            'images' => $this->collectImagesWithRegex($html, $baseUrl),
+        ];
     }
 
     /**
@@ -500,21 +688,26 @@ class WebSearchService {
      * getting that wrong either keeps menus or deletes the article. The DOM pass
      * removes the element types and the class/id keywords that never carry answer
      * text, prefers a marked main container, and only then reads the text.
+     *
+     * @return array{text:string,images:list<array{url:string,alt:string,width:int,height:int}>}|null
      */
-    private function extractTextWithDom(string $html): string {
+    private function extractPageWithDom(string $html, string $baseUrl): ?array {
         $document = new \DOMDocument();
         $previous = libxml_use_internal_errors(true);
         $loaded = $document->loadHTML('<?xml encoding="UTF-8">' . $html);
         libxml_clear_errors();
         libxml_use_internal_errors($previous);
         if ($loaded === false) {
-            return '';
+            return null;
         }
 
         $xpath = new \DOMXPath($document);
+        // The hero image is declared in <head>, which is outside the content
+        // root and survives the chrome removal below; collect it first.
+        $heroImages = $this->collectMetaImages($xpath, $baseUrl);
         $root = $this->findContentRoot($xpath);
         if ($root === null) {
-            return '';
+            return null;
         }
 
         // The content and everything that contains it are protected: an outer
@@ -542,7 +735,10 @@ class WebSearchService {
         }
         $this->removeNodes($xpath->query('//*[' . implode(' or ', $conditions) . ']'), $protected);
 
-        return $this->normaliseText((string)$root->textContent);
+        return [
+            'text' => $this->normaliseText((string)$root->textContent),
+            'images' => $this->collectImages($xpath, $root, $baseUrl, $heroImages),
+        ];
     }
 
     /**
@@ -635,6 +831,222 @@ class WebSearchService {
             $text = $match[2];
         }
         return $this->normaliseText(strip_tags($text));
+    }
+
+    /**
+     * The page's declared hero image (Open Graph / Twitter card).
+     *
+     * Publishers set these to the image that represents the article, which is
+     * exactly the right choice for an answer, and they sit in <head> outside the
+     * content root.
+     *
+     * @return list<array{url:string,alt:string,width:int,height:int}>
+     */
+    private function collectMetaImages(\DOMXPath $xpath, string $baseUrl): array {
+        if ($baseUrl === '' || !$this->imagesEnabled()) {
+            return [];
+        }
+        $query = '//meta[contains(translate(@property, "ABCDEFGHIJKLMNOPQRSTUVWXYZ", "abcdefghijklmnopqrstuvwxyz"), "og:image")'
+            . ' or contains(translate(@name, "ABCDEFGHIJKLMNOPQRSTUVWXYZ", "abcdefghijklmnopqrstuvwxyz"), "twitter:image")'
+            . ']/@content';
+        $nodes = $xpath->query($query);
+        if ($nodes === false) {
+            return [];
+        }
+        $out = [];
+        foreach ($nodes as $node) {
+            // "og:image:width"-style siblings are separate meta tags; only the
+            // plain image URL is used here and the real dimensions are read
+            // later from the rendered <img> when the page provides one.
+            $url = $this->resolveImageUrl(trim((string)$node->nodeValue), $baseUrl);
+            if ($url !== null) {
+                $out[$url] = ['url' => $url, 'alt' => '', 'width' => 0, 'height' => 0];
+            }
+        }
+        return array_values($out);
+    }
+
+    /**
+     * Images that sit inside the article container.
+     *
+     * Only images holding real size are kept: inline icons, spacers and tracking
+     * pixels are the majority of <img> tags on a page and none of them help an
+     * answer. The hero image, when the page declares one, always leads.
+     *
+     * @param list<array{url:string,alt:string,width:int,height:int}> $heroImages
+     * @return list<array{url:string,alt:string,width:int,height:int}>
+     */
+    private function collectImages(\DOMXPath $xpath, \DOMNode $root, string $baseUrl, array $heroImages): array {
+        $images = [];
+        foreach ($heroImages as $image) {
+            $images[$image['url']] = $image;
+        }
+        if ($baseUrl === '' || !$this->imagesEnabled()) {
+            return array_values($images);
+        }
+
+        $nodes = $xpath->query('.//img', $root);
+        if ($nodes !== false) {
+            foreach ($nodes as $node) {
+                // Lazy loaders keep the real URL in a data attribute and leave a
+                // placeholder (often just a pixel size) in src, so every
+                // candidate is tried in turn and the first usable one wins.
+                $url = null;
+                foreach (['src', 'data-src', 'data-original', 'data-lazy-src'] as $attribute) {
+                    $candidate = (string)$node->getAttribute($attribute);
+                    if ($candidate === '') {
+                        continue;
+                    }
+                    $url = $this->resolveImageUrl($candidate, $baseUrl);
+                    if ($url !== null) {
+                        break;
+                    }
+                }
+                if ($url === null || isset($images[$url])) {
+                    continue;
+                }
+                $width = (int)$node->getAttribute('width');
+                $height = (int)$node->getAttribute('height');
+                if ($width > 0 || $height > 0) {
+                    if ($width > 0 && $width < self::MIN_IMAGE_DIMENSION) {
+                        continue;
+                    }
+                    if ($height > 0 && $height < self::MIN_IMAGE_DIMENSION) {
+                        continue;
+                    }
+                }
+                $images[$url] = [
+                    'url' => $url,
+                    'alt' => $this->clamp((string)$node->getAttribute('alt'), 160),
+                    'width' => max(0, $width),
+                    'height' => max(0, $height),
+                ];
+            }
+        }
+
+        return array_slice(array_values($images), 0, self::MAX_IMAGES_PER_RESULT);
+    }
+
+    /**
+     * Image extraction for installs without ext-dom. It has no notion of the
+     * article container, so it accepts any plausible image URL - the size and
+     * chrome filters still apply.
+     *
+     * @return list<array{url:string,alt:string,width:int,height:int}>
+     */
+    private function collectImagesWithRegex(string $html, string $baseUrl): array {
+        if ($baseUrl === '' || !$this->imagesEnabled() || !preg_match_all('/<img\b[^>]*>/i', $html, $matches)) {
+            return [];
+        }
+        $images = [];
+        foreach ($matches[0] as $tag) {
+            // Same candidate order as the DOM pass: a lazy loader may leave only
+            // a placeholder in src and the real URL in a data attribute.
+            $url = null;
+            foreach (['src', 'data-src', 'data-original', 'data-lazy-src'] as $attribute) {
+                if (preg_match('/\b' . $attribute . '\s*=\s*["\']([^"\']+)["\']/i', $tag, $srcMatch)) {
+                    $url = $this->resolveImageUrl($srcMatch[1], $baseUrl);
+                    if ($url !== null) {
+                        break;
+                    }
+                }
+            }
+            if ($url === null || isset($images[$url])) {
+                continue;
+            }
+            $width = preg_match('/\bwidth\s*=\s*["\']?(\d+)/i', $tag, $w) ? (int)$w[1] : 0;
+            $height = preg_match('/\bheight\s*=\s*["\']?(\d+)/i', $tag, $h) ? (int)$h[1] : 0;
+            if (($width > 0 && $width < self::MIN_IMAGE_DIMENSION) || ($height > 0 && $height < self::MIN_IMAGE_DIMENSION)) {
+                continue;
+            }
+            $images[$url] = [
+                'url' => $url,
+                'alt' => preg_match('/\balt\s*=\s*["\']([^"\']*)["\']/i', $tag, $alt) ? $this->clamp($alt[1], 160) : '',
+                'width' => $width,
+                'height' => $height,
+            ];
+        }
+        return array_slice(array_values($images), 0, self::MAX_IMAGES_PER_RESULT);
+    }
+
+    /**
+     * Resolve an image reference to an absolute http(s) URL.
+     *
+     * A result page may serve images from anywhere, so the URL is normalised
+     * (protocol-relative, root-relative and path-relative forms all occur in the
+     * wild) and then bounded like every other URL: only http(s), no embedded
+     * credentials, and no data: or javascript: pseudo-URLs.
+     */
+    private function resolveImageUrl(string $raw, string $baseUrl): ?string {
+        $raw = trim(str_replace(["\n", "\r", "\t", ' '], '', $raw));
+        if ($raw === '') {
+            return null;
+        }
+        // Any other scheme (data:, blob:, javascript:, file:, …) is refused
+        // outright instead of being treated as a relative path.
+        if (preg_match('~^[a-z][a-z0-9+.\-]*:~i', $raw) === 1 && preg_match('~^https?://~i', $raw) !== 1) {
+            return null;
+        }
+        $lower = mb_strtolower($raw);
+        foreach (self::IMAGE_CHROME_MARKERS as $marker) {
+            if (str_contains($lower, $marker)) {
+                return null;
+            }
+        }
+        // Lazy-loading plugins put a *size* in src and the real URL in a data
+        // attribute (<img src="1600" data-src="/photo.jpg">), which would
+        // otherwise resolve to "https://host/article/1600" and be shown as an
+        // image. A relative reference must look like a path. Absolute and
+        // root-relative URLs are exempt because extension-less image CDNs
+        // (Unsplash and friends) are legitimate.
+        $isRelative = !str_starts_with($raw, '//')
+            && !str_starts_with($raw, '/')
+            && preg_match('~^https?://~i', $raw) !== 1;
+        if ($isRelative && !str_contains($raw, '.') && !str_contains($raw, '/')) {
+            return null;
+        }
+        $base = parse_url($baseUrl);
+        if (!is_array($base) || !isset($base['scheme'], $base['host'])) {
+            return null;
+        }
+        $origin = $base['scheme'] . '://' . $base['host'] . (isset($base['port']) ? ':' . $base['port'] : '');
+        if (str_starts_with($raw, '//')) {
+            $absolute = $base['scheme'] . ':' . $raw;
+        } elseif (str_starts_with($raw, '/')) {
+            $absolute = $origin . $raw;
+        } elseif (preg_match('~^https?://~i', $raw) === 1) {
+            $absolute = $raw;
+        } else {
+            $directory = (string)(parse_url($baseUrl, PHP_URL_PATH) ?? '/');
+            $directory = substr($directory, 0, (int)strrpos($directory, '/') + 1);
+            $absolute = $origin . $directory . $raw;
+        }
+        // Collapse ./ and ../ segments so the stored link is directly usable.
+        $parts = parse_url($absolute);
+        if (!is_array($parts) || !isset($parts['scheme'], $parts['host'])) {
+            return null;
+        }
+        if (isset($parts['user']) || isset($parts['pass'])) {
+            // Embedded credentials must never be rendered into an answer.
+            return null;
+        }
+        $segments = [];
+        foreach (explode('/', (string)($parts['path'] ?? '')) as $segment) {
+            if ($segment === '.' || $segment === '') {
+                continue;
+            }
+            if ($segment === '..') {
+                array_pop($segments);
+                continue;
+            }
+            $segments[] = $segment;
+        }
+        $path = '/' . implode('/', $segments);
+        if (isset($parts['query'])) {
+            $path .= '?' . $parts['query'];
+        }
+        $url = $parts['scheme'] . '://' . $parts['host'] . (isset($parts['port']) ? ':' . $parts['port'] : '') . $path;
+        return $this->isSafeHttpUrl($url) ? $url : null;
     }
 
     /**

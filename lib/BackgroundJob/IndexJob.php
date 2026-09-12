@@ -33,7 +33,13 @@ class IndexJob extends TimedJob {
         private LoggerInterface $logger
     ) {
         parent::__construct($time);
-        $this->setInterval(15 * 60);
+        // A large library is caught up by repeating bounded ticks, so the tick
+        // frequency is the throughput knob. The default moved from 15 to 5
+        // minutes (the usual Nextcloud cron cadence): a several-thousand-file
+        // library now converges in hours rather than days. Each tick is still
+        // capped by index_job_max_seconds, so the duty cycle stays modest.
+        $minutes = (int)$this->config->getInt('index_job_interval_minutes', 5);
+        $this->setInterval(max(1, min(60, $minutes)) * 60);
     }
 
     /**

@@ -43,8 +43,12 @@ class Admin implements ISettings {
         $adminSettings = $this->config->adminAll();
 
         // Ollama health check.
+        // status()['ping'] is the detail array (ok/url/error), not a boolean:
+        // coercing the array reported "connected" for every install, even with
+        // an unreachable model server.
         $ollamaStatus = $this->ollama->status();
-        $ollamaOnline = (bool)($ollamaStatus['ping'] ?? false);
+        $ollamaOnline = (bool)($ollamaStatus['ping']['ok'] ?? false);
+        $ollamaError = (string)($ollamaStatus['ping']['error'] ?? '');
 
         // User overview data.
         $aggregates = $this->documentMapper->aggregatePerUser();
@@ -61,6 +65,7 @@ class Admin implements ISettings {
 
         $totalDocuments = 0;
         $totalChunks = 0;
+        $totalFailed = 0;
         $users = [];
         foreach (array_keys($userIdSet) as $uid) {
             $agg = null;
@@ -86,9 +91,14 @@ class Admin implements ISettings {
                 'indexing' => $this->config->get('index_running') === '1',
                 'mode' => $this->config->get('index_mode'),
                 'error' => $this->config->get('last_index_error'),
+                // Files that could not be read or embedded on the last pass.
+                // They are retried next time and never stop the run, but the
+                // admin should be able to see that something is off.
+                'failed' => $this->config->getInt('last_index_failed', 0),
             ];
             $totalDocuments += (int)($agg['documents'] ?? 0);
             $totalChunks += (int)($agg['chunks'] ?? 0);
+            $totalFailed += $this->config->getInt('last_index_failed', 0);
         }
         $this->config->setUserId(null);
         usort($users, static fn(array $a, array $b): int => strcmp($a['userId'], $b['userId']));
@@ -99,9 +109,15 @@ class Admin implements ISettings {
         $apiBase = $this->urlGenerator->getAbsoluteURL('/ocs/v2.php/apps/eva_ai/api/');
 
         return new TemplateResponse('eva_ai', 'admin', [
-            'adminSettings' => $adminSettings,
+            // Skipped-file counts are per-user runtime state, so they are summed
+            // here instead of being read from adminAll().
+            'adminSettings' => $adminSettings + ['last_index_failed' => (string)$totalFailed],
             'ollamaOnline' => $ollamaOnline,
-            'ollamaUrl' => $adminSettings['ollama_url'] ?? 'http://127.0.0.1:11434',
+            'ollamaError' => $ollamaError,
+            // The effective instance value, not a hardcoded default: the admin
+            // page used to display http://127.0.0.1:11434 even when a different
+            // server was configured.
+            'ollamaUrl' => $this->config->ollamaUrl(),
             'users' => $users,
             'userCount' => count($users),
             'totalDocuments' => $totalDocuments,

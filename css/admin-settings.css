@@ -29,14 +29,21 @@
 	line-height: 1.6;
 }
 
+/*
+ * Colour tokens: --color-success / --color-error are *fill* colours whose own
+ * text colour is --color-success-text / --color-error-text. Using the fill as a
+ * text colour made the status pills dark-on-dark in the dark theme (roughly
+ * 1.4:1 contrast), so text uses the -text token and borders/dots use the vivid
+ * element token.
+ */
 .eva-chip--ok {
-	color: var(--color-success);
-	border-color: var(--color-success);
+	color: var(--color-success-text);
+	border-color: var(--color-element-success, var(--color-success));
 }
 
 .eva-chip--error {
-	color: var(--color-error);
-	border-color: var(--color-error);
+	color: var(--color-error-text);
+	border-color: var(--color-element-error, var(--color-error));
 }
 
 .eva-chip--busy {
@@ -55,7 +62,6 @@
 	align-items: center;
 	gap: 6px;
 	font-weight: 600;
-	white-space: nowrap;
 }
 
 .eva-status::before {
@@ -69,11 +75,19 @@
 }
 
 .eva-status--ok {
-	color: var(--color-success);
+	color: var(--color-success-text);
+}
+
+.eva-status--ok::before {
+	background-color: var(--color-element-success, var(--color-success));
 }
 
 .eva-status--error {
-	color: var(--color-error);
+	color: var(--color-error-text);
+}
+
+.eva-status--error::before {
+	background-color: var(--color-element-error, var(--color-error));
 }
 
 .eva-status--busy {
@@ -144,6 +158,21 @@
 
 /* ── Tables ──────────────────────────────────────────────────────────── */
 
+table.grid {
+	max-width: 100%;
+}
+
+/*
+ * Grid tables must not force horizontal scrolling on narrow windows. Long
+ * unbreakable values (URLs, error messages) previously widened the table past
+ * the viewport and clipped the Detail column, so cells may wrap and break
+ * anywhere instead of pushing the layout.
+ */
+table.grid td,
+table.grid th {
+	overflow-wrap: anywhere;
+}
+
 .eva-provider-table {
 	max-width: 760px;
 }
@@ -177,11 +206,11 @@
 }
 
 .eva-status-text.eva-status-text--ok {
-	color: var(--color-success);
+	color: var(--color-success-text);
 }
 
 .eva-status-text.eva-status-text--error {
-	color: var(--color-error);
+	color: var(--color-error-text);
 }
 
 /* ── Small helpers ───────────────────────────────────────────────────── */
@@ -191,7 +220,7 @@
 }
 
 .eva-error {
-	color: var(--color-error);
+	color: var(--color-error-text);
 	font-size: 13px;
 }
 

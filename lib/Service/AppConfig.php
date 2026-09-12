@@ -39,7 +39,7 @@ class AppConfig {
     private const USER_STATE_KEYS = [
         'index_running', 'index_started', 'index_heartbeat', 'index_finished', 'last_index_processed',
         'last_index_total', 'last_index_error', 'last_index_cache_hits', 'last_index_cache_misses',
-        'last_index_ollama_requests', 'index_config_hash', 'index_mode',
+        'last_index_ollama_requests', 'last_index_failed', 'index_config_hash', 'index_mode',
         'index_cancel_requested', 'index_run_id', 'index_enrolled', 'knowledge_initialized',
     ];
 
@@ -64,11 +64,16 @@ class AppConfig {
         // teasers into an answer, but it costs one request per page.
         'web_search_fetch_content',
         'web_search_content_chars',
+        // How many hits are read and compared before the best ones are chosen,
+        // and whether page images are collected and offered to the model.
+        'web_search_candidates',
+        'web_search_images',
         // Indexing throughput controls. These were previously only reachable
         // through `occ config:app:set`; the admin page exposed fields for them
         // that silently saved nothing because they were missing here.
         'index_max_concurrent',
         'index_job_max_seconds',
+        'index_job_interval_minutes',
     ];
 
     public function isAdminSetting(string $key): bool {
@@ -136,6 +141,11 @@ class AppConfig {
         'web_search_safe_search' => '1',
         'web_search_fetch_content' => '1',
         'web_search_content_chars' => '2000',
+        // Twelve hits are read and scored on their real content before the best
+        // ones are returned: the first three engine hits are frequently the
+        // wrong page, so the ranking must see enough candidates to reject them.
+        'web_search_candidates' => '12',
+        'web_search_images' => '1',
         'index_running' => '0',
         'index_started' => '',
         'index_heartbeat' => '',
@@ -146,6 +156,7 @@ class AppConfig {
         'last_index_cache_hits' => '0',
         'last_index_cache_misses' => '0',
         'last_index_ollama_requests' => '0',
+        'last_index_failed' => '0',
         'index_config_hash' => '',
         'index_mode' => 'idle',
         'index_cancel_requested' => '0',
@@ -196,8 +207,10 @@ class AppConfig {
         'web_search_max_results' => [1, 20],
         'web_search_timeout' => [1, 30],
         'web_search_content_chars' => [200, 8000],
+        'web_search_candidates' => [3, 20],
         'index_max_concurrent' => [1, 16],
         'index_job_max_seconds' => [10, 600],
+        'index_job_interval_minutes' => [1, 60],
     ];
 
     /** Accepted formats for the Ollama keep_alive setting (Issue: model residency). */
@@ -428,7 +441,7 @@ class AppConfig {
             }
             return null;
         }
-        if (in_array($key, ['ocr_enabled', 'actions_enabled', 'notify_on_complete', 'mail_index_enabled', 'index_enrolled', 'talk_classify_all', 'weather_tool_enabled', 'web_search_enabled', 'web_search_safe_search', 'web_search_fetch_content'], true)) {
+        if (in_array($key, ['ocr_enabled', 'actions_enabled', 'notify_on_complete', 'mail_index_enabled', 'index_enrolled', 'talk_classify_all', 'weather_tool_enabled', 'web_search_enabled', 'web_search_safe_search', 'web_search_fetch_content', 'web_search_images'], true)) {
             return is_scalar($value) && in_array((string)$value, ['0', '1', 'true', 'false', 'on', 'off'], true)
                 ? null : 'must be a boolean value';
         }
