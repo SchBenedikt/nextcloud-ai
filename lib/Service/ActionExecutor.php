@@ -535,6 +535,14 @@ class ActionExecutor {
                 'parameters' => ['type' => 'object', 'properties' => new \stdClass()],
             ]],
             ['type' => 'function', 'function' => [
+                'name' => 'discover_app_api',
+                'description' => 'Discover the installed Nextcloud API routes of an enabled app so you can plan a supported action. This is read-only and never executes a route.',
+                'parameters' => ['type' => 'object', 'properties' => [
+                    'app_id' => ['type' => 'string', 'description' => 'Optional Nextcloud app id, e.g. deck, bookmarks, forms. Omit to summarize all enabled app routes.'],
+                    'include_internal' => ['type' => 'boolean', 'description' => 'Include internal non-OCS routes (default false).'],
+                ]],
+            ]],
+            ['type' => 'function', 'function' => [
                 'name' => 'current_time',
                 'description' => 'Get the current date and time in the user\'s timezone. IMPORTANT: as an AI model you do not know today\'s date - always call this tool before computing dates, deadlines, appointments or relative times.',
                 'parameters' => ['type' => 'object', 'properties' => []],
@@ -778,6 +786,7 @@ class ActionExecutor {
                 'restore_file_version' => $this->restoreFileVersion($home, $args),
                 'server_status' => $this->serverStatus($userId),
                 'list_nextcloud_capabilities' => $this->listNextcloudCapabilities(),
+                'discover_app_api' => $this->discoverAppApi($args),
                 'update_knowledge' => $this->updateKnowledge($home, $args),
                 default => ['ok' => false, 'error' => 'Unknown tool: ' . $name],
             };
@@ -962,9 +971,11 @@ class ActionExecutor {
                 'comments' => ['protocols' => ['OCS Comments API', 'server-side ICommentsManager'], 'eva_tools' => ['list_comments', 'add_comment', 'delete_comment']],
                 'systemtags' => ['protocols' => ['server-side ISystemTagManager/ISystemTagObjectMapper', 'OCS Files Tags API'], 'eva_tools' => ['list_system_tags', 'tag_file', 'untag_file']],
                 'files_versions' => ['protocols' => ['server-side IVersionManager'], 'eva_tools' => ['list_file_versions', 'restore_file_version']],
+                '_generic' => ['protocols' => ['Nextcloud route metadata / OCS discovery'], 'eva_tools' => ['discover_app_api'], 'status' => 'discovery only; unknown routes are never invoked generically'],
             ];
             $availableApis = [];
             foreach ($apiCatalog as $app => $metadata) if (in_array($app, $apps, true)) $availableApis[$app] = $metadata;
+            $availableApis['_generic'] = $apiCatalog['_generic'];
             return [
                 'ok' => true,
                 'enabled_apps' => $apps,
@@ -981,6 +992,59 @@ class ActionExecutor {
             ];
         } catch (\Throwable $e) {
             return ['ok' => false, 'error' => 'Nextcloud capability discovery is unavailable.'];
+        }
+    }
+
+    /**
+     * Read route metadata from Nextcloud's router without invoking controllers.
+     * This gives the agent a safe way to learn an installed app's API surface;
+     * execution still goes through dedicated adapters and normal middleware.
+     */
+    private function discoverAppApi(array $args): array {
+        $appId = strtolower(trim((string)($args['app_id'] ?? '')));
+        if ($appId !== '' && !preg_match('/^[a-z0-9_]+$/', $appId)) {
+            return ['ok' => false, 'error' => 'app_id must contain only lowercase letters, numbers and underscores.'];
+        }
+        try {
+            $appManager = Server::get(\OCP\App\IAppManager::class);
+            $enabled = array_values(array_unique(array_map('strval', $appManager->getEnabledApps())));
+            if ($appId !== '' && !in_array($appId, $enabled, true)) {
+                return ['ok' => false, 'error' => 'That app is not enabled or is not available to this instance.'];
+            }
+            $router = Server::get(\OCP\Route\IRouter::class);
+            if (method_exists($router, 'loadRoutes')) $router->loadRoutes($appId !== '' ? $appId : null);
+            if (!method_exists($router, 'getRouteCollection')) {
+                return ['ok' => false, 'error' => 'This Nextcloud version does not expose route discovery.'];
+            }
+            $collection = $router->getRouteCollection();
+            $includeInternal = (bool)($args['include_internal'] ?? false);
+            $routes = [];
+            foreach ($collection->all() as $name => $route) {
+                $defaults = $route->getDefaults();
+                $controller = (string)($defaults['_controller'] ?? '');
+                $routeApp = strtolower((string)($defaults['_app'] ?? ''));
+                if ($routeApp === '' && is_string($name) && str_contains($name, '#')) {
+                    $routeApp = strtolower((string)strtok($name, '#'));
+                }
+                if ($appId !== '' && $routeApp !== $appId && !str_starts_with(strtolower((string)$name), $appId . '.')) continue;
+                $path = method_exists($route, 'getPath') ? (string)$route->getPath() : '';
+                $isOcs = str_starts_with($path, '/ocs/') || str_starts_with($path, '/ocsapp/');
+                if (!$includeInternal && !$isOcs) continue;
+                $methods = method_exists($route, 'getMethods') ? array_values(array_map('strval', $route->getMethods())) : [];
+                $routes[] = [
+                    'name' => (string)$name,
+                    'app_id' => $routeApp,
+                    'methods' => $methods,
+                    'path' => $path,
+                    'controller' => $controller,
+                    'ocs' => $isOcs,
+                ];
+            }
+            usort($routes, static fn (array $a, array $b): int => strcmp($a['name'], $b['name']));
+            if (count($routes) > 300) $routes = array_slice($routes, 0, 300);
+            return ['ok' => true, 'result' => ['app_id' => $appId !== '' ? $appId : null, 'route_count' => count($routes), 'routes' => $routes, 'execution_policy' => 'Routes are discovery-only. Use a dedicated EVA adapter; unknown writes are not invoked generically.']];
+        } catch (\Throwable) {
+            return ['ok' => false, 'error' => 'Nextcloud app API discovery is unavailable.'];
         }
     }
 

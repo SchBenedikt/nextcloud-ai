@@ -359,6 +359,12 @@ class ToolPolicy {
             'requiresConfirmation' => false,
             'description' => 'Discover enabled Nextcloud apps and available EVA integrations',
         ],
+        'discover_app_api' => [
+            'risk' => self::RISK_READONLY,
+            'surfaces' => [self::SURFACE_WEB, self::SURFACE_TALK, self::SURFACE_TASKPROCESSING, self::SURFACE_TASKPROCESSING_CONFIRMED, self::SURFACE_RAG],
+            'requiresConfirmation' => false,
+            'description' => 'Discover API routes exposed by an enabled Nextcloud app',
+        ],
         'current_time' => [
             'risk' => self::RISK_READONLY,
             'surfaces' => [self::SURFACE_WEB, self::SURFACE_TALK, self::SURFACE_TASKPROCESSING, self::SURFACE_TASKPROCESSING_CONFIRMED, self::SURFACE_RAG],
