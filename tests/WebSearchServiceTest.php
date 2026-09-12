@@ -663,6 +663,29 @@ HTML;
         );
     }
 
+    /**
+     * Lazy-loading plugins leave a pixel size in `src` and the real URL in a
+     * data attribute; resolving that size against the page path produced
+     * nonsense image URLs such as /article/1600.
+     */
+    public function testSizeOnlyImageReferencesAreRejected(): void {
+        $service = $this->service(['web_search_images' => '1']);
+        $html = '<html><body><article>'
+            . '<img src="1600" data-src="/wp-content/real-hero.jpg" width="1600" height="900">'
+            . '</article></body></html>';
+        $page = $this->callPrivate($service, 'extractPage', [$html, 'https://blog.example.org/some-article/']);
+        $urls = array_column($page['images'], 'url');
+        self::assertContains('https://blog.example.org/wp-content/real-hero.jpg', $urls);
+        foreach ($urls as $url) {
+            self::assertStringNotContainsString('/some-article/1600', $url);
+        }
+        // Extension-less image CDNs keep working when the URL is absolute.
+        self::assertSame(
+            'https://images.example.org/photo-1234?w=800',
+            $this->callPrivate($service, 'resolveImageUrl', ['https://images.example.org/photo-1234?w=800', 'https://blog.example.org/a/'])
+        );
+    }
+
     public function testImagesCanBeSwitchedOff(): void {
         $service = $this->service(['web_search_images' => '0']);
         $html = '<html><head><meta property="og:image" content="/media/hero.png"></head>'

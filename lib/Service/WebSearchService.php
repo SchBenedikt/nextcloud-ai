@@ -668,7 +668,10 @@ class WebSearchService {
         }
         if (class_exists(\DOMDocument::class)) {
             $page = $this->extractPageWithDom($html, $baseUrl);
-            if ($page !== null && $page['text'] !== '') {
+            // Keep the DOM result when it produced anything at all: a picture
+            // gallery can carry images without carrying much text, and falling
+            // back to the regex pass would drop them.
+            if ($page !== null && ($page['text'] !== '' || $page['images'] !== [])) {
                 return $page;
             }
         }
@@ -885,18 +888,20 @@ class WebSearchService {
         $nodes = $xpath->query('.//img', $root);
         if ($nodes !== false) {
             foreach ($nodes as $node) {
-                $src = (string)$node->getAttribute('src');
-                if ($src === '') {
-                    // Lazy-loaded images keep the real URL in a data attribute.
-                    foreach (['data-src', 'data-original', 'data-lazy-src'] as $attribute) {
-                        $candidate = (string)$node->getAttribute($attribute);
-                        if ($candidate !== '') {
-                            $src = $candidate;
-                            break;
-                        }
+                // Lazy loaders keep the real URL in a data attribute and leave a
+                // placeholder (often just a pixel size) in src, so every
+                // candidate is tried in turn and the first usable one wins.
+                $url = null;
+                foreach (['src', 'data-src', 'data-original', 'data-lazy-src'] as $attribute) {
+                    $candidate = (string)$node->getAttribute($attribute);
+                    if ($candidate === '') {
+                        continue;
+                    }
+                    $url = $this->resolveImageUrl($candidate, $baseUrl);
+                    if ($url !== null) {
+                        break;
                     }
                 }
-                $url = $this->resolveImageUrl($src, $baseUrl);
                 if ($url === null || isset($images[$url])) {
                     continue;
                 }
@@ -935,10 +940,17 @@ class WebSearchService {
         }
         $images = [];
         foreach ($matches[0] as $tag) {
-            if (!preg_match('/\bsrc\s*=\s*["\']([^"\']+)["\']/i', $tag, $srcMatch)) {
-                continue;
+            // Same candidate order as the DOM pass: a lazy loader may leave only
+            // a placeholder in src and the real URL in a data attribute.
+            $url = null;
+            foreach (['src', 'data-src', 'data-original', 'data-lazy-src'] as $attribute) {
+                if (preg_match('/\b' . $attribute . '\s*=\s*["\']([^"\']+)["\']/i', $tag, $srcMatch)) {
+                    $url = $this->resolveImageUrl($srcMatch[1], $baseUrl);
+                    if ($url !== null) {
+                        break;
+                    }
+                }
             }
-            $url = $this->resolveImageUrl($srcMatch[1], $baseUrl);
             if ($url === null || isset($images[$url])) {
                 continue;
             }
@@ -980,6 +992,18 @@ class WebSearchService {
             if (str_contains($lower, $marker)) {
                 return null;
             }
+        }
+        // Lazy-loading plugins put a *size* in src and the real URL in a data
+        // attribute (<img src="1600" data-src="/photo.jpg">), which would
+        // otherwise resolve to "https://host/article/1600" and be shown as an
+        // image. A relative reference must look like a path. Absolute and
+        // root-relative URLs are exempt because extension-less image CDNs
+        // (Unsplash and friends) are legitimate.
+        $isRelative = !str_starts_with($raw, '//')
+            && !str_starts_with($raw, '/')
+            && preg_match('~^https?://~i', $raw) !== 1;
+        if ($isRelative && !str_contains($raw, '.') && !str_contains($raw, '/')) {
+            return null;
         }
         $base = parse_url($baseUrl);
         if (!is_array($base) || !isset($base['scheme'], $base['host'])) {
