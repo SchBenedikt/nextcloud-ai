@@ -11,6 +11,7 @@ use OCP\AppFramework\Http\Attribute\NoCSRFRequired;
 
 use OCA\EvaAi\Service\RagService;
 use OCP\App\IAppManager;
+use OCP\AppFramework\Http\ContentSecurityPolicy;
 use OCP\IRequest;
 use OCP\IURLGenerator;
 use OCP\Util;
@@ -99,6 +100,7 @@ class PageController extends Controller {
         $response = new TemplateResponse('eva_ai', 'standalone', [
             'version' => 'standalone-1',
         ]);
+        $this->allowWebImages($response);
         return $this->noCache($response);
     }
 
@@ -144,7 +146,30 @@ class PageController extends Controller {
         $response = new TemplateResponse('eva_ai', $template, [
             'apiBase' => $this->urlGenerator->getAbsoluteURL('/ocs/v2.php/apps/eva_ai/api/'),
         ]);
+        $this->allowWebImages($response);
         return $this->noCache($response);
+    }
+
+    /**
+     * Allow the pictures a web answer embeds to actually load.
+     *
+     * Nextcloud's own policy for images is `img-src 'self' data: blob:` (plus
+     * map tiles), which blocks every remote picture. An answer that shows a
+     * product photo or a photo of an event therefore rendered as a broken image
+     * and - since the chat degrades a broken image to a link on purpose - the
+     * user saw a link instead of the picture they asked for.
+     *
+     * The relaxation is deliberately scoped to this app's own pages and to
+     * images, and the pictures themselves are already constrained on the way in:
+     * they are only ever inserted as a markdown image the answer chose, they
+     * carry `referrerpolicy="no-referrer"` so the host learns nothing about the
+     * reader, and they load lazily, so an image the user never scrolls to is
+     * never fetched.
+     */
+    private function allowWebImages(TemplateResponse $response): void {
+        $policy = new ContentSecurityPolicy();
+        $policy->addAllowedImageDomain('*');
+        $response->setContentSecurityPolicy($policy);
     }
 
     private function noCache(TemplateResponse $response): TemplateResponse {

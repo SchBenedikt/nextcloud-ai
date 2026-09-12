@@ -41,6 +41,8 @@ lib/
 | `KnowledgeInitializer` | Idempotently adds the per-user first-run profile section to `KNOWLEDGE.md` without overwriting existing content |
 | `TalkBotRegistrar` | Auto-registers the Talk bot on boot (idempotent) |
 | `TalkContextReader` | Reads Talk conversation history for the bot |
+| `TalkTranscriptService` | Room discovery, transcripts and room-scoped recall - see [TALK-INDEXING.md](TALK-INDEXING.md) |
+| `BrowserRenderer` | Runs the headless browser for pages that need JavaScript - see [BROWSER-RENDERING.md](BROWSER-RENDERING.md) |
 
 ## Data model (database)
 

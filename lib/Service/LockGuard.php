@@ -27,8 +27,8 @@ use OCP\Lock\LockedException;
  * acquire is retried once.
  */
 class LockGuard {
-    /** Same heartbeat age the controller/cron use to declare a run abandoned. */
-    private const STALE_RUN_SECONDS = 900;
+    /** Same heartbeat age the controller, the cron job and the indexer use. */
+    private const STALE_RUN_SECONDS = AppConfig::STALE_RUN_SECONDS;
 
     /**
      * Bounded per-user index lock key. The database-backed locking provider

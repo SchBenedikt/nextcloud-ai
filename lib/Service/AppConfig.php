@@ -358,6 +358,58 @@ class AppConfig {
         }
     }
 
+    /**
+     * How long a run may go without a liveness signal before it is abandoned.
+     *
+     * Shared on purpose: this rule used to be written out three times with
+     * slightly different details (the API controller, the cron job and the lock
+     * guard), so a run left behind by a dead worker could be recovered by one
+     * caller and still block another.
+     */
+    public const STALE_RUN_SECONDS = 900;
+
+    /**
+     * The shorter window that applies while a cancellation is pending.
+     *
+     * A worker is expected to notice a stop request promptly, so waiting the
+     * full window would keep a stopped run looking alive.
+     */
+    public const CANCEL_GRACE_SECONDS = 300;
+
+    /**
+     * Release the claim of a run whose worker is gone.
+     *
+     * A process that is killed mid-run - a fatal error, a timeout, a reboot -
+     * never reaches its cleanup, so its claim stays behind and every later pass
+     * reports "already running" and does nothing. The heartbeat is the only
+     * liveness signal there is, so a claim whose signal is older than the
+     * window is declared abandoned. Called by every entry point that starts a
+     * run, so a stale claim can never block one of them only.
+     *
+     * @return bool whether an abandoned claim was released
+     */
+    public function recoverAbandonedRun(): bool
+    {
+        if ($this->get('index_running') !== '1') {
+            return false;
+        }
+        $heartbeat = (int)$this->get('index_heartbeat');
+        // A run that never wrote a heartbeat falls back to its start time; a run
+        // with neither is treated as old rather than as fresh.
+        $since = $heartbeat > 0 ? $heartbeat : (int)$this->get('index_started');
+        $age = $since > 0 ? time() - $since : PHP_INT_MAX;
+        $cancelling = $this->get('index_cancel_requested') === '1';
+        if ($age <= self::STALE_RUN_SECONDS && !($cancelling && $age > self::CANCEL_GRACE_SECONDS)) {
+            return false;
+        }
+        $this->set('index_running', '0');
+        $this->set('index_mode', 'idle');
+        $this->set('index_cancel_requested', '0');
+        $this->set('index_run_id', '');
+        $this->set('index_heartbeat', '');
+        return true;
+    }
+
     public function tryClaimIndex(string $userId): bool {
         $previous = $this->userId;
         $this->setUserId($userId);

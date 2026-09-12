@@ -641,23 +641,12 @@ class ApiController extends OCSController {
         } finally {
             $this->lockingProvider->releaseLock($lockPath, ILockingProvider::LOCK_EXCLUSIVE);
         }
-    }
-
-    private function recoverStaleIndex(): void {
-        if ($this->config->get('index_running') !== '1') {
-            return;
-        }
-        $heartbeat = (int)$this->config->get('index_heartbeat');
-        $started = $heartbeat > 0 ? $heartbeat : (int)$this->config->get('index_started');
-        $age = $started > 0 ? time() - $started : PHP_INT_MAX;
-        $cancelRequested = $this->config->get('index_cancel_requested') === '1';
-        if ($age > 900 || ($cancelRequested && $age > 300)) {
-            $this->config->set('index_running', '0');
-            $this->config->set('index_mode', 'idle');
-            $this->config->set('index_cancel_requested', '0');
-            $this->config->set('index_run_id', '');
-            $this->config->set('index_heartbeat', '');
-        }
+    }    private function recoverStaleIndex(): void
+    {
+        // The rule itself lives with the run state (AppConfig), because the cron
+        // job and the indexer need the same one; this call is only the HTTP
+        // entry point into it.
+        $this->config->recoverAbandonedRun();
     }
 
     #[NoAdminRequired]

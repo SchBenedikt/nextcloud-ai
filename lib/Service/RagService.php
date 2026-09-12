@@ -1024,22 +1024,14 @@ $this->executor->setUserId($userId);
         $chunkCount = $this->chunkMapper->countForUser($userId);
 
         $running = $this->config->get('index_running') === '1';
-        $cancelRequested = $this->config->get('index_cancel_requested') === '1';
-        if ($running) {
-            $heartbeat = (int)$this->config->get('index_heartbeat');
-            $started = $heartbeat > 0 ? $heartbeat : (int)$this->config->get('index_started');
-            $age = $started > 0 ? time() - $started : PHP_INT_MAX;
-            if ($age > 900 || ($cancelRequested && $age > 300)) {
-                // Recover queued jobs that never reached a cron worker. The
-                // run token prevents a late stale worker from clearing a new run.
-                $this->config->set('index_running', '0');
-                $this->config->set('index_mode', 'idle');
-                $this->config->set('index_cancel_requested', '0');
-                $this->config->set('index_run_id', '');
-                $running = false;
-                $cancelRequested = false;
-            }
+        // Recover a run whose worker is gone before reporting it as running: a
+        // job queued for a cron worker that never came would otherwise show up
+        // in the UI as an index that runs forever. The rule is the shared one,
+        // so the status endpoint cannot disagree with the workers about it.
+        if ($running && $this->config->recoverAbandonedRun()) {
+            $running = false;
         }
+        $cancelRequested = $this->config->get('index_cancel_requested') === '1';
 
         $installedNames = array_map(static fn($m) => (string)($m['name'] ?? ''), $models);
         $installedLower = array_map(static fn(string $name): string => strtolower(preg_replace('/:latest$/', '', $name) ?? $name), $installedNames);

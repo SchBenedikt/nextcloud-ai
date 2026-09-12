@@ -135,21 +135,12 @@ class IndexJob extends TimedJob {
                 }
                 // Do not compete with an explicitly requested per-user job.
                 $this->config->setUserId($user);
-                if ($this->config->get('index_running') === '1') {
-                    $heartbeat = (int)$this->config->get('index_heartbeat');
-                    $age = $heartbeat > 0 ? time() - $heartbeat : PHP_INT_MAX;
-                    $cancelRequested = $this->config->get('index_cancel_requested') === '1';
-                    if ($age > 900 || ($cancelRequested && $age > 300)) {
-                        // Cron must recover abandoned requests even when no
-                        // browser calls the status endpoint.
-                        $this->config->set('index_running', '0');
-                        $this->config->set('index_mode', 'idle');
-                        $this->config->set('index_cancel_requested', '0');
-                        $this->config->set('index_run_id', '');
-                        $this->config->set('index_heartbeat', '');
-                    } else {
-                        continue;
-                    }
+                // Cron must recover an abandoned request even when no browser
+                // ever calls the status endpoint - and it uses the same rule as
+                // the controller and the indexer do, so a run left behind by a
+                // dead worker cannot block one entry point and not another.
+                if ($this->config->get('index_running') === '1' && !$this->config->recoverAbandonedRun()) {
+                    continue;
                 }
                 $this->config->setUserId($user);
                 // Enforce the bounded time budget: one run must not block the
