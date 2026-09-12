@@ -217,6 +217,9 @@
 				<NcCheckboxRadioSwitch v-model="learningEnabled" type="switch" class="native-toggle compact-switch" :description="$t('Let EVA learn explicit preferences and facts from completed chats. You can edit or delete the personal knowledge below at any time.')">
 					{{ $t('Learn from my conversations') }}
 				</NcCheckboxRadioSwitch>
+				<NcCheckboxRadioSwitch v-model="safeCommandsEnabled" type="switch" class="native-toggle compact-switch" :description="$t('Allow only explicitly confirmed, read-only diagnostics such as disk space and version checks. Shell scripts, pipes and file changes remain blocked.')">
+					{{ $t('Allow safe local diagnostics') }}
+				</NcCheckboxRadioSwitch>
 			</section>
 
 			<section class="settings-section">
@@ -562,6 +565,7 @@ export default {
 			temperature: '0.1',
 			 actions_enabled: '1',
 			learning_enabled: '1',
+			safe_commands_enabled: '0',
 			background_actions_enabled: '0',
 			agent_max_tool_rounds: '16',
 			notify_on_complete: '1',
@@ -653,6 +657,10 @@ export default {
 		const learningEnabled = computed({
 			get: () => f.value.learning_enabled === '1',
 			set: value => { f.value.learning_enabled = value ? '1' : '0' },
+		})
+		const safeCommandsEnabled = computed({
+			get: () => f.value.safe_commands_enabled === '1',
+			set: value => { f.value.safe_commands_enabled = value ? '1' : '0' },
 		})
 		const proactiveEnabled = computed({
 			get: () => f.value.proactive_enabled === '1',
@@ -1270,7 +1278,7 @@ export default {
 		const ocrEnabled = computed({ get: () => f.value.ocr_enabled === '1', set: value => { f.value.ocr_enabled = value ? '1' : '0' } })
 		return {
 			groqKey, customProviderKey, removeGroqKey, ocrEnabled, f, status, health, healthLoading, statusTimer, limits, availableModels, embeddingModels, chatModels, embeddingInstalledHint, chatInstalledHint, modelLoading, modelError, checkOut, saving, checking, indexing, resetting, deletingChats, stopping, saved, loadError, message, validationErrors, resetConfirm, chatsDeleteConfirm,
-			newExcludePath, excludeError, excludeList, actionsEnabled, backgroundActionsEnabled, notificationsEnabled, learningEnabled, mailIndexEnabled, talkIndexEnabled, talkWriteEnabled, indexEnrolled, actionsDisabled, busy, indexingActive, settingsLocked, maxFileSizeMb,
+			newExcludePath, excludeError, excludeList, actionsEnabled, backgroundActionsEnabled, notificationsEnabled, learningEnabled, safeCommandsEnabled, mailIndexEnabled, talkIndexEnabled, talkWriteEnabled, indexEnrolled, actionsDisabled, busy, indexingActive, settingsLocked, maxFileSizeMb,
 			isAdminMode, admin, userWebSearchEnabled, userWebSearchSafeSearch, userWebSearchImages, userWebSearchBrowser, userWebSearchFetchContent, webSearchKey, removeWebSearchKey, webSearchKeyStored, webSearchReady, savingAdmin, saveAdminSettings, loadAdminSettings,
 			proactiveEnabled, proactiveBriefings, briefingDraft, weekdays, dayName, addBriefing, removeBriefing, toggleBriefing, toggleBriefingActions,
 			exporting, downloadExport,

@@ -84,6 +84,7 @@ class ActionExecutor {
         'untag_file' => ['file_id', 'tag'],
         'restore_file_version' => ['file_id', 'version_id'],
         'call_app_api' => ['app_id', 'path', 'method'],
+        'run_safe_command' => ['command'],
         'create_scheduled_briefing' => ['prompt', 'time', 'days'],
         'update_scheduled_briefing' => ['briefing_id'],
         'delete_scheduled_briefing' => ['briefing_id'],
@@ -540,6 +541,13 @@ class ActionExecutor {
                 'parameters' => ['type' => 'object', 'properties' => new \stdClass()],
             ]],
             ['type' => 'function', 'function' => [
+                'name' => 'run_safe_command',
+                'description' => 'Run one allowlisted read-only local diagnostic command. Requires the user setting and explicit confirmation. Never accepts shell syntax, scripts, pipes or redirects.',
+                'parameters' => ['type' => 'object', 'properties' => [
+                    'command' => ['type' => 'string', 'enum' => ['date', 'uptime', 'php_version', 'node_version', 'disk_free', 'memory_free', 'eva_git_status']],
+                ], 'required' => ['command']],
+            ]],
+            ['type' => 'function', 'function' => [
                 'name' => 'list_nextcloud_capabilities',
                 'description' => 'Discover which Nextcloud apps are enabled and which EVA integrations are available before planning a task. This is read-only and never exposes secrets. Use it when the user asks EVA to work with a Nextcloud feature you have not used before.',
                 'parameters' => ['type' => 'object', 'properties' => new \stdClass()],
@@ -742,13 +750,13 @@ class ActionExecutor {
             // web surface has complete arguments: the model may have learned
             // an unfamiliar endpoint and the user must review its exact
             // method, path and parameters first.
-            if ($name === 'call_app_api') {
+            if ($name === 'call_app_api' || $name === 'run_safe_command') {
                 return [
                     'ok' => false,
                     'confirmation_required' => true,
                     'tool' => $name,
                     'risk' => (string)($policy['risk'] ?? ToolPolicy::RISK_MUTATING),
-                    'error' => 'Generic app API calls always require explicit user confirmation.',
+                    'error' => $name === 'run_safe_command' ? 'Local diagnostic commands always require explicit user confirmation.' : 'Generic app API calls always require explicit user confirmation.',
                 ];
             }
             // Interactive web chat: an explicit, complete request runs
@@ -860,6 +868,7 @@ class ActionExecutor {
                 'list_file_versions' => $this->listFileVersions($home, $args),
                 'restore_file_version' => $this->restoreFileVersion($home, $args),
                 'server_status' => $this->serverStatus($userId),
+                'run_safe_command' => $this->runSafeCommand($args),
                 'list_nextcloud_capabilities' => $this->listNextcloudCapabilities(),
                 'discover_app_api' => $this->discoverAppApi($args),
                 'list_learned_app_apis' => $this->listLearnedAppApis(),
@@ -2340,6 +2349,25 @@ class ActionExecutor {
             'quota' => $quota,
             'mail_index_enabled' => $this->config->get('mail_index_enabled') === '1',
         ]];
+    }
+
+    private function runSafeCommand(array $args): array {
+        if ($this->config->get('safe_commands_enabled') !== '1') return ['ok' => false, 'error' => 'Safe local commands are disabled in EVA settings.'];
+        $name = trim((string)($args['command'] ?? ''));
+        $commands = [
+            'date' => ['date'], 'uptime' => ['uptime'], 'php_version' => ['php', '-v'],
+            'node_version' => ['node', '--version'], 'disk_free' => ['df', '-h'],
+            'memory_free' => ['free', '-h'], 'eva_git_status' => ['git', '-C', __DIR__ . '/../../', 'status', '--short'],
+        ];
+        if (!isset($commands[$name])) return ['ok' => false, 'error' => 'Command is not on the safe diagnostic allowlist.'];
+        $pipes = [];
+        $process = proc_open($commands[$name], [1 => ['pipe', 'w'], 2 => ['pipe', 'w']], $pipes, __DIR__ . '/../../');
+        if (!is_resource($process)) return ['ok' => false, 'error' => 'Could not start the diagnostic command.'];
+        stream_set_timeout($pipes[1], 5); stream_set_timeout($pipes[2], 5);
+        $stdout = stream_get_contents($pipes[1]); $stderr = stream_get_contents($pipes[2]);
+        fclose($pipes[1]); fclose($pipes[2]);
+        $exit = proc_close($process);
+        return ['ok' => $exit === 0, 'result' => ['command' => $name, 'output' => mb_substr(trim((string)$stdout), 0, 10000), 'error_output' => mb_substr(trim((string)$stderr), 0, 2000), 'exit_code' => $exit]];
     }
 
     /** @return array{ok:true,result:array}|array{ok:false,error:string} */

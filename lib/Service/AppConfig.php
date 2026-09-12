@@ -19,7 +19,7 @@ class AppConfig {
         'chat_provider', 'groq_model', 'custom_provider_url', 'custom_provider_model', 'ollama_url', 'embedding_model', 'chat_model', 'chat_model_fallback',
         'embedding_model_fallback', 'summary_model', 'top_k', 'chunk_size',
         'chunk_overlap', 'max_file_size', 'max_files_per_run', 'scope_path',
-        'context_size', 'temperature', 'actions_enabled', 'background_actions_enabled', 'learning_enabled', 'agent_max_tool_rounds', 'exec_write_types',
+        'context_size', 'temperature', 'actions_enabled', 'background_actions_enabled', 'learning_enabled', 'safe_commands_enabled', 'agent_max_tool_rounds', 'exec_write_types',
         'exec_write_max_chars', 'exec_delete_mode',        'notify_on_complete',
         // Personal, opt-in scheduled briefings/reminders. Definitions are JSON;
         // delivery timestamps deliberately live in runtime state below.
@@ -141,6 +141,7 @@ class AppConfig {
         // the browser has closed.
         'background_actions_enabled' => '0',
         'learning_enabled' => '1',
+        'safe_commands_enabled' => '0',
         'agent_max_tool_rounds' => '16',
         'exec_write_types' => '',
         'exec_write_max_chars' => '100000',
