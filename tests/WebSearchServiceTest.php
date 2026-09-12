@@ -691,6 +691,31 @@ HTML;
      * live product returned "…/article/image/jpeg" (a responsive-image MIME
      * fragment) and a wiki link used as a source.
      */
+    /**
+     * og:image:type declares a MIME type next to the real og:image. Matching the
+     * property with "contains" also matched it, and its value was then resolved
+     * against the page path - that is where "…/article/image/jpeg" came from.
+     */
+    public function testHeroImageIgnoresTheMimeTypeDeclaration(): void {
+        $service = $this->service(['web_search_images' => '1']);
+        $html = '<html><head>'
+            . '<meta property="og:image:type" content="image/jpeg">'
+            . '<meta property="og:image:width" content="1200">'
+            . '<meta property="og:image" content="/uploads/cover.jpg">'
+            . '</head><body><article><p>Text.</p></article></body></html>';
+        $page = $this->callPrivate($service, 'extractPage', [$html, 'https://blog.example.org/some-article/']);
+        self::assertSame(['https://blog.example.org/uploads/cover.jpg'], array_column($page['images'], 'url'));
+
+        // A bare MIME value is never a URL, from any source.
+        self::assertNull($this->callPrivate($service, 'resolveImageUrl', ['image/jpeg', 'https://blog.example.org/a/']));
+        self::assertNull($this->callPrivate($service, 'resolveImageUrl', ['image/png', 'https://blog.example.org/a/']));
+        // A path that merely looks like one is still resolved normally.
+        self::assertSame(
+            'https://blog.example.org/a/photos/berlin',
+            $this->callPrivate($service, 'resolveImageUrl', ['photos/berlin', 'https://blog.example.org/a/'])
+        );
+    }
+
     public function testOnlyRealImageResourcesSurviveTheImgPass(): void {
         $service = $this->service(['web_search_images' => '1']);
         foreach ([['https://a.example.org/2025/09/article/image/jpeg', false],

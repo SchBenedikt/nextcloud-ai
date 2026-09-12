@@ -848,8 +848,14 @@ class WebSearchService {
         if ($baseUrl === '' || !$this->imagesEnabled()) {
             return [];
         }
-        $query = '//meta[contains(translate(@property, "ABCDEFGHIJKLMNOPQRSTUVWXYZ", "abcdefghijklmnopqrstuvwxyz"), "og:image")'
-            . ' or contains(translate(@name, "ABCDEFGHIJKLMNOPQRSTUVWXYZ", "abcdefghijklmnopqrstuvwxyz"), "twitter:image")'
+        // The property must match *exactly*. A "contains" test also matched the
+        // sibling declarations og:image:type / og:image:width / og:image:alt,
+        // and og:image:type's value ("image/jpeg") then resolved against the
+        // page path and was offered as an image URL.
+        $lower = 'translate(@%s, "ABCDEFGHIJKLMNOPQRSTUVWXYZ", "abcdefghijklmnopqrstuvwxyz") = "%s"';
+        $query = '//meta['
+            . sprintf($lower, 'property', 'og:image') . ' or ' . sprintf($lower, 'name', 'og:image')
+            . ' or ' . sprintf($lower, 'property', 'twitter:image') . ' or ' . sprintf($lower, 'name', 'twitter:image')
             . ']/@content';
         $nodes = $xpath->query($query);
         if ($nodes === false) {
@@ -1016,6 +1022,11 @@ class WebSearchService {
         // Any other scheme (data:, blob:, javascript:, file:, …) is refused
         // outright instead of being treated as a relative path.
         if (preg_match('~^[a-z][a-z0-9+.\-]*:~i', $raw) === 1 && preg_match('~^https?://~i', $raw) !== 1) {
+            return null;
+        }
+        // A bare image MIME type is a declaration value (og:image:type), never a
+        // URL; resolving it against the page produced "…/article/image/jpeg".
+        if (preg_match('~^(?:image|img)/(?:jpe?g|png|gif|webp|avif|svg\+xml|bmp|tiff|x-icon)$~i', $raw) === 1) {
             return null;
         }
         $lower = mb_strtolower($raw);
