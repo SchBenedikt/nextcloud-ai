@@ -281,7 +281,11 @@ export default {
 			}
 			for (const group of folderGroups.value) {
 				const collapsed = !!collapsedFolders.value[group.name]
-				items.push({ type: 'heading', key: 'h-folder-' + group.name, label: group.name, icon: mdiFolderOutline, folder: true, folderName: group.name, count: group.chats.length, collapsed })
+				// A folder without a stored name (and one saved under the old
+				// hardcoded German default) is labelled in the reader's language
+				// instead of showing a German word in an English UI (issue #190).
+				const label = folderLabel(group.name)
+				items.push({ type: 'heading', key: 'h-folder-' + group.name, label, icon: mdiFolderOutline, folder: true, folderName: group.name, count: group.chats.length, collapsed })
 				if (collapsed) continue
 				// Chats inside a folder are visually nested under their heading.
 				for (const c of group.chats) items.push({ type: 'chat', key: 'chat-' + c.id, chat: c, nested: true })
@@ -323,6 +327,13 @@ export default {
 		// Untitled chats get the translated placeholder instead of the legacy
 		// hardcoded German default the server used to store.
 		const displayTitle = (chat) => chat.title || t('New chat')
+		// A folder name is user data, so it is never stored in a translated form;
+		// an empty one (or one saved under the old German default) gets a label in
+		// the reader's language.
+		const folderLabel = (name) => {
+			const clean = String(name || '').trim()
+			return (clean === '' || clean === 'Unbenannt') ? t('Untitled folder') : clean
+		}
 		const itemName = (chat) => {
 			const query = chatFilter.value.trim().toLowerCase()
 			const titleHit = query && String(chat.title || '').toLowerCase().includes(query)

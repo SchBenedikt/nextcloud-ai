@@ -287,6 +287,7 @@ OC.L10N.register("eva_ai", {
     "Never delete automatically": "Nie automatisch löschen",
     "New chat": "Neuer Chat",
     "New chat title:": "Titel des neuen Chats:",
+    "Untitled folder": "Unbenannter Ordner",
     "New folder name": "Neuer Ordnername",
     "New name": "Neuer Name",
     "Newest first": "Neueste zuerst",
