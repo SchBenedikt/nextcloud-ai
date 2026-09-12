@@ -544,6 +544,11 @@ class ActionExecutor {
                 ]],
             ]],
             ['type' => 'function', 'function' => [
+                'name' => 'list_learned_app_apis',
+                'description' => 'List sanitized Nextcloud app API routes EVA learned earlier for this user. Read-only; use discover_app_api to refresh an app.',
+                'parameters' => ['type' => 'object', 'properties' => new \stdClass()],
+            ]],
+            ['type' => 'function', 'function' => [
                 'name' => 'call_app_api',
                 'description' => 'Call an OCS endpoint of an enabled Nextcloud app in the current user session. Read methods are allowed; POST, PUT, PATCH and DELETE always require explicit confirmation.',
                 'parameters' => ['type' => 'object', 'properties' => [
@@ -811,6 +816,7 @@ class ActionExecutor {
                 'server_status' => $this->serverStatus($userId),
                 'list_nextcloud_capabilities' => $this->listNextcloudCapabilities(),
                 'discover_app_api' => $this->discoverAppApi($args),
+                'list_learned_app_apis' => $this->listLearnedAppApis(),
                 'call_app_api' => $this->callAppApi($args),
                 'update_knowledge' => $this->updateKnowledge($home, $args),
                 default => ['ok' => false, 'error' => 'Unknown tool: ' . $name],
@@ -1067,10 +1073,42 @@ class ActionExecutor {
             }
             usort($routes, static fn (array $a, array $b): int => strcmp($a['name'], $b['name']));
             if (count($routes) > 300) $routes = array_slice($routes, 0, 300);
+            $this->rememberAppApi($appId, $routes);
             return ['ok' => true, 'result' => ['app_id' => $appId !== '' ? $appId : null, 'route_count' => count($routes), 'routes' => $routes, 'execution_policy' => 'Routes are discovery-only. Use a dedicated EVA adapter; unknown writes are not invoked generically.']];
         } catch (\Throwable) {
             return ['ok' => false, 'error' => 'Nextcloud app API discovery is unavailable.'];
         }
+    }
+
+    private function rememberAppApi(string $appId, array $routes): void {
+        if ($appId === '') return;
+        try {
+            $known = json_decode($this->config->get('learned_app_apis'), true);
+            $known = is_array($known) ? $known : [];
+            $sanitized = [];
+            foreach (array_slice($routes, 0, 300) as $route) {
+                if (!is_array($route)) continue;
+                $sanitized[] = [
+                    'name' => (string)($route['name'] ?? ''),
+                    'methods' => array_values(array_map('strval', is_array($route['methods'] ?? null) ? $route['methods'] : [])),
+                    'path' => (string)($route['path'] ?? ''),
+                    'ocs' => (bool)($route['ocs'] ?? false),
+                ];
+            }
+            $known[$appId] = ['updated' => time(), 'routes' => $sanitized];
+            if (count($known) > 30) {
+                uasort($known, static fn (array $a, array $b): int => ((int)($b['updated'] ?? 0)) <=> ((int)($a['updated'] ?? 0)));
+                $known = array_slice($known, 0, 30, true);
+            }
+            $this->config->set('learned_app_apis', json_encode($known, JSON_UNESCAPED_SLASHES) ?: '{}');
+        } catch (\Throwable) { /* Learning is best effort. */ }
+    }
+
+    private function listLearnedAppApis(): array {
+        try {
+            $known = json_decode($this->config->get('learned_app_apis'), true);
+            return ['ok' => true, 'result' => ['apps' => is_array($known) ? $known : [], 'note' => 'Route metadata is cached per user and may be stale; refresh with discover_app_api before acting.']];
+        } catch (\Throwable) { return ['ok' => true, 'result' => ['apps' => []]]; }
     }
 
     private function callAppApi(array $args): array {

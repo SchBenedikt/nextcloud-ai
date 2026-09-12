@@ -365,6 +365,12 @@ class ToolPolicy {
             'requiresConfirmation' => false,
             'description' => 'Discover API routes exposed by an enabled Nextcloud app',
         ],
+        'list_learned_app_apis' => [
+            'risk' => self::RISK_READONLY,
+            'surfaces' => [self::SURFACE_WEB, self::SURFACE_TALK, self::SURFACE_TASKPROCESSING, self::SURFACE_TASKPROCESSING_CONFIRMED, self::SURFACE_RAG],
+            'requiresConfirmation' => false,
+            'description' => 'List the user\'s cached app API route knowledge',
+        ],
         'call_app_api' => [
             'risk' => self::RISK_MUTATING,
             'surfaces' => [self::SURFACE_WEB, self::SURFACE_TASKPROCESSING_CONFIRMED],

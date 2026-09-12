@@ -57,6 +57,9 @@ class AppConfig {
         'index_cancel_requested', 'index_run_id', 'index_enrolled', 'knowledge_initialized',
         'proactive_schedule_runs',
         'background_chat_queue',
+        // Sanitised OCS route metadata learned by EVA; credentials and
+        // response bodies are never stored here.
+        'learned_app_apis',
     ];
 
     /** All keys that are stored on the per-user scope. */
@@ -139,6 +142,7 @@ class AppConfig {
         'proactive_enabled' => '0',
         'proactive_schedule_runs' => '{}',
         'background_chat_queue' => '[]',
+        'learned_app_apis' => '{}',
         'mail_index_enabled' => '1',
         'mail_index_max' => '25',
         // Talk context is part of the assistant's normal background context.
