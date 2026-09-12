@@ -310,6 +310,9 @@ class ApiController extends OCSController {
             // individually enable web search and choose their provider.
             'web_search_enabled',
             'web_search_provider',
+            'web_search_max_results', 'web_search_timeout', 'web_search_safe_search',
+            'web_search_fetch_content', 'web_search_content_chars', 'web_search_candidates',
+            'web_search_images', 'web_search_browser', 'web_search_browser_timeout',
         ];
         $validationErrors = [];
         $pending = [];
@@ -359,7 +362,7 @@ class ApiController extends OCSController {
         if ($removeGroqKey) $this->ollama->saveGroqKey('');
         elseif (is_string($groqKey) && $groqKey !== '') $this->ollama->saveGroqKey($groqKey);
         foreach ($pending as $key => $value) {
-                if (in_array($key, ['top_k', 'chunk_size', 'chunk_overlap', 'max_file_size', 'max_files_per_run', 'context_size', 'exec_write_max_chars', 'mail_index_max', 'talk_history_size', 'chat_retention_days', 'embed_batch_size'], true)) {
+                if (in_array($key, ['top_k', 'chunk_size', 'chunk_overlap', 'max_file_size', 'max_files_per_run', 'context_size', 'exec_write_max_chars', 'mail_index_max', 'talk_history_size', 'talk_index_max_rooms', 'talk_index_max_messages', 'chat_retention_days', 'embed_batch_size', 'web_search_max_results', 'web_search_timeout', 'web_search_content_chars', 'web_search_candidates', 'web_search_browser_timeout'], true)) {
                     $value = (string)$value;
                 }
                 if ($key === 'exec_delete_mode') {
@@ -368,7 +371,7 @@ class ApiController extends OCSController {
                 if ($key === 'exec_write_types') {
                     $value = $this->config->normalizeValue($key, $value);
                 }
-                if ($key === 'ocr_enabled' || $key === 'notify_on_complete' || $key === 'mail_index_enabled' || $key === 'index_enrolled' || $key === 'talk_classify_all' || $key === 'web_search_enabled') {
+                if ($key === 'ocr_enabled' || $key === 'notify_on_complete' || $key === 'mail_index_enabled' || $key === 'index_enrolled' || $key === 'talk_classify_all' || $key === 'talk_index_enabled' || $key === 'talk_write_enabled' || $key === 'web_search_enabled' || $key === 'web_search_safe_search' || $key === 'web_search_fetch_content' || $key === 'web_search_images' || $key === 'web_search_browser') {
                     $value = in_array((string)$value, ['1', 'true', 'on'], true) ? '1' : '0';
                 }
                 if ($key === 'temperature') {
@@ -376,7 +379,7 @@ class ApiController extends OCSController {
                 }
                 if ($key === 'web_search_provider') {
                     $value = trim((string)$value);
-                    if (!in_array($value, ['duckduckgo', 'searxng', 'brave', 'tavily'], true)) {
+                    if (!in_array($value, ['duckduckgo', 'bing', 'searxng', 'brave', 'tavily'], true)) {
                         $value = 'duckduckgo';
                     }
                 }

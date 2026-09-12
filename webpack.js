@@ -3,8 +3,8 @@ const webpack = require('webpack')
 const TerserPlugin = require('terser-webpack-plugin')
 const { VueLoaderPlugin } = require('vue-loader')
 
-module.exports = (env) => {
-	const isProd = process.env.NODE_ENV === 'production'
+module.exports = (env, argv) => {
+	const isProd = argv?.mode === 'production' || process.env.NODE_ENV === 'production'
 	return {
 		// Opt-in bounded build for small Nextcloud hosts.
 		...(process.env.EVA_LOW_MEMORY_BUILD === '1' ? {

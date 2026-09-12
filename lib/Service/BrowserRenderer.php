@@ -327,6 +327,7 @@ class BrowserRenderer {
             'urls' => array_values($allowed),
             'timeoutMs' => $timeoutMs,
             'maxChars' => self::ABSOLUTE_MAX_HTML_CHARS,
+            'executablePath' => $this->browserExecutable(),
             'withImages' => $withImages,
             'concurrency' => self::CONCURRENCY,
         ], JSON_UNESCAPED_SLASHES);
@@ -409,6 +410,12 @@ class BrowserRenderer {
         $browsersPath = $this->browsersPath();
         if ($browsersPath !== '') {
             $environment['PLAYWRIGHT_BROWSERS_PATH'] = $browsersPath;
+        }
+        // Chromium's bundled crash reporter expects a writable HOME. PHP-FPM
+        // often clears HOME for www-data, which makes a valid executable exit
+        // immediately before Playwright can create a page.
+        if (!isset($environment['HOME']) || !is_dir((string)$environment['HOME']) || !is_writable((string)$environment['HOME'])) {
+            $environment['HOME'] = sys_get_temp_dir();
         }
         $process = @proc_open(
             [$node, $this->scriptPath()],

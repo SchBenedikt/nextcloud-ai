@@ -131,4 +131,21 @@ final class WebImageSearchTest extends TestCase {
         self::assertStringContainsString('disabled', (string)$result['error']);
         self::assertSame([], $result['images']);
     }
+
+    public function testDeclaredHeroImageSurvivesChromeFiltering(): void {
+        if (!class_exists(\DOMDocument::class)) {
+            self::markTestSkipped('The DOM extension is required for page extraction.');
+        }
+        $service = (new ReflectionClass(WebSearchService::class))->newInstanceWithoutConstructor();
+        $config = $this->createMock(\OCA\EvaAi\Service\AppConfig::class);
+        $config->method('get')->willReturnCallback(static fn(string $key): string => $key === 'web_search_images' ? '1' : '1');
+        $config->method('getInt')->willReturn(8);
+        (new ReflectionClass(WebSearchService::class))->getProperty('config')->setValue($service, $config);
+        $html = '<html><head><meta property="og:image" content="https://upload.wikimedia.org/wikipedia/commons/6/60/Nextcloud_Logo.svg"></head>'
+            . '<body><main><h1>Nextcloud</h1><img src="/article-photo.jpg" width="800" height="600"></main></body></html>';
+        $page = (new ReflectionClass(WebSearchService::class))->getMethod('extractPage')->invoke($service, $html, 'https://en.wikipedia.org/wiki/Nextcloud');
+
+        self::assertNotEmpty($page['images']);
+        self::assertSame('https://upload.wikimedia.org/wikipedia/commons/6/60/Nextcloud_Logo.svg', $page['images'][0]['url']);
+    }
 }

@@ -509,6 +509,7 @@ class ActionExecutor {
                 'parameters' => ['type' => 'object', 'properties' => [
                     'room' => ['type' => 'string', 'description' => 'The room to read: its name, token or numeric id (see list_talk_rooms).'],
                     'limit' => ['type' => 'integer', 'description' => 'Optional number of recent messages to read (5-200, default 50).'],
+                    'unread_only' => ['type' => 'boolean', 'description' => 'Optional: return only messages newer than the user\'s Talk read marker.'],
                 ], 'required' => ['room']],
             ]],
             ['type' => 'function', 'function' => [
@@ -1722,6 +1723,10 @@ class ActionExecutor {
                     'title' => $image['title'],
                     'page' => $image['page'],
                 ], $result['images']),
+                'markdown' => implode("\n", array_map(static fn(array $image): string =>
+                    '![' . str_replace([']', '['], '', (string)$image['title']) . '](' . (string)$image['url'] . ')',
+                    array_slice($result['images'], 0, 4)
+                )),
             ],
         ];
     }
@@ -1787,7 +1792,7 @@ class ActionExecutor {
             return ['ok' => false, 'error' => 'room required'];
         }
         $limit = (int)($args['limit'] ?? 50);
-        $result = $this->talkChat->read($userId, $room, $limit);
+        $result = $this->talkChat->read($userId, $room, $limit, !empty($args['unread_only']));
         if (!$result['ok']) {
             return ['ok' => false, 'error' => (string)($result['error'] ?? 'The chat could not be read.')];
         }
@@ -1796,6 +1801,8 @@ class ActionExecutor {
             'result' => [
                 'room' => $result['room'],
                 'messages' => $result['messages'],
+                'unreadOnly' => (bool)($result['unreadOnly'] ?? false),
+                'lastReadMessage' => $result['lastReadMessage'] ?? null,
                 'text' => $result['text'],
             ],
         ];

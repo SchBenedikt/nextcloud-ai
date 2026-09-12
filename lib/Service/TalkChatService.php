@@ -118,7 +118,7 @@ class TalkChatService
      *
      * @return array{ok:bool,room?:array{id:int,token:string,name:string,type:string,lastActivity:string},text?:string,messages?:int,error?:string}
      */
-    public function read(string $userId, string $roomRef, int $limit = 50): array
+    public function read(string $userId, string $roomRef, int $limit = 50, bool $unreadOnly = false): array
     {
         if (!$this->isAvailable()) {
             return ['ok' => false, 'error' => 'Nextcloud Talk is not installed or not enabled on this server.'];
@@ -129,9 +129,20 @@ class TalkChatService
         }
         $room = $resolved['rooms'][0];
         $limit = max(5, min(self::MAX_READ_MESSAGES, $limit));
+        $lastReadMessage = null;
+        if ($unreadOnly) {
+            try {
+                $talkRoom = \OCP\Server::get(\OCA\Talk\Manager::class)->getRoomById((int)$room['id']);
+                $participant = \OCP\Server::get(\OCA\Talk\Service\ParticipantService::class)
+                    ->getParticipant($talkRoom, $userId, false);
+                $lastReadMessage = (int)$participant->getAttendee()->getLastReadMessage();
+            } catch (\Throwable $e) {
+                return ['ok' => false, 'room' => $room, 'error' => 'The unread marker for that room could not be read.'];
+            }
+        }
         // transcript() re-checks membership against Talk itself and returns null
         // for a room that has nothing readable in it.
-        $transcript = $this->transcripts->transcript($userId, (int)$room['id'], $limit);
+        $transcript = $this->transcripts->transcript($userId, (int)$room['id'], $limit, $lastReadMessage);
         if ($transcript === null) {
             return [
                 'ok' => false,
@@ -143,6 +154,8 @@ class TalkChatService
             'ok' => true,
             'room' => $room,
             'messages' => (int)$transcript['messages'],
+            'unreadOnly' => $unreadOnly,
+            'lastReadMessage' => $lastReadMessage,
             'text' => (string)$transcript['text'],
         ];
     }

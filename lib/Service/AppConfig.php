@@ -35,7 +35,9 @@ class AppConfig {
         // Web search: each user can enable/disable and choose their provider.
         // DuckDuckGo works without any API key; SearxNG/Brave/Tavily need
         // credentials configured at instance level.
-        'web_search_enabled', 'web_search_provider',
+        'web_search_enabled', 'web_search_provider', 'web_search_max_results', 'web_search_timeout',
+        'web_search_safe_search', 'web_search_fetch_content', 'web_search_content_chars',
+        'web_search_candidates', 'web_search_images', 'web_search_browser', 'web_search_browser_timeout',
     ];
 
     /**
@@ -64,24 +66,15 @@ class AppConfig {
         // Instance-level web search infrastructure: SearxNG URL, API keys,
         // result limits. Individual users choose whether to use them.
         'web_search_url',
-        'web_search_max_results',
-        'web_search_timeout',
-        'web_search_safe_search',
         // Content enrichment: reading the result pages is what turns a list of
         // teasers into an answer, but it costs one request per page.
-        'web_search_fetch_content',
-        'web_search_content_chars',
         // How many hits are read and compared before the best ones are chosen,
         // and whether page images are collected and offered to the model.
-        'web_search_candidates',
-        'web_search_images',
         // Reading pages that only exist after JavaScript has run. This runs a
         // headless browser process on the server, so it is opt-in and the
         // settings page reports whether the server can actually do it.
-        'web_search_browser',
         'web_search_browser_node',
         'web_search_browser_browsers_path',
-        'web_search_browser_timeout',
         // Indexing throughput controls. These were previously only reachable
         // through `occ config:app:set`; the admin page exposed fields for them
         // that silently saved nothing because they were missing here.
@@ -136,7 +129,10 @@ class AppConfig {
         'notify_on_complete' => '1',
         'mail_index_enabled' => '1',
         'mail_index_max' => '25',
-        'talk_index_enabled' => '0',
+        // Talk context is part of the assistant's normal background context.
+        // Access remains room-membership scoped and older history is bounded by
+        // talk_index_max_rooms/talk_index_max_messages.
+        'talk_index_enabled' => '1',
         'talk_write_enabled' => '0',
         'talk_index_max_rooms' => '20',
         'talk_index_max_messages' => '200',

@@ -582,4 +582,22 @@ OC.L10N.register("eva_ai", {
     "Only used when Talk indexing is enabled. Default: 20.": "Wird nur verwendet, wenn die Talk-Indizierung aktiviert ist. Standard: 20.",
     "Let EVA post to Nextcloud Talk for me": "EVA in meinem Namen in Nextcloud Talk schreiben lassen",
     "Let EVA answer and write in your Nextcloud Talk conversations for you. A message posted this way appears under your name, exactly as if you had typed it, so EVA only posts when you explicitly ask it to. Enabling this also lets EVA read a chat on request.": "Lass EVA in deinen Nextcloud-Talk-Unterhaltungen für dich antworten und schreiben. Eine so gesendete Nachricht erscheint unter deinem Namen, genau als hättest du sie selbst getippt - EVA schreibt deshalb nur, wenn du es ausdrücklich verlangst. Damit darf EVA einen Chat auch auf Anfrage lesen."
+,
+    "Results per search": "Ergebnisse pro Suche",
+    "How many search results are considered.": "Wie viele Suchergebnisse berücksichtigt werden.",
+    "Search timeout (seconds)": "Such-Timeout (Sekunden)",
+    "Maximum time for a provider request.": "Maximale Zeit für eine Anfrage an den Anbieter.",
+    "Pages compared": "Verglichene Seiten",
+    "Candidate pages read before ranking.": "Kandidatenseiten, die vor der Rangfolge gelesen werden.",
+    "Search content limit": "Suchinhaltslimit",
+    "Maximum text returned per search result. Opening a page reads the full page.": "Maximaler Text pro Suchergebnis. Beim Öffnen wird die vollständige Seite gelesen.",
+    "Browser timeout (seconds)": "Browser-Timeout (Sekunden)",
+    "Maximum time for a rendered page.": "Maximale Zeit für eine gerenderte Seite.",
+    "Read page content during searches": "Seiteninhalt bei Suchen lesen",
+    "Collect and show images": "Bilder sammeln und anzeigen",
+    "Use the full browser for JavaScript pages": "Vollständigen Browser für JavaScript-Seiten verwenden",
+    "Result limits, page reading, safe search, images and browser rendering are now personal settings above. This section only contains shared provider infrastructure.": "Ergebnislimits, Seitenlesen, sichere Suche, Bilder und Browser-Darstellung sind jetzt oben persönliche Einstellungen. Dieser Bereich enthält nur noch die gemeinsame Anbieter-Infrastruktur."
+,
+    "Changes save automatically": "Änderungen werden automatisch gespeichert",
+    "Instance settings save automatically.": "Instanz-Einstellungen werden automatisch gespeichert."
 }, "nplurals=2; plural=(n != 1);");

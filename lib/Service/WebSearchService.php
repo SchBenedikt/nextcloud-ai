@@ -95,7 +95,9 @@ class WebSearchService {
      * budget: opening a page is a deliberate "read this source" step, so the
      * useful part of a long article should actually arrive.
      */
-    private const ABSOLUTE_MAX_OPEN_CHARS = 20000;
+    // A direct open is a full page read. Keep a generous safety ceiling for
+    // pathological documents while avoiding the old 20k snippet-sized cap.
+    private const ABSOLUTE_MAX_OPEN_CHARS = 2000000;
     private const DEFAULT_CANDIDATES = 12;
     /** Images offered per result, and the size below which one is an icon. */
     private const MAX_IMAGES_PER_RESULT = 3;
@@ -547,7 +549,14 @@ class WebSearchService {
      * @return list<array{url:string,preview:string,title:string,page:string}>
      */
     private function parseBingImages(string $html, int $count, string $query): array {
-        if (!preg_match_all('/\bm="([^"]+)"/i', $html, $matches)) {
+        // Bing has used double quoted, single quoted and data-m attributes
+        // across its image result layouts. Accept all three so a markup change
+        // does not make image search silently return an empty list.
+        preg_match_all('/\bm\s*=\s*"([^"]+)"/i', $html, $doubleQuoted);
+        preg_match_all("/\\bm\\s*=\\s*'([^']+)'/i", $html, $singleQuoted);
+        preg_match_all('/\bdata-m\s*=\s*"([^"]+)"/i', $html, $dataQuoted);
+        $matches = [1 => array_merge($doubleQuoted[1] ?? [], $singleQuoted[1] ?? [], $dataQuoted[1] ?? [])];
+        if ($matches[1] === []) {
             return [];
         }
         $queryTerms = $this->queryTerms($query);
@@ -681,15 +690,25 @@ class WebSearchService {
         // refuses scripted clients, or its text only exists once its own scripts
         // have run. Both are answered by the same thing - asking a browser - so
         // the fallback covers an empty body as well as a thin one.
-        if ($this->browserRendering() && mb_strlen($text) < self::THIN_PAGE_CHARS) {
+        // An explicit open request asks for the page itself, not a search
+        // teaser. When the browser is available, always execute the page so
+        // client-rendered content, lazy sections and consent-gated DOM are
+        // included. The static response remains the fallback when rendering is
+        // unavailable or produces less readable text.
+        if ($this->browserRendering()) {
             $rendered = $this->renderMany([$url]);
             $renderedHtml = (string)($rendered[0]['html'] ?? '');
             if ($renderedHtml !== '') {
-                $renderedPage = $this->extractPage($renderedHtml, $url);
+                $renderedUrl = (string)($rendered[0]['finalUrl'] ?? $url);
+                if (!$this->isFetchablePage($renderedUrl)) {
+                    $renderedUrl = $url;
+                }
+                $renderedPage = $this->extractPage($renderedHtml, $renderedUrl);
                 if (mb_strlen($renderedPage['text']) > mb_strlen($text)) {
                     $page = $renderedPage;
                     $html = $renderedHtml;
                     $text = $renderedPage['text'];
+                    $url = $renderedUrl;
                 }
             }
         }
@@ -1514,7 +1533,12 @@ class WebSearchService {
             // "og:image:width"-style siblings are separate meta tags; only the
             // plain image URL is used here and the real dimensions are read
             // later from the rendered <img> when the page provides one.
-            $url = $this->resolveImageUrl(trim((string)$node->nodeValue), $baseUrl);
+            // Open Graph/Twitter images are publisher-declared hero images. A
+            // filename containing "logo" is still useful here (Wikipedia and
+            // many product pages use the site or article logo as their only
+            // representative image), so the generic chrome filter is skipped
+            // after the URL safety checks have passed.
+            $url = $this->resolveImageUrl(trim((string)$node->nodeValue), $baseUrl, true);
             if ($url !== null) {
                 $out[$url] = ['url' => $url, 'alt' => '', 'width' => 0, 'height' => 0];
             }
@@ -1662,7 +1686,7 @@ class WebSearchService {
      * wild) and then bounded like every other URL: only http(s), no embedded
      * credentials, and no data: or javascript: pseudo-URLs.
      */
-    private function resolveImageUrl(string $raw, string $baseUrl): ?string {
+    private function resolveImageUrl(string $raw, string $baseUrl, bool $allowChrome = false): ?string {
         $raw = trim(str_replace(["\n", "\r", "\t", ' '], '', $raw));
         if ($raw === '') {
             return null;
@@ -1678,9 +1702,11 @@ class WebSearchService {
             return null;
         }
         $lower = mb_strtolower($raw);
-        foreach (self::IMAGE_CHROME_MARKERS as $marker) {
-            if (str_contains($lower, $marker)) {
-                return null;
+        if (!$allowChrome) {
+            foreach (self::IMAGE_CHROME_MARKERS as $marker) {
+                if (str_contains($lower, $marker)) {
+                    return null;
+                }
             }
         }
         // Lazy-loading plugins put a *size* in src and the real URL in a data

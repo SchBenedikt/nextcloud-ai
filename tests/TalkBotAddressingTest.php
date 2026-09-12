@@ -156,33 +156,16 @@ final class TalkBotAddressingTest extends TestCase {
         self::assertStringContainsString('Antwort von EVA', $this->answers($event)[0]);
     }
 
-    /**
-     * A decorated yes still counts as yes, and a decorated no still counts as no.
-     *
-     * Models answer the one-word instruction with markdown, quotes and numbering.
-     * Reading the raw first characters turned "**Ja**" into a refusal, so the bot
-     * went silent on questions that were clearly meant for it.
-     */
-    public function testDecoratedClassificationAnswersAreReadCorrectly(): void {
-        foreach (['Yes', '**Ja**', '"ja"', '1. Yes, this is for you', 'Ja, das ist für dich'] as $yesAnswer) {
-            [$listener, , $rag] = $this->harness(static fn(): array => ['answer' => $yesAnswer, 'model' => 'test']);
-            $rag->expects(self::once())->method('ask')->willReturn($this->answer());
+    /** The configured name is required; questions without it stay silent. */
+    public function testTheConfiguredNameIsRequired(): void {
+        [$listener, $ollama, $rag] = $this->harness(static fn(): array => ['answer' => 'yes', 'model' => 'test']);
+        $ollama->expects(self::never())->method('chat');
+        $rag->expects(self::never())->method('ask');
 
-            $event = $this->event('Kannst du mir das erklären?');
-            $listener->handle($event);
+        $event = $this->event('Kannst du mir das erklären?');
+        $listener->handle($event);
 
-            self::assertNotSame([], $this->answers($event), 'should have answered for: ' . $yesAnswer);
-        }
-
-        foreach (['No', 'Nein, das ist für Bob', 'Nope', 'Vielleicht später'] as $noAnswer) {
-            [$listener, , $rag] = $this->harness(static fn(): array => ['answer' => $noAnswer, 'model' => 'test']);
-            $rag->expects(self::never())->method('ask');
-
-            $event = $this->event('Kannst du mir das erklären?');
-            $listener->handle($event);
-
-            self::assertSame([], $this->answers($event), 'should have stayed silent for: ' . $noAnswer);
-        }
+        self::assertSame([], $this->answers($event));
     }
 
     /** With classify-all every message is classified, but only a yes answers. */

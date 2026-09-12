@@ -163,7 +163,7 @@ class TalkTranscriptService
      *
      * @return array{roomId:int,name:string,text:string,messages:int}|null
      */
-    public function transcript(string $userId, int $roomId, ?int $maxMessages = null): ?array
+    public function transcript(string $userId, int $roomId, ?int $maxMessages = null, ?int $afterMessageId = null): ?array
     {
         if (!$this->isMember($userId, $roomId)) {
             return null;
@@ -180,7 +180,7 @@ class TalkTranscriptService
 
         $budget = $maxMessages ?? $this->appConfig->getInt('talk_index_max_messages', 200);
         $budget = max(10, min(1000, $budget));
-        $messages = $this->fetchMessages($roomId, $budget);
+        $messages = $this->fetchMessages($roomId, $budget, $afterMessageId);
         if ($messages === []) {
             return null;
         }
@@ -216,7 +216,7 @@ class TalkTranscriptService
      *
      * @return list<array{actorType:string,actor:string,message:string,stamp:string}> oldest first
      */
-    private function fetchMessages(int $roomId, int $budget): array
+    private function fetchMessages(int $roomId, int $budget, ?int $afterMessageId = null): array
     {
         try {
             $query = $this->db->getQueryBuilder();
@@ -228,6 +228,9 @@ class TalkTranscriptService
                     $query->expr()->isNull('expire_date'),
                     $query->expr()->gt('expire_date', $query->createNamedParameter(new \DateTime(), IQueryBuilder::PARAM_DATE)),
                 ))
+                ->andWhere($afterMessageId !== null && $afterMessageId >= 0
+                    ? $query->expr()->gt('id', $query->createNamedParameter($afterMessageId, IQueryBuilder::PARAM_INT))
+                    : $query->expr()->literal(true))
                 ->orderBy('id', 'DESC')
                 ->setMaxResults(min($budget, self::PAGE_SIZE));
             $rows = $query->executeQuery()->fetchAll();

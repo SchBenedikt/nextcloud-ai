@@ -33,6 +33,8 @@ class RagService {
      * @var array<string,array<string,mixed>> keyed by URL to keep one entry per page
      */
     private array $toolSources = [];
+    /** @var list<array{url:string,title:string}> */
+    private array $toolImages = [];
 
     public function __construct(
         private AppConfig $config,
@@ -70,6 +72,7 @@ class RagService {
 	public function ask(string $userId, string $message, array $history, ?string $scopePath = null, ?string $instructions = null, ?string $persona = null, ?string $extraContext = null): array {
 		$this->config->setUserId($userId);
 		$this->toolSources = [];
+		$this->toolImages = [];
 		$topK = min($this->config->getInt('top_k', 6), (int)AppConfig::LIMITS['top_k'][1]);
 		$results = $this->searcher->search($userId, $this->searchQuery($message, $history), $topK, $scopePath);
 
@@ -91,6 +94,7 @@ class RagService {
 			$toolCalls = $chat['tool_calls'] ?? [];
 			if ($toolCalls === []) {
 				$answer = $chat['answer'] ?? '';
+				$answer = $this->appendImageMarkdown((string)$answer);
 				return [
 					'answer' => $answer,
 					'sources' => $this->answerSources($byDoc),
@@ -131,6 +135,7 @@ class RagService {
         // tool chain into an empty reply was the worst possible outcome.
         $final = $this->ollama->chat($messages, []);
         $answer = trim((string)($final['answer'] ?? ''));
+        $answer = $this->appendImageMarkdown($answer);
         if ($answer !== '') {
             return [
                 'answer' => $answer,
@@ -157,7 +162,8 @@ class RagService {
      */
     public function askStream(string $userId, string $message, array $history, ?string $scopePath = null, ?string $instructions = null, ?string $persona = null): \Generator {
         $this->config->setUserId($userId);
-        $this->toolSources = [];
+            $this->toolSources = [];
+            $this->toolImages = [];
         try {
             if ($this->clientDisconnected()) {
                 return;
@@ -258,6 +264,7 @@ $this->executor->setUserId($userId);
                 yield json_encode(['type' => 'error', 'message' => 'No text response received from Ollama.']) . "\n";
                 return;
             }
+            $answer = $this->appendImageMarkdown($answer);
             yield json_encode([
                 'type' => 'done',
                 'answer' => $answer,
@@ -318,6 +325,10 @@ $this->executor->setUserId($userId);
                     continue;
                 }
                 $page = trim((string)($image['page'] ?? ''));
+                $url = trim((string)($image['url'] ?? ''));
+                if ($url !== '' && preg_match('~^https?://~i', $url)) {
+                    $this->toolImages[] = ['url' => $url, 'title' => (string)($image['title'] ?? '')];
+                }
                 if ($page === '') {
                     continue;
                 }
@@ -327,6 +338,25 @@ $this->executor->setUserId($userId);
                 ]);
             }
         }
+    }
+
+    /** Add returned images when a model forgot to repeat the tool's Markdown. */
+    private function appendImageMarkdown(string $answer): string
+    {
+        if ($this->toolImages === [] || str_contains($answer, '![')) {
+            return $answer;
+        }
+        $lines = [];
+        $seen = [];
+        foreach (array_slice($this->toolImages, 0, 4) as $image) {
+            if (isset($seen[$image['url']])) {
+                continue;
+            }
+            $seen[$image['url']] = true;
+            $title = str_replace(['[', ']'], '', trim($image['title'])) ?: 'Web image';
+            $lines[] = '![' . $title . '](' . $image['url'] . ')';
+        }
+        return $lines === [] ? $answer : rtrim($answer) . "\n\n" . implode("\n", $lines);
     }
 
     /** @param array<string,mixed> $item */
