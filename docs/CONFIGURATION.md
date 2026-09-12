@@ -288,3 +288,14 @@ follow-up templates to avoid consuming the account quota for background requests
 Rate-limit errors distinguish oversized requests from temporary limits and show
 numeric Limit/Used/Requested and Retry-After values when supplied by Groq, without
 exposing raw provider errors, organization IDs or credentials.
+
+### OpenAI-compatible providers
+
+Set `chat_provider` to any lower-case provider id (for example `openai`,
+`mistral`, `deepseek`, `openrouter` or `company-gateway`). Configure
+`custom_provider_url` with the provider's `/v1` endpoint and
+`custom_provider_model` with its model name. The write-only
+`custom_provider_api_key` request field is encrypted per user; it is never
+returned by the settings API. EVA sends the standard `/chat/completions`
+payload, including tools, so any compatible hosted or self-hosted gateway can
+be used without a code change.
