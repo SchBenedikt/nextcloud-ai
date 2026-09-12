@@ -340,6 +340,14 @@ final class OpenIssuesPendingContractTest extends TestCase {
 		self::assertStringContainsString('continue until has_more=false', $rag);
 	}
 
+	/** Generic app learning records response structure, never response values. */
+	public function testGenericAppLearningStoresOnlyResponseShape(): void {
+		$executor = (string)file_get_contents(__DIR__ . '/../lib/Service/ActionExecutor.php');
+		self::assertStringContainsString('response_shape', $executor);
+		self::assertStringContainsString('private function shapeOf', $executor);
+		self::assertStringContainsString('array_slice($value, 0, 40, true)', $executor);
+	}
+
 	private function sliceBetween(string $haystack, string $start, string $end): string {
 		$s = strpos($haystack, $start);
 		self::assertNotFalse($s, "start marker '$start' not found");
