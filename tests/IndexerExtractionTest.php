@@ -6,6 +6,7 @@ namespace OCA\EvaAi\Tests;
 
 use OCA\EvaAi\Service\Indexer;
 use OCP\Files\File;
+use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
 use ReflectionClass;
 use ZipArchive;
@@ -208,5 +209,194 @@ final class IndexerExtractionTest extends TestCase {
 
         self::assertStringContainsString('[Sheet: Kundendaten]', $text);
         self::assertStringContainsString('Customer row one', $text);
+    }
+
+    /** @param array<int,string> $args */
+    private function callPrivate(Indexer $indexer, string $method, array $args): mixed {
+        $reflection = new ReflectionClass(Indexer::class);
+        return $reflection->getMethod($method)->invokeArgs($indexer, $args);
+    }
+
+    // ---- Saved mail, web archives, mailboxes ----
+
+    /**
+     * A saved .eml is a MIME container: the readable text sits in an encoded
+     * body, and the envelope carries what people actually search for.
+     */
+    public function testEmlYieldsEnvelopeAndQuotedPrintableBody(): void {
+        $eml = "From: Anna Beispiel <anna@example.org>\n"
+            . "To: team@example.org\n"
+            . "Subject: Rechnung Mai\n"
+            . "Date: Tue, 12 May 2026 09:30:00 +0200\n"
+            . "Content-Type: text/plain; charset=utf-8\n"
+            . "Content-Transfer-Encoding: quoted-printable\n"
+            . "\n"
+            . "Hallo Team,\n\ndie Rechnung f=C3=BCr Mai betr=C3=A4gt 1.200 Euro.\n";
+        $file = $this->mockFile('rechnung.eml', 'message/rfc822', $eml);
+        $text = $this->invokeExtract($this->extractor(), $file);
+
+        self::assertStringContainsString('Subject: Rechnung Mai', $text);
+        self::assertStringContainsString('anna@example.org', $text);
+        self::assertStringContainsString('die Rechnung für Mai beträgt 1.200 Euro', $text);
+    }
+
+    /**
+     * A multipart mail usually repeats itself as plain text and as HTML. The
+     * plain part is used so the indexed text does not contain the answer twice.
+     */
+    public function testEmlMultipartPrefersPlainTextOverHtml(): void {
+        $plain = base64_encode('Der Vertrag laeuft bis Dezember 2026.');
+        $html = base64_encode('<html><body><p>Der Vertrag laeuft bis Dezember 2026.</p></body></html>');
+        $eml = "Subject: Vertrag\n"
+            . "Content-Type: multipart/alternative; boundary=\"BOUND\"\n"
+            . "\n"
+            . "--BOUND\nContent-Type: text/plain; charset=utf-8\nContent-Transfer-Encoding: base64\n\n{$plain}\n"
+            . "--BOUND\nContent-Type: text/html; charset=utf-8\nContent-Transfer-Encoding: base64\n\n{$html}\n"
+            . "--BOUND--\n";
+        $file = $this->mockFile('vertrag.eml', 'message/rfc822', $eml);
+        $text = $this->invokeExtract($this->extractor(), $file);
+
+        self::assertStringContainsString('Der Vertrag laeuft bis Dezember 2026.', $text);
+        self::assertSame(1, substr_count($text, 'Der Vertrag laeuft bis Dezember 2026.'));
+        self::assertStringNotContainsString('<p>', $text);
+    }
+
+    /** An encoded-word subject (=?UTF-8?B?...?=) must be readable, not literal. */
+    public function testEmlDecodesAnEncodedWordSubject(): void {
+        $subject = base64_encode('Bestellung #4711 — Lieferung');
+        $eml = "Subject: =?UTF-8?B?{$subject}?=\n"
+            . "Content-Type: text/plain; charset=utf-8\n\nKurzer Text.\n";
+        $file = $this->mockFile('bestellung.eml', 'message/rfc822', $eml);
+        $text = $this->invokeExtract($this->extractor(), $file);
+
+        self::assertStringContainsString('Bestellung #4711 — Lieferung', $text);
+        self::assertStringNotContainsString('=?UTF-8?B?', $text);
+    }
+
+    /**
+     * A mailbox holds many messages. All of them have to be indexed, not just
+     * the first one whose envelope would otherwise swallow the file.
+     */
+    public function testMboxIndexesEveryMessage(): void {
+        $mbox = "From anna@example.org Tue May 12 09:30:00 2026\n"
+            . "Subject: Erste Nachricht\nContent-Type: text/plain\n\nText der ersten Nachricht.\n"
+            . "\nFrom bernd@example.org Wed May 13 11:00:00 2026\n"
+            . "Subject: Zweite Nachricht\nContent-Type: text/plain\n\nText der zweiten Nachricht.\n";
+        $file = $this->mockFile('postfach.mbox', 'application/mbox', $mbox);
+        $text = $this->invokeExtract($this->extractor(), $file);
+
+        self::assertStringContainsString('Erste Nachricht', $text);
+        self::assertStringContainsString('Text der ersten Nachricht.', $text);
+        self::assertStringContainsString('Zweite Nachricht', $text);
+        self::assertStringContainsString('Text der zweiten Nachricht.', $text);
+    }
+
+    /** A web archive is MIME too; its HTML part becomes readable text. */
+    public function testMhtmlConvertsTheHtmlPartToText(): void {
+        $html = '<html><head><title>Archivseite</title></head><body><h1>Spezifikation</h1>'
+            . '<p>Die Schnittstelle liefert JSON.</p></body></html>';
+        $mhtml = "From: <Saved by Browser>\n"
+            . "Subject: Archivseite\n"
+            . "Content-Type: multipart/related; boundary=\"Grenze\"\n"
+            . "\n"
+            . "--Grenze\nContent-Type: text/html; charset=utf-8\n\n{$html}\n"
+            . "--Grenze--\n";
+        $file = $this->mockFile('seite.mhtml', 'application/x-mimearchive', $mhtml);
+        $text = $this->invokeExtract($this->extractor(), $file);
+
+        self::assertStringContainsString('Spezifikation', $text);
+        self::assertStringContainsString('Die Schnittstelle liefert JSON.', $text);
+        self::assertStringNotContainsString('<p>', $text);
+    }
+
+    /**
+     * A mail declared as Latin-1 must be stored as valid UTF-8: an invalid byte
+     * sequence would fail the insert and cost the whole file.
+     */
+    public function testEmlConvertsLatin1BodiesToUtf8(): void {
+        $latin1 = "Subject: Pruefung\nContent-Type: text/plain; charset=iso-8859-1\n\n"
+            . "Pr\xFCfbericht f\xFCr die Anlage.\n";
+        $file = $this->mockFile('pruefung.eml', 'message/rfc822', $latin1);
+        $text = $this->invokeExtract($this->extractor(), $file);
+
+        self::assertTrue(mb_check_encoding($text, 'UTF-8'), 'the extracted text must be valid UTF-8');
+        self::assertStringContainsString('Prüfbericht für die Anlage.', $text);
+    }
+
+    /** A declared multipart without a usable boundary must not crash or hang. */
+    public function testEmlWithBrokenBoundaryStillReturnsTheEnvelope(): void {
+        $eml = "Subject: Kaputte Nachricht\nContent-Type: multipart/mixed\n\nkein Boundary vorhanden";
+        $file = $this->mockFile('kaputt.eml', 'message/rfc822', $eml);
+        $text = $this->invokeExtract($this->extractor(), $file);
+
+        self::assertStringContainsString('Kaputte Nachricht', $text);
+    }
+
+    /** A deeply nested message must stop at the depth guard instead of recursing. */
+    public function testDeeplyNestedMimeStopsAtTheDepthGuard(): void {
+        $innermost = "Content-Type: text/plain\n\nTief verschachtelter Inhalt.\n";
+        $payload = $innermost;
+        for ($i = 0; $i < 8; $i++) {
+            $payload = "Content-Type: multipart/mixed; boundary=\"B{$i}\"\n\n--B{$i}\n" . $payload . "\n--B{$i}--\n";
+        }
+        $file = $this->mockFile('tief.eml', 'message/rfc822', "Subject: Tief\n" . $payload);
+        $text = $this->invokeExtract($this->extractor(), $file);
+
+        self::assertStringContainsString('Tief', $text);
+        // The guard stops before the innermost leaf, which is the point: a
+        // crafted nest must not be walked without end.
+        self::assertStringNotContainsString('Tief verschachtelter Inhalt.', $text);
+    }
+
+    // ---- Jupyter notebooks ----
+
+    public function testNotebookKeepsMarkdownAndCodeApart(): void {
+        $notebook = json_encode([
+            'cells' => [
+                ['cell_type' => 'markdown', 'source' => ["# Analyse\n", 'Ergebnis der Auswertung.']],
+                ['cell_type' => 'code', 'source' => ["import pandas as pd\n", 'df.groupby("region").sum()']],
+                ['cell_type' => 'raw', 'source' => ['Rohnotiz']],
+                ['cell_type' => 'code', 'source' => ['   ']],
+            ],
+            'nbformat' => 4,
+        ], JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
+        $file = $this->mockFile('analyse.ipynb', 'application/x-ipynb+json', (string)$notebook);
+        $text = $this->invokeExtract($this->extractor(), $file);
+
+        self::assertStringContainsString('[Markdown]', $text);
+        self::assertStringContainsString('Ergebnis der Auswertung.', $text);
+        self::assertStringContainsString('[Code]', $text);
+        self::assertStringContainsString('df.groupby("region").sum()', $text);
+        self::assertStringContainsString('Rohnotiz', $text);
+    }
+
+    /** A notebook that does not parse yields nothing instead of raw JSON noise. */
+    public function testBrokenNotebookYieldsNoText(): void {
+        $file = $this->mockFile('kaputt.ipynb', 'application/x-ipynb+json', '{"cells": [not json');
+        self::assertSame('', $this->invokeExtract($this->extractor(), $file));
+    }
+
+    // ---- The new types must also pass the indexable check ----
+
+    /** @return iterable<string,array{0:string,1:string}> */
+    public static function newIndexableTypes(): iterable {
+        yield 'eml by extension' => ['application/octet-stream', 'mail.eml'];
+        yield 'eml by mime' => ['message/rfc822', 'mail.dat'];
+        yield 'mhtml' => ['application/x-mimearchive', 'page.mhtml'];
+        yield 'mht' => ['application/octet-stream', 'page.mht'];
+        yield 'mbox by mime' => ['application/mbox', 'box.dat'];
+        yield 'mbox by extension' => ['application/octet-stream', 'box.mbox'];
+        yield 'ipynb by mime' => ['application/x-ipynb+json', 'nb.dat'];
+        yield 'ipynb by extension' => ['application/octet-stream', 'nb.ipynb'];
+        yield 'patch' => ['application/octet-stream', 'fix.patch'];
+        yield 'terraform' => ['application/octet-stream', 'main.tf'];
+        yield 'graphql' => ['application/octet-stream', 'schema.graphql'];
+        yield 'kotlin' => ['application/octet-stream', 'App.kt'];
+    }
+
+    #[DataProvider('newIndexableTypes')]
+    public function testNewDocumentTypesAreIndexable(string $mime, string $name): void {
+        $indexable = $this->callPrivate($this->extractor(), 'isTextMime', [$mime, $name]);
+        self::assertTrue($indexable, $name . ' (' . $mime . ') must be indexable');
     }
 }

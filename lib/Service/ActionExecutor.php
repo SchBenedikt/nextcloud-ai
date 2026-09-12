@@ -1724,7 +1724,7 @@ class ActionExecutor {
         }
         $geo = $this->httpGet('https://geocoding-api.open-meteo.com/v1/search?count=1&language=de&format=json&name=' . rawurlencode($loc));
         if ($geo === null) {
-            return ['ok' => false, 'error' => 'Wetterdienst nicht erreichbar (offline?).'];
+            return ['ok' => false, 'error' => 'Weather service unreachable.'];
         }
         $g = json_decode($geo, true);
         $lat = $g['results'][0]['latitude'] ?? null;

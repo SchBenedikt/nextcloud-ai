@@ -195,6 +195,8 @@
         .rs-item { margin-bottom: 6px; }
         .rs-item a { color: var(--color-primary-element, #00679c); text-decoration: none; }
         .rs-excerpt { margin-top: 2px; padding: 4px 8px; background: var(--color-main-background, #fff); border-radius: 4px; font-size: 11px; line-height: 1.4; white-space: pre-wrap; word-break: break-word; color: var(--color-text-maxcontrast, #555); }
+        .rs-badge { display: inline-block; margin-right: 6px; padding: 1px 6px; border-radius: 8px; background: var(--color-primary-element-light, #e5f0f7); color: var(--color-primary-element, #00679c); font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; vertical-align: 1px; }
+        .rs-host { display: block; color: var(--color-text-maxcontrast, #555); font-size: 11px; }
         .rtools { margin-top: 6px; display: flex; flex-direction: column; gap: 4px; max-width: 86%; }
         .rtools .tool { font-size: 12px; padding: 4px 10px; border-radius: 6px; background: var(--color-background-dark, #eef1f4); color: var(--color-text-maxcontrast, #555); font-family: var(--font-family-monospace, monospace); }
         .rtools .tool.running { color: #8a6d1a; }

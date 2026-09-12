@@ -47,7 +47,7 @@ PROMPT;
     public function chat(string $userId, array $fileIds, string $message, array $history = []): array {
         $fileIds = array_values(array_unique(array_filter(array_map('intval', $fileIds))));
         if ($fileIds === []) {
-            return $this->emptyResult('Bitte waehle mindestens eine Datei aus.');
+            return $this->emptyResult('Please select at least one file.');
         }
 
         $documents = $this->accessibleDocuments(
@@ -59,7 +59,7 @@ PROMPT;
 
         if ($documents === []) {
             return [
-                'answer' => 'Keine der ausgewaehlten Dateien ist indexiert. Bitte fuehre zuerst `occ eva_ai:index ' . $userId . '` aus oder warte, bis der Index-Job die Dateien verarbeitet hat.',
+                'answer' => 'None of the selected files is indexed yet. Run `occ eva_ai:index ' . $userId . '` first, or wait until the background index job has processed them.',
                 'sources' => [],
                 'model' => $this->config->get('chat_model'),
                 'error' => null,
@@ -105,7 +105,7 @@ PROMPT;
         }
         if (trim($context) === '') {
             return [
-                'answer' => 'Die ausgewaehlten Dateien sind im Index vorhanden, enthalten aber noch keine extrahierten Textabschnitte. Wahrscheinlich wurden sie noch nicht vollstaendig indexiert (OCR, Passwortschutz, leeres Dokument).',
+                'answer' => 'The selected files are present in the index but contain no extracted text sections yet. They have probably not been fully indexed (scan/OCR, password protection, empty document).',
                 'sources' => $sources,
                 'model' => $this->config->get('chat_model'),
                 'error' => null,

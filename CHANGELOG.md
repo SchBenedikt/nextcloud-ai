@@ -4,6 +4,51 @@ All notable changes to **EVA (eva_ai)** are documented here.
 Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); the project
 follows [Semantic Versioning](https://semver.org/).
 
+## [1.8.0] - 2026-09-12
+
+### Added
+
+- Answers now list the **web pages they were built from**. Until now a web
+  answer only carried the URLs the model chose to write into its prose, so a
+  user could not check a claim whose link the model omitted. Every page a
+  `web_search` or `open_website` call really retrieved is attached to the
+  answer and shown in the Sources list, labelled "Web" with the site it came
+  from and an excerpt, after the cited files. Only successful, http(s) results
+  count, and a page reached by several searches is listed once.
+- Indexing reads **saved mail, web archives, mailboxes and notebooks**: `.eml`,
+  `.mht`/`.mhtml` (MIME containers), `.mbox` and `.ipynb`. A mail yields its
+  envelope (subject, sender, recipients, date, including MIME encoded-word
+  subjects) plus the readable body; a multipart mail uses its plain-text part
+  rather than indexing the same sentence twice as HTML, a mailbox contributes
+  every message instead of only the first, and a notebook keeps markdown and
+  code cells apart. Bodies in ISO-8859-1 or Windows-1252 are converted to UTF-8
+  instead of failing the insert.
+- Around 35 further text formats are recognised by extension - `patch`, `diff`,
+  `json5`, `hjson`, `tf`/`hcl`, `proto`, `graphql`, `svelte`, `astro`, `dart`,
+  `nix`, `rss`, `atom`, `kml`, `gpx` and more - so they are indexed instead of
+  being skipped as binary.
+
+### Changed
+
+- The Assistant task providers send **English** instructions to the model. They
+  used to send German prompts for summarise, reformulate, proofread, reformat,
+  headline, topics, tone, context-write and translate, which pushed German
+  phrasing into answers for every user regardless of their language. The
+  "answer in the language of the input" rule is preserved, and the language
+  picker keeps showing each language in its own script.
+- User-visible messages from the code are English, so they can be translated by
+  the catalog instead of appearing in German for an English user: task and chat
+  errors, tool errors (mail, weather) and the Assistant's action-confirmation
+  prompt. `tests/EnglishOnlyMessagesTest` guards this.
+
+### Fixed
+
+- A MIME boundary is no longer compared case-insensitively. Lowercasing the
+  `Content-Type` header before reading the boundary made every multipart mail,
+  web archive and newsletter index as an empty body with only its headers.
+- A multipart message that declares no usable boundary, and a message nested
+  deeper than five levels, are handled without recursion into the file.
+
 ## [Unreleased]
 
 ### Added

@@ -22,6 +22,18 @@ class RagService {
      */
     private const MAX_TOOL_ROUNDS = 8;
 
+    /**
+     * Web pages the tools actually retrieved during the current answer.
+     *
+     * They are listed with the answer as its sources. A search result the user
+     * cannot verify is half an answer, and the model's prose may or may not
+     * repeat the URL, so the links are attached structurally instead of being
+     * left to the model to write out.
+     *
+     * @var array<string,array<string,mixed>> keyed by URL to keep one entry per page
+     */
+    private array $toolSources = [];
+
     public function __construct(
         private AppConfig $config,
         private Ollama $ollama,
@@ -50,6 +62,7 @@ class RagService {
 	 */
 	public function ask(string $userId, string $message, array $history, ?string $scopePath = null, ?string $instructions = null, ?string $persona = null): array {
 		$this->config->setUserId($userId);
+		$this->toolSources = [];
 		$topK = min($this->config->getInt('top_k', 6), (int)AppConfig::LIMITS['top_k'][1]);
 		$results = $this->searcher->search($userId, $this->searchQuery($message, $history), $topK, $scopePath);
 
@@ -66,14 +79,14 @@ class RagService {
 		for ($round = 0; $round < self::MAX_TOOL_ROUNDS; $round++) {
 			$chat = $this->ollama->chat($messages, $tools);
 			if (isset($chat['error'])) {
-				return ['answer' => '', 'sources' => array_values($byDoc), 'model' => $this->config->get('chat_model'), 'error' => $chat['error'], 'followups' => []];
+				return ['answer' => '', 'sources' => $this->answerSources($byDoc), 'model' => $this->config->get('chat_model'), 'error' => $chat['error'], 'followups' => []];
 			}
 			$toolCalls = $chat['tool_calls'] ?? [];
 			if ($toolCalls === []) {
 				$answer = $chat['answer'] ?? '';
 				return [
 					'answer' => $answer,
-					'sources' => array_values($byDoc),
+					'sources' => $this->answerSources($byDoc),
 					'model' => $chat['model'] ?? $this->config->get('chat_model'),
 					'error' => null,
 					'followups' => $this->suggestFollowups($userId, $answer, $byDoc, $history, $message),
@@ -85,10 +98,11 @@ class RagService {
 					? $this->completeCalendarArguments($userId, $message, $tc['arguments'])
 					: $tc['arguments'];
 				$res = $this->executor->run($userId, $tc['name'], $toolArgs);
+				$this->collectToolSources($tc['name'], $res);
 				if (!empty($res['confirmation_required'])) {
 					return [
 						'answer' => 'I need your confirmation before I can perform that action.',
-						'sources' => array_values($byDoc),
+						'sources' => $this->answerSources($byDoc),
 						'model' => $chat['model'] ?? $this->config->get('chat_model'),
 						'error' => null,
 						'followups' => [],
@@ -113,7 +127,7 @@ class RagService {
         if ($answer !== '') {
             return [
                 'answer' => $answer,
-                'sources' => array_values($byDoc),
+                'sources' => $this->answerSources($byDoc),
                 'model' => $final['model'] ?? $this->config->get('chat_model'),
                 'error' => null,
                 'followups' => $this->suggestFollowups($userId, $answer, $byDoc, $history, $message),
@@ -122,7 +136,7 @@ class RagService {
 
         return [
             'answer' => '',
-            'sources' => array_values($byDoc),
+            'sources' => $this->answerSources($byDoc),
             'model' => $this->config->get('chat_model'),
             'error' => 'The model used all of its steps without producing an answer. Try rephrasing the question.',
             'followups' => [],
@@ -136,6 +150,7 @@ class RagService {
      */
     public function askStream(string $userId, string $message, array $history, ?string $scopePath = null, ?string $instructions = null, ?string $persona = null): \Generator {
         $this->config->setUserId($userId);
+        $this->toolSources = [];
         try {
             if ($this->clientDisconnected()) {
                 return;
@@ -197,6 +212,7 @@ $this->executor->setUserId($userId);
                         ? $this->completeCalendarArguments($userId, $message, $tc['arguments'] ?? [])
                         : ($tc['arguments'] ?? []);
                     $res = $this->executor->run($userId, $toolName, $toolArgs);
+                    $this->collectToolSources($toolName, $res);
                     $toolFailure = $toolFailure || empty($res['ok']);
                     if (!empty($res['confirmation_required'])) {
                         yield json_encode([
@@ -239,7 +255,7 @@ $this->executor->setUserId($userId);
                 'type' => 'done',
                 'answer' => $answer,
                 'model' => $model,
-                'sources' => array_values($byDoc),
+                'sources' => $this->answerSources($byDoc),
                 'followups' => $this->suggestFollowups($userId, $answer, $byDoc, $history, $message),
             ]) . "\n";
         } catch (\Throwable $e) {
@@ -251,6 +267,111 @@ $this->executor->setUserId($userId);
 
     private function clientDisconnected(): bool {
         return function_exists('connection_aborted') && connection_aborted() > 0;
+    }
+
+    /**
+     * Remember the pages a tool actually fetched, so the answer can list them.
+     *
+     * Only successful calls count, and only pages the tool really returned: an
+     * empty result set or a failed fetch must not add a source, or the list
+     * would claim a page was used that never was.
+     *
+     * @param array<string,mixed> $res the tool result envelope
+     */
+    private function collectToolSources(string $toolName, array $res): void {
+        if (empty($res['ok']) || !is_array($res['result'] ?? null)) {
+            return;
+        }
+        $result = $res['result'];
+
+        if ($toolName === 'web_search') {
+            // `results` is the ranked, bounded list the model saw.
+            foreach ((array)($result['results'] ?? []) as $item) {
+                if (!is_array($item)) {
+                    continue;
+                }
+                $this->addToolSource((string)($item['url'] ?? ''), $item);
+            }
+            return;
+        }
+
+        if ($toolName === 'open_website') {
+            // A single page, read in full. Marked so the answer can tell a page
+            // that was opened from one that was only listed by a search.
+            $result['opened'] = true;
+            $this->addToolSource((string)($result['url'] ?? ''), $result);
+        }
+    }
+
+    /** @param array<string,mixed> $item */
+    private function addToolSource(string $url, array $item): void {
+        $url = trim($url);
+        // Only a usable web link may become a source; anything else (an empty
+        // field, a non-http scheme) is dropped rather than shown as a link.
+        if ($url === '' || !preg_match('~^https?://~i', $url)) {
+            return;
+        }
+        $host = (string)parse_url($url, PHP_URL_HOST);
+        $title = trim((string)($item['title'] ?? ''));
+        $snippet = trim((string)($item['snippet'] ?? ''));
+        if ($snippet === '') {
+            // Reading a page in full leaves no snippet; use the text so the
+            // entry still says something about what was found there.
+            $snippet = mb_substr(trim((string)($item['highlights'] ?? $item['text'] ?? '')), 0, 300);
+        }
+
+        if (isset($this->toolSources[$url])) {
+            // The same page can come back from several searches. Keep the first
+            // (best-ranked) entry but let a later, richer one fill in a missing
+            // title or snippet.
+            $existing = $this->toolSources[$url];
+            // `name` holds only the real title, so an empty one means the first
+            // search had no title for this page and a later one may supply it.
+            if (($existing['name'] ?? '') === '' && $title !== '') {
+                $this->toolSources[$url]['name'] = $title;
+                $this->toolSources[$url]['path'] = $title;
+            }
+            if (($existing['excerpts'][0] ?? '') === '' && $snippet !== '') {
+                $this->toolSources[$url]['excerpts'] = [$snippet];
+            }
+            if (!empty($item['opened'])) {
+                $this->toolSources[$url]['opened'] = true;
+            }
+            return;
+        }
+
+        $this->toolSources[$url] = [
+            // `path`/`name` mirror the shape of an indexed file so existing
+            // renderers show a web source without any special case; the title
+            // is the readable label and the host is shown beside it.
+            // `path` is what the renderers display, so it falls back to the
+            // host when a result carries no title.
+            'path' => $title !== '' ? $title : $host,
+            'name' => $title,
+            'url' => $url,
+            'host' => $host,
+            'excerpts' => $snippet !== '' ? [$snippet] : [],
+            // Marks the entry as an external web page in the UI.
+            'external' => true,
+            'opened' => !empty($item['opened']),
+        ];
+        if (isset($item['published']) && (int)$item['published'] > 0) {
+            $this->toolSources[$url]['published'] = (int)$item['published'];
+        }
+        if (isset($item['source']) && is_string($item['source']) && $item['source'] !== '') {
+            $this->toolSources[$url]['publisher'] = $item['source'];
+        }
+    }
+
+    /**
+     * The source list for one answer: the indexed files it used, then the web
+     * pages the tools retrieved in the order they were first seen.
+     *
+     * @param array<int|string,array<string,mixed>> $byDoc
+     * @return list<array<string,mixed>>
+     */
+    private function answerSources(array $byDoc): array {
+        return array_merge(array_values($byDoc), array_values($this->toolSources));
     }
 
     /**

@@ -83,7 +83,7 @@ class EvaContextWriteProvider implements ISynchronousProvider {
 
 	public function process(?string $userId, array $input, callable $reportProgress): array {
 		if ($userId === null) {
-			throw new RuntimeException('Kein Benutzerkontext');
+			throw new RuntimeException('No user context');
 		}
 		$this->appConfig->setUserId($userId);
 
@@ -91,7 +91,7 @@ class EvaContextWriteProvider implements ISynchronousProvider {
 		// older aliases as fallbacks for already queued tasks.
 		$prompt = trim((string)($input['source_input'] ?? $input['input'] ?? ''));
 		if ($prompt === '') {
-			throw new RuntimeException('Leere Eingabe');
+			throw new RuntimeException('Empty input');
 		}
 
 		$style = trim((string)($input['style_input'] ?? $input['style'] ?? ''));
@@ -99,13 +99,13 @@ class EvaContextWriteProvider implements ISynchronousProvider {
 
 		$reportProgress(0.1);
 
-		$systemPrompt = 'Du bist ein erfahrener Schriftsteller, der Texte in verschiedenen Stilen schreibt. '
-			. 'Schreibe einen Text basierend auf den folgenden Anweisungen. '
-			. 'Antworte in der gleichen Sprache wie die Anweisungen. '
-			. 'Gib nur den geschriebenen Text zurück, keine zusätzlichen Erklärungen.';
+		$systemPrompt = 'You are an experienced writer who writes in various styles. '
+			. 'Write a text based on the following instructions. '
+			. 'Answer in the same language as the instructions. '
+			. 'Return only the written text, with no additional explanation.';
 
 		if ($style !== '') {
-			$systemPrompt .= ' Stil: ' . $style;
+			$systemPrompt .= ' Style: ' . $style;
 		}
 
 		$userMessage = $prompt;

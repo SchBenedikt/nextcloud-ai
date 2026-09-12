@@ -84,13 +84,13 @@ class EvaChangeToneProvider implements ISynchronousProvider {
 
 	public function process(?string $userId, array $input, callable $reportProgress): array {
 		if ($userId === null) {
-			throw new RuntimeException('Kein Benutzerkontext');
+			throw new RuntimeException('No user context');
 		}
 		$this->appConfig->setUserId($userId);
 
 		$prompt = trim((string)($input['input'] ?? ''));
 		if ($prompt === '') {
-			throw new RuntimeException('Leere Eingabe');
+			throw new RuntimeException('Empty input');
 		}
 
 		$tone = (string)($input['tone'] ?? 'formal');
@@ -98,25 +98,25 @@ class EvaChangeToneProvider implements ISynchronousProvider {
 		$reportProgress(0.1);
 
 		$toneDescriptions = [
-			'formal' => 'formell und höflich',
-			'informal' => 'informell und locker',
-			'friendly' => 'freundlich und zugänglich',
-			'professional' => 'professionell und sachlich',
-			'humorous' => 'humorvoll und locker',
-			'persuasive' => 'überzeugend undargumentativ',
-			'concise' => 'kurz und bündig',
-			'detailed' => 'detailliert und ausführlich',
+			'formal' => 'formal and polite',
+			'informal' => 'informal and relaxed',
+			'friendly' => 'friendly and approachable',
+			'professional' => 'professional and factual',
+			'humorous' => 'humorous and light',
+			'persuasive' => 'persuasive and argumentative',
+			'concise' => 'short and to the point',
+			'detailed' => 'detailed and thorough',
 		];
 
 		$toneDescription = $toneDescriptions[$tone] ?? $tone;
 
 		$messages = [
-			['role' => 'system', 'content' => 'Du bist ein hilfreicher Assistent, der den Tonfall von Texten ändert. '
-				. 'Schreibe den Text im Tonfall: ' . $toneDescription . '. '
-				. 'Behalte den Inhalt bei, ändere nur den Stil und Tonfall. '
-				. 'Antworte in der gleichen Sprache wie der Originaltext. '
-				. 'Gib nur den umgeschriebenen Text zurück, keine zusätzlichen Erklärungen.'],
-			['role' => 'user', 'content' => 'Ändere den Tonfall des folgenden Textes:\n\n' . $prompt],
+			['role' => 'system', 'content' => 'You are a helpful assistant that changes the tone of text. '
+				. 'Write the text in this tone: ' . $toneDescription . '. '
+				. 'Keep the content and change only the style and tone. '
+				. 'Answer in the same language as the original text. '
+				. 'Return only the rewritten text, with no additional explanation.'],
+			['role' => 'user', 'content' => 'Change the tone of the following text:\n\n' . $prompt],
 		];
 
 		$reportProgress(0.3);

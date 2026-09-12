@@ -66,8 +66,16 @@ export function mdToHtml(src) {
 }
 
 /**
- * Returns cited sources in the order they appear in the text.
- * Supports both single `[N]` and range `[1-3]` syntax.
+ * Returns the sources to show under an answer.
+ *
+ * Numbered file snippets are listed only when the text really cites them, so an
+ * answer that used three of six files shows three. Supports single `[N]` and
+ * range `[1-3]` syntax.
+ *
+ * Web pages are different: a `web_search` or `open_website` call retrieved them
+ * during this answer, so they are real evidence the user should be able to check
+ * even when the model wrote the URL as a Markdown link instead of a number.
+ * They are therefore always listed, after the cited files.
  */
 export function citedSources(text, sources) {
 	sources = Array.isArray(sources) ? sources : []
@@ -90,7 +98,12 @@ export function citedSources(text, sources) {
 			})
 		}
 	}
-	return Array.from(nums, ref => ({ ref, src: sources[ref - 1] }))
+	const cited = Array.from(nums, ref => ({ ref, src: sources[ref - 1] }))
+	const external = sources
+		.filter(s => s && s.external && s.url)
+		.filter(s => !cited.some(c => c.src && c.src.url === s.url))
+		.map(src => ({ ref: undefined, src }))
+	return cited.concat(external)
 }
 
 /** Copies text to clipboard with fallback. */
