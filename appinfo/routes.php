@@ -34,6 +34,8 @@ return [
         ['name' => 'api#backgroundChat', 'url' => '/api/backgroundChat', 'verb' => 'POST'],
         ['name' => 'api#backgroundChatStatus', 'url' => '/api/backgroundChat', 'verb' => 'GET'],
         ['name' => 'api#cancelBackgroundChat', 'url' => '/api/backgroundChat', 'verb' => 'DELETE'],
+        ['name' => 'api#pauseBackgroundChat', 'url' => '/api/backgroundChat/pause', 'verb' => 'POST'],
+        ['name' => 'api#resumeBackgroundChat', 'url' => '/api/backgroundChat/resume', 'verb' => 'POST'],
         ['name' => 'api#retryBackgroundChat', 'url' => '/api/backgroundChat/retry', 'verb' => 'POST'],
         ['name' => 'api#chats', 'url' => '/api/chats', 'verb' => 'GET'],
         ['name' => 'api#createChat', 'url' => '/api/chats', 'verb' => 'POST'],

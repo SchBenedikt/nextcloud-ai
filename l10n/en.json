@@ -34,6 +34,8 @@
         "EVA is continuing this chat in the background": "EVA is continuing this chat in the background",
         "Background EVA run failed after retries": "Background EVA run failed after retries",
         "Background EVA run failed — click to retry": "Background EVA run failed — click to retry",
+        "Background EVA run paused — click to resume": "Background EVA run paused — click to resume",
+        "Background EVA run queued — click to pause": "Background EVA run queued — click to pause",
         "EVA will continue this chat in the background": "EVA will continue this chat in the background",
         "When a chat continues after you close the page, EVA may execute requested changes without an open confirmation dialog.": "When a chat continues after you close the page, EVA may execute requested changes without an open confirmation dialog.",
         "Background actions are opt-in. EVA still follows the request and never invents unrelated changes. Disable this switch to keep queued chats read-only.": "Background actions are opt-in. EVA still follows the request and never invents unrelated changes. Disable this switch to keep queued chats read-only.",
