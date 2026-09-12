@@ -1866,6 +1866,12 @@ class Indexer {
             return;
         }
         if ($mails === []) {
+            // An empty list is ambiguous: the account may hold no mail, or the Mail
+            // app may be unavailable (EmailService returns [] for both).
+            // Reconciliation is therefore skipped rather than run against an empty
+            // list, which would delete every indexed message - including when Mail
+            // is only temporarily unreachable. A deleted message is cleaned up on
+            // any pass that does list messages.
             return;
         }
         $hashes = $this->documentMapper->hashesForUser($userId);

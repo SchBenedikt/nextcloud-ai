@@ -343,10 +343,31 @@ PROMPT;
             return false; // Bei Fehler: nicht antworten (sicherer)
         }
 
-        $answer = strtolower(trim((string)($resp['answer'] ?? '')));
-        // Accept both languages: a small model sometimes answers in the language
-        // of the chat, and a German "ja" must not be read as a refusal.
-        return str_starts_with($answer, 'ja') || str_starts_with($answer, 'yes');
+        return $this->isAffirmative((string)($resp['answer'] ?? ''));
+    }
+
+    /**
+     * Whether a classification answer means "yes".
+     *
+     * Both languages are accepted, because a small model answers in the language
+     * of the chat rather than the language of the instruction, and a German "ja"
+     * used to be read as a refusal.
+     *
+     * The word is matched, not the first two characters: models decorate the one
+     * word they were asked for ("**Ja**", '"Yes"', "1. Yes, ..."), and comparing
+     * the raw prefix silenced the bot for answers that plainly meant yes. The
+     * leading decoration is therefore stripped first, and anything that is not a
+     * clear affirmative - "nein", "no, that is for Bob", "maybe" - stays a no, so
+     * the bot does not talk over people.
+     */
+    private function isAffirmative(string $answer): bool
+    {
+        $normalised = mb_strtolower(trim($answer));
+        $normalised = (string)preg_replace('/^[^a-z\x{00e4}\x{00f6}\x{00fc}\x{00df}]+/u', '', $normalised);
+        if ($normalised === '') {
+            return false;
+        }
+        return preg_match('/^(?:ja|yes|yep|yup|jep|sure)\b/u', $normalised) === 1;
     }
 
     /**

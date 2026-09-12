@@ -45,7 +45,7 @@ final class CustomInstructionsPromptTest extends TestCase {
         $l10nFactory->method('getUserLanguage')->willReturn('de');
         $logger = $this->createMock(LoggerInterface::class);
 
-        return new RagService($config, $ollama, $searcher, $documentMapper, $chunkMapper, $urlGenerator, $executor, $rootFolder, $l10nFactory, $logger);
+        return new RagService($config, $ollama, $searcher, $documentMapper, $chunkMapper, $urlGenerator, $executor, $rootFolder, $l10nFactory, $this->createMock(\OCA\EvaAi\Service\TalkTranscriptService::class), $logger);
     }
 
     /**
