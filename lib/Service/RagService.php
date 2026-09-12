@@ -20,7 +20,8 @@ class RagService {
      * low enough that a question needing a second search ran out of budget and
      * returned nothing at all.
      */
-    private const MAX_TOOL_ROUNDS = 8;
+    private const MAX_TOOL_ROUNDS = 16;
+    private const MAX_IDENTICAL_TOOL_CALLS = 2;
 
     /**
      * Web pages the tools actually retrieved during the current answer.
@@ -88,6 +89,7 @@ class RagService {
 		// the model must never receive mutating tools for a read-only run.
 		$tools = $allowActions && $this->actionsEnabled() ? $this->executor->tools() : [];
 		$messages = $this->buildMessages($userId, $message, $history, $context, count($results), $tools !== [], $instructions, $persona, $this->dateContext($userId), $extraContext);
+		$seenToolCalls = [];
 
 		for ($round = 0; $round < self::MAX_TOOL_ROUNDS; $round++) {
 			$chat = $this->ollama->chat($messages, $tools);
@@ -108,10 +110,14 @@ class RagService {
 			}
 			$messages[] = ['role' => 'assistant', 'content' => $chat['answer'] ?? '', 'tool_calls' => $this->canonicalToolCalls($chat['raw_tool_calls'] ?? [])];
 			foreach ($toolCalls as $tc) {
+				$fingerprint = hash('sha256', (string)($tc['name'] ?? '') . ':' . json_encode($tc['arguments'] ?? [], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES));
+				$seenToolCalls[$fingerprint] = ($seenToolCalls[$fingerprint] ?? 0) + 1;
 				$toolArgs = $tc['name'] === 'create_calendar_event'
 					? $this->completeCalendarArguments($userId, $message, $tc['arguments'])
 					: $tc['arguments'];
-				$res = $this->executor->run($userId, $tc['name'], $toolArgs);
+				$res = $seenToolCalls[$fingerprint] > self::MAX_IDENTICAL_TOOL_CALLS
+					? ['ok' => false, 'error' => 'The same tool call was already attempted twice; choose a different next step.']
+					: $this->executor->run($userId, $tc['name'], $toolArgs);
 				$this->collectToolSources($tc['name'], $res);
 				if (!empty($res['confirmation_required'])) {
 					return [
@@ -130,6 +136,9 @@ class RagService {
 					];
 				}
 				$messages[] = ['role' => 'tool', 'content' => json_encode($res, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES)];
+				if ($seenToolCalls[$fingerprint] > self::MAX_IDENTICAL_TOOL_CALLS) {
+					$tools = [];
+				}
 			}
 
 		}        // All rounds were spent on tools. Ask once more with the tools disabled:
@@ -189,6 +198,7 @@ $this->executor->setUserId($userId);
             $model = $this->ollama->selectedChatModel();
             $toolActivity = false;
             $toolFailure = false;
+            $seenToolCalls = [];
             for ($round = 0; $round < self::MAX_TOOL_ROUNDS; $round++) {
                 $toolCalls = [];
                 $rawToolCalls = [];
@@ -227,7 +237,11 @@ $this->executor->setUserId($userId);
                     $toolArgs = $toolName === 'create_calendar_event'
                         ? $this->completeCalendarArguments($userId, $message, $tc['arguments'] ?? [])
                         : ($tc['arguments'] ?? []);
-                    $res = $this->executor->run($userId, $toolName, $toolArgs);
+                    $fingerprint = hash('sha256', $toolName . ':' . json_encode($toolArgs, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES));
+                    $seenToolCalls[$fingerprint] = ($seenToolCalls[$fingerprint] ?? 0) + 1;
+                    $res = $seenToolCalls[$fingerprint] > self::MAX_IDENTICAL_TOOL_CALLS
+                        ? ['ok' => false, 'error' => 'The same tool call was already attempted twice; choose a different next step.']
+                        : $this->executor->run($userId, $toolName, $toolArgs);
                     $this->collectToolSources($toolName, $res);
                     $toolFailure = $toolFailure || empty($res['ok']);
                     if (!empty($res['confirmation_required'])) {
@@ -249,6 +263,9 @@ $this->executor->setUserId($userId);
                         'url' => !empty($res['ok']) && is_array($res['result'] ?? null) ? ($res['result']['url'] ?? null) : null,
                     ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) . "\n";
                     $messages[] = ['role' => 'tool', 'content' => json_encode($res, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES)];
+                    if ($seenToolCalls[$fingerprint] > self::MAX_IDENTICAL_TOOL_CALLS) {
+                        $tools = [];
+                    }
                 }
                 $answer = '';
             }
