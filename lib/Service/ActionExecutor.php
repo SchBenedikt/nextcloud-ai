@@ -79,6 +79,7 @@ class ActionExecutor {
         'tag_file' => ['file_id', 'tag'],
         'untag_file' => ['file_id', 'tag'],
         'restore_file_version' => ['file_id', 'version_id'],
+        'call_app_api' => ['app_id', 'path', 'method'],
     ];
 
     /**
@@ -543,6 +544,16 @@ class ActionExecutor {
                 ]],
             ]],
             ['type' => 'function', 'function' => [
+                'name' => 'call_app_api',
+                'description' => 'Call an OCS endpoint of an enabled Nextcloud app in the current user session. Read methods are allowed; POST, PUT, PATCH and DELETE always require explicit confirmation.',
+                'parameters' => ['type' => 'object', 'properties' => [
+                    'app_id' => ['type' => 'string', 'description' => 'Enabled Nextcloud app id, e.g. deck or bookmarks.'],
+                    'path' => ['type' => 'string', 'description' => 'Same-origin OCS path beginning with /ocs/v1.php/apps/{app_id}/ or /ocs/v2.php/apps/{app_id}/.'],
+                    'method' => ['type' => 'string', 'enum' => ['GET', 'POST', 'PUT', 'PATCH', 'DELETE']],
+                    'params' => ['type' => 'object', 'description' => 'Query/body parameters for the OCS endpoint. Never include credentials.'],
+                ], 'required' => ['app_id', 'path', 'method']],
+            ]],
+            ['type' => 'function', 'function' => [
                 'name' => 'current_time',
                 'description' => 'Get the current date and time in the user\'s timezone. IMPORTANT: as an AI model you do not know today\'s date - always call this tool before computing dates, deadlines, appointments or relative times.',
                 'parameters' => ['type' => 'object', 'properties' => []],
@@ -676,6 +687,19 @@ class ActionExecutor {
             return ['ok' => false, 'error' => $policy['reason'] ?? 'Tool not allowed'];
         }
         if (($policy['requiresConfirmation'] ?? false) && !$confirmed) {
+            // Generic app API calls are never auto-approved, even when the
+            // web surface has complete arguments: the model may have learned
+            // an unfamiliar endpoint and the user must review its exact
+            // method, path and parameters first.
+            if ($name === 'call_app_api') {
+                return [
+                    'ok' => false,
+                    'confirmation_required' => true,
+                    'tool' => $name,
+                    'risk' => (string)($policy['risk'] ?? ToolPolicy::RISK_MUTATING),
+                    'error' => 'Generic app API calls always require explicit user confirmation.',
+                ];
+            }
             // Interactive web chat: an explicit, complete request runs
             // immediately. The dialog is only shown when required data is
             // still missing (e.g. an event without a name) or no concrete
@@ -787,6 +811,7 @@ class ActionExecutor {
                 'server_status' => $this->serverStatus($userId),
                 'list_nextcloud_capabilities' => $this->listNextcloudCapabilities(),
                 'discover_app_api' => $this->discoverAppApi($args),
+                'call_app_api' => $this->callAppApi($args),
                 'update_knowledge' => $this->updateKnowledge($home, $args),
                 default => ['ok' => false, 'error' => 'Unknown tool: ' . $name],
             };
@@ -1046,6 +1071,52 @@ class ActionExecutor {
         } catch (\Throwable) {
             return ['ok' => false, 'error' => 'Nextcloud app API discovery is unavailable.'];
         }
+    }
+
+    private function callAppApi(array $args): array {
+        $appId = strtolower(trim((string)($args['app_id'] ?? '')));
+        $method = strtoupper(trim((string)($args['method'] ?? '')));
+        $path = trim((string)($args['path'] ?? ''));
+        $params = $args['params'] ?? [];
+        if (!preg_match('/^[a-z0-9_]+$/', $appId) || !in_array($method, ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'], true)) {
+            return ['ok' => false, 'error' => 'A valid app_id and HTTP method are required.'];
+        }
+        if (!is_array($params) || count($params) > 50) return ['ok' => false, 'error' => 'params must be an object with at most 50 fields.'];
+        $prefixes = ['/ocs/v1.php/apps/' . $appId . '/', '/ocs/v2.php/apps/' . $appId . '/'];
+        $validPath = false;
+        foreach ($prefixes as $prefix) if (str_starts_with($path, $prefix)) $validPath = true;
+        if (!$validPath || str_contains($path, '..') || preg_match('/[\r\n]/', $path)) {
+            return ['ok' => false, 'error' => 'Only same-origin OCS app paths for the selected app are allowed.'];
+        }
+        try {
+            $appManager = Server::get(\OCP\App\IAppManager::class);
+            if (!in_array($appId, array_map('strval', $appManager->getEnabledApps()), true) || !$appManager->isEnabledForUser($appId)) {
+                return ['ok' => false, 'error' => 'That app is not enabled for the current user.'];
+            }
+            $request = Server::get(\OCP\IRequest::class);
+            $client = Server::get(\OCP\Http\Client\IClientService::class)->newClient();
+            $url = Server::get(\OCP\IURLGenerator::class)->getAbsoluteURL($path);
+            $headers = ['Accept' => 'application/json', 'OCS-APIRequest' => 'true'];
+            foreach (['Authorization', 'Cookie'] as $header) {
+                $value = trim((string)$request->getHeader($header));
+                if ($value !== '') $headers[$header] = $value;
+            }
+            $options = ['headers' => $headers, 'allow_redirects' => ['max' => 0, 'protocols' => ['https', 'http']]];
+            if ($method === 'GET') $options['query'] = $params;
+            elseif ($params !== []) $options['body'] = $params;
+            $response = match ($method) {
+                'GET' => $client->get($url, $options),
+                'POST' => $client->post($url, $options),
+                'PUT' => $client->put($url, $options),
+                'PATCH' => $client->patch($url, $options),
+                'DELETE' => $client->delete($url, $options),
+            };
+            $body = $response->getBody();
+            if (is_resource($body)) $body = stream_get_contents($body);
+            $body = mb_substr((string)$body, 0, 50000);
+            $decoded = json_decode($body, true);
+            return ['ok' => $response->getStatusCode() >= 200 && $response->getStatusCode() < 300, 'result' => ['status' => $response->getStatusCode(), 'data' => $decoded ?? $body, 'path' => $path, 'method' => $method]];
+        } catch (\Throwable) { return ['ok' => false, 'error' => 'The app API request failed in the current user context.']; }
     }
 
     /** @return array<array{name:string,path:string,type:string,size?:int}> */

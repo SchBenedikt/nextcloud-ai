@@ -365,6 +365,12 @@ class ToolPolicy {
             'requiresConfirmation' => false,
             'description' => 'Discover API routes exposed by an enabled Nextcloud app',
         ],
+        'call_app_api' => [
+            'risk' => self::RISK_MUTATING,
+            'surfaces' => [self::SURFACE_WEB, self::SURFACE_TASKPROCESSING_CONFIRMED],
+            'requiresConfirmation' => true,
+            'description' => 'Call an enabled app OCS API in the current user context',
+        ],
         'current_time' => [
             'risk' => self::RISK_READONLY,
             'surfaces' => [self::SURFACE_WEB, self::SURFACE_TALK, self::SURFACE_TASKPROCESSING, self::SURFACE_TASKPROCESSING_CONFIRMED, self::SURFACE_RAG],
