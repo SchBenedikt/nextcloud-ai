@@ -714,6 +714,22 @@ class ActionExecutor {
             $manager = Server::get(\OCP\App\IAppManager::class);
             $apps = array_values(array_unique(array_map('strval', $manager->getEnabledApps())));
             sort($apps, SORT_STRING);
+            $apiCatalog = [
+                'files' => ['protocols' => ['WebDAV', 'OCS'], 'eva_tools' => ['list_files', 'read_file', 'search_files', 'create_file', 'rename_file', 'delete_file']],
+                'calendar' => ['protocols' => ['CalDAV', 'OCS'], 'eva_tools' => ['list_calendars', 'list_calendar_events', 'find_free_slots', 'create_calendar_event', 'update_calendar_event', 'delete_calendar_event']],
+                'contacts' => ['protocols' => ['CardDAV', 'OCS'], 'eva_tools' => ['list_contacts', 'find_contact', 'create_contact', 'update_contact', 'delete_contact']],
+                'mail' => ['protocols' => ['IMAP/Nextcloud Mail service'], 'eva_tools' => ['search_mails', 'list_mails', 'read_mail', 'unread_mail_count']],
+                'spreed' => ['protocols' => ['OCS Talk API'], 'eva_tools' => ['list_talk_rooms', 'read_talk_chat', 'send_talk_message']],
+                'notes' => ['protocols' => ['Nextcloud Notes service/WebDAV'], 'eva_tools' => ['create_note', 'read_file', 'search_files']],
+                'activity' => ['protocols' => ['OCS Activity API'], 'eva_tools' => ['recent_activity']],
+                'files_sharing' => ['protocols' => ['OCS Sharing API'], 'eva_tools' => ['list_shares', 'create_share', 'update_share', 'delete_share']],
+                'deck' => ['protocols' => ['Deck OCS API'], 'eva_tools' => [], 'status' => 'discovery only; no dedicated EVA adapter installed'],
+                'bookmarks' => ['protocols' => ['Bookmarks REST API'], 'eva_tools' => [], 'status' => 'discovery only; no dedicated EVA adapter installed'],
+                'forms' => ['protocols' => ['Forms OCS API'], 'eva_tools' => [], 'status' => 'discovery only; no dedicated EVA adapter installed'],
+                'comments' => ['protocols' => ['OCS Comments API'], 'eva_tools' => [], 'status' => 'discovery only; no dedicated EVA adapter installed'],
+            ];
+            $availableApis = [];
+            foreach ($apiCatalog as $app => $metadata) if (in_array($app, $apps, true)) $availableApis[$app] = $metadata;
             return [
                 'ok' => true,
                 'enabled_apps' => $apps,
@@ -725,7 +741,8 @@ class ActionExecutor {
                     'spreed' => in_array('spreed', $apps, true),
                     'notes' => in_array('notes', $apps, true),
                 ],
-                'next_step' => 'Use only a dedicated EVA tool for a discovered integration; unsupported app actions require an explicit future integration.',
+                'api_catalog' => $availableApis,
+                'next_step' => 'Plan with the protocols and EVA tools listed above. Use only a dedicated EVA tool for an action; discovery-only apps are not callable through a generic HTTP proxy and require a dedicated adapter before writes are allowed.',
             ];
         } catch (\Throwable $e) {
             return ['ok' => false, 'error' => 'Nextcloud capability discovery is unavailable.'];
