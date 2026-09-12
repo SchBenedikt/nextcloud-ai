@@ -80,6 +80,9 @@ class ActionExecutor {
         'untag_file' => ['file_id', 'tag'],
         'restore_file_version' => ['file_id', 'version_id'],
         'call_app_api' => ['app_id', 'path', 'method'],
+        'create_scheduled_briefing' => ['prompt', 'time', 'days'],
+        'update_scheduled_briefing' => ['briefing_id'],
+        'delete_scheduled_briefing' => ['briefing_id'],
     ];
 
     /**
@@ -559,6 +562,38 @@ class ActionExecutor {
                 ], 'required' => ['app_id', 'path', 'method']],
             ]],
             ['type' => 'function', 'function' => [
+                'name' => 'list_scheduled_briefings',
+                'description' => 'List the current user\'s EVA scheduled briefings and their action permissions.',
+                'parameters' => ['type' => 'object', 'properties' => new \stdClass()],
+            ]],
+            ['type' => 'function', 'function' => [
+                'name' => 'create_scheduled_briefing',
+                'description' => 'Create a recurring EVA briefing. Use days 1-7 for Monday-Sunday. Read-only is the default; allow_actions must be explicitly true to permit autonomous changes.',
+                'parameters' => ['type' => 'object', 'properties' => [
+                    'prompt' => ['type' => 'string', 'description' => 'What EVA should do at the scheduled time.'],
+                    'time' => ['type' => 'string', 'description' => 'Local time in HH:MM format.'],
+                    'days' => ['type' => 'array', 'items' => ['type' => 'integer'], 'description' => 'Weekdays 1 (Monday) through 7 (Sunday).'],
+                    'allow_actions' => ['type' => 'boolean', 'description' => 'Optional explicit opt-in for autonomous tool actions. Defaults to false.'],
+                ], 'required' => ['prompt', 'time', 'days']],
+            ]],
+            ['type' => 'function', 'function' => [
+                'name' => 'update_scheduled_briefing',
+                'description' => 'Update an existing EVA briefing by id. Only supplied fields change.',
+                'parameters' => ['type' => 'object', 'properties' => [
+                    'briefing_id' => ['type' => 'string', 'description' => 'Id returned by list_scheduled_briefings.'],
+                    'prompt' => ['type' => 'string'], 'time' => ['type' => 'string'],
+                    'days' => ['type' => 'array', 'items' => ['type' => 'integer']],
+                    'enabled' => ['type' => 'boolean'], 'allow_actions' => ['type' => 'boolean'],
+                ], 'required' => ['briefing_id']],
+            ]],
+            ['type' => 'function', 'function' => [
+                'name' => 'delete_scheduled_briefing',
+                'description' => 'Delete an EVA scheduled briefing by id.',
+                'parameters' => ['type' => 'object', 'properties' => [
+                    'briefing_id' => ['type' => 'string', 'description' => 'Id returned by list_scheduled_briefings.'],
+                ], 'required' => ['briefing_id']],
+            ]],
+            ['type' => 'function', 'function' => [
                 'name' => 'current_time',
                 'description' => 'Get the current date and time in the user\'s timezone. IMPORTANT: as an AI model you do not know today\'s date - always call this tool before computing dates, deadlines, appointments or relative times.',
                 'parameters' => ['type' => 'object', 'properties' => []],
@@ -818,6 +853,10 @@ class ActionExecutor {
                 'discover_app_api' => $this->discoverAppApi($args),
                 'list_learned_app_apis' => $this->listLearnedAppApis(),
                 'call_app_api' => $this->callAppApi($args),
+                'list_scheduled_briefings' => $this->listScheduledBriefings(),
+                'create_scheduled_briefing' => $this->createScheduledBriefing($args),
+                'update_scheduled_briefing' => $this->updateScheduledBriefing($args),
+                'delete_scheduled_briefing' => $this->deleteScheduledBriefing($args),
                 'update_knowledge' => $this->updateKnowledge($home, $args),
                 default => ['ok' => false, 'error' => 'Unknown tool: ' . $name],
             };
@@ -1167,6 +1206,75 @@ class ActionExecutor {
             $decoded = json_decode($body, true);
             return ['ok' => $response->getStatusCode() >= 200 && $response->getStatusCode() < 300, 'result' => ['status' => $response->getStatusCode(), 'data' => $decoded ?? $body, 'path' => $path, 'method' => $method]];
         } catch (\Throwable) { return ['ok' => false, 'error' => 'The app API request failed in the current user context.']; }
+    }
+
+    private function briefingRows(): array {
+        $rows = json_decode($this->config->get('proactive_schedules'), true);
+        return is_array($rows) ? array_values(array_filter($rows, 'is_array')) : [];
+    }
+
+    private function validBriefingFields(string $prompt, string $time, array $days): ?string {
+        if ($prompt === '' || mb_strlen($prompt) > 2000) return 'prompt must contain 1-2000 characters.';
+        if (preg_match('/^(?:[01]\d|2[0-3]):[0-5]\d$/', $time) !== 1) return 'time must use HH:MM format.';
+        $days = array_values(array_unique(array_map('intval', $days)));
+        if ($days === [] || count($days) > 7 || array_diff($days, [1, 2, 3, 4, 5, 6, 7]) !== []) return 'days must contain weekdays 1-7.';
+        return null;
+    }
+
+    private function listScheduledBriefings(): array {
+        $rows = $this->briefingRows();
+        return ['ok' => true, 'result' => ['briefings' => array_map(static function (array $row): array {
+            return ['id' => (string)($row['id'] ?? ''), 'prompt' => (string)($row['prompt'] ?? ''), 'time' => (string)($row['time'] ?? ''), 'days' => array_values(array_map('intval', is_array($row['days'] ?? null) ? $row['days'] : [])), 'enabled' => ($row['enabled'] ?? true) === true, 'allow_actions' => ($row['allow_actions'] ?? false) === true];
+        }, $rows)]];
+    }
+
+    private function persistBriefings(array $rows): void {
+        $this->config->set('proactive_schedules', json_encode(array_values($rows), JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) ?: '[]');
+    }
+
+    private function createScheduledBriefing(array $args): array {
+        $prompt = trim((string)($args['prompt'] ?? ''));
+        $time = trim((string)($args['time'] ?? ''));
+        $days = is_array($args['days'] ?? null) ? array_values(array_unique(array_map('intval', $args['days']))) : [];
+        $error = $this->validBriefingFields($prompt, $time, $days);
+        if ($error !== null) return ['ok' => false, 'error' => $error];
+        $rows = $this->briefingRows();
+        if (count($rows) >= 20) return ['ok' => false, 'error' => 'At most 20 scheduled briefings are allowed.'];
+        $id = 'briefing-' . bin2hex(random_bytes(5));
+        $row = ['id' => $id, 'prompt' => $prompt, 'time' => $time, 'days' => $days, 'enabled' => true, 'allow_actions' => ($args['allow_actions'] ?? false) === true];
+        $rows[] = $row; $this->persistBriefings($rows);
+        return ['ok' => true, 'result' => ['briefing' => $row]];
+    }
+
+    private function updateScheduledBriefing(array $args): array {
+        $id = preg_replace('/[^a-zA-Z0-9_-]/', '', (string)($args['briefing_id'] ?? '')) ?? '';
+        if ($id === '') return ['ok' => false, 'error' => 'briefing_id is required.'];
+        $rows = $this->briefingRows(); $found = false; $updated = null;
+        foreach ($rows as &$row) {
+            if ((string)($row['id'] ?? '') !== $id) continue;
+            $prompt = array_key_exists('prompt', $args) ? trim((string)$args['prompt']) : (string)($row['prompt'] ?? '');
+            $time = array_key_exists('time', $args) ? trim((string)$args['time']) : (string)($row['time'] ?? '');
+            $days = array_key_exists('days', $args) && is_array($args['days']) ? array_values(array_unique(array_map('intval', $args['days']))) : (array)$row['days'];
+            $error = $this->validBriefingFields($prompt, $time, $days);
+            if ($error !== null) return ['ok' => false, 'error' => $error];
+            $row['prompt'] = $prompt; $row['time'] = $time; $row['days'] = $days;
+            if (array_key_exists('enabled', $args)) $row['enabled'] = $args['enabled'] === true;
+            if (array_key_exists('allow_actions', $args)) $row['allow_actions'] = $args['allow_actions'] === true;
+            $updated = $row; $found = true; break;
+        }
+        unset($row);
+        if (!$found) return ['ok' => false, 'error' => 'Scheduled briefing not found.'];
+        $this->persistBriefings($rows);
+        return ['ok' => true, 'result' => ['briefing' => $updated]];
+    }
+
+    private function deleteScheduledBriefing(array $args): array {
+        $id = preg_replace('/[^a-zA-Z0-9_-]/', '', (string)($args['briefing_id'] ?? '')) ?? '';
+        if ($id === '') return ['ok' => false, 'error' => 'briefing_id is required.'];
+        $rows = $this->briefingRows(); $filtered = array_values(array_filter($rows, static fn(array $row): bool => (string)($row['id'] ?? '') !== $id));
+        if (count($filtered) === count($rows)) return ['ok' => false, 'error' => 'Scheduled briefing not found.'];
+        $this->persistBriefings($filtered);
+        return ['ok' => true, 'result' => ['briefing_id' => $id, 'deleted' => true]];
     }
 
     /** @return array<array{name:string,path:string,type:string,size?:int}> */
