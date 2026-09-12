@@ -954,6 +954,24 @@ class ApiController extends OCSController {
         return new DataResponse(['ok' => true, 'cancelRequested' => true]);
     }
 
+    /** Requeue a failed background run without losing its original context. */
+    #[NoAdminRequired]
+    public function retryBackgroundChat(): DataResponse {
+        $user = $this->requireUser();
+        if ($user === null) return new DataResponse(['error' => 'Not logged in'], 401);
+        $id = trim((string)($this->requestParam('id') ?? ''));
+        if ($id === '') return new DataResponse(['error' => 'Queue id required'], 400);
+        $known = false;
+        foreach ($this->backgroundChatQueue->status($user) as $item) {
+            if (($item['id'] ?? '') === $id) { $known = true; break; }
+        }
+        if (!$known) return new DataResponse(['error' => 'Background job not found'], 404);
+        if ($this->backgroundChatQueue->retry($user, $id, 'Retry limit reached.')) {
+            return new DataResponse(['error' => 'This background run has reached its retry limit.'], 409);
+        }
+        return new DataResponse(['ok' => true, 'queued' => true]);
+    }
+
     /**
      * Resolve the folder scope stored on a chat (Issue #88). Empty string
      * when the chat is unknown, missing or not scoped — the caller then
