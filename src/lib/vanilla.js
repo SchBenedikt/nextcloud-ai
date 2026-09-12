@@ -37,6 +37,7 @@ export function mountChat(root, opts = {}) {
 	let sending = false
 	let currentAbort = null
 	let stoppedByUser = false
+	let queuedOnUnload = false
 	// Monotonic per-chat revision (Issue #182): every persisted change bumps it
 	// server-side, and regenerate/edit requests validate against it so two tabs
 	// cannot silently overwrite each other. null until a chat is known.
@@ -684,6 +685,28 @@ export function mountChat(root, opts = {}) {
 		if (ok) refreshTitle()
 		return ok
 	})
+
+	// A page/tab can disappear while the streaming request is still running.
+	// keepalive lets the server persist a durable worker job without waiting for
+	// the browser to render another response. The worker deliberately waits a
+	// few seconds, avoiding a race with a stream that is about to finish.
+	const queueOnPageHide = () => {
+		if (!sending || queuedOnUnload || !chatId) return
+		const lastUser = [...messages].reverse().find((m) => m.role === 'user')
+		if (!lastUser || !lastUser.text) return
+		const history = messages.slice(0, Math.max(0, messages.length - 2))
+			.filter((m) => m && (m.role === 'user' || m.role === 'assistant') && m.text)
+			.slice(-100).map((m) => ({ role: m.role, content: String(m.text).slice(0, 20000) }))
+		queuedOnUnload = true
+		try {
+			fetch(API_BASE + '/backgroundChat', {
+				method: 'POST', credentials: 'same-origin', keepalive: true,
+				headers: { 'OCS-APIRequest': 'true', 'Content-Type': 'application/json', 'Accept': 'application/json', 'requesttoken': REQUEST_TOKEN },
+				body: JSON.stringify({ chatId, message: lastUser.text, history }),
+			}).catch(() => {})
+		} catch (_) {}
+	}
+	if (typeof window !== 'undefined') window.addEventListener('pagehide', queueOnPageHide)
 
 	function refreshCustomizePill(chat) {
 		// Per-chat custom instructions (Issue #90): a subtle header indicator
