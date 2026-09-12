@@ -27,7 +27,12 @@ module.exports = (env) => {
 				return chunkData.chunk.name + '.js'
 			},
 			publicPath: '/apps/eva_ai/js/',
-			clean: { keep: /^header\.js$|^admin-settings|^eva_ai-main|^eva_ai_filesaction|^eva_ai_standalone|\.map$|\.LICENSE\.txt$/ },
+			// Clean before emitting, keeping only the files that are *not* build
+			// output: `header.js` and the admin page's own script. The previous
+			// pattern also kept every `.map` and `.LICENSE.txt`, so a source map
+			// from a removed entry point survived every later build and stayed in
+			// the repository (issue #193). Build output is regenerated, never kept.
+			clean: { keep: /^header\.js$|^admin-settings/ },
 		},
 		devtool: isProd ? 'source-map' : 'eval-cheap-module-source-map',
 		module: {

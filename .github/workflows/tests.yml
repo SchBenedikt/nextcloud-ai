@@ -81,6 +81,19 @@ jobs:
       - name: Build production bundles
         run: npm run build
 
+      # The committed bundles are what the app actually serves, so a source
+      # change that was never rebuilt would ship silently (issue #193). This
+      # also catches stale output: webpack cleans js/ before emitting and keeps
+      # only the hand-written assets, so a leftover file from a removed entry
+      # point shows up here as a diff.
+      - name: Verify the committed bundles match a fresh build
+        run: |
+          if ! git diff --quiet -- js/; then
+            echo "::error::js/ differs from a fresh 'npm run build'. Run it and commit the result."
+            git --no-pager diff --stat -- js/
+            exit 1
+          fi
+
       - name: Install Chromium
         run: npx playwright install --with-deps chromium
 
