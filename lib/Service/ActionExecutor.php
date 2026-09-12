@@ -1112,6 +1112,8 @@ class ActionExecutor {
                 $isOcs = str_starts_with($path, '/ocs/') || str_starts_with($path, '/ocsapp/');
                 if (!$includeInternal && !$isOcs) continue;
                 $methods = method_exists($route, 'getMethods') ? array_values(array_map('strval', $route->getMethods())) : [];
+                $variables = method_exists($route, 'getVariableNames') ? array_values(array_map('strval', $route->getVariableNames())) : [];
+                $requirements = method_exists($route, 'getRequirements') ? array_map('strval', $route->getRequirements()) : [];
                 $routes[] = [
                     'name' => (string)$name,
                     'app_id' => $routeApp,
@@ -1119,12 +1121,14 @@ class ActionExecutor {
                     'path' => $path,
                     'controller' => $controller,
                     'ocs' => $isOcs,
+                    'variables' => $variables,
+                    'requirements' => $requirements,
                 ];
             }
             usort($routes, static fn (array $a, array $b): int => strcmp($a['name'], $b['name']));
             if (count($routes) > 300) $routes = array_slice($routes, 0, 300);
             $this->rememberAppApi($appId, $routes);
-            return ['ok' => true, 'result' => ['app_id' => $appId !== '' ? $appId : null, 'route_count' => count($routes), 'routes' => $routes, 'execution_policy' => 'Discovery never executes a route. Use the exact same-origin path with call_app_api; non-OCS routes must be discovered with include_internal=true. Interactive calls require confirmation and background calls require the encrypted app token.']];
+            return ['ok' => true, 'result' => ['app_id' => $appId !== '' ? $appId : null, 'route_count' => count($routes), 'routes' => $routes, 'execution_policy' => 'Discovery never executes a route. Use the exact same-origin path with call_app_api; route variables and requirements describe the path placeholders. Non-OCS routes must be discovered with include_internal=true. Interactive calls require confirmation and background calls require the encrypted app token.']];
         } catch (\Throwable) {
             return ['ok' => false, 'error' => 'Nextcloud app API discovery is unavailable.'];
         }
@@ -1143,6 +1147,8 @@ class ActionExecutor {
                     'methods' => array_values(array_map('strval', is_array($route['methods'] ?? null) ? $route['methods'] : [])),
                     'path' => (string)($route['path'] ?? ''),
                     'ocs' => (bool)($route['ocs'] ?? false),
+                    'variables' => array_values(array_map('strval', is_array($route['variables'] ?? null) ? $route['variables'] : [])),
+                    'requirements' => array_map('strval', is_array($route['requirements'] ?? null) ? $route['requirements'] : []),
                 ];
             }
             $known[$appId] = ['updated' => time(), 'routes' => $sanitized];
