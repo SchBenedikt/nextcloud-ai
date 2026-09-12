@@ -74,6 +74,8 @@ class ActionExecutor {
         'update_task' => ['task_id'],
         'complete_task' => ['task_id'],
         'delete_task' => ['task_id'],
+        'add_comment' => ['object_type', 'object_id', 'message'],
+        'delete_comment' => ['comment_id'],
     ];
 
     /**
@@ -110,7 +112,8 @@ class ActionExecutor {
         private ToolPolicy $toolPolicy,
         private WebSearchService $webSearch,
         private TalkChatService $talkChat,
-        private \OCP\Lock\ILockingProvider $lockingProvider
+        private \OCP\Lock\ILockingProvider $lockingProvider,
+        private ?\OCP\Comments\ICommentsManagerFactory $commentsFactory = null
     ) {
     }
 
@@ -454,6 +457,32 @@ class ActionExecutor {
                 ]],
             ]],
             ['type' => 'function', 'function' => [
+                'name' => 'list_comments',
+                'description' => 'Read comments attached to a Nextcloud object, usually a file. Use object_type "files" and the numeric file id. Only comments visible to the current user are returned.',
+                'parameters' => ['type' => 'object', 'properties' => [
+                    'object_type' => ['type' => 'string', 'description' => 'Nextcloud object type, normally files.'],
+                    'object_id' => ['type' => 'string', 'description' => 'Object id, normally the file id.'],
+                    'limit' => ['type' => 'integer', 'description' => 'Maximum comments, 1-100.'],
+                ], 'required' => ['object_type', 'object_id']],
+            ]],
+            ['type' => 'function', 'function' => [
+                'name' => 'add_comment',
+                'description' => 'Add a comment to a Nextcloud object after the user explicitly asks to comment, annotate or reply. This requires confirmation before posting.',
+                'parameters' => ['type' => 'object', 'properties' => [
+                    'object_type' => ['type' => 'string', 'description' => 'Nextcloud object type, normally files.'],
+                    'object_id' => ['type' => 'string', 'description' => 'Object id, normally the file id.'],
+                    'message' => ['type' => 'string', 'description' => 'Exact comment text to post.'],
+                    'parent_id' => ['type' => 'string', 'description' => 'Optional parent comment id for a reply.'],
+                ], 'required' => ['object_type', 'object_id', 'message']],
+            ]],
+            ['type' => 'function', 'function' => [
+                'name' => 'delete_comment',
+                'description' => 'Delete a comment by id after explicit user confirmation.',
+                'parameters' => ['type' => 'object', 'properties' => [
+                    'comment_id' => ['type' => 'string', 'description' => 'Comment id returned by list_comments.'],
+                ], 'required' => ['comment_id']],
+            ]],
+            ['type' => 'function', 'function' => [
                 'name' => 'server_status',
                 'description' => 'Get technical status info of the Nextcloud server (version, PHP, database, app version, Ollama connectivity, user). Use when the user asks about the system, server or setup.',
                 'parameters' => ['type' => 'object', 'properties' => new \stdClass()],
@@ -697,6 +726,9 @@ class ActionExecutor {
                 'complete_task' => $this->calendar->completeTask($userId, $args),
                 'delete_task' => $this->calendar->deleteTask($userId, $args),
                 'recent_activity' => $this->activity->recent($userId, $args),
+                'list_comments' => $this->listComments($args),
+                'add_comment' => $this->addComment($userId, $args),
+                'delete_comment' => $this->deleteComment($args),
                 'server_status' => $this->serverStatus($userId),
                 'list_nextcloud_capabilities' => $this->listNextcloudCapabilities(),
                 'update_knowledge' => $this->updateKnowledge($home, $args),
@@ -706,6 +738,63 @@ class ActionExecutor {
             return ['ok' => false, 'error' => $e->getMessage()];
         }
         return $result;
+    }
+
+    private function commentsManager(): ?\OCP\Comments\ICommentsManager {
+        try {
+            $factory = $this->commentsFactory ?? Server::get(\OCP\Comments\ICommentsManagerFactory::class);
+            return $factory->getManager();
+        } catch (\Throwable) {
+            return null;
+        }
+    }
+
+    private function commentData(\OCP\Comments\IComment $comment): array {
+        return [
+            'id' => (string)$comment->getId(),
+            'parent_id' => (string)$comment->getParentId(),
+            'object_type' => (string)$comment->getObjectType(),
+            'object_id' => (string)$comment->getObjectId(),
+            'actor_type' => (string)$comment->getActorType(),
+            'actor_id' => (string)$comment->getActorId(),
+            'message' => (string)$comment->getMessage(),
+            'created' => $comment->getCreationDateTime()?->format(DATE_ATOM),
+        ];
+    }
+
+    private function listComments(array $args): array {
+        $manager = $this->commentsManager();
+        if ($manager === null) return ['ok' => false, 'error' => 'The Nextcloud comments app/service is not available.'];
+        $type = trim((string)($args['object_type'] ?? 'files'));
+        $id = trim((string)($args['object_id'] ?? ''));
+        if ($type === '' || $id === '') return ['ok' => false, 'error' => 'object_type and object_id are required'];
+        $limit = max(1, min(100, (int)($args['limit'] ?? 50)));
+        try {
+            $comments = $manager->getForObject($type, $id, $limit, 0);
+            return ['ok' => true, 'result' => ['comments' => array_map(fn($comment): array => $this->commentData($comment), $comments), 'object_type' => $type, 'object_id' => $id]];
+        } catch (\Throwable $e) { return ['ok' => false, 'error' => 'Comments could not be read.']; }
+    }
+
+    private function addComment(string $userId, array $args): array {
+        $manager = $this->commentsManager();
+        if ($manager === null) return ['ok' => false, 'error' => 'The Nextcloud comments app/service is not available.'];
+        $type = trim((string)($args['object_type'] ?? 'files')); $id = trim((string)($args['object_id'] ?? '')); $message = trim((string)($args['message'] ?? ''));
+        if ($type === '' || $id === '' || $message === '') return ['ok' => false, 'error' => 'object_type, object_id and message are required'];
+        try {
+            $comment = $manager->create('users', $userId, $type, $id);
+            $comment->setMessage(mb_substr($message, 0, \OCP\Comments\IComment::MAX_MESSAGE_LENGTH));
+            if (trim((string)($args['parent_id'] ?? '')) !== '') $comment->setParentId(trim((string)$args['parent_id']));
+            $saved = $manager->save($comment);
+            return ['ok' => true, 'result' => $this->commentData($saved)];
+        } catch (\Throwable) { return ['ok' => false, 'error' => 'Comment could not be added. Check object access and comment length.']; }
+    }
+
+    private function deleteComment(array $args): array {
+        $manager = $this->commentsManager(); $id = trim((string)($args['comment_id'] ?? ''));
+        if ($manager === null) return ['ok' => false, 'error' => 'The Nextcloud comments app/service is not available.'];
+        if ($id === '') return ['ok' => false, 'error' => 'comment_id is required'];
+        try { $manager->delete($id); return ['ok' => true, 'result' => ['comment_id' => $id, 'deleted' => true]]; }
+        catch (\Throwable) { return ['ok' => false, 'error' => 'Comment could not be deleted. Check ownership and permissions.']; }
     }
 
     /** Read-only capability discovery for agent planning; never returns secrets. */
@@ -726,7 +815,7 @@ class ActionExecutor {
                 'deck' => ['protocols' => ['Deck OCS API'], 'eva_tools' => [], 'status' => 'discovery only; no dedicated EVA adapter installed'],
                 'bookmarks' => ['protocols' => ['Bookmarks REST API'], 'eva_tools' => [], 'status' => 'discovery only; no dedicated EVA adapter installed'],
                 'forms' => ['protocols' => ['Forms OCS API'], 'eva_tools' => [], 'status' => 'discovery only; no dedicated EVA adapter installed'],
-                'comments' => ['protocols' => ['OCS Comments API'], 'eva_tools' => [], 'status' => 'discovery only; no dedicated EVA adapter installed'],
+                'comments' => ['protocols' => ['OCS Comments API', 'server-side ICommentsManager'], 'eva_tools' => ['list_comments', 'add_comment', 'delete_comment']],
             ];
             $availableApis = [];
             foreach ($apiCatalog as $app => $metadata) if (in_array($app, $apps, true)) $availableApis[$app] = $metadata;
