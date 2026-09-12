@@ -34,7 +34,14 @@ final class BackgroundChatJob extends TimedJob {
                 $chatId = (string)($item['chatId'] ?? '');
                 $chat = $this->chats->get($user, $chatId);
                 if ($chat === null) throw new \RuntimeException('Chat no longer exists');
-                $result = $this->rag->ask($user, (string)$item['message'], is_array($item['history'] ?? null) ? $item['history'] : [], (string)($chat['scopePath'] ?? ''), (string)($chat['instructions'] ?? ''), (string)($chat['persona'] ?? ''), null, false);
+                // Queued chats are read-only unless the user explicitly opted
+                // into background actions in their personal EVA settings.
+                // The setting is read at execution time, so disabling it also
+                // prevents actions for already queued requests.
+                $this->rag->setSurface(\OCA\EvaAi\Service\ToolPolicy::SURFACE_WEB);
+                $this->rag->setUserIdForExecution($user);
+                $backgroundActions = $this->rag->backgroundActionsEnabled($user);
+                $result = $this->rag->ask($user, (string)$item['message'], is_array($item['history'] ?? null) ? $item['history'] : [], (string)($chat['scopePath'] ?? ''), (string)($chat['instructions'] ?? ''), (string)($chat['persona'] ?? ''), null, $backgroundActions, $backgroundActions);
                 $answer = trim((string)($result['answer'] ?? ''));
                 if ($answer === '') throw new \RuntimeException((string)($result['error'] ?? 'The model returned no answer'));
                 $this->chats->append($user, $chatId, 'assistant', $answer, is_array($result['followups'] ?? null) ? $result['followups'] : []);

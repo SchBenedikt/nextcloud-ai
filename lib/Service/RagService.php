@@ -59,7 +59,22 @@ class RagService {
      */
     public function setSurface(string $surface): void {
         $this->executor->setSurface($surface);
-    }	/**	 * @param array<int,array{role:string,content:string}> $history
+    }
+
+    /** Whether this user explicitly opted into actions for queued chat jobs. */
+    public function backgroundActionsEnabled(string $userId): bool {
+        $this->config->setUserId($userId);
+        return $this->config->getInt('background_actions_enabled', 0) === 1
+            && $this->config->getInt('actions_enabled', 1) === 1;
+    }
+
+    /** Set the per-user context before a background execution starts. */
+    public function setUserIdForExecution(string $userId): void {
+        $this->config->setUserId($userId);
+        $this->executor->setUserId($userId);
+    }
+
+    /**	 * @param array<int,array{role:string,content:string}> $history
 	 * @param string|null $scopePath Restrict retrieval to documents at/under
 	 *        this folder path (per-chat folder scope, Issue #88).
 	 * @return array{answer:string,sources:array,model:string,error:?string,followups:string[]}

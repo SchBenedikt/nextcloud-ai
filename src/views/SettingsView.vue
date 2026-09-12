@@ -170,6 +170,9 @@
 				</div>
 				<NcCheckboxRadioSwitch v-model="actionsEnabled" type="switch" class="native-toggle" :description="$t('Let EVA create, read, rename and search files, plus work with supported contacts and notes.')">{{ $t('Allow file actions') }}
 					</NcCheckboxRadioSwitch>
+				<NcCheckboxRadioSwitch v-model="backgroundActionsEnabled" type="switch" class="native-toggle" :disabled="actionsDisabled" :description="$t('When a chat continues after you close the page, EVA may execute requested changes without an open confirmation dialog.')">
+					{{ $t('Allow background actions after I close the page') }}
+				</NcCheckboxRadioSwitch>
 				<div class="warning-note" :class="{ 'is-disabled': actionsDisabled }">
 					<strong>{{ actionsDisabled ? $t('Actions are disabled') : $t('Actions can change your files') }}</strong>
 					<span>{{ actionsDisabled ? $t('The fields below are inactive until you enable file actions.') : $t('Complete, explicit requests run directly. EVA only asks when information is missing or a target is unclear.') }}</span>
@@ -200,9 +203,6 @@
 				</div>
 				<NcCheckboxRadioSwitch v-model="notificationsEnabled" type="switch" class="native-toggle compact-switch" :description="$t('Uses Nextcloud Notifications when background or Talk work finishes.')">
 					{{ $t('Notify me when a long answer is ready') }}
-				</NcCheckboxRadioSwitch>
-				<NcCheckboxRadioSwitch v-model="userWeatherEnabled" type="switch" class="native-toggle compact-switch" :description="$t('The weather tool uses external Open-Meteo services for geocoding and forecasts.')">
-					{{ $t('Allow weather forecasts for me') }}
 				</NcCheckboxRadioSwitch>
 			</section>
 
@@ -484,6 +484,10 @@
 					</div>
 				</div>
 				<div class="admin-subsection">
+					<NcCheckboxRadioSwitch v-model="admin.weather_tool_enabled" type="switch" class="native-toggle compact-switch" :disabled="savingAdmin">
+						{{ $t('Allow weather forecasts for all users') }}
+					</NcCheckboxRadioSwitch>
+					<p class="field-help">{{ $t('Weather uses the external Open-Meteo geocoding and forecast service. This is an instance-wide privacy switch.') }}</p>
 					<p class="field-help" style="margin-bottom:12px;">{{ $t('Instance-level web search infrastructure: configure the SearxNG URL, API keys for Brave/Tavily, and result limits below. Individual users choose their provider in the Web search section above.') }}</p>
 					<div v-if="admin.web_search_provider === 'searxng' || true" class="field">
 						<NcTextField id="web-search-url" v-model="admin.web_search_url" type="url" :label="$t('SearxNG base URL')" :label-outside="true" :disabled="savingAdmin" :placeholder="$t('https://searx.example.org')" />
@@ -544,7 +548,7 @@ export default {
 			summary_model: '',
 			temperature: '0.1',
 			actions_enabled: '1',
-			weather_tool_enabled: '1',
+			background_actions_enabled: '0',
 			notify_on_complete: '1',
 			exec_write_types: '',
 			exec_write_max_chars: '100000',
@@ -623,6 +627,10 @@ export default {
 			get: () => f.value.actions_enabled === '1',
 			set: value => { f.value.actions_enabled = value ? '1' : '0' },
 		})
+		const backgroundActionsEnabled = computed({
+			get: () => f.value.background_actions_enabled === '1',
+			set: value => { f.value.background_actions_enabled = value ? '1' : '0' },
+		})
 		const notificationsEnabled = computed({
 			get: () => f.value.notify_on_complete === '1',
 			set: value => { f.value.notify_on_complete = value ? '1' : '0' },
@@ -650,10 +658,6 @@ export default {
 		function removeBriefing(id) { writeBriefings(proactiveBriefings.value.filter(item => item.id !== id)) }
 		function toggleBriefing(id) { writeBriefings(proactiveBriefings.value.map(item => item.id === id ? { ...item, enabled: item.enabled === false } : item)) }
 		function toggleBriefingActions(id) { writeBriefings(proactiveBriefings.value.map(item => item.id === id ? { ...item, allow_actions: item.allow_actions !== true } : item)) }
-		const userWeatherEnabled = computed({
-			get: () => f.value.weather_tool_enabled === '1',
-			set: value => { f.value.weather_tool_enabled = value ? '1' : '0' },
-		})
 		const userWebSearchEnabled = computed({
 			get: () => f.value.web_search_enabled === '1',
 			set: value => { f.value.web_search_enabled = value ? '1' : '0' },
@@ -671,6 +675,7 @@ export default {
 			return !!(rootEl && rootEl.dataset && rootEl.dataset.admin === '1')
 		})()
 		const admin = ref({
+			weather_tool_enabled: '1',
 			web_search_url: '',
 		})
 		const webSearchKey = ref('')
@@ -1231,7 +1236,7 @@ export default {
 		const ocrEnabled = computed({ get: () => f.value.ocr_enabled === '1', set: value => { f.value.ocr_enabled = value ? '1' : '0' } })
 		return {
 			groqKey, customProviderKey, removeGroqKey, ocrEnabled, f, status, limits, availableModels, embeddingModels, chatModels, embeddingInstalledHint, chatInstalledHint, modelLoading, modelError, checkOut, saving, checking, indexing, resetting, deletingChats, stopping, saved, loadError, message, validationErrors, resetConfirm, chatsDeleteConfirm,
-			newExcludePath, excludeError, excludeList, actionsEnabled, notificationsEnabled, userWeatherEnabled, mailIndexEnabled, talkIndexEnabled, talkWriteEnabled, indexEnrolled, actionsDisabled, busy, indexingActive, settingsLocked, maxFileSizeMb,
+			newExcludePath, excludeError, excludeList, actionsEnabled, backgroundActionsEnabled, notificationsEnabled, mailIndexEnabled, talkIndexEnabled, talkWriteEnabled, indexEnrolled, actionsDisabled, busy, indexingActive, settingsLocked, maxFileSizeMb,
 			isAdminMode, admin, userWebSearchEnabled, userWebSearchSafeSearch, userWebSearchImages, userWebSearchBrowser, userWebSearchFetchContent, webSearchKey, removeWebSearchKey, webSearchKeyStored, webSearchReady, savingAdmin, saveAdminSettings, loadAdminSettings,
 			proactiveEnabled, proactiveBriefings, briefingDraft, weekdays, dayName, addBriefing, removeBriefing, toggleBriefing, toggleBriefingActions,
 			exporting, downloadExport,
