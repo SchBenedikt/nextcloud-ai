@@ -42,6 +42,12 @@
 				</div>
 			</div>
 		</div>
+		<div v-if="health" class="health-strip" :class="health.ok ? 'health-ok' : 'health-warning'" role="status">
+			<strong>{{ health.ok ? $t('System healthy') : $t('System needs attention') }}</strong>
+			<span>{{ $t('Provider: {state}', { state: health.provider?.online ? $t('Connected') : $t('Not connected') }) }}</span>
+			<span>{{ $t('Queue: {count} active', { count: health.queue?.active || 0 }) }}</span>
+			<NcButton type="tertiary-no-background" :disabled="healthLoading" @click="loadHealth">{{ $t('Refresh diagnosis') }}</NcButton>
+		</div>
 
 		<div v-if="message.text" class="callout" :class="'callout-' + message.type" :role="message.type === 'error' ? 'alert' : 'status'">
 			<strong>{{ message.type === 'error' ? $t('Something went wrong') : message.type === 'success' ? $t('Done') : $t('Notice') }}</strong>
@@ -948,6 +954,13 @@ export default {
 			}
 		}
 
+		const health = ref(null)
+		const healthLoading = ref(false)
+		async function loadHealth() {
+			healthLoading.value = true
+			try { health.value = await api('GET', 'health') } catch (error) { health.value = { ok: false, provider: { online: false }, queue: { active: 0 }, error: errMsg(error) } } finally { healthLoading.value = false }
+		}
+
 		async function save({ changedOnly = false } = {}) {
 			if (saving.value) return false
 			const keys = changedOnly ? changedSettingKeys() : Object.keys(f.value)
@@ -1240,11 +1253,12 @@ export default {
 		})
 		onMounted(async () => {
 			await loadStatus(true)
+			await loadHealth()
 			await loadAdminSettings()
 			await loadKnowledge()
 			formReady.value = true
 			adminReady.value = isAdminMode
-			statusTimer = window.setInterval(loadStatus, 3000)
+			statusTimer = window.setInterval(() => { loadStatus(); if (Date.now() % 15000 < 3000) loadHealth() }, 3000)
 		})
 		onUnmounted(() => {
 			if (statusTimer !== null) window.clearInterval(statusTimer)
@@ -1255,13 +1269,13 @@ export default {
 
 		const ocrEnabled = computed({ get: () => f.value.ocr_enabled === '1', set: value => { f.value.ocr_enabled = value ? '1' : '0' } })
 		return {
-			groqKey, customProviderKey, removeGroqKey, ocrEnabled, f, status, limits, availableModels, embeddingModels, chatModels, embeddingInstalledHint, chatInstalledHint, modelLoading, modelError, checkOut, saving, checking, indexing, resetting, deletingChats, stopping, saved, loadError, message, validationErrors, resetConfirm, chatsDeleteConfirm,
+			groqKey, customProviderKey, removeGroqKey, ocrEnabled, f, status, health, healthLoading, statusTimer, limits, availableModels, embeddingModels, chatModels, embeddingInstalledHint, chatInstalledHint, modelLoading, modelError, checkOut, saving, checking, indexing, resetting, deletingChats, stopping, saved, loadError, message, validationErrors, resetConfirm, chatsDeleteConfirm,
 			newExcludePath, excludeError, excludeList, actionsEnabled, backgroundActionsEnabled, notificationsEnabled, learningEnabled, mailIndexEnabled, talkIndexEnabled, talkWriteEnabled, indexEnrolled, actionsDisabled, busy, indexingActive, settingsLocked, maxFileSizeMb,
 			isAdminMode, admin, userWebSearchEnabled, userWebSearchSafeSearch, userWebSearchImages, userWebSearchBrowser, userWebSearchFetchContent, webSearchKey, removeWebSearchKey, webSearchKeyStored, webSearchReady, savingAdmin, saveAdminSettings, loadAdminSettings,
 			proactiveEnabled, proactiveBriefings, briefingDraft, weekdays, dayName, addBriefing, removeBriefing, toggleBriefing, toggleBriefingActions,
 			exporting, downloadExport,
 			knowledgeContent, knowledgeOriginal, savingKnowledge, knowledgeSaved, saveKnowledgeContent,
-			formatNumber, loadStatus, save, checkOllama, addExclude, removeExclude, startIndex, startMailIndex, startTalkIndex, stopIndex, resetIndex, deleteAllChats,
+			formatNumber, loadStatus, loadHealth, save, checkOllama, addExclude, removeExclude, startIndex, startMailIndex, startTalkIndex, stopIndex, resetIndex, deleteAllChats,
 		}
 	},
 }
@@ -1438,6 +1452,10 @@ export default {
 .audit-tool { font-weight: 600; }
 .audit-detail { color: var(--color-text-maxcontrast); overflow-wrap: anywhere; }
 .audit-time { margin-left: auto; color: var(--color-text-maxcontrast); font-size: 11px; white-space: nowrap; }
+.health-strip { display: flex; align-items: center; flex-wrap: wrap; gap: 8px 16px; margin: 14px 0 4px; padding: 10px 14px; border: 1px solid var(--color-border); border-radius: var(--border-radius-large); font-size: 13px; }
+.health-strip span { color: var(--color-text-maxcontrast); }
+.health-ok { border-color: color-mix(in srgb, var(--color-success) 45%, var(--color-border)); background: color-mix(in srgb, var(--color-success) 7%, var(--color-main-background)); }
+.health-warning { border-color: color-mix(in srgb, var(--color-warning) 55%, var(--color-border)); background: color-mix(in srgb, var(--color-warning) 8%, var(--color-main-background)); }
 
 .knowledge-editor { width: 100%; min-height: 200px; padding: 12px; border: 2px solid var(--color-border); border-radius: var(--border-radius-large, 8px); background: var(--color-main-background); color: var(--color-main-text); font: inherit; font-size: 13px; line-height: 1.6; resize: vertical; box-sizing: border-box; font-family: var(--font-family-monospace, monospace); }
 .knowledge-editor:focus { border-color: var(--color-primary-element); outline: 2px solid color-mix(in srgb, var(--color-primary-element) 25%, transparent); outline-offset: 1px; }
