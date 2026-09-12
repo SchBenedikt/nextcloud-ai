@@ -38,7 +38,7 @@ Combines **vector-based semantic search** with **lexical search (BM25)** using R
 
 ### Cited Sources
 
-Every answer includes the exact **file path** where the information was found, so you can always verify the source.
+Every answer includes the exact **file path** where the information was found, so you can always verify the source. When the answer also used the web, the pages that were actually retrieved are listed as **web sources** with their site and a short excerpt, marked "Web" so they are never confused with your own files.
 
 ### Nextcloud Integration
 
@@ -65,6 +65,15 @@ Optional Nextcloud Talk bot — Eva answers in conversations using read-only too
 ### File-Context Chat
 
 Right-click any file in the Files app → **"Open with EVA"** for targeted Q&A based on that specific file's content.
+
+### Standalone Chat (legacy, frozen)
+
+A self-contained chat page (`apps/eva_ai/standalone.php`) is still shipped for
+embeddable use, and it is covered by the browser tests so it cannot rot silently.
+It is **not** the supported surface: the app is used through Nextcloud (the Eva
+icon, the Files action and the Assistant), and new features land there first. The
+standalone page receives security and compatibility fixes only — do not build on
+it, and expect it to be removed in a future major release.
 
 ### Zero Configuration
 
@@ -172,6 +181,8 @@ sudo -u www-data php occ config:app:set eva_ai top_k --value=6
 | `occ eva_ai:mounts` | List file mounts (debug) |
 | `occ eva_ai:tool` | Run a single tool (test) |
 | `occ eva_ai:talk:setup [--remove]` | Register/remove Talk bot |
+| `occ eva_ai:repair-chats <user> [--yes]` | Inspect and repair a corrupt chat store |
+| `occ eva_ai:clear-chat-lock <user> [--force]` | Release a chat lock left behind by a failed request |
 
 ---
 

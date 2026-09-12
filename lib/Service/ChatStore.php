@@ -794,6 +794,15 @@ class ChatStore {
     private const LOCK_RETRY_ATTEMPTS_EXCLUSIVE = 6;
     private const LOCK_RETRY_ATTEMPTS_SHARED = 3;
     private const LOCK_RETRY_BASE_USLEEP = 100000; // 100 ms, growing per attempt
+    /**
+     * How long contention may take before a mutation is reported as busy.
+     *
+     * Nextcloud's locking provider expires a lock after its own timeout, which
+     * is a constructor setting of `DBLockingProvider` (3600 s) and cannot be
+     * lowered per call. The retries therefore stay short and the failure is
+     * reported with enough detail to identify a stuck lock (issue #193).
+     */
+    private const LOCK_CONTENTION_WARN_MS = 2500;
 
     /**
      * Serialize all chat reads and mutations for one user across the whole
@@ -818,6 +827,7 @@ class ChatStore {
             ? self::LOCK_RETRY_ATTEMPTS_SHARED
             : self::LOCK_RETRY_ATTEMPTS_EXCLUSIVE;
         $acquired = false;
+        $started = microtime(true);
         for ($attempt = 0; $attempt < $attempts; $attempt++) {
             try {
                 $this->lockingProvider->acquireLock($lockPath, $mode);
@@ -862,7 +872,87 @@ class ChatStore {
                 ]);
             }
         }
+        $this->logContention($user, $lockPath, $mode, $attempts, $started);
         throw new ChatStoreBusyException('Chat storage is busy (another request is writing it). Please try again.');
+    }
+
+    /**
+     * Release the chat lock for one user, for administrator recovery (#193).
+     *
+     * A request that dies while holding the lock keeps it until the locking
+     * provider's own timeout - 3600 s with the database provider, which is a
+     * constructor setting of that provider and cannot be lowered per call. Reads
+     * already degrade to a lock-free read, but a mutation stays blocked for that
+     * whole hour, so an administrator needs a way out that is not "edit the lock
+     * table by hand". The lock is not owner-bound, so it can be released from
+     * here; the caller confirms that no request is running, and the command that
+     * exposes this makes that explicit.
+     *
+     * @return array{path:string,was_locked:bool,released:bool}
+     */
+    public function clearLock(string $user): array {
+        $lockPath = 'eva_ai/chat/' . $this->namespaceFor($user);
+        $mode = ILockingProvider::LOCK_EXCLUSIVE;
+        $wasLocked = false;
+        try {
+            $wasLocked = $this->lockingProvider->isLocked($lockPath, $mode);
+        } catch (\Throwable $e) {
+            // A provider that cannot answer is reported as "not locked": the
+            // command then does nothing instead of failing on a healthy store.
+            $wasLocked = false;
+        }
+        $released = false;
+        if ($wasLocked) {
+            try {
+                $this->lockingProvider->releaseLock($lockPath, $mode);
+                $released = true;
+            } catch (\Throwable $e) {
+                $this->logger->warning('eva_ai: chat lock could not be released', [
+                    'user' => $user,
+                    'exception' => $e->getMessage(),
+                ]);
+            }
+        }
+        return ['path' => $lockPath, 'was_locked' => $wasLocked, 'released' => $released];
+    }
+
+    /**
+     * Record a failed lock acquisition, including whether the lock is still held.
+     *
+     * A held lock after every retry means another request is writing (ordinary
+     * contention) or a request died holding it. Telling an administrator which
+     * of the two it is decides whether they wait or clear the lock, so the age
+     * of the block and the lock's current state are logged instead of only the
+     * fact that the operation failed (issue #193).
+     */
+    private function logContention(string $user, string $lockPath, int $mode, int $attempts, float $started): void {
+        $waitedMs = (int)round((microtime(true) - $started) * 1000);
+        $stillLocked = false;
+        try {
+            $stillLocked = $this->lockingProvider->isLocked($lockPath, $mode);
+        } catch (\Throwable $e) {
+            // A provider that cannot answer must not turn contention into an
+            // error of its own; the busy result is reported regardless.
+            $stillLocked = false;
+        }
+        $context = [
+            'user' => $user,
+            'mode' => $mode === ILockingProvider::LOCK_SHARED ? 'shared' : 'exclusive',
+            'attempts' => $attempts,
+            'waited_ms' => $waitedMs,
+            'still_locked' => $stillLocked,
+        ];
+        if ($stillLocked && $waitedMs >= self::LOCK_CONTENTION_WARN_MS) {
+            // Long contention with the lock still held: either a slow writer or
+            // a request that died. Nextcloud expires the lock by its own timeout
+            // (3600 s by default), so name the recovery step here.
+            $this->logger->error(
+                'eva_ai: chat storage stayed locked; if no request is running, the lock was left behind by a failed request and expires with the locking provider timeout',
+                $context
+            );
+            return;
+        }
+        $this->logger->info('eva_ai: chat lock contention', $context);
     }
 
     private function rootFor(string $user): \OCP\Files\SimpleFS\ISimpleFile {

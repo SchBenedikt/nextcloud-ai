@@ -92,6 +92,7 @@ Licensed under AGPL-3.0-or-later.
         <command>OCA\EvaAi\Command\Tool</command>
         <command>OCA\EvaAi\Command\TalkSetup</command>
         <command>OCA\EvaAi\Command\RepairChats</command>
+        <command>OCA\EvaAi\Command\ClearChatLock</command>
     </commands>
     <navigations>
         <navigation>

@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace OCA\EvaAi\Tests;
 
 use OCA\EvaAi\Service\ChatStore;
+use OCA\EvaAi\Service\ChatStoreBusyException;
 use OCP\Files\AppData\IAppDataFactory;
 use OCP\Files\IAppData;
 use OCP\Files\SimpleFS\ISimpleFile;
@@ -917,5 +918,106 @@ final class ChatStoreTest extends TestCase {
 		});
 
 		return [new ChatStore($factory, $logger, $lockingProvider), $file];
+	}
+
+	/**
+	 * A blocked mutation has to be diagnosable. Nextcloud expires a lock by its
+	 * own timeout, which is a constructor setting of the locking provider
+	 * (3600 s) and cannot be lowered per call, so when a lock is still held after
+	 * every retry the log has to carry enough detail to tell ordinary contention
+	 * from a lock left behind by a failed request (issue #193).
+	 */
+	public function testAContendedMutationReportsWhyItIsBusy(): void {
+		$factory = $this->createMock(IAppDataFactory::class);
+		$logger = $this->createMock(LoggerInterface::class);
+		$lockingProvider = $this->createMock(ILockingProvider::class);
+		$namespace = substr(hash('sha256', 'alice'), 0, 40);
+
+		$lockingProvider->method('acquireLock')
+			->willThrowException(new \OCP\Lock\LockedException('locked'));
+		$lockingProvider->method('releaseLock');
+		$lockingProvider->method('isLocked')
+			->with('eva_ai/chat/' . $namespace, ILockingProvider::LOCK_EXCLUSIVE)
+			->willReturn(true);
+
+		// The block is logged with its duration and the lock's state, so an admin
+		// can decide whether to wait or to clear a stale lock.
+		$recorded = [];
+		$logger->method('info')->willReturnCallback(static function (string $message, array $context = []) use (&$recorded): void {
+			$recorded[$message] = $context;
+		});
+		$logger->method('error')->willReturnCallback(static function (string $message, array $context = []) use (&$recorded): void {
+			$recorded[$message] = $context;
+		});
+
+		$store = new ChatStore($factory, $logger, $lockingProvider);
+
+		try {
+			$store->deleteAll('alice');
+			self::fail('a contended mutation must report busy instead of writing');
+		} catch (ChatStoreBusyException $e) {
+			self::assertStringContainsString('busy', $e->getMessage());
+		}
+
+		self::assertNotSame([], $recorded, 'contention must be logged');
+		$context = $recorded['eva_ai: chat lock contention'] ?? $recorded['eva_ai: chat lock could not be acquired'] ?? [];
+		self::assertSame('alice', $context['user'] ?? null);
+		self::assertSame('exclusive', $context['mode'] ?? null);
+		self::assertGreaterThan(0, $context['waited_ms'] ?? 0, 'the report must say how long it waited');
+	}
+
+	/**
+	 * The recovery path behind `occ eva_ai:clear-chat-lock` (issue #193): a
+	 * request that died holding the lock keeps a user's chat writes blocked until
+	 * the provider timeout, so an admin needs a supported way to release it.
+	 */
+	public function testAHeldLockCanBeReleasedForRecovery(): void {
+		$factory = $this->createMock(IAppDataFactory::class);
+		$logger = $this->createMock(LoggerInterface::class);
+		$lockingProvider = $this->createMock(ILockingProvider::class);
+		$namespace = substr(hash('sha256', 'alice'), 0, 40);
+		$path = 'eva_ai/chat/' . $namespace;
+
+		$lockingProvider->method('isLocked')->with($path, ILockingProvider::LOCK_EXCLUSIVE)->willReturn(true);
+		$lockingProvider->expects(self::once())
+			->method('releaseLock')
+			->with($path, ILockingProvider::LOCK_EXCLUSIVE);
+
+		$store = new ChatStore($factory, $logger, $lockingProvider);
+		$report = $store->clearLock('alice');
+
+		self::assertSame($path, $report['path']);
+		self::assertTrue($report['was_locked']);
+		self::assertTrue($report['released']);
+	}
+
+	/** A healthy store must not be disturbed: no lock, nothing released. */
+	public function testRecoveryReleasesNothingWhenTheLockIsNotHeld(): void {
+		$factory = $this->createMock(IAppDataFactory::class);
+		$logger = $this->createMock(LoggerInterface::class);
+		$lockingProvider = $this->createMock(ILockingProvider::class);
+		$lockingProvider->method('isLocked')->willReturn(false);
+		$lockingProvider->expects(self::never())->method('releaseLock');
+
+		$store = new ChatStore($factory, $logger, $lockingProvider);
+		$report = $store->clearLock('alice');
+
+		self::assertFalse($report['was_locked']);
+		self::assertFalse($report['released']);
+	}
+
+	/** A provider that cannot answer must not make the command fail. */
+	public function testRecoveryToleratesAProviderThatCannotReportState(): void {
+		$factory = $this->createMock(IAppDataFactory::class);
+		$logger = $this->createMock(LoggerInterface::class);
+		$lockingProvider = $this->createMock(ILockingProvider::class);
+		$lockingProvider->method('isLocked')->willThrowException(new \RuntimeException('backend down'));
+		$lockingProvider->expects(self::never())->method('releaseLock');
+
+		$store = new ChatStore($factory, $logger, $lockingProvider);
+		$report = $store->clearLock('alice');
+
+		self::assertFalse($report['was_locked']);
+		self::assertFalse($report['released']);
 	}
 }
