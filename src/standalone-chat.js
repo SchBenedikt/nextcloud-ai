@@ -572,7 +572,7 @@ function buildCalendarForm(args, tr) {
 		m.sources.forEach(function (item) {
 			var src = item.src || item
 			var row = document.createElement('div')
-			row.className = 'rs-item'
+			row.className = 'rs-item' + (src.external ? ' rs-item-external' : '')
 			var a = document.createElement('a')
 			a.href = src.url || '#'
 			a.target = '_blank'
@@ -580,6 +580,20 @@ function buildCalendarForm(args, tr) {
 			var prefix = item.ref !== undefined ? '[' + item.ref + '] ' : ''
 			a.textContent = prefix + (src.path || src.name || '')
 			row.appendChild(a)
+			// A web source is labelled and shows the site, so it is never mistaken
+			// for one of the user's own files.
+			if (src.external) {
+				var badge = document.createElement('span')
+				badge.className = 'rs-badge'
+				badge.textContent = tr('Web')
+				row.insertBefore(badge, a)
+				if (src.host) {
+					var hostEl = document.createElement('span')
+					hostEl.className = 'rs-host'
+					hostEl.textContent = src.host
+					row.appendChild(hostEl)
+				}
+			}
 			if (src.excerpts && src.excerpts.length) {
 				var ex = document.createElement('div')
 				ex.className = 'rs-excerpt'

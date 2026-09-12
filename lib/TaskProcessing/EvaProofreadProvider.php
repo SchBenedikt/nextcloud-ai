@@ -70,24 +70,24 @@ class EvaProofreadProvider implements ISynchronousProvider {
 
 	public function process(?string $userId, array $input, callable $reportProgress): array {
 		if ($userId === null) {
-			throw new RuntimeException('Kein Benutzerkontext');
+			throw new RuntimeException('No user context');
 		}
 		$this->appConfig->setUserId($userId);
 
 		$prompt = trim((string)($input['input'] ?? ''));
 		if ($prompt === '') {
-			throw new RuntimeException('Leere Eingabe');
+			throw new RuntimeException('Empty input');
 		}
 
 		$reportProgress(0.1);
 
 		$messages = [
-			['role' => 'system', 'content' => 'Du bist ein erfahrener Lektor und Korrekturleser. '
-				. 'Korrigiere alle Rechtschreib-, Grammatik- und Zeichensetzungsfehler im Text. '
-				. 'Verbessere den Stil und die Lesbarkeit, ohne den Inhalt zu verändern. '
-				. 'Antworte in der gleichen Sprache wie der Originaltext. '
-				. 'Gib nur den korrigierten Text zurück, keine Erklärungen zu den Änderungen.'],
-			['role' => 'user', 'content' => 'Korrigiere den folgenden Text:\n\n' . $prompt],
+			['role' => 'system', 'content' => 'You are an experienced editor and proofreader. '
+				. 'Correct every spelling, grammar and punctuation error in the text. '
+				. 'Improve the style and readability without changing the content. '
+				. 'Answer in the same language as the original text. '
+				. 'Return only the corrected text, with no explanation of the changes.'],
+			['role' => 'user', 'content' => 'Correct the following text:\n\n' . $prompt],
 		];
 
 		$reportProgress(0.3);

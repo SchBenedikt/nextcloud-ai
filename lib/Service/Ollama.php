@@ -555,7 +555,7 @@ class Ollama {
     /** @return array{ok:bool,model:string,answer:?string,error:?string} */
     public function testChat(string $model, int $timeout = 240): array {
         if ($model === '') {
-            return ['ok' => false, 'model' => '', 'answer' => null, 'error' => 'Kein Chat-Modell konfiguriert.'];
+            return ['ok' => false, 'model' => '', 'answer' => null, 'error' => 'No chat model configured.'];
         }
         try {
             $start = microtime(true);
@@ -922,7 +922,7 @@ class Ollama {
         }
         $modelName = $model['model'] ?? '';
         if ($modelName === '') {
-            return ['error' => 'Kein Chat-Modell konfiguriert.'];
+            return ['error' => 'No chat model configured.'];
         }
         if ($onProgress !== null) {
             return $this->chatStreamingAccumulate($messages, $tools, $timeout, $modelName, $onProgress, $preferredModel);

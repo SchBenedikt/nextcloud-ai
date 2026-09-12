@@ -33,6 +33,14 @@ class Indexer {
      * the admin status view accurate while removing that per-file overhead.
      */
     private const HEARTBEAT_INTERVAL_SECONDS = 10;
+    /**
+     * Upper bound on the text one extraction may produce.
+     *
+     * A mailbox or a very long export can hold more text than the index should
+     * carry; the bound keeps one oversized file from filling the chunk table and
+     * slowing every later search.
+     */
+    private const MAX_EXTRACT_CHARS = 2000000;
 
     /** Wall-clock timestamp of the last heartbeat write for this pass. */
     private int $lastHeartbeatAt = 0;
@@ -749,6 +757,10 @@ class Indexer {
         }
         $allowed = [
             'application/json', 'application/xml', 'application/x-empty',
+            // Mail and notebook exports: text lives inside a container, so the
+            // MIME type alone would exclude them.
+            'message/rfc822', 'application/mbox', 'application/x-mimearchive',
+            'multipart/related', 'application/x-ipynb+json', 'application/vnd.jupyter',
             'application/javascript', 'application/x-javascript', 'application/x-httpd-php',
             'application/sql', 'application/x-sql', 'application/yaml', 'application/x-yaml',
             'application/csv', 'application/rtf', 'application/x-latex', 'application/toml',
@@ -784,6 +796,12 @@ class Indexer {
     /** Erweiterungen, die bedenkenlos als Text gelesen werden dürfen. */
     private const TEXT_EXT = [
         'md', 'markdown', 'txt', 'text', 'log',
+        'mdx', 'patch', 'diff', 'rss', 'atom', 'kml', 'gpx', 'json5', 'hjson',
+        // Mail, web archive and mailbox containers.
+        'eml', 'mht', 'mhtml', 'mbox',
+        'tf', 'tfvars', 'hcl', 'nix', 'proto', 'graphql', 'gql', 'ipynb',
+        'svelte', 'astro', 'dart', 'v', 'sv', 'vhdl', 'pas', 'd', 'jl',
+        'cmake', 'gradle', 'properties', 'bak', 'old', 'sample', 'example',
         'html', 'htm', 'xhtml', 'xml', 'json', 'jsonl', 'yaml', 'yml', 'csv', 'tsv',
         'rtf', 'tex', 'bib', 'rst', 'adoc', 'org', 'vtt', 'srt', 'toml', 'ini', 'cfg',
         'conf', 'properties', 'env', 'webmanifest', 'svg', 'css', 'scss', 'less', 'sass',
@@ -808,10 +826,30 @@ class Indexer {
             if ($mime === 'text/html' || $mime === 'application/xhtml+xml' || str_ends_with($name, '.html') || str_ends_with($name, '.htm')) {
                 return $this->htmlText($raw);
             }
-            return $this->normalize($raw ?? '');
+            // text/* bytes can still be a non-UTF-8 encoding in practice.
+            return $this->normalize($this->toUtf8($raw ?? ''));
         }
 
         $ext = strtolower(pathinfo($name, PATHINFO_EXTENSION));
+
+        // Saved mail (.eml), a web archive (.mhtml/.mht) and a mailbox (.mbox).
+        // All three are MIME containers, so one reader covers them.
+        if (in_array($ext, ['eml', 'mht', 'mhtml', 'mbox'], true)
+            || in_array($mime, ['message/rfc822', 'application/mbox', 'application/x-mimearchive', 'multipart/related'], true)) {
+            return $ext === 'mbox' || $mime === 'application/mbox'
+                ? $this->mboxText((string)$file->getContent())
+                : $this->emlText((string)$file->getContent());
+        }
+
+        // Jupyter notebooks: cells in JSON, markdown and code kept apart.
+        if ($ext === 'ipynb' || in_array($mime, ['application/x-ipynb+json', 'application/vnd.jupyter'], true)) {
+            $text = $this->notebookText((string)$file->getContent());
+            if (trim($text) !== '') {
+                return $this->normalize($text);
+            }
+            // A notebook that does not parse is not worth a second attempt.
+            return '';
+        }
 
         if (in_array($mime, ['image/png', 'image/jpeg', 'image/tiff', 'image/webp'], true) && $this->config->get('ocr_enabled') === '1') {
             return (new OcrService())->extract((string)$file->getContent(), $mime, $this->config->get('ocr_language'));
@@ -1381,6 +1419,252 @@ class Indexer {
             $text = '# ' . $title . ($text !== '' ? "\n\n" . $text : '');
         }
         return $text;
+    }
+
+    /**
+     * Text of a saved mail message (.eml), a web archive (.mhtml/.mht) or one
+     * message inside a mailbox.
+     *
+     * A mail is a MIME tree: the real text sits in a leaf part, often encoded
+     * as base64 or quoted-printable, and the envelope fields carry the details
+     * people actually search for ("the invoice from May"). Both are read here.
+     */
+    private function emlText(string $raw): string {
+        return $this->normalize($this->mimeMessageText($raw));
+    }
+
+    /**
+     * Text of a mailbox file (.mbox).
+     *
+     * A mailbox is many messages concatenated, each introduced by a line that
+     * starts with "From ". Splitting on those separators keeps every message
+     * instead of indexing one blob in which the first envelope hides the rest.
+     * The separator line is put back before each chunk so the chunk parses as a
+     * message.
+     */
+    private function mboxText(string $raw): string {
+        $separators = [];
+        if (preg_match_all('/^From .*$/m', $raw, $matches, PREG_OFFSET_CAPTURE) === false || $matches[0] === []) {
+            return $this->emlText($raw);
+        }
+        foreach ($matches[0] as $match) {
+            $separators[] = (int)$match[1];
+        }
+        $separators[] = strlen($raw);
+        $messages = [];
+        for ($i = 0; $i < count($separators) - 1; $i++) {
+            $messages[] = substr($raw, $separators[$i], $separators[$i + 1] - $separators[$i]);
+        }
+        $out = [];
+        foreach ($messages as $message) {
+            $text = $this->mimeMessageText($message);
+            if (trim($text) !== '') {
+                $out[] = $text;
+            }
+            // A mailbox can be large; stop once the extract is long enough to
+            // answer questions from instead of indexing the whole archive.
+            if (strlen(implode("\n\n", $out)) > self::MAX_EXTRACT_CHARS) {
+                break;
+            }
+        }
+        return $this->normalize(implode("\n\n", $out));
+    }
+
+    /**
+     * Text of a Jupyter notebook: markdown and code cells, in order.
+     *
+     * The cell kind is kept as a label so a code answer does not read as prose.
+     */
+    private function notebookText(string $raw): string {
+        $data = json_decode($raw, true);
+        if (!is_array($data) || !isset($data['cells']) || !is_array($data['cells'])) {
+            return '';
+        }
+        $out = [];
+        foreach ($data['cells'] as $cell) {
+            if (!is_array($cell)) {
+                continue;
+            }
+            $source = $cell['source'] ?? '';
+            $text = is_array($source) ? implode('', array_map('strval', $source)) : (string)$source;
+            if (trim($text) === '') {
+                continue;
+            }
+            $kind = (string)($cell['cell_type'] ?? '');
+            $label = $kind === 'markdown' ? 'Markdown' : ($kind === 'code' ? 'Code' : '');
+            $out[] = ($label !== '' ? '[' . $label . "]\n" : '') . $text;
+        }
+        return implode("\n\n", $out);
+    }
+
+    /**
+     * The envelope plus the readable body of one MIME message.
+     *
+     * A multipart message usually carries the same text twice, once as plain
+     * text and once as HTML. The plain part is preferred when it exists, so an
+     * answer does not contain every sentence twice.
+     */
+    private function mimeMessageText(string $raw): string {
+        [$envelope, $parts] = $this->walkMime($raw);
+        $plain = '';
+        $html = '';
+        foreach ($parts as $part) {
+            if ($part['type'] === 'text/plain') {
+                $plain .= "\n" . $part['text'];
+            } elseif ($part['type'] === 'text/html') {
+                $html .= "\n" . $this->htmlText($part['text']);
+            }
+        }
+        $body = trim($plain) !== '' ? $plain : $html;
+        return $envelope . "\n" . $body;
+    }
+
+    /**
+     * Walk a MIME entity and return its envelope text and every textual leaf.
+     *
+     * @return array{0:string,1:list<array{type:string,text:string}>}
+     */
+    private function walkMime(string $raw, int $depth = 0): array {
+        if ($depth > 5) {
+            // A message that nests deeper than this is either broken or built
+            // to exhaust the parser, so the walk stops rather than recursing.
+            return ['', []];
+        }
+        $raw = str_replace(["\r\n", "\r"], "\n", $raw);
+        $split = $this->splitMimeHeaders($raw);
+        $headers = $split['headers'];
+        $body = $split['body'];
+
+        $envelope = [];
+        foreach (['subject' => 'Subject', 'from' => 'From', 'to' => 'To', 'cc' => 'Cc', 'date' => 'Date'] as $key => $label) {
+            if (isset($headers[$key]) && trim($headers[$key]) !== '') {
+                $envelope[] = $label . ': ' . $this->decodeMimeWords($headers[$key]);
+            }
+        }
+        $envelopeText = implode("\n", $envelope);
+
+        $contentType = trim((string)($headers['content-type'] ?? 'text/plain'));
+        $type = strtolower(trim(explode(';', $contentType)[0]));
+        // A MIME entity without a Content-Type header is plain text (RFC 2045).
+        if ($type === '') {
+            $type = 'text/plain';
+        }
+        $encoding = strtolower(trim((string)($headers['content-transfer-encoding'] ?? '')));
+
+        if (str_starts_with($type, 'multipart/')) {
+            // The boundary is taken from the header as written: it is a
+            // case-sensitive delimiter, so comparing it against a lowercased
+            // header silently drops every part of the message.
+            if (preg_match('~boundary\s*=\s*"?([^";\n]+)"?~i', $contentType, $m) !== 1) {
+                return [$envelopeText, []];
+            }
+            $boundary = '--' . trim($m[1]);
+            $chunks = explode($boundary, $body);
+            // The first chunk is the preamble, the last starts with "--".
+            array_shift($chunks);
+            $parts = [];
+            foreach ($chunks as $chunk) {
+                if (str_starts_with(ltrim($chunk), '--')) {
+                    break;
+                }
+                [, $subParts] = $this->walkMime($chunk, $depth + 1);
+                foreach ($subParts as $subPart) {
+                    $parts[] = $subPart;
+                }
+            }
+            return [$envelopeText, $parts];
+        }
+
+        $decoded = $this->decodeMimeBody($body, $encoding);
+        if ($type === 'text/html' || str_ends_with($type, '+xml') || $type === 'application/xhtml+xml') {
+            return [$envelopeText, [['type' => 'text/html', 'text' => $decoded]]];
+        }
+        if (str_starts_with($type, 'text/')) {
+            return [$envelopeText, [['type' => 'text/plain', 'text' => $decoded]]];
+        }
+        // Anything else (an image, a PDF part) is not read here; attachments are
+        // indexed from their own file when the user stores them separately.
+        return [$envelopeText, []];
+    }
+
+    /**
+     * Split an entity into its header block and its body, unfolding headers.
+     *
+     * @return array{headers:array<string,string>,body:string}
+     */
+    private function splitMimeHeaders(string $raw): array {
+        $head = $raw;
+        $body = '';
+        $blank = strpos($raw, "\n\n");
+        if ($blank !== false) {
+            $head = substr($raw, 0, $blank);
+            $body = substr($raw, $blank + 2);
+        }
+        // A continuation line starts with a space or tab and belongs to the
+        // header above it; without unfolding, a long Subject is truncated.
+        $head = (string)preg_replace("/\n[ \t]/", ' ', $head);
+        $headers = [];
+        foreach (explode("\n", $head) as $line) {
+            $pos = strpos($line, ':');
+            if ($pos === false) {
+                continue;
+            }
+            $key = strtolower(trim(substr($line, 0, $pos)));
+            if ($key === '' || isset($headers[$key])) {
+                continue;
+            }
+            $headers[$key] = trim(substr($line, $pos + 1));
+        }
+        return ['headers' => $headers, 'body' => $body];
+    }
+
+    /** Undo the transfer encoding a MIME part declares. */
+    private function decodeMimeBody(string $body, string $encoding): string {
+        if ($encoding === 'base64') {
+            $compact = (string)preg_replace('/\s+/', '', $body);
+            $decoded = base64_decode($compact, true);
+            if ($decoded === false) {
+                // A malformed base64 part must not empty the whole message;
+                // the header block above still carries searchable text.
+                return '';
+            }
+            return $this->toUtf8($decoded);
+        }
+        if ($encoding === 'quoted-printable') {
+            return $this->toUtf8(quoted_printable_decode($body));
+        }
+        return $this->toUtf8($body);
+    }
+
+    /**
+     * Mail bodies are frequently ISO-8859-1 or Windows-1252. Postgres and the
+     * JSON payload both require valid UTF-8, so a non-UTF-8 body is converted
+     * instead of being stored as broken bytes.
+     */
+    private function toUtf8(string $text): string {
+        if ($text === '' || mb_check_encoding($text, 'UTF-8')) {
+            return $text;
+        }
+        $converted = @mb_convert_encoding($text, 'UTF-8', 'Windows-1252, ISO-8859-15, ISO-8859-1');
+        if ($converted === false || $converted === '') {
+            // Last resort: drop the invalid bytes rather than fail the file.
+            return (string)mb_convert_encoding($text, 'UTF-8', 'UTF-8');
+        }
+        return $converted;
+    }
+
+    /** Decode MIME "encoded-words" (=?UTF-8?B?...?=) in a header value. */
+    private function decodeMimeWords(string $value): string {
+        if (!str_contains($value, '=?')) {
+            return $this->toUtf8($value);
+        }
+        if (function_exists('iconv_mime_decode')) {
+            $decoded = @iconv_mime_decode($value, ICONV_MIME_DECODE_CONTINUE_ON_ERROR, 'UTF-8');
+            if (is_string($decoded) && $decoded !== '') {
+                return $decoded;
+            }
+        }
+        return $this->toUtf8($value);
     }
 
     private function normalize(string $text): string {

@@ -99,13 +99,13 @@ class EvaTranslateProvider implements ISynchronousProvider {
 
 	public function process(?string $userId, array $input, callable $reportProgress): array {
 		if ($userId === null) {
-			throw new RuntimeException('Kein Benutzerkontext');
+			throw new RuntimeException('No user context');
 		}
 		$this->appConfig->setUserId($userId);
 
 		$prompt = trim((string)($input['input'] ?? ''));
 		if ($prompt === '') {
-			throw new RuntimeException('Leere Eingabe');
+			throw new RuntimeException('Empty input');
 		}
 
 		$originLanguage = (string)($input['origin_language'] ?? 'detect_language');
@@ -113,36 +113,39 @@ class EvaTranslateProvider implements ISynchronousProvider {
 
 		$reportProgress(0.1);
 
+		// Language names for the prompt are English: the prompt is an instruction
+		// to the model, not a label for the user (the picker above keeps each
+		// language in its own script, which is what a reader expects there).
 		$languageMap = [
-			'de' => 'Deutsch',
-			'en' => 'Englisch',
-			'fr' => 'Französisch',
-			'es' => 'Spanisch',
-			'it' => 'Italienisch',
-			'nl' => 'Niederländisch',
-			'pt' => 'Portugiesisch',
-			'ru' => 'Russisch',
-			'zh' => 'Chinesisch',
-			'ja' => 'Japanisch',
-			'ko' => 'Koreanisch',
-			'ar' => 'Arabisch',
-			'pl' => 'Polnisch',
-			'tr' => 'Türkisch',
+			'de' => 'German',
+			'en' => 'English',
+			'fr' => 'French',
+			'es' => 'Spanish',
+			'it' => 'Italian',
+			'nl' => 'Dutch',
+			'pt' => 'Portuguese',
+			'ru' => 'Russian',
+			'zh' => 'Chinese',
+			'ja' => 'Japanese',
+			'ko' => 'Korean',
+			'ar' => 'Arabic',
+			'pl' => 'Polish',
+			'tr' => 'Turkish',
 		];
 
 		$targetLangName = $languageMap[$targetLanguage] ?? $targetLanguage;
 
-		$systemPrompt = 'Du bist ein professioneller Übersetzer. '
-			. 'Übersetze den Text ins ' . $targetLangName . '. '
-			. 'Gib nur die Übersetzung zurück, keine zusätzlichen Erklärungen oder Kommentare. '
-			. 'Behalte den ursprünglichen Ton und Stil bei.';
+		$systemPrompt = 'You are a professional translator. '
+			. 'Translate the text into ' . $targetLangName . '. '
+			. 'Return only the translation, with no additional explanation or commentary. '
+			. 'Preserve the original tone and style.';
 
 		if ($originLanguage !== 'auto' && $originLanguage !== 'detect_language') {
 			$originLangName = $languageMap[$originLanguage] ?? $originLanguage;
-			$systemPrompt = 'Du bist ein professioneller Übersetzer. '
-				. 'Übersetze den Text von ' . $originLangName . ' ins ' . $targetLangName . '. '
-				. 'Gib nur die Übersetzung zurück, keine zusätzlichen Erklärungen oder Kommentare. '
-				. 'Behalte den ursprünglichen Ton und Stil bei.';
+			$systemPrompt = 'You are a professional translator. '
+				. 'Translate the text from ' . $originLangName . ' into ' . $targetLangName . '. '
+				. 'Return only the translation, with no additional explanation or commentary. '
+				. 'Preserve the original tone and style.';
 		}
 
 		$messages = [

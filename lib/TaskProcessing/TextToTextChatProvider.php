@@ -90,7 +90,7 @@ class TextToTextChatProvider implements ISynchronousProvider {
 		}
 		$prompt = (string)($input['input'] ?? '');
 		if (trim($prompt) === '') {
-			throw new ProcessingException('Leere Eingabe');
+			throw new ProcessingException('Empty input');
 		}
 		$reportProgress(0.1);
 

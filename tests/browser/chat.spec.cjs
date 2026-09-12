@@ -33,6 +33,50 @@ test('streams an answer and persists the question/answer pair in order', async (
   ])
 })
 
+// A web answer the user cannot check is half an answer: the pages the tools
+// retrieved have to be visible under it, labelled as web sources so they are
+// never mistaken for the user's own files.
+test('an answer shows its cited files and its web sources', async ({ page }) => {
+  await openChat(page)
+  const streamLines = [
+    line({ type: 'content', delta: 'Laut [1] und der Quelle kostet es 5 Euro.' }),
+    line({
+      type: 'done',
+      answer: 'Laut [1] und der Quelle kostet es 5 Euro.',
+      sources: [
+        { path: 'Budget.md', name: 'Budget.md', url: '/f/1', excerpts: ['Budget: 5 Euro'] },
+        {
+          path: 'Nextcloud Hub 26',
+          name: 'Nextcloud Hub 26',
+          url: 'https://nextcloud.com/hub26/',
+          host: 'nextcloud.com',
+          external: true,
+          excerpts: ['Die neue Version ist verfuegbar.'],
+        },
+      ],
+      followups: [],
+    }),
+  ]
+  await page.evaluate((lines) => { window.__mock.streamLines = lines }, streamLines)
+
+  await page.fill('#q', 'Was kostet es?')
+  await page.click('#send')
+
+  const summary = page.locator('.rs-sum')
+  await expect(summary).toContainText('Sources')
+  await summary.click()
+
+  // The cited file keeps its number; the web page is listed after it.
+  await expect(page.locator('.rs-item a').first()).toHaveText('[1] Budget.md')
+  const external = page.locator('.rs-item-external')
+  await expect(external).toHaveCount(1)
+  await expect(external.locator('a')).toHaveAttribute('href', 'https://nextcloud.com/hub26/')
+  await expect(external.locator('a')).toHaveAttribute('target', '_blank')
+  await expect(external.locator('.rs-badge')).toHaveText('Web')
+  await expect(external.locator('.rs-host')).toHaveText('nextcloud.com')
+  await expect(external.locator('.rs-excerpt')).toContainText('Die neue Version')
+})
+
 test('confirmation panel approves with a claim token and persists the resolved answer', async ({ page }) => {
   await openChat(page)
   const streamLines = [

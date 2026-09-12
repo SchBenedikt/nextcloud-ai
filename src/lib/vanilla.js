@@ -529,7 +529,7 @@ export function mountChat(root, opts = {}) {
 		m.sources.forEach((item) => {
 			const src = item.src || item
 			const row = document.createElement('div')
-			row.className = 'rs-item'
+			row.className = 'rs-item' + (src.external ? ' rs-item-external' : '')
 			const a = document.createElement('a')
 			a.href = src.url || '#'
 			a.target = '_blank'
@@ -537,6 +537,20 @@ export function mountChat(root, opts = {}) {
 			const prefix = item.ref !== undefined ? '[' + item.ref + '] ' : ''
 			a.textContent = prefix + (src.path || src.name || '')
 			row.appendChild(a)
+			// A web source is labelled as such and shows the site it came from, so
+			// it is never mistaken for one of the user's own files.
+			if (src.external) {
+				const badge = document.createElement('span')
+				badge.className = 'rs-badge'
+				badge.textContent = t('Web')
+				row.insertBefore(badge, a)
+				if (src.host) {
+					const host = document.createElement('span')
+					host.className = 'rs-host'
+					host.textContent = src.host
+					row.appendChild(host)
+				}
+			}
 			if (src.excerpts && src.excerpts.length) {
 				const ex = document.createElement('div')
 				ex.className = 'rs-excerpt'

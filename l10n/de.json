@@ -213,7 +213,7 @@
         "Headline": "Titelzeile",
         "Heavy task model (optional)": "Modell für schwere Aufgaben (optional)",
         "Home": "Start",
-        "Idle": "Bereit",
+        "I would like to perform these actions: {actions}. Shall I?": "Ich möchte folgende Aktionen ausführen: {actions}. Soll ich?", "Idle": "Bereit",
         "If the chat model above is not installed, EVA tries these models in order before failing. (E.g. llama3.1, qwen2.5)": "Falls das obige Chat-Modell nicht installiert ist, versucht EVA diese Modelle der Reihe nach, bevor es abbricht. (z. B. llama3.1, qwen2.5)",
         "If the embedding model above is not installed, EVA tries these models in order before failing.": "Falls das obige Einbettungsmodell nicht installiert ist, versucht EVA diese Modelle der Reihe nach, bevor es abbricht.",
         "In progress": "In Bearbeitung",

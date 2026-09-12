@@ -17,6 +17,40 @@ test('citations preserve first mention order and reject invalid references', () 
   const ctx = context()
   assert.equal(JSON.stringify(ctx.citedSources('[3] [1–2] [3] [0] [5-2] [9]', ['a', 'b', 'c'])), JSON.stringify([{ ref: 3, src: 'c' }, { ref: 1, src: 'a' }, { ref: 2, src: 'b' }]))
 })
+test('web sources are always listed, cited or not, after the cited files', () => {
+  const ctx = context()
+  const sources = [
+    { path: 'Budget.md', url: '/f/1' },
+    { path: 'Plan.md', url: '/f/2' },
+    { path: 'Nextcloud Hub', url: 'https://nextcloud.com/hub/', host: 'nextcloud.com', external: true },
+    { path: 'Release notes', url: 'https://github.com/nextcloud/server/releases', host: 'github.com', external: true },
+  ]
+  // [1] cites one file; the two web pages were retrieved during the answer and
+  // must still be shown, without a fabricated citation number.
+  const out = JSON.parse(JSON.stringify(ctx.citedSources('Laut [1] ist das Budget fix. Siehe https://nextcloud.com/hub/', sources)))
+  assert.deepEqual(out.map(e => e.src.url), ['/f/1', 'https://nextcloud.com/hub/', 'https://github.com/nextcloud/server/releases'])
+  assert.equal(out[0].ref, 1)
+  assert.equal(out[1].ref, undefined)
+  assert.equal(out[1].src.external, true)
+})
+test('a web source used inside a numbered citation is not listed twice', () => {
+  const ctx = context()
+  const sources = [
+    { path: 'Budget.md', url: '/f/1' },
+    { path: 'Nextcloud Hub', url: 'https://nextcloud.com/hub/', host: 'nextcloud.com', external: true },
+  ]
+  const out = JSON.parse(JSON.stringify(ctx.citedSources('Siehe [2] und [1].', sources)))
+  assert.equal(out.length, 2)
+  assert.deepEqual(out.map(e => e.ref), [2, 1])
+})
+test('an external source without a usable url is not listed', () => {
+  const ctx = context()
+  const out = JSON.parse(JSON.stringify(ctx.citedSources('Antwort', [
+    { path: 'No URL', external: true },
+    { path: 'Empty URL', url: '', external: true },
+  ])))
+  assert.deepEqual(out, [])
+})
 test('text after fenced code remains prose and multiple blocks remain separate', () => {
   const html = context().mdToHtml('Before\n\n```js\nconst x = 1\n```\nAfter **bold**\n\n```\n<safe>\n```\nEnd')
   assert.match(html, /<p>After <strong>bold<\/strong><\/p>/)

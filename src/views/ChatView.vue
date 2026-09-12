@@ -265,6 +265,8 @@ export default {
 .chatview-root .rs-item { margin-bottom: 6px; }
 .chatview-root .rs-item a { color: var(--color-primary-element, #00679c); text-decoration: none; }
 .chatview-root .rs-excerpt { margin-top: 2px; padding: 4px 8px; background: var(--color-background-dark, #f5f5f5); border-radius: 4px; font-size: 11px; line-height: 1.4; white-space: pre-wrap; word-break: break-word; }
+.chatview-root .rs-badge { display: inline-block; margin-right: 6px; padding: 1px 6px; border-radius: 8px; background: var(--color-primary-element-light, #e5f0f7); color: var(--color-primary-element, #00679c); font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; vertical-align: 1px; }
+.chatview-root .rs-host { display: block; margin-left: 0; color: var(--color-text-maxcontrast, #555); font-size: 11px; }
 .chatview-root .rfu { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
 .chatview-root .rfu-btn { padding: 4px 10px; border: 1px solid var(--color-border, #ccc); border-radius: 14px; background: var(--color-background-hover, #f6f7f8); color: var(--color-main-text, #222); font: inherit; font-size: 12px; cursor: pointer; transition: background .15s; }
 .chatview-root .rfu-btn:hover { background: var(--color-primary-element, #00679c); color: #fff; border-color: var(--color-primary-element, #00679c); }

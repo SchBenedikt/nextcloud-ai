@@ -72,8 +72,15 @@ multiple bounded runs instead of launching a single unbounded process.
 
 EVA can process plain text, Markdown, source code, CSV/TSV, HTML, JSON, XML,
 YAML, TOML, RTF, SQL, PDF, Microsoft Office files, OpenDocument files, and
-EPUB. Optionally emails (subject, sender, body) are included in the index. Size,
-path, and count limits prevent a single run from consuming unbounded resources.
+EPUB. It also reads saved mail (`.eml`), web archives (`.mht`/`.mhtml`),
+mailboxes (`.mbox`) and Jupyter notebooks (`.ipynb`): a mail contributes its
+envelope (subject, sender, recipients, date) and its readable body, and a
+mailbox contributes every message it contains. Roughly 35 further text formats
+are recognised by extension, among them `patch`, `diff`, `json5`, `tf`,
+`proto`, `graphql`, `svelte`, `dart`, `rss`, `kml` and `gpx`. Emails from the
+Nextcloud Mail app are included in the index when that app is installed. Size,
+path, and count limits prevent a single run from consuming unbounded resources,
+and a file that cannot be read is skipped instead of stopping the run.
 
 On first authenticated launch EVA may create a clearly marked, editable profile
 section in `KNOWLEDGE.md`. It contains only the intended baseline data and does
@@ -83,7 +90,10 @@ added via `update_knowledge`.
 ### Processing Pipeline
 
 1. The indexer walks the permitted portion of the personal file tree.
-2. Supported content is extracted and split into overlapping chunks.
+2. Supported content is extracted and split into overlapping chunks. A file
+   that fails halfway - a corrupt container, an unsupported encoding, a
+   password protected document - is skipped with a logged reason, and the rest
+   of the batch is indexed normally.
 3. Ollama generates embeddings for these chunks.
 4. EVA stores document metadata, text chunks, and vectors in the Nextcloud
    database.
@@ -227,8 +237,11 @@ knowledge search and should be enabled based on your own privacy requirements.
 - Mail, Talk, Notifications, and Assistant only work when the respective
   Nextcloud apps are installed, enabled, and correctly configured.
 - TaskProcessing jobs require a worker; without one they remain queued.
-- Live web search is not currently implemented. The weather tool is not a
-  general web search.
+- Live web search is opt-in per instance (off until an administrator enables
+  it) and works without an API key through DuckDuckGo and Bing. A search query
+  leaves the instance, so it must not be used for the user's own data, and a
+  page the reader opens is fetched and quoted - including its pictures - which
+  makes the source, not the model's memory, the authority for current topics.
 - Confirmed actions are protected against accidental execution but not
   guaranteed as distributed exactly-once transactions. Concurrent requests or
   infrastructure errors may still require a re-check of state.
@@ -247,6 +260,8 @@ knowledge search and should be enabled based on your own privacy requirements.
   integration is enabled.
 - "Create a download link for the report, valid until Friday." – the new link is
   returned once after confirmation; subsequent listings mask it.
+- "What changed in the newest Nextcloud release?" – a web answer, with the pages
+  it used listed as sources under the answer so every claim can be checked.
 
 ## 8. Further Documentation
 

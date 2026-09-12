@@ -70,23 +70,23 @@ class EvaSummaryProvider implements ISynchronousProvider {
 
 	public function process(?string $userId, array $input, callable $reportProgress): array {
 		if ($userId === null) {
-			throw new RuntimeException('Kein Benutzerkontext');
+			throw new RuntimeException('No user context');
 		}
 		$this->appConfig->setUserId($userId);
 
 		$prompt = trim((string)($input['input'] ?? ''));
 		if ($prompt === '') {
-			throw new RuntimeException('Leere Eingabe');
+			throw new RuntimeException('Empty input');
 		}
 
 		$reportProgress(0.1);
 
 		$messages = [
-			['role' => 'system', 'content' => 'Du bist ein hilfreicher Assistent, der Texte zusammenfasst. '
-				. 'Fasse den Text präzise und vollständig zusammen. '
-				. 'Antworte in der gleichen Sprache wie der Originaltext. '
-				. 'Gib nur die Zusammenfassung zurück, keine zusätzlichen Erklärungen.'],
-			['role' => 'user', 'content' => 'Fasse den folgenden Text zusammen:\n\n' . $prompt],
+			['role' => 'system', 'content' => 'You are a helpful assistant that summarises text. '
+				. 'Summarise the text precisely and completely. '
+				. 'Answer in the same language as the original text. '
+				. 'Return only the summary, with no additional explanation.'],
+			['role' => 'user', 'content' => 'Summarise the following text:\n\n' . $prompt],
 		];
 
 		$reportProgress(0.3);
