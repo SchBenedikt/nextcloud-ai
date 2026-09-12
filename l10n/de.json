@@ -33,6 +33,7 @@
         "How many model/tool steps EVA may chain before it must summarize. Allowed range: 4–32; higher values help complex tasks but use more time and tokens.": "Wie viele Modell-/Tool-Schritte EVA verketten darf, bevor eine Zusammenfassung nötig ist. Erlaubter Bereich: 4–32; höhere Werte helfen bei komplexen Aufgaben, benötigen aber mehr Zeit und Tokens.",
         "EVA is continuing this chat in the background": "EVA setzt diesen Chat im Hintergrund fort",
         "Background EVA run failed after retries": "Hintergrundlauf von EVA nach mehreren Versuchen fehlgeschlagen",
+        "Background EVA run failed — click to retry": "Hintergrundlauf von EVA fehlgeschlagen – zum Wiederholen klicken",
         "EVA will continue this chat in the background": "EVA setzt diesen Chat im Hintergrund fort",
         "When a chat continues after you close the page, EVA may execute requested changes without an open confirmation dialog.": "Wenn ein Chat nach dem Schließen der Seite fortgesetzt wird, darf EVA angeforderte Änderungen ohne geöffneten Bestätigungsdialog ausführen.",
         "Background actions are opt-in. EVA still follows the request and never invents unrelated changes. Disable this switch to keep queued chats read-only.": "Hintergrundaktionen sind optional. EVA folgt weiterhin der Anfrage und erfindet keine fremden Änderungen. Deaktiviere den Schalter, damit Warteschlangen-Chats schreibgeschützt bleiben.",
