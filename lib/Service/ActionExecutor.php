@@ -469,10 +469,23 @@ class ActionExecutor {
             ]],
             ['type' => 'function', 'function' => [
                 'name' => 'web_search',
-                'description' => 'Search the public web for current information that is not in the indexed files (news, releases, prices, documentation, current events). Use this whenever you need up-to-date information your indexed files do not contain. Each hit has a `title`, `url`, `snippet` and `content` (the readable text of the page itself - prefer it over the snippet, it is the source). `highlights` holds the passages of that page which actually mention the query: quote from them when they answer the question. `images` lists pictures from the page (the page\'s own preview image first) - when a picture helps the answer, embed it with markdown image syntax using its `url`. The results are already ordered by relevance, with the pages that answer the query first, so prefer the earlier entries. Ground your answer in `content` and `highlights` where present, cite the URLs you actually used as markdown links, and say so when the pages do not answer the question.',
+                'description' => 'Search the public web and the news for information that is not in the indexed files (news, releases, prices, documentation, current events). Use this whenever you need up-to-date information your indexed files do not contain. '
+                    . 'Each hit has a `title`, `url`, `snippet` and `content` (the readable text of the page itself - prefer it over the snippet, it is the source). `highlights` holds the passages of that page which actually mention the query: quote from them when they answer the question. `images` lists pictures from the page (the page\'s own preview image first) - when a picture helps the answer, embed it with markdown image syntax using its `url`; do this for the picture that illustrates your answer. `published` is the publication date when the source states one, and `source` names the outlet. '
+                    . 'Set `mode` to "news" for anything current (this week, latest, released, announced, price now) and to "all" when you want both background and the newest coverage; the default "web" is a plain web search. '
+                    . 'The results are already ordered with the best and most recent first, so prefer the earlier entries, and NEVER prefer your own memory over them: your training data is older than these results, so if they contradict what you remember, the results are right. If the results do not answer the question, search AGAIN with a different, better query (shorter, different words, the product or event name) - you may run several searches for one question - and use `open_website` to read a promising page in full before giving up. '
+                    . 'Cite the URLs you actually used as markdown links, state how recent your sources are, and say so when the pages do not answer the question.',
                 'parameters' => ['type' => 'object', 'properties' => [
                     'query' => ['type' => 'string', 'description' => 'The search query, in the user\'s language. Keep it short and specific - it is sent to an external search engine.'],
+                    'mode' => ['type' => 'string', 'enum' => WebSearchService::MODES, 'description' => 'Which index to search: "web" (default), "news" for recent articles with dates, or "all" to merge both.'],
                 ], 'required' => ['query']],
+            ]],
+            ['type' => 'function', 'function' => [
+                'name' => 'open_website',
+                'description' => 'Open one web page and read its full text, so you can work with a source instead of its search snippet. Use it after a web_search when a result looks relevant but the snippet is too short, when you need a detail (a number, a date, a quote) from a named page, or to check what a source really says. Returns the readable article text, the passages that match `query`, the page images and the publication date. Only http(s) pages can be opened.',
+                'parameters' => ['type' => 'object', 'properties' => [
+                    'url' => ['type' => 'string', 'description' => 'The full http(s) URL of the page, usually taken from a previous web_search result.'],
+                    'query' => ['type' => 'string', 'description' => 'Optional: what you are looking for on that page. The most relevant passages are returned first.'],
+                ], 'required' => ['url']],
             ]],
         ];
         // Ollama akzeptiert leere "properties" nur als leeres OBJEKT {}
@@ -619,6 +632,7 @@ class ActionExecutor {
                 'current_time' => $this->currentTime($userId),
                 'weather' => $this->weather($args),
                 'web_search' => $this->runWebSearch($args),
+                'open_website' => $this->openWebsite($args),
                 'search_mails' => $this->searchMails($userId, $args),
                 'list_mails' => $this->listMails($userId, $args),
                 'read_mail' => $this->readMail($userId, $args),
@@ -1633,6 +1647,39 @@ class ActionExecutor {
     }
 
     /**
+     * Read one page in full for the model.
+     *
+     * Search results only carry a bounded excerpt, so a detail that sits deeper
+     * in a page (a figure, a date, a quotation) would otherwise be guessed at.
+     * The URL is validated by the service, so a tool call can never make the
+     * server fetch an internal or non-http address.
+     */
+    private function openWebsite(array $args): array {
+        $url = trim((string)($args['url'] ?? ''));
+        if ($url === '') {
+            return ['ok' => false, 'error' => 'url required'];
+        }
+        $query = trim((string)($args['query'] ?? ''));
+        $page = $this->webSearch->openPage($url, $query);
+        if (!$page['ok']) {
+            return ['ok' => false, 'error' => (string)($page['error'] ?? 'The page could not be opened.')];
+        }
+        return [
+            'ok' => true,
+            'result' => [
+                'url' => $page['url'],
+                'title' => $page['title'],
+                'external' => true,
+                'published' => $page['published'],
+                'truncated' => $page['truncated'],
+                'highlights' => $page['highlights'],
+                'images' => $page['images'],
+                'text' => $page['text'],
+            ],
+        ];
+    }
+
+    /**
      * Ground an answer with external search results (Issue #187). The model
      * decides when to call this; a failed search is reported as a normal tool
      * error so the answer still falls back to the local sources.
@@ -1642,7 +1689,11 @@ class ActionExecutor {
         if ($query === '') {
             return ['ok' => false, 'error' => 'query required'];
         }
-        $result = $this->webSearch->search($query);
+        $mode = trim((string)($args['mode'] ?? 'web'));
+        if (!in_array($mode, WebSearchService::MODES, true)) {
+            $mode = 'web';
+        }
+        $result = $this->webSearch->search($query, null, $mode);
         if (!$result['ok']) {
             return ['ok' => false, 'error' => (string)($result['error'] ?? 'Web search failed.')];
         }
@@ -1656,6 +1707,7 @@ class ActionExecutor {
             'ok' => true,
             'result' => [
                 'query' => $query,
+                'mode' => $result['mode'] ?? $mode,
                 'provider' => $result['provider'],
                 // `external: true` marks these as links outside the Nextcloud
                 // instance so callers never confuse them with indexed files.

@@ -180,6 +180,155 @@
 		}
 	})
 
+	// ── Live web search test ─────────────────────────────────────────────
+
+	/**
+	 * Runs the real search service and renders what the assistant would get:
+	 * the ranked results with their source, date, amount of page text and number
+	 * of pictures. Without this the only way to find out whether a provider
+	 * answers at all was to ask the assistant and guess from its reply.
+	 */
+	function renderSearchTest(data) {
+		var box = el('eva-test-results')
+		if (box === null) {
+			return
+		}
+		box.textContent = ''
+		box.hidden = false
+
+		if (!data || data.ok !== true) {
+			var problem = document.createElement('div')
+			problem.className = 'eva-search-problem'
+			problem.textContent = (data && data.error) ? data.error : 'The search failed.'
+			if (data && data.enabled === false) {
+				var hint = document.createElement('p')
+				hint.className = 'settings-hint'
+				hint.textContent = 'Web search is switched off for your account. Turn it on in your personal Eva AI settings and choose a provider.'
+				box.appendChild(hint)
+			}
+			box.appendChild(problem)
+			return
+		}
+
+		var results = data.results || []
+		var summary = document.createElement('p')
+		summary.className = 'eva-test-summary'
+		summary.textContent = results.length + ' result' + (results.length === 1 ? '' : 's')
+			+ ' from ' + (data.provider || '?') + ' (mode: ' + (data.mode || 'web') + ')'
+		box.appendChild(summary)
+
+		if (results.length === 0) {
+			var none = document.createElement('p')
+			none.className = 'settings-hint'
+			none.textContent = 'No results. Try another query, another mode, or a different provider.'
+			box.appendChild(none)
+			return
+		}
+
+		var table = document.createElement('table')
+		table.className = 'grid eva-search-table'
+		var head = document.createElement('thead')
+		var headRow = document.createElement('tr')
+		;['#', 'Result', 'Source', 'Read', 'Pictures'].forEach(function (label) {
+			var th = document.createElement('th')
+			th.scope = 'col'
+			th.textContent = label
+			headRow.appendChild(th)
+		})
+		head.appendChild(headRow)
+		table.appendChild(head)
+
+		var body = document.createElement('tbody')
+		results.forEach(function (hit, index) {
+			var row = document.createElement('tr')
+
+			var rank = document.createElement('td')
+			rank.textContent = String(index + 1)
+			row.appendChild(rank)
+
+			var cell = document.createElement('td')
+			var link = document.createElement('a')
+			link.href = hit.url
+			link.target = '_blank'
+			link.rel = 'noopener noreferrer'
+			link.textContent = hit.title || hit.url
+			cell.appendChild(link)
+			var snippet = document.createElement('div')
+			snippet.className = 'eva-search-snippet'
+			snippet.textContent = hit.snippet || ''
+			cell.appendChild(snippet)
+			row.appendChild(cell)
+
+			var source = document.createElement('td')
+			var parts = []
+			if (hit.source) {
+				parts.push(hit.source)
+			}
+			if (hit.published) {
+				parts.push(new Date(hit.published * 1000).toLocaleDateString())
+			}
+			if (hit.news) {
+				parts.push('news')
+			}
+			source.textContent = parts.join(' · ')
+			row.appendChild(source)
+
+			var read = document.createElement('td')
+			read.textContent = hit.chars > 0
+				? hit.chars + ' chars' + (hit.highlightChars > 0 ? ' + ' + hit.highlightChars + ' highlighted' : '')
+				: 'snippet only'
+			row.appendChild(read)
+
+			var images = document.createElement('td')
+			images.textContent = String(hit.images || 0)
+			row.appendChild(images)
+
+			body.appendChild(row)
+		})
+		table.appendChild(body)
+		box.appendChild(table)
+	}
+
+	var runTest = el('eva-test-run')
+	if (runTest !== null) {
+		runTest.addEventListener('click', function () {
+			var input = el('eva-test-query')
+			var modeSelect = el('eva-test-mode')
+			var query = input === null ? '' : input.value.trim()
+			if (query === '') {
+				setStatus('eva-test-status', 'error', 'Enter a query first.')
+				return
+			}
+			runTest.disabled = true
+			setStatus('eva-test-status', 'info', 'Searching…')
+			api('POST', 'admin/websearch/test', {
+				query: query,
+				mode: modeSelect === null ? 'web' : modeSelect.value,
+			})
+				.then(function (data) {
+					setStatus('eva-test-status', data.ok ? 'success' : 'error', data.ok ? 'Done' : 'No results')
+					renderSearchTest(data)
+				})
+				.catch(function (err) {
+					setStatus('eva-test-status', 'error', err.message)
+					renderSearchTest({ ok: false, error: err.message })
+				})
+				.finally(function () {
+					runTest.disabled = false
+				})
+		})
+		// Enter in the query field starts the search.
+		var input = el('eva-test-query')
+		if (input !== null) {
+			input.addEventListener('keydown', function (event) {
+				if (event.key === 'Enter') {
+					event.preventDefault()
+					runTest.click()
+				}
+			})
+		}
+	}
+
 	// ── Tools ────────────────────────────────────────────────────────────
 
 	bindSave('eva-tools-save', 'eva-tools-status', function () {

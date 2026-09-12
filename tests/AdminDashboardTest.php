@@ -314,6 +314,7 @@ final class AdminDashboardTest extends TestCase {
         return new AdminController(
             'eva_ai',
             $request ?? $this->createMock(IRequest::class),
+            'admin',
             $config ?? $this->createMock(AppConfig::class),
             $mapper ?? $this->createMock(DocumentMapper::class),
             $indexer ?? $this->createMock(Indexer::class),

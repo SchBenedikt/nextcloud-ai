@@ -28,6 +28,9 @@ class AdminController extends OCSController {
     public function __construct(
         string $appName,
         IRequest $request,
+        // Resolved by the container to the calling user, which is what makes a
+        // live web-search test use the admin's own provider choice.
+        private ?string $userId,
         private AppConfig $config,
         private DocumentMapper $documentMapper,
         private Indexer $indexer,
@@ -52,6 +55,65 @@ class AdminController extends OCSController {
     public function getSettings(): DataResponse {
         $this->config->setUserId(null);
         return new DataResponse($this->adminSettingsPayload());
+    }
+
+    /**
+     * Run one live web search and report exactly what the assistant would get.
+     *
+     * The admin page can configure a provider but could not show whether it
+     * actually answers, so a broken provider or an enabled-but-unusable setup
+     * only became visible in a chat. This runs the real service (same provider,
+     * ranking, page reading and image extraction) and returns a bounded summary,
+     * including the concrete error when there is one. It uses the calling
+     * admin's own per-user settings, because web search is opt-in per account.
+     */
+    #[AdminRequired]
+    public function testWebSearch(): DataResponse {
+        $this->config->setUserId($this->userId);
+        $this->webSearch->setUserId($this->userId);
+        $query = trim((string)$this->request->getParam('query', ''));
+        $mode = trim((string)$this->request->getParam('mode', 'web'));
+        if (!in_array($mode, WebSearchService::MODES, true)) {
+            $mode = 'web';
+        }
+        if ($query === '') {
+            return new DataResponse(['ok' => false, 'error' => 'Enter a search query first.'], 400);
+        }
+
+        $provider = $this->webSearch->provider();
+        $result = $this->webSearch->search($query, 5, $mode);
+        if (!$result['ok']) {
+            return new DataResponse([
+                'ok' => false,
+                'provider' => $provider,
+                'mode' => $mode,
+                'enabled' => $this->webSearch->isEnabled(),
+                'error' => (string)($result['error'] ?? 'The search failed.'),
+            ]);
+        }
+
+        $rows = [];
+        foreach ($result['results'] as $hit) {
+            $rows[] = [
+                'title' => (string)($hit['title'] ?? ''),
+                'url' => (string)($hit['url'] ?? ''),
+                'source' => (string)($hit['source'] ?? ''),
+                'published' => (int)($hit['published'] ?? 0),
+                'news' => !empty($hit['news']),
+                'chars' => mb_strlen((string)($hit['content'] ?? '')),
+                'highlightChars' => mb_strlen((string)($hit['highlights'] ?? '')),
+                'images' => is_array($hit['images'] ?? null) ? count($hit['images']) : 0,
+                'snippet' => mb_substr((string)($hit['snippet'] ?? ''), 0, 300),
+            ];
+        }
+
+        return new DataResponse([
+            'ok' => true,
+            'provider' => $provider,
+            'mode' => $mode,
+            'enabled' => $this->webSearch->isEnabled(),
+            'results' => $rows,
+        ]);
     }
 
     /**

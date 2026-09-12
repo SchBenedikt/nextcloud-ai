@@ -8,6 +8,7 @@ use OCA\EvaAi\Service\AppConfig;
 use OCA\EvaAi\Service\ProviderException;
 use OCA\EvaAi\Service\WebSearchService;
 use OCP\IConfig;
+use PHPUnit\Framework\Attributes\DataProvider;
 use OCP\Security\ICrypto;
 use PHPUnit\Framework\TestCase;
 use Psr\Log\LoggerInterface;
@@ -89,7 +90,10 @@ final class WebSearchServiceTest extends TestCase {
         // unset or stale stored value has to resolve to it as well.
         $service = $this->service(['web_search_provider' => 'not-a-provider']);
         self::assertSame('duckduckgo', $service->provider());
-        self::assertSame(WebSearchService::PROVIDERS, ['duckduckgo', 'searxng', 'brave', 'tavily']);
+        self::assertSame(WebSearchService::PROVIDERS, ['duckduckgo', 'bing', 'searxng', 'brave', 'tavily']);
+        // News is a mode, not a provider: it works with every provider because
+        // it reads the free news feeds rather than the web index.
+        self::assertSame(WebSearchService::MODES, ['web', 'news', 'all']);
     }
 
     public function testAnEmptyQueryIsRejected(): void {
@@ -764,6 +768,176 @@ HTML;
         self::assertSame('', $this->callPrivate($service, 'highlights', ['', 'widget']));
     }
 
+    // ---- News feeds and the Bing provider ----
+
+    /**
+     * Bing publishes the publisher URL encoded inside an apiclick redirect; the
+     * reader must end up at the article, not at a tracking page.
+     */
+    public function testBingRedirectLinksAreUnwrapped(): void {
+        $service = $this->service();
+        self::assertSame(
+            'https://www.heise.de/news/nextcloud-1234.html',
+            $this->callPrivate($service, 'decodeFeedUrl', [
+                'http://www.bing.com/news/apiclick.aspx?ref=FexRss&aid=&url=https%3a%2f%2fwww.heise.de%2fnews%2fnextcloud-1234.html',
+            ])
+        );
+        // A plain link, an absent parameter and an unsafe target are unchanged
+        // or resolved to the link itself - never to something unsafe.
+        self::assertSame('https://example.org/a', $this->callPrivate($service, 'decodeFeedUrl', ['https://example.org/a']));
+        self::assertSame(
+            'https://www.bing.com/x?y=1',
+            $this->callPrivate($service, 'decodeFeedUrl', ['https://www.bing.com/x?y=1'])
+        );
+        self::assertSame(
+            'https://www.bing.com/x?url=javascript%3Aalert(1)',
+            $this->callPrivate($service, 'decodeFeedUrl', ['https://www.bing.com/x?url=javascript%3Aalert(1)'])
+        );
+    }
+
+    /**
+     * A news item carries the publication date and the source name, which is
+     * what lets an answer state how current it is instead of implying that it
+     * is.
+     */
+    public function testNewsFeedItemsCarryDateAndSource(): void {
+        $service = $this->service();
+        $xml = '<?xml version="1.0"?>'
+            . '<rss version="2.0"><channel><title>"nextcloud" - News</title>'
+            . '<item><title>Nextcloud Hub 26 Winter ist da</title>'
+            . '<link>http://www.bing.com/news/apiclick.aspx?ref=FexRss&amp;url=https%3a%2f%2fwww.heise.de%2fnews%2fhub26.html</link>'
+            . '<description>Die neue Version bringt eine schnellere Suche.</description>'
+            . '<pubDate>Fri, 11 Sep 2026 21:12:00 GMT</pubDate>'
+            . '<source url="https://www.heise.de">heise online</source></item>'
+            . '<item><title>Zweiter Artikel</title><link>https://example.org/b</link>'
+            . '<description>Ohne Datum.</description></item>'
+            . '</channel></rss>';
+        $rows = $this->callPrivate($service, 'parseRssResults', [$xml, 'news', 10]);
+
+        self::assertCount(2, $rows);
+        self::assertSame('https://www.heise.de/news/hub26.html', $rows[0]['url']);
+        self::assertSame('heise online', $rows[0]['source']);
+        self::assertTrue($rows[0]['news']);
+        self::assertSame(strtotime('Fri, 11 Sep 2026 21:12:00 GMT'), $rows[0]['published']);
+        // An item without a date is still usable; the date is simply unknown.
+        self::assertSame(0, $rows[1]['published']);
+        self::assertSame('example.org', $rows[1]['source']);
+    }
+
+    public function testUnparseableFeedYieldsNothing(): void {
+        $service = $this->service();
+        self::assertSame([], $this->callPrivate($service, 'parseRssResults', ['<html>blocked</html>', 'news', 10]));
+        self::assertSame([], $this->callPrivate($service, 'parseRssResults', ['', 'web', 10]));
+    }
+
+    /**
+     * A dated, recent page must outrank an undated one of equal relevance: this
+     * is what stops a question about something current from being answered with
+     * what the model remembers.
+     */
+    public function testRecentResultsOutrankUndatedOnes(): void {
+        $service = $this->service();
+        $results = [
+            ['title' => 'Widget release notes', 'url' => 'https://old.example.org/a', 'snippet' => 'widget release'],
+            [
+                'title' => 'Widget release notes',
+                'url' => 'https://new.example.org/b',
+                'snippet' => 'widget release',
+                'published' => time() - 86400 * 3,
+            ],
+        ];
+        $ranked = $this->callPrivate($service, 'rankResults', [$results, 'widget release']);
+        self::assertSame('https://new.example.org/b', $ranked[0]['url']);
+    }
+
+    /**
+     * A news search must not answer with years-old pages. A dated 2018 article
+     * that matches the query perfectly still loses to current coverage, because
+     * the whole point of asking for news is currency - this is the failure the
+     * user actually saw, where a 2016/2018 item ranked in the top six.
+     */
+    public function testNewsRankingPutsOldArticlesBelowCurrentOnes(): void {
+        $service = $this->service();
+        // The old page is the *better* textual match (it covers both terms in
+        // its title and its path), so only currency can decide.
+        $results = [
+            [
+                'title' => 'Nextcloud release guide',
+                'url' => 'https://old.example.org/nextcloud-release-guide',
+                'snippet' => 'nextcloud release',
+                'published' => strtotime('2015-05-20'),
+            ],
+            [
+                'title' => 'Nextcloud news',
+                'url' => 'https://new.example.org/nextcloud-news',
+                'snippet' => 'nextcloud announce',
+                'published' => time() - 86400 * 3,
+            ],
+        ];
+        $web = $this->callPrivate($service, 'rankResults', [$results, 'nextcloud release', false, 'web']);
+        $news = $this->callPrivate($service, 'rankResults', [$results, 'nextcloud release', false, 'news']);
+        // On the web index relevance keeps the eleven-year-old page on top...
+        self::assertSame('https://old.example.org/nextcloud-release-guide', $web[0]['url']);
+        // ...but in a news search the current one has to win.
+        self::assertSame('https://new.example.org/nextcloud-news', $news[0]['url']);
+    }
+
+    /**
+     * A news feed item with no date cannot be shown to be current, so it ranks
+     * below a dated recent one instead of competing with it on text alone.
+     */
+    public function testNewsRankingDemotesUndatedItems(): void {
+        $service = $this->service();
+        $results = [
+            ['title' => 'Nextcloud release notes', 'url' => 'https://a.example.org/x', 'snippet' => 'nextcloud release'],
+            [
+                'title' => 'Nextcloud release notes',
+                'url' => 'https://b.example.org/y',
+                'snippet' => 'nextcloud release',
+                'published' => time() - 86400 * 2,
+            ],
+        ];
+        $news = $this->callPrivate($service, 'rankResults', [$results, 'nextcloud release', false, 'news']);
+        self::assertSame('https://b.example.org/y', $news[0]['url']);
+    }
+
+    /** Recency must stay a tie-breaker on the web index. */
+    public function testWebRankingStillLetsTheBetterOldPageWin(): void {
+        $service = $this->service();
+        self::assertSame(4, $this->callPrivate($service, 'recencyScore', [time() - 86400, 'web']));
+        self::assertSame(0, $this->callPrivate($service, 'recencyScore', [time() - 86400 * 400, 'web']));
+        self::assertSame(-2, $this->callPrivate($service, 'recencyScore', [strtotime('2004-01-01'), 'web']));
+        // An undated web hit is not punished for a missing declaration.
+        self::assertSame(0, $this->callPrivate($service, 'recencyScore', [0, 'web']));
+        // The same old page loses heavily when currency is the question.
+        self::assertSame(-16, $this->callPrivate($service, 'recencyScore', [strtotime('2015-01-01'), 'news']));
+        self::assertSame(-4, $this->callPrivate($service, 'recencyScore', [0, 'news']));
+        // A wrong future date is not freshness.
+        self::assertSame(-4, $this->callPrivate($service, 'recencyScore', [time() + 86400 * 30, 'news']));
+    }
+
+    /** News and web can be merged without losing the richer record. */
+    public function testMergingKeepsTheDateFromTheNewsCopy(): void {
+        $service = $this->service();
+        $merged = $this->callPrivate($service, 'mergeByUrl', [
+            [['title' => 'A', 'url' => 'https://example.org/a', 'snippet' => 'web teaser']],
+            [['title' => 'A', 'url' => 'https://example.org/a', 'snippet' => 'a much longer news teaser', 'published' => 123, 'source' => 'Example', 'news' => true]],
+            5,
+        ]);
+        self::assertCount(1, $merged);
+        self::assertSame('a much longer news teaser', $merged[0]['snippet']);
+        self::assertSame(123, $merged[0]['published']);
+        self::assertSame('Example', $merged[0]['source']);
+    }
+
+    /** An unknown mode must fall back to a web search rather than fail. */
+    public function testUnknownModeFallsBackToWebSearch(): void {
+        $service = $this->service(['web_search_enabled' => '1', 'web_search_provider' => 'brave']);
+        $result = $service->search('nextcloud', 3, 'nonsense');
+        self::assertFalse($result['ok']);
+        self::assertSame('web', $result['mode']);
+    }
+
     public function testExtractReadableTextStillReturnsPageText(): void {
         $service = $this->service();
         $html = '<html><body><article><h1>Title</h1><p>The body text.</p>'
@@ -771,5 +945,116 @@ HTML;
         $text = $this->callPrivate($service, 'extractReadableText', [$html]);
         self::assertStringContainsString('The body text.', $text);
         self::assertStringNotContainsString('Menu', $text);
+    }
+
+    // ---- open_website must not become an SSRF primitive ----
+
+    /**
+     * The model can name any URL for `open_website`, so internal targets have to
+     * be refused before the request is made. Without this the assistant could be
+     * asked to fetch the local Ollama port, the cloud metadata service or a host
+     * on the internal network and would repeat what it read in the chat.
+     */
+    #[DataProvider('internalUrls')]
+    public function testInternalAddressesAreNotFetchable(string $url): void {
+        $service = $this->service();
+        self::assertFalse(
+            $this->callPrivate($service, 'isFetchableUrl', [$url]),
+            $url . ' must not be fetchable'
+        );
+    }
+
+    /** @return iterable<string,array{string}> */
+    public static function internalUrls(): iterable {
+        yield 'loopback ipv4' => ['http://127.0.0.1:11434/api/tags'];
+        yield 'localhost name' => ['http://localhost/nextcloud/index.php'];
+        yield 'localhost subdomain' => ['http://evil.localhost/'];
+        yield 'class c private' => ['http://192.168.1.10/router'];
+        yield 'class a private' => ['http://10.0.0.5/'];
+        yield 'link local metadata' => ['http://169.254.169.254/latest/meta-data/'];
+        yield 'ipv6 loopback' => ['http://[::1]:8080/'];
+        yield 'mapped loopback' => ['http://[::ffff:127.0.0.1]/'];
+        yield 'unspecified' => ['http://0.0.0.0/'];
+        yield 'internal suffix' => ['http://wiki.internal/secret'];
+        yield 'lan suffix' => ['http://nas.lan/'];
+        yield 'localhost dot suffix' => ['http://db.home.arpa/'];
+        yield 'credentials' => ['https://user:pass@example.org/'];
+        yield 'file scheme' => ['file:///etc/passwd'];
+        yield 'gopher scheme' => ['gopher://example.org/'];
+    }
+
+    /**
+     * A redirect is the usual way around a host check: a public address answers
+     * with a Location pointing at the internal one. `isSafeHttpUrl` therefore
+     * decides every hop, and `resolveRedirect` returns null for a target that
+     * must not be fetched instead of a URL.
+     */
+    public function testRedirectToAnInternalAddressIsRefused(): void {
+        $service = $this->service();
+        self::assertNull(
+            $this->callPrivate($service, 'resolveRedirect', ['https://example.org/start', 'http://127.0.0.1/admin'])
+        );
+        self::assertNull(
+            $this->callPrivate($service, 'resolveRedirect', ['https://example.org/start', '//169.254.169.254/'])
+        );
+        self::assertNull(
+            $this->callPrivate($service, 'resolveRedirect', ['https://example.org/start', 'file:///etc/passwd'])
+        );
+        self::assertNull(
+            $this->callPrivate($service, 'resolveRedirect', ['https://example.org/start', ''])
+        );
+    }
+
+    /** A relative Location is still followed, or ordinary redirects would break. */
+    public function testRelativeRedirectTargetsAreResolvedAgainstTheBase(): void {
+        $service = $this->service();
+        self::assertSame(
+            'https://example.org/de/docs/intro',
+            $this->callPrivate($service, 'resolveRedirect', ['https://example.org/de/docs', '/de/docs/intro'])
+        );
+        self::assertSame(
+            'https://example.org/de/docs/intro',
+            $this->callPrivate($service, 'resolveRedirect', ['https://example.org/de/docs/page', 'intro'])
+        );
+        self::assertSame(
+            'https://example.com/lib.js',
+            $this->callPrivate($service, 'resolveRedirect', ['https://example.org/de/docs', '//example.com/lib.js'])
+        );
+    }
+
+    /**
+     * Only cURL follows redirects for the fetch itself, and it must be told not
+     * to: if it did, the Location header would never be validated.
+     */
+    public function testPageFetchesDoNotLetCurlFollowRedirects(): void {
+        $source = (string)file_get_contents(__DIR__ . '/../lib/Service/WebSearchService.php');
+        $fetch = substr($source, (int)strpos($source, 'private function fetchManyOnce'));
+        $fetch = substr($fetch, 0, (int)strpos($fetch, 'private function extractReadableText'));
+        self::assertStringContainsString('CURLOPT_FOLLOWLOCATION => false', $fetch);
+    }
+
+    /** A host that does not resolve must fail closed rather than be attempted. */
+    public function testUnresolvableHostIsRefused(): void {
+        $service = $this->service();
+        self::assertFalse($this->callPrivate($service, 'isFetchableUrl', ['https://no-such-host.invalid/x']));
+    }
+
+    /** A public address stays fetchable, or the guard would break every search. */
+    public function testPublicAddressesRemainFetchable(): void {
+        $service = $this->service();
+        self::assertTrue($this->callPrivate($service, 'isFetchableUrl', ['https://93.184.216.34/page']));
+        self::assertTrue($this->callPrivate($service, 'isFetchableUrl', ['https://[2606:2800:220:1:248:1893:25c8:1946]/page']));
+        self::assertTrue($this->callPrivate($service, 'isFetchableUrl', ['https://example.org/']));
+    }
+
+    /**
+     * A URL that is only shown must not need DNS: search hits and the images on
+     * a result page are rendered by the user's browser, and resolving them
+     * server-side would drop them whenever lookup failed for an unrelated host.
+     */
+    public function testDisplayOnlyUrlsAreNotResolvedServerSide(): void {
+        $service = $this->service();
+        self::assertTrue($this->callPrivate($service, 'isSafeHttpUrl', ['https://blog.example.org/wp-content/hero.jpg']));
+        self::assertFalse($this->callPrivate($service, 'isFetchableUrl', ['https://blog.example.org/wp-content/hero.jpg']));
     }
 }

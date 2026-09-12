@@ -8,6 +8,51 @@ follows [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- Web search can search the **news** as well as the web. The `web_search` tool
+  gains a `mode`: `web` (the configured provider), `news` (Bing News and Google
+  News RSS, no API key) or `all` (both merged). News items carry their
+  publication date and source name, and the feed language follows the asking
+  user's own language. A news search works with every provider, because it reads
+  the free feeds rather than the web index.
+- A second no-key web provider: `bing`, which is read through Bing's RSS
+  endpoint and returns real titles, direct result URLs and descriptions. Google
+  offers no such endpoint — its result page is a JavaScript application that
+  cannot be read server-side without the paid API — so `bing` is the honest
+  no-key alternative, not a Google scraper that would silently return nothing.
+- New `open_website` tool: the model can open one http(s) page and read its full
+  text (up to 20000 characters) plus the passages matching its query, the page
+  images and the publication date. This is what turns "a page mentions X" into
+  an answer that actually quotes the source.
+- Results are ranked with recency as a tie-breaker: a dated, current page
+  outranks an undated one of equal relevance.
+
+### Changed
+
+- The assistant may now run several searches for one question: the tool loop
+  allows eight rounds instead of four, and if the budget is spent entirely on
+  tools the model is asked once more with the tools disabled, so a completed
+  tool chain produces an answer instead of an empty reply. The system prompt
+  tells it to refine the query, switch to news for current topics and read a
+  promising page in full before giving up, and that the search results are
+  newer than, and therefore outrank, its own memory.
+
+### Fixed
+
+- Images in answers are displayed. The chat renderer deliberately downgraded
+  every Markdown image to a text link, so the figures a web search returns never
+  appeared. They now render as pictures, with `referrerpolicy="no-referrer"` (the
+  image host learns nothing about the instance) and `loading="lazy"`, wrapped in
+  a link to the full-size original; `data:`, `javascript:` and every other unsafe
+  scheme still fall back to text.
+
+- A news search answers with current coverage. Age used to count only -1 for
+  anything older than three years, which a single matching word (+1 to +3)
+  outweighed, so `mode: news` returned 2016 and 2018 pages above this year's
+  articles. Currency is now weighted by mode: a plain web search still treats
+  age as a tie-breaker (the 2019 article that explains a topic can still win),
+  while a news search ranks a three-day-old item far above an old one and
+  demotes an undated item, because an undated news item cannot be shown to be
+  current. A future date is treated as a wrong date, not as freshness.
 - Web search now picks the best results instead of the first ones. Every
   provider is asked for more hits than are returned, the candidates are read,
   and a second ranking pass scores them on what their pages actually say
@@ -28,6 +73,22 @@ follows [Semantic Versioning](https://semver.org/).
   (`index_job_interval_minutes`, 1–60, default 5 instead of 15).
 - The admin page shows how many files the last indexing pass had to skip, both
   per account and in total.
+
+### Security
+
+- `open_website` and every other server-side page fetch can no longer be pointed
+  at the local machine or the internal network. The new tool lets the *model*
+  choose a URL, which made URL validation a security boundary rather than a
+  formatting rule: `http://127.0.0.1`, the cloud metadata service
+  (`169.254.169.254`), `192.168.x.x`/`10.x.x.x`, `[::1]`, `localhost` and
+  `.local`/`.internal` names are now refused before any request is made, a host
+  is refused when **any** of its addresses is private, and a name that does not
+  resolve fails closed. Redirects are followed by hand instead of by cURL
+  (`CURLOPT_FOLLOWLOCATION` off), so every hop is validated too — otherwise a
+  public URL could simply redirect to `127.0.0.1` and bypass the check.
+  URLs that are only displayed (search hits, result-page images the browser
+  loads) are deliberately exempt: resolving them server-side would drop images
+  whenever an unrelated lookup failed.
 
 ### Changed
 

@@ -12,20 +12,43 @@ export function escHtml(s) {
 		({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]))
 }
 
-// One parser for both chat surfaces. HTML is displayed as text; images are
-// rendered as links so assistant output cannot trigger remote tracking loads.
+// One parser for both chat surfaces. Raw HTML is displayed as text, so
+// assistant output can never inject markup.
 const markdown = new MarkdownIt({ html: false, linkify: true, breaks: true, typographer: false })
 markdown.renderer.rules.link_open = (tokens, index, options, env, self) => {
 	tokens[index].attrSet('target', '_blank')
 	tokens[index].attrSet('rel', 'noopener noreferrer')
 	return self.renderToken(tokens, index, options)
 }
-markdown.renderer.rules.image = (tokens, index) => {
+/**
+ * Render a Markdown image as an actual picture.
+ *
+ * Images were previously downgraded to plain links, so the figures a web
+ * search returns never appeared in an answer. They are shown now, but with the
+ * two guards that make a remote picture safe to load:
+ *
+ *  - `referrerpolicy="no-referrer"` so the image host never learns which
+ *    Nextcloud page (or which user) is reading the answer, and
+ *  - `loading="lazy"` so only images the user actually scrolls to are fetched.
+ *
+ * The picture is wrapped in a link to the full-size original, keeping the
+ * previous "open the source" behaviour available. Only http(s) sources are
+ * rendered; `data:`, `javascript:` and every other scheme fall back to text,
+ * exactly like an unsafe link.
+ */
+markdown.renderer.rules.image = (tokens, index, options, env, self) => {
 	const token = tokens[index]
-	const href = token.attrGet('src') || ''
-	const label = token.content || href
-	if (!markdown.validateLink(href) || /^data:/i.test(href)) return escHtml(label)
-	return '<a href="' + escHtml(href) + '" target="_blank" rel="noopener noreferrer">' + escHtml(label) + '</a>'
+	const src = token.attrGet('src') || ''
+	const label = token.content || src
+	if (!markdown.validateLink(src) || /^data:/i.test(src)) return escHtml(label)
+	const srcAttr = escHtml(src)
+	const altAttr = escHtml(label)
+	const title = token.attrGet('title')
+	return '<a class="md-image-link" href="' + srcAttr + '" target="_blank" rel="noopener noreferrer">'
+		+ '<img class="md-image" src="' + srcAttr + '" alt="' + altAttr + '"'
+		+ (title ? ' title="' + escHtml(title) + '"' : '')
+		+ ' loading="lazy" decoding="async" referrerpolicy="no-referrer">'
+		+ '</a>'
 }
 const fence = markdown.renderer.rules.fence
 markdown.renderer.rules.fence = (...args) => fence(...args).replace('<pre>', '<pre class="md-pre">')

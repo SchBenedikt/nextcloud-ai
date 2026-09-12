@@ -26,16 +26,48 @@ use Psr\Log\LoggerInterface;
  *  - `tavily`: Tavily Search API (hosted, tuned for LLM grounding).
  */
 class WebSearchService {
-    public const PROVIDERS = ['duckduckgo', 'searxng', 'brave', 'tavily'];
+    public const PROVIDERS = ['duckduckgo', 'bing', 'searxng', 'brave', 'tavily'];
 
-    /** Providers that work without an API key. */
-    public const FREE_PROVIDERS = ['duckduckgo'];
+    /**
+     * Providers that work without an API key. `bing` is a hint, not a
+     * suggestion that EVA scrapes Google: Bing's RSS endpoint serves real web
+     * results (titles, direct URLs, descriptions) and is the no-key option that
+     * actually answers from a server, whereas Google's result page is a
+     * JavaScript application and cannot be read without an API key.
+     */
+    public const FREE_PROVIDERS = ['duckduckgo', 'bing'];
+
+    /**
+     * Search modes. `news` uses the free news feeds (Bing News and Google News
+     * RSS) instead of the web index, and `all` merges both so a question about
+     * something current gets both background and the latest coverage.
+     */
+    public const MODES = ['web', 'news', 'all'];
 
     /** Encrypted at app scope; write-only through the admin API. */
     public const API_KEY_KEY = 'web_search_api_key';
 
     private const BRAVE_ENDPOINT = 'https://api.search.brave.com/res/v1/web/search';
     private const TAVILY_ENDPOINT = 'https://api.tavily.com/search';
+    /**
+     * Key-free feeds. Bing serves web results through its RSS endpoint, and both
+     * Bing and Google publish a news feed that carries the publication date and
+     * the source name - which is what lets an answer say how old it is.
+     */
+    private const BING_WEB_ENDPOINT = 'https://www.bing.com/search';
+    private const BING_NEWS_ENDPOINT = 'https://www.bing.com/news/search';
+    private const GOOGLE_NEWS_ENDPOINT = 'https://news.google.com/rss/search';
+    /** Ask the feed endpoints for XML explicitly, whatever the user agent implies. */
+    private const FEED_ACCEPT = 'application/rss+xml, application/atom+xml, application/xml;q=0.9, text/xml;q=0.8, */*;q=0.5';
+
+    /**
+     * A result is "fresh" within this many days. Recency is a tie-breaker, not a
+     * trump card: an older page that answers the question still wins, but two
+     * equally relevant pages are ordered newest first, which is what stops a
+     * chat model from answering a current question with what it remembers.
+     */
+    private const FRESH_DAYS = 45;
+    private const RECENT_DAYS = 365;
 
     /** Snippets are fed to the model, so they are bounded to protect context. */
     private const MAX_SNIPPET_CHARS = 600;
@@ -57,6 +89,12 @@ class WebSearchService {
      * choose from instead of the first few.
      */
     private const ABSOLUTE_MAX_CANDIDATES = 20;
+    /**
+     * Text budget when one page is opened directly. Far larger than the search
+     * budget: opening a page is a deliberate "read this source" step, so the
+     * useful part of a long article should actually arrive.
+     */
+    private const ABSOLUTE_MAX_OPEN_CHARS = 20000;
     private const DEFAULT_CANDIDATES = 12;
     /** Images offered per result, and the size below which one is an icon. */
     private const MAX_IMAGES_PER_RESULT = 3;
@@ -73,6 +111,18 @@ class WebSearchService {
     private const IMAGE_EXTENSIONS = ['jpg', 'jpeg', 'png', 'gif', 'webp', 'avif', 'svg', 'bmp'];
     /** Fetched pages must stay well inside the search timeout to keep chat responsive. */
     private const CONTENT_FETCH_TIMEOUT_CEILING = 8;
+    /**
+     * How many redirect hops a fetched page may take. Each hop is validated as if
+     * it were a fresh user-supplied URL, because a public address that redirects
+     * to 127.0.0.1 is exactly how an SSRF guard is bypassed.
+     */
+    private const MAX_PAGE_REDIRECTS = 3;
+    /**
+     * Host suffixes that never leave the machine or the local network. They are
+     * rejected by name so a name that only resolves inside the LAN is caught even
+     * when its address record is cached somewhere unexpected.
+     */
+    private const INTERNAL_HOST_SUFFIXES = ['.localhost', '.local', '.internal', '.home.arpa', '.lan', '.intranet'];
     /**
      * Class/id fragments that mark navigation, promotion or social chrome. They
      * are matched inside the attribute value, so "site-header-main" counts too.
@@ -128,6 +178,15 @@ class WebSearchService {
      */
     private ?string $lastDuckDuckGoError = null;
 
+    /**
+     * Host name => is public, for the lifetime of one request. A search resolves
+     * the same host several times (every result link, every image on it), and a
+     * DNS lookup per occurrence would be pure latency.
+     *
+     * @var array<string,bool>
+     */
+    private array $hostCache = [];
+
     public function __construct(
         private AppConfig $config,
         private IConfig $rawConfig,
@@ -162,7 +221,7 @@ class WebSearchService {
             return false;
         }
         return match ($this->provider()) {
-            'duckduckgo' => true,
+            'duckduckgo', 'bing' => true,
             'searxng' => $this->endpoint() !== '',
             'brave', 'tavily' => $this->hasApiKey(),
             default => false,
@@ -240,14 +299,15 @@ class WebSearchService {
      *
      * @return array{ok:bool,provider:string,results:list<array{title:string,url:string,snippet:string}>,error:?string}
      */
-    public function search(string $query, ?int $limit = null): array {
+    public function search(string $query, ?int $limit = null, string $mode = 'web'): array {
         $query = trim($query);
         $provider = $this->provider();
+        $mode = in_array($mode, self::MODES, true) ? $mode : 'web';
         if ($query === '') {
-            return ['ok' => false, 'provider' => $provider, 'results' => [], 'error' => 'A search query is required.'];
+            return ['ok' => false, 'provider' => $provider, 'mode' => $mode, 'results' => [], 'error' => 'A search query is required.'];
         }
         if (!$this->isEnabled()) {
-            return ['ok' => false, 'provider' => $provider, 'results' => [], 'error' => 'Web search is disabled by the administrator.'];
+            return ['ok' => false, 'provider' => $provider, 'mode' => $mode, 'results' => [], 'error' => 'Web search is disabled by the administrator.'];
         }
         $count = max(1, min(self::ABSOLUTE_MAX_RESULTS, $limit ?? $this->maxResults()));
         // Ask the engine for more hits than are returned. The extra candidates
@@ -255,29 +315,53 @@ class WebSearchService {
         // field to choose from, "best" inevitably collapses to "first".
         $candidates = $this->candidateLimit($count);
         $this->lastDuckDuckGoError = null;
+        $failures = [];
+        $results = [];
 
-        try {
-            $results = match ($provider) {
-                'duckduckgo' => $this->searchDuckDuckGo($query, $candidates),
-                'searxng' => $this->searchSearxng($query, $candidates),
-                'brave' => $this->searchBrave($query, $candidates),
-                'tavily' => $this->searchTavily($query, $candidates),
-                default => throw new ProviderException('Unsupported web search provider: ' . $provider),
-            };
-        } catch (ProviderException $e) {
-            return ['ok' => false, 'provider' => $provider, 'results' => [], 'error' => $e->getMessage()];
-        } catch (\Throwable $e) {
-            $this->logger->warning('eva_ai: web search failed', [
-                'provider' => $provider,
-                'exception' => $e->getMessage(),
-            ]);
-            return ['ok' => false, 'provider' => $provider, 'results' => [], 'error' => 'Web search failed.'];
+        // The two halves are attempted independently, so a blocked news feed
+        // (or a blocked web index) still leaves the other one usable instead of
+        // failing the whole question.
+        if ($mode !== 'news') {
+            try {
+                $results = match ($provider) {
+                    'duckduckgo' => $this->searchDuckDuckGo($query, $candidates),
+                    'bing' => $this->searchBing($query, $candidates),
+                    'searxng' => $this->searchSearxng($query, $candidates),
+                    'brave' => $this->searchBrave($query, $candidates),
+                    'tavily' => $this->searchTavily($query, $candidates),
+                    default => throw new ProviderException('Unsupported web search provider: ' . $provider),
+                };
+            } catch (ProviderException $e) {
+                $failures[] = $e->getMessage();
+            } catch (\Throwable $e) {
+                $this->logger->warning('eva_ai: web search failed', [
+                    'provider' => $provider,
+                    'exception' => $e->getMessage(),
+                ]);
+                $failures[] = 'Web search failed.';
+            }
+        }
+
+        if ($mode !== 'web') {
+            try {
+                $news = $this->searchNews($query, $candidates);
+                if ($news !== []) {
+                    // News items carry a publication date and a source name; both
+                    // are what let the answer say how current it is.
+                    $results = $this->mergeByUrl($results, $news, $candidates + $count);
+                }
+            } catch (ProviderException $e) {
+                $failures[] = $e->getMessage();
+            } catch (\Throwable $e) {
+                $this->logger->warning('eva_ai: news search failed', ['exception' => $e->getMessage()]);
+                $failures[] = 'The news feeds could not be read.';
+            }
         }
 
         // An empty result set must never be reported as success: the model
         // would then claim the web had no answer. Say why instead.
         if ($results === []) {
-            return ['ok' => false, 'provider' => $provider, 'results' => [], 'error' => $this->emptyResultError($provider)];
+            return ['ok' => false, 'provider' => $provider, 'mode' => $mode, 'results' => [], 'error' => $this->emptyResultError($provider, $mode, $failures)];
         }
 
         // Two-phase selection. First a cheap pass ranks on title, snippet and
@@ -285,13 +369,92 @@ class WebSearchService {
         // then read, and a second pass re-ranks them on what they actually say.
         // Only after that are the best `$count` kept, so the returned list is
         // chosen by evidence rather than by the engine's order.
-        $results = $this->rankResults($results, $query);
+        $results = $this->rankResults($results, $query, false, $mode);
         $results = array_slice($results, 0, min(count($results), self::ABSOLUTE_MAX_CONTENT_PAGES));
         $results = $this->enrichWithPageContent($results, $query);
-        $results = $this->rankResults($results, $query, true);
+        $results = $this->rankResults($results, $query, true, $mode);
         $results = array_slice($results, 0, $count);
 
-        return ['ok' => true, 'provider' => $provider, 'results' => $results, 'error' => null];
+        return ['ok' => true, 'provider' => $provider, 'mode' => $mode, 'results' => $results, 'error' => null];
+    }
+
+    /**
+     * Read a single page on demand.
+     *
+     * A search snippet is a teaser; this is what lets the model actually read a
+     * source it found, which is the difference between quoting a page and
+     * guessing at it. The text budget is deliberately far larger than the one
+     * used during a search, because reading one page deeply is the whole point.
+     *
+     * @return array{ok:bool,url:string,title:string,text:string,highlights:string,images:list<array{url:string,alt:string,width:int,height:int}>,published:?int,truncated:bool,error:?string}
+     */
+    public function openPage(string $url, string $query = ''): array {
+        $url = trim($url);
+        $empty = ['url' => $url, 'title' => '', 'text' => '', 'highlights' => '', 'images' => [], 'published' => null, 'truncated' => false];
+        if (!$this->isEnabled()) {
+            return $empty + ['ok' => false, 'error' => 'Web search is disabled by the administrator.'];
+        }
+        if (!$this->isFetchablePage($url)) {
+            return $empty + ['ok' => false, 'error' => 'That URL cannot be opened. Only http(s) pages with readable content are supported.'];
+        }
+
+        $bodies = $this->fetchMany([$url]);
+        $html = (string)($bodies[0] ?? '');
+        if ($html === '') {
+            return $empty + ['ok' => false, 'error' => 'The page could not be loaded.'];
+        }
+
+        $page = $this->extractPage($html, $url);
+        $text = $page['text'];
+        if ($text === '') {
+            return $empty + ['ok' => false, 'error' => 'The page contained no readable text (it may require JavaScript or a login).'];
+        }
+
+        $limit = self::ABSOLUTE_MAX_OPEN_CHARS;
+        $published = $this->publishedTimestamp($html);
+        return [
+            'ok' => true,
+            'url' => $url,
+            'title' => $this->clamp($this->pageTitle($html), self::MAX_TITLE_CHARS),
+            'text' => mb_substr($text, 0, $limit),
+            'highlights' => $this->highlights($text, $query),
+            'images' => $page['images'],
+            'published' => $published > 0 ? $published : null,
+            'truncated' => mb_strlen($text) > $limit,
+            'error' => null,
+        ];
+    }
+
+    /** The page's own <title>, used to label an opened page. */
+    private function pageTitle(string $html): string {
+        if (preg_match('~<title\b[^>]*>(.*?)</title>~is', $html, $match) !== 1) {
+            return '';
+        }
+        return $this->normaliseText(strip_tags($match[1]));
+    }
+
+    /**
+     * The publication or modification time a page declares, if any.
+     *
+     * News and blog pages state it in `article:published_time`,
+     * `og:updated_time` or as JSON-LD `datePublished`. Knowing it is what lets
+     * the answer say how old it is instead of presenting a 2019 article as
+     * current news.
+     */
+    private function publishedTimestamp(string $html): int {
+        foreach ([
+            '~<meta[^>]+(?:property|name)=["\'](?:article:published_time|article:modified_time|og:updated_time|datePublished|date)["\'][^>]*content=["\']([^"\']+)["\']~i',
+            '~<meta[^>]+content=["\']([^"\']+)["\'][^>]*(?:property|name)=["\'](?:article:published_time|article:modified_time|og:updated_time|datePublished)["\']~i',
+            '~["\']datePublished["\']\s*:\s*["\']([^"\']+)["\']~i',
+        ] as $pattern) {
+            if (preg_match($pattern, $html, $match) === 1) {
+                $timestamp = strtotime(trim($match[1]));
+                if ($timestamp !== false && $timestamp > 0) {
+                    return $timestamp;
+                }
+            }
+        }
+        return 0;
     }
 
     /**
@@ -299,9 +462,17 @@ class WebSearchService {
      * cause (anti-bot page, unreachable endpoint) is much more useful than a
      * generic "no results", because the fix differs entirely.
      */
-    private function emptyResultError(string $provider): string {
+    private function emptyResultError(string $provider, string $mode = 'web', array $failures = []): string {
+        if ($failures !== []) {
+            // Report the concrete reason instead of a generic "no results": the
+            // fix (a different provider, a key) depends on it.
+            return implode(' ', array_unique($failures));
+        }
         if ($provider === 'duckduckgo' && $this->lastDuckDuckGoError !== null) {
             return $this->lastDuckDuckGoError;
+        }
+        if ($mode === 'news') {
+            return 'The news feeds returned no articles for this query. Try a broader query, or search the web instead.';
         }
         return 'The web search provider returned no results for this query.';
     }
@@ -318,7 +489,7 @@ class WebSearchService {
      * @param list<array{title:string,url:string,snippet:string}> $results
      * @return list<array{title:string,url:string,snippet:string}>
      */
-    private function rankResults(array $results, string $query, bool $useContent = false): array {
+    private function rankResults(array $results, string $query, bool $useContent = false, string $mode = 'web'): array {
         $terms = $this->queryTerms($query);
         if ($terms === [] || count($results) < 2) {
             return array_values($results);
@@ -395,6 +566,11 @@ class WebSearchService {
                 $score -= 6;
             }
 
+            // Recency. A chat model answers a current question from what it was
+            // trained on, which is exactly how users end up with outdated
+            // answers, so how old a page is has to weigh in.
+            $score += $this->recencyScore((int)($result['published'] ?? 0), $mode);
+
             // Diversity: five hits from one domain describe one source, not
             // five answers. Repeats are demoted, never removed, so a genuinely
             // dominant source can still come first.
@@ -413,6 +589,47 @@ class WebSearchService {
         });
 
         return array_values(array_map(static fn(array $row): array => $row['result'], $scored));
+    }
+
+    /**
+     * How much a page's age counts, which depends entirely on what was asked.
+     *
+     * In **web** mode currency is a tie-breaker: someone asking about a protocol
+     * or a technique wants the best explanation, and the 2019 article that
+     * explains it should still win, so age only nudges the order.
+     *
+     * In **news** mode currency *is* the question. A two-year-old post is not
+     * news, and an item with no date at all is stale by definition. Both an old
+     * and an undated item therefore have to lose by more than any amount of term
+     * overlap can win, or "show me the latest" quietly returns the same stale
+     * pages the model already knew - which is the exact failure this ranking
+     * exists to prevent.
+     */
+    private function recencyScore(int $published, string $mode): int {
+        $news = $mode === 'news';
+        if ($published <= 0) {
+            // Only news feeds carry dates reliably; an undated web hit must not
+            // be punished for a page that simply does not declare one.
+            return $news ? -4 : 0;
+        }
+        $ageDays = (time() - $published) / 86400;
+        if ($ageDays < 0) {
+            // A date in the future is a wrong date, not a fresh document.
+            return $news ? -4 : 0;
+        }
+        if ($ageDays <= self::FRESH_DAYS) {
+            return $news ? 14 : 4;
+        }
+        if ($ageDays <= 90) {
+            return $news ? 9 : 3;
+        }
+        if ($ageDays <= self::RECENT_DAYS) {
+            return $news ? 3 : 2;
+        }
+        if ($ageDays <= 3 * self::RECENT_DAYS) {
+            return $news ? -7 : 0;
+        }
+        return $news ? -16 : -2;
     }
 
     /**
@@ -560,7 +777,7 @@ class WebSearchService {
      * and media would waste a request and produce nothing useful.
      */
     private function isFetchablePage(string $url): bool {
-        if (!$this->isSafeHttpUrl($url)) {
+        if (!$this->isFetchableUrl($url)) {
             return false;
         }
         $path = mb_strtolower((string)(parse_url($url, PHP_URL_PATH) ?? ''));
@@ -586,20 +803,101 @@ class WebSearchService {
      * @return array<int,string> index => body, only for successful fetches
      */
     private function fetchMany(array $urls): array {
+        $bodies = [];
+        $pending = [];
+        foreach ($urls as $index => $url) {
+            // The starting URL is validated here as well as by the caller, so no
+            // fetch path can reach this method with an internal address.
+            if ($this->isFetchableUrl($url)) {
+                $pending[$index] = $url;
+            }
+        }
+
+        // Redirects are followed by hand rather than by cURL. `FOLLOWLOCATION`
+        // would jump to whatever the next hop names - including 127.0.0.1 or the
+        // metadata service - without giving this code a chance to look at it. One
+        // batched request per hop keeps the parallelism and closes that hole.
+        for ($hop = 0; $hop <= self::MAX_PAGE_REDIRECTS && $pending !== []; $hop++) {
+            $responses = $this->fetchManyOnce($pending);
+            $next = [];
+            foreach ($responses as $index => $response) {
+                $status = (int)$response['status'];
+                if ($status >= 300 && $status < 400) {
+                    $target = $this->resolveRedirect($pending[$index], (string)$response['location']);
+                    // The last hop's redirect is not followed: a page that needs
+                    // more hops than the budget is dropped, not chased.
+                    if ($target !== null && $hop < self::MAX_PAGE_REDIRECTS) {
+                        $next[$index] = $target;
+                    }
+                    continue;
+                }
+                if ($status >= 200 && $status < 300 && $response['body'] !== '') {
+                    // Keep the caller's index, which identifies the result the
+                    // body belongs to.
+                    $bodies[$index] = $response['body'];
+                }
+            }
+            $pending = $next;
+        }
+
+        return $bodies;
+    }
+
+    /**
+     * Absolute, still-public URL of a redirect target, or null when the target is
+     * relative junk, another scheme, or an address that must not be fetched.
+     */
+    private function resolveRedirect(string $baseUrl, string $location): ?string {
+        $location = trim($location);
+        if ($location === '') {
+            return null;
+        }
+        if (preg_match('~^[a-z][a-z0-9+.\-]*:~i', $location) === 1) {
+            $absolute = $location;
+        } elseif (str_starts_with($location, '//')) {
+            $absolute = (string)(parse_url($baseUrl, PHP_URL_SCHEME) ?: 'https') . ':' . $location;
+        } else {
+            $parts = parse_url($baseUrl);
+            if (!is_array($parts) || !isset($parts['scheme'], $parts['host'])) {
+                return null;
+            }
+            $authority = $parts['scheme'] . '://' . $parts['host']
+                . (isset($parts['port']) ? ':' . $parts['port'] : '');
+            if (str_starts_with($location, '/')) {
+                $absolute = $authority . $location;
+            } else {
+                $directory = (string)(parse_url($baseUrl, PHP_URL_PATH) ?? '/');
+                $directory = substr($directory, 0, (int)strrpos($directory, '/') + 1) ?: '/';
+                $absolute = $authority . $directory . $location;
+            }
+        }
+        return $this->isFetchableUrl($absolute) ? $absolute : null;
+    }
+
+    /**
+     * One batch of parallel GETs. Redirects are reported rather than followed, and
+     * each response is returned with its status so the caller can decide.
+     *
+     * @param array<int,string> $urls index => url
+     * @return array<int,array{status:int,body:string,location:string}>
+     */
+    private function fetchManyOnce(array $urls): array {
         $multi = curl_multi_init();
         $timeout = max(3, min(self::CONTENT_FETCH_TIMEOUT_CEILING, $this->timeout()));
         $handles = [];
+        $locations = [];
         foreach ($urls as $index => $url) {
             $ch = curl_init($url);
             if ($ch === false) {
                 continue;
             }
+            $locations[$index] = '';
             curl_setopt_array($ch, [
                 CURLOPT_RETURNTRANSFER => true,
                 CURLOPT_TIMEOUT => $timeout,
                 CURLOPT_CONNECTTIMEOUT => min(4, $timeout),
-                CURLOPT_FOLLOWLOCATION => true,
-                CURLOPT_MAXREDIRS => 3,
+                // Deliberately off: every hop is validated by fetchMany instead.
+                CURLOPT_FOLLOWLOCATION => false,
                 CURLOPT_SSL_VERIFYPEER => true,
                 CURLOPT_SSL_VERIFYHOST => 2,
                 CURLOPT_ENCODING => '',
@@ -608,15 +906,21 @@ class WebSearchService {
                     'Accept: text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
                     'Accept-Language: en-US,en;q=0.9,de;q=0.8',
                 ],
+                CURLOPT_HEADERFUNCTION => function ($ch, string $header) use (&$locations, $index): int {
+                    if (preg_match('~^location:\s*(.+?)\s*$~i', $header, $match) === 1) {
+                        $locations[$index] = $match[1];
+                    }
+                    return strlen($header);
+                },
             ]);
             curl_multi_add_handle($multi, $ch);
             $handles[$index] = $ch;
         }
 
-        $bodies = [];
+        $responses = [];
         if ($handles === []) {
             curl_multi_close($multi);
-            return $bodies;
+            return $responses;
         }
 
         $running = 0;
@@ -628,18 +932,19 @@ class WebSearchService {
         } while ($running > 0 && $status === CURLM_OK);
 
         foreach ($handles as $index => $ch) {
-            $httpCode = (int)curl_getinfo($ch, CURLINFO_RESPONSE_CODE);
             $body = curl_multi_getcontent($ch);
-            if ($httpCode >= 200 && $httpCode < 300 && is_string($body) && $body !== '') {
-                $bodies[$index] = $body;
-            }
+            $responses[$index] = [
+                'status' => (int)curl_getinfo($ch, CURLINFO_RESPONSE_CODE),
+                'body' => is_string($body) ? $body : '',
+                'location' => (string)($locations[$index] ?? ''),
+            ];
             curl_multi_remove_handle($multi, $ch);
             // No curl_close(): handles are freed automatically since PHP 8.0 and
             // the call is deprecated in 8.5.
         }
         curl_multi_close($multi);
 
-        return $bodies;
+        return $responses;
     }
 
     /**
@@ -1186,6 +1491,13 @@ class WebSearchService {
             if ((string)($byUrl[$url]['title'] ?? '') === '') {
                 $byUrl[$url]['title'] = $result['title'];
             }
+            // A duplicate that carries the publication date, the source name or
+            // the news flag must not lose it to the record that arrived first.
+            foreach (['published', 'source', 'news'] as $key) {
+                if (isset($result[$key]) && !isset($byUrl[$url][$key])) {
+                    $byUrl[$url][$key] = $result[$key];
+                }
+            }
         }
         return array_slice(array_values($byUrl), 0, $count);
     }
@@ -1259,9 +1571,14 @@ class WebSearchService {
      *
      * @return list<string>
      */
-    private function browserHeaders(string $endpoint = ''): array {
+    /**
+     * @param string $accept replaces the default Accept header. The feed
+     *        endpoints serve XML, and asking a browser-like client for HTML
+     *        there can return the HTML site instead of the feed.
+     */
+    private function browserHeaders(string $endpoint = '', string $accept = ''): array {
         $headers = [
-            'Accept: text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
+            $accept !== '' ? 'Accept: ' . $accept : 'Accept: text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
             'Accept-Language: en-US,en;q=0.9,de;q=0.8',
             'Cache-Control: no-cache',
             'Pragma: no-cache',
@@ -1663,6 +1980,248 @@ class WebSearchService {
         return $out;
     }
 
+    /**
+     * Bing web results, read from its RSS endpoint (no API key).
+     *
+     * Bing's HTML page is a script-driven application whose result list cannot
+     * be parsed reliably, but the same search is available as RSS with real
+     * titles, direct result URLs and descriptions. Google offers no equivalent:
+     * its result page is JavaScript-only and its feeds cover news, not the web.
+     *
+     * @return list<array{title:string,url:string,snippet:string}>
+     */
+    private function searchBing(string $query, int $count): array {
+        $url = self::BING_WEB_ENDPOINT . '?' . http_build_query([
+            'q' => $query,
+            'format' => 'RSS',
+            'count' => min(50, max(10, $count)),
+        ]);
+        $body = $this->httpGet($url, $this->browserHeaders(self::BING_WEB_ENDPOINT, self::FEED_ACCEPT));
+        return $this->parseRssResults($body, 'web', $count);
+    }
+
+    /**
+     * News from the free feeds: Bing News and Google News.
+     *
+     * Both need no API key and both carry what a web result lacks - the
+     * publication date and the source name. Bing's items link straight to the
+     * publisher; Google's items are redirect links that open the article in a
+     * browser, so they are kept but never preferred over a direct link.
+     *
+     * @return list<array{title:string,url:string,snippet:string,published:int,source:string,news:bool}>
+     */
+    private function searchNews(string $query, int $count): array {
+        $locale = $this->newsLocale();
+        $feeds = [
+            self::BING_NEWS_ENDPOINT . '?' . http_build_query(['q' => $query, 'format' => 'RSS']) => $this->browserHeaders(self::BING_NEWS_ENDPOINT, self::FEED_ACCEPT),
+            self::GOOGLE_NEWS_ENDPOINT . '?' . http_build_query([
+                'q' => $query,
+                'hl' => $locale['hl'],
+                'gl' => $locale['gl'],
+                'ceid' => $locale['ceid'],
+            ]) => $this->browserHeaders(self::GOOGLE_NEWS_ENDPOINT, self::FEED_ACCEPT),
+        ];
+        $collected = [];
+        foreach ($feeds as $url => $headers) {
+            try {
+                $body = $this->httpGet((string)$url, $headers);
+                foreach ($this->parseRssResults($body, 'news', $count) as $row) {
+                    $collected[] = $row;
+                }
+            } catch (\Throwable $e) {
+                // One feed being unavailable must not lose the other one.
+                $this->logger->info('eva_ai: news feed unavailable', ['feed' => (string)parse_url((string)$url, PHP_URL_HOST), 'error' => $e->getMessage()]);
+            }
+        }
+        if ($collected === []) {
+            throw new ProviderException('The news feeds could not be read.');
+        }
+        return $this->deduplicate($collected, $count);
+    }
+
+    /**
+     * Read an RSS/Atom feed into the normalized result shape.
+     *
+     * Only http(s) item links survive, so a feed can never introduce a
+     * javascript: or file: link into an answer. A Bing item wraps the publisher
+     * URL in an apiclick redirect; the real URL is taken from its `url=`
+     * parameter so the user ends up at the article rather than a tracking page.
+     *
+     * @return list<array<string,mixed>>
+     */
+    private function parseRssResults(string $xml, string $kind, int $count): array {
+        if (trim($xml) === '') {
+            return [];
+        }
+        $items = $this->rssItems($xml);
+        $out = [];
+        foreach ($items as $item) {
+            $title = $this->clamp((string)($item['title'] ?? ''), self::MAX_TITLE_CHARS);
+            $link = $this->decodeFeedUrl(trim((string)($item['link'] ?? '')));
+            if ($link === '' || !$this->isSafeHttpUrl($link)) {
+                continue;
+            }
+            $snippet = $this->clamp((string)($item['description'] ?? ''), self::MAX_SNIPPET_CHARS);
+            $row = [
+                'title' => $title !== '' ? $title : $link,
+                'url' => $link,
+                'snippet' => $snippet,
+            ];
+            if ($kind === 'news') {
+                $row['published'] = $this->parseFeedDate((string)($item['pubDate'] ?? ''));
+                $source = $this->clamp((string)($item['source'] ?? ''), 120);
+                if ($source === '') {
+                    $source = (string)(parse_url($link, PHP_URL_HOST) ?? '');
+                }
+                $row['source'] = $source;
+                $row['news'] = true;
+            }
+            $out[] = $row;
+            if (count($out) >= $count) {
+                break;
+            }
+        }
+        return $out;
+    }
+
+    /**
+     * Flatten a feed into simple item arrays.
+     *
+     * SimpleXML is used when present; the regex path keeps news working on an
+     * install without it, and a feed that is not XML at all (a block page, an
+     * error document) simply yields nothing.
+     *
+     * @return list<array<string,string>>
+     */
+    private function rssItems(string $xml): array {
+        if (class_exists(\SimpleXMLElement::class)) {
+            $previous = libxml_use_internal_errors(true);
+            $doc = simplexml_load_string($xml, \SimpleXMLElement::class, LIBXML_NOCDATA | LIBXML_NOENT);
+            libxml_clear_errors();
+            libxml_use_internal_errors($previous);
+            if ($doc !== false) {
+                $out = [];
+                foreach ($doc->channel->item ?? [] as $item) {
+                    $row = [];
+                    foreach (['title', 'link', 'description', 'pubDate'] as $field) {
+                        $row[$field] = html_entity_decode((string)$item->{$field}, ENT_QUOTES | ENT_HTML5, 'UTF-8');
+                    }
+                    $source = $item->source ?? null;
+                    $row['source'] = $source !== null ? html_entity_decode((string)$source, ENT_QUOTES | ENT_HTML5, 'UTF-8') : '';
+                    $out[] = $row;
+                }
+                return $out;
+            }
+        }
+
+        if (!preg_match_all('~<item\b[^>]*>(.*?)</item>~is', $xml, $matches)) {
+            return [];
+        }
+        $out = [];
+        foreach ($matches[1] as $raw) {
+            $row = [];
+            foreach (['title', 'link', 'description', 'pubDate', 'source'] as $field) {
+                $row[$field] = preg_match('~<' . $field . '\b[^>]*>(.*?)</' . $field . '>~is', $raw, $m)
+                    ? html_entity_decode(strip_tags($m[1]), ENT_QUOTES | ENT_HTML5, 'UTF-8')
+                    : '';
+            }
+            $out[] = $row;
+        }
+        return $out;
+    }
+
+    /**
+     * Unwrap a feed's redirect link.
+     *
+     * Bing publishes `…/news/apiclick.aspx?…&url=<encoded publisher URL>`; the
+     * encoded parameter is the article, and using the wrapper instead would send
+     * the reader through a tracking redirect.
+     */
+    private function decodeFeedUrl(string $link): string {
+        if ($link === '') {
+            return '';
+        }
+        $parts = parse_url($link);
+        if (!is_array($parts) || !isset($parts['query'])) {
+            return $link;
+        }
+        parse_str((string)$parts['query'], $query);
+        $target = trim((string)($query['url'] ?? ''));
+        return $target !== '' && $this->isSafeHttpUrl($target) ? $target : $link;
+    }
+
+    /** Publication time of a feed item as a Unix timestamp (0 when unknown). */
+    private function parseFeedDate(string $value): int {
+        $value = trim($value);
+        if ($value === '') {
+            return 0;
+        }
+        $timestamp = strtotime($value);
+        return $timestamp === false ? 0 : $timestamp;
+    }
+
+    /**
+     * Language and region for the news feeds, taken from the user's own
+     * language so a German account gets German coverage rather than the
+     * English edition of a global feed.
+     *
+     * @return array{hl:string,gl:string,ceid:string}
+     */
+    private function newsLocale(): array {
+        $language = '';
+        $userId = $this->config->userId();
+        if ($userId !== null && $userId !== '') {
+            try {
+                $language = (string)$this->rawConfig->getUserValue($userId, 'core', 'lang', '');
+            } catch (\Throwable $e) {
+                $language = '';
+            }
+        }
+        $language = mb_strtolower(trim($language));
+        if (preg_match('/^[a-z]{2}(?:[-_][a-z]{2})?$/', $language) !== 1) {
+            $language = 'en';
+        }
+        $language = str_replace('_', '-', $language);
+        $language = substr($language, 0, 2);
+        $regions = ['de' => 'DE', 'en' => 'US', 'fr' => 'FR', 'es' => 'ES', 'it' => 'IT', 'nl' => 'NL', 'pl' => 'PL', 'pt' => 'PT', 'sv' => 'SE', 'da' => 'DK', 'cs' => 'CZ', 'tr' => 'TR'];
+        $region = $regions[$language] ?? mb_strtoupper($language);
+        return [
+            'hl' => $language . '-' . $region,
+            'gl' => $region,
+            'ceid' => $region . ':' . $language,
+        ];
+    }
+
+    /**
+     * Merge two result lists, keeping the richer record for a shared URL.
+     *
+     * @param list<array<string,mixed>> $primary
+     * @param list<array<string,mixed>> $extra
+     * @return list<array<string,mixed>>
+     */
+    private function mergeByUrl(array $primary, array $extra, int $limit): array {
+        $byUrl = [];
+        foreach ([...$primary, ...$extra] as $row) {
+            $url = (string)($row['url'] ?? '');
+            if ($url === '') {
+                continue;
+            }
+            if (!isset($byUrl[$url])) {
+                $byUrl[$url] = $row;
+                continue;
+            }
+            if (mb_strlen((string)($row['snippet'] ?? '')) > mb_strlen((string)($byUrl[$url]['snippet'] ?? ''))) {
+                $byUrl[$url]['snippet'] = $row['snippet'];
+            }
+            foreach (['published', 'source', 'news'] as $key) {
+                if (isset($row[$key]) && !isset($byUrl[$url][$key])) {
+                    $byUrl[$url][$key] = $row[$key];
+                }
+            }
+        }
+        return array_slice(array_values($byUrl), 0, max(1, $limit));
+    }
+
     private function isSafeHttpUrl(string $url): bool {
         if ($url === '' || strlen($url) > 2048) {
             return false;
@@ -1680,6 +2239,105 @@ class WebSearchService {
         }
         // Credentials in the URL would leak into the rendered link.
         return !isset($parts['user']) && !isset($parts['pass']);
+    }
+
+    /**
+     * Whether the server may fetch this URL itself.
+     *
+     * Stricter than {@see isSafeHttpUrl()}, and deliberately separate from it: a
+     * URL that is only ever *shown* (a search hit's link, an image the browser
+     * loads from the result page) must not be resolved server-side, or an
+     * unrelated DNS outage would silently empty the answer. A URL the server
+     * really requests has to point at a public address, so a model-named target
+     * like http://127.0.0.1, the cloud metadata service (169.254.169.254) or a
+     * host on the internal network cannot be read and repeated back in the chat.
+     */
+    private function isFetchableUrl(string $url): bool {
+        if (!$this->isSafeHttpUrl($url)) {
+            return false;
+        }
+        return $this->isPublicHost((string)parse_url($url, PHP_URL_HOST));
+    }
+
+    /**
+     * Whether a host resolves only to publicly routable addresses.
+     *
+     * Checked per address and not per name: a host is refused when *any* of its
+     * addresses is private, so a DNS answer that mixes a public address with an
+     * internal one cannot be used to reach the internal one. A host that does not
+     * resolve at all is refused too - the fetch would fail anyway, and failing
+     * closed is what keeps this a guard rather than a hint.
+     */
+    private function isPublicHost(string $host): bool {
+        $host = trim($host, '[]');
+        if ($host === '') {
+            return false;
+        }
+        $lowered = mb_strtolower(trim($host, '.'));
+        if ($lowered === 'localhost' || $lowered === 'metadata') {
+            return false;
+        }
+        foreach (self::INTERNAL_HOST_SUFFIXES as $suffix) {
+            if (str_ends_with($lowered, $suffix)) {
+                return false;
+            }
+        }
+
+        $cached = $this->hostCache[$lowered] ?? null;
+        if ($cached !== null) {
+            return $cached;
+        }
+        $public = $this->resolvesToPublicAddress($lowered);
+        $this->hostCache[$lowered] = $public;
+        return $public;
+    }
+
+    private function resolvesToPublicAddress(string $host): bool {
+        // A literal address needs no lookup; a name needs at least one answer.
+        if (filter_var($host, FILTER_VALIDATE_IP) !== false) {
+            return $this->isPublicAddress($host);
+        }
+        $addresses = [];
+        foreach ((array)@gethostbynamel($host) as $ipv4) {
+            $addresses[] = (string)$ipv4;
+        }
+        if (function_exists('dns_get_record')) {
+            foreach ((array)@dns_get_record($host, DNS_AAAA) as $record) {
+                if (isset($record['ipv6'])) {
+                    $addresses[] = (string)$record['ipv6'];
+                }
+            }
+        }
+        if ($addresses === []) {
+            return false;
+        }
+        foreach ($addresses as $address) {
+            if (!$this->isPublicAddress($address)) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    /** Reject loopback, link-local, private and otherwise reserved addresses. */
+    private function isPublicAddress(string $address): bool {
+        // An IPv4-mapped IPv6 address (::ffff:127.0.0.1) must be judged on the
+        // address it really points at, or the guard only checks the wrapper.
+        if (preg_match('/^::ffff:(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})$/i', $address, $mapped) === 1) {
+            $address = $mapped[1];
+        }
+        if (filter_var($address, FILTER_VALIDATE_IP) === false) {
+            return false;
+        }
+        // 0.0.0.0/8 and ::/128 reach the local host on many systems.
+        if ($address === '::' || $address === '::1' || str_starts_with($address, '0.')) {
+            return false;
+        }
+        return filter_var(
+            $address,
+            FILTER_VALIDATE_IP,
+            FILTER_FLAG_NO_PRIV_RANGE | FILTER_FLAG_NO_RES_RANGE
+        ) !== false;
     }
 
     private function clamp(string $value, int $max): string {
