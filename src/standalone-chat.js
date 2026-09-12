@@ -575,20 +575,26 @@ function buildCalendarForm(args, tr) {
 			var src = item.src || item
 			var row = document.createElement('div')
 			row.className = 'rs-item' + (src.external ? ' rs-item-external' : '')
-			var a = document.createElement('a')
-			a.href = src.url || '#'
-			a.target = '_blank'
-			a.rel = 'noopener'
+			// A source with no page to open - an indexed mail message or Talk room -
+			// is named, not linked; '#' looked clickable and only jumped to the top.
+			var label = document.createElement(src.url ? 'a' : 'span')
+			if (src.url) {
+				label.href = src.url
+				label.target = '_blank'
+				label.rel = 'noopener'
+			} else {
+				label.className = 'rs-plain'
+			}
 			var prefix = item.ref !== undefined ? '[' + item.ref + '] ' : ''
-			a.textContent = prefix + (src.path || src.name || '')
-			row.appendChild(a)
+			label.textContent = prefix + (src.path || src.name || '')
+			row.appendChild(label)
 			// A web source is labelled and shows the site, so it is never mistaken
 			// for one of the user's own files.
 			if (src.external) {
 				var badge = document.createElement('span')
 				badge.className = 'rs-badge'
 				badge.textContent = tr('Web')
-				row.insertBefore(badge, a)
+				row.insertBefore(badge, label)
 				if (src.host) {
 					var hostEl = document.createElement('span')
 					hostEl.className = 'rs-host'

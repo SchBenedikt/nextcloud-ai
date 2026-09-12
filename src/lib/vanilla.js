@@ -532,20 +532,28 @@ export function mountChat(root, opts = {}) {
 			const src = item.src || item
 			const row = document.createElement('div')
 			row.className = 'rs-item' + (src.external ? ' rs-item-external' : '')
-			const a = document.createElement('a')
-			a.href = src.url || '#'
-			a.target = '_blank'
-			a.rel = 'noopener'
+			// A source that has no page to open - an indexed mail message or Talk
+			// room, which live outside the file tree - is named, not linked. Falling
+			// back to '#' produced a link that looks clickable and only jumps to the
+			// top of the page, which reads as a broken source.
+			const label = document.createElement(src.url ? 'a' : 'span')
+			if (src.url) {
+				label.href = src.url
+				label.target = '_blank'
+				label.rel = 'noopener'
+			} else {
+				label.className = 'rs-plain'
+			}
 			const prefix = item.ref !== undefined ? '[' + item.ref + '] ' : ''
-			a.textContent = prefix + (src.path || src.name || '')
-			row.appendChild(a)
+			label.textContent = prefix + (src.path || src.name || '')
+			row.appendChild(label)
 			// A web source is labelled as such and shows the site it came from, so
 			// it is never mistaken for one of the user's own files.
 			if (src.external) {
 				const badge = document.createElement('span')
 				badge.className = 'rs-badge'
 				badge.textContent = t('Web')
-				row.insertBefore(badge, a)
+				row.insertBefore(badge, label)
 				if (src.host) {
 					const host = document.createElement('span')
 					host.className = 'rs-host'

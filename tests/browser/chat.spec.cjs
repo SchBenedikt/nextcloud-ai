@@ -39,12 +39,15 @@ test('streams an answer and persists the question/answer pair in order', async (
 test('an answer shows its cited files and its web sources', async ({ page }) => {
   await openChat(page)
   const streamLines = [
-    line({ type: 'content', delta: 'Laut [1] und der Quelle kostet es 5 Euro.' }),
+    line({ type: 'content', delta: 'Laut [1] und [2] kostet es 5 Euro.' }),
     line({
       type: 'done',
-      answer: 'Laut [1] und der Quelle kostet es 5 Euro.',
+      answer: 'Laut [1] und [2] kostet es 5 Euro.',
       sources: [
         { path: 'Budget.md', name: 'Budget.md', url: '/f/1', excerpts: ['Budget: 5 Euro'] },
+        // An indexed Talk room has no page to open, so it must be named and not
+        // linked - '#' would look clickable and only jump to the top of the page.
+        { path: 'Talk: Projekt Alpha', name: 'Projekt Alpha', url: '', excerpts: ['Wir sollten das Budget erhoehen.'] },
         {
           path: 'Nextcloud Hub 26',
           name: 'Nextcloud Hub 26',
@@ -68,6 +71,10 @@ test('an answer shows its cited files and its web sources', async ({ page }) => 
 
   // The cited file keeps its number; the web page is listed after it.
   await expect(page.locator('.rs-item a').first()).toHaveText('[1] Budget.md')
+  // The room source is shown by name, and it is not a link at all.
+  const plain = page.locator('.rs-item .rs-plain')
+  await expect(plain).toHaveText('[2] Talk: Projekt Alpha')
+  await expect(page.locator('.rs-item a[href="#"]')).toHaveCount(0)
   const external = page.locator('.rs-item-external')
   await expect(external).toHaveCount(1)
   await expect(external.locator('a')).toHaveAttribute('href', 'https://nextcloud.com/hub26/')
