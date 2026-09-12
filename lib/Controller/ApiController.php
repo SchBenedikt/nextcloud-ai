@@ -197,6 +197,13 @@ class ApiController extends OCSController {
     public function health(): DataResponse {
         $user = $this->requireUser();
         if ($user === null) return new DataResponse(['error' => 'Not logged in'], 401);
+        $cache = $this->cacheFactory->createDistributed('eva_ai_health_');
+        $cacheKey = 'health_' . substr(hash('sha256', $user), 0, 24);
+        $cached = $cache->get($cacheKey);
+        if (is_string($cached) && $cached !== '') {
+            $decoded = json_decode($cached, true);
+            if (is_array($decoded)) return new DataResponse($decoded, !empty($decoded['ok']) ? 200 : 503);
+        }
         $provider = $this->ollama->status();
         $queue = $this->backgroundChatQueue->status($user);
         $activeQueue = count(array_filter($queue, static fn(array $item): bool => in_array($item['status'] ?? '', ['pending', 'running'], true)));
@@ -207,14 +214,16 @@ class ApiController extends OCSController {
             'index' => $lastIndexError === '',
             'queue' => $activeQueue < 10,
         ];
-        return new DataResponse([
+        $payload = [
             'ok' => !in_array(false, $checks, true),
             'checks' => $checks,
             'provider' => ['online' => $checks['provider'], 'model' => $this->ollama->selectedChatModel(), 'latency_ms' => $provider['meta']['latencyMs'] ?? null],
             'queue' => ['active' => $activeQueue, 'total' => count($queue)],
             'index' => ['last_error' => $lastIndexError !== '' ? $lastIndexError : null],
             'generated_at' => time(),
-        ], !in_array(false, $checks, true) ? 200 : 503);
+        ];
+        try { $cache->set($cacheKey, json_encode($payload, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) ?: '{}', 10); } catch (\Throwable) { }
+        return new DataResponse($payload, !in_array(false, $checks, true) ? 200 : 503);
     }
 
     /**
