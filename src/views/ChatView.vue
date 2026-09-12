@@ -39,6 +39,7 @@ export default {
 
 		const mount = () => {
 			if (!root.value) return
+			if (root.value.__evaAi && typeof root.value.__evaAi.destroy === 'function') root.value.__evaAi.destroy()
 			root.value.innerHTML = ''
 			delete root.value.__evaAi
 			mountChat(root.value, {

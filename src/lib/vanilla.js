@@ -398,8 +398,12 @@ export function mountChat(root, opts = {}) {
 	const customizePill = document.createElement('span')
 	customizePill.className = 'pill pill-ok'
 	customizePill.hidden = true
+	const agentStatusPill = document.createElement('span')
+	agentStatusPill.className = 'pill pill-warn'
+	agentStatusPill.hidden = true
+	agentStatusPill.setAttribute('role', 'status')
 	customizeBtn.addEventListener('click', () => openCustomizeDialog())
-	head.append(h1, scopePill, customizePill, customizeBtn, exportBtn)
+	head.append(h1, scopePill, customizePill, agentStatusPill, customizeBtn, exportBtn)
 
 	const scroll = document.createElement('div')
 	scroll.className = 'chat-log'
@@ -624,6 +628,25 @@ export function mountChat(root, opts = {}) {
 			return false
 		}
 	}
+
+	// A queued request can outlive this tab. Surface its server-side state when
+	// the chat is open; the endpoint intentionally returns no conversation data.
+	const refreshBackgroundStatus = () => {
+		if (!chatId) { agentStatusPill.hidden = true; return }
+		api('GET', '/backgroundChat').then((payload) => {
+			const items = payload && Array.isArray(payload.items) ? payload.items : []
+			const item = items.find((entry) => entry && entry.chatId === chatId)
+			if (!item) { agentStatusPill.hidden = true; return }
+			const state = String(item.status || 'pending')
+			agentStatusPill.textContent = state === 'running'
+				? t('EVA is continuing this chat in the background')
+				: state === 'failed'
+					? t('Background EVA run failed — retrying automatically')
+					: t('EVA will continue this chat in the background')
+			agentStatusPill.hidden = false
+		}).catch(() => { /* optional status must never block chat use */ })
+	}
+	const backgroundStatusTimer = setInterval(refreshBackgroundStatus, 15000)
 
 	// While a stream is running the send button turns into a Stop button.
 	// The server checks connection_aborted() between events, so aborting the
@@ -871,7 +894,7 @@ export function mountChat(root, opts = {}) {
 	}
 
 	if (chatId) {
-		restoreServerChat(chatId).catch(() => { /* falls Chat nicht existiert: leer starten */ })
+		restoreServerChat(chatId).then(refreshBackgroundStatus).catch(() => { /* falls Chat nicht existiert: leer starten */ })
 	}
 
 	// Streams a server-side re-run (regenerate or edit) and persists the new
@@ -1183,6 +1206,8 @@ export function mountChat(root, opts = {}) {
 		}
 	}
 
+	refreshBackgroundStatus()
 	input.focus()
 	form.addEventListener('submit', (e) => { e.preventDefault(); send() })
+	root.__evaAi = { destroy: () => clearInterval(backgroundStatusTimer) }
 }
