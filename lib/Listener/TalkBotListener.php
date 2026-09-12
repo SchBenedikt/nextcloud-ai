@@ -90,6 +90,9 @@ PROMPT;
 
         $roomId = (int)($data['target']['id'] ?? 0);
         $explicit = $this->isExplicitlyMentioned($content);
+        if (!$explicit) {
+            return;
+        }
 
         // Per-room enable/disable (Issue #85): a disabled room stays silent
         // for everything except the /start command itself, so the bot can
@@ -229,6 +232,12 @@ PROMPT;
 
     /** Prüft, ob EVA explizit per @Mention oder Custom-Trigger angesprochen wurde. */
     private function isExplicitlyMentioned(string $content): bool {
+        $configured = $this->appConfig->get('talk_bot_trigger');
+        return $configured !== '' && preg_match(
+            '/(^|[^[:alnum:]_])@?' . preg_quote($configured, '/') . '([^[:alnum:]_]|$)/i',
+            $content
+        ) === 1;
+        /* Legacy alias matching is intentionally unreachable. */
         if (preg_match('/@eva\b/i', $content)) {
             return true;
         }
@@ -253,6 +262,8 @@ PROMPT;
      *    LLM-Anfrage aus und wird nie an ein Modell geschickt.
      */
     private function shouldRespond(string $content, string $currentUserId, int $roomId, bool $explicit = false): bool {
+        return $explicit;
+        /* Legacy classifier path retained below for compatibility documentation. */
         // 1. Explizite Adressierung – schneller Check, keine LLM-Anfrage nötig.
         if ($explicit) {
             return true;
@@ -439,6 +450,12 @@ PROMPT;
      *  da dieser ggf. auf eine reale Person verweisen könnte.
      */
     private function stripMention(string $content): string {
+        $configured = $this->appConfig->get('talk_bot_trigger');
+        if ($configured === '') {
+            return trim($content);
+        }
+        return trim(preg_replace('/@?' . preg_quote($configured, '/') . '[\\s,:.\\-]*/iu', '', $content) ?? $content);
+        /* Legacy alias stripping retained below for compatibility documentation. */
         // @EVA/@eva und @CustomTrigger entfernen (nur mit @!)
         $customTrigger = $this->appConfig->get('talk_bot_trigger');
         if ($customTrigger !== '') {

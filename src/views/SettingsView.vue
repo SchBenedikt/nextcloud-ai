@@ -8,9 +8,7 @@
 			</div>
 			<div class="header-actions">
 				<span v-if="saved" class="saved-label" role="status">{{ $t('Saved') }}</span>
-				<NcButton type="primary" :loading="saving" :disabled="settingsLocked" @click="save">
-					{{ $t('Save changes') }}
-				</NcButton>
+				<span v-else class="saved-label" role="status">{{ $t('Changes save automatically') }}</span>
 			</div>
 		</header>
 
@@ -426,6 +424,17 @@
 						</select>
 						<p class="field-help">{{ $t('News articles come from free news feeds and work with every provider; the web index is what differs. SearxNG, Brave and Tavily require the administrator to configure the URL or API key in the Eva AI admin settings.') }}</p>
 					</div>
+					<div class="field-grid field-grid-three">
+						<div class="field"><NcTextField id="user-web-max" v-model="f.web_search_max_results" type="number" :label="$t('Results per search')" :label-outside="true" /><p class="field-help">{{ $t('How many search results are considered.') }}</p></div>
+						<div class="field"><NcTextField id="user-web-timeout" v-model="f.web_search_timeout" type="number" :label="$t('Search timeout (seconds)')" :label-outside="true" /><p class="field-help">{{ $t('Maximum time for a provider request.') }}</p></div>
+						<div class="field"><NcTextField id="user-web-candidates" v-model="f.web_search_candidates" type="number" :label="$t('Pages compared')" :label-outside="true" /><p class="field-help">{{ $t('Candidate pages read before ranking.') }}</p></div>
+						<div class="field"><NcTextField id="user-web-content" v-model="f.web_search_content_chars" type="number" :label="$t('Search content limit')" :label-outside="true" /><p class="field-help">{{ $t('Maximum text returned per search result. Opening a page reads the full page.') }}</p></div>
+						<div class="field"><NcTextField id="user-web-browser-timeout" v-model="f.web_search_browser_timeout" type="number" :label="$t('Browser timeout (seconds)')" :label-outside="true" /><p class="field-help">{{ $t('Maximum time for a rendered page.') }}</p></div>
+					</div>
+					<NcCheckboxRadioSwitch v-model="userWebSearchFetchContent" type="switch" class="native-toggle compact-switch">{{ $t('Read page content during searches') }}</NcCheckboxRadioSwitch>
+					<NcCheckboxRadioSwitch v-model="userWebSearchImages" type="switch" class="native-toggle compact-switch">{{ $t('Collect and show images') }}</NcCheckboxRadioSwitch>
+					<NcCheckboxRadioSwitch v-model="userWebSearchSafeSearch" type="switch" class="native-toggle compact-switch">{{ $t('Safe search') }}</NcCheckboxRadioSwitch>
+					<NcCheckboxRadioSwitch v-model="userWebSearchBrowser" type="switch" class="native-toggle compact-switch">{{ $t('Use the full browser for JavaScript pages') }}</NcCheckboxRadioSwitch>
 				</div>
 			</section>
 
@@ -446,23 +455,15 @@
 						<p class="field-help">{{ $t('Required when users choose SearxNG as their provider.') }}</p>
 					</div>
 					<div class="field">
-						<NcTextField id="web-search-key" v-model="webSearchKey" type="password" autocomplete="new-password" :label="$t('Brave / Tavily API key')" :label-outside="true" :disabled="savingAdmin" :placeholder="webSearchKeyStored ? $t('A key is stored - leave empty to keep it') : $t('Paste the API key')" />
+						<NcTextField id="web-search-key" v-model="webSearchKey" @blur="saveAdminSettings" type="password" autocomplete="new-password" :label="$t('Brave / Tavily API key')" :label-outside="true" :disabled="savingAdmin" :placeholder="webSearchKeyStored ? $t('A key is stored - leave empty to keep it') : $t('Paste the API key')" />
 						<p class="field-help">{{ $t('Required when users choose Brave or Tavily. Stored encrypted, never shown.') }}</p>
 					</div>
 					<NcCheckboxRadioSwitch v-model="removeWebSearchKey" type="checkbox" :disabled="savingAdmin">
 						{{ $t('Remove the stored API key') }}
 					</NcCheckboxRadioSwitch>
-					<div class="field">
-						<NcTextField id="web-search-max" v-model="admin.web_search_max_results" type="number" :label="$t('Maximum results per search')" :label-outside="true" :disabled="savingAdmin" />
-						<p class="field-help">{{ $t('Between 1 and 10. Every result is added to the model context.') }}</p>
-					</div>
-					<NcCheckboxRadioSwitch v-model="webSearchSafeSearch" type="switch" class="native-toggle compact-switch" :disabled="savingAdmin" :description="$t('Ask the provider to filter adult results.')">
-						{{ $t('Safe search') }}
-					</NcCheckboxRadioSwitch>
+					<p class="field-help">{{ $t('Result limits, page reading, safe search, images and browser rendering are now personal settings above. This section only contains shared provider infrastructure.') }}</p>
 				</div>
-				<div class="inline-actions">
-					<NcButton type="primary" :loading="savingAdmin" @click="saveAdminSettings">{{ $t('Save instance settings') }}</NcButton>
-				</div>
+				<p class="field-help auto-save-note">{{ $t('Instance settings save automatically.') }}</p>
 			</section>
 
 			<section class="settings-section">
@@ -533,6 +534,15 @@ export default {
 			chat_retention_days: '0',
 			web_search_enabled: '0',
 			web_search_provider: 'duckduckgo',
+			web_search_max_results: '8',
+			web_search_timeout: '10',
+			web_search_safe_search: '1',
+			web_search_fetch_content: '1',
+			web_search_content_chars: '8000',
+			web_search_candidates: '12',
+			web_search_images: '1',
+			web_search_browser: '1',
+			web_search_browser_timeout: '30',
 		})
 		const groqKey = ref('')
 		const removeGroqKey = ref(false)
@@ -574,6 +584,10 @@ export default {
 			get: () => f.value.web_search_enabled === '1',
 			set: value => { f.value.web_search_enabled = value ? '1' : '0' },
 		})
+		const userWebSearchImages = computed({ get: () => f.value.web_search_images === '1', set: v => { f.value.web_search_images = v ? '1' : '0' } })
+		const userWebSearchBrowser = computed({ get: () => f.value.web_search_browser === '1', set: v => { f.value.web_search_browser = v ? '1' : '0' } })
+		const userWebSearchFetchContent = computed({ get: () => f.value.web_search_fetch_content === '1', set: v => { f.value.web_search_fetch_content = v ? '1' : '0' } })
+		const userWebSearchSafeSearch = computed({ get: () => f.value.web_search_safe_search === '1', set: v => { f.value.web_search_safe_search = v ? '1' : '0' } })
 		// Admin settings form (Issue #82/#187): the same bundle is mounted inside
 		// the Nextcloud admin settings with data-admin="1". Instance-wide switches
 		// (weather tool, web search) are admin-only and live on their own endpoint,
@@ -593,7 +607,11 @@ export default {
 		const removeWebSearchKey = ref(false)
 		const webSearchKeyStored = ref(false)
 		const webSearchReady = ref(false)
-		const savingAdmin = ref(false)
+			const savingAdmin = ref(false)
+			const formReady = ref(false)
+			const adminReady = ref(false)
+			let autoSaveTimer = null
+			let adminAutoSaveTimer = null
 		const weatherEnabled = computed({
 			get: () => admin.value.weather_tool_enabled === '1',
 			set: value => { admin.value.weather_tool_enabled = value ? '1' : '0' },
@@ -639,6 +657,18 @@ export default {
 			} finally {
 				savingAdmin.value = false
 			}
+		}
+
+		function queueAutoSave() {
+			if (!formReady.value || settingsLocked.value) return
+			window.clearTimeout(autoSaveTimer)
+			autoSaveTimer = window.setTimeout(() => save(), 700)
+		}
+
+		function queueAdminAutoSave() {
+			if (!adminReady.value || savingAdmin.value) return
+			window.clearTimeout(adminAutoSaveTimer)
+			adminAutoSaveTimer = window.setTimeout(() => saveAdminSettings(), 700)
 		}
 		const mailIndexEnabled = computed({
 			get: () => f.value.mail_index_enabled === '1',
@@ -1069,6 +1099,8 @@ export default {
 
 		let statusTimer = null
 		let modelTimer = null
+		watch(f, queueAutoSave, { deep: true })
+		watch(admin, queueAdminAutoSave, { deep: true })
 		watch(() => f.value.ollama_url, (value) => {
 			window.clearTimeout(modelTimer)
 			modelTimer = window.setTimeout(() => discoverModels(value), 500)
@@ -1077,11 +1109,15 @@ export default {
 			await loadStatus(true)
 			await loadAdminSettings()
 			await loadKnowledge()
+			formReady.value = true
+			adminReady.value = isAdminMode
 			statusTimer = window.setInterval(loadStatus, 3000)
 		})
 		onUnmounted(() => {
 			if (statusTimer !== null) window.clearInterval(statusTimer)
 			if (modelTimer !== null) window.clearTimeout(modelTimer)
+			window.clearTimeout(autoSaveTimer)
+			window.clearTimeout(adminAutoSaveTimer)
 		})
 
 		const ocrEnabled = computed({ get: () => f.value.ocr_enabled === '1', set: value => { f.value.ocr_enabled = value ? '1' : '0' } })

@@ -86,31 +86,28 @@ final class TalkClassificationPrivacyTest extends TestCase {
         self::assertTrue($this->shouldRespond($listener, '@Eva kannst du mir helfen?', true));
     }
 
-    public function testPlausiblyAddressedQuestionReachesTheClassifier(): void {
+    public function testUnaddressedQuestionNeverReachesTheClassifier(): void {
         [$listener, $ollama] = $this->listener('0');
-        // Question form passes the pre-filter, then classification decides.
-        $ollama->expects(self::once())->method('chat')->willReturn(['answer' => 'nein']);
+        $ollama->expects(self::never())->method('chat');
         self::assertFalse($this->shouldRespond($listener, 'Wer hat den Raum gebucht?'));
     }
 
-    public function testClassifierYesLeadsToAResponseForPlausibleMessages(): void {
+    public function testClassifierCannotOverrideTheNameRequirement(): void {
         [$listener, $ollama] = $this->listener('0');
-        $ollama->expects(self::once())->method('chat')->willReturn(['answer' => 'ja']);
-        self::assertTrue($this->shouldRespond($listener, 'Wer hat den Raum gebucht?'));
+        $ollama->expects(self::never())->method('chat');
+        self::assertFalse($this->shouldRespond($listener, 'Wer hat den Raum gebucht?'));
     }
 
-    public function testBotNameMentionPassesThePrefilter(): void {
+    public function testBotNameOnlyCountsWhenPassedAsExplicitAddressing(): void {
         [$listener, $ollama] = $this->listener('0');
-        $ollama->expects(self::once())->method('chat')->willReturn(['answer' => 'ja']);
-        // "Eva" as a standalone word (without @) is caught by the heuristic.
-        self::assertTrue($this->shouldRespond($listener, 'Eva kannst du das bitte pruefen'));
+        $ollama->expects(self::never())->method('chat');
+        self::assertFalse($this->shouldRespond($listener, 'Eva kannst du das bitte pruefen'));
+        self::assertTrue($this->shouldRespond($listener, 'Eva kannst du das bitte pruefen', true));
     }
 
-    public function testClassifyAllToggleRestoresLegacyBehaviour(): void {
-        // With talk_classify_all=1 every message goes to the LLM, even pure
-        // smalltalk - the admin opted into full classification.
+    public function testClassifyAllCannotDisableTheNameRequirement(): void {
         [$listener, $ollama] = $this->listener('1');
-        $ollama->expects(self::once())->method('chat')->willReturn(['answer' => 'nein']);
+        $ollama->expects(self::never())->method('chat');
         self::assertFalse($this->shouldRespond($listener, 'Die Besprechung war wirklich lang.'));
     }
 

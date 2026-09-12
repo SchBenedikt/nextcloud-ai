@@ -581,6 +581,24 @@
         "Only used when Talk indexing is enabled. Default: 20.": "Only used when Talk indexing is enabled. Default: 20.",
         "Let EVA post to Nextcloud Talk for me": "Let EVA post to Nextcloud Talk for me",
         "Let EVA answer and write in your Nextcloud Talk conversations for you. A message posted this way appears under your name, exactly as if you had typed it, so EVA only posts when you explicitly ask it to. Enabling this also lets EVA read a chat on request.": "Let EVA answer and write in your Nextcloud Talk conversations for you. A message posted this way appears under your name, exactly as if you had typed it, so EVA only posts when you explicitly ask it to. Enabling this also lets EVA read a chat on request."
+,
+        "Results per search": "Results per search",
+        "How many search results are considered.": "How many search results are considered.",
+        "Search timeout (seconds)": "Search timeout (seconds)",
+        "Maximum time for a provider request.": "Maximum time for a provider request.",
+        "Pages compared": "Pages compared",
+        "Candidate pages read before ranking.": "Candidate pages read before ranking.",
+        "Search content limit": "Search content limit",
+        "Maximum text returned per search result. Opening a page reads the full page.": "Maximum text returned per search result. Opening a page reads the full page.",
+        "Browser timeout (seconds)": "Browser timeout (seconds)",
+        "Maximum time for a rendered page.": "Maximum time for a rendered page.",
+        "Read page content during searches": "Read page content during searches",
+        "Collect and show images": "Collect and show images",
+        "Use the full browser for JavaScript pages": "Use the full browser for JavaScript pages",
+        "Result limits, page reading, safe search, images and browser rendering are now personal settings above. This section only contains shared provider infrastructure.": "Result limits, page reading, safe search, images and browser rendering are now personal settings above. This section only contains shared provider infrastructure."
+,
+        "Changes save automatically": "Changes save automatically",
+        "Instance settings save automatically.": "Instance settings save automatically."
     },
     "pluralForm": "nplurals=2; plural=(n != 1);"
 }

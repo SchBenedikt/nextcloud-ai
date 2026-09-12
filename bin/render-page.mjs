@@ -189,8 +189,12 @@ async function main() {
   let browser = null
   const pages = {}
   try {
+    const executablePath = typeof request.executablePath === 'string' && request.executablePath.trim() !== ''
+      ? request.executablePath.trim()
+      : undefined
     browser = await chromium.launch({
       headless: true,
+      ...(executablePath ? { executablePath } : {}),
       // Chromium's sandbox cannot be used inside most containers and under a
       // service account; the caller has already restricted which URLs are
       // rendered, and each URL gets a throwaway context.
