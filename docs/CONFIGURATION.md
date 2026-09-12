@@ -181,6 +181,8 @@ from an instance-wide value.
 
 ### Global scheduler state (G)
 
+| `proactive_schedule_runs` | JSON map of the last delivered local time slot per scheduled briefing; prevents duplicate notifications after cron retries. |
+
 | Key | Meaning |
 |---|---|
 | `index_job_running` | `1` while a periodic `IndexJob` run is active. |
