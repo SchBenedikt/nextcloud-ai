@@ -327,6 +327,19 @@ final class OpenIssuesPendingContractTest extends TestCase {
 		);
 	}
 
+	/** Long web pages are consumable in deterministic pages instead of silently
+	 * dropping the tail of the source. */
+	public function testOpenWebsiteSupportsFullSourcePagination(): void {
+		$service = (string)file_get_contents(__DIR__ . '/../lib/Service/WebSearchService.php');
+		$executor = (string)file_get_contents(__DIR__ . '/../lib/Service/ActionExecutor.php');
+		$rag = (string)file_get_contents(__DIR__ . '/../lib/Service/RagService.php');
+		self::assertStringContainsString('int $offset = 0, ?int $maxChars = null', $service);
+		self::assertStringContainsString('$nextOffset', $service);
+		self::assertStringContainsString("'has_more'", $service);
+		self::assertStringContainsString('openPage($url, $query, $offset, $maxChars)', $executor);
+		self::assertStringContainsString('continue until has_more=false', $rag);
+	}
+
 	private function sliceBetween(string $haystack, string $start, string $end): string {
 		$s = strpos($haystack, $start);
 		self::assertNotFalse($s, "start marker '$start' not found");
