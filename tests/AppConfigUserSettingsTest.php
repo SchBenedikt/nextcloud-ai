@@ -111,6 +111,91 @@ final class AppConfigUserSettingsTest extends TestCase {
         self::assertSame('http://personal-value:11434', $appConfig->get('ollama_url'));
     }
 
+    /**
+     * A run whose worker is gone must stop claiming to be running.
+     *
+     * A process killed mid-run never reaches its cleanup, and the claim it left
+     * behind makes every later pass answer "already running" while nothing is
+     * running at all. The heartbeat is the only liveness signal, so an old one
+     * ends the run.
+     */
+    public function testAnAbandonedRunIsReleased(): void
+    {
+        [$config] = $this->configHarness([], ['alice' => [
+            'index_running' => '1',
+            'index_heartbeat' => (string)(time() - 1000),
+            'index_started' => (string)(time() - 1000),
+            'index_run_id' => 'deadbeef',
+            'index_mode' => 'talk',
+        ]]);
+
+        $appConfig = new AppConfig($config);
+        $appConfig->setUserId('alice');
+
+        self::assertTrue($appConfig->recoverAbandonedRun(), 'the abandoned claim was not released');
+        self::assertSame('0', $appConfig->get('index_running'));
+        self::assertSame('idle', $appConfig->get('index_mode'));
+        self::assertSame('', $appConfig->get('index_run_id'));
+        self::assertSame('', $appConfig->get('index_heartbeat'));
+    }
+
+    /** A run with a fresh heartbeat is alive and keeps its claim. */
+    public function testALiveRunKeepsItsClaim(): void
+    {
+        [$config] = $this->configHarness([], ['alice' => [
+            'index_running' => '1',
+            'index_heartbeat' => (string)(time() - 5),
+            'index_run_id' => 'live',
+        ]]);
+
+        $appConfig = new AppConfig($config);
+        $appConfig->setUserId('alice');
+
+        self::assertFalse($appConfig->recoverAbandonedRun(), 'a live run was declared abandoned');
+        self::assertSame('1', $appConfig->get('index_running'));
+        self::assertSame('live', $appConfig->get('index_run_id'));
+    }
+
+    /**
+     * A run that never wrote a heartbeat is judged by its start time, in both
+     * directions: an ancient start ends it, a recent one does not.
+     */
+    public function testARunWithoutAHeartbeatFallsBackToItsStartTime(): void
+    {
+        foreach ([[time() - 2000, true], [time() - 10, false]] as [$started, $expected]) {
+            [$config] = $this->configHarness([], ['alice' => [
+                'index_running' => '1',
+                'index_heartbeat' => '',
+                'index_started' => (string)$started,
+            ]]);
+
+            $appConfig = new AppConfig($config);
+            $appConfig->setUserId('alice');
+
+            self::assertSame($expected, $appConfig->recoverAbandonedRun(), 'start time ' . $started);
+        }
+    }
+
+    /**
+     * A pending cancellation shortens the window instead of skipping it: the
+     * worker was asked to stop and is expected to notice quickly.
+     */
+    public function testAPendingCancellationUsesTheShorterWindow(): void
+    {
+        foreach ([[400, true], [60, false]] as [$age, $expected]) {
+            [$config] = $this->configHarness([], ['alice' => [
+                'index_running' => '1',
+                'index_heartbeat' => (string)(time() - $age),
+                'index_cancel_requested' => '1',
+            ]]);
+
+            $appConfig = new AppConfig($config);
+            $appConfig->setUserId('alice');
+
+            self::assertSame($expected, $appConfig->recoverAbandonedRun(), 'heartbeat age ' . $age);
+        }
+    }
+
     public function testRuntimeStateNeverInheritsAdminInstanceValue(): void {
         // Even when an old/foreign instance value exists for a per-user state
         // key, users without their own state keep the hardcoded default.

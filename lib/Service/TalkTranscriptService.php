@@ -6,7 +6,8 @@ namespace OCA\EvaAi\Service;
 
 use OCP\App\IAppManager;
 use OCP\Comments\IComment;
-use OCP\Comments\ICommentsManager;
+use OCP\DB\QueryBuilder\IQueryBuilder;
+use OCP\IDBConnection;
 use Psr\Log\LoggerInterface;
 
 /**
@@ -22,6 +23,10 @@ use Psr\Log\LoggerInterface;
  * construction time, or the whole app would stop booting on an instance without
  * it. Services are therefore resolved lazily and every entry point checks
  * availability first.
+ *
+ * The messages themselves are read from the comments table that Talk writes
+ * them to, because the Comments API refuses to hydrate a message longer than
+ * 1000 characters - a limit Talk does not apply. See fetchMessages().
  */
 class TalkTranscriptService
 {
@@ -38,7 +43,7 @@ class TalkTranscriptService
     public function __construct(
         private AppConfig $appConfig,
         private IAppManager $appManager,
-        private ICommentsManager $commentsManager,
+        private IDBConnection $db,
         private Searcher $searcher,
         private LoggerInterface $logger,
     ) {
@@ -173,14 +178,19 @@ class TalkTranscriptService
             $roomName = 'Talk room';
         }
 
-        $budget = $maxMessages ?? $this->config->getInt('talk_index_max_messages', 200);
+        $budget = $maxMessages ?? $this->appConfig->getInt('talk_index_max_messages', 200);
         $budget = max(10, min(1000, $budget));
-        $comments = $this->fetchMessages($roomId, $budget);
-        if ($comments === []) {
+        $messages = $this->fetchMessages($roomId, $budget);
+        if ($messages === []) {
             return null;
         }
-        $rendered = self::renderMessages($comments, $roomName);
-        if (trim($rendered['text']) === '') {
+        $rendered = self::formatTranscript($messages, $roomName);
+        // A room whose messages are all machinery - a changelog room, a room that
+        // only holds the "conversation created" line - has nothing worth
+        // indexing. The check is on the messages, not on the text: the transcript
+        // always carries a header line, so a header-only document would otherwise
+        // be stored and be searchable as an empty room.
+        if ($rendered['count'] === 0) {
             return null;
         }
         return [
@@ -194,22 +204,55 @@ class TalkTranscriptService
     /**
      * The most recent messages of a room, oldest first.
      *
-     * @return list<IComment>
+     * The rows are read from the comments table rather than through the Comments
+     * API, and that is not a shortcut - it is the only way a room stays readable.
+     * Core validates a comment's message against a 1000-character limit when it
+     * *reads* it (`Comment::setMessage()` throws while the rows are hydrated),
+     * while Talk accepts much longer messages. EVA's own Talk answers already
+     * exceed it, so one long message made the entire room throw
+     * `MessageTooLongException` - the room then indexed as nothing, silently.
+     * The same filters the API path had are applied here: this room's own rows,
+     * newest first, and nothing else.
+     *
+     * @return list<array{actorType:string,actor:string,message:string,stamp:string}> oldest first
      */
     private function fetchMessages(int $roomId, int $budget): array
     {
         try {
-            $comments = $this->commentsManager->getForObject(
-                self::CHAT_OBJECT_TYPE,
-                (string)$roomId,
-                min($budget, self::PAGE_SIZE),
-                0,
-            );
+            $query = $this->db->getQueryBuilder();
+            $query->select('actor_type', 'actor_id', 'message', 'creation_timestamp')
+                ->from('comments')
+                ->where($query->expr()->eq('object_type', $query->createNamedParameter(self::CHAT_OBJECT_TYPE)))
+                ->andWhere($query->expr()->eq('object_id', $query->createNamedParameter((string)$roomId)))
+                ->andWhere($query->expr()->orX(
+                    $query->expr()->isNull('expire_date'),
+                    $query->expr()->gt('expire_date', $query->createNamedParameter(new \DateTime(), IQueryBuilder::PARAM_DATE)),
+                ))
+                ->orderBy('id', 'DESC')
+                ->setMaxResults(min($budget, self::PAGE_SIZE));
+            $rows = $query->executeQuery()->fetchAll();
         } catch (\Throwable $e) {
             $this->logger->warning('eva_ai: could not read Talk history: ' . $e->getMessage());
             return [];
         }
-        return array_reverse(array_values((array)$comments));
+
+        $out = [];
+        foreach (array_reverse(array_values((array)$rows)) as $row) {
+            if (!is_array($row)) {
+                continue;
+            }
+            // The column is a naive UTC timestamp, so it is read as UTC and
+            // rendered as UTC rather than through the server's timezone.
+            $created = trim((string)($row['creation_timestamp'] ?? ''));
+            $stamp = $created !== '' ? (int)strtotime($created . ' UTC') : 0;
+            $out[] = [
+                'actorType' => trim((string)($row['actor_type'] ?? '')),
+                'actor' => trim((string)($row['actor_id'] ?? '')),
+                'message' => (string)($row['message'] ?? ''),
+                'stamp' => $stamp > 0 ? gmdate('Y-m-d H:i', $stamp) : '',
+            ];
+        }
+        return $out;
     }
 
     /**
@@ -227,26 +270,53 @@ class TalkTranscriptService
      */
     public static function renderMessages(iterable $messages, string $roomName = ''): array
     {
+        $entries = [];
+        foreach ($messages as $comment) {
+            if (!$comment instanceof IComment) {
+                continue;
+            }
+            $when = $comment->getCreationDateTime();
+            $entries[] = [
+                'actorType' => (string)$comment->getActorType(),
+                'actor' => (string)$comment->getActorId(),
+                'message' => (string)$comment->getMessage(),
+                'stamp' => $when !== null ? $when->format('Y-m-d H:i') : '',
+            ];
+        }
+        return self::formatTranscript($entries, $roomName);
+    }
+
+    /**
+     * Turn normalized messages into the text that gets indexed.
+     *
+     * Both read paths funnel through here, so a message is judged the same way
+     * whichever way it arrived. What is dropped is machinery rather than
+     * conversation: Talk's own changelog and bot entries, deleted-message
+     * placeholders, command text and JSON system payloads. Bot messages are
+     * excluded on purpose - the bot's own answers are not the conversation, and
+     * indexing them would double the index and let it quote itself.
+     *
+     * @param list<array{actorType:string,actor:string,message:string,stamp:string}> $entries oldest first
+     * @return array{text:string,count:int}
+     */
+    private static function formatTranscript(array $entries, string $roomName = ''): array
+    {
         $lines = [];
         if ($roomName !== '') {
             $lines[] = 'Talk chat: ' . $roomName;
         }
         $count = 0;
-        foreach ($messages as $comment) {
-            if (!$comment instanceof IComment) {
+        foreach ($entries as $entry) {
+            $actorType = strtolower(trim((string)($entry['actorType'] ?? '')));
+            $actor = trim((string)($entry['actor'] ?? ''));
+            if ($actorType === 'bots' || $actorType === 'changelog' || $actor === 'changelog' || str_starts_with($actor, 'bots/')) {
                 continue;
             }
-            $message = trim((string)$comment->getMessage());
+            $message = trim((string)($entry['message'] ?? ''));
             if ($message === '' || str_starts_with($message, '{') || str_starts_with($message, '/')) {
                 continue;
             }
-            $actor = (string)$comment->getActorId();
-            if ($actor === 'changelog' || str_starts_with($actor, 'bots/')) {
-                continue;
-            }
-            $when = $comment->getCreationDateTime();
-            $stamp = $when !== null ? $when->format('Y-m-d H:i') : '';
-            $lines[] = '[' . $stamp . '] ' . $actor . ': ' . $message;
+            $lines[] = '[' . (string)($entry['stamp'] ?? '') . '] ' . $actor . ': ' . $message;
             $count++;
         }
         return ['text' => implode("\n", $lines), 'count' => $count];

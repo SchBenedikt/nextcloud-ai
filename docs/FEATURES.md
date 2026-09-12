@@ -73,7 +73,9 @@ membership is checked again at answer time.
 Indexing the chat histories is a separate, per-user decision. A switch includes
 them in the regular indexing pass, and a dedicated button ("Only index Nextcloud
 Talk chats") indexes them immediately, with bounds on how many chats and how many
-messages per chat are read.
+messages per chat are read. How the whole path works, what is deliberately left
+out, and how to verify it on a live instance:
+[TALK-INDEXING.md](TALK-INDEXING.md) and `occ eva_ai:talk <user>`.
 
 ### Command Line and Background Jobs
 

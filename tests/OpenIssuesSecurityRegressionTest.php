@@ -171,9 +171,24 @@ final class OpenIssuesSecurityRegressionTest extends TestCase {
         self::assertStringContainsString('$this->request->getParam(', $controller);
         self::assertStringNotContainsString('private function param', $controller);
         self::assertStringNotContainsString('function jsonBody', $controller);
-        self::assertStringContainsString('if ($age > 900 || ($cancelRequested && $age > 300))', $controller);
-        self::assertStringContainsString('if ($age > 900 || ($cancelRequested && $age > 300))', (string)file_get_contents(__DIR__ . '/../lib/Service/RagService.php'));
-        self::assertStringContainsString('if ($age > 900 || ($cancelRequested && $age > 300))', (string)file_get_contents(__DIR__ . '/../lib/BackgroundJob/IndexJob.php'));
+        // The stale-run rule lives in exactly one place and every entry point
+        // delegates to it. It used to be written out four times with slightly
+        // different details, which is how a run left behind by a dead worker
+        // could be recovered by one caller and still block another.
+        $appConfig = (string)file_get_contents(__DIR__ . '/../lib/Service/AppConfig.php');
+        self::assertStringContainsString('public function recoverAbandonedRun', $appConfig);
+        self::assertStringContainsString('self::STALE_RUN_SECONDS', $appConfig);
+        self::assertStringContainsString('self::CANCEL_GRACE_SECONDS', $appConfig);
+        foreach ([
+            'Controller/ApiController.php',
+            'Service/RagService.php',
+            'BackgroundJob/IndexJob.php',
+            'Service/Indexer.php',
+        ] as $delegating) {
+            $source = (string)file_get_contents(__DIR__ . '/../lib/' . $delegating);
+            self::assertStringContainsString('recoverAbandonedRun', $source, $delegating . ' does not use the shared stale-run rule');
+            self::assertStringNotContainsString('age > 900', $source, $delegating . ' still carries its own copy of the rule');
+        }
     }
 
     public function testIndexingContractUsesOneExclusivePerUserClaimPath(): void {

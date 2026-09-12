@@ -79,6 +79,152 @@ final class TalkIndexingTest extends TestCase {
     }
 
     /**
+     * A room must stay readable when one of its messages is longer than the
+     * Comments API allows.
+     *
+     * Core validates a comment's message against a 1000-character limit while it
+     * reads the rows, and Talk accepts much longer messages - EVA's own Talk
+     * answers are longer than that. Hydrating through the API therefore threw for
+     * the whole room, which is how a room silently indexed as nothing. The rows
+     * are read directly for exactly this reason, so this case is the guarantee
+     * that the room keeps its content.
+     */
+    public function testARoomStaysReadableWhenAMessageExceedsTheCommentsLimit(): void
+    {
+        $long = str_repeat('Sehr ausführliche Zusammenfassung. ', 60);
+        self::assertGreaterThan(1000, mb_strlen($long), 'the fixture must exceed the Comments API limit');
+
+        $service = $this->transcriptService($this->dbWithRows([
+            ['actor_type' => 'users', 'actor_id' => 'admin', 'message' => 'Was war das Budget?', 'creation_timestamp' => '2026-09-11 08:08:27'],
+            ['actor_type' => 'bots', 'actor_id' => 'bot-3357ec60', 'message' => $long, 'creation_timestamp' => '2026-09-11 08:08:29'],
+            ['actor_type' => 'users', 'actor_id' => 'admin', 'message' => 'Danke, das reicht.', 'creation_timestamp' => '2026-09-11 08:09:00'],
+        ], $maxResults));
+
+        $transcript = $service->transcript('admin', 4);
+
+        self::assertNotNull($transcript, 'the room became unreadable again');
+        self::assertSame(2, $transcript['messages']);
+        self::assertStringContainsString('Was war das Budget?', $transcript['text']);
+        self::assertStringContainsString('Danke, das reicht.', $transcript['text']);
+        // The bot's own answer is machinery, not conversation: indexing it would
+        // double the index and let the bot quote itself.
+        self::assertStringNotContainsString('Sehr ausführliche Zusammenfassung', $transcript['text']);
+    }
+
+    /**
+     * The message budget has to come from the configuration when the caller does
+     * not name one.
+     *
+     * This reads the setting through the service's own configuration object; the
+     * earlier code read it from a property that does not exist, so every
+     * transcript threw and no Talk room was ever indexed. Nothing caught it
+     * because only the formatting was tested, never the read path.
+     */
+    public function testTheConfiguredBudgetIsUsedWhenTheCallerNamesNone(): void
+    {
+        $config = $this->createMock(AppConfig::class);
+        $config->method('getInt')->willReturnCallback(
+            static fn(string $key, ?int $default = null): int => $key === 'talk_index_max_messages' ? 20 : (int)($default ?? 0)
+        );
+
+        $service = $this->transcriptService(
+            $this->dbWithRows([
+                ['actor_type' => 'users', 'actor_id' => 'admin', 'message' => 'Hallo', 'creation_timestamp' => '2026-09-11 08:08:27'],
+            ], $maxResults),
+            $config,
+        );
+
+        $transcript = $service->transcript('admin', 4);
+
+        self::assertNotNull($transcript);
+        self::assertSame(20, $maxResults, 'the configured budget was not applied');
+    }
+
+    /** Talk's own machinery is filtered by actor type, not only by its name. */
+    public function testChangelogAndBotRowsAreDroppedByActorType(): void
+    {
+        $service = $this->transcriptService($this->dbWithRows([
+            ['actor_type' => 'changelog', 'actor_id' => '', 'message' => '## Neu in Talk 25', 'creation_timestamp' => '2026-09-11 08:00:00'],
+            ['actor_type' => 'bots', 'actor_id' => 'bot-3357ec60', 'message' => 'Antwort des Bots', 'creation_timestamp' => '2026-09-11 08:01:00'],
+            ['actor_type' => 'users', 'actor_id' => 'admin', 'message' => 'Termin steht.', 'creation_timestamp' => '2026-09-11 08:02:00'],
+        ], $maxResults));
+
+        $transcript = $service->transcript('admin', 4);
+
+        self::assertNotNull($transcript);
+        self::assertSame(1, $transcript['messages']);
+        self::assertStringContainsString('Termin steht.', $transcript['text']);
+        self::assertStringNotContainsString('Neu in Talk 25', $transcript['text']);
+        self::assertStringNotContainsString('Antwort des Bots', $transcript['text']);
+    }
+
+    /**
+     * A room whose messages are all machinery is not indexed at all, rather than
+     * stored as an empty document.
+     */
+    public function testARoomWithNothingWorthIndexingYieldsNoTranscript(): void
+    {
+        $service = $this->transcriptService($this->dbWithRows([
+            ['actor_type' => 'changelog', 'actor_id' => '', 'message' => '## Neu in Talk 25', 'creation_timestamp' => '2026-09-11 08:00:00'],
+            ['actor_type' => 'users', 'actor_id' => 'admin', 'message' => '{"message":"conversation_created"}', 'creation_timestamp' => '2026-09-11 08:01:00'],
+        ], $maxResults));
+
+        self::assertNull($service->transcript('admin', 2));
+    }
+
+    /** A service whose membership check is satisfied, with the given database. */
+    private function transcriptService(\OCP\IDBConnection $db, ?AppConfig $config = null): TalkTranscriptService
+    {
+        $config ??= $this->createMock(AppConfig::class);
+        return new class($config, $this->createMock(\OCP\App\IAppManager::class), $db, $this->createMock(\OCA\EvaAi\Service\Searcher::class), $this->createMock(LoggerInterface::class)) extends TalkTranscriptService {
+            public function isMember(string $userId, int $roomId): bool {
+                return true;
+            }
+        };
+    }
+
+    /**
+     * A database whose chat query returns the given rows.
+     *
+     * `$maxResults` receives the page size the service asked for, which is how
+     * the configured budget becomes observable without touching Talk.
+     *
+     * @param list<array<string,string>> $rows newest first, as the query returns them
+     */
+    private function dbWithRows(array $rows, ?int &$maxResults = null): \OCP\IDBConnection
+    {
+        $result = $this->createMock(\OCP\DB\IResult::class);
+        $result->method('fetchAll')->willReturn($rows);
+
+        $expr = $this->createMock(\OCP\DB\QueryBuilder\IExpressionBuilder::class);
+        foreach (['eq', 'isNull', 'gt'] as $method) {
+            $expr->method($method)->willReturn('1=1');
+        }
+        // Composite expressions have their own type, so they are mocked as one.
+        $composite = $this->createMock(\OCP\DB\QueryBuilder\ICompositeExpression::class);
+        $expr->method('orX')->willReturn($composite);
+        $expr->method('andX')->willReturn($composite);
+
+        $qb = $this->createMock(\OCP\DB\QueryBuilder\IQueryBuilder::class);
+        foreach (['select', 'from', 'where', 'andWhere', 'orderBy'] as $method) {
+            $qb->method($method)->willReturnSelf();
+        }
+        $qb->method('createNamedParameter')->willReturn('?');
+        $qb->method('expr')->willReturn($expr);
+        $qb->method('executeQuery')->willReturn($result);
+        $qb->expects(self::once())->method('setMaxResults')->willReturnCallback(
+            function (int $limit) use (&$maxResults, $qb) {
+                $maxResults = $limit;
+                return $qb;
+            }
+        );
+
+        $db = $this->createMock(\OCP\IDBConnection::class);
+        $db->method('getQueryBuilder')->willReturn($qb);
+        return $db;
+    }
+
+    /**
      * A room and a mail message must never share a synthetic file id: the mail
      * reconciliation deletes rows by id, so a collision would delete the wrong
      * document.
@@ -156,6 +302,46 @@ final class TalkIndexingTest extends TestCase {
         unset($docMapper);
     }
 
+    /**
+     * A manual run must reclaim the claim of a worker that died.
+     *
+     * A failed Talk pass used to leave its run claimed (a killed worker never
+     * reaches its cleanup), and every later manual run and cron pass then
+     * answered "Indexing is already running for this user" and did nothing - the
+     * index looked permanently stuck even though nothing was running.
+     */
+    public function testAManualRunReclaimsTheClaimOfADeadWorker(): void
+    {
+        [$indexer] = $this->harness(
+            rooms: [['id' => 7, 'token' => 't', 'name' => 'Raum']],
+            roomTranscripts: [7 => ['roomId' => 7, 'name' => 'Raum', 'text' => 'Talk chat: Raum' . "\n" . '[2026-09-01 10:00] alice: Hallo', 'messages' => 1]],
+            claimHeld: true,
+            claimRecovered: true,
+        );
+
+        $result = $indexer->run('alice', 40, 'talk');
+
+        self::assertNull($result['error'], 'the stale claim still blocked the run');
+        self::assertSame(1, $result['processed']);
+    }
+
+    /** A live run keeps its claim: a second worker must not steal it. */
+    public function testAManualRunDoesNotStealALiveClaim(): void
+    {
+        [$indexer, $docMapper] = $this->harness(
+            rooms: [['id' => 7, 'token' => 't', 'name' => 'Raum']],
+            roomTranscripts: [7 => ['roomId' => 7, 'name' => 'Raum', 'text' => 'Talk chat: Raum', 'messages' => 1]],
+            claimHeld: true,
+            claimRecovered: false,
+        );
+        $docMapper->expects(self::never())->method('insert');
+
+        $result = $indexer->run('alice', 40, 'talk');
+
+        self::assertSame('Indexing is already running for this user.', $result['error']);
+        self::assertSame(0, $result['processed']);
+    }
+
     /** An unconfirmed membership yields no history at all (fails closed). */
     public function testRecallReturnsNothingWithoutAConfirmedMembership(): void {
         $searcher = $this->createMock(\OCA\EvaAi\Service\Searcher::class);
@@ -164,7 +350,7 @@ final class TalkIndexingTest extends TestCase {
         $service = new TalkTranscriptService(
             $this->createMock(AppConfig::class),
             $this->createMock(\OCP\App\IAppManager::class),
-            $this->createMock(\OCP\Comments\ICommentsManager::class),
+            $this->createMock(\OCP\IDBConnection::class),
             $searcher,
             $this->createMock(LoggerInterface::class),
         );
@@ -187,18 +373,21 @@ final class TalkIndexingTest extends TestCase {
         array $storedTalkIds = [],
         ?Document $staleDocument = null,
         ?callable $onDelete = null,
+        bool $claimHeld = false,
+        bool $claimRecovered = false,
     ): array {
         $isMember ??= static fn(string $user, int $roomId): bool => true;
         $config = $this->createMock(AppConfig::class);
-        $config->method('get')->willReturnCallback(static function (string $key, ?string $default = null) use ($enabled): string {
+        $config->method('get')->willReturnCallback(static function (string $key, ?string $default = null) use ($enabled, $claimHeld): string {
             return match ($key) {
                 'talk_index_enabled' => $enabled ? '1' : '0',
                 'scope_path', 'exclude_paths', 'index_run_id' => '',
                 'index_cancel_requested' => '0',
-                'index_running' => '0',
+                'index_running' => $claimHeld ? '1' : '0',
                 default => $default ?? '',
             };
         });
+        $config->method('recoverAbandonedRun')->willReturn($claimRecovered);
         $config->method('getInt')->willReturnCallback(static function (string $key, ?int $default = null): int {
             return match ($key) {
                 'talk_index_max_rooms' => 20,

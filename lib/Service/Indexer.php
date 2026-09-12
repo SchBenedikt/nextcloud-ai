@@ -105,9 +105,12 @@ class Indexer {
             return $result;
         }
         if ($runId === null) {
-            // OCC/manual runs and the periodic worker share the same
-            // per-user claim. A second worker exits before any DB mutation.
-            if ($this->config->get('index_running') === '1') {
+            // OCC/manual runs and the periodic worker share the same per-user
+            // claim. A second worker exits before any DB mutation - unless the
+            // first one is gone: a worker killed mid-run leaves its claim
+            // behind, and without this check every later manual run and every
+            // cron pass would report "already running" forever.
+            if ($this->config->get('index_running') === '1' && !$this->config->recoverAbandonedRun()) {
                 $result['error'] = 'Indexing is already running for this user.';
                 $this->lockingProvider->releaseLock($lockPath, ILockingProvider::LOCK_EXCLUSIVE);
                 return $result;

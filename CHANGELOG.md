@@ -4,6 +4,51 @@ All notable changes to **EVA (eva_ai)** are documented here.
 Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); the project
 follows [Semantic Versioning](https://semver.org/).
 
+## [1.11.0] - 2026-09-12
+
+### Fixed
+
+- **Talk chat histories were never indexed.** Every transcript threw
+  `Call to a member function getInt() on null` (a configuration read from a
+  property that does not exist), the pass caught it per room and reported
+  "processed: 0" without an error, so the feature looked enabled and had never
+  stored a single message. Found on a live instance; the log line was
+  `Undefined property: TalkTranscriptService::$config`.
+- **A room with one long message was unreadable.** The transcript was built
+  through Nextcloud's Comments API, which validates a comment against a
+  1000-character limit *while reading it*, while Talk accepts much longer
+  messages - EVA's own Talk answers already exceed it. One such message made the
+  whole room throw and be skipped. The rows are now read directly, with the same
+  filters, so no message length can silence a room.
+- **A room with nothing but machinery is no longer stored.** A changelog room or
+  a room holding only the "conversation created" line produced a header-only
+  document that was searchable as an empty room.
+- **An abandoned index run blocked indexing for good.** A worker killed mid-run
+  leaves its claim behind, and every later manual run and cron pass answered
+  "already running" while nothing was running. The rule that ends such a run now
+  lives in one place (`AppConfig::recoverAbandonedRun()`) and is used by every
+  entry point; it used to be written out four times with different details.
+- **Pictures from the web were shown as links.** Nextcloud's own image policy is
+  `img-src 'self' data: blob:`, so a correct markdown image in an answer was
+  blocked by the browser and degraded to a link. Both pages that render answers
+  now allow remote pictures - an image the answer embeds is the whole point of
+  the picture feature - while the pictures themselves stay constrained: no
+  referrer is sent and they load lazily.
+
+### Added
+
+- `occ eva_ai:talk <user>` reports Talk availability, the effective settings,
+  every room with its readable message count and its stored document, and can
+  run the pass (`--index`) and prove recall (`--room <id> --ask "<question>"`).
+- [docs/TALK-INDEXING.md](docs/TALK-INDEXING.md): the whole path - live context
+  versus indexed history, what is deliberately left out, where the data is
+  stored, how membership is enforced at answer time, and what each failure looks
+  like.
+- The assistant now shows pictures without being asked when the topic is
+  something visible (a product, device, place, building, event, person, animal,
+  dish or artwork): a web search about such a subject also looks for pictures and
+  embeds two to four of them.
+
 ## [1.10.2] - 2026-09-12
 
 ### Fixed

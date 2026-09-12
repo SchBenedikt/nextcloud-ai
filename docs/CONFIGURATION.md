@@ -64,7 +64,7 @@ endpoint rejects them.
 | `index_enabled` | I | `0` | `1`/`0` | – | Legacy instance-wide indexer switch. |
 | `mail_index_enabled` | P | `1` | `1`/`0` | – | Index emails into RAG. |
 | `mail_index_max` | P | `25` | `1`–`500` | emails/pass | Emails indexed per pass. |
-| `talk_index_enabled` | P | `0` | `1`/`0` | – | Index the user's Nextcloud Talk chat histories, so older parts of a conversation can be quoted in an answer. Off by default because a chat log is the most personal content in an instance. Use the "Only index Nextcloud Talk chats" button (`POST /ocs/v2.php/apps/eva_ai/api/talkIndex`) to index them once regardless of this switch. |
+| `talk_index_enabled` | P | `0` | `1`/`0` | – | Index the user's Nextcloud Talk chat histories, so older parts of a conversation can be quoted in an answer. Off by default because a chat log is the most personal content in an instance. Use the "Only index Nextcloud Talk chats" button (`POST /ocs/v2.php/apps/eva_ai/api/talkIndex`) or `occ eva_ai:talk <user> --index` to index them once regardless of this switch. The whole path is described in [TALK-INDEXING.md](TALK-INDEXING.md). |
 | `talk_index_max_rooms` | P | `20` | `1`–`200` | chats/pass | Talk chats indexed per pass. |
 | `talk_index_max_messages` | P | `200` | `10`–`1000` | messages | How far back into each chat to index. |
 
