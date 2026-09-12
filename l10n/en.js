@@ -32,6 +32,7 @@ OC.L10N.register("eva_ai", {
     "How many model/tool steps EVA may chain before it must summarize. Allowed range: 4–32; higher values help complex tasks but use more time and tokens.": "How many model/tool steps EVA may chain before it must summarize. Allowed range: 4–32; higher values help complex tasks but use more time and tokens.",
     "EVA is continuing this chat in the background": "EVA is continuing this chat in the background",
     "Background EVA run failed after retries": "Background EVA run failed after retries",
+    "Background EVA run failed — click to retry": "Background EVA run failed — click to retry",
     "EVA will continue this chat in the background": "EVA will continue this chat in the background",
     "When a chat continues after you close the page, EVA may execute requested changes without an open confirmation dialog.": "When a chat continues after you close the page, EVA may execute requested changes without an open confirmation dialog.",
     "Background actions are opt-in. EVA still follows the request and never invents unrelated changes. Disable this switch to keep queued chats read-only.": "Background actions are opt-in. EVA still follows the request and never invents unrelated changes. Disable this switch to keep queued chats read-only.",
