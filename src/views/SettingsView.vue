@@ -187,6 +187,9 @@
 				<NcCheckboxRadioSwitch v-model="notificationsEnabled" type="switch" class="native-toggle compact-switch" :description="$t('Uses Nextcloud Notifications when background or Talk work finishes.')">
 					{{ $t('Notify me when a long answer is ready') }}
 				</NcCheckboxRadioSwitch>
+				<NcCheckboxRadioSwitch v-model="userWeatherEnabled" type="switch" class="native-toggle compact-switch" :description="$t('The weather tool uses external Open-Meteo services for geocoding and forecasts.')">
+					{{ $t('Allow weather forecasts for me') }}
+				</NcCheckboxRadioSwitch>
 			</section>
 
 			<section class="settings-section">
@@ -445,9 +448,6 @@
 						<p>{{ $t('These settings apply to all users. Web search provider selection is per-user above.') }}</p>
 					</div>
 				</div>
-				<NcCheckboxRadioSwitch v-model="weatherEnabled" type="switch" class="native-toggle" :disabled="savingAdmin" :description="$t('The weather tool queries the external Open-Meteo services (geocoding + forecast). Turn it off to keep all tool traffic on your own server.')">
-					{{ $t('Allow weather forecasts for all users') }}
-				</NcCheckboxRadioSwitch>
 				<div class="admin-subsection">
 					<p class="field-help" style="margin-bottom:12px;">{{ $t('Instance-level web search infrastructure: configure the SearxNG URL, API keys for Brave/Tavily, and result limits below. Individual users choose their provider in the Web search section above.') }}</p>
 					<div v-if="admin.web_search_provider === 'searxng' || true" class="field">
@@ -507,6 +507,7 @@ export default {
 			summary_model: '',
 			temperature: '0.1',
 			actions_enabled: '1',
+			weather_tool_enabled: '1',
 			notify_on_complete: '1',
 			exec_write_types: '',
 			exec_write_max_chars: '100000',
@@ -580,6 +581,10 @@ export default {
 			get: () => f.value.notify_on_complete === '1',
 			set: value => { f.value.notify_on_complete = value ? '1' : '0' },
 		})
+		const userWeatherEnabled = computed({
+			get: () => f.value.weather_tool_enabled === '1',
+			set: value => { f.value.weather_tool_enabled = value ? '1' : '0' },
+		})
 		const userWebSearchEnabled = computed({
 			get: () => f.value.web_search_enabled === '1',
 			set: value => { f.value.web_search_enabled = value ? '1' : '0' },
@@ -589,19 +594,15 @@ export default {
 		const userWebSearchFetchContent = computed({ get: () => f.value.web_search_fetch_content === '1', set: v => { f.value.web_search_fetch_content = v ? '1' : '0' } })
 		const userWebSearchSafeSearch = computed({ get: () => f.value.web_search_safe_search === '1', set: v => { f.value.web_search_safe_search = v ? '1' : '0' } })
 		// Admin settings form (Issue #82/#187): the same bundle is mounted inside
-		// the Nextcloud admin settings with data-admin="1". Instance-wide switches
-		// (weather tool, web search) are admin-only and live on their own endpoint,
-		// so they are loaded and saved separately from the personal settings.
+		// the Nextcloud admin settings with data-admin="1". Only shared provider
+		// infrastructure is loaded and saved through the admin endpoint; tool
+		// permissions and search behavior remain personal settings.
 		const isAdminMode = (() => {
 			const rootEl = document.getElementById('eva_ai-root')
 			return !!(rootEl && rootEl.dataset && rootEl.dataset.admin === '1')
 		})()
 		const admin = ref({
-			weather_tool_enabled: '1',
 			web_search_url: '',
-			web_search_max_results: '5',
-			web_search_timeout: '10',
-			web_search_safe_search: '1',
 		})
 		const webSearchKey = ref('')
 		const removeWebSearchKey = ref(false)
@@ -612,16 +613,6 @@ export default {
 			const adminReady = ref(false)
 			let autoSaveTimer = null
 			let adminAutoSaveTimer = null
-		const weatherEnabled = computed({
-			get: () => admin.value.weather_tool_enabled === '1',
-			set: value => { admin.value.weather_tool_enabled = value ? '1' : '0' },
-		})
-
-		const webSearchSafeSearch = computed({
-			get: () => admin.value.web_search_safe_search === '1',
-			set: value => { admin.value.web_search_safe_search = value ? '1' : '0' },
-		})
-
 		function fillAdmin(data) {
 			if (!data || typeof data !== 'object') return
 			Object.keys(admin.value).forEach(key => {
@@ -1123,8 +1114,8 @@ export default {
 		const ocrEnabled = computed({ get: () => f.value.ocr_enabled === '1', set: value => { f.value.ocr_enabled = value ? '1' : '0' } })
 		return {
 			groqKey, removeGroqKey, ocrEnabled, f, status, limits, availableModels, embeddingModels, chatModels, embeddingInstalledHint, chatInstalledHint, modelLoading, modelError, checkOut, saving, checking, indexing, resetting, deletingChats, stopping, saved, loadError, message, validationErrors, resetConfirm, chatsDeleteConfirm,
-			newExcludePath, excludeError, excludeList, actionsEnabled, notificationsEnabled, weatherEnabled, mailIndexEnabled, talkIndexEnabled, talkWriteEnabled, indexEnrolled, actionsDisabled, busy, indexingActive, settingsLocked, maxFileSizeMb,
-			isAdminMode, admin, userWebSearchEnabled, webSearchSafeSearch, webSearchKey, removeWebSearchKey, webSearchKeyStored, webSearchReady, savingAdmin, saveAdminSettings, loadAdminSettings,
+			newExcludePath, excludeError, excludeList, actionsEnabled, notificationsEnabled, userWeatherEnabled, mailIndexEnabled, talkIndexEnabled, talkWriteEnabled, indexEnrolled, actionsDisabled, busy, indexingActive, settingsLocked, maxFileSizeMb,
+			isAdminMode, admin, userWebSearchEnabled, userWebSearchSafeSearch, webSearchKey, removeWebSearchKey, webSearchKeyStored, webSearchReady, savingAdmin, saveAdminSettings, loadAdminSettings,
 			exporting, downloadExport,
 			knowledgeContent, knowledgeOriginal, savingKnowledge, knowledgeSaved, saveKnowledgeContent,
 			formatNumber, loadStatus, save, checkOllama, addExclude, removeExclude, startIndex, startMailIndex, startTalkIndex, stopIndex, resetIndex, deleteAllChats,
