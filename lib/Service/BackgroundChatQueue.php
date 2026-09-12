@@ -13,6 +13,7 @@ final class BackgroundChatQueue {
     private const MAX_ITEMS = 10;
     private const MAX_MESSAGE_CHARS = 20000;
     private const MAX_HISTORY_ITEMS = 100;
+    private const MAX_RUNTIME_SECONDS = 300;
 
     public function __construct(private IConfig $config, private ILockingProvider $locks, private LoggerInterface $logger) {}
 
@@ -42,7 +43,7 @@ final class BackgroundChatQueue {
             if ($active >= self::MAX_ITEMS) return null;
             $id = is_string($requestedId) && preg_match('/^[A-Za-z0-9_-]{8,80}$/D', $requestedId) === 1
                 ? $requestedId : 'bg_' . date('YmdHis') . '_' . bin2hex(random_bytes(5));
-            $items[] = ['id' => $id, 'chatId' => $chatId, 'message' => $message, 'history' => $cleanHistory, 'status' => 'pending', 'attempts' => 0, 'created' => time(), 'availableAt' => time() + 15];
+            $items[] = ['id' => $id, 'chatId' => $chatId, 'message' => $message, 'history' => $cleanHistory, 'status' => 'pending', 'attempts' => 0, 'steps' => 0, 'created' => time(), 'deadline' => time() + self::MAX_RUNTIME_SECONDS, 'availableAt' => time() + 15];
             $this->write($user, $items);
             return $id;
         });
@@ -67,6 +68,12 @@ final class BackgroundChatQueue {
     }
 
     public function complete(string $user, string $id): void { $this->mutate($user, static fn(array $items): array => array_values(array_filter($items, static fn(array $i): bool => ($i['id'] ?? '') !== $id))); }
+    public function markTimedOut(string $user, string $id): void {
+        $this->mutate($user, static function (array $items) use ($id): array {
+            foreach ($items as &$item) if (($item['id'] ?? '') === $id && ($item['status'] ?? '') === 'running') { $item['status'] = 'failed'; $item['error'] = 'Background run exceeded its five-minute time limit.'; $item['finishedAt'] = time(); }
+            unset($item); return $items;
+        });
+    }
     /** Return queue progress without exposing the stored conversation history. */
     public function status(string $user): array {
         return $this->withLock($user, function () use ($user): array {
@@ -84,6 +91,8 @@ final class BackgroundChatQueue {
                     'phase' => in_array(($item['phase'] ?? ''), ['queued', 'model', 'tool', 'finalizing'], true) ? (string)$item['phase'] : 'queued',
                     'tool' => mb_strimwidth((string)($item['tool'] ?? ''), 0, 100, '…'),
                     'updatedAt' => max(0, (int)($item['updatedAt'] ?? $item['claimedAt'] ?? $item['created'] ?? 0)),
+                    'steps' => max(0, (int)($item['steps'] ?? 0)),
+                    'deadline' => max(0, (int)($item['deadline'] ?? 0)),
                 ];
             }
             return $out;
@@ -96,6 +105,7 @@ final class BackgroundChatQueue {
         $this->mutate($user, function (array $items) use ($id, $phase, $tool): array {
             foreach ($items as &$item) if (($item['id'] ?? '') === $id && ($item['status'] ?? '') === 'running') {
                 $item['phase'] = $phase; $item['tool'] = $tool !== null ? mb_substr($tool, 0, 100) : ''; $item['updatedAt'] = time();
+                if ($phase === 'tool') $item['steps'] = (int)($item['steps'] ?? 0) + 1;
             }
             unset($item); return $items;
         });

@@ -56,6 +56,7 @@ class ActionExecutor {
         'create_folder' => ['path'],
         'rename_file' => ['path', 'new_name'],
         'delete_file' => ['path'],
+        'inspect_file' => ['path'],
         'update_knowledge' => ['fact'],
         // Profile (any field set is explicit; no single mandatory argument)
         'update_profile' => [],
@@ -167,7 +168,7 @@ class ActionExecutor {
             ]],
             ['type' => 'function', 'function' => [
                 'name' => 'create_file',
-                'description' => 'Create (or overwrite) a text file anywhere in the user\'s Nextcloud home, e.g. for drafts, notes, plans or documents. Only configured text file types are allowed. The content must be plain text.',
+                'description' => 'Create (or overwrite) a text file anywhere in the user\'s Nextcloud home, e.g. for drafts, notes, plans or documents. Only configured text file types are allowed. The content must be plain text; for complex Office files use a suitable app API or existing template and then validate the result.',
                 'parameters' => ['type' => 'object', 'properties' => [
                     'path' => ['type' => 'string', 'description' => 'Relative path from the home folder, e.g. "Documents/Plan.md" or "Report.txt".'],
                     'content' => ['type' => 'string', 'description' => 'The full text content to write.'],
@@ -210,6 +211,13 @@ class ActionExecutor {
                     'path' => ['type' => 'string', 'description' => 'Relative path, e.g. "Documents/Notes.md".'],
                     'offset' => ['type' => 'integer', 'minimum' => 0, 'description' => 'Character offset for the page, normally the previous response\'s next_offset.'],
                     'max_chars' => ['type' => 'integer', 'minimum' => 1, 'maximum' => 100000, 'description' => 'Characters to return (default 20000, maximum 100000).'],
+                ], 'required' => ['path']],
+            ]],
+            ['type' => 'function', 'function' => [
+                'name' => 'inspect_file',
+                'description' => 'Inspect a file or folder after a complex operation without reading its content. Returns path, type, size, MIME type and modification time.',
+                'parameters' => ['type' => 'object', 'properties' => [
+                    'path' => ['type' => 'string', 'description' => 'Relative path, e.g. "Documents/report.xlsx".'],
                 ], 'required' => ['path']],
             ]],
             ['type' => 'function', 'function' => [
@@ -807,7 +815,7 @@ class ActionExecutor {
 
         $fileTools = [
             'list_files', 'create_file', 'create_note', 'create_folder',
-            'rename_file', 'delete_file', 'read_file', 'search_files',
+            'rename_file', 'delete_file', 'read_file', 'inspect_file', 'search_files',
             'update_knowledge',
         ];
         if (in_array($name, $fileTools, true) && $home === null) {
@@ -823,6 +831,7 @@ class ActionExecutor {
                 'rename_file' => $this->renameFile($home, $args),
                 'delete_file' => $this->deleteFile($home, $args),
                 'read_file' => $this->readFile($home, $args),
+                'inspect_file' => $this->inspectFile($home, $args),
                 'search_files' => $this->searchFiles($home, $args),
                 'list_contacts' => $this->listContacts($userId),
                 'find_contact' => $this->findContact($userId, $args),
@@ -1556,6 +1565,19 @@ class ActionExecutor {
             'next_offset' => $nextOffset,
             'total_chars' => $totalChars,
             'has_more' => $nextOffset < $totalChars,
+        ]];
+    }
+
+    private function inspectFile(Folder $home, array $args): array {
+        $path = $this->cleanPath((string)($args['path'] ?? ''));
+        if ($path === '') return ['ok' => false, 'error' => 'File path required'];
+        $node = $this->resolve($home, $path);
+        return ['ok' => true, 'result' => [
+            'path' => $path,
+            'type' => $node instanceof Folder ? 'folder' : 'file',
+            'size' => $node instanceof File ? (int)$node->getSize() : null,
+            'mime_type' => $node instanceof File ? (string)$node->getMimeType() : null,
+            'modified' => (int)$node->getMTime(),
         ]];
     }
 

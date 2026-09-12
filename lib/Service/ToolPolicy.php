@@ -54,6 +54,12 @@ class ToolPolicy {
             'requiresConfirmation' => false,
             'description' => 'Read file content',
         ],
+        'inspect_file' => [
+            'risk' => self::RISK_READONLY,
+            'surfaces' => [self::SURFACE_WEB, self::SURFACE_TALK, self::SURFACE_TASKPROCESSING, self::SURFACE_TASKPROCESSING_CONFIRMED, self::SURFACE_RAG],
+            'requiresConfirmation' => false,
+            'description' => 'Inspect file metadata after an operation',
+        ],
         'run_safe_command' => [
             'risk' => self::RISK_MUTATING,
             'surfaces' => [self::SURFACE_WEB, self::SURFACE_TASKPROCESSING_CONFIRMED],
