@@ -11,6 +11,7 @@ use OCA\EvaAi\Service\Indexer;
 use OCA\EvaAi\Service\IndexScheduler;
 use OCP\AppFramework\Utility\ITimeFactory;
 use OCP\BackgroundJob\TimedJob;
+use OCP\IDBConnection;
 use Psr\Log\LoggerInterface;
 
 /**
@@ -30,7 +31,8 @@ class IndexJob extends TimedJob {
         private DocumentMapper $documentMapper,
         private AgentStore $agentStore,
         private IndexScheduler $scheduler,
-        private LoggerInterface $logger
+        private LoggerInterface $logger,
+        private ?IDBConnection $db = null
     ) {
         parent::__construct($time);
         // A large library is caught up by repeating bounded ticks, so the tick
@@ -58,6 +60,20 @@ class IndexJob extends TimedJob {
     private const MAX_PASSES_PER_USER = 200;
 
     protected function run($argument): void {
+        if ($this->config->get('index_reset_requested') === '1') {
+            // Run the destructive reset in cron, never in app enable/update.
+            try {
+                $this->db?->executeStatement('DELETE FROM *PREFIX*eva_ai_chunks');
+                $this->db?->executeStatement('DELETE FROM *PREFIX*eva_ai_documents');
+                $this->db?->executeStatement('DELETE FROM *PREFIX*eva_ai_agent_state');
+            } catch (\Throwable $e) {
+                $this->logger->warning('eva_ai deferred index reset failed', ['exception' => $e->getMessage()]);
+                return;
+            }
+            $this->config->set('index_reset_requested', '0');
+            $this->logger->info('eva_ai deferred index reset completed');
+            return;
+        }
         // The scheduler lock is global; the actual progress/settings are per user.
         $this->config->setUserId(null);
         if ($this->config->get('index_job_stop_requested') === '1') {
