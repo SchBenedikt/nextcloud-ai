@@ -454,7 +454,7 @@
 						<div class="briefing-form"><div class="briefing-form-title"><strong>{{ $t('Create a briefing') }}</strong><span>{{ $t('Choose what EVA should prepare and when you want it.') }}</span></div>
 						<div class="field-grid">
 							<div class="field field-wide"><NcTextField v-model="briefingDraft.prompt" :label="$t('What should EVA do?')" :label-outside="true" :placeholder="$t('For example: summarize my calendar for today')" /><p class="field-help">{{ $t('Write a question or instruction in plain language. You can ask about files, calendar, tasks or your knowledge base.') }}</p></div>
-							<NcTextField v-model="briefingDraft.time" type="time" :label="$t('Time')" :label-outside="true" />
+							<label class="briefing-time-field"><span>{{ $t('Time') }}</span><input v-model="briefingDraft.time" type="time" step="60" :aria-label="$t('Time')" /></label>
 						</div>
 						<NcCheckboxRadioSwitch v-model="briefingDraft.allow_actions" type="switch">{{ $t('Allow EVA to perform requested actions automatically') }}</NcCheckboxRadioSwitch>
 						<p v-if="briefingDraft.allow_actions" class="field-help briefing-action-warning">{{ $t('Use only for prompts you trust. EVA will execute needed changes in the background without a second dialog; generic app APIs still need the encrypted Nextcloud app token.') }}</p>
@@ -573,13 +573,37 @@
 
 <script>
 import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
-import { NcCheckboxRadioSwitch } from '@nextcloud/vue'
 import { api, errMsg } from '../lib/api'
 import { translate as t } from '../lib/i18n'
 
+// Settings deliberately use small native controls.  This keeps labels,
+// keyboard behavior and form values consistent across Nextcloud versions.
+const NativeTextField = {
+	inheritAttrs: false,
+	props: { modelValue: [String, Number], label: String },
+	emits: ['update:modelValue'],
+	template: `<label class="native-field"><span v-if="label" class="native-label">{{ label }}</span><input v-bind="$attrs" :value="modelValue" @input="$emit('update:modelValue', $event.target.value)" /></label>`,
+}
+const NativeCheckbox = {
+	props: { modelValue: [Boolean, String, Number], type: { type: String, default: 'switch' }, value: [String, Number, Boolean], name: String, disabled: Boolean, description: String },
+	emits: ['update:modelValue'],
+	computed: {
+		checked() { return this.type === 'radio' ? String(this.modelValue) === String(this.value) : this.modelValue === true || this.modelValue === '1' || this.modelValue === 1 },
+	},
+	methods: {
+		onChange(event) { this.$emit('update:modelValue', this.type === 'radio' ? event.target.value : event.target.checked) },
+	},
+	template: `<label class="native-check" :class="{ 'native-switch': type === 'switch' }"><input :type="type === 'radio' ? 'radio' : 'checkbox'" :name="name" :value="type === 'radio' ? value : undefined" :checked="checked" :disabled="disabled" @change="onChange"><span class="native-check-label"><slot></slot><small v-if="description">{{ description }}</small></span></label>`,
+}
+const NativeButton = {
+	inheritAttrs: false,
+	props: { type: { type: String, default: 'secondary' }, disabled: Boolean, loading: Boolean },
+	template: `<button v-bind="$attrs" type="button" class="native-button" :class="'native-button--' + type" :disabled="disabled || loading"><span v-if="loading" aria-hidden="true" class="native-button-spinner">…</span><slot></slot></button>`,
+}
+
 export default {
 	name: 'SettingsView',
-	components: { NcCheckboxRadioSwitch },
+	components: { NcTextField: NativeTextField, NcCheckboxRadioSwitch: NativeCheckbox, NcButton: NativeButton },
 	setup() {
 		const f = ref({
 			chat_provider: 'ollama',
@@ -731,11 +755,12 @@ export default {
 		async function addBriefing() {
 			const prompt = briefingDraft.value.prompt.trim()
 			const rawTime = String(briefingDraft.value.time || '').trim()
-			const timeMatch = /^(\d{1,2}):([0-5]\d)(?::[0-5]\d)?$/.exec(rawTime)
 			briefingFormError.value = ''
 			if (!prompt) { briefingFormError.value = t('Enter a question or instruction for this briefing.'); return }
-			if (!timeMatch || Number(timeMatch[1]) > 23) { briefingFormError.value = t('Choose a valid briefing time.'); return }
-			const time = `${String(Number(timeMatch[1])).padStart(2, '0')}:${timeMatch[2]}`
+			// Native time inputs already constrain the value to HH:MM. Keep a
+			// safe default for browsers that expose an empty value during the
+			// first interaction instead of making Add appear to do nothing.
+			const time = rawTime || '08:00'
 			if (!briefingDraft.value.days.length) { briefingFormError.value = t('Choose at least one weekday.'); return }
 			if (proactiveBriefings.value.length >= 20) { briefingFormError.value = t('You can create up to 20 briefings.'); return }
 			writeBriefings([...proactiveBriefings.value, { id: `briefing-${Date.now()}`, prompt, time, days: [...new Set(briefingDraft.value.days)].sort(), enabled: true, allow_actions: briefingDraft.value.allow_actions === true }])
@@ -1514,6 +1539,24 @@ export default {
 .field-wide { grid-column: 1 / -1; }
 .field { min-width: 0; }
 .native-label { display: block; margin-bottom: 6px; font-size: 13px; font-weight: 600; }
+.native-field { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.native-field > input, .native-field > textarea { box-sizing: border-box; width: 100%; min-height: 42px; padding: 9px 10px; border: 2px solid var(--color-border); border-radius: var(--border-radius-large, 8px); background: var(--color-main-background); color: var(--color-main-text); font: inherit; }
+.native-field > input:focus, .native-field > textarea:focus { border-color: var(--color-primary-element); outline: 2px solid color-mix(in srgb, var(--color-primary-element) 25%, transparent); outline-offset: 1px; }
+.native-field > input:disabled, .native-field > textarea:disabled { opacity: .65; }
+.native-check { display: flex; align-items: flex-start; gap: 9px; margin-top: 8px; cursor: pointer; }
+.native-check > input { width: 18px; height: 18px; margin: 2px 0 0; accent-color: var(--color-primary-element); flex: 0 0 auto; }
+.native-check-label { display: flex; flex-direction: column; gap: 3px; font-weight: 600; }
+.native-check-label small { color: var(--color-text-maxcontrast); font-size: 12px; font-weight: 400; line-height: 1.45; }
+.native-switch > input { appearance: none; width: 38px; height: 22px; border: 0; border-radius: 999px; background: var(--color-border); position: relative; cursor: pointer; transition: background .15s; }
+.native-switch > input::after { content: ''; position: absolute; width: 18px; height: 18px; top: 2px; left: 2px; border-radius: 50%; background: var(--color-main-background); transition: transform .15s; }
+.native-switch > input:checked { background: var(--color-primary-element); }
+.native-switch > input:checked::after { transform: translateX(16px); }
+.native-button { display: inline-flex; align-items: center; justify-content: center; gap: 7px; min-height: 38px; padding: 8px 14px; border: 1px solid var(--color-border); border-radius: var(--border-radius-large, 8px); background: var(--color-background-hover); color: var(--color-main-text); font: inherit; font-size: 13px; font-weight: 600; cursor: pointer; }
+.native-button:hover:not(:disabled), .native-button:focus-visible { border-color: var(--color-primary-element); background: color-mix(in srgb, var(--color-primary-element) 12%, var(--color-background-hover)); }
+.native-button:disabled { opacity: .55; cursor: not-allowed; }
+.native-button--primary { border-color: var(--color-primary-element); background: var(--color-primary-element); color: var(--color-primary-element-text); }
+.native-button--tertiary-no-background { border-color: transparent; background: transparent; color: var(--color-primary-element); }
+.native-button-spinner { line-height: 1; }
 .native-select { width: 100%; min-height: 42px; padding: 8px 34px 8px 10px; border: 2px solid var(--color-border); border-radius: var(--border-radius-large, 8px); background: var(--color-main-background); color: var(--color-main-text); font: inherit; }
 .native-select:focus { border-color: var(--color-primary-element); outline: 2px solid color-mix(in srgb, var(--color-primary-element) 25%, transparent); outline-offset: 1px; }
 .native-select:disabled { opacity: .65; }
@@ -1572,6 +1615,10 @@ export default {
 .briefing-form { display:grid; gap:14px; margin-top:6px; padding:16px; border:1px solid color-mix(in srgb,var(--color-primary-element) 30%,var(--color-border)); border-radius:11px; background:color-mix(in srgb,var(--color-primary-element) 4%,var(--color-main-background)); }
 .briefing-form-title { display:flex; flex-direction:column; gap:3px; }
 .briefing-form-title span { color:var(--color-text-maxcontrast); font-size:12px; }
+.briefing-time-field { display:flex; flex-direction:column; gap:6px; min-width:150px; }
+.briefing-time-field > span { font-size:13px; font-weight:600; }
+.briefing-time-field input { box-sizing:border-box; width:100%; min-height:40px; padding:8px 10px; color:var(--color-main-text); background:var(--color-main-background); border:2px solid var(--color-border); border-radius:7px; font:inherit; }
+.briefing-time-field input:focus { border-color:var(--color-primary-element); outline:2px solid color-mix(in srgb,var(--color-primary-element) 25%,transparent); outline-offset:1px; }
 .weekday-picker { display:flex; flex-wrap:wrap; gap:7px; margin-top:7px; }
 .weekday-picker label { display:inline-flex; align-items:center; gap:5px; padding:7px 10px; border:1px solid var(--color-border); border-radius:999px; background:var(--color-main-background); color:var(--color-text-maxcontrast); font-size:12px; cursor:pointer; }
 .weekday-picker label.selected { border-color:var(--color-primary-element); background:color-mix(in srgb,var(--color-primary-element) 14%,var(--color-main-background)); color:var(--color-main-text); font-weight:700; }
