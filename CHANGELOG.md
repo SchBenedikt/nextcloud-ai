@@ -4,6 +4,21 @@ All notable changes to **EVA (eva_ai)** are documented here.
 Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); the project
 follows [Semantic Versioning](https://semver.org/).
 
+## [1.16.53] - 2026-09-13
+
+### Added
+
+- OpenAPI YAML discovery works without the optional PHP `ext-yaml` extension
+  through the bundled production Symfony YAML parser.
+- Connector discovery status is visible in Settings, including the learned
+  source and timestamp.
+- Generic connectors honor learned JSON, URL-encoded form and multipart request
+  bodies while retaining confirmation and host-boundary checks.
+- Confirmed terminal command sequences can run up to five bounded commands in
+  order, with redacted per-command results and timings in Agent runs.
+- Tagged releases now build a production `eva_ai-X.Y.Z.tar.gz` archive with
+  Composer runtime dependencies and the compiled frontend.
+
 ## [1.16.4] - 2026-09-13
 
 ### Fixed
