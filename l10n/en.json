@@ -732,7 +732,7 @@
         "Service base URL": "Service base URL",
         "Show learned routes": "Show learned routes",
         "The Nextcloud file picker is not available on this page.": "The Nextcloud file picker is not available on this page.",
-        "The current connector adapter sends this secret as an Authorization: Bearer token. Secrets are encrypted at rest and never returned. Public HTTPS hosts and explicitly local HTTP(S) services are supported; every external action requires confirmation.": "The current connector adapter sends this secret as an Authorization: Bearer token. Secrets are encrypted at rest and never returned. Public HTTPS hosts and explicitly local HTTP(S) services are supported; every external action requires confirmation.",
+        "The connector adapter sends the selected authentication scheme (Bearer, Basic or API key). Secrets are encrypted at rest and never returned. Public HTTPS hosts and explicitly local HTTP(S) services are supported; every external action requires confirmation.": "The connector adapter sends the selected authentication scheme (Bearer, Basic or API key). Secrets are encrypted at rest and never returned. Public HTTPS hosts and explicitly local HTTP(S) services are supported; every external action requires confirmation.",
         "Use these Nextcloud files as context": "Use these Nextcloud files as context",
         "API key": "API key",
         "API key (optional)": "API key (optional)",
