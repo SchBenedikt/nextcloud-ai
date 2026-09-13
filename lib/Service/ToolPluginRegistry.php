@@ -61,10 +61,47 @@ class ToolPluginRegistry {
     public function execute(string $userId, string $name, array $arguments): array {
         $entry = $this->tools[$name] ?? null;
         if ($entry === null) return ['ok' => false, 'error' => 'Unknown plugin tool: ' . $name];
+        $validationError = $this->validateArguments($entry['definition']['parameters'], $arguments);
+        if ($validationError !== null) return ['ok' => false, 'error' => $validationError];
         try {
             return $entry['plugin']->execute($userId, $name, $arguments);
         } catch (\Throwable $e) {
             return ['ok' => false, 'error' => 'Plugin tool failed: ' . $e->getMessage()];
         }
+    }
+
+    /** Validate the bounded JSON-schema subset exposed to the model. */
+    private function validateArguments(array $schema, array $arguments): ?string {
+        $properties = is_array($schema['properties'] ?? null) ? $schema['properties'] : [];
+        if (array_key_exists('additionalProperties', $schema) && $schema['additionalProperties'] === false) {
+            foreach ($arguments as $key => $_value) {
+                if (!array_key_exists((string)$key, $properties)) return 'Unknown plugin argument: ' . (string)$key;
+            }
+        }
+        foreach ((array)($schema['required'] ?? []) as $required) {
+            $required = (string)$required;
+            if (!array_key_exists($required, $arguments)) return 'Missing required plugin argument: ' . $required;
+        }
+        foreach ($properties as $name => $definition) {
+            if (!array_key_exists((string)$name, $arguments) || !is_array($definition)) continue;
+            $value = $arguments[(string)$name];
+            $type = (string)($definition['type'] ?? '');
+            $valid = match ($type) {
+                'string' => is_string($value),
+                'integer' => is_int($value),
+                'number' => is_int($value) || is_float($value),
+                'boolean' => is_bool($value),
+                'array' => is_array($value),
+                'object' => is_array($value),
+                default => true,
+            };
+            if (!$valid) return 'Invalid type for plugin argument: ' . (string)$name;
+            if (is_string($value)) {
+                $length = mb_strlen($value);
+                if (isset($definition['minLength']) && $length < (int)$definition['minLength']) return 'Plugin argument is too short: ' . (string)$name;
+                if (isset($definition['maxLength']) && $length > (int)$definition['maxLength']) return 'Plugin argument is too long: ' . (string)$name;
+            }
+        }
+        return null;
     }
 }

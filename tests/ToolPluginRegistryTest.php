@@ -48,4 +48,33 @@ final class ToolPluginRegistryTest extends TestCase {
         $registry->register($plugin);
         self::assertSame([], $registry->definitionsForSurface(ToolPolicy::SURFACE_WEB));
     }
+
+    public function testValidatesPluginArgumentsBeforeExecution(): void {
+        $plugin = new class implements ToolPluginInterface {
+            public int $calls = 0;
+            public function getToolDefinitions(): array {
+                return [[
+                    'name' => 'plugin_validate',
+                    'description' => 'Validate input',
+                    'parameters' => [
+                        'type' => 'object',
+                        'additionalProperties' => false,
+                        'properties' => ['query' => ['type' => 'string', 'minLength' => 2, 'maxLength' => 20]],
+                        'required' => ['query'],
+                    ],
+                ]];
+            }
+            public function execute(string $userId, string $toolName, array $arguments): array {
+                $this->calls++;
+                return ['ok' => true, 'result' => $arguments];
+            }
+        };
+        $registry = new ToolPluginRegistry();
+        $registry->register($plugin);
+        self::assertFalse($registry->execute('alice', 'plugin_validate', [])['ok']);
+        self::assertFalse($registry->execute('alice', 'plugin_validate', ['query' => 'ok', 'extra' => true])['ok']);
+        self::assertFalse($registry->execute('alice', 'plugin_validate', ['query' => 42])['ok']);
+        self::assertTrue($registry->execute('alice', 'plugin_validate', ['query' => 'valid'])['ok']);
+        self::assertSame(1, $plugin->calls);
+    }
 }

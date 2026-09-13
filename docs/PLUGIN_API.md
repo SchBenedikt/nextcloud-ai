@@ -19,7 +19,8 @@ names beginning with `plugin_`. A definition looks like:
 ```
 
 `execute()` receives the authenticated Nextcloud user ID, the tool name and
-validated JSON arguments. Mutating and destructive plugins must set the
+centrally validated JSON arguments (required fields, declared types, and
+declared string limits are checked before the plugin runs). Mutating and destructive plugins must set the
 corresponding risk and require confirmation. EVA never exposes a plugin on a
 surface that was not declared, and a failing optional plugin cannot remove
 built-in tools.
