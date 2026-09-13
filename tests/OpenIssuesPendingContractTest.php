@@ -394,6 +394,8 @@ final class OpenIssuesPendingContractTest extends TestCase {
 		self::assertStringContainsString('bumpSearchRevision', $executor);
 		self::assertStringContainsString("'search_revision'", (string)file_get_contents(__DIR__ . '/../lib/Service/AppConfig.php'));
 		self::assertStringContainsString("'file_id' => (int)\$node->getId()", $executor);
+		self::assertStringContainsString('recordToolMetric', $executor);
+		self::assertStringContainsString('public function recordTool', (string)file_get_contents(__DIR__ . '/../lib/Service/UsageMetrics.php'));
 	}
 
 	private function sliceBetween(string $haystack, string $start, string $end): string {
