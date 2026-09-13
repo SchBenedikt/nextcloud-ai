@@ -3068,11 +3068,38 @@ class ActionExecutor {
         try {
             if (!empty($row['token_configured'])) $headers['Authorization'] = 'Bearer ' . Server::get(ProviderCredentials::class)->getCustom($user, 'connector_' . $id);
             $client = Server::get(\OCP\Http\Client\IClientService::class)->newClient(); $found = null; $source = null;
-            foreach (['/openapi.json', '/swagger.json', '/.well-known/openapi.json', '/api/openapi.json', '/api/swagger.json', '/docs/openapi.json', '/api/docs/openapi.json', '/api/v2.0/docs'] as $candidate) {
+            // Nextcloud's outbound HTTP client may reject private connector
+            // addresses even when the connector was explicitly allow-listed.
+            // TrueNAS is commonly hosted on such an address, so try its
+            // canonical schema endpoint through the PHP HTTPS client as a
+            // narrowly-scoped fallback before probing generic paths.
+            $preferredUrl = rtrim((string)$row['base_url'], '/') . '/api/v2.0';
+            if ($this->safeConnectorUrl($preferredUrl)) {
+                [$preferredStatus, $preferredBody] = $this->connectorCurlGet($preferredUrl, $headers, 15);
+                // TrueNAS' generated schema is several megabytes; truncating
+                // it at 200k produces invalid JSON and falsely reports that
+                // discovery failed. Keep a bounded but appliance-sized cap.
+                $preferredDecoded = json_decode(mb_substr($preferredBody, 0, 8388608), true);
+                if ($preferredStatus >= 200 && $preferredStatus < 300 && is_array($preferredDecoded) && is_array($preferredDecoded['paths'] ?? null)) {
+                    $found = $preferredDecoded; $source = '/api/v2.0';
+                }
+            }
+            // TrueNAS publishes its OpenAPI document directly at
+            // /api/v2.0 (the /api/v2.0/docs URL is a 404 on current SCALE
+            // releases). Keep the generic locations as fallbacks for other
+            // appliances.
+            foreach ($found === null ? ['/api/v2.0', '/openapi.json', '/swagger.json', '/.well-known/openapi.json', '/api/openapi.json', '/api/swagger.json', '/docs/openapi.json', '/api/docs/openapi.json', '/api/v2.0/docs'] : [] as $candidate) {
                 $url = rtrim((string)$row['base_url'], '/') . $candidate; if (!$this->safeConnectorUrl($url)) continue;
-                $response = $client->get($url, ['headers' => $headers, 'timeout' => 15, 'allow_redirects' => ['max' => 0]]);
+                try {
+                    $response = $client->get($url, ['headers' => $headers, 'timeout' => 15, 'allow_redirects' => ['max' => 0]]);
+                } catch (\Throwable) {
+                    // A single unsupported/blocked documentation path must
+                    // not abort discovery; continue with the remaining
+                    // candidates (important for TrueNAS and reverse proxies).
+                    continue;
+                }
                 if ($response->getStatusCode() < 200 || $response->getStatusCode() >= 300) continue;
-                $body = $response->getBody(); if (is_resource($body)) $body = stream_get_contents($body); $decoded = json_decode(mb_substr((string)$body, 0, 200000), true);
+                $body = $response->getBody(); if (is_resource($body)) $body = stream_get_contents($body); $decoded = json_decode(mb_substr((string)$body, 0, 8388608), true);
                 if (is_array($decoded) && is_array($decoded['paths'] ?? null)) { $found = $decoded; $source = $candidate; break; }
             }
             if ($found === null) {
@@ -3091,8 +3118,14 @@ class ActionExecutor {
             $endpoints = [];
             foreach (array_slice($found['paths'], 0, 100, true) as $path => $operations) {
                 if (!is_string($path) || !is_array($operations) || !str_starts_with($path, '/')) continue;
+                // The TrueNAS document is served from /api/v2.0 but its
+                // paths are relative to that mount point. Persist absolute
+                // connector paths so subsequent calls do not accidentally
+                // hit the appliance root (which yields a misleading 404).
+                $routePath = $source === '/api/v2.0' && !str_starts_with($path, '/api/v2.0')
+                    ? '/api/v2.0' . $path : $path;
                 foreach ($operations as $method => $operation) if (in_array(strtoupper((string)$method), ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'], true)) {
-                    $meta = ['path' => mb_substr($path, 0, 300), 'method' => strtoupper((string)$method), 'operation_id' => is_array($operation) ? mb_substr((string)($operation['operationId'] ?? ''), 0, 120) : ''];
+                    $meta = ['path' => mb_substr($routePath, 0, 300), 'method' => strtoupper((string)$method), 'operation_id' => is_array($operation) ? mb_substr((string)($operation['operationId'] ?? ''), 0, 120) : ''];
                     if (is_array($operation) && is_array($operation['parameters'] ?? null)) {
                         $params = [];
                         foreach (array_slice($operation['parameters'], 0, 20) as $parameter) {
@@ -3150,13 +3183,31 @@ class ActionExecutor {
             if (!empty($row['token_configured'])) $headers['Authorization'] = 'Bearer ' . Server::get(ProviderCredentials::class)->getCustom($user, 'connector_' . $id);
             $options = ['headers' => $headers, 'timeout' => 20, 'allow_redirects' => ['max' => 0]];
             if ($method === 'GET') $options['query'] = $params; elseif ($params !== []) { $headers['Content-Type'] = 'application/json'; $options['body'] = json_encode($params, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES); $options['headers'] = $headers; }
-            $response = $client->{strtolower($method)}($url, $options); $body = $response->getBody(); if (is_resource($body)) $body = stream_get_contents($body); $body = mb_substr((string)$body, 0, 50000); $data = json_decode($body, true); $safeData = is_array($data) ? $this->redactApiPayload($data) : $body;
+            // Appliances can briefly return 5xx/429 while middleware starts
+            // or renews its auth session. Retry idempotent GETs three times
+            // with a short back-off, while never replaying mutating requests.
+            $attempts = 0; $response = null; $lastError = null;
+            $maxAttempts = $method === 'GET' ? 3 : 1;
+            do {
+                $attempts++;
+                try {
+                    $response = $client->{strtolower($method)}($url, $options);
+                    $status = $response->getStatusCode();
+                    if ($method !== 'GET' || !in_array($status, [408, 425, 429], true) && ($status < 500 || $status >= 600)) break;
+                } catch (\Throwable $e) {
+                    $lastError = $e;
+                    if ($attempts >= $maxAttempts) throw $e;
+                }
+                if ($attempts < $maxAttempts) usleep(150000 * $attempts);
+            } while ($attempts < $maxAttempts);
+            if ($response === null) throw ($lastError ?? new \RuntimeException('Connector returned no response'));
+            $body = $response->getBody(); if (is_resource($body)) $body = stream_get_contents($body); $body = mb_substr((string)$body, 0, 50000); $data = json_decode($body, true); $safeData = is_array($data) ? $this->redactApiPayload($data) : $body;
             if ($response->getStatusCode() >= 200 && $response->getStatusCode() < 300) {
                 $rows = $this->connectorRows(); $known = $rows[$id]['openapi']['endpoints'] ?? []; if (!is_array($known)) $known = [];
                 $seen = false; foreach ($known as $entry) if (is_array($entry) && strtoupper((string)($entry['method'] ?? '')) === $method && (string)($entry['path'] ?? '') === $path) { $seen = true; break; }
                 if (!$seen) { $known[] = ['path' => mb_substr($path, 0, 300), 'method' => $method, 'operation_id' => 'learned']; $rows[$id]['openapi'] = ['source' => $rows[$id]['openapi']['source'] ?? 'runtime', 'version' => $rows[$id]['openapi']['version'] ?? '', 'endpoints' => array_slice($known, -200), 'updated_at' => time()]; Server::get(\OCP\IConfig::class)->setUserValue($user, AppConfig::APP, 'external_connectors', json_encode($rows, JSON_UNESCAPED_SLASHES) ?: '{}'); }
             }
-            return ['ok' => $response->getStatusCode() >= 200 && $response->getStatusCode() < 300, 'result' => ['status' => $response->getStatusCode(), 'data' => $safeData, 'connector' => $id, 'method' => $method, 'path' => $path]];
+            return ['ok' => $response->getStatusCode() >= 200 && $response->getStatusCode() < 300, 'result' => ['status' => $response->getStatusCode(), 'data' => $safeData, 'connector' => $id, 'method' => $method, 'path' => $path, 'attempts' => $attempts]];
         } catch (\Throwable) { return ['ok' => false, 'error' => 'External connector request failed.']; }
     }
 
@@ -3235,5 +3286,15 @@ class ActionExecutor {
         // No curl_close(): the handle is freed automatically (PHP 8.0+) and the
         // function is deprecated in PHP 8.5.
         return $err === 0 && is_string($r) && $r !== '' ? $r : null;
+    }
+
+    /** @return array{0:int,1:string} */
+    private function connectorCurlGet(string $url, array $headers, int $timeout): array {
+        $ch = curl_init($url);
+        $lines = [];
+        foreach ($headers as $name => $value) $lines[] = $name . ': ' . $value;
+        curl_setopt_array($ch, [CURLOPT_RETURNTRANSFER => true, CURLOPT_TIMEOUT => $timeout, CURLOPT_FOLLOWLOCATION => false, CURLOPT_HTTPHEADER => $lines, CURLOPT_SSL_VERIFYPEER => true, CURLOPT_SSL_VERIFYHOST => 2]);
+        $body = curl_exec($ch); $status = (int)curl_getinfo($ch, CURLINFO_HTTP_CODE); $error = curl_errno($ch);
+        return [$error === 0 && is_string($body) ? $status : 0, is_string($body) ? $body : ''];
     }
 }
