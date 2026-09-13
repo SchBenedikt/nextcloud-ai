@@ -158,6 +158,21 @@ final class OpenIssuesPendingContractTest extends TestCase {
         self::assertStringContainsString('shell syntax', strtolower((string)$result['error']));
     }
 
+    /** Absolute executable paths must be explicitly allowlisted. */
+    public function testConfirmedTerminalCommandDoesNotAllowPathAlias(): void {
+        $reflection = new \ReflectionClass(ActionExecutor::class);
+        $instance = $reflection->newInstanceWithoutConstructor();
+        $config = $this->createMock(AppConfig::class);
+        $config->method('get')->willReturnMap([
+            ['terminal_commands_enabled', '1'],
+            ['terminal_command_allowlist', 'date'],
+        ]);
+        $reflection->getProperty('config')->setValue($instance, $config);
+        $result = $reflection->getMethod('runTerminalCommand')->invoke($instance, ['command' => '/tmp/date']);
+        self::assertFalse($result['ok']);
+        self::assertStringContainsString('allowlist', strtolower((string)$result['error']));
+    }
+
     /** Live tool traces expose bounded output but never connector credentials. */
     public function testLiveToolResultIsRedactedAndBounded(): void {
         $reflection = new \ReflectionClass(RagService::class);

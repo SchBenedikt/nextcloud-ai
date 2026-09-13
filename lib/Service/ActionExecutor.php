@@ -3130,8 +3130,14 @@ class ActionExecutor {
         $allowlist = array_values(array_filter(array_map('trim', explode(',', (string)$this->config->get('terminal_command_allowlist'))), static fn(string $item): bool => $item !== ''));
         $allowed = false;
         foreach ($allowlist as $entry) {
-            if ($executable === $entry || basename($executable) === basename($entry)) {
-                $allowed = true;
+            // A configured absolute path is an exact capability grant. Do not
+            // let `/tmp/date` inherit permission merely because `date` is on
+            // the allowlist; for bare names, matching an absolute configured
+            // entry remains convenient and still resolves through PATH.
+            $allowed = str_contains($executable, '/')
+                ? $executable === $entry
+                : ($executable === $entry || basename($entry) === $executable);
+            if ($allowed) {
                 break;
             }
         }
