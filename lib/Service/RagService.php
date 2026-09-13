@@ -129,12 +129,12 @@ class RagService {
 			$messages[] = ['role' => 'assistant', 'content' => $chat['answer'] ?? '', 'tool_calls' => $this->canonicalToolCalls($chat['raw_tool_calls'] ?? [])];
 			foreach ($toolCalls as $tc) {
 				if ($shouldStop !== null && $shouldStop()) return ['answer' => '', 'sources' => $this->answerSources($byDoc), 'model' => $chat['model'] ?? $this->config->get('chat_model'), 'error' => 'cancelled', 'followups' => []];
-				if ($onProgress !== null) $onProgress('tool', (string)($tc['name'] ?? ''));
-				$fingerprint = hash('sha256', (string)($tc['name'] ?? '') . ':' . json_encode($tc['arguments'] ?? [], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES));
-				$seenToolCalls[$fingerprint] = ($seenToolCalls[$fingerprint] ?? 0) + 1;
-				$toolArgs = $tc['name'] === 'create_calendar_event'
-					? $this->completeCalendarArguments($userId, $message, $tc['arguments'])
-					: $tc['arguments'];
+                $fingerprint = hash('sha256', (string)($tc['name'] ?? '') . ':' . json_encode($tc['arguments'] ?? [], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES));
+                $seenToolCalls[$fingerprint] = ($seenToolCalls[$fingerprint] ?? 0) + 1;
+                $toolArgs = $tc['name'] === 'create_calendar_event'
+                    ? $this->completeCalendarArguments($userId, $message, $tc['arguments'])
+                    : $tc['arguments'];
+                if ($onProgress !== null) $onProgress('tool', (string)($tc['name'] ?? ''), is_array($toolArgs) ? $toolArgs : []);
 				$res = $seenToolCalls[$fingerprint] > self::MAX_IDENTICAL_TOOL_CALLS
 					? ['ok' => false, 'error' => 'The same tool call was already attempted twice; choose a different next step.']
 					: ($autonomousActions
