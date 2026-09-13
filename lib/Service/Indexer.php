@@ -835,6 +835,11 @@ class Indexer {
     /**
      * Liefert den durchsuchbaren Text zu einem File – auch aus PDF/DOCX/ODT/RTF/HTML.
      */
+    public function extractTextForAgent(File $file, int $maxChars = 100000): string {
+        $maxChars = max(1, min(100000, $maxChars));
+        return mb_substr($this->extractText($file), 0, $maxChars);
+    }
+
     private function extractText(File $file): string {
         $mime = $file->getMimeType() ?? '';
         $name = strtolower($file->getName());

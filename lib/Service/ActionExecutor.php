@@ -57,6 +57,7 @@ class ActionExecutor {
         'rename_file' => ['path', 'new_name'],
         'delete_file' => ['path'],
         'inspect_file' => ['path'],
+        'extract_file_text' => ['path'],
         'update_knowledge' => ['fact'],
         // Profile (any field set is explicit; no single mandatory argument)
         'update_profile' => [],
@@ -128,6 +129,7 @@ class ActionExecutor {
         private WebSearchService $webSearch,
         private TalkChatService $talkChat,
         private \OCP\Lock\ILockingProvider $lockingProvider,
+        private ?Indexer $indexer = null,
         private ?\OCP\Comments\ICommentsManagerFactory $commentsFactory = null,
         private ?\OCP\SystemTag\ISystemTagManagerFactory $systemTagFactory = null
     ) {
@@ -213,6 +215,15 @@ class ActionExecutor {
                     'path' => ['type' => 'string', 'description' => 'Relative path, e.g. "Documents/Notes.md".'],
                     'offset' => ['type' => 'integer', 'minimum' => 0, 'description' => 'Character offset for the page, normally the previous response\'s next_offset.'],
                     'max_chars' => ['type' => 'integer', 'minimum' => 1, 'maximum' => 100000, 'description' => 'Characters to return (default 20000, maximum 100000).'],
+                ], 'required' => ['path']],
+            ]],
+            ['type' => 'function', 'function' => [
+                'name' => 'extract_file_text',
+                'description' => 'Extract text from Office documents, PDFs, e-books and other indexed formats. Use this for complex files that read_file cannot decode; results are paginated.',
+                'parameters' => ['type' => 'object', 'properties' => [
+                    'path' => ['type' => 'string', 'description' => 'Relative path, e.g. "Documents/report.xlsx".'],
+                    'offset' => ['type' => 'integer', 'minimum' => 0],
+                    'max_chars' => ['type' => 'integer', 'minimum' => 1, 'maximum' => 100000],
                 ], 'required' => ['path']],
             ]],
             ['type' => 'function', 'function' => [
@@ -852,6 +863,7 @@ class ActionExecutor {
         $fileTools = [
             'list_files', 'create_file', 'create_note', 'create_folder',
             'rename_file', 'delete_file', 'read_file', 'inspect_file', 'search_files',
+            'extract_file_text',
             'update_knowledge',
         ];
         if (in_array($name, $fileTools, true) && $home === null) {
@@ -867,6 +879,7 @@ class ActionExecutor {
                 'rename_file' => $this->renameFile($home, $args),
                 'delete_file' => $this->deleteFile($home, $args),
                 'read_file' => $this->readFile($home, $args),
+                'extract_file_text' => $this->extractFileText($home, $args),
                 'inspect_file' => $this->inspectFile($home, $args),
                 'search_files' => $this->searchFiles($home, $args),
                 'list_contacts' => $this->listContacts($userId),
@@ -1619,6 +1632,27 @@ class ActionExecutor {
             'total_chars' => $totalChars,
             'has_more' => $nextOffset < $totalChars,
         ]];
+    }
+
+    /** Extract indexed text from binary/Office formats in bounded pages. */
+    private function extractFileText(Folder $home, array $args): array {
+        if ($this->indexer === null) return ['ok' => false, 'error' => 'Document extraction is unavailable'];
+        $path = $this->cleanPath((string)($args['path'] ?? ''));
+        if ($path === '') return ['ok' => false, 'error' => 'File path required'];
+        $node = $this->resolve($home, $path);
+        if (!$node instanceof File) return ['ok' => false, 'error' => 'Not a file'];
+        if ($node->getSize() > self::MAX_READ_FILE_BYTES) return ['ok' => false, 'error' => 'File too large to extract'];
+        $maxChars = filter_var($args['max_chars'] ?? self::MAX_READ_CHARS, FILTER_VALIDATE_INT);
+        $offset = filter_var($args['offset'] ?? 0, FILTER_VALIDATE_INT);
+        if ($maxChars === false || $maxChars < 1 || $maxChars > self::MAX_READ_CHUNK_CHARS || $offset === false || $offset < 0) {
+            return ['ok' => false, 'error' => 'offset/max_chars are outside the allowed range'];
+        }
+        try { $content = $this->indexer->extractTextForAgent($node, 100000); }
+        catch (\Throwable $e) { return ['ok' => false, 'error' => 'Document extraction failed: ' . $e->getMessage()]; }
+        $total = mb_strlen($content);
+        if ($offset > $total) return ['ok' => false, 'error' => 'offset is beyond extracted text'];
+        $page = mb_substr($content, $offset, $maxChars); $next = $offset + mb_strlen($page);
+        return ['ok' => true, 'result' => ['path' => $path, 'content' => $page, 'offset' => $offset, 'next_offset' => $next, 'total_chars' => $total, 'has_more' => $next < $total, 'mime_type' => (string)$node->getMimeType()]];
     }
 
     private function inspectFile(Folder $home, array $args): array {
