@@ -763,7 +763,14 @@ export default {
 		async function testConnector(id) {
 			connectorsBusy.value = true
 			setMessage('info', 'Connector test is running…')
-			try { const result = await api('POST', 'connectors/test', { id }); const status = String(result?.result?.data?.status || result?.result?.status || 'OK'); setMessage(result?.ok ? 'success' : 'error', 'Connector responded with HTTP ' + status) } catch (error) { setMessage('error', 'Connector test failed: ' + errMsg(error)) } finally { connectorsBusy.value = false }
+			try {
+				const result = await api('POST', 'connectors/test', { id })
+				const status = Number(result?.result?.data?.status || result?.result?.status || 0)
+				const detail = status === 401
+					? ' Authentication is required. Configure the connector secret (for Immich use an API key with header x-api-key).'
+					: status === 403 ? ' The connector rejected the credentials or permission.' : ''
+				setMessage(result?.ok ? 'success' : 'error', 'Connector responded with HTTP ' + (status || 'unknown') + '.' + detail)
+			} catch (error) { setMessage('error', 'Connector test failed: ' + errMsg(error)) } finally { connectorsBusy.value = false }
 		}
 		// Admin settings form (Issue #82/#187): the same bundle is mounted inside
 		// the Nextcloud admin settings with data-admin="1". Only shared provider
