@@ -115,4 +115,29 @@ final class ToolPluginRegistryTest extends TestCase {
         self::assertTrue($definition['definition']['requiresConfirmation']);
         self::assertSame('first', $registry->execute('alice', 'plugin_write_demo', [])['result']);
     }
+
+    public function testPluginsCanDeclareEverySupportedExecutionSurface(): void {
+        $plugin = new class implements ToolPluginInterface {
+            public function getToolDefinitions(): array {
+                return [[
+                    'name' => 'plugin_all_surfaces',
+                    'description' => 'Read status everywhere',
+                    'parameters' => ['type' => 'object', 'properties' => new \stdClass()],
+                    'surfaces' => [
+                        ToolPolicy::SURFACE_WEB,
+                        ToolPolicy::SURFACE_TALK,
+                        ToolPolicy::SURFACE_RAG,
+                        ToolPolicy::SURFACE_TASKPROCESSING,
+                        ToolPolicy::SURFACE_TASKPROCESSING_CONFIRMED,
+                    ],
+                ]];
+            }
+            public function execute(string $userId, string $toolName, array $arguments): array { return ['ok' => true]; }
+        };
+        $registry = new ToolPluginRegistry();
+        $registry->register($plugin);
+        foreach ([ToolPolicy::SURFACE_WEB, ToolPolicy::SURFACE_TALK, ToolPolicy::SURFACE_RAG, ToolPolicy::SURFACE_TASKPROCESSING, ToolPolicy::SURFACE_TASKPROCESSING_CONFIRMED] as $surface) {
+            self::assertCount(1, $registry->definitionsForSurface($surface));
+        }
+    }
 }

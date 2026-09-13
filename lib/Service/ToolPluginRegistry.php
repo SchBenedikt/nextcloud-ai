@@ -24,7 +24,13 @@ class ToolPluginRegistry {
             if ($description === '' || !is_array($parameters)) continue;
             $risk = (string)($definition['risk'] ?? ToolPolicy::RISK_READONLY);
             if (!in_array($risk, [ToolPolicy::RISK_READONLY, ToolPolicy::RISK_MUTATING, ToolPolicy::RISK_DESTRUCTIVE], true)) continue;
-            $surfaces = array_values(array_filter(array_map('strval', (array)($definition['surfaces'] ?? [ToolPolicy::SURFACE_WEB])), static fn(string $surface): bool => in_array($surface, [ToolPolicy::SURFACE_WEB, ToolPolicy::SURFACE_TALK, ToolPolicy::SURFACE_TASKPROCESSING_CONFIRMED], true)));
+            $surfaces = array_values(array_filter(array_map('strval', (array)($definition['surfaces'] ?? [ToolPolicy::SURFACE_WEB])), static fn(string $surface): bool => in_array($surface, [
+                ToolPolicy::SURFACE_WEB,
+                ToolPolicy::SURFACE_TALK,
+                ToolPolicy::SURFACE_RAG,
+                ToolPolicy::SURFACE_TASKPROCESSING,
+                ToolPolicy::SURFACE_TASKPROCESSING_CONFIRMED,
+            ], true)));
             if ($surfaces === []) continue;
             // The first registration wins. This makes tool ownership
             // deterministic and prevents a later app from silently replacing

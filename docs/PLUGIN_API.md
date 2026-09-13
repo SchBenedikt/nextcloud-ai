@@ -136,6 +136,8 @@ JSON-schema-like `parameters` object. EVA rejects all three cases.
 |---|---|
 | `web` | Interactive EVA chat. Read-only tools may run immediately; mutating tools are confirmation-gated. |
 | `talk` | Nextcloud Talk. Keep responses short and enforce the Talk user's ACLs. |
+| `rag` | Read-only retrieval pipeline. Use only bounded, side-effect-free operations. |
+| `taskprocessing` | Assistant proposal/read phase. Mutations are not executed on this surface. |
 | `taskprocessing_confirmed` | Background/Assistant execution after Nextcloud has supplied an authenticated app token and the required confirmation. |
 
 Set `requiresConfirmation` to `true` for any write, delete, share, message,
