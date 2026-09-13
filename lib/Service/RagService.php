@@ -859,6 +859,7 @@ $this->executor->setUserId($userId);
                 . " For file organization, use move_file or copy_file only after confirming the exact source and destination; use file_checksum to validate important copies or generated artifacts."
                 . " Use read_files when several related text files are needed, then follow each file's pagination until has_more=false."
                 . " When EVA already knows a folder or file type, pass search_files path and extension filters to avoid an unnecessary broad scan."
+                . " list_files and search_files include file_id metadata; reuse that id for version, tag or comment tools instead of guessing identifiers."
                 . $this->talkPromptClause()
                 . ($this->webSearchAvailable()
                     ? " You have the `web_search` tool that searches the internet and the news in real-time, the `open_website` tool that reads one page in full, and the `search_images` tool that finds pictures. "
