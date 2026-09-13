@@ -3696,7 +3696,7 @@ class ActionExecutor {
                             $params[] = ['name' => $name, 'in' => in_array(($parameter['in'] ?? ''), ['query', 'path', 'header', 'cookie'], true) ? (string)$parameter['in'] : 'query', 'required' => !empty($parameter['required']), 'type' => preg_match('/^[A-Za-z0-9_.-]{1,40}$/', $type) === 1 ? $type : 'string'];
                         }
                         if ($params !== []) $meta['parameters'] = $params;
-                        $requestBody = $this->connectorRequestBodyMeta($operation);
+                        $requestBody = $this->connectorRequestBodyMeta($operation, $found);
                         if ($requestBody !== null) $meta['request_body'] = $requestBody;
                     }
                     $endpoints[] = $meta;
@@ -3715,7 +3715,7 @@ class ActionExecutor {
      *
      * @return array{required:bool,content_type:string,fields:list<array{name:string,type:string,required:bool}>}|null
      */
-    private function connectorRequestBodyMeta(array $operation): ?array {
+    private function connectorRequestBodyMeta(array $operation, array $document = []): ?array {
         $schema = null;
         $required = false;
         $contentType = 'application/json';
@@ -3725,7 +3725,7 @@ class ActionExecutor {
             $content = is_array($requestBody['content'] ?? null) ? $requestBody['content'] : [];
             foreach (['application/json', 'application/*+json', '*/*'] as $candidate) {
                 if (is_array($content[$candidate]['schema'] ?? null)) {
-                    $schema = $content[$candidate]['schema'];
+                    $schema = $this->resolveConnectorSchema($content[$candidate]['schema'], $document);
                     $contentType = $candidate;
                     break;
                 }
@@ -3736,13 +3736,25 @@ class ActionExecutor {
         if ($schema === null && is_array($operation['parameters'] ?? null)) {
             foreach ($operation['parameters'] as $parameter) {
                 if (is_array($parameter) && ($parameter['in'] ?? '') === 'body' && is_array($parameter['schema'] ?? null)) {
-                    $schema = $parameter['schema'];
+                    $schema = $this->resolveConnectorSchema($parameter['schema'], $document);
                     $required = !empty($parameter['required']);
                     break;
                 }
             }
         }
         if (!is_array($schema)) return null;
+        // A schema may combine referenced fragments. Merge only bounded,
+        // local object fragments; never fetch a remote $ref.
+        foreach (['allOf', 'oneOf', 'anyOf'] as $combiner) {
+            if (!is_array($schema[$combiner] ?? null)) continue;
+            foreach (array_slice($schema[$combiner], 0, 8) as $fragment) {
+                if (!is_array($fragment)) continue;
+                $fragment = $this->resolveConnectorSchema($fragment, $document);
+                if (!is_array($fragment)) continue;
+                if (is_array($fragment['properties'] ?? null)) $schema['properties'] = array_merge($schema['properties'] ?? [], $fragment['properties']);
+                if (is_array($fragment['required'] ?? null)) $schema['required'] = array_values(array_unique(array_merge($schema['required'] ?? [], $fragment['required'])));
+            }
+        }
         $properties = is_array($schema['properties'] ?? null) ? $schema['properties'] : [];
         $requiredFields = array_fill_keys(is_array($schema['required'] ?? null) ? array_map('strval', $schema['required']) : [], true);
         $fields = [];
@@ -3753,6 +3765,24 @@ class ActionExecutor {
             $fields[] = ['name' => (string)$name, 'type' => $type, 'required' => isset($requiredFields[(string)$name])];
         }
         return ['required' => $required, 'content_type' => $contentType, 'fields' => $fields];
+    }
+
+    /** Resolve at most a few local JSON pointers from a learned OpenAPI document. */
+    private function resolveConnectorSchema(array $schema, array $document, int $depth = 0): array {
+        if ($depth >= 4 || !isset($schema['$ref']) || !is_string($schema['$ref'])) return $schema;
+        $ref = $schema['$ref'];
+        if (!str_starts_with($ref, '#/') || str_contains($ref, '..')) return $schema;
+        $value = $document;
+        foreach (array_slice(explode('/', substr($ref, 2)), 0, 20) as $part) {
+            $part = str_replace(['~1', '~0'], ['/', '~'], $part);
+            if (!is_array($value) || !array_key_exists($part, $value)) return $schema;
+            $value = $value[$part];
+        }
+        if (!is_array($value)) return $schema;
+        $resolved = $this->resolveConnectorSchema($value, $document, $depth + 1);
+        // Inline constraints/properties override referenced defaults.
+        foreach ($schema as $key => $item) if ($key !== '$ref') $resolved[$key] = $item;
+        return $resolved;
     }
 
     private function configureExternalConnector(array $args): array {
