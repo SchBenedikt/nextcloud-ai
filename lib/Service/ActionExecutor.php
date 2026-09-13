@@ -28,6 +28,7 @@ class ActionExecutor {
     private const MAX_SEARCH_NODES = 2000;
     private const MAX_SEARCH_FILE_BYTES = 1048576; // 1 MB per text file
     private const MAX_SEARCH_RESULTS = 50;
+    private const SEARCH_CACHE_TTL = 15;
     private const MAX_LIST_DEPTH = 2;
     private const MAX_LIST_ENTRIES = 300;
     private const MAX_READ_CHARS = 20000;
@@ -1817,12 +1818,27 @@ class ActionExecutor {
         if ($extension !== '' && !preg_match('/^[a-z0-9]{1,12}$/', $extension)) {
             return ['ok' => false, 'error' => 'extension must contain only letters and digits'];
         }
+        $cache = null;
+        $userKey = '';
+        try { $userKey = (string)($this->config->userId() ?? ''); } catch (\Throwable) { }
+        $cacheKey = 'search_' . substr(hash('sha256', $userKey . "\0" . $query . "\0" . $scopePath . "\0" . $extension), 0, 40);
+        try {
+            $cache = Server::get(\OCP\ICacheFactory::class)->createDistributed('eva_ai_search_');
+            $cached = $cache->get($cacheKey);
+            if (is_string($cached) && $cached !== '') {
+                $decoded = json_decode($cached, true);
+                if (is_array($decoded) && isset($decoded['result']) && is_array($decoded['result'])) {
+                    $this->rememberFileLocations($decoded['result']['matches'] ?? []);
+                    return ['ok' => true, 'result' => $decoded['result']];
+                }
+            }
+        } catch (\Throwable) { $cache = null; }
         $matches = [];
         $visited = 0;
         $truncated = false;
         $this->searchWalk($scope, mb_strtolower($query), $matches, $visited, $truncated, 0, $scopePath, $extension);
         $this->rememberFileLocations($matches);
-        return ['ok' => true, 'result' => [
+        $result = [
             'query' => $query,
             'path' => $scopePath,
             'extension' => $extension !== '' ? $extension : null,
@@ -1834,7 +1850,11 @@ class ActionExecutor {
                 'max_depth' => self::MAX_SEARCH_DEPTH,
                 'max_text_file_bytes' => self::MAX_SEARCH_FILE_BYTES,
             ],
-        ]];
+        ];
+        if ($cache !== null) {
+            try { $cache->set($cacheKey, json_encode(['result' => $result], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) ?: '{}', self::SEARCH_CACHE_TTL); } catch (\Throwable) { }
+        }
+        return ['ok' => true, 'result' => $result];
     }
 
     /** Store only paths/types and timestamps; never file contents. */
