@@ -3297,8 +3297,21 @@ class ActionExecutor {
                 // connector paths so subsequent calls do not accidentally
                 // hit the appliance root (which yields a misleading 404).
                 $schemaPrefix = $source === '/api/v2.0' ? '/api/v2.0' : (str_starts_with((string)$source, '/api/') ? '/api' : '');
-                $routePath = $schemaPrefix !== '' && !str_starts_with($path, $schemaPrefix . '/') && $path !== $schemaPrefix
-                    ? $schemaPrefix . $path : $path;
+                // OpenAPI 3 declares the mounted API prefix in servers.url;
+                // Swagger 2 uses basePath. Honour only a path component so a
+                // malicious schema cannot redirect calls to another host.
+                $declaredPrefix = '';
+                if (is_array($found['servers'] ?? null) && is_array($found['servers'][0] ?? null)) {
+                    $serverUrl = (string)($found['servers'][0]['url'] ?? '');
+                    $serverParts = parse_url($serverUrl);
+                    $declaredPrefix = (string)($serverParts['path'] ?? '');
+                }
+                if ($declaredPrefix === '') $declaredPrefix = (string)($found['basePath'] ?? '');
+                $declaredPrefix = '/' . trim($declaredPrefix, '/');
+                if ($declaredPrefix === '/') $declaredPrefix = '';
+                $prefix = $declaredPrefix !== '' ? $declaredPrefix : $schemaPrefix;
+                $routePath = $prefix !== '' && !str_starts_with($path, $prefix . '/') && $path !== $prefix
+                    ? $prefix . $path : $path;
                 foreach ($operations as $method => $operation) if (in_array(strtoupper((string)$method), ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'], true)) {
                     $meta = ['path' => mb_substr($routePath, 0, 300), 'method' => strtoupper((string)$method), 'operation_id' => is_array($operation) ? mb_substr((string)($operation['operationId'] ?? ''), 0, 120) : ''];
                     if (is_array($operation) && is_array($operation['parameters'] ?? null)) {
