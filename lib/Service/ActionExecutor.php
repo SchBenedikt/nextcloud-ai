@@ -3578,7 +3578,7 @@ class ActionExecutor {
                     $reachableRoutes[] = ['path' => mb_substr((string)$candidate, 0, 300), 'method' => 'GET', 'operation_id' => 'runtime_probe', 'requires_auth' => in_array($status, [401, 403], true)];
                 }
                 if ($status < 200 || $status >= 300) continue;
-                $decoded = json_decode(mb_substr((string)$body, 0, 8388608), true);
+                $decoded = $this->decodeConnectorSchema((string)$body);
                 if (is_array($decoded) && is_array($decoded['paths'] ?? null)) { $found = $decoded; $source = $candidate; break; }
             }
             if ($found === null) {
@@ -3748,6 +3748,20 @@ class ActionExecutor {
             Server::get(\OCP\IConfig::class)->setUserValue($user, AppConfig::APP, 'external_connectors', json_encode($rows, JSON_UNESCAPED_SLASHES) ?: '{}');
             return ['ok' => true, 'result' => ['connector' => $id, 'source' => $source, 'title' => mb_substr((string)($found['info']['title'] ?? ''), 0, 160), 'endpoints' => array_slice($endpoints, 0, 1000)]];
         } catch (\Throwable) { return ['ok' => false, 'error' => 'External API discovery failed.']; }
+    }
+
+    /** Decode JSON schemas everywhere; use PHP's optional YAML extension when available. */
+    private function decodeConnectorSchema(string $body): ?array {
+        $body = mb_substr($body, 0, 8388608);
+        $decoded = json_decode($body, true);
+        if (is_array($decoded)) return $decoded;
+        if (function_exists('yaml_parse')) {
+            try {
+                $yaml = yaml_parse($body);
+                return is_array($yaml) ? $yaml : null;
+            } catch (\Throwable) { return null; }
+        }
+        return null;
     }
 
     /** @return array{auth_type:string,api_key_header?:string}|null */
