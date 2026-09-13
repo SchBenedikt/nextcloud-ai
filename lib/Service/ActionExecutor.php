@@ -1345,6 +1345,13 @@ class ActionExecutor {
         $method = strtoupper(trim((string)($args['method'] ?? '')));
         $path = trim((string)($args['path'] ?? ''));
         $params = $args['params'] ?? [];
+        // Models sometimes classify an explicitly connected appliance as an
+        // "app" because its API is app-shaped. Route that alias through the
+        // connector implementation so host allow-listing, discovered-route
+        // checks, bearer-token handling and GET retries remain enforced.
+        if ($appId !== '' && array_key_exists($appId, $this->connectorRows())) {
+            return $this->callExternalConnector(['id' => $appId, 'method' => $method, 'path' => $path, 'params' => $params]);
+        }
         if (!preg_match('/^[a-z0-9_]+$/', $appId) || !in_array($method, ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'], true)) {
             return ['ok' => false, 'error' => 'A valid app_id and HTTP method are required.'];
         }
@@ -3055,7 +3062,7 @@ class ActionExecutor {
         $out = [];
         foreach ($this->connectorRows() as $id => $row) {
             if (!is_array($row)) continue;
-            $endpoints = is_array($row['openapi']['endpoints'] ?? null) ? array_values(array_slice($row['openapi']['endpoints'], -200)) : [];
+            $endpoints = is_array($row['openapi']['endpoints'] ?? null) ? array_values(array_slice($row['openapi']['endpoints'], -1000)) : [];
             $out[] = ['id' => (string)$id, 'name' => (string)($row['name'] ?? $id), 'base_url' => (string)($row['base_url'] ?? ''), 'token_configured' => !empty($row['token_configured']), 'updated_at' => (int)($row['updated_at'] ?? 0), 'discovered_endpoint_count' => count($endpoints), 'learned_endpoints' => $endpoints, 'openapi_updated_at' => (int)($row['openapi']['updated_at'] ?? 0)];
         }
         return ['ok' => true, 'result' => ['connectors' => $out]];
@@ -3116,7 +3123,12 @@ class ActionExecutor {
                 return ['ok' => false, 'error' => 'No OpenAPI or Swagger description was found and the connector root did not respond successfully.'];
             }
             $endpoints = [];
-            foreach (array_slice($found['paths'], 0, 100, true) as $path => $operations) {
+            // Do not slice the schema's paths before iterating: TrueNAS places
+            // VM and container routes after the first hundred entries. Bound
+            // the persisted result instead, so discovery covers the complete
+            // document without allowing unbounded user-config data growth.
+            foreach ($found['paths'] as $path => $operations) {
+                if (count($endpoints) >= 1000) break;
                 if (!is_string($path) || !is_array($operations) || !str_starts_with($path, '/')) continue;
                 // The TrueNAS document is served from /api/v2.0 but its
                 // paths are relative to that mount point. Persist absolute
@@ -3140,9 +3152,9 @@ class ActionExecutor {
                     $endpoints[] = $meta;
                 }
             }
-            $rows = $this->connectorRows(); $rows[$id]['openapi'] = ['source' => $source, 'version' => mb_substr((string)($found['openapi'] ?? $found['swagger'] ?? ''), 0, 30), 'endpoints' => array_slice($endpoints, 0, 200), 'updated_at' => time()];
+            $rows = $this->connectorRows(); $rows[$id]['openapi'] = ['source' => $source, 'version' => mb_substr((string)($found['openapi'] ?? $found['swagger'] ?? ''), 0, 30), 'endpoints' => array_slice($endpoints, 0, 1000), 'updated_at' => time()];
             Server::get(\OCP\IConfig::class)->setUserValue($user, AppConfig::APP, 'external_connectors', json_encode($rows, JSON_UNESCAPED_SLASHES) ?: '{}');
-            return ['ok' => true, 'result' => ['connector' => $id, 'source' => $source, 'title' => mb_substr((string)($found['info']['title'] ?? ''), 0, 160), 'endpoints' => array_slice($endpoints, 0, 200)]];
+            return ['ok' => true, 'result' => ['connector' => $id, 'source' => $source, 'title' => mb_substr((string)($found['info']['title'] ?? ''), 0, 160), 'endpoints' => array_slice($endpoints, 0, 1000)]];
         } catch (\Throwable) { return ['ok' => false, 'error' => 'External API discovery failed.']; }
     }
 
