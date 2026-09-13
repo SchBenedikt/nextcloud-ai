@@ -3530,7 +3530,7 @@ class ActionExecutor {
      * status responses (401/404) instead of turning them into client errors. */
     private function callExternalConnectorGet(string $id, string $path, string $url, array $params, array $headers, string $user): array {
         if ($params !== []) $url .= (str_contains($url, '?') ? '&' : '?') . http_build_query($params, '', '&', PHP_QUERY_RFC3986);
-        [$status, $body] = $this->connectorCurlGet($url, $headers, self::CONNECTOR_TIMEOUT);
+        [$status, $body, $attempts] = $this->connectorCurlGet($url, $headers, self::CONNECTOR_TIMEOUT);
         if ($status === 0) return ['ok' => false, 'error' => 'External connector is unreachable from the Nextcloud server.'];
         $body = mb_substr($body, 0, 50000); $data = json_decode($body, true); $safeData = is_array($data) ? $this->redactApiPayload($data) : $body;
         if ($status >= 200 && $status < 300) {
@@ -3538,7 +3538,7 @@ class ActionExecutor {
             $seen = false; foreach ($known as $entry) if (is_array($entry) && strtoupper((string)($entry['method'] ?? '')) === 'GET' && (string)($entry['path'] ?? '') === $path) { $seen = true; break; }
             if (!$seen) { $known[] = ['path' => mb_substr($path, 0, 300), 'method' => 'GET', 'operation_id' => 'learned']; $rows[$id]['openapi'] = ['source' => $rows[$id]['openapi']['source'] ?? 'runtime', 'version' => $rows[$id]['openapi']['version'] ?? '', 'endpoints' => array_slice($known, -200), 'updated_at' => time()]; Server::get(\OCP\IConfig::class)->setUserValue($user, AppConfig::APP, 'external_connectors', json_encode($rows, JSON_UNESCAPED_SLASHES) ?: '{}'); }
         }
-        return ['ok' => $status >= 200 && $status < 300, 'result' => ['status' => $status, 'data' => $safeData, 'connector' => $id, 'method' => 'GET', 'path' => $path, 'attempts' => self::CONNECTOR_GET_ATTEMPTS]];
+        return ['ok' => $status >= 200 && $status < 300, 'result' => ['status' => $status, 'data' => $safeData, 'connector' => $id, 'method' => 'GET', 'path' => $path, 'attempts' => $attempts]];
     }
 
     private function safeConnectorUrl(string $url): bool {
@@ -3717,7 +3717,7 @@ class ActionExecutor {
         return $err === 0 && is_string($r) && $r !== '' ? $r : null;
     }
 
-    /** @return array{0:int,1:string} */
+    /** @return array{0:int,1:string,2:int} */
     private function connectorCurlGet(string $url, array $headers, int $timeout): array {
         $lines = [];
         foreach ($headers as $name => $value) $lines[] = $name . ': ' . $value;
@@ -3730,7 +3730,7 @@ class ActionExecutor {
             if ($error === 0 && !in_array($status, [408, 425, 429], true) && ($status < 500 || $status >= 600)) break;
             if ($attempt < self::CONNECTOR_GET_ATTEMPTS) usleep(100000 * $attempt);
         }
-        return [$error === 0 ? $status : 0, $body];
+        return [$error === 0 ? $status : 0, $body, $attempt];
     }
 
     /** @return array{0:int,1:string,2:string} */
