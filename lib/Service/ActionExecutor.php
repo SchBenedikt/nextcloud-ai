@@ -3625,9 +3625,21 @@ class ActionExecutor {
                     ] as [$path, $method, $operation]) $immichEndpoints[] = ['path' => $path, 'method' => $method, 'operation_id' => $operation];
                     if ($immichEndpoints === []) $immichEndpoints[] = ['path' => '/api/people', 'method' => 'GET', 'operation_id' => 'people'];
                     $rows = $this->connectorRows();
+                    // Immich often disables Swagger in production but its
+                    // REST API consistently uses x-api-key. Infer that
+                    // scheme for a fresh connector so the Settings form and
+                    // subsequent calls use the right field automatically.
+                    $currentRow = is_array($rows[$id] ?? null) ? $rows[$id] : [];
+                    $hasStoredSecret = !empty($currentRow['token_configured']) || !empty($currentRow['api_key_configured'])
+                        || !empty($currentRow['username_configured']) || !empty($currentRow['password_configured']);
+                    if (!$hasStoredSecret && (($currentRow['auth_type'] ?? 'bearer') === 'bearer')) {
+                        $currentRow['auth_type'] = 'api_key';
+                        $currentRow['api_key_header'] = 'x-api-key';
+                        $rows[$id] = $currentRow;
+                    }
                     $rows[$id]['openapi'] = ['source' => 'runtime-immich', 'version' => '', 'endpoints' => $immichEndpoints, 'updated_at' => time()];
                     Server::get(\OCP\IConfig::class)->setUserValue($user, AppConfig::APP, 'external_connectors', json_encode($rows, JSON_UNESCAPED_SLASHES) ?: '{}');
-                    return ['ok' => true, 'result' => ['connector' => $id, 'source' => 'runtime-immich', 'title' => 'Immich', 'endpoints' => $immichEndpoints, 'note' => 'Immich API routes were learned. Configure an Immich API key using the x-api-key header before calling protected endpoints.']];
+                    return ['ok' => true, 'result' => ['connector' => $id, 'source' => 'runtime-immich', 'title' => 'Immich', 'endpoints' => $immichEndpoints, 'auth_type' => $rows[$id]['auth_type'] ?? 'bearer', 'note' => 'Immich API routes were learned. Configure an Immich API key using the x-api-key header before calling protected endpoints.']];
                 }
                 // Many appliances expose no schema at all. A bounded GET of
                 // the configured root is still useful discovery and gives the

@@ -175,6 +175,8 @@ final class OpenIssuesPendingContractTest extends TestCase {
         self::assertSame(['auth_type' => 'basic'], $infer->invoke($instance, [
             'securityDefinitions' => ['auth' => ['type' => 'basic']],
         ]));
+        $executor = (string)file_get_contents(__DIR__ . '/../lib/Service/ActionExecutor.php');
+        self::assertStringContainsString("\$currentRow['api_key_header'] = 'x-api-key'", $executor);
     }
 
     /** Terminal prompts never get a shell parser and remain confirmation-gated. */
