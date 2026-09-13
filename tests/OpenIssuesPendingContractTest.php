@@ -394,6 +394,7 @@ final class OpenIssuesPendingContractTest extends TestCase {
 		self::assertStringContainsString("'https'", $executor);
 		self::assertStringContainsString('count($params) > 50', $executor);
 		self::assertStringContainsString("'call_external_connector'", $policy);
+		self::assertStringContainsString("'diagnose_external_connector'", $policy);
 		self::assertStringContainsString("'configure_external_connector'", $policy);
 		self::assertStringContainsString('$ip !== $host', $executor);
 		self::assertStringContainsString('discoverExternalConnector', $executor);
@@ -405,6 +406,8 @@ final class OpenIssuesPendingContractTest extends TestCase {
 		self::assertStringContainsString('JSON_THROW_ON_ERROR', $executor);
 		self::assertStringContainsString('Learned routes belong to a specific service origin', $executor);
 		self::assertStringContainsString('empty secret fields', $executor);
+		self::assertStringContainsString('CONNECTOR_DISCOVERY_BUDGET', $executor);
+		self::assertStringContainsString('normalizeBearerToken', $executor);
 		self::assertStringContainsString("trim((string)\$args['token']) !== ''", $executor);
 		$webSearch = (string)file_get_contents(__DIR__ . '/../lib/Service/WebSearchService.php');
 		self::assertStringContainsString('OPENVERSE_IMAGE_ENDPOINT', $webSearch);
