@@ -3177,7 +3177,7 @@ class ActionExecutor {
             $passwordConfigured = $credentials->customValueConfigured($user, $prefix, 'password');
             $apiKeyConfigured = $credentials->customValueConfigured($user, $prefix, 'api_key');
             $authType = (string)($row['auth_type'] ?? ($tokenConfigured ? 'bearer' : 'none'));
-            $out[] = ['id' => (string)$id, 'name' => (string)($row['name'] ?? $id), 'base_url' => (string)($row['base_url'] ?? ''), 'openapi_url' => (string)($row['openapi_url'] ?? ''), 'auth_type' => $authType, 'token_configured' => $tokenConfigured, 'username_configured' => $usernameConfigured, 'password_configured' => $passwordConfigured, 'api_key_configured' => $apiKeyConfigured, 'api_key_header' => (string)($row['api_key_header'] ?? 'X-API-Key'), 'updated_at' => (int)($row['updated_at'] ?? 0), 'discovered_endpoint_count' => count($endpoints), 'learned_endpoints' => $endpoints, 'openapi_updated_at' => (int)($row['openapi']['updated_at'] ?? 0)];
+            $out[] = ['id' => (string)$id, 'name' => (string)($row['name'] ?? $id), 'base_url' => (string)($row['base_url'] ?? ''), 'openapi_url' => (string)($row['openapi_url'] ?? ''), 'auth_type' => $authType, 'token_configured' => $tokenConfigured, 'username_configured' => $usernameConfigured, 'password_configured' => $passwordConfigured, 'api_key_configured' => $apiKeyConfigured, 'api_key_header' => $this->normalizedApiKeyHeader($row), 'updated_at' => (int)($row['updated_at'] ?? 0), 'discovered_endpoint_count' => count($endpoints), 'learned_endpoints' => $endpoints, 'openapi_updated_at' => (int)($row['openapi']['updated_at'] ?? 0)];
         }
         return ['ok' => true, 'result' => ['connectors' => $out]];
     }
@@ -3394,7 +3394,7 @@ class ActionExecutor {
             'username_configured' => isset($args['username']) && trim((string)$args['username']) !== '' ? true : !empty($previous['username_configured']),
             'password_configured' => isset($args['password']) && trim((string)$args['password']) !== '' ? true : !empty($previous['password_configured']),
             'api_key_configured' => isset($args['api_key']) && trim((string)$args['api_key']) !== '' ? true : !empty($previous['api_key_configured']),
-            'api_key_header' => preg_match('/^[A-Za-z0-9][A-Za-z0-9-]{0,60}$/D', (string)($args['api_key_header'] ?? '')) ? (string)$args['api_key_header'] : (string)($previous['api_key_header'] ?? 'X-API-Key'), 'updated_at' => time()];
+            'api_key_header' => $this->normalizedApiKeyHeader(['api_key_header' => (string)($args['api_key_header'] ?? ($previous['api_key_header'] ?? 'X-API-Key'))]), 'updated_at' => time()];
         // Learned routes belong to a specific service origin and schema. Do
         // not carry them over when either changes; stale paths otherwise make
         // a valid connector appear broken (or, worse, target the old host).
@@ -3615,11 +3615,21 @@ class ActionExecutor {
                 return ['Authorization' => 'Basic ' . base64_encode($credentials->getCustomValue($user, $prefix, 'username') . ':' . $credentials->getCustomValue($user, $prefix, 'password'))];
             }
             if ($type === 'api_key' && !empty($row['api_key_configured'])) {
-                return [(string)($row['api_key_header'] ?? 'X-API-Key') => $credentials->getCustomValue($user, $prefix, 'api_key')];
+                return [$this->normalizedApiKeyHeader($row) => $credentials->getCustomValue($user, $prefix, 'api_key')];
             }
             if ($type === 'bearer' && !empty($row['token_configured'])) return ['Authorization' => 'Bearer ' . $credentials->getCustom($user, $prefix)];
         } catch (\Throwable) { return []; }
         return [];
+    }
+
+    /** Prevent an API secret accidentally being used as the header name. */
+    private function normalizedApiKeyHeader(array $row): string {
+        $header = trim((string)($row['api_key_header'] ?? 'X-API-Key'));
+        if (preg_match('/^[A-Za-z][A-Za-z0-9-]{0,59}$/D', $header) !== 1) return 'X-API-Key';
+        // Long, delimiter-free values are characteristic of pasted secrets,
+        // not HTTP header names. Recover the documented default automatically.
+        if (strlen($header) > 32 && !str_contains($header, '-')) return 'X-API-Key';
+        return $header;
     }
 
     private function weather(array $args): array {
