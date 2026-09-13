@@ -753,3 +753,30 @@ follows [Semantic Versioning](https://semver.org/).
 - Initial release: RAG indexing of files, hybrid search, chat with source
   citations, file tools (list/create/rename/delete/read/search/notes), knowledge
   base (`KNOWLEDGE.md`).
+## 1.14.0 - 2026-09-13
+
+### Agentic Nextcloud integration and reliability
+
+- Fixed background Agent Runs remaining permanently queued: the worker now
+  enumerates users with per-user queues correctly and newly queued work wakes
+  the background job on the next cron cycle.
+- Added resilient API learning for unfamiliar enabled Nextcloud apps. EVA now
+  remembers successful request shapes without storing credentials, arguments or
+  response values.
+- Hardened the generic app API adapter so every route must come from a recent
+  discovery snapshot, while credential-shaped response fields are redacted
+  before they reach the model.
+- Added app metadata to capability discovery, helping EVA adapt to installed
+  apps it has not used before.
+- Kept a legacy lazy-loaded Vue chunk for already-open browser tabs.
+- Switched Webpack lazy chunks to an automatic public path, fixing Vue
+  ChunkLoadError on Nextcloud installations hosted below a subdirectory such
+  as `/nextcloud`.
+
+### Verification
+
+- 539 PHPUnit tests passed (8 skipped for unavailable optional OCP services).
+- 23 frontend tests passed.
+- Production Webpack build passed.
+- Main-branch CI passed across PHP syntax, PHPUnit, provider contracts,
+  migrations, frontend build and dependency audit.
