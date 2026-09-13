@@ -71,6 +71,10 @@ class ResetEvaJobsOnUpgradeRepairStep implements IRepairStep {
 
         try {
             $this->db->executeStatement('DELETE FROM *PREFIX*eva_ai_agent_state');
+            // A requested clean restart also removes EVA's derived index; the
+            // user's original Nextcloud files remain untouched.
+            $this->db->executeStatement('DELETE FROM *PREFIX*eva_ai_chunks');
+            $this->db->executeStatement('DELETE FROM *PREFIX*eva_ai_documents');
         } catch (\Throwable) {
             // Table may not exist on an interrupted first install.
         }
