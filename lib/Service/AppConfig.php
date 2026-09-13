@@ -19,7 +19,7 @@ class AppConfig {
         'chat_provider', 'groq_model', 'custom_provider_url', 'custom_provider_model', 'provider_profiles', 'ollama_url', 'embedding_model', 'chat_model', 'chat_model_fallback',
         'embedding_model_fallback', 'summary_model', 'top_k', 'chunk_size',
         'chunk_overlap', 'max_file_size', 'max_files_per_run', 'scope_path',
-        'context_size', 'temperature', 'actions_enabled', 'background_actions_enabled', 'learning_enabled', 'safe_commands_enabled', 'terminal_commands_enabled', 'terminal_command_allowlist', 'agent_max_tool_rounds', 'exec_write_types',
+        'context_size', 'temperature', 'actions_enabled', 'background_actions_enabled', 'learning_enabled', 'safe_commands_enabled', 'terminal_commands_enabled', 'terminal_command_any', 'terminal_command_allowlist', 'agent_max_tool_rounds', 'exec_write_types',
         'exec_write_max_chars', 'exec_delete_mode',        'notify_on_complete',
         // Personal, opt-in scheduled briefings/reminders. Definitions are JSON;
         // delivery timestamps deliberately live in runtime state below.
@@ -146,6 +146,9 @@ class AppConfig {
         // Arbitrary terminal execution is opt-in, constrained to executable
         // names from this list, and still requires confirmation for every run.
         'terminal_commands_enabled' => '0',
+        // Broaden terminal execution only after an explicit user opt-in. The
+        // no-shell parser and confirmation gate still apply to every command.
+        'terminal_command_any' => '0',
         'terminal_command_allowlist' => 'date,uptime,php,node,git,ls,find,grep,rg,cat,head,tail,df,du,free,uname',
         'agent_max_tool_rounds' => '16',
         'exec_write_types' => '',

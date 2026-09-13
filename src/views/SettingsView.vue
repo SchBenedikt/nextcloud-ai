@@ -218,9 +218,12 @@
 				<NcCheckboxRadioSwitch v-model="terminalCommandsEnabled" type="switch" class="native-toggle compact-switch" :description="$t('Allow explicitly confirmed commands from the executable allowlist below. EVA never invokes a shell and rejects pipes, redirects and substitutions.')">
 					{{ $t('Allow confirmed terminal commands') }}
 				</NcCheckboxRadioSwitch>
+				<NcCheckboxRadioSwitch v-if="terminalCommandsEnabled" v-model="terminalCommandAny" type="switch" class="native-toggle compact-switch" :description="$t('Let EVA run any executable after you confirm the exact command. Shell syntax is still blocked and no command runs without confirmation.')">
+					{{ $t('Allow custom terminal executables') }}
+				</NcCheckboxRadioSwitch>
 				<div v-if="terminalCommandsEnabled" class="field-grid terminal-command-settings">
-					<NcTextField id="terminal-command-allowlist" v-model="f.terminal_command_allowlist" :label="$t('Allowed terminal executables')" :label-outside="true" placeholder="date, uptime, php, git, ls" />
-					<p class="field-help">{{ $t('Comma-separated executable names or absolute paths. Every command still requires a confirmation dialog and is limited to 30 seconds.') }}</p>
+					<NcTextField v-if="!terminalCommandAny" id="terminal-command-allowlist" v-model="f.terminal_command_allowlist" :label="$t('Allowed terminal executables')" :label-outside="true" placeholder="date, uptime, php, git, ls" />
+					<p class="field-help">{{ terminalCommandAny ? $t('Custom mode allows any executable path, but every exact command still requires confirmation and is limited to 30 seconds.') : $t('Comma-separated executable names or absolute paths. Every command still requires a confirmation dialog and is limited to 30 seconds.') }}</p>
 				</div>
 			</section>
 
@@ -580,6 +583,7 @@ export default {
 			learning_enabled: '1',
 			safe_commands_enabled: '0',
 			terminal_commands_enabled: '0',
+			terminal_command_any: '0',
 			terminal_command_allowlist: 'date,uptime,php,node,git,ls,find,grep,rg,cat,head,tail,df,du,free,uname',
 			background_actions_enabled: '0',
 			agent_max_tool_rounds: '16',
@@ -713,6 +717,10 @@ export default {
 		const terminalCommandsEnabled = computed({
 			get: () => f.value.terminal_commands_enabled === '1',
 			set: value => { f.value.terminal_commands_enabled = value ? '1' : '0' },
+		})
+		const terminalCommandAny = computed({
+			get: () => f.value.terminal_command_any === '1',
+			set: value => { f.value.terminal_command_any = value ? '1' : '0' },
 		})
 		const proactiveEnabled = computed({
 			get: () => f.value.proactive_enabled === '1',
@@ -1460,7 +1468,7 @@ export default {
 		const ocrEnabled = computed({ get: () => f.value.ocr_enabled === '1', set: value => { f.value.ocr_enabled = value ? '1' : '0' } })
 		return {
 			groqKey, customProviderKey, removeGroqKey, ocrEnabled, f, providerProfiles, providerProfilesPlaceholder, chatProviderOptions, groqModelOptions, embeddingModelOptions, chatModelOptions, summaryModelOptions, chatRetentionOptions, webSearchProviderOptions, status, health, healthLoading, statusTimer, limits, availableModels, embeddingModels, chatModels, embeddingInstalledHint, chatInstalledHint, modelLoading, modelError, checkOut, saving, checking, indexing, resetting, deletingChats, stopping, saved, loadError, message, validationErrors, resetConfirm, chatsDeleteConfirm,
-			newExcludePath, excludeError, excludeList, actionsEnabled, backgroundActionsEnabled, notificationsEnabled, learningEnabled, safeCommandsEnabled, mailIndexEnabled, talkIndexEnabled, talkWriteEnabled, indexEnrolled, actionsDisabled, busy, indexingActive, settingsLocked, maxFileSizeMb,
+			newExcludePath, excludeError, excludeList, actionsEnabled, backgroundActionsEnabled, notificationsEnabled, learningEnabled, safeCommandsEnabled, terminalCommandsEnabled, terminalCommandAny, mailIndexEnabled, talkIndexEnabled, talkWriteEnabled, indexEnrolled, actionsDisabled, busy, indexingActive, settingsLocked, maxFileSizeMb,
 			isAdminMode, admin, userWebSearchEnabled, userWebSearchSafeSearch, userWebSearchImages, userWebSearchBrowser, userWebSearchFetchContent, webSearchKey, removeWebSearchKey, webSearchKeyStored, webSearchReady, savingAdmin, saveAdminSettings, loadAdminSettings,
 			connectors, connectorsLoading, connectorsBusy, connectorDiagnostics, connectorDraft, applyConnectorExample, saveConnector, editConnector, connectorCredentialLabel, connectorCredentialClass, removeConnector, discoverConnector, testConnector, plugins, pluginsLoading,
 			proactiveEnabled, proactiveBriefings, briefingDraft, briefingFormError, weekdays, dayName, addBriefing, removeBriefing, toggleBriefing, toggleBriefingActions,

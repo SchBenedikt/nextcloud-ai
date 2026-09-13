@@ -349,7 +349,7 @@ class ApiController extends OCSController {
             'chat_provider', 'groq_model', 'custom_provider_url', 'custom_provider_model', 'provider_profiles', 'ollama_url', 'embedding_model', 'chat_model', 'chat_model_fallback',
             'embedding_model_fallback', 'summary_model', 'top_k', 'chunk_size',
             'chunk_overlap', 'max_file_size', 'max_files_per_run', 'scope_path', 'context_size', 'temperature',
-            'actions_enabled', 'background_actions_enabled', 'learning_enabled', 'safe_commands_enabled', 'terminal_commands_enabled', 'terminal_command_allowlist', 'agent_max_tool_rounds',
+            'actions_enabled', 'background_actions_enabled', 'learning_enabled', 'safe_commands_enabled', 'terminal_commands_enabled', 'terminal_command_any', 'terminal_command_allowlist', 'agent_max_tool_rounds',
             'exec_write_types', 'exec_write_max_chars', 'exec_delete_mode',
             'notify_on_complete',
             'proactive_enabled', 'proactive_schedules',

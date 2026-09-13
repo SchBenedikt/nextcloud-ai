@@ -148,6 +148,7 @@ final class OpenIssuesPendingContractTest extends TestCase {
         $config = $this->createMock(AppConfig::class);
         $config->method('get')->willReturnMap([
             ['terminal_commands_enabled', '1'],
+            ['terminal_command_any', '0'],
             ['terminal_command_allowlist', 'date'],
         ]);
         $configProperty = $reflection->getProperty('config');
@@ -165,12 +166,29 @@ final class OpenIssuesPendingContractTest extends TestCase {
         $config = $this->createMock(AppConfig::class);
         $config->method('get')->willReturnMap([
             ['terminal_commands_enabled', '1'],
+            ['terminal_command_any', '0'],
             ['terminal_command_allowlist', 'date'],
         ]);
         $reflection->getProperty('config')->setValue($instance, $config);
         $result = $reflection->getMethod('runTerminalCommand')->invoke($instance, ['command' => '/tmp/date']);
         self::assertFalse($result['ok']);
         self::assertStringContainsString('allowlist', strtolower((string)$result['error']));
+    }
+
+    /** Custom executable mode still uses argv execution and bounded output. */
+    public function testCustomTerminalExecutableModeRunsExplicitPath(): void {
+        $reflection = new \ReflectionClass(ActionExecutor::class);
+        $instance = $reflection->newInstanceWithoutConstructor();
+        $config = $this->createMock(AppConfig::class);
+        $config->method('get')->willReturnMap([
+            ['terminal_commands_enabled', '1'],
+            ['terminal_command_any', '1'],
+            ['terminal_command_allowlist', 'date'],
+        ]);
+        $reflection->getProperty('config')->setValue($instance, $config);
+        $result = $reflection->getMethod('runTerminalCommand')->invoke($instance, ['command' => '/bin/echo eva-custom-terminal']);
+        self::assertTrue($result['ok']);
+        self::assertStringContainsString('eva-custom-terminal', (string)$result['result']['output']);
     }
 
     /** Live tool traces expose bounded output but never connector credentials. */

@@ -646,7 +646,7 @@ class ActionExecutor {
             ]],
             ['type' => 'function', 'function' => [
                 'name' => 'run_terminal_command',
-                'description' => 'Run one explicitly confirmed terminal command on the Nextcloud host. The command is parsed without a shell, its executable must be in the user-configured allowlist, and output/time are bounded. Disabled by default.',
+                'description' => 'Run one explicitly confirmed terminal command on the Nextcloud host. The command is parsed without a shell; its executable must be in the user-configured allowlist unless the user explicitly enables custom-executable mode. Output and time are bounded. Disabled by default.',
                 'parameters' => ['type' => 'object', 'properties' => [
                     'command' => ['type' => 'string', 'description' => 'Executable plus arguments, for example "git status --short". Shell operators, pipes, redirects, substitutions and newlines are rejected.'],
                     'timeout_seconds' => ['type' => 'integer', 'minimum' => 1, 'maximum' => 30, 'description' => 'Optional hard timeout, default 10 seconds.'],
@@ -3108,7 +3108,7 @@ class ActionExecutor {
         if ($command === '' || mb_strlen($command) > 1000 || preg_match('/[\x00-\x1F\x7F;&|<>`$()\r\n]/', $command)) {
             return ['ok' => false, 'error' => 'Command is empty, too long, or contains shell syntax/control characters.'];
         }
-        if (preg_match_all('/"(?:\\\\.|[^"\\\\])*"|\'(?:\\\\.|[^\'\\\\])*\'|[^\s]+/u', $command, $parts) !== 1 || $parts[0] === []) {
+        if (preg_match_all('/"(?:\\\\.|[^"\\\\])*"|\'(?:\\\\.|[^\'\\\\])*\'|[^\s]+/u', $command, $parts) === false || $parts[0] === []) {
             return ['ok' => false, 'error' => 'Command arguments could not be parsed safely.'];
         }
         $argv = [];
@@ -3128,17 +3128,19 @@ class ActionExecutor {
         }
         $executable = (string)($argv[0] ?? '');
         $allowlist = array_values(array_filter(array_map('trim', explode(',', (string)$this->config->get('terminal_command_allowlist'))), static fn(string $item): bool => $item !== ''));
-        $allowed = false;
-        foreach ($allowlist as $entry) {
-            // A configured absolute path is an exact capability grant. Do not
-            // let `/tmp/date` inherit permission merely because `date` is on
-            // the allowlist; for bare names, matching an absolute configured
-            // entry remains convenient and still resolves through PATH.
-            $allowed = str_contains($executable, '/')
-                ? $executable === $entry
-                : ($executable === $entry || basename($entry) === $executable);
-            if ($allowed) {
-                break;
+        $allowed = $this->config->get('terminal_command_any') === '1';
+        if (!$allowed) {
+            foreach ($allowlist as $entry) {
+                // A configured absolute path is an exact capability grant. Do not
+                // let `/tmp/date` inherit permission merely because `date` is on
+                // the allowlist; for bare names, matching an absolute configured
+                // entry remains convenient and still resolves through PATH.
+                $allowed = str_contains($executable, '/')
+                    ? $executable === $entry
+                    : ($executable === $entry || basename($entry) === $executable);
+                if ($allowed) {
+                    break;
+                }
             }
         }
         if (!$allowed) {
@@ -3157,11 +3159,13 @@ class ActionExecutor {
         $stderr = '';
         $deadline = microtime(true) + $timeout;
         $timedOut = false;
+        $observedExitCode = null;
         while (true) {
             $stdout .= (string)stream_get_contents($pipes[1]);
             $stderr .= (string)stream_get_contents($pipes[2]);
             $status = proc_get_status($process);
             if (!$status['running']) {
+                $observedExitCode = is_int($status['exitcode']) ? $status['exitcode'] : null;
                 break;
             }
             if (microtime(true) >= $deadline) {
@@ -3175,7 +3179,11 @@ class ActionExecutor {
         $stderr .= (string)stream_get_contents($pipes[2]);
         fclose($pipes[1]);
         fclose($pipes[2]);
-        $exit = proc_close($process);
+        $closedExitCode = proc_close($process);
+        // PHP can return -1 from proc_close after proc_get_status has already
+        // reaped a short-lived child. Prefer the observed exit code in that
+        // case so successful custom commands are not reported as failures.
+        $exit = ($observedExitCode !== null && $closedExitCode < 0) ? $observedExitCode : $closedExitCode;
         return [
             'ok' => !$timedOut && $exit === 0,
             'result' => [

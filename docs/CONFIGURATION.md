@@ -82,6 +82,7 @@ Resetting a user's index clears that user's cached vectors.
 | `learning_enabled` | P | `1` | `1`/`0` | – | Allow EVA to learn explicit preferences and facts from completed chats. The personal knowledge file remains editable and deletable by the user. |
 | `safe_commands_enabled` | P | `0` | `1`/`0` | – | Enable explicitly confirmed, read-only local diagnostics from a fixed allowlist; no arbitrary shell syntax is accepted. |
 | `terminal_commands_enabled` | P | `0` | `1`/`0` | – | Opt in to explicitly confirmed terminal commands. Commands are executed without a shell and remain limited to the executable allowlist. |
+| `terminal_command_any` | P | `0` | `1`/`0` | – | Optional custom-executable mode. When enabled, any executable path may be requested, but shell syntax is still rejected and every exact command requires explicit confirmation. |
 | `terminal_command_allowlist` | P | `date,uptime,php,node,git,ls,find,grep,rg,cat,head,tail,df,du,free,uname` | comma-separated names/absolute paths, max. 32 | – | Executables that the confirmed terminal tool may start; bare names resolve through `PATH`, while absolute entries require an exact path match; pipes, redirects, substitutions and newlines are rejected. |
 | `agent_max_tool_rounds` | P | `16` | `4`–`32` | steps | Maximum model/tool rounds in one request. Higher values allow longer multi-tool workflows; duplicate-call protection still applies. |
 | `exec_write_types` | P | `''` (all) | `*`, empty, or ≤32 extensions `md,txt,…` | – | Allowed extensions for AI-created files. |
