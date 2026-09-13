@@ -236,7 +236,9 @@ final class OpenIssuesPendingContractTest extends TestCase {
         self::assertIsArray($meta);
         self::assertSame('POST', $meta['method']);
         self::assertSame('query', $meta['request_body']['fields'][0]['name']);
-        self::assertStringContainsString('runtime-graphql', (string)file_get_contents(__DIR__ . '/../lib/Service/ActionExecutor.php'));
+        $executor = (string)file_get_contents(__DIR__ . '/../lib/Service/ActionExecutor.php');
+        self::assertStringContainsString('runtime-graphql', $executor);
+        self::assertLessThan(strpos($executor, "if (\$reachableRoutes !== [] &&"), strpos($executor, "if (\$graphqlEndpoints !== [])"));
     }
 
     public function testAppLoadsItsOptionalProductionComposerAutoloader(): void {

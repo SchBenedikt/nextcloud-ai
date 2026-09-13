@@ -4,6 +4,12 @@ All notable changes to **EVA (eva_ai)** are documented here.
 Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); the project
 follows [Semantic Versioning](https://semver.org/).
 
+## [1.16.63] - 2026-09-13
+
+### Fixed
+
+- GraphQL discovery now takes precedence over generic runtime-route detection, so a `405` probe persists the validated POST body schema instead of a misleading GET route.
+
 ## [1.16.62] - 2026-09-13
 
 ### Added

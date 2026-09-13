@@ -3641,18 +3641,21 @@ class ActionExecutor {
                 // A protected API can still prove its route shape through a
                 // 401/403 response. Persist those same-origin probes so the
                 // agent can call them after credentials are corrected.
+                // Handle GraphQL first: its GET probe commonly returns 405,
+                // which is also a reachable generic route, but the learned
+                // POST body schema is more useful than a GET runtime probe.
+                if ($graphqlEndpoints !== []) {
+                    $rows = $this->connectorRows();
+                    $rows[$id]['openapi'] = ['source' => 'runtime-graphql', 'version' => '', 'endpoints' => array_values(array_unique($graphqlEndpoints, SORT_REGULAR)), 'updated_at' => time()];
+                    Server::get(\OCP\IConfig::class)->setUserValue($user, AppConfig::APP, 'external_connectors', json_encode($rows, JSON_UNESCAPED_SLASHES) ?: '{}');
+                    return ['ok' => true, 'result' => ['connector' => $id, 'source' => 'runtime-graphql', 'title' => 'GraphQL', 'endpoints' => $graphqlEndpoints, 'note' => 'A GraphQL endpoint was learned. POST requests require a query field; variables and operationName are optional.']];
+                }
                 if ($reachableRoutes !== [] && (is_string($rootProbeBody) ? stripos($rootProbeBody, 'immich') === false : true)) {
                     $reachableRoutes = array_values(array_unique(array_merge($reachableRoutes, $graphqlEndpoints), SORT_REGULAR));
                     $rows = $this->connectorRows();
                     $rows[$id]['openapi'] = ['source' => 'runtime-probe', 'version' => '', 'endpoints' => array_values(array_unique($reachableRoutes, SORT_REGULAR)), 'updated_at' => time()];
                     Server::get(\OCP\IConfig::class)->setUserValue($user, AppConfig::APP, 'external_connectors', json_encode($rows, JSON_UNESCAPED_SLASHES) ?: '{}');
                     return ['ok' => true, 'result' => ['connector' => $id, 'source' => 'runtime-probe', 'title' => '', 'endpoints' => $reachableRoutes, 'note' => 'The service exposes no readable schema, but reachable same-origin routes were learned. Protected routes require valid credentials.']];
-                }
-                if ($graphqlEndpoints !== []) {
-                    $rows = $this->connectorRows();
-                    $rows[$id]['openapi'] = ['source' => 'runtime-graphql', 'version' => '', 'endpoints' => array_values(array_unique($graphqlEndpoints, SORT_REGULAR)), 'updated_at' => time()];
-                    Server::get(\OCP\IConfig::class)->setUserValue($user, AppConfig::APP, 'external_connectors', json_encode($rows, JSON_UNESCAPED_SLASHES) ?: '{}');
-                    return ['ok' => true, 'result' => ['connector' => $id, 'source' => 'runtime-graphql', 'title' => 'GraphQL', 'endpoints' => $graphqlEndpoints, 'note' => 'A GraphQL endpoint was learned. POST requests require a query field; variables and operationName are optional.']];
                 }
                 // Immich deployments often disable Swagger in production but
                 // expose a stable REST surface. Identify Immich from the
