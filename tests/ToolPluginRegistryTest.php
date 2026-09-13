@@ -77,4 +77,42 @@ final class ToolPluginRegistryTest extends TestCase {
         self::assertTrue($registry->execute('alice', 'plugin_validate', ['query' => 'valid'])['ok']);
         self::assertSame(1, $plugin->calls);
     }
+
+    public function testMutatingPluginsAlwaysRequireConfirmationAndFirstRegistrationWins(): void {
+        $first = new class implements ToolPluginInterface {
+            public function getToolDefinitions(): array {
+                return [[
+                    'name' => 'plugin_write_demo',
+                    'description' => 'Write demo',
+                    'parameters' => ['type' => 'object', 'properties' => new \stdClass()],
+                    'risk' => ToolPolicy::RISK_MUTATING,
+                    'requiresConfirmation' => false,
+                ]];
+            }
+            public function execute(string $userId, string $toolName, array $arguments): array {
+                return ['ok' => true, 'result' => 'first'];
+            }
+        };
+        $second = new class implements ToolPluginInterface {
+            public function getToolDefinitions(): array {
+                return [[
+                    'name' => 'plugin_write_demo',
+                    'description' => 'Replacement',
+                    'parameters' => ['type' => 'object', 'properties' => new \stdClass()],
+                    'risk' => ToolPolicy::RISK_READONLY,
+                ]];
+            }
+            public function execute(string $userId, string $toolName, array $arguments): array {
+                return ['ok' => true, 'result' => 'second'];
+            }
+        };
+        $registry = new ToolPluginRegistry();
+        $registry->register($first);
+        $registry->register($second);
+
+        $definition = $registry->get('plugin_write_demo');
+        self::assertNotNull($definition);
+        self::assertTrue($definition['definition']['requiresConfirmation']);
+        self::assertSame('first', $registry->execute('alice', 'plugin_write_demo', [])['result']);
+    }
 }

@@ -26,13 +26,22 @@ class ToolPluginRegistry {
             if (!in_array($risk, [ToolPolicy::RISK_READONLY, ToolPolicy::RISK_MUTATING, ToolPolicy::RISK_DESTRUCTIVE], true)) continue;
             $surfaces = array_values(array_filter(array_map('strval', (array)($definition['surfaces'] ?? [ToolPolicy::SURFACE_WEB])), static fn(string $surface): bool => in_array($surface, [ToolPolicy::SURFACE_WEB, ToolPolicy::SURFACE_TALK, ToolPolicy::SURFACE_TASKPROCESSING_CONFIRMED], true)));
             if ($surfaces === []) continue;
+            // The first registration wins. This makes tool ownership
+            // deterministic and prevents a later app from silently replacing
+            // another app's implementation for the same namespaced tool.
+            if (isset($this->tools[$name])) continue;
+            // Mutating and destructive tools are always confirmation-gated.
+            // A plugin must not be able to opt out of EVA's safety boundary by
+            // declaring requiresConfirmation=false in its metadata.
+            $requiresConfirmation = $risk !== ToolPolicy::RISK_READONLY
+                || (bool)($definition['requiresConfirmation'] ?? false);
             $this->tools[$name] = ['plugin' => $plugin, 'definition' => [
                 'name' => $name,
                 'description' => $description,
                 'parameters' => $parameters,
                 'risk' => $risk,
                 'surfaces' => $surfaces,
-                'requiresConfirmation' => (bool)($definition['requiresConfirmation'] ?? $risk !== ToolPolicy::RISK_READONLY),
+                'requiresConfirmation' => $requiresConfirmation,
             ]];
         }
     }

@@ -4,6 +4,14 @@ All notable changes to **EVA (eva_ai)** are documented here.
 Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); the project
 follows [Semantic Versioning](https://semver.org/).
 
+## [1.16.54] - 2026-09-13
+
+### Fixed
+
+- Plugin tools with mutating or destructive risk are now always confirmation-gated, even if a third-party definition incorrectly opts out.
+- Duplicate plugin tool names no longer allow a later app to silently replace the first registered implementation.
+- Added regression coverage for the plugin safety boundary and deterministic registration order.
+
 ## [1.16.53] - 2026-09-13
 
 ### Added
