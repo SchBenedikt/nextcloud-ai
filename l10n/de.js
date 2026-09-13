@@ -48,6 +48,7 @@ OC.L10N.register("eva_ai", {
     "You can create up to 20 briefings.": "Du kannst bis zu 20 Briefings anlegen.",
     "Briefing added. Saving your schedule…": "Briefing hinzugefügt. Zeitplan wird gespeichert …",
     "Briefing saved.": "Briefing gespeichert.",
+    "The briefing could not be saved: {error}": "Das Briefing konnte nicht gespeichert werden: {error}",
     "Connect an external HTTPS service for EVA to discover and use with confirmation.": "Verbinde einen externen HTTPS-Dienst, den EVA nach Bestätigung entdecken und verwenden darf.",
     "Loading connectors…": "Connectoren werden geladen …",
     "learned endpoints": "gelernte Endpunkte",
