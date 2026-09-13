@@ -13,6 +13,7 @@ final class BackgroundChatQueue {
     public const KEY = 'background_chat_queue';
     public const HISTORY_KEY = 'background_chat_history';
     private const USERS_KEY = 'background_chat_users';
+    private const USERS_MIGRATED_KEY = 'background_chat_users_migrated';
     private const MAX_ITEMS = 10;
     private const MAX_MESSAGE_CHARS = 20000;
     private const MAX_HISTORY_ITEMS = 100;
@@ -260,12 +261,16 @@ final class BackgroundChatQueue {
             $users = is_array($indexed) ? array_values(array_unique(array_filter(array_map('strval', $indexed)))) : [];
             // A one-time fallback discovers queues created before the index was
             // introduced. Subsequent runs use only the bounded app-level list.
-            if ($users === []) {
+            if ($users === [] && $this->config->getAppValue(AppConfig::APP, self::USERS_MIGRATED_KEY, '0') !== '1') {
                 $manager = \OCP\Server::get(IUserManager::class);
                 foreach ($manager->search('', 10000) as $user) {
                     $uid = (string)$user->getUID();
                     if ($uid !== '' && trim((string)$this->config->getUserValue($uid, AppConfig::APP, self::KEY, '')) !== '') $users[] = $uid;
                 }
+                // Legacy queues have now been scanned once. Persist the
+                // marker even when none were active; otherwise every status
+                // poll would enumerate up to 10,000 users again.
+                $this->config->setAppValue(AppConfig::APP, self::USERS_MIGRATED_KEY, '1');
             }
             $active = [];
             foreach (array_slice(array_values(array_unique($users)), 0, 10000) as $uid) {

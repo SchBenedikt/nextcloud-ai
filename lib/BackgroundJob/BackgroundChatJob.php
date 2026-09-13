@@ -16,6 +16,7 @@ use Psr\Log\LoggerInterface;
 
 /** Processes chat requests after the originating browser request disappears. */
 final class BackgroundChatJob extends TimedJob {
+    private const JOB_BUDGET_SECONDS = 45;
     public function __construct(
         ITimeFactory $time,
         private BackgroundChatQueue $queue,
@@ -28,8 +29,12 @@ final class BackgroundChatJob extends TimedJob {
     ) { parent::__construct($time); $this->setInterval(30); }
 
     protected function run($argument): void {
+        $jobDeadline = microtime(true) + self::JOB_BUDGET_SECONDS;
         $users = $this->queue->users();
         foreach ($users as $user) {
+            if (microtime(true) >= $jobDeadline) {
+                break;
+            }
             $item = $this->queue->claim($user);
             if (!is_array($item)) continue;
             $id = (string)($item['id'] ?? '');
