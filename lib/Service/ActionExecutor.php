@@ -719,17 +719,17 @@ class ActionExecutor {
             ]],
             ['type' => 'function', 'function' => [
                 'name' => 'configure_external_connector',
-                'description' => 'Create or update a named external HTTPS connector. The token is encrypted and never shown to EVA; use this only when the user explicitly asks to connect an external service.',
+                'description' => 'Create or update a named external connector. Public HTTPS and explicitly local HTTP(S) services (for example TrueNAS or Home Assistant) are supported; the token is encrypted and never shown to EVA.',
                 'parameters' => ['type' => 'object', 'properties' => [
                     'id' => ['type' => 'string', 'description' => 'Stable connector id, lowercase letters, numbers, underscore or hyphen (max 40).'],
                     'name' => ['type' => 'string', 'description' => 'Human-readable connector name.'],
-                    'base_url' => ['type' => 'string', 'description' => 'HTTPS base URL of the external service.'],
+                    'base_url' => ['type' => 'string', 'description' => 'Base URL. Public services must use HTTPS; local private/loopback hosts may use HTTP or HTTPS, e.g. http://homeassistant.local:8123 or https://192.168.1.20.'],
                     'token' => ['type' => 'string', 'description' => 'Optional bearer token; encrypted at rest and never returned.'],
                 ], 'required' => ['id', 'base_url']],
             ]],
             ['type' => 'function', 'function' => [
                 'name' => 'call_external_connector',
-                'description' => 'Call a configured external connector. Requests are HTTPS-only, host-pinned, bounded and always require user confirmation; response values are returned for this run only.',
+                'description' => 'Call a configured external connector. Requests are host-pinned, bounded and always require user confirmation; public services require HTTPS while local services may use HTTP; response values are returned for this run only.',
                 'parameters' => ['type' => 'object', 'properties' => [
                     'id' => ['type' => 'string'],
                     'path' => ['type' => 'string', 'description' => 'Relative path below the connector base URL, e.g. /api/status.'],
@@ -2751,7 +2751,7 @@ class ActionExecutor {
     private function configureExternalConnector(array $args): array {
         $id = strtolower(trim((string)($args['id'] ?? '')));
         $base = rtrim(trim((string)($args['base_url'] ?? '')), '/');
-        if (!preg_match('/^[a-z0-9][a-z0-9_-]{0,39}$/D', $id) || !$this->safeConnectorUrl($base)) return ['ok' => false, 'error' => 'Connector id or base_url is invalid; use a public HTTPS URL.'];
+        if (!preg_match('/^[a-z0-9][a-z0-9_-]{0,39}$/D', $id) || !$this->safeConnectorUrl($base)) return ['ok' => false, 'error' => 'Connector id or base_url is invalid; use public HTTPS or a local HTTP(S) host.'];
         $name = trim((string)($args['name'] ?? $id));
         if ($name === '') $name = $id;
         $rows = $this->connectorRows();
@@ -2779,14 +2779,20 @@ class ActionExecutor {
     }
 
     private function safeConnectorUrl(string $url): bool {
-        $parts = parse_url($url); $host = strtolower((string)($parts['host'] ?? ''));
-        if (($parts['scheme'] ?? '') !== 'https' || $host === '' || isset($parts['user']) || isset($parts['pass']) || !filter_var($host, FILTER_VALIDATE_DOMAIN, FILTER_FLAG_HOSTNAME)) return false;
-        // gethostbyname() returns the original hostname when DNS resolution
-        // fails. Treat that as unsafe rather than accidentally allowing an
-        // unverified endpoint; only a resolved, globally routable address is
-        // eligible for an external connector.
-        $ip = gethostbyname($host);
-        return $ip !== $host && filter_var($ip, FILTER_VALIDATE_IP, FILTER_FLAG_NO_PRIV_RANGE | FILTER_FLAG_NO_RES_RANGE) !== false;
+        $parts = parse_url($url); $host = strtolower((string)($parts['host'] ?? '')); $scheme = strtolower((string)($parts['scheme'] ?? ''));
+        if (!in_array($scheme, ['http', 'https'], true) || $host === '' || isset($parts['user']) || isset($parts['pass'])) return false;
+        if (filter_var($host, FILTER_VALIDATE_IP) === false && filter_var($host, FILTER_VALIDATE_DOMAIN, FILTER_FLAG_HOSTNAME) === false) return false;
+        $ip = filter_var($host, FILTER_VALIDATE_IP) !== false ? $host : gethostbyname($host);
+        $isLocalName = $host === 'localhost' || str_ends_with($host, '.local') || str_ends_with($host, '.lan');
+        $isPrivateIp = filter_var($ip, FILTER_VALIDATE_IP) !== false
+            && filter_var($ip, FILTER_VALIDATE_IP, FILTER_FLAG_NO_PRIV_RANGE | FILTER_FLAG_NO_RES_RANGE) === false
+            && !str_starts_with($ip, '169.254.');
+        $local = $isLocalName || $isPrivateIp;
+        if ($scheme === 'http' && !$local) return false;
+        if ($local) return $isLocalName || $isPrivateIp;
+        // For hostnames gethostbyname() must resolve (the `$ip !== $host`
+        // condition); literal public IP addresses are already validated above.
+        return filter_var($ip, FILTER_VALIDATE_IP, FILTER_FLAG_NO_PRIV_RANGE | FILTER_FLAG_NO_RES_RANGE) !== false;
     }
 
     private function weather(array $args): array {
