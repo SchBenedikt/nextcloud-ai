@@ -3454,7 +3454,7 @@ class ActionExecutor {
             $candidates = [];
             $customSchema = trim((string)($row['openapi_url'] ?? ''));
             if ($customSchema !== '' && $this->sameConnectorHost($customSchema, (string)$row['base_url'])) $candidates[] = $customSchema;
-            $candidates = array_merge($candidates, ['/api/v2.0', '/openapi.json', '/swagger.json', '/.well-known/openapi.json', '/api/open-api', '/api/openapi.json', '/api/swagger.json', '/docs/openapi.json', '/api/docs/openapi.json', '/api/v2.0/docs']);
+            $candidates = array_merge($candidates, ['/api/v2.0', '/openapi.json', '/swagger.json', '/.well-known/openapi.json', '/api/open-api', '/api/openapi.json', '/api/swagger.json', '/api/openapi', '/api/swagger', '/docs', '/docs/openapi.json', '/api/docs', '/api/docs/openapi.json', '/api/v2.0/docs', '/api']);
             // Some services advertise their schema only as a link in the
             // landing page. Extract same-host JSON/YAML documentation links
             // without trusting arbitrary external URLs or executing them.
@@ -3479,18 +3479,49 @@ class ActionExecutor {
                     }
                 };
                 if (is_array($rootJson)) $collectLinks($rootJson);
+                // Single-page applications often ship their route map only in
+                // same-origin JavaScript bundles, without publishing a schema.
+                // Read a few bounded bundles and learn literal API paths. This
+                // is vendor-neutral and never follows a third-party host.
+                preg_match_all('~(?:src|href)=["\']([^"\']+\\.js(?:\\?[^"\']*)?)["\']~i', $rootProbeBody, $assetMatches);
+                foreach (array_slice(array_values(array_unique($assetMatches[1] ?? [])), 0, 3) as $asset) {
+                    $assetParts = parse_url(html_entity_decode((string)$asset, ENT_QUOTES | ENT_HTML5));
+                    $assetPath = (string)($assetParts['path'] ?? '');
+                    if ($assetPath === '' || !str_starts_with($assetPath, '/')) continue;
+                    $assetUrl = rtrim((string)$row['base_url'], '/') . $assetPath;
+                    if (!$this->safeConnectorUrl($assetUrl)) continue;
+                    [, $assetBody] = $this->connectorCurlGet($assetUrl, ['Accept' => 'application/javascript,text/javascript,*/*'], 4);
+                    if (!is_string($assetBody) || $assetBody === '') continue;
+                    preg_match_all('~["\'](\/(?:api|rest|ocs)(?:\/[A-Za-z0-9_.$:{}~+@%\-]+){1,12})["\']~', mb_substr($assetBody, 0, 1048576), $routeMatches);
+                    foreach (array_slice(array_values(array_unique($routeMatches[1] ?? [])), 0, 120) as $route) {
+                        if (!in_array($route, $candidates, true)) $candidates[] = $route;
+                    }
+                }
             }
             $authDiscoveryStatus = 0;
-            foreach ($found === null ? array_slice(array_values(array_unique($candidates)), 0, 20) : [] as $candidate) {
+            $reachableRoutes = [];
+            foreach ($found === null ? array_slice(array_values(array_unique($candidates)), 0, 80) : [] as $candidate) {
                 if (microtime(true) >= $discoveryDeadline) break;
                 $url = preg_match('~^https?://~i', $candidate) ? $candidate : rtrim((string)$row['base_url'], '/') . $candidate; if (!$this->safeConnectorUrl($url)) continue;
                 [$status, $body] = $this->connectorCurlGet($url, $headers, 4);
                 if ($status === 401 || $status === 403) $authDiscoveryStatus = $status;
+                if ($status >= 200 && $status < 500 && $status !== 404 && str_starts_with((string)$candidate, '/')) {
+                    $reachableRoutes[] = ['path' => mb_substr((string)$candidate, 0, 300), 'method' => 'GET', 'operation_id' => 'runtime_probe', 'requires_auth' => in_array($status, [401, 403], true)];
+                }
                 if ($status < 200 || $status >= 300) continue;
                 $decoded = json_decode(mb_substr((string)$body, 0, 8388608), true);
                 if (is_array($decoded) && is_array($decoded['paths'] ?? null)) { $found = $decoded; $source = $candidate; break; }
             }
             if ($found === null) {
+                // A protected API can still prove its route shape through a
+                // 401/403 response. Persist those same-origin probes so the
+                // agent can call them after credentials are corrected.
+                if ($reachableRoutes !== [] && (is_string($rootProbeBody) ? stripos($rootProbeBody, 'immich') === false : true)) {
+                    $rows = $this->connectorRows();
+                    $rows[$id]['openapi'] = ['source' => 'runtime-probe', 'version' => '', 'endpoints' => array_values(array_unique($reachableRoutes, SORT_REGULAR)), 'updated_at' => time()];
+                    Server::get(\OCP\IConfig::class)->setUserValue($user, AppConfig::APP, 'external_connectors', json_encode($rows, JSON_UNESCAPED_SLASHES) ?: '{}');
+                    return ['ok' => true, 'result' => ['connector' => $id, 'source' => 'runtime-probe', 'title' => '', 'endpoints' => $reachableRoutes, 'note' => 'The service exposes no readable schema, but reachable same-origin routes were learned. Protected routes require valid credentials.']];
+                }
                 // Immich deployments often disable Swagger in production but
                 // expose a stable REST surface. Identify Immich from the
                 // returned landing page and learn only its read/search routes

@@ -449,6 +449,9 @@ final class OpenIssuesPendingContractTest extends TestCase {
 		self::assertStringContainsString('Learned routes belong to a specific service origin', $executor);
 		self::assertStringContainsString('empty secret fields', $executor);
 		self::assertStringContainsString('CONNECTOR_DISCOVERY_BUDGET', $executor);
+		self::assertStringContainsString('same-origin JavaScript bundles', $executor);
+		self::assertStringContainsString("'runtime_probe'", $executor);
+		self::assertStringContainsString("'requires_auth'", $executor);
 		self::assertStringContainsString('normalizeBearerToken', $executor);
 		self::assertStringContainsString("trim((string)\$args['token']) !== ''", $executor);
 		$webSearch = (string)file_get_contents(__DIR__ . '/../lib/Service/WebSearchService.php');
