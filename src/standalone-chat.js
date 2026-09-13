@@ -461,7 +461,7 @@ function buildCalendarForm(args, tr) {
 				// The resolved payload replaces the stored pending placeholder so
 				// approving after a reload does not duplicate the answer
 				// (Issue #185).
-				saveMessage('assistant', m.text, null, m.confirmation).then(renderChatListAgain)
+				saveMessage('assistant', m.text, null, m.confirmation, m.tools).then(renderChatListAgain)
 			}
 			approve.addEventListener('click', function () {
 				approve.disabled = true
@@ -687,7 +687,7 @@ function buildCalendarForm(args, tr) {
 		els.err.style.display = msg ? 'block' : 'none'
 	}
 
-	function saveMessage(role, text, followups, confirmation) {
+	function saveMessage(role, text, followups, confirmation, tools) {
 		if (!chatId) return Promise.resolve(false)
 		var body = { role: role, text: text }
 		// Follow-up suggestions are persisted for assistant messages so the
@@ -698,6 +698,7 @@ function buildCalendarForm(args, tr) {
 		// A pending tool confirmation rides on the assistant message so a
 		// reload rebuilds the inline panel (Issue #185).
 		if (role === 'assistant' && confirmation) body.confirmation = confirmation
+		if (role === 'assistant' && Array.isArray(tools) && tools.length) body.tools = tools
 		return api('POST', '/chats/' + encodeURIComponent(chatId) + '/messages', body)
 			.then(function () { return true })
 			.catch(function () { return false })
@@ -749,6 +750,7 @@ function buildCalendarForm(args, tr) {
 					text: m.text || '',
 					thinking: '',
 					followups: Array.isArray(m.followups) ? m.followups : [],
+					tools: Array.isArray(m.tools) ? m.tools : [],
 					// A persisted pending confirmation re-renders the inline panel so
 					// approving after a reload still works (Issue #185).
 					confirmation: m.confirmation || null,
@@ -904,7 +906,7 @@ function buildCalendarForm(args, tr) {
 					// at once lets the per-user file lock acquire them in either
 					// order, which can swap the question and answer after a reload.
 					saveUserMessage(msg)
-						.then(function (savedUser) { return savedUser ? saveMessage('assistant', last.text, last.followups) : false })
+						.then(function (savedUser) { return savedUser ? saveMessage('assistant', last.text, last.followups, null, last.tools) : false })
 						.then(renderChatListAgain)
 						.catch(function () {})
 				} else if (ev.type === 'error') {
@@ -927,7 +929,7 @@ function buildCalendarForm(args, tr) {
 					// a reload keeps the conversation instead of dropping it.
 					if (stoppedByUser && last.text.trim() !== '') {
 						saveUserMessage(msg)
-							.then(function (ok) { return ok ? saveMessage('assistant', last.text) : false })
+							.then(function (ok) { return ok ? saveMessage('assistant', last.text, null, null, last.tools) : false })
 							.catch(function () {})
 					}
 				}

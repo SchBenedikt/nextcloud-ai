@@ -320,7 +320,7 @@ export function mountChat(root, opts = {}) {
 				// truncation, so the revision token travels with the answer. The
 				// resolved payload replaces the stored pending placeholder
 				// (Issue #185) and keeps the result link for a later reload.
-				saveMessage('assistant', m.text, null, m.confirmation && m.confirmation.regenerateRev, m.confirmation)
+				saveMessage('assistant', m.text, null, m.confirmation && m.confirmation.regenerateRev, m.confirmation, m.tools)
 					.then(() => { if (onRecent) onRecent() })
 			}
 			const disableButtons = (disabled) => {
@@ -789,7 +789,7 @@ export function mountChat(root, opts = {}) {
 		if (force || nearBottom) scroll.scrollTop = scroll.scrollHeight
 	}
 
-	function saveMessage(role, text, followups, regenerateRev, confirmation) {
+	function saveMessage(role, text, followups, regenerateRev, confirmation, tools) {
 		if (!chatId) return Promise.resolve(false)
 		const body = { role, text }
 		// Follow-up suggestions are persisted for assistant messages so the
@@ -803,6 +803,7 @@ export function mountChat(root, opts = {}) {
 		// A pending (or resolved) tool confirmation rides on the assistant
 		// message so a reload rebuilds the panel (Issue #185).
 		if (role === 'assistant' && confirmation) body.confirmation = confirmation
+		if (role === 'assistant' && Array.isArray(tools) && tools.length) body.tools = tools
 		return api('POST', '/chats/' + chatId + '/messages', body)
 			.then((resp) => {
 				// Keep the client's revision in sync so the next regenerate/edit
@@ -892,6 +893,7 @@ export function mountChat(root, opts = {}) {
 				text: m.text || '',
 				thinking: '',
 				followups: Array.isArray(m.followups) ? m.followups : [],
+				tools: Array.isArray(m.tools) ? m.tools : [],
 				// A persisted pending confirmation re-renders the inline panel so
 				// approving after a reload still works (Issue #185).
 				confirmation: m.confirmation || null,
@@ -1108,7 +1110,7 @@ export function mountChat(root, opts = {}) {
 				// Persist with the regeneration token: the server truncates and
 				// applies the edit atomically with this message. Without the
 				// token (or after a failure) the stored history stays intact.
-				saveMessage('assistant', last.text, last.followups, pendingRegenerateRev)
+				saveMessage('assistant', last.text, last.followups, pendingRegenerateRev, null, last.tools)
 					.then(() => { if (onRecent) onRecent() })
 					.catch(() => {})
 				pendingRegenerateRev = null
@@ -1130,7 +1132,7 @@ export function mountChat(root, opts = {}) {
 				// a reload keeps the conversation instead of dropping it. The
 				// token commits the truncation with the partial text.
 				if (stoppedByUser && last.text.trim() !== '') {
-					saveMessage('assistant', last.text, null, pendingRegenerateRev).catch(() => {})
+					saveMessage('assistant', last.text, null, pendingRegenerateRev, null, last.tools).catch(() => {})
 				}
 			}
 			pendingRegenerateRev = null
@@ -1283,7 +1285,7 @@ export function mountChat(root, opts = {}) {
 					// once lets the per-user file lock acquire them in either order,
 					// which can swap the question and answer after a reload.
 					saveUserMessage(msg)
-						.then((savedUser) => savedUser ? saveMessage('assistant', last.text, last.followups) : false)
+						.then((savedUser) => savedUser ? saveMessage('assistant', last.text, last.followups, null, null, last.tools) : false)
 						.then((saved) => { if (saved && onRecent) onRecent() })
 						.catch(() => {})
 				} else if (ev.type === 'error') {
@@ -1307,7 +1309,7 @@ export function mountChat(root, opts = {}) {
 					// a reload keeps the conversation instead of dropping it.
 					if (stoppedByUser && last.text.trim() !== '') {
 						saveUserMessage(msg)
-							.then((ok) => ok ? saveMessage('assistant', last.text) : false)
+							.then((ok) => ok ? saveMessage('assistant', last.text, null, null, null, last.tools) : false)
 							.catch(() => {})
 					}
 				}

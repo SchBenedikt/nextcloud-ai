@@ -1547,7 +1547,20 @@ class ApiController extends OCSController {
                     $confirmation = $decoded;
                 }
             }
-            $this->chatStore->append($user, $id, $role, $text, $followups, $regenerateRev, $confirmation);
+            // The client may persist the bounded live tool trace with an
+            // assistant answer so it remains auditable after a reload. The
+            // store performs the authoritative redaction and size limiting.
+            $rawTools = $this->requestParam('tools');
+            $tools = [];
+            if (is_array($rawTools)) {
+                $tools = $rawTools;
+            } elseif (is_string($rawTools) && $rawTools !== '') {
+                $decoded = json_decode($rawTools, true);
+                if (is_array($decoded)) {
+                    $tools = $decoded;
+                }
+            }
+            $this->chatStore->append($user, $id, $role, $text, $followups, $regenerateRev, $confirmation, $tools);
             // Return the bumped revision so the client can validate later
             // regenerate/edit requests against the current state (Issue #182).
             $appended = $this->chatStore->getChat($user, $id);

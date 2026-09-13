@@ -325,7 +325,7 @@ final class FrontendContractTest extends TestCase {
     public function testChatMessagesArePersistedInQuestionThenAnswerOrder(): void {
         $source = (string)file_get_contents(__DIR__ . '/../src/lib/vanilla.js');
         self::assertStringContainsString(
-            "saveUserMessage(msg)\n\t\t\t\t\t\t.then((savedUser) => savedUser ? saveMessage('assistant', last.text, last.followups) : false)",
+            "saveUserMessage(msg)\n\t\t\t\t\t\t.then((savedUser) => savedUser ? saveMessage('assistant', last.text, last.followups, null, null, last.tools) : false)",
             $source
         );
         self::assertStringNotContainsString("Promise.all([saveMessage('user', msg)", $source);

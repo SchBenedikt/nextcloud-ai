@@ -256,6 +256,25 @@ final class ChatStoreTest extends TestCase {
         self::assertSame('create_share', $detail['messages'][1]['confirmation']['name']);
     }
 
+    public function testAssistantToolTraceIsBoundedAndRedactedForReloadAudit(): void {
+        $seed = json_encode([['id' => 'c-tools', 'messages' => []]]);
+        $written = null;
+        [$store] = $this->chatFileHarness($seed, $written);
+
+        $store->append('alice', 'c-tools', 'assistant', 'Done', [], null, null, [[
+            'name' => 'call_external_connector',
+            'state' => 'ok',
+            'arguments' => ['api_key' => 'do-not-store', 'path' => '/api/status'],
+            'result' => ['output' => str_repeat('x', 5000)],
+        ]]);
+
+        $message = json_decode((string)$written, true)[0]['messages'][0];
+        self::assertSame('call_external_connector', $message['tools'][0]['name']);
+        self::assertSame('[redacted]', $message['tools'][0]['arguments']['api_key']);
+        self::assertSame(4000, mb_strlen($message['tools'][0]['result']['output']));
+        self::assertSame('call_external_connector', $store->get('alice', 'c-tools')['messages'][0]['tools'][0]['name']);
+    }
+
     public function testConfirmedAnswerReplacesThePendingPlaceholderInsteadOfDuplicatingIt(): void {
         $seed = json_encode([[
             'id' => 'c1',

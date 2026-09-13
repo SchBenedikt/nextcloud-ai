@@ -498,11 +498,11 @@ class ChatStore {
      * pending confirmation replaces that placeholder instead of appending a
      * duplicate — that is how the confirmed answer is persisted.
      */
-    public function append(string $user, string $id, string $role, string $text, array $followups = [], ?int $regenerateRev = null, ?array $confirmation = null): void {
+    public function append(string $user, string $id, string $role, string $text, array $followups = [], ?int $regenerateRev = null, ?array $confirmation = null, array $tools = []): void {
         if ($role !== 'user' && $role !== 'assistant') {
             return;
         }
-        $this->withUserLock($user, function () use ($user, $id, $role, $text, $followups, $regenerateRev, $confirmation): void {
+        $this->withUserLock($user, function () use ($user, $id, $role, $text, $followups, $regenerateRev, $confirmation, $tools): void {
             $all = $this->read($user);
             foreach ($all as &$chat) {
                 if (($chat['id'] ?? '') === $id) {
@@ -514,6 +514,9 @@ class ChatStore {
                     }
                     if ($role === 'assistant' && is_array($confirmation)) {
                         $message['confirmation'] = $this->normalizeConfirmation($confirmation);
+                    }
+                    if ($role === 'assistant' && $tools !== []) {
+                        $message['tools'] = $this->normalizeToolTrace($tools);
                     }
                     $pending = $chat['regenerate'] ?? null;
                     if ($regenerateRev !== null && is_array($pending)
@@ -1134,6 +1137,76 @@ class ChatStore {
             ? array_values(array_map('strval', array_slice($missing, 0, 10)))
             : [];
         return $confirmation;
+    }
+
+    /**
+     * Keep a bounded, redacted execution trace with the assistant message so
+     * users can audit tool calls after a reload without persisting credentials
+     * or unbounded connector responses.
+     *
+     * @return list<array<string,mixed>>
+     */
+    private function normalizeToolTrace(array $raw): array {
+        $out = [];
+        foreach (array_slice($raw, 0, 32) as $entry) {
+            if (!is_array($entry)) {
+                continue;
+            }
+            $name = trim((string)($entry['name'] ?? ''));
+            if ($name === '') {
+                continue;
+            }
+            $state = (string)($entry['state'] ?? 'ok');
+            if (!in_array($state, ['running', 'ok', 'bad'], true)) {
+                $state = 'bad';
+            }
+            $item = ['name' => mb_substr($name, 0, 120), 'state' => $state];
+            if (is_array($entry['arguments'] ?? null)) {
+                $item['arguments'] = $this->clipTraceValue($entry['arguments']);
+            }
+            if (array_key_exists('result', $entry)) {
+                $item['result'] = $this->clipTraceValue($entry['result']);
+            }
+            $error = trim((string)($entry['error'] ?? ''));
+            if ($error !== '') {
+                $item['error'] = mb_substr($error, 0, 1000);
+            }
+            $url = trim((string)($entry['url'] ?? ''));
+            if ($url !== '' && preg_match('#^https?://#i', $url)) {
+                $item['url'] = mb_substr($url, 0, 2000);
+            }
+            $out[] = $item;
+        }
+        return $out;
+    }
+
+    private function clipTraceValue(mixed $value, int $depth = 0): mixed {
+        if ($depth >= 3) {
+            return '[…]';
+        }
+        if (is_array($value)) {
+            $out = [];
+            $count = 0;
+            foreach ($value as $key => $child) {
+                if ($count++ >= 24) {
+                    break;
+                }
+                $keyString = (string)$key;
+                if (preg_match('/(?:token|secret|password|api[_-]?key|authorization|cookie)/i', $keyString)) {
+                    $out[$keyString] = '[redacted]';
+                    continue;
+                }
+                $out[$keyString] = $this->clipTraceValue($child, $depth + 1);
+            }
+            return $out;
+        }
+        if (is_string($value)) {
+            return mb_substr($value, 0, 4000);
+        }
+        if (is_scalar($value) || $value === null) {
+            return $value;
+        }
+        return '[unavailable]';
     }
 
     /**
