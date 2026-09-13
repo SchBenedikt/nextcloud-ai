@@ -100,6 +100,10 @@ final class AppConfigUserSettingsTest extends TestCase {
         ]]));
         self::assertSame('deepseek-chat', $appConfig->providerProfile()['model'] ?? null);
         self::assertNotNull($appConfig->validateValue('provider_profiles', [['id' => 'bad id', 'name' => '', 'url' => 'file:///tmp', 'model' => '']]));
+        self::assertNotNull($appConfig->validateValue('provider_profiles', [
+            ['id' => 'deepseek', 'name' => 'One', 'url' => 'https://one.example/v1', 'model' => 'm1'],
+            ['id' => 'deepseek', 'name' => 'Two', 'url' => 'https://two.example/v1', 'model' => 'm2'],
+        ]));
     }
 
     public function testUserSettingFallsBackToAdminInstanceValueWhenNotOverridden(): void {

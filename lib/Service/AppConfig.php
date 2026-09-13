@@ -507,6 +507,7 @@ class AppConfig {
     public function validateValue(string $key, mixed $value): ?string {
         if ($key === 'provider_profiles') {
             if (!is_array($value) || count($value) > 20) return 'must contain at most 20 provider profiles';
+            $ids = [];
             foreach ($value as $profile) {
                 if (!is_array($profile)
                     || preg_match('/^[a-z][a-z0-9_-]{1,31}$/D', (string)($profile['id'] ?? '')) !== 1
@@ -514,6 +515,13 @@ class AppConfig {
                     || preg_match('~^https?://[^\s]+$~i', (string)($profile['url'] ?? '')) !== 1
                     || trim((string)($profile['model'] ?? '')) === '' || mb_strlen((string)($profile['model'] ?? '')) > 128) {
                     return 'each profile needs an id, name, http(s) URL and model';
+                }
+                $id = (string)$profile['id'];
+                if (isset($ids[$id])) return 'profile ids must be unique';
+                $ids[$id] = true;
+                $parts = parse_url((string)$profile['url']);
+                if ($parts === false || isset($parts['user']) || isset($parts['pass']) || isset($parts['query']) || isset($parts['fragment']) || empty($parts['host'])) {
+                    return 'profile URLs must not contain credentials, query parameters or fragments';
                 }
             }
             return null;
