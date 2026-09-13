@@ -150,14 +150,25 @@ final class BackgroundChatQueue {
     }
 
     /** Persist coarse-grained progress so the UI can explain what EVA is doing. */
-    public function updateProgress(string $user, string $id, string $phase, ?string $tool = null): void {
+    public function updateProgress(string $user, string $id, string $phase, ?string $tool = null, ?array $arguments = null): void {
         $phase = in_array($phase, ['queued', 'model', 'tool', 'finalizing'], true) ? $phase : 'model';
-        $this->mutate($user, function (array $items) use ($id, $phase, $tool): array {
+        $this->mutate($user, function (array $items) use ($id, $phase, $tool, $arguments): array {
             foreach ($items as &$item) if (($item['id'] ?? '') === $id && ($item['status'] ?? '') === 'running') {
                 $item['phase'] = $phase; $item['tool'] = $tool !== null ? mb_substr($tool, 0, 100) : ''; $item['updatedAt'] = time();
                 if ($tool !== null && trim($tool) !== '') {
                     $history = is_array($item['toolHistory'] ?? null) ? $item['toolHistory'] : [];
-                    $history[] = ['tool' => mb_substr($tool, 0, 100), 'phase' => $phase, 'at' => time()];
+                    $entry = ['tool' => mb_substr($tool, 0, 100), 'phase' => $phase, 'at' => time()];
+                    if (is_array($arguments) && $arguments !== []) {
+                        $safe = [];
+                        foreach ($arguments as $key => $value) {
+                            $name = (string)$key;
+                            if (preg_match('/token|password|secret|api.?key|authorization|content/i', $name)) continue;
+                            if (is_scalar($value)) $safe[$name] = mb_strimwidth((string)$value, 0, 160, '…');
+                            elseif (is_array($value)) $safe[$name] = '[list]';
+                        }
+                        if ($safe !== []) $entry['arguments'] = $safe;
+                    }
+                    $history[] = $entry;
                     $item['toolHistory'] = array_slice($history, -50);
                 }
                 if ($phase === 'tool') $item['steps'] = (int)($item['steps'] ?? 0) + 1;
