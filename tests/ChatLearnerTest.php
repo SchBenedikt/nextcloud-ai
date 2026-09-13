@@ -9,6 +9,12 @@ use PHPUnit\Framework\TestCase;
 
 /** @covers \OCA\EvaAi\Service\ChatLearner */
 class ChatLearnerTest extends TestCase {
+    public function testUsesTheRegisteredLearningSetting(): void {
+        $source = (string)file_get_contents(__DIR__ . '/../lib/Service/ChatLearner.php');
+        self::assertStringContainsString("get('learning_enabled')", $source);
+        self::assertStringNotContainsString('chat_learning_enabled', $source);
+    }
+
     public function testExtractsGermanPersonalFacts(): void {
         $learner = (new \ReflectionClass(ChatLearner::class))->newInstanceWithoutConstructor();
         $method = new \ReflectionMethod(ChatLearner::class, 'extractFacts');

@@ -61,7 +61,10 @@ class ChatLearner {
         $this->config->setUserId($userId);
 
         // Only analyse if enabled (default: on).
-        if ($this->config->get('chat_learning_enabled') === '0') {
+        // Keep this in sync with the user-facing setting and ApiController.
+        // The former unregistered key returned an empty default and silently
+        // disabled learning.
+        if ($this->config->get('learning_enabled') === '0') {
             return;
         }
 
