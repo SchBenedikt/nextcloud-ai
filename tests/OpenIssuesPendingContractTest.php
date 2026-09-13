@@ -400,6 +400,9 @@ final class OpenIssuesPendingContractTest extends TestCase {
 		self::assertStringContainsString("'openapi'", $executor);
 		self::assertStringContainsString("\$meta['parameters'] = \$params", $executor);
 		self::assertStringContainsString("'required' => !empty(\$parameter['required'])", $executor);
+		self::assertStringContainsString('splitRequestPath', $executor);
+		self::assertStringContainsString('JSON_THROW_ON_ERROR', $executor);
+		self::assertStringContainsString('Learned routes belong to a specific service origin', $executor);
 		$webSearch = (string)file_get_contents(__DIR__ . '/../lib/Service/WebSearchService.php');
 		self::assertStringContainsString('OPENVERSE_IMAGE_ENDPOINT', $webSearch);
 		self::assertStringContainsString('searchOpenverseImages', $webSearch);
