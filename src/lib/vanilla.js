@@ -434,7 +434,8 @@ export function mountChat(root, opts = {}) {
 	const filesBtn = document.createElement('button')
 	filesBtn.type = 'button'
 	filesBtn.className = 'cbtn cbtn-ghost cbtn-files'
-	filesBtn.textContent = t('Add files')
+	filesBtn.textContent = '📎'
+	filesBtn.setAttribute('aria-label', t('Add files'))
 	filesBtn.title = t('Choose Nextcloud files to use as context')
 	filesBtn.addEventListener('click', async () => {
 		filesBtn.disabled = true
