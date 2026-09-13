@@ -4035,7 +4035,21 @@ class ActionExecutor {
                 if (strtoupper((string)($endpoint['method'] ?? '')) === $method
                     && $this->matchesDiscoveredRoute((string)($endpoint['path'] ?? ''), $path)) { $known = true; $matchedEndpoint = $endpoint; break; }
             }
-            if (!$known) return ['ok' => false, 'error' => 'This connector route was not discovered. Run discover_external_connector first.'];
+            if (!$known) {
+                // Discovery is read-only, so refresh a stale/partial route
+                // catalog transparently before rejecting a confirmed call.
+                // This keeps generic connectors self-learning without
+                // allowing arbitrary host/path probing: the request is still
+                // retried only when discovery records the exact route.
+                if (($args['_auto_discover'] ?? true) === true) {
+                    $discovered = $this->discoverExternalConnector(['id' => $id]);
+                    if (($discovered['ok'] ?? false) === true) {
+                        $args['_auto_discover'] = false;
+                        return $this->callExternalConnector($args);
+                    }
+                }
+                return ['ok' => false, 'error' => 'This connector route was not discovered. Run discover_external_connector first.'];
+            }
             if ($method !== 'GET' && is_array($matchedEndpoint)) {
                 $bodyError = $this->validateConnectorRequestBody($matchedEndpoint, $params);
                 if ($bodyError !== null) return ['ok' => false, 'error' => $bodyError];

@@ -4,6 +4,13 @@ All notable changes to **EVA (eva_ai)** are documented here.
 Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); the project
 follows [Semantic Versioning](https://semver.org/).
 
+## [1.16.55] - 2026-09-13
+
+### Fixed
+
+- External connector calls now refresh stale or incomplete endpoint discovery once before reporting an unknown route, while retaining exact-route matching and confirmation gates.
+- Added regression coverage for the self-learning connector refresh path.
+
 ## [1.16.54] - 2026-09-13
 
 ### Fixed

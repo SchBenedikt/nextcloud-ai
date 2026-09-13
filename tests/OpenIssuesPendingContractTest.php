@@ -210,6 +210,15 @@ final class OpenIssuesPendingContractTest extends TestCase {
         self::assertArrayHasKey('get', $decoded['paths']['/health']);
     }
 
+    /** A stale connector catalog is refreshed once before an exact route is rejected. */
+    public function testConnectorCallsAutoRefreshStaleDiscoveryOnce(): void {
+        $executor = (string)file_get_contents(__DIR__ . '/../lib/Service/ActionExecutor.php');
+        self::assertStringContainsString("\$args['_auto_discover'] ?? true", $executor);
+        self::assertStringContainsString("discoverExternalConnector(['id' => \$id])", $executor);
+        self::assertStringContainsString("\$args['_auto_discover'] = false", $executor);
+        self::assertStringContainsString("This connector route was not discovered. Run discover_external_connector first.", $executor);
+    }
+
     public function testAppLoadsItsOptionalProductionComposerAutoloader(): void {
         $application = (string)file_get_contents(__DIR__ . '/../lib/AppInfo/Application.php');
         self::assertStringContainsString("__DIR__ . '/../../vendor/autoload.php'", $application);
