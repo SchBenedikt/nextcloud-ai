@@ -3425,38 +3425,21 @@ class ActionExecutor {
         $url = rtrim((string)$row['base_url'], '/') . '/' . ltrim($path, '/');
         if (!$this->safeConnectorUrl($url)) return ['ok' => false, 'error' => 'Connector path leaves the configured HTTPS host.'];
         try {
-            $client = Server::get(\OCP\Http\Client\IClientService::class)->newClient(); $headers = ['Accept' => 'application/json']; $user = $this->config->userId() ?? '';
+            $headers = ['Accept' => 'application/json']; $user = $this->config->userId() ?? '';
             $headers = array_merge($headers, $this->connectorAuthHeaders($id, $row, $user));
             if ($method === 'GET') {
                 return $this->callExternalConnectorGet($id, $path, $url, $params, $headers, $user);
             }
-            $options = ['headers' => $headers, 'timeout' => self::CONNECTOR_TIMEOUT, 'connect_timeout' => self::CONNECTOR_CONNECT_TIMEOUT, 'allow_redirects' => ['max' => 0]];
-            if ($method === 'GET') $options['query'] = $params; elseif ($params !== []) { $headers['Content-Type'] = 'application/json'; $options['body'] = json_encode($params, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES); $options['headers'] = $headers; }
-            // Appliances can briefly return 5xx/429 while middleware starts
-            // or renews its auth session. Retry idempotent GETs twice
-            // with a short back-off, while never replaying mutating requests.
-            $attempts = 0; $response = null; $lastError = null;
-            $maxAttempts = $method === 'GET' ? self::CONNECTOR_GET_ATTEMPTS : 1;
-            do {
-                $attempts++;
-                try {
-                    $response = $client->{strtolower($method)}($url, $options);
-                    $status = $response->getStatusCode();
-                    if ($method !== 'GET' || !in_array($status, [408, 425, 429], true) && ($status < 500 || $status >= 600)) break;
-                } catch (\Throwable $e) {
-                    $lastError = $e;
-                    if ($attempts >= $maxAttempts) throw $e;
-                }
-                if ($attempts < $maxAttempts) usleep(100000 * $attempts);
-            } while ($attempts < $maxAttempts);
-            if ($response === null) throw ($lastError ?? new \RuntimeException('Connector returned no response'));
-            $body = $response->getBody(); if (is_resource($body)) $body = stream_get_contents($body); $body = mb_substr((string)$body, 0, 50000); $data = json_decode($body, true); $safeData = is_array($data) ? $this->redactApiPayload($data) : $body;
-            if ($response->getStatusCode() >= 200 && $response->getStatusCode() < 300) {
+            $headers['Content-Type'] = 'application/json';
+            [$status, $body, $transportError] = $this->connectorCurlRequest($url, $method, $headers, $params, self::CONNECTOR_TIMEOUT);
+            if ($transportError !== '') return ['ok' => false, 'error' => 'External connector request failed. ' . $transportError];
+            $body = mb_substr($body, 0, 50000); $data = json_decode($body, true); $safeData = is_array($data) ? $this->redactApiPayload($data) : $body;
+            if ($status >= 200 && $status < 300) {
                 $rows = $this->connectorRows(); $known = $rows[$id]['openapi']['endpoints'] ?? []; if (!is_array($known)) $known = [];
                 $seen = false; foreach ($known as $entry) if (is_array($entry) && strtoupper((string)($entry['method'] ?? '')) === $method && (string)($entry['path'] ?? '') === $path) { $seen = true; break; }
                 if (!$seen) { $known[] = ['path' => mb_substr($path, 0, 300), 'method' => $method, 'operation_id' => 'learned']; $rows[$id]['openapi'] = ['source' => $rows[$id]['openapi']['source'] ?? 'runtime', 'version' => $rows[$id]['openapi']['version'] ?? '', 'endpoints' => array_slice($known, -200), 'updated_at' => time()]; Server::get(\OCP\IConfig::class)->setUserValue($user, AppConfig::APP, 'external_connectors', json_encode($rows, JSON_UNESCAPED_SLASHES) ?: '{}'); }
             }
-            return ['ok' => $response->getStatusCode() >= 200 && $response->getStatusCode() < 300, 'result' => ['status' => $response->getStatusCode(), 'data' => $safeData, 'connector' => $id, 'method' => $method, 'path' => $path, 'attempts' => $attempts]];
+            return ['ok' => $status >= 200 && $status < 300, 'result' => ['status' => $status, 'data' => $safeData, 'connector' => $id, 'method' => $method, 'path' => $path, 'attempts' => 1]];
         } catch (\Throwable $e) {
             $detail = trim(preg_replace('/\s+/', ' ', $e->getMessage()));
             return ['ok' => false, 'error' => 'External connector request failed.' . ($detail !== '' ? ' ' . mb_substr($detail, 0, 220) : '')];
@@ -3556,6 +3539,7 @@ class ActionExecutor {
 
     private function httpGet(string $url, int $timeout = 8): ?string {
         $ch = curl_init($url);
+        $payload = $params === [] ? '{}' : json_encode($params, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
         curl_setopt_array($ch, [
             CURLOPT_RETURNTRANSFER => 1,
             CURLOPT_TIMEOUT => $timeout,
@@ -3585,5 +3569,29 @@ class ActionExecutor {
             if ($attempt < self::CONNECTOR_GET_ATTEMPTS) usleep(100000 * $attempt);
         }
         return [$error === 0 ? $status : 0, $body];
+    }
+
+    /** @return array{0:int,1:string,2:string} */
+    private function connectorCurlRequest(string $url, string $method, array $headers, array $params, int $timeout): array {
+        $lines = [];
+        foreach ($headers as $name => $value) $lines[] = $name . ': ' . $value;
+        $ch = curl_init($url);
+        curl_setopt_array($ch, [
+            CURLOPT_RETURNTRANSFER => true,
+            CURLOPT_CUSTOMREQUEST => $method,
+            CURLOPT_POSTFIELDS => $payload,
+            CURLOPT_TIMEOUT => $timeout,
+            CURLOPT_CONNECTTIMEOUT => self::CONNECTOR_CONNECT_TIMEOUT,
+            CURLOPT_FOLLOWLOCATION => false,
+            CURLOPT_HTTPHEADER => $lines,
+            CURLOPT_SSL_VERIFYPEER => true,
+            CURLOPT_SSL_VERIFYHOST => 2,
+            CURLOPT_USERAGENT => 'EvaAi/1.0 connector',
+        ]);
+        $body = curl_exec($ch);
+        $errno = curl_errno($ch);
+        $error = $errno !== 0 ? curl_error($ch) : '';
+        $status = (int)curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        return [$errno === 0 ? $status : 0, is_string($body) ? $body : '', mb_substr($error, 0, 220)];
     }
 }
