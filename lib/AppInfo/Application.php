@@ -71,11 +71,11 @@ class Application extends App implements IBootstrap {
         try {
             $container = $context->getAppContainer();
             $jobs = $container->get(IJobList::class);
-            $jobs->add(IndexJob::class);
+            if (!$jobs->has(IndexJob::class, null)) $jobs->add(IndexJob::class);
             // Existing installations do not re-read info.xml until the next
             // enable/upgrade, therefore register the new opt-in job here too.
-            $jobs->add(ProactiveBriefingJob::class);
-            $jobs->add(BackgroundChatJob::class);
+            if (!$jobs->has(ProactiveBriefingJob::class, null)) $jobs->add(ProactiveBriefingJob::class);
+            if (!$jobs->has(BackgroundChatJob::class, null)) $jobs->add(BackgroundChatJob::class);
         } catch (\Throwable $e) {
             // Non-fatal: indexing is also triggered explicitly via the API.
         }
