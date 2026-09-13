@@ -88,6 +88,16 @@ tracked in issues #60 and #66.
 
 ## Chat & tools
 
+### Die Produktivinstanz fühlt sich langsamer an als die Entwicklungsinstanz
+
+Der Health-Endpunkt misst nur Nextcloud-/EVA-Grundlatenz, nicht die Antwortzeit
+des KI-Modells. Für eine belastbare Diagnose zuerst `.../api/health?format=json`
+und danach eine authentifizierte Anfrage messen. Hohe Laufzeiten entstehen meist
+bei Ollama/externen Providern, großen VFS-Suchen oder Indexierung. EVA begrenzt
+Dateiscans, unterstützt Pfad-/Endungsfilter und cached identische Suchen nur kurz;
+nach Dateiänderungen wird die Cache-Revision sofort erhöht. Prüfe zusätzlich in
+`nextcloud.log`, ob ein Tool, der Provider oder eine andere App die Zeit verursacht.
+
 ### The answer doesn't see the whole document
 
 In the **file-context chat** (right-click → "Open with EVA") the model receives
