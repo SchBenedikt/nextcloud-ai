@@ -1380,6 +1380,13 @@ class ActionExecutor {
         if (str_contains($path, '..') || preg_match('/[\r\n]/', $path) || !str_starts_with($path, '/')) {
             return ['ok' => false, 'error' => 'Only same-origin app paths without traversal are allowed.'];
         }
+        // Nextcloud app routes are exposed externally below
+        // /apps/{app_id}/..., while models naturally return the app-relative
+        // route (/api/v1/people). Match and execute both forms consistently.
+        $absolutePath = $path;
+        if (!$isOcsPath && str_starts_with($path, '/api/')) {
+            $absolutePath = '/apps/' . $appId . $path;
+        }
         // Every generic route must be present in the user's recent discovery
         // snapshot.  Prefix-only checks are not sufficient: an enabled app can
         // expose administrative or destructive endpoints under the same OCS
@@ -1394,7 +1401,9 @@ class ActionExecutor {
                 if (!is_array($route)) continue;
                 $routePath = (string)($route['path'] ?? '');
                 $methods = is_array($route['methods'] ?? null) ? array_map('strtoupper', $route['methods']) : [];
-                if ($routePath !== '' && $this->matchesDiscoveredRoute($routePath, $path) && ($methods === [] || in_array($method, $methods, true))) {
+                $routeComparable = str_starts_with($routePath, '/apps/' . $appId . '/')
+                    ? substr($routePath, strlen('/apps/' . $appId)) : $routePath;
+                if ($routePath !== '' && ($this->matchesDiscoveredRoute($routeComparable, $path) || $this->matchesDiscoveredRoute($routePath, $absolutePath)) && ($methods === [] || in_array($method, $methods, true))) {
                     $knownRoute = true;
                     break;
                 }
@@ -1423,7 +1432,7 @@ class ActionExecutor {
             }
             $request = Server::get(\OCP\IRequest::class);
             $client = Server::get(\OCP\Http\Client\IClientService::class)->newClient();
-            $url = Server::get(\OCP\IURLGenerator::class)->getAbsoluteURL($path);
+            $url = Server::get(\OCP\IURLGenerator::class)->getAbsoluteURL($absolutePath);
             $headers = ['Accept' => 'application/json', 'OCS-APIRequest' => 'true'];
             foreach (['Authorization', 'Cookie'] as $header) {
                 $value = trim((string)$request->getHeader($header));
