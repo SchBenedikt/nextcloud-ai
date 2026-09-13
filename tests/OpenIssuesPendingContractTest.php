@@ -316,6 +316,21 @@ final class OpenIssuesPendingContractTest extends TestCase {
         self::assertStringContainsString('eva-custom-terminal', (string)$result['result']['output']);
     }
 
+    public function testConfirmedTerminalCommandCanProvideBoundedStdin(): void {
+        $reflection = new \ReflectionClass(ActionExecutor::class);
+        $instance = $reflection->newInstanceWithoutConstructor();
+        $config = $this->createMock(AppConfig::class);
+        $config->method('get')->willReturnMap([
+            ['terminal_commands_enabled', '1'],
+            ['terminal_command_any', '1'],
+            ['terminal_command_allowlist', 'cat'],
+        ]);
+        $reflection->getProperty('config')->setValue($instance, $config);
+        $result = $reflection->getMethod('runTerminalCommand')->invoke($instance, ['command' => '/bin/cat', 'stdin' => "prompt-answer\n"]);
+        self::assertTrue($result['ok']);
+        self::assertStringContainsString('prompt-answer', (string)$result['result']['output']);
+    }
+
     /** Live tool traces expose bounded output but never connector credentials. */
     public function testLiveToolResultIsRedactedAndBounded(): void {
         $reflection = new \ReflectionClass(RagService::class);

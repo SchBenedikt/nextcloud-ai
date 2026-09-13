@@ -4,6 +4,14 @@ All notable changes to **EVA (eva_ai)** are documented here.
 Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); the project
 follows [Semantic Versioning](https://semver.org/).
 
+## [1.16.64] - 2026-09-13
+
+### Added
+
+- Confirmed terminal commands can receive bounded prompt input through
+  `stdin`; input is closed with EOF and redacted from persisted traces.
+- Documented terminal input safety limits and confirmation requirements.
+
 ## [1.16.63] - 2026-09-13
 
 ### Fixed

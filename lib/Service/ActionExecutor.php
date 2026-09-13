@@ -654,9 +654,10 @@ class ActionExecutor {
             ]],
             ['type' => 'function', 'function' => [
                 'name' => 'run_terminal_command',
-                'description' => 'Run one explicitly confirmed terminal command on the Nextcloud host. The command is parsed without a shell; its executable must be in the user-configured allowlist unless the user explicitly enables custom-executable mode. Output and time are bounded. Disabled by default.',
+                'description' => 'Run one explicitly confirmed terminal command on the Nextcloud host. The command is parsed without a shell; its executable must be in the user-configured allowlist unless the user explicitly enables custom-executable mode. Optional stdin can answer a bounded interactive prompt. Output and time are bounded. Disabled by default.',
                 'parameters' => ['type' => 'object', 'properties' => [
                     'command' => ['type' => 'string', 'description' => 'Executable plus arguments, for example "git status --short". Shell operators, pipes, redirects, substitutions and newlines are rejected.'],
+                    'stdin' => ['type' => 'string', 'maxLength' => 4000, 'description' => 'Optional bounded input for a program prompt. It is sent through a pipe, never interpreted by a shell and redacted from persisted traces.'],
                     'timeout_seconds' => ['type' => 'integer', 'minimum' => 1, 'maximum' => 30, 'description' => 'Optional hard timeout, default 10 seconds.'],
                 ], 'required' => ['command']],
             ]],
@@ -3178,6 +3179,10 @@ class ActionExecutor {
         if ($command === '' || mb_strlen($command) > 1000 || preg_match('/[\x00-\x1F\x7F;&|<>`$()\r\n]/', $command)) {
             return ['ok' => false, 'error' => 'Command is empty, too long, or contains shell syntax/control characters.'];
         }
+        $stdin = (string)($args['stdin'] ?? '');
+        if (mb_strlen($stdin) > 4000 || str_contains($stdin, "\0")) {
+            return ['ok' => false, 'error' => 'stdin is limited to 4000 characters and cannot contain NUL bytes.'];
+        }
         if (preg_match_all('/"(?:\\\\.|[^"\\\\])*"|\'(?:\\\\.|[^\'\\\\])*\'|[^\s]+/u', $command, $parts) === false || $parts[0] === []) {
             return ['ok' => false, 'error' => 'Command arguments could not be parsed safely.'];
         }
@@ -3219,10 +3224,16 @@ class ActionExecutor {
         $timeout = filter_var($args['timeout_seconds'] ?? 10, FILTER_VALIDATE_INT);
         $timeout = $timeout === false ? 10 : max(1, min(30, $timeout));
         $pipes = [];
-        $process = proc_open($argv, [1 => ['pipe', 'w'], 2 => ['pipe', 'w']], $pipes, __DIR__ . '/../../');
+        $process = proc_open($argv, [0 => ['pipe', 'r'], 1 => ['pipe', 'w'], 2 => ['pipe', 'w']], $pipes, __DIR__ . '/../../');
         if (!is_resource($process)) {
             return ['ok' => false, 'error' => 'Could not start the terminal command.'];
         }
+        if ($stdin !== '') {
+            fwrite($pipes[0], $stdin);
+        }
+        // Always close stdin after the bounded payload. Programs that expect
+        // more input receive EOF instead of hanging until the timeout.
+        fclose($pipes[0]);
         stream_set_blocking($pipes[1], false);
         stream_set_blocking($pipes[2], false);
         $stdout = '';

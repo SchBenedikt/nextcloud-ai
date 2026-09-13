@@ -1195,7 +1195,7 @@ class ChatStore {
                     break;
                 }
                 $keyString = (string)$key;
-                if (preg_match('/(?:token|secret|password|api[_-]?key|authorization|cookie)/i', $keyString)) {
+                if (preg_match('/(?:token|secret|password|api[_-]?key|authorization|cookie|stdin)/i', $keyString)) {
                     $out[$keyString] = '[redacted]';
                     continue;
                 }

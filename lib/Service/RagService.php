@@ -506,7 +506,7 @@ $this->executor->setUserId($userId);
         $out = [];
         foreach ($arguments as $key => $value) {
             $label = strtolower((string)$key);
-            if (preg_match('/token|secret|password|api[_-]?key|authorization|cookie/', $label) === 1) {
+            if (preg_match('/token|secret|password|api[_-]?key|authorization|cookie|stdin/', $label) === 1) {
                 $out[(string)$key] = '[redacted]';
                 continue;
             }
@@ -531,7 +531,7 @@ $this->executor->setUserId($userId);
             foreach ($result as $key => $value) {
                 if (++$count > 24) { $out['…'] = 'additional fields omitted'; break; }
                 $label = strtolower((string)$key);
-                if (preg_match('/token|secret|password|api[_-]?key|authorization|cookie/', $label) === 1) {
+                if (preg_match('/token|secret|password|api[_-]?key|authorization|cookie|stdin/', $label) === 1) {
                     $out[(string)$key] = '[redacted]';
                 } elseif (is_array($value)) {
                     $out[(string)$key] = $this->safeToolResult($value, $depth + 1);

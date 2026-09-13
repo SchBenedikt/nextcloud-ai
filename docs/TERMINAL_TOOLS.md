@@ -32,6 +32,15 @@ git -C /var/www/html/nextcloud/apps/eva_ai status --short
 php -v
 ```
 
+When a confirmed command needs input (for example, a read-only diagnostic
+that asks a prompt), `run_terminal_command` may also receive a bounded
+`stdin` value. EVA writes at most 4000 characters to the child's standard
+input and then closes the pipe so the process cannot wait indefinitely for
+more input. NUL bytes are rejected. The input is never interpreted as shell
+syntax and is redacted from persisted traces just like passwords and tokens.
+This does not bypass the normal confirmation, allowlist, timeout or output
+limits.
+
 The following are deliberately rejected: `;`, `&&`, `||`, pipes, redirects,
 backticks, `$()` substitutions, newlines and shell scripts. Each argument is
 bounded, output is capped, and the timeout is between 1 and 30 seconds. A

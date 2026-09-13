@@ -166,7 +166,7 @@ final class BackgroundChatQueue {
                                 $out = [];
                                 foreach (array_slice($value, 0, 20, true) as $key => $child) {
                                     $name = (string)$key;
-                                    if (preg_match('/token|password|secret|api.?key|authorization|content/i', $name)) {
+                                    if (preg_match('/token|password|secret|api.?key|authorization|content|stdin/i', $name)) {
                                         $out[$name] = '[redacted]';
                                     } else {
                                         $out[$name] = $redact($child, $depth + 1);
