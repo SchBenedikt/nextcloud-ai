@@ -228,6 +228,13 @@
 				<NcCheckboxRadioSwitch v-model="safeCommandsEnabled" type="switch" class="native-toggle compact-switch" :description="$t('Allow only explicitly confirmed, read-only diagnostics such as disk space and version checks. Shell scripts, pipes and file changes remain blocked.')">
 					{{ $t('Allow safe local diagnostics') }}
 				</NcCheckboxRadioSwitch>
+				<NcCheckboxRadioSwitch v-model="terminalCommandsEnabled" type="switch" class="native-toggle compact-switch" :description="$t('Allow explicitly confirmed commands from the executable allowlist below. EVA never invokes a shell and rejects pipes, redirects and substitutions.')">
+					{{ $t('Allow confirmed terminal commands') }}
+				</NcCheckboxRadioSwitch>
+				<div v-if="terminalCommandsEnabled" class="field-grid terminal-command-settings">
+					<NcTextField id="terminal-command-allowlist" v-model="f.terminal_command_allowlist" :label="$t('Allowed terminal executables')" :label-outside="true" placeholder="date, uptime, php, git, ls" />
+					<p class="field-help">{{ $t('Comma-separated executable names or absolute paths. Every command still requires a confirmation dialog and is limited to 30 seconds.') }}</p>
+				</div>
 			</section>
 
 			<section id="settings-search" class="settings-section">
@@ -572,77 +579,14 @@
 </template>
 
 <script>
-import { ref, computed, watch, onMounted, onUnmounted, h } from 'vue'
+import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
+import { NcButton, NcCheckboxRadioSwitch, NcTextField } from '@nextcloud/vue'
 import { api, errMsg } from '../lib/api'
 import { translate as t } from '../lib/i18n'
 
-// Settings deliberately use small native controls.  This keeps labels,
-// keyboard behavior and form values consistent across Nextcloud versions.
-const NativeTextField = {
-	inheritAttrs: false,
-	props: { modelValue: [String, Number], label: String },
-	emits: ['update:modelValue'],
-	setup(props, { attrs, emit }) {
-		return () => {
-			const inputAttrs = { ...attrs }
-			delete inputAttrs.label
-			delete inputAttrs['label-outside']
-			return h('label', { class: 'native-field' }, [
-				props.label ? h('span', { class: 'native-label' }, props.label) : null,
-				h('input', {
-					...inputAttrs,
-					value: props.modelValue ?? '',
-					onInput: event => emit('update:modelValue', event.target.value),
-				}),
-			])
-		}
-	},
-}
-const NativeCheckbox = {
-	props: { modelValue: [Boolean, String, Number], type: { type: String, default: 'switch' }, value: [String, Number, Boolean], name: String, disabled: Boolean, description: String },
-	emits: ['update:modelValue'],
-	setup(props, { emit, slots }) {
-		return () => {
-			const radio = props.type === 'radio'
-			const checked = radio
-				? String(props.modelValue) === String(props.value)
-				: props.modelValue === true || props.modelValue === '1' || props.modelValue === 1
-			return h('label', { class: ['native-check', { 'native-switch': props.type === 'switch' }] }, [
-				h('input', {
-					type: radio ? 'radio' : 'checkbox',
-					name: props.name,
-					value: radio ? props.value : undefined,
-					checked,
-					disabled: props.disabled,
-					onChange: event => emit('update:modelValue', radio ? event.target.value : event.target.checked),
-				}),
-				h('span', { class: 'native-check-label' }, [
-					slots.default ? slots.default() : null,
-					props.description ? h('small', props.description) : null,
-				]),
-			])
-		}
-	},
-}
-const NativeButton = {
-	inheritAttrs: false,
-	props: { type: { type: String, default: 'secondary' }, disabled: Boolean, loading: Boolean },
-	setup(props, { attrs, slots }) {
-		return () => h('button', {
-			...attrs,
-			type: 'button',
-			class: ['native-button', `native-button--${props.type}`, attrs.class],
-			disabled: props.disabled || props.loading,
-		}, [
-			props.loading ? h('span', { 'aria-hidden': 'true', class: 'native-button-spinner' }, '…') : null,
-			slots.default ? slots.default() : null,
-		])
-	},
-}
-
 export default {
 	name: 'SettingsView',
-	components: { NcTextField: NativeTextField, NcCheckboxRadioSwitch: NativeCheckbox, NcButton: NativeButton },
+	components: { NcButton, NcCheckboxRadioSwitch, NcTextField },
 	setup() {
 		const f = ref({
 			chat_provider: 'ollama',
@@ -660,6 +604,8 @@ export default {
 			 actions_enabled: '1',
 			learning_enabled: '1',
 			safe_commands_enabled: '0',
+			terminal_commands_enabled: '0',
+			terminal_command_allowlist: 'date,uptime,php,node,git,ls,find,grep,rg,cat,head,tail,df,du,free,uname',
 			background_actions_enabled: '0',
 			agent_max_tool_rounds: '16',
 			notify_on_complete: '1',
@@ -758,6 +704,10 @@ export default {
 		const safeCommandsEnabled = computed({
 			get: () => f.value.safe_commands_enabled === '1',
 			set: value => { f.value.safe_commands_enabled = value ? '1' : '0' },
+		})
+		const terminalCommandsEnabled = computed({
+			get: () => f.value.terminal_commands_enabled === '1',
+			set: value => { f.value.terminal_commands_enabled = value ? '1' : '0' },
 		})
 		const proactiveEnabled = computed({
 			get: () => f.value.proactive_enabled === '1',
@@ -1658,6 +1608,7 @@ export default {
 .briefing-time-field > span { font-size:13px; font-weight:600; }
 .briefing-time-field input { box-sizing:border-box; width:100%; min-height:40px; padding:8px 10px; color:var(--color-main-text); background:var(--color-main-background); border:2px solid var(--color-border); border-radius:7px; font:inherit; }
 .briefing-time-field input:focus { border-color:var(--color-primary-element); outline:2px solid color-mix(in srgb,var(--color-primary-element) 25%,transparent); outline-offset:1px; }
+.terminal-command-settings { margin: 8px 0 0 27px; }
 .weekday-picker { display:flex; flex-wrap:wrap; gap:7px; margin-top:7px; }
 .weekday-picker label { display:inline-flex; align-items:center; gap:5px; padding:7px 10px; border:1px solid var(--color-border); border-radius:999px; background:var(--color-main-background); color:var(--color-text-maxcontrast); font-size:12px; cursor:pointer; }
 .weekday-picker label.selected { border-color:var(--color-primary-element); background:color-mix(in srgb,var(--color-primary-element) 14%,var(--color-main-background)); color:var(--color-main-text); font-weight:700; }

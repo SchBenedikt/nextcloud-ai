@@ -113,6 +113,7 @@ class ActionExecutor {
         'call_app_api' => ['app_id', 'path', 'method'],
         'call_app_api_batch' => ['calls'],
         'run_safe_command' => ['command'],
+        'run_terminal_command' => ['command'],
         'configure_external_connector' => ['id', 'base_url'],
         'diagnose_external_connector' => ['id'],
         'call_external_connector' => ['id', 'path', 'method'],
@@ -644,6 +645,14 @@ class ActionExecutor {
                 ], 'required' => ['command']],
             ]],
             ['type' => 'function', 'function' => [
+                'name' => 'run_terminal_command',
+                'description' => 'Run one explicitly confirmed terminal command on the Nextcloud host. The command is parsed without a shell, its executable must be in the user-configured allowlist, and output/time are bounded. Disabled by default.',
+                'parameters' => ['type' => 'object', 'properties' => [
+                    'command' => ['type' => 'string', 'description' => 'Executable plus arguments, for example "git status --short". Shell operators, pipes, redirects, substitutions and newlines are rejected.'],
+                    'timeout_seconds' => ['type' => 'integer', 'minimum' => 1, 'maximum' => 30, 'description' => 'Optional hard timeout, default 10 seconds.'],
+                ], 'required' => ['command']],
+            ]],
+            ['type' => 'function', 'function' => [
                 'name' => 'list_nextcloud_capabilities',
                 'description' => 'Discover which Nextcloud apps are enabled and which EVA integrations are available before planning a task. This is read-only and never exposes secrets. Use it when the user asks EVA to work with a Nextcloud feature you have not used before.',
                 'parameters' => ['type' => 'object', 'properties' => new \stdClass()],
@@ -1006,14 +1015,16 @@ class ActionExecutor {
             // web surface has complete arguments: the model may have learned
             // an unfamiliar endpoint and the user must review its exact
             // method, path and parameters first.
-            if ($name === 'call_app_api' || $name === 'run_safe_command') {
+            if ($name === 'call_app_api' || $name === 'run_safe_command' || $name === 'run_terminal_command') {
                 return [
                     'ok' => false,
                     'confirmation_required' => true,
                     'tool' => $name,
                     'arguments' => $args,
                     'risk' => (string)($policy['risk'] ?? ToolPolicy::RISK_MUTATING),
-                    'error' => $name === 'run_safe_command' ? 'Local diagnostic commands always require explicit user confirmation.' : 'Generic app API calls always require explicit user confirmation.',
+                    'error' => $name === 'call_app_api'
+                        ? 'Generic app API calls always require explicit user confirmation.'
+                        : 'Terminal commands always require explicit user confirmation.',
                 ];
             }
             // Interactive web chat: an explicit, complete request runs
@@ -1142,6 +1153,7 @@ class ActionExecutor {
                 'restore_file_version' => $this->restoreFileVersion($home, $args),
                 'server_status' => $this->serverStatus($userId),
                 'run_safe_command' => $this->runSafeCommand($args),
+                'run_terminal_command' => $this->runTerminalCommand($args),
                 'list_nextcloud_capabilities' => $this->listNextcloudCapabilities(),
                 'discover_app_api' => $this->discoverAppApi($args),
                 'list_learned_app_apis' => $this->listLearnedAppApis(),
@@ -3064,6 +3076,94 @@ class ActionExecutor {
         fclose($pipes[1]); fclose($pipes[2]);
         $exit = proc_close($process);
         return ['ok' => $exit === 0, 'result' => ['command' => $name, 'output' => mb_substr(trim((string)$stdout), 0, 10000), 'error_output' => mb_substr(trim((string)$stderr), 0, 2000), 'exit_code' => $exit]];
+    }
+
+    /**
+     * Execute a user-requested command without invoking a shell. This is an
+     * intentionally separate, opt-in tool: unlike runSafeCommand it accepts
+     * arguments, but only for executable names configured in the user's
+     * allowlist and only after the normal explicit-confirmation gate.
+     */
+    private function runTerminalCommand(array $args): array {
+        if ($this->config->get('terminal_commands_enabled') !== '1') {
+            return ['ok' => false, 'error' => 'Confirmed terminal commands are disabled in EVA settings.'];
+        }
+        $command = trim((string)($args['command'] ?? ''));
+        if ($command === '' || mb_strlen($command) > 1000 || preg_match('/[\x00-\x1F\x7F;&|<>`$()\r\n]/', $command)) {
+            return ['ok' => false, 'error' => 'Command is empty, too long, or contains shell syntax/control characters.'];
+        }
+        if (preg_match_all('/"(?:\\\\.|[^"\\\\])*"|\'(?:\\\\.|[^\'\\\\])*\'|[^\s]+/u', $command, $parts) !== 1 || $parts[0] === []) {
+            return ['ok' => false, 'error' => 'Command arguments could not be parsed safely.'];
+        }
+        $argv = [];
+        foreach ($parts[0] as $part) {
+            $first = $part[0] ?? '';
+            $last = substr($part, -1);
+            if (($first === '"' && $last === '"') || ($first === "'" && $last === "'")) {
+                $part = substr($part, 1, -1);
+                $part = str_replace(['\\"', '\\\\'], ['"', '\\'], $part);
+            } elseif (str_contains($part, '"') || str_contains($part, "'")) {
+                return ['ok' => false, 'error' => 'Quotes must wrap a complete argument.'];
+            }
+            if ($part === '' || mb_strlen($part) > 400) {
+                return ['ok' => false, 'error' => 'Command arguments are outside the allowed bounds.'];
+            }
+            $argv[] = $part;
+        }
+        $executable = (string)($argv[0] ?? '');
+        $allowlist = array_values(array_filter(array_map('trim', explode(',', (string)$this->config->get('terminal_command_allowlist'))), static fn(string $item): bool => $item !== ''));
+        $allowed = false;
+        foreach ($allowlist as $entry) {
+            if ($executable === $entry || basename($executable) === basename($entry)) {
+                $allowed = true;
+                break;
+            }
+        }
+        if (!$allowed) {
+            return ['ok' => false, 'error' => 'The executable is not in the configured terminal allowlist.'];
+        }
+        $timeout = filter_var($args['timeout_seconds'] ?? 10, FILTER_VALIDATE_INT);
+        $timeout = $timeout === false ? 10 : max(1, min(30, $timeout));
+        $pipes = [];
+        $process = proc_open($argv, [1 => ['pipe', 'w'], 2 => ['pipe', 'w']], $pipes, __DIR__ . '/../../');
+        if (!is_resource($process)) {
+            return ['ok' => false, 'error' => 'Could not start the terminal command.'];
+        }
+        stream_set_blocking($pipes[1], false);
+        stream_set_blocking($pipes[2], false);
+        $stdout = '';
+        $stderr = '';
+        $deadline = microtime(true) + $timeout;
+        $timedOut = false;
+        while (true) {
+            $stdout .= (string)stream_get_contents($pipes[1]);
+            $stderr .= (string)stream_get_contents($pipes[2]);
+            $status = proc_get_status($process);
+            if (!$status['running']) {
+                break;
+            }
+            if (microtime(true) >= $deadline) {
+                $timedOut = true;
+                proc_terminate($process, 9);
+                break;
+            }
+            usleep(20000);
+        }
+        $stdout .= (string)stream_get_contents($pipes[1]);
+        $stderr .= (string)stream_get_contents($pipes[2]);
+        fclose($pipes[1]);
+        fclose($pipes[2]);
+        $exit = proc_close($process);
+        return [
+            'ok' => !$timedOut && $exit === 0,
+            'result' => [
+                'command' => $command,
+                'output' => mb_substr(trim($stdout), 0, 20000),
+                'error_output' => mb_substr(trim($stderr), 0, 4000),
+                'exit_code' => $timedOut ? null : $exit,
+                'timed_out' => $timedOut,
+            ],
+        ];
     }
 
     /** @return array{ok:true,result:array}|array{ok:false,error:string} */

@@ -120,6 +120,23 @@ final class OpenIssuesPendingContractTest extends TestCase {
         self::assertSame(1, $extracted);
     }
 
+    /** Terminal prompts never get a shell parser and remain confirmation-gated. */
+    public function testConfirmedTerminalCommandRejectsShellSyntax(): void {
+        $reflection = new \ReflectionClass(ActionExecutor::class);
+        $instance = $reflection->newInstanceWithoutConstructor();
+        $config = $this->createMock(AppConfig::class);
+        $config->method('get')->willReturnMap([
+            ['terminal_commands_enabled', '1'],
+            ['terminal_command_allowlist', 'date'],
+        ]);
+        $configProperty = $reflection->getProperty('config');
+        $configProperty->setValue($instance, $config);
+        $run = $reflection->getMethod('runTerminalCommand');
+        $result = $run->invoke($instance, ['command' => 'date; cat /etc/passwd']);
+        self::assertFalse($result['ok']);
+        self::assertStringContainsString('shell syntax', strtolower((string)$result['error']));
+    }
+
     /**
      * Issue #93: knowledge trimming must preserve the automatic identity block
      * while dropping old non-profile lines.

@@ -78,6 +78,12 @@ class ToolPolicy {
             'requiresConfirmation' => true,
             'description' => 'Run one allowlisted, read-only local diagnostic command',
         ],
+        'run_terminal_command' => [
+            'risk' => self::RISK_MUTATING,
+            'surfaces' => [self::SURFACE_WEB, self::SURFACE_TASKPROCESSING_CONFIRMED],
+            'requiresConfirmation' => true,
+            'description' => 'Run one explicitly confirmed command from the configured executable allowlist',
+        ],
         'search_files' => [
             'risk' => self::RISK_READONLY,
             'surfaces' => [self::SURFACE_WEB, self::SURFACE_TALK, self::SURFACE_TASKPROCESSING, self::SURFACE_TASKPROCESSING_CONFIRMED, self::SURFACE_RAG],
@@ -606,6 +612,9 @@ class ToolPolicy {
 
         if ($toolName === 'run_safe_command' && $this->appConfig->getInt('safe_commands_enabled', 0) !== 1) {
             return ['allowed' => false, 'reason' => 'Safe local diagnostics are disabled by configuration'];
+        }
+        if ($toolName === 'run_terminal_command' && $this->appConfig->getInt('terminal_commands_enabled', 0) !== 1) {
+            return ['allowed' => false, 'reason' => 'Confirmed terminal commands are disabled by configuration'];
         }
 
         // The Talk tools only make sense on an instance that runs Talk; with

@@ -19,7 +19,7 @@ class AppConfig {
         'chat_provider', 'groq_model', 'custom_provider_url', 'custom_provider_model', 'provider_profiles', 'ollama_url', 'embedding_model', 'chat_model', 'chat_model_fallback',
         'embedding_model_fallback', 'summary_model', 'top_k', 'chunk_size',
         'chunk_overlap', 'max_file_size', 'max_files_per_run', 'scope_path',
-        'context_size', 'temperature', 'actions_enabled', 'background_actions_enabled', 'learning_enabled', 'safe_commands_enabled', 'agent_max_tool_rounds', 'exec_write_types',
+        'context_size', 'temperature', 'actions_enabled', 'background_actions_enabled', 'learning_enabled', 'safe_commands_enabled', 'terminal_commands_enabled', 'terminal_command_allowlist', 'agent_max_tool_rounds', 'exec_write_types',
         'exec_write_max_chars', 'exec_delete_mode',        'notify_on_complete',
         // Personal, opt-in scheduled briefings/reminders. Definitions are JSON;
         // delivery timestamps deliberately live in runtime state below.
@@ -143,6 +143,10 @@ class AppConfig {
         'background_actions_enabled' => '0',
         'learning_enabled' => '1',
         'safe_commands_enabled' => '0',
+        // Arbitrary terminal execution is opt-in, constrained to executable
+        // names from this list, and still requires confirmation for every run.
+        'terminal_commands_enabled' => '0',
+        'terminal_command_allowlist' => 'date,uptime,php,node,git,ls,find,grep,rg,cat,head,tail,df,du,free,uname',
         'agent_max_tool_rounds' => '16',
         'exec_write_types' => '',
         'exec_write_max_chars' => '100000',
@@ -553,6 +557,17 @@ class AppConfig {
             }
             return null;
         }
+        if ($key === 'terminal_command_allowlist') {
+            if (!is_scalar($value)) return 'must be a comma-separated list of executable names';
+            $commands = array_values(array_filter(array_map('trim', explode(',', (string)$value)), static fn(string $command): bool => $command !== ''));
+            if (count($commands) > 32) return 'may contain at most 32 executable names';
+            foreach ($commands as $command) {
+                if (preg_match('/^[A-Za-z0-9._+\/-]{1,128}$/D', $command) !== 1) {
+                    return 'may contain only executable names or absolute paths without shell characters';
+                }
+            }
+            return null;
+        }
         if ($key === 'web_search_provider') {
             return is_string($value) && in_array($value, WebSearchService::PROVIDERS, true)
                 ? null : 'must be one of: ' . implode(', ', WebSearchService::PROVIDERS);
@@ -608,7 +623,7 @@ class AppConfig {
             }
             return 'must be an absolute path or a command name, without spaces';
         }
-        if (in_array($key, ['ocr_enabled', 'actions_enabled', 'background_actions_enabled', 'notify_on_complete', 'proactive_enabled', 'mail_index_enabled', 'talk_index_enabled', 'talk_write_enabled', 'index_enrolled', 'talk_classify_all', 'weather_tool_enabled', 'web_search_enabled', 'web_search_safe_search', 'web_search_fetch_content', 'web_search_images', 'web_search_browser'], true)) {
+        if (in_array($key, ['ocr_enabled', 'actions_enabled', 'background_actions_enabled', 'learning_enabled', 'safe_commands_enabled', 'terminal_commands_enabled', 'notify_on_complete', 'proactive_enabled', 'mail_index_enabled', 'talk_index_enabled', 'talk_write_enabled', 'index_enrolled', 'talk_classify_all', 'weather_tool_enabled', 'web_search_enabled', 'web_search_safe_search', 'web_search_fetch_content', 'web_search_images', 'web_search_browser'], true)) {
             return is_scalar($value) && in_array((string)$value, ['0', '1', 'true', 'false', 'on', 'off'], true)
                 ? null : 'must be a boolean value';
         }
