@@ -10,10 +10,12 @@ use Psr\Log\LoggerInterface;
 /** Durable, per-user queue for chat requests that outlive a browser tab. */
 final class BackgroundChatQueue {
     public const KEY = 'background_chat_queue';
+    public const HISTORY_KEY = 'background_chat_history';
     private const MAX_ITEMS = 10;
     private const MAX_MESSAGE_CHARS = 20000;
     private const MAX_HISTORY_ITEMS = 100;
     private const MAX_RUNTIME_SECONDS = 300;
+    private const MAX_HISTORY_RUNS = 30;
 
     public function __construct(private IConfig $config, private ILockingProvider $locks, private LoggerInterface $logger) {}
 
@@ -67,7 +69,26 @@ final class BackgroundChatQueue {
         });
     }
 
-    public function complete(string $user, string $id): void { $this->mutate($user, static fn(array $items): array => array_values(array_filter($items, static fn(array $i): bool => ($i['id'] ?? '') !== $id))); }
+    public function complete(string $user, string $id, ?string $answer = null): void {
+        $this->withLock($user, function () use ($user, $id, $answer): void {
+            $items = $this->read($user); $remaining = []; $completed = null;
+            foreach ($items as $item) {
+                if (($item['id'] ?? '') === $id) { $completed = $item; continue; }
+                $remaining[] = $item;
+            }
+            if ($completed !== null) {
+                $history = $this->readHistory($user);
+                $history[] = [
+                    'id' => (string)$id, 'chatId' => (string)($completed['chatId'] ?? ''),
+                    'message' => mb_strimwidth((string)($completed['message'] ?? ''), 0, 240, '…'),
+                    'answer' => mb_strimwidth((string)($answer ?? ''), 0, 1000, '…'),
+                    'status' => 'completed', 'created' => (int)($completed['created'] ?? time()), 'finishedAt' => time(),
+                ];
+                $this->writeHistory($user, array_slice($history, -self::MAX_HISTORY_RUNS));
+            }
+            $this->write($user, $remaining);
+        });
+    }
     public function markTimedOut(string $user, string $id): void {
         $this->mutate($user, static function (array $items) use ($id): array {
             foreach ($items as &$item) if (($item['id'] ?? '') === $id && ($item['status'] ?? '') === 'running') { $item['status'] = 'failed'; $item['error'] = 'Background run exceeded its five-minute time limit.'; $item['finishedAt'] = time(); }
@@ -95,6 +116,18 @@ final class BackgroundChatQueue {
                     'deadline' => max(0, (int)($item['deadline'] ?? 0)),
                 ];
             }
+            foreach ($this->readHistory($user) as $item) {
+                if (($item['status'] ?? '') !== 'completed') continue;
+                $out[] = [
+                    'id' => (string)($item['id'] ?? ''), 'chatId' => (string)($item['chatId'] ?? ''),
+                    'status' => 'completed', 'attempts' => 1, 'created' => max(0, (int)($item['created'] ?? 0)),
+                    'claimedAt' => 0, 'message' => mb_strimwidth((string)($item['message'] ?? ''), 0, 240, '…'),
+                    'answer' => mb_strimwidth((string)($item['answer'] ?? ''), 0, 1000, '…'), 'error' => '',
+                    'phase' => 'completed', 'tool' => '', 'updatedAt' => max(0, (int)($item['finishedAt'] ?? 0)),
+                    'steps' => 0, 'deadline' => 0, 'finishedAt' => max(0, (int)($item['finishedAt'] ?? 0)),
+                ];
+            }
+            usort($out, static fn(array $a, array $b): int => ((int)($b['updatedAt'] ?? $b['created'] ?? 0)) <=> ((int)($a['updatedAt'] ?? $a['created'] ?? 0)));
             return $out;
         }, ILockingProvider::LOCK_SHARED) ?? [];
     }
@@ -184,6 +217,8 @@ final class BackgroundChatQueue {
     public function users(): array { try { return array_values(array_unique(array_filter(array_map('strval', $this->config->getUsersForUserValue(AppConfig::APP, self::KEY))))); } catch (\Throwable) { return []; } }
 
     private function read(string $user): array { $raw = $this->config->getUserValue($user, AppConfig::APP, self::KEY, '[]'); $data = json_decode($raw, true); return is_array($data) ? array_values(array_filter($data, 'is_array')) : []; }
+    private function readHistory(string $user): array { $raw = $this->config->getUserValue($user, AppConfig::APP, self::HISTORY_KEY, '[]'); $data = json_decode($raw, true); return is_array($data) ? array_values(array_filter($data, 'is_array')) : []; }
+    private function writeHistory(string $user, array $items): void { if ($items === []) { $this->config->deleteUserValue($user, AppConfig::APP, self::HISTORY_KEY); return; } $this->config->setUserValue($user, AppConfig::APP, self::HISTORY_KEY, json_encode(array_values($items), JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) ?: '[]'); }
     private function write(string $user, array $items): void { if ($items === []) { $this->config->deleteUserValue($user, AppConfig::APP, self::KEY); return; } $this->config->setUserValue($user, AppConfig::APP, self::KEY, json_encode(array_values($items), JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) ?: '[]'); }
     private function mutate(string $user, callable $fn): void { $this->withLock($user, function () use ($user, $fn): void { $this->write($user, $fn($this->read($user))); }); }
     private function withLock(string $user, callable $fn): mixed {

@@ -499,8 +499,9 @@
 					<div><strong>{{ connector.name }}</strong><small>{{ connector.base_url }} · {{ connector.discovered_endpoint_count || 0 }} {{ $t('learned endpoints') }}</small></div>
 					<div class="connector-actions"><NcButton type="tertiary-no-background" :disabled="connectorsBusy" @click="discoverConnector(connector.id)">{{ $t('Discover API') }}</NcButton><NcButton type="tertiary-no-background" :disabled="connectorsBusy" @click="removeConnector(connector.id)">{{ $t('Remove') }}</NcButton></div>
 				</div>
-			<div class="connector-form"><NcTextField v-model="connectorDraft.id" :label="$t('Connector ID')" :label-outside="true" placeholder="todo" /><NcTextField v-model="connectorDraft.name" :label="$t('Name')" :label-outside="true" placeholder="Todo service" /><NcTextField v-model="connectorDraft.base_url" type="url" :label="$t('HTTPS base URL')" :label-outside="true" placeholder="https://api.example.com" /><NcTextField v-model="connectorDraft.token" type="password" autocomplete="new-password" :label="$t('Bearer token (optional)')" :label-outside="true" /><NcButton type="primary" :disabled="connectorsBusy || !connectorDraft.id || !connectorDraft.base_url" @click="saveConnector">{{ $t('Save connector') }}</NcButton></div>
-				<p class="field-help">{{ $t('Only public HTTPS hosts are accepted. Tokens are encrypted and never shown again. Every external action requires confirmation.') }}</p>
+			<div class="connector-examples"><span>Examples:</span><button type="button" @click="applyConnectorExample('homeassistant')">Home Assistant</button><button type="button" @click="applyConnectorExample('truenas')">TrueNAS</button><button type="button" @click="applyConnectorExample('github')">GitHub</button></div>
+			<div class="connector-form"><NcTextField v-model="connectorDraft.id" :label="$t('Connector ID')" :label-outside="true" placeholder="homeassistant" /><NcTextField v-model="connectorDraft.name" :label="$t('Name')" :label-outside="true" placeholder="Home Assistant" /><NcTextField v-model="connectorDraft.base_url" type="url" :label="$t('HTTPS base URL')" :label-outside="true" placeholder="http://homeassistant.local:8123" /><NcTextField v-model="connectorDraft.token" type="password" autocomplete="new-password" :label="$t('Bearer token (optional)')" :label-outside="true" /><NcButton type="primary" :disabled="connectorsBusy || !connectorDraft.id || !connectorDraft.base_url" @click="saveConnector">{{ $t('Save connector') }}</NcButton></div>
+			<p class="field-help">{{ $t('Only public HTTPS hosts are accepted. Tokens are encrypted and never shown again. Every external action requires confirmation.') }} Local HTTP(S) services such as TrueNAS and Home Assistant are supported.</p>
 			</section>
 
 			<section v-if="isAdminMode" class="settings-section">
@@ -708,6 +709,13 @@ export default {
 		const connectorsLoading = ref(false)
 		const connectorsBusy = ref(false)
 		const connectorDraft = ref({ id: '', name: '', base_url: '', token: '' })
+		function applyConnectorExample(type) {
+			connectorDraft.value = type === 'truenas'
+				? { id: 'truenas', name: 'TrueNAS', base_url: 'https://truenas.local', token: '' }
+				: type === 'github'
+					? { id: 'github', name: 'GitHub', base_url: 'https://api.github.com', token: '' }
+					: { id: 'homeassistant', name: 'Home Assistant', base_url: 'http://homeassistant.local:8123', token: '' }
+		}
 		async function loadConnectors() {
 			connectorsLoading.value = true
 			try { const data = await api('GET', 'connectors'); connectors.value = Array.isArray(data?.result?.connectors) ? data.result.connectors : [] } catch (_) { connectors.value = [] } finally { connectorsLoading.value = false }
@@ -1323,7 +1331,7 @@ export default {
 			groqKey, customProviderKey, removeGroqKey, ocrEnabled, f, status, health, healthLoading, statusTimer, limits, availableModels, embeddingModels, chatModels, embeddingInstalledHint, chatInstalledHint, modelLoading, modelError, checkOut, saving, checking, indexing, resetting, deletingChats, stopping, saved, loadError, message, validationErrors, resetConfirm, chatsDeleteConfirm,
 			newExcludePath, excludeError, excludeList, actionsEnabled, backgroundActionsEnabled, notificationsEnabled, learningEnabled, safeCommandsEnabled, mailIndexEnabled, talkIndexEnabled, talkWriteEnabled, indexEnrolled, actionsDisabled, busy, indexingActive, settingsLocked, maxFileSizeMb,
 			isAdminMode, admin, userWebSearchEnabled, userWebSearchSafeSearch, userWebSearchImages, userWebSearchBrowser, userWebSearchFetchContent, webSearchKey, removeWebSearchKey, webSearchKeyStored, webSearchReady, savingAdmin, saveAdminSettings, loadAdminSettings,
-			connectors, connectorsLoading, connectorsBusy, connectorDraft, saveConnector, removeConnector, discoverConnector,
+			connectors, connectorsLoading, connectorsBusy, connectorDraft, applyConnectorExample, saveConnector, removeConnector, discoverConnector,
 			proactiveEnabled, proactiveBriefings, briefingDraft, weekdays, dayName, addBriefing, removeBriefing, toggleBriefing, toggleBriefingActions,
 			exporting, downloadExport,
 			knowledgeContent, knowledgeOriginal, savingKnowledge, knowledgeSaved, saveKnowledgeContent,
@@ -1515,6 +1523,8 @@ export default {
 .connector-row { display:flex; align-items:center; justify-content:space-between; gap:16px; padding:12px 0; border-bottom:1px solid var(--color-border); }
 .connector-row strong, .connector-row small { display:block; overflow-wrap:anywhere; }
 .connector-row small { color:var(--color-text-maxcontrast); margin-top:3px; }
+.connector-examples { display:flex; flex-wrap:wrap; align-items:center; gap:8px; margin-top:14px; color:var(--color-text-maxcontrast); font-size:13px; }
+.connector-examples button { border:1px solid var(--color-border); border-radius:var(--border-radius-pill); background:var(--color-background-hover); color:var(--color-main-text); padding:4px 10px; cursor:pointer; }
 .connector-actions { display:flex; gap:6px; flex-shrink:0; }
 .connector-form { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:10px; align-items:end; margin-top:16px; }
 @media (max-width:760px) { .connector-row { align-items:flex-start; flex-direction:column; } .connector-form { grid-template-columns:1fr; } }

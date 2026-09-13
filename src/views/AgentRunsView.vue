@@ -22,6 +22,7 @@
 					<span v-if="item.deadline">Deadline: {{ formatDate(item.deadline) }}</span>
 				</div>
 				<p v-if="item.error" class="agent-run__error">{{ item.error }}</p>
+				<details v-if="item.status === 'completed' && item.answer" class="agent-run__answer"><summary>Result</summary><div>{{ item.answer }}</div></details>
 				<div class="agent-run__actions">
 					<button v-if="item.status === 'pending'" type="button" @click="act('pause', item.id)">Pause</button>
 					<button v-if="item.status === 'paused'" type="button" @click="act('resume', item.id)">Resume</button>
