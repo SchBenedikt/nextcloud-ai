@@ -391,6 +391,8 @@ final class OpenIssuesPendingContractTest extends TestCase {
 		self::assertStringContainsString('$scopePath = $this->cleanPath', $executor);
 		self::assertStringContainsString('SEARCH_CACHE_TTL', $executor);
 		self::assertStringContainsString('createDistributed(\'eva_ai_search_\')', $executor);
+		self::assertStringContainsString('bumpSearchRevision', $executor);
+		self::assertStringContainsString("'search_revision'", (string)file_get_contents(__DIR__ . '/../lib/Service/AppConfig.php'));
 	}
 
 	private function sliceBetween(string $haystack, string $start, string $end): string {

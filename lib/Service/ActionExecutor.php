@@ -1547,6 +1547,7 @@ class ActionExecutor {
             $existing = $folder->get($name);
             if ($existing instanceof File) {
                 $existing->putContent($content);
+                $this->bumpSearchRevision();
                 return ['ok' => true, 'result' => 'Updated ' . $path];
             }
             return ['ok' => false, 'error' => 'A folder with that name already exists at ' . $path];
@@ -1558,6 +1559,7 @@ class ActionExecutor {
         $this->markOwnedPending($home, $path, function () use ($folder, $name, $content): void {
             $folder->newFile($name, $content);
         });
+        $this->bumpSearchRevision();
         return ['ok' => true, 'result' => 'Created ' . $path];
     }
 
@@ -1618,6 +1620,7 @@ class ActionExecutor {
         } else {
             $this->ensureFolderPath($home, $path);
         }
+        $this->bumpSearchRevision();
         return ['ok' => true, 'result' => 'Created folder ' . $path];
     }
 
@@ -1634,6 +1637,7 @@ class ActionExecutor {
             return ['ok' => false, 'error' => 'Target name already exists'];
         }
         $node->move($parent->getPath() . '/' . $newName);
+        $this->bumpSearchRevision();
         return ['ok' => true, 'result' => 'Renamed to ' . $newName];
     }
 
@@ -1658,6 +1662,7 @@ class ActionExecutor {
             return ['ok' => false, 'error' => 'Target already exists'];
         }
         $node->move($destination->getPath() . '/' . $targetName);
+        $this->bumpSearchRevision();
         return ['ok' => true, 'result' => 'Moved ' . $path . ' to ' . $targetPath];
     }
 
@@ -1678,6 +1683,7 @@ class ActionExecutor {
         $destination = $this->ensureFolderPath($home, $targetDir);
         if ($destination->nodeExists($targetName)) return ['ok' => false, 'error' => 'Target already exists'];
         $node->copy($destination->getPath() . '/' . $targetName);
+        $this->bumpSearchRevision();
         return ['ok' => true, 'result' => 'Copied ' . $path . ' to ' . $targetPath];
     }
 
@@ -1716,6 +1722,7 @@ class ActionExecutor {
         $fileId = (int)$node->getId();
         $node->delete();
         $this->unmarkOwned($home, $fileId);
+        $this->bumpSearchRevision();
         return ['ok' => true, 'result' => 'Deleted ' . ($node instanceof Folder ? 'folder ' : 'file ') . $path];
     }
 
@@ -1821,7 +1828,9 @@ class ActionExecutor {
         $cache = null;
         $userKey = '';
         try { $userKey = (string)($this->config->userId() ?? ''); } catch (\Throwable) { }
-        $cacheKey = 'search_' . substr(hash('sha256', $userKey . "\0" . $query . "\0" . $scopePath . "\0" . $extension), 0, 40);
+        $revision = 0;
+        try { $revision = max(0, (int)$this->config->get('search_revision')); } catch (\Throwable) { }
+        $cacheKey = 'search_' . substr(hash('sha256', $userKey . "\0" . $revision . "\0" . $query . "\0" . $scopePath . "\0" . $extension), 0, 40);
         try {
             $cache = Server::get(\OCP\ICacheFactory::class)->createDistributed('eva_ai_search_');
             $cached = $cache->get($cacheKey);
@@ -1872,6 +1881,14 @@ class ActionExecutor {
             uasort($known, static fn(array $a, array $b): int => ((int)($b['last_seen'] ?? 0)) <=> ((int)($a['last_seen'] ?? 0)));
             $this->config->set('learned_file_locations', json_encode(array_slice($known, 0, 500, true), JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) ?: '{}');
         } catch (\Throwable) { /* learning is best effort */ }
+    }
+
+    /** Advance the per-user search revision after a successful VFS mutation. */
+    private function bumpSearchRevision(): void {
+        try {
+            $current = max(0, (int)$this->config->get('search_revision'));
+            $this->config->set('search_revision', (string)(($current + 1) % 2147483647));
+        } catch (\Throwable) { /* cache invalidation is best effort */ }
     }
 
     private function listLearnedFileLocations(): array {

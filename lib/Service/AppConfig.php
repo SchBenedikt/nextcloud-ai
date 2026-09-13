@@ -54,7 +54,7 @@ class AppConfig {
         'last_index_total', 'last_index_error', 'last_index_cache_hits', 'last_index_cache_misses',
         'last_index_ollama_requests', 'last_index_failed', 'index_config_hash', 'index_mode',
         'index_cancel_requested', 'index_run_id', 'index_enrolled', 'knowledge_initialized',
-        'proactive_schedule_runs',
+        'proactive_schedule_runs', 'search_revision',
         'background_chat_queue',
         // Sanitised OCS route metadata learned by EVA; credentials and
         // response bodies are never stored here.
