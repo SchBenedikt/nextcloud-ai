@@ -262,7 +262,16 @@ final class BackgroundChatQueue {
                 $hasActive = is_array($queue) && array_filter($queue, static fn($item): bool => is_array($item) && in_array(($item['status'] ?? 'pending'), ['pending', 'running', 'paused'], true));
                 if ($hasActive) $active[] = $uid;
             }
-            $this->config->setAppValue(AppConfig::APP, self::USERS_KEY, json_encode($active, JSON_UNESCAPED_SLASHES) ?: '[]');
+            // Polling status is frequent; avoid a global config write when
+            // the indexed user set has not changed. This keeps concurrent
+            // chat tabs from creating needless DB contention.
+            $normalized = array_values(array_unique(array_map('strval', $active)));
+            sort($normalized);
+            $existing = is_array($indexed) ? array_values(array_unique(array_map('strval', $indexed))) : [];
+            sort($existing);
+            if ($normalized !== $existing) {
+                $this->config->setAppValue(AppConfig::APP, self::USERS_KEY, json_encode($active, JSON_UNESCAPED_SLASHES) ?: '[]');
+            }
             return $active;
         } catch (\Throwable) {
             return [];
