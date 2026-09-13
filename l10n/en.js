@@ -43,6 +43,8 @@ OC.L10N.register("eva_ai", {
     "No learned route matches this filter.": "No learned route matches this filter.",
     "JSON fields": "JSON fields",
     "Parameters": "Parameters",
+    "Discovery": "Discovery",
+    "not run yet": "not run yet",
     "You can also ask EVA to run up to five allowlisted commands sequentially; each command is shown and timed separately.": "You can also ask EVA to run up to five allowlisted commands sequentially; each command is shown and timed separately.",
     "EVA extensions": "EVA extensions",
     "Installed Nextcloud apps can add namespaced tools to EVA. Their schemas are visible here; actions still follow EVA confirmation and surface rules.": "Installed Nextcloud apps can add namespaced tools to EVA. Their schemas are visible here; actions still follow EVA confirmation and surface rules.",

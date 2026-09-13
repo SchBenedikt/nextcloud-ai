@@ -3529,7 +3529,7 @@ class ActionExecutor {
             $passwordConfigured = $credentials->customValueConfigured($user, $prefix, 'password');
             $apiKeyConfigured = $credentials->customValueConfigured($user, $prefix, 'api_key');
             $authType = (string)($row['auth_type'] ?? ($tokenConfigured ? 'bearer' : 'none'));
-            $out[] = ['id' => (string)$id, 'name' => (string)($row['name'] ?? $id), 'base_url' => (string)($row['base_url'] ?? ''), 'openapi_url' => (string)($row['openapi_url'] ?? ''), 'auth_type' => $authType, 'token_configured' => $tokenConfigured, 'username_configured' => $usernameConfigured, 'password_configured' => $passwordConfigured, 'api_key_configured' => $apiKeyConfigured, 'api_key_header' => $this->normalizedApiKeyHeader($row), 'updated_at' => (int)($row['updated_at'] ?? 0), 'discovered_endpoint_count' => count($endpoints), 'learned_endpoints' => $endpoints, 'openapi_updated_at' => (int)($row['openapi']['updated_at'] ?? 0)];
+            $out[] = ['id' => (string)$id, 'name' => (string)($row['name'] ?? $id), 'base_url' => (string)($row['base_url'] ?? ''), 'openapi_url' => (string)($row['openapi_url'] ?? ''), 'auth_type' => $authType, 'token_configured' => $tokenConfigured, 'username_configured' => $usernameConfigured, 'password_configured' => $passwordConfigured, 'api_key_configured' => $apiKeyConfigured, 'api_key_header' => $this->normalizedApiKeyHeader($row), 'updated_at' => (int)($row['updated_at'] ?? 0), 'discovered_endpoint_count' => count($endpoints), 'learned_endpoints' => $endpoints, 'openapi_source' => mb_substr((string)($row['openapi']['source'] ?? ''), 0, 300), 'openapi_updated_at' => (int)($row['openapi']['updated_at'] ?? 0)];
         }
         return ['ok' => true, 'result' => ['connectors' => $out]];
     }
