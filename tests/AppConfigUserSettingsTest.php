@@ -88,6 +88,20 @@ final class AppConfigUserSettingsTest extends TestCase {
         self::assertSame('0', $appConfig->get('index_running'));
     }
 
+    public function testProviderProfilesAreValidatedAndResolvedPerUser(): void {
+        [$config] = $this->configHarness([], ['alice' => [
+            'provider_profiles' => '[{"id":"deepseek","name":"DeepSeek","url":"https://api.deepseek.com/v1","model":"deepseek-chat"}]',
+            'chat_provider' => 'deepseek',
+        ]]);
+        $appConfig = new AppConfig($config);
+        $appConfig->setUserId('alice');
+        self::assertNull($appConfig->validateValue('provider_profiles', [[
+            'id' => 'deepseek', 'name' => 'DeepSeek', 'url' => 'https://api.deepseek.com/v1', 'model' => 'deepseek-chat',
+        ]]));
+        self::assertSame('deepseek-chat', $appConfig->providerProfile()['model'] ?? null);
+        self::assertNotNull($appConfig->validateValue('provider_profiles', [['id' => 'bad id', 'name' => '', 'url' => 'file:///tmp', 'model' => '']]));
+    }
+
     public function testUserSettingFallsBackToAdminInstanceValueWhenNotOverridden(): void {
         [$config] = $this->configHarness(['ollama_url' => 'http://192.168.1.10:11434']);
 
