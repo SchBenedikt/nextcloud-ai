@@ -22,5 +22,8 @@
     },
     "config": {
         "sort-packages": true
+    },
+    "require": {
+        "symfony/yaml": "^6.4"
     }
 }

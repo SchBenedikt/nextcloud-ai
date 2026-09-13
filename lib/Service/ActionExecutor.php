@@ -3806,6 +3806,14 @@ class ActionExecutor {
                 return is_array($yaml) ? $yaml : null;
             } catch (\Throwable) { return null; }
         }
+        // Ship a parser fallback so OpenAPI YAML works on standard PHP
+        // installations where the optional ext-yaml extension is unavailable.
+        if (class_exists(\Symfony\Component\Yaml\Yaml::class)) {
+            try {
+                $yaml = \Symfony\Component\Yaml\Yaml::parse($body);
+                return is_array($yaml) ? $yaml : null;
+            } catch (\Throwable) { return null; }
+        }
         return null;
     }
 

@@ -194,6 +194,21 @@ final class OpenIssuesPendingContractTest extends TestCase {
         self::assertNull($validate->invoke($instance, $endpoint, ['query' => 'Lena', 'extra' => 'allowed']));
     }
 
+    public function testConnectorSchemaDecodesYamlWithoutExtYaml(): void {
+        $reflection = new \ReflectionClass(ActionExecutor::class);
+        $instance = $reflection->newInstanceWithoutConstructor();
+        $decoded = $reflection->getMethod('decodeConnectorSchema')->invoke($instance, "openapi: 3.0.0\npaths:\n  /health:\n    get:\n      responses: {}\n");
+        self::assertIsArray($decoded);
+        self::assertArrayHasKey('/health', $decoded['paths']);
+        self::assertArrayHasKey('get', $decoded['paths']['/health']);
+    }
+
+    public function testAppLoadsItsOptionalProductionComposerAutoloader(): void {
+        $application = (string)file_get_contents(__DIR__ . '/../lib/AppInfo/Application.php');
+        self::assertStringContainsString("__DIR__ . '/../../vendor/autoload.php'", $application);
+        self::assertStringContainsString('require_once $autoload', $application);
+    }
+
     /** Terminal prompts never get a shell parser and remain confirmation-gated. */
     public function testConfirmedTerminalCommandRejectsShellSyntax(): void {
         $reflection = new \ReflectionClass(ActionExecutor::class);
@@ -599,8 +614,9 @@ final class OpenIssuesPendingContractTest extends TestCase {
 		self::assertStringContainsString('discoverExternalConnector', $executor);
 		self::assertStringContainsString("'/openapi.json'", $executor);
 		self::assertStringContainsString("'openapi'", $executor);
-		self::assertStringContainsString('decodeConnectorSchema', $executor);
-		self::assertStringContainsString("function_exists('yaml_parse')", $executor);
+        self::assertStringContainsString('decodeConnectorSchema', $executor);
+        self::assertStringContainsString("function_exists('yaml_parse')", $executor);
+        self::assertStringContainsString('Symfony\\Component\\Yaml\\Yaml', $executor);
 		self::assertStringContainsString("\$meta['parameters'] = \$params", $executor);
 		self::assertStringContainsString('connectorRequestBodyMeta', $executor);
 		self::assertStringContainsString("'request_body'", $executor);

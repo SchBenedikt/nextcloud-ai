@@ -22,6 +22,14 @@ class Application extends App implements IBootstrap {
 
     public function __construct(array $urlParams = []) {
         parent::__construct(self::APP_ID, $urlParams);
+        // EVA ships a small production Composer dependency (Symfony YAML) for
+        // OpenAPI documents published as YAML. Nextcloud does not load an
+        // app's Composer autoloader automatically, so load it when present;
+        // installations without the optional vendor directory keep working.
+        $autoload = __DIR__ . '/../../vendor/autoload.php';
+        if (is_file($autoload)) {
+            require_once $autoload;
+        }
     }
 
     public function register(IRegistrationContext $context): void {
