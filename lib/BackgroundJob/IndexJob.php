@@ -178,6 +178,7 @@ class IndexJob extends TimedJob {
                     do {
                         $pass = $this->indexer->run($user);
                         $passes++;
+                        $this->releaseWorkerMemory();
                         // An error, an empty pass or a scheduler queue hand-off
                         // means this user's current scope is indexed: move on
                         // instead of spinning on no-op passes.
@@ -194,6 +195,7 @@ class IndexJob extends TimedJob {
                         'exception' => $e->getMessage(),
                     ]);
                 }
+                $this->releaseWorkerMemory();
                 // Remember the last user actually processed (even on failure)
                 // so the next run continues fairly after this user.
                 $this->config->set('index_job_last_user', $user);
@@ -214,6 +216,7 @@ class IndexJob extends TimedJob {
                     $this->logger->info('eva_ai index job drains queued user', ['user' => $queuedUser]);
                     try {
                         $this->indexer->run($queuedUser);
+                        $this->releaseWorkerMemory();
                     } catch (\Throwable $e) {
                         $this->logger->warning('eva_ai index job drain failed for user', [
                             'user' => $queuedUser,
@@ -228,6 +231,17 @@ class IndexJob extends TimedJob {
         } finally {
             $this->config->setUserId(null);
             $this->config->set('index_job_running', '0');
+            $this->releaseWorkerMemory();
+        }
+    }
+
+    /** Release cyclic graphs and allocator caches in long-lived PHP workers. */
+    private function releaseWorkerMemory(): void {
+        if (function_exists('gc_collect_cycles')) {
+            gc_collect_cycles();
+        }
+        if (function_exists('gc_mem_caches')) {
+            gc_mem_caches();
         }
     }
 

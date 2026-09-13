@@ -72,6 +72,15 @@ final class BackgroundChatJob extends TimedJob {
                     $notification->setApp(AppConfig::APP)->setUser($user)->setObject('chat', (string)($item['chatId'] ?? ''))->setSubject('background_failed', ['text' => mb_strimwidth($e->getMessage(), 0, 400, '…')])->setLink($this->urls->linkToRouteAbsolute('eva_ai.page.app') . '?chat=' . rawurlencode((string)($item['chatId'] ?? '')))->setDateTime(new \DateTime());
                     $this->notifications->notify($notification);
                 }
+            } finally {
+                // Cron/FPM workers are long-lived; release parser/tool cycles
+                // and free PHP allocator caches after every remote request.
+                if (function_exists('gc_collect_cycles')) {
+                    gc_collect_cycles();
+                }
+                if (function_exists('gc_mem_caches')) {
+                    gc_mem_caches();
+                }
             }
         }
         // Timed jobs are normally picked at their interval, but a busy

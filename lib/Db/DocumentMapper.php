@@ -102,6 +102,32 @@ class DocumentMapper extends QBMapper {
         return $map;
     }
 
+    /** Lightweight state lookup used when a user's index is too large for a
+     * process-local bulk map. Keeps large indexing passes memory-bounded. */
+    public function stateForFile(string $userId, int $fileId): ?array {
+        $qb = $this->db->getQueryBuilder();
+        $qb->select('id', 'file_id', 'content_hash', 'size', 'file_mtime', 'path', 'name', 'mime')
+            ->from('eva_ai_documents')
+            ->where($qb->expr()->eq('user_id', $qb->createNamedParameter($userId)))
+            ->andWhere($qb->expr()->eq('file_id', $qb->createNamedParameter($fileId, IQueryBuilder::PARAM_INT)))
+            ->setMaxResults(1);
+        $result = $qb->executeQuery();
+        $row = $result->fetch();
+        $result->closeCursor();
+        if (!is_array($row)) {
+            return null;
+        }
+        return [
+            'id' => (int)$row['id'],
+            'content_hash' => (string)($row['content_hash'] ?? ''),
+            'size' => (int)($row['size'] ?? 0),
+            'file_mtime' => (int)($row['file_mtime'] ?? 0),
+            'path' => (string)($row['path'] ?? ''),
+            'name' => (string)($row['name'] ?? ''),
+            'mime' => (string)($row['mime'] ?? ''),
+        ];
+    }
+
     public function distinctUserIds(): array {
         $qb = $this->db->getQueryBuilder();
         $qb->selectDistinct('user_id')

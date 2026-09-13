@@ -26,6 +26,7 @@ use OCP\ICacheFactory;
 use OCP\App\IAppManager;
 use OCP\IRequest;
 use OCP\Lock\ILockingProvider;
+use OCP\Server;
 
 class ApiController extends OCSController {
     public function __construct(
@@ -84,6 +85,16 @@ class ApiController extends OCSController {
 
     private function requireUser(): ?string {
         return $this->userId ?: null;
+    }
+
+    /** Do not hold Nextcloud's PHP session lock during remote model/tool I/O. */
+    private function releaseSessionLock(): void {
+        try {
+            Server::get(\OCP\ISession::class)->close();
+        } catch (\Throwable) {
+            // Older Nextcloud versions or CLI workers may not expose a
+            // closable session; the request remains functional in that case.
+        }
     }
 
     /**
@@ -823,6 +834,7 @@ class ApiController extends OCSController {
         if ($message === '') {
             return new DataResponse(['error' => 'Empty message'], 400);
         }
+        $this->releaseSessionLock();
         $history = $this->requestParam('history') ?? [];
         if (is_string($history)) {
             $history = json_decode($history, true) ?? [];
@@ -1037,6 +1049,9 @@ class ApiController extends OCSController {
         $body = json_decode((string)file_get_contents('php://input'), true);
         $message = trim((string)($body['message'] ?? ''));
         $history = isset($body['history']) && is_array($body['history']) ? $body['history'] : [];
+        if ($user !== null && $message !== '') {
+            $this->releaseSessionLock();
+        }
         // Per-chat folder scope (Issue #88) and custom instructions (Issue #90)
         // are resolved once, outside the generator, so they cannot change
         // mid-stream.

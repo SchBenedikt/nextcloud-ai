@@ -201,6 +201,17 @@ class Indexer {
             // One bulk read supplies both the change fingerprints and the
             // stored metadata, so a full scan no longer issues a query per file.
             $docState = $this->documentMapper->stateForUser($userId);
+            // Keep the fast bulk path for normal libraries, but avoid holding
+            // a huge PHP map when an index contains hundreds of thousands of
+            // documents. Large indexes fall back to one-row lookups.
+            $stateCache = count($docState) > 10000 ? null : $docState;
+            unset($docState);
+            $stateForFile = function (int $fileId) use (&$stateCache, $userId): ?array {
+                if ($stateCache !== null) {
+                    return $stateCache[$fileId] ?? null;
+                }
+                return $this->documentMapper->stateForFile($userId, $fileId);
+            };
             $seen = [];
             $stale = []; // Track files that should be removed from index
             $batch = [];
@@ -223,6 +234,7 @@ class Indexer {
                 }
                 $this->maybeTouchHeartbeat($userId, $runId);
                 $fileId = (int)$fileData['id'];
+                $state = $stateForFile($fileId);
                 $seen[$fileId] = true;
                 $result['total_seen']++;
 
@@ -247,7 +259,7 @@ class Indexer {
                 if (!$this->isIndexable($file, $maxSize)) {
                     $result['skipped']++;
                     // If this file was previously indexed, mark it as stale for removal
-                    if (isset($docState[$fileId])) {
+                    if ($state !== null) {
                         $stale[$fileId] = true;
                     }
                     continue;
@@ -266,7 +278,6 @@ class Indexer {
 
                 // Stored state comes from the one bulk read that opened this
                 // pass, so discovering "unchanged" costs no query at all.
-                $state = $docState[$fileId] ?? null;
                 // The entity is fetched only when something really changed and
                 // the old row has to be replaced (preserving it on failure).
                 $existingDoc = null;
@@ -298,9 +309,6 @@ class Indexer {
                             $existingDoc->setIndexedAt(time());
                             $this->documentMapper->update($existingDoc);
                         }
-                        $docState[$fileId]['path'] = $path;
-                        $docState[$fileId]['name'] = $name;
-                        $docState[$fileId]['mime'] = $mime;
                     }
                     $result['skipped']++;
                     continue;
@@ -312,7 +320,7 @@ class Indexer {
                     if (empty($actualFile) || !($actualFile[0] instanceof File)) {
                         $result['skipped']++;
                         // If this file was previously indexed, mark it as stale for removal
-                        if (isset($docState[$fileId])) {
+                        if ($state !== null) {
                             $stale[$fileId] = true;
                         }
                         continue;
@@ -322,7 +330,7 @@ class Indexer {
                     $this->logger->warning('eva_ai: file access failed', ['file' => $file->getPath(), 'e' => $e->getMessage()]);
                     $result['skipped']++;
                     // Access loss is authoritative and must purge cached content.
-                    if (isset($docState[$fileId])) {
+                    if ($state !== null) {
                         $stale[$fileId] = true;
                     }
                     continue;
@@ -344,14 +352,14 @@ class Indexer {
                     $result['skipped']++;
                     // A genuinely zero-byte file is authoritative empty input;
                     // parser failures on non-empty files preserve last-good data.
-                    if ((int)$file->getSize() === 0 && isset($docState[$fileId])) {
+                    if ((int)$file->getSize() === 0 && $state !== null) {
                         $stale[$fileId] = true;
                     }
                     continue;
                 }
 
                 $hash = md5($content);
-                if (($docState[$fileId]['content_hash'] ?? null) === $hash) {
+                if (($state['content_hash'] ?? null) === $hash) {
                     // Same content (e.g. a touch or a same-size edit): keep the
                     // stored chunks and refresh metadata so renames propagate.
                     $result['skipped']++;
@@ -411,7 +419,7 @@ class Indexer {
             // release it before cleanup/mail/Talk work so large indexes do not
             // keep a second full document-state graph alive for the rest of
             // the worker request.
-            unset($docState);
+            unset($stateCache, $stateForFile);
             if (function_exists('gc_collect_cycles')) {
                 gc_collect_cycles();
             }
