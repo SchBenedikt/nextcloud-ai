@@ -504,7 +504,7 @@
 				<div class="section-heading"><div><h3>{{ $t('External connectors') }}</h3><p>{{ $t('Connect an external service that EVA can inspect and use only after confirmation. Credentials are encrypted and never shown again.') }}</p></div></div>
 				<div v-if="connectorsLoading" class="field-help">{{ $t('Loading connectors…') }}</div>
 				<div v-for="connector in connectors" :key="connector.id" class="connector-row">
-					<div><strong>{{ connector.name }}</strong><small>{{ connector.base_url }} · {{ connector.discovered_endpoint_count || 0 }} {{ $t('learned endpoints') }}</small></div>
+					<div class="connector-summary"><strong>{{ connector.name }}</strong><small>{{ connector.base_url }} · {{ connector.discovered_endpoint_count || 0 }} {{ $t('learned endpoints') }}</small><details v-if="connector.learned_endpoints && connector.learned_endpoints.length" class="connector-endpoints"><summary>{{ $t('Show learned routes') }}</summary><ul><li v-for="(endpoint, index) in connector.learned_endpoints" :key="index"><code>{{ endpoint.method }}</code> <span>{{ endpoint.path }}</span></li></ul></details></div>
 					<div class="connector-actions"><NcButton type="tertiary-no-background" :disabled="connectorsBusy" @click="testConnector(connector.id)">Test</NcButton><NcButton type="tertiary-no-background" :disabled="connectorsBusy" @click="discoverConnector(connector.id)">{{ $t('Discover API') }}</NcButton><NcButton type="tertiary-no-background" :disabled="connectorsBusy" @click="removeConnector(connector.id)">{{ $t('Remove') }}</NcButton></div>
 				</div>
 			<div class="connector-examples"><span>Examples:</span><button type="button" @click="applyConnectorExample('homeassistant')">Home Assistant</button><button type="button" @click="applyConnectorExample('truenas')">TrueNAS</button><button type="button" @click="applyConnectorExample('github')">GitHub</button></div>
@@ -1549,6 +1549,12 @@ export default {
 .knowledge-editor:disabled { opacity: .65; cursor: not-allowed; }
 .connector-row { display:flex; align-items:center; justify-content:space-between; gap:16px; padding:12px 0; border-bottom:1px solid var(--color-border); }
 .connector-row strong, .connector-row small { display:block; overflow-wrap:anywhere; }
+.connector-summary { min-width:0; flex:1; }
+.connector-endpoints { margin-top:8px; font-size:12px; }
+.connector-endpoints summary { cursor:pointer; color:var(--color-primary-element); }
+.connector-endpoints ul { display:grid; gap:4px; margin:7px 0 0; padding-left:18px; max-height:180px; overflow:auto; }
+.connector-endpoints li { overflow-wrap:anywhere; }
+.connector-endpoints code { margin-right:5px; color:var(--color-primary-element); font-size:11px; }
 .connector-row small { color:var(--color-text-maxcontrast); margin-top:3px; }
 .connector-examples { display:flex; flex-wrap:wrap; align-items:center; gap:8px; margin-top:14px; color:var(--color-text-maxcontrast); font-size:13px; }
 .connector-examples button { border:1px solid var(--color-border); border-radius:var(--border-radius-pill); background:var(--color-background-hover); color:var(--color-main-text); padding:4px 10px; cursor:pointer; }

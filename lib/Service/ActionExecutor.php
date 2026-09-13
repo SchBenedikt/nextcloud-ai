@@ -3019,7 +3019,8 @@ class ActionExecutor {
         $out = [];
         foreach ($this->connectorRows() as $id => $row) {
             if (!is_array($row)) continue;
-            $out[] = ['id' => (string)$id, 'name' => (string)($row['name'] ?? $id), 'base_url' => (string)($row['base_url'] ?? ''), 'token_configured' => !empty($row['token_configured']), 'updated_at' => (int)($row['updated_at'] ?? 0), 'discovered_endpoint_count' => is_array($row['openapi']['endpoints'] ?? null) ? count($row['openapi']['endpoints']) : 0, 'openapi_updated_at' => (int)($row['openapi']['updated_at'] ?? 0)];
+            $endpoints = is_array($row['openapi']['endpoints'] ?? null) ? array_values(array_slice($row['openapi']['endpoints'], -200)) : [];
+            $out[] = ['id' => (string)$id, 'name' => (string)($row['name'] ?? $id), 'base_url' => (string)($row['base_url'] ?? ''), 'token_configured' => !empty($row['token_configured']), 'updated_at' => (int)($row['updated_at'] ?? 0), 'discovered_endpoint_count' => count($endpoints), 'learned_endpoints' => $endpoints, 'openapi_updated_at' => (int)($row['openapi']['updated_at'] ?? 0)];
         }
         return ['ok' => true, 'result' => ['connectors' => $out]];
     }
