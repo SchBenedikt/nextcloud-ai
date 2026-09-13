@@ -1462,6 +1462,14 @@ class ActionExecutor {
                 ? 'This OCS route has not been discovered recently. Call discover_app_api first.'
                 : 'This non-OCS route has not been discovered yet. Call discover_app_api with include_internal=true first.'];
         }
+        // Replace discovered {path} placeholders from the supplied parameter
+        // object before constructing the same-origin URL. Path parameters are
+        // never forwarded as query/body values and must be scalar to avoid
+        // ambiguous or unsafe route expansion.
+        $pathTemplate = $path;
+        $path = $this->expandConnectorPath($pathTemplate, $params);
+        if ($path === null) return ['ok' => false, 'error' => 'A required path parameter is missing or invalid.'];
+        $params = $this->removePathParameters($pathTemplate, $params);
         try {
             $appManager = Server::get(\OCP\App\IAppManager::class);
             if (!in_array($appId, array_map('strval', $appManager->getEnabledApps()), true) || !$appManager->isEnabledForUser($appId)) {
@@ -3422,6 +3430,11 @@ class ActionExecutor {
             }
             if (!$known) return ['ok' => false, 'error' => 'This connector route was not discovered. Run discover_external_connector first.'];
         }
+        $pathTemplate = $path;
+        $expandedPath = $this->expandConnectorPath($pathTemplate, $params);
+        if ($expandedPath === null) return ['ok' => false, 'error' => 'A required connector path parameter is missing or invalid.'];
+        $params = $this->removePathParameters($pathTemplate, $params);
+        $path = $expandedPath;
         $url = rtrim((string)$row['base_url'], '/') . '/' . ltrim($path, '/');
         if (!$this->safeConnectorUrl($url)) return ['ok' => false, 'error' => 'Connector path leaves the configured HTTPS host.'];
         try {
@@ -3476,6 +3489,23 @@ class ActionExecutor {
         // For hostnames gethostbyname() must resolve (the `$ip !== $host`
         // condition); literal public IP addresses are already validated above.
         return filter_var($ip, FILTER_VALIDATE_IP, FILTER_FLAG_NO_PRIV_RANGE | FILTER_FLAG_NO_RES_RANGE) !== false;
+    }
+
+    private function expandConnectorPath(string $template, array $params): ?string {
+        $expanded = preg_replace_callback('/\{([A-Za-z0-9_.-]{1,80})\}/', static function (array $match) use ($params): string {
+            $name = $match[1];
+            if (!array_key_exists($name, $params) || is_array($params[$name]) || is_object($params[$name])) return $match[0];
+            $value = trim((string)$params[$name]);
+            return $value === '' ? $match[0] : rawurlencode($value);
+        }, $template);
+        if (!is_string($expanded) || preg_match('/\{[A-Za-z0-9_.-]{1,80}\}/', $expanded)) return null;
+        return $expanded;
+    }
+
+    private function removePathParameters(string $template, array $params): array {
+        preg_match_all('/\{([A-Za-z0-9_.-]{1,80})\}/', $template, $matches);
+        foreach (($matches[1] ?? []) as $name) unset($params[$name]);
+        return $params;
     }
 
     /** Build connector auth headers without ever returning credential values. */
