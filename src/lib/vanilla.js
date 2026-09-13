@@ -433,15 +433,15 @@ export function mountChat(root, opts = {}) {
 	const sendBtn = document.createElement('button')
 	sendBtn.type = 'submit'
 	sendBtn.className = 'cbtn'
-	sendBtn.textContent = t('Send')
+	sendBtn.textContent = t('Send message')
 	sendBtn.addEventListener('click', () => {
 		if (sending) stopStream()
 	})
 	const backgroundBtn = document.createElement('button')
 	backgroundBtn.type = 'button'
 	backgroundBtn.className = 'cbtn cbtn-ghost'
-	backgroundBtn.textContent = t('Start')
-	backgroundBtn.title = 'Run this request in the background'
+	backgroundBtn.textContent = t('Run in background')
+	backgroundBtn.title = t('Queue this request and continue even if this page is closed')
 	backgroundBtn.addEventListener('click', () => queueInBackground())
 	form.append(input, sendBtn, backgroundBtn)
 
@@ -676,7 +676,7 @@ export function mountChat(root, opts = {}) {
 	// fetch also stops the generation server-side.
 	const setStreamingUI = (active) => {
 		sendBtn.type = active ? 'button' : 'submit'
-		sendBtn.textContent = active ? t('Stop') : t('Send')
+	sendBtn.textContent = active ? t('Stop') : t('Send message')
 		sendBtn.classList.toggle('cbtn-stop', active)
 	}
 	const stopStream = () => {
