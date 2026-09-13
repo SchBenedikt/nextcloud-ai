@@ -309,7 +309,7 @@ class ActionExecutor {
             ]],
             ['type' => 'function', 'function' => [
                 'name' => 'search_files',
-                'description' => 'Search the user\'s Nextcloud files by name or content keywords. Narrow the scan with an optional folder path and file extension for faster results.',
+                'description' => 'Search the user\'s Nextcloud files by name or content keywords, including readable text and common unindexed PDF, DOCX, XLSX, PPTX, ODF and EPUB files. Narrow the bounded scan with an optional folder path and file extension for faster results; this never starts a full indexing run.',
                 'parameters' => ['type' => 'object', 'properties' => [
                     'query' => ['type' => 'string', 'description' => 'Keyword to look for in file and folder names and in bounded text-file content (case-insensitive).'],
                     'path' => ['type' => 'string', 'description' => 'Optional folder to search below, e.g. "Documents/2026".'],
