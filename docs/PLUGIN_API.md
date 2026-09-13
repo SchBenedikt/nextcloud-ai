@@ -28,6 +28,12 @@ corresponding risk and require confirmation. EVA never exposes a plugin on a
 surface that was not declared, and a failing optional plugin cannot remove
 built-in tools.
 
+Plugin results are also normalized centrally before they reach chat history or
+Agent runs: nested output is bounded, unsupported values are omitted, and
+credential-shaped keys (`api_key`, tokens, passwords, cookies and secrets) are
+redacted. Plugins should still return concise, user-safe summaries rather than
+large media blobs or raw upstream responses.
+
 For terminal or system integrations, keep commands in the plugin's own strict
 allowlist and return structured results. Do not execute arbitrary shell text;
 EVA's built-in `run_safe_command` remains confirmation-gated for the same

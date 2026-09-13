@@ -79,10 +79,51 @@ class ToolPluginRegistry {
         $validationError = $this->validateArguments($entry['definition']['parameters'], $arguments);
         if ($validationError !== null) return ['ok' => false, 'error' => $validationError];
         try {
-            return $entry['plugin']->execute($userId, $name, $arguments);
+            $result = $entry['plugin']->execute($userId, $name, $arguments);
+            if (!is_array($result)) return ['ok' => false, 'error' => 'Plugin tool returned an invalid result.'];
+            $safe = ['ok' => !empty($result['ok'])];
+            if (array_key_exists('result', $result)) {
+                $budget = 50000;
+                $safe['result'] = $this->sanitizeResult($result['result'], $budget);
+            }
+            if (isset($result['error'])) {
+                $error = is_scalar($result['error']) ? (string)$result['error'] : 'Plugin tool failed.';
+                $safe['error'] = mb_substr($this->sanitizeString($error), 0, 2000);
+            }
+            return $safe;
         } catch (\Throwable $e) {
             return ['ok' => false, 'error' => 'Plugin tool failed: ' . $e->getMessage()];
         }
+    }
+
+    /** Keep optional app output safe for chat history and execution traces. */
+    private function sanitizeResult(mixed $value, int &$budget, int $depth = 0): mixed {
+        if ($budget <= 0) return '[truncated]';
+        if ($depth > 6) return '[nested result omitted]';
+        if (is_string($value)) {
+            $safe = $this->sanitizeString($value);
+            $safe = mb_substr($safe, 0, min(10000, $budget));
+            $budget -= mb_strlen($safe);
+            return $safe;
+        }
+        if (is_int($value) || is_float($value) || is_bool($value) || $value === null) return $value;
+        if (!is_array($value)) return '[unsupported result value]';
+        $out = [];
+        $count = 0;
+        foreach ($value as $key => $item) {
+            if ($count++ >= 200 || $budget <= 0) { $out['…'] = '[truncated]'; break; }
+            $name = (string)$key;
+            if (preg_match('/(?:api[_-]?key|access[_-]?token|refresh[_-]?token|authorization|password|secret|cookie|credential)/i', $name)) {
+                $out[$name] = '[redacted]';
+                continue;
+            }
+            $out[$name] = $this->sanitizeResult($item, $budget, $depth + 1);
+        }
+        return $out;
+    }
+
+    private function sanitizeString(string $value): string {
+        return preg_replace('/(Bearer\s+|(?:api[_-]?key|access[_-]?token|refresh[_-]?token|password|secret)\s*[:=]\s*)([^\s,;]+)/i', '$1[redacted]', $value) ?? $value;
     }
 
     /** Validate the bounded JSON-schema subset exposed to the model. */

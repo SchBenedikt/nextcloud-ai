@@ -4,6 +4,14 @@ All notable changes to **EVA (eva_ai)** are documented here.
 Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); the project
 follows [Semantic Versioning](https://semver.org/).
 
+## [1.16.67] - 2026-09-13
+
+### Fixed
+
+- Third-party EVA plugin results are now centrally bounded and credential-shaped
+  fields are redacted before chat or Agent-run persistence.
+- Added regression coverage for oversized and sensitive plugin output.
+
 ## [1.16.66] - 2026-09-13
 
 ### Fixed

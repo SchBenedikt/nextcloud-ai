@@ -140,4 +140,30 @@ final class ToolPluginRegistryTest extends TestCase {
             self::assertCount(1, $registry->definitionsForSurface($surface));
         }
     }
+
+    public function testPluginResultsAreBoundedAndCredentialFieldsAreRedacted(): void {
+        $plugin = new class implements ToolPluginInterface {
+            public function getToolDefinitions(): array {
+                return [[
+                    'name' => 'plugin_sensitive_result',
+                    'description' => 'Returns a bounded result',
+                    'parameters' => ['type' => 'object', 'properties' => new \stdClass()],
+                ]];
+            }
+            public function execute(string $userId, string $toolName, array $arguments): array {
+                return ['ok' => true, 'result' => [
+                    'api_key' => 'super-secret',
+                    'nested' => ['password' => 'hidden', 'value' => 'ok'],
+                    'large' => str_repeat('x', 60000),
+                ]];
+            }
+        };
+        $registry = new ToolPluginRegistry();
+        $registry->register($plugin);
+        $result = $registry->execute('alice', 'plugin_sensitive_result', []);
+        self::assertTrue($result['ok']);
+        self::assertSame('[redacted]', $result['result']['api_key']);
+        self::assertSame('[redacted]', $result['result']['nested']['password']);
+        self::assertLessThanOrEqual(10000, strlen($result['result']['large']));
+    }
 }
