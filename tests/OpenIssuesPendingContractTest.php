@@ -209,6 +209,18 @@ final class OpenIssuesPendingContractTest extends TestCase {
         self::assertStringContainsString('shell syntax', strtolower((string)$result['error']));
     }
 
+    public function testSafeCommandUsesBoundedNonBlockingProcessHandling(): void {
+        $reflection = new \ReflectionClass(ActionExecutor::class);
+        $instance = $reflection->newInstanceWithoutConstructor();
+        $config = $this->createMock(AppConfig::class);
+        $config->method('get')->willReturnMap([['safe_commands_enabled', '1']]);
+        $reflection->getProperty('config')->setValue($instance, $config);
+        $result = $reflection->getMethod('runSafeCommand')->invoke($instance, ['command' => 'date']);
+        self::assertTrue($result['ok']);
+        self::assertArrayHasKey('timed_out', $result['result']);
+        self::assertStringContainsString('stream_set_blocking', (string)file_get_contents(__DIR__ . '/../lib/Service/ActionExecutor.php'));
+    }
+
     /** Absolute executable paths must be explicitly allowlisted. */
     public function testConfirmedTerminalCommandDoesNotAllowPathAlias(): void {
         $reflection = new \ReflectionClass(ActionExecutor::class);

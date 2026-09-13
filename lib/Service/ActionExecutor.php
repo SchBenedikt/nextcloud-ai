@@ -3116,11 +3116,21 @@ class ActionExecutor {
         $pipes = [];
         $process = proc_open($commands[$name], [1 => ['pipe', 'w'], 2 => ['pipe', 'w']], $pipes, __DIR__ . '/../../');
         if (!is_resource($process)) return ['ok' => false, 'error' => 'Could not start the diagnostic command.'];
-        stream_set_timeout($pipes[1], 5); stream_set_timeout($pipes[2], 5);
-        $stdout = stream_get_contents($pipes[1]); $stderr = stream_get_contents($pipes[2]);
+        stream_set_blocking($pipes[1], false); stream_set_blocking($pipes[2], false);
+        $stdout = ''; $stderr = ''; $deadline = microtime(true) + 5; $timedOut = false; $observedExitCode = null;
+        while (true) {
+            $stdout .= (string)stream_get_contents($pipes[1]);
+            $stderr .= (string)stream_get_contents($pipes[2]);
+            $status = proc_get_status($process);
+            if (!$status['running']) { $observedExitCode = is_int($status['exitcode']) ? $status['exitcode'] : null; break; }
+            if (microtime(true) >= $deadline) { $timedOut = true; proc_terminate($process, 9); break; }
+            usleep(20000);
+        }
+        $stdout .= (string)stream_get_contents($pipes[1]); $stderr .= (string)stream_get_contents($pipes[2]);
         fclose($pipes[1]); fclose($pipes[2]);
-        $exit = proc_close($process);
-        return ['ok' => $exit === 0, 'result' => ['command' => $name, 'output' => mb_substr(trim((string)$stdout), 0, 10000), 'error_output' => mb_substr(trim((string)$stderr), 0, 2000), 'exit_code' => $exit]];
+        $closedExitCode = proc_close($process);
+        $exit = ($observedExitCode !== null && $closedExitCode < 0) ? $observedExitCode : $closedExitCode;
+        return ['ok' => !$timedOut && $exit === 0, 'result' => ['command' => $name, 'output' => mb_substr(trim($stdout), 0, 10000), 'error_output' => mb_substr(trim($stderr), 0, 2000), 'exit_code' => $timedOut ? null : $exit, 'timed_out' => $timedOut]];
     }
 
     /**
