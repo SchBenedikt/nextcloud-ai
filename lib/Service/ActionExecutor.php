@@ -181,18 +181,19 @@ class ActionExecutor {
             ]],
             ['type' => 'function', 'function' => [
                 'name' => 'create_file',
-                'description' => 'Create (or overwrite) a text file anywhere in the user\'s Nextcloud home, e.g. for drafts, notes, plans or documents. Only configured text file types are allowed. The content must be plain text; for complex Office files use a suitable app API or existing template and then validate the result.',
+                'description' => 'Create (or overwrite) a file anywhere in the user\'s Nextcloud home. Use content for text; use content_base64 for validated binary/ZIP-based files such as generated Office documents.',
                 'parameters' => ['type' => 'object', 'properties' => [
                     'path' => ['type' => 'string', 'description' => 'Relative path from the home folder, e.g. "Documents/Plan.md" or "Report.txt".'],
-                    'content' => ['type' => 'string', 'description' => 'The full text content to write.'],
-                ], 'required' => ['path', 'content']],
+                    'content' => ['type' => 'string', 'description' => 'Full UTF-8 text content.'],
+                    'content_base64' => ['type' => 'string', 'description' => 'Optional strict base64-encoded binary content (mutually exclusive with content).'],
+                ], 'required' => ['path']],
             ]],
             ['type' => 'function', 'function' => [
                 'name' => 'create_files',
                 'description' => 'Create or update up to 20 related plain-text files in one agent step. Each file is validated with the same allowed-type and size limits as create_file; failures are returned per file so successful files are not lost.',
                 'parameters' => ['type' => 'object', 'properties' => [
                     'files' => ['type' => 'array', 'maxItems' => 20, 'items' => ['type' => 'object', 'properties' => [
-                        'path' => ['type' => 'string'], 'content' => ['type' => 'string'],
+                        'path' => ['type' => 'string'], 'content' => ['type' => 'string'], 'content_base64' => ['type' => 'string'],
                     ], 'required' => ['path', 'content']]],
                 ], 'required' => ['files']],
             ]],
@@ -1630,7 +1631,14 @@ class ActionExecutor {
     /** @return array{ok:true,result:string} */
     private function createFile(Folder $home, array $args): array {
         $path = $this->cleanPath((string)($args['path'] ?? ''));
-        $content = (string)($args['content'] ?? '');
+        $binary = array_key_exists('content_base64', $args);
+        if ($binary) {
+            $decoded = base64_decode((string)$args['content_base64'], true);
+            if ($decoded === false || $decoded === '') return ['ok' => false, 'error' => 'content_base64 must be non-empty valid base64'];
+            $content = $decoded;
+        } else {
+            $content = (string)($args['content'] ?? '');
+        }
         if ($path === '' || str_ends_with($path, '/')) {
             return ['ok' => false, 'error' => 'A valid file path is required'];
         }
@@ -1638,10 +1646,10 @@ class ActionExecutor {
             return ['ok' => false, 'error' => 'File content must not be empty'];
         }
         $maxChars = (int)$this->config->get('exec_write_max_chars') ?: 100000;
-        if (mb_strlen($content) > $maxChars) {
+        if (($binary ? strlen($content) : mb_strlen($content)) > $maxChars) {
             return ['ok' => false, 'error' => 'File content exceeds ' . $maxChars . ' characters'];
         }
-        if (strpos($content, "\0") !== false) {
+        if (!$binary && strpos($content, "\0") !== false) {
             return ['ok' => false, 'error' => 'Only text files can be created'];
         }
         [, $name] = $this->splitPath($path);
@@ -1678,7 +1686,9 @@ class ActionExecutor {
         $results = []; $allOk = true;
         foreach ($files as $entry) {
             if (!is_array($entry)) { $results[] = ['ok' => false, 'error' => 'Each entry must contain path and content']; $allOk = false; continue; }
-            $result = $this->createFile($home, ['path' => $entry['path'] ?? '', 'content' => $entry['content'] ?? '']);
+            $payload = ['path' => $entry['path'] ?? ''];
+            if (array_key_exists('content_base64', $entry)) $payload['content_base64'] = $entry['content_base64']; else $payload['content'] = $entry['content'] ?? '';
+            $result = $this->createFile($home, $payload);
             $results[] = $result; if (empty($result['ok'])) $allOk = false;
         }
         return ['ok' => $allOk, 'result' => ['files' => $results, 'created' => count(array_filter($results, static fn(array $r): bool => !empty($r['ok']))), 'failed' => count(array_filter($results, static fn(array $r): bool => empty($r['ok'])))]];
