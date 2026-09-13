@@ -129,6 +129,21 @@ final class OpenIssuesPendingContractTest extends TestCase {
         self::assertSame(1, $extracted);
     }
 
+    public function testIssue70SearchFilesReadsUnknownTextMimeOnlyOnce(): void {
+        $reflection = new \ReflectionClass(ActionExecutor::class);
+        $instance = $reflection->newInstanceWithoutConstructor();
+        $file = $this->createMock(File::class);
+        $file->expects(self::once())->method('getContent')->willReturn('Uploaded notes contain the migration keyword.');
+        $file->method('getName')->willReturn('upload.bin');
+        $file->method('getSize')->willReturn(128);
+        $file->method('getMimeType')->willReturn('application/octet-stream');
+        $extract = $reflection->getMethod('searchFileContent');
+        $extracted = 0;
+        $snippet = $extract->invokeArgs($instance, [$file, 'migration', &$extracted]);
+        self::assertIsString($snippet);
+        self::assertStringContainsString('migration', $snippet);
+    }
+
     /** MIME maps are not reliable for newly uploaded plain-text files. */
     public function testIssue70SearchFilesUsesSafeTextExtensionFallback(): void {
         $reflection = new \ReflectionClass(ActionExecutor::class);

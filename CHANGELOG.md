@@ -4,6 +4,14 @@ All notable changes to **EVA (eva_ai)** are documented here.
 Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); the project
 follows [Semantic Versioning](https://semver.org/).
 
+## [1.16.66] - 2026-09-13
+
+### Fixed
+
+- Direct search now reads unknown octet-stream text files once, avoiding
+  duplicate remote-storage reads and reducing peak memory during unindexed
+  searches.
+
 ## [1.16.65] - 2026-09-13
 
 ### Added

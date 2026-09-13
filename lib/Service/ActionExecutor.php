@@ -2356,12 +2356,13 @@ class ActionExecutor {
         try {
             if ($this->isSearchableTextFile($file)) {
                 $content = (string)$file->getContent();
-            } elseif ($this->isLikelyPlainTextFile($file)) {
+            } elseif (($content = $this->readLikelyPlainText($file)) !== null) {
                 // Some WebDAV uploads have an unknown extension and only the
                 // generic octet-stream MIME. Sniff a bounded prefix before
                 // accepting the file, so arbitrary binary data is not read as
                 // searchable text.
-                $content = (string)$file->getContent();
+                // The helper returns the already-read bounded content so the
+                // file is not fetched twice (important for remote storage).
             } elseif ($this->isSearchableDocument($file)
                 && $this->indexer !== null
                 && $extracted < self::MAX_SEARCH_EXTRACT_FILES
@@ -2441,23 +2442,33 @@ class ActionExecutor {
     }
 
     private function isLikelyPlainTextFile(File $file): bool {
+        return $this->readLikelyPlainText($file) !== null;
+    }
+
+    /**
+     * Read an unknown octet-stream once and return it only when its bounded
+     * prefix looks like UTF-8 text. Remote-storage reads can be expensive, so
+     * callers should use the returned content instead of probing then reading
+     * the file a second time.
+     */
+    private function readLikelyPlainText(File $file): ?string {
         if ($file->getSize() <= 0 || $file->getSize() > self::MAX_SEARCH_FILE_BYTES) {
-            return false;
+            return null;
         }
         $mime = strtolower((string)$file->getMimeType());
         if (!in_array($mime, ['', 'application/octet-stream', 'binary/octet-stream'], true)) {
-            return false;
+            return null;
         }
         $sample = (string)$file->getContent();
         if ($sample === '' || !mb_check_encoding(mb_substr($sample, 0, 65536), 'UTF-8')) {
-            return false;
+            return null;
         }
         if (strpos($sample, "\0") !== false) {
-            return false;
+            return null;
         }
         $prefix = mb_substr($sample, 0, 65536);
         $controls = preg_match_all('/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/', $prefix);
-        return $controls === false || $controls <= max(2, (int)floor(mb_strlen($prefix) * 0.01));
+        return ($controls === false || $controls <= max(2, (int)floor(mb_strlen($prefix) * 0.01))) ? $sample : null;
     }
 
     private function searchSnippet(string $content, int $position, int $queryLength): string {
