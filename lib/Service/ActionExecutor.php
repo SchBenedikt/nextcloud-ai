@@ -3323,6 +3323,7 @@ class ActionExecutor {
             foreach ($found['paths'] as $path => $operations) {
                 if (count($endpoints) >= 1000) break;
                 if (!is_string($path) || !is_array($operations) || !str_starts_with($path, '/')) continue;
+                $pathParameters = is_array($operations['parameters'] ?? null) ? $operations['parameters'] : [];
                 // The TrueNAS document is served from /api/v2.0 but its
                 // paths are relative to that mount point. Persist absolute
                 // connector paths so subsequent calls do not accidentally
@@ -3345,14 +3346,18 @@ class ActionExecutor {
                     ? $prefix . $path : $path;
                 foreach ($operations as $method => $operation) if (in_array(strtoupper((string)$method), ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'], true)) {
                     $meta = ['path' => mb_substr($routePath, 0, 300), 'method' => strtoupper((string)$method), 'operation_id' => is_array($operation) ? mb_substr((string)($operation['operationId'] ?? ''), 0, 120) : ''];
-                    if (is_array($operation) && is_array($operation['parameters'] ?? null)) {
+                    if (is_array($operation)) {
                         $params = [];
-                        foreach (array_slice($operation['parameters'], 0, 20) as $parameter) {
+                        $operationParameters = array_merge($pathParameters, is_array($operation['parameters'] ?? null) ? $operation['parameters'] : []);
+                        foreach (array_slice($operationParameters, 0, 20) as $parameter) {
                             if (!is_array($parameter)) continue;
                             $name = (string)($parameter['name'] ?? '');
                             if (preg_match('/^[A-Za-z0-9_.-]{1,80}$/', $name) !== 1) continue;
                             $schema = is_array($parameter['schema'] ?? null) ? $parameter['schema'] : [];
-                            $params[] = ['name' => $name, 'in' => in_array(($parameter['in'] ?? ''), ['query', 'path', 'header', 'cookie'], true) ? (string)$parameter['in'] : 'query', 'required' => !empty($parameter['required']), 'type' => preg_match('/^[A-Za-z0-9_.-]{1,40}$/', (string)($schema['type'] ?? 'string')) === 1 ? (string)($schema['type'] ?? 'string') : 'string'];
+                            // Swagger 2 keeps `type` on the parameter itself;
+                            // OpenAPI 3 nests it under `schema`.
+                            $type = (string)($schema['type'] ?? $parameter['type'] ?? 'string');
+                            $params[] = ['name' => $name, 'in' => in_array(($parameter['in'] ?? ''), ['query', 'path', 'header', 'cookie'], true) ? (string)$parameter['in'] : 'query', 'required' => !empty($parameter['required']), 'type' => preg_match('/^[A-Za-z0-9_.-]{1,40}$/', $type) === 1 ? $type : 'string'];
                         }
                         if ($params !== []) $meta['parameters'] = $params;
                     }
