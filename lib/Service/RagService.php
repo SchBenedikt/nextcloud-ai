@@ -159,7 +159,10 @@ class RagService {
 					];
 				}
 				$messages[] = ['role' => 'tool', 'content' => json_encode($res, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES)];
-				if ($seenToolCalls[$fingerprint] > self::MAX_IDENTICAL_TOOL_CALLS) {
+				// Authentication failures are deterministic. Do not let the model
+				// retry the same connector repeatedly (which used to consume several
+				// long remote generations and hold a web worker unnecessarily).
+				if ($this->isAuthenticationFailure($res) || $seenToolCalls[$fingerprint] > self::MAX_IDENTICAL_TOOL_CALLS) {
 					$tools = [];
 				}
 			}
@@ -288,10 +291,10 @@ $this->executor->setUserId($userId);
                         'url' => !empty($res['ok']) && is_array($res['result'] ?? null) ? ($res['result']['url'] ?? null) : null,
                     ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) . "\n";
                     $messages[] = ['role' => 'tool', 'content' => json_encode($res, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES)];
-                    if ($seenToolCalls[$fingerprint] > self::MAX_IDENTICAL_TOOL_CALLS) {
-                        $tools = [];
-                    }
-                }
+					if ($this->isAuthenticationFailure($res) || $seenToolCalls[$fingerprint] > self::MAX_IDENTICAL_TOOL_CALLS) {
+						$tools = [];
+					}
+				}
                 $answer = '';
             }
             if ($this->clientDisconnected()) {
@@ -462,6 +465,16 @@ $this->executor->setUserId($userId);
         if (isset($item['source']) && is_string($item['source']) && $item['source'] !== '') {
             $this->toolSources[$url]['publisher'] = $item['source'];
         }
+    }
+
+    /** Prevent repeated tool rounds after a connector credential failure. */
+    private function isAuthenticationFailure(array $result): bool {
+        $status = (int)($result['result']['status'] ?? 0);
+        if ($status === 401 || $status === 403) {
+            return true;
+        }
+        $error = strtolower((string)($result['error'] ?? ''));
+        return $error !== '' && (str_contains($error, 'unauthorized') || str_contains($error, 'forbidden') || preg_match('/\b(?:401|403)\b/', $error) === 1);
     }
 
     /**
