@@ -29,6 +29,14 @@ class ActionExecutor {
     private const MAX_SEARCH_DEPTH = 5;
     private const MAX_SEARCH_NODES = 2000;
     private const MAX_SEARCH_FILE_BYTES = 1048576; // 1 MB per text file
+    /**
+     * Direct searches may inspect a bounded set of common document formats
+     * even when they have not made it into the vector index yet.  Keep this
+     * lower than the normal agent read limit: a search should stay responsive
+     * and must never turn into a full re-index.
+     */
+    private const MAX_SEARCH_DOCUMENT_BYTES = 8388608; // 8 MB per document
+    private const MAX_SEARCH_EXTRACT_FILES = 40;
     private const MAX_SEARCH_RESULTS = 50;
     private const SEARCH_CACHE_TTL = 15;
     private const MAX_LIST_DEPTH = 2;
@@ -2191,7 +2199,8 @@ class ActionExecutor {
         $matches = [];
         $visited = 0;
         $truncated = false;
-        $this->searchWalk($scope, mb_strtolower($query), $matches, $visited, $truncated, 0, $scopePath, $extension);
+        $extracted = 0;
+        $this->searchWalk($scope, mb_strtolower($query), $matches, $visited, $truncated, $extracted, 0, $scopePath, $extension);
         $this->rememberFileLocations($matches);
         $result = [
             'query' => $query,
@@ -2204,6 +2213,8 @@ class ActionExecutor {
                 'max_nodes' => self::MAX_SEARCH_NODES,
                 'max_depth' => self::MAX_SEARCH_DEPTH,
                 'max_text_file_bytes' => self::MAX_SEARCH_FILE_BYTES,
+                'max_document_bytes' => self::MAX_SEARCH_DOCUMENT_BYTES,
+                'max_extracted_documents' => self::MAX_SEARCH_EXTRACT_FILES,
             ],
         ];
         if ($cache !== null) {
@@ -2250,7 +2261,7 @@ class ActionExecutor {
      *
      * @param array<int,array<string,mixed>> $matches
      */
-    private function searchWalk(Folder $folder, string $query, array &$matches, int &$visited, bool &$truncated, int $depth, string $prefix, string $extension = ''): void {
+    private function searchWalk(Folder $folder, string $query, array &$matches, int &$visited, bool &$truncated, int &$extracted, int $depth, string $prefix, string $extension = ''): void {
         if ($depth >= self::MAX_SEARCH_DEPTH || count($matches) >= self::MAX_SEARCH_RESULTS) {
             $truncated = true;
             return;
@@ -2267,7 +2278,7 @@ class ActionExecutor {
                 if ($nameMatches) {
                     $matches[] = ['path' => $rel, 'reason' => 'filename', 'file_id' => (int)$node->getId()];
                 }
-                $this->searchWalk($node, $query, $matches, $visited, $truncated, $depth + 1, $rel, $extension);
+                $this->searchWalk($node, $query, $matches, $visited, $truncated, $extracted, $depth + 1, $rel, $extension);
                 continue;
             }
 
@@ -2275,20 +2286,7 @@ class ActionExecutor {
                 continue;
             }
 
-            $contentMatch = null;
-            if ($node instanceof File && $this->isSearchableTextFile($node)) {
-                try {
-                    $content = (string)$node->getContent();
-                    if (strpos($content, "\0") === false) {
-                        $position = mb_stripos($content, $query);
-                        if ($position !== false) {
-                            $contentMatch = $this->searchSnippet($content, $position, mb_strlen($query));
-                        }
-                    }
-                } catch (\Throwable $e) {
-                    // A single unreadable file must not abort the complete search.
-                }
-            }
+            $contentMatch = $this->searchFileContent($node, $query, $extracted);
 
             if ($nameMatches && $contentMatch !== null) {
                 $matches[] = ['path' => $rel, 'reason' => 'filename and content', 'file_id' => (int)$node->getId(), 'snippet' => $contentMatch];
@@ -2298,6 +2296,63 @@ class ActionExecutor {
                 $matches[] = ['path' => $rel, 'reason' => 'content', 'file_id' => (int)$node->getId(), 'snippet' => $contentMatch];
             }
         }
+    }
+
+    /**
+     * Search a file that is not necessarily indexed yet. Text files are read
+     * directly; common PDFs/Office/OpenDocument formats go through the same
+     * bounded extractor used by the agent. Extraction is deliberately capped
+     * per search so a query cannot trigger an implicit crawl or re-index.
+     */
+    private function searchFileContent(File $file, string $query, int &$extracted): ?string {
+        try {
+            if ($this->isSearchableTextFile($file)) {
+                $content = (string)$file->getContent();
+            } elseif ($this->isSearchableDocument($file)
+                && $this->indexer !== null
+                && $extracted < self::MAX_SEARCH_EXTRACT_FILES
+                && $file->getSize() <= self::MAX_SEARCH_DOCUMENT_BYTES) {
+                $extracted++;
+                $content = $this->indexer->extractTextForAgent($file, 100000);
+            } else {
+                return null;
+            }
+            if (strpos($content, "\0") !== false) {
+                return null;
+            }
+            $position = mb_stripos($content, $query);
+            return $position === false
+                ? null
+                : $this->searchSnippet($content, $position, mb_strlen($query));
+        } catch (\Throwable) {
+            // A single unreadable or malformed document must not abort search.
+            return null;
+        }
+    }
+
+    private function isSearchableDocument(File $file): bool {
+        if ($file->getSize() > self::MAX_SEARCH_DOCUMENT_BYTES) {
+            return false;
+        }
+        $mime = strtolower((string)$file->getMimeType());
+        if (in_array($mime, [
+            'application/pdf',
+            'application/rtf',
+            'application/epub+zip',
+            'application/msword',
+            'application/vnd.ms-word',
+            'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+            'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+            'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+            'application/vnd.oasis.opendocument.text',
+            'application/vnd.oasis.opendocument.spreadsheet',
+            'application/vnd.oasis.opendocument.presentation',
+            'application/vnd.apple.pages',
+        ], true)) {
+            return true;
+        }
+        $extension = strtolower(pathinfo($file->getName(), PATHINFO_EXTENSION));
+        return in_array($extension, ['pdf', 'doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx', 'odt', 'ods', 'odp', 'epub', 'rtf'], true);
     }
 
     private function isSearchableTextFile(File $file): bool {

@@ -8,6 +8,7 @@ use OCA\DAV\CalDAV\CalDavBackend;
 use OCA\EvaAi\Service\ActionExecutor;
 use OCA\EvaAi\Service\CalendarService;
 use OCA\EvaAi\Service\AppConfig;
+use OCA\EvaAi\Service\Indexer;
 use OCA\EvaAi\Service\Ollama;
 use OCA\EvaAi\Service\SharesService;
 use OCA\EvaAi\TaskProcessing\TextToTextChatWithToolsProvider;
@@ -93,6 +94,30 @@ final class OpenIssuesPendingContractTest extends TestCase {
         self::assertStringContainsString('MAX_SEARCH_NODES', $executor);
         self::assertStringContainsString("'truncated' => \$truncated", $executor);
         self::assertStringContainsString('MAX_SEARCH_FILE_BYTES', $executor);
+    }
+
+    /** Direct file search must also find text inside common unindexed documents. */
+    public function testIssue70SearchFilesExtractsUnindexedOfficeDocuments(): void {
+        $reflection = new \ReflectionClass(ActionExecutor::class);
+        $instance = $reflection->newInstanceWithoutConstructor();
+        $indexer = $this->createMock(Indexer::class);
+        $indexer->expects(self::once())
+            ->method('extractTextForAgent')
+            ->willReturn('The migration plan is scheduled for October.');
+        $indexerProperty = $reflection->getProperty('indexer');
+        $indexerProperty->setValue($instance, $indexer);
+
+        $file = $this->createMock(File::class);
+        $file->method('getName')->willReturn('migration-plan.docx');
+        $file->method('getSize')->willReturn(2048);
+        $file->method('getMimeType')->willReturn('application/vnd.openxmlformats-officedocument.wordprocessingml.document');
+        $extract = $reflection->getMethod('searchFileContent');
+        $extracted = 0;
+        $snippet = $extract->invokeArgs($instance, [$file, 'october', &$extracted]);
+
+        self::assertIsString($snippet);
+        self::assertStringContainsString('October', $snippet);
+        self::assertSame(1, $extracted);
     }
 
     /**
