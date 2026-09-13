@@ -3143,7 +3143,10 @@ class ActionExecutor {
                     Server::get(\OCP\IConfig::class)->setUserValue($user, AppConfig::APP, 'external_connectors', json_encode($rows, JSON_UNESCAPED_SLASHES) ?: '{}');
                     return ['ok' => true, 'result' => ['connector' => $id, 'source' => 'runtime', 'title' => '', 'endpoints' => $rows[$id]['openapi']['endpoints'], 'note' => 'No API schema was published; the service root was learned and can be tested.']];
                 }
-                return ['ok' => false, 'error' => 'No OpenAPI or Swagger description was found and the connector root did not respond successfully.'];
+                if ($rootProbeStatus === 401 || $rootProbeStatus === 403) {
+                    return ['ok' => false, 'error' => 'Connector is reachable (HTTP ' . $rootProbeStatus . ') but requires valid credentials before its API can be discovered.'];
+                }
+                return ['ok' => false, 'error' => 'No OpenAPI or Swagger description was found (root HTTP ' . $rootProbeStatus . '). The service may disable schema discovery or use a custom API base path.'];
             }
             $endpoints = [];
             // Do not slice the schema's paths before iterating: TrueNAS places
