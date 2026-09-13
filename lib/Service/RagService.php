@@ -12,6 +12,8 @@ use OCP\L10N\IFactory;
 use Psr\Log\LoggerInterface;
 
 class RagService {
+    /** Hard wall-clock budget for one agent request, including tool rounds. */
+    private const MAX_REQUEST_SECONDS = 180;
     /**
      * How many model/tool rounds one question may use.
      *
@@ -87,8 +89,9 @@ class RagService {
 	 */
 	public function ask(string $userId, string $message, array $history, ?string $scopePath = null, ?string $instructions = null, ?string $persona = null, ?string $extraContext = null, bool $allowActions = true, bool $autonomousActions = false, ?callable $shouldStop = null, ?callable $onProgress = null): array {
 		$this->config->setUserId($userId);
-		$this->toolSources = [];
-		$this->toolImages = [];
+        $this->toolSources = [];
+        $this->toolImages = [];
+        $requestDeadline = microtime(true) + self::MAX_REQUEST_SECONDS;
 		$topK = min($this->config->getInt('top_k', 6), (int)AppConfig::LIMITS['top_k'][1]);
 		$results = $this->searcher->search($userId, $this->searchQuery($message, $history), $topK, $scopePath);
 
@@ -107,10 +110,12 @@ class RagService {
 		$messages = $this->buildMessages($userId, $message, $history, $context, count($results), $tools !== [], $instructions, $persona, $this->dateContext($userId), $extraContext);
 		$seenToolCalls = [];
 
-		for ($round = 0; $round < $maxToolRounds; $round++) {
-			if ($shouldStop !== null && $shouldStop()) return ['answer' => '', 'sources' => $this->answerSources($byDoc), 'model' => $this->config->get('chat_model'), 'error' => 'cancelled', 'followups' => []];
-			if ($onProgress !== null) $onProgress('model', null);
-			$chat = $this->ollama->chat($messages, $tools);
+        for ($round = 0; $round < $maxToolRounds; $round++) {
+            if ($shouldStop !== null && $shouldStop()) return ['answer' => '', 'sources' => $this->answerSources($byDoc), 'model' => $this->config->get('chat_model'), 'error' => 'cancelled', 'followups' => []];
+            if (microtime(true) >= $requestDeadline) return ['answer' => '', 'sources' => $this->answerSources($byDoc), 'model' => $this->config->get('chat_model'), 'error' => 'timeout', 'followups' => []];
+            if ($onProgress !== null) $onProgress('model', null);
+            $modelTimeout = max(1, min(120, (int)ceil($requestDeadline - microtime(true))));
+            $chat = $this->ollama->chat($messages, $tools, $modelTimeout);
 			if (isset($chat['error'])) {
 				return ['answer' => '', 'sources' => $this->answerSources($byDoc), 'model' => $this->config->get('chat_model'), 'error' => $chat['error'], 'followups' => []];
 			}
@@ -127,8 +132,9 @@ class RagService {
 				];
 			}
 			$messages[] = ['role' => 'assistant', 'content' => $chat['answer'] ?? '', 'tool_calls' => $this->canonicalToolCalls($chat['raw_tool_calls'] ?? [])];
-			foreach ($toolCalls as $tc) {
-				if ($shouldStop !== null && $shouldStop()) return ['answer' => '', 'sources' => $this->answerSources($byDoc), 'model' => $chat['model'] ?? $this->config->get('chat_model'), 'error' => 'cancelled', 'followups' => []];
+            foreach ($toolCalls as $tc) {
+                if ($shouldStop !== null && $shouldStop()) return ['answer' => '', 'sources' => $this->answerSources($byDoc), 'model' => $chat['model'] ?? $this->config->get('chat_model'), 'error' => 'cancelled', 'followups' => []];
+                if (microtime(true) >= $requestDeadline) return ['answer' => '', 'sources' => $this->answerSources($byDoc), 'model' => $chat['model'] ?? $this->config->get('chat_model'), 'error' => 'timeout', 'followups' => []];
                 $fingerprint = hash('sha256', (string)($tc['name'] ?? '') . ':' . json_encode($tc['arguments'] ?? [], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES));
                 $seenToolCalls[$fingerprint] = ($seenToolCalls[$fingerprint] ?? 0) + 1;
                 $toolArgs = $tc['name'] === 'create_calendar_event'
@@ -225,11 +231,17 @@ $this->executor->setUserId($userId);
             $toolActivity = false;
             $toolFailure = false;
             $seenToolCalls = [];
+			$requestDeadline = microtime(true) + self::MAX_REQUEST_SECONDS;
 			$maxToolRounds = max((int)AppConfig::LIMITS['agent_max_tool_rounds'][0], min($this->config->getInt('agent_max_tool_rounds', self::MAX_TOOL_ROUNDS), (int)AppConfig::LIMITS['agent_max_tool_rounds'][1]));
 			for ($round = 0; $round < $maxToolRounds; $round++) {
+				if (microtime(true) >= $requestDeadline) {
+					yield json_encode(['type' => 'error', 'message' => 'EVA request timed out after 180 seconds.']) . "\n";
+					return;
+				}
                 $toolCalls = [];
                 $rawToolCalls = [];
-                foreach ($this->ollama->chatStream($messages, $tools) as $ev) {
+				$modelTimeout = max(1, min(120, (int)ceil($requestDeadline - microtime(true))));
+				foreach ($this->ollama->chatStream($messages, $tools, $modelTimeout) as $ev) {
                     if ($this->clientDisconnected()) {
                         return;
                     }
@@ -258,6 +270,10 @@ $this->executor->setUserId($userId);
                     if ($this->clientDisconnected()) {
                         return;
                     }
+                    if (microtime(true) >= $requestDeadline) {
+						yield json_encode(['type' => 'error', 'message' => 'EVA request timed out after 180 seconds.']) . "\n";
+						return;
+					}
                     $toolActivity = true;
                     yield json_encode(['type' => 'tool', 'name' => $tc['name'] ?? '?']) . "\n";
                     $toolName = $tc['name'] ?? '';

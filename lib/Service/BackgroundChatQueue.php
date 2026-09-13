@@ -105,7 +105,7 @@ final class BackgroundChatQueue {
     }
     public function markTimedOut(string $user, string $id): void {
         $this->mutate($user, static function (array $items) use ($id): array {
-            foreach ($items as &$item) if (($item['id'] ?? '') === $id && ($item['status'] ?? '') === 'running') { $item['status'] = 'failed'; $item['error'] = 'Background run exceeded its five-minute time limit.'; $item['finishedAt'] = time(); }
+            foreach ($items as &$item) if (($item['id'] ?? '') === $id && ($item['status'] ?? '') === 'running') { $item['status'] = 'failed'; $item['error'] = 'Background run exceeded its time limit.'; $item['finishedAt'] = time(); }
             unset($item); return $items;
         });
     }

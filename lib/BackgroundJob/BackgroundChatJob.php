@@ -48,6 +48,13 @@ final class BackgroundChatJob extends TimedJob {
                 $result = $this->rag->ask($user, (string)$item['message'], is_array($item['history'] ?? null) ? $item['history'] : [], (string)($chat['scopePath'] ?? ''), (string)($chat['instructions'] ?? ''), (string)($chat['persona'] ?? ''), null, $backgroundActions, $backgroundActions, fn(): bool => $this->queue->isCancellationRequested($user, $id) || ($deadline > 0 && time() >= $deadline), function (string $phase, ?string $tool, ?array $arguments = null) use ($user, $id): void {
                     $this->queue->updateProgress($user, $id, $phase, $tool, $arguments);
                 });
+                if (($result['error'] ?? null) === 'timeout') {
+                    $this->queue->markTimedOut($user, $id);
+                    $notification = $this->notifications->createNotification();
+                    $notification->setApp(AppConfig::APP)->setUser($user)->setObject('chat', $chatId)->setSubject('background_failed', ['text' => 'EVA background run reached its three-minute time limit.'])->setLink($this->urls->linkToRouteAbsolute('eva_ai.page.app') . '?chat=' . rawurlencode($chatId))->setDateTime(new \DateTime());
+                    $this->notifications->notify($notification);
+                    continue;
+                }
                 if (($result['error'] ?? null) === 'cancelled') {
                     if ($deadline > 0 && time() >= $deadline) {
                         $this->queue->markTimedOut($user, $id);
