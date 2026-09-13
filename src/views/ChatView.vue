@@ -304,6 +304,10 @@ export default {
 .chatview-root .rtools .tool.running { color: #8a6d1a; }
 .chatview-root .rtools .tool.ok { color: #2f8f3f; }
 .chatview-root .rtools .tool.bad { color: var(--color-error, #e9322d); }
+.chatview-root .rtools details { display: inline-block; margin-left: 6px; font-family: var(--font-family-sans-serif, sans-serif); }
+.chatview-root .rtools summary { cursor: pointer; color: var(--color-primary-element, #00679c); font-size: 11px; }
+.chatview-root .rtools pre { margin: 4px 0 0; padding: 6px 8px; max-width: min(720px, 80vw); max-height: 180px; overflow: auto; white-space: pre-wrap; word-break: break-word; border: 1px solid var(--color-border, #ddd); border-radius: 4px; background: var(--color-main-background, #fff); color: var(--color-main-text, #222); font: 11px/1.4 var(--font-family-monospace, monospace); }
+.chatview-root .rtools .tool-error { margin: 3px 0 0 18px; color: var(--color-error, #e9322d); font-family: var(--font-family-sans-serif, sans-serif); font-size: 11px; white-space: pre-wrap; word-break: break-word; }
 
 .chatview-root .chatform {
 	display: flex;

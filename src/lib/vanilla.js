@@ -208,8 +208,25 @@ export function mountChat(root, opts = {}) {
 			m.tools.forEach((c) => {
 				const row = document.createElement('div')
 				row.className = 'tool ' + (c.state === 'running' ? 'running' : c.state === 'ok' ? 'ok' : 'bad')
-				const args = c.arguments && Object.keys(c.arguments).length ? ' · ' + JSON.stringify(c.arguments) : ''
-				row.textContent = (c.state === 'running' ? '🛠 ' : c.state === 'ok' ? '✅ ' : '❌ ') + c.name + (c.state === 'running' ? ' …' : '') + args
+				const label = document.createElement('span')
+				label.textContent = (c.state === 'running' ? '🛠 ' : c.state === 'ok' ? '✅ ' : '❌ ') + c.name + (c.state === 'running' ? ' …' : '')
+				row.appendChild(label)
+				if (c.arguments && Object.keys(c.arguments).length) {
+					const details = document.createElement('details')
+					const summary = document.createElement('summary')
+					summary.textContent = t('Details')
+					const pre = document.createElement('pre')
+					pre.textContent = JSON.stringify(c.arguments, null, 2)
+					details.appendChild(summary)
+					details.appendChild(pre)
+					row.appendChild(details)
+				}
+				if (c.error) {
+					const error = document.createElement('div')
+					error.className = 'tool-error'
+					error.textContent = String(c.error)
+					row.appendChild(error)
+				}
 				ta.appendChild(row)
 			})
 			wrap.appendChild(ta)
@@ -540,7 +557,25 @@ export function mountChat(root, opts = {}) {
 			m.tools.forEach((c) => {
 				const row = document.createElement('div')
 				row.className = 'tool ' + (c.state === 'running' ? 'running' : c.state === 'ok' ? 'ok' : 'bad')
-				row.textContent = (c.state === 'running' ? '🛠 ' : c.state === 'ok' ? '✅ ' : '❌ ') + c.name + (c.state === 'running' ? ' …' : '')
+				const label = document.createElement('span')
+				label.textContent = (c.state === 'running' ? '🛠 ' : c.state === 'ok' ? '✅ ' : '❌ ') + c.name + (c.state === 'running' ? ' …' : '')
+				row.appendChild(label)
+				if (c.arguments && Object.keys(c.arguments).length) {
+					const details = document.createElement('details')
+					const summary = document.createElement('summary')
+					summary.textContent = t('Details')
+					const pre = document.createElement('pre')
+					pre.textContent = JSON.stringify(c.arguments, null, 2)
+					details.appendChild(summary)
+					details.appendChild(pre)
+					row.appendChild(details)
+				}
+				if (c.error) {
+					const error = document.createElement('div')
+					error.className = 'tool-error'
+					error.textContent = String(c.error)
+					row.appendChild(error)
+				}
 				ta.appendChild(row)
 			})
 		} else if (ta) {
@@ -1013,6 +1048,8 @@ export function mountChat(root, opts = {}) {
 				for (let t = last.tools.length - 1; t >= 0; t--) {
 					if (last.tools[t].name === ev.name && last.tools[t].state === 'running') {
 						last.tools[t].state = ev.ok ? 'ok' : 'bad'
+						last.tools[t].error = ev.error || ''
+						last.tools[t].url = ev.url || ''
 						break
 					}
 				}
@@ -1173,6 +1210,8 @@ export function mountChat(root, opts = {}) {
 						for (let t = last.tools.length - 1; t >= 0; t--) {
 							if (last.tools[t].name === ev.name && last.tools[t].state === 'running') {
 								last.tools[t].state = ev.ok ? 'ok' : 'bad'
+								last.tools[t].error = ev.error || ''
+								last.tools[t].url = ev.url || ''
 								break
 							}
 						}

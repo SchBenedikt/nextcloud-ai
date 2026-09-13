@@ -205,6 +205,10 @@
         .rtools .tool.running { color: #8a6d1a; }
         .rtools .tool.ok { color: #2f8f3f; }
         .rtools .tool.bad { color: var(--color-error, #e9322d); }
+        .rtools details { display: inline-block; margin-left: 6px; font-family: var(--font-family-sans-serif, sans-serif); }
+        .rtools summary { cursor: pointer; color: var(--color-primary-element, #00679c); font-size: 11px; }
+        .rtools pre { margin: 4px 0 0; padding: 6px 8px; max-width: min(720px, 80vw); max-height: 180px; overflow: auto; white-space: pre-wrap; word-break: break-word; border: 1px solid var(--color-border, #ddd); border-radius: 4px; background: var(--color-main-background, #fff); color: var(--color-main-text, #222); font: 11px/1.4 var(--font-family-monospace, monospace); }
+        .rtools .tool-error { margin: 3px 0 0 18px; color: var(--color-error, #e9322d); font-family: var(--font-family-sans-serif, sans-serif); font-size: 11px; white-space: pre-wrap; word-break: break-word; }
         .rfu { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
         .rfu-btn { padding: 4px 10px; border: 1px solid var(--color-border, #ccc); border-radius: 14px; background: var(--color-background-hover, #f6f7f8); color: var(--color-main-text, #222); font: inherit; font-size: 12px; cursor: pointer; transition: background .15s; }
         .rfu-btn:hover { background: var(--color-primary-element, #00679c); color: #fff; border-color: var(--color-primary-element, #00679c); }

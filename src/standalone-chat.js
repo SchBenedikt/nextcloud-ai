@@ -207,7 +207,25 @@ function buildCalendarForm(args, tr) {
 	function toolRow(c) {
 		var row = document.createElement('div')
 		row.className = 'tool ' + (c.state === 'running' ? 'running' : c.state === 'ok' ? 'ok' : 'bad')
-		row.textContent = (c.state === 'running' ? '🛠 ' : c.state === 'ok' ? '✅ ' : '❌ ') + c.name + (c.state === 'running' ? ' …' : '')
+		var label = document.createElement('span')
+		label.textContent = (c.state === 'running' ? '🛠 ' : c.state === 'ok' ? '✅ ' : '❌ ') + c.name + (c.state === 'running' ? ' …' : '')
+		row.appendChild(label)
+		if (c.arguments && Object.keys(c.arguments).length) {
+			var details = document.createElement('details')
+			var summary = document.createElement('summary')
+			summary.textContent = tr('Details')
+			var pre = document.createElement('pre')
+			pre.textContent = JSON.stringify(c.arguments, null, 2)
+			details.appendChild(summary)
+			details.appendChild(pre)
+			row.appendChild(details)
+		}
+		if (c.error) {
+			var error = document.createElement('div')
+			error.className = 'tool-error'
+			error.textContent = String(c.error)
+			row.appendChild(error)
+		}
 		return row
 	}
 
@@ -828,7 +846,7 @@ function buildCalendarForm(args, tr) {
 					last.text += ev.delta || ''
 				} else if (ev.type === 'tool') {
 					last.tools = last.tools || []
-					last.tools.push({ name: ev.name || '?', state: 'running' })
+					last.tools.push({ name: ev.name || '?', arguments: ev.arguments || {}, state: 'running' })
 				} else if (ev.type === 'tool_result') {
 					// Match by name from the end: several tools can run in the
 					// same round, and their results may arrive in any order.
@@ -836,6 +854,8 @@ function buildCalendarForm(args, tr) {
 						for (var ti = last.tools.length - 1; ti >= 0; ti--) {
 							if (last.tools[ti].name === ev.name && last.tools[ti].state === 'running') {
 								last.tools[ti].state = ev.ok ? 'ok' : 'bad'
+								last.tools[ti].error = ev.error || ''
+								last.tools[ti].url = ev.url || ''
 								break
 							}
 						}
