@@ -541,6 +541,7 @@ final class OpenIssuesPendingContractTest extends TestCase {
 		self::assertStringContainsString("'tool_result'", $queue);
 		self::assertStringContainsString("'[redacted]'", $queue);
 		self::assertStringContainsString('array_slice($value, 0, 20, true)', $queue);
+		self::assertStringContainsString("'result' => \$this->safeToolResult", (string)file_get_contents(__DIR__ . '/../lib/Service/RagService.php'));
 	}
 
 	public function testExternalConnectorsAreBoundedAndConfirmationReady(): void {

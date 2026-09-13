@@ -150,6 +150,10 @@ class RagService {
 				if ($onProgress !== null) $onProgress('tool_result', (string)($tc['name'] ?? ''), [
 					'ok' => !empty($res['ok']),
 					'error' => mb_substr((string)($res['error'] ?? ''), 0, 300),
+					// Background runs use the same bounded redaction as the live
+					// stream, so terminal output and connector status are visible
+					// without persisting credentials or unbounded payloads.
+					'result' => $this->safeToolResult($res['result'] ?? null),
 					'elapsed_ms' => max(0, (int)round((microtime(true) - $toolStartedAt) * 1000)),
 				]);
 				$this->collectToolSources($tc['name'], $res);
