@@ -913,6 +913,7 @@ class ActionExecutor {
                     'ok' => false,
                     'confirmation_required' => true,
                     'tool' => $name,
+                    'arguments' => $args,
                     'risk' => (string)($policy['risk'] ?? ToolPolicy::RISK_MUTATING),
                     'error' => $name === 'run_safe_command' ? 'Local diagnostic commands always require explicit user confirmation.' : 'Generic app API calls always require explicit user confirmation.',
                 ];
@@ -930,6 +931,7 @@ class ActionExecutor {
                         'ok' => false,
                         'confirmation_required' => true,
                         'tool' => $name,
+                        'arguments' => $args,
                         'risk' => (string)($policy['risk'] ?? ToolPolicy::RISK_MUTATING),
                         'missing' => $missing,
                         'error' => 'This action needs more information before it can run: ' . implode(', ', $missing),
@@ -941,6 +943,7 @@ class ActionExecutor {
                     'ok' => false,
                     'confirmation_required' => true,
                     'tool' => $name,
+                    'arguments' => $args,
                     'risk' => (string)($policy['risk'] ?? ToolPolicy::RISK_MUTATING),
                     'error' => 'This action requires explicit user confirmation before it can be executed.',
                 ];

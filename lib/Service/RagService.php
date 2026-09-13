@@ -142,6 +142,7 @@ class RagService {
 						: $this->executor->run($userId, $tc['name'], $toolArgs));
 				$this->collectToolSources($tc['name'], $res);
 				if (!empty($res['confirmation_required'])) {
+					$confirmationName = (string)($res['tool'] ?? $tc['name'] ?? '');
 					return [
 						'answer' => 'I need your confirmation before I can perform that action.',
 						'sources' => $this->answerSources($byDoc),
@@ -149,8 +150,8 @@ class RagService {
 						'error' => null,
 						'followups' => [],
 						'confirmation' => [
-							'name' => $tc['name'],
-							'arguments' => $toolArgs,
+							'name' => $confirmationName,
+							'arguments' => is_array($res['arguments'] ?? null) ? $res['arguments'] : $toolArgs,
 							'risk' => $res['risk'] ?? ToolPolicy::RISK_MUTATING,
 							'reason' => ($res['missing'] ?? []) !== [] ? 'missing' : 'review',
 							'missing' => $res['missing'] ?? [],
@@ -267,11 +268,12 @@ $this->executor->setUserId($userId);
                         : $this->executor->run($userId, $toolName, $toolArgs);
                     $this->collectToolSources($toolName, $res);
                     $toolFailure = $toolFailure || empty($res['ok']);
-                    if (!empty($res['confirmation_required'])) {
-                        yield json_encode([
-                            'type' => 'confirmation',
-                            'name' => $tc['name'] ?? '?',
-                            'arguments' => $toolArgs,
+					if (!empty($res['confirmation_required'])) {
+						$confirmationName = (string)($res['tool'] ?? $toolName ?? '');
+						yield json_encode([
+							'type' => 'confirmation',
+							'name' => $confirmationName,
+							'arguments' => is_array($res['arguments'] ?? null) ? $res['arguments'] : $toolArgs,
                             'risk' => $res['risk'] ?? ToolPolicy::RISK_MUTATING,
                             'reason' => ($res['missing'] ?? []) !== [] ? 'missing' : 'review',
                             'missing' => $res['missing'] ?? [],
