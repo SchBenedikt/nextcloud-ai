@@ -61,6 +61,16 @@ final class BackgroundChatQueue {
             foreach ($items as &$item) {
                 $status = (string)($item['status'] ?? 'pending');
                 $stale = $status === 'running' && $now - (int)($item['claimedAt'] ?? 0) > 600;
+                // A worker can disappear after cancellation was requested.
+                // Finalize that stale claim so it cannot remain invisible to
+                // every future worker forever.
+                if ($stale && !empty($item['cancelRequested'])) {
+                    $item['status'] = 'cancelled';
+                    $item['finishedAt'] = $now;
+                    $item['updatedAt'] = $now;
+                    $changed = true;
+                    continue;
+                }
                 if (($status === 'pending' || $stale) && empty($item['cancelRequested']) && (int)($item['availableAt'] ?? 0) <= $now) {
                     $item['status'] = 'running'; $item['claimedAt'] = $now; $item['attempts'] = (int)($item['attempts'] ?? 0) + 1; $changed = true;
                     $claimed = $item; break;
@@ -248,7 +258,9 @@ final class BackgroundChatQueue {
             }
             $active = [];
             foreach (array_slice(array_values(array_unique($users)), 0, 10000) as $uid) {
-                if (trim((string)$this->config->getUserValue($uid, AppConfig::APP, self::KEY, '')) !== '') $active[] = $uid;
+                $queue = json_decode((string)$this->config->getUserValue($uid, AppConfig::APP, self::KEY, '[]'), true);
+                $hasActive = is_array($queue) && array_filter($queue, static fn($item): bool => is_array($item) && in_array(($item['status'] ?? 'pending'), ['pending', 'running', 'paused'], true));
+                if ($hasActive) $active[] = $uid;
             }
             $this->config->setAppValue(AppConfig::APP, self::USERS_KEY, json_encode($active, JSON_UNESCAPED_SLASHES) ?: '[]');
             return $active;
