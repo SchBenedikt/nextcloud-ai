@@ -19,6 +19,7 @@
 				<div class="agent-run__meta">
 					<span>Phase: {{ item.phase || 'queued' }}</span><span>Steps: {{ item.steps || 0 }}</span>
 					<span v-if="item.tool">Tool: {{ item.tool }}</span><span v-if="item.attempts">Attempts: {{ item.attempts }}</span>
+					<span v-if="item.status === 'pending' && item.queuedFor">Queued: {{ Math.floor(item.queuedFor / 60) }}m {{ item.queuedFor % 60 }}s</span>
 					<span v-if="item.deadline">Deadline: {{ formatDate(item.deadline) }}</span>
 				</div>
 				<p v-if="item.error" class="agent-run__error">{{ item.error }}</p>
@@ -59,7 +60,15 @@ const act = async (operation, id) => {
 	} catch (e) { error.value = 'Action failed: ' + errMsg(e) }
 }
 const progress = (item) => item.status === 'failed' || item.status === 'cancelled' ? 100 : (item.status === 'running' ? Math.min(95, 10 + Number(item.steps || 0) * 5) : item.status === 'paused' ? 35 : 5)
-const formatDate = (value) => { const d = new Date(value); return Number.isNaN(d.getTime()) ? String(value) : d.toLocaleString() }
+// BackgroundQueue timestamps are Unix seconds, while Date() expects
+// milliseconds. Normalise both shapes so older records and API clients render
+// an actionable deadline instead of a misleading date in January 1970.
+const formatDate = (value) => {
+	const numeric = Number(value)
+	const millis = Number.isFinite(numeric) && numeric > 0 && numeric < 100000000000 ? numeric * 1000 : value
+	const d = new Date(millis)
+	return Number.isNaN(d.getTime()) ? String(value) : d.toLocaleString()
+}
 onMounted(() => { load(); timer = window.setInterval(load, 10000) })
 onBeforeUnmount(() => { if (timer) window.clearInterval(timer) })
 </script>

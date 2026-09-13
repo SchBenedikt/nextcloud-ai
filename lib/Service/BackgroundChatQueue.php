@@ -115,6 +115,7 @@ final class BackgroundChatQueue {
                     'updatedAt' => max(0, (int)($item['updatedAt'] ?? $item['claimedAt'] ?? $item['created'] ?? 0)),
                     'steps' => max(0, (int)($item['steps'] ?? 0)),
                     'deadline' => max(0, (int)($item['deadline'] ?? 0)),
+                    'queuedFor' => max(0, time() - (int)($item['created'] ?? time())),
                 ];
             }
             foreach ($this->readHistory($user) as $item) {

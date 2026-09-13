@@ -473,4 +473,11 @@ final class FrontendContractTest extends TestCase {
         self::assertStringContainsString('Settings\\Admin', $infoXml);
         self::assertStringContainsString('Settings\\AdminSection', $infoXml);
     }
+
+    public function testAgentRunsNormalizesUnixSecondsAndShowsQueueAge(): void {
+        $view = (string)file_get_contents(__DIR__ . '/../src/views/AgentRunsView.vue');
+        self::assertStringContainsString('numeric * 1000', $view);
+        self::assertStringContainsString('item.queuedFor', $view);
+        self::assertStringContainsString("'queuedFor' =>", (string)file_get_contents(__DIR__ . '/../lib/Service/BackgroundChatQueue.php'));
+    }
 }
