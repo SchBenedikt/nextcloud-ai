@@ -99,7 +99,11 @@ class Ollama {
         $provider = strtolower(trim((string)$this->config->get('chat_provider')));
         if ($provider === '') $provider = 'ollama';
         if ($provider === 'groq') return $this->config->get('groq_model');
-        if ($provider !== 'ollama') return $this->config->get('custom_provider_model');
+        if ($provider !== 'ollama') {
+            $profile = $this->config->providerProfile($provider);
+            return is_array($profile) && trim((string)($profile['model'] ?? '')) !== ''
+                ? trim((string)$profile['model']) : $this->config->get('custom_provider_model');
+        }
         return $this->config->get('chat_model');
     }
 

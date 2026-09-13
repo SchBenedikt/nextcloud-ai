@@ -16,7 +16,7 @@ class AppConfig {
      * default (Issue #73).
      */
     private const USER_SETTINGS = [
-        'chat_provider', 'groq_model', 'custom_provider_url', 'custom_provider_model', 'ollama_url', 'embedding_model', 'chat_model', 'chat_model_fallback',
+        'chat_provider', 'groq_model', 'custom_provider_url', 'custom_provider_model', 'provider_profiles', 'ollama_url', 'embedding_model', 'chat_model', 'chat_model_fallback',
         'embedding_model_fallback', 'summary_model', 'top_k', 'chunk_size',
         'chunk_overlap', 'max_file_size', 'max_files_per_run', 'scope_path',
         'context_size', 'temperature', 'actions_enabled', 'background_actions_enabled', 'learning_enabled', 'safe_commands_enabled', 'agent_max_tool_rounds', 'exec_write_types',
@@ -104,6 +104,7 @@ class AppConfig {
         'groq_model' => 'openai/gpt-oss-20b',
         'custom_provider_url' => '',
         'custom_provider_model' => '',
+        'provider_profiles' => '[]',
         'ollama_url' => 'http://127.0.0.1:11434',
         'embedding_model' => 'nomic-embed-text',
         'chat_model' => 'gemma4:cloud',
@@ -504,6 +505,19 @@ class AppConfig {
      * malformed, non-numeric, or out-of-range values.
      */
     public function validateValue(string $key, mixed $value): ?string {
+        if ($key === 'provider_profiles') {
+            if (!is_array($value) || count($value) > 20) return 'must contain at most 20 provider profiles';
+            foreach ($value as $profile) {
+                if (!is_array($profile)
+                    || preg_match('/^[a-z][a-z0-9_-]{1,31}$/D', (string)($profile['id'] ?? '')) !== 1
+                    || trim((string)($profile['name'] ?? '')) === '' || mb_strlen((string)($profile['name'] ?? '')) > 120
+                    || preg_match('~^https?://[^\s]+$~i', (string)($profile['url'] ?? '')) !== 1
+                    || trim((string)($profile['model'] ?? '')) === '' || mb_strlen((string)($profile['model'] ?? '')) > 128) {
+                    return 'each profile needs an id, name, http(s) URL and model';
+                }
+            }
+            return null;
+        }
         if ($key === 'chat_provider') return is_string($value) && (in_array($value, ['ollama', 'groq'], true) || preg_match('/^[a-z][a-z0-9_-]{1,31}$/', $value) === 1) ? null : 'must be Ollama, Groq or a custom provider id';
         if ($key === 'custom_provider_model') return is_string($value) && strlen(trim($value)) <= 128 ? null : 'must be a model name';
         if ($key === 'custom_provider_url') return is_string($value) && ($value === '' || preg_match('~^https?://[^\s]+$~i', $value) === 1) ? null : 'must be an http(s) URL';
@@ -657,6 +671,18 @@ class AppConfig {
             // Any remaining admin-scope key is a boolean toggle.
             return is_scalar($value) && in_array((string)$value, ['0', '1', 'true', 'false', 'on', 'off'], true)
                 ? null : 'must be a boolean value';
+        }
+        return null;
+    }
+
+    /** Return the selected OpenAI-compatible provider profile, if configured. */
+    public function providerProfile(?string $providerId = null): ?array {
+        $providerId ??= (string)$this->get('chat_provider');
+        $raw = $this->get('provider_profiles');
+        $profiles = is_array($raw) ? $raw : json_decode((string)$raw, true);
+        if (!is_array($profiles)) return null;
+        foreach ($profiles as $profile) {
+            if (is_array($profile) && (string)($profile['id'] ?? '') === $providerId) return $profile;
         }
         return null;
     }

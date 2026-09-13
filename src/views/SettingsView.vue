@@ -78,7 +78,7 @@
 				<div class="field">
 					<label class="native-label" for="chat-provider">{{ $t('Chat provider') }}</label>
 					<select id="chat-provider" v-model="f.chat_provider" class="native-select">
-						<option value="ollama">Ollama</option><option value="groq">Groq</option><option value="custom">{{ $t('Custom OpenAI-compatible provider') }}</option>
+						<option value="ollama">Ollama</option><option value="groq">Groq</option><option v-for="profile in providerProfiles" :key="profile.id" :value="profile.id">{{ profile.name }} ({{ profile.id }})</option><option value="custom">{{ $t('Custom OpenAI-compatible provider') }}</option>
 					</select>
 				</div>
 				<div v-if="f.chat_provider !== 'ollama' && f.chat_provider !== 'groq'" class="field-grid">
@@ -87,6 +87,11 @@
 					<NcTextField id="custom-provider-model" v-model="f.custom_provider_model" :label="$t('Model')" :label-outside="true" placeholder="gpt-4o-mini" />
 					<NcTextField id="custom-provider-key" v-model="customProviderKey" type="password" autocomplete="new-password" :label="$t('Provider API key')" :label-outside="true" />
 					<p class="field-help">{{ $t('Works with OpenAI, Azure OpenAI, Mistral, Together, DeepSeek, OpenRouter and any compatible self-hosted endpoint. Credentials are encrypted per user.') }}</p>
+					<div class="field field-wide provider-profiles-editor">
+						<label class="native-label" for="provider-profiles">{{ $t('Additional provider profiles (JSON)') }}</label>
+						<textarea id="provider-profiles" v-model="f.provider_profiles" rows="4" spellcheck="false" placeholder='[{"id":"deepseek","name":"DeepSeek","url":"https://api.deepseek.com/v1","model":"deepseek-chat"}]'></textarea>
+						<p class="field-help">{{ $t('Define multiple OpenAI-compatible providers. Select a profile by entering its id above. API keys are stored separately and never included in this JSON.') }}</p>
+					</div>
 				</div>
 				<div v-if="f.chat_provider === 'groq'" class="field-grid">
 					<p class="field-help">{{ $t('Groq sends your messages, retrieved file excerpts and tool results to Groq. Embeddings and document indexing still use Ollama.') }}</p>
@@ -568,6 +573,7 @@ export default {
 			groq_model: 'openai/gpt-oss-20b',
 			custom_provider_url: '',
 			custom_provider_model: '',
+			provider_profiles: '[]',
 			ollama_url: 'http://127.0.0.1:11434',
 			embedding_model: 'nomic-embed-text',
 			chat_model: 'gemma4:cloud',
@@ -618,6 +624,9 @@ export default {
 			web_search_browser_timeout: '30',
 			proactive_enabled: '0',
 			proactive_schedules: '[]',
+		})
+		const providerProfiles = computed(() => {
+			try { const rows = JSON.parse(f.value.provider_profiles || '[]'); return Array.isArray(rows) ? rows.filter(p => p && p.id && p.name) : [] } catch (_) { return [] }
 		})
 		const groqKey = ref('')
 		const customProviderKey = ref('')
@@ -938,6 +947,13 @@ export default {
 				['exec_write_max_chars', 'Maximum characters per file', ...effective('exec_write_max_chars', [1, 10000000])],
 			]
 			if (includes('ollama_url') && !/^https?:\/\//i.test(f.value.ollama_url.trim())) errors.push('Ollama server URL must start with http:// or https://.')
+			if (includes('provider_profiles')) {
+				try {
+					const profiles = JSON.parse(f.value.provider_profiles || '[]')
+					if (!Array.isArray(profiles) || profiles.length > 20) errors.push('Provider profiles must be a JSON array with at most 20 entries.')
+					for (const p of profiles) if (!p || !/^[a-z][a-z0-9_-]{1,31}$/.test(String(p.id || '')) || !String(p.name || '').trim() || !/^https?:\/\/\S+$/i.test(String(p.url || '')) || !String(p.model || '').trim()) errors.push('Each provider profile needs id, name, URL and model.')
+				} catch (_) { errors.push('Provider profiles must contain valid JSON.') }
+			}
 			if (includes('embedding_model') && !f.value.embedding_model.trim()) errors.push('Embedding model is required.')
 			if ((includes('chat_provider') || includes('chat_model')) && f.value.chat_provider !== 'groq' && !f.value.chat_model.trim()) errors.push('Chat model is required.')
 			for (const [key, label, min, max] of numberRules) {
@@ -1332,7 +1348,7 @@ export default {
 
 		const ocrEnabled = computed({ get: () => f.value.ocr_enabled === '1', set: value => { f.value.ocr_enabled = value ? '1' : '0' } })
 		return {
-			groqKey, customProviderKey, removeGroqKey, ocrEnabled, f, status, health, healthLoading, statusTimer, limits, availableModels, embeddingModels, chatModels, embeddingInstalledHint, chatInstalledHint, modelLoading, modelError, checkOut, saving, checking, indexing, resetting, deletingChats, stopping, saved, loadError, message, validationErrors, resetConfirm, chatsDeleteConfirm,
+			groqKey, customProviderKey, removeGroqKey, ocrEnabled, f, providerProfiles, status, health, healthLoading, statusTimer, limits, availableModels, embeddingModels, chatModels, embeddingInstalledHint, chatInstalledHint, modelLoading, modelError, checkOut, saving, checking, indexing, resetting, deletingChats, stopping, saved, loadError, message, validationErrors, resetConfirm, chatsDeleteConfirm,
 			newExcludePath, excludeError, excludeList, actionsEnabled, backgroundActionsEnabled, notificationsEnabled, learningEnabled, safeCommandsEnabled, mailIndexEnabled, talkIndexEnabled, talkWriteEnabled, indexEnrolled, actionsDisabled, busy, indexingActive, settingsLocked, maxFileSizeMb,
 			isAdminMode, admin, userWebSearchEnabled, userWebSearchSafeSearch, userWebSearchImages, userWebSearchBrowser, userWebSearchFetchContent, webSearchKey, removeWebSearchKey, webSearchKeyStored, webSearchReady, savingAdmin, saveAdminSettings, loadAdminSettings,
 			connectors, connectorsLoading, connectorsBusy, connectorDraft, applyConnectorExample, saveConnector, removeConnector, discoverConnector, testConnector,

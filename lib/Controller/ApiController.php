@@ -339,7 +339,7 @@ class ApiController extends OCSController {
             return new DataResponse(['error' => 'Settings are locked while indexing is running.'], 409);
         }
         $allowed = [
-            'chat_provider', 'groq_model', 'custom_provider_url', 'custom_provider_model', 'ollama_url', 'embedding_model', 'chat_model', 'chat_model_fallback',
+            'chat_provider', 'groq_model', 'custom_provider_url', 'custom_provider_model', 'provider_profiles', 'ollama_url', 'embedding_model', 'chat_model', 'chat_model_fallback',
             'embedding_model_fallback', 'summary_model', 'top_k', 'chunk_size',
             'chunk_overlap', 'max_file_size', 'max_files_per_run', 'scope_path', 'context_size', 'temperature',
             'actions_enabled', 'background_actions_enabled', 'learning_enabled', 'safe_commands_enabled', 'agent_max_tool_rounds',
@@ -376,7 +376,11 @@ class ApiController extends OCSController {
                 continue;
             }
             $pending[$key] = $value;
-            $limitError = $this->config->validateValue($key, $value);
+            $validationValue = $value;
+            if ($key === 'provider_profiles' && is_string($value)) {
+                $validationValue = json_decode($value, true);
+            }
+            $limitError = $this->config->validateValue($key, $validationValue);
             if ($limitError !== null) {
                 $validationErrors[$key] = $key . ' ' . $limitError . '.';
             }
@@ -399,6 +403,10 @@ class ApiController extends OCSController {
                     $validationErrors[$key] = $scheduleError;
                 }
             }
+            if ($key === 'provider_profiles') {
+                $profileError = $this->config->validateValue($key, $validationValue);
+                if ($profileError !== null) $validationErrors[$key] = 'Provider profiles ' . $profileError . '.';
+            }
         }
         if ($validationErrors !== []) {
             return new DataResponse([
@@ -408,8 +416,14 @@ class ApiController extends OCSController {
         }
         $selectedProvider = (string)($pending['chat_provider'] ?? $this->config->get('chat_provider'));
         if ($selectedProvider !== 'ollama' && $selectedProvider !== 'groq') {
-            $customUrl = trim((string)($pending['custom_provider_url'] ?? $this->config->get('custom_provider_url')));
-            $customModel = trim((string)($pending['custom_provider_model'] ?? $this->config->get('custom_provider_model')));
+            $profiles = $pending['provider_profiles'] ?? $this->config->get('provider_profiles');
+            if (is_string($profiles)) $profiles = json_decode($profiles, true);
+            $selectedProfile = null;
+            foreach (is_array($profiles) ? $profiles : [] as $profile) {
+                if (is_array($profile) && (string)($profile['id'] ?? '') === $selectedProvider) { $selectedProfile = $profile; break; }
+            }
+            $customUrl = trim((string)($selectedProfile['url'] ?? $pending['custom_provider_url'] ?? $this->config->get('custom_provider_url')));
+            $customModel = trim((string)($selectedProfile['model'] ?? $pending['custom_provider_model'] ?? $this->config->get('custom_provider_model')));
             if ($customUrl === '' || $customModel === '') {
                 return new DataResponse(['error' => 'Custom provider requires both an endpoint URL and model name.'], 400);
             }
@@ -469,6 +483,9 @@ class ApiController extends OCSController {
                 }
                 if ($key === 'exec_write_types') {
                     $value = $this->config->normalizeValue($key, $value);
+                }
+                if ($key === 'provider_profiles') {
+                    $value = json_encode(is_array($value) ? $value : [], JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE) ?: '[]';
                 }
                 if ($key === 'ocr_enabled' || $key === 'notify_on_complete' || $key === 'proactive_enabled' || $key === 'mail_index_enabled' || $key === 'index_enrolled' || $key === 'talk_classify_all' || $key === 'talk_index_enabled' || $key === 'talk_write_enabled' || $key === 'background_actions_enabled' || $key === 'learning_enabled' || $key === 'safe_commands_enabled' || $key === 'web_search_enabled' || $key === 'web_search_safe_search' || $key === 'web_search_fetch_content' || $key === 'web_search_images' || $key === 'web_search_browser') {
                     $value = in_array((string)$value, ['1', 'true', 'on'], true) ? '1' : '0';
