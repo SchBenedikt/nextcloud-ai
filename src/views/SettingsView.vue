@@ -763,7 +763,7 @@ export default {
 		async function testConnector(id) {
 			connectorsBusy.value = true
 			setMessage('info', 'Connector test is running…')
-			try { const result = await api('POST', 'connectors/test', { id }); setMessage('success', 'Connector responded with HTTP ' + String(result?.result?.data?.status || result?.result?.status || 'OK')) } catch (error) { setMessage('error', 'Connector test failed: ' + errMsg(error)) } finally { connectorsBusy.value = false }
+			try { const result = await api('POST', 'connectors/test', { id }); const status = String(result?.result?.data?.status || result?.result?.status || 'OK'); setMessage(result?.ok ? 'success' : 'error', 'Connector responded with HTTP ' + status) } catch (error) { setMessage('error', 'Connector test failed: ' + errMsg(error)) } finally { connectorsBusy.value = false }
 		}
 		// Admin settings form (Issue #82/#187): the same bundle is mounted inside
 		// the Nextcloud admin settings with data-admin="1". Only shared provider

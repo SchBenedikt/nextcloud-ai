@@ -970,7 +970,11 @@ class ApiController extends OCSController {
         if ($user === null) return new DataResponse(['error' => 'Not logged in'], 401);
         $body = $this->requestBody();
         $result = $this->executor->runConfirmed($user, 'configure_external_connector', $body);
-        return new DataResponse($result, ($result['ok'] ?? false) ? 200 : 400);
+        // A reachable connector may legitimately answer 401/404. Preserve
+        // that transport result as a normal API response so the UI can show
+        // the real status instead of collapsing it into a generic 400.
+        $httpStatus = is_array($result['result'] ?? null) && (int)($result['result']['status'] ?? 0) > 0 ? 200 : (($result['ok'] ?? false) ? 200 : 400);
+        return new DataResponse($result, $httpStatus);
     }
 
     #[NoAdminRequired]
