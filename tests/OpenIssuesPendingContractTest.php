@@ -389,6 +389,8 @@ final class OpenIssuesPendingContractTest extends TestCase {
 		self::assertStringContainsString('private function readFiles', $executor);
 		self::assertStringContainsString("'extension' => ['type' => 'string'", $executor);
 		self::assertStringContainsString('$scopePath = $this->cleanPath', $executor);
+		self::assertStringContainsString('SEARCH_CACHE_TTL', $executor);
+		self::assertStringContainsString('createDistributed(\'eva_ai_search_\')', $executor);
 	}
 
 	private function sliceBetween(string $haystack, string $start, string $end): string {
