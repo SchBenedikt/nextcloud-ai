@@ -62,7 +62,7 @@ class ClearChatLock extends Command {
             return 0;
         }
 
-        $report = $this->chatStore->clearLock($user);
+        $report = $this->chatStore->clearLock($user, $force);
         $output->writeln('Lock path: ' . $report['path']);
         if (!$report['was_locked']) {
             $output->writeln('Lock was not held; nothing to release.');

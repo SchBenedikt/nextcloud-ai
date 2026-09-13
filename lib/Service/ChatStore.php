@@ -894,7 +894,7 @@ class ChatStore {
      *
      * @return array{path:string,was_locked:bool,released:bool}
      */
-    public function clearLock(string $user): array {
+    public function clearLock(string $user, bool $force = false): array {
         $lockPath = 'eva_ai/chat/' . $this->namespaceFor($user);
         $mode = ILockingProvider::LOCK_EXCLUSIVE;
         $wasLocked = false;
@@ -906,7 +906,13 @@ class ChatStore {
             $wasLocked = false;
         }
         $released = false;
-        if ($wasLocked) {
+        // Some DB locking-provider versions can report an expired/stale row as
+        // unlocked even though releaseLock() is still able to remove it.  The
+        // explicit recovery command passes $force after the administrator has
+        // verified that no writer is running, so attempt the release once in
+        // that mode instead of leaving the user blocked for the provider's
+        // full (often one-hour) TTL.
+        if ($wasLocked || $force) {
             try {
                 $this->lockingProvider->releaseLock($lockPath, $mode);
                 $released = true;

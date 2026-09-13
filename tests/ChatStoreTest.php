@@ -1007,7 +1007,7 @@ final class ChatStoreTest extends TestCase {
 	}
 
 	/** A provider that cannot answer must not make the command fail. */
-	public function testRecoveryToleratesAProviderThatCannotReportState(): void {
+    public function testRecoveryToleratesAProviderThatCannotReportState(): void {
 		$factory = $this->createMock(IAppDataFactory::class);
 		$logger = $this->createMock(LoggerInterface::class);
 		$lockingProvider = $this->createMock(ILockingProvider::class);
@@ -1018,6 +1018,24 @@ final class ChatStoreTest extends TestCase {
 		$report = $store->clearLock('alice');
 
 		self::assertFalse($report['was_locked']);
-		self::assertFalse($report['released']);
-	}
+        self::assertFalse($report['released']);
+    }
+
+    /** A forced recovery also attempts release when isLocked() reports false.
+     * Some DB locking-provider versions expose stale rows this way. */
+    public function testForcedRecoveryReleasesAnUnreportedStaleLock(): void {
+        $factory = $this->createMock(IAppDataFactory::class);
+        $logger = $this->createMock(LoggerInterface::class);
+        $lockingProvider = $this->createMock(ILockingProvider::class);
+        $lockingProvider->method('isLocked')->willReturn(false);
+        $lockingProvider->expects(self::once())
+            ->method('releaseLock')
+            ->with($this->stringStartsWith('eva_ai/chat/'), ILockingProvider::LOCK_EXCLUSIVE);
+
+        $store = new ChatStore($factory, $logger, $lockingProvider);
+        $report = $store->clearLock('alice', true);
+
+        self::assertFalse($report['was_locked']);
+        self::assertTrue($report['released']);
+    }
 }
