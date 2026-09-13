@@ -41,6 +41,30 @@ final class OpenIssuesPendingContractTest extends TestCase {
 		}
 	}
 
+	/** Generic app APIs must not pass credential-shaped JSON fields to the model. */
+	public function testGenericAppApiPayloadRedactsSecrets(): void {
+		$reflection = new \ReflectionClass(ActionExecutor::class);
+		$instance = $reflection->newInstanceWithoutConstructor();
+		$method = $reflection->getMethod('redactApiPayload');
+		$result = $method->invoke($instance, [
+			'name' => 'demo',
+			'access_token' => 'secret-value',
+			'nested' => ['password' => 'secret-password', 'visible' => 'ok'],
+		]);
+		self::assertSame('demo', $result['name']);
+		self::assertSame('[redacted]', $result['access_token']);
+		self::assertSame('[redacted]', $result['nested']['password']);
+		self::assertSame('ok', $result['nested']['visible']);
+	}
+
+	/** A per-user JSON queue must be discoverable by the worker. */
+	public function testBackgroundQueueEnumeratesUsersWithoutExactValueLookup(): void {
+		$queue = (string)file_get_contents(__DIR__ . '/../lib/Service/BackgroundChatQueue.php');
+		self::assertStringContainsString('Server::get(IUserManager::class)', $queue);
+		self::assertStringContainsString('getUserValue($uid, AppConfig::APP, self::KEY', $queue);
+		self::assertStringNotContainsString('getUsersForUserValue(AppConfig::APP, self::KEY))))', $queue);
+	}
+
     /**
      * Issue #70: search_files must search bounded readable content as well as
      * filenames and report when its traversal limits are reached.

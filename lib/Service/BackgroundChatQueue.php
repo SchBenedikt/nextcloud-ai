@@ -4,6 +4,7 @@ declare(strict_types=1);
 namespace OCA\EvaAi\Service;
 
 use OCP\IConfig;
+use OCP\IUserManager;
 use OCP\Lock\ILockingProvider;
 use Psr\Log\LoggerInterface;
 
@@ -214,7 +215,27 @@ final class BackgroundChatQueue {
             return $terminal;
         }) ?? false;
     }
-    public function users(): array { try { return array_values(array_unique(array_filter(array_map('strval', $this->config->getUsersForUserValue(AppConfig::APP, self::KEY))))); } catch (\Throwable) { return []; } }
+    /**
+     * Return users with queued work. IConfig::getUsersForUserValue requires a
+     * third (exact-value) argument and therefore cannot enumerate a JSON queue
+     * whose value differs per user; the old two-argument call always threw and
+     * silently left every agent run stuck in `pending`.
+     */
+    public function users(): array {
+        try {
+            $manager = \OCP\Server::get(IUserManager::class);
+            $users = [];
+            foreach ($manager->search('', 10000) as $user) {
+                $uid = (string)$user->getUID();
+                if ($uid !== '' && trim((string)$this->config->getUserValue($uid, AppConfig::APP, self::KEY, '')) !== '') {
+                    $users[] = $uid;
+                }
+            }
+            return array_values(array_unique($users));
+        } catch (\Throwable) {
+            return [];
+        }
+    }
 
     private function read(string $user): array { $raw = $this->config->getUserValue($user, AppConfig::APP, self::KEY, '[]'); $data = json_decode($raw, true); return is_array($data) ? array_values(array_filter($data, 'is_array')) : []; }
     private function readHistory(string $user): array { $raw = $this->config->getUserValue($user, AppConfig::APP, self::HISTORY_KEY, '[]'); $data = json_decode($raw, true); return is_array($data) ? array_values(array_filter($data, 'is_array')) : []; }
