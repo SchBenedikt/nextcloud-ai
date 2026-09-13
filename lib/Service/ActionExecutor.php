@@ -3652,6 +3652,23 @@ class ActionExecutor {
                 return ['ok' => false, 'error' => 'No OpenAPI or Swagger description was found (root HTTP ' . $rootProbeStatus . '). The service may disable schema discovery or use a custom API base path.'];
             }
             $endpoints = [];
+            // Prefer the authentication scheme advertised by the service when
+            // the user has not stored credentials yet. This makes first-time
+            // connector setup intuitive (Immich commonly advertises x-api-key)
+            // while never replacing an explicitly configured secret or scheme.
+            $inferredAuth = $this->inferConnectorAuth($found);
+            if ($inferredAuth !== null) {
+                $current = $this->connectorRows();
+                $currentRow = is_array($current[$id] ?? null) ? $current[$id] : [];
+                $hasStoredSecret = !empty($currentRow['token_configured']) || !empty($currentRow['api_key_configured'])
+                    || !empty($currentRow['username_configured']) || !empty($currentRow['password_configured']);
+                if (!$hasStoredSecret && (($currentRow['auth_type'] ?? 'bearer') === 'bearer')) {
+                    $currentRow['auth_type'] = $inferredAuth['auth_type'];
+                    if (isset($inferredAuth['api_key_header'])) $currentRow['api_key_header'] = $inferredAuth['api_key_header'];
+                    $current[$id] = $currentRow;
+                    Server::get(\OCP\IConfig::class)->setUserValue($user, AppConfig::APP, 'external_connectors', json_encode($current, JSON_UNESCAPED_SLASHES) ?: '{}');
+                }
+            }
             // Do not slice the schema's paths before iterating: TrueNAS places
             // VM and container routes after the first hundred entries. Bound
             // the persisted result instead, so discovery covers the complete
@@ -3706,6 +3723,33 @@ class ActionExecutor {
             Server::get(\OCP\IConfig::class)->setUserValue($user, AppConfig::APP, 'external_connectors', json_encode($rows, JSON_UNESCAPED_SLASHES) ?: '{}');
             return ['ok' => true, 'result' => ['connector' => $id, 'source' => $source, 'title' => mb_substr((string)($found['info']['title'] ?? ''), 0, 160), 'endpoints' => array_slice($endpoints, 0, 1000)]];
         } catch (\Throwable) { return ['ok' => false, 'error' => 'External API discovery failed.']; }
+    }
+
+    /** @return array{auth_type:string,api_key_header?:string}|null */
+    private function inferConnectorAuth(array $document): ?array {
+        $schemes = [];
+        if (is_array($document['components']['securitySchemes'] ?? null)) $schemes = $document['components']['securitySchemes'];
+        elseif (is_array($document['securityDefinitions'] ?? null)) $schemes = $document['securityDefinitions'];
+        foreach ($schemes as $scheme) {
+            if (!is_array($scheme)) continue;
+            $type = strtolower((string)($scheme['type'] ?? ''));
+            if ($type === 'apikey' || $type === 'apiKey') {
+                $header = (string)($scheme['name'] ?? 'X-API-Key');
+                return ['auth_type' => 'api_key', 'api_key_header' => $this->normalizedApiKeyHeader(['api_key_header' => $header])];
+            }
+        }
+        foreach ($schemes as $scheme) {
+            if (!is_array($scheme)) continue;
+            $type = strtolower((string)($scheme['type'] ?? ''));
+            if ($type === 'basic' || ($type === 'http' && strtolower((string)($scheme['scheme'] ?? '')) === 'basic')) return ['auth_type' => 'basic'];
+        }
+        foreach ($schemes as $scheme) {
+            if (!is_array($scheme)) continue;
+            $type = strtolower((string)($scheme['type'] ?? ''));
+            if ($type === 'http' && in_array(strtolower((string)($scheme['scheme'] ?? '')), ['bearer', 'token'], true)) return ['auth_type' => 'bearer'];
+            if ($type === 'oauth2' || $type === 'openidconnect') return ['auth_type' => 'bearer'];
+        }
+        return null;
     }
 
     /**

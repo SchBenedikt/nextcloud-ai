@@ -164,6 +164,19 @@ final class OpenIssuesPendingContractTest extends TestCase {
         self::assertNull($extract->invokeArgs($instance, [$binary, 'binary', &$extracted]));
     }
 
+    /** OpenAPI security schemes make first-time connector setup self-describing. */
+    public function testConnectorAuthInferenceRecognizesApiKeyAndBasicSchemes(): void {
+        $reflection = new \ReflectionClass(ActionExecutor::class);
+        $instance = $reflection->newInstanceWithoutConstructor();
+        $infer = $reflection->getMethod('inferConnectorAuth');
+        self::assertSame(['auth_type' => 'api_key', 'api_key_header' => 'x-api-key'], $infer->invoke($instance, [
+            'components' => ['securitySchemes' => ['immich' => ['type' => 'apiKey', 'in' => 'header', 'name' => 'x-api-key']]],
+        ]));
+        self::assertSame(['auth_type' => 'basic'], $infer->invoke($instance, [
+            'securityDefinitions' => ['auth' => ['type' => 'basic']],
+        ]));
+    }
+
     /** Terminal prompts never get a shell parser and remain confirmation-gated. */
     public function testConfirmedTerminalCommandRejectsShellSyntax(): void {
         $reflection = new \ReflectionClass(ActionExecutor::class);
