@@ -36,6 +36,10 @@ class ActionExecutor {
     private const MAX_READ_FILE_BYTES = 8388608; // 8 MB safety limit
     private const LEARNED_API_TTL = 2592000; // refresh route metadata monthly
     private const APP_API_TIMEOUT = 30;
+    /** Keep remote connector outages from consuming the whole agent budget. */
+    private const CONNECTOR_TIMEOUT = 8;
+    private const CONNECTOR_CONNECT_TIMEOUT = 3;
+    private const CONNECTOR_GET_ATTEMPTS = 2;
     private const MAX_WRITE_CHARS = 100000;
     private const KNOWLEDGE_MAX_CHARS = 60000;
     private const KNOWLEDGE_TARGET_CHARS = 45000;
@@ -3206,13 +3210,13 @@ class ActionExecutor {
         try {
             $client = Server::get(\OCP\Http\Client\IClientService::class)->newClient(); $headers = ['Accept' => 'application/json']; $user = $this->config->userId() ?? '';
             $headers = array_merge($headers, $this->connectorAuthHeaders($id, $row, $user));
-            $options = ['headers' => $headers, 'timeout' => 20, 'allow_redirects' => ['max' => 0]];
+            $options = ['headers' => $headers, 'timeout' => self::CONNECTOR_TIMEOUT, 'connect_timeout' => self::CONNECTOR_CONNECT_TIMEOUT, 'allow_redirects' => ['max' => 0]];
             if ($method === 'GET') $options['query'] = $params; elseif ($params !== []) { $headers['Content-Type'] = 'application/json'; $options['body'] = json_encode($params, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES); $options['headers'] = $headers; }
             // Appliances can briefly return 5xx/429 while middleware starts
-            // or renews its auth session. Retry idempotent GETs three times
+            // or renews its auth session. Retry idempotent GETs twice
             // with a short back-off, while never replaying mutating requests.
             $attempts = 0; $response = null; $lastError = null;
-            $maxAttempts = $method === 'GET' ? 3 : 1;
+            $maxAttempts = $method === 'GET' ? self::CONNECTOR_GET_ATTEMPTS : 1;
             do {
                 $attempts++;
                 try {
@@ -3223,7 +3227,7 @@ class ActionExecutor {
                     $lastError = $e;
                     if ($attempts >= $maxAttempts) throw $e;
                 }
-                if ($attempts < $maxAttempts) usleep(150000 * $attempts);
+                if ($attempts < $maxAttempts) usleep(100000 * $attempts);
             } while ($attempts < $maxAttempts);
             if ($response === null) throw ($lastError ?? new \RuntimeException('Connector returned no response'));
             $body = $response->getBody(); if (is_resource($body)) $body = stream_get_contents($body); $body = mb_substr((string)$body, 0, 50000); $data = json_decode($body, true); $safeData = is_array($data) ? $this->redactApiPayload($data) : $body;
@@ -3334,13 +3338,13 @@ class ActionExecutor {
         $lines = [];
         foreach ($headers as $name => $value) $lines[] = $name . ': ' . $value;
         $status = 0; $body = '';
-        for ($attempt = 1; $attempt <= 3; $attempt++) {
+        for ($attempt = 1; $attempt <= self::CONNECTOR_GET_ATTEMPTS; $attempt++) {
             $ch = curl_init($url);
-            curl_setopt_array($ch, [CURLOPT_RETURNTRANSFER => true, CURLOPT_TIMEOUT => $timeout, CURLOPT_FOLLOWLOCATION => false, CURLOPT_HTTPHEADER => $lines, CURLOPT_SSL_VERIFYPEER => true, CURLOPT_SSL_VERIFYHOST => 2]);
+            curl_setopt_array($ch, [CURLOPT_RETURNTRANSFER => true, CURLOPT_TIMEOUT => $timeout, CURLOPT_CONNECTTIMEOUT => self::CONNECTOR_CONNECT_TIMEOUT, CURLOPT_FOLLOWLOCATION => false, CURLOPT_HTTPHEADER => $lines, CURLOPT_SSL_VERIFYPEER => true, CURLOPT_SSL_VERIFYHOST => 2]);
             $result = curl_exec($ch); $error = curl_errno($ch); $status = (int)curl_getinfo($ch, CURLINFO_HTTP_CODE);
             $body = is_string($result) ? $result : '';
             if ($error === 0 && !in_array($status, [408, 425, 429], true) && ($status < 500 || $status >= 600)) break;
-            if ($attempt < 3) usleep(150000 * $attempt);
+            if ($attempt < self::CONNECTOR_GET_ATTEMPTS) usleep(100000 * $attempt);
         }
         return [$error === 0 ? $status : 0, $body];
     }
