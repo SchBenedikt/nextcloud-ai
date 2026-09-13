@@ -3152,8 +3152,9 @@ class ActionExecutor {
                 // paths are relative to that mount point. Persist absolute
                 // connector paths so subsequent calls do not accidentally
                 // hit the appliance root (which yields a misleading 404).
-                $routePath = $source === '/api/v2.0' && !str_starts_with($path, '/api/v2.0')
-                    ? '/api/v2.0' . $path : $path;
+                $schemaPrefix = $source === '/api/v2.0' ? '/api/v2.0' : (str_starts_with((string)$source, '/api/') ? '/api' : '');
+                $routePath = $schemaPrefix !== '' && !str_starts_with($path, $schemaPrefix . '/') && $path !== $schemaPrefix
+                    ? $schemaPrefix . $path : $path;
                 foreach ($operations as $method => $operation) if (in_array(strtoupper((string)$method), ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'], true)) {
                     $meta = ['path' => mb_substr($routePath, 0, 300), 'method' => strtoupper((string)$method), 'operation_id' => is_array($operation) ? mb_substr((string)($operation['operationId'] ?? ''), 0, 120) : ''];
                     if (is_array($operation) && is_array($operation['parameters'] ?? null)) {
