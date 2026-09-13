@@ -377,6 +377,8 @@ final class OpenIssuesPendingContractTest extends TestCase {
 		$webSearch = (string)file_get_contents(__DIR__ . '/../lib/Service/WebSearchService.php');
 		self::assertStringContainsString('OPENVERSE_IMAGE_ENDPOINT', $webSearch);
 		self::assertStringContainsString('searchOpenverseImages', $webSearch);
+		self::assertStringContainsString("'create_files'", $executor);
+		self::assertStringContainsString('private function createFiles', $executor);
 	}
 
 	private function sliceBetween(string $haystack, string $start, string $end): string {
