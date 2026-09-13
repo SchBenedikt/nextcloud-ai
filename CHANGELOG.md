@@ -4,6 +4,17 @@ All notable changes to **EVA (eva_ai)** are documented here.
 Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); the project
 follows [Semantic Versioning](https://semver.org/).
 
+## [1.16.2] - 2026-09-13
+
+### Added
+
+- Safe agent execution traces, Nextcloud file picker support and valid DOCX generation.
+- Connector route learning and expanded API discovery fallbacks.
+
+### Fixed
+
+- App activation no longer performs large synchronous index-table deletes.
+
 ## [1.16.1] - 2026-09-13
 
 ### Improved
