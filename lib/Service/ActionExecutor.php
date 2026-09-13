@@ -3290,11 +3290,17 @@ class ActionExecutor {
 
     /** @return array{0:int,1:string} */
     private function connectorCurlGet(string $url, array $headers, int $timeout): array {
-        $ch = curl_init($url);
         $lines = [];
         foreach ($headers as $name => $value) $lines[] = $name . ': ' . $value;
-        curl_setopt_array($ch, [CURLOPT_RETURNTRANSFER => true, CURLOPT_TIMEOUT => $timeout, CURLOPT_FOLLOWLOCATION => false, CURLOPT_HTTPHEADER => $lines, CURLOPT_SSL_VERIFYPEER => true, CURLOPT_SSL_VERIFYHOST => 2]);
-        $body = curl_exec($ch); $status = (int)curl_getinfo($ch, CURLINFO_HTTP_CODE); $error = curl_errno($ch);
-        return [$error === 0 && is_string($body) ? $status : 0, is_string($body) ? $body : ''];
+        $status = 0; $body = '';
+        for ($attempt = 1; $attempt <= 3; $attempt++) {
+            $ch = curl_init($url);
+            curl_setopt_array($ch, [CURLOPT_RETURNTRANSFER => true, CURLOPT_TIMEOUT => $timeout, CURLOPT_FOLLOWLOCATION => false, CURLOPT_HTTPHEADER => $lines, CURLOPT_SSL_VERIFYPEER => true, CURLOPT_SSL_VERIFYHOST => 2]);
+            $result = curl_exec($ch); $error = curl_errno($ch); $status = (int)curl_getinfo($ch, CURLINFO_HTTP_CODE);
+            $body = is_string($result) ? $result : '';
+            if ($error === 0 && !in_array($status, [408, 425, 429], true) && ($status < 500 || $status >= 600)) break;
+            if ($attempt < 3) usleep(150000 * $attempt);
+        }
+        return [$error === 0 ? $status : 0, $body];
     }
 }
