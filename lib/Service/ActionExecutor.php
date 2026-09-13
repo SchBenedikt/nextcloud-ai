@@ -38,6 +38,9 @@ class ActionExecutor {
     private const MAX_SEARCH_DOCUMENT_BYTES = 8388608; // 8 MB per document
     private const MAX_SEARCH_EXTRACT_FILES = 40;
     private const MAX_SEARCH_RESULTS = 50;
+    private const MAX_SEARCH_DEPTH_CONFIG = 10;
+    private const MAX_SEARCH_NODES_CONFIG = 10000;
+    private const MAX_SEARCH_RESULTS_CONFIG = 100;
     private const SEARCH_CACHE_TTL = 15;
     private const MAX_LIST_DEPTH = 2;
     private const MAX_LIST_ENTRIES = 300;
@@ -315,6 +318,9 @@ class ActionExecutor {
                     'path' => ['type' => 'string', 'description' => 'Optional folder to search below, e.g. "Documents/2026".'],
                     'extension' => ['type' => 'string', 'description' => 'Optional file extension filter, e.g. "pdf" or ".docx".'],
                     'force_refresh' => ['type' => 'boolean', 'description' => 'Skip the short-lived search cache and inspect the current filesystem immediately.'],
+                    'max_depth' => ['type' => 'integer', 'minimum' => 1, 'maximum' => 10, 'description' => 'Optional scan depth (default 5). Increase this for deeply nested folders; the hard maximum is 10.'],
+                    'max_nodes' => ['type' => 'integer', 'minimum' => 100, 'maximum' => 10000, 'description' => 'Optional maximum filesystem nodes to inspect (default 2000).'],
+                    'max_results' => ['type' => 'integer', 'minimum' => 1, 'maximum' => 100, 'description' => 'Optional maximum matches to return (default 50).'],
                 ], 'required' => ['query']],
             ]],
             ['type' => 'function', 'function' => [
@@ -2190,6 +2196,12 @@ class ActionExecutor {
         $scope = $this->folderAt($home, $scopePath);
         $extension = strtolower(ltrim(trim((string)($args['extension'] ?? '')), '.'));
         $forceRefresh = filter_var($args['force_refresh'] ?? false, FILTER_VALIDATE_BOOLEAN);
+        $maxDepth = filter_var($args['max_depth'] ?? self::MAX_SEARCH_DEPTH, FILTER_VALIDATE_INT);
+        $maxNodes = filter_var($args['max_nodes'] ?? self::MAX_SEARCH_NODES, FILTER_VALIDATE_INT);
+        $maxResults = filter_var($args['max_results'] ?? self::MAX_SEARCH_RESULTS, FILTER_VALIDATE_INT);
+        $maxDepth = $maxDepth === false ? self::MAX_SEARCH_DEPTH : max(1, min(self::MAX_SEARCH_DEPTH_CONFIG, $maxDepth));
+        $maxNodes = $maxNodes === false ? self::MAX_SEARCH_NODES : max(100, min(self::MAX_SEARCH_NODES_CONFIG, $maxNodes));
+        $maxResults = $maxResults === false ? self::MAX_SEARCH_RESULTS : max(1, min(self::MAX_SEARCH_RESULTS_CONFIG, $maxResults));
         if ($extension !== '' && !preg_match('/^[a-z0-9]{1,12}$/', $extension)) {
             return ['ok' => false, 'error' => 'extension must contain only letters and digits'];
         }
@@ -2198,7 +2210,7 @@ class ActionExecutor {
         try { $userKey = (string)($this->config->userId() ?? ''); } catch (\Throwable) { }
         $revision = 0;
         try { $revision = max(0, (int)$this->config->get('search_revision')); } catch (\Throwable) { }
-        $cacheKey = 'search_' . substr(hash('sha256', $userKey . "\0" . $revision . "\0" . $query . "\0" . $scopePath . "\0" . $extension), 0, 40);
+        $cacheKey = 'search_' . substr(hash('sha256', $userKey . "\0" . $revision . "\0" . $query . "\0" . $scopePath . "\0" . $extension . "\0" . $maxDepth . "\0" . $maxNodes . "\0" . $maxResults), 0, 40);
         try {
             $cache = Server::get(\OCP\ICacheFactory::class)->createDistributed('eva_ai_search_');
             $cached = $forceRefresh ? null : $cache->get($cacheKey);
@@ -2214,7 +2226,7 @@ class ActionExecutor {
         $visited = 0;
         $truncated = false;
         $extracted = 0;
-        $this->searchWalk($scope, mb_strtolower($query), $matches, $visited, $truncated, $extracted, 0, $scopePath, $extension);
+        $this->searchWalk($scope, mb_strtolower($query), $matches, $visited, $truncated, $extracted, 0, $scopePath, $extension, $maxDepth, $maxNodes, $maxResults);
         $this->rememberFileLocations($matches);
         $result = [
             'query' => $query,
@@ -2224,9 +2236,10 @@ class ActionExecutor {
             'matches' => $matches,
             'truncated' => $truncated,
             'limits' => [
-                'max_results' => self::MAX_SEARCH_RESULTS,
-                'max_nodes' => self::MAX_SEARCH_NODES,
-                'max_depth' => self::MAX_SEARCH_DEPTH,
+                'max_results' => $maxResults,
+                'max_nodes' => $maxNodes,
+                'max_depth' => $maxDepth,
+                'requested_max_results' => $maxResults,
                 'max_text_file_bytes' => self::MAX_SEARCH_FILE_BYTES,
                 'max_document_bytes' => self::MAX_SEARCH_DOCUMENT_BYTES,
                 'max_extracted_documents' => self::MAX_SEARCH_EXTRACT_FILES,
@@ -2276,13 +2289,13 @@ class ActionExecutor {
      *
      * @param array<int,array<string,mixed>> $matches
      */
-    private function searchWalk(Folder $folder, string $query, array &$matches, int &$visited, bool &$truncated, int &$extracted, int $depth, string $prefix, string $extension = ''): void {
-        if ($depth >= self::MAX_SEARCH_DEPTH || count($matches) >= self::MAX_SEARCH_RESULTS) {
+    private function searchWalk(Folder $folder, string $query, array &$matches, int &$visited, bool &$truncated, int &$extracted, int $depth, string $prefix, string $extension = '', int $maxDepth = self::MAX_SEARCH_DEPTH, int $maxNodes = self::MAX_SEARCH_NODES, int $maxResults = self::MAX_SEARCH_RESULTS): void {
+        if ($depth >= $maxDepth || count($matches) >= $maxResults) {
             $truncated = true;
             return;
         }
         foreach ($folder->getDirectoryListing() as $node) {
-            if (count($matches) >= self::MAX_SEARCH_RESULTS || $visited >= self::MAX_SEARCH_NODES) {
+            if (count($matches) >= $maxResults || $visited >= $maxNodes) {
                 $truncated = true;
                 return;
             }
@@ -2293,7 +2306,7 @@ class ActionExecutor {
                 if ($nameMatches) {
                     $matches[] = ['path' => $rel, 'reason' => 'filename', 'file_id' => (int)$node->getId()];
                 }
-                $this->searchWalk($node, $query, $matches, $visited, $truncated, $extracted, $depth + 1, $rel, $extension);
+                $this->searchWalk($node, $query, $matches, $visited, $truncated, $extracted, $depth + 1, $rel, $extension, $maxDepth, $maxNodes, $maxResults);
                 continue;
             }
 
