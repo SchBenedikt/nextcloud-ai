@@ -3323,6 +3323,9 @@ class ActionExecutor {
         try {
             $client = Server::get(\OCP\Http\Client\IClientService::class)->newClient(); $headers = ['Accept' => 'application/json']; $user = $this->config->userId() ?? '';
             $headers = array_merge($headers, $this->connectorAuthHeaders($id, $row, $user));
+            if ($method === 'GET') {
+                return $this->callExternalConnectorGet($id, $path, $url, $params, $headers, $user);
+            }
             $options = ['headers' => $headers, 'timeout' => self::CONNECTOR_TIMEOUT, 'connect_timeout' => self::CONNECTOR_CONNECT_TIMEOUT, 'allow_redirects' => ['max' => 0]];
             if ($method === 'GET') $options['query'] = $params; elseif ($params !== []) { $headers['Content-Type'] = 'application/json'; $options['body'] = json_encode($params, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES); $options['headers'] = $headers; }
             // Appliances can briefly return 5xx/429 while middleware starts
@@ -3354,6 +3357,21 @@ class ActionExecutor {
             $detail = trim(preg_replace('/\s+/', ' ', $e->getMessage()));
             return ['ok' => false, 'error' => 'External connector request failed.' . ($detail !== '' ? ' ' . mb_substr($detail, 0, 220) : '')];
         }
+    }
+
+    /** GET adapter used by tests and read-only calls; cURL preserves HTTP
+     * status responses (401/404) instead of turning them into client errors. */
+    private function callExternalConnectorGet(string $id, string $path, string $url, array $params, array $headers, string $user): array {
+        if ($params !== []) $url .= (str_contains($url, '?') ? '&' : '?') . http_build_query($params, '', '&', PHP_QUERY_RFC3986);
+        [$status, $body] = $this->connectorCurlGet($url, $headers, self::CONNECTOR_TIMEOUT);
+        if ($status === 0) return ['ok' => false, 'error' => 'External connector is unreachable from the Nextcloud server.'];
+        $body = mb_substr($body, 0, 50000); $data = json_decode($body, true); $safeData = is_array($data) ? $this->redactApiPayload($data) : $body;
+        if ($status >= 200 && $status < 300) {
+            $rows = $this->connectorRows(); $known = $rows[$id]['openapi']['endpoints'] ?? []; if (!is_array($known)) $known = [];
+            $seen = false; foreach ($known as $entry) if (is_array($entry) && strtoupper((string)($entry['method'] ?? '')) === 'GET' && (string)($entry['path'] ?? '') === $path) { $seen = true; break; }
+            if (!$seen) { $known[] = ['path' => mb_substr($path, 0, 300), 'method' => 'GET', 'operation_id' => 'learned']; $rows[$id]['openapi'] = ['source' => $rows[$id]['openapi']['source'] ?? 'runtime', 'version' => $rows[$id]['openapi']['version'] ?? '', 'endpoints' => array_slice($known, -200), 'updated_at' => time()]; Server::get(\OCP\IConfig::class)->setUserValue($user, AppConfig::APP, 'external_connectors', json_encode($rows, JSON_UNESCAPED_SLASHES) ?: '{}'); }
+        }
+        return ['ok' => $status >= 200 && $status < 300, 'result' => ['status' => $status, 'data' => $safeData, 'connector' => $id, 'method' => 'GET', 'path' => $path, 'attempts' => self::CONNECTOR_GET_ATTEMPTS]];
     }
 
     private function safeConnectorUrl(string $url): bool {
