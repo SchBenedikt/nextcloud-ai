@@ -82,18 +82,17 @@ class Searcher {
 
         $lexical = $this->lexicalBm25($rows, $queryTokens, $docFields);
 
+        // A lexical-only request (for example a cloud chat model with a local
+        // embedding model disabled) must not deserialize every stored vector.
+        // On a large index this was pure CPU work: all scores were zero and
+        // the dense rank could not affect the result anyway.
         $dense = [];
-        foreach ($rows as $i => $row) {
-            $vec = json_decode($row['embedding'], true);
-            if (is_array($vec) && !empty($vec)) {
-                if ($queryVector !== null) {
-                    $cos = $this->cosine($queryVector, $vec);
-                    $dense[$i] = $cos;
-                } else {
-                    $dense[$i] = 0.0;
-                }
-            } else {
-                $dense[$i] = 0.0;
+        if ($queryVector !== null) {
+            foreach ($rows as $i => $row) {
+                $vec = json_decode($row['embedding'], true);
+                $dense[$i] = is_array($vec) && $vec !== []
+                    ? $this->cosine($queryVector, $vec)
+                    : 0.0;
             }
         }
 
