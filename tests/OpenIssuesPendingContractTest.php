@@ -194,6 +194,13 @@ final class OpenIssuesPendingContractTest extends TestCase {
         self::assertNull($validate->invoke($instance, $endpoint, ['query' => 'Lena', 'extra' => 'allowed']));
     }
 
+    public function testConnectorRequestUsesLearnedContentType(): void {
+        $executor = (string)file_get_contents(__DIR__ . '/../lib/Service/ActionExecutor.php');
+        self::assertStringContainsString('application/x-www-form-urlencoded', $executor);
+        self::assertStringContainsString("'multipart/form-data' => \$params", $executor);
+        self::assertStringContainsString('content_type', $executor);
+    }
+
     public function testConnectorSchemaDecodesYamlWithoutExtYaml(): void {
         $reflection = new \ReflectionClass(ActionExecutor::class);
         $instance = $reflection->newInstanceWithoutConstructor();

@@ -4069,8 +4069,13 @@ class ActionExecutor {
                 }
             }
             if ($queryParams !== []) $url .= '?' . http_build_query($queryParams, '', '&', PHP_QUERY_RFC3986);
-            $headers['Content-Type'] = 'application/json';
-            [$status, $body, $transportError] = $this->connectorCurlRequest($url, $method, $headers, $params, self::CONNECTOR_TIMEOUT);
+            $contentType = strtolower(trim((string)($matchedEndpoint['request_body']['content_type'] ?? 'application/json')));
+            if (str_contains($contentType, ';')) $contentType = trim((string)explode(';', $contentType, 2)[0]);
+            if (!in_array($contentType, ['application/json', 'application/x-www-form-urlencoded', 'multipart/form-data'], true)) $contentType = 'application/json';
+            // cURL builds multipart boundaries itself; manually setting that
+            // header would omit the boundary and break otherwise valid APIs.
+            if ($contentType !== 'multipart/form-data') $headers['Content-Type'] = $contentType;
+            [$status, $body, $transportError] = $this->connectorCurlRequest($url, $method, $headers, $params, self::CONNECTOR_TIMEOUT, $contentType);
             if ($transportError !== '') return ['ok' => false, 'error' => 'External connector request failed. ' . $transportError];
             $body = mb_substr($body, 0, 50000); $data = json_decode($body, true); $safeData = is_array($data) ? $this->redactApiPayload($data) : $body;
             if ($status >= 200 && $status < 300) {
@@ -4307,11 +4312,15 @@ class ActionExecutor {
     }
 
     /** @return array{0:int,1:string,2:string} */
-    private function connectorCurlRequest(string $url, string $method, array $headers, array $params, int $timeout): array {
+    private function connectorCurlRequest(string $url, string $method, array $headers, array $params, int $timeout, string $contentType = 'application/json'): array {
         $lines = [];
         foreach ($headers as $name => $value) $lines[] = $name . ': ' . $value;
         try {
-            $payload = json_encode($params, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR);
+            $payload = match ($contentType) {
+                'application/x-www-form-urlencoded' => http_build_query($params, '', '&', PHP_QUERY_RFC3986),
+                'multipart/form-data' => $params,
+                default => json_encode($params, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR),
+            };
         } catch (\Throwable) {
             return [0, '', 'Request parameters could not be encoded as JSON.'];
         }
