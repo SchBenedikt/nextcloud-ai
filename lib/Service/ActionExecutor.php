@@ -3350,7 +3350,10 @@ class ActionExecutor {
                 if (!$seen) { $known[] = ['path' => mb_substr($path, 0, 300), 'method' => $method, 'operation_id' => 'learned']; $rows[$id]['openapi'] = ['source' => $rows[$id]['openapi']['source'] ?? 'runtime', 'version' => $rows[$id]['openapi']['version'] ?? '', 'endpoints' => array_slice($known, -200), 'updated_at' => time()]; Server::get(\OCP\IConfig::class)->setUserValue($user, AppConfig::APP, 'external_connectors', json_encode($rows, JSON_UNESCAPED_SLASHES) ?: '{}'); }
             }
             return ['ok' => $response->getStatusCode() >= 200 && $response->getStatusCode() < 300, 'result' => ['status' => $response->getStatusCode(), 'data' => $safeData, 'connector' => $id, 'method' => $method, 'path' => $path, 'attempts' => $attempts]];
-        } catch (\Throwable) { return ['ok' => false, 'error' => 'External connector request failed.']; }
+        } catch (\Throwable $e) {
+            $detail = trim(preg_replace('/\s+/', ' ', $e->getMessage()));
+            return ['ok' => false, 'error' => 'External connector request failed.' . ($detail !== '' ? ' ' . mb_substr($detail, 0, 220) : '')];
+        }
     }
 
     private function safeConnectorUrl(string $url): bool {
