@@ -417,6 +417,9 @@ final class OpenIssuesPendingContractTest extends TestCase {
 		self::assertStringContainsString("'file_checksum'", $executor);
 		self::assertStringContainsString('private function fileChecksum', $executor);
 		self::assertStringContainsString("'read_files'", $executor);
+		$searcher = (string)file_get_contents(__DIR__ . '/../lib/Service/Searcher.php');
+		self::assertStringContainsString('cloudChatWithLocalEmbedding', $searcher);
+		self::assertStringContainsString("str_ends_with(\$chatModel, ':cloud')", $searcher);
 		self::assertStringContainsString('private function readFiles', $executor);
 		self::assertStringContainsString("'extension' => ['type' => 'string'", $executor);
 		self::assertStringContainsString('$scopePath = $this->cleanPath', $executor);

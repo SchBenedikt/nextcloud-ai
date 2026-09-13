@@ -36,8 +36,22 @@ class Searcher {
             return [];
         }
         if ($this->config->get('chat_provider') === 'groq' && $this->chunkMapper->countForUser($userId) === 0) return [];
-        [$queryVec, $err] = $this->ollama->embedQuery([$query], $userId);
-        $queryVector = $err === null && is_array($queryVec) && isset($queryVec[0]) ? $queryVec[0] : null;
+        // A model named `*:cloud` is served remotely through Ollama, but the
+        // configured embedding model is often still local. Embedding every
+        // chat query in that situation needlessly saturates the Nextcloud
+        // host's CPU while the actual answer is generated in the cloud. Keep
+        // retrieval responsive by using the lexical index unless the user
+        // explicitly selected a cloud embedding model as well.
+        $chatModel = strtolower(trim($this->config->get('chat_model')));
+        $embeddingModel = strtolower(trim($this->config->get('embedding_model')));
+        $cloudChatWithLocalEmbedding = $this->config->get('chat_provider') === 'ollama'
+            && str_ends_with($chatModel, ':cloud')
+            && !str_ends_with($embeddingModel, ':cloud');
+        $queryVector = null;
+        if (!$cloudChatWithLocalEmbedding) {
+            [$queryVec, $err] = $this->ollama->embedQuery([$query], $userId);
+            $queryVector = $err === null && is_array($queryVec) && isset($queryVec[0]) ? $queryVec[0] : null;
+        }
         $rows = $this->loadCandidates($userId, $query, $queryVector);
         if ($scopePath !== null && trim($scopePath) !== '') {
             $rows = $this->filterByScopePath($userId, $rows, $scopePath);
