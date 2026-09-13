@@ -280,6 +280,7 @@ $this->executor->setUserId($userId);
                         ? $this->completeCalendarArguments($userId, $message, $tc['arguments'] ?? [])
                         : ($tc['arguments'] ?? []);
                     yield json_encode(['type' => 'tool', 'name' => $toolName ?: '?', 'arguments' => $this->safeToolArguments($toolArgs)], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) . "\n";
+                    $toolStartedAt = microtime(true);
                     $fingerprint = hash('sha256', $toolName . ':' . json_encode($toolArgs, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES));
                     $seenToolCalls[$fingerprint] = ($seenToolCalls[$fingerprint] ?? 0) + 1;
                     $res = $seenToolCalls[$fingerprint] > self::MAX_IDENTICAL_TOOL_CALLS
@@ -310,6 +311,7 @@ $this->executor->setUserId($userId);
                         // below; the browser only needs enough output to show
                         // what a terminal/API/file tool actually did.
                         'result' => $this->safeToolResult($res['result'] ?? null),
+                        'elapsed_ms' => max(0, (int)round((microtime(true) - $toolStartedAt) * 1000)),
                     ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) . "\n";
                     $messages[] = ['role' => 'tool', 'content' => json_encode($res, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES)];
 					if ($this->isAuthenticationFailure($res) || $seenToolCalls[$fingerprint] > self::MAX_IDENTICAL_TOOL_CALLS) {

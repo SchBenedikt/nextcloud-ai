@@ -208,7 +208,7 @@ function buildCalendarForm(args, tr) {
 		var row = document.createElement('div')
 		row.className = 'tool ' + (c.state === 'running' ? 'running' : c.state === 'ok' ? 'ok' : 'bad')
 		var label = document.createElement('span')
-		label.textContent = (c.state === 'running' ? '🛠 ' : c.state === 'ok' ? '✅ ' : '❌ ') + c.name + (c.state === 'running' ? ' …' : '')
+				label.textContent = (c.state === 'running' ? '🛠 ' : c.state === 'ok' ? '✅ ' : '❌ ') + c.name + (c.state === 'running' ? ' …' : '') + (c.elapsed_ms != null ? ' · ' + c.elapsed_ms + ' ms' : '')
 		row.appendChild(label)
 		if (c.arguments && Object.keys(c.arguments).length) {
 			var details = document.createElement('details')
@@ -869,6 +869,7 @@ function buildCalendarForm(args, tr) {
 								last.tools[ti].error = ev.error || ''
 								last.tools[ti].url = ev.url || ''
 								last.tools[ti].result = ev.result
+								last.tools[ti].elapsed_ms = ev.elapsed_ms
 								break
 							}
 						}

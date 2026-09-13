@@ -1164,6 +1164,9 @@ class ChatStore {
             if (is_array($entry['arguments'] ?? null)) {
                 $item['arguments'] = $this->clipTraceValue($entry['arguments']);
             }
+            if (isset($entry['elapsed_ms']) && is_numeric($entry['elapsed_ms'])) {
+                $item['elapsed_ms'] = max(0, min(180000, (int)$entry['elapsed_ms']));
+            }
             if (array_key_exists('result', $entry)) {
                 $item['result'] = $this->clipTraceValue($entry['result']);
             }

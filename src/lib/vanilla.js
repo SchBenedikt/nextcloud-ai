@@ -209,7 +209,7 @@ export function mountChat(root, opts = {}) {
 				const row = document.createElement('div')
 				row.className = 'tool ' + (c.state === 'running' ? 'running' : c.state === 'ok' ? 'ok' : 'bad')
 				const label = document.createElement('span')
-				label.textContent = (c.state === 'running' ? '🛠 ' : c.state === 'ok' ? '✅ ' : '❌ ') + c.name + (c.state === 'running' ? ' …' : '')
+				label.textContent = (c.state === 'running' ? '🛠 ' : c.state === 'ok' ? '✅ ' : '❌ ') + c.name + (c.state === 'running' ? ' …' : '') + (c.elapsed_ms != null ? ' · ' + c.elapsed_ms + ' ms' : '')
 				row.appendChild(label)
 				if (c.arguments && Object.keys(c.arguments).length) {
 					const details = document.createElement('details')
@@ -568,7 +568,7 @@ export function mountChat(root, opts = {}) {
 				const row = document.createElement('div')
 				row.className = 'tool ' + (c.state === 'running' ? 'running' : c.state === 'ok' ? 'ok' : 'bad')
 				const label = document.createElement('span')
-				label.textContent = (c.state === 'running' ? '🛠 ' : c.state === 'ok' ? '✅ ' : '❌ ') + c.name + (c.state === 'running' ? ' …' : '')
+				label.textContent = (c.state === 'running' ? '🛠 ' : c.state === 'ok' ? '✅ ' : '❌ ') + c.name + (c.state === 'running' ? ' …' : '') + (c.elapsed_ms != null ? ' · ' + c.elapsed_ms + ' ms' : '')
 				row.appendChild(label)
 				if (c.arguments && Object.keys(c.arguments).length) {
 					const details = document.createElement('details')
@@ -1073,6 +1073,7 @@ export function mountChat(root, opts = {}) {
 						last.tools[t].error = ev.error || ''
 						last.tools[t].url = ev.url || ''
 						last.tools[t].result = ev.result
+						last.tools[t].elapsed_ms = ev.elapsed_ms
 						break
 					}
 				}
@@ -1236,6 +1237,7 @@ export function mountChat(root, opts = {}) {
 								last.tools[t].error = ev.error || ''
 								last.tools[t].url = ev.url || ''
 								last.tools[t].result = ev.result
+								last.tools[t].elapsed_ms = ev.elapsed_ms
 								break
 							}
 						}
