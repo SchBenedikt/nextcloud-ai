@@ -190,6 +190,8 @@ final class FrontendContractTest extends TestCase {
 		self::assertStringContainsString('history, chatId }', $vanilla);
 		self::assertStringContainsString('Scoped to {path}', $vanilla);
 		self::assertStringContainsString('chat.scopePath', $vanilla);
+		self::assertStringContainsString('queueInBackground', $vanilla);
+		self::assertStringContainsString("'/backgroundChat'", $vanilla);
         self::assertStringContainsString('buildShareForm', (string)file_get_contents(__DIR__ . '/../src/standalone-chat.js'));
         self::assertStringContainsString("return new DataResponse(['error' => 'Not logged in'], 401)", (string)file_get_contents(__DIR__ . '/../lib/Controller/ApiController.php'));
         $controller = (string)file_get_contents(__DIR__ . '/../lib/Controller/ApiController.php');
