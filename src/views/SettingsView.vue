@@ -503,7 +503,7 @@
 				<div v-if="pluginsLoading" class="field-help">{{ $t('Loading extensions…') }}</div>
 				<div v-else-if="!plugins.length" class="empty-state">{{ $t('No third-party EVA tools are installed yet.') }}</div>
 				<div v-for="plugin in plugins" :key="plugin.name" class="plugin-row">
-					<div><strong>{{ plugin.name }}</strong><p>{{ plugin.description }}</p></div>
+					<div><strong>{{ plugin.name }}</strong><p>{{ plugin.description }}</p><div class="plugin-meta"><span>{{ plugin.risk || 'readonly' }}</span><span>{{ (plugin.surfaces || []).join(' · ') || 'web' }}</span><span v-if="plugin.requiresConfirmation">{{ $t('Confirmation required') }}</span><span v-else>{{ $t('No confirmation for read-only use') }}</span></div></div>
 					<code>{{ Object.keys(plugin.parameters?.properties || {}).join(', ') || $t('no arguments') }}</code>
 				</div>
 			</section>
@@ -1723,6 +1723,8 @@ export default {
 .plugin-row strong { font-family:var(--font-family-monospace, monospace); font-size:13px; }
 .plugin-row p { margin:4px 0 0; color:var(--color-text-maxcontrast); font-size:13px; }
 .plugin-row code { flex:0 0 auto; max-width:42%; overflow-wrap:anywhere; color:var(--color-primary-element); font-size:11px; }
+.plugin-meta { display:flex; flex-wrap:wrap; gap:6px; margin-top:8px; }
+.plugin-meta span { padding:2px 7px; border-radius:999px; background:var(--color-main-background); color:var(--color-text-maxcontrast); font-size:11px; }
 .empty-state { padding:18px; border:1px dashed var(--color-border); border-radius:var(--border-radius-large); color:var(--color-text-maxcontrast); }
 @media (max-width:960px) { .connector-form { grid-template-columns:repeat(2,minmax(0,1fr)); } }
 @media (max-width:760px) { .connector-row { align-items:flex-start; flex-direction:column; } .connector-form { grid-template-columns:1fr; padding:12px; } }

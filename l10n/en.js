@@ -51,6 +51,8 @@ OC.L10N.register("eva_ai", {
     "Loading extensions…": "Loading extensions…",
     "No third-party EVA tools are installed yet.": "No third-party EVA tools are installed yet.",
     "no arguments": "no arguments",
+    "Confirmation required": "Confirmation required",
+    "No confirmation for read-only use": "No confirmation for read-only use",
     "Enter a question or instruction for this briefing.": "Enter a question or instruction for this briefing.",
     "Choose a valid briefing time.": "Choose a valid briefing time.",
     "Choose at least one weekday.": "Choose at least one weekday.",

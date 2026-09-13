@@ -942,12 +942,18 @@ class ActionExecutor {
 
     /** Safe catalog for the settings UI; schemas contain no credentials. */
     public function pluginCatalog(): array {
-        return array_map(static function (array $tool): array {
+        $registry = $this->pluginRegistryOrNull();
+        return array_map(function (array $tool) use ($registry): array {
             $fn = $tool['function'] ?? [];
+            $entry = $registry?->get((string)($fn['name'] ?? ''));
+            $definition = is_array($entry['definition'] ?? null) ? $entry['definition'] : [];
             return [
                 'name' => (string)($fn['name'] ?? ''),
                 'description' => (string)($fn['description'] ?? ''),
                 'parameters' => $fn['parameters'] ?? ['type' => 'object', 'properties' => new \stdClass()],
+                'risk' => (string)($definition['risk'] ?? ToolPolicy::RISK_READONLY),
+                'surfaces' => array_values(array_map('strval', (array)($definition['surfaces'] ?? []))),
+                'requiresConfirmation' => (bool)($definition['requiresConfirmation'] ?? false),
             ];
         }, $this->toolsForSurface(ToolPolicy::SURFACE_WEB));
     }

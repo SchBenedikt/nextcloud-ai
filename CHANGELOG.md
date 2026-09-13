@@ -4,6 +4,12 @@ All notable changes to **EVA (eva_ai)** are documented here.
 Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); the project
 follows [Semantic Versioning](https://semver.org/).
 
+## [1.16.58] - 2026-09-13
+
+### Improved
+
+- The EVA extensions panel now exposes each plugin's risk level, execution surfaces and confirmation requirement alongside its schema.
+
 ## [1.16.57] - 2026-09-13
 
 ### Improved

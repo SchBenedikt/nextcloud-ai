@@ -221,6 +221,14 @@ final class OpenIssuesPendingContractTest extends TestCase {
         self::assertStringContainsString("This connector route was not discovered. Run discover_external_connector first.", $executor);
     }
 
+    public function testPluginCatalogExposesSafetyMetadata(): void {
+        $executor = (string)file_get_contents(__DIR__ . '/../lib/Service/ActionExecutor.php');
+        self::assertStringContainsString("'risk' => (string)(\$definition['risk']", $executor);
+        self::assertStringContainsString("'surfaces' => array_values", $executor);
+        self::assertStringContainsString("'requiresConfirmation' => (bool)", $executor);
+        self::assertStringContainsString('Confirmation required', (string)file_get_contents(__DIR__ . '/../src/views/SettingsView.vue'));
+    }
+
     public function testAppLoadsItsOptionalProductionComposerAutoloader(): void {
         $application = (string)file_get_contents(__DIR__ . '/../lib/AppInfo/Application.php');
         self::assertStringContainsString("__DIR__ . '/../../vendor/autoload.php'", $application);
