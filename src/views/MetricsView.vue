@@ -14,6 +14,7 @@
 			</section>
 			<section class="metrics-panel"><h2>{{ $t('Usage by model') }}</h2><p v-if="!byModel.length" class="metrics-empty">{{ $t('No model usage has been recorded in this period.') }}</p><table v-else><thead><tr><th>{{ $t('Provider') }}</th><th>{{ $t('Model') }}</th><th>{{ $t('Requests') }}</th><th>{{ $t('Input tokens') }}</th><th>{{ $t('Output tokens') }}</th><th>{{ $t('Total tokens') }}</th></tr></thead><tbody><tr v-for="row in byModel" :key="row.provider + row.model"><td>{{ row.provider }}</td><td class="mono">{{ row.model }}</td><td>{{ format(row.requests) }}</td><td>{{ format(row.input_tokens) }}</td><td>{{ format(row.output_tokens) }}</td><td>{{ format(row.total_tokens) }}<small v-if="row.estimated_requests"> · {{ $t('estimated') }}</small></td></tr></tbody></table></section>
 			<section class="metrics-panel"><h2>{{ $t('Daily usage') }}</h2><div v-if="daily.length" class="daily-list"><div v-for="row in daily" :key="row.day" class="daily-row"><time>{{ row.day }}</time><div class="daily-bar"><span :style="{ width: (row.total_tokens / maxDaily * 100) + '%' }"></span></div><strong>{{ format(row.total_tokens) }}</strong></div></div><p v-else class="metrics-empty">{{ $t('No daily usage has been recorded in this period.') }}</p></section>
+			<section class="metrics-panel"><h2>{{ $t('Slow tool calls') }}</h2><p class="metrics-note">{{ $t('Only tool calls slower than 100 ms are listed.') }}</p><p v-if="!slowTools.length" class="metrics-empty">{{ $t('No slow tool calls have been recorded in this period.') }}</p><table v-else><thead><tr><th>{{ $t('Tool') }}</th><th>{{ $t('Calls') }}</th><th>{{ $t('Average') }}</th><th>{{ $t('Maximum') }}</th><th>{{ $t('Errors') }}</th></tr></thead><tbody><tr v-for="row in slowTools" :key="row.tool"><td class="mono">{{ row.tool }}</td><td>{{ format(row.calls) }}</td><td>{{ format(row.avg_duration_ms) }} ms</td><td>{{ format(row.max_duration_ms) }} ms</td><td>{{ format(row.errors) }}</td></tr></tbody></table></section>
 		</template>
 	</div>
 </template>
@@ -26,8 +27,8 @@ import { translate as t } from '../lib/i18n'
 export default {
 	name: 'MetricsView',
 	setup() {
-		const days = ref(30); const loading = ref(true); const error = ref(''); const data = ref({ totals: {}, by_model: [], daily: [] })
-		const totals = computed(() => data.value.totals || {}); const byModel = computed(() => data.value.by_model || []); const daily = computed(() => data.value.daily || [])
+		const days = ref(30); const loading = ref(true); const error = ref(''); const data = ref({ totals: {}, by_model: [], daily: [], slow_tools: [] })
+		const totals = computed(() => data.value.totals || {}); const byModel = computed(() => data.value.by_model || []); const daily = computed(() => data.value.daily || []); const slowTools = computed(() => data.value.slow_tools || [])
 		const maxDaily = computed(() => Math.max(1, ...daily.value.map(row => Number(row.total_tokens) || 0))); const maxModel = computed(() => Math.max(1, ...byModel.value.map(row => Number(row.total_tokens) || 0))); const inputShare = computed(() => Math.round((Number(totals.value.input_tokens || 0) / Math.max(1, Number(totals.value.total_tokens || 0))) * 100)); const format = value => Number(value || 0).toLocaleString()
 		const cards = computed(() => [
 			{ label: t('Requests'), value: totals.value.requests, hint: t('Model requests in the selected period') },
@@ -36,7 +37,7 @@ export default {
 			{ label: t('Total tokens'), value: totals.value.total_tokens, hint: totals.value.estimated_requests ? t('{count} requests use estimates.', { count: totals.value.estimated_requests }) : t('Exact provider usage reported') },
 		])
 		const load = async period => { days.value = period; loading.value = true; error.value = ''; try { data.value = await api('GET', 'metrics', { days: period }) } catch (e) { error.value = errMsg(e) } finally { loading.value = false } }
-		onMounted(() => load(days.value)); return { days, loading, error, totals, byModel, daily, maxDaily, maxModel, inputShare, cards, format, load }
+		onMounted(() => load(days.value)); return { days, loading, error, totals, byModel, daily, slowTools, maxDaily, maxModel, inputShare, cards, format, load }
 	},
 }
 </script>
