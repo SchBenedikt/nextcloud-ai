@@ -372,6 +372,8 @@ final class OpenIssuesPendingContractTest extends TestCase {
 		self::assertStringContainsString('discoverExternalConnector', $executor);
 		self::assertStringContainsString("'/openapi.json'", $executor);
 		self::assertStringContainsString("'openapi'", $executor);
+		self::assertStringContainsString("\$meta['parameters'] = \$params", $executor);
+		self::assertStringContainsString("'required' => !empty(\$parameter['required'])", $executor);
 		$webSearch = (string)file_get_contents(__DIR__ . '/../lib/Service/WebSearchService.php');
 		self::assertStringContainsString('OPENVERSE_IMAGE_ENDPOINT', $webSearch);
 		self::assertStringContainsString('searchOpenverseImages', $webSearch);

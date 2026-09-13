@@ -712,7 +712,7 @@ class ActionExecutor {
             ]],
             ['type' => 'function', 'function' => [
                 'name' => 'discover_external_connector',
-                'description' => 'Read a configured connector OpenAPI or Swagger description and return a bounded list of available paths and methods. Safe, read-only discovery; use it before calling an unfamiliar service.',
+                'description' => 'Read a configured connector OpenAPI or Swagger description and return a bounded list of available paths, methods and sanitized parameter requirements. Safe, read-only discovery; use it before calling an unfamiliar service.',
                 'parameters' => ['type' => 'object', 'properties' => [
                     'id' => ['type' => 'string', 'description' => 'Configured connector id.'],
                 ], 'required' => ['id']],
@@ -2739,7 +2739,19 @@ class ActionExecutor {
             foreach (array_slice($found['paths'], 0, 100, true) as $path => $operations) {
                 if (!is_string($path) || !is_array($operations) || !str_starts_with($path, '/')) continue;
                 foreach ($operations as $method => $operation) if (in_array(strtoupper((string)$method), ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'], true)) {
-                    $endpoints[] = ['path' => mb_substr($path, 0, 300), 'method' => strtoupper((string)$method), 'operation_id' => is_array($operation) ? mb_substr((string)($operation['operationId'] ?? ''), 0, 120) : ''];
+                    $meta = ['path' => mb_substr($path, 0, 300), 'method' => strtoupper((string)$method), 'operation_id' => is_array($operation) ? mb_substr((string)($operation['operationId'] ?? ''), 0, 120) : ''];
+                    if (is_array($operation) && is_array($operation['parameters'] ?? null)) {
+                        $params = [];
+                        foreach (array_slice($operation['parameters'], 0, 20) as $parameter) {
+                            if (!is_array($parameter)) continue;
+                            $name = (string)($parameter['name'] ?? '');
+                            if (preg_match('/^[A-Za-z0-9_.-]{1,80}$/', $name) !== 1) continue;
+                            $schema = is_array($parameter['schema'] ?? null) ? $parameter['schema'] : [];
+                            $params[] = ['name' => $name, 'in' => in_array(($parameter['in'] ?? ''), ['query', 'path', 'header', 'cookie'], true) ? (string)$parameter['in'] : 'query', 'required' => !empty($parameter['required']), 'type' => preg_match('/^[A-Za-z0-9_.-]{1,40}$/', (string)($schema['type'] ?? 'string')) === 1 ? (string)($schema['type'] ?? 'string') : 'string'];
+                        }
+                        if ($params !== []) $meta['parameters'] = $params;
+                    }
+                    $endpoints[] = $meta;
                 }
             }
             $rows = $this->connectorRows(); $rows[$id]['openapi'] = ['source' => $source, 'version' => mb_substr((string)($found['openapi'] ?? $found['swagger'] ?? ''), 0, 30), 'endpoints' => array_slice($endpoints, 0, 200), 'updated_at' => time()];
