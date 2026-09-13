@@ -780,3 +780,31 @@ follows [Semantic Versioning](https://semver.org/).
 - Production Webpack build passed.
 - Main-branch CI passed across PHP syntax, PHPUnit, provider contracts,
   migrations, frontend build and dependency audit.
+## 1.15.0 - 2026-09-13
+
+### Multi-step agent integrations
+
+- Added `call_app_api_batch` for up to ten discovered, read-only Nextcloud API
+  calls in one agent step. EVA can now gather related data from unfamiliar
+  installed apps efficiently before planning an action.
+- Added `call_external_connector_batch` for up to eight discovered GET routes
+  across configured external services.
+- Generic Nextcloud app API calls now require an exact match in a recent route
+  discovery snapshot, including the HTTP method. This prevents arbitrary route
+  probing while preserving support for apps EVA has learned.
+- External connector calls use discovered OpenAPI endpoints when available and
+  reject routes outside that learned contract.
+- Credential-shaped fields (`token`, `password`, `secret`, API keys and session
+  headers) are redacted recursively from generic app and connector responses.
+- App capability discovery now includes display names, versions and bounded
+  descriptions, allowing the agent to adapt to newly installed apps.
+- Agent Runs now show accurate local dates for Unix-second timestamps and the
+  elapsed queue age, making stalled worker conditions immediately visible.
+
+### Verification
+
+- 540 PHPUnit tests passed (8 optional-service tests skipped).
+- 23 frontend tests passed.
+- Production Webpack build passed.
+- Main-branch CI and dependency security checks passed for the preceding
+  production fixes.

@@ -63,7 +63,7 @@ With Ollama, all processing happens on your server. Your files never leave your 
 
 Licensed under AGPL-3.0-or-later.
     </description>
-    <version>1.14.0</version>
+    <version>1.15.0</version>
     <licence>agpl</licence>
     <author>Benedikt Schächner</author>
     <namespace>EvaAi</namespace>
