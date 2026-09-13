@@ -372,6 +372,9 @@ final class OpenIssuesPendingContractTest extends TestCase {
 		self::assertStringContainsString('discoverExternalConnector', $executor);
 		self::assertStringContainsString("'/openapi.json'", $executor);
 		self::assertStringContainsString("'openapi'", $executor);
+		$webSearch = (string)file_get_contents(__DIR__ . '/../lib/Service/WebSearchService.php');
+		self::assertStringContainsString('OPENVERSE_IMAGE_ENDPOINT', $webSearch);
+		self::assertStringContainsString('searchOpenverseImages', $webSearch);
 	}
 
 	private function sliceBetween(string $haystack, string $start, string $end): string {

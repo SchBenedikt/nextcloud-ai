@@ -56,6 +56,7 @@ class WebSearchService {
      */
     private const BING_WEB_ENDPOINT = 'https://www.bing.com/search';
     private const BING_IMAGE_ENDPOINT = 'https://www.bing.com/images/search';
+    private const OPENVERSE_IMAGE_ENDPOINT = 'https://api.openverse.org/v1/images/';
     private const BING_NEWS_ENDPOINT = 'https://www.bing.com/news/search';
     private const GOOGLE_NEWS_ENDPOINT = 'https://news.google.com/rss/search';
     /** Ask the feed endpoints for XML explicitly, whatever the user agent implies. */
@@ -532,9 +533,32 @@ class WebSearchService {
         }
         $images = $this->parseBingImages($html, $count, $query);
         if ($images === []) {
+            try {
+                $fallback = $this->searchOpenverseImages($query, $count);
+                if ($fallback !== []) return ['ok' => true, 'provider' => 'openverse', 'query' => $query, 'images' => $fallback, 'error' => null];
+            } catch (\Throwable) { /* Bing's error remains the useful message. */ }
             return $empty + ['ok' => false, 'error' => 'The image search returned no usable pictures for "' . $query . '".'];
         }
         return ['ok' => true, 'provider' => $provider, 'query' => $query, 'images' => $images, 'error' => null];
+    }
+
+    /** Key-free JSON fallback for engines that serve an anti-bot HTML shell. */
+    private function searchOpenverseImages(string $query, int $count): array {
+        $url = self::OPENVERSE_IMAGE_ENDPOINT . '?' . http_build_query(['q' => $query, 'page_size' => min(20, max(8, $count * 2))]);
+        $body = $this->httpGet($url, $this->browserHeaders(self::OPENVERSE_IMAGE_ENDPOINT, 'application/json'));
+        $decoded = json_decode($body, true);
+        if (!is_array($decoded) || !is_array($decoded['results'] ?? null)) return [];
+        $out = [];
+        foreach ($decoded['results'] as $row) {
+            if (!is_array($row)) continue;
+            $image = filter_var((string)($row['url'] ?? ''), FILTER_VALIDATE_URL);
+            $preview = filter_var((string)($row['thumbnail'] ?? $row['url'] ?? ''), FILTER_VALIDATE_URL);
+            $page = filter_var((string)($row['foreign_landing_url'] ?? $row['detail_url'] ?? ''), FILTER_VALIDATE_URL);
+            if (!$image || !$preview || !$page || !in_array(strtolower((string)parse_url($image, PHP_URL_SCHEME)), ['http', 'https'], true)) continue;
+            $out[] = ['url' => $image, 'preview' => $preview, 'title' => mb_substr(trim((string)($row['title'] ?? $query)), 0, self::MAX_TITLE_CHARS), 'page' => $page];
+            if (count($out) >= $count) break;
+        }
+        return $out;
     }
 
     /**
