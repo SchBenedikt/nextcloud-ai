@@ -431,6 +431,12 @@ class ToolPolicy {
             'requiresConfirmation' => true,
             'description' => 'Call an enabled app OCS API in the current user context',
         ],
+        'call_app_api_batch' => [
+            'risk' => self::RISK_READONLY,
+            'surfaces' => [self::SURFACE_WEB, self::SURFACE_TALK, self::SURFACE_TASKPROCESSING, self::SURFACE_TASKPROCESSING_CONFIRMED, self::SURFACE_RAG],
+            'requiresConfirmation' => false,
+            'description' => 'Call several discovered app API GET routes efficiently',
+        ],
         'list_scheduled_briefings' => [
             'risk' => self::RISK_READONLY,
             'surfaces' => [self::SURFACE_WEB, self::SURFACE_TALK, self::SURFACE_RAG],
@@ -508,6 +514,12 @@ class ToolPolicy {
             'surfaces' => [self::SURFACE_WEB, self::SURFACE_TASKPROCESSING_CONFIRMED],
             'requiresConfirmation' => true,
             'description' => 'Call a configured external connector endpoint',
+        ],
+        'call_external_connector_batch' => [
+            'risk' => self::RISK_READONLY,
+            'surfaces' => [self::SURFACE_WEB, self::SURFACE_TALK, self::SURFACE_TASKPROCESSING, self::SURFACE_TASKPROCESSING_CONFIRMED, self::SURFACE_RAG],
+            'requiresConfirmation' => false,
+            'description' => 'Call several discovered connector GET routes efficiently',
         ],
         // An image search sends the query to the same external index as a web
         // search and is gated by the same switch. It exists as its own tool

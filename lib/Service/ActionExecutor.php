@@ -92,9 +92,11 @@ class ActionExecutor {
         'untag_file' => ['file_id', 'tag'],
         'restore_file_version' => ['file_id', 'version_id'],
         'call_app_api' => ['app_id', 'path', 'method'],
+        'call_app_api_batch' => ['calls'],
         'run_safe_command' => ['command'],
         'configure_external_connector' => ['id', 'base_url'],
         'call_external_connector' => ['id', 'path', 'method'],
+        'call_external_connector_batch' => ['calls'],
         'create_scheduled_briefing' => ['prompt', 'time', 'days'],
         'update_scheduled_briefing' => ['briefing_id'],
         'delete_scheduled_briefing' => ['briefing_id'],
@@ -652,6 +654,15 @@ class ActionExecutor {
                 ], 'required' => ['app_id', 'path', 'method']],
             ]],
             ['type' => 'function', 'function' => [
+                'name' => 'call_app_api_batch',
+                'description' => 'Call up to 10 previously discovered, read-only Nextcloud app API routes in one agent step. Only GET requests are accepted; use this to gather related data efficiently before planning a change.',
+                'parameters' => ['type' => 'object', 'properties' => [
+                    'calls' => ['type' => 'array', 'maxItems' => 10, 'items' => ['type' => 'object', 'properties' => [
+                        'app_id' => ['type' => 'string'], 'path' => ['type' => 'string'], 'params' => ['type' => 'object'],
+                    ], 'required' => ['app_id', 'path']]],
+                ], 'required' => ['calls']],
+            ]],
+            ['type' => 'function', 'function' => [
                 'name' => 'list_scheduled_briefings',
                 'description' => 'List the current user\'s EVA scheduled briefings and their action permissions.',
                 'parameters' => ['type' => 'object', 'properties' => new \stdClass()],
@@ -786,6 +797,15 @@ class ActionExecutor {
                     'method' => ['type' => 'string', 'enum' => ['GET', 'POST', 'PUT', 'PATCH', 'DELETE']],
                     'params' => ['type' => 'object', 'description' => 'Query parameters for GET or JSON body fields for other methods.'],
                 ], 'required' => ['id', 'path', 'method']],
+            ]],
+            ['type' => 'function', 'function' => [
+                'name' => 'call_external_connector_batch',
+                'description' => 'Call up to 8 discovered external connector GET endpoints in one step. Use this to gather related data efficiently; write methods remain confirmation-gated through call_external_connector.',
+                'parameters' => ['type' => 'object', 'properties' => [
+                    'calls' => ['type' => 'array', 'maxItems' => 8, 'items' => ['type' => 'object', 'properties' => [
+                        'id' => ['type' => 'string'], 'path' => ['type' => 'string'], 'params' => ['type' => 'object'],
+                    ], 'required' => ['id', 'path']]],
+                ], 'required' => ['calls']],
             ]],
         ];
         // Ollama akzeptiert leere "properties" nur als leeres OBJEKT {}
@@ -960,6 +980,7 @@ class ActionExecutor {
                 'discover_external_connector' => $this->discoverExternalConnector($args),
                 'configure_external_connector' => $this->configureExternalConnector($args),
                 'call_external_connector' => $this->callExternalConnector($args),
+                'call_external_connector_batch' => $this->callExternalConnectorBatch($args),
                 'list_talk_rooms' => $this->listTalkRooms($userId, $args),
                 'read_talk_chat' => $this->readTalkChat($userId, $args),
                 'send_talk_message' => $this->sendTalkMessage($userId, $args),
@@ -992,6 +1013,7 @@ class ActionExecutor {
                 'list_learned_app_apis' => $this->listLearnedAppApis(),
                 'list_learned_file_locations' => $this->listLearnedFileLocations(),
                 'call_app_api' => $this->callAppApi($args),
+                'call_app_api_batch' => $this->callAppApiBatch($args),
                 'list_scheduled_briefings' => $this->listScheduledBriefings(),
                 'create_scheduled_briefing' => $this->createScheduledBriefing($args),
                 'update_scheduled_briefing' => $this->updateScheduledBriefing($args),
@@ -1404,6 +1426,43 @@ class ActionExecutor {
             if ($ok) $this->rememberAppApiPattern($appId, $method, $path, array_keys($params), is_array($safeData) ? $this->shapeOf($safeData) : ['type' => 'string']);
             return ['ok' => $ok, 'result' => ['status' => $status, 'data' => $safeData, 'path' => $path, 'method' => $method]];
         } catch (\Throwable) { return ['ok' => false, 'error' => 'The app API request failed in the current user context.']; }
+    }
+
+    /** Execute bounded GET calls while reusing the same discovery/security path. */
+    private function callAppApiBatch(array $args): array {
+        $calls = $args['calls'] ?? null;
+        if (!is_array($calls) || $calls === [] || count($calls) > 10) {
+            return ['ok' => false, 'error' => 'calls must contain between 1 and 10 requests.'];
+        }
+        $results = [];
+        foreach ($calls as $call) {
+            if (!is_array($call)) {
+                $results[] = ['ok' => false, 'error' => 'Each batch item must be an object.'];
+                continue;
+            }
+            $results[] = $this->callAppApi([
+                'app_id' => $call['app_id'] ?? '',
+                'path' => $call['path'] ?? '',
+                'method' => 'GET',
+                'params' => is_array($call['params'] ?? null) ? $call['params'] : [],
+            ]);
+        }
+        return ['ok' => !in_array(false, array_map(static fn(array $row): bool => (bool)($row['ok'] ?? false), $results), true), 'result' => ['calls' => $results, 'count' => count($results)]];
+    }
+
+    /** Execute bounded read-only calls against one or more configured connectors. */
+    private function callExternalConnectorBatch(array $args): array {
+        $calls = $args['calls'] ?? null;
+        if (!is_array($calls) || $calls === [] || count($calls) > 8) return ['ok' => false, 'error' => 'calls must contain between 1 and 8 requests.'];
+        $results = [];
+        foreach ($calls as $call) {
+            if (!is_array($call)) { $results[] = ['ok' => false, 'error' => 'Each batch item must be an object.']; continue; }
+            $results[] = $this->callExternalConnector([
+                'id' => $call['id'] ?? '', 'path' => $call['path'] ?? '', 'method' => 'GET',
+                'params' => is_array($call['params'] ?? null) ? $call['params'] : [],
+            ]);
+        }
+        return ['ok' => !in_array(false, array_map(static fn(array $row): bool => (bool)($row['ok'] ?? false), $results), true), 'result' => ['calls' => $results, 'count' => count($results)]];
     }
 
     /** Remember only reusable call shape, never parameter values or response data. */
