@@ -995,7 +995,18 @@ class ApiController extends OCSController {
     public function backgroundChatStatus(): DataResponse {
         $user = $this->requireUser();
         if ($user === null) return new DataResponse(['error' => 'Not logged in'], 401);
-        return new DataResponse(['items' => $this->backgroundChatQueue->status($user)]);
+        $items = $this->backgroundChatQueue->status($user);
+        // The UI polls this endpoint while a tab is open. Use that heartbeat
+        // to recover gracefully when a cron tick was missed or another job
+        // temporarily reserved the timed worker.
+        $needsWake = false;
+        foreach ($items as $item) {
+            if (in_array(($item['status'] ?? ''), ['pending', 'running'], true)) { $needsWake = true; break; }
+        }
+        if ($needsWake) {
+            try { $this->jobList->scheduleAfter(BackgroundChatJob::class, time() + 1); } catch (\Throwable) { /* cron remains the fallback */ }
+        }
+        return new DataResponse(['items' => $items]);
     }
 
     #[NoAdminRequired]

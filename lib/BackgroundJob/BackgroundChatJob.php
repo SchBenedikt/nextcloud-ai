@@ -9,6 +9,7 @@ use OCA\EvaAi\Service\ChatStore;
 use OCA\EvaAi\Service\RagService;
 use OCP\AppFramework\Utility\ITimeFactory;
 use OCP\BackgroundJob\TimedJob;
+use OCP\BackgroundJob\IJobList;
 use OCP\IURLGenerator;
 use OCP\Notification\IManager;
 use Psr\Log\LoggerInterface;
@@ -22,11 +23,13 @@ final class BackgroundChatJob extends TimedJob {
         private RagService $rag,
         private IManager $notifications,
         private IURLGenerator $urls,
+        private IJobList $jobList,
         private LoggerInterface $logger,
     ) { parent::__construct($time); $this->setInterval(30); }
 
     protected function run($argument): void {
-        foreach ($this->queue->users() as $user) {
+        $users = $this->queue->users();
+        foreach ($users as $user) {
             $item = $this->queue->claim($user);
             if (!is_array($item)) continue;
             $id = (string)($item['id'] ?? '');
@@ -69,6 +72,17 @@ final class BackgroundChatJob extends TimedJob {
                     $notification->setApp(AppConfig::APP)->setUser($user)->setObject('chat', (string)($item['chatId'] ?? ''))->setSubject('background_failed', ['text' => mb_strimwidth($e->getMessage(), 0, 400, '…')])->setLink($this->urls->linkToRouteAbsolute('eva_ai.page.app') . '?chat=' . rawurlencode((string)($item['chatId'] ?? '')))->setDateTime(new \DateTime());
                     $this->notifications->notify($notification);
                 }
+            }
+        }
+        // Timed jobs are normally picked at their interval, but a busy
+        // Nextcloud queue can defer that tick for several minutes. Keep
+        // draining our durable queue promptly whenever users still have
+        // queued work (including delayed retries).
+        if ($this->queue->users() !== []) {
+            try {
+                $this->jobList->scheduleAfter(self::class, time() + 5);
+            } catch (\Throwable $e) {
+                $this->logger->debug('eva_ai: could not schedule background chat follow-up', ['exception' => $e]);
             }
         }
     }
