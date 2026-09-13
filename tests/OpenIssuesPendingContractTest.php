@@ -517,6 +517,8 @@ final class OpenIssuesPendingContractTest extends TestCase {
 		self::assertStringContainsString("'/openapi.json'", $executor);
 		self::assertStringContainsString("'openapi'", $executor);
 		self::assertStringContainsString("\$meta['parameters'] = \$params", $executor);
+		self::assertStringContainsString('connectorRequestBodyMeta', $executor);
+		self::assertStringContainsString("'request_body'", $executor);
 		self::assertStringContainsString("'required' => !empty(\$parameter['required'])", $executor);
 		self::assertStringContainsString('splitRequestPath', $executor);
 		self::assertStringContainsString('JSON_THROW_ON_ERROR', $executor);

@@ -3670,6 +3670,8 @@ class ActionExecutor {
                             $params[] = ['name' => $name, 'in' => in_array(($parameter['in'] ?? ''), ['query', 'path', 'header', 'cookie'], true) ? (string)$parameter['in'] : 'query', 'required' => !empty($parameter['required']), 'type' => preg_match('/^[A-Za-z0-9_.-]{1,40}$/', $type) === 1 ? $type : 'string'];
                         }
                         if ($params !== []) $meta['parameters'] = $params;
+                        $requestBody = $this->connectorRequestBodyMeta($operation);
+                        if ($requestBody !== null) $meta['request_body'] = $requestBody;
                     }
                     $endpoints[] = $meta;
                 }
@@ -3678,6 +3680,53 @@ class ActionExecutor {
             Server::get(\OCP\IConfig::class)->setUserValue($user, AppConfig::APP, 'external_connectors', json_encode($rows, JSON_UNESCAPED_SLASHES) ?: '{}');
             return ['ok' => true, 'result' => ['connector' => $id, 'source' => $source, 'title' => mb_substr((string)($found['info']['title'] ?? ''), 0, 160), 'endpoints' => array_slice($endpoints, 0, 1000)]];
         } catch (\Throwable) { return ['ok' => false, 'error' => 'External API discovery failed.']; }
+    }
+
+    /**
+     * Extract a bounded description of an OpenAPI JSON request body. The
+     * values are schema metadata only; defaults/examples are deliberately not
+     * copied into learned connector state.
+     *
+     * @return array{required:bool,content_type:string,fields:list<array{name:string,type:string,required:bool}>}|null
+     */
+    private function connectorRequestBodyMeta(array $operation): ?array {
+        $schema = null;
+        $required = false;
+        $contentType = 'application/json';
+        $requestBody = $operation['requestBody'] ?? null;
+        if (is_array($requestBody)) {
+            $required = !empty($requestBody['required']);
+            $content = is_array($requestBody['content'] ?? null) ? $requestBody['content'] : [];
+            foreach (['application/json', 'application/*+json', '*/*'] as $candidate) {
+                if (is_array($content[$candidate]['schema'] ?? null)) {
+                    $schema = $content[$candidate]['schema'];
+                    $contentType = $candidate;
+                    break;
+                }
+            }
+        }
+        // Swagger 2 describes JSON bodies as an operation parameter with
+        // in=body rather than requestBody/content.
+        if ($schema === null && is_array($operation['parameters'] ?? null)) {
+            foreach ($operation['parameters'] as $parameter) {
+                if (is_array($parameter) && ($parameter['in'] ?? '') === 'body' && is_array($parameter['schema'] ?? null)) {
+                    $schema = $parameter['schema'];
+                    $required = !empty($parameter['required']);
+                    break;
+                }
+            }
+        }
+        if (!is_array($schema)) return null;
+        $properties = is_array($schema['properties'] ?? null) ? $schema['properties'] : [];
+        $requiredFields = array_fill_keys(is_array($schema['required'] ?? null) ? array_map('strval', $schema['required']) : [], true);
+        $fields = [];
+        foreach (array_slice($properties, 0, 40, true) as $name => $property) {
+            if (!is_array($property) || preg_match('/^[A-Za-z0-9_.-]{1,80}$/D', (string)$name) !== 1) continue;
+            $type = (string)($property['type'] ?? 'object');
+            if (preg_match('/^[A-Za-z0-9_.-]{1,40}$/D', $type) !== 1) $type = 'object';
+            $fields[] = ['name' => (string)$name, 'type' => $type, 'required' => isset($requiredFields[(string)$name])];
+        }
+        return ['required' => $required, 'content_type' => $contentType, 'fields' => $fields];
     }
 
     private function configureExternalConnector(array $args): array {
