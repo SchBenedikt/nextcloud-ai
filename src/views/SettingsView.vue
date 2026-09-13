@@ -572,7 +572,7 @@
 </template>
 
 <script>
-import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
+import { ref, computed, watch, onMounted, onUnmounted, h } from 'vue'
 import { api, errMsg } from '../lib/api'
 import { translate as t } from '../lib/i18n'
 
@@ -582,23 +582,62 @@ const NativeTextField = {
 	inheritAttrs: false,
 	props: { modelValue: [String, Number], label: String },
 	emits: ['update:modelValue'],
-	template: `<label class="native-field"><span v-if="label" class="native-label">{{ label }}</span><input v-bind="$attrs" :value="modelValue" @input="$emit('update:modelValue', $event.target.value)" /></label>`,
+	setup(props, { attrs, emit }) {
+		return () => {
+			const inputAttrs = { ...attrs }
+			delete inputAttrs.label
+			delete inputAttrs['label-outside']
+			return h('label', { class: 'native-field' }, [
+				props.label ? h('span', { class: 'native-label' }, props.label) : null,
+				h('input', {
+					...inputAttrs,
+					value: props.modelValue ?? '',
+					onInput: event => emit('update:modelValue', event.target.value),
+				}),
+			])
+		}
+	},
 }
 const NativeCheckbox = {
 	props: { modelValue: [Boolean, String, Number], type: { type: String, default: 'switch' }, value: [String, Number, Boolean], name: String, disabled: Boolean, description: String },
 	emits: ['update:modelValue'],
-	computed: {
-		checked() { return this.type === 'radio' ? String(this.modelValue) === String(this.value) : this.modelValue === true || this.modelValue === '1' || this.modelValue === 1 },
+	setup(props, { emit, slots }) {
+		return () => {
+			const radio = props.type === 'radio'
+			const checked = radio
+				? String(props.modelValue) === String(props.value)
+				: props.modelValue === true || props.modelValue === '1' || props.modelValue === 1
+			return h('label', { class: ['native-check', { 'native-switch': props.type === 'switch' }] }, [
+				h('input', {
+					type: radio ? 'radio' : 'checkbox',
+					name: props.name,
+					value: radio ? props.value : undefined,
+					checked,
+					disabled: props.disabled,
+					onChange: event => emit('update:modelValue', radio ? event.target.value : event.target.checked),
+				}),
+				h('span', { class: 'native-check-label' }, [
+					slots.default ? slots.default() : null,
+					props.description ? h('small', props.description) : null,
+				]),
+			])
+		}
 	},
-	methods: {
-		onChange(event) { this.$emit('update:modelValue', this.type === 'radio' ? event.target.value : event.target.checked) },
-	},
-	template: `<label class="native-check" :class="{ 'native-switch': type === 'switch' }"><input :type="type === 'radio' ? 'radio' : 'checkbox'" :name="name" :value="type === 'radio' ? value : undefined" :checked="checked" :disabled="disabled" @change="onChange"><span class="native-check-label"><slot></slot><small v-if="description">{{ description }}</small></span></label>`,
 }
 const NativeButton = {
 	inheritAttrs: false,
 	props: { type: { type: String, default: 'secondary' }, disabled: Boolean, loading: Boolean },
-	template: `<button v-bind="$attrs" type="button" class="native-button" :class="'native-button--' + type" :disabled="disabled || loading"><span v-if="loading" aria-hidden="true" class="native-button-spinner">…</span><slot></slot></button>`,
+	setup(props, { attrs, slots }) {
+		return () => h('button', {
+			...attrs,
+			type: 'button',
+			class: ['native-button', `native-button--${props.type}`, attrs.class],
+			disabled: props.disabled || props.loading,
+		}, [
+			props.loading ? h('span', { 'aria-hidden': 'true', class: 'native-button-spinner' }, '…') : null,
+			slots.default ? slots.default() : null,
+		])
+	},
 }
 
 export default {
