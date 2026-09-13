@@ -577,6 +577,8 @@ final class OpenIssuesPendingContractTest extends TestCase {
 		self::assertStringContainsString("'diagnose_external_connector'", $policy);
 		self::assertStringContainsString("'configure_external_connector'", $policy);
 		self::assertStringContainsString('$ip !== $host', $executor);
+		self::assertStringContainsString("(\$parameter['in'] ?? '') !== 'query'", $executor);
+		self::assertStringContainsString('http_build_query($queryParams', $executor);
 		self::assertStringContainsString('discoverExternalConnector', $executor);
 		self::assertStringContainsString("'/openapi.json'", $executor);
 		self::assertStringContainsString("'openapi'", $executor);

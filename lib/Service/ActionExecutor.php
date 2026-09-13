@@ -3960,9 +3960,9 @@ class ActionExecutor {
         [$path, $params] = $split;
         $row = $this->connectorRows()[$id] ?? null; if (!is_array($row) || !$this->safeConnectorUrl((string)($row['base_url'] ?? ''))) return ['ok' => false, 'error' => 'Connector is not configured or its host is no longer allowed.'];
         $knownEndpoints = is_array($row['openapi']['endpoints'] ?? null) ? $row['openapi']['endpoints'] : [];
+        $matchedEndpoint = null;
         if ($knownEndpoints !== []) {
             $known = false;
-            $matchedEndpoint = null;
             foreach ($knownEndpoints as $endpoint) {
                 if (!is_array($endpoint)) continue;
                 if (strtoupper((string)($endpoint['method'] ?? '')) === $method
@@ -3987,6 +3987,21 @@ class ActionExecutor {
             if ($method === 'GET') {
                 return $this->callExternalConnectorGet($id, $path, $url, $params, $headers, $user);
             }
+            // OpenAPI distinguishes query parameters from JSON body fields.
+            // Preserve that distinction for learned POST/PUT/PATCH routes;
+            // unknown parameters remain in the body for backwards compatibility.
+            $queryParams = [];
+            if (is_array($matchedEndpoint['parameters'] ?? null)) {
+                foreach ($matchedEndpoint['parameters'] as $parameter) {
+                    if (!is_array($parameter) || ($parameter['in'] ?? '') !== 'query') continue;
+                    $name = (string)($parameter['name'] ?? '');
+                    if ($name !== '' && array_key_exists($name, $params)) {
+                        $queryParams[$name] = $params[$name];
+                        unset($params[$name]);
+                    }
+                }
+            }
+            if ($queryParams !== []) $url .= '?' . http_build_query($queryParams, '', '&', PHP_QUERY_RFC3986);
             $headers['Content-Type'] = 'application/json';
             [$status, $body, $transportError] = $this->connectorCurlRequest($url, $method, $headers, $params, self::CONNECTOR_TIMEOUT);
             if ($transportError !== '') return ['ok' => false, 'error' => 'External connector request failed. ' . $transportError];
