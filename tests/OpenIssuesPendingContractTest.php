@@ -385,6 +385,8 @@ final class OpenIssuesPendingContractTest extends TestCase {
 		self::assertStringContainsString('private function copyFile', $executor);
 		self::assertStringContainsString("'file_checksum'", $executor);
 		self::assertStringContainsString('private function fileChecksum', $executor);
+		self::assertStringContainsString("'read_files'", $executor);
+		self::assertStringContainsString('private function readFiles', $executor);
 	}
 
 	private function sliceBetween(string $haystack, string $start, string $end): string {
