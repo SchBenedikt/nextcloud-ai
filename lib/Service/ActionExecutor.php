@@ -798,6 +798,7 @@ class ActionExecutor {
                     'id' => ['type' => 'string', 'description' => 'Stable connector id, lowercase letters, numbers, underscore or hyphen (max 40).'],
                     'name' => ['type' => 'string', 'description' => 'Human-readable connector name.'],
                     'base_url' => ['type' => 'string', 'description' => 'Base URL. Public services must use HTTPS; local private/loopback hosts may use HTTP or HTTPS, e.g. http://homeassistant.local:8123 or https://192.168.1.20.'],
+                    'openapi_url' => ['type' => 'string', 'description' => 'Optional same-host OpenAPI/Swagger JSON URL when the service publishes its schema at a custom path.'],
                     'token' => ['type' => 'string', 'description' => 'Optional bearer token; encrypted at rest and never returned.'],
                     'auth_type' => ['type' => 'string', 'enum' => ['none', 'bearer', 'basic', 'api_key'], 'description' => 'Authentication scheme.'],
                     'username' => ['type' => 'string', 'description' => 'Optional username for basic authentication; encrypted at rest.'],
