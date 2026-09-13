@@ -3584,7 +3584,6 @@ class ActionExecutor {
 
     private function httpGet(string $url, int $timeout = 8): ?string {
         $ch = curl_init($url);
-        $payload = $params === [] ? '{}' : json_encode($params, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
         curl_setopt_array($ch, [
             CURLOPT_RETURNTRANSFER => 1,
             CURLOPT_TIMEOUT => $timeout,
@@ -3620,6 +3619,11 @@ class ActionExecutor {
     private function connectorCurlRequest(string $url, string $method, array $headers, array $params, int $timeout): array {
         $lines = [];
         foreach ($headers as $name => $value) $lines[] = $name . ': ' . $value;
+        try {
+            $payload = json_encode($params, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR);
+        } catch (\Throwable) {
+            return [0, '', 'Request parameters could not be encoded as JSON.'];
+        }
         $ch = curl_init($url);
         curl_setopt_array($ch, [
             CURLOPT_RETURNTRANSFER => true,
