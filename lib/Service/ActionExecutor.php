@@ -3072,6 +3072,16 @@ class ActionExecutor {
         $id = strtolower(trim((string)($args['id'] ?? ''))); $path = trim((string)($args['path'] ?? '')); $method = strtoupper(trim((string)($args['method'] ?? ''))); $params = $args['params'] ?? [];
         if (!preg_match('/^[a-z0-9][a-z0-9_-]{0,39}$/D', $id) || !in_array($method, ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'], true) || !is_array($params) || count($params) > 50 || $path === '' || str_contains($path, '..') || preg_match('/[\r\n]/', $path)) return ['ok' => false, 'error' => 'Invalid connector request.'];
         $row = $this->connectorRows()[$id] ?? null; if (!is_array($row) || !$this->safeConnectorUrl((string)($row['base_url'] ?? ''))) return ['ok' => false, 'error' => 'Connector is not configured or its host is no longer allowed.'];
+        $knownEndpoints = is_array($row['openapi']['endpoints'] ?? null) ? $row['openapi']['endpoints'] : [];
+        if ($knownEndpoints !== []) {
+            $known = false;
+            foreach ($knownEndpoints as $endpoint) {
+                if (!is_array($endpoint)) continue;
+                if (strtoupper((string)($endpoint['method'] ?? '')) === $method
+                    && $this->matchesDiscoveredRoute((string)($endpoint['path'] ?? ''), $path)) { $known = true; break; }
+            }
+            if (!$known) return ['ok' => false, 'error' => 'This connector route was not discovered. Run discover_external_connector first.'];
+        }
         $url = rtrim((string)$row['base_url'], '/') . '/' . ltrim($path, '/');
         if (!$this->safeConnectorUrl($url)) return ['ok' => false, 'error' => 'Connector path leaves the configured HTTPS host.'];
         try {
@@ -3079,8 +3089,8 @@ class ActionExecutor {
             if (!empty($row['token_configured'])) $headers['Authorization'] = 'Bearer ' . Server::get(ProviderCredentials::class)->getCustom($user, 'connector_' . $id);
             $options = ['headers' => $headers, 'timeout' => 20, 'allow_redirects' => ['max' => 0]];
             if ($method === 'GET') $options['query'] = $params; elseif ($params !== []) { $headers['Content-Type'] = 'application/json'; $options['body'] = json_encode($params, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES); $options['headers'] = $headers; }
-            $response = $client->{strtolower($method)}($url, $options); $body = $response->getBody(); if (is_resource($body)) $body = stream_get_contents($body); $body = mb_substr((string)$body, 0, 50000); $data = json_decode($body, true);
-            return ['ok' => $response->getStatusCode() >= 200 && $response->getStatusCode() < 300, 'result' => ['status' => $response->getStatusCode(), 'data' => $data ?? $body, 'connector' => $id, 'method' => $method, 'path' => $path]];
+            $response = $client->{strtolower($method)}($url, $options); $body = $response->getBody(); if (is_resource($body)) $body = stream_get_contents($body); $body = mb_substr((string)$body, 0, 50000); $data = json_decode($body, true); $safeData = is_array($data) ? $this->redactApiPayload($data) : $body;
+            return ['ok' => $response->getStatusCode() >= 200 && $response->getStatusCode() < 300, 'result' => ['status' => $response->getStatusCode(), 'data' => $safeData, 'connector' => $id, 'method' => $method, 'path' => $path]];
         } catch (\Throwable) { return ['ok' => false, 'error' => 'External connector request failed.']; }
     }
 
