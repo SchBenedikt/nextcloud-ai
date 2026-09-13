@@ -3112,39 +3112,17 @@ class ActionExecutor {
         $user = $this->config->userId() ?? ''; $headers = ['Accept' => 'application/json'];
         try {
             $headers = array_merge($headers, $this->connectorAuthHeaders($id, $row, $user));
-            $client = Server::get(\OCP\Http\Client\IClientService::class)->newClient(); $found = null; $source = null;
-            // Nextcloud's outbound HTTP client may reject private connector
+            $found = null; $source = null;
+            // Probe standard schema locations uniformly. Using curl here is
+            // intentional: Nextcloud's HTTP client can reject private/LAN
             // addresses even when the connector was explicitly allow-listed.
-            // TrueNAS is commonly hosted on such an address, so try its
-            // canonical schema endpoint through the PHP HTTPS client as a
-            // narrowly-scoped fallback before probing generic paths.
-            $preferredUrl = rtrim((string)$row['base_url'], '/') . '/api/v2.0';
-            if ($this->safeConnectorUrl($preferredUrl)) {
-                [$preferredStatus, $preferredBody] = $this->connectorCurlGet($preferredUrl, $headers, 15);
-                // TrueNAS' generated schema is several megabytes; truncating
-                // it at 200k produces invalid JSON and falsely reports that
-                // discovery failed. Keep a bounded but appliance-sized cap.
-                $preferredDecoded = json_decode(mb_substr($preferredBody, 0, 8388608), true);
-                if ($preferredStatus >= 200 && $preferredStatus < 300 && is_array($preferredDecoded) && is_array($preferredDecoded['paths'] ?? null)) {
-                    $found = $preferredDecoded; $source = '/api/v2.0';
-                }
-            }
-            // TrueNAS publishes its OpenAPI document directly at
-            // /api/v2.0 (the /api/v2.0/docs URL is a 404 on current SCALE
-            // releases). Keep the generic locations as fallbacks for other
-            // appliances.
+            // There are no vendor-specific adapters; any service publishing a
+            // standard OpenAPI/Swagger document is learned the same way.
             foreach ($found === null ? ['/api/v2.0', '/openapi.json', '/swagger.json', '/.well-known/openapi.json', '/api/open-api', '/api/openapi.json', '/api/swagger.json', '/docs/openapi.json', '/api/docs/openapi.json', '/api/v2.0/docs'] : [] as $candidate) {
                 $url = rtrim((string)$row['base_url'], '/') . $candidate; if (!$this->safeConnectorUrl($url)) continue;
-                try {
-                    $response = $client->get($url, ['headers' => $headers, 'timeout' => 15, 'allow_redirects' => ['max' => 0]]);
-                } catch (\Throwable) {
-                    // A single unsupported/blocked documentation path must
-                    // not abort discovery; continue with the remaining
-                    // candidates (important for TrueNAS and reverse proxies).
-                    continue;
-                }
-                if ($response->getStatusCode() < 200 || $response->getStatusCode() >= 300) continue;
-                $body = $response->getBody(); if (is_resource($body)) $body = stream_get_contents($body); $decoded = json_decode(mb_substr((string)$body, 0, 8388608), true);
+                [$status, $body] = $this->connectorCurlGet($url, $headers, 10);
+                if ($status < 200 || $status >= 300) continue;
+                $decoded = json_decode(mb_substr((string)$body, 0, 8388608), true);
                 if (is_array($decoded) && is_array($decoded['paths'] ?? null)) { $found = $decoded; $source = $candidate; break; }
             }
             if ($found === null) {
@@ -3152,8 +3130,8 @@ class ActionExecutor {
                 // the configured root is still useful discovery and gives the
                 // user a concrete learned endpoint to inspect next.
                 $rootUrl = rtrim((string)$row['base_url'], '/') . '/';
-                $rootResponse = $client->get($rootUrl, ['headers' => $headers, 'timeout' => 10, 'allow_redirects' => ['max' => 0]]);
-                if ($rootResponse->getStatusCode() >= 200 && $rootResponse->getStatusCode() < 300) {
+                [$rootStatus] = $this->connectorCurlGet($rootUrl, $headers, 8);
+                if ($rootStatus >= 200 && $rootStatus < 300) {
                     $rows = $this->connectorRows(); $rows[$id]['openapi'] = ['source' => 'runtime', 'version' => '', 'endpoints' => [['path' => '/', 'method' => 'GET', 'operation_id' => 'root']], 'updated_at' => time()];
                     Server::get(\OCP\IConfig::class)->setUserValue($user, AppConfig::APP, 'external_connectors', json_encode($rows, JSON_UNESCAPED_SLASHES) ?: '{}');
                     return ['ok' => true, 'result' => ['connector' => $id, 'source' => 'runtime', 'title' => '', 'endpoints' => $rows[$id]['openapi']['endpoints'], 'note' => 'No API schema was published; the service root was learned and can be tested.']];

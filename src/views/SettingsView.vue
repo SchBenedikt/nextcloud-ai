@@ -738,7 +738,16 @@ export default {
 				const draft = { ...connectorDraft.value }
 				if (!draft.id.trim()) { try { draft.id = new URL(draft.base_url).hostname.replace(/^www\./, '').split('.')[0].toLowerCase().replace(/[^a-z0-9_-]/g, '-') } catch (_) {} }
 				if (!draft.name.trim()) draft.name = draft.id
-				await api('PUT', 'connectors', draft); connectorDraft.value = { id: '', name: '', base_url: '', auth_type: 'bearer', token: '', username: '', password: '', api_key: '', api_key_header: 'X-API-Key' }; await loadConnectors(); setMessage('success', t('External connector saved.'))
+				await api('PUT', 'connectors', draft)
+				connectorDraft.value = { id: '', name: '', base_url: '', auth_type: 'bearer', token: '', username: '', password: '', api_key: '', api_key_header: 'X-API-Key' }
+				await loadConnectors()
+				try {
+					const discovered = await api('POST', 'connectors/discover', { id: draft.id })
+					setMessage('success', t('External connector saved.') + ' (' + String(discovered?.result?.endpoints?.length || 0) + ' endpoints discovered.)')
+					await loadConnectors()
+				} catch (discoveryError) {
+					setMessage('error', t('API discovery failed: {error}', { error: errMsg(discoveryError) }))
+				}
 			} catch (error) { setMessage('error', t('Could not save connector: {error}', { error: errMsg(error) })) } finally { connectorsBusy.value = false }
 		}
 		async function removeConnector(id) {
