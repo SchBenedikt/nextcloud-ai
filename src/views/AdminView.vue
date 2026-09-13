@@ -10,7 +10,7 @@
 				<NcButton v-if="(data?.scheduler?.running ?? 0) > 0" type="tertiary" :loading="stopping" @click="stopBackground">
 					{{ $t('Stop background indexing') }}
 				</NcButton>
-				<NcButton type="secondary" :loading="loading" @click="load">
+				<NcButton variant="secondary" :loading="loading" @click="load">
 					{{ $t('Refresh') }}
 				</NcButton>
 			</div>
@@ -19,7 +19,7 @@
 		<div v-if="loadError" class="callout callout-error" role="alert">
 			<strong>{{ $t('Overview could not be loaded.') }}</strong>
 			<span>{{ loadError }}</span>
-			<NcButton type="tertiary-no-background" @click="load">{{ $t('Try again') }}</NcButton>
+			<NcButton variant="tertiary-no-background" @click="load">{{ $t('Try again') }}</NcButton>
 		</div>
 
 		<div v-if="message.text" class="callout" :class="'callout-' + message.type" :role="message.type === 'error' ? 'alert' : 'status'">
@@ -92,10 +92,10 @@
 								<span v-else class="state-pill state-idle">{{ $t('Idle') }}</span>
 							</td>
 							<td class="admin-actions">
-								<NcButton type="tertiary" :loading="busyFor(user.userId) === 'reindex'" :disabled="!!busyFor(user.userId)" @click="reindex(user)">
+								<NcButton variant="tertiary" :loading="busyFor(user.userId) === 'reindex'" :disabled="!!busyFor(user.userId)" @click="reindex(user)">
 									{{ $t('Re-index') }}
 								</NcButton>
-								<NcButton type="tertiary" :loading="busyFor(user.userId) === 'reset'" :disabled="!!busyFor(user.userId) || user.indexing" @click="resetUser(user)">
+								<NcButton variant="tertiary" :loading="busyFor(user.userId) === 'reset'" :disabled="!!busyFor(user.userId) || user.indexing" @click="resetUser(user)">
 									{{ $t('Reset') }}
 								</NcButton>
 							</td>

@@ -45,7 +45,7 @@
 				:placeholder="files.length === 0 ? $t('Loading…') : $t('Ask about these files…')"
 				:disabled="busy || files.length === 0"
 				@keydown.enter.exact.prevent="ask" />
-			<NcButton type="primary" native-type="submit" :disabled="busy || !input.trim()">
+			<NcButton variant="primary" type="submit" :disabled="busy || !input.trim()">
 				<template #icon>
 					<svg width="18" height="18" viewBox="0 0 24 24"><path :d="mdiSend" fill="currentColor" /></svg>
 				</template>

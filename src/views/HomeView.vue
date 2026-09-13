@@ -7,13 +7,13 @@
 				<p class="hero-sub">{{ $t('Your personal assistant for Nextcloud — ask your files, manage chats and stay on top of your knowledge base.') }}</p>
 			</div>
 			<div class="hero-actions">
-				<NcButton type="secondary" @click="$emit('new-chat')">
+				<NcButton variant="secondary" @click="$emit('new-chat')">
 					<template #icon>
 						<NcIconSvgWrapper :path="mdiMessagePlus" :size="18" aria-hidden="true" />
 					</template>
 					{{ $t('Start a new conversation') }}
 				</NcButton>
-				<NcButton type="secondary" @click="$emit('navigate', 'docs')">
+				<NcButton variant="secondary" @click="$emit('navigate', 'docs')">
 					<template #icon>
 						<NcIconSvgWrapper :path="mdiFileDocumentOutline" :size="18" aria-hidden="true" />
 					</template>

@@ -7,10 +7,10 @@
 				<p class="page-intro">{{ $t('Review the files in your personal EVA knowledge base and inspect their indexed text.') }}</p>
 			</div>
 			<div class="header-actions">
-				<NcButton type="primary" :loading="indexing" :disabled="indexingActive" @click="startIndex">{{ $t('Index files & emails') }}</NcButton>
-				<NcButton type="secondary" :disabled="indexingActive" @click="startMailIndex">{{ $t('Only emails') }}</NcButton>
-				<NcButton type="secondary" :disabled="indexingActive" @click="startTalkIndex">{{ $t('Index Talk chats') }}</NcButton>
-				<NcButton v-if="indexingActive" type="tertiary-no-background" :loading="stopping" :disabled="indexStatus?.indexStopping" @click="stopIndex">{{ $t('Stop') }}</NcButton>
+				<NcButton variant="primary" :loading="indexing" :disabled="indexingActive" @click="startIndex">{{ $t('Index files & emails') }}</NcButton>
+				<NcButton variant="secondary" :disabled="indexingActive" @click="startMailIndex">{{ $t('Only emails') }}</NcButton>
+				<NcButton variant="secondary" :disabled="indexingActive" @click="startTalkIndex">{{ $t('Index Talk chats') }}</NcButton>
+				<NcButton v-if="indexingActive" variant="tertiary-no-background" :loading="stopping" :disabled="indexStatus?.indexStopping" @click="stopIndex">{{ $t('Stop') }}</NcButton>
 			</div>
 		</header>
 
@@ -77,7 +77,7 @@
 					<option value="chunks-desc">{{ $t('Most chunks first') }}</option>
 				</select>
 			</label>
-			<NcButton type="secondary" :loading="loading" :disabled="loadingMore" @click="load">{{ $t('Refresh') }}</NcButton>
+				<NcButton variant="secondary" :loading="loading" :disabled="loadingMore" @click="load">{{ $t('Refresh') }}</NcButton>
 		</section>
 
 		<section class="docs-body">
@@ -130,7 +130,7 @@
 									</div>
 									<div v-else-if="chunkCache.get(d.id).status === 'error'" class="docs-chunk-state docs-chunk-state-error" role="alert">
 										<div><strong>{{ $t('Chunks could not be loaded.') }}</strong> {{ chunkCache.get(d.id).error }}</div>
-										<NcButton type="tertiary" @click.stop="loadChunks(d.id, d.chunks, true)">{{ $t('Retry') }}</NcButton>
+										<NcButton variant="tertiary" @click.stop="loadChunks(d.id, d.chunks, true)">{{ $t('Retry') }}</NcButton>
 									</div>
 									<template v-else>
 										<div v-for="c in chunkCache.get(d.id).chunks" :key="c.index" class="docs-chunk">
@@ -142,7 +142,7 @@
 											{{ $t('No indexed chunk rows are available for this document.') }}
 										</div>
 										<div v-if="chunkCache.get(d.id).status === 'ready' && chunkCache.get(d.id).chunks.length < chunkCache.get(d.id).expected" class="docs-chunk-more">
-											<NcButton v-if="!chunkCache.get(d.id).loadingMore" type="secondary" @click.stop="loadMoreChunks(d.id)">
+									<NcButton v-if="!chunkCache.get(d.id).loadingMore" variant="secondary" @click.stop="loadMoreChunks(d.id)">
 												{{ $t('Load {count} more chunks', { count: chunkCache.get(d.id).expected - chunkCache.get(d.id).chunks.length }) }}
 											</NcButton>
 											<NcLoadingIcon v-else :size="16" /> {{ $t('Loading chunks …') }}
@@ -157,9 +157,9 @@
 					<span>{{ $t('Showing {shown} of {total} documents', { shown: docs.length, total }) }}</span>
 					<div v-if="loadMoreError" class="docs-pagination-error" role="alert">
 						<span>{{ loadMoreError }}</span>
-						<NcButton type="tertiary" @click="loadMore">{{ $t('Retry') }}</NcButton>
+					<NcButton variant="tertiary" @click="loadMore">{{ $t('Retry') }}</NcButton>
 					</div>
-					<NcButton v-else-if="hasMore" type="secondary" :loading="loadingMore" :disabled="loading || loadingMore" @click="loadMore">{{ $t('Load more') }}</NcButton>
+					<NcButton v-else-if="hasMore" variant="secondary" :loading="loadingMore" :disabled="loading || loadingMore" @click="loadMore">{{ $t('Load more') }}</NcButton>
 					<span v-else class="docs-pagination-end">{{ $t('All matching documents are loaded.') }}</span>
 				</div>
 		</section>
