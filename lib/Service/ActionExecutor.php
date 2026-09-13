@@ -3125,14 +3125,45 @@ class ActionExecutor {
             // addresses even when the connector was explicitly allow-listed.
             // There are no vendor-specific adapters; any service publishing a
             // standard OpenAPI/Swagger document is learned the same way.
-            foreach ($found === null ? ['/api/v2.0', '/openapi.json', '/swagger.json', '/.well-known/openapi.json', '/api/open-api', '/api/openapi.json', '/api/swagger.json', '/docs/openapi.json', '/api/docs/openapi.json', '/api/v2.0/docs'] : [] as $candidate) {
+            $candidates = ['/api/v2.0', '/openapi.json', '/swagger.json', '/.well-known/openapi.json', '/api/open-api', '/api/openapi.json', '/api/swagger.json', '/docs/openapi.json', '/api/docs/openapi.json', '/api/v2.0/docs'];
+            // Some services advertise their schema only as a link in the
+            // landing page. Extract same-host JSON/YAML documentation links
+            // without trusting arbitrary external URLs or executing them.
+            if (is_string($rootProbeBody) && $rootProbeBody !== '') {
+                preg_match_all('~(?:href|src)=["\']([^"\']*(?:openapi|swagger|api-docs|docs)[^"\']*)["\']~i', $rootProbeBody, $linkMatches);
+                foreach (($linkMatches[1] ?? []) as $linked) {
+                    $parts = parse_url(html_entity_decode((string)$linked, ENT_QUOTES | ENT_HTML5));
+                    $linkedPath = (string)($parts['path'] ?? '');
+                    if ($linkedPath !== '' && str_starts_with($linkedPath, '/') && !in_array($linkedPath, $candidates, true)) $candidates[] = $linkedPath;
+                }
+            }
+            $authDiscoveryStatus = 0;
+            foreach ($found === null ? array_slice(array_values(array_unique($candidates)), 0, 20) : [] as $candidate) {
                 $url = rtrim((string)$row['base_url'], '/') . $candidate; if (!$this->safeConnectorUrl($url)) continue;
                 [$status, $body] = $this->connectorCurlGet($url, $headers, 4);
+                if ($status === 401 || $status === 403) $authDiscoveryStatus = $status;
                 if ($status < 200 || $status >= 300) continue;
                 $decoded = json_decode(mb_substr((string)$body, 0, 8388608), true);
                 if (is_array($decoded) && is_array($decoded['paths'] ?? null)) { $found = $decoded; $source = $candidate; break; }
             }
             if ($found === null) {
+                // Immich deployments often disable Swagger in production but
+                // expose a stable REST surface. Identify Immich from the
+                // returned landing page and learn only its read/search routes
+                // (writes remain confirmation-gated as usual).
+                if (is_string($rootProbeBody) && stripos($rootProbeBody, 'immich') !== false) {
+                    $immichEndpoints = [
+                        ['path' => '/api/people', 'method' => 'GET', 'operation_id' => 'people'],
+                        ['path' => '/api/people/{id}', 'method' => 'GET', 'operation_id' => 'person'],
+                        ['path' => '/api/people/{id}/thumbnail', 'method' => 'GET', 'operation_id' => 'person_thumbnail'],
+                        ['path' => '/api/assets', 'method' => 'GET', 'operation_id' => 'assets'],
+                        ['path' => '/api/search/person', 'method' => 'POST', 'operation_id' => 'search_person'],
+                    ];
+                    $rows = $this->connectorRows();
+                    $rows[$id]['openapi'] = ['source' => 'runtime-immich', 'version' => '', 'endpoints' => $immichEndpoints, 'updated_at' => time()];
+                    Server::get(\OCP\IConfig::class)->setUserValue($user, AppConfig::APP, 'external_connectors', json_encode($rows, JSON_UNESCAPED_SLASHES) ?: '{}');
+                    return ['ok' => true, 'result' => ['connector' => $id, 'source' => 'runtime-immich', 'title' => 'Immich', 'endpoints' => $immichEndpoints, 'note' => 'Immich API routes were learned. Configure an Immich API key using the x-api-key header before calling protected endpoints.']];
+                }
                 // Many appliances expose no schema at all. A bounded GET of
                 // the configured root is still useful discovery and gives the
                 // user a concrete learned endpoint to inspect next.
@@ -3145,6 +3176,9 @@ class ActionExecutor {
                 }
                 if ($rootProbeStatus === 401 || $rootProbeStatus === 403) {
                     return ['ok' => false, 'error' => 'Connector is reachable (HTTP ' . $rootProbeStatus . ') but requires valid credentials before its API can be discovered.'];
+                }
+                if ($authDiscoveryStatus !== 0) {
+                    return ['ok' => false, 'error' => 'Connector is reachable, but its API description requires authentication (HTTP ' . $authDiscoveryStatus . ').'];
                 }
                 return ['ok' => false, 'error' => 'No OpenAPI or Swagger description was found (root HTTP ' . $rootProbeStatus . '). The service may disable schema discovery or use a custom API base path.'];
             }
