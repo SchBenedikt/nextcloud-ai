@@ -12,6 +12,7 @@ use Psr\Log\LoggerInterface;
 final class BackgroundChatQueue {
     public const KEY = 'background_chat_queue';
     public const HISTORY_KEY = 'background_chat_history';
+    private const USERS_KEY = 'background_chat_users';
     private const MAX_ITEMS = 10;
     private const MAX_MESSAGE_CHARS = 20000;
     private const MAX_HISTORY_ITEMS = 100;
@@ -48,6 +49,7 @@ final class BackgroundChatQueue {
                 ? $requestedId : 'bg_' . date('YmdHis') . '_' . bin2hex(random_bytes(5));
             $items[] = ['id' => $id, 'chatId' => $chatId, 'message' => $message, 'history' => $cleanHistory, 'status' => 'pending', 'attempts' => 0, 'steps' => 0, 'created' => time(), 'deadline' => time() + self::MAX_RUNTIME_SECONDS, 'availableAt' => time() + 15];
             $this->write($user, $items);
+            $this->rememberUser($user);
             return $id;
         });
     }
@@ -224,18 +226,39 @@ final class BackgroundChatQueue {
      */
     public function users(): array {
         try {
-            $manager = \OCP\Server::get(IUserManager::class);
-            $users = [];
-            foreach ($manager->search('', 10000) as $user) {
-                $uid = (string)$user->getUID();
-                if ($uid !== '' && trim((string)$this->config->getUserValue($uid, AppConfig::APP, self::KEY, '')) !== '') {
-                    $users[] = $uid;
+            $raw = $this->config->getAppValue(AppConfig::APP, self::USERS_KEY, '[]');
+            $indexed = json_decode($raw, true);
+            $users = is_array($indexed) ? array_values(array_unique(array_filter(array_map('strval', $indexed)))) : [];
+            // A one-time fallback discovers queues created before the index was
+            // introduced. Subsequent runs use only the bounded app-level list.
+            if ($users === []) {
+                $manager = \OCP\Server::get(IUserManager::class);
+                foreach ($manager->search('', 10000) as $user) {
+                    $uid = (string)$user->getUID();
+                    if ($uid !== '' && trim((string)$this->config->getUserValue($uid, AppConfig::APP, self::KEY, '')) !== '') $users[] = $uid;
                 }
             }
-            return array_values(array_unique($users));
+            $active = [];
+            foreach (array_slice(array_values(array_unique($users)), 0, 10000) as $uid) {
+                if (trim((string)$this->config->getUserValue($uid, AppConfig::APP, self::KEY, '')) !== '') $active[] = $uid;
+            }
+            $this->config->setAppValue(AppConfig::APP, self::USERS_KEY, json_encode($active, JSON_UNESCAPED_SLASHES) ?: '[]');
+            return $active;
         } catch (\Throwable) {
             return [];
         }
+    }
+
+    private function rememberUser(string $user): void {
+        try {
+            $raw = $this->config->getAppValue(AppConfig::APP, self::USERS_KEY, '[]');
+            $users = json_decode($raw, true);
+            $users = is_array($users) ? array_values(array_unique(array_filter(array_map('strval', $users)))) : [];
+            if (!in_array($user, $users, true)) {
+                $users[] = $user;
+                $this->config->setAppValue(AppConfig::APP, self::USERS_KEY, json_encode(array_slice($users, -10000), JSON_UNESCAPED_SLASHES) ?: '[]');
+            }
+        } catch (\Throwable) { /* queue work must never fail on an index hint */ }
     }
 
     private function read(string $user): array { $raw = $this->config->getUserValue($user, AppConfig::APP, self::KEY, '[]'); $data = json_decode($raw, true); return is_array($data) ? array_values(array_filter($data, 'is_array')) : []; }

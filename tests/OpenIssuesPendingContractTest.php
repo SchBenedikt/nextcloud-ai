@@ -60,6 +60,8 @@ final class OpenIssuesPendingContractTest extends TestCase {
 	/** A per-user JSON queue must be discoverable by the worker. */
 	public function testBackgroundQueueEnumeratesUsersWithoutExactValueLookup(): void {
 		$queue = (string)file_get_contents(__DIR__ . '/../lib/Service/BackgroundChatQueue.php');
+		self::assertStringContainsString('getAppValue(AppConfig::APP, self::USERS_KEY', $queue);
+		self::assertStringContainsString('rememberUser($user)', $queue);
 		self::assertStringContainsString('Server::get(IUserManager::class)', $queue);
 		self::assertStringContainsString('getUserValue($uid, AppConfig::APP, self::KEY', $queue);
 		self::assertStringNotContainsString('getUsersForUserValue(AppConfig::APP, self::KEY))))', $queue);
