@@ -3367,7 +3367,14 @@ class ActionExecutor {
             'password_configured' => isset($args['password']) && trim((string)$args['password']) !== '' ? true : !empty($previous['password_configured']),
             'api_key_configured' => isset($args['api_key']) && trim((string)$args['api_key']) !== '' ? true : !empty($previous['api_key_configured']),
             'api_key_header' => preg_match('/^[A-Za-z0-9][A-Za-z0-9-]{0,60}$/D', (string)($args['api_key_header'] ?? '')) ? (string)$args['api_key_header'] : (string)($previous['api_key_header'] ?? 'X-API-Key'), 'updated_at' => time()];
-        if (is_array($previous['openapi'] ?? null)) $rows[$id]['openapi'] = $previous['openapi'];
+        // Learned routes belong to a specific service origin and schema. Do
+        // not carry them over when either changes; stale paths otherwise make
+        // a valid connector appear broken (or, worse, target the old host).
+        $previousBase = rtrim((string)($previous['base_url'] ?? ''), '/');
+        $previousSchema = trim((string)($previous['openapi_url'] ?? ''));
+        if (is_array($previous['openapi'] ?? null) && $previousBase === $base && $previousSchema === $schemaUrl) {
+            $rows[$id]['openapi'] = $previous['openapi'];
+        }
         $user = $this->config->userId() ?? '';
         Server::get(\OCP\IConfig::class)->setUserValue($user, AppConfig::APP, 'external_connectors', json_encode($rows, JSON_UNESCAPED_SLASHES) ?: '{}');
         $credentials = Server::get(ProviderCredentials::class);
