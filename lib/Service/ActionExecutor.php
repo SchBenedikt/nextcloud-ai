@@ -1471,6 +1471,7 @@ class ActionExecutor {
         $path = $this->expandConnectorPath($pathTemplate, $params);
         if ($path === null) return ['ok' => false, 'error' => 'A required path parameter is missing or invalid.'];
         $params = $this->removePathParameters($pathTemplate, $params);
+        if (!$isOcsPath && str_starts_with($path, '/api/')) $absolutePath = '/apps/' . $appId . $path;
         try {
             $appManager = Server::get(\OCP\App\IAppManager::class);
             if (!in_array($appId, array_map('strval', $appManager->getEnabledApps()), true) || !$appManager->isEnabledForUser($appId)) {
