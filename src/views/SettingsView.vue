@@ -486,8 +486,8 @@
 				<div class="section-heading"><div><h3>{{ $t('External connectors') }}</h3><p>{{ $t('Connect an external service that EVA can inspect and use only after confirmation. Credentials are encrypted and never shown again.') }}</p></div></div>
 				<div v-if="connectorsLoading" class="field-help">{{ $t('Loading connectors…') }}</div>
 				<div v-for="connector in connectors" :key="connector.id" class="connector-row">
-					<div class="connector-summary"><strong>{{ connector.name }}</strong><small>{{ connector.base_url }} · {{ connector.discovered_endpoint_count || 0 }} {{ $t('learned endpoints') }}</small><details v-if="connector.learned_endpoints && connector.learned_endpoints.length" class="connector-endpoints"><summary>{{ $t('Show learned routes') }}</summary><ul><li v-for="(endpoint, index) in connector.learned_endpoints" :key="index"><code>{{ endpoint.method }}</code> <span>{{ endpoint.path }}</span></li></ul></details></div>
-					<div class="connector-actions"><NcButton type="tertiary-no-background" :disabled="connectorsBusy" @click="testConnector(connector.id)">Test</NcButton><NcButton type="tertiary-no-background" :disabled="connectorsBusy" @click="discoverConnector(connector.id)">{{ $t('Discover API') }}</NcButton><NcButton type="tertiary-no-background" :disabled="connectorsBusy" @click="removeConnector(connector.id)">{{ $t('Remove') }}</NcButton></div>
+					<div class="connector-summary"><strong>{{ connector.name }}</strong><small>{{ connector.base_url }} · {{ connector.discovered_endpoint_count || 0 }} {{ $t('learned endpoints') }} · {{ connector.auth_type === 'none' ? $t('No authentication') : connector.auth_type === 'api_key' ? $t('API key') : connector.auth_type === 'basic' ? $t('Username and password') : $t('Bearer token') }}</small><div class="connector-credentials"><span :class="connectorCredentialClass(connector)">{{ connectorCredentialLabel(connector) }}</span><span v-if="connector.auth_type === 'api_key'" class="connector-header">{{ connector.api_key_header }}</span></div><details v-if="connector.learned_endpoints && connector.learned_endpoints.length" class="connector-endpoints"><summary>{{ $t('Show learned routes') }}</summary><ul><li v-for="(endpoint, index) in connector.learned_endpoints" :key="index"><code>{{ endpoint.method }}</code> <span>{{ endpoint.path }}</span></li></ul></details><div v-if="connectorDiagnostics[connector.id]" class="connector-diagnostic" role="status"><strong>{{ connectorDiagnostics[connector.id].category === 'authentication' ? $t('Authentication rejected') : connectorDiagnostics[connector.id].category === 'network' ? $t('Host unreachable') : $t('Connector reachable') }}</strong><span>HTTP {{ connectorDiagnostics[connector.id].status || '—' }} · {{ connectorDiagnostics[connector.id].elapsed_ms || 0 }} ms<span v-if="connectorDiagnostics[connector.id].resolved_ip"> · {{ connectorDiagnostics[connector.id].resolved_ip }}</span></span><small v-if="connectorDiagnostics[connector.id].hint">{{ connectorDiagnostics[connector.id].hint }}</small></div></div>
+					<div class="connector-actions"><NcButton type="tertiary-no-background" :disabled="connectorsBusy" @click="editConnector(connector)">{{ $t('Edit') }}</NcButton><NcButton type="tertiary-no-background" :disabled="connectorsBusy" @click="testConnector(connector.id)">{{ $t('Test connection') }}</NcButton><NcButton type="tertiary-no-background" :disabled="connectorsBusy" @click="discoverConnector(connector.id)">{{ $t('Discover API') }}</NcButton><NcButton type="tertiary-no-background" :disabled="connectorsBusy" @click="removeConnector(connector.id)">{{ $t('Remove') }}</NcButton></div>
 				</div>
 			<p class="field-help connector-auto-note">EVA probes standard API descriptions automatically and learns available routes. Every external action still requires confirmation.</p>
 			<div class="connector-form"><NcTextField v-model="connectorDraft.id" :label="$t('Connector ID')" :label-outside="true" placeholder="optional — generated automatically" /><NcTextField v-model="connectorDraft.name" :label="$t('Display name')" :label-outside="true" placeholder="optional — generated automatically" /><NcTextField v-model="connectorDraft.base_url" type="url" :label="$t('Service base URL')" :label-outside="true" placeholder="https://api.example.com" /><NcTextField v-model="connectorDraft.openapi_url" type="url" :label="$t('OpenAPI / Swagger URL (optional)')" :label-outside="true" placeholder="https://api.example.com/custom/openapi.json" /><div class="auth-choice"><span class="native-label">{{ $t('Authentication') }}</span><NcCheckboxRadioSwitch v-model="connectorDraft.auth_type" type="radio" name="eva-connector-auth" value="none">{{ $t('None') }}</NcCheckboxRadioSwitch><NcCheckboxRadioSwitch v-model="connectorDraft.auth_type" type="radio" name="eva-connector-auth" value="bearer">{{ $t('Bearer token') }}</NcCheckboxRadioSwitch><NcCheckboxRadioSwitch v-model="connectorDraft.auth_type" type="radio" name="eva-connector-auth" value="basic">{{ $t('Username and password') }}</NcCheckboxRadioSwitch><NcCheckboxRadioSwitch v-model="connectorDraft.auth_type" type="radio" name="eva-connector-auth" value="api_key">{{ $t('API key') }}</NcCheckboxRadioSwitch></div><NcTextField v-if="connectorDraft.auth_type === 'bearer'" v-model="connectorDraft.token" type="password" autocomplete="new-password" :label="$t('Bearer / service token (optional)')" :label-outside="true" :placeholder="$t('Leave empty to keep the saved secret')" /><template v-if="connectorDraft.auth_type === 'basic'"><NcTextField v-model="connectorDraft.username" autocomplete="username" :label="$t('Username (optional)')" :label-outside="true" /><NcTextField v-model="connectorDraft.password" type="password" autocomplete="new-password" :label="$t('Password (optional)')" :label-outside="true" :placeholder="$t('Leave empty to keep the saved secret')" /></template><template v-if="connectorDraft.auth_type === 'api_key'"><NcTextField v-model="connectorDraft.api_key" type="password" autocomplete="new-password" :label="$t('API key (optional)')" :label-outside="true" :placeholder="$t('Leave empty to keep the saved secret')" /><NcTextField v-model="connectorDraft.api_key_header" :label="$t('API key header')" :label-outside="true" placeholder="X-API-Key" /></template><NcButton type="primary" :disabled="connectorsBusy || !connectorDraft.base_url" @click="saveConnector">{{ $t('Save connector') }}</NcButton></div>
@@ -778,6 +778,7 @@ export default {
 		const pluginsLoading = ref(false)
 		const connectorsLoading = ref(false)
 		const connectorsBusy = ref(false)
+		const connectorDiagnostics = ref({})
 		const connectorDraft = ref({ id: '', name: '', base_url: '', openapi_url: '', auth_type: 'bearer', token: '', username: '', password: '', api_key: '', api_key_header: 'X-API-Key' })
 		function applyConnectorExample(type) {
 			connectorDraft.value = type === 'truenas'
@@ -817,6 +818,18 @@ export default {
 			connectorsBusy.value = true
 			try { await api('DELETE', 'connectors', { id }); await loadConnectors(); setMessage('success', t('External connector removed.')) } catch (error) { setMessage('error', t('Could not remove connector: {error}', { error: errMsg(error) })) } finally { connectorsBusy.value = false }
 		}
+		function editConnector(connector) {
+			connectorDraft.value = { id: connector.id || '', name: connector.name || '', base_url: connector.base_url || '', openapi_url: connector.openapi_url || '', auth_type: connector.auth_type || 'bearer', token: '', username: '', password: '', api_key: '', api_key_header: connector.api_key_header || 'X-API-Key' }
+			setMessage('info', t('Connector loaded for editing. Leave secret fields empty to keep saved credentials.'))
+		}
+		function connectorCredentialLabel(connector) {
+			if (connector.auth_type === 'none') return t('No credentials required')
+			const configured = connector.auth_type === 'basic' ? connector.username_configured && connector.password_configured : connector.auth_type === 'api_key' ? connector.api_key_configured : connector.token_configured
+			return configured ? t('Credential saved') : t('Credential missing')
+		}
+		function connectorCredentialClass(connector) {
+			return connector.auth_type === 'none' || connectorCredentialLabel(connector) === t('Credential saved') || connectorCredentialLabel(connector) === t('No credentials required') ? 'connector-credential connector-credential-ok' : 'connector-credential connector-credential-warning'
+		}
 		async function discoverConnector(id) {
 			connectorsBusy.value = true
 			setMessage('info', 'API discovery is running…')
@@ -827,6 +840,7 @@ export default {
 			setMessage('info', 'Connector test is running…')
 			try {
 				const result = await api('POST', 'connectors/test', { id })
+				if (result?.result && typeof result.result === 'object') connectorDiagnostics.value = { ...connectorDiagnostics.value, [id]: result.result }
 				const status = Number(result?.result?.data?.status || result?.result?.status || 0)
 				const detail = status === 401
 					? ' Authentication is required. Configure the connector secret (for Immich use an API key with header x-api-key).'
@@ -1443,7 +1457,7 @@ export default {
 			groqKey, customProviderKey, removeGroqKey, ocrEnabled, f, providerProfiles, providerProfilesPlaceholder, chatProviderOptions, groqModelOptions, embeddingModelOptions, chatModelOptions, summaryModelOptions, chatRetentionOptions, webSearchProviderOptions, status, health, healthLoading, statusTimer, limits, availableModels, embeddingModels, chatModels, embeddingInstalledHint, chatInstalledHint, modelLoading, modelError, checkOut, saving, checking, indexing, resetting, deletingChats, stopping, saved, loadError, message, validationErrors, resetConfirm, chatsDeleteConfirm,
 			newExcludePath, excludeError, excludeList, actionsEnabled, backgroundActionsEnabled, notificationsEnabled, learningEnabled, safeCommandsEnabled, mailIndexEnabled, talkIndexEnabled, talkWriteEnabled, indexEnrolled, actionsDisabled, busy, indexingActive, settingsLocked, maxFileSizeMb,
 			isAdminMode, admin, userWebSearchEnabled, userWebSearchSafeSearch, userWebSearchImages, userWebSearchBrowser, userWebSearchFetchContent, webSearchKey, removeWebSearchKey, webSearchKeyStored, webSearchReady, savingAdmin, saveAdminSettings, loadAdminSettings,
-			connectors, connectorsLoading, connectorsBusy, connectorDraft, applyConnectorExample, saveConnector, removeConnector, discoverConnector, testConnector, plugins, pluginsLoading,
+			connectors, connectorsLoading, connectorsBusy, connectorDiagnostics, connectorDraft, applyConnectorExample, saveConnector, editConnector, connectorCredentialLabel, connectorCredentialClass, removeConnector, discoverConnector, testConnector, plugins, pluginsLoading,
 			proactiveEnabled, proactiveBriefings, briefingDraft, briefingFormError, weekdays, dayName, addBriefing, removeBriefing, toggleBriefing, toggleBriefingActions,
 			exporting, downloadExport,
 			knowledgeContent, knowledgeOriginal, savingKnowledge, knowledgeSaved, saveKnowledgeContent,
@@ -1663,6 +1677,14 @@ export default {
 .connector-endpoints li { overflow-wrap:anywhere; }
 .connector-endpoints code { margin-right:5px; color:var(--color-primary-element); font-size:11px; }
 .connector-row small { color:var(--color-text-maxcontrast); margin-top:3px; }
+.connector-credentials { display:flex; align-items:center; flex-wrap:wrap; gap:6px; margin-top:7px; font-size:11px; }
+.connector-credential { padding:2px 7px; border-radius:999px; font-weight:650; }
+.connector-credential-ok { color:var(--color-success); background:color-mix(in srgb,var(--color-success) 12%,transparent); }
+.connector-credential-warning { color:var(--color-warning-text,var(--color-main-text)); background:color-mix(in srgb,var(--color-warning) 16%,transparent); }
+.connector-header { color:var(--color-text-maxcontrast); font-family:var(--font-family-monospace,monospace); }
+.connector-diagnostic { display:flex; align-items:baseline; flex-wrap:wrap; gap:5px 9px; margin-top:8px; padding:7px 9px; border-left:3px solid var(--color-primary-element); background:color-mix(in srgb,var(--color-primary-element) 7%,transparent); font-size:11px; }
+.connector-diagnostic span { color:var(--color-text-maxcontrast); }
+.connector-diagnostic small { flex-basis:100%; margin:0; }
 .connector-examples { display:flex; flex-wrap:wrap; align-items:center; gap:8px; margin-top:14px; color:var(--color-text-maxcontrast); font-size:13px; }
 .connector-examples button { border:1px solid var(--color-border); border-radius:var(--border-radius-pill); background:var(--color-background-hover); color:var(--color-main-text); padding:4px 10px; cursor:pointer; }
 .connector-actions { display:flex; gap:6px; flex-shrink:0; }
