@@ -4,6 +4,7 @@ import { mdiDownload, mdiTune } from '@mdi/js'
 import { translate as t } from './i18n'
 import { buildConfirmForm } from './confirmForms'
 import { escHtml, mdInline, mdToHtml, citedSources, copyText, installImageFallback } from './chat-utils'
+import { getFilePickerBuilder, FilePickerClosed } from '@nextcloud/dialogs'
 
 /* EvaAi – Vanilla-Chat-Mount.
  * Wird von ChatView.vue aufgerufen und rendert den kompletten Chat
@@ -435,17 +436,35 @@ export function mountChat(root, opts = {}) {
 	filesBtn.className = 'cbtn cbtn-ghost cbtn-files'
 	filesBtn.textContent = t('Add files')
 	filesBtn.title = t('Choose Nextcloud files to use as context')
-	filesBtn.addEventListener('click', () => {
-		const picker = window.OC && window.OC.dialogs && window.OC.dialogs.filepicker
-		if (typeof picker !== 'function') { err.textContent = t('The Nextcloud file picker is not available on this page.'); err.style.display = ''; return }
-		picker(t('Choose files for EVA'), (paths) => {
-			const selected = Array.isArray(paths) ? paths : [paths]
-			const clean = selected.map((p) => typeof p === 'string' ? p : (p && (p.path || p.name))).filter(Boolean).slice(0, 10)
-			if (!clean.length) return
-			const prefix = t('Use these Nextcloud files as context') + ': ' + clean.join(', ')
-			input.value = input.value.trim() ? prefix + '\\n' + input.value.trim() : prefix
-			input.focus()
-		}, true, '', true)
+	filesBtn.addEventListener('click', async () => {
+		filesBtn.disabled = true
+		try {
+			// The modern builder returns server-side Nextcloud paths and works in
+			// both the full app and standalone EVA view. Limit to files (not
+			// folders) and allow selecting several context files at once.
+			const paths = await getFilePickerBuilder(t('Choose files for EVA'))
+				.setMultiSelect(true)
+				.setType(1)
+				.build()
+				.pick()
+			const clean = (Array.isArray(paths) ? paths : [paths]).filter((p) => typeof p === 'string' && p.startsWith('/')).slice(0, 10)
+			if (clean.length) {
+				const prefix = t('Use these Nextcloud files as context') + ': ' + clean.join(', ')
+				input.value = input.value.trim() ? prefix + '\\n' + input.value.trim() : prefix
+				input.focus()
+			}
+		} catch (error) {
+			if (!(error instanceof FilePickerClosed)) {
+				// Keep compatibility with older Nextcloud versions that expose only
+				// the legacy global picker.
+				const legacy = window.OC && window.OC.dialogs && window.OC.dialogs.filepicker
+				if (typeof legacy === 'function') legacy(t('Choose files for EVA'), (paths) => {
+					const clean = (Array.isArray(paths) ? paths : [paths]).map((p) => typeof p === 'string' ? p : (p && (p.path || p.name))).filter(Boolean).slice(0, 10)
+					if (clean.length) input.value = (t('Use these Nextcloud files as context') + ': ' + clean.join(', ')) + (input.value.trim() ? '\\n' + input.value.trim() : '')
+				}, true, '', true)
+				else { err.textContent = t('The Nextcloud file picker is not available on this page.'); err.style.display = '' }
+			}
+		} finally { filesBtn.disabled = false }
 	})
 	const sendBtn = document.createElement('button')
 	sendBtn.type = 'submit'
