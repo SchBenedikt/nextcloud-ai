@@ -1,5 +1,15 @@
 # Eva AI — Private RAG Assistant for Nextcloud
 
+Eva is a privacy-first AI assistant for your Nextcloud. It combines semantic and lexical search over your files with cited answers, safe actions, background jobs, and configurable AI providers.
+
+## See Eva in action
+
+![Eva chat overview](screenshots/eva-chat-overview.png)
+
+![Cited answers from your files](screenshots/eva-cited-answer.png)
+
+![Confirmation before a write action](screenshots/eva-safe-actions.png)
+
 [![License: AGPL v3](https://img.shields.io/badge/License-AGPL%20v3-blue.svg)](https://www.gnu.org/licenses/agpl-3.0)
 [![Nextcloud](https://img.shields.io/badge/Nextcloud-30--35-blue)](https://nextcloud.com)
 [![PHP](https://img.shields.io/badge/PHP-8.2%2B-purple)](https://php.net)
