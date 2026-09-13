@@ -18,7 +18,7 @@
 		<div v-if="loadError" class="callout callout-error" role="alert">
 			<strong>{{ $t('Settings could not be loaded.') }}</strong>
 			<span>{{ loadError }}</span>
-			<NcButton type="tertiary-no-background" @click="loadStatus(true)">{{ $t('Try again') }}</NcButton>
+			<NcButton variant="tertiary-no-background" @click="loadStatus(true)">{{ $t('Try again') }}</NcButton>
 		</div>
 
 		<div class="summary-grid" :aria-label="$t('EVA status')">
@@ -49,7 +49,7 @@
 			<strong>{{ health.ok ? $t('System healthy') : $t('System needs attention') }}</strong>
 			<span>{{ $t('Provider: {state}', { state: health.provider?.online ? $t('Connected') : $t('Not connected') }) }}</span>
 			<span>{{ $t('Queue: {count} active', { count: health.queue?.active || 0 }) }}</span>
-			<NcButton type="tertiary-no-background" :disabled="healthLoading" @click="loadHealth">{{ $t('Refresh diagnosis') }}</NcButton>
+			<NcButton variant="tertiary-no-background" :disabled="healthLoading" @click="loadHealth">{{ $t('Refresh diagnosis') }}</NcButton>
 		</div>
 
 		<div v-if="message.text" class="callout" :class="'callout-' + message.type" :role="message.type === 'error' ? 'alert' : 'status'">
@@ -67,7 +67,7 @@
 					<strong>{{ status?.indexStopping ? $t('Stopping indexing…') : status?.indexMode === 'mail' ? $t('Email indexing is running') : $t('Indexing is running') }}</strong>
 					<span>{{ $t('You can leave this page; the background job continues on the server. Settings stay locked until it finishes.') }}</span>
 				</div>
-				<NcButton type="secondary" :loading="stopping" :disabled="status?.indexStopping" @click="stopIndex">{{ $t('Stop indexing') }}</NcButton>
+				<NcButton variant="secondary" :loading="stopping" :disabled="status?.indexStopping" @click="stopIndex">{{ $t('Stop indexing') }}</NcButton>
 			</div>
 			<fieldset class="settings-fieldset" :disabled="settingsLocked">
 			<section id="settings-connection" class="settings-section">
@@ -149,7 +149,7 @@
 					</div>
 				</div>
 				<div class="inline-actions">
-					<NcButton type="secondary" :loading="checking" :disabled="busy" @click="checkOllama">{{ $t('Check connection') }}</NcButton>
+					<NcButton variant="secondary" :loading="checking" :disabled="busy" @click="checkOllama">{{ $t('Check connection') }}</NcButton>
 					<span v-if="modelError" class="action-hint action-error">{{ modelError }}</span>
 					<span v-else-if="modelLoading" class="action-hint">{{ $t('Discovering models from Ollama…') }}</span>
 					<span v-else class="action-hint">{{ $t('Models are loaded automatically from the configured endpoint.') }}</span>
@@ -318,13 +318,13 @@
 					<div v-if="excludeList.length" class="exclude-chips">
 						<span v-for="(path, index) in excludeList" :key="path" class="exclude-chip">
 							{{ path }}
-							<NcButton class="chip-remove" type="tertiary-no-background" :aria-label="$t('Remove {path}', { path })" :disabled="busy" @click="removeExclude(index)">×</NcButton>
+							<NcButton class="chip-remove" variant="tertiary-no-background" :aria-label="$t('Remove {path}', { path })" :disabled="busy" @click="removeExclude(index)">×</NcButton>
 						</span>
 					</div>
 					<p v-else class="empty-help">{{ $t('No folders are excluded.') }}</p>
 					<div class="exclude-add-row">
 						<NcTextField v-model="newExcludePath" :label="$t('Folder path')" :label-outside="true" :placeholder="$t('e.g. Photos or Documents/Archive')" @keydown.enter.prevent="addExclude" />
-						<NcButton type="secondary" :disabled="busy" @click="addExclude">{{ $t('Add folder') }}</NcButton>
+						<NcButton variant="secondary" :disabled="busy" @click="addExclude">{{ $t('Add folder') }}</NcButton>
 					</div>
 					<p v-if="excludeError" class="inline-error" role="alert">{{ excludeError }}</p>
 					<p class="field-help">{{ $t('Changes take effect the next time you start indexing. Use paths relative to your Files root.') }}</p>
@@ -336,18 +336,18 @@
 						<p>{{ $t('Save first, then rebuild the knowledge base with the current scope.') }}</p>
 					</div>
 					<div class="button-group">
-						<NcButton type="primary" :loading="indexing" :disabled="settingsLocked || indexingActive" @click="startIndex">{{ $t('Save & start indexing') }}</NcButton>
-						<NcButton type="secondary" :disabled="settingsLocked || indexingActive" @click="startMailIndex">{{ $t('Only index emails') }}</NcButton>
-						<NcButton type="secondary" :disabled="settingsLocked || indexingActive" @click="startTalkIndex">{{ $t('Only index Nextcloud Talk chats') }}</NcButton>
-						<NcButton type="tertiary-no-background" :disabled="settingsLocked || indexingActive" @click="resetConfirm = true">{{ $t('Delete index') }}</NcButton>
+						<NcButton variant="primary" :loading="indexing" :disabled="settingsLocked || indexingActive" @click="startIndex">{{ $t('Save & start indexing') }}</NcButton>
+						<NcButton variant="secondary" :disabled="settingsLocked || indexingActive" @click="startMailIndex">{{ $t('Only index emails') }}</NcButton>
+						<NcButton variant="secondary" :disabled="settingsLocked || indexingActive" @click="startTalkIndex">{{ $t('Only index Nextcloud Talk chats') }}</NcButton>
+						<NcButton variant="tertiary-no-background" :disabled="settingsLocked || indexingActive" @click="resetConfirm = true">{{ $t('Delete index') }}</NcButton>
 					</div>
 				</div>
 				<div v-if="resetConfirm" class="confirm-panel" role="alertdialog" aria-modal="true" aria-labelledby="reset-title">
 					<strong id="reset-title">{{ $t('Delete the complete index?') }}</strong>
 					<p>{{ $t('This removes indexed documents and vectors. Your original Nextcloud files stay untouched. You will need to start indexing again.') }}</p>
 					<div class="button-group">
-						<NcButton type="tertiary-no-background" @click="resetConfirm = false">{{ $t('Cancel') }}</NcButton>
-						<NcButton type="primary" class="danger-button" :loading="resetting" @click="resetIndex">{{ $t('Delete index') }}</NcButton>
+						<NcButton variant="tertiary-no-background" @click="resetConfirm = false">{{ $t('Cancel') }}</NcButton>
+						<NcButton variant="primary" class="danger-button" :loading="resetting" @click="resetIndex">{{ $t('Delete index') }}</NcButton>
 					</div>
 				</div>
 			</section>
@@ -369,14 +369,14 @@
 						<strong>{{ $t('Delete all chats') }}</strong>
 						<p>{{ $t('Permanently removes your saved EVA conversations and messages.') }}</p>
 					</div>
-					<NcButton type="tertiary-no-background" :disabled="settingsLocked" @click="chatsDeleteConfirm = true">{{ $t('Delete all chats') }}</NcButton>
+					<NcButton variant="tertiary-no-background" :disabled="settingsLocked" @click="chatsDeleteConfirm = true">{{ $t('Delete all chats') }}</NcButton>
 				</div>
 				<div v-if="chatsDeleteConfirm" class="confirm-panel" role="alertdialog" aria-modal="true" aria-labelledby="chats-delete-title">
 					<strong id="chats-delete-title">{{ $t('Delete all chat history?') }}</strong>
 					<p>{{ $t('This cannot be undone. Your indexed documents and files will remain untouched.') }}</p>
 					<div class="button-group">
-						<NcButton type="tertiary-no-background" @click="chatsDeleteConfirm = false">{{ $t('Cancel') }}</NcButton>
-						<NcButton type="primary" class="danger-button" :loading="deletingChats" @click="deleteAllChats">{{ $t('Delete all chats') }}</NcButton>
+						<NcButton variant="tertiary-no-background" @click="chatsDeleteConfirm = false">{{ $t('Cancel') }}</NcButton>
+						<NcButton variant="primary" class="danger-button" :loading="deletingChats" @click="deleteAllChats">{{ $t('Delete all chats') }}</NcButton>
 					</div>
 				</div>
 			</section>
@@ -404,7 +404,7 @@
 					</p>
 				</div>
 				<div class="inline-actions">
-					<NcButton type="primary" :loading="savingKnowledge" :disabled="settingsLocked || knowledgeContent === knowledgeOriginal" @click="saveKnowledgeContent">
+					<NcButton variant="primary" :loading="savingKnowledge" :disabled="settingsLocked || knowledgeContent === knowledgeOriginal" @click="saveKnowledgeContent">
 						{{ $t('Save knowledge') }}
 					</NcButton>
 					<span v-if="knowledgeSaved" class="action-hint" style="color: var(--color-success);">{{ $t('Saved') }}</span>
@@ -439,7 +439,7 @@
 					<div v-if="proactiveEnabled" class="briefing-editor">
 						<div v-if="!proactiveBriefings.length" class="briefing-empty"><strong>{{ $t('No briefings yet') }}</strong><span>{{ $t('Add your first briefing below, for example a morning calendar summary or a weekly file digest.') }}</span></div>
 						<div v-for="briefing in proactiveBriefings" :key="briefing.id" class="briefing-card">
-							<div class="briefing-card-top"><div class="briefing-time"><span>{{ briefing.time }}</span><small>{{ briefing.days.map(dayName).join(' · ') }}</small></div><div class="briefing-card-actions"><NcCheckboxRadioSwitch :model-value="briefing.enabled !== false" type="switch" :aria-label="$t('Toggle briefing')" @update:model-value="toggleBriefing(briefing.id)">{{ briefing.enabled === false ? $t('Paused') : $t('Active') }}</NcCheckboxRadioSwitch><NcButton type="tertiary-no-background" @click="toggleBriefingActions(briefing.id)">{{ briefing.allow_actions ? $t('Disable actions') : $t('Enable actions') }}</NcButton><NcButton type="tertiary-no-background" @click="removeBriefing(briefing.id)">{{ $t('Remove') }}</NcButton></div></div>
+							<div class="briefing-card-top"><div class="briefing-time"><span>{{ briefing.time }}</span><small>{{ briefing.days.map(dayName).join(' · ') }}</small></div><div class="briefing-card-actions"><NcCheckboxRadioSwitch :model-value="briefing.enabled !== false" type="switch" :aria-label="$t('Toggle briefing')" @update:model-value="toggleBriefing(briefing.id)">{{ briefing.enabled === false ? $t('Paused') : $t('Active') }}</NcCheckboxRadioSwitch><NcButton variant="tertiary-no-background" @click="toggleBriefingActions(briefing.id)">{{ briefing.allow_actions ? $t('Disable actions') : $t('Enable actions') }}</NcButton><NcButton variant="tertiary-no-background" @click="removeBriefing(briefing.id)">{{ $t('Remove') }}</NcButton></div></div>
 							<p class="briefing-prompt">{{ briefing.prompt }}</p><small class="briefing-next">{{ briefing.enabled === false ? $t('Paused') : $t('Runs on {days} at {time}', { days: briefing.days.map(dayName).join(', '), time: briefing.time }) }} <span v-if="briefing.allow_actions" class="briefing-action-badge">{{ $t('Actions enabled') }}</span></small>
 						</div>
 						<div class="briefing-form"><div class="briefing-form-title"><strong>{{ $t('Create a briefing') }}</strong><span>{{ $t('Choose what EVA should prepare and when you want it.') }}</span></div>
@@ -450,7 +450,7 @@
 						<NcCheckboxRadioSwitch v-model="briefingDraft.allow_actions" type="switch">{{ $t('Allow EVA to perform requested actions automatically') }}</NcCheckboxRadioSwitch>
 						<p v-if="briefingDraft.allow_actions" class="field-help briefing-action-warning">{{ $t('Use only for prompts you trust. EVA will execute needed changes in the background without a second dialog; generic app APIs still need the encrypted Nextcloud app token.') }}</p>
 						<div><span class="native-label">{{ $t('Repeat on') }}</span><div class="weekday-picker"><NcCheckboxRadioSwitch v-for="day in weekdays" :key="day.value" v-model="briefingDraft.days" type="checkbox" :value="day.value">{{ day.label }}</NcCheckboxRadioSwitch></div></div>
-						<div class="briefing-form-actions"><NcButton type="primary" :disabled="saving || proactiveBriefings.length >= 20" @click="addBriefing">{{ $t('Add briefing') }}</NcButton><span>{{ $t('{count} slots remaining', { count: Math.max(0, 20 - proactiveBriefings.length) }) }}</span></div><p v-if="briefingFormError" class="field-help briefing-action-warning" role="alert">{{ briefingFormError }}</p></div>
+						<div class="briefing-form-actions"><NcButton variant="primary" :disabled="saving || proactiveBriefings.length >= 20" @click="addBriefing">{{ $t('Add briefing') }}</NcButton><span>{{ $t('{count} slots remaining', { count: Math.max(0, 20 - proactiveBriefings.length) }) }}</span></div><p v-if="briefingFormError" class="field-help briefing-action-warning" role="alert">{{ briefingFormError }}</p></div>
 					</div>
 				</div>
 			</section>
@@ -490,10 +490,10 @@
 				<div v-if="connectorsLoading" class="field-help">{{ $t('Loading connectors…') }}</div>
 				<div v-for="connector in connectors" :key="connector.id" class="connector-row">
 					<div class="connector-summary"><strong>{{ connector.name }}</strong><small>{{ connector.base_url }} · {{ connector.discovered_endpoint_count || 0 }} {{ $t('learned endpoints') }} · {{ connector.auth_type === 'none' ? $t('No authentication') : connector.auth_type === 'api_key' ? $t('API key') : connector.auth_type === 'basic' ? $t('Username and password') : $t('Bearer token') }}</small><div class="connector-credentials"><span :class="connectorCredentialClass(connector)">{{ connectorCredentialLabel(connector) }}</span><span v-if="connector.auth_type === 'api_key'" class="connector-header">{{ connector.api_key_header }}</span></div><details v-if="connector.learned_endpoints && connector.learned_endpoints.length" class="connector-endpoints"><summary>{{ $t('Explore learned routes') }} ({{ connector.learned_endpoints.length }})</summary><div class="connector-route-filter"><NcTextField v-model="connectorEndpointQuery" :label="$t('Filter routes')" :label-outside="true" :placeholder="$t('Search method, path or operation')" /></div><ul><li v-for="(endpoint, index) in filteredConnectorEndpoints(connector)" :key="index"><code>{{ endpoint.method }}</code> <span>{{ endpoint.path }}</span><small v-if="endpoint.operation_id">{{ endpoint.operation_id }}</small><small v-if="endpoint.request_body && endpoint.request_body.fields && endpoint.request_body.fields.length">{{ $t('JSON fields') }}: {{ endpoint.request_body.fields.map(field => field.name + (field.required ? ' *' : '')).join(', ') }}</small></li></ul><p v-if="filteredConnectorEndpoints(connector).length === 0" class="field-help">{{ $t('No learned route matches this filter.') }}</p></details><div v-if="connectorDiagnostics[connector.id]" class="connector-diagnostic" role="status"><strong>{{ connectorDiagnostics[connector.id].category === 'authentication' ? $t('Authentication rejected') : connectorDiagnostics[connector.id].category === 'network' ? $t('Host unreachable') : $t('Connector reachable') }}</strong><span>HTTP {{ connectorDiagnostics[connector.id].status || '—' }} · {{ connectorDiagnostics[connector.id].elapsed_ms || 0 }} ms<span v-if="connectorDiagnostics[connector.id].resolved_ip"> · {{ connectorDiagnostics[connector.id].resolved_ip }}</span></span><small v-if="connectorDiagnostics[connector.id].hint">{{ connectorDiagnostics[connector.id].hint }}</small></div></div>
-					<div class="connector-actions"><NcButton type="tertiary-no-background" :disabled="connectorsBusy" @click="editConnector(connector)">{{ $t('Edit') }}</NcButton><NcButton type="tertiary-no-background" :disabled="connectorsBusy" @click="testConnector(connector.id)">{{ $t('Test connection') }}</NcButton><NcButton type="tertiary-no-background" :disabled="connectorsBusy" @click="discoverConnector(connector.id)">{{ $t('Discover API') }}</NcButton><NcButton type="tertiary-no-background" :disabled="connectorsBusy" @click="removeConnector(connector.id)">{{ $t('Remove') }}</NcButton></div>
+					<div class="connector-actions"><NcButton variant="tertiary-no-background" :disabled="connectorsBusy" @click="editConnector(connector)">{{ $t('Edit') }}</NcButton><NcButton variant="tertiary-no-background" :disabled="connectorsBusy" @click="testConnector(connector.id)">{{ $t('Test connection') }}</NcButton><NcButton variant="tertiary-no-background" :disabled="connectorsBusy" @click="discoverConnector(connector.id)">{{ $t('Discover API') }}</NcButton><NcButton variant="tertiary-no-background" :disabled="connectorsBusy" @click="removeConnector(connector.id)">{{ $t('Remove') }}</NcButton></div>
 				</div>
 			<p class="field-help connector-auto-note">EVA probes standard API descriptions automatically and learns available routes. Every external action still requires confirmation.</p>
-			<div class="connector-form"><NcTextField v-model="connectorDraft.id" :label="$t('Connector ID')" :label-outside="true" placeholder="optional — generated automatically" /><NcTextField v-model="connectorDraft.name" :label="$t('Display name')" :label-outside="true" placeholder="optional — generated automatically" /><NcTextField v-model="connectorDraft.base_url" type="url" :label="$t('Service base URL')" :label-outside="true" placeholder="https://api.example.com" /><NcTextField v-model="connectorDraft.openapi_url" type="url" :label="$t('OpenAPI / Swagger URL (optional)')" :label-outside="true" placeholder="https://api.example.com/custom/openapi.json" /><div class="auth-choice"><span class="native-label">{{ $t('Authentication') }}</span><NcCheckboxRadioSwitch v-model="connectorDraft.auth_type" type="radio" name="eva-connector-auth" value="none">{{ $t('None') }}</NcCheckboxRadioSwitch><NcCheckboxRadioSwitch v-model="connectorDraft.auth_type" type="radio" name="eva-connector-auth" value="bearer">{{ $t('Bearer token') }}</NcCheckboxRadioSwitch><NcCheckboxRadioSwitch v-model="connectorDraft.auth_type" type="radio" name="eva-connector-auth" value="basic">{{ $t('Username and password') }}</NcCheckboxRadioSwitch><NcCheckboxRadioSwitch v-model="connectorDraft.auth_type" type="radio" name="eva-connector-auth" value="api_key">{{ $t('API key') }}</NcCheckboxRadioSwitch></div><NcTextField v-if="connectorDraft.auth_type === 'bearer'" v-model="connectorDraft.token" type="password" autocomplete="new-password" :label="$t('Bearer / service token (optional)')" :label-outside="true" :placeholder="$t('Leave empty to keep the saved secret')" /><template v-if="connectorDraft.auth_type === 'basic'"><NcTextField v-model="connectorDraft.username" autocomplete="username" :label="$t('Username (optional)')" :label-outside="true" /><NcTextField v-model="connectorDraft.password" type="password" autocomplete="new-password" :label="$t('Password (optional)')" :label-outside="true" :placeholder="$t('Leave empty to keep the saved secret')" /></template><template v-if="connectorDraft.auth_type === 'api_key'"><NcTextField v-model="connectorDraft.api_key" type="password" autocomplete="new-password" :label="$t('API key (optional)')" :label-outside="true" :placeholder="$t('Leave empty to keep the saved secret')" /><NcTextField v-model="connectorDraft.api_key_header" :label="$t('API key header')" :label-outside="true" placeholder="X-API-Key" /></template><NcButton type="primary" :disabled="connectorsBusy || !connectorDraft.base_url" @click="saveConnector">{{ $t('Save connector') }}</NcButton></div>
+			<div class="connector-form"><NcTextField v-model="connectorDraft.id" :label="$t('Connector ID')" :label-outside="true" placeholder="optional — generated automatically" /><NcTextField v-model="connectorDraft.name" :label="$t('Display name')" :label-outside="true" placeholder="optional — generated automatically" /><NcTextField v-model="connectorDraft.base_url" type="url" :label="$t('Service base URL')" :label-outside="true" placeholder="https://api.example.com" /><NcTextField v-model="connectorDraft.openapi_url" type="url" :label="$t('OpenAPI / Swagger URL (optional)')" :label-outside="true" placeholder="https://api.example.com/custom/openapi.json" /><div class="auth-choice"><span class="native-label">{{ $t('Authentication') }}</span><NcCheckboxRadioSwitch v-model="connectorDraft.auth_type" type="radio" name="eva-connector-auth" value="none">{{ $t('None') }}</NcCheckboxRadioSwitch><NcCheckboxRadioSwitch v-model="connectorDraft.auth_type" type="radio" name="eva-connector-auth" value="bearer">{{ $t('Bearer token') }}</NcCheckboxRadioSwitch><NcCheckboxRadioSwitch v-model="connectorDraft.auth_type" type="radio" name="eva-connector-auth" value="basic">{{ $t('Username and password') }}</NcCheckboxRadioSwitch><NcCheckboxRadioSwitch v-model="connectorDraft.auth_type" type="radio" name="eva-connector-auth" value="api_key">{{ $t('API key') }}</NcCheckboxRadioSwitch></div><NcTextField v-if="connectorDraft.auth_type === 'bearer'" v-model="connectorDraft.token" type="password" autocomplete="new-password" :label="$t('Bearer / service token (optional)')" :label-outside="true" :placeholder="$t('Leave empty to keep the saved secret')" /><template v-if="connectorDraft.auth_type === 'basic'"><NcTextField v-model="connectorDraft.username" autocomplete="username" :label="$t('Username (optional)')" :label-outside="true" /><NcTextField v-model="connectorDraft.password" type="password" autocomplete="new-password" :label="$t('Password (optional)')" :label-outside="true" :placeholder="$t('Leave empty to keep the saved secret')" /></template><template v-if="connectorDraft.auth_type === 'api_key'"><NcTextField v-model="connectorDraft.api_key" type="password" autocomplete="new-password" :label="$t('API key (optional)')" :label-outside="true" :placeholder="$t('Leave empty to keep the saved secret')" /><NcTextField v-model="connectorDraft.api_key_header" :label="$t('API key header')" :label-outside="true" placeholder="X-API-Key" /></template><NcButton variant="primary" :disabled="connectorsBusy || !connectorDraft.base_url" @click="saveConnector">{{ $t('Save connector') }}</NcButton></div>
 			<p class="field-help">{{ $t('The connector adapter sends the selected authentication scheme (Bearer, Basic or API key). Secrets are encrypted at rest and never returned. Public HTTPS hosts and explicitly local HTTP(S) services are supported; every external action requires confirmation.') }}</p>
 			</section>
 
@@ -548,7 +548,7 @@
 						<strong>{{ $t('Download my data') }}</strong>
 						<p>{{ $t('Your chats, personal knowledge and a metadata list of indexed documents as one JSON file (GDPR export).') }}</p>
 					</div>
-					<NcButton type="secondary" :disabled="exporting" :loading="exporting" @click="downloadExport">{{ $t('Download') }}</NcButton>
+					<NcButton variant="secondary" :disabled="exporting" :loading="exporting" @click="downloadExport">{{ $t('Download') }}</NcButton>
 				</div>
 			</section>
 			</fieldset>
