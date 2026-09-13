@@ -167,8 +167,9 @@ final class FrontendContractTest extends TestCase {
 		self::assertStringContainsString('NodeDeletedEvent::class', $appPhp);
 		self::assertStringContainsString('NodeRenamedEvent::class', $appPhp);
 		self::assertStringContainsString('public function reindexFile(string $userId, int $fileId): array', (string)file_get_contents(__DIR__ . '/../lib/Service/Indexer.php'));
-		self::assertStringContainsString('scheduleAfter', (string)file_get_contents(__DIR__ . '/../lib/Listener/FileChangeListener.php'));
-		self::assertStringContainsString('markFile', (string)file_get_contents(__DIR__ . '/../lib/Listener/FileChangeListener.php'));
+        self::assertStringContainsString('scheduleAfter', (string)file_get_contents(__DIR__ . '/../lib/Listener/FileChangeListener.php'));
+        self::assertStringContainsString('markFile', (string)file_get_contents(__DIR__ . '/../lib/Listener/FileChangeListener.php'));
+        self::assertStringContainsString("search_revision", (string)file_get_contents(__DIR__ . '/../lib/Listener/FileChangeListener.php'));
 		self::assertStringContainsString('class ReindexFileJob', (string)file_get_contents(__DIR__ . '/../lib/BackgroundJob/ReindexFileJob.php'));
         $settings = (string)file_get_contents(__DIR__ . '/../src/views/SettingsView.vue');
         self::assertStringContainsString("api('DELETE', 'chats')", $settings);

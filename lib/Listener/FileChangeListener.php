@@ -15,6 +15,7 @@ use OCP\Files\Events\Node\NodeWrittenEvent;
 use OCP\Files\File;
 use OCP\Files\Folder;
 use OCP\Files\Node;
+use OCP\IConfig;
 use Psr\Log\LoggerInterface;
 
 /**
@@ -33,7 +34,8 @@ class FileChangeListener implements IEventListener {
     public function __construct(
         private DirtyIndexStore $dirty,
         private IJobList $jobList,
-        private LoggerInterface $logger
+        private LoggerInterface $logger,
+        private IConfig $config
     ) {
     }
 
@@ -88,6 +90,12 @@ class FileChangeListener implements IEventListener {
                 }
                 $this->dirty->markFolderRenamed($userId, $old, $new);
             }
+            // Invalidate the bounded direct-search cache immediately. The
+            // incremental index job is intentionally debounced, but a user
+            // asking about a just-uploaded unindexed file must not receive a
+            // stale empty result for the cache TTL.
+            $revision = (int)$this->config->getUserValue($userId, 'eva_ai', 'search_revision', '0');
+            $this->config->setUserValue($userId, 'eva_ai', 'search_revision', (string)(($revision + 1) % 2147483647));
             // One debounced job per user drains the whole queue (IJobList
             // updates the run time when the argument already exists).
             $this->jobList->scheduleAfter(\OCA\EvaAi\BackgroundJob\ReindexFileJob::class, self::DEBOUNCE_SECONDS, ['userId' => $userId]);
