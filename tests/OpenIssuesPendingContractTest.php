@@ -356,6 +356,8 @@ final class OpenIssuesPendingContractTest extends TestCase {
 		self::assertStringContainsString("'paused'", $queue);
 		self::assertStringContainsString("backgroundChat/pause", $routes);
 		self::assertStringContainsString("backgroundChat/resume", $routes);
+		self::assertStringContainsString("backgroundChat/retry", $routes);
+		self::assertStringContainsString('HISTORY_KEY', $queue);
 	}
 
 	public function testExternalConnectorsAreBoundedAndConfirmationReady(): void {
