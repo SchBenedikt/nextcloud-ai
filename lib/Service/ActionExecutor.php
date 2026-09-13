@@ -781,12 +781,17 @@ class ActionExecutor {
             ]],
             ['type' => 'function', 'function' => [
                 'name' => 'configure_external_connector',
-                'description' => 'Create or update a named external connector. Public HTTPS and explicitly local HTTP(S) services (for example TrueNAS or Home Assistant) are supported; the token is encrypted and never shown to EVA.',
+                'description' => 'Create or update a named external connector. Public HTTPS and explicitly local HTTP(S) services are supported. Choose no auth, bearer token, basic username/password or API key; all secrets are encrypted and never shown to EVA.',
                 'parameters' => ['type' => 'object', 'properties' => [
                     'id' => ['type' => 'string', 'description' => 'Stable connector id, lowercase letters, numbers, underscore or hyphen (max 40).'],
                     'name' => ['type' => 'string', 'description' => 'Human-readable connector name.'],
                     'base_url' => ['type' => 'string', 'description' => 'Base URL. Public services must use HTTPS; local private/loopback hosts may use HTTP or HTTPS, e.g. http://homeassistant.local:8123 or https://192.168.1.20.'],
                     'token' => ['type' => 'string', 'description' => 'Optional bearer token; encrypted at rest and never returned.'],
+                    'auth_type' => ['type' => 'string', 'enum' => ['none', 'bearer', 'basic', 'api_key'], 'description' => 'Authentication scheme.'],
+                    'username' => ['type' => 'string', 'description' => 'Optional username for basic authentication; encrypted at rest.'],
+                    'password' => ['type' => 'string', 'description' => 'Optional password for basic authentication; encrypted at rest.'],
+                    'api_key' => ['type' => 'string', 'description' => 'Optional API key; encrypted at rest.'],
+                    'api_key_header' => ['type' => 'string', 'description' => 'Header for API keys, for example X-API-Key (default).'],
                 ], 'required' => ['id', 'base_url']],
             ]],
             ['type' => 'function', 'function' => [
@@ -3063,7 +3068,7 @@ class ActionExecutor {
         foreach ($this->connectorRows() as $id => $row) {
             if (!is_array($row)) continue;
             $endpoints = is_array($row['openapi']['endpoints'] ?? null) ? array_values(array_slice($row['openapi']['endpoints'], -1000)) : [];
-            $out[] = ['id' => (string)$id, 'name' => (string)($row['name'] ?? $id), 'base_url' => (string)($row['base_url'] ?? ''), 'token_configured' => !empty($row['token_configured']), 'updated_at' => (int)($row['updated_at'] ?? 0), 'discovered_endpoint_count' => count($endpoints), 'learned_endpoints' => $endpoints, 'openapi_updated_at' => (int)($row['openapi']['updated_at'] ?? 0)];
+            $out[] = ['id' => (string)$id, 'name' => (string)($row['name'] ?? $id), 'base_url' => (string)($row['base_url'] ?? ''), 'auth_type' => (string)($row['auth_type'] ?? (!empty($row['token_configured']) ? 'bearer' : 'none')), 'token_configured' => !empty($row['token_configured']), 'username_configured' => !empty($row['username_configured']), 'password_configured' => !empty($row['password_configured']), 'api_key_configured' => !empty($row['api_key_configured']), 'api_key_header' => (string)($row['api_key_header'] ?? 'X-API-Key'), 'updated_at' => (int)($row['updated_at'] ?? 0), 'discovered_endpoint_count' => count($endpoints), 'learned_endpoints' => $endpoints, 'openapi_updated_at' => (int)($row['openapi']['updated_at'] ?? 0)];
         }
         return ['ok' => true, 'result' => ['connectors' => $out]];
     }
@@ -3073,7 +3078,7 @@ class ActionExecutor {
         if (!preg_match('/^[a-z0-9][a-z0-9_-]{0,39}$/D', $id) || !is_array($row) || !$this->safeConnectorUrl((string)($row['base_url'] ?? ''))) return ['ok' => false, 'error' => 'Connector is not configured.'];
         $user = $this->config->userId() ?? ''; $headers = ['Accept' => 'application/json'];
         try {
-            if (!empty($row['token_configured'])) $headers['Authorization'] = 'Bearer ' . Server::get(ProviderCredentials::class)->getCustom($user, 'connector_' . $id);
+            $headers = array_merge($headers, $this->connectorAuthHeaders($id, $row, $user));
             $client = Server::get(\OCP\Http\Client\IClientService::class)->newClient(); $found = null; $source = null;
             // Nextcloud's outbound HTTP client may reject private connector
             // addresses even when the connector was explicitly allow-listed.
@@ -3166,11 +3171,19 @@ class ActionExecutor {
         if ($name === '') $name = $id;
         $rows = $this->connectorRows();
         $previous = is_array($rows[$id] ?? null) ? $rows[$id] : [];
-        $rows[$id] = ['name' => mb_substr($name, 0, 120), 'base_url' => $base, 'token_configured' => isset($args['token']) && trim((string)$args['token']) !== '' ? true : !empty($previous['token_configured']), 'updated_at' => time()];
+        $authType = in_array((string)($args['auth_type'] ?? ($previous['auth_type'] ?? 'bearer')), ['none', 'bearer', 'basic', 'api_key'], true) ? (string)($args['auth_type'] ?? ($previous['auth_type'] ?? 'bearer')) : 'bearer';
+        $rows[$id] = ['name' => mb_substr($name, 0, 120), 'base_url' => $base, 'auth_type' => $authType,
+            'token_configured' => isset($args['token']) && trim((string)$args['token']) !== '' ? true : !empty($previous['token_configured']),
+            'username_configured' => isset($args['username']) && trim((string)$args['username']) !== '' ? true : !empty($previous['username_configured']),
+            'password_configured' => isset($args['password']) && trim((string)$args['password']) !== '' ? true : !empty($previous['password_configured']),
+            'api_key_configured' => isset($args['api_key']) && trim((string)$args['api_key']) !== '' ? true : !empty($previous['api_key_configured']),
+            'api_key_header' => preg_match('/^[A-Za-z0-9][A-Za-z0-9-]{0,60}$/D', (string)($args['api_key_header'] ?? '')) ? (string)$args['api_key_header'] : (string)($previous['api_key_header'] ?? 'X-API-Key'), 'updated_at' => time()];
         if (is_array($previous['openapi'] ?? null)) $rows[$id]['openapi'] = $previous['openapi'];
         $user = $this->config->userId() ?? '';
         Server::get(\OCP\IConfig::class)->setUserValue($user, AppConfig::APP, 'external_connectors', json_encode($rows, JSON_UNESCAPED_SLASHES) ?: '{}');
-        if (array_key_exists('token', $args)) Server::get(ProviderCredentials::class)->saveCustom($user, 'connector_' . $id, trim((string)$args['token']));
+        $credentials = Server::get(ProviderCredentials::class);
+        if (array_key_exists('token', $args)) $credentials->saveCustom($user, 'connector_' . $id, trim((string)$args['token']));
+        foreach (['username', 'password', 'api_key'] as $field) if (array_key_exists($field, $args)) $credentials->saveCustomValue($user, 'connector_' . $id, $field, trim((string)$args[$field]));
         return ['ok' => true, 'result' => ['id' => $id, 'name' => $name, 'base_url' => $base, 'token_configured' => $rows[$id]['token_configured']]];
     }
 
@@ -3192,7 +3205,7 @@ class ActionExecutor {
         if (!$this->safeConnectorUrl($url)) return ['ok' => false, 'error' => 'Connector path leaves the configured HTTPS host.'];
         try {
             $client = Server::get(\OCP\Http\Client\IClientService::class)->newClient(); $headers = ['Accept' => 'application/json']; $user = $this->config->userId() ?? '';
-            if (!empty($row['token_configured'])) $headers['Authorization'] = 'Bearer ' . Server::get(ProviderCredentials::class)->getCustom($user, 'connector_' . $id);
+            $headers = array_merge($headers, $this->connectorAuthHeaders($id, $row, $user));
             $options = ['headers' => $headers, 'timeout' => 20, 'allow_redirects' => ['max' => 0]];
             if ($method === 'GET') $options['query'] = $params; elseif ($params !== []) { $headers['Content-Type'] = 'application/json'; $options['body'] = json_encode($params, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES); $options['headers'] = $headers; }
             // Appliances can briefly return 5xx/429 while middleware starts
@@ -3238,6 +3251,22 @@ class ActionExecutor {
         // For hostnames gethostbyname() must resolve (the `$ip !== $host`
         // condition); literal public IP addresses are already validated above.
         return filter_var($ip, FILTER_VALIDATE_IP, FILTER_FLAG_NO_PRIV_RANGE | FILTER_FLAG_NO_RES_RANGE) !== false;
+    }
+
+    /** Build connector auth headers without ever returning credential values. */
+    private function connectorAuthHeaders(string $id, array $row, string $user): array {
+        $type = (string)($row['auth_type'] ?? (!empty($row['token_configured']) ? 'bearer' : 'none'));
+        $credentials = Server::get(ProviderCredentials::class); $prefix = 'connector_' . $id;
+        try {
+            if ($type === 'basic' && !empty($row['username_configured']) && !empty($row['password_configured'])) {
+                return ['Authorization' => 'Basic ' . base64_encode($credentials->getCustomValue($user, $prefix, 'username') . ':' . $credentials->getCustomValue($user, $prefix, 'password'))];
+            }
+            if ($type === 'api_key' && !empty($row['api_key_configured'])) {
+                return [(string)($row['api_key_header'] ?? 'X-API-Key') => $credentials->getCustomValue($user, $prefix, 'api_key')];
+            }
+            if ($type === 'bearer' && !empty($row['token_configured'])) return ['Authorization' => 'Bearer ' . $credentials->getCustom($user, $prefix)];
+        } catch (\Throwable) { return []; }
+        return [];
     }
 
     private function weather(array $args): array {

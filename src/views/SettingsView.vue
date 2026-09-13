@@ -508,7 +508,7 @@
 					<div class="connector-actions"><NcButton type="tertiary-no-background" :disabled="connectorsBusy" @click="testConnector(connector.id)">Test</NcButton><NcButton type="tertiary-no-background" :disabled="connectorsBusy" @click="discoverConnector(connector.id)">{{ $t('Discover API') }}</NcButton><NcButton type="tertiary-no-background" :disabled="connectorsBusy" @click="removeConnector(connector.id)">{{ $t('Remove') }}</NcButton></div>
 				</div>
 			<div class="connector-examples"><span>Examples:</span><button type="button" @click="applyConnectorExample('homeassistant')">Home Assistant</button><button type="button" @click="applyConnectorExample('truenas')">TrueNAS</button><button type="button" @click="applyConnectorExample('github')">GitHub</button></div>
-			<div class="connector-form"><NcTextField v-model="connectorDraft.id" :label="$t('Connector ID')" :label-outside="true" placeholder="homeassistant" /><NcTextField v-model="connectorDraft.name" :label="$t('Display name')" :label-outside="true" placeholder="Home Assistant" /><NcTextField v-model="connectorDraft.base_url" type="url" :label="$t('Service base URL')" :label-outside="true" placeholder="https://api.example.com" /><NcTextField v-model="connectorDraft.token" type="password" autocomplete="new-password" :label="$t('Bearer / service token (optional)')" :label-outside="true" :placeholder="$t('Leave empty to keep the saved secret')" /><NcButton type="primary" :disabled="connectorsBusy || !connectorDraft.id || !connectorDraft.base_url" @click="saveConnector">{{ $t('Save connector') }}</NcButton></div>
+			<div class="connector-form"><NcTextField v-model="connectorDraft.id" :label="$t('Connector ID')" :label-outside="true" placeholder="homeassistant" /><NcTextField v-model="connectorDraft.name" :label="$t('Display name')" :label-outside="true" placeholder="Home Assistant" /><NcTextField v-model="connectorDraft.base_url" type="url" :label="$t('Service base URL')" :label-outside="true" placeholder="https://api.example.com" /><label class="native-label">{{ $t('Authentication') }}<select v-model="connectorDraft.auth_type" class="native-select"><option value="none">{{ $t('None') }}</option><option value="bearer">{{ $t('Bearer token') }}</option><option value="basic">{{ $t('Username and password') }}</option><option value="api_key">{{ $t('API key') }}</option></select></label><NcTextField v-if="connectorDraft.auth_type === 'bearer'" v-model="connectorDraft.token" type="password" autocomplete="new-password" :label="$t('Bearer / service token (optional)')" :label-outside="true" :placeholder="$t('Leave empty to keep the saved secret')" /><template v-if="connectorDraft.auth_type === 'basic'"><NcTextField v-model="connectorDraft.username" autocomplete="username" :label="$t('Username (optional)')" :label-outside="true" /><NcTextField v-model="connectorDraft.password" type="password" autocomplete="new-password" :label="$t('Password (optional)')" :label-outside="true" :placeholder="$t('Leave empty to keep the saved secret')" /></template><template v-if="connectorDraft.auth_type === 'api_key'"><NcTextField v-model="connectorDraft.api_key" type="password" autocomplete="new-password" :label="$t('API key (optional)')" :label-outside="true" :placeholder="$t('Leave empty to keep the saved secret')" /><NcTextField v-model="connectorDraft.api_key_header" :label="$t('API key header')" :label-outside="true" placeholder="X-API-Key" /></template><NcButton type="primary" :disabled="connectorsBusy || !connectorDraft.id || !connectorDraft.base_url" @click="saveConnector">{{ $t('Save connector') }}</NcButton></div>
 			<p class="field-help">{{ $t('The current connector adapter sends this secret as an Authorization: Bearer token. Secrets are encrypted at rest and never returned. Public HTTPS hosts and explicitly local HTTP(S) services are supported; every external action requires confirmation.') }}</p>
 			</section>
 
@@ -720,13 +720,13 @@ export default {
 		const connectors = ref([])
 		const connectorsLoading = ref(false)
 		const connectorsBusy = ref(false)
-		const connectorDraft = ref({ id: '', name: '', base_url: '', token: '' })
+		const connectorDraft = ref({ id: '', name: '', base_url: '', auth_type: 'bearer', token: '', username: '', password: '', api_key: '', api_key_header: 'X-API-Key' })
 		function applyConnectorExample(type) {
 			connectorDraft.value = type === 'truenas'
-				? { id: 'truenas', name: 'TrueNAS', base_url: 'https://truenas.local', token: '' }
+				? { id: 'truenas', name: 'TrueNAS', base_url: 'https://truenas.local', auth_type: 'bearer', token: '', username: '', password: '', api_key: '', api_key_header: 'X-API-Key' }
 				: type === 'github'
-					? { id: 'github', name: 'GitHub', base_url: 'https://api.github.com', token: '' }
-					: { id: 'homeassistant', name: 'Home Assistant', base_url: 'http://homeassistant.local:8123', token: '' }
+					? { id: 'github', name: 'GitHub', base_url: 'https://api.github.com', auth_type: 'bearer', token: '', username: '', password: '', api_key: '', api_key_header: 'X-API-Key' }
+					: { id: 'homeassistant', name: 'Home Assistant', base_url: 'http://homeassistant.local:8123', auth_type: 'bearer', token: '', username: '', password: '', api_key: '', api_key_header: 'X-API-Key' }
 		}
 		async function loadConnectors() {
 			connectorsLoading.value = true
@@ -734,7 +734,7 @@ export default {
 		}
 		async function saveConnector() {
 			connectorsBusy.value = true
-			try { await api('PUT', 'connectors', { ...connectorDraft.value }); connectorDraft.value = { id: '', name: '', base_url: '', token: '' }; await loadConnectors(); setMessage('success', t('External connector saved.')) } catch (error) { setMessage('error', t('Could not save connector: {error}', { error: errMsg(error) })) } finally { connectorsBusy.value = false }
+			try { await api('PUT', 'connectors', { ...connectorDraft.value }); connectorDraft.value = { id: '', name: '', base_url: '', auth_type: 'bearer', token: '', username: '', password: '', api_key: '', api_key_header: 'X-API-Key' }; await loadConnectors(); setMessage('success', t('External connector saved.')) } catch (error) { setMessage('error', t('Could not save connector: {error}', { error: errMsg(error) })) } finally { connectorsBusy.value = false }
 		}
 		async function removeConnector(id) {
 			if (!window.confirm(t('Remove connector {id}?', { id }))) return
