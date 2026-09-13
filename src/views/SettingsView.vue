@@ -218,6 +218,7 @@
 				<NcCheckboxRadioSwitch v-model="terminalCommandsEnabled" type="switch" class="native-toggle compact-switch" :description="$t('Allow explicitly confirmed commands from the executable allowlist below. EVA never invokes a shell and rejects pipes, redirects and substitutions.')">
 					{{ $t('Allow confirmed terminal commands') }}
 				</NcCheckboxRadioSwitch>
+				<p v-if="terminalCommandsEnabled" class="field-help">{{ $t('You can also ask EVA to run up to five allowlisted commands sequentially; each command is shown and timed separately.') }}</p>
 				<NcCheckboxRadioSwitch v-if="terminalCommandsEnabled" v-model="terminalCommandAny" type="switch" class="native-toggle compact-switch" :description="$t('Let EVA run any executable after you confirm the exact command. Shell syntax is still blocked and no command runs without confirmation.')">
 					{{ $t('Allow custom terminal executables') }}
 				</NcCheckboxRadioSwitch>

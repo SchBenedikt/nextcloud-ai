@@ -1,6 +1,6 @@
 {
   "name": "eva-ai",
-  "version": "1.16.49",
+  "version": "1.16.50",
   "private": true,
   "engines": {
     "node": "^24.0.0",

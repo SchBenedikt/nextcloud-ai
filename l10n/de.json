@@ -44,6 +44,7 @@
         "No learned route matches this filter.": "Keine gelernte Route passt zu diesem Filter.",
         "JSON fields": "JSON-Felder",
         "Parameters": "Parameter",
+        "You can also ask EVA to run up to five allowlisted commands sequentially; each command is shown and timed separately.": "Du kannst EVA auch bitten, bis zu fünf erlaubte Befehle nacheinander auszuführen; jeder Befehl wird separat angezeigt und gemessen.",
         "EVA extensions": "EVA-Erweiterungen",
         "Installed Nextcloud apps can add namespaced tools to EVA. Their schemas are visible here; actions still follow EVA confirmation and surface rules.": "Installierte Nextcloud-Apps können EVA um eigene Werkzeuge erweitern. Ihre Schemas werden hier angezeigt; Aktionen folgen weiterhin den EVA-Bestätigungen und Oberflächenregeln.",
         "Loading extensions…": "Erweiterungen werden geladen …",
