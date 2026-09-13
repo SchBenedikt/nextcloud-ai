@@ -182,15 +182,18 @@
 </template>
 
 <script>
-import { ref, computed, watch, onMounted, onBeforeUnmount } from 'vue'
+import { ref, computed, watch, onMounted, onBeforeUnmount, defineAsyncComponent } from 'vue'
 import HomeView from './views/HomeView.vue'
 import ChatView from './views/ChatView.vue'
-import DocumentsView from './views/DocumentsView.vue'
-import MetricsView from './views/MetricsView.vue'
-import SettingsView from './views/SettingsView.vue'
-import AgentRunsView from './views/AgentRunsView.vue'
-import FileContextChatView from './views/FileContextChatView.vue'
-import AdminView from './views/AdminView.vue'
+// Keep the initial chat bundle small. These views are opened on demand and
+// loaded as independent chunks, which is especially important on slower
+// production Nextcloud instances.
+const DocumentsView = defineAsyncComponent(() => import('./views/DocumentsView.vue'))
+const MetricsView = defineAsyncComponent(() => import('./views/MetricsView.vue'))
+const SettingsView = defineAsyncComponent(() => import('./views/SettingsView.vue'))
+const AgentRunsView = defineAsyncComponent(() => import('./views/AgentRunsView.vue'))
+const FileContextChatView = defineAsyncComponent(() => import('./views/FileContextChatView.vue'))
+const AdminView = defineAsyncComponent(() => import('./views/AdminView.vue'))
 import { mdiChatProcessing, mdiFileDocumentOutline, mdiTune, mdiTrashCanOutline, mdiMessagePlus, mdiPencilOutline, mdiChevronDown, mdiViewDashboardOutline, mdiPinOutline, mdiPinOffOutline, mdiFolderOutline, mdiFolderPlusOutline, mdiFolderRemoveOutline, mdiFolderSearchOutline, mdiFolderOffOutline, mdiArchiveOutline, mdiArchiveArrowUpOutline } from '@mdi/js'
 import { NcCounterBubble } from '@nextcloud/vue'
 import NcAppNavigationSearch from '@nextcloud/vue/components/NcAppNavigationSearch'
