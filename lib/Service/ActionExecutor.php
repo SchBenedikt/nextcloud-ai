@@ -36,6 +36,7 @@ class ActionExecutor {
     private const MAX_READ_FILE_BYTES = 8388608; // 8 MB safety limit
     private const LEARNED_API_TTL = 2592000; // refresh route metadata monthly
     private const APP_API_TIMEOUT = 30;
+    private const APP_API_BATCH_BUDGET = 20;
     /** Keep remote connector outages from consuming the whole agent budget. */
     private const CONNECTOR_TIMEOUT = 8;
     private const CONNECTOR_CONNECT_TIMEOUT = 3;
@@ -1552,10 +1553,15 @@ class ActionExecutor {
             return ['ok' => false, 'error' => 'calls must contain between 1 and 10 requests.'];
         }
         $results = [];
+        $batchDeadline = microtime(true) + self::APP_API_BATCH_BUDGET;
         foreach ($calls as $call) {
             if (!is_array($call)) {
                 $results[] = ['ok' => false, 'error' => 'Each batch item must be an object.'];
                 continue;
+            }
+            if (microtime(true) >= $batchDeadline) {
+                $results[] = ['ok' => false, 'error' => 'App API batch time budget reached; retry the remaining read requests separately.'];
+                break;
             }
             $results[] = $this->callAppApi([
                 'app_id' => $call['app_id'] ?? '',
