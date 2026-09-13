@@ -4,6 +4,7 @@ import { mdiDownload, mdiTune } from '@mdi/js'
 import { translate as t } from './i18n'
 import { buildConfirmForm } from './confirmForms'
 import { escHtml, mdInline, mdToHtml, citedSources, copyText, installImageFallback } from './chat-utils'
+import { getFilePickerBuilder, FilePickerClosed } from '@nextcloud/dialogs'
 
 /* EvaAi – Vanilla-Chat-Mount.
  * Wird von ChatView.vue aufgerufen und rendert den kompletten Chat
@@ -430,20 +431,56 @@ export function mountChat(root, opts = {}) {
 	input.autocomplete = 'off'
 	input.placeholder = t('What do you want to do or know?')
 	input.setAttribute('aria-label', t('What do you want to do or know?'))
+	const filesBtn = document.createElement('button')
+	filesBtn.type = 'button'
+	filesBtn.className = 'cbtn cbtn-ghost cbtn-files'
+	filesBtn.textContent = '📎'
+	filesBtn.setAttribute('aria-label', t('Add files'))
+	filesBtn.title = t('Choose Nextcloud files to use as context')
+	filesBtn.addEventListener('click', async () => {
+		filesBtn.disabled = true
+		try {
+			// The modern builder returns server-side Nextcloud paths and works in
+			// both the full app and standalone EVA view. Limit to files (not
+			// folders) and allow selecting several context files at once.
+			const paths = await getFilePickerBuilder(t('Choose files for EVA'))
+				.setMultiSelect(true)
+				.setType(1)
+				.build()
+				.pick()
+			const clean = (Array.isArray(paths) ? paths : [paths]).filter((p) => typeof p === 'string' && p.startsWith('/')).slice(0, 10)
+			if (clean.length) {
+				const prefix = t('Use these Nextcloud files as context') + ': ' + clean.join(', ')
+				input.value = input.value.trim() ? prefix + '\\n' + input.value.trim() : prefix
+				input.focus()
+			}
+		} catch (error) {
+			if (!(error instanceof FilePickerClosed)) {
+				// Keep compatibility with older Nextcloud versions that expose only
+				// the legacy global picker.
+				const legacy = window.OC && window.OC.dialogs && window.OC.dialogs.filepicker
+				if (typeof legacy === 'function') legacy(t('Choose files for EVA'), (paths) => {
+					const clean = (Array.isArray(paths) ? paths : [paths]).map((p) => typeof p === 'string' ? p : (p && (p.path || p.name))).filter(Boolean).slice(0, 10)
+					if (clean.length) input.value = (t('Use these Nextcloud files as context') + ': ' + clean.join(', ')) + (input.value.trim() ? '\\n' + input.value.trim() : '')
+				}, true, '', true)
+				else { err.textContent = t('The Nextcloud file picker is not available on this page.'); err.style.display = '' }
+			}
+		} finally { filesBtn.disabled = false }
+	})
 	const sendBtn = document.createElement('button')
 	sendBtn.type = 'submit'
 	sendBtn.className = 'cbtn'
-	sendBtn.textContent = t('Send')
+	sendBtn.textContent = t('Send message')
 	sendBtn.addEventListener('click', () => {
 		if (sending) stopStream()
 	})
 	const backgroundBtn = document.createElement('button')
 	backgroundBtn.type = 'button'
 	backgroundBtn.className = 'cbtn cbtn-ghost'
-	backgroundBtn.textContent = t('Start')
-	backgroundBtn.title = 'Run this request in the background'
+	backgroundBtn.textContent = t('Run in background')
+	backgroundBtn.title = t('Queue this request and continue even if this page is closed')
 	backgroundBtn.addEventListener('click', () => queueInBackground())
-	form.append(input, sendBtn, backgroundBtn)
+	form.append(filesBtn, input, sendBtn, backgroundBtn)
 
 	const err = document.createElement('div')
 	err.className = 'err'
@@ -676,7 +713,7 @@ export function mountChat(root, opts = {}) {
 	// fetch also stops the generation server-side.
 	const setStreamingUI = (active) => {
 		sendBtn.type = active ? 'button' : 'submit'
-		sendBtn.textContent = active ? t('Stop') : t('Send')
+	sendBtn.textContent = active ? t('Stop') : t('Send message')
 		sendBtn.classList.toggle('cbtn-stop', active)
 	}
 	const stopStream = () => {

@@ -155,7 +155,7 @@ function buildCalendarForm(args, tr) {
 		var emptyDescription = document.querySelector('#empty .d')
 		if (emptyDescription) emptyDescription.textContent = tr('Ask about notes, plans or files — I can even create files, write notes and remember personal facts in a KNOWLEDGE.md.')
 		if (els.input) els.input.placeholder = tr('What does my note about X say?')
-		if (els.send) els.send.textContent = tr('Send')
+	if (els.send) els.send.textContent = tr('Send')
 	}
 	localizePage()
 
@@ -908,7 +908,7 @@ function buildCalendarForm(args, tr) {
 				currentAbort = null
 				sending = false
 				els.send.disabled = false
-				els.send.textContent = tr('Send')
+					els.send.textContent = tr('Send')
 				els.send.classList.remove('stop')
 				els.input.focus()
 				stickToBottom()

@@ -4,6 +4,41 @@ All notable changes to **EVA (eva_ai)** are documented here.
 Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); the project
 follows [Semantic Versioning](https://semver.org/).
 
+## [1.16.4] - 2026-09-13
+
+### Fixed
+
+- Includes the complete activation/boot performance fixes and all post-1.16.3 improvements.
+
+## [1.16.3] - 2026-09-13
+
+### Added
+
+- Native XLSX generation from CSV/tabular content.
+
+## [1.16.2] - 2026-09-13
+
+### Added
+
+- Safe agent execution traces, Nextcloud file picker support and valid DOCX generation.
+- Connector route learning and expanded API discovery fallbacks.
+
+### Fixed
+
+- App activation no longer performs large synchronous index-table deletes.
+
+## [1.16.1] - 2026-09-13
+
+### Improved
+
+- Reorganised Settings into clearly separated, linkable sections with a sticky quick navigation.
+- Clarified connector fields and bearer-token handling; secrets remain encrypted and are never returned.
+
+### Fixed
+
+- On upgrade, EVA-owned queued jobs, scheduler state, index claims and agent snapshots are reset so stale work from an older version cannot continue.
+- EVA background jobs are re-registered with the current configuration after deployment.
+
 ## [1.16.0] - 2026-09-13
 
 ### Added
@@ -823,3 +858,10 @@ follows [Semantic Versioning](https://semver.org/).
 - Production Webpack build passed.
 - Main-branch CI and dependency security checks passed for the preceding
   production fixes.
+## [1.16.5] - 2026-09-13
+
+- Defer destructive reset during activation/update to a background tick.
+- Recover cancelled or stale background agent runs and reduce queue DB writes.
+- Use the modern Nextcloud file picker with a legacy fallback.
+- Show safe tool argument summaries in agent execution traces.
+- Test learned connector GET routes instead of assuming `/`.

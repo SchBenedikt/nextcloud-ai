@@ -181,18 +181,19 @@ class ActionExecutor {
             ]],
             ['type' => 'function', 'function' => [
                 'name' => 'create_file',
-                'description' => 'Create (or overwrite) a text file anywhere in the user\'s Nextcloud home, e.g. for drafts, notes, plans or documents. Only configured text file types are allowed. The content must be plain text; for complex Office files use a suitable app API or existing template and then validate the result.',
+                'description' => 'Create (or overwrite) a file anywhere in the user\'s Nextcloud home. Use content for text; use content_base64 for validated binary/ZIP-based files such as generated Office documents.',
                 'parameters' => ['type' => 'object', 'properties' => [
                     'path' => ['type' => 'string', 'description' => 'Relative path from the home folder, e.g. "Documents/Plan.md" or "Report.txt".'],
-                    'content' => ['type' => 'string', 'description' => 'The full text content to write.'],
-                ], 'required' => ['path', 'content']],
+                    'content' => ['type' => 'string', 'description' => 'Full UTF-8 text content.'],
+                    'content_base64' => ['type' => 'string', 'description' => 'Optional strict base64-encoded binary content (mutually exclusive with content).'],
+                ], 'required' => ['path']],
             ]],
             ['type' => 'function', 'function' => [
                 'name' => 'create_files',
                 'description' => 'Create or update up to 20 related plain-text files in one agent step. Each file is validated with the same allowed-type and size limits as create_file; failures are returned per file so successful files are not lost.',
                 'parameters' => ['type' => 'object', 'properties' => [
                     'files' => ['type' => 'array', 'maxItems' => 20, 'items' => ['type' => 'object', 'properties' => [
-                        'path' => ['type' => 'string'], 'content' => ['type' => 'string'],
+                        'path' => ['type' => 'string'], 'content' => ['type' => 'string'], 'content_base64' => ['type' => 'string'],
                     ], 'required' => ['path', 'content']]],
                 ], 'required' => ['files']],
             ]],
@@ -645,7 +646,7 @@ class ActionExecutor {
             ]],
             ['type' => 'function', 'function' => [
                 'name' => 'call_app_api',
-                'description' => 'Call a discovered endpoint of an enabled Nextcloud app in the current user session. OCS and other same-origin app routes are supported when discovered first. Read methods are allowed; POST, PUT, PATCH and DELETE always require explicit confirmation.',
+                'description' => 'Call a discovered endpoint of an enabled Nextcloud app in the current user session. OCS and other same-origin app routes are supported when discovered first. Do not use this tool for configured external connectors such as TrueNAS or Home Assistant; use call_external_connector for those. Read methods are allowed; POST, PUT, PATCH and DELETE always require explicit confirmation.',
                 'parameters' => ['type' => 'object', 'properties' => [
                     'app_id' => ['type' => 'string', 'description' => 'Enabled Nextcloud app id, e.g. deck or bookmarks.'],
                     'path' => ['type' => 'string', 'description' => 'Same-origin route path returned by discover_app_api. OCS paths begin with /ocs/v1.php/apps/{app_id}/ or /ocs/v2.php/apps/{app_id}/; internal app routes must have been discovered with include_internal=true.'],
@@ -780,12 +781,17 @@ class ActionExecutor {
             ]],
             ['type' => 'function', 'function' => [
                 'name' => 'configure_external_connector',
-                'description' => 'Create or update a named external connector. Public HTTPS and explicitly local HTTP(S) services (for example TrueNAS or Home Assistant) are supported; the token is encrypted and never shown to EVA.',
+                'description' => 'Create or update a named external connector. Public HTTPS and explicitly local HTTP(S) services are supported. Choose no auth, bearer token, basic username/password or API key; all secrets are encrypted and never shown to EVA.',
                 'parameters' => ['type' => 'object', 'properties' => [
                     'id' => ['type' => 'string', 'description' => 'Stable connector id, lowercase letters, numbers, underscore or hyphen (max 40).'],
                     'name' => ['type' => 'string', 'description' => 'Human-readable connector name.'],
                     'base_url' => ['type' => 'string', 'description' => 'Base URL. Public services must use HTTPS; local private/loopback hosts may use HTTP or HTTPS, e.g. http://homeassistant.local:8123 or https://192.168.1.20.'],
                     'token' => ['type' => 'string', 'description' => 'Optional bearer token; encrypted at rest and never returned.'],
+                    'auth_type' => ['type' => 'string', 'enum' => ['none', 'bearer', 'basic', 'api_key'], 'description' => 'Authentication scheme.'],
+                    'username' => ['type' => 'string', 'description' => 'Optional username for basic authentication; encrypted at rest.'],
+                    'password' => ['type' => 'string', 'description' => 'Optional password for basic authentication; encrypted at rest.'],
+                    'api_key' => ['type' => 'string', 'description' => 'Optional API key; encrypted at rest.'],
+                    'api_key_header' => ['type' => 'string', 'description' => 'Header for API keys, for example X-API-Key (default).'],
                 ], 'required' => ['id', 'base_url']],
             ]],
             ['type' => 'function', 'function' => [
@@ -1344,6 +1350,13 @@ class ActionExecutor {
         $method = strtoupper(trim((string)($args['method'] ?? '')));
         $path = trim((string)($args['path'] ?? ''));
         $params = $args['params'] ?? [];
+        // Models sometimes classify an explicitly connected appliance as an
+        // "app" because its API is app-shaped. Route that alias through the
+        // connector implementation so host allow-listing, discovered-route
+        // checks, bearer-token handling and GET retries remain enforced.
+        if ($appId !== '' && array_key_exists($appId, $this->connectorRows())) {
+            return $this->callExternalConnector(['id' => $appId, 'method' => $method, 'path' => $path, 'params' => $params]);
+        }
         if (!preg_match('/^[a-z0-9_]+$/', $appId) || !in_array($method, ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'], true)) {
             return ['ok' => false, 'error' => 'A valid app_id and HTTP method are required.'];
         }
@@ -1630,7 +1643,14 @@ class ActionExecutor {
     /** @return array{ok:true,result:string} */
     private function createFile(Folder $home, array $args): array {
         $path = $this->cleanPath((string)($args['path'] ?? ''));
-        $content = (string)($args['content'] ?? '');
+        $binary = array_key_exists('content_base64', $args);
+        if ($binary) {
+            $decoded = base64_decode((string)$args['content_base64'], true);
+            if ($decoded === false || $decoded === '') return ['ok' => false, 'error' => 'content_base64 must be non-empty valid base64'];
+            $content = $decoded;
+        } else {
+            $content = (string)($args['content'] ?? '');
+        }
         if ($path === '' || str_ends_with($path, '/')) {
             return ['ok' => false, 'error' => 'A valid file path is required'];
         }
@@ -1638,16 +1658,22 @@ class ActionExecutor {
             return ['ok' => false, 'error' => 'File content must not be empty'];
         }
         $maxChars = (int)$this->config->get('exec_write_max_chars') ?: 100000;
-        if (mb_strlen($content) > $maxChars) {
+        if (($binary ? strlen($content) : mb_strlen($content)) > $maxChars) {
             return ['ok' => false, 'error' => 'File content exceeds ' . $maxChars . ' characters'];
         }
-        if (strpos($content, "\0") !== false) {
+        if (!$binary && strpos($content, "\0") !== false) {
             return ['ok' => false, 'error' => 'Only text files can be created'];
         }
         [, $name] = $this->splitPath($path);
         $typeError = $this->checkWriteType($name);
         if ($typeError !== null) {
             return ['ok' => false, 'error' => $typeError];
+        }
+        if (!$binary && strtolower(pathinfo($name, PATHINFO_EXTENSION)) === 'docx') {
+            try { $content = $this->buildDocx($content); } catch (\Throwable $e) { return ['ok' => false, 'error' => 'DOCX generation is unavailable on this server: ' . $e->getMessage()]; }
+        }
+        if (!$binary && strtolower(pathinfo($name, PATHINFO_EXTENSION)) === 'xlsx') {
+            try { $content = $this->buildXlsx($content); } catch (\Throwable $e) { return ['ok' => false, 'error' => 'XLSX generation is unavailable on this server: ' . $e->getMessage()]; }
         }
         [$dir, $name] = $this->splitPath($path);
         $folder = $this->ensureFolderPath($home, $dir);
@@ -1671,6 +1697,36 @@ class ActionExecutor {
         return ['ok' => true, 'result' => 'Created ' . $path];
     }
 
+    /** Build a minimal standards-compliant Word document without external services. */
+    private function buildDocx(string $text): string {
+        if (!class_exists(\ZipArchive::class)) throw new \RuntimeException('PHP ZipArchive extension is required');
+        $zip = new \ZipArchive(); $tmp = tempnam(sys_get_temp_dir(), 'eva_docx_');
+        if ($tmp === false || $zip->open($tmp, \ZipArchive::CREATE | \ZipArchive::OVERWRITE) !== true) throw new \RuntimeException('could not create archive');
+        $esc = static fn(string $v): string => htmlspecialchars($v, ENT_XML1 | ENT_COMPAT, 'UTF-8');
+        $lines = preg_split("/\\R/u", $text) ?: [];
+        $paras = ''; foreach ($lines as $line) $paras .= '<w:p><w:r><w:t xml:space="preserve">' . $esc($line) . '</w:t></w:r></w:p>';
+        $zip->addFromString('[Content_Types].xml', '<?xml version="1.0" encoding="UTF-8"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/></Types>');
+        $zip->addFromString('_rels/.rels', '<?xml version="1.0" encoding="UTF-8"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/></Relationships>');
+        $zip->addFromString('word/document.xml', '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body>' . $paras . '<w:sectPr/></w:body></w:document>');
+        $zip->close(); $data = file_get_contents($tmp); @unlink($tmp); if (!is_string($data) || $data === '') throw new \RuntimeException('archive was empty'); return $data;
+    }
+
+    /** Build a minimal Excel workbook from comma/tab separated text. */
+    private function buildXlsx(string $text): string {
+        if (!class_exists(\ZipArchive::class)) throw new \RuntimeException('PHP ZipArchive extension is required');
+        $zip = new \ZipArchive(); $tmp = tempnam(sys_get_temp_dir(), 'eva_xlsx_');
+        if ($tmp === false || $zip->open($tmp, \ZipArchive::CREATE | \ZipArchive::OVERWRITE) !== true) throw new \RuntimeException('could not create archive');
+        $esc = static fn(string $v): string => htmlspecialchars($v, ENT_XML1 | ENT_COMPAT, 'UTF-8');
+        $rows = preg_split('/\R/u', trim($text)) ?: []; $sheet = ''; $r = 0;
+        foreach ($rows as $line) { $r++; $cells = str_contains($line, "\t") ? explode("\t", $line) : str_getcsv($line); $c = 0; $sheet .= '<row r="' . $r . '">'; foreach ($cells as $value) { $c++; $col = ''; $n = $c; while ($n > 0) { $n--; $col = chr(65 + ($n % 26)) . $col; $n = intdiv($n, 26); } $sheet .= '<c r="' . $col . $r . '" t="inlineStr"><is><t>' . $esc((string)$value) . '</t></is></c>'; } $sheet .= '</row>'; }
+        $zip->addFromString('[Content_Types].xml', '<?xml version="1.0" encoding="UTF-8"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/><Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/></Types>');
+        $zip->addFromString('_rels/.rels', '<?xml version="1.0" encoding="UTF-8"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/></Relationships>');
+        $zip->addFromString('xl/workbook.xml', '<?xml version="1.0" encoding="UTF-8"?><workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><sheets><sheet name="EVA" sheetId="1" r:id="rId1"/></sheets></workbook>');
+        $zip->addFromString('xl/_rels/workbook.xml.rels', '<?xml version="1.0" encoding="UTF-8"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/></Relationships>');
+        $zip->addFromString('xl/worksheets/sheet1.xml', '<?xml version="1.0" encoding="UTF-8"?><worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheetData>' . $sheet . '</sheetData></worksheet>');
+        $zip->close(); $data = file_get_contents($tmp); @unlink($tmp); if (!is_string($data) || $data === '') throw new \RuntimeException('archive was empty'); return $data;
+    }
+
     /** Create several files while preserving per-file validation/results. */
     private function createFiles(Folder $home, array $args): array {
         $files = $args['files'] ?? null;
@@ -1678,7 +1734,9 @@ class ActionExecutor {
         $results = []; $allOk = true;
         foreach ($files as $entry) {
             if (!is_array($entry)) { $results[] = ['ok' => false, 'error' => 'Each entry must contain path and content']; $allOk = false; continue; }
-            $result = $this->createFile($home, ['path' => $entry['path'] ?? '', 'content' => $entry['content'] ?? '']);
+            $payload = ['path' => $entry['path'] ?? ''];
+            if (array_key_exists('content_base64', $entry)) $payload['content_base64'] = $entry['content_base64']; else $payload['content'] = $entry['content'] ?? '';
+            $result = $this->createFile($home, $payload);
             $results[] = $result; if (empty($result['ok'])) $allOk = false;
         }
         return ['ok' => $allOk, 'result' => ['files' => $results, 'created' => count(array_filter($results, static fn(array $r): bool => !empty($r['ok']))), 'failed' => count(array_filter($results, static fn(array $r): bool => empty($r['ok'])))]];
@@ -3009,7 +3067,8 @@ class ActionExecutor {
         $out = [];
         foreach ($this->connectorRows() as $id => $row) {
             if (!is_array($row)) continue;
-            $out[] = ['id' => (string)$id, 'name' => (string)($row['name'] ?? $id), 'base_url' => (string)($row['base_url'] ?? ''), 'token_configured' => !empty($row['token_configured']), 'updated_at' => (int)($row['updated_at'] ?? 0), 'discovered_endpoint_count' => is_array($row['openapi']['endpoints'] ?? null) ? count($row['openapi']['endpoints']) : 0, 'openapi_updated_at' => (int)($row['openapi']['updated_at'] ?? 0)];
+            $endpoints = is_array($row['openapi']['endpoints'] ?? null) ? array_values(array_slice($row['openapi']['endpoints'], -1000)) : [];
+            $out[] = ['id' => (string)$id, 'name' => (string)($row['name'] ?? $id), 'base_url' => (string)($row['base_url'] ?? ''), 'auth_type' => (string)($row['auth_type'] ?? (!empty($row['token_configured']) ? 'bearer' : 'none')), 'token_configured' => !empty($row['token_configured']), 'username_configured' => !empty($row['username_configured']), 'password_configured' => !empty($row['password_configured']), 'api_key_configured' => !empty($row['api_key_configured']), 'api_key_header' => (string)($row['api_key_header'] ?? 'X-API-Key'), 'updated_at' => (int)($row['updated_at'] ?? 0), 'discovered_endpoint_count' => count($endpoints), 'learned_endpoints' => $endpoints, 'openapi_updated_at' => (int)($row['openapi']['updated_at'] ?? 0)];
         }
         return ['ok' => true, 'result' => ['connectors' => $out]];
     }
@@ -3019,21 +3078,71 @@ class ActionExecutor {
         if (!preg_match('/^[a-z0-9][a-z0-9_-]{0,39}$/D', $id) || !is_array($row) || !$this->safeConnectorUrl((string)($row['base_url'] ?? ''))) return ['ok' => false, 'error' => 'Connector is not configured.'];
         $user = $this->config->userId() ?? ''; $headers = ['Accept' => 'application/json'];
         try {
-            if (!empty($row['token_configured'])) $headers['Authorization'] = 'Bearer ' . Server::get(ProviderCredentials::class)->getCustom($user, 'connector_' . $id);
+            $headers = array_merge($headers, $this->connectorAuthHeaders($id, $row, $user));
             $client = Server::get(\OCP\Http\Client\IClientService::class)->newClient(); $found = null; $source = null;
-            foreach (['/openapi.json', '/swagger.json', '/.well-known/openapi.json'] as $candidate) {
+            // Nextcloud's outbound HTTP client may reject private connector
+            // addresses even when the connector was explicitly allow-listed.
+            // TrueNAS is commonly hosted on such an address, so try its
+            // canonical schema endpoint through the PHP HTTPS client as a
+            // narrowly-scoped fallback before probing generic paths.
+            $preferredUrl = rtrim((string)$row['base_url'], '/') . '/api/v2.0';
+            if ($this->safeConnectorUrl($preferredUrl)) {
+                [$preferredStatus, $preferredBody] = $this->connectorCurlGet($preferredUrl, $headers, 15);
+                // TrueNAS' generated schema is several megabytes; truncating
+                // it at 200k produces invalid JSON and falsely reports that
+                // discovery failed. Keep a bounded but appliance-sized cap.
+                $preferredDecoded = json_decode(mb_substr($preferredBody, 0, 8388608), true);
+                if ($preferredStatus >= 200 && $preferredStatus < 300 && is_array($preferredDecoded) && is_array($preferredDecoded['paths'] ?? null)) {
+                    $found = $preferredDecoded; $source = '/api/v2.0';
+                }
+            }
+            // TrueNAS publishes its OpenAPI document directly at
+            // /api/v2.0 (the /api/v2.0/docs URL is a 404 on current SCALE
+            // releases). Keep the generic locations as fallbacks for other
+            // appliances.
+            foreach ($found === null ? ['/api/v2.0', '/openapi.json', '/swagger.json', '/.well-known/openapi.json', '/api/openapi.json', '/api/swagger.json', '/docs/openapi.json', '/api/docs/openapi.json', '/api/v2.0/docs'] : [] as $candidate) {
                 $url = rtrim((string)$row['base_url'], '/') . $candidate; if (!$this->safeConnectorUrl($url)) continue;
-                $response = $client->get($url, ['headers' => $headers, 'timeout' => 15, 'allow_redirects' => ['max' => 0]]);
+                try {
+                    $response = $client->get($url, ['headers' => $headers, 'timeout' => 15, 'allow_redirects' => ['max' => 0]]);
+                } catch (\Throwable) {
+                    // A single unsupported/blocked documentation path must
+                    // not abort discovery; continue with the remaining
+                    // candidates (important for TrueNAS and reverse proxies).
+                    continue;
+                }
                 if ($response->getStatusCode() < 200 || $response->getStatusCode() >= 300) continue;
-                $body = $response->getBody(); if (is_resource($body)) $body = stream_get_contents($body); $decoded = json_decode(mb_substr((string)$body, 0, 200000), true);
+                $body = $response->getBody(); if (is_resource($body)) $body = stream_get_contents($body); $decoded = json_decode(mb_substr((string)$body, 0, 8388608), true);
                 if (is_array($decoded) && is_array($decoded['paths'] ?? null)) { $found = $decoded; $source = $candidate; break; }
             }
-            if ($found === null) return ['ok' => false, 'error' => 'No OpenAPI or Swagger description was found.'];
+            if ($found === null) {
+                // Many appliances expose no schema at all. A bounded GET of
+                // the configured root is still useful discovery and gives the
+                // user a concrete learned endpoint to inspect next.
+                $rootUrl = rtrim((string)$row['base_url'], '/') . '/';
+                $rootResponse = $client->get($rootUrl, ['headers' => $headers, 'timeout' => 10, 'allow_redirects' => ['max' => 0]]);
+                if ($rootResponse->getStatusCode() >= 200 && $rootResponse->getStatusCode() < 300) {
+                    $rows = $this->connectorRows(); $rows[$id]['openapi'] = ['source' => 'runtime', 'version' => '', 'endpoints' => [['path' => '/', 'method' => 'GET', 'operation_id' => 'root']], 'updated_at' => time()];
+                    Server::get(\OCP\IConfig::class)->setUserValue($user, AppConfig::APP, 'external_connectors', json_encode($rows, JSON_UNESCAPED_SLASHES) ?: '{}');
+                    return ['ok' => true, 'result' => ['connector' => $id, 'source' => 'runtime', 'title' => '', 'endpoints' => $rows[$id]['openapi']['endpoints'], 'note' => 'No API schema was published; the service root was learned and can be tested.']];
+                }
+                return ['ok' => false, 'error' => 'No OpenAPI or Swagger description was found and the connector root did not respond successfully.'];
+            }
             $endpoints = [];
-            foreach (array_slice($found['paths'], 0, 100, true) as $path => $operations) {
+            // Do not slice the schema's paths before iterating: TrueNAS places
+            // VM and container routes after the first hundred entries. Bound
+            // the persisted result instead, so discovery covers the complete
+            // document without allowing unbounded user-config data growth.
+            foreach ($found['paths'] as $path => $operations) {
+                if (count($endpoints) >= 1000) break;
                 if (!is_string($path) || !is_array($operations) || !str_starts_with($path, '/')) continue;
+                // The TrueNAS document is served from /api/v2.0 but its
+                // paths are relative to that mount point. Persist absolute
+                // connector paths so subsequent calls do not accidentally
+                // hit the appliance root (which yields a misleading 404).
+                $routePath = $source === '/api/v2.0' && !str_starts_with($path, '/api/v2.0')
+                    ? '/api/v2.0' . $path : $path;
                 foreach ($operations as $method => $operation) if (in_array(strtoupper((string)$method), ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'], true)) {
-                    $meta = ['path' => mb_substr($path, 0, 300), 'method' => strtoupper((string)$method), 'operation_id' => is_array($operation) ? mb_substr((string)($operation['operationId'] ?? ''), 0, 120) : ''];
+                    $meta = ['path' => mb_substr($routePath, 0, 300), 'method' => strtoupper((string)$method), 'operation_id' => is_array($operation) ? mb_substr((string)($operation['operationId'] ?? ''), 0, 120) : ''];
                     if (is_array($operation) && is_array($operation['parameters'] ?? null)) {
                         $params = [];
                         foreach (array_slice($operation['parameters'], 0, 20) as $parameter) {
@@ -3048,9 +3157,9 @@ class ActionExecutor {
                     $endpoints[] = $meta;
                 }
             }
-            $rows = $this->connectorRows(); $rows[$id]['openapi'] = ['source' => $source, 'version' => mb_substr((string)($found['openapi'] ?? $found['swagger'] ?? ''), 0, 30), 'endpoints' => array_slice($endpoints, 0, 200), 'updated_at' => time()];
+            $rows = $this->connectorRows(); $rows[$id]['openapi'] = ['source' => $source, 'version' => mb_substr((string)($found['openapi'] ?? $found['swagger'] ?? ''), 0, 30), 'endpoints' => array_slice($endpoints, 0, 1000), 'updated_at' => time()];
             Server::get(\OCP\IConfig::class)->setUserValue($user, AppConfig::APP, 'external_connectors', json_encode($rows, JSON_UNESCAPED_SLASHES) ?: '{}');
-            return ['ok' => true, 'result' => ['connector' => $id, 'source' => $source, 'title' => mb_substr((string)($found['info']['title'] ?? ''), 0, 160), 'endpoints' => array_slice($endpoints, 0, 200)]];
+            return ['ok' => true, 'result' => ['connector' => $id, 'source' => $source, 'title' => mb_substr((string)($found['info']['title'] ?? ''), 0, 160), 'endpoints' => array_slice($endpoints, 0, 1000)]];
         } catch (\Throwable) { return ['ok' => false, 'error' => 'External API discovery failed.']; }
     }
 
@@ -3061,10 +3170,20 @@ class ActionExecutor {
         $name = trim((string)($args['name'] ?? $id));
         if ($name === '') $name = $id;
         $rows = $this->connectorRows();
-        $rows[$id] = ['name' => mb_substr($name, 0, 120), 'base_url' => $base, 'token_configured' => isset($args['token']) && trim((string)$args['token']) !== '', 'updated_at' => time()];
+        $previous = is_array($rows[$id] ?? null) ? $rows[$id] : [];
+        $authType = in_array((string)($args['auth_type'] ?? ($previous['auth_type'] ?? 'bearer')), ['none', 'bearer', 'basic', 'api_key'], true) ? (string)($args['auth_type'] ?? ($previous['auth_type'] ?? 'bearer')) : 'bearer';
+        $rows[$id] = ['name' => mb_substr($name, 0, 120), 'base_url' => $base, 'auth_type' => $authType,
+            'token_configured' => isset($args['token']) && trim((string)$args['token']) !== '' ? true : !empty($previous['token_configured']),
+            'username_configured' => isset($args['username']) && trim((string)$args['username']) !== '' ? true : !empty($previous['username_configured']),
+            'password_configured' => isset($args['password']) && trim((string)$args['password']) !== '' ? true : !empty($previous['password_configured']),
+            'api_key_configured' => isset($args['api_key']) && trim((string)$args['api_key']) !== '' ? true : !empty($previous['api_key_configured']),
+            'api_key_header' => preg_match('/^[A-Za-z0-9][A-Za-z0-9-]{0,60}$/D', (string)($args['api_key_header'] ?? '')) ? (string)$args['api_key_header'] : (string)($previous['api_key_header'] ?? 'X-API-Key'), 'updated_at' => time()];
+        if (is_array($previous['openapi'] ?? null)) $rows[$id]['openapi'] = $previous['openapi'];
         $user = $this->config->userId() ?? '';
         Server::get(\OCP\IConfig::class)->setUserValue($user, AppConfig::APP, 'external_connectors', json_encode($rows, JSON_UNESCAPED_SLASHES) ?: '{}');
-        if (array_key_exists('token', $args)) Server::get(ProviderCredentials::class)->saveCustom($user, 'connector_' . $id, trim((string)$args['token']));
+        $credentials = Server::get(ProviderCredentials::class);
+        if (array_key_exists('token', $args)) $credentials->saveCustom($user, 'connector_' . $id, trim((string)$args['token']));
+        foreach (['username', 'password', 'api_key'] as $field) if (array_key_exists($field, $args)) $credentials->saveCustomValue($user, 'connector_' . $id, $field, trim((string)$args[$field]));
         return ['ok' => true, 'result' => ['id' => $id, 'name' => $name, 'base_url' => $base, 'token_configured' => $rows[$id]['token_configured']]];
     }
 
@@ -3086,11 +3205,34 @@ class ActionExecutor {
         if (!$this->safeConnectorUrl($url)) return ['ok' => false, 'error' => 'Connector path leaves the configured HTTPS host.'];
         try {
             $client = Server::get(\OCP\Http\Client\IClientService::class)->newClient(); $headers = ['Accept' => 'application/json']; $user = $this->config->userId() ?? '';
-            if (!empty($row['token_configured'])) $headers['Authorization'] = 'Bearer ' . Server::get(ProviderCredentials::class)->getCustom($user, 'connector_' . $id);
+            $headers = array_merge($headers, $this->connectorAuthHeaders($id, $row, $user));
             $options = ['headers' => $headers, 'timeout' => 20, 'allow_redirects' => ['max' => 0]];
             if ($method === 'GET') $options['query'] = $params; elseif ($params !== []) { $headers['Content-Type'] = 'application/json'; $options['body'] = json_encode($params, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES); $options['headers'] = $headers; }
-            $response = $client->{strtolower($method)}($url, $options); $body = $response->getBody(); if (is_resource($body)) $body = stream_get_contents($body); $body = mb_substr((string)$body, 0, 50000); $data = json_decode($body, true); $safeData = is_array($data) ? $this->redactApiPayload($data) : $body;
-            return ['ok' => $response->getStatusCode() >= 200 && $response->getStatusCode() < 300, 'result' => ['status' => $response->getStatusCode(), 'data' => $safeData, 'connector' => $id, 'method' => $method, 'path' => $path]];
+            // Appliances can briefly return 5xx/429 while middleware starts
+            // or renews its auth session. Retry idempotent GETs three times
+            // with a short back-off, while never replaying mutating requests.
+            $attempts = 0; $response = null; $lastError = null;
+            $maxAttempts = $method === 'GET' ? 3 : 1;
+            do {
+                $attempts++;
+                try {
+                    $response = $client->{strtolower($method)}($url, $options);
+                    $status = $response->getStatusCode();
+                    if ($method !== 'GET' || !in_array($status, [408, 425, 429], true) && ($status < 500 || $status >= 600)) break;
+                } catch (\Throwable $e) {
+                    $lastError = $e;
+                    if ($attempts >= $maxAttempts) throw $e;
+                }
+                if ($attempts < $maxAttempts) usleep(150000 * $attempts);
+            } while ($attempts < $maxAttempts);
+            if ($response === null) throw ($lastError ?? new \RuntimeException('Connector returned no response'));
+            $body = $response->getBody(); if (is_resource($body)) $body = stream_get_contents($body); $body = mb_substr((string)$body, 0, 50000); $data = json_decode($body, true); $safeData = is_array($data) ? $this->redactApiPayload($data) : $body;
+            if ($response->getStatusCode() >= 200 && $response->getStatusCode() < 300) {
+                $rows = $this->connectorRows(); $known = $rows[$id]['openapi']['endpoints'] ?? []; if (!is_array($known)) $known = [];
+                $seen = false; foreach ($known as $entry) if (is_array($entry) && strtoupper((string)($entry['method'] ?? '')) === $method && (string)($entry['path'] ?? '') === $path) { $seen = true; break; }
+                if (!$seen) { $known[] = ['path' => mb_substr($path, 0, 300), 'method' => $method, 'operation_id' => 'learned']; $rows[$id]['openapi'] = ['source' => $rows[$id]['openapi']['source'] ?? 'runtime', 'version' => $rows[$id]['openapi']['version'] ?? '', 'endpoints' => array_slice($known, -200), 'updated_at' => time()]; Server::get(\OCP\IConfig::class)->setUserValue($user, AppConfig::APP, 'external_connectors', json_encode($rows, JSON_UNESCAPED_SLASHES) ?: '{}'); }
+            }
+            return ['ok' => $response->getStatusCode() >= 200 && $response->getStatusCode() < 300, 'result' => ['status' => $response->getStatusCode(), 'data' => $safeData, 'connector' => $id, 'method' => $method, 'path' => $path, 'attempts' => $attempts]];
         } catch (\Throwable) { return ['ok' => false, 'error' => 'External connector request failed.']; }
     }
 
@@ -3109,6 +3251,22 @@ class ActionExecutor {
         // For hostnames gethostbyname() must resolve (the `$ip !== $host`
         // condition); literal public IP addresses are already validated above.
         return filter_var($ip, FILTER_VALIDATE_IP, FILTER_FLAG_NO_PRIV_RANGE | FILTER_FLAG_NO_RES_RANGE) !== false;
+    }
+
+    /** Build connector auth headers without ever returning credential values. */
+    private function connectorAuthHeaders(string $id, array $row, string $user): array {
+        $type = (string)($row['auth_type'] ?? (!empty($row['token_configured']) ? 'bearer' : 'none'));
+        $credentials = Server::get(ProviderCredentials::class); $prefix = 'connector_' . $id;
+        try {
+            if ($type === 'basic' && !empty($row['username_configured']) && !empty($row['password_configured'])) {
+                return ['Authorization' => 'Basic ' . base64_encode($credentials->getCustomValue($user, $prefix, 'username') . ':' . $credentials->getCustomValue($user, $prefix, 'password'))];
+            }
+            if ($type === 'api_key' && !empty($row['api_key_configured'])) {
+                return [(string)($row['api_key_header'] ?? 'X-API-Key') => $credentials->getCustomValue($user, $prefix, 'api_key')];
+            }
+            if ($type === 'bearer' && !empty($row['token_configured'])) return ['Authorization' => 'Bearer ' . $credentials->getCustom($user, $prefix)];
+        } catch (\Throwable) { return []; }
+        return [];
     }
 
     private function weather(array $args): array {
@@ -3169,5 +3327,21 @@ class ActionExecutor {
         // No curl_close(): the handle is freed automatically (PHP 8.0+) and the
         // function is deprecated in PHP 8.5.
         return $err === 0 && is_string($r) && $r !== '' ? $r : null;
+    }
+
+    /** @return array{0:int,1:string} */
+    private function connectorCurlGet(string $url, array $headers, int $timeout): array {
+        $lines = [];
+        foreach ($headers as $name => $value) $lines[] = $name . ': ' . $value;
+        $status = 0; $body = '';
+        for ($attempt = 1; $attempt <= 3; $attempt++) {
+            $ch = curl_init($url);
+            curl_setopt_array($ch, [CURLOPT_RETURNTRANSFER => true, CURLOPT_TIMEOUT => $timeout, CURLOPT_FOLLOWLOCATION => false, CURLOPT_HTTPHEADER => $lines, CURLOPT_SSL_VERIFYPEER => true, CURLOPT_SSL_VERIFYHOST => 2]);
+            $result = curl_exec($ch); $error = curl_errno($ch); $status = (int)curl_getinfo($ch, CURLINFO_HTTP_CODE);
+            $body = is_string($result) ? $result : '';
+            if ($error === 0 && !in_array($status, [408, 425, 429], true) && ($status < 500 || $status >= 600)) break;
+            if ($attempt < 3) usleep(150000 * $attempt);
+        }
+        return [$error === 0 ? $status : 0, $body];
     }
 }

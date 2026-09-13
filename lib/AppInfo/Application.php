@@ -14,6 +14,8 @@ use OCP\AppFramework\Bootstrap\IRegistrationContext;
 use OCP\BackgroundJob\IJobList;
 use OCP\IUserSession;
 use OCP\Util;
+use OCP\App\Events\AppEnableEvent;
+use OCP\App\Events\AppUpdateEvent;
 
 class Application extends App implements IBootstrap {
     public const APP_ID = 'eva_ai';
@@ -24,6 +26,8 @@ class Application extends App implements IBootstrap {
 
     public function register(IRegistrationContext $context): void {
         $context->registerParameter('appId', self::APP_ID);
+        $context->registerEventListener(AppEnableEvent::class, \OCA\EvaAi\Listener\AppLifecycleListener::class);
+        $context->registerEventListener(AppUpdateEvent::class, \OCA\EvaAi\Listener\AppLifecycleListener::class);
         // Benachrichtigungs-Notifier: zeigt "EVA answer ready" in der Glocke an.
         $context->registerNotifierService(\OCA\EvaAi\Notification\Notifier::class);
         // EVA-Provider: stellt den RAG-Chat für die Assistant-App (TaskProcessing) bereit.
@@ -67,11 +71,11 @@ class Application extends App implements IBootstrap {
         try {
             $container = $context->getAppContainer();
             $jobs = $container->get(IJobList::class);
-            $jobs->add(IndexJob::class);
+            if (!$jobs->has(IndexJob::class, null)) $jobs->add(IndexJob::class);
             // Existing installations do not re-read info.xml until the next
             // enable/upgrade, therefore register the new opt-in job here too.
-            $jobs->add(ProactiveBriefingJob::class);
-            $jobs->add(BackgroundChatJob::class);
+            if (!$jobs->has(ProactiveBriefingJob::class, null)) $jobs->add(ProactiveBriefingJob::class);
+            if (!$jobs->has(BackgroundChatJob::class, null)) $jobs->add(BackgroundChatJob::class);
         } catch (\Throwable $e) {
             // Non-fatal: indexing is also triggered explicitly via the API.
         }

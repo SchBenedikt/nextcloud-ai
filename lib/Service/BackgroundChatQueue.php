@@ -61,6 +61,16 @@ final class BackgroundChatQueue {
             foreach ($items as &$item) {
                 $status = (string)($item['status'] ?? 'pending');
                 $stale = $status === 'running' && $now - (int)($item['claimedAt'] ?? 0) > 600;
+                // A worker can disappear after cancellation was requested.
+                // Finalize that stale claim so it cannot remain invisible to
+                // every future worker forever.
+                if ($stale && !empty($item['cancelRequested'])) {
+                    $item['status'] = 'cancelled';
+                    $item['finishedAt'] = $now;
+                    $item['updatedAt'] = $now;
+                    $changed = true;
+                    continue;
+                }
                 if (($status === 'pending' || $stale) && empty($item['cancelRequested']) && (int)($item['availableAt'] ?? 0) <= $now) {
                     $item['status'] = 'running'; $item['claimedAt'] = $now; $item['attempts'] = (int)($item['attempts'] ?? 0) + 1; $changed = true;
                     $claimed = $item; break;
@@ -86,6 +96,7 @@ final class BackgroundChatQueue {
                     'message' => mb_strimwidth((string)($completed['message'] ?? ''), 0, 240, '…'),
                     'answer' => mb_strimwidth((string)($answer ?? ''), 0, 1000, '…'),
                     'status' => 'completed', 'created' => (int)($completed['created'] ?? time()), 'finishedAt' => time(),
+                    'toolHistory' => array_values(array_slice(is_array($completed['toolHistory'] ?? null) ? $completed['toolHistory'] : [], -50)),
                 ];
                 $this->writeHistory($user, array_slice($history, -self::MAX_HISTORY_RUNS));
             }
@@ -114,6 +125,7 @@ final class BackgroundChatQueue {
                     'error' => mb_strimwidth((string)($item['error'] ?? ''), 0, 500, '…'),
                     'phase' => in_array(($item['phase'] ?? ''), ['queued', 'model', 'tool', 'finalizing'], true) ? (string)$item['phase'] : 'queued',
                     'tool' => mb_strimwidth((string)($item['tool'] ?? ''), 0, 100, '…'),
+                    'toolHistory' => array_values(array_slice(is_array($item['toolHistory'] ?? null) ? $item['toolHistory'] : [], -50)),
                     'updatedAt' => max(0, (int)($item['updatedAt'] ?? $item['claimedAt'] ?? $item['created'] ?? 0)),
                     'steps' => max(0, (int)($item['steps'] ?? 0)),
                     'deadline' => max(0, (int)($item['deadline'] ?? 0)),
@@ -129,6 +141,7 @@ final class BackgroundChatQueue {
                     'answer' => mb_strimwidth((string)($item['answer'] ?? ''), 0, 1000, '…'), 'error' => '',
                     'phase' => 'completed', 'tool' => '', 'updatedAt' => max(0, (int)($item['finishedAt'] ?? 0)),
                     'steps' => 0, 'deadline' => 0, 'finishedAt' => max(0, (int)($item['finishedAt'] ?? 0)),
+                    'toolHistory' => array_values(array_slice(is_array($item['toolHistory'] ?? null) ? $item['toolHistory'] : [], -50)),
                 ];
             }
             usort($out, static fn(array $a, array $b): int => ((int)($b['updatedAt'] ?? $b['created'] ?? 0)) <=> ((int)($a['updatedAt'] ?? $a['created'] ?? 0)));
@@ -137,11 +150,27 @@ final class BackgroundChatQueue {
     }
 
     /** Persist coarse-grained progress so the UI can explain what EVA is doing. */
-    public function updateProgress(string $user, string $id, string $phase, ?string $tool = null): void {
+    public function updateProgress(string $user, string $id, string $phase, ?string $tool = null, ?array $arguments = null): void {
         $phase = in_array($phase, ['queued', 'model', 'tool', 'finalizing'], true) ? $phase : 'model';
-        $this->mutate($user, function (array $items) use ($id, $phase, $tool): array {
+        $this->mutate($user, function (array $items) use ($id, $phase, $tool, $arguments): array {
             foreach ($items as &$item) if (($item['id'] ?? '') === $id && ($item['status'] ?? '') === 'running') {
                 $item['phase'] = $phase; $item['tool'] = $tool !== null ? mb_substr($tool, 0, 100) : ''; $item['updatedAt'] = time();
+                if ($tool !== null && trim($tool) !== '') {
+                    $history = is_array($item['toolHistory'] ?? null) ? $item['toolHistory'] : [];
+                    $entry = ['tool' => mb_substr($tool, 0, 100), 'phase' => $phase, 'at' => time()];
+                    if (is_array($arguments) && $arguments !== []) {
+                        $safe = [];
+                        foreach ($arguments as $key => $value) {
+                            $name = (string)$key;
+                            if (preg_match('/token|password|secret|api.?key|authorization|content/i', $name)) continue;
+                            if (is_scalar($value)) $safe[$name] = mb_strimwidth((string)$value, 0, 160, '…');
+                            elseif (is_array($value)) $safe[$name] = '[list]';
+                        }
+                        if ($safe !== []) $entry['arguments'] = $safe;
+                    }
+                    $history[] = $entry;
+                    $item['toolHistory'] = array_slice($history, -50);
+                }
                 if ($phase === 'tool') $item['steps'] = (int)($item['steps'] ?? 0) + 1;
             }
             unset($item); return $items;
@@ -240,9 +269,20 @@ final class BackgroundChatQueue {
             }
             $active = [];
             foreach (array_slice(array_values(array_unique($users)), 0, 10000) as $uid) {
-                if (trim((string)$this->config->getUserValue($uid, AppConfig::APP, self::KEY, '')) !== '') $active[] = $uid;
+                $queue = json_decode((string)$this->config->getUserValue($uid, AppConfig::APP, self::KEY, '[]'), true);
+                $hasActive = is_array($queue) && array_filter($queue, static fn($item): bool => is_array($item) && in_array(($item['status'] ?? 'pending'), ['pending', 'running', 'paused'], true));
+                if ($hasActive) $active[] = $uid;
             }
-            $this->config->setAppValue(AppConfig::APP, self::USERS_KEY, json_encode($active, JSON_UNESCAPED_SLASHES) ?: '[]');
+            // Polling status is frequent; avoid a global config write when
+            // the indexed user set has not changed. This keeps concurrent
+            // chat tabs from creating needless DB contention.
+            $normalized = array_values(array_unique(array_map('strval', $active)));
+            sort($normalized);
+            $existing = is_array($indexed) ? array_values(array_unique(array_map('strval', $indexed))) : [];
+            sort($existing);
+            if ($normalized !== $existing) {
+                $this->config->setAppValue(AppConfig::APP, self::USERS_KEY, json_encode($active, JSON_UNESCAPED_SLASHES) ?: '[]');
+            }
             return $active;
         } catch (\Throwable) {
             return [];

@@ -33,20 +33,33 @@ class ProviderCredentials {
 
     /** Generic encrypted credential storage for user-configured providers. */
     public function saveCustom(string $userId, string $providerId, string $key): void {
+        $this->saveCustomValue($userId, $providerId, 'api_key', $key);
+    }
+    /** Store an arbitrary connector secret (username, password, API key, ...). */
+    public function saveCustomValue(string $userId, string $providerId, string $field, string $value): void {
         if ($userId === '') throw new ProviderException('An authenticated user is required');
         $providerId = preg_replace('/[^a-z0-9_-]/i', '', $providerId) ?: 'default';
-        $name = 'provider_' . $providerId . '_api_key';
-        if ($key === '') { $this->config->deleteUserValue($userId, AppConfig::APP, $name); return; }
-        if (strlen($key) > 512) throw new \InvalidArgumentException('Provider API key is too long');
-        $this->config->setUserValue($userId, AppConfig::APP, $name, $this->crypto->encrypt($key));
+        $field = preg_replace('/[^a-z0-9_-]/i', '', $field) ?: 'value';
+        $name = 'provider_' . $providerId . '_' . $field;
+        if ($value === '') { $this->config->deleteUserValue($userId, AppConfig::APP, $name); return; }
+        if (strlen($value) > 1024) throw new \InvalidArgumentException('Connector credential is too long');
+        $this->config->setUserValue($userId, AppConfig::APP, $name, $this->crypto->encrypt($value));
     }
     public function customConfigured(string $userId, string $providerId): bool {
+        return $this->customValueConfigured($userId, $providerId, 'api_key');
+    }
+    public function customValueConfigured(string $userId, string $providerId, string $field): bool {
         $providerId = preg_replace('/[^a-z0-9_-]/i', '', $providerId) ?: 'default';
-        return $userId !== '' && $this->config->getUserValue($userId, AppConfig::APP, 'provider_' . $providerId . '_api_key', '') !== '';
+        $field = preg_replace('/[^a-z0-9_-]/i', '', $field) ?: 'value';
+        return $userId !== '' && $this->config->getUserValue($userId, AppConfig::APP, 'provider_' . $providerId . '_' . $field, '') !== '';
     }
     public function getCustom(string $userId, string $providerId): string {
+        return $this->getCustomValue($userId, $providerId, 'api_key');
+    }
+    public function getCustomValue(string $userId, string $providerId, string $field): string {
         $providerId = preg_replace('/[^a-z0-9_-]/i', '', $providerId) ?: 'default';
-        $value = $this->config->getUserValue($userId, AppConfig::APP, 'provider_' . $providerId . '_api_key', '');
+        $field = preg_replace('/[^a-z0-9_-]/i', '', $field) ?: 'value';
+        $value = $this->config->getUserValue($userId, AppConfig::APP, 'provider_' . $providerId . '_' . $field, '');
         if ($value === '') throw new ProviderException('Save the provider API key in Settings first');
         try { return $this->crypto->decrypt($value); } catch (\Throwable) { throw new ProviderException('The provider API key cannot be decrypted; save it again'); }
     }
