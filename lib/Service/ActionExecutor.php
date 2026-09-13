@@ -40,6 +40,9 @@ class ActionExecutor {
     private const CONNECTOR_TIMEOUT = 8;
     private const CONNECTOR_CONNECT_TIMEOUT = 3;
     private const CONNECTOR_GET_ATTEMPTS = 2;
+    /** Discovery may probe several standard/schema routes, but never pin a
+     * web/cron PHP worker for the sum of every per-request timeout. */
+    private const CONNECTOR_DISCOVERY_BUDGET = 20;
     private const MAX_WRITE_CHARS = 100000;
     private const KNOWLEDGE_MAX_CHARS = 60000;
     private const KNOWLEDGE_TARGET_CHARS = 45000;
@@ -1569,8 +1572,13 @@ class ActionExecutor {
         $calls = $args['calls'] ?? null;
         if (!is_array($calls) || $calls === [] || count($calls) > 8) return ['ok' => false, 'error' => 'calls must contain between 1 and 8 requests.'];
         $results = [];
+        $batchDeadline = microtime(true) + self::CONNECTOR_DISCOVERY_BUDGET;
         foreach ($calls as $call) {
             if (!is_array($call)) { $results[] = ['ok' => false, 'error' => 'Each batch item must be an object.']; continue; }
+            if (microtime(true) >= $batchDeadline) {
+                $results[] = ['ok' => false, 'error' => 'Connector batch time budget reached; retry the remaining read requests separately.'];
+                break;
+            }
             $results[] = $this->callExternalConnector([
                 'id' => $call['id'] ?? '', 'path' => $call['path'] ?? '', 'method' => 'GET',
                 'params' => is_array($call['params'] ?? null) ? $call['params'] : [],
@@ -3191,6 +3199,7 @@ class ActionExecutor {
         if (!preg_match('/^[a-z0-9][a-z0-9_-]{0,39}$/D', $id) || !is_array($row) || !$this->safeConnectorUrl((string)($row['base_url'] ?? ''))) return ['ok' => false, 'error' => 'Connector is not configured.'];
         $user = $this->config->userId() ?? ''; $headers = ['Accept' => 'application/json'];
         try {
+            $discoveryDeadline = microtime(true) + self::CONNECTOR_DISCOVERY_BUDGET;
             $headers = array_merge($headers, $this->connectorAuthHeaders($id, $row, $user));
             $found = null; $source = null;
             // Establish transport reachability once before probing multiple
@@ -3247,6 +3256,7 @@ class ActionExecutor {
             }
             $authDiscoveryStatus = 0;
             foreach ($found === null ? array_slice(array_values(array_unique($candidates)), 0, 20) : [] as $candidate) {
+                if (microtime(true) >= $discoveryDeadline) break;
                 $url = preg_match('~^https?://~i', $candidate) ? $candidate : rtrim((string)$row['base_url'], '/') . $candidate; if (!$this->safeConnectorUrl($url)) continue;
                 [$status, $body] = $this->connectorCurlGet($url, $headers, 4);
                 if ($status === 401 || $status === 403) $authDiscoveryStatus = $status;
@@ -3287,7 +3297,8 @@ class ActionExecutor {
                         '/api/trash/restore', '/api/trash/restore/assets', '/api/view/folder/unique-paths', '/api/view/folder', '/api/workflows/triggers',
                     ];
                     $immichEndpoints = [];
-                    foreach (array_values(array_unique($immichCandidates)) as $candidate) {
+                    foreach (array_slice(array_values(array_unique($immichCandidates)), 0, 24) as $candidate) {
+                        if (microtime(true) >= $discoveryDeadline) break;
                         [$probeStatus] = $this->connectorCurlGet(rtrim((string)$row['base_url'], '/') . $candidate, $headers, 4);
                         if (($probeStatus >= 200 && $probeStatus < 500) && $probeStatus !== 404) $immichEndpoints[] = ['path' => $candidate, 'method' => 'GET', 'operation_id' => 'immich_discovered'];
                     }
