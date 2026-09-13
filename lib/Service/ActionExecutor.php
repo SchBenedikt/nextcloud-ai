@@ -3061,7 +3061,9 @@ class ActionExecutor {
         $name = trim((string)($args['name'] ?? $id));
         if ($name === '') $name = $id;
         $rows = $this->connectorRows();
-        $rows[$id] = ['name' => mb_substr($name, 0, 120), 'base_url' => $base, 'token_configured' => isset($args['token']) && trim((string)$args['token']) !== '', 'updated_at' => time()];
+        $previous = is_array($rows[$id] ?? null) ? $rows[$id] : [];
+        $rows[$id] = ['name' => mb_substr($name, 0, 120), 'base_url' => $base, 'token_configured' => isset($args['token']) && trim((string)$args['token']) !== '' ? true : !empty($previous['token_configured']), 'updated_at' => time()];
+        if (is_array($previous['openapi'] ?? null)) $rows[$id]['openapi'] = $previous['openapi'];
         $user = $this->config->userId() ?? '';
         Server::get(\OCP\IConfig::class)->setUserValue($user, AppConfig::APP, 'external_connectors', json_encode($rows, JSON_UNESCAPED_SLASHES) ?: '{}');
         if (array_key_exists('token', $args)) Server::get(ProviderCredentials::class)->saveCustom($user, 'connector_' . $id, trim((string)$args['token']));
@@ -3090,6 +3092,11 @@ class ActionExecutor {
             $options = ['headers' => $headers, 'timeout' => 20, 'allow_redirects' => ['max' => 0]];
             if ($method === 'GET') $options['query'] = $params; elseif ($params !== []) { $headers['Content-Type'] = 'application/json'; $options['body'] = json_encode($params, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES); $options['headers'] = $headers; }
             $response = $client->{strtolower($method)}($url, $options); $body = $response->getBody(); if (is_resource($body)) $body = stream_get_contents($body); $body = mb_substr((string)$body, 0, 50000); $data = json_decode($body, true); $safeData = is_array($data) ? $this->redactApiPayload($data) : $body;
+            if ($response->getStatusCode() >= 200 && $response->getStatusCode() < 300) {
+                $rows = $this->connectorRows(); $known = $rows[$id]['openapi']['endpoints'] ?? []; if (!is_array($known)) $known = [];
+                $seen = false; foreach ($known as $entry) if (is_array($entry) && strtoupper((string)($entry['method'] ?? '')) === $method && (string)($entry['path'] ?? '') === $path) { $seen = true; break; }
+                if (!$seen) { $known[] = ['path' => mb_substr($path, 0, 300), 'method' => $method, 'operation_id' => 'learned']; $rows[$id]['openapi'] = ['source' => $rows[$id]['openapi']['source'] ?? 'runtime', 'version' => $rows[$id]['openapi']['version'] ?? '', 'endpoints' => array_slice($known, -200), 'updated_at' => time()]; Server::get(\OCP\IConfig::class)->setUserValue($user, AppConfig::APP, 'external_connectors', json_encode($rows, JSON_UNESCAPED_SLASHES) ?: '{}'); }
+            }
             return ['ok' => $response->getStatusCode() >= 200 && $response->getStatusCode() < 300, 'result' => ['status' => $response->getStatusCode(), 'data' => $safeData, 'connector' => $id, 'method' => $method, 'path' => $path]];
         } catch (\Throwable) { return ['ok' => false, 'error' => 'External connector request failed.']; }
     }
