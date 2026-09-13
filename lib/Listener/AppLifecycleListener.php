@@ -9,7 +9,7 @@ use OCP\EventDispatcher\{Event,IEventListener};
 use OCP\{IConfig,IUserManager};
 final class AppLifecycleListener implements IEventListener {
  private const JOBS=[IndexJob::class,ChatCleanupJob::class,ProactiveBriefingJob::class,BackgroundChatJob::class];
- private const STATE=['index_running','index_started','index_heartbeat','index_mode','index_cancel_requested','index_run_id','background_chat_queue','learned_app_apis','learned_file_locations'];
+ private const STATE=['index_running','index_started','index_heartbeat','index_mode','index_cancel_requested','index_run_id','background_chat_queue'];
  public function __construct(private IConfig $config,private IUserManager $users,private IJobList $jobs){}
  public function handle(Event $event):void {
   $id=$event instanceof AppEnableEvent?$event->getAppId():($event instanceof AppUpdateEvent?$event->getAppId():''); if($id!==AppConfig::APP)return;

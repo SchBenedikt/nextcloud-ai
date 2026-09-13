@@ -907,6 +907,18 @@ class ActionExecutor {
         }
     }
 
+    /** Safe catalog for the settings UI; schemas contain no credentials. */
+    public function pluginCatalog(): array {
+        return array_map(static function (array $tool): array {
+            $fn = $tool['function'] ?? [];
+            return [
+                'name' => (string)($fn['name'] ?? ''),
+                'description' => (string)($fn['description'] ?? ''),
+                'parameters' => $fn['parameters'] ?? ['type' => 'object', 'properties' => new \stdClass()],
+            ];
+        }, $this->toolsForSurface(ToolPolicy::SURFACE_WEB));
+    }
+
     /**
      * Execute a tool after the caller has explicitly confirmed it.
      *

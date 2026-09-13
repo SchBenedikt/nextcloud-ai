@@ -711,18 +711,37 @@ export default {
 		})
 		const dayName = day => (weekdays.find(item => item.value === Number(day)) || {}).label || String(day)
 		function writeBriefings(rows) { f.value.proactive_schedules = JSON.stringify(rows.slice(0, 20)) }
+		async function saveBriefingSchedule() {
+			// Save the schedule explicitly.  The general settings watcher may be
+			// saving another field at the same time; relying on changedSettingKeys()
+			// here made the Add button appear to do nothing when that save raced.
+			const payload = {
+				proactive_enabled: f.value.proactive_enabled,
+				proactive_schedules: f.value.proactive_schedules,
+			}
+			try {
+				const settings = await api('PUT', 'settings', payload)
+				if (settings) fill(settings)
+				return true
+			} catch (error) {
+				setMessage('error', t('The briefing could not be saved: {error}', { error: errMsg(error) }))
+				return false
+			}
+		}
 		async function addBriefing() {
 			const prompt = briefingDraft.value.prompt.trim()
+			const rawTime = String(briefingDraft.value.time || '').trim()
+			const timeMatch = /^(\d{1,2}):([0-5]\d)(?::[0-5]\d)?$/.exec(rawTime)
 			briefingFormError.value = ''
 			if (!prompt) { briefingFormError.value = t('Enter a question or instruction for this briefing.'); return }
-			if (!/^([01]\d|2[0-3]):[0-5]\d$/.test(briefingDraft.value.time)) { briefingFormError.value = t('Choose a valid briefing time.'); return }
+			if (!timeMatch || Number(timeMatch[1]) > 23) { briefingFormError.value = t('Choose a valid briefing time.'); return }
+			const time = `${String(Number(timeMatch[1])).padStart(2, '0')}:${timeMatch[2]}`
 			if (!briefingDraft.value.days.length) { briefingFormError.value = t('Choose at least one weekday.'); return }
 			if (proactiveBriefings.value.length >= 20) { briefingFormError.value = t('You can create up to 20 briefings.'); return }
-			writeBriefings([...proactiveBriefings.value, { id: `briefing-${Date.now()}`, prompt, time: briefingDraft.value.time, days: [...new Set(briefingDraft.value.days)].sort(), enabled: true, allow_actions: briefingDraft.value.allow_actions === true }])
+			writeBriefings([...proactiveBriefings.value, { id: `briefing-${Date.now()}`, prompt, time, days: [...new Set(briefingDraft.value.days)].sort(), enabled: true, allow_actions: briefingDraft.value.allow_actions === true }])
 			briefingDraft.value.prompt = ''
 			setMessage('info', t('Briefing added. Saving your schedule…'))
-			await save({ changedOnly: true })
-			if (message.value.type !== 'error') setMessage('success', t('Briefing saved.'))
+			if (await saveBriefingSchedule()) setMessage('success', t('Briefing saved.'))
 		}
 		function removeBriefing(id) { writeBriefings(proactiveBriefings.value.filter(item => item.id !== id)) }
 		function toggleBriefing(id) { writeBriefings(proactiveBriefings.value.map(item => item.id === id ? { ...item, enabled: item.enabled === false } : item)) }

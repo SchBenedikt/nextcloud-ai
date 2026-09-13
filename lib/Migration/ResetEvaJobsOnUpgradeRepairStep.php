@@ -27,7 +27,7 @@ class ResetEvaJobsOnUpgradeRepairStep implements IRepairStep {
     private const APP = 'eva_ai';
     private const USER_STATE = [
         'index_running', 'index_started', 'index_heartbeat', 'index_mode', 'index_cancel_requested',
-        'index_run_id', 'background_chat_queue', 'learned_app_apis', 'learned_file_locations',
+        'index_run_id', 'background_chat_queue',
     ];
 
     /** @var list<class-string> */
@@ -52,6 +52,7 @@ class ResetEvaJobsOnUpgradeRepairStep implements IRepairStep {
         $this->config->setAppValue(self::APP, 'index_scheduler_active', '{}');
         $this->config->setAppValue(self::APP, 'index_job_running', '0');
         $this->config->setAppValue(self::APP, 'index_job_stop_requested', '1');
+        $this->config->setAppValue(self::APP, 'index_reset_requested', '0');
 
         $users = 0;
         $this->userManager->callForAllUsers(function ($user) use (&$users): void {

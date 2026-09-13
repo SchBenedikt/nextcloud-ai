@@ -16,7 +16,7 @@
 						:wide="true"
 						:disabled="busy"
 						:aria-label="$t('Start a new chat')"
-						@click="newChat">
+					@click="() => newChat()">
 						<template #icon>
 							<NcIconSvgWrapper :path="mdiMessagePlus" :size="16" aria-hidden="true" />
 						</template>
@@ -142,7 +142,7 @@
 			</template>
 		</NcAppNavigation>
 		<NcAppContent>
-			<HomeView v-if="view === 'home'" @new-chat="newChat" @navigate="navigate" @open-chat="selectChat" />
+			<HomeView v-if="view === 'home'" @new-chat="() => newChat()" @navigate="navigate" @open-chat="selectChat" />
 			<ChatView v-else-if="view === 'chat'" :chat-id="currentChat" :initial-prompt="pendingPrompt" :auto-send="!!pendingPrompt" @chat-updated="loadChats" @prompt-consumed="pendingPrompt = ''" />
 			<FileContextChatView v-else-if="view === 'fileContext'" :file-ids="fileContextIds" />
 			<DocumentsView v-else-if="view === 'docs'" />
