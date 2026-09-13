@@ -26,7 +26,11 @@ module.exports = (env, argv) => {
 				// NC-JSCombiner (Cachebuster-Query-String).
 				return chunkData.chunk.name + '.js'
 			},
-			publicPath: '/apps/eva_ai/js/',
+			// Der Installationspfad ist in Nextcloud konfigurierbar (z. B.
+			// /nextcloud). `auto` leitet die Chunk-URL aus dem tatsächlich
+			// geladenen Hauptbundle ab; ein fester `/apps/...`-Pfad bricht jede
+			// Lazy-View auf Installationen in einem Unterverzeichnis.
+			publicPath: 'auto',
 			// Clean before emitting, keeping only the files that are *not* build
 			// output: `header.js` and the admin page's own script. The previous
 			// pattern also kept every `.map` and `.LICENSE.txt`, so a source map

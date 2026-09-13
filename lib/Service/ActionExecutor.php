@@ -1318,30 +1318,30 @@ class ActionExecutor {
         if (str_contains($path, '..') || preg_match('/[\r\n]/', $path) || !str_starts_with($path, '/')) {
             return ['ok' => false, 'error' => 'Only same-origin app paths without traversal are allowed.'];
         }
-        // Non-OCS routes are accepted only after the agent has explicitly
-        // discovered and cached that app's route metadata. This permits
-        // unknown apps to be learned safely without turning call_app_api into
-        // an arbitrary internal HTTP proxy. OCS paths retain the historical
-        // prefix check for backwards compatibility with existing clients.
-        if (!$isOcsPath) {
-            $knownRoute = false;
-            try {
-                $learned = json_decode($this->config->get('learned_app_apis'), true);
-                $learnedAt = (int)($learned[$appId]['updated'] ?? 0);
-                $routes = ($learnedAt > 0 && $learnedAt >= time() - self::LEARNED_API_TTL && is_array($learned[$appId]['routes'] ?? null)) ? $learned[$appId]['routes'] : [];
-                foreach ($routes as $route) {
-                    if (!is_array($route) || (bool)($route['ocs'] ?? false)) continue;
-                    $routePath = (string)($route['path'] ?? '');
-                    $methods = is_array($route['methods'] ?? null) ? array_map('strtoupper', $route['methods']) : [];
-                    if ($routePath !== '' && $this->matchesDiscoveredRoute($routePath, $path) && ($methods === [] || in_array($method, $methods, true))) {
-                        $knownRoute = true;
-                        break;
-                    }
+        // Every generic route must be present in the user's recent discovery
+        // snapshot.  Prefix-only checks are not sufficient: an enabled app can
+        // expose administrative or destructive endpoints under the same OCS
+        // prefix.  Requiring an exact discovered route keeps the learning
+        // loop useful while preventing arbitrary app API probing.
+        $knownRoute = false;
+        try {
+            $learned = json_decode($this->config->get('learned_app_apis'), true);
+            $learnedAt = (int)($learned[$appId]['updated'] ?? 0);
+            $routes = ($learnedAt > 0 && $learnedAt >= time() - self::LEARNED_API_TTL && is_array($learned[$appId]['routes'] ?? null)) ? $learned[$appId]['routes'] : [];
+            foreach ($routes as $route) {
+                if (!is_array($route)) continue;
+                $routePath = (string)($route['path'] ?? '');
+                $methods = is_array($route['methods'] ?? null) ? array_map('strtoupper', $route['methods']) : [];
+                if ($routePath !== '' && $this->matchesDiscoveredRoute($routePath, $path) && ($methods === [] || in_array($method, $methods, true))) {
+                    $knownRoute = true;
+                    break;
                 }
-            } catch (\Throwable) { /* treat malformed learning cache as empty */ }
-            if (!$knownRoute) {
-                return ['ok' => false, 'error' => 'This non-OCS route has not been discovered yet. Call discover_app_api with include_internal=true first.'];
             }
+        } catch (\Throwable) { /* treat malformed learning cache as empty */ }
+        if (!$knownRoute) {
+            return ['ok' => false, 'error' => $isOcsPath
+                ? 'This OCS route has not been discovered recently. Call discover_app_api first.'
+                : 'This non-OCS route has not been discovered yet. Call discover_app_api with include_internal=true first.'];
         }
         try {
             $appManager = Server::get(\OCP\App\IAppManager::class);
@@ -1393,7 +1393,8 @@ class ActionExecutor {
         if ($appId === '' || $path === '') return;
         try {
             $known = json_decode($this->config->get('learned_app_apis'), true);
-            if (!is_array($known) || !is_array($known[$appId] ?? null)) return;
+            $known = is_array($known) ? $known : [];
+            if (!is_array($known[$appId] ?? null)) $known[$appId] = ['updated' => time(), 'routes' => []];
             $patterns = is_array($known[$appId]['patterns'] ?? null) ? $known[$appId]['patterns'] : [];
             $keys = array_values(array_unique(array_filter(array_map('strval', $paramKeys), static fn(string $key): bool => preg_match('/^[A-Za-z0-9_.-]{1,80}$/', $key) === 1)));
             $entry = ['method' => $method, 'path' => $path, 'params' => $keys, 'response_shape' => $responseShape, 'last_used' => time()];
@@ -1401,6 +1402,11 @@ class ActionExecutor {
             $patterns = array_values(array_filter($patterns, static fn($row): bool => is_array($row) && (($row['method'] ?? '') . ' ' . ($row['path'] ?? '')) !== $fingerprint));
             array_unshift($patterns, $entry);
             $known[$appId]['patterns'] = array_slice($patterns, 0, 50);
+            $known[$appId]['updated'] = time();
+            if (count($known) > 30) {
+                uasort($known, static fn (array $a, array $b): int => ((int)($b['updated'] ?? 0)) <=> ((int)($a['updated'] ?? 0)));
+                $known = array_slice($known, 0, 30, true);
+            }
             $this->config->set('learned_app_apis', json_encode($known, JSON_UNESCAPED_SLASHES) ?: '{}');
         } catch (\Throwable) { /* Learning is best effort and must not break the action. */ }
     }
