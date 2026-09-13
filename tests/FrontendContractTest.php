@@ -15,6 +15,8 @@ final class FrontendContractTest extends TestCase {
         self::assertStringContainsString('chatRetentionOptions', $settings);
         self::assertStringContainsString('class="auth-choice"', $settings);
         self::assertStringContainsString('v-model="briefingDraft.days" type="checkbox"', $settings);
+        self::assertStringContainsString('async function persistBriefings(rows, messageKey)', $settings);
+        self::assertStringContainsString('if (await saveBriefingSchedule()) setMessage', $settings);
         self::assertStringNotContainsString('<select v-model="connectorDraft.auth_type"', $settings);
         self::assertStringNotContainsString('class="briefing-toggle"', $settings);
     }

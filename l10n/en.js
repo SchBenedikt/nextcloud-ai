@@ -48,6 +48,8 @@ OC.L10N.register("eva_ai", {
     "You can create up to 20 briefings.": "You can create up to 20 briefings.",
     "Briefing added. Saving your schedule…": "Briefing added. Saving your schedule…",
     "Briefing saved.": "Briefing saved.",
+    "Saving briefing changes…": "Saving briefing changes…",
+    "Briefing changes saved.": "Briefing changes saved.",
     "The briefing could not be saved: {error}": "The briefing could not be saved: {error}",
     "Connect an external HTTPS service for EVA to discover and use with confirmation.": "Connect an external HTTPS service for EVA to discover and use with confirmation.",
     "Loading connectors…": "Loading connectors…",

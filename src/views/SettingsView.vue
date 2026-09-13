@@ -729,6 +729,11 @@ export default {
 		})
 		const dayName = day => (weekdays.find(item => item.value === Number(day)) || {}).label || String(day)
 		function writeBriefings(rows) { f.value.proactive_schedules = JSON.stringify(rows.slice(0, 20)) }
+		async function persistBriefings(rows, messageKey) {
+			writeBriefings(rows)
+			setMessage('info', t('Saving briefing changes…'))
+			if (await saveBriefingSchedule()) setMessage('success', t(messageKey))
+		}
 		async function saveBriefingSchedule() {
 			// Save the schedule explicitly.  The general settings watcher may be
 			// saving another field at the same time; relying on changedSettingKeys()
@@ -762,9 +767,9 @@ export default {
 			setMessage('info', t('Briefing added. Saving your schedule…'))
 			if (await saveBriefingSchedule()) setMessage('success', t('Briefing saved.'))
 		}
-		function removeBriefing(id) { writeBriefings(proactiveBriefings.value.filter(item => item.id !== id)) }
-		function toggleBriefing(id) { writeBriefings(proactiveBriefings.value.map(item => item.id === id ? { ...item, enabled: item.enabled === false } : item)) }
-		function toggleBriefingActions(id) { writeBriefings(proactiveBriefings.value.map(item => item.id === id ? { ...item, allow_actions: item.allow_actions !== true } : item)) }
+		async function removeBriefing(id) { await persistBriefings(proactiveBriefings.value.filter(item => item.id !== id), 'Briefing changes saved.') }
+		async function toggleBriefing(id) { await persistBriefings(proactiveBriefings.value.map(item => item.id === id ? { ...item, enabled: item.enabled === false } : item), 'Briefing changes saved.') }
+		async function toggleBriefingActions(id) { await persistBriefings(proactiveBriefings.value.map(item => item.id === id ? { ...item, allow_actions: item.allow_actions !== true } : item), 'Briefing changes saved.') }
 		const userWebSearchEnabled = computed({
 			get: () => f.value.web_search_enabled === '1',
 			set: value => { f.value.web_search_enabled = value ? '1' : '0' },
