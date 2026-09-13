@@ -114,6 +114,18 @@ class ToolPolicy {
             'requiresConfirmation' => true,
             'description' => 'Move a file or folder to another directory',
         ],
+        'copy_file' => [
+            'risk' => self::RISK_MUTATING,
+            'surfaces' => [self::SURFACE_WEB, self::SURFACE_TASKPROCESSING_CONFIRMED],
+            'requiresConfirmation' => true,
+            'description' => 'Copy a file or folder to another directory',
+        ],
+        'file_checksum' => [
+            'risk' => self::RISK_READONLY,
+            'surfaces' => [self::SURFACE_WEB, self::SURFACE_TALK, self::SURFACE_TASKPROCESSING, self::SURFACE_TASKPROCESSING_CONFIRMED, self::SURFACE_RAG],
+            'requiresConfirmation' => false,
+            'description' => 'Calculate a bounded SHA-256 checksum for a file',
+        ],
         'delete_file' => [
             'risk' => self::RISK_DESTRUCTIVE,
             'surfaces' => [self::SURFACE_WEB, self::SURFACE_TASKPROCESSING_CONFIRMED],

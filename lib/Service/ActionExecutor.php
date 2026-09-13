@@ -57,6 +57,8 @@ class ActionExecutor {
         'create_folder' => ['path'],
         'rename_file' => ['path', 'new_name'],
         'move_file' => ['path', 'target_path'],
+        'copy_file' => ['path', 'target_path'],
+        'file_checksum' => ['path'],
         'delete_file' => ['path'],
         'inspect_file' => ['path'],
         'extract_file_text' => ['path'],
@@ -219,6 +221,21 @@ class ActionExecutor {
                     'path' => ['type' => 'string', 'description' => 'Current relative path.'],
                     'target_path' => ['type' => 'string', 'description' => 'Final relative path including the name.'],
                 ], 'required' => ['path', 'target_path']],
+            ]],
+            ['type' => 'function', 'function' => [
+                'name' => 'copy_file',
+                'description' => 'Copy a file or folder to another directory in the user\'s home. target_path is the final relative path including the new name; destination folders are created when needed.',
+                'parameters' => ['type' => 'object', 'properties' => [
+                    'path' => ['type' => 'string', 'description' => 'Source relative path.'],
+                    'target_path' => ['type' => 'string', 'description' => 'Final destination path including the name.'],
+                ], 'required' => ['path', 'target_path']],
+            ]],
+            ['type' => 'function', 'function' => [
+                'name' => 'file_checksum',
+                'description' => 'Calculate a SHA-256 checksum for a file so complex operations can be validated without exposing its contents.',
+                'parameters' => ['type' => 'object', 'properties' => [
+                    'path' => ['type' => 'string', 'description' => 'Relative file path.'],
+                ], 'required' => ['path']],
             ]],
             ['type' => 'function', 'function' => [
                 'name' => 'delete_file',
@@ -881,7 +898,7 @@ class ActionExecutor {
 
         $fileTools = [
             'list_files', 'create_file', 'create_files', 'create_note', 'create_folder',
-            'rename_file', 'move_file', 'delete_file', 'read_file', 'inspect_file', 'search_files',
+            'rename_file', 'move_file', 'copy_file', 'file_checksum', 'delete_file', 'read_file', 'inspect_file', 'search_files',
             'extract_file_text',
             'update_knowledge',
         ];
@@ -898,6 +915,8 @@ class ActionExecutor {
                 'create_folder' => $this->createFolder($home, $args),
                 'rename_file' => $this->renameFile($home, $args),
                 'move_file' => $this->moveFile($home, $args),
+                'copy_file' => $this->copyFile($home, $args),
+                'file_checksum' => $this->fileChecksum($home, $args),
                 'delete_file' => $this->deleteFile($home, $args),
                 'read_file' => $this->readFile($home, $args),
                 'extract_file_text' => $this->extractFileText($home, $args),
@@ -1626,6 +1645,41 @@ class ActionExecutor {
         }
         $node->move($destination->getPath() . '/' . $targetName);
         return ['ok' => true, 'result' => 'Moved ' . $path . ' to ' . $targetPath];
+    }
+
+    /** Copy a file or folder to a new relative path, creating destination folders. */
+    private function copyFile(Folder $home, array $args): array {
+        $path = $this->cleanPath((string)($args['path'] ?? ''));
+        $targetPath = $this->cleanPath((string)($args['target_path'] ?? ''));
+        if ($path === '' || $targetPath === '' || $path === $targetPath || $targetPath === '/') {
+            return ['ok' => false, 'error' => 'Valid, different path and target_path are required'];
+        }
+        $node = $this->resolve($home, $path);
+        if ($node instanceof Folder && str_starts_with($targetPath . '/', $path . '/')) {
+            return ['ok' => false, 'error' => 'A folder cannot be copied into itself'];
+        }
+        [$targetDir, $targetName] = $this->splitPath($targetPath);
+        $targetName = $this->cleanName($targetName);
+        if ($targetName === '') return ['ok' => false, 'error' => 'A valid target name is required'];
+        $destination = $this->ensureFolderPath($home, $targetDir);
+        if ($destination->nodeExists($targetName)) return ['ok' => false, 'error' => 'Target already exists'];
+        $node->copy($destination->getPath() . '/' . $targetName);
+        return ['ok' => true, 'result' => 'Copied ' . $path . ' to ' . $targetPath];
+    }
+
+    /** Return a bounded checksum for post-operation integrity validation. */
+    private function fileChecksum(Folder $home, array $args): array {
+        $path = $this->cleanPath((string)($args['path'] ?? ''));
+        if ($path === '') return ['ok' => false, 'error' => 'File path required'];
+        $node = $this->resolve($home, $path);
+        if (!$node instanceof File) return ['ok' => false, 'error' => 'Not a file'];
+        if ($node->getSize() > self::MAX_READ_FILE_BYTES) return ['ok' => false, 'error' => 'File too large to checksum'];
+        try {
+            $content = (string)$node->getContent();
+            return ['ok' => true, 'result' => ['path' => $path, 'algorithm' => 'sha256', 'checksum' => hash('sha256', $content), 'size' => (int)$node->getSize(), 'modified' => (int)$node->getMTime()]];
+        } catch (\Throwable) {
+            return ['ok' => false, 'error' => 'File checksum could not be calculated'];
+        }
     }
 
     /** @return array{ok:true,result:string}|array{ok:false,error:string} */
