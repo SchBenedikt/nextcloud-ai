@@ -858,3 +858,10 @@ follows [Semantic Versioning](https://semver.org/).
 - Production Webpack build passed.
 - Main-branch CI and dependency security checks passed for the preceding
   production fixes.
+## [1.16.5] - 2026-09-13
+
+- Defer destructive reset during activation/update to a background tick.
+- Recover cancelled or stale background agent runs and reduce queue DB writes.
+- Use the modern Nextcloud file picker with a legacy fallback.
+- Show safe tool argument summaries in agent execution traces.
+- Test learned connector GET routes instead of assuming `/`.
