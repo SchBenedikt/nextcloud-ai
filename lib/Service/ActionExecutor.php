@@ -1192,9 +1192,23 @@ class ActionExecutor {
             $availableApis = [];
             foreach ($apiCatalog as $app => $metadata) if (in_array($app, $apps, true)) $availableApis[$app] = $metadata;
             $availableApis['_generic'] = $apiCatalog['_generic'];
+            $appMetadata = [];
+            try {
+                $manager = Server::get(\OCP\App\IAppManager::class);
+                foreach ($apps as $app) {
+                    $info = method_exists($manager, 'getAppInfo') ? $manager->getAppInfo($app) : [];
+                    if (!is_array($info)) $info = [];
+                    $appMetadata[$app] = [
+                        'name' => (string)($info['name'] ?? $app),
+                        'version' => (string)($info['version'] ?? ''),
+                        'description' => mb_strimwidth((string)($info['description'] ?? ''), 0, 240, '…'),
+                    ];
+                }
+            } catch (\Throwable) { /* metadata is optional on older NC versions */ }
             return [
                 'ok' => true,
                 'enabled_apps' => $apps,
+                'app_metadata' => $appMetadata,
                 'eva_integrations' => [
                     'files' => in_array('files', $apps, true),
                     'calendar' => in_array('calendar', $apps, true),
@@ -1381,10 +1395,14 @@ class ActionExecutor {
             if (is_resource($body)) $body = stream_get_contents($body);
             $body = mb_substr((string)$body, 0, 50000);
             $decoded = json_decode($body, true);
+            // Generic app APIs may return credentials or session material even
+            // on an otherwise harmless GET. Keep the adapter useful while
+            // ensuring obvious secret-shaped fields never reach the model.
+            $safeData = is_array($decoded) ? $this->redactApiPayload($decoded) : $body;
             $status = $response->getStatusCode();
             $ok = $status >= 200 && $status < 300;
-            if ($ok) $this->rememberAppApiPattern($appId, $method, $path, array_keys($params), is_array($decoded) ? $this->shapeOf($decoded) : ['type' => 'string']);
-            return ['ok' => $ok, 'result' => ['status' => $status, 'data' => $decoded ?? $body, 'path' => $path, 'method' => $method]];
+            if ($ok) $this->rememberAppApiPattern($appId, $method, $path, array_keys($params), is_array($safeData) ? $this->shapeOf($safeData) : ['type' => 'string']);
+            return ['ok' => $ok, 'result' => ['status' => $status, 'data' => $safeData, 'path' => $path, 'method' => $method]];
         } catch (\Throwable) { return ['ok' => false, 'error' => 'The app API request failed in the current user context.']; }
     }
 
@@ -1422,6 +1440,22 @@ class ActionExecutor {
             $keys[$name] = $this->shapeOf($child, $depth + 1);
         }
         return ['type' => array_is_list($value) ? 'array' : 'object', 'keys' => $keys];
+    }
+
+    /** Remove credential-like fields from arbitrary JSON returned by an app. */
+    private function redactApiPayload(mixed $value, int $depth = 0): mixed {
+        if ($depth > 8) return '[redacted depth]';
+        if (!is_array($value)) return $value;
+        $out = [];
+        foreach ($value as $key => $child) {
+            $name = strtolower((string)$key);
+            if (preg_match('/(?:pass(word)?|token|secret|api[_-]?key|authorization|cookie|private[_-]?key)/i', $name) === 1) {
+                $out[$key] = '[redacted]';
+            } else {
+                $out[$key] = $this->redactApiPayload($child, $depth + 1);
+            }
+        }
+        return $out;
     }
 
     /** Match a concrete request path against a Nextcloud route template. */

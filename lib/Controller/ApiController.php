@@ -13,6 +13,7 @@ use OCA\EvaAi\Service\FileContextChatService;
 use OCA\EvaAi\Service\Indexer;
 use OCA\EvaAi\Service\LockGuard;
 use OCA\EvaAi\BackgroundJob\IndexRequestJob;
+use OCA\EvaAi\BackgroundJob\BackgroundChatJob;
 use OCA\EvaAi\Service\Ollama;
 use OCA\EvaAi\Service\RagService;
 use OCA\EvaAi\Service\KnowledgeInitializer;
@@ -933,6 +934,9 @@ class ApiController extends OCSController {
         }
         $id = $this->backgroundChatQueue->enqueue($user, $chatId, $message, $history, is_string($requestId) ? $requestId : null);
         if ($id === null) return new DataResponse(['error' => 'Background queue is full or the message is too large'], 429);
+        // Wake the timed worker on the next cron tick instead of waiting for
+        // its previous 30-second interval (or a stale 1970 last-run entry).
+        try { $this->jobList->scheduleAfter(BackgroundChatJob::class, time() + 1); } catch (\Throwable) { /* cron remains the fallback */ }
         return new DataResponse(['queued' => true, 'id' => $id]);
     }
 
