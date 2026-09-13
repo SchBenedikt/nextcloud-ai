@@ -14,7 +14,7 @@ final class AppLifecycleListener implements IEventListener {
  public function handle(Event $event):void {
   $id=$event instanceof AppEnableEvent?$event->getAppId():($event instanceof AppUpdateEvent?$event->getAppId():''); if($id!==AppConfig::APP)return;
   foreach(['background_chat_queue'=>'[]','background_chat_history'=>'[]','background_chat_users'=>'[]','index_scheduler_queue'=>'[]','index_scheduler_active'=>'{}','index_job_running'=>'0','index_job_stop_requested'=>'0'] as $k=>$v)$this->config->setAppValue(AppConfig::APP,$k,$v);
-  $this->users->callForAllUsers(function($u):void{foreach(self::STATE as $k){try{$this->config->deleteUserValue((string)$u->getUID(),AppConfig::APP,$k);}catch(\Throwable){}}});
+  $this->users->callForAllUsers(function($u):void{$uid=(string)$u->getUID();foreach(self::STATE as $k){try{$this->config->deleteUserValue($uid,AppConfig::APP,$k);}catch(\Throwable){}}try{$this->config->setUserValue($uid,AppConfig::APP,'index_cancel_requested','1');}catch(\Throwable){}});
   try{$this->db->executeStatement('DELETE FROM *PREFIX*eva_ai_agent_state');}catch(\Throwable){}
   foreach(self::JOBS as $j){try{$this->jobs->remove($j);$this->jobs->add($j);}catch(\Throwable){}}
  }

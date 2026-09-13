@@ -63,6 +63,9 @@ class ResetEvaJobsOnUpgradeRepairStep implements IRepairStep {
             foreach (self::USER_STATE as $key) {
                 try { $this->config->deleteUserValue($uid, self::APP, $key); } catch (\Throwable) { /* best effort */ }
             }
+            // Leave a durable stop marker for a worker that is already inside
+            // a model/tool loop; it will observe this between steps and exit.
+            $this->config->setUserValue($uid, self::APP, 'index_cancel_requested', '1');
             $users++;
         });
 
