@@ -528,8 +528,10 @@ class WebSearchService {
         ]);
         try {
             $html = $this->httpGet($endpoint, $this->browserHeaders(self::BING_IMAGE_ENDPOINT));
-        } catch (\Throwable $e) {
-            return $empty + ['ok' => false, 'error' => 'The image search failed: ' . $e->getMessage()];
+        } catch (\Throwable) {
+            // Bing can rate-limit or serve an anti-bot response. Continue to
+            // the independent keyless provider instead of failing outright.
+            $html = '';
         }
         $images = $this->parseBingImages($html, $count, $query);
         if ($images === []) {
