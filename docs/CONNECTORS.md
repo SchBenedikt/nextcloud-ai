@@ -68,6 +68,12 @@ path parameters are URL-encoded, and remaining fields form the JSON body.
 Unknown optional fields remain allowed for compatibility with vendor-specific
 extensions.
 
+The advertised request-body content type is retained as well. EVA sends JSON
+as JSON, `application/x-www-form-urlencoded` as an encoded form, and
+`multipart/form-data` as a cURL multipart request with its boundary generated
+automatically. Form-oriented APIs therefore work without manually rewriting
+the learned endpoint or weakening the confirmation gate.
+
 Every external action is confirmation-gated. Read-only batches are limited in
 size and time; write and destructive methods are never silently upgraded to a
 read operation. Redirects, cross-host URLs, shell syntax and credential-shaped
@@ -98,4 +104,3 @@ bounded results, redaction and confirmation policy.
   runtime, hypermedia, JavaScript-route or vendor-fallback metadata.
 - **Route not discovered:** run **Discover API** again after changing the
   service base URL or schema URL, then call only the learned method/path.
-
