@@ -275,11 +275,11 @@ $this->executor->setUserId($userId);
 						return;
 					}
                     $toolActivity = true;
-                    yield json_encode(['type' => 'tool', 'name' => $tc['name'] ?? '?']) . "\n";
                     $toolName = $tc['name'] ?? '';
                     $toolArgs = $toolName === 'create_calendar_event'
                         ? $this->completeCalendarArguments($userId, $message, $tc['arguments'] ?? [])
                         : ($tc['arguments'] ?? []);
+                    yield json_encode(['type' => 'tool', 'name' => $toolName ?: '?', 'arguments' => $this->safeToolArguments($toolArgs)], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) . "\n";
                     $fingerprint = hash('sha256', $toolName . ':' . json_encode($toolArgs, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES));
                     $seenToolCalls[$fingerprint] = ($seenToolCalls[$fingerprint] ?? 0) + 1;
                     $res = $seenToolCalls[$fingerprint] > self::MAX_IDENTICAL_TOOL_CALLS
@@ -481,6 +481,28 @@ $this->executor->setUserId($userId);
         if (isset($item['source']) && is_string($item['source']) && $item['source'] !== '') {
             $this->toolSources[$url]['publisher'] = $item['source'];
         }
+    }
+
+    /** Keep the live tool trace useful without leaking credentials. */
+    private function safeToolArguments(mixed $arguments): array {
+        if (!is_array($arguments)) return [];
+        $out = [];
+        foreach ($arguments as $key => $value) {
+            $label = strtolower((string)$key);
+            if (preg_match('/token|secret|password|api[_-]?key|authorization|cookie/', $label) === 1) {
+                $out[(string)$key] = '[redacted]';
+                continue;
+            }
+            if (is_array($value)) {
+                $out[(string)$key] = $this->safeToolArguments($value);
+            } elseif (is_scalar($value) || $value === null) {
+                $text = (string)$value;
+                $out[(string)$key] = mb_strlen($text) > 240 ? mb_substr($text, 0, 240) . '…' : $value;
+            } else {
+                $out[(string)$key] = '[omitted]';
+            }
+        }
+        return $out;
     }
 
     /** Prevent repeated tool rounds after a connector credential failure. */

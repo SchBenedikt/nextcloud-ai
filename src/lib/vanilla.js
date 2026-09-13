@@ -208,7 +208,8 @@ export function mountChat(root, opts = {}) {
 			m.tools.forEach((c) => {
 				const row = document.createElement('div')
 				row.className = 'tool ' + (c.state === 'running' ? 'running' : c.state === 'ok' ? 'ok' : 'bad')
-				row.textContent = (c.state === 'running' ? '🛠 ' : c.state === 'ok' ? '✅ ' : '❌ ') + c.name + (c.state === 'running' ? ' …' : '')
+				const args = c.arguments && Object.keys(c.arguments).length ? ' · ' + JSON.stringify(c.arguments) : ''
+				row.textContent = (c.state === 'running' ? '🛠 ' : c.state === 'ok' ? '✅ ' : '❌ ') + c.name + (c.state === 'running' ? ' …' : '') + args
 				ta.appendChild(row)
 			})
 			wrap.appendChild(ta)
@@ -1005,7 +1006,7 @@ export function mountChat(root, opts = {}) {
 				scheduleUpdate(messages.length - 1)
 			} else if (ev.type === 'tool') {
 				last.tools = last.tools || []
-				last.tools.push({ name: ev.name || '?', state: 'running' })
+				last.tools.push({ name: ev.name || '?', arguments: ev.arguments || {}, state: 'running' })
 				scheduleUpdate(messages.length - 1)
 			} else if (ev.type === 'tool_result') {
 				last.tools = last.tools || []
@@ -1164,7 +1165,7 @@ export function mountChat(root, opts = {}) {
 					last.text += ev.delta || ''
 				} else if (ev.type === 'tool') {
 					last.tools = last.tools || []
-					last.tools.push({ name: ev.name || '?', state: 'running' })
+					last.tools.push({ name: ev.name || '?', arguments: ev.arguments || {}, state: 'running' })
 				} else if (ev.type === 'tool_result') {
 					// Match by name from the end: several tools can run in the
 					// same round, and their results may arrive in any order.

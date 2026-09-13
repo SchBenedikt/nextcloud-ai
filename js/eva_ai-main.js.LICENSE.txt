@@ -77,6 +77,12 @@
 /*! markdown-it 15.0.1 https://github.com/markdown-it/markdown-it @license MIT */
 
 /**
+* @vue/compiler-core v3.5.41
+* (c) 2018-present Yuxi (Evan) You and Vue contributors
+* @license MIT
+**/
+
+/**
 * @vue/compiler-dom v3.5.41
 * (c) 2018-present Yuxi (Evan) You and Vue contributors
 * @license MIT

@@ -14,6 +14,8 @@ use OCP\Files\NotFoundException;
 use OCP\Files\NotPermittedException;
 use OCP\IUserManager;
 use OCP\Server;
+use OCP\EventDispatcher\IEventDispatcher;
+use OCA\EvaAi\Event\ToolPluginRegisterEvent;
 
 /**
  * Führt "AI Actions" auf dem gesamten Benutzer-Dateibereich aus.
@@ -49,6 +51,7 @@ class ActionExecutor {
     private const KNOWLEDGE_TARGET_CHARS = 45000;
     private const KNOWLEDGE_PROFILE_MARKER = '<!-- eva_ai:profile-initialized -->';
     private const NOTES_FOLDER = 'Notes';
+    private bool $pluginsLoaded = false;
 
     /**
      * Arguments a tool call needs before it may run without asking the user.
@@ -149,7 +152,9 @@ class ActionExecutor {
         private ?Indexer $indexer = null,
         private ?\OCP\Comments\ICommentsManagerFactory $commentsFactory = null,
         private ?\OCP\SystemTag\ISystemTagManagerFactory $systemTagFactory = null,
-        private ?UsageMetrics $usageMetrics = null
+        private ?UsageMetrics $usageMetrics = null,
+        private ?ToolPluginRegistry $pluginRegistry = null,
+        private ?IEventDispatcher $eventDispatcher = null
     ) {
     }
 
@@ -839,16 +844,48 @@ class ActionExecutor {
         }
         unset($t);
 
+        // Third-party apps can extend EVA without patching this class. Plugin
+        // tools are appended after built-ins and still pass the normal surface
+        // and confirmation checks in run().
+        $output = array_merge($output, $this->pluginDefinitions());
+
         // Tool definitions are filtered at the same policy boundary as
         // execution. This is important for callers such as Talk and
         // TaskProcessing: a provider must never expose a tool merely because
         // a caller supplied or requested its name.
         $output = array_values(array_filter($output, function (array $tool): bool {
             $name = (string)($tool['function']['name'] ?? '');
-            return $name !== '' && ($this->toolPolicy->check($name)['allowed'] ?? false);
+            return $name !== '' && (($this->toolPolicy->check($name)['allowed'] ?? false)
+                || $this->pluginRegistryOrNull()?->get($name) !== null);
         }));
 
         return $output;
+    }
+
+    /** @return list<array{type:string,function:array<string,mixed>}> */
+    private function pluginDefinitions(): array {
+        $this->loadPlugins();
+        return $this->pluginRegistryOrNull()?->definitionsForSurface($this->toolPolicy->getSurface()) ?? [];
+    }
+
+    private function pluginRegistryOrNull(): ?ToolPluginRegistry {
+        return isset($this->pluginRegistry) ? $this->pluginRegistry : null;
+    }
+
+    private function eventDispatcherOrNull(): ?IEventDispatcher {
+        return isset($this->eventDispatcher) ? $this->eventDispatcher : null;
+    }
+
+    private function loadPlugins(): void {
+        $registry = $this->pluginRegistryOrNull();
+        $dispatcher = $this->eventDispatcherOrNull();
+        if ($this->pluginsLoaded || $registry === null || $dispatcher === null) return;
+        $this->pluginsLoaded = true;
+        try {
+            $dispatcher->dispatchTyped(new ToolPluginRegisterEvent($registry));
+        } catch (\Throwable $e) {
+            // A broken optional plugin must never remove EVA's built-in tools.
+        }
     }
 
     /**
@@ -924,6 +961,22 @@ class ActionExecutor {
             }
         }
         // Centralized tool permission check
+        $this->loadPlugins();
+        $registry = $this->pluginRegistryOrNull();
+        $plugin = $registry?->get($name);
+        if ($plugin !== null) {
+            $definition = $plugin['definition'];
+            if (!in_array($this->toolPolicy->getSurface(), $definition['surfaces'], true)) {
+                return ['ok' => false, 'error' => 'Plugin tool is not available on this execution surface.'];
+            }
+            if (!empty($definition['requiresConfirmation']) && !$confirmed) {
+                return ['ok' => false, 'confirmation_required' => true, 'tool' => $name, 'arguments' => $args,
+                    'risk' => $definition['risk'], 'error' => 'This plugin action requires explicit confirmation before it can be executed.'];
+            }
+            $result = $registry->execute($userId, $name, $args);
+            $this->recordToolMetric($userId, $name, $startedAt, (bool)($result['ok'] ?? false));
+            return $result;
+        }
         $policy = $this->toolPolicy->check($name);
         if (!$policy['allowed']) {
             return ['ok' => false, 'error' => $policy['reason'] ?? 'Tool not allowed'];
