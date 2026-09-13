@@ -41,6 +41,7 @@ OC.L10N.register("eva_ai", {
     "Filter routes": "Filter routes",
     "Search method, path or operation": "Search method, path or operation",
     "No learned route matches this filter.": "No learned route matches this filter.",
+    "JSON fields": "JSON fields",
     "EVA extensions": "EVA extensions",
     "Installed Nextcloud apps can add namespaced tools to EVA. Their schemas are visible here; actions still follow EVA confirmation and surface rules.": "Installed Nextcloud apps can add namespaced tools to EVA. Their schemas are visible here; actions still follow EVA confirmation and surface rules.",
     "Loading extensions…": "Loading extensions…",
