@@ -201,10 +201,6 @@ class Indexer {
             // One bulk read supplies both the change fingerprints and the
             // stored metadata, so a full scan no longer issues a query per file.
             $docState = $this->documentMapper->stateForUser($userId);
-            $hashes = [];
-            foreach ($docState as $stateFileId => $stateRow) {
-                $hashes[$stateFileId] = $stateRow['content_hash'];
-            }
             $seen = [];
             $stale = []; // Track files that should be removed from index
             $batch = [];
@@ -251,7 +247,7 @@ class Indexer {
                 if (!$this->isIndexable($file, $maxSize)) {
                     $result['skipped']++;
                     // If this file was previously indexed, mark it as stale for removal
-                    if (isset($hashes[$fileId])) {
+                    if (isset($docState[$fileId])) {
                         $stale[$fileId] = true;
                     }
                     continue;
@@ -316,7 +312,7 @@ class Indexer {
                     if (empty($actualFile) || !($actualFile[0] instanceof File)) {
                         $result['skipped']++;
                         // If this file was previously indexed, mark it as stale for removal
-                        if (isset($hashes[$fileId])) {
+                        if (isset($docState[$fileId])) {
                             $stale[$fileId] = true;
                         }
                         continue;
@@ -326,7 +322,7 @@ class Indexer {
                     $this->logger->warning('eva_ai: file access failed', ['file' => $file->getPath(), 'e' => $e->getMessage()]);
                     $result['skipped']++;
                     // Access loss is authoritative and must purge cached content.
-                    if (isset($hashes[$fileId])) {
+                    if (isset($docState[$fileId])) {
                         $stale[$fileId] = true;
                     }
                     continue;
@@ -348,14 +344,14 @@ class Indexer {
                     $result['skipped']++;
                     // A genuinely zero-byte file is authoritative empty input;
                     // parser failures on non-empty files preserve last-good data.
-                    if ((int)$file->getSize() === 0 && isset($hashes[$fileId])) {
+                    if ((int)$file->getSize() === 0 && isset($docState[$fileId])) {
                         $stale[$fileId] = true;
                     }
                     continue;
                 }
 
                 $hash = md5($content);
-                if (($hashes[$fileId] ?? null) === $hash) {
+                if (($docState[$fileId]['content_hash'] ?? null) === $hash) {
                     // Same content (e.g. a touch or a same-size edit): keep the
                     // stored chunks and refresh metadata so renames propagate.
                     $result['skipped']++;
@@ -411,6 +407,14 @@ class Indexer {
                 $cancelled = true;
             }
             $this->flushBatch($batch, $result, $runId, $userId);
+            // The bulk fingerprint map is only needed during file traversal;
+            // release it before cleanup/mail/Talk work so large indexes do not
+            // keep a second full document-state graph alive for the rest of
+            // the worker request.
+            unset($docState);
+            if (function_exists('gc_collect_cycles')) {
+                gc_collect_cycles();
+            }
             // A stop may have arrived during embedding; re-check before any
             // cleanup or mail work so cancellation cannot trigger more writes.
             if ($this->cancellationRequested($runId)) {
