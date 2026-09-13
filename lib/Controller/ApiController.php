@@ -344,9 +344,7 @@ class ApiController extends OCSController {
         }
         $this->config->setUserId($user);
         $this->recoverStaleIndex();
-        if ($this->config->get('index_running') === '1') {
-            return new DataResponse(['error' => 'Settings are locked while indexing is running.'], 409);
-        }
+        $indexRunning = $this->config->get('index_running') === '1';
         $allowed = [
             'chat_provider', 'groq_model', 'custom_provider_url', 'custom_provider_model', 'provider_profiles', 'ollama_url', 'embedding_model', 'chat_model', 'chat_model_fallback',
             'embedding_model_fallback', 'summary_model', 'top_k', 'chunk_size',
@@ -416,6 +414,9 @@ class ApiController extends OCSController {
                 $profileError = $this->config->validateValue($key, $validationValue);
                 if ($profileError !== null) $validationErrors[$key] = 'Provider profiles ' . $profileError . '.';
             }
+        }
+        if ($indexRunning && array_diff(array_keys($pending), ['proactive_enabled', 'proactive_schedules']) !== []) {
+            return new DataResponse(['error' => 'Only scheduled briefings can be changed while indexing is running.'], 409);
         }
         if ($validationErrors !== []) {
             return new DataResponse([
@@ -973,6 +974,17 @@ class ApiController extends OCSController {
         $user = $this->requireUser();
         if ($user === null) return new DataResponse(['error' => 'Not logged in'], 401);
         return new DataResponse($this->executor->run($user, 'list_external_connectors', []));
+    }
+
+    /** List installed third-party EVA tools without exposing plugin secrets. */
+    #[NoAdminRequired]
+    public function plugins(): DataResponse {
+        $user = $this->requireUser();
+        if ($user === null) return new DataResponse(['error' => 'Not logged in'], 401);
+        return new DataResponse(['plugins' => array_values(array_filter(
+            $this->executor->pluginCatalog(),
+            static fn(array $tool): bool => str_starts_with((string)($tool['name'] ?? ''), 'plugin_')
+        ))]);
     }
 
     #[NoAdminRequired]

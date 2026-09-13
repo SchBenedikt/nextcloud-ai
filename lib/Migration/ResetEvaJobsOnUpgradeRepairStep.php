@@ -19,19 +19,15 @@ use OCP\IDBConnection;
  * Starts EVA from a clean runtime state after an app upgrade.
  *
  * Durable EVA queues and agent snapshots belong to the previous code version;
- * retaining them can execute stale tool plans after deployment. Remove EVA's
- * queued jobs and runtime state, then re-register the periodic jobs. This is
- * intentionally limited to EVA-owned data and is idempotent.
+ * retaining them can execute stale tool plans after deployment. Stop the
+ * current run and clear transient queues, but preserve the user's derived
+ * document index: installing a new app version must never delete knowledge.
  */
 class ResetEvaJobsOnUpgradeRepairStep implements IRepairStep {
     private const APP = 'eva_ai';
     private const USER_STATE = [
-        'index_running', 'index_started', 'index_heartbeat', 'index_finished',
-        'last_index_processed', 'last_index_total', 'last_index_error',
-        'last_index_cache_hits', 'last_index_cache_misses', 'last_index_ollama_requests',
-        'last_index_failed', 'index_config_hash', 'index_mode', 'index_cancel_requested',
-        'index_run_id', 'index_enrolled', 'knowledge_initialized', 'proactive_schedule_runs',
-        'search_revision', 'background_chat_queue', 'learned_app_apis', 'learned_file_locations',
+        'index_running', 'index_started', 'index_heartbeat', 'index_mode', 'index_cancel_requested',
+        'index_run_id', 'background_chat_queue', 'learned_app_apis', 'learned_file_locations',
     ];
 
     /** @var list<class-string> */
@@ -71,10 +67,8 @@ class ResetEvaJobsOnUpgradeRepairStep implements IRepairStep {
 
         try {
             $this->db->executeStatement('DELETE FROM *PREFIX*eva_ai_agent_state');
-            // A requested clean restart also removes EVA's derived index; the
-            // user's original Nextcloud files remain untouched.
-            $this->db->executeStatement('DELETE FROM *PREFIX*eva_ai_chunks');
-            $this->db->executeStatement('DELETE FROM *PREFIX*eva_ai_documents');
+            // Never delete eva_ai_documents/chunks here. An app upgrade stops
+            // the active worker; the existing derived index remains usable.
         } catch (\Throwable) {
             // Table may not exist on an interrupted first install.
         }
@@ -82,6 +76,6 @@ class ResetEvaJobsOnUpgradeRepairStep implements IRepairStep {
         foreach (self::JOBS as $job) {
             try { $this->jobList->remove($job); $this->jobList->add($job); } catch (\Throwable) { /* best effort */ }
         }
-        $output->info('Reset EVA queues, agent state and ' . count(self::JOBS) . ' background jobs for ' . $users . ' users.');
+        $output->info('Stopped active EVA indexing, reset transient queues and re-registered ' . count(self::JOBS) . ' background jobs for ' . $users . ' users. Existing indexes were preserved.');
     }
 }

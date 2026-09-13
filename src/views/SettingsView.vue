@@ -339,10 +339,10 @@
 						<p>{{ $t('Save first, then rebuild the knowledge base with the current scope.') }}</p>
 					</div>
 					<div class="button-group">
-						<NcButton type="primary" :loading="indexing" :disabled="settingsLocked" @click="startIndex">{{ $t('Save & start indexing') }}</NcButton>
-						<NcButton type="secondary" :disabled="settingsLocked" @click="startMailIndex">{{ $t('Only index emails') }}</NcButton>
-						<NcButton type="secondary" :disabled="settingsLocked" @click="startTalkIndex">{{ $t('Only index Nextcloud Talk chats') }}</NcButton>
-						<NcButton type="tertiary-no-background" :disabled="settingsLocked" @click="resetConfirm = true">{{ $t('Delete index') }}</NcButton>
+						<NcButton type="primary" :loading="indexing" :disabled="settingsLocked || indexingActive" @click="startIndex">{{ $t('Save & start indexing') }}</NcButton>
+						<NcButton type="secondary" :disabled="settingsLocked || indexingActive" @click="startMailIndex">{{ $t('Only index emails') }}</NcButton>
+						<NcButton type="secondary" :disabled="settingsLocked || indexingActive" @click="startTalkIndex">{{ $t('Only index Nextcloud Talk chats') }}</NcButton>
+						<NcButton type="tertiary-no-background" :disabled="settingsLocked || indexingActive" @click="resetConfirm = true">{{ $t('Delete index') }}</NcButton>
 					</div>
 				</div>
 				<div v-if="resetConfirm" class="confirm-panel" role="alertdialog" aria-modal="true" aria-labelledby="reset-title">
@@ -459,7 +459,7 @@
 						<NcCheckboxRadioSwitch v-model="briefingDraft.allow_actions" type="switch">{{ $t('Allow EVA to perform requested actions automatically') }}</NcCheckboxRadioSwitch>
 						<p v-if="briefingDraft.allow_actions" class="field-help briefing-action-warning">{{ $t('Use only for prompts you trust. EVA will execute needed changes in the background without a second dialog; generic app APIs still need the encrypted Nextcloud app token.') }}</p>
 						<div><span class="native-label">{{ $t('Repeat on') }}</span><div class="weekday-picker"><label v-for="day in weekdays" :key="day.value" :class="{ selected: briefingDraft.days.includes(day.value) }"><input v-model="briefingDraft.days" type="checkbox" :value="day.value" /> <span>{{ day.label }}</span></label></div></div>
-						<div class="briefing-form-actions"><NcButton type="primary" :disabled="!briefingDraft.prompt.trim() || !briefingDraft.days.length" @click="addBriefing">{{ $t('Add briefing') }}</NcButton><span>{{ $t('{count} slots remaining', { count: Math.max(0, 20 - proactiveBriefings.length) }) }}</span></div></div>
+						<div class="briefing-form-actions"><NcButton type="primary" :disabled="saving || proactiveBriefings.length >= 20" @click="addBriefing">{{ $t('Add briefing') }}</NcButton><span>{{ $t('{count} slots remaining', { count: Math.max(0, 20 - proactiveBriefings.length) }) }}</span></div><p v-if="briefingFormError" class="field-help briefing-action-warning" role="alert">{{ briefingFormError }}</p></div>
 					</div>
 				</div>
 			</section>
@@ -510,6 +510,16 @@
 			<p class="field-help connector-auto-note">EVA probes standard API descriptions automatically and learns available routes. Every external action still requires confirmation.</p>
 			<div class="connector-form"><NcTextField v-model="connectorDraft.id" :label="$t('Connector ID')" :label-outside="true" placeholder="optional — generated automatically" /><NcTextField v-model="connectorDraft.name" :label="$t('Display name')" :label-outside="true" placeholder="optional — generated automatically" /><NcTextField v-model="connectorDraft.base_url" type="url" :label="$t('Service base URL')" :label-outside="true" placeholder="https://api.example.com" /><NcTextField v-model="connectorDraft.openapi_url" type="url" :label="$t('OpenAPI / Swagger URL (optional)')" :label-outside="true" placeholder="https://api.example.com/custom/openapi.json" /><label class="native-label">{{ $t('Authentication') }}<select v-model="connectorDraft.auth_type" class="native-select"><option value="none">{{ $t('None') }}</option><option value="bearer">{{ $t('Bearer token') }}</option><option value="basic">{{ $t('Username and password') }}</option><option value="api_key">{{ $t('API key') }}</option></select></label><NcTextField v-if="connectorDraft.auth_type === 'bearer'" v-model="connectorDraft.token" type="password" autocomplete="new-password" :label="$t('Bearer / service token (optional)')" :label-outside="true" :placeholder="$t('Leave empty to keep the saved secret')" /><template v-if="connectorDraft.auth_type === 'basic'"><NcTextField v-model="connectorDraft.username" autocomplete="username" :label="$t('Username (optional)')" :label-outside="true" /><NcTextField v-model="connectorDraft.password" type="password" autocomplete="new-password" :label="$t('Password (optional)')" :label-outside="true" :placeholder="$t('Leave empty to keep the saved secret')" /></template><template v-if="connectorDraft.auth_type === 'api_key'"><NcTextField v-model="connectorDraft.api_key" type="password" autocomplete="new-password" :label="$t('API key (optional)')" :label-outside="true" :placeholder="$t('Leave empty to keep the saved secret')" /><NcTextField v-model="connectorDraft.api_key_header" :label="$t('API key header')" :label-outside="true" placeholder="X-API-Key" /></template><NcButton type="primary" :disabled="connectorsBusy || !connectorDraft.base_url" @click="saveConnector">{{ $t('Save connector') }}</NcButton></div>
 			<p class="field-help">{{ $t('The connector adapter sends the selected authentication scheme (Bearer, Basic or API key). Secrets are encrypted at rest and never returned. Public HTTPS hosts and explicitly local HTTP(S) services are supported; every external action requires confirmation.') }}</p>
+			</section>
+
+			<section id="settings-plugins" class="settings-section">
+				<div class="section-heading"><div><h3>{{ $t('EVA extensions') }}</h3><p>{{ $t('Installed Nextcloud apps can add namespaced tools to EVA. Their schemas are visible here; actions still follow EVA confirmation and surface rules.') }}</p></div></div>
+				<div v-if="pluginsLoading" class="field-help">{{ $t('Loading extensions…') }}</div>
+				<div v-else-if="!plugins.length" class="empty-state">{{ $t('No third-party EVA tools are installed yet.') }}</div>
+				<div v-for="plugin in plugins" :key="plugin.name" class="plugin-row">
+					<div><strong>{{ plugin.name }}</strong><p>{{ plugin.description }}</p></div>
+					<code>{{ Object.keys(plugin.parameters?.properties || {}).join(', ') || $t('no arguments') }}</code>
+				</div>
 			</section>
 
 			<section v-if="isAdminMode" class="settings-section">
@@ -695,16 +705,24 @@ export default {
 			{ value: 4, label: t('Thu') }, { value: 5, label: t('Fri') }, { value: 6, label: t('Sat') }, { value: 7, label: t('Sun') },
 		]
 		const briefingDraft = ref({ prompt: '', time: '08:00', days: [1, 2, 3, 4, 5], allow_actions: false })
+		const briefingFormError = ref('')
 		const proactiveBriefings = computed(() => {
 			try { const rows = JSON.parse(f.value.proactive_schedules || '[]'); return Array.isArray(rows) ? rows : [] } catch (_) { return [] }
 		})
 		const dayName = day => (weekdays.find(item => item.value === Number(day)) || {}).label || String(day)
 		function writeBriefings(rows) { f.value.proactive_schedules = JSON.stringify(rows.slice(0, 20)) }
-		function addBriefing() {
+		async function addBriefing() {
 			const prompt = briefingDraft.value.prompt.trim()
-			if (!prompt || !/^([01]\\d|2[0-3]):[0-5]\\d$/.test(briefingDraft.value.time) || !briefingDraft.value.days.length) return
+			briefingFormError.value = ''
+			if (!prompt) { briefingFormError.value = t('Enter a question or instruction for this briefing.'); return }
+			if (!/^([01]\d|2[0-3]):[0-5]\d$/.test(briefingDraft.value.time)) { briefingFormError.value = t('Choose a valid briefing time.'); return }
+			if (!briefingDraft.value.days.length) { briefingFormError.value = t('Choose at least one weekday.'); return }
+			if (proactiveBriefings.value.length >= 20) { briefingFormError.value = t('You can create up to 20 briefings.'); return }
 			writeBriefings([...proactiveBriefings.value, { id: `briefing-${Date.now()}`, prompt, time: briefingDraft.value.time, days: [...new Set(briefingDraft.value.days)].sort(), enabled: true, allow_actions: briefingDraft.value.allow_actions === true }])
 			briefingDraft.value.prompt = ''
+			setMessage('info', t('Briefing added. Saving your schedule…'))
+			await save({ changedOnly: true })
+			if (message.value.type !== 'error') setMessage('success', t('Briefing saved.'))
 		}
 		function removeBriefing(id) { writeBriefings(proactiveBriefings.value.filter(item => item.id !== id)) }
 		function toggleBriefing(id) { writeBriefings(proactiveBriefings.value.map(item => item.id === id ? { ...item, enabled: item.enabled === false } : item)) }
@@ -718,6 +736,8 @@ export default {
 		const userWebSearchFetchContent = computed({ get: () => f.value.web_search_fetch_content === '1', set: v => { f.value.web_search_fetch_content = v ? '1' : '0' } })
 		const userWebSearchSafeSearch = computed({ get: () => f.value.web_search_safe_search === '1', set: v => { f.value.web_search_safe_search = v ? '1' : '0' } })
 		const connectors = ref([])
+		const plugins = ref([])
+		const pluginsLoading = ref(false)
 		const connectorsLoading = ref(false)
 		const connectorsBusy = ref(false)
 		const connectorDraft = ref({ id: '', name: '', base_url: '', openapi_url: '', auth_type: 'bearer', token: '', username: '', password: '', api_key: '', api_key_header: 'X-API-Key' })
@@ -731,6 +751,10 @@ export default {
 		async function loadConnectors() {
 			connectorsLoading.value = true
 			try { const data = await api('GET', 'connectors'); connectors.value = Array.isArray(data?.result?.connectors) ? data.result.connectors : [] } catch (_) { connectors.value = [] } finally { connectorsLoading.value = false }
+		}
+		async function loadPlugins() {
+			pluginsLoading.value = true
+			try { const data = await api('GET', 'plugins'); plugins.value = Array.isArray(data?.plugins) ? data.plugins : [] } catch (_) { plugins.value = [] } finally { pluginsLoading.value = false }
 		}
 		async function saveConnector() {
 			connectorsBusy.value = true
@@ -934,7 +958,10 @@ export default {
 		const chatInstalledHint = computed(() => installedHintFor(f.value.chat_model, 'chat'))
 		const indexingActive = computed(() => indexing.value || status.value?.indexing === true)
 		const busy = computed(() => saving.value || checking.value || indexing.value || resetting.value || deletingChats.value || stopping.value)
-		const settingsLocked = computed(() => busy.value || indexingActive.value)
+		// Briefings are independent from file indexing and must remain editable
+		// while an index worker is running. The API still rejects unrelated
+		// setting writes during indexing; only the schedule fields are allowed.
+		const settingsLocked = computed(() => busy.value)
 		const maxFileSizeMb = computed({
 			get: () => {
 				const bytes = Number(f.value.max_file_size) || 0
@@ -1351,6 +1378,7 @@ export default {
 			await loadAdminSettings()
 			await loadKnowledge()
 			await loadConnectors()
+			await loadPlugins()
 			formReady.value = true
 			adminReady.value = isAdminMode
 			// Status is informational; polling every few seconds created needless
@@ -1377,8 +1405,8 @@ export default {
 			groqKey, customProviderKey, removeGroqKey, ocrEnabled, f, providerProfiles, status, health, healthLoading, statusTimer, limits, availableModels, embeddingModels, chatModels, embeddingInstalledHint, chatInstalledHint, modelLoading, modelError, checkOut, saving, checking, indexing, resetting, deletingChats, stopping, saved, loadError, message, validationErrors, resetConfirm, chatsDeleteConfirm,
 			newExcludePath, excludeError, excludeList, actionsEnabled, backgroundActionsEnabled, notificationsEnabled, learningEnabled, safeCommandsEnabled, mailIndexEnabled, talkIndexEnabled, talkWriteEnabled, indexEnrolled, actionsDisabled, busy, indexingActive, settingsLocked, maxFileSizeMb,
 			isAdminMode, admin, userWebSearchEnabled, userWebSearchSafeSearch, userWebSearchImages, userWebSearchBrowser, userWebSearchFetchContent, webSearchKey, removeWebSearchKey, webSearchKeyStored, webSearchReady, savingAdmin, saveAdminSettings, loadAdminSettings,
-			connectors, connectorsLoading, connectorsBusy, connectorDraft, applyConnectorExample, saveConnector, removeConnector, discoverConnector, testConnector,
-			proactiveEnabled, proactiveBriefings, briefingDraft, weekdays, dayName, addBriefing, removeBriefing, toggleBriefing, toggleBriefingActions,
+			connectors, connectorsLoading, connectorsBusy, connectorDraft, applyConnectorExample, saveConnector, removeConnector, discoverConnector, testConnector, plugins, pluginsLoading,
+			proactiveEnabled, proactiveBriefings, briefingDraft, briefingFormError, weekdays, dayName, addBriefing, removeBriefing, toggleBriefing, toggleBriefingActions,
 			exporting, downloadExport,
 			knowledgeContent, knowledgeOriginal, savingKnowledge, knowledgeSaved, saveKnowledgeContent,
 			formatNumber, loadStatus, loadHealth, save, checkOllama, addExclude, removeExclude, startIndex, startMailIndex, startTalkIndex, stopIndex, resetIndex, deleteAllChats,
@@ -1584,6 +1612,11 @@ export default {
 .connector-actions { display:flex; gap:6px; flex-shrink:0; }
 .connector-form { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:12px; align-items:end; margin-top:16px; padding:16px; border:1px solid var(--color-border); border-radius:var(--border-radius-large); background:var(--color-background-hover); }
 .connector-auto-note { margin:12px 0 0; }
+.plugin-row { display:flex; align-items:flex-start; justify-content:space-between; gap:16px; margin:10px 0; padding:14px 16px; border:1px solid var(--color-border); border-radius:var(--border-radius-large); background:var(--color-background-hover); }
+.plugin-row strong { font-family:var(--font-family-monospace, monospace); font-size:13px; }
+.plugin-row p { margin:4px 0 0; color:var(--color-text-maxcontrast); font-size:13px; }
+.plugin-row code { flex:0 0 auto; max-width:42%; overflow-wrap:anywhere; color:var(--color-primary-element); font-size:11px; }
+.empty-state { padding:18px; border:1px dashed var(--color-border); border-radius:var(--border-radius-large); color:var(--color-text-maxcontrast); }
 @media (max-width:960px) { .connector-form { grid-template-columns:repeat(2,minmax(0,1fr)); } }
 @media (max-width:760px) { .connector-row { align-items:flex-start; flex-direction:column; } .connector-form { grid-template-columns:1fr; padding:12px; } }
 
