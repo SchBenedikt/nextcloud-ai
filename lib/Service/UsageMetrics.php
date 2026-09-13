@@ -89,6 +89,7 @@ class UsageMetrics {
 		$totals = ['requests' => 0, 'input_tokens' => 0, 'output_tokens' => 0, 'total_tokens' => 0, 'estimated_requests' => 0];
 		$byModel = [];
 		$daily = [];
+		$slowTools = [];
 		try {
 			$qb = $this->db->getQueryBuilder();
 			$qb->select('provider', 'model')
@@ -128,10 +129,27 @@ class UsageMetrics {
 			}
 			$result->closeCursor();
 			$daily = array_values($dailyMap);
+
+			$qb = $this->db->getQueryBuilder();
+			$qb->select('model')
+				->selectAlias($qb->createFunction('COUNT(*)'), 'calls')
+				->selectAlias($qb->createFunction('AVG(duration_ms)'), 'avg_duration_ms')
+				->selectAlias($qb->createFunction('MAX(duration_ms)'), 'max_duration_ms')
+				->selectAlias($qb->createFunction('SUM(estimated)'), 'errors')
+				->from('eva_ai_usage')
+				->where($qb->expr()->eq('user_id', $qb->createNamedParameter($userId)))
+				->andWhere($qb->expr()->eq('operation', $qb->createNamedParameter('tool')))
+				->andWhere($qb->expr()->gte('created_at', $qb->createNamedParameter($since, IQueryBuilder::PARAM_INT)))
+				->groupBy('model')->orderBy('avg_duration_ms', 'DESC');
+			$result = $qb->executeQuery();
+			while ($row = $result->fetch()) {
+				$slowTools[] = ['tool' => (string)$row['model'], 'calls' => (int)$row['calls'], 'avg_duration_ms' => (int)round((float)$row['avg_duration_ms']), 'max_duration_ms' => (int)$row['max_duration_ms'], 'errors' => (int)$row['errors']];
+			}
+			$result->closeCursor();
 		} catch (\Throwable $e) {
 			$this->logger->debug('eva_ai usage metrics unavailable', ['exception' => $e->getMessage()]);
 		}
-		return ['days' => $days, 'totals' => $totals, 'by_model' => $byModel, 'daily' => $daily];
+		return ['days' => $days, 'totals' => $totals, 'by_model' => $byModel, 'daily' => $daily, 'slow_tools' => $slowTools];
 	}
 
 	/** @return array<string,int> */
