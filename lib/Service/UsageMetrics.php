@@ -66,6 +66,23 @@ class UsageMetrics {
 		}
 	}
 
+	/** Record only slow tool calls; never persist arguments or returned data. */
+	public function recordTool(?string $userId, string $tool, int $durationMs, bool $ok): void {
+		if ($userId === null || $userId === '' || $durationMs < 100) return;
+		try {
+			$qb = $this->db->getQueryBuilder();
+			$qb->insert('eva_ai_usage')->values([
+				'user_id' => $qb->createNamedParameter($userId), 'created_at' => $qb->createNamedParameter(time(), IQueryBuilder::PARAM_INT),
+				'provider' => $qb->createNamedParameter('internal'), 'model' => $qb->createNamedParameter(substr($tool, 0, 128)),
+				'operation' => $qb->createNamedParameter('tool'), 'input_tokens' => $qb->createNamedParameter(0, IQueryBuilder::PARAM_INT),
+				'output_tokens' => $qb->createNamedParameter(0, IQueryBuilder::PARAM_INT), 'total_tokens' => $qb->createNamedParameter(0, IQueryBuilder::PARAM_INT),
+				'estimated' => $qb->createNamedParameter($ok ? 0 : 1, IQueryBuilder::PARAM_INT), 'duration_ms' => $qb->createNamedParameter(max(0, $durationMs), IQueryBuilder::PARAM_INT),
+			])->executeStatement();
+		} catch (\Throwable $e) {
+			$this->logger->debug('eva_ai tool metric could not be stored', ['exception' => $e->getMessage()]);
+		}
+	}
+
 	/** @return array{totals:array<string,int>,by_model:list<array<string,mixed>>,daily:list<array<string,mixed>>} */
 	public function summaryForUser(string $userId, int $days = 30): array {
 		$since = time() - max(1, min(365, $days)) * 86400;

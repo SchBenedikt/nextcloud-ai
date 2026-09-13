@@ -137,7 +137,8 @@ class ActionExecutor {
         private \OCP\Lock\ILockingProvider $lockingProvider,
         private ?Indexer $indexer = null,
         private ?\OCP\Comments\ICommentsManagerFactory $commentsFactory = null,
-        private ?\OCP\SystemTag\ISystemTagManagerFactory $systemTagFactory = null
+        private ?\OCP\SystemTag\ISystemTagManagerFactory $systemTagFactory = null,
+        private ?UsageMetrics $usageMetrics = null
     ) {
     }
 
@@ -843,6 +844,7 @@ class ActionExecutor {
      * @return array{ok:bool,result?:mixed,error?:string,confirmation_required?:bool,tool?:string,risk?:string}
      */
     public function run(string $userId, string $name, array $args, bool $confirmed = false): array {
+        $startedAt = microtime(true);
         $this->setUserId($userId);
         // Centralized tool permission check
         $policy = $this->toolPolicy->check($name);
@@ -998,9 +1000,16 @@ class ActionExecutor {
                 default => ['ok' => false, 'error' => 'Unknown tool: ' . $name],
             };
         } catch (\Throwable $e) {
+            $this->recordToolMetric($userId, $name, $startedAt, false);
             return ['ok' => false, 'error' => $e->getMessage()];
         }
+        $this->recordToolMetric($userId, $name, $startedAt, (bool)($result['ok'] ?? false));
         return $result;
+    }
+
+    private function recordToolMetric(string $userId, string $name, float $startedAt, bool $ok): void {
+        if ($this->usageMetrics === null) return;
+        try { $this->usageMetrics->recordTool($userId, $name, (int)round((microtime(true) - $startedAt) * 1000), $ok); } catch (\Throwable) { }
     }
 
     private function commentsManager(): ?\OCP\Comments\ICommentsManager {
