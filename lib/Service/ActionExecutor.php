@@ -1393,7 +1393,8 @@ class ActionExecutor {
         if ($appId === '' || $path === '') return;
         try {
             $known = json_decode($this->config->get('learned_app_apis'), true);
-            if (!is_array($known) || !is_array($known[$appId] ?? null)) return;
+            $known = is_array($known) ? $known : [];
+            if (!is_array($known[$appId] ?? null)) $known[$appId] = ['updated' => time(), 'routes' => []];
             $patterns = is_array($known[$appId]['patterns'] ?? null) ? $known[$appId]['patterns'] : [];
             $keys = array_values(array_unique(array_filter(array_map('strval', $paramKeys), static fn(string $key): bool => preg_match('/^[A-Za-z0-9_.-]{1,80}$/', $key) === 1)));
             $entry = ['method' => $method, 'path' => $path, 'params' => $keys, 'response_shape' => $responseShape, 'last_used' => time()];
@@ -1401,6 +1402,11 @@ class ActionExecutor {
             $patterns = array_values(array_filter($patterns, static fn($row): bool => is_array($row) && (($row['method'] ?? '') . ' ' . ($row['path'] ?? '')) !== $fingerprint));
             array_unshift($patterns, $entry);
             $known[$appId]['patterns'] = array_slice($patterns, 0, 50);
+            $known[$appId]['updated'] = time();
+            if (count($known) > 30) {
+                uasort($known, static fn (array $a, array $b): int => ((int)($b['updated'] ?? 0)) <=> ((int)($a['updated'] ?? 0)));
+                $known = array_slice($known, 0, 30, true);
+            }
             $this->config->set('learned_app_apis', json_encode($known, JSON_UNESCAPED_SLASHES) ?: '{}');
         } catch (\Throwable) { /* Learning is best effort and must not break the action. */ }
     }
