@@ -4,6 +4,13 @@ All notable changes to **EVA (eva_ai)** are documented here.
 Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); the project
 follows [Semantic Versioning](https://semver.org/).
 
+## [1.16.65] - 2026-09-13
+
+### Added
+
+- Terminal command sequences can now provide one bounded prompt input per
+  command, with the same EOF, timeout, allowlist and confirmation safeguards.
+
 ## [1.16.64] - 2026-09-13
 
 ### Added

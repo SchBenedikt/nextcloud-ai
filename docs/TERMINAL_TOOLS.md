@@ -45,7 +45,9 @@ The following are deliberately rejected: `;`, `&&`, `||`, pipes, redirects,
 backticks, `$()` substitutions, newlines and shell scripts. Each argument is
 bounded, output is capped, and the timeout is between 1 and 30 seconds. A
 sequence accepts 1–5 command strings and applies the timeout independently to
-each command. It never continues after a failed command.
+each command. It can optionally provide a matching `stdin` array (one bounded
+value per command); each value is written and then closed with EOF. It never
+continues after a failed command.
 
 ## Confirmation and background runs
 

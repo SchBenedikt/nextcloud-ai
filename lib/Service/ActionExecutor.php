@@ -666,6 +666,7 @@ class ActionExecutor {
                 'description' => 'Run up to five explicitly confirmed terminal commands sequentially on the Nextcloud host. Each command is parsed without a shell, uses the same allowlist/custom-executable setting, and stops after the first failure or timeout. Useful for a short diagnostic workflow; shell operators, pipes and redirects are never accepted.',
                 'parameters' => ['type' => 'object', 'properties' => [
                     'commands' => ['type' => 'array', 'minItems' => 1, 'maxItems' => 5, 'items' => ['type' => 'string', 'minLength' => 1, 'maxLength' => 1000]],
+                    'stdin' => ['type' => 'array', 'maxItems' => 5, 'items' => ['type' => 'string', 'maxLength' => 4000], 'description' => 'Optional input per command, matched by index. Each value is bounded, sent without shell interpretation and followed by EOF.'],
                     'timeout_seconds' => ['type' => 'integer', 'minimum' => 1, 'maximum' => 30, 'description' => 'Optional hard timeout per command, default 10 seconds.'],
                 ], 'required' => ['commands']],
             ]],
@@ -3283,6 +3284,15 @@ class ActionExecutor {
         if (!is_array($commands) || $commands === [] || count($commands) > 5) {
             return ['ok' => false, 'error' => 'commands must contain between 1 and 5 entries'];
         }
+        $inputs = $args['stdin'] ?? [];
+        if (!is_array($inputs) || count($inputs) > count($commands)) {
+            return ['ok' => false, 'error' => 'stdin must contain at most one string per command'];
+        }
+        foreach ($inputs as $input) {
+            if (!is_string($input) || mb_strlen($input) > 4000 || str_contains($input, "\0")) {
+                return ['ok' => false, 'error' => 'Each stdin value is limited to 4000 characters and cannot contain NUL bytes.'];
+            }
+        }
         $timeout = filter_var($args['timeout_seconds'] ?? 10, FILTER_VALIDATE_INT);
         $timeout = $timeout === false ? 10 : max(1, min(30, $timeout));
         $results = [];
@@ -3290,7 +3300,7 @@ class ActionExecutor {
             if (!is_string($command) || trim($command) === '') {
                 return ['ok' => false, 'error' => 'Every terminal sequence entry must be a non-empty command string'];
             }
-            $result = $this->runTerminalCommand(['command' => $command, 'timeout_seconds' => $timeout]);
+            $result = $this->runTerminalCommand(['command' => $command, 'stdin' => (string)($inputs[$index] ?? ''), 'timeout_seconds' => $timeout]);
             $results[] = ['index' => (int)$index, 'command' => mb_substr($command, 0, 1000), 'ok' => !empty($result['ok']), 'result' => $result['result'] ?? null, 'error' => $result['error'] ?? null];
             if (empty($result['ok'])) {
                 return ['ok' => false, 'error' => 'Terminal sequence stopped after command ' . ((int)$index + 1) . '.', 'result' => ['completed' => count($results) - 1, 'results' => $results]];

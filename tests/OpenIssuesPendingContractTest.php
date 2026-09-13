@@ -269,7 +269,26 @@ final class OpenIssuesPendingContractTest extends TestCase {
         $executor = (string)file_get_contents(__DIR__ . '/../lib/Service/ActionExecutor.php');
         self::assertStringContainsString("'run_terminal_sequence' => ['commands']", $executor);
         self::assertStringContainsString("'maxItems' => 5", $executor);
+        self::assertStringContainsString("'stdin' => ['type' => 'array'", $executor);
         self::assertStringContainsString("\$name === 'run_terminal_sequence'", $executor);
+    }
+
+    public function testConfirmedTerminalSequenceCanProvideBoundedPromptInput(): void {
+        $reflection = new \ReflectionClass(ActionExecutor::class);
+        $instance = $reflection->newInstanceWithoutConstructor();
+        $config = $this->createMock(AppConfig::class);
+        $config->method('get')->willReturnMap([
+            ['terminal_commands_enabled', '1'],
+            ['terminal_command_any', '0'],
+            ['terminal_command_allowlist', '/bin/cat'],
+        ]);
+        $reflection->getProperty('config')->setValue($instance, $config);
+        $result = $reflection->getMethod('runTerminalSequence')->invoke($instance, [
+            'commands' => ['/bin/cat'],
+            'stdin' => ['prompt-answer\n'],
+        ]);
+        self::assertTrue($result['ok']);
+        self::assertStringContainsString('prompt-answer', (string)($result['result']['results'][0]['result']['output'] ?? ''));
     }
 
     public function testSafeCommandUsesBoundedNonBlockingProcessHandling(): void {
