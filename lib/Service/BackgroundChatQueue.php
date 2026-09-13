@@ -178,7 +178,18 @@ final class BackgroundChatQueue {
                             return '[value]';
                         };
                         $safe = $redact($arguments);
-                        if ($safe !== []) $entry['arguments'] = $safe;
+                        if ($phase === 'tool_result') {
+                            // Keep the execution trace intelligible: the
+                            // payload passed to the progress callback contains
+                            // the bounded result as well as status/timing. Do
+                            // not label those values as command arguments.
+                            if (array_key_exists('ok', $safe)) $entry['ok'] = (bool)$safe['ok'];
+                            if (array_key_exists('error', $safe) && $safe['error'] !== '') $entry['error'] = $safe['error'];
+                            if (array_key_exists('result', $safe)) $entry['result'] = $safe['result'];
+                            if (array_key_exists('elapsed_ms', $safe)) $entry['elapsed_ms'] = max(0, (int)$safe['elapsed_ms']);
+                        } elseif ($safe !== []) {
+                            $entry['arguments'] = $safe;
+                        }
                     }
                     $history[] = $entry;
                     $item['toolHistory'] = array_slice($history, -50);

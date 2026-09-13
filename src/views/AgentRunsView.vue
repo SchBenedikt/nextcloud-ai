@@ -24,7 +24,7 @@
 				</div>
 				<details v-if="item.toolHistory && item.toolHistory.length" class="agent-run__trace">
 					<summary>Execution trace ({{ item.toolHistory.length }})</summary>
-					<ol><li v-for="(step, index) in item.toolHistory" :key="index"><time>{{ formatDate(step.at) }}</time><strong>{{ step.tool }}</strong><span :class="'agent-run__trace-phase agent-run__trace-phase--' + step.phase">{{ step.phase === 'tool_result' ? 'Result' : step.phase }}</span><code v-if="step.arguments">{{ formatArguments(step.arguments) }}</code></li></ol>
+					<ol><li v-for="(step, index) in item.toolHistory" :key="index"><time>{{ formatDate(step.at) }}</time><strong>{{ step.tool }}</strong><span :class="'agent-run__trace-phase agent-run__trace-phase--' + step.phase">{{ step.phase === 'tool_result' ? (step.ok === false ? 'Failed result' : 'Result') : step.phase }}</span><small v-if="step.elapsed_ms !== undefined">{{ step.elapsed_ms }} ms</small><code v-if="step.arguments">Args: {{ formatArguments(step.arguments) }}</code><code v-if="step.result">Result: {{ formatValue(step.result) }}</code><em v-if="step.error">{{ step.error }}</em></li></ol>
 				</details>
 				<p v-if="item.error" class="agent-run__error">{{ item.error }}</p>
 				<details v-if="item.status === 'completed' && item.answer" class="agent-run__answer"><summary>Result</summary><div>{{ item.answer }}</div></details>
@@ -77,6 +77,7 @@ const formatArguments = (arguments_) => Object.entries(arguments_ || {}).map(([k
 	const rendered = value && typeof value === 'object' ? JSON.stringify(value) : String(value)
 	return `${key}=${rendered}`
 }).join(' · ')
+const formatValue = (value) => value && typeof value === 'object' ? JSON.stringify(value) : String(value)
 onMounted(() => { load(); timer = window.setInterval(load, 10000) })
 onBeforeUnmount(() => { if (timer) window.clearInterval(timer) })
 </script>

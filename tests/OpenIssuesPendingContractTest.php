@@ -271,6 +271,13 @@ final class OpenIssuesPendingContractTest extends TestCase {
         self::assertLessThanOrEqual(4001, mb_strlen((string)$result['output']));
     }
 
+    public function testBackgroundTraceSeparatesToolResultsFromArguments(): void {
+        $queue = (string)file_get_contents(__DIR__ . '/../lib/Service/BackgroundChatQueue.php');
+        self::assertStringContainsString("\$phase === 'tool_result'", $queue);
+        self::assertStringContainsString("\$entry['result']", $queue);
+        self::assertStringContainsString("\$entry['elapsed_ms']", $queue);
+    }
+
     /**
      * Issue #93: knowledge trimming must preserve the automatic identity block
      * while dropping old non-profile lines.
