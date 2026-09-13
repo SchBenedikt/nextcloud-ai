@@ -3191,6 +3191,17 @@ class ActionExecutor {
                         '/api/sessions', '/api/shared-links', '/api/stacks', '/api/system-config', '/api/system-metadata', '/api/tags',
                         '/api/timeline/bucket', '/api/timeline/buckets', '/api/trash', '/api/users', '/api/views', '/api/workflows',
                         '/api/asset-files', '/api/download/info', '/api/notifications', '/api/oauth/mobile-redirect',
+                        '/api/api-keys', '/api/api-keys/me', '/api/activities/statistics', '/api/albums/map-markers', '/api/faces',
+                        '/api/cluster-groups/requests', '/api/config', '/api/config/defaults', '/api/public/config', '/api/public/config/defaults',
+                        '/api/duplicates', '/api/integrity/summary', '/api/integrity/report', '/api/libraries', '/api/memories/statistics',
+                        '/api/notifications', '/api/partners', '/api/plugins/methods', '/api/plugins/templates', '/api/queues',
+                        '/api/queues/thumbnail/jobs', '/api/queues/smartSearch/jobs', '/api/search/explore', '/api/search/person',
+                        '/api/search/places', '/api/search/cities', '/api/search/suggestions', '/api/server/apk-links', '/api/server/storage',
+                        '/api/server/ping', '/api/server/version', '/api/server/version-history', '/api/server/media-types', '/api/server/license',
+                        '/api/server/version-check', '/api/sessions', '/api/shared-links', '/api/shared-links/me', '/api/stacks',
+                        '/api/sync/ack', '/api/system-config/defaults', '/api/system-config/storage-template-options', '/api/system-metadata/admin-onboarding',
+                        '/api/system-metadata/reverse-geocoding-state', '/api/system-metadata/version-check-state', '/api/tags', '/api/timeline/buckets',
+                        '/api/trash/restore', '/api/trash/restore/assets', '/api/view/folder/unique-paths', '/api/view/folder', '/api/workflows/triggers',
                     ];
                     $immichEndpoints = [];
                     foreach (array_values(array_unique($immichCandidates)) as $candidate) {
