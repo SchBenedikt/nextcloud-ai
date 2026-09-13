@@ -3490,9 +3490,13 @@ class ActionExecutor {
     private function safeConnectorUrl(string $url): bool {
         $parts = parse_url($url); $host = strtolower((string)($parts['host'] ?? '')); $scheme = strtolower((string)($parts['scheme'] ?? ''));
         if (!in_array($scheme, ['http', 'https'], true) || $host === '' || isset($parts['user']) || isset($parts['pass'])) return false;
-        if (filter_var($host, FILTER_VALIDATE_IP) === false && filter_var($host, FILTER_VALIDATE_DOMAIN, FILTER_FLAG_HOSTNAME) === false) return false;
-        $ip = filter_var($host, FILTER_VALIDATE_IP) !== false ? $host : gethostbyname($host);
-        $isLocalName = $host === 'localhost' || str_ends_with($host, '.local') || str_ends_with($host, '.lan');
+        // parse_url() retains brackets around IPv6 literals; remove them only
+        // for validation while preserving the original URL for curl.
+        $validationHost = trim($host, '[]');
+        $isIp = filter_var($validationHost, FILTER_VALIDATE_IP) !== false;
+        if (!$isIp && filter_var($validationHost, FILTER_VALIDATE_DOMAIN, FILTER_FLAG_HOSTNAME) === false) return false;
+        $ip = $isIp ? $validationHost : gethostbyname($validationHost);
+        $isLocalName = $validationHost === 'localhost' || str_ends_with($validationHost, '.local') || str_ends_with($validationHost, '.lan');
         $isPrivateIp = filter_var($ip, FILTER_VALIDATE_IP) !== false
             && filter_var($ip, FILTER_VALIDATE_IP, FILTER_FLAG_NO_PRIV_RANGE | FILTER_FLAG_NO_RES_RANGE) === false
             && !str_starts_with($ip, '169.254.');
