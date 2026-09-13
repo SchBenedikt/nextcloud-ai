@@ -11,6 +11,9 @@
 				<span v-else class="saved-label" role="status">{{ $t('Changes save automatically') }}</span>
 			</div>
 		</header>
+		<nav class="settings-quicknav" :aria-label="$t('Settings sections')">
+			<a href="#settings-connection">{{ $t('Connection') }}</a><a href="#settings-safety">{{ $t('Safety') }}</a><a href="#settings-search">{{ $t('Search') }}</a><a href="#settings-indexing">{{ $t('Indexing') }}</a><a href="#settings-integrations">{{ $t('Integrations') }}</a><a href="#settings-privacy">{{ $t('Privacy') }}</a>
+		</nav>
 
 		<div v-if="loadError" class="callout callout-error" role="alert">
 			<strong>{{ $t('Settings could not be loaded.') }}</strong>
@@ -67,7 +70,7 @@
 				<NcButton type="secondary" :loading="stopping" :disabled="status?.indexStopping" @click="stopIndex">{{ $t('Stop indexing') }}</NcButton>
 			</div>
 			<fieldset class="settings-fieldset" :disabled="settingsLocked">
-			<section class="settings-section">
+			<section id="settings-connection" class="settings-section">
 				<div class="section-heading">
 					<div>
 						<h3>{{ $t('Connection & models') }}</h3>
@@ -172,7 +175,7 @@
 				</div>
 			</section>
 
-			<section class="settings-section">
+			<section id="settings-safety" class="settings-section">
 				<div class="section-heading">
 					<div>
 						<h3>{{ $t('Safety & actions') }}</h3>
@@ -227,7 +230,7 @@
 				</NcCheckboxRadioSwitch>
 			</section>
 
-			<section class="settings-section">
+			<section id="settings-search" class="settings-section">
 				<div class="section-heading">
 					<div>
 						<h3>{{ $t('Search & answer quality') }}</h3>
@@ -250,7 +253,7 @@
 				</div>
 			</section>
 
-			<section class="settings-section">
+			<section id="settings-indexing" class="settings-section">
 				<div class="section-heading">
 					<div>
 						<h3>{{ $t('Indexing & scope') }}</h3>
@@ -417,7 +420,7 @@
 				</div>
 			</section>
 
-			<section class="settings-section">
+			<section id="settings-integrations" class="settings-section">
 				<div class="section-heading">
 					<div>
 						<h3>{{ $t('Talk & notifications') }}</h3>
@@ -498,15 +501,15 @@
 			</section>
 
 			<section class="settings-section">
-				<div class="section-heading"><div><h3>{{ $t('External connectors') }}</h3><p>{{ $t('Connect an external HTTPS service for EVA to discover and use with confirmation.') }}</p></div></div>
+				<div class="section-heading"><div><h3>{{ $t('External connectors') }}</h3><p>{{ $t('Connect an external service that EVA can inspect and use only after confirmation. Credentials are encrypted and never shown again.') }}</p></div></div>
 				<div v-if="connectorsLoading" class="field-help">{{ $t('Loading connectors…') }}</div>
 				<div v-for="connector in connectors" :key="connector.id" class="connector-row">
 					<div><strong>{{ connector.name }}</strong><small>{{ connector.base_url }} · {{ connector.discovered_endpoint_count || 0 }} {{ $t('learned endpoints') }}</small></div>
 					<div class="connector-actions"><NcButton type="tertiary-no-background" :disabled="connectorsBusy" @click="testConnector(connector.id)">Test</NcButton><NcButton type="tertiary-no-background" :disabled="connectorsBusy" @click="discoverConnector(connector.id)">{{ $t('Discover API') }}</NcButton><NcButton type="tertiary-no-background" :disabled="connectorsBusy" @click="removeConnector(connector.id)">{{ $t('Remove') }}</NcButton></div>
 				</div>
 			<div class="connector-examples"><span>Examples:</span><button type="button" @click="applyConnectorExample('homeassistant')">Home Assistant</button><button type="button" @click="applyConnectorExample('truenas')">TrueNAS</button><button type="button" @click="applyConnectorExample('github')">GitHub</button></div>
-			<div class="connector-form"><NcTextField v-model="connectorDraft.id" :label="$t('Connector ID')" :label-outside="true" placeholder="homeassistant" /><NcTextField v-model="connectorDraft.name" :label="$t('Name')" :label-outside="true" placeholder="Home Assistant" /><NcTextField v-model="connectorDraft.base_url" type="url" :label="$t('HTTPS base URL')" :label-outside="true" placeholder="http://homeassistant.local:8123" /><NcTextField v-model="connectorDraft.token" type="password" autocomplete="new-password" :label="$t('Bearer token (optional)')" :label-outside="true" /><NcButton type="primary" :disabled="connectorsBusy || !connectorDraft.id || !connectorDraft.base_url" @click="saveConnector">{{ $t('Save connector') }}</NcButton></div>
-			<p class="field-help">{{ $t('Only public HTTPS hosts are accepted. Tokens are encrypted and never shown again. Every external action requires confirmation.') }} Local HTTP(S) services such as TrueNAS and Home Assistant are supported.</p>
+			<div class="connector-form"><NcTextField v-model="connectorDraft.id" :label="$t('Connector ID')" :label-outside="true" placeholder="homeassistant" /><NcTextField v-model="connectorDraft.name" :label="$t('Display name')" :label-outside="true" placeholder="Home Assistant" /><NcTextField v-model="connectorDraft.base_url" type="url" :label="$t('Service base URL')" :label-outside="true" placeholder="https://api.example.com" /><NcTextField v-model="connectorDraft.token" type="password" autocomplete="new-password" :label="$t('Bearer / service token (optional)')" :label-outside="true" :placeholder="$t('Leave empty to keep the saved secret')" /><NcButton type="primary" :disabled="connectorsBusy || !connectorDraft.id || !connectorDraft.base_url" @click="saveConnector">{{ $t('Save connector') }}</NcButton></div>
+			<p class="field-help">{{ $t('The current connector adapter sends this secret as an Authorization: Bearer token. Secrets are encrypted at rest and never returned. Public HTTPS hosts and explicitly local HTTP(S) services are supported; every external action requires confirmation.') }}</p>
 			</section>
 
 			<section v-if="isAdminMode" class="settings-section">
@@ -538,7 +541,7 @@
 				<p class="field-help auto-save-note">{{ $t('Instance settings save automatically.') }}</p>
 			</section>
 
-			<section class="settings-section">
+			<section id="settings-privacy" class="settings-section">
 				<div class="section-heading">
 					<div>
 						<h3>{{ $t('Privacy & data') }}</h3>
@@ -1420,12 +1423,15 @@ export default {
 .validation-summary li { margin: 2px 0; }
 
 .settings-body { display: flex; flex-direction: column; gap: 16px; }
+.settings-quicknav { display:flex; flex-wrap:wrap; gap:6px; margin:0 0 18px; padding:8px; position:sticky; top:0; z-index:4; border:1px solid var(--color-border); border-radius:var(--border-radius-large); background:color-mix(in srgb,var(--color-main-background) 94%,transparent); backdrop-filter:blur(8px); }
+.settings-quicknav a { padding:6px 10px; border-radius:999px; color:var(--color-text-maxcontrast); font-size:12px; font-weight:600; text-decoration:none; }
+.settings-quicknav a:hover,.settings-quicknav a:focus { background:var(--color-primary-element); color:var(--color-primary-element-text); }
 .settings-fieldset { min-inline-size: 0; margin: 0; padding: 0; border: 0; }
 .settings-fieldset:disabled { opacity: .72; }
 .indexing-banner { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-bottom: 4px; padding: 13px 14px; border: 1px solid color-mix(in srgb, var(--color-primary-element) 42%, var(--color-border)); background: color-mix(in srgb, var(--color-primary-element) 7%, var(--color-main-background)); }
 .indexing-banner strong, .indexing-banner span { display: block; }
 .indexing-banner span { margin-top: 3px; color: var(--color-text-maxcontrast); font-size: 12px; }
-.settings-section { padding: 20px 0; border-bottom: 1px solid var(--color-border); }
+.settings-section { padding: 24px 20px; border:1px solid var(--color-border); border-radius:var(--border-radius-large); background:color-mix(in srgb,var(--color-main-background) 96%,var(--color-background-hover)); scroll-margin-top:64px; }
 .settings-section:first-child { padding-top: 0; }
 .settings-section:last-child { border-bottom: 0; }
 .section-heading { display: flex; align-items: flex-start; gap: 12px; margin-bottom: 20px; }
@@ -1546,8 +1552,9 @@ export default {
 .connector-examples { display:flex; flex-wrap:wrap; align-items:center; gap:8px; margin-top:14px; color:var(--color-text-maxcontrast); font-size:13px; }
 .connector-examples button { border:1px solid var(--color-border); border-radius:var(--border-radius-pill); background:var(--color-background-hover); color:var(--color-main-text); padding:4px 10px; cursor:pointer; }
 .connector-actions { display:flex; gap:6px; flex-shrink:0; }
-.connector-form { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:10px; align-items:end; margin-top:16px; }
-@media (max-width:760px) { .connector-row { align-items:flex-start; flex-direction:column; } .connector-form { grid-template-columns:1fr; } }
+.connector-form { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:12px; align-items:end; margin-top:16px; padding:16px; border:1px solid var(--color-border); border-radius:var(--border-radius-large); background:var(--color-background-hover); }
+@media (max-width:960px) { .connector-form { grid-template-columns:repeat(2,minmax(0,1fr)); } }
+@media (max-width:760px) { .connector-row { align-items:flex-start; flex-direction:column; } .connector-form { grid-template-columns:1fr; padding:12px; } }
 
 @media (max-width: 800px) {
 	.page-header { align-items: flex-start; flex-direction: column; }

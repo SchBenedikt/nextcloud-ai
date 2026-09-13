@@ -9,7 +9,7 @@
           more spaces into a code block, so indenting the copy makes the whole
           store listing render as source code. See docs/VERSIONING.md. -->
     <description>
-Eva AI turns your Nextcloud into a private, searchable knowledge base powered by Large Language Models. Ask questions in natural language and get instant, cited answers drawn from your own files — fully local with Ollama, or optionally via any OpenAI-compatible provider (including Groq) for cloud-hosted inference.
+Eva AI turns your Nextcloud into a private, searchable knowledge base powered by Large Language Models. Ask questions in natural language and get instant, cited answers drawn from your own files — fully local with Ollama, or optionally via Groq for cloud-hosted inference.
 
 ## Why Eva AI?
 
@@ -38,15 +38,6 @@ Just install and go. Eva automatically detects your local Ollama instance and se
 **Talk Integration**
 Optionally integrate with Nextcloud Talk for conversational AI within your chat rooms.
 
-**Safe, Background Automation**
-Queue long-running questions and agent tasks so they continue after you close the browser. Configure recurring briefings for any days and time, and review every write action in a confirmation panel before it runs.
-
-**Web and Image Search**
-Use privacy-conscious web, news, and image retrieval with source URLs and excerpts. Person-focused image queries are normalized for more useful results.
-
-**Extensible AI Providers**
-Create multiple encrypted provider profiles with their own endpoint, model, and capabilities. Switch providers per conversation without changing your Nextcloud setup.
-
 ## Requirements
 
 - Nextcloud 30–35
@@ -72,10 +63,7 @@ With Ollama, all processing happens on your server. Your files never leave your 
 
 Licensed under AGPL-3.0-or-later.
     </description>
-    <screenshot>https://github.com/SchBenedikt/nextcloud-ai/releases/download/v1.16.0/eva-chat-overview.png</screenshot>
-    <screenshot>https://github.com/SchBenedikt/nextcloud-ai/releases/download/v1.16.0/eva-cited-answer.png</screenshot>
-    <screenshot>https://github.com/SchBenedikt/nextcloud-ai/releases/download/v1.16.0/eva-safe-actions.png</screenshot>
-    <version>1.16.0</version>
+    <version>1.16.1</version>
     <licence>agpl</licence>
     <author>Benedikt Schächner</author>
     <namespace>EvaAi</namespace>
@@ -98,6 +86,7 @@ Licensed under AGPL-3.0-or-later.
     <repair-steps>
         <step>OCA\EvaAi\Migration\MigrateLegacyAppIdRepairStep</step>
         <step>OCA\EvaAi\Migration\RefreshIndexJobIntervalRepairStep</step>
+        <step>OCA\EvaAi\Migration\ResetEvaJobsOnUpgradeRepairStep</step>
     </repair-steps>
     <commands>
         <command>OCA\EvaAi\Command\Index</command>

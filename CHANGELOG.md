@@ -4,6 +4,18 @@ All notable changes to **EVA (eva_ai)** are documented here.
 Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); the project
 follows [Semantic Versioning](https://semver.org/).
 
+## [1.16.1] - 2026-09-13
+
+### Improved
+
+- Reorganised Settings into clearly separated, linkable sections with a sticky quick navigation.
+- Clarified connector fields and bearer-token handling; secrets remain encrypted and are never returned.
+
+### Fixed
+
+- On upgrade, EVA-owned queued jobs, scheduler state, index claims and agent snapshots are reset so stale work from an older version cannot continue.
+- EVA background jobs are re-registered with the current configuration after deployment.
+
 ## [1.16.0] - 2026-09-13
 
 ### Added
