@@ -3952,12 +3952,17 @@ class ActionExecutor {
         $knownEndpoints = is_array($row['openapi']['endpoints'] ?? null) ? $row['openapi']['endpoints'] : [];
         if ($knownEndpoints !== []) {
             $known = false;
+            $matchedEndpoint = null;
             foreach ($knownEndpoints as $endpoint) {
                 if (!is_array($endpoint)) continue;
                 if (strtoupper((string)($endpoint['method'] ?? '')) === $method
-                    && $this->matchesDiscoveredRoute((string)($endpoint['path'] ?? ''), $path)) { $known = true; break; }
+                    && $this->matchesDiscoveredRoute((string)($endpoint['path'] ?? ''), $path)) { $known = true; $matchedEndpoint = $endpoint; break; }
             }
             if (!$known) return ['ok' => false, 'error' => 'This connector route was not discovered. Run discover_external_connector first.'];
+            if ($method !== 'GET' && is_array($matchedEndpoint)) {
+                $bodyError = $this->validateConnectorRequestBody($matchedEndpoint, $params);
+                if ($bodyError !== null) return ['ok' => false, 'error' => $bodyError];
+            }
         }
         $pathTemplate = $path;
         $expandedPath = $this->expandConnectorPath($pathTemplate, $params);
@@ -4047,6 +4052,20 @@ class ActionExecutor {
         preg_match_all('/\{([A-Za-z0-9_.-]{1,80})\}/', $template, $matches);
         foreach (($matches[1] ?? []) as $name) unset($params[$name]);
         return $params;
+    }
+
+    /** Validate only fields explicitly marked required by a learned schema. */
+    private function validateConnectorRequestBody(array $endpoint, array $params): ?string {
+        $body = $endpoint['request_body'] ?? null;
+        if (!is_array($body) || empty($body['required']) || !is_array($body['fields'] ?? null)) return null;
+        foreach ($body['fields'] as $field) {
+            if (!is_array($field) || empty($field['required'])) continue;
+            $name = (string)($field['name'] ?? '');
+            if ($name === '' || !array_key_exists($name, $params) || $params[$name] === '' || $params[$name] === null) {
+                return 'The discovered connector schema requires JSON field: ' . $name;
+            }
+        }
+        return null;
     }
 
     /**

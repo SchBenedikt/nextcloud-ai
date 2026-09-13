@@ -48,6 +48,11 @@ Nextcloud service contracts, check the current user's permissions and return a
 small structured result. It is loaded at runtime through the event dispatcher;
 EVA's built-in tools remain available if a plugin is broken or absent.
 
+For generic connectors, discovered request-body schemas are also used as a
+local guard: fields marked `required` must be present before EVA sends a
+POST, PUT or PATCH request. Optional and additional fields remain allowed, so
+the guard improves error messages without narrowing an existing API.
+
 ## Complete plugin example
 
 The following is a minimal read-only plugin from another Nextcloud app. The

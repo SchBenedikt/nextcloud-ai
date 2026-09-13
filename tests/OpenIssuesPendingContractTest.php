@@ -180,6 +180,17 @@ final class OpenIssuesPendingContractTest extends TestCase {
         self::assertStringContainsString("\$currentRow['api_key_header'] = 'x-api-key'", $executor);
     }
 
+    public function testConnectorRequestBodyRequiresOnlyLearnedRequiredFields(): void {
+        $reflection = new \ReflectionClass(ActionExecutor::class);
+        $instance = $reflection->newInstanceWithoutConstructor();
+        $validate = $reflection->getMethod('validateConnectorRequestBody');
+        $endpoint = ['request_body' => ['required' => true, 'fields' => [
+            ['name' => 'query', 'required' => true], ['name' => 'limit', 'required' => false],
+        ]]];
+        self::assertStringContainsString('query', (string)$validate->invoke($instance, $endpoint, []));
+        self::assertNull($validate->invoke($instance, $endpoint, ['query' => 'Lena', 'extra' => 'allowed']));
+    }
+
     /** Terminal prompts never get a shell parser and remain confirmation-gated. */
     public function testConfirmedTerminalCommandRejectsShellSyntax(): void {
         $reflection = new \ReflectionClass(ActionExecutor::class);
