@@ -37,6 +37,7 @@ endpoint rejects them.
 |---|---|---|---|---|---|
 | `chat_provider` | P | `ollama` | `ollama`, `groq` | – | Chat provider; embeddings remain on Ollama. |
 | `groq_model` | P | `openai/gpt-oss-20b` | `openai/gpt-oss-20b`, `openai/gpt-oss-120b` | – | Groq Free Plan model selection; no fallback. |
+| `provider_profiles` | P | `[]` | JSON array, max. 20 profiles | – | OpenAI-compatible profiles with `id`, `name`, `url` and `model`; API keys are stored encrypted separately per profile. |
 | `ollama_url` | P | `http://127.0.0.1:11434` | plain `http(s)://host[:port]`, no path/credentials | – | Base URL of the Ollama HTTP API; trailing slashes are stripped. |
 | `chat_model` | P | `gemma4:cloud` | non-empty string | – | Model used for chat/generation. |
 | `chat_model_fallback` | P | `''` | comma-separated model names | – | Models tried in order when the primary chat model is unavailable (Issue #86). |

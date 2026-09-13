@@ -701,6 +701,8 @@
         "Provider API key": "API-Schlüssel des Anbieters",
         "Model": "Modell",
         "Works with OpenAI, Azure OpenAI, Mistral, Together, DeepSeek, OpenRouter and any compatible self-hosted endpoint. Credentials are encrypted per user.": "Funktioniert mit OpenAI, Azure OpenAI, Mistral, Together, DeepSeek, OpenRouter und kompatiblen selbst gehosteten Endpunkten. Zugangsdaten werden pro Benutzer verschlüsselt.",
+        "Additional provider profiles (JSON)": "Weitere Anbieterprofile (JSON)",
+        "Define multiple OpenAI-compatible providers. Select a profile by entering its id above. API keys are stored separately and never included in this JSON.": "Definiere mehrere OpenAI-kompatible Anbieter. Wähle ein Profil aus, indem du oben seine ID eingibst. API-Schlüssel werden separat gespeichert und niemals in diesem JSON abgelegt.",
         "Nextcloud app token for background API actions": "Nextcloud-App-Token für API-Aktionen im Hintergrund",
         "A token is saved. Leave blank to keep it.": "Ein Token ist gespeichert. Leer lassen, um es beizubehalten.",
         "Optional: create a Nextcloud app password to let scheduled EVA tasks call enabled app APIs without an open browser session. It is encrypted and never sent to the AI model.": "Optional: Erstelle ein Nextcloud-App-Passwort, damit geplante EVA-Aufgaben aktivierte App-APIs ohne offene Browsersitzung aufrufen können. Es wird verschlüsselt und niemals an das KI-Modell gesendet.",

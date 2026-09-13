@@ -700,6 +700,8 @@ OC.L10N.register("eva_ai", {
     "Provider API key": "Provider API key",
     "Model": "Model",
     "Works with OpenAI, Azure OpenAI, Mistral, Together, DeepSeek, OpenRouter and any compatible self-hosted endpoint. Credentials are encrypted per user.": "Works with OpenAI, Azure OpenAI, Mistral, Together, DeepSeek, OpenRouter and any compatible self-hosted endpoint. Credentials are encrypted per user.",
+    "Additional provider profiles (JSON)": "Additional provider profiles (JSON)",
+    "Define multiple OpenAI-compatible providers. Select a profile by entering its id above. API keys are stored separately and never included in this JSON.": "Define multiple OpenAI-compatible providers. Select a profile by entering its id above. API keys are stored separately and never included in this JSON.",
     "Nextcloud app token for background API actions": "Nextcloud app token for background API actions",
     "A token is saved. Leave blank to keep it.": "A token is saved. Leave blank to keep it.",
     "Optional: create a Nextcloud app password to let scheduled EVA tasks call enabled app APIs without an open browser session. It is encrypted and never sent to the AI model.": "Optional: create a Nextcloud app password to let scheduled EVA tasks call enabled app APIs without an open browser session. It is encrypted and never sent to the AI model.",
