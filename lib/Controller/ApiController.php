@@ -981,6 +981,15 @@ class ApiController extends OCSController {
         return new DataResponse($result, ($result['ok'] ?? false) ? 200 : 400);
     }
 
+    /** Read-only transport diagnostic executed on the Nextcloud host. */
+    #[NoAdminRequired]
+    public function diagnoseExternalConnector(): DataResponse {
+        $user = $this->requireUser();
+        if ($user === null) return new DataResponse(['error' => 'Not logged in'], 401);
+        $result = $this->executor->run($user, 'diagnose_external_connector', $this->requestBody());
+        return new DataResponse($result, ($result['ok'] ?? false) ? 200 : 400);
+    }
+
     /** Perform an explicit, read-only connectivity check against a connector. */
     #[NoAdminRequired]
     public function testExternalConnector(): DataResponse {

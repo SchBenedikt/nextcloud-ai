@@ -99,6 +99,7 @@ class ActionExecutor {
         'call_app_api_batch' => ['calls'],
         'run_safe_command' => ['command'],
         'configure_external_connector' => ['id', 'base_url'],
+        'diagnose_external_connector' => ['id'],
         'call_external_connector' => ['id', 'path', 'method'],
         'call_external_connector_batch' => ['calls'],
         'create_scheduled_briefing' => ['prompt', 'time', 'days'],
@@ -784,6 +785,13 @@ class ActionExecutor {
                 ], 'required' => ['id']],
             ]],
             ['type' => 'function', 'function' => [
+                'name' => 'diagnose_external_connector',
+                'description' => 'Check connectivity from the Nextcloud server to a configured connector. Reports DNS/HTTP status, resolved address, latency and a safe error category without revealing credentials. Use this when a Mac, NAS or other host may not be reachable from the server.',
+                'parameters' => ['type' => 'object', 'properties' => [
+                    'id' => ['type' => 'string', 'description' => 'Configured connector id.'],
+                ], 'required' => ['id']],
+            ]],
+            ['type' => 'function', 'function' => [
                 'name' => 'configure_external_connector',
                 'description' => 'Create or update a named external connector. Public HTTPS and explicitly local HTTP(S) services are supported. Choose no auth, bearer token, basic username/password or API key; all secrets are encrypted and never shown to EVA.',
                 'parameters' => ['type' => 'object', 'properties' => [
@@ -989,6 +997,7 @@ class ActionExecutor {
                 'list_external_connectors' => $this->listExternalConnectors(),
                 'discover_external_connector' => $this->discoverExternalConnector($args),
                 'configure_external_connector' => $this->configureExternalConnector($args),
+                'diagnose_external_connector' => $this->diagnoseExternalConnector($args),
                 'call_external_connector' => $this->callExternalConnector($args),
                 'call_external_connector_batch' => $this->callExternalConnectorBatch($args),
                 'list_talk_rooms' => $this->listTalkRooms($userId, $args),
@@ -3104,7 +3113,7 @@ class ActionExecutor {
             // /api/v2.0 (the /api/v2.0/docs URL is a 404 on current SCALE
             // releases). Keep the generic locations as fallbacks for other
             // appliances.
-            foreach ($found === null ? ['/api/v2.0', '/openapi.json', '/swagger.json', '/.well-known/openapi.json', '/api/openapi.json', '/api/swagger.json', '/docs/openapi.json', '/api/docs/openapi.json', '/api/v2.0/docs'] : [] as $candidate) {
+            foreach ($found === null ? ['/api/v2.0', '/openapi.json', '/swagger.json', '/.well-known/openapi.json', '/api/open-api', '/api/openapi.json', '/api/swagger.json', '/docs/openapi.json', '/api/docs/openapi.json', '/api/v2.0/docs'] : [] as $candidate) {
                 $url = rtrim((string)$row['base_url'], '/') . $candidate; if (!$this->safeConnectorUrl($url)) continue;
                 try {
                     $response = $client->get($url, ['headers' => $headers, 'timeout' => 15, 'allow_redirects' => ['max' => 0]]);
@@ -3189,6 +3198,56 @@ class ActionExecutor {
         if (array_key_exists('token', $args)) $credentials->saveCustom($user, 'connector_' . $id, trim((string)$args['token']));
         foreach (['username', 'password', 'api_key'] as $field) if (array_key_exists($field, $args)) $credentials->saveCustomValue($user, 'connector_' . $id, $field, trim((string)$args[$field]));
         return ['ok' => true, 'result' => ['id' => $id, 'name' => $name, 'base_url' => $base, 'token_configured' => $rows[$id]['token_configured']]];
+    }
+
+    /**
+     * Perform a bounded connectivity probe from the Nextcloud host itself.
+     * This deliberately uses the same allow-list and credentials as normal
+     * connector calls, but returns only transport metadata (never a body or
+     * secret) so a missing route is distinguishable from an API/auth error.
+     */
+    private function diagnoseExternalConnector(array $args): array {
+        $id = strtolower(trim((string)($args['id'] ?? '')));
+        $row = $this->connectorRows()[$id] ?? null;
+        $base = is_array($row) ? rtrim((string)($row['base_url'] ?? ''), '/') : '';
+        if (!preg_match('/^[a-z0-9][a-z0-9_-]{0,39}$/D', $id) || !is_array($row) || !$this->safeConnectorUrl($base)) {
+            return ['ok' => false, 'error' => 'Connector is not configured or its host is no longer allowed.'];
+        }
+        $user = $this->config->userId() ?? '';
+        try {
+            $headers = array_merge(['Accept' => 'application/json'], $this->connectorAuthHeaders($id, $row, $user));
+            $lines = [];
+            foreach ($headers as $name => $value) $lines[] = $name . ': ' . $value;
+            $ch = curl_init($base . '/');
+            $started = microtime(true);
+            curl_setopt_array($ch, [
+                CURLOPT_RETURNTRANSFER => true,
+                CURLOPT_TIMEOUT => self::CONNECTOR_TIMEOUT,
+                CURLOPT_CONNECTTIMEOUT => self::CONNECTOR_CONNECT_TIMEOUT,
+                CURLOPT_FOLLOWLOCATION => false,
+                CURLOPT_HTTPHEADER => $lines,
+                CURLOPT_SSL_VERIFYPEER => true,
+                CURLOPT_SSL_VERIFYHOST => 2,
+                CURLOPT_USERAGENT => 'EvaAi/1.0 connector-diagnostic',
+            ]);
+            $body = curl_exec($ch);
+            $errno = curl_errno($ch);
+            $error = $errno !== 0 ? curl_error($ch) : '';
+            $info = curl_getinfo($ch);
+            $elapsed = (int)round((microtime(true) - $started) * 1000);
+            $status = (int)($info['http_code'] ?? 0);
+            $ip = (string)($info['primary_ip'] ?? '');
+            $category = $errno !== 0 ? 'network' : ($status === 401 || $status === 403 ? 'authentication' : ($status >= 200 && $status < 500 ? 'reachable' : 'http'));
+            return ['ok' => $errno === 0 && $status >= 200 && $status < 500, 'result' => [
+                'connector' => $id, 'base_url' => $base, 'status' => $status,
+                'resolved_ip' => $ip, 'elapsed_ms' => $elapsed, 'category' => $category,
+                'auth_type' => (string)($row['auth_type'] ?? 'none'),
+                'error' => $error !== '' ? mb_substr($error, 0, 240) : null,
+                'hint' => $errno !== 0 ? 'The Nextcloud server cannot reach this host. Check routing/VPN/firewall and bind the service to a reachable address.' : null,
+            ]];
+        } catch (\Throwable $e) {
+            return ['ok' => false, 'error' => 'Connector diagnostic failed: ' . mb_substr($e->getMessage(), 0, 200)];
+        }
     }
 
     private function callExternalConnector(array $args): array {
