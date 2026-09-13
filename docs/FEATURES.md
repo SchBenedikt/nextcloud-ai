@@ -38,6 +38,16 @@ selected, already-indexed files and are not supplemented by other index hits.
 This makes the feature suitable for comparing multiple documents or summarising a
 specific folder.
 
+For agent workflows, the same live Nextcloud home is available through bounded
+tools: `list_files`, `search_files`, `read_file`, `read_files`, and
+`extract_file_text` discover and read content; `create_file`/`create_files`,
+`rename_file`, `move_file`, and `copy_file` change it only through the central
+confirmation policy. `file_checksum` provides a SHA-256 integrity check after
+important writes or copies. Searches can be narrowed to a known folder and
+extension, and identical searches use a short per-user cache to avoid repeated
+VFS scans; cached results expire quickly and are never used as an authority for
+permissions.
+
 ### Nextcloud Assistant / TaskProcessing
 
 EVA registers providers for chat, summarisation, headline, topics, translation,
