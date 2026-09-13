@@ -38,10 +38,14 @@ class CalendarService {
     /** @return array<int,array{id:int,uri:string,displayname:string,color?:string,principaluri:string,readOnly:bool}> */
     public function calendars(string $userId): array {
         $out = [];
+        $seen = [];
         foreach ($this->allCalendarPrincipals($userId) as $principal) {
             foreach ($this->backend->getCalendarsForUser($principal) as $cal) {
+                $calendarId = (int)($cal['id'] ?? 0);
+                if ($calendarId <= 0 || isset($seen[$calendarId])) continue;
+                $seen[$calendarId] = true;
                 $out[] = [
-                    'id' => (int)$cal['id'],
+                    'id' => $calendarId,
                     'uri' => (string)$cal['uri'],
 			        'displayname' => (string)($cal['{DAV:}displayname'] ?? $cal['uri']),
                     'color' => (string)($cal['{http://apple.com/ns/ical/}calendar-color'] ?? ''),
@@ -80,22 +84,20 @@ class CalendarService {
      * @return list<string>
      */
     private function allCalendarPrincipals(string $userId): array {
-        $principals = ['principals/users/' . $userId];
-        $user = \OCP\Server::get(\OCP\IUserManager::class)->get($userId);
-        if ($user !== null) {
-            foreach (\OCP\Server::get(\OCP\IGroupManager::class)->getUserGroupIds($user) as $gid) {
-                $principals[] = 'principals/groups/' . $gid;
-            }
-        }
-        if (\OCP\Server::get(\OCP\App\IAppManager::class)->isEnabledForUser('circles')) {
-            $principals[] = 'principals/circles/' . $userId;
-        }
-        return array_values(array_unique($principals));
+        // CalDavBackend::getCalendarsForUser() already expands group, circle
+        // and explicitly shared calendars for a user. Querying those
+        // principals separately can return incomplete/duplicate rows and may
+        // bypass the sharing ACL resolution. Keep one canonical principal.
+        return ['principals/users/' . $userId];
     }
 
     /** @return array{id:int,uri:string,displayname:string,color?:string,principaluri:string,readOnly:bool}|null */
     private function resolveCalendar(string $userId, ?string $hint, bool $writableOnly = false): ?array {
         $cals = $this->calendars($userId);
+        $hint = trim((string)$hint);
+        if ($hint === '' || in_array(mb_strtolower($hint), ['all', 'alle', '*'], true)) {
+            $hint = '';
+        }
         // Default write target: the user's personal (own principal) calendar.
         if ($hint === null || $hint === '') {
             foreach ($cals as $cal) {
@@ -112,7 +114,7 @@ class CalendarService {
             return null;
         }
         foreach ($cals as $cal) {
-            if ($hint === (string)$cal['id'] || $hint === $cal['uri'] || strcasecmp($hint, (string)$cal['displayname']) === 0) {
+            if ($hint === (string)$cal['id'] || strcasecmp($hint, (string)$cal['uri']) === 0 || strcasecmp($hint, (string)$cal['displayname']) === 0) {
                 return $cal;
             }
         }
