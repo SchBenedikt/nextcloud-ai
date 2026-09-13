@@ -281,9 +281,11 @@ class ActionExecutor {
             ]],
             ['type' => 'function', 'function' => [
                 'name' => 'search_files',
-                'description' => 'Search the user\'s entire Nextcloud home for files by name or content keywords.',
+                'description' => 'Search the user\'s Nextcloud files by name or content keywords. Narrow the scan with an optional folder path and file extension for faster results.',
                 'parameters' => ['type' => 'object', 'properties' => [
                     'query' => ['type' => 'string', 'description' => 'Keyword to look for in file and folder names and in bounded text-file content (case-insensitive).'],
+                    'path' => ['type' => 'string', 'description' => 'Optional folder to search below, e.g. "Documents/2026".'],
+                    'extension' => ['type' => 'string', 'description' => 'Optional file extension filter, e.g. "pdf" or ".docx".'],
                 ], 'required' => ['query']],
             ]],
             ['type' => 'function', 'function' => [
@@ -1809,13 +1811,21 @@ class ActionExecutor {
         if ($query === '') {
             return ['ok' => false, 'error' => 'Search query required'];
         }
+        $scopePath = $this->cleanPath((string)($args['path'] ?? ''));
+        $scope = $this->folderAt($home, $scopePath);
+        $extension = strtolower(ltrim(trim((string)($args['extension'] ?? '')), '.'));
+        if ($extension !== '' && !preg_match('/^[a-z0-9]{1,12}$/', $extension)) {
+            return ['ok' => false, 'error' => 'extension must contain only letters and digits'];
+        }
         $matches = [];
         $visited = 0;
         $truncated = false;
-        $this->searchWalk($home, mb_strtolower($query), $matches, $visited, $truncated, 0, '');
+        $this->searchWalk($scope, mb_strtolower($query), $matches, $visited, $truncated, 0, $scopePath, $extension);
         $this->rememberFileLocations($matches);
         return ['ok' => true, 'result' => [
             'query' => $query,
+            'path' => $scopePath,
+            'extension' => $extension !== '' ? $extension : null,
             'matches' => $matches,
             'truncated' => $truncated,
             'limits' => [
@@ -1857,7 +1867,7 @@ class ActionExecutor {
      *
      * @param array<int,array<string,mixed>> $matches
      */
-    private function searchWalk(Folder $folder, string $query, array &$matches, int &$visited, bool &$truncated, int $depth, string $prefix): void {
+    private function searchWalk(Folder $folder, string $query, array &$matches, int &$visited, bool &$truncated, int $depth, string $prefix, string $extension = ''): void {
         if ($depth >= self::MAX_SEARCH_DEPTH || count($matches) >= self::MAX_SEARCH_RESULTS) {
             $truncated = true;
             return;
@@ -1874,7 +1884,11 @@ class ActionExecutor {
                 if ($nameMatches) {
                     $matches[] = ['path' => $rel, 'reason' => 'filename'];
                 }
-                $this->searchWalk($node, $query, $matches, $visited, $truncated, $depth + 1, $rel);
+                $this->searchWalk($node, $query, $matches, $visited, $truncated, $depth + 1, $rel, $extension);
+                continue;
+            }
+
+            if ($extension !== '' && strtolower(pathinfo($node->getName(), PATHINFO_EXTENSION)) !== $extension) {
                 continue;
             }
 
