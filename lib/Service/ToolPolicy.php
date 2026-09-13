@@ -84,6 +84,12 @@ class ToolPolicy {
             'requiresConfirmation' => true,
             'description' => 'Run one explicitly confirmed command from the configured executable allowlist',
         ],
+        'run_terminal_sequence' => [
+            'risk' => self::RISK_MUTATING,
+            'surfaces' => [self::SURFACE_WEB, self::SURFACE_TASKPROCESSING_CONFIRMED],
+            'requiresConfirmation' => true,
+            'description' => 'Run up to five explicitly confirmed commands sequentially from the configured executable allowlist',
+        ],
         'search_files' => [
             'risk' => self::RISK_READONLY,
             'surfaces' => [self::SURFACE_WEB, self::SURFACE_TALK, self::SURFACE_TASKPROCESSING, self::SURFACE_TASKPROCESSING_CONFIRMED, self::SURFACE_RAG],
@@ -613,7 +619,7 @@ class ToolPolicy {
         if ($toolName === 'run_safe_command' && $this->appConfig->getInt('safe_commands_enabled', 0) !== 1) {
             return ['allowed' => false, 'reason' => 'Safe local diagnostics are disabled by configuration'];
         }
-        if ($toolName === 'run_terminal_command' && $this->appConfig->getInt('terminal_commands_enabled', 0) !== 1) {
+        if (in_array($toolName, ['run_terminal_command', 'run_terminal_sequence'], true) && $this->appConfig->getInt('terminal_commands_enabled', 0) !== 1) {
             return ['allowed' => false, 'reason' => 'Confirmed terminal commands are disabled by configuration'];
         }
 

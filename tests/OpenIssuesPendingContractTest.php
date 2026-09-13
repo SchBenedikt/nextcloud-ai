@@ -212,6 +212,13 @@ final class OpenIssuesPendingContractTest extends TestCase {
         self::assertStringContainsString('shell syntax', strtolower((string)$result['error']));
     }
 
+    public function testTerminalSequenceIsBoundedAndConfirmationGated(): void {
+        $executor = (string)file_get_contents(__DIR__ . '/../lib/Service/ActionExecutor.php');
+        self::assertStringContainsString("'run_terminal_sequence' => ['commands']", $executor);
+        self::assertStringContainsString("'maxItems' => 5", $executor);
+        self::assertStringContainsString("\$name === 'run_terminal_sequence'", $executor);
+    }
+
     public function testSafeCommandUsesBoundedNonBlockingProcessHandling(): void {
         $reflection = new \ReflectionClass(ActionExecutor::class);
         $instance = $reflection->newInstanceWithoutConstructor();

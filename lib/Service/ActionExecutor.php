@@ -117,6 +117,7 @@ class ActionExecutor {
         'call_app_api_batch' => ['calls'],
         'run_safe_command' => ['command'],
         'run_terminal_command' => ['command'],
+        'run_terminal_sequence' => ['commands'],
         'configure_external_connector' => ['id', 'base_url'],
         'diagnose_external_connector' => ['id'],
         'call_external_connector' => ['id', 'path', 'method'],
@@ -660,6 +661,14 @@ class ActionExecutor {
                 ], 'required' => ['command']],
             ]],
             ['type' => 'function', 'function' => [
+                'name' => 'run_terminal_sequence',
+                'description' => 'Run up to five explicitly confirmed terminal commands sequentially on the Nextcloud host. Each command is parsed without a shell, uses the same allowlist/custom-executable setting, and stops after the first failure or timeout. Useful for a short diagnostic workflow; shell operators, pipes and redirects are never accepted.',
+                'parameters' => ['type' => 'object', 'properties' => [
+                    'commands' => ['type' => 'array', 'minItems' => 1, 'maxItems' => 5, 'items' => ['type' => 'string', 'minLength' => 1, 'maxLength' => 1000]],
+                    'timeout_seconds' => ['type' => 'integer', 'minimum' => 1, 'maximum' => 30, 'description' => 'Optional hard timeout per command, default 10 seconds.'],
+                ], 'required' => ['commands']],
+            ]],
+            ['type' => 'function', 'function' => [
                 'name' => 'list_nextcloud_capabilities',
                 'description' => 'Discover which Nextcloud apps are enabled and which EVA integrations are available before planning a task. This is read-only and never exposes secrets. Use it when the user asks EVA to work with a Nextcloud feature you have not used before.',
                 'parameters' => ['type' => 'object', 'properties' => new \stdClass()],
@@ -1022,7 +1031,7 @@ class ActionExecutor {
             // web surface has complete arguments: the model may have learned
             // an unfamiliar endpoint and the user must review its exact
             // method, path and parameters first.
-            if ($name === 'call_app_api' || $name === 'run_safe_command' || $name === 'run_terminal_command') {
+            if ($name === 'call_app_api' || $name === 'run_safe_command' || $name === 'run_terminal_command' || $name === 'run_terminal_sequence') {
                 return [
                     'ok' => false,
                     'confirmation_required' => true,
@@ -1161,6 +1170,7 @@ class ActionExecutor {
                 'server_status' => $this->serverStatus($userId),
                 'run_safe_command' => $this->runSafeCommand($args),
                 'run_terminal_command' => $this->runTerminalCommand($args),
+                'run_terminal_sequence' => $this->runTerminalSequence($args),
                 'list_nextcloud_capabilities' => $this->listNextcloudCapabilities(),
                 'discover_app_api' => $this->discoverAppApi($args),
                 'list_learned_app_apis' => $this->listLearnedAppApis(),
@@ -3246,6 +3256,28 @@ class ActionExecutor {
                 'timed_out' => $timedOut,
             ],
         ];
+    }
+
+    /** Execute a short, explicitly confirmed diagnostic workflow without a shell. */
+    private function runTerminalSequence(array $args): array {
+        $commands = $args['commands'] ?? null;
+        if (!is_array($commands) || $commands === [] || count($commands) > 5) {
+            return ['ok' => false, 'error' => 'commands must contain between 1 and 5 entries'];
+        }
+        $timeout = filter_var($args['timeout_seconds'] ?? 10, FILTER_VALIDATE_INT);
+        $timeout = $timeout === false ? 10 : max(1, min(30, $timeout));
+        $results = [];
+        foreach ($commands as $index => $command) {
+            if (!is_string($command) || trim($command) === '') {
+                return ['ok' => false, 'error' => 'Every terminal sequence entry must be a non-empty command string'];
+            }
+            $result = $this->runTerminalCommand(['command' => $command, 'timeout_seconds' => $timeout]);
+            $results[] = ['index' => (int)$index, 'command' => mb_substr($command, 0, 1000), 'ok' => !empty($result['ok']), 'result' => $result['result'] ?? null, 'error' => $result['error'] ?? null];
+            if (empty($result['ok'])) {
+                return ['ok' => false, 'error' => 'Terminal sequence stopped after command ' . ((int)$index + 1) . '.', 'result' => ['completed' => count($results) - 1, 'results' => $results]];
+            }
+        }
+        return ['ok' => true, 'result' => ['completed' => count($results), 'results' => $results]];
     }
 
     /** @return array{ok:true,result:array}|array{ok:false,error:string} */
