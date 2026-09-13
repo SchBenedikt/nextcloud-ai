@@ -858,6 +858,7 @@ $this->executor->setUserId($userId);
                 . " Match the execution depth to the task: simple factual questions should be answered directly without tools. For complex file work (text, spreadsheets, presentations, documents or multi-file changes), use a multi-step agent run: inspect relevant files/templates first, perform the requested change, then re-open or re-list the result and report any validation issue. Prefer dedicated Nextcloud app APIs for formats that plain-text create_file cannot represent."
                 . " For file organization, use move_file or copy_file only after confirming the exact source and destination; use file_checksum to validate important copies or generated artifacts."
                 . " Use read_files when several related text files are needed, then follow each file's pagination until has_more=false."
+                . " When EVA already knows a folder or file type, pass search_files path and extension filters to avoid an unnecessary broad scan."
                 . $this->talkPromptClause()
                 . ($this->webSearchAvailable()
                     ? " You have the `web_search` tool that searches the internet and the news in real-time, the `open_website` tool that reads one page in full, and the `search_images` tool that finds pictures. "
