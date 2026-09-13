@@ -1318,30 +1318,30 @@ class ActionExecutor {
         if (str_contains($path, '..') || preg_match('/[\r\n]/', $path) || !str_starts_with($path, '/')) {
             return ['ok' => false, 'error' => 'Only same-origin app paths without traversal are allowed.'];
         }
-        // Non-OCS routes are accepted only after the agent has explicitly
-        // discovered and cached that app's route metadata. This permits
-        // unknown apps to be learned safely without turning call_app_api into
-        // an arbitrary internal HTTP proxy. OCS paths retain the historical
-        // prefix check for backwards compatibility with existing clients.
-        if (!$isOcsPath) {
-            $knownRoute = false;
-            try {
-                $learned = json_decode($this->config->get('learned_app_apis'), true);
-                $learnedAt = (int)($learned[$appId]['updated'] ?? 0);
-                $routes = ($learnedAt > 0 && $learnedAt >= time() - self::LEARNED_API_TTL && is_array($learned[$appId]['routes'] ?? null)) ? $learned[$appId]['routes'] : [];
-                foreach ($routes as $route) {
-                    if (!is_array($route) || (bool)($route['ocs'] ?? false)) continue;
-                    $routePath = (string)($route['path'] ?? '');
-                    $methods = is_array($route['methods'] ?? null) ? array_map('strtoupper', $route['methods']) : [];
-                    if ($routePath !== '' && $this->matchesDiscoveredRoute($routePath, $path) && ($methods === [] || in_array($method, $methods, true))) {
-                        $knownRoute = true;
-                        break;
-                    }
+        // Every generic route must be present in the user's recent discovery
+        // snapshot.  Prefix-only checks are not sufficient: an enabled app can
+        // expose administrative or destructive endpoints under the same OCS
+        // prefix.  Requiring an exact discovered route keeps the learning
+        // loop useful while preventing arbitrary app API probing.
+        $knownRoute = false;
+        try {
+            $learned = json_decode($this->config->get('learned_app_apis'), true);
+            $learnedAt = (int)($learned[$appId]['updated'] ?? 0);
+            $routes = ($learnedAt > 0 && $learnedAt >= time() - self::LEARNED_API_TTL && is_array($learned[$appId]['routes'] ?? null)) ? $learned[$appId]['routes'] : [];
+            foreach ($routes as $route) {
+                if (!is_array($route)) continue;
+                $routePath = (string)($route['path'] ?? '');
+                $methods = is_array($route['methods'] ?? null) ? array_map('strtoupper', $route['methods']) : [];
+                if ($routePath !== '' && $this->matchesDiscoveredRoute($routePath, $path) && ($methods === [] || in_array($method, $methods, true))) {
+                    $knownRoute = true;
+                    break;
                 }
-            } catch (\Throwable) { /* treat malformed learning cache as empty */ }
-            if (!$knownRoute) {
-                return ['ok' => false, 'error' => 'This non-OCS route has not been discovered yet. Call discover_app_api with include_internal=true first.'];
             }
+        } catch (\Throwable) { /* treat malformed learning cache as empty */ }
+        if (!$knownRoute) {
+            return ['ok' => false, 'error' => $isOcsPath
+                ? 'This OCS route has not been discovered recently. Call discover_app_api first.'
+                : 'This non-OCS route has not been discovered yet. Call discover_app_api with include_internal=true first.'];
         }
         try {
             $appManager = Server::get(\OCP\App\IAppManager::class);
