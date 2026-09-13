@@ -489,7 +489,7 @@
 				<div class="section-heading"><div><h3>{{ $t('External connectors') }}</h3><p>{{ $t('Connect an external service that EVA can inspect and use only after confirmation. Credentials are encrypted and never shown again.') }}</p></div></div>
 				<div v-if="connectorsLoading" class="field-help">{{ $t('Loading connectors…') }}</div>
 				<div v-for="connector in connectors" :key="connector.id" class="connector-row">
-					<div class="connector-summary"><strong>{{ connector.name }}</strong><small>{{ connector.base_url }} · {{ connector.discovered_endpoint_count || 0 }} {{ $t('learned endpoints') }} · {{ connector.auth_type === 'none' ? $t('No authentication') : connector.auth_type === 'api_key' ? $t('API key') : connector.auth_type === 'basic' ? $t('Username and password') : $t('Bearer token') }}</small><div class="connector-credentials"><span :class="connectorCredentialClass(connector)">{{ connectorCredentialLabel(connector) }}</span><span v-if="connector.auth_type === 'api_key'" class="connector-header">{{ connector.api_key_header }}</span></div><details v-if="connector.learned_endpoints && connector.learned_endpoints.length" class="connector-endpoints"><summary>{{ $t('Show learned routes') }}</summary><ul><li v-for="(endpoint, index) in connector.learned_endpoints" :key="index"><code>{{ endpoint.method }}</code> <span>{{ endpoint.path }}</span></li></ul></details><div v-if="connectorDiagnostics[connector.id]" class="connector-diagnostic" role="status"><strong>{{ connectorDiagnostics[connector.id].category === 'authentication' ? $t('Authentication rejected') : connectorDiagnostics[connector.id].category === 'network' ? $t('Host unreachable') : $t('Connector reachable') }}</strong><span>HTTP {{ connectorDiagnostics[connector.id].status || '—' }} · {{ connectorDiagnostics[connector.id].elapsed_ms || 0 }} ms<span v-if="connectorDiagnostics[connector.id].resolved_ip"> · {{ connectorDiagnostics[connector.id].resolved_ip }}</span></span><small v-if="connectorDiagnostics[connector.id].hint">{{ connectorDiagnostics[connector.id].hint }}</small></div></div>
+					<div class="connector-summary"><strong>{{ connector.name }}</strong><small>{{ connector.base_url }} · {{ connector.discovered_endpoint_count || 0 }} {{ $t('learned endpoints') }} · {{ connector.auth_type === 'none' ? $t('No authentication') : connector.auth_type === 'api_key' ? $t('API key') : connector.auth_type === 'basic' ? $t('Username and password') : $t('Bearer token') }}</small><div class="connector-credentials"><span :class="connectorCredentialClass(connector)">{{ connectorCredentialLabel(connector) }}</span><span v-if="connector.auth_type === 'api_key'" class="connector-header">{{ connector.api_key_header }}</span></div><details v-if="connector.learned_endpoints && connector.learned_endpoints.length" class="connector-endpoints"><summary>{{ $t('Explore learned routes') }} ({{ connector.learned_endpoints.length }})</summary><div class="connector-route-filter"><NcTextField v-model="connectorEndpointQuery" :label="$t('Filter routes')" :label-outside="true" :placeholder="$t('Search method, path or operation')" /></div><ul><li v-for="(endpoint, index) in filteredConnectorEndpoints(connector)" :key="index"><code>{{ endpoint.method }}</code> <span>{{ endpoint.path }}</span><small v-if="endpoint.operation_id">{{ endpoint.operation_id }}</small></li></ul><p v-if="filteredConnectorEndpoints(connector).length === 0" class="field-help">{{ $t('No learned route matches this filter.') }}</p></details><div v-if="connectorDiagnostics[connector.id]" class="connector-diagnostic" role="status"><strong>{{ connectorDiagnostics[connector.id].category === 'authentication' ? $t('Authentication rejected') : connectorDiagnostics[connector.id].category === 'network' ? $t('Host unreachable') : $t('Connector reachable') }}</strong><span>HTTP {{ connectorDiagnostics[connector.id].status || '—' }} · {{ connectorDiagnostics[connector.id].elapsed_ms || 0 }} ms<span v-if="connectorDiagnostics[connector.id].resolved_ip"> · {{ connectorDiagnostics[connector.id].resolved_ip }}</span></span><small v-if="connectorDiagnostics[connector.id].hint">{{ connectorDiagnostics[connector.id].hint }}</small></div></div>
 					<div class="connector-actions"><NcButton type="tertiary-no-background" :disabled="connectorsBusy" @click="editConnector(connector)">{{ $t('Edit') }}</NcButton><NcButton type="tertiary-no-background" :disabled="connectorsBusy" @click="testConnector(connector.id)">{{ $t('Test connection') }}</NcButton><NcButton type="tertiary-no-background" :disabled="connectorsBusy" @click="discoverConnector(connector.id)">{{ $t('Discover API') }}</NcButton><NcButton type="tertiary-no-background" :disabled="connectorsBusy" @click="removeConnector(connector.id)">{{ $t('Remove') }}</NcButton></div>
 				</div>
 			<p class="field-help connector-auto-note">EVA probes standard API descriptions automatically and learns available routes. Every external action still requires confirmation.</p>
@@ -787,6 +787,7 @@ export default {
 		const userWebSearchFetchContent = computed({ get: () => f.value.web_search_fetch_content === '1', set: v => { f.value.web_search_fetch_content = v ? '1' : '0' } })
 		const userWebSearchSafeSearch = computed({ get: () => f.value.web_search_safe_search === '1', set: v => { f.value.web_search_safe_search = v ? '1' : '0' } })
 		const connectors = ref([])
+		const connectorEndpointQuery = ref('')
 		const plugins = ref([])
 		const pluginsLoading = ref(false)
 		const connectorsLoading = ref(false)
@@ -842,6 +843,12 @@ export default {
 		}
 		function connectorCredentialClass(connector) {
 			return connector.auth_type === 'none' || connectorCredentialLabel(connector) === t('Credential saved') || connectorCredentialLabel(connector) === t('No credentials required') ? 'connector-credential connector-credential-ok' : 'connector-credential connector-credential-warning'
+		}
+		function filteredConnectorEndpoints(connector) {
+			const endpoints = Array.isArray(connector?.learned_endpoints) ? connector.learned_endpoints : []
+			const query = String(connectorEndpointQuery.value || '').trim().toLowerCase()
+			if (!query) return endpoints.slice(0, 200)
+			return endpoints.filter(endpoint => [endpoint?.method, endpoint?.path, endpoint?.operation_id].some(value => String(value || '').toLowerCase().includes(query))).slice(0, 200)
 		}
 		async function discoverConnector(id) {
 			connectorsBusy.value = true
@@ -1470,7 +1477,7 @@ export default {
 			groqKey, customProviderKey, removeGroqKey, ocrEnabled, f, providerProfiles, providerProfilesPlaceholder, chatProviderOptions, groqModelOptions, embeddingModelOptions, chatModelOptions, summaryModelOptions, chatRetentionOptions, webSearchProviderOptions, status, health, healthLoading, statusTimer, limits, availableModels, embeddingModels, chatModels, embeddingInstalledHint, chatInstalledHint, modelLoading, modelError, checkOut, saving, checking, indexing, resetting, deletingChats, stopping, saved, loadError, message, validationErrors, resetConfirm, chatsDeleteConfirm,
 			newExcludePath, excludeError, excludeList, actionsEnabled, backgroundActionsEnabled, notificationsEnabled, learningEnabled, safeCommandsEnabled, terminalCommandsEnabled, terminalCommandAny, mailIndexEnabled, talkIndexEnabled, talkWriteEnabled, indexEnrolled, actionsDisabled, busy, indexingActive, settingsLocked, maxFileSizeMb,
 			isAdminMode, admin, userWebSearchEnabled, userWebSearchSafeSearch, userWebSearchImages, userWebSearchBrowser, userWebSearchFetchContent, webSearchKey, removeWebSearchKey, webSearchKeyStored, webSearchReady, savingAdmin, saveAdminSettings, loadAdminSettings,
-			connectors, connectorsLoading, connectorsBusy, connectorDiagnostics, connectorDraft, applyConnectorExample, saveConnector, editConnector, connectorCredentialLabel, connectorCredentialClass, removeConnector, discoverConnector, testConnector, plugins, pluginsLoading,
+			connectors, connectorsLoading, connectorsBusy, connectorDiagnostics, connectorDraft, connectorEndpointQuery, filteredConnectorEndpoints, applyConnectorExample, saveConnector, editConnector, connectorCredentialLabel, connectorCredentialClass, removeConnector, discoverConnector, testConnector, plugins, pluginsLoading,
 			proactiveEnabled, proactiveBriefings, briefingDraft, briefingFormError, weekdays, dayName, addBriefing, removeBriefing, toggleBriefing, toggleBriefingActions,
 			exporting, downloadExport,
 			knowledgeContent, knowledgeOriginal, savingKnowledge, knowledgeSaved, saveKnowledgeContent,
@@ -1689,6 +1696,8 @@ export default {
 .connector-endpoints ul { display:grid; gap:4px; margin:7px 0 0; padding-left:18px; max-height:180px; overflow:auto; }
 .connector-endpoints li { overflow-wrap:anywhere; }
 .connector-endpoints code { margin-right:5px; color:var(--color-primary-element); font-size:11px; }
+.connector-route-filter { margin-top:10px; max-width:520px; }
+.connector-endpoints li small { display:block; margin-left:42px; color:var(--color-text-maxcontrast); font-size:10px; }
 .connector-row small { color:var(--color-text-maxcontrast); margin-top:3px; }
 .connector-credentials { display:flex; align-items:center; flex-wrap:wrap; gap:6px; margin-top:7px; font-size:11px; }
 .connector-credential { padding:2px 7px; border-radius:999px; font-weight:650; }
