@@ -73,6 +73,18 @@ Embedding vectors are cached in Nextcloud's distributed cache for up to 30 days
 (user-isolated, content-derived keys; document text is never stored in the key).
 Resetting a user's index clears that user's cached vectors.
 
+#### What an EVA app upgrade does to indexing
+
+An app upgrade deliberately starts EVA with clean runtime state. It removes
+stale queued chat/agent plans, stops the active EVA indexing pass at its next
+safe cancellation boundary, resets scheduler claims and re-registers the
+current background jobs. It does **not** delete `eva_ai_documents`,
+`eva_ai_chunks`, embeddings, original Nextcloud files, settings or learned
+file locations. The existing index therefore remains available while the next
+scheduled or manually requested pass catches up with changes. Only the
+explicit **Delete index** action (or `occ eva_ai:reset`) removes derived index
+rows; that action never touches the original files.
+
 ### Chat tools / actions
 
 | Key | Scope | Default | Range / values | Unit | Effect |

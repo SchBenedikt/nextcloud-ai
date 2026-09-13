@@ -4,6 +4,12 @@ All notable changes to **EVA (eva_ai)** are documented here.
 Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); the project
 follows [Semantic Versioning](https://semver.org/).
 
+## [1.16.60] - 2026-09-13
+
+### Documentation
+
+- Documented the upgrade invariant: stale EVA runtime jobs are stopped, while existing documents, chunks, embeddings, settings and original files are preserved.
+
 ## [1.16.59] - 2026-09-13
 
 ### Fixed
