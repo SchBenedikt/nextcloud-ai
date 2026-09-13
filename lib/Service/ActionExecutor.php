@@ -1501,7 +1501,22 @@ class ActionExecutor {
             }
             $options = ['headers' => $headers, 'timeout' => self::APP_API_TIMEOUT, 'allow_redirects' => ['max' => 0, 'protocols' => ['https', 'http']]];
             if ($method === 'GET') $options['query'] = $params;
-            elseif ($params !== []) $options['body'] = $params;
+            elseif ($params !== []) {
+                if ($isOcsPath) {
+                    // OCS endpoints conventionally consume form-style fields.
+                    $options['body'] = $params;
+                } else {
+                    // Internal app REST routes are commonly JSON APIs. Using
+                    // an explicit JSON string avoids client-dependent array
+                    // coercion and matches the generic connector adapter.
+                    try {
+                        $options['body'] = json_encode($params, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR);
+                        $options['headers']['Content-Type'] = 'application/json';
+                    } catch (\Throwable) {
+                        return ['ok' => false, 'error' => 'App API parameters could not be encoded as JSON.'];
+                    }
+                }
+            }
             $response = match ($method) {
                 'GET' => $client->get($url, $options),
                 'POST' => $client->post($url, $options),
