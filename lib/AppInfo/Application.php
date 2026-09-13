@@ -14,6 +14,8 @@ use OCP\AppFramework\Bootstrap\IRegistrationContext;
 use OCP\BackgroundJob\IJobList;
 use OCP\IUserSession;
 use OCP\Util;
+use OCP\App\Events\AppEnableEvent;
+use OCP\App\Events\AppUpdateEvent;
 
 class Application extends App implements IBootstrap {
     public const APP_ID = 'eva_ai';
@@ -24,6 +26,8 @@ class Application extends App implements IBootstrap {
 
     public function register(IRegistrationContext $context): void {
         $context->registerParameter('appId', self::APP_ID);
+        $context->registerEventListener(AppEnableEvent::class, \OCA\EvaAi\Listener\AppLifecycleListener::class);
+        $context->registerEventListener(AppUpdateEvent::class, \OCA\EvaAi\Listener\AppLifecycleListener::class);
         // Benachrichtigungs-Notifier: zeigt "EVA answer ready" in der Glocke an.
         $context->registerNotifierService(\OCA\EvaAi\Notification\Notifier::class);
         // EVA-Provider: stellt den RAG-Chat für die Assistant-App (TaskProcessing) bereit.
