@@ -221,6 +221,16 @@ export function mountChat(root, opts = {}) {
 					details.appendChild(pre)
 					row.appendChild(details)
 				}
+				if (c.result !== null && typeof c.result !== 'undefined') {
+					const details = document.createElement('details')
+					const summary = document.createElement('summary')
+					summary.textContent = t('Result')
+					const pre = document.createElement('pre')
+					pre.textContent = typeof c.result === 'string' ? c.result : JSON.stringify(c.result, null, 2)
+					details.appendChild(summary)
+					details.appendChild(pre)
+					row.appendChild(details)
+				}
 				if (c.error) {
 					const error = document.createElement('div')
 					error.className = 'tool-error'
@@ -566,6 +576,16 @@ export function mountChat(root, opts = {}) {
 					summary.textContent = t('Details')
 					const pre = document.createElement('pre')
 					pre.textContent = JSON.stringify(c.arguments, null, 2)
+					details.appendChild(summary)
+					details.appendChild(pre)
+					row.appendChild(details)
+				}
+				if (c.result !== null && typeof c.result !== 'undefined') {
+					const details = document.createElement('details')
+					const summary = document.createElement('summary')
+					summary.textContent = t('Result')
+					const pre = document.createElement('pre')
+					pre.textContent = typeof c.result === 'string' ? c.result : JSON.stringify(c.result, null, 2)
 					details.appendChild(summary)
 					details.appendChild(pre)
 					row.appendChild(details)
@@ -1050,6 +1070,7 @@ export function mountChat(root, opts = {}) {
 						last.tools[t].state = ev.ok ? 'ok' : 'bad'
 						last.tools[t].error = ev.error || ''
 						last.tools[t].url = ev.url || ''
+						last.tools[t].result = ev.result
 						break
 					}
 				}
@@ -1212,6 +1233,7 @@ export function mountChat(root, opts = {}) {
 								last.tools[t].state = ev.ok ? 'ok' : 'bad'
 								last.tools[t].error = ev.error || ''
 								last.tools[t].url = ev.url || ''
+								last.tools[t].result = ev.result
 								break
 							}
 						}

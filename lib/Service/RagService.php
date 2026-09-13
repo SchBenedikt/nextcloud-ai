@@ -305,6 +305,11 @@ $this->executor->setUserId($userId);
                         'ok' => !empty($res['ok']),
                         'error' => $res['error'] ?? null,
                         'url' => !empty($res['ok']) && is_array($res['result'] ?? null) ? ($res['result']['url'] ?? null) : null,
+                        // Return a bounded, redacted result in the live trace.
+                        // The model still receives the full internal result
+                        // below; the browser only needs enough output to show
+                        // what a terminal/API/file tool actually did.
+                        'result' => $this->safeToolResult($res['result'] ?? null),
                     ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) . "\n";
                     $messages[] = ['role' => 'tool', 'content' => json_encode($res, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES)];
 					if ($this->isAuthenticationFailure($res) || $seenToolCalls[$fingerprint] > self::MAX_IDENTICAL_TOOL_CALLS) {
@@ -503,6 +508,36 @@ $this->executor->setUserId($userId);
             }
         }
         return $out;
+    }
+
+    /** Keep live tool output useful without exposing secrets or huge payloads. */
+    private function safeToolResult(mixed $result, int $depth = 0): mixed {
+        if ($depth > 2) return '[omitted]';
+        if (is_array($result)) {
+            $out = [];
+            $count = 0;
+            foreach ($result as $key => $value) {
+                if (++$count > 24) { $out['…'] = 'additional fields omitted'; break; }
+                $label = strtolower((string)$key);
+                if (preg_match('/token|secret|password|api[_-]?key|authorization|cookie/', $label) === 1) {
+                    $out[(string)$key] = '[redacted]';
+                } elseif (is_array($value)) {
+                    $out[(string)$key] = $this->safeToolResult($value, $depth + 1);
+                } elseif (is_scalar($value) || $value === null) {
+                    $text = (string)$value;
+                    $limit = in_array($label, ['output', 'error_output', 'content', 'body', 'text'], true) ? 4000 : 320;
+                    $out[(string)$key] = mb_strlen($text) > $limit ? mb_substr($text, 0, $limit) . '…' : $value;
+                } else {
+                    $out[(string)$key] = '[omitted]';
+                }
+            }
+            return $out;
+        }
+        if (is_scalar($result) || $result === null) {
+            $text = (string)$result;
+            return mb_strlen($text) > 4000 ? mb_substr($text, 0, 4000) . '…' : $result;
+        }
+        return '[omitted]';
     }
 
     /** Prevent repeated tool rounds after a connector credential failure. */

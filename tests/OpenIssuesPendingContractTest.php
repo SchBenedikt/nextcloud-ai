@@ -10,6 +10,7 @@ use OCA\EvaAi\Service\CalendarService;
 use OCA\EvaAi\Service\AppConfig;
 use OCA\EvaAi\Service\Indexer;
 use OCA\EvaAi\Service\Ollama;
+use OCA\EvaAi\Service\RagService;
 use OCA\EvaAi\Service\SharesService;
 use OCA\EvaAi\TaskProcessing\TextToTextChatWithToolsProvider;
 use OCP\Files\File;
@@ -155,6 +156,24 @@ final class OpenIssuesPendingContractTest extends TestCase {
         $result = $run->invoke($instance, ['command' => 'date; cat /etc/passwd']);
         self::assertFalse($result['ok']);
         self::assertStringContainsString('shell syntax', strtolower((string)$result['error']));
+    }
+
+    /** Live tool traces expose bounded output but never connector credentials. */
+    public function testLiveToolResultIsRedactedAndBounded(): void {
+        $reflection = new \ReflectionClass(RagService::class);
+        $instance = $reflection->newInstanceWithoutConstructor();
+        $method = $reflection->getMethod('safeToolResult');
+        $result = $method->invoke($instance, [
+            'command' => 'date',
+            'output' => str_repeat('x', 5000),
+            'api_key' => 'do-not-show',
+            'nested' => ['password' => 'do-not-show-too', 'exit_code' => 0],
+        ]);
+
+        self::assertIsArray($result);
+        self::assertSame('[redacted]', $result['api_key']);
+        self::assertSame('[redacted]', $result['nested']['password']);
+        self::assertLessThanOrEqual(4001, mb_strlen((string)$result['output']));
     }
 
     /**

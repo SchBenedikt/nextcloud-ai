@@ -140,6 +140,7 @@ OC.L10N.register("eva_ai", {
     "Control how EVA connects to Ollama, searches your files and is allowed to act in Nextcloud.": "Lege fest, wie EVA eine Verbindung zu Ollama herstellt, deine Dateien durchsucht und in Nextcloud handeln darf.",
     "Copy answer": "Antwort kopieren",
     "Details": "Details",
+    "Result": "Ergebnis",
     "Copy link": "Link kopieren",
     "Copy message": "Nachricht kopieren",
     "Correct the settings above before testing the connection.": "Korrigiere die Einstellungen oben, bevor du die Verbindung testest.",

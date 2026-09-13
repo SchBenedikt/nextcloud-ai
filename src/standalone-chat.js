@@ -220,6 +220,16 @@ function buildCalendarForm(args, tr) {
 			details.appendChild(pre)
 			row.appendChild(details)
 		}
+		if (c.result !== null && typeof c.result !== 'undefined') {
+			var resultDetails = document.createElement('details')
+			var resultSummary = document.createElement('summary')
+			resultSummary.textContent = tr('Result')
+			var resultPre = document.createElement('pre')
+			resultPre.textContent = typeof c.result === 'string' ? c.result : JSON.stringify(c.result, null, 2)
+			resultDetails.appendChild(resultSummary)
+			resultDetails.appendChild(resultPre)
+			row.appendChild(resultDetails)
+		}
 		if (c.error) {
 			var error = document.createElement('div')
 			error.className = 'tool-error'
@@ -856,6 +866,7 @@ function buildCalendarForm(args, tr) {
 								last.tools[ti].state = ev.ok ? 'ok' : 'bad'
 								last.tools[ti].error = ev.error || ''
 								last.tools[ti].url = ev.url || ''
+								last.tools[ti].result = ev.result
 								break
 							}
 						}
