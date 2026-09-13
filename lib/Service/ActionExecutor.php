@@ -52,6 +52,7 @@ class ActionExecutor {
     private const REQUIRED_ARGS = [
         // Files / notes
         'create_file' => ['path', 'content'],
+        'create_files' => ['files'],
         'create_note' => ['title', 'content'],
         'create_folder' => ['path'],
         'rename_file' => ['path', 'new_name'],
@@ -177,6 +178,15 @@ class ActionExecutor {
                     'path' => ['type' => 'string', 'description' => 'Relative path from the home folder, e.g. "Documents/Plan.md" or "Report.txt".'],
                     'content' => ['type' => 'string', 'description' => 'The full text content to write.'],
                 ], 'required' => ['path', 'content']],
+            ]],
+            ['type' => 'function', 'function' => [
+                'name' => 'create_files',
+                'description' => 'Create or update up to 20 related plain-text files in one agent step. Each file is validated with the same allowed-type and size limits as create_file; failures are returned per file so successful files are not lost.',
+                'parameters' => ['type' => 'object', 'properties' => [
+                    'files' => ['type' => 'array', 'maxItems' => 20, 'items' => ['type' => 'object', 'properties' => [
+                        'path' => ['type' => 'string'], 'content' => ['type' => 'string'],
+                    ], 'required' => ['path', 'content']]],
+                ], 'required' => ['files']],
             ]],
             ['type' => 'function', 'function' => [
                 'name' => 'create_note',
@@ -861,7 +871,7 @@ class ActionExecutor {
         }
 
         $fileTools = [
-            'list_files', 'create_file', 'create_note', 'create_folder',
+            'list_files', 'create_file', 'create_files', 'create_note', 'create_folder',
             'rename_file', 'delete_file', 'read_file', 'inspect_file', 'search_files',
             'extract_file_text',
             'update_knowledge',
@@ -874,6 +884,7 @@ class ActionExecutor {
             $result = match ($name) {
                 'list_files' => $this->listFiles($home, $args),
                 'create_file' => $this->createFile($home, $args),
+                'create_files' => $this->createFiles($home, $args),
                 'create_note' => $this->createNote($home, $args),
                 'create_folder' => $this->createFolder($home, $args),
                 'rename_file' => $this->renameFile($home, $args),
@@ -1505,6 +1516,19 @@ class ActionExecutor {
             $folder->newFile($name, $content);
         });
         return ['ok' => true, 'result' => 'Created ' . $path];
+    }
+
+    /** Create several files while preserving per-file validation/results. */
+    private function createFiles(Folder $home, array $args): array {
+        $files = $args['files'] ?? null;
+        if (!is_array($files) || $files === [] || count($files) > 20) return ['ok' => false, 'error' => 'files must contain between 1 and 20 entries'];
+        $results = []; $allOk = true;
+        foreach ($files as $entry) {
+            if (!is_array($entry)) { $results[] = ['ok' => false, 'error' => 'Each entry must contain path and content']; $allOk = false; continue; }
+            $result = $this->createFile($home, ['path' => $entry['path'] ?? '', 'content' => $entry['content'] ?? '']);
+            $results[] = $result; if (empty($result['ok'])) $allOk = false;
+        }
+        return ['ok' => $allOk, 'result' => ['files' => $results, 'created' => count(array_filter($results, static fn(array $r): bool => !empty($r['ok']))), 'failed' => count(array_filter($results, static fn(array $r): bool => empty($r['ok'])))]];
     }
 
     /** Prüft die konfigurierte Dateityp-Einschränkung; liefert Fehlertext oder null. */

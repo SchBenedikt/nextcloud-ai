@@ -84,6 +84,12 @@ class ToolPolicy {
             'requiresConfirmation' => true,
             'description' => 'Create or overwrite a file',
         ],
+        'create_files' => [
+            'risk' => self::RISK_MUTATING,
+            'surfaces' => [self::SURFACE_WEB, self::SURFACE_TASKPROCESSING_CONFIRMED],
+            'requiresConfirmation' => true,
+            'description' => 'Create or overwrite several bounded text files',
+        ],
         'create_note' => [
             'risk' => self::RISK_MUTATING,
             'surfaces' => [self::SURFACE_WEB, self::SURFACE_TASKPROCESSING_CONFIRMED],
