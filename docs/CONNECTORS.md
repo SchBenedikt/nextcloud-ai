@@ -25,6 +25,12 @@ for a new connector. Existing credentials and an explicit choice are never
 overwritten. Immich's schema-free fallback automatically selects the usual
 `x-api-key` header when no credential has been stored yet.
 
+Services that publish only GraphQL are supported too. EVA probes `/graphql`
+and `/api/graphql` with a safe GET; a normal `405` response is enough to learn
+the route without executing a query. Discovery records a confirmation-gated
+POST operation with a required `query` field and optional `variables` and
+`operationName` fields. It never sends GraphQL introspection during discovery.
+
 ## Authentication examples
 
 ### Immich

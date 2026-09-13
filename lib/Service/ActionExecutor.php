@@ -3576,7 +3576,7 @@ class ActionExecutor {
             $candidates = [];
             $customSchema = trim((string)($row['openapi_url'] ?? ''));
             if ($customSchema !== '' && $this->sameConnectorHost($customSchema, (string)$row['base_url'])) $candidates[] = $customSchema;
-            $candidates = array_merge($candidates, ['/api/v2.0', '/openapi.json', '/swagger.json', '/.well-known/openapi.json', '/api/open-api', '/api/openapi.json', '/api/swagger.json', '/api/openapi', '/api/swagger', '/docs', '/docs/openapi.json', '/api/docs', '/api/docs/openapi.json', '/api/v2.0/docs', '/api']);
+            $candidates = array_merge($candidates, ['/api/v2.0', '/openapi.json', '/swagger.json', '/.well-known/openapi.json', '/api/open-api', '/api/openapi.json', '/api/swagger.json', '/api/openapi', '/api/swagger', '/docs', '/docs/openapi.json', '/api/docs', '/api/docs/openapi.json', '/api/v2.0/docs', '/api', '/graphql', '/api/graphql']);
             // Some services advertise their schema only as a link in the
             // landing page. Extract same-host JSON/YAML documentation links
             // without trusting arbitrary external URLs or executing them.
@@ -3622,11 +3622,14 @@ class ActionExecutor {
             }
             $authDiscoveryStatus = 0;
             $reachableRoutes = [];
+            $graphqlEndpoints = [];
             foreach ($found === null ? array_slice(array_values(array_unique($candidates)), 0, 80) : [] as $candidate) {
                 if (microtime(true) >= $discoveryDeadline) break;
                 $url = preg_match('~^https?://~i', $candidate) ? $candidate : rtrim((string)$row['base_url'], '/') . $candidate; if (!$this->safeConnectorUrl($url)) continue;
                 [$status, $body] = $this->connectorCurlGet($url, $headers, 4);
                 if ($status === 401 || $status === 403) $authDiscoveryStatus = $status;
+                $graphql = $this->graphqlEndpointMeta((string)$candidate, $status);
+                if ($graphql !== null) $graphqlEndpoints[] = $graphql;
                 if ($status >= 200 && $status < 500 && $status !== 404 && str_starts_with((string)$candidate, '/')) {
                     $reachableRoutes[] = ['path' => mb_substr((string)$candidate, 0, 300), 'method' => 'GET', 'operation_id' => 'runtime_probe', 'requires_auth' => in_array($status, [401, 403], true)];
                 }
@@ -3639,10 +3642,17 @@ class ActionExecutor {
                 // 401/403 response. Persist those same-origin probes so the
                 // agent can call them after credentials are corrected.
                 if ($reachableRoutes !== [] && (is_string($rootProbeBody) ? stripos($rootProbeBody, 'immich') === false : true)) {
+                    $reachableRoutes = array_values(array_unique(array_merge($reachableRoutes, $graphqlEndpoints), SORT_REGULAR));
                     $rows = $this->connectorRows();
                     $rows[$id]['openapi'] = ['source' => 'runtime-probe', 'version' => '', 'endpoints' => array_values(array_unique($reachableRoutes, SORT_REGULAR)), 'updated_at' => time()];
                     Server::get(\OCP\IConfig::class)->setUserValue($user, AppConfig::APP, 'external_connectors', json_encode($rows, JSON_UNESCAPED_SLASHES) ?: '{}');
                     return ['ok' => true, 'result' => ['connector' => $id, 'source' => 'runtime-probe', 'title' => '', 'endpoints' => $reachableRoutes, 'note' => 'The service exposes no readable schema, but reachable same-origin routes were learned. Protected routes require valid credentials.']];
+                }
+                if ($graphqlEndpoints !== []) {
+                    $rows = $this->connectorRows();
+                    $rows[$id]['openapi'] = ['source' => 'runtime-graphql', 'version' => '', 'endpoints' => array_values(array_unique($graphqlEndpoints, SORT_REGULAR)), 'updated_at' => time()];
+                    Server::get(\OCP\IConfig::class)->setUserValue($user, AppConfig::APP, 'external_connectors', json_encode($rows, JSON_UNESCAPED_SLASHES) ?: '{}');
+                    return ['ok' => true, 'result' => ['connector' => $id, 'source' => 'runtime-graphql', 'title' => 'GraphQL', 'endpoints' => $graphqlEndpoints, 'note' => 'A GraphQL endpoint was learned. POST requests require a query field; variables and operationName are optional.']];
                 }
                 // Immich deployments often disable Swagger in production but
                 // expose a stable REST surface. Identify Immich from the
@@ -3823,6 +3833,21 @@ class ActionExecutor {
             } catch (\Throwable) { return null; }
         }
         return null;
+    }
+
+    /** @return array{path:string,method:string,operation_id:string,request_body:array}|null */
+    private function graphqlEndpointMeta(string $candidate, int $status): ?array {
+        $path = (string)(parse_url($candidate, PHP_URL_PATH) ?: $candidate);
+        if (!preg_match('~(?:^|/)graphql/?$~i', $path) || in_array($status, [0, 404], true) || $status < 200 || $status >= 500) return null;
+        return ['path' => mb_substr($path, 0, 300), 'method' => 'POST', 'operation_id' => 'graphql', 'request_body' => [
+            'required' => true,
+            'content_type' => 'application/json',
+            'fields' => [
+                ['name' => 'query', 'type' => 'string', 'required' => true],
+                ['name' => 'variables', 'type' => 'object', 'required' => false],
+                ['name' => 'operationName', 'type' => 'string', 'required' => false],
+            ],
+        ]];
     }
 
     /** @return array{auth_type:string,api_key_header?:string}|null */

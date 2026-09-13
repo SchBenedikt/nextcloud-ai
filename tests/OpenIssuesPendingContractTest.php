@@ -229,6 +229,16 @@ final class OpenIssuesPendingContractTest extends TestCase {
         self::assertStringContainsString('Confirmation required', (string)file_get_contents(__DIR__ . '/../src/views/SettingsView.vue'));
     }
 
+    public function testGraphqlConnectorDiscoveryLearnsValidatedPostBody(): void {
+        $reflection = new \ReflectionClass(ActionExecutor::class);
+        $instance = $reflection->newInstanceWithoutConstructor();
+        $meta = $reflection->getMethod('graphqlEndpointMeta')->invoke($instance, '/api/graphql', 405);
+        self::assertIsArray($meta);
+        self::assertSame('POST', $meta['method']);
+        self::assertSame('query', $meta['request_body']['fields'][0]['name']);
+        self::assertStringContainsString('runtime-graphql', (string)file_get_contents(__DIR__ . '/../lib/Service/ActionExecutor.php'));
+    }
+
     public function testAppLoadsItsOptionalProductionComposerAutoloader(): void {
         $application = (string)file_get_contents(__DIR__ . '/../lib/AppInfo/Application.php');
         self::assertStringContainsString("__DIR__ . '/../../vendor/autoload.php'", $application);

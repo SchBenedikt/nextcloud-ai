@@ -4,6 +4,13 @@ All notable changes to **EVA (eva_ai)** are documented here.
 Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); the project
 follows [Semantic Versioning](https://semver.org/).
 
+## [1.16.62] - 2026-09-13
+
+### Added
+
+- Schema-free GraphQL connectors are now discovered through safe GET probes and learned as confirmation-gated POST operations with validated query bodies.
+- Added regression coverage and connector documentation for GraphQL services.
+
 ## [1.16.61] - 2026-09-13
 
 ### Documentation
