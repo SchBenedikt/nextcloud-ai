@@ -3028,7 +3028,19 @@ class ActionExecutor {
                 $body = $response->getBody(); if (is_resource($body)) $body = stream_get_contents($body); $decoded = json_decode(mb_substr((string)$body, 0, 200000), true);
                 if (is_array($decoded) && is_array($decoded['paths'] ?? null)) { $found = $decoded; $source = $candidate; break; }
             }
-            if ($found === null) return ['ok' => false, 'error' => 'No OpenAPI or Swagger description was found.'];
+            if ($found === null) {
+                // Many appliances expose no schema at all. A bounded GET of
+                // the configured root is still useful discovery and gives the
+                // user a concrete learned endpoint to inspect next.
+                $rootUrl = rtrim((string)$row['base_url'], '/') . '/';
+                $rootResponse = $client->get($rootUrl, ['headers' => $headers, 'timeout' => 10, 'allow_redirects' => ['max' => 0]]);
+                if ($rootResponse->getStatusCode() >= 200 && $rootResponse->getStatusCode() < 300) {
+                    $rows = $this->connectorRows(); $rows[$id]['openapi'] = ['source' => 'runtime', 'version' => '', 'endpoints' => [['path' => '/', 'method' => 'GET', 'operation_id' => 'root']], 'updated_at' => time()];
+                    Server::get(\OCP\IConfig::class)->setUserValue($user, AppConfig::APP, 'external_connectors', json_encode($rows, JSON_UNESCAPED_SLASHES) ?: '{}');
+                    return ['ok' => true, 'result' => ['connector' => $id, 'source' => 'runtime', 'title' => '', 'endpoints' => $rows[$id]['openapi']['endpoints'], 'note' => 'No API schema was published; the service root was learned and can be tested.']];
+                }
+                return ['ok' => false, 'error' => 'No OpenAPI or Swagger description was found and the connector root did not respond successfully.'];
+            }
             $endpoints = [];
             foreach (array_slice($found['paths'], 0, 100, true) as $path => $operations) {
                 if (!is_string($path) || !is_array($operations) || !str_starts_with($path, '/')) continue;
