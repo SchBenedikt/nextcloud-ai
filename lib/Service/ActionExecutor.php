@@ -59,6 +59,7 @@ class ActionExecutor {
         'move_file' => ['path', 'target_path'],
         'copy_file' => ['path', 'target_path'],
         'file_checksum' => ['path'],
+        'read_files' => ['files'],
         'delete_file' => ['path'],
         'inspect_file' => ['path'],
         'extract_file_text' => ['path'],
@@ -261,6 +262,15 @@ class ActionExecutor {
                     'offset' => ['type' => 'integer', 'minimum' => 0],
                     'max_chars' => ['type' => 'integer', 'minimum' => 1, 'maximum' => 100000],
                 ], 'required' => ['path']],
+            ]],
+            ['type' => 'function', 'function' => [
+                'name' => 'read_files',
+                'description' => 'Read up to 20 bounded text files in one agent step. Each result is paginated and errors are isolated per file.',
+                'parameters' => ['type' => 'object', 'properties' => [
+                    'files' => ['type' => 'array', 'maxItems' => 20, 'items' => ['type' => 'object', 'properties' => [
+                        'path' => ['type' => 'string'], 'offset' => ['type' => 'integer', 'minimum' => 0], 'max_chars' => ['type' => 'integer', 'minimum' => 1, 'maximum' => 100000],
+                    ], 'required' => ['path']]],
+                ], 'required' => ['files']],
             ]],
             ['type' => 'function', 'function' => [
                 'name' => 'inspect_file',
@@ -898,7 +908,7 @@ class ActionExecutor {
 
         $fileTools = [
             'list_files', 'create_file', 'create_files', 'create_note', 'create_folder',
-            'rename_file', 'move_file', 'copy_file', 'file_checksum', 'delete_file', 'read_file', 'inspect_file', 'search_files',
+            'rename_file', 'move_file', 'copy_file', 'file_checksum', 'delete_file', 'read_file', 'read_files', 'inspect_file', 'search_files',
             'extract_file_text',
             'update_knowledge',
         ];
@@ -919,6 +929,7 @@ class ActionExecutor {
                 'file_checksum' => $this->fileChecksum($home, $args),
                 'delete_file' => $this->deleteFile($home, $args),
                 'read_file' => $this->readFile($home, $args),
+                'read_files' => $this->readFiles($home, $args),
                 'extract_file_text' => $this->extractFileText($home, $args),
                 'inspect_file' => $this->inspectFile($home, $args),
                 'search_files' => $this->searchFiles($home, $args),
@@ -1744,6 +1755,18 @@ class ActionExecutor {
             'total_chars' => $totalChars,
             'has_more' => $nextOffset < $totalChars,
         ]];
+    }
+
+    /** Read several files while preserving per-file pagination and errors. */
+    private function readFiles(Folder $home, array $args): array {
+        $files = $args['files'] ?? null;
+        if (!is_array($files) || $files === [] || count($files) > 20) return ['ok' => false, 'error' => 'files must contain between 1 and 20 entries'];
+        $results = []; $allOk = true;
+        foreach ($files as $entry) {
+            if (!is_array($entry) || trim((string)($entry['path'] ?? '')) === '') { $results[] = ['ok' => false, 'error' => 'Each entry must contain a path']; $allOk = false; continue; }
+            $result = $this->readFile($home, $entry); $results[] = $result; if (empty($result['ok'])) $allOk = false;
+        }
+        return ['ok' => $allOk, 'result' => ['files' => $results, 'read' => count(array_filter($results, static fn(array $r): bool => !empty($r['ok']))), 'failed' => count(array_filter($results, static fn(array $r): bool => empty($r['ok'])))]];
     }
 
     /** Extract indexed text from binary/Office formats in bounded pages. */
