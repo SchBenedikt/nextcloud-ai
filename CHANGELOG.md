@@ -4,6 +4,12 @@ All notable changes to **EVA (eva_ai)** are documented here.
 Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); the project
 follows [Semantic Versioning](https://semver.org/).
 
+## [1.16.56] - 2026-09-13
+
+### Improved
+
+- Direct searches now report how many filesystem nodes were visited and how many unindexed documents were extracted, making bounded or incomplete searches diagnosable.
+
 ## [1.16.55] - 2026-09-13
 
 ### Fixed

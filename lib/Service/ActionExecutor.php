@@ -2245,6 +2245,8 @@ class ActionExecutor {
             'cache_bypassed' => $forceRefresh,
             'matches' => $matches,
             'truncated' => $truncated,
+            'visited_nodes' => $visited,
+            'extracted_documents' => $extracted,
             'limits' => [
                 'max_results' => $maxResults,
                 'max_nodes' => $maxNodes,

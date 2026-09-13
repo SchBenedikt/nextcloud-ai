@@ -95,6 +95,8 @@ final class OpenIssuesPendingContractTest extends TestCase {
         self::assertStringContainsString('MAX_SEARCH_NODES', $executor);
         self::assertStringContainsString("'truncated' => \$truncated", $executor);
         self::assertStringContainsString('MAX_SEARCH_FILE_BYTES', $executor);
+        self::assertStringContainsString("'visited_nodes' => \$visited", $executor);
+        self::assertStringContainsString("'extracted_documents' => \$extracted", $executor);
         self::assertStringContainsString('force_refresh', $executor);
         self::assertStringContainsString("'max_depth'", $executor);
         self::assertStringContainsString("'max_nodes'", $executor);
