@@ -988,8 +988,22 @@ class ApiController extends OCSController {
         if ($user === null) return new DataResponse(['error' => 'Not logged in'], 401);
         $id = strtolower(trim((string)($this->requestBody()['id'] ?? $this->requestParam('id') ?? '')));
         if ($id === '') return new DataResponse(['error' => 'Connector id required'], 400);
+        // Once an OpenAPI description has been learned, `/` may not be a
+        // declared route and call_external_connector correctly rejects it.
+        // Pick the first discovered GET without required parameters instead,
+        // while retaining `/` as the fallback for schema-less connectors.
+        $path = '/';
+        $known = $this->executor->run($user, 'list_external_connectors', [])['result']['connectors'] ?? [];
+        foreach (is_array($known) ? $known : [] as $connector) {
+            if (!is_array($connector) || (string)($connector['id'] ?? '') !== $id) continue;
+            foreach (is_array($connector['learned_endpoints'] ?? null) ? $connector['learned_endpoints'] : [] as $endpoint) {
+                if (!is_array($endpoint) || strtoupper((string)($endpoint['method'] ?? '')) !== 'GET') continue;
+                $candidate = (string)($endpoint['path'] ?? '');
+                if ($candidate !== '' && !str_contains($candidate, '{')) { $path = $candidate; break 2; }
+            }
+        }
         $this->executor->setSurface(\OCA\EvaAi\Service\ToolPolicy::SURFACE_WEB);
-        $result = $this->executor->runConfirmed($user, 'call_external_connector', ['id' => $id, 'path' => '/', 'method' => 'GET', 'params' => []]);
+        $result = $this->executor->runConfirmed($user, 'call_external_connector', ['id' => $id, 'path' => $path, 'method' => 'GET', 'params' => []]);
         return new DataResponse($result, ($result['ok'] ?? false) ? 200 : 400);
     }
 
