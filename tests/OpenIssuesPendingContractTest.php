@@ -379,6 +379,8 @@ final class OpenIssuesPendingContractTest extends TestCase {
 		self::assertStringContainsString('searchOpenverseImages', $webSearch);
 		self::assertStringContainsString("'create_files'", $executor);
 		self::assertStringContainsString('private function createFiles', $executor);
+		self::assertStringContainsString("'move_file'", $executor);
+		self::assertStringContainsString('private function moveFile', $executor);
 	}
 
 	private function sliceBetween(string $haystack, string $start, string $end): string {

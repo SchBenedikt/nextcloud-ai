@@ -108,6 +108,12 @@ class ToolPolicy {
             'requiresConfirmation' => true,
             'description' => 'Rename a file or folder',
         ],
+        'move_file' => [
+            'risk' => self::RISK_MUTATING,
+            'surfaces' => [self::SURFACE_WEB, self::SURFACE_TASKPROCESSING_CONFIRMED],
+            'requiresConfirmation' => true,
+            'description' => 'Move a file or folder to another directory',
+        ],
         'delete_file' => [
             'risk' => self::RISK_DESTRUCTIVE,
             'surfaces' => [self::SURFACE_WEB, self::SURFACE_TASKPROCESSING_CONFIRMED],
