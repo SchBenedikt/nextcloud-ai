@@ -403,6 +403,8 @@ final class OpenIssuesPendingContractTest extends TestCase {
 		self::assertStringContainsString('splitRequestPath', $executor);
 		self::assertStringContainsString('JSON_THROW_ON_ERROR', $executor);
 		self::assertStringContainsString('Learned routes belong to a specific service origin', $executor);
+		self::assertStringContainsString('empty secret fields', $executor);
+		self::assertStringContainsString("trim((string)\$args['token']) !== ''", $executor);
 		$webSearch = (string)file_get_contents(__DIR__ . '/../lib/Service/WebSearchService.php');
 		self::assertStringContainsString('OPENVERSE_IMAGE_ENDPOINT', $webSearch);
 		self::assertStringContainsString('searchOpenverseImages', $webSearch);

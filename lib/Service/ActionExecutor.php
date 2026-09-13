@@ -3398,8 +3398,19 @@ class ActionExecutor {
         $user = $this->config->userId() ?? '';
         Server::get(\OCP\IConfig::class)->setUserValue($user, AppConfig::APP, 'external_connectors', json_encode($rows, JSON_UNESCAPED_SLASHES) ?: '{}');
         $credentials = Server::get(ProviderCredentials::class);
-        if (array_key_exists('token', $args)) $credentials->saveCustom($user, 'connector_' . $id, trim((string)$args['token']));
-        foreach (['username', 'password', 'api_key'] as $field) if (array_key_exists($field, $args)) $credentials->saveCustomValue($user, 'connector_' . $id, $field, trim((string)$args[$field]));
+        // The settings form intentionally sends empty secret fields when a
+        // user edits a connector. An empty value means "keep the stored
+        // secret" (matching the UI placeholder), never delete credentials.
+        // Explicit credential removal can be added separately without making
+        // ordinary connector edits silently break authentication.
+        if (array_key_exists('token', $args) && trim((string)$args['token']) !== '') {
+            $credentials->saveCustom($user, 'connector_' . $id, trim((string)$args['token']));
+        }
+        foreach (['username', 'password', 'api_key'] as $field) {
+            if (array_key_exists($field, $args) && trim((string)$args[$field]) !== '') {
+                $credentials->saveCustomValue($user, 'connector_' . $id, $field, trim((string)$args[$field]));
+            }
+        }
         return ['ok' => true, 'result' => ['id' => $id, 'name' => $name, 'base_url' => $base, 'token_configured' => $rows[$id]['token_configured']]];
     }
 
