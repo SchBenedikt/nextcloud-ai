@@ -1412,6 +1412,9 @@ class ActionExecutor {
             return ['ok' => false, 'error' => 'A valid app_id and HTTP method are required.'];
         }
         if (!is_array($params) || count($params) > 50) return ['ok' => false, 'error' => 'params must be an object with at most 50 fields.'];
+        $split = $this->splitRequestPath($path, $params);
+        if ($split === null) return ['ok' => false, 'error' => 'The app API path or query string is invalid.'];
+        [$path, $params] = $split;
         $ocsPrefixes = ['/ocs/v1.php/apps/' . $appId . '/', '/ocs/v2.php/apps/' . $appId . '/'];
         $isOcsPath = false;
         foreach ($ocsPrefixes as $prefix) if (str_starts_with($path, $prefix)) $isOcsPath = true;
@@ -3426,6 +3429,9 @@ class ActionExecutor {
     private function callExternalConnector(array $args): array {
         $id = strtolower(trim((string)($args['id'] ?? ''))); $path = trim((string)($args['path'] ?? '')); $method = strtoupper(trim((string)($args['method'] ?? ''))); $params = $args['params'] ?? [];
         if (!preg_match('/^[a-z0-9][a-z0-9_-]{0,39}$/D', $id) || !in_array($method, ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'], true) || !is_array($params) || count($params) > 50 || $path === '' || str_contains($path, '..') || preg_match('/[\r\n]/', $path)) return ['ok' => false, 'error' => 'Invalid connector request.'];
+        $split = $this->splitRequestPath($path, $params);
+        if ($split === null) return ['ok' => false, 'error' => 'The connector path or query string is invalid.'];
+        [$path, $params] = $split;
         $row = $this->connectorRows()[$id] ?? null; if (!is_array($row) || !$this->safeConnectorUrl((string)($row['base_url'] ?? ''))) return ['ok' => false, 'error' => 'Connector is not configured or its host is no longer allowed.'];
         $knownEndpoints = is_array($row['openapi']['endpoints'] ?? null) ? $row['openapi']['endpoints'] : [];
         if ($knownEndpoints !== []) {
@@ -3521,6 +3527,33 @@ class ActionExecutor {
         preg_match_all('/\{([A-Za-z0-9_.-]{1,80})\}/', $template, $matches);
         foreach (($matches[1] ?? []) as $name) unset($params[$name]);
         return $params;
+    }
+
+    /**
+     * Accept both a clean path plus params and the common `/route?key=value`
+     * form emitted by models. Query values are merged without overwriting
+     * explicit structured params, so discovered-route matching always sees
+     * the actual route rather than its query string.
+     *
+     * @return array{0:string,1:array}|null
+     */
+    private function splitRequestPath(string $path, array $params): ?array {
+        if (str_contains($path, '#')) return null;
+        $question = strpos($path, '?');
+        if ($question === false) return [$path, $params];
+        $clean = substr($path, 0, $question);
+        $query = substr($path, $question + 1);
+        if ($clean === '' || strlen($query) > 4000) return null;
+        $parsed = [];
+        if ($query !== '') {
+            parse_str($query, $parsed);
+            if (!is_array($parsed)) return null;
+        }
+        foreach ($parsed as $key => $value) {
+            if (!is_string($key) || preg_match('/^[A-Za-z0-9_.-]{1,80}$/D', $key) !== 1) return null;
+            if (!array_key_exists($key, $params)) $params[$key] = $value;
+        }
+        return [$clean, $params];
     }
 
     /** Build connector auth headers without ever returning credential values. */
