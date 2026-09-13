@@ -646,7 +646,7 @@ class ActionExecutor {
             ]],
             ['type' => 'function', 'function' => [
                 'name' => 'call_app_api',
-                'description' => 'Call a discovered endpoint of an enabled Nextcloud app in the current user session. OCS and other same-origin app routes are supported when discovered first. Read methods are allowed; POST, PUT, PATCH and DELETE always require explicit confirmation.',
+                'description' => 'Call a discovered endpoint of an enabled Nextcloud app in the current user session. OCS and other same-origin app routes are supported when discovered first. Do not use this tool for configured external connectors such as TrueNAS or Home Assistant; use call_external_connector for those. Read methods are allowed; POST, PUT, PATCH and DELETE always require explicit confirmation.',
                 'parameters' => ['type' => 'object', 'properties' => [
                     'app_id' => ['type' => 'string', 'description' => 'Enabled Nextcloud app id, e.g. deck or bookmarks.'],
                     'path' => ['type' => 'string', 'description' => 'Same-origin route path returned by discover_app_api. OCS paths begin with /ocs/v1.php/apps/{app_id}/ or /ocs/v2.php/apps/{app_id}/; internal app routes must have been discovered with include_internal=true.'],
