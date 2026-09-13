@@ -757,10 +757,12 @@ export default {
 		}
 		async function discoverConnector(id) {
 			connectorsBusy.value = true
+			setMessage('info', 'API discovery is running…')
 			try { const result = await api('POST', 'connectors/discover', { id }); setMessage('success', t('Discovered {count} endpoints.', { count: result?.result?.endpoints?.length || 0 })); await loadConnectors() } catch (error) { setMessage('error', t('API discovery failed: {error}', { error: errMsg(error) })) } finally { connectorsBusy.value = false }
 		}
 		async function testConnector(id) {
 			connectorsBusy.value = true
+			setMessage('info', 'Connector test is running…')
 			try { const result = await api('POST', 'connectors/test', { id }); setMessage('success', 'Connector responded with HTTP ' + String(result?.result?.data?.status || result?.result?.status || 'OK')) } catch (error) { setMessage('error', 'Connector test failed: ' + errMsg(error)) } finally { connectorsBusy.value = false }
 		}
 		// Admin settings form (Issue #82/#187): the same bundle is mounted inside

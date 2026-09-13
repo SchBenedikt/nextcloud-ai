@@ -3113,6 +3113,13 @@ class ActionExecutor {
         try {
             $headers = array_merge($headers, $this->connectorAuthHeaders($id, $row, $user));
             $found = null; $source = null;
+            // Establish transport reachability once before probing multiple
+            // documentation paths. An offline host now fails quickly with a
+            // useful message instead of appearing to do nothing for minutes.
+            [$rootProbeStatus, $rootProbeBody] = $this->connectorCurlGet(rtrim((string)$row['base_url'], '/') . '/', $headers, 4);
+            if ($rootProbeStatus === 0) {
+                return ['ok' => false, 'error' => 'Connector host is unreachable from the Nextcloud server. Check DNS, routing, VPN and firewall settings.'];
+            }
             // Probe standard schema locations uniformly. Using curl here is
             // intentional: Nextcloud's HTTP client can reject private/LAN
             // addresses even when the connector was explicitly allow-listed.
@@ -3120,7 +3127,7 @@ class ActionExecutor {
             // standard OpenAPI/Swagger document is learned the same way.
             foreach ($found === null ? ['/api/v2.0', '/openapi.json', '/swagger.json', '/.well-known/openapi.json', '/api/open-api', '/api/openapi.json', '/api/swagger.json', '/docs/openapi.json', '/api/docs/openapi.json', '/api/v2.0/docs'] : [] as $candidate) {
                 $url = rtrim((string)$row['base_url'], '/') . $candidate; if (!$this->safeConnectorUrl($url)) continue;
-                [$status, $body] = $this->connectorCurlGet($url, $headers, 10);
+                [$status, $body] = $this->connectorCurlGet($url, $headers, 4);
                 if ($status < 200 || $status >= 300) continue;
                 $decoded = json_decode(mb_substr((string)$body, 0, 8388608), true);
                 if (is_array($decoded) && is_array($decoded['paths'] ?? null)) { $found = $decoded; $source = $candidate; break; }
