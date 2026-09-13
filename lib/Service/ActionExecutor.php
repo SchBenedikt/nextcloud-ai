@@ -1657,6 +1657,9 @@ class ActionExecutor {
         if ($typeError !== null) {
             return ['ok' => false, 'error' => $typeError];
         }
+        if (!$binary && strtolower(pathinfo($name, PATHINFO_EXTENSION)) === 'docx') {
+            try { $content = $this->buildDocx($content); } catch (\Throwable $e) { return ['ok' => false, 'error' => 'DOCX generation is unavailable on this server: ' . $e->getMessage()]; }
+        }
         [$dir, $name] = $this->splitPath($path);
         $folder = $this->ensureFolderPath($home, $dir);
         if ($folder->nodeExists($name)) {
@@ -1677,6 +1680,20 @@ class ActionExecutor {
         });
         $this->bumpSearchRevision();
         return ['ok' => true, 'result' => 'Created ' . $path];
+    }
+
+    /** Build a minimal standards-compliant Word document without external services. */
+    private function buildDocx(string $text): string {
+        if (!class_exists(\ZipArchive::class)) throw new \RuntimeException('PHP ZipArchive extension is required');
+        $zip = new \ZipArchive(); $tmp = tempnam(sys_get_temp_dir(), 'eva_docx_');
+        if ($tmp === false || $zip->open($tmp, \ZipArchive::CREATE | \ZipArchive::OVERWRITE) !== true) throw new \RuntimeException('could not create archive');
+        $esc = static fn(string $v): string => htmlspecialchars($v, ENT_XML1 | ENT_COMPAT, 'UTF-8');
+        $lines = preg_split("/\\R/u", $text) ?: [];
+        $paras = ''; foreach ($lines as $line) $paras .= '<w:p><w:r><w:t xml:space="preserve">' . $esc($line) . '</w:t></w:r></w:p>';
+        $zip->addFromString('[Content_Types].xml', '<?xml version="1.0" encoding="UTF-8"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/></Types>');
+        $zip->addFromString('_rels/.rels', '<?xml version="1.0" encoding="UTF-8"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/></Relationships>');
+        $zip->addFromString('word/document.xml', '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body>' . $paras . '<w:sectPr/></w:body></w:document>');
+        $zip->close(); $data = file_get_contents($tmp); @unlink($tmp); if (!is_string($data) || $data === '') throw new \RuntimeException('archive was empty'); return $data;
     }
 
     /** Create several files while preserving per-file validation/results. */
