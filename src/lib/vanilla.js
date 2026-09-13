@@ -430,6 +430,23 @@ export function mountChat(root, opts = {}) {
 	input.autocomplete = 'off'
 	input.placeholder = t('What do you want to do or know?')
 	input.setAttribute('aria-label', t('What do you want to do or know?'))
+	const filesBtn = document.createElement('button')
+	filesBtn.type = 'button'
+	filesBtn.className = 'cbtn cbtn-ghost cbtn-files'
+	filesBtn.textContent = t('Add files')
+	filesBtn.title = t('Choose Nextcloud files to use as context')
+	filesBtn.addEventListener('click', () => {
+		const picker = window.OC && window.OC.dialogs && window.OC.dialogs.filepicker
+		if (typeof picker !== 'function') { err.textContent = t('The Nextcloud file picker is not available on this page.'); err.style.display = ''; return }
+		picker(t('Choose files for EVA'), (paths) => {
+			const selected = Array.isArray(paths) ? paths : [paths]
+			const clean = selected.map((p) => typeof p === 'string' ? p : (p && (p.path || p.name))).filter(Boolean).slice(0, 10)
+			if (!clean.length) return
+			const prefix = t('Use these Nextcloud files as context') + ': ' + clean.join(', ')
+			input.value = input.value.trim() ? prefix + '\\n' + input.value.trim() : prefix
+			input.focus()
+		}, true, '', true)
+	})
 	const sendBtn = document.createElement('button')
 	sendBtn.type = 'submit'
 	sendBtn.className = 'cbtn'
@@ -443,7 +460,7 @@ export function mountChat(root, opts = {}) {
 	backgroundBtn.textContent = t('Run in background')
 	backgroundBtn.title = t('Queue this request and continue even if this page is closed')
 	backgroundBtn.addEventListener('click', () => queueInBackground())
-	form.append(input, sendBtn, backgroundBtn)
+	form.append(filesBtn, input, sendBtn, backgroundBtn)
 
 	const err = document.createElement('div')
 	err.className = 'err'
