@@ -75,6 +75,15 @@ class ApiController extends OCSController {
         return $this->bodyParams;
     }
 
+    /** Release the PHP session lock before a long model/tool request starts. */
+    private function releaseSessionLock(): void {
+        try {
+            \OCP\Server::get(\OCP\ISession::class)->close();
+        } catch (\Throwable) {
+            // CLI/test surfaces may not have an active session.
+        }
+    }
+
     private function requestParam(string $key, mixed $default = null): mixed {
         $value = $this->request->getParam($key, null);
         if ($value !== null) {
@@ -915,6 +924,7 @@ class ApiController extends OCSController {
         if ($message === '') {
             return new DataResponse(['error' => 'Empty message'], 400);
         }
+        $this->releaseSessionLock();
         $history = $this->requestParam('history') ?? [];
         if (is_string($history)) {
             $history = json_decode($history, true) ?? [];
@@ -940,6 +950,7 @@ class ApiController extends OCSController {
         $requestId = $this->requestParam('requestId');
         if (is_string($history)) $history = json_decode($history, true) ?? [];
         if ($chatId === '' || $message === '' || !is_array($history)) return new DataResponse(['error' => 'chatId, message and history are required'], 400);
+        $this->releaseSessionLock();
         $chat = $this->chatStore->get($user, $chatId);
         if ($chat === null) return new DataResponse(['error' => 'Chat not found'], 404);
         // pagehide may fire before the normal user-message persistence call;
@@ -1292,6 +1303,9 @@ class ApiController extends OCSController {
         $body = json_decode((string)file_get_contents('php://input'), true);
         $message = trim((string)($body['message'] ?? ''));
         $history = isset($body['history']) && is_array($body['history']) ? $body['history'] : [];
+        if ($user !== null && $message !== '') {
+            $this->releaseSessionLock();
+        }
         // Per-chat folder scope (Issue #88) and custom instructions (Issue #90)
         // are resolved once, outside the generator, so they cannot change
         // mid-stream.
