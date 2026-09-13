@@ -22,19 +22,6 @@
 			</div>
 		</header>
 
-		<section class="prompt-showcase" :aria-label="$t('Try EVA')">
-			<div class="prompt-showcase__intro">
-				<span class="prompt-showcase__spark">✦</span>
-				<div><strong>{{ $t('Make your next step effortless') }}</strong><span>{{ $t('Start with a focused request — EVA can search, understand and act across your Nextcloud.') }}</span></div>
-			</div>
-			<div class="prompt-cards">
-				<button v-for="prompt in quickPrompts" :key="prompt.text" type="button" class="prompt-card" @click="$emit('new-chat', prompt.text)">
-					<NcIconSvgWrapper :path="prompt.icon" :size="19" aria-hidden="true" />
-					<span>{{ prompt.text }}</span><span class="prompt-arrow" aria-hidden="true">→</span>
-				</button>
-			</div>
-		</section>
-
 		<div v-if="error" class="home-callout home-callout--error" role="alert">{{ error }}</div>
 
 		<section class="stat-grid" :aria-label="$t('Overview')">
@@ -47,6 +34,19 @@
 					<strong class="stat-value">{{ card.value }}</strong>
 					<small class="stat-hint">{{ card.hint }}</small>
 				</div>
+			</div>
+		</section>
+
+		<section class="prompt-showcase" :aria-label="$t('Try EVA')">
+			<div class="prompt-showcase__intro">
+				<span class="prompt-showcase__spark">✦</span>
+				<div><strong>{{ $t('Make your next step effortless') }}</strong><span>{{ $t('Start with a focused request — EVA can search, understand and act across your Nextcloud.') }}</span></div>
+			</div>
+			<div class="prompt-cards">
+				<button v-for="prompt in quickPrompts" :key="prompt.text" type="button" class="prompt-card" @click="$emit('new-chat', prompt.text)">
+					<NcIconSvgWrapper :path="prompt.icon" :size="19" aria-hidden="true" />
+					<span>{{ prompt.text }}</span><span class="prompt-arrow" aria-hidden="true">→</span>
+				</button>
 			</div>
 		</section>
 
