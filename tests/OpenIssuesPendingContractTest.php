@@ -122,6 +122,24 @@ final class OpenIssuesPendingContractTest extends TestCase {
         self::assertSame(1, $extracted);
     }
 
+    /** MIME maps are not reliable for newly uploaded plain-text files. */
+    public function testIssue70SearchFilesUsesSafeTextExtensionFallback(): void {
+        $reflection = new \ReflectionClass(ActionExecutor::class);
+        $instance = $reflection->newInstanceWithoutConstructor();
+        $file = $this->createMock(File::class);
+        $file->method('getName')->willReturn('notes.md');
+        $file->method('getSize')->willReturn(128);
+        $file->method('getMimeType')->willReturn('application/octet-stream');
+        $file->method('getContent')->willReturn('The direct search fallback is available.');
+        $extract = $reflection->getMethod('searchFileContent');
+        $extracted = 0;
+        $snippet = $extract->invokeArgs($instance, [$file, 'fallback', &$extracted]);
+
+        self::assertIsString($snippet);
+        self::assertStringContainsString('fallback', $snippet);
+        self::assertSame(0, $extracted);
+    }
+
     /** Terminal prompts never get a shell parser and remain confirmation-gated. */
     public function testConfirmedTerminalCommandRejectsShellSyntax(): void {
         $reflection = new \ReflectionClass(ActionExecutor::class);

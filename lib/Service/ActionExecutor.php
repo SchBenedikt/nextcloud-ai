@@ -2375,10 +2375,26 @@ class ActionExecutor {
         if (str_starts_with($mime, 'text/')) {
             return true;
         }
-        return in_array($mime, [
+        if (in_array($mime, [
             'application/json', 'application/ld+json', 'application/xml',
             'application/x-yaml', 'application/yaml', 'application/rtf',
             'application/sql', 'application/x-sh', 'application/x-httpd-php',
+        ], true)) {
+            return true;
+        }
+        // Nextcloud may report an uploaded text document as
+        // application/octet-stream when its MIME map is incomplete. The
+        // extension fallback keeps direct, non-indexed search useful without
+        // reading arbitrary binary files: only well-known text extensions are
+        // eligible and the existing byte/NUL guards still apply.
+        $extension = strtolower(pathinfo($file->getName(), PATHINFO_EXTENSION));
+        return in_array($extension, [
+            'txt', 'md', 'markdown', 'csv', 'tsv', 'log', 'json', 'jsonl',
+            'xml', 'yaml', 'yml', 'html', 'htm', 'xhtml', 'ini', 'cfg',
+            'conf', 'properties', 'sql', 'js', 'mjs', 'cjs', 'ts', 'tsx',
+            'jsx', 'css', 'scss', 'less', 'vue', 'py', 'rb', 'php', 'sh',
+            'bash', 'zsh', 'fish', 'go', 'rs', 'java', 'kt', 'swift', 'r',
+            'tex', 'rst', 'adoc', 'org', 'toml', 'env', 'srt', 'vtt',
         ], true);
     }
 

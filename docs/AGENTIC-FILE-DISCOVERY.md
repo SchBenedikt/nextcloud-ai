@@ -12,6 +12,15 @@ indexing updates changed files incrementally.
 
 ## Direct discovery
 
+`search_files` also searches readable files that have not been indexed yet. It
+walks the user's VFS within bounded node/depth/result limits and extracts text
+from common PDF, DOCX, XLSX, PPTX, ODF and EPUB containers without creating an
+index job. Plain-text files remain searchable even when a Nextcloud MIME map
+reports `application/octet-stream`, provided their extension is a known text
+format; binary content is still rejected by the NUL-byte guard. File hooks
+advance a per-user search revision so a newly uploaded or changed file cannot
+remain hidden behind the short-lived direct-search cache.
+
 When an answer needs a file that is not indexed, EVA may use these read-only
 tools in an authenticated web chat:
 
