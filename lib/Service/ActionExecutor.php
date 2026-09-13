@@ -884,6 +884,20 @@ class ActionExecutor {
     public function run(string $userId, string $name, array $args, bool $confirmed = false): array {
         $startedAt = microtime(true);
         $this->setUserId($userId);
+        // Normalize a common model mistake before policy/confirmation is
+        // evaluated. Connected external services are not Nextcloud apps;
+        // presenting call_app_api here used to show the wrong confirmation
+        // dialog and then fail with a confusing OCS 400 response. Resolve the
+        // connector alias centrally so both the dialog and execution use the
+        // external-connector policy and authentication path.
+        if ($name === 'call_app_api') {
+            $alias = strtolower(trim((string)($args['app_id'] ?? '')));
+            if ($alias !== '' && array_key_exists($alias, $this->connectorRows())) {
+                $name = 'call_external_connector';
+                $args['id'] = $alias;
+                unset($args['app_id']);
+            }
+        }
         // Centralized tool permission check
         $policy = $this->toolPolicy->check($name);
         if (!$policy['allowed']) {
