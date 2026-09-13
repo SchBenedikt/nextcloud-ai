@@ -55,7 +55,7 @@ class ResetEvaJobsOnUpgradeRepairStep implements IRepairStep {
         $this->config->setAppValue(self::APP, 'index_scheduler_queue', '[]');
         $this->config->setAppValue(self::APP, 'index_scheduler_active', '{}');
         $this->config->setAppValue(self::APP, 'index_job_running', '0');
-        $this->config->setAppValue(self::APP, 'index_job_stop_requested', '0');
+        $this->config->setAppValue(self::APP, 'index_job_stop_requested', '1');
 
         $users = 0;
         $this->userManager->callForAllUsers(function ($user) use (&$users): void {
