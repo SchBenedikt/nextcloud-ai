@@ -124,7 +124,7 @@ final class BackgroundChatQueue {
                     'claimedAt' => max(0, (int)($item['claimedAt'] ?? 0)),
                     'message' => mb_strimwidth((string)($item['message'] ?? ''), 0, 240, '…'),
                     'error' => mb_strimwidth((string)($item['error'] ?? ''), 0, 500, '…'),
-                    'phase' => in_array(($item['phase'] ?? ''), ['queued', 'model', 'tool', 'finalizing'], true) ? (string)$item['phase'] : 'queued',
+                    'phase' => in_array(($item['phase'] ?? ''), ['queued', 'model', 'tool', 'tool_result', 'finalizing'], true) ? (string)$item['phase'] : 'queued',
                     'tool' => mb_strimwidth((string)($item['tool'] ?? ''), 0, 100, '…'),
                     'toolHistory' => array_values(array_slice(is_array($item['toolHistory'] ?? null) ? $item['toolHistory'] : [], -50)),
                     'updatedAt' => max(0, (int)($item['updatedAt'] ?? $item['claimedAt'] ?? $item['created'] ?? 0)),
@@ -152,7 +152,7 @@ final class BackgroundChatQueue {
 
     /** Persist coarse-grained progress so the UI can explain what EVA is doing. */
     public function updateProgress(string $user, string $id, string $phase, ?string $tool = null, ?array $arguments = null): void {
-        $phase = in_array($phase, ['queued', 'model', 'tool', 'finalizing'], true) ? $phase : 'model';
+        $phase = in_array($phase, ['queued', 'model', 'tool', 'tool_result', 'finalizing'], true) ? $phase : 'model';
         $this->mutate($user, function (array $items) use ($id, $phase, $tool, $arguments): array {
             foreach ($items as &$item) if (($item['id'] ?? '') === $id && ($item['status'] ?? '') === 'running') {
                 $item['phase'] = $phase; $item['tool'] = $tool !== null ? mb_substr($tool, 0, 100) : ''; $item['updatedAt'] = time();

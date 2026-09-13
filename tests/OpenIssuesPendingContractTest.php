@@ -522,6 +522,7 @@ final class OpenIssuesPendingContractTest extends TestCase {
 		self::assertStringContainsString("backgroundChat/resume", $routes);
 		self::assertStringContainsString("backgroundChat/retry", $routes);
 		self::assertStringContainsString('HISTORY_KEY', $queue);
+		self::assertStringContainsString("'tool_result'", $queue);
 		self::assertStringContainsString("'[redacted]'", $queue);
 		self::assertStringContainsString('array_slice($value, 0, 20, true)', $queue);
 	}

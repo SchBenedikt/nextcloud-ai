@@ -141,11 +141,17 @@ class RagService {
                     ? $this->completeCalendarArguments($userId, $message, $tc['arguments'])
                     : $tc['arguments'];
                 if ($onProgress !== null) $onProgress('tool', (string)($tc['name'] ?? ''), is_array($toolArgs) ? $toolArgs : []);
+				$toolStartedAt = microtime(true);
 				$res = $seenToolCalls[$fingerprint] > self::MAX_IDENTICAL_TOOL_CALLS
 					? ['ok' => false, 'error' => 'The same tool call was already attempted twice; choose a different next step.']
-					: ($autonomousActions
-						? $this->executor->runConfirmed($userId, $tc['name'], $toolArgs)
-						: $this->executor->run($userId, $tc['name'], $toolArgs));
+						: ($autonomousActions
+							? $this->executor->runConfirmed($userId, $tc['name'], $toolArgs)
+							: $this->executor->run($userId, $tc['name'], $toolArgs));
+				if ($onProgress !== null) $onProgress('tool_result', (string)($tc['name'] ?? ''), [
+					'ok' => !empty($res['ok']),
+					'error' => mb_substr((string)($res['error'] ?? ''), 0, 300),
+					'elapsed_ms' => max(0, (int)round((microtime(true) - $toolStartedAt) * 1000)),
+				]);
 				$this->collectToolSources($tc['name'], $res);
 				if (!empty($res['confirmation_required'])) {
 					$confirmationName = (string)($res['tool'] ?? $tc['name'] ?? '');
