@@ -437,7 +437,13 @@ export function mountChat(root, opts = {}) {
 	sendBtn.addEventListener('click', () => {
 		if (sending) stopStream()
 	})
-	form.append(input, sendBtn)
+	const backgroundBtn = document.createElement('button')
+	backgroundBtn.type = 'button'
+	backgroundBtn.className = 'cbtn cbtn-ghost'
+	backgroundBtn.textContent = t('Start')
+	backgroundBtn.title = 'Run this request in the background'
+	backgroundBtn.addEventListener('click', () => queueInBackground())
+	form.append(input, sendBtn, backgroundBtn)
 
 	const err = document.createElement('div')
 	err.className = 'err'
@@ -1067,6 +1073,24 @@ export function mountChat(root, opts = {}) {
 		messages[userIdx].text = newText.trim()
 		renderAll(messages)
 		streamRegenerateAnswer({ messageIndex: userIdx, message: newText.trim() })
+	}
+
+	const queueInBackground = () => {
+		const msg = input.value.trim()
+		if (!msg || sending) return
+		const history = messages.filter((m) => m && (m.role === 'user' || m.role === 'assistant') && m.text).slice(-100).map((m) => ({ role: m.role, content: String(m.text).slice(0, 20000) }))
+		backgroundBtn.disabled = true
+		ensureChat().then((ok) => { if (!ok) throw new Error('Chat is unavailable'); return api('POST', '/backgroundChat', { chatId, message: msg, history, requestId: backgroundRequestId || undefined }) })
+			.then((result) => {
+				input.value = ''
+				messages.push({ role: 'user', text: msg })
+				renderAll(messages)
+				agentStatusPill.textContent = t('EVA will continue this chat in the background')
+				agentStatusPill.hidden = false
+				if (result && result.id) backgroundRequestId = result.id
+			})
+			.catch((e) => { err.textContent = String(e && e.message ? e.message : e); err.style.display = 'block' })
+			.finally(() => { backgroundBtn.disabled = false })
 	}
 
 	const send = () => {
