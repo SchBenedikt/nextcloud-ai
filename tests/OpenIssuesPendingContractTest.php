@@ -393,6 +393,7 @@ final class OpenIssuesPendingContractTest extends TestCase {
 		self::assertStringContainsString('createDistributed(\'eva_ai_search_\')', $executor);
 		self::assertStringContainsString('bumpSearchRevision', $executor);
 		self::assertStringContainsString("'search_revision'", (string)file_get_contents(__DIR__ . '/../lib/Service/AppConfig.php'));
+		self::assertStringContainsString("'file_id' => (int)\$node->getId()", $executor);
 	}
 
 	private function sliceBetween(string $haystack, string $start, string $end): string {

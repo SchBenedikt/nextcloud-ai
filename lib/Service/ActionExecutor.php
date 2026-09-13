@@ -1509,9 +1509,9 @@ class ActionExecutor {
             $count++;
             $rel = substr($node->getPath(), $rootLen);
             if ($node instanceof File) {
-                $out[] = ['name' => $node->getName(), 'path' => $rel, 'type' => 'file', 'size' => $node->getSize()];
+                $out[] = ['name' => $node->getName(), 'path' => $rel, 'type' => 'file', 'file_id' => (int)$node->getId(), 'size' => $node->getSize()];
             } elseif ($node instanceof Folder) {
-                $out[] = ['name' => $node->getName(), 'path' => $rel, 'type' => 'folder'];
+                $out[] = ['name' => $node->getName(), 'path' => $rel, 'type' => 'folder', 'file_id' => (int)$node->getId()];
                 if ($depth + 1 < self::MAX_LIST_DEPTH) {
                     $this->walk($node, $out, $depth + 1, $count, $rootLen);
                 }
@@ -1919,7 +1919,7 @@ class ActionExecutor {
             $nameMatches = str_contains(mb_strtolower($node->getName()), $query);
             if ($node instanceof Folder) {
                 if ($nameMatches) {
-                    $matches[] = ['path' => $rel, 'reason' => 'filename'];
+                    $matches[] = ['path' => $rel, 'reason' => 'filename', 'file_id' => (int)$node->getId()];
                 }
                 $this->searchWalk($node, $query, $matches, $visited, $truncated, $depth + 1, $rel, $extension);
                 continue;
@@ -1945,11 +1945,11 @@ class ActionExecutor {
             }
 
             if ($nameMatches && $contentMatch !== null) {
-                $matches[] = ['path' => $rel, 'reason' => 'filename and content', 'snippet' => $contentMatch];
+                $matches[] = ['path' => $rel, 'reason' => 'filename and content', 'file_id' => (int)$node->getId(), 'snippet' => $contentMatch];
             } elseif ($nameMatches) {
-                $matches[] = ['path' => $rel, 'reason' => 'filename'];
+                $matches[] = ['path' => $rel, 'reason' => 'filename', 'file_id' => (int)$node->getId()];
             } elseif ($contentMatch !== null) {
-                $matches[] = ['path' => $rel, 'reason' => 'content', 'snippet' => $contentMatch];
+                $matches[] = ['path' => $rel, 'reason' => 'content', 'file_id' => (int)$node->getId(), 'snippet' => $contentMatch];
             }
         }
     }
