@@ -898,6 +898,26 @@ class ActionExecutor {
                 unset($args['app_id']);
             }
         }
+        if ($name === 'call_app_api_batch' && is_array($args['calls'] ?? null)) {
+            $calls = $args['calls'];
+            $connectorCalls = [];
+            $hasAppCall = false;
+            foreach ($calls as $call) {
+                $alias = is_array($call) ? strtolower(trim((string)($call['app_id'] ?? ''))) : '';
+                if ($alias !== '' && array_key_exists($alias, $this->connectorRows())) {
+                    $connectorCalls[] = ['id' => $alias, 'path' => $call['path'] ?? '', 'params' => $call['params'] ?? []];
+                } else {
+                    $hasAppCall = true;
+                }
+            }
+            if ($connectorCalls !== [] && $hasAppCall) {
+                return ['ok' => false, 'error' => 'Do not mix Nextcloud app routes and external connector routes in one batch. Use call_external_connector_batch for connector calls.'];
+            }
+            if ($connectorCalls !== []) {
+                $name = 'call_external_connector_batch';
+                $args = ['calls' => $connectorCalls];
+            }
+        }
         // Centralized tool permission check
         $policy = $this->toolPolicy->check($name);
         if (!$policy['allowed']) {
@@ -1488,7 +1508,10 @@ class ActionExecutor {
             $ok = $status >= 200 && $status < 300;
             if ($ok) $this->rememberAppApiPattern($appId, $method, $path, array_keys($params), is_array($safeData) ? $this->shapeOf($safeData) : ['type' => 'string']);
             return ['ok' => $ok, 'result' => ['status' => $status, 'data' => $safeData, 'path' => $path, 'method' => $method]];
-        } catch (\Throwable) { return ['ok' => false, 'error' => 'The app API request failed in the current user context.']; }
+        } catch (\Throwable $e) {
+            $detail = trim(preg_replace('/\s+/', ' ', $e->getMessage()));
+            return ['ok' => false, 'error' => 'The app API request failed in the current user context.' . ($detail !== '' ? ' ' . mb_substr($detail, 0, 220) : '')];
+        }
     }
 
     /** Execute bounded GET calls while reusing the same discovery/security path. */
