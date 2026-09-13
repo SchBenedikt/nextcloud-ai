@@ -373,7 +373,7 @@ class ActionExecutor {
             ]],
             ['type' => 'function', 'function' => [
                 'name' => 'list_calendar_events',
-                'description' => 'List calendar events in a time window. Default: today up to the next 60 days.',
+                'description' => 'List calendar events across ALL calendars the user can see (including shared/read-only calendars). Default: today up to the next 60 days. Pass calendar only when the user names a specific calendar.',
                 'parameters' => ['type' => 'object', 'properties' => [
                     'days' => ['type' => 'integer', 'description' => 'Convenience: include the next N days starting today (1-60). Equivalent to end_date = today+N.'],
                     'past_days' => ['type' => 'integer', 'description' => 'Convenience: include the past N days (0-30). Default 0.'],

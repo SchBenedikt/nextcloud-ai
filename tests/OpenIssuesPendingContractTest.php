@@ -132,6 +132,7 @@ final class OpenIssuesPendingContractTest extends TestCase {
 		$calendar = (string)file_get_contents(__DIR__ . '/../lib/Service/CalendarService.php');
 		$listSlice = $this->sliceBetween($calendar, 'public function listEvents', 'public function createEvent');
 		self::assertStringContainsString('EventIterator', $listSlice, 'list_calendar_events must expand recurrences (RRULE)');
+		self::assertStringContainsString('including shared/read-only calendars', $listSlice, 'calendar reads without a hint must include shared calendars');
 		$slotSlice = $this->sliceToEnd($calendar, 'public function findFreeSlots');
 		self::assertStringContainsString('expandEvents', $slotSlice, 'find_free_slots must expand recurrences (RRULE)');
 	}

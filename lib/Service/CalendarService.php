@@ -276,7 +276,14 @@ class CalendarService {
 
     /** @return array{ok:true,result:array}|array{ok:false,error:string} */
     public function listEvents(string $userId, array $args): array {
-        $cal = $this->resolveCalendar($userId, (string)($args['calendar'] ?? ''));
+        // Reading without an explicit calendar must include every calendar the
+        // user can see, including shared/read-only calendars. The old code
+        // resolved an empty hint through the first personal calendar, so
+        // events in shared calendars silently disappeared from answers.
+        $calendarHint = trim((string)($args['calendar'] ?? ''));
+        $cal = $calendarHint !== '' && !in_array(mb_strtolower($calendarHint), ['all', 'alle', '*'], true)
+            ? $this->resolveCalendar($userId, $calendarHint)
+            : null;
         $cals = $cal !== null ? [$cal] : $this->calendars($userId);
         if ($cals === []) {
             return ['ok' => false, 'error' => 'No calendar found for this user'];
