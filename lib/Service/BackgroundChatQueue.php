@@ -160,13 +160,24 @@ final class BackgroundChatQueue {
                     $history = is_array($item['toolHistory'] ?? null) ? $item['toolHistory'] : [];
                     $entry = ['tool' => mb_substr($tool, 0, 100), 'phase' => $phase, 'at' => time()];
                     if (is_array($arguments) && $arguments !== []) {
-                        $safe = [];
-                        foreach ($arguments as $key => $value) {
-                            $name = (string)$key;
-                            if (preg_match('/token|password|secret|api.?key|authorization|content/i', $name)) continue;
-                            if (is_scalar($value)) $safe[$name] = mb_strimwidth((string)$value, 0, 160, '…');
-                            elseif (is_array($value)) $safe[$name] = '[list]';
-                        }
+                        $redact = static function (mixed $value, int $depth = 0) use (&$redact): mixed {
+                            if ($depth > 3) return '[…]';
+                            if (is_array($value)) {
+                                $out = [];
+                                foreach (array_slice($value, 0, 20, true) as $key => $child) {
+                                    $name = (string)$key;
+                                    if (preg_match('/token|password|secret|api.?key|authorization|content/i', $name)) {
+                                        $out[$name] = '[redacted]';
+                                    } else {
+                                        $out[$name] = $redact($child, $depth + 1);
+                                    }
+                                }
+                                return $out;
+                            }
+                            if (is_scalar($value) || $value === null) return mb_strimwidth((string)$value, 0, 160, '…');
+                            return '[value]';
+                        };
+                        $safe = $redact($arguments);
                         if ($safe !== []) $entry['arguments'] = $safe;
                     }
                     $history[] = $entry;

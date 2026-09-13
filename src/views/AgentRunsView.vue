@@ -73,7 +73,10 @@ const formatDate = (value) => {
 	const d = new Date(millis)
 	return Number.isNaN(d.getTime()) ? String(value) : d.toLocaleString()
 }
-const formatArguments = (arguments_) => Object.entries(arguments_ || {}).map(([key, value]) => `${key}=${value}`).join(' · ')
+const formatArguments = (arguments_) => Object.entries(arguments_ || {}).map(([key, value]) => {
+	const rendered = value && typeof value === 'object' ? JSON.stringify(value) : String(value)
+	return `${key}=${rendered}`
+}).join(' · ')
 onMounted(() => { load(); timer = window.setInterval(load, 10000) })
 onBeforeUnmount(() => { if (timer) window.clearInterval(timer) })
 </script>
