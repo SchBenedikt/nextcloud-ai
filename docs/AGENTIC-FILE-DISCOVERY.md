@@ -23,6 +23,15 @@ by the NUL-byte guard. File hooks
 advance a per-user search revision so a newly uploaded or changed file cannot
 remain hidden behind the short-lived direct-search cache.
 
+The scan is intentionally bounded and reports its own coverage. Use
+`force_refresh: true` immediately after an upload or edit. For deeply nested
+libraries, set `path` to the smallest known folder and increase `max_depth`
+(1–10) or `max_nodes` (100–10,000) as needed; `max_results` limits only the
+returned matches. The result includes `visited_nodes`, `extracted_documents`
+and `truncated`, so EVA can tell you whether an empty result is definitive or
+whether the configured scan limit was reached. Direct discovery never starts a
+full indexing job and never writes index rows.
+
 When an answer needs a file that is not indexed, EVA may use these read-only
 tools in an authenticated web chat:
 
