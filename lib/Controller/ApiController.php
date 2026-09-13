@@ -1435,7 +1435,34 @@ class ApiController extends OCSController {
         if ($chat === null) {
             return new NotFoundResponse();
         }
+        // Migrate old pending confirmations at read time. Before connector
+        // alias normalization was added, chats could persist a
+        // call_app_api confirmation for an external connector. Rewriting the
+        // response keeps existing chats usable immediately without mutating
+        // the stored history or exposing connector secrets.
+        $chat = $this->normalizeConnectorConfirmations($user, $chat);
         return new DataResponse($chat);
+    }
+
+    private function normalizeConnectorConfirmations(string $user, array $chat): array {
+        $raw = \OCP\Server::get(\OCP\IConfig::class)->getUserValue($user, AppConfig::APP, 'external_connectors', '{}');
+        $connectors = json_decode($raw, true);
+        if (!is_array($connectors)) return $chat;
+        foreach (($chat['messages'] ?? []) as $index => $message) {
+            $confirmation = $message['confirmation'] ?? null;
+            if (!is_array($confirmation) || ($confirmation['name'] ?? '') !== 'call_app_api') continue;
+            $args = $confirmation['arguments'] ?? [];
+            $alias = is_array($args) ? strtolower(trim((string)($args['app_id'] ?? ''))) : '';
+            if ($alias === '' || !array_key_exists($alias, $connectors)) continue;
+            $confirmation['name'] = 'call_external_connector';
+            if (is_array($args)) {
+                $args['id'] = $alias;
+                unset($args['app_id']);
+                $confirmation['arguments'] = $args;
+            }
+            $chat['messages'][$index]['confirmation'] = $confirmation;
+        }
+        return $chat;
     }
 
     #[NoAdminRequired]
