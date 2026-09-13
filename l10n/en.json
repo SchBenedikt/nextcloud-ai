@@ -430,6 +430,7 @@
         "Toggle briefing": "Toggle briefing",
         "Runs on {days} at {time}": "Runs on {days} at {time}",
         "Paused": "Paused",
+        "Active": "Active",
         "Create a briefing": "Create a briefing",
         "Choose what EVA should prepare and when you want it.": "Choose what EVA should prepare and when you want it.",
         "Write a question or instruction in plain language. You can ask about files, calendar, tasks or your knowledge base.": "Write a question or instruction in plain language. You can ask about files, calendar, tasks or your knowledge base.",

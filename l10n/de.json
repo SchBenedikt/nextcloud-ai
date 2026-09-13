@@ -430,6 +430,7 @@
         "Toggle briefing": "Briefing umschalten",
         "Runs on {days} at {time}": "Läuft {days} um {time}",
         "Paused": "Pausiert",
+        "Active": "Aktiv",
         "Create a briefing": "Briefing erstellen",
         "Choose what EVA should prepare and when you want it.": "Wähle, was EVA vorbereiten soll und wann.",
         "Write a question or instruction in plain language. You can ask about files, calendar, tasks or your knowledge base.": "Schreibe eine Frage oder Anweisung in normaler Sprache. Du kannst nach Dateien, Kalender, Aufgaben oder deiner Wissensbasis fragen.",

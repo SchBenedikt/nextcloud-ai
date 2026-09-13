@@ -7,6 +7,15 @@ namespace OCA\EvaAi\Tests;
 use PHPUnit\Framework\TestCase;
 
 final class FrontendContractTest extends TestCase {
+    public function testSettingsUsePrecompiledNextcloudControlsForInteractiveChoices(): void {
+        $settings = (string)file_get_contents(__DIR__ . '/../src/views/SettingsView.vue');
+        self::assertStringContainsString("import { NcButton, NcCheckboxRadioSwitch, NcTextField } from '@nextcloud/vue'", $settings);
+        self::assertStringContainsString('class="auth-choice"', $settings);
+        self::assertStringContainsString('v-model="briefingDraft.days" type="checkbox"', $settings);
+        self::assertStringNotContainsString('<select v-model="connectorDraft.auth_type"', $settings);
+        self::assertStringNotContainsString('class="briefing-toggle"', $settings);
+    }
+
     public function testDocumentChunkViewKeepsLoadingErrorsAndRetriesVisible(): void {
         $source = (string)file_get_contents(__DIR__ . '/../src/views/DocumentsView.vue');
         self::assertStringContainsString('data?.data?.chunks', $source);
