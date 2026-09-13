@@ -3464,10 +3464,14 @@ class ActionExecutor {
             $status = (int)($info['http_code'] ?? 0);
             $ip = (string)($info['primary_ip'] ?? '');
             $category = $errno !== 0 ? 'network' : ($status === 401 || $status === 403 ? 'authentication' : ($status >= 200 && $status < 500 ? 'reachable' : 'http'));
+            $effectiveAuthType = (string)($row['auth_type'] ?? '');
+            if ($effectiveAuthType === '') {
+                $effectiveAuthType = !empty($row['token_configured']) ? 'bearer' : 'none';
+            }
             return ['ok' => $errno === 0 && $status >= 200 && $status < 500, 'result' => [
                 'connector' => $id, 'base_url' => $base, 'status' => $status,
                 'resolved_ip' => $ip, 'elapsed_ms' => $elapsed, 'category' => $category,
-                'auth_type' => (string)($row['auth_type'] ?? 'none'),
+                'auth_type' => $effectiveAuthType,
                 'error' => $error !== '' ? mb_substr($error, 0, 240) : null,
                 'hint' => $errno !== 0 ? 'The Nextcloud server cannot reach this host. Check routing/VPN/firewall and bind the service to a reachable address.' : null,
             ]];
