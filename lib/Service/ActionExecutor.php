@@ -3147,6 +3147,20 @@ class ActionExecutor {
                     $linkedPath = (string)($parts['path'] ?? '');
                     if ($linkedPath !== '' && str_starts_with($linkedPath, '/') && !in_array($linkedPath, $candidates, true)) $candidates[] = $linkedPath;
                 }
+                // Hypermedia APIs often publish no schema but expose a
+                // bounded set of navigable links in the root JSON document.
+                // Learn same-host GET routes as a generic fallback.
+                $rootJson = json_decode(mb_substr($rootProbeBody, 0, 1048576), true);
+                $collectLinks = function ($value) use (&$collectLinks, &$candidates): void {
+                    if (!is_array($value)) return;
+                    foreach ($value as $key => $item) {
+                        if (is_string($item) && in_array(strtolower((string)$key), ['href', 'url', 'uri', 'path', 'self', 'next', 'endpoint'], true)
+                            && str_starts_with($item, '/') && !str_starts_with($item, '//') && strlen($item) <= 300
+                            && !in_array($item, $candidates, true)) $candidates[] = $item;
+                        if (is_array($item)) $collectLinks($item);
+                    }
+                };
+                if (is_array($rootJson)) $collectLinks($rootJson);
             }
             $authDiscoveryStatus = 0;
             foreach ($found === null ? array_slice(array_values(array_unique($candidates)), 0, 20) : [] as $candidate) {
@@ -3163,13 +3177,35 @@ class ActionExecutor {
                 // returned landing page and learn only its read/search routes
                 // (writes remain confirmation-gated as usual).
                 if (is_string($rootProbeBody) && stripos($rootProbeBody, 'immich') !== false) {
-                    $immichEndpoints = [
-                        ['path' => '/api/people', 'method' => 'GET', 'operation_id' => 'people'],
-                        ['path' => '/api/people/{id}', 'method' => 'GET', 'operation_id' => 'person'],
-                        ['path' => '/api/people/{id}/thumbnail', 'method' => 'GET', 'operation_id' => 'person_thumbnail'],
-                        ['path' => '/api/assets', 'method' => 'GET', 'operation_id' => 'assets'],
-                        ['path' => '/api/search/person', 'method' => 'POST', 'operation_id' => 'search_person'],
+                    // Production Immich installations may disable Swagger.
+                    // Probe its documented controller roots and common
+                    // read-only subroutes: protected routes answer 401/403,
+                    // which is enough to prove that the route exists without
+                    // exposing data. This keeps discovery useful for every
+                    // Immich deployment while never issuing mutating calls.
+                    $immichCandidates = [
+                        '/api/activities', '/api/albums', '/api/albums/statistics', '/api/assets', '/api/assets/statistics',
+                        '/api/auth/status', '/api/duplicates', '/api/faces', '/api/jobs', '/api/libraries', '/api/map/markers',
+                        '/api/memories', '/api/notifications', '/api/people', '/api/partners', '/api/search', '/api/search/smart',
+                        '/api/search/metadata', '/api/server/about', '/api/server/config', '/api/server/features', '/api/server/statistics',
+                        '/api/sessions', '/api/shared-links', '/api/stacks', '/api/system-config', '/api/system-metadata', '/api/tags',
+                        '/api/timeline/bucket', '/api/timeline/buckets', '/api/trash', '/api/users', '/api/views', '/api/workflows',
+                        '/api/asset-files', '/api/download/info', '/api/notifications', '/api/oauth/mobile-redirect',
                     ];
+                    $immichEndpoints = [];
+                    foreach (array_values(array_unique($immichCandidates)) as $candidate) {
+                        [$probeStatus] = $this->connectorCurlGet(rtrim((string)$row['base_url'], '/') . $candidate, $headers, 4);
+                        if (($probeStatus >= 200 && $probeStatus < 500) && $probeStatus !== 404) $immichEndpoints[] = ['path' => $candidate, 'method' => 'GET', 'operation_id' => 'immich_discovered'];
+                    }
+                    // Parameterized and write/search routes are retained as
+                    // capabilities for the agent but are never probed.
+                    foreach ([
+                        ['/api/people/{id}', 'GET', 'person'], ['/api/people/{id}/thumbnail', 'GET', 'person_thumbnail'],
+                        ['/api/assets/{id}', 'GET', 'asset'], ['/api/assets/{id}/thumbnail', 'GET', 'asset_thumbnail'],
+                        ['/api/search/person', 'POST', 'search_person'], ['/api/search/face', 'POST', 'search_face'],
+                        ['/api/search/clip', 'POST', 'search_clip'], ['/api/assets', 'POST', 'upload_asset'],
+                    ] as [$path, $method, $operation]) $immichEndpoints[] = ['path' => $path, 'method' => $method, 'operation_id' => $operation];
+                    if ($immichEndpoints === []) $immichEndpoints[] = ['path' => '/api/people', 'method' => 'GET', 'operation_id' => 'people'];
                     $rows = $this->connectorRows();
                     $rows[$id]['openapi'] = ['source' => 'runtime-immich', 'version' => '', 'endpoints' => $immichEndpoints, 'updated_at' => time()];
                     Server::get(\OCP\IConfig::class)->setUserValue($user, AppConfig::APP, 'external_connectors', json_encode($rows, JSON_UNESCAPED_SLASHES) ?: '{}');
@@ -3181,7 +3217,11 @@ class ActionExecutor {
                 $rootUrl = rtrim((string)$row['base_url'], '/') . '/';
                 [$rootStatus] = $this->connectorCurlGet($rootUrl, $headers, 8);
                 if ($rootStatus >= 200 && $rootStatus < 300) {
-                    $rows = $this->connectorRows(); $rows[$id]['openapi'] = ['source' => 'runtime', 'version' => '', 'endpoints' => [['path' => '/', 'method' => 'GET', 'operation_id' => 'root']], 'updated_at' => time()];
+                    $fallbackEndpoints = [['path' => '/', 'method' => 'GET', 'operation_id' => 'root']];
+                    foreach (array_slice(array_values(array_unique($candidates)), 0, 20) as $candidate) {
+                        if ($candidate !== '/' && str_starts_with($candidate, '/') && !str_contains($candidate, '{')) $fallbackEndpoints[] = ['path' => mb_substr($candidate, 0, 300), 'method' => 'GET', 'operation_id' => 'discovered_link'];
+                    }
+                    $rows = $this->connectorRows(); $rows[$id]['openapi'] = ['source' => 'runtime', 'version' => '', 'endpoints' => $fallbackEndpoints, 'updated_at' => time()];
                     Server::get(\OCP\IConfig::class)->setUserValue($user, AppConfig::APP, 'external_connectors', json_encode($rows, JSON_UNESCAPED_SLASHES) ?: '{}');
                     return ['ok' => true, 'result' => ['connector' => $id, 'source' => 'runtime', 'title' => '', 'endpoints' => $rows[$id]['openapi']['endpoints'], 'note' => 'No API schema was published; the service root was learned and can be tested.']];
                 }
