@@ -54,6 +54,12 @@ class ToolPolicy {
             'requiresConfirmation' => false,
             'description' => 'Read file content',
         ],
+        'extract_file_text' => [
+            'risk' => self::RISK_READONLY,
+            'surfaces' => [self::SURFACE_WEB, self::SURFACE_TALK, self::SURFACE_TASKPROCESSING, self::SURFACE_TASKPROCESSING_CONFIRMED, self::SURFACE_RAG],
+            'requiresConfirmation' => false,
+            'description' => 'Extract text from Office, PDF and other indexed document formats',
+        ],
         'inspect_file' => [
             'risk' => self::RISK_READONLY,
             'surfaces' => [self::SURFACE_WEB, self::SURFACE_TALK, self::SURFACE_TASKPROCESSING, self::SURFACE_TASKPROCESSING_CONFIRMED, self::SURFACE_RAG],
