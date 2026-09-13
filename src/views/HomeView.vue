@@ -22,6 +22,19 @@
 			</div>
 		</header>
 
+		<section class="prompt-showcase" :aria-label="$t('Try EVA')">
+			<div class="prompt-showcase__intro">
+				<span class="prompt-showcase__spark">✦</span>
+				<div><strong>{{ $t('Make your next step effortless') }}</strong><span>{{ $t('Start with a focused request — EVA can search, understand and act across your Nextcloud.') }}</span></div>
+			</div>
+			<div class="prompt-cards">
+				<button v-for="prompt in quickPrompts" :key="prompt.text" type="button" class="prompt-card" @click="$emit('new-chat', prompt.text)">
+					<NcIconSvgWrapper :path="prompt.icon" :size="19" aria-hidden="true" />
+					<span>{{ prompt.text }}</span><span class="prompt-arrow" aria-hidden="true">→</span>
+				</button>
+			</div>
+		</section>
+
 		<div v-if="error" class="home-callout home-callout--error" role="alert">{{ error }}</div>
 
 		<section class="stat-grid" :aria-label="$t('Overview')">
@@ -116,7 +129,7 @@ import { ref, computed, onMounted } from 'vue'
 import { api, errMsg } from '../lib/api'
 import { translate as t } from '../lib/i18n'
 import NcIconSvgWrapper from '@nextcloud/vue/components/NcIconSvgWrapper'
-import { mdiMessagePlus, mdiFileDocumentOutline, mdiMessageProcessingOutline, mdiChatProcessing, mdiFolderOutline, mdiFolderSearchOutline, mdiTune, mdiFileDocumentMultipleOutline, mdiTextBoxOutline, mdiDatabaseOutline } from '@mdi/js'
+import { mdiMessagePlus, mdiFileDocumentOutline, mdiMessageProcessingOutline, mdiChatProcessing, mdiFolderOutline, mdiFolderSearchOutline, mdiTune, mdiFileDocumentMultipleOutline, mdiTextBoxOutline, mdiDatabaseOutline, mdiMagnify, mdiCalendarClockOutline, mdiLightbulbOnOutline } from '@mdi/js'
 
 export default {
 	name: 'HomeView',
@@ -174,6 +187,11 @@ export default {
 				icon: mdiMessageProcessingOutline,
 			},
 		])
+		const quickPrompts = computed(() => [
+			{ text: t('Find the most relevant files for me'), icon: mdiMagnify },
+			{ text: t('What is on my calendar this week?'), icon: mdiCalendarClockOutline },
+			{ text: t('Help me turn my notes into a clear plan'), icon: mdiLightbulbOnOutline },
+		])
 
 		const load = async () => {
 			busy.value = true
@@ -230,7 +248,7 @@ export default {
 
 		return {
 			busy, error, docs, chatSummary, folders, status, online, recent, activeChats,
-			greeting, statCards, fmtSize, fmtDate, isoDate,
+			greeting, statCards, quickPrompts, fmtSize, fmtDate, isoDate,
 			mdiMessagePlus, mdiFileDocumentOutline, mdiMessageProcessingOutline, mdiChatProcessing, mdiFolderOutline, mdiFolderSearchOutline, mdiTune,
 		}
 	},
@@ -297,6 +315,19 @@ export default {
 	gap: 8px;
 	margin-top: 14px;
 }
+
+.prompt-showcase { position: relative; display: grid; grid-template-columns: minmax(220px, .8fr) 2fr; align-items: center; gap: 18px; width: min(100%, var(--eva-content-width, 1180px)); margin: 0 auto; padding: 17px 19px; box-sizing: border-box; border: 1px solid color-mix(in srgb, var(--color-primary-element, #0082c9) 26%, var(--color-border, #e6e6e6)); border-radius: 16px; background: linear-gradient(115deg, color-mix(in srgb, var(--color-primary-element, #0082c9) 11%, var(--color-main-background, #fff)), var(--color-main-background, #fff) 62%); overflow: hidden; }
+.prompt-showcase::after { content: ''; position: absolute; width: 170px; height: 170px; right: -72px; top: -95px; border-radius: 50%; background: color-mix(in srgb, var(--color-primary-element, #0082c9) 12%, transparent); pointer-events: none; }
+.prompt-showcase__intro { display: flex; align-items: flex-start; gap: 11px; position: relative; z-index: 1; }
+.prompt-showcase__intro strong, .prompt-showcase__intro span { display: block; }
+.prompt-showcase__intro strong { font-size: 14px; color: var(--color-main-text, #222); }
+.prompt-showcase__intro div > span { margin-top: 4px; color: var(--color-text-maxcontrast, #666); font-size: 12px; line-height: 1.45; }
+.prompt-showcase__spark { color: var(--color-primary-element, #0082c9); font-size: 23px; line-height: 1; }
+.prompt-cards { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; position: relative; z-index: 1; }
+.prompt-card { display: flex; align-items: center; gap: 9px; min-height: 55px; padding: 10px 11px; border: 1px solid var(--color-border, #e6e6e6); border-radius: 11px; background: color-mix(in srgb, var(--color-main-background, #fff) 86%, transparent); color: var(--color-main-text, #222); text-align: left; font: inherit; font-size: 12px; line-height: 1.3; cursor: pointer; transition: transform .16s ease, border-color .16s ease, box-shadow .16s ease; }
+.prompt-card:hover, .prompt-card:focus-visible { transform: translateY(-2px); border-color: var(--color-primary-element, #0082c9); box-shadow: 0 5px 14px color-mix(in srgb, var(--color-primary-element, #0082c9) 16%, transparent); outline: none; }
+.prompt-card svg { flex: none; color: var(--color-primary-element, #0082c9); }
+.prompt-arrow { margin-left: auto; color: var(--color-text-maxcontrast, #888); font-size: 17px; }
 
 .stat-grid {
 	display: grid;
@@ -555,5 +586,10 @@ export default {
 .home-callout--error {
 	background: var(--color-error-light, #fbecec);
 	color: var(--color-error, #c00);
+}
+
+@media (max-width: 760px) {
+	.prompt-showcase { grid-template-columns: 1fr; }
+	.prompt-cards { grid-template-columns: 1fr; }
 }
 </style>
