@@ -485,7 +485,9 @@ $this->executor->setUserId($userId);
      * @return string[]
      */
     private function suggestFollowups(string $userId, string $answer, array $byDoc, array $history, string $message): array {
-        $lang = $this->uiLanguage();
+        // Follow-ups should follow the language of the current exchange, not
+        // only the Nextcloud UI (users often chat in a different language).
+        $lang = $this->conversationLanguage($message . "\n" . $answer, $this->uiLanguage());
         $recent = array_slice($history, -8);
 
         $sourceNames = [];
@@ -584,6 +586,26 @@ $this->executor->setUserId($userId);
         } catch (\Throwable $e) {
             return 'en';
         }
+    }
+
+    /** Detect the language of the current exchange with a conservative
+     * stop-word signal; fall back to the user's UI language for short text. */
+    private function conversationLanguage(string $text, string $fallback): string {
+        $text = mb_strtolower($text);
+        $signals = [
+            'de' => [' der ', ' die ', ' das ', ' und ', ' ist ', ' nicht ', ' bitte ', ' was ', ' kannst '],
+            'fr' => [' le ', ' la ', ' les ', ' des ', ' une ', ' est ', ' avec ', ' pour '],
+            'es' => [' el ', ' la ', ' los ', ' las ', ' una ', ' es ', ' para ', ' que '],
+            'it' => [' il ', ' lo ', ' gli ', ' una ', ' che ', ' per ', ' con ', ' non '],
+            'nl' => [' de ', ' het ', ' een ', ' en ', ' niet ', ' voor ', ' met '],
+        ];
+        $best = ''; $score = 0;
+        foreach ($signals as $lang => $words) {
+            $current = 0;
+            foreach ($words as $word) $current += substr_count(' ' . $text . ' ', $word);
+            if ($current > $score) { $best = $lang; $score = $current; }
+        }
+        return $score >= 2 ? $best : ($fallback !== '' ? $fallback : 'en');
     }
 
     /**

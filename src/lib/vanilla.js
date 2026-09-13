@@ -577,7 +577,7 @@ export function mountChat(root, opts = {}) {
 		details.appendChild(summary)
 		const list = document.createElement('div')
 		list.className = 'rs-list'
-		m.sources.forEach((item) => {
+		m.sources.forEach((item, sourceIndex) => {
 			const src = item.src || item
 			const row = document.createElement('div')
 			row.className = 'rs-item' + (src.external ? ' rs-item-external' : '')
@@ -593,7 +593,10 @@ export function mountChat(root, opts = {}) {
 			} else {
 				label.className = 'rs-plain'
 			}
-			const prefix = item.ref !== undefined ? '[' + item.ref + '] ' : ''
+			// The visible list is always a compact 1..N sequence. Backend/model
+			// references can legitimately point at source 4 when sources 1-3 were
+		// not cited; showing "starting at 4" is confusing in the UI.
+			const prefix = item.ref !== undefined ? '[' + (sourceIndex + 1) + '] ' : ''
 			label.textContent = prefix + (src.path || src.name || '')
 			row.appendChild(label)
 			// A web source is labelled as such and shows the site it came from, so
