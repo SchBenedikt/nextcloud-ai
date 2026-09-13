@@ -23,8 +23,17 @@
 					<span v-if="item.deadline">Deadline: {{ formatDate(item.deadline) }}</span>
 				</div>
 				<details v-if="item.toolHistory && item.toolHistory.length" class="agent-run__trace">
-					<summary>Execution trace ({{ item.toolHistory.length }})</summary>
-					<ol><li v-for="(step, index) in item.toolHistory" :key="index"><time>{{ formatDate(step.at) }}</time><strong>{{ step.tool }}</strong><span :class="'agent-run__trace-phase agent-run__trace-phase--' + step.phase">{{ step.phase === 'tool_result' ? (step.ok === false ? 'Failed result' : 'Result') : step.phase }}</span><small v-if="step.elapsed_ms !== undefined">{{ step.elapsed_ms }} ms</small><code v-if="step.arguments">Args: {{ formatArguments(step.arguments) }}</code><code v-if="step.result">Result: {{ formatValue(step.result) }}</code><em v-if="step.error">{{ step.error }}</em></li></ol>
+					<summary>Execution trace ({{ item.toolHistory.length }}) · {{ traceElapsed(item) }} ms total</summary>
+					<ol>
+						<li v-for="(step, index) in item.toolHistory" :key="index" class="agent-run__trace-step">
+							<div class="agent-run__trace-head"><span class="agent-run__trace-index">#{{ index + 1 }}</span><strong>{{ step.tool || 'Unknown tool' }}</strong><span :class="'agent-run__trace-phase agent-run__trace-phase--' + step.phase">{{ phaseLabel(step) }}</span><small v-if="step.elapsed_ms !== undefined">{{ step.elapsed_ms }} ms</small><time>{{ formatDate(step.at) }}</time></div>
+							<div class="agent-run__trace-grid">
+								<div v-if="step.arguments" class="agent-run__trace-block"><span>Arguments</span><pre>{{ formatJson(step.arguments) }}</pre></div>
+								<div v-if="step.result" class="agent-run__trace-block"><span>Result</span><pre>{{ formatJson(step.result) }}</pre></div>
+								<div v-if="step.error" class="agent-run__trace-block agent-run__trace-block--error"><span>Error</span><pre>{{ step.error }}</pre></div>
+							</div>
+						</li>
+					</ol>
 				</details>
 				<p v-if="item.error" class="agent-run__error">{{ item.error }}</p>
 				<details v-if="item.status === 'completed' && item.answer" class="agent-run__answer"><summary>Result</summary><div>{{ item.answer }}</div></details>
@@ -73,11 +82,12 @@ const formatDate = (value) => {
 	const d = new Date(millis)
 	return Number.isNaN(d.getTime()) ? String(value) : d.toLocaleString()
 }
-const formatArguments = (arguments_) => Object.entries(arguments_ || {}).map(([key, value]) => {
-	const rendered = value && typeof value === 'object' ? JSON.stringify(value) : String(value)
-	return `${key}=${rendered}`
-}).join(' · ')
-const formatValue = (value) => value && typeof value === 'object' ? JSON.stringify(value) : String(value)
+const formatJson = (value) => {
+	if (typeof value === 'string') return value
+	try { return JSON.stringify(value, null, 2) } catch (_) { return String(value) }
+}
+const traceElapsed = (item) => (item.toolHistory || []).reduce((total, step) => total + Math.max(0, Number(step.elapsed_ms) || 0), 0)
+const phaseLabel = (step) => step.phase === 'tool_result' ? (step.ok === false ? 'Failed result' : 'Result') : (step.phase || 'Event')
 onMounted(() => { load(); timer = window.setInterval(load, 10000) })
 onBeforeUnmount(() => { if (timer) window.clearInterval(timer) })
 </script>
@@ -92,7 +102,7 @@ h1 { margin:0 0 8px; font-size:28px; } .agent-runs__header p { margin:0; color:v
 .agent-run__status { text-transform:capitalize; font-weight:600; color:var(--color-primary-element); } .agent-run--failed .agent-run__status { color:var(--color-error); }
 .agent-run__progress { height:6px; margin:14px 0; border-radius:4px; background:var(--color-background-dark); overflow:hidden; } .agent-run__progress span { display:block; height:100%; background:var(--color-primary-element); transition:width .25s; }
 .agent-run__meta { display:flex; flex-wrap:wrap; gap:8px 18px; color:var(--color-text-maxcontrast); font-size:13px; } .agent-run__error { margin:12px 0 0; color:var(--color-error); white-space:pre-wrap; }
-.agent-run__trace { margin-top:14px; border-top:1px solid var(--color-border); padding-top:10px; font-size:12px; } .agent-run__trace summary { cursor:pointer; color:var(--color-primary-element); font-weight:600; } .agent-run__trace ol { display:grid; gap:6px; margin:10px 0 0; padding-left:20px; } .agent-run__trace li { display:grid; grid-template-columns:145px minmax(0,1fr) auto; gap:8px; align-items:baseline; } .agent-run__trace time,.agent-run__trace span { color:var(--color-text-maxcontrast); } .agent-run__trace-phase--tool_result { color:var(--color-success) !important; font-weight:600; }
+.agent-run__trace { margin-top:14px; border-top:1px solid var(--color-border); padding-top:10px; font-size:12px; } .agent-run__trace summary { cursor:pointer; color:var(--color-primary-element); font-weight:600; } .agent-run__trace ol { display:grid; gap:10px; margin:10px 0 0; padding-left:20px; } .agent-run__trace-step { display:block; padding:10px; border:1px solid var(--color-border); border-radius:var(--border-radius-large); background:var(--color-background-hover); } .agent-run__trace-head { display:flex; flex-wrap:wrap; gap:8px; align-items:baseline; } .agent-run__trace-head time { margin-left:auto; } .agent-run__trace-index { color:var(--color-text-maxcontrast); font-family:monospace; } .agent-run__trace time,.agent-run__trace span { color:var(--color-text-maxcontrast); } .agent-run__trace-phase--tool_result { color:var(--color-success) !important; font-weight:600; } .agent-run__trace-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:8px; margin-top:8px; } .agent-run__trace-block { min-width:0; } .agent-run__trace-block > span { display:block; margin-bottom:4px; font-weight:600; color:var(--color-main-text); } .agent-run__trace-block pre { margin:0; padding:8px; max-height:220px; overflow:auto; white-space:pre-wrap; overflow-wrap:anywhere; border-radius:var(--border-radius); background:var(--color-main-background); color:var(--color-main-text); font:11px/1.45 ui-monospace,SFMono-Regular,Menlo,monospace; } .agent-run__trace-block--error pre { color:var(--color-error); }
 .agent-run__actions { display:flex; gap:8px; margin-top:16px; }
-@media (max-width:700px) { .agent-runs { padding:24px 16px; } .agent-runs__header { flex-direction:column; } }
+@media (max-width:700px) { .agent-runs { padding:24px 16px; } .agent-runs__header { flex-direction:column; } .agent-run__trace-grid { grid-template-columns:1fr; } .agent-run__trace-head time { width:100%; margin-left:0; } }
 </style>

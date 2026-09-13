@@ -4,6 +4,13 @@ All notable changes to **EVA (eva_ai)** are documented here.
 Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); the project
 follows [Semantic Versioning](https://semver.org/).
 
+## [1.16.57] - 2026-09-13
+
+### Improved
+
+- Agent Runs now show each tool invocation as a structured trace with step number, phase, status, timestamp, duration, arguments and bounded result/error blocks.
+- Trace summaries include the total tool execution time, making slow commands and connector calls easier to identify.
+
 ## [1.16.56] - 2026-09-13
 
 ### Improved
