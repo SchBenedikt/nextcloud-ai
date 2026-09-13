@@ -960,6 +960,18 @@ class ApiController extends OCSController {
         return new DataResponse($result, ($result['ok'] ?? false) ? 200 : 400);
     }
 
+    /** Perform an explicit, read-only connectivity check against a connector. */
+    #[NoAdminRequired]
+    public function testExternalConnector(): DataResponse {
+        $user = $this->requireUser();
+        if ($user === null) return new DataResponse(['error' => 'Not logged in'], 401);
+        $id = strtolower(trim((string)($this->requestBody()['id'] ?? $this->requestParam('id') ?? '')));
+        if ($id === '') return new DataResponse(['error' => 'Connector id required'], 400);
+        $this->executor->setSurface(\OCA\EvaAi\Service\ToolPolicy::SURFACE_WEB);
+        $result = $this->executor->runConfirmed($user, 'call_external_connector', ['id' => $id, 'path' => '/', 'method' => 'GET', 'params' => []]);
+        return new DataResponse($result, ($result['ok'] ?? false) ? 200 : 400);
+    }
+
     #[NoAdminRequired]
     public function deleteExternalConnector(): DataResponse {
         $user = $this->requireUser();

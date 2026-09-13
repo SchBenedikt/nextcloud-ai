@@ -37,6 +37,7 @@ return [
         ['name' => 'api#saveExternalConnector', 'url' => '/api/connectors', 'verb' => 'PUT'],
         ['name' => 'api#deleteExternalConnector', 'url' => '/api/connectors', 'verb' => 'DELETE'],
         ['name' => 'api#discoverExternalConnector', 'url' => '/api/connectors/discover', 'verb' => 'POST'],
+        ['name' => 'api#testExternalConnector', 'url' => '/api/connectors/test', 'verb' => 'POST'],
         ['name' => 'api#cancelBackgroundChat', 'url' => '/api/backgroundChat', 'verb' => 'DELETE'],
         ['name' => 'api#pauseBackgroundChat', 'url' => '/api/backgroundChat/pause', 'verb' => 'POST'],
         ['name' => 'api#resumeBackgroundChat', 'url' => '/api/backgroundChat/resume', 'verb' => 'POST'],

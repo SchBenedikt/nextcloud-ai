@@ -497,7 +497,7 @@
 				<div v-if="connectorsLoading" class="field-help">{{ $t('Loading connectors…') }}</div>
 				<div v-for="connector in connectors" :key="connector.id" class="connector-row">
 					<div><strong>{{ connector.name }}</strong><small>{{ connector.base_url }} · {{ connector.discovered_endpoint_count || 0 }} {{ $t('learned endpoints') }}</small></div>
-					<div class="connector-actions"><NcButton type="tertiary-no-background" :disabled="connectorsBusy" @click="discoverConnector(connector.id)">{{ $t('Discover API') }}</NcButton><NcButton type="tertiary-no-background" :disabled="connectorsBusy" @click="removeConnector(connector.id)">{{ $t('Remove') }}</NcButton></div>
+					<div class="connector-actions"><NcButton type="tertiary-no-background" :disabled="connectorsBusy" @click="testConnector(connector.id)">Test</NcButton><NcButton type="tertiary-no-background" :disabled="connectorsBusy" @click="discoverConnector(connector.id)">{{ $t('Discover API') }}</NcButton><NcButton type="tertiary-no-background" :disabled="connectorsBusy" @click="removeConnector(connector.id)">{{ $t('Remove') }}</NcButton></div>
 				</div>
 			<div class="connector-examples"><span>Examples:</span><button type="button" @click="applyConnectorExample('homeassistant')">Home Assistant</button><button type="button" @click="applyConnectorExample('truenas')">TrueNAS</button><button type="button" @click="applyConnectorExample('github')">GitHub</button></div>
 			<div class="connector-form"><NcTextField v-model="connectorDraft.id" :label="$t('Connector ID')" :label-outside="true" placeholder="homeassistant" /><NcTextField v-model="connectorDraft.name" :label="$t('Name')" :label-outside="true" placeholder="Home Assistant" /><NcTextField v-model="connectorDraft.base_url" type="url" :label="$t('HTTPS base URL')" :label-outside="true" placeholder="http://homeassistant.local:8123" /><NcTextField v-model="connectorDraft.token" type="password" autocomplete="new-password" :label="$t('Bearer token (optional)')" :label-outside="true" /><NcButton type="primary" :disabled="connectorsBusy || !connectorDraft.id || !connectorDraft.base_url" @click="saveConnector">{{ $t('Save connector') }}</NcButton></div>
@@ -732,6 +732,10 @@ export default {
 		async function discoverConnector(id) {
 			connectorsBusy.value = true
 			try { const result = await api('POST', 'connectors/discover', { id }); setMessage('success', t('Discovered {count} endpoints.', { count: result?.result?.endpoints?.length || 0 })); await loadConnectors() } catch (error) { setMessage('error', t('API discovery failed: {error}', { error: errMsg(error) })) } finally { connectorsBusy.value = false }
+		}
+		async function testConnector(id) {
+			connectorsBusy.value = true
+			try { const result = await api('POST', 'connectors/test', { id }); setMessage('success', 'Connector responded with HTTP ' + String(result?.result?.data?.status || result?.result?.status || 'OK')) } catch (error) { setMessage('error', 'Connector test failed: ' + errMsg(error)) } finally { connectorsBusy.value = false }
 		}
 		// Admin settings form (Issue #82/#187): the same bundle is mounted inside
 		// the Nextcloud admin settings with data-admin="1". Only shared provider
@@ -1331,7 +1335,7 @@ export default {
 			groqKey, customProviderKey, removeGroqKey, ocrEnabled, f, status, health, healthLoading, statusTimer, limits, availableModels, embeddingModels, chatModels, embeddingInstalledHint, chatInstalledHint, modelLoading, modelError, checkOut, saving, checking, indexing, resetting, deletingChats, stopping, saved, loadError, message, validationErrors, resetConfirm, chatsDeleteConfirm,
 			newExcludePath, excludeError, excludeList, actionsEnabled, backgroundActionsEnabled, notificationsEnabled, learningEnabled, safeCommandsEnabled, mailIndexEnabled, talkIndexEnabled, talkWriteEnabled, indexEnrolled, actionsDisabled, busy, indexingActive, settingsLocked, maxFileSizeMb,
 			isAdminMode, admin, userWebSearchEnabled, userWebSearchSafeSearch, userWebSearchImages, userWebSearchBrowser, userWebSearchFetchContent, webSearchKey, removeWebSearchKey, webSearchKeyStored, webSearchReady, savingAdmin, saveAdminSettings, loadAdminSettings,
-			connectors, connectorsLoading, connectorsBusy, connectorDraft, applyConnectorExample, saveConnector, removeConnector, discoverConnector,
+			connectors, connectorsLoading, connectorsBusy, connectorDraft, applyConnectorExample, saveConnector, removeConnector, discoverConnector, testConnector,
 			proactiveEnabled, proactiveBriefings, briefingDraft, weekdays, dayName, addBriefing, removeBriefing, toggleBriefing, toggleBriefingActions,
 			exporting, downloadExport,
 			knowledgeContent, knowledgeOriginal, savingKnowledge, knowledgeSaved, saveKnowledgeContent,
