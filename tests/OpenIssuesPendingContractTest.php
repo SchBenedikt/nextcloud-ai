@@ -141,6 +141,29 @@ final class OpenIssuesPendingContractTest extends TestCase {
         self::assertSame(0, $extracted);
     }
 
+    /** Unknown octet-stream uploads are accepted only when they look like UTF-8 text. */
+    public function testIssue70SearchFilesSniffsUnknownPlainTextSafely(): void {
+        $reflection = new \ReflectionClass(ActionExecutor::class);
+        $instance = $reflection->newInstanceWithoutConstructor();
+        $file = $this->createMock(File::class);
+        $file->method('getName')->willReturn('export.data');
+        $file->method('getSize')->willReturn(128);
+        $file->method('getMimeType')->willReturn('application/octet-stream');
+        $file->method('getContent')->willReturn('A plain text export contains the unique marker.');
+        $extract = $reflection->getMethod('searchFileContent');
+        $extracted = 0;
+        $snippet = $extract->invokeArgs($instance, [$file, 'unique marker', &$extracted]);
+        self::assertIsString($snippet);
+        self::assertStringContainsString('unique marker', $snippet);
+
+        $binary = $this->createMock(File::class);
+        $binary->method('getName')->willReturn('blob.data');
+        $binary->method('getSize')->willReturn(128);
+        $binary->method('getMimeType')->willReturn('application/octet-stream');
+        $binary->method('getContent')->willReturn("header\0binary");
+        self::assertNull($extract->invokeArgs($instance, [$binary, 'binary', &$extracted]));
+    }
+
     /** Terminal prompts never get a shell parser and remain confirmation-gated. */
     public function testConfirmedTerminalCommandRejectsShellSyntax(): void {
         $reflection = new \ReflectionClass(ActionExecutor::class);
