@@ -1428,6 +1428,7 @@ export default {
 .settings-quicknav a:hover,.settings-quicknav a:focus { background:var(--color-primary-element); color:var(--color-primary-element-text); }
 .settings-fieldset { min-inline-size: 0; margin: 0; padding: 0; border: 0; }
 .settings-fieldset:disabled { opacity: .72; }
+.settings-fieldset > .settings-section + .settings-section { margin-top: 16px; }
 .indexing-banner { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-bottom: 4px; padding: 13px 14px; border: 1px solid color-mix(in srgb, var(--color-primary-element) 42%, var(--color-border)); background: color-mix(in srgb, var(--color-primary-element) 7%, var(--color-main-background)); }
 .indexing-banner strong, .indexing-banner span { display: block; }
 .indexing-banner span { margin-top: 3px; color: var(--color-text-maxcontrast); font-size: 12px; }
