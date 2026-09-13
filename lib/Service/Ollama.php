@@ -10,7 +10,10 @@ use OCP\ICacheFactory;
 use Psr\Log\LoggerInterface;
 
 class Ollama {
-    private const TIMEOUT = 600;
+    /** Maximum default lifetime of a streamed chat request. A caller may pass
+     * a stricter budget, but an omitted timeout must never pin a PHP worker for
+     * ten minutes while an upstream model is stalled. */
+    private const TIMEOUT = 180;
     /**
      * Bounded total timeout for non-streaming chat calls (web endpoints,
      * file-context chat, Talk classification). One slow model response must
@@ -1008,9 +1011,9 @@ class Ollama {
      * @return array{answer?:string,error?:string,model?:string}
      */
     private function chatStreamingAccumulate(array $messages, array $tools, ?int $timeout, string $defaultModel, callable $onProgress, ?string $preferredModel = null): array {
-        // Progress-reporting callers run inside a dedicated worker, so the
-        // generous total budget from the streaming path is acceptable: reads
-        // stay idle-bounded and every token is reported to the task.
+        // Progress-reporting callers still need a hard total budget. Reads
+        // stay idle-bounded and every token is reported to the task, but a
+        // stalled upstream must not occupy a PHP worker indefinitely.
         $totalTimeout = $timeout ?? self::TIMEOUT;
         $answer = '';
         $model = $defaultModel;

@@ -1008,19 +1008,12 @@ class ApiController extends OCSController {
         if ($user === null) return new DataResponse(['error' => 'Not logged in'], 401);
         $id = strtolower(trim((string)($this->requestBody()['id'] ?? $this->requestParam('id') ?? '')));
         if ($id === '') return new DataResponse(['error' => 'Connector id required'], 400);
-        // Use the first safe discovered GET route so this endpoint remains
-        // compatible with workers that predate the diagnostic action.
-        $path = '/';
-        $known = $this->executor->run($user, 'list_external_connectors', [])['result']['connectors'] ?? [];
-        foreach (is_array($known) ? $known : [] as $connector) {
-            if (!is_array($connector) || (string)($connector['id'] ?? '') !== $id) continue;
-            foreach ((array)($connector['learned_endpoints'] ?? []) as $endpoint) {
-                if (is_array($endpoint) && strtoupper((string)($endpoint['method'] ?? '')) === 'GET' && ($candidate = (string)($endpoint['path'] ?? '')) !== '' && !str_contains($candidate, '{')) { $path = $candidate; break 2; }
-            }
-        }
-        $this->executor->setSurface(\OCA\EvaAi\Service\ToolPolicy::SURFACE_WEB);
-        $result = $this->executor->runConfirmed($user, 'call_external_connector', ['id' => $id, 'path' => $path, 'method' => 'GET', 'params' => []]);
-        $httpStatus = is_array($result['result'] ?? null) && (int)($result['result']['status'] ?? 0) > 0 ? 200 : (($result['ok'] ?? false) ? 200 : 400);
+        // A test must diagnose transport and authentication, not guess a
+        // random learned route (which may be protected or require path
+        // parameters). The diagnostic uses the same credentials and host
+        // validation as normal calls and never returns response data.
+        $result = $this->executor->run($user, 'diagnose_external_connector', ['id' => $id]);
+        $httpStatus = (($result['ok'] ?? false) || isset($result['result'])) ? 200 : 400;
         return new DataResponse($result, $httpStatus);
     }
 

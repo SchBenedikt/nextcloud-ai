@@ -3623,14 +3623,24 @@ class ActionExecutor {
             }
             if ($type === 'bearer') {
                 if ($credentials->customValueConfigured($user, $prefix, 'token')) {
-                    return ['Authorization' => 'Bearer ' . $credentials->getCustomValue($user, $prefix, 'token')];
+                    return ['Authorization' => 'Bearer ' . $this->normalizeBearerToken($credentials->getCustomValue($user, $prefix, 'token'))];
                 }
                 if ($credentials->customValueConfigured($user, $prefix, 'api_key')) {
-                    return ['Authorization' => 'Bearer ' . $credentials->getCustomValue($user, $prefix, 'api_key')];
+                    return ['Authorization' => 'Bearer ' . $this->normalizeBearerToken($credentials->getCustomValue($user, $prefix, 'api_key'))];
                 }
             }
         } catch (\Throwable) { return []; }
         return [];
+    }
+
+    /**
+     * Users commonly paste the complete header value ("Bearer xxx") into a
+     * token field. Do not send a malformed double prefix to TrueNAS or other
+     * RFC 6750 services; only the scheme prefix is removed, never token data.
+     */
+    private function normalizeBearerToken(string $value): string {
+        $value = trim($value);
+        return preg_replace('/^(?:Bearer|Token)\s+/i', '', $value) ?? $value;
     }
 
     /** Prevent an API secret accidentally being used as the header name. */
