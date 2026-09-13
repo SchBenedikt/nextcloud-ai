@@ -1,0 +1,73 @@
+name: Build EVA release
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+
+permissions:
+  contents: write
+
+jobs:
+  package:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Set up PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.2'
+          extensions: mbstring, curl, zip
+          tools: composer:v2
+
+      - name: Build frontend
+        run: |
+          npm ci
+          npm run build
+
+      - name: Install production Composer dependencies
+        run: composer install --no-dev --no-interaction --prefer-dist --classmap-authoritative
+
+      - name: Verify app metadata matches the tag
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          expected="${RELEASE_TAG#v}"
+          actual="$(sed -n 's:.*<version>\(.*\)</version>.*:\1:p' appinfo/info.xml | head -1)"
+          test "$actual" = "$expected"
+
+      - name: Create Nextcloud app archive
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          version="${RELEASE_TAG#v}"
+          mkdir -p release/eva_ai
+          rsync -a --delete \
+            --exclude '.git' \
+            --exclude 'release' \
+            --exclude 'node_modules' \
+            --exclude 'tests' \
+            --exclude 'test-results' \
+            --exclude 'vendor/bin' \
+            . release/eva_ai/
+          test -f release/eva_ai/appinfo/info.xml
+          test -f release/eva_ai/vendor/autoload.php
+          tar -czf "eva_ai-${version}.tar.gz" -C release eva_ai
+          # softprops receives the tag-qualified filename below; retain the
+          # store-friendly filename without the leading `v` as the primary
+          # archive users download.
+          cp "eva_ai-${version}.tar.gz" "eva_ai-${RELEASE_TAG}.tar.gz"
+
+      - name: Publish archive
+        uses: softprops/action-gh-release@v2
+        with:
+          generate_release_notes: true
+          files: eva_ai-*.tar.gz

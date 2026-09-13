@@ -78,6 +78,16 @@ version bump.
 - [ ] `info.xml`, `package.json` and `package-lock.json` carry the same version.
 - [ ] Every new migration's version is `<=` the new app version.
 - [ ] `vendor/bin/phpunit` passes (it includes the release-metadata guard).
+
+### Automated app archive
+
+Pushing a tag named `vX.Y.Z` starts `.github/workflows/release.yml`. The
+workflow verifies that `appinfo/info.xml` contains the tag version, builds the
+frontend, installs production-only Composer dependencies, and publishes
+`eva_ai-X.Y.Z.tar.gz`. The archive includes `vendor/autoload.php` and the
+production YAML parser, but excludes tests, Node modules and Composer's
+development binaries. This is the archive to upload to the Nextcloud App
+Store; a plain GitHub source archive is not sufficient for production.
 - [ ] The App Store description in `info.xml` is **flush-left**. CommonMark
       renders lines indented by four or more spaces as a code block, which makes
       the whole store listing appear as source code. Never re-indent it to match
