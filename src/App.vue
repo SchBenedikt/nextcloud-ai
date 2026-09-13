@@ -479,6 +479,9 @@ export default {
 
 		const newChat = async (prompt = '') => {
 			if (busy.value) return
+			// Vue passes the click event to handlers without an explicit
+			// argument. Never serialize that PointerEvent as a chat prompt.
+			if (typeof prompt !== 'string') prompt = ''
 			busy.value = true
 			try {
 				const c = await requestApi('POST', '/chats', {})

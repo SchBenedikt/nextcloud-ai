@@ -1401,6 +1401,17 @@ class ActionExecutor {
             }
         } catch (\Throwable) { /* treat malformed learning cache as empty */ }
         if (!$knownRoute) {
+            // Discovery is read-only and safe. Perform it transparently on
+            // the first confirmed call so app integrations (for example
+            // integration_immich) do not require the model to know an
+            // internal discover-then-call dance.
+            if (($args['_auto_discover'] ?? true) === true) {
+                $discovered = $this->discoverAppApi(['app_id' => $appId, 'include_internal' => true]);
+                if (($discovered['ok'] ?? false) === true) {
+                    $args['_auto_discover'] = false;
+                    return $this->callAppApi($args);
+                }
+            }
             return ['ok' => false, 'error' => $isOcsPath
                 ? 'This OCS route has not been discovered recently. Call discover_app_api first.'
                 : 'This non-OCS route has not been discovered yet. Call discover_app_api with include_internal=true first.'];
