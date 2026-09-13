@@ -100,6 +100,7 @@ class UsageMetrics {
 				->selectAlias($qb->createFunction('SUM(estimated)'), 'estimated_requests')
 				->from('eva_ai_usage')
 				->where($qb->expr()->eq('user_id', $qb->createNamedParameter($userId)))
+				->andWhere($qb->expr()->eq('operation', $qb->createNamedParameter('chat')))
 				->andWhere($qb->expr()->gte('created_at', $qb->createNamedParameter($since, IQueryBuilder::PARAM_INT)))
 				->groupBy('provider', 'model')
 				->orderBy('total_tokens', 'DESC');
@@ -115,6 +116,7 @@ class UsageMetrics {
 			$qb->select('created_at', 'input_tokens', 'output_tokens', 'total_tokens')
 				->from('eva_ai_usage')
 				->where($qb->expr()->eq('user_id', $qb->createNamedParameter($userId)))
+				->andWhere($qb->expr()->eq('operation', $qb->createNamedParameter('chat')))
 				->andWhere($qb->expr()->gte('created_at', $qb->createNamedParameter($since, IQueryBuilder::PARAM_INT)))
 				->orderBy('created_at', 'ASC');
 			$result = $qb->executeQuery();

@@ -396,6 +396,7 @@ final class OpenIssuesPendingContractTest extends TestCase {
 		self::assertStringContainsString("'file_id' => (int)\$node->getId()", $executor);
 		self::assertStringContainsString('recordToolMetric', $executor);
 		self::assertStringContainsString('public function recordTool', (string)file_get_contents(__DIR__ . '/../lib/Service/UsageMetrics.php'));
+		self::assertGreaterThanOrEqual(2, substr_count((string)file_get_contents(__DIR__ . '/../lib/Service/UsageMetrics.php'), "eq('operation', \$qb->createNamedParameter('chat')"));
 	}
 
 	private function sliceBetween(string $haystack, string $start, string $end): string {
