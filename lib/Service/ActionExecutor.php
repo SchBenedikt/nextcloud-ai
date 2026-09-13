@@ -3021,7 +3021,7 @@ class ActionExecutor {
         try {
             if (!empty($row['token_configured'])) $headers['Authorization'] = 'Bearer ' . Server::get(ProviderCredentials::class)->getCustom($user, 'connector_' . $id);
             $client = Server::get(\OCP\Http\Client\IClientService::class)->newClient(); $found = null; $source = null;
-            foreach (['/openapi.json', '/swagger.json', '/.well-known/openapi.json'] as $candidate) {
+            foreach (['/openapi.json', '/swagger.json', '/.well-known/openapi.json', '/api/openapi.json', '/api/swagger.json', '/docs/openapi.json', '/api/docs/openapi.json', '/api/v2.0/docs'] as $candidate) {
                 $url = rtrim((string)$row['base_url'], '/') . $candidate; if (!$this->safeConnectorUrl($url)) continue;
                 $response = $client->get($url, ['headers' => $headers, 'timeout' => 15, 'allow_redirects' => ['max' => 0]]);
                 if ($response->getStatusCode() < 200 || $response->getStatusCode() >= 300) continue;
