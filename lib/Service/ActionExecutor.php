@@ -309,11 +309,12 @@ class ActionExecutor {
             ]],
             ['type' => 'function', 'function' => [
                 'name' => 'search_files',
-                'description' => 'Search the user\'s Nextcloud files by name or content keywords, including readable text and common unindexed PDF, DOCX, XLSX, PPTX, ODF and EPUB files. Narrow the bounded scan with an optional folder path and file extension for faster results; this never starts a full indexing run.',
+                'description' => 'Search the user\'s Nextcloud files by name or content keywords, including readable text and common unindexed PDF, DOCX, XLSX, PPTX, ODF and EPUB files. Narrow the bounded scan with an optional folder path and file extension for faster results; use force_refresh when a file was just uploaded or changed. This never starts a full indexing run.',
                 'parameters' => ['type' => 'object', 'properties' => [
                     'query' => ['type' => 'string', 'description' => 'Keyword to look for in file and folder names and in bounded text-file content (case-insensitive).'],
                     'path' => ['type' => 'string', 'description' => 'Optional folder to search below, e.g. "Documents/2026".'],
                     'extension' => ['type' => 'string', 'description' => 'Optional file extension filter, e.g. "pdf" or ".docx".'],
+                    'force_refresh' => ['type' => 'boolean', 'description' => 'Skip the short-lived search cache and inspect the current filesystem immediately.'],
                 ], 'required' => ['query']],
             ]],
             ['type' => 'function', 'function' => [
@@ -2188,6 +2189,7 @@ class ActionExecutor {
         $scopePath = $this->cleanPath((string)($args['path'] ?? ''));
         $scope = $this->folderAt($home, $scopePath);
         $extension = strtolower(ltrim(trim((string)($args['extension'] ?? '')), '.'));
+        $forceRefresh = filter_var($args['force_refresh'] ?? false, FILTER_VALIDATE_BOOLEAN);
         if ($extension !== '' && !preg_match('/^[a-z0-9]{1,12}$/', $extension)) {
             return ['ok' => false, 'error' => 'extension must contain only letters and digits'];
         }
@@ -2199,7 +2201,7 @@ class ActionExecutor {
         $cacheKey = 'search_' . substr(hash('sha256', $userKey . "\0" . $revision . "\0" . $query . "\0" . $scopePath . "\0" . $extension), 0, 40);
         try {
             $cache = Server::get(\OCP\ICacheFactory::class)->createDistributed('eva_ai_search_');
-            $cached = $cache->get($cacheKey);
+            $cached = $forceRefresh ? null : $cache->get($cacheKey);
             if (is_string($cached) && $cached !== '') {
                 $decoded = json_decode($cached, true);
                 if (is_array($decoded) && isset($decoded['result']) && is_array($decoded['result'])) {
@@ -2218,6 +2220,7 @@ class ActionExecutor {
             'query' => $query,
             'path' => $scopePath,
             'extension' => $extension !== '' ? $extension : null,
+            'cache_bypassed' => $forceRefresh,
             'matches' => $matches,
             'truncated' => $truncated,
             'limits' => [

@@ -94,7 +94,8 @@ final class OpenIssuesPendingContractTest extends TestCase {
         self::assertStringContainsString('getContent()', $this->sliceBetween($executor, 'private function searchWalk', 'private function findContact'));
         self::assertStringContainsString('MAX_SEARCH_NODES', $executor);
         self::assertStringContainsString("'truncated' => \$truncated", $executor);
-		self::assertStringContainsString('MAX_SEARCH_FILE_BYTES', $executor);
+        self::assertStringContainsString('MAX_SEARCH_FILE_BYTES', $executor);
+        self::assertStringContainsString('force_refresh', $executor);
 		self::assertStringContainsString('unindexed PDF, DOCX, XLSX, PPTX, ODF and EPUB', $executor);
 		self::assertStringContainsString('common unindexed PDF, DOCX, XLSX, PPTX, ODF and EPUB content', (string)file_get_contents(__DIR__ . '/../lib/Service/RagService.php'));
     }

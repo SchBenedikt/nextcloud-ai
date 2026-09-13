@@ -978,7 +978,7 @@ $this->executor->setUserId($userId);
                 . " For file organization, use move_file or copy_file only after confirming the exact source and destination; use file_checksum to validate important copies or generated artifacts."
                 . " Use read_files when several related text files are needed, then follow each file's pagination until has_more=false."
                 . " When EVA already knows a folder or file type, pass search_files path and extension filters to avoid an unnecessary broad scan."
-                . " search_files also reads common unindexed PDF, DOCX, XLSX, PPTX, ODF and EPUB content within bounded limits, so use it before concluding that a file is unavailable; it never launches a full index job."
+                . " search_files also reads common unindexed PDF, DOCX, XLSX, PPTX, ODF and EPUB content within bounded limits, so use it before concluding that a file is unavailable; it never launches a full index job. If a file was just uploaded or changed, pass force_refresh=true to bypass the short-lived cache."
                 . " list_files and search_files include file_id metadata; reuse that id for version, tag or comment tools instead of guessing identifiers."
                 . $this->talkPromptClause()
                 . ($this->webSearchAvailable()
