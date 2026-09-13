@@ -9,7 +9,10 @@ use PHPUnit\Framework\TestCase;
 final class FrontendContractTest extends TestCase {
     public function testSettingsUsePrecompiledNextcloudControlsForInteractiveChoices(): void {
         $settings = (string)file_get_contents(__DIR__ . '/../src/views/SettingsView.vue');
-        self::assertStringContainsString("import { NcButton, NcCheckboxRadioSwitch, NcTextField } from '@nextcloud/vue'", $settings);
+        self::assertStringContainsString("import { NcButton, NcCheckboxRadioSwitch, NcSelect, NcTextArea, NcTextField } from '@nextcloud/vue'", $settings);
+        self::assertStringNotContainsString('<select', $settings);
+        self::assertStringNotContainsString('<textarea', $settings);
+        self::assertStringContainsString('chatRetentionOptions', $settings);
         self::assertStringContainsString('class="auth-choice"', $settings);
         self::assertStringContainsString('v-model="briefingDraft.days" type="checkbox"', $settings);
         self::assertStringNotContainsString('<select v-model="connectorDraft.auth_type"', $settings);
@@ -146,8 +149,8 @@ final class FrontendContractTest extends TestCase {
 		self::assertStringContainsString('ChatCleanupJob', (string)file_get_contents(__DIR__ . '/../appinfo/info.xml'));
 		$settings = (string)file_get_contents(__DIR__ . '/../src/views/SettingsView.vue');
 		self::assertStringContainsString('Automatically delete old chats', $settings);
-		self::assertStringContainsString('Never delete automatically', $settings);
-		self::assertStringContainsString('After 30 days', $settings);
+        self::assertStringContainsString("label: t('Never delete automatically')", $settings);
+        self::assertStringContainsString("label: t('After 30 days')", $settings);
 		// The Start navigation item sits at the very top of the sidebar list,
 		// above the Chats heading (not only in the footer).
 		self::assertStringContainsString("<template #list>\n\t\t\t\t<NcAppNavigationItem\n\t\t\t\t\tclass=\"start-nav-item\"", $app);

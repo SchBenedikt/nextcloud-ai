@@ -80,9 +80,7 @@
 
 				<div class="field">
 					<label class="native-label" for="chat-provider">{{ $t('Chat provider') }}</label>
-					<select id="chat-provider" v-model="f.chat_provider" class="native-select">
-						<option value="ollama">Ollama</option><option value="groq">Groq</option><option v-for="profile in providerProfiles" :key="profile.id" :value="profile.id">{{ profile.name }} ({{ profile.id }})</option><option value="custom">{{ $t('Custom OpenAI-compatible provider') }}</option>
-					</select>
+					<NcSelect input-id="chat-provider" v-model="f.chat_provider" :options="chatProviderOptions" label="label" :reduce="option => option.value" :input-label="$t('Chat provider')" :label-outside="true" />
 				</div>
 				<div v-if="f.chat_provider !== 'ollama' && f.chat_provider !== 'groq'" class="field-grid">
 					<NcTextField id="custom-provider-id" v-model="f.chat_provider" :label="$t('Provider ID')" :label-outside="true" placeholder="openai" />
@@ -92,7 +90,7 @@
 					<p class="field-help">{{ $t('Works with OpenAI, Azure OpenAI, Mistral, Together, DeepSeek, OpenRouter and any compatible self-hosted endpoint. Credentials are encrypted per user.') }}</p>
 					<div class="field field-wide provider-profiles-editor">
 						<label class="native-label" for="provider-profiles">{{ $t('Additional provider profiles (JSON)') }}</label>
-						<textarea id="provider-profiles" v-model="f.provider_profiles" rows="4" spellcheck="false" placeholder='[{"id":"deepseek","name":"DeepSeek","url":"https://api.deepseek.com/v1","model":"deepseek-chat"}]'></textarea>
+						<NcTextArea id="provider-profiles" v-model="f.provider_profiles" :label="$t('Additional provider profiles (JSON)')" :label-outside="true" :placeholder="providerProfilesPlaceholder" resize="vertical" />
 						<p class="field-help">{{ $t('Define multiple OpenAI-compatible providers. Select a profile by entering its id above. API keys are stored separately and never included in this JSON.') }}</p>
 					</div>
 				</div>
@@ -100,9 +98,7 @@
 					<p class="field-help">{{ $t('Groq sends your messages, retrieved file excerpts and tool results to Groq. Embeddings and document indexing still use Ollama.') }}</p>
 					<div class="field">
 						<label class="native-label" for="groq-model">{{ $t('Groq free-plan model') }}</label>
-						<select id="groq-model" v-model="f.groq_model" class="native-select">
-							<option value="openai/gpt-oss-20b">GPT OSS 20B</option><option value="openai/gpt-oss-120b">GPT OSS 120B</option>
-						</select>
+						<NcSelect input-id="groq-model" v-model="f.groq_model" :options="groqModelOptions" label="label" :reduce="option => option.value" :input-label="$t('Groq free-plan model')" :label-outside="true" />
 					</div>
 					<div class="field">
 						<NcTextField id="groq-api-key" v-model="groqKey" type="password" autocomplete="new-password" :label="$t('Groq API key')" :label-outside="true" />
@@ -126,19 +122,13 @@
 					</div>
 					<div class="field">
 						<label class="native-label" for="embedding-model">{{ $t('Embedding model') }}</label>
-						<select id="embedding-model" v-model="f.embedding_model" class="native-select" :disabled="modelLoading || !embeddingModels.length">
-							<option v-if="!embeddingModels.length" :value="f.embedding_model">{{ modelLoading ? $t('Loading models…') : $t('No embedding model found') }}</option>
-							<option v-for="model in embeddingModels" :key="model" :value="model">{{ model }}</option>
-						</select>
+						<NcSelect input-id="embedding-model" v-model="f.embedding_model" :options="embeddingModelOptions" :input-label="$t('Embedding model')" :label-outside="true" :disabled="modelLoading || !embeddingModels.length" />
 						<p class="field-help">{{ $t('EVA discovers installed models automatically from the Ollama endpoint and separates embedding from chat models by their declared capabilities. Embedding models turn file text into searchable vectors.') }}</p>
 						<div v-if="!modelLoading && embeddingInstalledHint" class="model-hint">{{ embeddingInstalledHint }}</div>
 					</div>
 					<div v-if="f.chat_provider !== 'groq'" class="field">
 						<label class="native-label" for="chat-model">{{ $t('Chat model') }}</label>
-						<select id="chat-model" v-model="f.chat_model" class="native-select" :disabled="modelLoading || !chatModels.length">
-							<option v-if="!chatModels.length" :value="f.chat_model">{{ modelLoading ? $t('Loading models…') : $t('No chat model found') }}</option>
-							<option v-for="model in chatModels" :key="model" :value="model">{{ model }}</option>
-						</select>
+						<NcSelect input-id="chat-model" v-model="f.chat_model" :options="chatModelOptions" :input-label="$t('Chat model')" :label-outside="true" :disabled="modelLoading || !chatModels.length" />
 						<p class="field-help">{{ $t('EVA discovers installed chat models automatically from the Ollama endpoint.') }}</p>
 						<div v-if="!modelLoading && chatInstalledHint" class="model-hint">{{ chatInstalledHint }}</div>
 					</div>
@@ -154,10 +144,7 @@
 					</div>
 					<div v-if="f.chat_provider !== 'groq'" class="field">
 						<label class="native-label" for="summary-model">{{ $t('Heavy task model (optional)') }}</label>
-						<select id="summary-model" v-model="f.summary_model" class="native-select" :disabled="modelLoading">
-							<option value="">{{ $t('Use the chat model') }}</option>
-							<option v-for="model in chatModels" :key="model" :value="model">{{ model }}</option>
-						</select>
+						<NcSelect input-id="summary-model" v-model="f.summary_model" :options="summaryModelOptions" :input-label="$t('Heavy task model (optional)')" :label-outside="true" :disabled="modelLoading" />
 						<p class="field-help">{{ $t('Optionally use a separate, usually larger model for summaries, translations and proofreading. Leave empty to reuse the chat model.') }}</p>
 					</div>
 				</div>
@@ -371,16 +358,7 @@
 				</div>
 				<div class="field">
 					<label class="native-label" for="chat-retention">{{ $t('Automatically delete old chats') }}</label>
-					<select id="chat-retention" v-model="f.chat_retention_days" class="native-select">
-						<option value="0">{{ $t('Never delete automatically') }}</option>
-						<option value="7">{{ $t('After 7 days') }}</option>
-						<option value="14">{{ $t('After 14 days') }}</option>
-						<option value="30">{{ $t('After 30 days') }}</option>
-						<option value="60">{{ $t('After 60 days') }}</option>
-						<option value="90">{{ $t('After 90 days') }}</option>
-						<option value="180">{{ $t('After 180 days') }}</option>
-						<option value="365">{{ $t('After 365 days') }}</option>
-					</select>
+					<NcSelect input-id="chat-retention" v-model="f.chat_retention_days" :options="chatRetentionOptions" label="label" :reduce="option => option.value" :input-label="$t('Automatically delete old chats')" :label-outside="true" />
 					<p class="field-help">{{ $t('Chats that have not been used for this many days are deleted automatically by the background job. 0 keeps everything.') }}</p>
 				</div>
 				<div class="index-actions chat-history-actions">
@@ -408,13 +386,16 @@
 					</div>
 				</div>
 				<div class="field field-wide">
-					<textarea
+					<NcTextArea
 						v-model="knowledgeContent"
+						id="knowledge-editor"
+						:label="$t('Personal knowledge')"
+						:label-outside="true"
+						:resize="'vertical'"
 						class="knowledge-editor"
 						:placeholder="$t('No knowledge file yet. EVA will create one with your profile on first use.')"
-						rows="12"
 						:disabled="settingsLocked"
-					></textarea>
+					/>
 					<p class="field-help">
 						{{ $t('{count} of {max} characters', { count: formatNumber(knowledgeContent.length), max: '60,000' }) }}
 					</p>
@@ -461,7 +442,7 @@
 						<div class="briefing-form"><div class="briefing-form-title"><strong>{{ $t('Create a briefing') }}</strong><span>{{ $t('Choose what EVA should prepare and when you want it.') }}</span></div>
 						<div class="field-grid">
 							<div class="field field-wide"><NcTextField v-model="briefingDraft.prompt" :label="$t('What should EVA do?')" :label-outside="true" :placeholder="$t('For example: summarize my calendar for today')" /><p class="field-help">{{ $t('Write a question or instruction in plain language. You can ask about files, calendar, tasks or your knowledge base.') }}</p></div>
-							<label class="briefing-time-field"><span>{{ $t('Time') }}</span><input v-model="briefingDraft.time" type="time" step="60" :aria-label="$t('Time')" /></label>
+							<div class="briefing-time-field"><NcTextField v-model="briefingDraft.time" type="time" :label="$t('Time')" :label-outside="true" /></div>
 						</div>
 						<NcCheckboxRadioSwitch v-model="briefingDraft.allow_actions" type="switch">{{ $t('Allow EVA to perform requested actions automatically') }}</NcCheckboxRadioSwitch>
 						<p v-if="briefingDraft.allow_actions" class="field-help briefing-action-warning">{{ $t('Use only for prompts you trust. EVA will execute needed changes in the background without a second dialog; generic app APIs still need the encrypted Nextcloud app token.') }}</p>
@@ -484,13 +465,7 @@
 				<div v-if="userWebSearchEnabled" class="admin-subsection">
 					<div class="field">
 						<label class="native-label" for="user-web-search-provider">{{ $t('Search provider') }}</label>
-						<select id="user-web-search-provider" v-model="f.web_search_provider" class="native-select">
-							<option value="duckduckgo">{{ $t('DuckDuckGo (free, no API key)') }}</option>
-							<option value="bing">{{ $t('Bing (free, no API key)') }}</option>
-							<option value="searxng">{{ $t('SearxNG (self-hosted)') }}</option>
-							<option value="brave">{{ $t('Brave Search (requires admin setup)') }}</option>
-							<option value="tavily">{{ $t('Tavily (requires admin setup)') }}</option>
-						</select>
+						<NcSelect input-id="user-web-search-provider" v-model="f.web_search_provider" :options="webSearchProviderOptions" label="label" :reduce="option => option.value" :input-label="$t('Search provider')" :label-outside="true" />
 						<p class="field-help">{{ $t('News articles come from free news feeds and work with every provider; the web index is what differs. SearxNG, Brave and Tavily require the administrator to configure the URL or API key in the Eva AI admin settings.') }}</p>
 					</div>
 					<div class="field-grid field-grid-three">
@@ -580,13 +555,13 @@
 
 <script>
 import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
-import { NcButton, NcCheckboxRadioSwitch, NcTextField } from '@nextcloud/vue'
+import { NcButton, NcCheckboxRadioSwitch, NcSelect, NcTextArea, NcTextField } from '@nextcloud/vue'
 import { api, errMsg } from '../lib/api'
 import { translate as t } from '../lib/i18n'
 
 export default {
 	name: 'SettingsView',
-	components: { NcButton, NcCheckboxRadioSwitch, NcTextField },
+	components: { NcButton, NcCheckboxRadioSwitch, NcSelect, NcTextArea, NcTextField },
 	setup() {
 		const f = ref({
 			chat_provider: 'ollama',
@@ -650,6 +625,36 @@ export default {
 		const providerProfiles = computed(() => {
 			try { const rows = JSON.parse(f.value.provider_profiles || '[]'); return Array.isArray(rows) ? rows.filter(p => p && p.id && p.name) : [] } catch (_) { return [] }
 		})
+		// All settings controls use the official Nextcloud Vue components. Keep
+		// their models as plain strings so autosave and server validation remain
+		// backwards compatible with the existing API contract.
+		const chatProviderOptions = computed(() => [
+			{ value: 'ollama', label: 'Ollama' },
+			{ value: 'groq', label: 'Groq' },
+			...providerProfiles.value.map(profile => ({ value: profile.id, label: `${profile.name} (${profile.id})` })),
+			{ value: 'custom', label: t('Custom OpenAI-compatible provider') },
+		])
+		const providerProfilesPlaceholder = '[{"id":"deepseek","name":"DeepSeek","url":"https://api.deepseek.com/v1","model":"deepseek-chat"}]'
+		const groqModelOptions = [
+			{ value: 'openai/gpt-oss-20b', label: 'GPT OSS 20B' },
+			{ value: 'openai/gpt-oss-120b', label: 'GPT OSS 120B' },
+		]
+		const embeddingModelOptions = computed(() => embeddingModels.value.length ? embeddingModels.value : [f.value.embedding_model])
+		const chatModelOptions = computed(() => chatModels.value.length ? chatModels.value : [f.value.chat_model])
+		const summaryModelOptions = computed(() => ['', ...chatModels.value])
+		const chatRetentionOptions = [
+			{ value: '0', label: t('Never delete automatically') }, { value: '7', label: t('After 7 days') },
+			{ value: '14', label: t('After 14 days') }, { value: '30', label: t('After 30 days') },
+			{ value: '60', label: t('After 60 days') }, { value: '90', label: t('After 90 days') },
+			{ value: '180', label: t('After 180 days') }, { value: '365', label: t('After 365 days') },
+		]
+		const webSearchProviderOptions = [
+			{ value: 'duckduckgo', label: t('DuckDuckGo (free, no API key)') },
+			{ value: 'bing', label: t('Bing (free, no API key)') },
+			{ value: 'searxng', label: t('SearxNG (self-hosted)') },
+			{ value: 'brave', label: t('Brave Search (requires admin setup)') },
+			{ value: 'tavily', label: t('Tavily (requires admin setup)') },
+		]
 		const groqKey = ref('')
 		const customProviderKey = ref('')
 		const nextcloudApiToken = ref('')
@@ -1435,7 +1440,7 @@ export default {
 
 		const ocrEnabled = computed({ get: () => f.value.ocr_enabled === '1', set: value => { f.value.ocr_enabled = value ? '1' : '0' } })
 		return {
-			groqKey, customProviderKey, removeGroqKey, ocrEnabled, f, providerProfiles, status, health, healthLoading, statusTimer, limits, availableModels, embeddingModels, chatModels, embeddingInstalledHint, chatInstalledHint, modelLoading, modelError, checkOut, saving, checking, indexing, resetting, deletingChats, stopping, saved, loadError, message, validationErrors, resetConfirm, chatsDeleteConfirm,
+			groqKey, customProviderKey, removeGroqKey, ocrEnabled, f, providerProfiles, providerProfilesPlaceholder, chatProviderOptions, groqModelOptions, embeddingModelOptions, chatModelOptions, summaryModelOptions, chatRetentionOptions, webSearchProviderOptions, status, health, healthLoading, statusTimer, limits, availableModels, embeddingModels, chatModels, embeddingInstalledHint, chatInstalledHint, modelLoading, modelError, checkOut, saving, checking, indexing, resetting, deletingChats, stopping, saved, loadError, message, validationErrors, resetConfirm, chatsDeleteConfirm,
 			newExcludePath, excludeError, excludeList, actionsEnabled, backgroundActionsEnabled, notificationsEnabled, learningEnabled, safeCommandsEnabled, mailIndexEnabled, talkIndexEnabled, talkWriteEnabled, indexEnrolled, actionsDisabled, busy, indexingActive, settingsLocked, maxFileSizeMb,
 			isAdminMode, admin, userWebSearchEnabled, userWebSearchSafeSearch, userWebSearchImages, userWebSearchBrowser, userWebSearchFetchContent, webSearchKey, removeWebSearchKey, webSearchKeyStored, webSearchReady, savingAdmin, saveAdminSettings, loadAdminSettings,
 			connectors, connectorsLoading, connectorsBusy, connectorDraft, applyConnectorExample, saveConnector, removeConnector, discoverConnector, testConnector, plugins, pluginsLoading,
