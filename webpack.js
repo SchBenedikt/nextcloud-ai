@@ -36,7 +36,7 @@ module.exports = (env, argv) => {
 			// pattern also kept every `.map` and `.LICENSE.txt`, so a source map
 			// from a removed entry point survived every later build and stayed in
 			// the repository (issue #193). Build output is regenerated, never kept.
-			clean: { keep: /^header\.js$|^admin-settings|^15\.js$/ },
+			clean: { keep: /^header\.js$|^admin-settings|^\d+\.js(?:\.map)?$/ },
 		},
 		devtool: isProd ? 'source-map' : 'eval-cheap-module-source-map',
 		module: {
