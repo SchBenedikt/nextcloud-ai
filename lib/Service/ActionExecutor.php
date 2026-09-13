@@ -3172,7 +3172,11 @@ class ActionExecutor {
             if (!is_array($row)) continue;
             $endpoints = is_array($row['openapi']['endpoints'] ?? null) ? array_values(array_slice($row['openapi']['endpoints'], -1000)) : [];
             $prefix = 'connector_' . (string)$id;
-            $tokenConfigured = !empty($row['token_configured']) && $credentials->customValueConfigured($user, $prefix, 'api_key');
+            // Bearer tokens were historically stored in the generic api_key
+            // slot. Accept both that legacy slot and the explicit token slot
+            // so settings edits cannot make a valid connector look unauthenticated.
+            $tokenConfigured = $credentials->customValueConfigured($user, $prefix, 'token')
+                || $credentials->customValueConfigured($user, $prefix, 'api_key');
             $usernameConfigured = $credentials->customValueConfigured($user, $prefix, 'username');
             $passwordConfigured = $credentials->customValueConfigured($user, $prefix, 'password');
             $apiKeyConfigured = $credentials->customValueConfigured($user, $prefix, 'api_key');
@@ -3412,7 +3416,7 @@ class ActionExecutor {
         // Explicit credential removal can be added separately without making
         // ordinary connector edits silently break authentication.
         if (array_key_exists('token', $args) && trim((string)$args['token']) !== '') {
-            $credentials->saveCustom($user, 'connector_' . $id, trim((string)$args['token']));
+            $credentials->saveCustomValue($user, 'connector_' . $id, 'token', trim((string)$args['token']));
         }
         foreach (['username', 'password', 'api_key'] as $field) {
             if (array_key_exists($field, $args) && trim((string)$args[$field]) !== '') {
@@ -3617,7 +3621,14 @@ class ActionExecutor {
             if ($type === 'api_key' && !empty($row['api_key_configured'])) {
                 return [$this->normalizedApiKeyHeader($row) => $credentials->getCustomValue($user, $prefix, 'api_key')];
             }
-            if ($type === 'bearer' && !empty($row['token_configured'])) return ['Authorization' => 'Bearer ' . $credentials->getCustom($user, $prefix)];
+            if ($type === 'bearer') {
+                if ($credentials->customValueConfigured($user, $prefix, 'token')) {
+                    return ['Authorization' => 'Bearer ' . $credentials->getCustomValue($user, $prefix, 'token')];
+                }
+                if ($credentials->customValueConfigured($user, $prefix, 'api_key')) {
+                    return ['Authorization' => 'Bearer ' . $credentials->getCustomValue($user, $prefix, 'api_key')];
+                }
+            }
         } catch (\Throwable) { return []; }
         return [];
     }

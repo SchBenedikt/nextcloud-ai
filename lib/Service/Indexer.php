@@ -672,51 +672,34 @@ class Indexer {
         if ($depth > self::MAX_DEPTH) {
             return;
         }
-        // Directory listing order is provider-dependent and sorting each
-        // folder separately is not enough: an old root folder could hide a
-        // newer file in a later subtree. Collect only lightweight metadata,
-        // then sort the complete candidate set globally by modification time.
-        // File contents are still read and embedded one at a time below.
-        $files = [];
-        $collect = function (Folder $current, int $currentDepth, string $currentPath) use (&$collect, &$files, $excludePaths): void {
-            if ($currentDepth > self::MAX_DEPTH) {
-                return;
-            }
-            $nodes = $current->getDirectoryListing();
-            foreach ($nodes as $node) {
-                if ($node instanceof Folder) {
-                    $name = $node->getName();
-                    if (in_array($name, ['Thumbnails', '.appdata'], true) || str_starts_with($name, '.')) {
-                        continue;
-                    }
-                    $childPath = $currentPath === '' ? $name : $currentPath . '/' . $name;
-                    if ($this->isPathExcluded($childPath, $excludePaths)) {
-                        continue;
-                    }
-                    $collect($node, $currentDepth + 1, $childPath);
-                } elseif ($node instanceof File && !str_starts_with($node->getName(), '.')) {
-                    $files[] = [
-                        'id' => $node->getId(),
-                        'path' => $node->getPath(),
-                        'name' => $node->getName(),
-                        'size' => $node->getSize(),
-                        'mime' => $node->getMimeType(),
-                        'mtime' => method_exists($node, 'getMTime') ? (int)$node->getMTime() : 0,
-                    ];
+        // Never materialize the complete tree: the previous implementation
+        // recursively collected every file into one array before yielding the
+        // first item. On large Nextcloud homes that retained thousands of
+        // node objects and metadata for the entire run, appearing as a memory
+        // leak. Depth-first yielding keeps memory proportional to recursion
+        // depth and the bounded embedding batch.
+        foreach ($folder->getDirectoryListing() as $node) {
+            if ($node instanceof Folder) {
+                $name = $node->getName();
+                if (in_array($name, ['Thumbnails', '.appdata'], true) || str_starts_with($name, '.')) {
+                    continue;
                 }
+                $childPath = $relativePath === '' ? $name : $relativePath . '/' . $name;
+                if ($this->isPathExcluded($childPath, $excludePaths)) {
+                    continue;
+                }
+                yield from $this->collectFilesGenerator($node, $depth + 1, $childPath, $excludePaths);
+            } elseif ($node instanceof File && !str_starts_with($node->getName(), '.')) {
+                yield [
+                    'id' => $node->getId(),
+                    'path' => $node->getPath(),
+                    'name' => $node->getName(),
+                    'size' => $node->getSize(),
+                    'mime' => $node->getMimeType(),
+                    'mtime' => method_exists($node, 'getMTime') ? (int)$node->getMTime() : 0,
+                ];
             }
-        };
-        $collect($folder, $depth, $relativePath);
-        usort($files, static function (array $a, array $b): int {
-            if ($a['mtime'] !== $b['mtime']) {
-                return $b['mtime'] <=> $a['mtime'];
-            }
-            return strcasecmp((string)$a['path'], (string)$b['path']);
-        });
-        foreach ($files as $file) {
-            yield $file;
         }
-        return;
     }
 
     /**
@@ -1837,6 +1820,13 @@ class Indexer {
             }
         }
         $batch = [];
+        // Office/PDF parsers and HTTP JSON decoding can create cyclic
+        // temporary graphs. PHP's reference-counting normally reclaims them,
+        // but a long-lived Nextcloud worker benefits from an explicit cycle
+        // collection at the same bounded batch boundary.
+        if (function_exists('gc_collect_cycles')) {
+            gc_collect_cycles();
+        }
     }
 
     /** Remove staged replacement documents without touching their old versions. */
