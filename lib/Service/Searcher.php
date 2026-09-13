@@ -44,7 +44,8 @@ class Searcher {
         // explicitly selected a cloud embedding model as well.
         $chatModel = strtolower(trim($this->config->get('chat_model')));
         $embeddingModel = strtolower(trim($this->config->get('embedding_model')));
-        $cloudChatWithLocalEmbedding = $this->config->get('chat_provider') === 'ollama'
+        $cloudChatWithLocalEmbedding = $this->config->userId() !== null
+            && $this->config->get('chat_provider') === 'ollama'
             && str_ends_with($chatModel, ':cloud')
             && !str_ends_with($embeddingModel, ':cloud');
         $queryVector = null;
