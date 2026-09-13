@@ -1432,7 +1432,7 @@ export default {
 .indexing-banner { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-bottom: 4px; padding: 13px 14px; border: 1px solid color-mix(in srgb, var(--color-primary-element) 42%, var(--color-border)); background: color-mix(in srgb, var(--color-primary-element) 7%, var(--color-main-background)); }
 .indexing-banner strong, .indexing-banner span { display: block; }
 .indexing-banner span { margin-top: 3px; color: var(--color-text-maxcontrast); font-size: 12px; }
-.settings-section { padding: 24px 20px; border:1px solid var(--color-border); border-radius:var(--border-radius-large); background:color-mix(in srgb,var(--color-main-background) 96%,var(--color-background-hover)); scroll-margin-top:64px; box-shadow:0 2px 8px color-mix(in srgb,var(--color-main-text) 5%,transparent); }
+.settings-section { padding: 24px 20px; border:1px solid var(--color-border); border-radius:var(--border-radius-large); background:color-mix(in srgb,var(--color-main-background) 96%,var(--color-background-hover)); scroll-margin-top:64px; }
 .settings-section:first-child { padding-top: 0; }
 .settings-section:last-child { border-bottom: 0; }
 .section-heading { display: flex; align-items: flex-start; gap: 12px; margin-bottom: 20px; }
@@ -1489,7 +1489,7 @@ export default {
 .briefing-editor { display:grid; gap:12px; margin-top:16px; }
 .briefing-empty { display:flex; flex-direction:column; gap:3px; padding:18px; border:1px dashed var(--color-border); border-radius:10px; text-align:center; color:var(--color-text-maxcontrast); font-size:12px; }
 .briefing-empty strong { color:var(--color-main-text); font-size:13px; }
-.briefing-card { padding:14px; border:1px solid var(--color-border); border-radius:11px; background:var(--color-main-background); box-shadow:0 1px 2px color-mix(in srgb,var(--color-main-text) 5%,transparent); }
+.briefing-card { padding:14px; border:1px solid var(--color-border); border-radius:11px; background:var(--color-main-background); }
 .briefing-card-top,.briefing-card-actions,.briefing-form-actions { display:flex; align-items:center; justify-content:space-between; gap:10px; }
 .briefing-time { display:flex; align-items:baseline; gap:10px; }
 .briefing-time span { font-size:20px; font-weight:750; letter-spacing:-.03em; }
