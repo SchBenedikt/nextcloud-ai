@@ -3149,7 +3149,7 @@ class ActionExecutor {
         foreach ($this->connectorRows() as $id => $row) {
             if (!is_array($row)) continue;
             $endpoints = is_array($row['openapi']['endpoints'] ?? null) ? array_values(array_slice($row['openapi']['endpoints'], -1000)) : [];
-            $out[] = ['id' => (string)$id, 'name' => (string)($row['name'] ?? $id), 'base_url' => (string)($row['base_url'] ?? ''), 'auth_type' => (string)($row['auth_type'] ?? (!empty($row['token_configured']) ? 'bearer' : 'none')), 'token_configured' => !empty($row['token_configured']), 'username_configured' => !empty($row['username_configured']), 'password_configured' => !empty($row['password_configured']), 'api_key_configured' => !empty($row['api_key_configured']), 'api_key_header' => (string)($row['api_key_header'] ?? 'X-API-Key'), 'updated_at' => (int)($row['updated_at'] ?? 0), 'discovered_endpoint_count' => count($endpoints), 'learned_endpoints' => $endpoints, 'openapi_updated_at' => (int)($row['openapi']['updated_at'] ?? 0)];
+            $out[] = ['id' => (string)$id, 'name' => (string)($row['name'] ?? $id), 'base_url' => (string)($row['base_url'] ?? ''), 'openapi_url' => (string)($row['openapi_url'] ?? ''), 'auth_type' => (string)($row['auth_type'] ?? (!empty($row['token_configured']) ? 'bearer' : 'none')), 'token_configured' => !empty($row['token_configured']), 'username_configured' => !empty($row['username_configured']), 'password_configured' => !empty($row['password_configured']), 'api_key_configured' => !empty($row['api_key_configured']), 'api_key_header' => (string)($row['api_key_header'] ?? 'X-API-Key'), 'updated_at' => (int)($row['updated_at'] ?? 0), 'discovered_endpoint_count' => count($endpoints), 'learned_endpoints' => $endpoints, 'openapi_updated_at' => (int)($row['openapi']['updated_at'] ?? 0)];
         }
         return ['ok' => true, 'result' => ['connectors' => $out]];
     }
@@ -3184,7 +3184,10 @@ class ActionExecutor {
             // addresses even when the connector was explicitly allow-listed.
             // There are no vendor-specific adapters; any service publishing a
             // standard OpenAPI/Swagger document is learned the same way.
-            $candidates = ['/api/v2.0', '/openapi.json', '/swagger.json', '/.well-known/openapi.json', '/api/open-api', '/api/openapi.json', '/api/swagger.json', '/docs/openapi.json', '/api/docs/openapi.json', '/api/v2.0/docs'];
+            $candidates = [];
+            $customSchema = trim((string)($row['openapi_url'] ?? ''));
+            if ($customSchema !== '' && $this->sameConnectorHost($customSchema, (string)$row['base_url'])) $candidates[] = $customSchema;
+            $candidates = array_merge($candidates, ['/api/v2.0', '/openapi.json', '/swagger.json', '/.well-known/openapi.json', '/api/open-api', '/api/openapi.json', '/api/swagger.json', '/docs/openapi.json', '/api/docs/openapi.json', '/api/v2.0/docs']);
             // Some services advertise their schema only as a link in the
             // landing page. Extract same-host JSON/YAML documentation links
             // without trusting arbitrary external URLs or executing them.
@@ -3212,7 +3215,7 @@ class ActionExecutor {
             }
             $authDiscoveryStatus = 0;
             foreach ($found === null ? array_slice(array_values(array_unique($candidates)), 0, 20) : [] as $candidate) {
-                $url = rtrim((string)$row['base_url'], '/') . $candidate; if (!$this->safeConnectorUrl($url)) continue;
+                $url = preg_match('~^https?://~i', $candidate) ? $candidate : rtrim((string)$row['base_url'], '/') . $candidate; if (!$this->safeConnectorUrl($url)) continue;
                 [$status, $body] = $this->connectorCurlGet($url, $headers, 4);
                 if ($status === 401 || $status === 403) $authDiscoveryStatus = $status;
                 if ($status < 200 || $status >= 300) continue;
@@ -3351,7 +3354,9 @@ class ActionExecutor {
         $rows = $this->connectorRows();
         $previous = is_array($rows[$id] ?? null) ? $rows[$id] : [];
         $authType = in_array((string)($args['auth_type'] ?? ($previous['auth_type'] ?? 'bearer')), ['none', 'bearer', 'basic', 'api_key'], true) ? (string)($args['auth_type'] ?? ($previous['auth_type'] ?? 'bearer')) : 'bearer';
-        $rows[$id] = ['name' => mb_substr($name, 0, 120), 'base_url' => $base, 'auth_type' => $authType,
+        $schemaUrl = trim((string)($args['openapi_url'] ?? ($previous['openapi_url'] ?? '')));
+        if ($schemaUrl !== '' && (!$this->safeConnectorUrl($schemaUrl) || !$this->sameConnectorHost($schemaUrl, $base))) return ['ok' => false, 'error' => 'The OpenAPI URL must use the same host as the connector base URL.'];
+        $rows[$id] = ['name' => mb_substr($name, 0, 120), 'base_url' => $base, 'openapi_url' => $schemaUrl, 'auth_type' => $authType,
             'token_configured' => isset($args['token']) && trim((string)$args['token']) !== '' ? true : !empty($previous['token_configured']),
             'username_configured' => isset($args['username']) && trim((string)$args['username']) !== '' ? true : !empty($previous['username_configured']),
             'password_configured' => isset($args['password']) && trim((string)$args['password']) !== '' ? true : !empty($previous['password_configured']),
@@ -3489,6 +3494,14 @@ class ActionExecutor {
         // For hostnames gethostbyname() must resolve (the `$ip !== $host`
         // condition); literal public IP addresses are already validated above.
         return filter_var($ip, FILTER_VALIDATE_IP, FILTER_FLAG_NO_PRIV_RANGE | FILTER_FLAG_NO_RES_RANGE) !== false;
+    }
+
+    private function sameConnectorHost(string $candidate, string $base): bool {
+        $candidateParts = parse_url($candidate);
+        $baseParts = parse_url($base);
+        if (!is_array($candidateParts) || !is_array($baseParts)) return false;
+        return strtolower((string)($candidateParts['host'] ?? '')) === strtolower((string)($baseParts['host'] ?? ''))
+            && (int)($candidateParts['port'] ?? (($candidateParts['scheme'] ?? '') === 'https' ? 443 : 80)) === (int)($baseParts['port'] ?? (($baseParts['scheme'] ?? '') === 'https' ? 443 : 80));
     }
 
     private function expandConnectorPath(string $template, array $params): ?string {

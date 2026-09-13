@@ -736,6 +736,7 @@ OC.L10N.register("eva_ai", {
     "API key": "API key",
     "API key (optional)": "API key (optional)",
     "API key header": "API key header",
+    "OpenAPI / Swagger URL (optional)": "OpenAPI / Swagger URL (optional)",
     "Authentication": "Authentication",
     "Bearer token": "Bearer token",
     "None": "None",
