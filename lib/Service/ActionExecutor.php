@@ -3120,6 +3120,17 @@ class ActionExecutor {
             if ($rootProbeStatus === 0) {
                 return ['ok' => false, 'error' => 'Connector host is unreachable from the Nextcloud server. Check DNS, routing, VPN and firewall settings.'];
             }
+            // Browser-oriented services (including Immich) may return 406 to
+            // an API-style Accept header while serving their landing page as
+            // HTML. Retry that one probe with a browser Accept value so the
+            // service can still identify itself without a vendor preset.
+            if ($rootProbeStatus === 406) {
+                [$htmlStatus, $htmlBody] = $this->connectorCurlGet(rtrim((string)$row['base_url'], '/') . '/', ['Accept' => 'text/html,application/xhtml+xml'], 4);
+                if ($htmlStatus >= 200 && $htmlStatus < 400 && $htmlBody !== '') {
+                    $rootProbeStatus = $htmlStatus;
+                    $rootProbeBody = $htmlBody;
+                }
+            }
             // Probe standard schema locations uniformly. Using curl here is
             // intentional: Nextcloud's HTTP client can reject private/LAN
             // addresses even when the connector was explicitly allow-listed.
