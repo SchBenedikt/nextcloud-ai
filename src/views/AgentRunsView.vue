@@ -22,6 +22,10 @@
 					<span v-if="item.status === 'pending' && item.queuedFor">Queued: {{ Math.floor(item.queuedFor / 60) }}m {{ item.queuedFor % 60 }}s</span>
 					<span v-if="item.deadline">Deadline: {{ formatDate(item.deadline) }}</span>
 				</div>
+				<details v-if="item.toolHistory && item.toolHistory.length" class="agent-run__trace">
+					<summary>Execution trace ({{ item.toolHistory.length }})</summary>
+					<ol><li v-for="(step, index) in item.toolHistory" :key="index"><time>{{ formatDate(step.at) }}</time><strong>{{ step.tool }}</strong><span>{{ step.phase }}</span></li></ol>
+				</details>
 				<p v-if="item.error" class="agent-run__error">{{ item.error }}</p>
 				<details v-if="item.status === 'completed' && item.answer" class="agent-run__answer"><summary>Result</summary><div>{{ item.answer }}</div></details>
 				<div class="agent-run__actions">
@@ -84,6 +88,7 @@ button { border:0; border-radius:var(--border-radius-large); padding:8px 14px; c
 .agent-run__status { text-transform:capitalize; font-weight:600; color:var(--color-primary-element); } .agent-run--failed .agent-run__status { color:var(--color-error); }
 .agent-run__progress { height:6px; margin:14px 0; border-radius:4px; background:var(--color-background-dark); overflow:hidden; } .agent-run__progress span { display:block; height:100%; background:var(--color-primary-element); transition:width .25s; }
 .agent-run__meta { display:flex; flex-wrap:wrap; gap:8px 18px; color:var(--color-text-maxcontrast); font-size:13px; } .agent-run__error { margin:12px 0 0; color:var(--color-error); white-space:pre-wrap; }
+.agent-run__trace { margin-top:14px; border-top:1px solid var(--color-border); padding-top:10px; font-size:12px; } .agent-run__trace summary { cursor:pointer; color:var(--color-primary-element); font-weight:600; } .agent-run__trace ol { display:grid; gap:6px; margin:10px 0 0; padding-left:20px; } .agent-run__trace li { display:grid; grid-template-columns:145px minmax(0,1fr) auto; gap:8px; align-items:baseline; } .agent-run__trace time,.agent-run__trace span { color:var(--color-text-maxcontrast); }
 .agent-run__actions { display:flex; gap:8px; margin-top:16px; } .agent-run__actions .danger { background:var(--color-error); }
 @media (max-width:700px) { .agent-runs { padding:24px 16px; } .agent-runs__header { flex-direction:column; } }
 </style>

@@ -86,6 +86,7 @@ final class BackgroundChatQueue {
                     'message' => mb_strimwidth((string)($completed['message'] ?? ''), 0, 240, '…'),
                     'answer' => mb_strimwidth((string)($answer ?? ''), 0, 1000, '…'),
                     'status' => 'completed', 'created' => (int)($completed['created'] ?? time()), 'finishedAt' => time(),
+                    'toolHistory' => array_values(array_slice(is_array($completed['toolHistory'] ?? null) ? $completed['toolHistory'] : [], -50)),
                 ];
                 $this->writeHistory($user, array_slice($history, -self::MAX_HISTORY_RUNS));
             }
@@ -114,6 +115,7 @@ final class BackgroundChatQueue {
                     'error' => mb_strimwidth((string)($item['error'] ?? ''), 0, 500, '…'),
                     'phase' => in_array(($item['phase'] ?? ''), ['queued', 'model', 'tool', 'finalizing'], true) ? (string)$item['phase'] : 'queued',
                     'tool' => mb_strimwidth((string)($item['tool'] ?? ''), 0, 100, '…'),
+                    'toolHistory' => array_values(array_slice(is_array($item['toolHistory'] ?? null) ? $item['toolHistory'] : [], -50)),
                     'updatedAt' => max(0, (int)($item['updatedAt'] ?? $item['claimedAt'] ?? $item['created'] ?? 0)),
                     'steps' => max(0, (int)($item['steps'] ?? 0)),
                     'deadline' => max(0, (int)($item['deadline'] ?? 0)),
@@ -129,6 +131,7 @@ final class BackgroundChatQueue {
                     'answer' => mb_strimwidth((string)($item['answer'] ?? ''), 0, 1000, '…'), 'error' => '',
                     'phase' => 'completed', 'tool' => '', 'updatedAt' => max(0, (int)($item['finishedAt'] ?? 0)),
                     'steps' => 0, 'deadline' => 0, 'finishedAt' => max(0, (int)($item['finishedAt'] ?? 0)),
+                    'toolHistory' => array_values(array_slice(is_array($item['toolHistory'] ?? null) ? $item['toolHistory'] : [], -50)),
                 ];
             }
             usort($out, static fn(array $a, array $b): int => ((int)($b['updatedAt'] ?? $b['created'] ?? 0)) <=> ((int)($a['updatedAt'] ?? $a['created'] ?? 0)));
@@ -142,6 +145,11 @@ final class BackgroundChatQueue {
         $this->mutate($user, function (array $items) use ($id, $phase, $tool): array {
             foreach ($items as &$item) if (($item['id'] ?? '') === $id && ($item['status'] ?? '') === 'running') {
                 $item['phase'] = $phase; $item['tool'] = $tool !== null ? mb_substr($tool, 0, 100) : ''; $item['updatedAt'] = time();
+                if ($tool !== null && trim($tool) !== '') {
+                    $history = is_array($item['toolHistory'] ?? null) ? $item['toolHistory'] : [];
+                    $history[] = ['tool' => mb_substr($tool, 0, 100), 'phase' => $phase, 'at' => time()];
+                    $item['toolHistory'] = array_slice($history, -50);
+                }
                 if ($phase === 'tool') $item['steps'] = (int)($item['steps'] ?? 0) + 1;
             }
             unset($item); return $items;
