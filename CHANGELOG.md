@@ -4,6 +4,21 @@ All notable changes to **EVA (eva_ai)** are documented here.
 Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); the project
 follows [Semantic Versioning](https://semver.org/).
 
+## [1.16.0] - 2026-09-13
+
+### Added
+
+- **Multiple AI provider profiles:** configure up to 20 OpenAI-compatible
+  endpoints with independent IDs, names and models, then select them directly
+  in EVA Settings. API keys remain encrypted per user and are never returned
+  in settings or exports.
+- Provider profile validation, documentation and localized settings labels.
+
+### Fixed
+
+- Background agent runs now reschedule themselves while work remains, and the
+  status poll wakes a missed worker tick so queued messages continue promptly.
+
 ## [1.12.0] - 2026-09-12
 
 ### Added
