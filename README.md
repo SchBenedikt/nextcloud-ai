@@ -251,3 +251,6 @@ See [docs/SECURITY.md](docs/SECURITY.md) for details.
 [AGPL-3.0-or-later](https://www.gnu.org/licenses/agpl-3.0.html)
 
 *Bugs & feature requests:* https://github.com/SchBenedikt/nextcloud-ai/issues
+See [`docs/TERMINAL_TOOLS.md`](docs/TERMINAL_TOOLS.md) for the confirmed
+terminal-command workflow and [`docs/PLUGIN_API.md`](docs/PLUGIN_API.md) for
+third-party EVA extensions.

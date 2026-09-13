@@ -1,5 +1,8 @@
 # EVA tool plugins
 
+For the built-in confirmed terminal tools and their safety model, see
+[`TERMINAL_TOOLS.md`](TERMINAL_TOOLS.md).
+
 Other Nextcloud apps can add tools to EVA without changing the EVA source.
 Register an event listener for `OCA\EvaAi\Event\ToolPluginRegisterEvent` and
 call `$event->registry->register(new YourPlugin())`.
