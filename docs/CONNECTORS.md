@@ -25,6 +25,11 @@ for a new connector. Existing credentials and an explicit choice are never
 overwritten. Immich's schema-free fallback automatically selects the usual
 `x-api-key` header when no credential has been stored yet.
 
+OpenAPI `servers.url` prefixes are honored, including safe templated paths such
+as `/api/{version}` when the document supplies a default variable value. EVA
+never interpolates an unvalidated value or allows the schema to redirect the
+connector to another host.
+
 Services that publish only GraphQL are supported too. EVA probes `/graphql`
 and `/api/graphql` with a safe GET; a normal `405` response is enough to learn
 the route without executing a query. Discovery records a confirmation-gated

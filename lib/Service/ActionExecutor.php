@@ -3808,15 +3808,7 @@ class ActionExecutor {
                 // OpenAPI 3 declares the mounted API prefix in servers.url;
                 // Swagger 2 uses basePath. Honour only a path component so a
                 // malicious schema cannot redirect calls to another host.
-                $declaredPrefix = '';
-                if (is_array($found['servers'] ?? null) && is_array($found['servers'][0] ?? null)) {
-                    $serverUrl = (string)($found['servers'][0]['url'] ?? '');
-                    $serverParts = parse_url($serverUrl);
-                    $declaredPrefix = (string)($serverParts['path'] ?? '');
-                }
-                if ($declaredPrefix === '') $declaredPrefix = (string)($found['basePath'] ?? '');
-                $declaredPrefix = '/' . trim($declaredPrefix, '/');
-                if ($declaredPrefix === '/') $declaredPrefix = '';
+                $declaredPrefix = $this->connectorSchemaPrefix($found, $schemaPrefix);
                 $prefix = $declaredPrefix !== '' ? $declaredPrefix : $schemaPrefix;
                 $routePath = $prefix !== '' && !str_starts_with($path, $prefix . '/') && $path !== $prefix
                     ? $prefix . $path : $path;
@@ -3868,6 +3860,38 @@ class ActionExecutor {
             } catch (\Throwable) { return null; }
         }
         return null;
+    }
+
+    /** Resolve a safe path prefix from OpenAPI servers.url/basePath metadata. */
+    private function connectorSchemaPrefix(array $document, string $fallback = ''): string {
+        $prefix = '';
+        $server = is_array($document['servers'][0] ?? null) ? $document['servers'][0] : null;
+        if ($server !== null) {
+            $serverUrl = (string)($server['url'] ?? '');
+            $serverParts = parse_url($serverUrl);
+            $prefix = (string)($serverParts['path'] ?? '');
+            $variables = is_array($server['variables'] ?? null) ? $server['variables'] : [];
+            $invalidVariable = false;
+            // OpenAPI permits templated server paths such as /api/{version}.
+            // Resolve only declared defaults and never interpolate arbitrary
+            // user-provided values into connector URLs.
+            $prefix = preg_replace_callback('/\{([A-Za-z][A-Za-z0-9_-]{0,63})\}/', static function (array $match) use ($variables, &$invalidVariable): string {
+                $variable = $variables[$match[1]] ?? null;
+                $default = is_array($variable) ? trim((string)($variable['default'] ?? '')) : '';
+                if (preg_match('/^[A-Za-z0-9._~-]{1,80}$/D', $default) !== 1) {
+                    $invalidVariable = true;
+                    return '';
+                }
+                return $default;
+            }, $prefix) ?? '';
+            if ($invalidVariable) $prefix = '';
+        }
+        if ($prefix === '') $prefix = (string)($document['basePath'] ?? '');
+        $prefix = '/' . trim($prefix, '/');
+        if ($prefix === '/' || str_contains($prefix, '..') || preg_match('/[\r\n?#]/', $prefix) || mb_strlen($prefix) > 200) {
+            $prefix = '';
+        }
+        return $prefix !== '' ? $prefix : $fallback;
     }
 
     /** @return array{path:string,method:string,operation_id:string,request_body:array}|null */

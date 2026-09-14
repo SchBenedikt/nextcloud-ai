@@ -306,6 +306,24 @@ final class OpenIssuesPendingContractTest extends TestCase {
         self::assertStringContainsString('prompt-answer', (string)($result['result']['results'][0]['result']['output'] ?? ''));
     }
 
+    public function testConnectorOpenApiServerVariablesResolveSafeRoutePrefix(): void {
+        $reflection = new \ReflectionClass(ActionExecutor::class);
+        $instance = $reflection->newInstanceWithoutConstructor();
+        $method = $reflection->getMethod('connectorSchemaPrefix');
+        self::assertSame('/api/v1', $method->invoke($instance, [
+            'servers' => [[
+                'url' => 'https://service.example/api/{version}',
+                'variables' => ['version' => ['default' => 'v1']],
+            ]],
+        ], ''));
+        self::assertSame('/fallback', $method->invoke($instance, [
+            'servers' => [[
+                'url' => 'https://service.example/api/{version}',
+                'variables' => ['version' => ['default' => '../escape']],
+            ]],
+        ], '/fallback'));
+    }
+
     public function testSafeCommandUsesBoundedNonBlockingProcessHandling(): void {
         $reflection = new \ReflectionClass(ActionExecutor::class);
         $instance = $reflection->newInstanceWithoutConstructor();
