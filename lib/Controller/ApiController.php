@@ -981,10 +981,19 @@ class ApiController extends OCSController {
     public function plugins(): DataResponse {
         $user = $this->requireUser();
         if ($user === null) return new DataResponse(['error' => 'Not logged in'], 401);
-        return new DataResponse(['plugins' => array_values(array_filter(
-            $this->executor->pluginCatalog(),
-            static fn(array $tool): bool => str_starts_with((string)($tool['name'] ?? ''), 'plugin_')
-        ))]);
+        // The plugin catalog is optional UI metadata. A third-party plugin
+        // must never make the EVA app page fail while the built-in tools and
+        // chat remain available. Registration already isolates plugin events;
+        // keep the same failure boundary around catalog/schema generation.
+        try {
+            $plugins = array_values(array_filter(
+                $this->executor->pluginCatalog(),
+                static fn(array $tool): bool => str_starts_with((string)($tool['name'] ?? ''), 'plugin_')
+            ));
+        } catch (\Throwable) {
+            $plugins = [];
+        }
+        return new DataResponse(['plugins' => $plugins]);
     }
 
     #[NoAdminRequired]
