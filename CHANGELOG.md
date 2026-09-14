@@ -51,6 +51,12 @@ follows [Semantic Versioning](https://semver.org/).
 
 - Add `core:contextagent:audio-interaction` by routing bounded voice input through the existing confirmation-aware EVA agent, then returning a spoken response and action metadata.
 
+## [1.16.89] - 2026-09-14
+
+### Multimodal ContextAgent
+
+- Add `core:contextagent:multimodal-interaction` with bounded, permission-checked image attachments while preserving EVA's confirmation workflow.
+
 ## [1.16.81] - 2026-09-14
 
 ### OCR in Assistant tasks

@@ -16,7 +16,7 @@ lib/
   Migration/        Database migrations (schema + repair)
   Notification/     Notifier — "AI answer ready" bell notifications
   Service/          Core services (see below)
-  TaskProcessing/   27 providers for the Assistant app
+  TaskProcessing/   28 providers for the Assistant app
 ```
 
 ## Core services (`lib/Service/`)

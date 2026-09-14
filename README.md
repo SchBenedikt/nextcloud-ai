@@ -70,7 +70,7 @@ Mutating and destructive actions always require explicit **Confirm and run** —
 
 ### TaskProcessing Providers
 
-27 providers for the Nextcloud Assistant app: chat, summary, headline, topics, translate, reformulate, proofread, reformat, improve, simplify, formalize, emoji generation, image analysis, image generation, audio transcription, subtitles, speech generation, audio translation, audio chat, multimodal tool chat, ContextAgent audio, OCR, change tone, context write, and more. Text and vision tasks use the configured Ollama or OpenAI-compatible provider; image/audio tasks use configured OpenAI-compatible endpoints; OCR runs locally with the optional Tesseract integration.
+28 providers for the Nextcloud Assistant app: chat, summary, headline, topics, translate, reformulate, proofread, reformat, improve, simplify, formalize, emoji generation, image analysis, image generation, audio transcription, subtitles, speech generation, audio translation, audio chat, multimodal tool chat, ContextAgent audio, multimodal ContextAgent, OCR, change tone, context write, and more. Text and vision tasks use the configured Ollama or OpenAI-compatible provider; image/audio tasks use configured OpenAI-compatible endpoints; OCR runs locally with the optional Tesseract integration.
 
 ### Talk Integration
 

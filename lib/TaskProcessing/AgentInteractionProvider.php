@@ -57,7 +57,7 @@ class AgentInteractionProvider implements ISynchronousProvider {
 		private Ollama $ollama,
 		private ActionExecutor $executor,
 		private AgentStore $store,
-		private IL10N $l,
+		protected IL10N $l,
 		private LoggerInterface $logger,
 		private TalkContextReader $talkContextReader,
 		private TalkTranscriptService $talkTranscripts,
@@ -212,6 +212,7 @@ class AgentInteractionProvider implements ISynchronousProvider {
 			}
 		}
 		$messages[] = ['role' => 'user', 'content' => $prompt];
+		$this->attachInputImages($messages, $userId, $input['input_attachments'] ?? []);
 
 		// RAG: Vektor-Suche in indexierten Dateien - Kontext injizieren
 		// Proposal calls are intentionally visible to the model so the native
@@ -273,6 +274,32 @@ class AgentInteractionProvider implements ISynchronousProvider {
 			$result['actions'] = '';
 		}
 		return $result;
+	}
+
+	/** Attach bounded, permission-checked images for multimodal ContextAgent tasks. */
+	private function attachInputImages(array &$messages, string $userId, mixed $raw): void {
+		if (!is_array($raw)) return;
+		$images = [];
+		$mimes = [];
+		$total = 0;
+		foreach (array_slice($raw, 0, 4) as $value) {
+			$id = is_numeric($value) ? (int)$value : 0;
+			if ($id <= 0) continue;
+			$node = $this->rootFolder->getUserFolder($userId)->getById($id)[0] ?? null;
+			if (!$node instanceof \OCP\Files\File) continue;
+			$mime = strtolower((string)$node->getMimeType());
+			$size = (int)$node->getSize();
+			if (!str_starts_with($mime, 'image/') || $size <= 0 || $size > 6_000_000 || $total + $size > 12_000_000) continue;
+			$bytes = (string)$node->getContent();
+			if ($bytes === '' || strlen($bytes) > 6_000_000) continue;
+			$images[] = base64_encode($bytes);
+			$mimes[] = $mime;
+			$total += strlen($bytes);
+		}
+		if ($images !== []) {
+			$messages[count($messages) - 1]['images'] = $images;
+			$messages[count($messages) - 1]['image_mimes'] = $mimes;
+		}
 	}
 
 	/** @return array{0: array<int,array{name:string,args:array}>, 1: string} */
