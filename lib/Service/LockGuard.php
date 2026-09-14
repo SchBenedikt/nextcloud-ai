@@ -70,13 +70,25 @@ class LockGuard {
             throw new LockedException($lockPath);
         }
 
-        // Only a row whose TTL has already passed may be removed. A live
-        // worker refreshes the TTL on acquire but not while it runs for a long
-        // time, so the staleness check above is the actual safety boundary.
+        // Normally only a row whose TTL has already passed may be removed. A
+        // cancelled/idle run is the safe exception: upgrades and explicit
+        // cancellation leave a durable stop marker, while a crashed worker
+        // can leave a future-TTL row behind. Keeping that row would produce a
+        // 409 for the rest of its TTL even though no worker is active.
         $qb = $this->db->getQueryBuilder();
+        $expired = $qb->expr()->lt('ttl', $qb->createNamedParameter(time(), IQueryBuilder::PARAM_INT));
+        $started = (int)$this->config->get('index_started');
+        $cancelledIdle = $this->config->get('index_running') !== '1'
+            && $this->config->get('index_cancel_requested') === '1'
+            // Leave a short grace period for a worker that has acquired the
+            // lock but has not persisted its running state yet.
+            && ($started <= 0 || time() - $started > 120);
+        $reclaimable = $cancelledIdle
+            ? $qb->expr()->orX($expired, $qb->expr()->gte('ttl', $qb->createNamedParameter(time(), IQueryBuilder::PARAM_INT)))
+            : $expired;
         $qb->delete('file_locks')
             ->where($qb->expr()->eq('key', $qb->createNamedParameter($lockPath)))
-            ->andWhere($qb->expr()->lt('ttl', $qb->createNamedParameter(time(), IQueryBuilder::PARAM_INT)));
+            ->andWhere($reclaimable);
         $qb->executeStatement();
 
         // If another worker grabbed the lock between our delete and retry, the

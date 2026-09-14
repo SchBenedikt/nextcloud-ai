@@ -203,6 +203,8 @@ final class OpenIssuesSecurityRegressionTest extends TestCase {
         $guard = (string)file_get_contents(__DIR__ . '/../lib/Service/LockGuard.php');
         self::assertStringContainsString("'eva_ai/index/'", $guard);
         self::assertStringContainsString('substr(hash(\'sha256\', $userId), 0, 40)', $guard);
+		self::assertStringContainsString("index_cancel_requested') === '1'", $guard);
+		self::assertStringContainsString('time() - $started > 120', $guard);
 
         $requestJob = (string)file_get_contents(__DIR__ . '/../lib/BackgroundJob/IndexRequestJob.php');
         self::assertStringContainsString('$this->indexer->run($userId', $requestJob);
