@@ -809,7 +809,8 @@
         "None": "Keine",
         "Password (optional)": "Passwort (optional)",
         "Username (optional)": "Benutzername (optional)",
-        "Username and password": "Benutzername und Passwort"
+        "Username and password": "Benutzername und Passwort",
+        "EVA indexed files": "EVA-indexierte Dateien"
     },
     "pluralForm": "nplurals=2; plural=(n != 1);"
 }

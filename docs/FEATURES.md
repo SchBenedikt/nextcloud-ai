@@ -38,6 +38,12 @@ selected, already-indexed files and are not supplemented by other index hits.
 This makes the feature suitable for comparing multiple documents or summarising a
 specific folder.
 
+EVA also registers a native Unified Search provider. Global Nextcloud searches
+match indexed file names, paths, and bounded text snippets without starting an
+AI request. Results are limited to the signed-in user's file-source documents,
+re-checked against the live VFS permissions, and link back to the original file.
+Mail and Talk index rows are never presented as Files search results.
+
 For agent workflows, the same live Nextcloud home is available through bounded
 tools: `list_files`, `search_files`, `read_file`, `read_files`, and
 `extract_file_text` discover and read content; `create_file`/`create_files`,

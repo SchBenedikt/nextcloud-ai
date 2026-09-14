@@ -65,6 +65,7 @@ Eva can perform actions directly within Nextcloud:
 - **Shares** — List, create, update, delete link/user/group shares
 - **Tasks** — List, create, update, complete, delete (VTODO)
 - **Profile** — Read and update your Nextcloud profile
+- **Unified Search** — Search indexed file content from Nextcloud's global search and open the original file directly
 
 Mutating and destructive actions always require explicit **Confirm and run** — the model never executes changes directly.
 

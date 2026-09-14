@@ -74,6 +74,9 @@ class Application extends App implements IBootstrap {
         $context->registerTaskProcessingProvider(\OCA\EvaAi\TaskProcessing\MultimodalChatWithToolsProvider::class);
         $context->registerTaskProcessingProvider(\OCA\EvaAi\TaskProcessing\ContextAgentAudioProvider::class);
         $context->registerTaskProcessingProvider(\OCA\EvaAi\TaskProcessing\MultimodalContextAgentProvider::class);
+        // Native Unified Search: expose bounded, permission-checked matches
+        // from EVA's indexed file knowledge without invoking an AI model.
+        $context->registerSearchProvider(\OCA\EvaAi\Search\EvaSearchProvider::class);
         // Talk-Bot: reagiert auf BotInvokeEvent, wenn Nextcloud Talk installiert ist.
         $context->registerEventListener(\OCA\Talk\Events\BotInvokeEvent::class, \OCA\EvaAi\Listener\TalkBotListener::class);
         // GDPR-Erasure: Kontenloeschung raeumt alle eva_ai-Daten des Users ab (Issue #83).

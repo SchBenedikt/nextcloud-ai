@@ -97,7 +97,7 @@ class ChunkMapper extends QBMapper {
      * @param string[] $tokens
      * @return array<int,array<string,mixed>>
      */
-    public function filterChunksByTokens(string $userId, array $tokens, int $cap): array {
+    public function filterChunksByTokens(string $userId, array $tokens, int $cap, ?string $source = null): array {
         if ($tokens === []) {
             // Empty token list: a lexical filter has nothing to match against.
             // Return a bounded page instead of the full index (Issue #13).
@@ -108,6 +108,9 @@ class ChunkMapper extends QBMapper {
             ->from('eva_ai_chunks', 'c')
             ->innerJoin('c', 'eva_ai_documents', 'd', $qb->expr()->eq('c.document_id', 'd.id'))
             ->where($qb->expr()->eq('d.user_id', $qb->createNamedParameter($userId)));
+        if ($source !== null && $source !== '') {
+            $qb->andWhere($qb->expr()->eq('d.source', $qb->createNamedParameter($source)));
+        }
         $like = $qb->expr()->orX();
         foreach (array_slice($tokens, 0, 12) as $tok) {
             $like->add($qb->expr()->like('c.content', $qb->createNamedParameter('%' . $tok . '%')));

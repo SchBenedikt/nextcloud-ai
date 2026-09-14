@@ -11,6 +11,7 @@ lib/
   BackgroundJob/    IndexJob — periodic background indexing
   Command/          occ commands (Index, Reset, Mounts, Tool, TalkSetup)
   Controller/       PageController (UI), ApiController (REST API)
+  Search/           Native Unified Search provider for the EVA file index
   Db/               Entities + mappers (Document, Chunk)
   Listener/         TalkBotListener — reacts to Talk BotInvokeEvent
   Migration/        Database migrations (schema + repair)
@@ -37,6 +38,7 @@ lib/
 | `ChatStore` | Chat history persistence in Nextcloud AppData (`eva_ai/chats/<user namespace>/chats.json`) |
 | `AgentStore` | Agent conversation state (`eva_ai_agent_store`) |
 | `ActivityService` | Reads the activity feed (all apps) |
+| `EvaSearchProvider` | Bounded Unified Search over indexed file names, paths and content; re-checks VFS access |
 | `AppConfig` | Typed access to all app settings with defaults |
 | `KnowledgeInitializer` | Idempotently adds the per-user first-run profile section to `KNOWLEDGE.md` without overwriting existing content |
 | `TalkBotRegistrar` | Auto-registers the Talk bot on boot (idempotent) |

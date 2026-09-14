@@ -1,10 +1,12 @@
 # Changelog
 
-## [1.16.92] - 2026-09-14
+## [1.16.93] - 2026-09-14
 
 - Add read-only email summarization through the Nextcloud Mail app.
 - Keep one Talk bot with focused read-only tools, avoiding duplicate responses.
 - Document image-capable provider configuration for image generation.
+- Register EVA's indexed file knowledge in Nextcloud Unified Search with live
+  VFS permission checks and direct links back to Files.
 
 All notable changes to **EVA (eva_ai)** are documented here.
 Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); the project

@@ -808,5 +808,6 @@ OC.L10N.register("eva_ai", {
     "None": "Keine",
     "Password (optional)": "Passwort (optional)",
     "Username (optional)": "Benutzername (optional)",
-    "Username and password": "Benutzername und Passwort"
+    "Username and password": "Benutzername und Passwort",
+    "EVA indexed files": "EVA-indexierte Dateien"
 }, "nplurals=2; plural=(n != 1);");
