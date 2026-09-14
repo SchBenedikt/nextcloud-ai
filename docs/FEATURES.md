@@ -52,8 +52,8 @@ permissions.
 
 EVA registers providers for chat, summarisation, headline, topics, translation,
 rephrasing, correction, formatting, improvement, simplification, formalization,
-emoji generation, OCR, tone adjustment, and context-aware writing. These local
-providers run through Ollama or the optional local Tesseract integration, so
+emoji generation, image analysis, OCR, tone adjustment, and context-aware writing. These local
+providers run through Ollama vision/text models or the optional local Tesseract integration, so
 the common Assistant tasks work without a hosted provider or API key.
 Additional providers exist for chat with shared tools and for multi-step agent
 interactions. Provider execution requires a running Nextcloud TaskProcessing

@@ -35,7 +35,7 @@ class OpenAICompatible {
     public function chat(array $messages, array $tools = [], int $timeout = 120): array {
         $id = $this->provider();
         try {
-            $payload = ['model' => $this->model(), 'messages' => $messages, 'temperature' => max(0.0, min(2.0, (float)$this->config->get('temperature'))), 'stream' => false];
+            $payload = ['model' => $this->model(), 'messages' => $this->normalizeMessages($messages), 'temperature' => max(0.0, min(2.0, (float)$this->config->get('temperature'))), 'stream' => false];
             if ($tools !== []) $payload['tools'] = $tools;
             $response = $this->clients->newClient()->post($this->endpoint(), ['headers' => ['Authorization' => 'Bearer ' . $this->credentials->getCustom($this->config->userId() ?? '', $id), 'Content-Type' => 'application/json'], 'json' => $payload, 'timeout' => max(1, min(300, $timeout)), 'http_errors' => false]);
             $status = $response->getStatusCode();
@@ -48,5 +48,25 @@ class OpenAICompatible {
             $this->usage?->recordChat($this->config->userId(), $id, $this->model(), $messages, $answer, null, null, 0);
             return ['answer' => $answer, 'model' => $this->model(), 'tool_calls' => $calls, 'raw_tool_calls' => $message['tool_calls'] ?? []];
         } catch (\Throwable $e) { return ['error' => $e instanceof ProviderException ? $e->getMessage() : 'Provider connection or response failed. Check endpoint, key and model.']; }
+    }
+
+    /** Convert EVA's provider-neutral image message to OpenAI vision syntax. */
+    private function normalizeMessages(array $messages): array {
+        return array_map(static function (array $message): array {
+            $images = is_array($message['images'] ?? null) ? $message['images'] : [];
+            $mimes = is_array($message['image_mimes'] ?? null) ? $message['image_mimes'] : [];
+            unset($message['images'], $message['image_mimes']);
+            if ($images === []) {
+                return $message;
+            }
+            $parts = [['type' => 'text', 'text' => (string)($message['content'] ?? '')]];
+            foreach ($images as $index => $base64) {
+                if (!is_string($base64) || $base64 === '') continue;
+                $mime = is_string($mimes[$index] ?? null) ? $mimes[$index] : 'image/jpeg';
+                $parts[] = ['type' => 'image_url', 'image_url' => ['url' => 'data:' . $mime . ';base64,' . $base64]];
+            }
+            $message['content'] = $parts;
+            return $message;
+        }, $messages);
     }
 }

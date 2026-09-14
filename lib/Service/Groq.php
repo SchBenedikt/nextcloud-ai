@@ -81,7 +81,19 @@ class Groq {
         foreach ($messages as $message) {
             $role = (string)($message['role'] ?? '');
             if (!in_array($role, ['system', 'user', 'assistant', 'tool'], true)) continue;
-            $row = ['role' => $role, 'content' => (string)($message['content'] ?? '')];
+            $images = is_array($message['images'] ?? null) ? $message['images'] : [];
+            $mimes = is_array($message['image_mimes'] ?? null) ? $message['image_mimes'] : [];
+            if ($images !== []) {
+                $content = [['type' => 'text', 'text' => (string)($message['content'] ?? '')]];
+                foreach ($images as $index => $base64) {
+                    if (!is_string($base64) || $base64 === '') continue;
+                    $mime = is_string($mimes[$index] ?? null) ? $mimes[$index] : 'image/jpeg';
+                    $content[] = ['type' => 'image_url', 'image_url' => ['url' => 'data:' . $mime . ';base64,' . $base64]];
+                }
+                $row = ['role' => $role, 'content' => $content];
+            } else {
+                $row = ['role' => $role, 'content' => (string)($message['content'] ?? '')];
+            }
             if ($role === 'assistant' && !empty($message['tool_calls'])) {
                 $row['tool_calls'] = [];
                 $pendingIds = [];

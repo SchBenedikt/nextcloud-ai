@@ -925,7 +925,7 @@ class Ollama {
      * an internal streaming request: they report progress as tokens arrive,
      * their reads are idle-bounded and a timeout surfaces as a clear error.
      *
-     * @param array<int,array{role:string,content:string}> $messages
+     * @param array<int,array{role:string,content:string,images?:list<string>,image_mimes?:list<string>}> $messages
      * @param callable(float):void|null $onProgress called with a monotonically
      *        increasing estimate between 0 and 1 while the model generates.
      * @return array{answer?:string,error?:string,model?:string}
@@ -954,7 +954,10 @@ class Ollama {
         }
         $payload = [
             'model' => $modelName,
-            'messages' => $messages,
+            // Ollama's native multimodal format keeps image bytes alongside
+            // the user message. The TaskProcessing image provider supplies
+            // only bounded base64 payloads here.
+            'messages' => $this->ollamaMessages($messages),
             'stream' => false,
             'options' => $this->ollamaOptions(),
         ];
@@ -1006,7 +1009,7 @@ class Ollama {
      * Run the chat as an internal NDJSON stream while accumulating the final
      * answer, used when a caller wants progress reports during generation.
      *
-     * @param array<int,array{role:string,content:string}> $messages
+     * @param array<int,array{role:string,content:string,images?:list<string>,image_mimes?:list<string>}> $messages
      * @param callable(float):void $onProgress
      * @return array{answer?:string,error?:string,model?:string}
      */
@@ -1107,7 +1110,7 @@ class Ollama {
         }
         $payload = [
             'model' => $modelName,
-            'messages' => $messages,
+            'messages' => $this->ollamaMessages($messages),
             'stream' => true,
             'options' => $this->ollamaOptions(),
         ];
@@ -1243,6 +1246,14 @@ class Ollama {
                 }
             }
         }
+    }
+
+    /** Remove adapter-only image MIME metadata before sending to Ollama. */
+    private function ollamaMessages(array $messages): array {
+        return array_map(static function (array $message): array {
+            unset($message['image_mimes']);
+            return $message;
+        }, $messages);
     }
 
     private function clientDisconnected(): bool {

@@ -4,6 +4,13 @@ All notable changes to **EVA (eva_ai)** are documented here.
 Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); the project
 follows [Semantic Versioning](https://semver.org/).
 
+## [1.16.82] - 2026-09-14
+
+### Image analysis in Assistant tasks
+
+- Add a bounded `core:analyze-images` provider that reads permitted Nextcloud image files and sends them to the configured Ollama vision or OpenAI-compatible model.
+- Preserve native Ollama image messages and translate them to OpenAI-compatible vision content for remote providers.
+
 ## [1.16.81] - 2026-09-14
 
 ### OCR in Assistant tasks
