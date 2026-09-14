@@ -4,6 +4,13 @@ All notable changes to **EVA (eva_ai)** are documented here.
 Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); the project
 follows [Semantic Versioning](https://semver.org/).
 
+## [1.16.71] - 2026-09-14
+
+### Added
+
+- Settings now explicitly explain bounded `stdin` support for confirmed
+  interactive terminal prompts.
+
 ## [1.16.70] - 2026-09-14
 
 ### Fixed
