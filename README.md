@@ -258,3 +258,11 @@ See [docs/SECURITY.md](docs/SECURITY.md) for details.
 See [`docs/TERMINAL_TOOLS.md`](docs/TERMINAL_TOOLS.md) for the confirmed
 terminal-command workflow and [`docs/PLUGIN_API.md`](docs/PLUGIN_API.md) for
 third-party EVA extensions.
+# EVA AI
+
+EVA can now summarize messages from the Nextcloud Mail app with the read-only
+`summarize_emails` tool. Talk registers focused bots (`Eva Research`, `Eva
+Calendar`, `Eva Mail` and `Eva Files`) alongside the general EVA bot. Image
+generation requires an image-capable provider profile (for example an
+OpenAI-compatible endpoint exposing `/images/generations`) and an
+`image_model`; text-only models cannot generate images.

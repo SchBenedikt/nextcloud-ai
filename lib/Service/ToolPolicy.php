@@ -266,6 +266,12 @@ class ToolPolicy {
             'requiresConfirmation' => false,
             'description' => 'Get unread mail count',
         ],
+        'summarize_emails' => [
+            'risk' => self::RISK_READONLY,
+            'surfaces' => [self::SURFACE_WEB, self::SURFACE_TALK, self::SURFACE_TASKPROCESSING, self::SURFACE_TASKPROCESSING_CONFIRMED, self::SURFACE_RAG],
+            'requiresConfirmation' => false,
+            'description' => 'Summarize emails from Nextcloud Mail',
+        ],
 
         // ---- Shares ----
         'list_shares' => [

@@ -169,7 +169,8 @@ class ActionExecutor {
         private ?UsageMetrics $usageMetrics = null,
         private ?ToolPluginRegistry $pluginRegistry = null,
         private ?IEventDispatcher $eventDispatcher = null,
-        private ?OpenAICompatible $imageProvider = null
+        private ?OpenAICompatible $imageProvider = null,
+        private ?Ollama $ollama = null
     ) {
     }
 
@@ -485,6 +486,16 @@ class ActionExecutor {
                 'name' => 'unread_mail_count',
                 'description' => 'Get how many unread emails the user currently has.',
                 'parameters' => ['type' => 'object', 'properties' => new \stdClass()],
+            ]],
+            ['type' => 'function', 'function' => [
+                'name' => 'summarize_emails',
+                'description' => 'Summarize recent or matching emails from the Nextcloud Mail app. Includes key points, action items and deadlines without inventing details.',
+                'parameters' => ['type' => 'object', 'properties' => [
+                    'limit' => ['type' => 'integer', 'description' => 'Maximum emails to include (1-20, default 8).'],
+                    'unread_only' => ['type' => 'boolean', 'description' => 'Only include unread emails.'],
+                    'query' => ['type' => 'string', 'description' => 'Optional subject/sender/body search text.'],
+                    'focus' => ['type' => 'string', 'description' => 'Optional focus such as action items, deadlines or decisions.'],
+                ]],
             ]],
             ['type' => 'function', 'function' => [
                 'name' => 'list_shares',
@@ -1167,6 +1178,7 @@ class ActionExecutor {
                 'list_mails' => $this->listMails($userId, $args),
                 'read_mail' => $this->readMail($userId, $args),
                 'unread_mail_count' => $this->unreadMailCount($userId),
+                'summarize_emails' => $this->summarizeEmails($userId, $args),
                 'list_shares' => $this->shares->list($userId, $args),
                 'create_share' => $this->shares->create($userId, $args),
                 'update_share' => $this->shares->update($userId, $args),
@@ -3376,6 +3388,49 @@ class ActionExecutor {
             return ['ok' => false, 'error' => 'Mail access failed: ' . $e->getMessage()];
         }
         return ['ok' => true, 'result' => ['unread' => $n]];
+    }
+
+    /** @return array{ok:true,result:array}|array{ok:false,error:string} */
+    private function summarizeEmails(string $userId, array $args): array {
+        if ($this->ollama === null) {
+            return ['ok' => false, 'error' => 'Email summarization requires a configured chat provider.'];
+        }
+        $limit = max(1, min(20, (int)($args['limit'] ?? 8)));
+        $query = trim((string)($args['query'] ?? ''));
+        try {
+            $rows = $query !== ''
+                ? $this->email->search($userId, $query, $limit)
+                : $this->email->listMessages($userId, $limit, !empty($args['unread_only']));
+            if ($rows === []) {
+                return ['ok' => true, 'result' => ['count' => 0, 'summary' => 'No matching emails found.', 'messages' => []]];
+            }
+            $documents = [];
+            $metadata = [];
+            foreach (array_slice($rows, 0, $limit) as $row) {
+                $id = (int)($row['id'] ?? 0);
+                $full = $id > 0 ? $this->email->readMessage($userId, $id) : ['ok' => false];
+                $mail = is_array($full['result'] ?? null) ? $full['result'] : $row;
+                $body = trim((string)($mail['body'] ?? $mail['preview'] ?? ''));
+                $documents[] = sprintf("[%s] From: %s\nSubject: %s\nDate: %s\n%s", $id, (string)($mail['from'] ?? $row['from'] ?? ''), (string)($mail['subject'] ?? $row['subject'] ?? ''), (string)($mail['date'] ?? $row['sent'] ?? ''), mb_substr($body, 0, 5000));
+                $metadata[] = ['id' => $id, 'subject' => (string)($mail['subject'] ?? $row['subject'] ?? ''), 'from' => (string)($mail['from'] ?? $row['from'] ?? ''), 'date' => (string)($mail['date'] ?? $row['sent'] ?? ''), 'unread' => (bool)($row['unread'] ?? false)];
+            }
+            $focus = trim((string)($args['focus'] ?? ''));
+            $prompt = 'Summarize these emails in the language used by most messages. Give a concise overview, then bullet key points, explicit action items and dates/deadlines. Do not invent facts; say when a detail is unclear.';
+            if ($focus !== '') {
+                $prompt .= ' Pay special attention to: ' . mb_substr($focus, 0, 300) . '.';
+            }
+            $response = $this->ollama->chat([
+                ['role' => 'system', 'content' => 'You are EVA, a careful email assistant. Never expose secrets or claim an action was taken.'],
+                ['role' => 'user', 'content' => $prompt . "\n\n" . implode("\n\n", $documents)],
+            ], [], 90);
+            $summary = trim((string)($response['answer'] ?? ''));
+            if ($summary === '') {
+                return ['ok' => false, 'error' => (string)($response['error'] ?? 'The chat provider returned no summary.')];
+            }
+            return ['ok' => true, 'result' => ['count' => count($metadata), 'summary' => $summary, 'messages' => $metadata]];
+        } catch (\Throwable $e) {
+            return ['ok' => false, 'error' => 'Mail summarization failed: ' . $e->getMessage()];
+        }
     }
 
     /**
