@@ -101,6 +101,43 @@ class OpenAICompatible {
         }
     }
 
+    /** Transcribe or translate one bounded audio/video payload. */
+    public function transcribeAudio(string $bytes, string $filename, string $mime, bool $translate = false, bool $subtitles = false, int $timeout = 180): string {
+        $provider = $this->provider();
+        if ($provider === 'ollama' || $provider === 'groq') {
+            throw new ProviderException('The selected provider does not expose an audio transcription endpoint. Configure an OpenAI-compatible audio provider first.');
+        }
+        $profile = $this->profile();
+        $model = trim((string)($profile['audio_model'] ?? $this->model()));
+        if ($model === '') throw new ProviderException('No audio model configured for the selected provider.');
+        try {
+            $responseFormat = $subtitles ? 'vtt' : 'json';
+            $response = $this->clients->newClient()->post($this->baseUrl() . '/audio/' . ($translate ? 'translations' : 'transcriptions'), [
+                'headers' => ['Authorization' => 'Bearer ' . $this->credentials->getCustom($this->config->userId() ?? '', $provider)],
+                'multipart' => [
+                    ['name' => 'file', 'contents' => $bytes, 'filename' => $filename],
+                    ['name' => 'model', 'contents' => $model],
+                    ['name' => 'response_format', 'contents' => $responseFormat],
+                    ['name' => 'prompt', 'contents' => 'Transcribe faithfully in the same language as the audio. Preserve names and timestamps where available.'],
+                ],
+                'timeout' => max(1, min(300, $timeout)), 'http_errors' => false,
+            ]);
+            $status = $response->getStatusCode();
+            if ($status < 200 || $status >= 300) throw new ProviderException('Audio provider returned HTTP ' . $status . '. Check the configured model and API key.');
+            $body = (string)$response->getBody();
+            if ($subtitles) return trim($body);
+            $data = json_decode($body, true);
+            $text = is_array($data) ? (string)($data['text'] ?? '') : '';
+            if ($text === '' && $body !== '' && !str_starts_with(ltrim($body), '{')) $text = $body;
+            if (trim($text) === '') throw new ProviderException('Audio provider returned no transcription.');
+            return trim($text);
+        } catch (ProviderException $e) {
+            throw $e;
+        } catch (\Throwable $e) {
+            throw new ProviderException('Audio provider connection or response failed. Check endpoint, key and model.');
+        }
+    }
+
     /** Convert EVA's provider-neutral image message to OpenAI vision syntax. */
     private function normalizeMessages(array $messages): array {
         return array_map(static function (array $message): array {

@@ -18,6 +18,13 @@ follows [Semantic Versioning](https://semver.org/).
 - Add a bounded `core:text2image` provider for configured OpenAI-compatible image APIs.
 - Store returned images in the user's `EVA` folder and return their Nextcloud file IDs to the Assistant.
 
+## [1.16.84] - 2026-09-14
+
+### Audio transcription and subtitles
+
+- Add `core:audio2text` and `core:audio2text:subtitles` providers using configurable OpenAI-compatible audio endpoints.
+- Enforce per-user file permissions and a 25 MB input limit; subtitle files are stored in the user's `EVA` folder.
+
 ## [1.16.81] - 2026-09-14
 
 ### OCR in Assistant tasks

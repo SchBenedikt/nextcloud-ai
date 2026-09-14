@@ -21,7 +21,8 @@ use PHPUnit\Framework\TestCase;
  * EvaChangeToneProvider, EvaContextWriteProvider
  * EvaImproveProvider, EvaSimplificationProvider, EvaFormalizationProvider
  * EvaEmojiProvider
- * EvaOcrProvider, EvaAnalyzeImagesProvider, EvaTextToImageProvider
+ * EvaOcrProvider, EvaAnalyzeImagesProvider, EvaTextToImageProvider,
+ * EvaAudioToTextProvider, EvaAudioSubtitlesProvider
  */
 class TaskProcessingContractTest extends TestCase {
 
@@ -60,6 +61,8 @@ class TaskProcessingContractTest extends TestCase {
             \OCA\EvaAi\TaskProcessing\EvaOcrProvider::class,
             \OCA\EvaAi\TaskProcessing\EvaAnalyzeImagesProvider::class,
             \OCA\EvaAi\TaskProcessing\EvaTextToImageProvider::class,
+            \OCA\EvaAi\TaskProcessing\EvaAudioToTextProvider::class,
+            \OCA\EvaAi\TaskProcessing\EvaAudioSubtitlesProvider::class,
         ];
     }
 
@@ -115,6 +118,8 @@ class TaskProcessingContractTest extends TestCase {
             'core:image2text:ocr',
             'core:analyze-images',
             'core:text2image',
+            'core:audio2text',
+            'core:audio2text:subtitles',
         ];
 
         foreach ($this->providerClasses() as $class) {
