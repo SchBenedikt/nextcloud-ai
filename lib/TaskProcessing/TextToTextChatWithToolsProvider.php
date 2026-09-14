@@ -9,6 +9,8 @@ use OCA\EvaAi\Service\AppConfig;
 use OCA\EvaAi\Service\Ollama;
 use OCA\EvaAi\Service\ToolPolicy;
 use OCP\IL10N;
+use OCP\Files\File;
+use OCP\Files\IRootFolder;
 use OCP\TaskProcessing\ISynchronousProvider;
 use OCP\TaskProcessing\TaskTypes\TextToTextChatWithTools;
 use Psr\Log\LoggerInterface;
@@ -28,8 +30,9 @@ class TextToTextChatWithToolsProvider implements ISynchronousProvider {
 		private AppConfig $appConfig,
 		private Ollama $ollama,
 		private ActionExecutor $executor,
-		private IL10N $l,
+		protected IL10N $l,
 		private LoggerInterface $logger,
+		private ?IRootFolder $rootFolder = null,
 	) {
 	}
 
@@ -119,6 +122,7 @@ class TextToTextChatWithToolsProvider implements ISynchronousProvider {
 			$messages[] = ['role' => 'user', 'content' => $toolMessage];
 		}
 		$messages[] = ['role' => 'user', 'content' => $chatInput];
+		$this->attachFiles($messages, $userId, $input['input_attachments'] ?? []);
 
 		// Never forward the caller's `tools` input. ActionExecutor applies the
 		// central ToolPolicy to the current TaskProcessing surface.
@@ -146,6 +150,39 @@ class TextToTextChatWithToolsProvider implements ISynchronousProvider {
 			'output' => (string)($chat['answer'] ?? ''),
 			'tool_calls' => $toolCalls === false ? '[]' : $toolCalls,
 		];
+	}
+
+	/** Attach only bounded image bytes; non-images remain explicit filename context. */
+	private function attachFiles(array &$messages, string $userId, mixed $raw): void {
+		if (!$this->rootFolder || !is_array($raw)) return;
+		$images = [];
+		$mimes = [];
+		$context = [];
+		$total = 0;
+		foreach (array_slice($raw, 0, 4) as $value) {
+			$id = is_numeric($value) ? (int)$value : 0;
+			if ($id <= 0) continue;
+			$node = $this->rootFolder->getUserFolder($userId)->getById($id)[0] ?? null;
+			if (!$node instanceof File) continue;
+			$mime = strtolower((string)$node->getMimeType());
+			$size = (int)$node->getSize();
+			if ($size <= 0 || $size > 6_000_000 || $total + $size > 12_000_000) continue;
+			if (str_starts_with($mime, 'image/')) {
+				$bytes = (string)$node->getContent();
+				if ($bytes !== '' && strlen($bytes) <= 6_000_000) {
+					$images[] = base64_encode($bytes);
+					$mimes[] = $mime;
+					$total += strlen($bytes);
+					continue;
+				}
+			}
+			$context[] = $node->getName() . ' (' . $mime . ', ' . $size . ' bytes)';
+		}
+		if ($context !== []) $messages[count($messages) - 1]['content'] .= "\nAttachments: " . implode('; ', $context);
+		if ($images !== []) {
+			$messages[count($messages) - 1]['images'] = $images;
+			$messages[count($messages) - 1]['image_mimes'] = $mimes;
+		}
 	}
 
 	/**

@@ -38,6 +38,13 @@ follows [Semantic Versioning](https://semver.org/).
 
 - Add `core:audio2audio:chat`: transcribe a voice message, answer with the configured chat model, and save the spoken response in the user's `EVA` folder.
 
+## [1.16.87] - 2026-09-14
+
+### Multimodal tool chat
+
+- Add `core:text2text:multimodal-chatwithtools` with bounded image attachments and the existing central EVA tool policy.
+- Non-image attachments remain auditable filename/type context; image bytes are limited to four files and 12 MB total.
+
 ## [1.16.81] - 2026-09-14
 
 ### OCR in Assistant tasks
