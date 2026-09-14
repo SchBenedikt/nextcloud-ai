@@ -11,6 +11,13 @@ follows [Semantic Versioning](https://semver.org/).
 - Add a bounded `core:analyze-images` provider that reads permitted Nextcloud image files and sends them to the configured Ollama vision or OpenAI-compatible model.
 - Preserve native Ollama image messages and translate them to OpenAI-compatible vision content for remote providers.
 
+## [1.16.83] - 2026-09-14
+
+### Image generation in Assistant tasks
+
+- Add a bounded `core:text2image` provider for configured OpenAI-compatible image APIs.
+- Store returned images in the user's `EVA` folder and return their Nextcloud file IDs to the Assistant.
+
 ## [1.16.81] - 2026-09-14
 
 ### OCR in Assistant tasks

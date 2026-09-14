@@ -50,6 +50,57 @@ class OpenAICompatible {
         } catch (\Throwable $e) { return ['error' => $e instanceof ProviderException ? $e->getMessage() : 'Provider connection or response failed. Check endpoint, key and model.']; }
     }
 
+    /**
+     * Request images from an OpenAI-compatible /images/generations endpoint.
+     * Returns decoded bytes so callers can keep the result inside Nextcloud.
+     *
+     * @return list<array{bytes:string,mime:string}>
+     */
+    public function generateImages(string $prompt, int $count = 1, int $timeout = 120): array {
+        $provider = $this->provider();
+        if ($provider === 'ollama' || $provider === 'groq') {
+            throw new ProviderException('The selected provider does not expose an image-generation endpoint. Configure an OpenAI-compatible image provider first.');
+        }
+        $profile = $this->profile();
+        $model = trim((string)($profile['image_model'] ?? $this->model()));
+        if ($model === '') throw new ProviderException('No image model configured for the selected provider.');
+        try {
+            $response = $this->clients->newClient()->post($this->baseUrl() . '/images/generations', [
+                'headers' => ['Authorization' => 'Bearer ' . $this->credentials->getCustom($this->config->userId() ?? '', $provider), 'Content-Type' => 'application/json'],
+                'json' => ['model' => $model, 'prompt' => $prompt, 'n' => max(1, min(4, $count)), 'size' => (string)($profile['image_size'] ?? '1024x1024'), 'response_format' => 'b64_json'],
+                'timeout' => max(1, min(300, $timeout)), 'http_errors' => false,
+            ]);
+            $status = $response->getStatusCode();
+            if ($status < 200 || $status >= 300) throw new ProviderException('Image provider returned HTTP ' . $status . '. Check the configured model and API key.');
+            $data = json_decode((string)$response->getBody(), true, 512, JSON_THROW_ON_ERROR);
+            $out = [];
+            foreach (($data['data'] ?? []) as $item) {
+                if (!is_array($item)) continue;
+                $bytes = null;
+                $mime = 'image/png';
+                if (is_string($item['b64_json'] ?? null)) {
+                    $bytes = base64_decode($item['b64_json'], true);
+                } elseif (is_string($item['url'] ?? null)) {
+                    $url = $item['url'];
+                    if (!preg_match('~^https://~i', $url)) throw new ProviderException('Image provider returned an unsafe image URL.');
+                    $download = $this->clients->newClient()->get($url, ['timeout' => 60, 'http_errors' => false, 'allow_redirects' => false]);
+                    if ($download->getStatusCode() < 200 || $download->getStatusCode() >= 300) throw new ProviderException('Generated image could not be downloaded from the provider.');
+                    $bytes = (string)$download->getBody();
+                    $mime = (string)($download->getHeader('content-type') ?: 'image/png');
+                }
+                if (!is_string($bytes) || $bytes === '' || strlen($bytes) > 15_000_000) continue;
+                if (function_exists('getimagesizefromstring') && @getimagesizefromstring($bytes) === false) continue;
+                $out[] = ['bytes' => $bytes, 'mime' => str_contains($mime, '/') ? $mime : 'image/png'];
+            }
+            if ($out === []) throw new ProviderException('Image provider returned no usable images.');
+            return $out;
+        } catch (ProviderException $e) {
+            throw $e;
+        } catch (\Throwable $e) {
+            throw new ProviderException('Image provider connection or response failed. Check endpoint, key and model.');
+        }
+    }
+
     /** Convert EVA's provider-neutral image message to OpenAI vision syntax. */
     private function normalizeMessages(array $messages): array {
         return array_map(static function (array $message): array {

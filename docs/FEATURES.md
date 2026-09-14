@@ -52,7 +52,9 @@ permissions.
 
 EVA registers providers for chat, summarisation, headline, topics, translation,
 rephrasing, correction, formatting, improvement, simplification, formalization,
-emoji generation, image analysis, OCR, tone adjustment, and context-aware writing. These local
+emoji generation, image analysis, image generation, OCR, tone adjustment, and context-aware writing. These
+providers use the configured local or OpenAI-compatible backends; generated images are stored in the user's
+`EVA` folder. These local
 providers run through Ollama vision/text models or the optional local Tesseract integration, so
 the common Assistant tasks work without a hosted provider or API key.
 Additional providers exist for chat with shared tools and for multi-step agent
