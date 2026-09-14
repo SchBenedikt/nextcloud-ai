@@ -1,5 +1,10 @@
 # Changelog
 
+## [1.16.94] - 2026-09-14
+
+- Keep the optional plugin catalog from breaking EVA startup when a third-party
+  plugin provides an invalid or incomplete tool schema.
+
 ## [1.16.93] - 2026-09-14
 
 - Add read-only email summarization through the Nextcloud Mail app.
