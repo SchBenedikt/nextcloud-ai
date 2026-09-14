@@ -4,8 +4,6 @@ Eva is a privacy-first AI assistant for your Nextcloud. It combines semantic and
 
 ## See Eva in action
 
-![Eva chat overview](screenshots/eva-chat-overview.png)
-
 ![Eva settings in Nextcloud](screenshots/eva-settings.png)
 
 ![Eva document index in Nextcloud](screenshots/eva-documents.png)
