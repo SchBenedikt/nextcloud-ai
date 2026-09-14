@@ -125,6 +125,7 @@ class ActionExecutor {
         'create_scheduled_briefing' => ['prompt', 'time', 'days'],
         'update_scheduled_briefing' => ['briefing_id'],
         'delete_scheduled_briefing' => ['briefing_id'],
+        'create_sticker' => ['prompt'],
     ];
 
     /**
@@ -167,7 +168,8 @@ class ActionExecutor {
         private ?\OCP\SystemTag\ISystemTagManagerFactory $systemTagFactory = null,
         private ?UsageMetrics $usageMetrics = null,
         private ?ToolPluginRegistry $pluginRegistry = null,
-        private ?IEventDispatcher $eventDispatcher = null
+        private ?IEventDispatcher $eventDispatcher = null,
+        private ?OpenAICompatible $imageProvider = null
     ) {
     }
 
@@ -783,6 +785,13 @@ class ActionExecutor {
                 ], 'required' => ['query']],
             ]],
             ['type' => 'function', 'function' => [
+                'name' => 'create_sticker',
+                'description' => 'Generate a sticker image from a prompt and save it in the user\'s EVA folder. Requires explicit confirmation and a configured OpenAI-compatible image provider.',
+                'parameters' => ['type' => 'object', 'properties' => [
+                    'prompt' => ['type' => 'string', 'description' => 'What the sticker should depict. Avoid private or identifying personal details.'],
+                ], 'required' => ['prompt']],
+            ]],
+            ['type' => 'function', 'function' => [
                 'name' => 'list_talk_rooms',
                 'description' => 'List the Nextcloud Talk conversations the user is a member of, most recently active first. Each entry carries `name`, `token`, `id`, `type` (one-to-one, group, public) and `lastActivity`. Use it first when the user refers to a chat by name ("the project room", "mein Chat mit Anna") instead of naming a token, and before read_talk_chat or send_talk_message. Only the user\'s own rooms are ever returned.',
                 'parameters' => ['type' => 'object', 'properties' => [
@@ -1102,7 +1111,7 @@ class ActionExecutor {
         $fileTools = [
             'list_files', 'create_file', 'create_files', 'create_note', 'create_folder',
             'rename_file', 'move_file', 'copy_file', 'file_checksum', 'delete_file', 'read_file', 'read_files', 'inspect_file', 'search_files',
-            'extract_file_text',
+            'extract_file_text', 'create_sticker',
             'update_knowledge',
         ];
         if (in_array($name, $fileTools, true) && $home === null) {
@@ -1143,6 +1152,7 @@ class ActionExecutor {
                 'weather' => $this->weather($args),
                 'web_search' => $this->runWebSearch($args),
                 'search_images' => $this->runImageSearch($args),
+                'create_sticker' => $this->createSticker($home, $args),
                 'open_website' => $this->openWebsite($args),
                 'list_external_connectors' => $this->listExternalConnectors(),
                 'discover_external_connector' => $this->discoverExternalConnector($args),
@@ -3406,6 +3416,29 @@ class ActionExecutor {
                 )),
             ],
         ];
+    }
+
+    /** Generate one confirmed sticker and keep it in the user's EVA folder. */
+    private function createSticker(?Folder $home, array $args): array {
+        if (!$home instanceof Folder || $this->imageProvider === null) {
+            return ['ok' => false, 'error' => 'Sticker generation requires a configured OpenAI-compatible image provider.'];
+        }
+        $prompt = trim((string)($args['prompt'] ?? ''));
+        if ($prompt === '') return ['ok' => false, 'error' => 'prompt required'];
+        try {
+            $images = $this->imageProvider->generateImages(
+                'Create a single friendly sticker with a transparent background, bold clean outline, no watermark and no readable text: ' . mb_substr($prompt, 0, 1000),
+                1,
+                180,
+            );
+            $folder = $home->nodeExists('EVA') ? $home->get('EVA') : $home->newFolder('EVA');
+            if (!$folder instanceof Folder) return ['ok' => false, 'error' => 'The EVA folder exists but is not a folder.'];
+            $name = 'eva-sticker-' . gmdate('Ymd-His') . '-' . bin2hex(random_bytes(3)) . '.png';
+            $file = $folder->newFile($name, $images[0]['bytes']);
+            return ['ok' => true, 'result' => ['path' => 'EVA/' . $name, 'file_id' => (int)$file->getId(), 'mime' => $images[0]['mime']]];
+        } catch (\Throwable $e) {
+            return ['ok' => false, 'error' => $e->getMessage()];
+        }
     }
 
     /**

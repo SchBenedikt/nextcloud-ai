@@ -63,6 +63,13 @@ follows [Semantic Versioning](https://semver.org/).
 
 - Document and surface modality-specific profile fields (`image_model`, `audio_model`, `tts_model`, `tts_voice`) in Settings so image/audio providers can be configured without guessing JSON keys.
 
+## [1.16.91] - 2026-09-14
+
+### Sticker tool
+
+- Add the confirmation-gated `create_sticker` chat tool for configured OpenAI-compatible image providers.
+- Generated stickers are saved as PNG files in the user's `EVA` folder with a returned path and file ID.
+
 ## [1.16.81] - 2026-09-14
 
 ### OCR in Assistant tasks

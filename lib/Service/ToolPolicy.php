@@ -549,6 +549,12 @@ class ToolPolicy {
             'requiresConfirmation' => false,
             'description' => 'Find pictures of a subject on the web',
         ],
+        'create_sticker' => [
+            'risk' => self::RISK_MUTATING,
+            'surfaces' => [self::SURFACE_WEB, self::SURFACE_TASKPROCESSING_CONFIRMED],
+            'requiresConfirmation' => true,
+            'description' => 'Generate and store a sticker image',
+        ],
     ];
 
     private string $activeSurface = self::SURFACE_WEB;
