@@ -90,7 +90,10 @@ PROMPT;
         $this->executor->setUserId($userId);
 
         $roomId = (int)($data['target']['id'] ?? 0);
-        $explicit = $this->isExplicitlyMentioned($content);
+        // Talk already dispatches this event for the addressed bot. This is
+        // important for focused profiles such as "Eva Mail", whose display
+        // name does not match the administrator's generic trigger.
+        $explicit = $this->isExplicitlyMentioned($content) || $this->isKnownBotUrl($url);
         if (!$explicit) {
             return;
         }
@@ -159,6 +162,15 @@ PROMPT;
             };
         }
         return '';
+    }
+
+    private function isKnownBotUrl(string $url): bool {
+        foreach (TalkBotRegistrar::PROFILES as $profile) {
+            if ($profile['url'] === $url) {
+                return true;
+            }
+        }
+        return false;
     }
 
     /**
