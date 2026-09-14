@@ -57,6 +57,12 @@ follows [Semantic Versioning](https://semver.org/).
 
 - Add `core:contextagent:multimodal-interaction` with bounded, permission-checked image attachments while preserving EVA's confirmation workflow.
 
+## [1.16.90] - 2026-09-14
+
+### Provider configuration
+
+- Document and surface modality-specific profile fields (`image_model`, `audio_model`, `tts_model`, `tts_voice`) in Settings so image/audio providers can be configured without guessing JSON keys.
+
 ## [1.16.81] - 2026-09-14
 
 ### OCR in Assistant tasks

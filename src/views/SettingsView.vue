@@ -640,7 +640,7 @@ export default {
 			...providerProfiles.value.map(profile => ({ value: profile.id, label: `${profile.name} (${profile.id})` })),
 			{ value: 'custom', label: t('Custom OpenAI-compatible provider') },
 		])
-		const providerProfilesPlaceholder = '[{"id":"deepseek","name":"DeepSeek","url":"https://api.deepseek.com/v1","model":"deepseek-chat"}]'
+		const providerProfilesPlaceholder = '[{"id":"openai","name":"OpenAI","url":"https://api.openai.com/v1","model":"gpt-4o-mini","image_model":"gpt-image-1","audio_model":"whisper-1","tts_model":"gpt-4o-mini-tts","tts_voice":"alloy"}]'
 		const groqModelOptions = [
 			{ value: 'openai/gpt-oss-20b', label: 'GPT OSS 20B' },
 			{ value: 'openai/gpt-oss-120b', label: 'GPT OSS 120B' },
