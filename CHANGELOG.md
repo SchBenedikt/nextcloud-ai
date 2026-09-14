@@ -32,6 +32,12 @@ follows [Semantic Versioning](https://semver.org/).
 - Add configurable OpenAI-compatible Text-to-Speech output stored as a Nextcloud audio file.
 - Add audio-to-audio translation by transcribing, translating, and synthesizing the result with bounded provider calls.
 
+## [1.16.86] - 2026-09-14
+
+### Audio chat
+
+- Add `core:audio2audio:chat`: transcribe a voice message, answer with the configured chat model, and save the spoken response in the user's `EVA` folder.
+
 ## [1.16.81] - 2026-09-14
 
 ### OCR in Assistant tasks

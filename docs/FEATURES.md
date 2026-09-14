@@ -52,7 +52,7 @@ permissions.
 
 EVA registers providers for chat, summarisation, headline, topics, translation,
 rephrasing, correction, formatting, improvement, simplification, formalization,
-emoji generation, image analysis, image generation, audio transcription, subtitles, speech generation, audio translation, OCR, tone adjustment, and context-aware writing. These
+emoji generation, image analysis, image generation, audio transcription, subtitles, speech generation, audio translation, audio chat, OCR, tone adjustment, and context-aware writing. These
 providers use the configured local or OpenAI-compatible backends; generated images and subtitles are stored in the user's
 `EVA` folder. Audio inputs are bounded to 25 MB and remain scoped to the authenticated user's files.
 providers run through Ollama vision/text models or the optional local Tesseract integration, so

@@ -24,6 +24,7 @@ use PHPUnit\Framework\TestCase;
  * EvaOcrProvider, EvaAnalyzeImagesProvider, EvaTextToImageProvider,
  * EvaAudioToTextProvider, EvaAudioSubtitlesProvider
  * EvaTextToSpeechProvider, EvaAudioTranslateProvider
+ * EvaAudioChatProvider
  */
 class TaskProcessingContractTest extends TestCase {
 
@@ -66,6 +67,7 @@ class TaskProcessingContractTest extends TestCase {
             \OCA\EvaAi\TaskProcessing\EvaAudioSubtitlesProvider::class,
             \OCA\EvaAi\TaskProcessing\EvaTextToSpeechProvider::class,
             \OCA\EvaAi\TaskProcessing\EvaAudioTranslateProvider::class,
+            \OCA\EvaAi\TaskProcessing\EvaAudioChatProvider::class,
         ];
     }
 
@@ -125,6 +127,7 @@ class TaskProcessingContractTest extends TestCase {
             'core:audio2text:subtitles',
             'core:text2speech',
             'core:audio2audio:translate',
+            'core:audio2audio:chat',
         ];
 
         foreach ($this->providerClasses() as $class) {
