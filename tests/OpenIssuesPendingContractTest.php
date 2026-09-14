@@ -282,6 +282,15 @@ final class OpenIssuesPendingContractTest extends TestCase {
         self::assertStringContainsString('require_once $autoload', $application);
     }
 
+    public function testTaskProcessingProvidersAreGuardedByCoreTaskTypeAvailability(): void {
+        $application = (string)file_get_contents(__DIR__ . '/../lib/AppInfo/Application.php');
+        self::assertStringContainsString('registerTaskProcessingProviderIfSupported', $application);
+        self::assertStringContainsString('class_exists($taskTypeClass)', $application);
+        self::assertStringContainsString('TaskTypes\\TextToTextImprove::class', $application);
+        self::assertStringContainsString('TaskTypes\\MultimodalContextAgentInteraction::class', $application);
+        self::assertStringNotContainsString('$context->registerTaskProcessingProvider(\\OCA\\EvaAi\\TaskProcessing\\EvaImproveProvider::class)', $application);
+    }
+
     /** Terminal prompts never get a shell parser and remain confirmation-gated. */
     public function testConfirmedTerminalCommandRejectsShellSyntax(): void {
         $reflection = new \ReflectionClass(ActionExecutor::class);

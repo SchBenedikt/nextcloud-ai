@@ -1,5 +1,11 @@
 # Changelog
 
+## [1.16.95] - 2026-09-14
+
+- Guard native TaskProcessing provider registration by the availability of the
+  corresponding Nextcloud core task type, preventing Nextcloud 34 dashboard
+  requests from failing on newer optional task types.
+
 ## [1.16.94] - 2026-09-14
 
 - Keep the optional plugin catalog from breaking EVA startup when a third-party
