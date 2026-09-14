@@ -6,9 +6,15 @@ Eva is a privacy-first AI assistant for your Nextcloud. It combines semantic and
 
 ![Eva chat overview](screenshots/eva-chat-overview.png)
 
-![Cited answers from your files](screenshots/eva-cited-answer.png)
+![Eva settings in Nextcloud](screenshots/eva-settings.png)
 
-![Confirmation before a write action](screenshots/eva-safe-actions.png)
+![Eva document index in Nextcloud](screenshots/eva-documents.png)
+
+![Eva usage metrics in Nextcloud](screenshots/eva-metrics.png)
+
+All screenshots above show the real Eva app inside the Nextcloud shell (not the
+legacy standalone page). Private chat and file labels were anonymised before
+publication.
 
 [![License: AGPL v3](https://img.shields.io/badge/License-AGPL%20v3-blue.svg)](https://www.gnu.org/licenses/agpl-3.0)
 [![Nextcloud](https://img.shields.io/badge/Nextcloud-30--35-blue)](https://nextcloud.com)
