@@ -205,7 +205,11 @@ final class FrontendContractTest extends TestCase {
 		self::assertStringContainsString('run_terminal_command:', $confirmForms);
 		self::assertStringContainsString("F('stdin', 'Interactive prompt input (optional)', 'textarea'", $confirmForms);
 		self::assertStringContainsString('run_terminal_sequence:', $confirmForms);
-		self::assertStringContainsString('JSON string array', $confirmForms);
+        self::assertStringContainsString('JSON string array', $confirmForms);
+
+		$vanilla = (string)file_get_contents(__DIR__ . '/../src/lib/vanilla.js');
+		self::assertStringContainsString("const terminalTrace = c.name === 'run_terminal_command' || c.name === 'run_terminal_sequence'", $vanilla);
+		self::assertStringContainsString('details.open = terminalTrace', $vanilla);
 		// The chat stream carries the chat id so the server can resolve the
 		// per-chat folder scope, and scoped chats show a pill in the header
 		// (Issue #88).

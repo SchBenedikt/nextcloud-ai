@@ -206,6 +206,7 @@ export function mountChat(root, opts = {}) {
 			const ta = document.createElement('div')
 			ta.className = 'rtools'
 			m.tools.forEach((c) => {
+				const terminalTrace = c.name === 'run_terminal_command' || c.name === 'run_terminal_sequence'
 				const row = document.createElement('div')
 				row.className = 'tool ' + (c.state === 'running' ? 'running' : c.state === 'ok' ? 'ok' : 'bad')
 				const label = document.createElement('span')
@@ -217,6 +218,7 @@ export function mountChat(root, opts = {}) {
 					summary.textContent = t('Details')
 					const pre = document.createElement('pre')
 					pre.textContent = JSON.stringify(c.arguments, null, 2)
+					details.open = terminalTrace
 					details.appendChild(summary)
 					details.appendChild(pre)
 					row.appendChild(details)
@@ -227,6 +229,7 @@ export function mountChat(root, opts = {}) {
 					summary.textContent = t('Result')
 					const pre = document.createElement('pre')
 					pre.textContent = typeof c.result === 'string' ? c.result : JSON.stringify(c.result, null, 2)
+					details.open = terminalTrace
 					details.appendChild(summary)
 					details.appendChild(pre)
 					row.appendChild(details)
@@ -565,6 +568,7 @@ export function mountChat(root, opts = {}) {
 			}
 			ta.innerHTML = ''
 			m.tools.forEach((c) => {
+				const terminalTrace = c.name === 'run_terminal_command' || c.name === 'run_terminal_sequence'
 				const row = document.createElement('div')
 				row.className = 'tool ' + (c.state === 'running' ? 'running' : c.state === 'ok' ? 'ok' : 'bad')
 				const label = document.createElement('span')
@@ -576,6 +580,7 @@ export function mountChat(root, opts = {}) {
 					summary.textContent = t('Details')
 					const pre = document.createElement('pre')
 					pre.textContent = JSON.stringify(c.arguments, null, 2)
+					details.open = terminalTrace
 					details.appendChild(summary)
 					details.appendChild(pre)
 					row.appendChild(details)
@@ -586,6 +591,7 @@ export function mountChat(root, opts = {}) {
 					summary.textContent = t('Result')
 					const pre = document.createElement('pre')
 					pre.textContent = typeof c.result === 'string' ? c.result : JSON.stringify(c.result, null, 2)
+					details.open = terminalTrace
 					details.appendChild(summary)
 					details.appendChild(pre)
 					row.appendChild(details)
