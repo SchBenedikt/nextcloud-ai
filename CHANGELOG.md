@@ -45,6 +45,12 @@ follows [Semantic Versioning](https://semver.org/).
 - Add `core:text2text:multimodal-chatwithtools` with bounded image attachments and the existing central EVA tool policy.
 - Non-image attachments remain auditable filename/type context; image bytes are limited to four files and 12 MB total.
 
+## [1.16.88] - 2026-09-14
+
+### ContextAgent audio
+
+- Add `core:contextagent:audio-interaction` by routing bounded voice input through the existing confirmation-aware EVA agent, then returning a spoken response and action metadata.
+
 ## [1.16.81] - 2026-09-14
 
 ### OCR in Assistant tasks

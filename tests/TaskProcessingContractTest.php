@@ -26,6 +26,7 @@ use PHPUnit\Framework\TestCase;
  * EvaTextToSpeechProvider, EvaAudioTranslateProvider
  * EvaAudioChatProvider
  * MultimodalChatWithToolsProvider
+ * ContextAgentAudioProvider
  */
 class TaskProcessingContractTest extends TestCase {
 
@@ -70,6 +71,7 @@ class TaskProcessingContractTest extends TestCase {
             \OCA\EvaAi\TaskProcessing\EvaAudioTranslateProvider::class,
             \OCA\EvaAi\TaskProcessing\EvaAudioChatProvider::class,
             \OCA\EvaAi\TaskProcessing\MultimodalChatWithToolsProvider::class,
+            \OCA\EvaAi\TaskProcessing\ContextAgentAudioProvider::class,
         ];
     }
 
@@ -131,6 +133,7 @@ class TaskProcessingContractTest extends TestCase {
             'core:audio2audio:translate',
             'core:audio2audio:chat',
             'core:text2text:multimodal-chatwithtools',
+            'core:contextagent:audio-interaction',
         ];
 
         foreach ($this->providerClasses() as $class) {
