@@ -25,6 +25,13 @@ follows [Semantic Versioning](https://semver.org/).
 - Add `core:audio2text` and `core:audio2text:subtitles` providers using configurable OpenAI-compatible audio endpoints.
 - Enforce per-user file permissions and a 25 MB input limit; subtitle files are stored in the user's `EVA` folder.
 
+## [1.16.85] - 2026-09-14
+
+### Speech generation and audio translation
+
+- Add configurable OpenAI-compatible Text-to-Speech output stored as a Nextcloud audio file.
+- Add audio-to-audio translation by transcribing, translating, and synthesizing the result with bounded provider calls.
+
 ## [1.16.81] - 2026-09-14
 
 ### OCR in Assistant tasks

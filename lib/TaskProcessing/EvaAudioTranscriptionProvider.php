@@ -55,7 +55,7 @@ abstract class EvaAudioTranscriptionProvider implements ISynchronousProvider {
 		return ['node' => $node, 'bytes' => $bytes, 'filename' => $node->getName(), 'mime' => $mime];
 	}
 
-	protected function outputFile(string $userId, string $content, string $extension): int {
+	protected function outputFile(string $userId, string $content, string $extension, string $prefix = 'eva-subtitles'): int {
 		$home = $this->rootFolder->getUserFolder($userId);
 		if ($home->nodeExists('EVA')) {
 			$node = $home->get('EVA');
@@ -64,7 +64,7 @@ abstract class EvaAudioTranscriptionProvider implements ISynchronousProvider {
 		} else {
 			$folder = $home->newFolder('EVA');
 		}
-		$name = 'eva-subtitles-' . gmdate('Ymd-His') . '-' . bin2hex(random_bytes(3)) . '.' . $extension;
+		$name = $prefix . '-' . gmdate('Ymd-His') . '-' . bin2hex(random_bytes(3)) . '.' . $extension;
 		return (int)$folder->newFile($name, $content)->getId();
 	}
 }

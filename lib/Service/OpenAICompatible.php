@@ -138,6 +138,28 @@ class OpenAICompatible {
         }
     }
 
+    /** Generate bounded speech bytes through an OpenAI-compatible TTS endpoint. */
+    public function synthesizeSpeech(string $text, int $timeout = 180): array {
+        $provider = $this->provider();
+        if ($provider === 'ollama' || $provider === 'groq') throw new ProviderException('The selected provider does not expose a speech endpoint. Configure an OpenAI-compatible audio provider first.');
+        $profile = $this->profile();
+        $model = trim((string)($profile['tts_model'] ?? $this->model()));
+        $voice = trim((string)($profile['tts_voice'] ?? 'alloy'));
+        if ($model === '') throw new ProviderException('No speech model configured for the selected provider.');
+        try {
+            $response = $this->clients->newClient()->post($this->baseUrl() . '/audio/speech', [
+                'headers' => ['Authorization' => 'Bearer ' . $this->credentials->getCustom($this->config->userId() ?? '', $provider), 'Content-Type' => 'application/json'],
+                'json' => ['model' => $model, 'input' => mb_substr($text, 0, 12000), 'voice' => $voice, 'response_format' => 'mp3'],
+                'timeout' => max(1, min(300, $timeout)), 'http_errors' => false,
+            ]);
+            if ($response->getStatusCode() < 200 || $response->getStatusCode() >= 300) throw new ProviderException('Speech provider returned HTTP ' . $response->getStatusCode() . '. Check the configured model and API key.');
+            $bytes = (string)$response->getBody();
+            if ($bytes === '' || strlen($bytes) > 25_000_000) throw new ProviderException('Speech provider returned an empty or oversized audio file.');
+            return ['bytes' => $bytes, 'mime' => 'audio/mpeg'];
+        } catch (ProviderException $e) { throw $e; }
+        catch (\Throwable $e) { throw new ProviderException('Speech provider connection or response failed. Check endpoint, key and model.'); }
+    }
+
     /** Convert EVA's provider-neutral image message to OpenAI vision syntax. */
     private function normalizeMessages(array $messages): array {
         return array_map(static function (array $message): array {
