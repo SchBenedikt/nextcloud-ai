@@ -165,7 +165,7 @@ The workspace uses one responsive `--eva-content-width` token: it expands to `cl
 
 `search_files` performs a bounded VFS walk and searches names plus readable text-file content, returning snippets and a `truncated` flag when its node/depth/result limits are reached. `update_knowledge` protects the automatic profile block while trimming only old non-profile lines when the file exceeds its size limit.
 
-The centralized tool policy exposes registered read-only tools to the safe RAG/TaskProcessing surfaces. File, calendar, contact, share, and task mutations remain restricted to interactive surfaces and require explicit confirmation where configured. Live web search is not implemented yet; see GitHub issue #54.
+The centralized tool policy exposes registered read-only tools to the safe RAG/TaskProcessing surfaces. File, calendar, contact, share, and task mutations remain restricted to interactive surfaces and require explicit confirmation where configured. Web search is an explicit per-user opt-in: EVA can use the configured no-key HTML/RSS providers, self-hosted SearxNG, or admin-configured hosted providers. Retrieved pages are bounded, ranked, and exposed as external cited sources; if a provider blocks server traffic, EVA reports that limitation instead of pretending the search succeeded.
 
 ## Index cancellation
 

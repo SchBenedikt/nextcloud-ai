@@ -4,6 +4,15 @@ All notable changes to **EVA (eva_ai)** are documented here.
 Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); the project
 follows [Semantic Versioning](https://semver.org/).
 
+## [1.16.74] - 2026-09-14
+
+### Documentation and localization
+
+- Added the terminal prompt guidance and connector quick-setup labels to both
+  modern JSON and legacy JavaScript translation catalogs.
+- Corrected the architecture documentation to describe the implemented web
+  search providers and their explicit opt-in and source-grounding behaviour.
+
 ## [1.16.73] - 2026-09-14
 
 ### Documentation
