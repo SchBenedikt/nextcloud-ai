@@ -134,6 +134,71 @@ network request while registering. Do not register a name without the
 `plugin_` prefix, shadow a built-in tool, or return a definition without a
 JSON-schema-like `parameters` object. EVA rejects all three cases.
 
+## Integration recipes: Immich and Vaultwarden
+
+These examples describe the recommended adapter boundary for external-service
+apps. They intentionally call the owning app's service layer instead of making
+the model assemble raw HTTP requests. If the service is not installed as a
+Nextcloud app, use an [external connector](CONNECTORS.md) instead.
+
+### Immich person search
+
+An Immich adapter can expose one focused read-only operation:
+
+```php
+public function getToolDefinitions(): array {
+    return [[
+        'name' => 'plugin_immich_find_person',
+        'description' => 'Find photos belonging to a person the current user may view.',
+        'parameters' => [
+            'type' => 'object',
+            'additionalProperties' => false,
+            'properties' => [
+                'name' => ['type' => 'string', 'minLength' => 1, 'maxLength' => 120],
+                'limit' => ['type' => 'integer', 'minimum' => 1, 'maximum' => 20],
+            ],
+            'required' => ['name'],
+        ],
+        'risk' => ToolPolicy::RISK_READONLY,
+        'surfaces' => [ToolPolicy::SURFACE_WEB, ToolPolicy::SURFACE_TALK],
+    ]];
+}
+
+public function execute(string $userId, string $toolName, array $args): array {
+    $person = $this->immich->findPersonForUser($userId, trim($args['name']));
+    if ($person === null) return ['ok' => true, 'result' => ['matches' => []]];
+    $assets = $this->immich->assetsForPerson($userId, $person['id'], min(20, (int)($args['limit'] ?? 10)));
+    return ['ok' => true, 'result' => [
+        'person' => ['id' => $person['id'], 'name' => $person['name']],
+        'assets' => array_map(static fn(array $asset): array => [
+            'id' => $asset['id'], 'thumbnail_url' => $asset['thumbnail_url'],
+            'taken_at' => $asset['taken_at'] ?? null,
+        ], $assets),
+    ]];
+}
+```
+
+The service must enforce the Nextcloud user's Immich permissions before
+returning asset URLs. Never return the Immich API key, raw upstream payloads or
+unbounded image bytes. Thumbnail URLs should be authenticated, same-origin or
+short-lived. Writes such as album changes belong in a separate mutating tool
+with `RISK_MUTATING` and confirmation.
+
+### Vaultwarden status lookup
+
+Vaultwarden adapters should default to metadata-only, read-only operations such
+as `plugin_vaultwarden_health`. Do not accept a master password, session cookie
+or vault item contents as tool arguments. Read access must use the owning app's
+credential store and user ACLs; a health result should contain only fields such
+as `reachable`, `server_version` and `last_sync_at`. Any item retrieval should
+be a separate narrowly scoped operation with explicit authorization and strict
+result limits.
+
+For both adapters, add tests for an authorized user, an unauthorized user, an
+unknown person/item, an upstream timeout, oversized arguments and the exact
+redacted result. Register the plugin lazily and keep network calls out of the
+registration callback.
+
 ## Confirmation and execution surfaces
 
 `surfaces` is an allow-list, not a hint:
