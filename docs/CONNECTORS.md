@@ -11,8 +11,10 @@ route metadata scoped to that connector's host.
 1. Enter the service base URL. Use the URL that the Nextcloud server can reach,
    not necessarily the URL that works in the browser on a laptop.
 2. Optionally enter a same-host OpenAPI/Swagger URL. Leaving it blank lets EVA
-   probe standard locations such as `/openapi.json`, `/swagger.json`,
-   `/.well-known/openapi.json`, `/api/openapi.json`, `/api/swagger.json` and
+probe standard locations such as `/openapi.json`, `/openapi.yaml`,
+`/swagger.json`, `/swagger.yaml`, `/.well-known/openapi.json`,
+`/.well-known/openapi.yaml`, `/api/openapi.json`, `/api/openapi.yaml`,
+`/api/swagger.json`, `/api/swagger.yaml` and
    links advertised by the service's landing page.
 3. Select the authentication scheme and enter the secret. Secrets are encrypted
    per user and are never returned to the model or included in exports.

@@ -3608,7 +3608,7 @@ class ActionExecutor {
             $candidates = [];
             $customSchema = trim((string)($row['openapi_url'] ?? ''));
             if ($customSchema !== '' && $this->sameConnectorHost($customSchema, (string)$row['base_url'])) $candidates[] = $customSchema;
-            $candidates = array_merge($candidates, ['/api/v2.0', '/openapi.json', '/swagger.json', '/.well-known/openapi.json', '/api/open-api', '/api/openapi.json', '/api/swagger.json', '/api/openapi', '/api/swagger', '/docs', '/docs/openapi.json', '/api/docs', '/api/docs/openapi.json', '/api/v2.0/docs', '/api', '/graphql', '/api/graphql']);
+            $candidates = array_merge($candidates, ['/api/v2.0', '/openapi.json', '/openapi.yaml', '/openapi.yml', '/swagger.json', '/swagger.yaml', '/swagger.yml', '/.well-known/openapi.json', '/.well-known/openapi.yaml', '/api/open-api', '/api/openapi.json', '/api/openapi.yaml', '/api/openapi.yml', '/api/swagger.json', '/api/swagger.yaml', '/api/swagger.yml', '/api/openapi', '/api/swagger', '/docs', '/docs/openapi.json', '/docs/openapi.yaml', '/api/docs', '/api/docs/openapi.json', '/api/docs/openapi.yaml', '/api/v2.0/docs', '/api', '/graphql', '/api/graphql']);
             // Some services advertise their schema only as a link in the
             // landing page. Extract same-host JSON/YAML documentation links
             // without trusting arbitrary external URLs or executing them.

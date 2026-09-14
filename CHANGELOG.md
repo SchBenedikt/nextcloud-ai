@@ -4,6 +4,13 @@ All notable changes to **EVA (eva_ai)** are documented here.
 Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); the project
 follows [Semantic Versioning](https://semver.org/).
 
+## [1.16.69] - 2026-09-14
+
+### Added
+
+- Generic connector discovery now probes common OpenAPI and Swagger YAML paths
+  in addition to JSON descriptions.
+
 ## [1.16.68] - 2026-09-14
 
 ### Fixed

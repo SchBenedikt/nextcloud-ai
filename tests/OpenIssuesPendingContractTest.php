@@ -718,6 +718,8 @@ final class OpenIssuesPendingContractTest extends TestCase {
 		self::assertStringContainsString('http_build_query($queryParams', $executor);
 		self::assertStringContainsString('discoverExternalConnector', $executor);
 		self::assertStringContainsString("'/openapi.json'", $executor);
+		self::assertStringContainsString("'/openapi.yaml'", $executor);
+		self::assertStringContainsString("'/swagger.yml'", $executor);
 		self::assertStringContainsString("'openapi'", $executor);
         self::assertStringContainsString('decodeConnectorSchema', $executor);
         self::assertStringContainsString("function_exists('yaml_parse')", $executor);
