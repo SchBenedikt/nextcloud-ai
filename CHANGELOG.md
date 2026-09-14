@@ -4,6 +4,15 @@ All notable changes to **EVA (eva_ai)** are documented here.
 Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); the project
 follows [Semantic Versioning](https://semver.org/).
 
+## [1.16.75] - 2026-09-14
+
+### Terminal confirmations
+
+- Added native confirmation forms for terminal commands and command sequences.
+- Users can review or provide bounded interactive `stdin` input before EVA
+  executes a confirmed command; sequences accept JSON arrays for commands and
+  per-command prompt input.
+
 ## [1.16.74] - 2026-09-14
 
 ### Documentation and localization

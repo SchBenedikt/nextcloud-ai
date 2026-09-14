@@ -202,6 +202,10 @@ final class FrontendContractTest extends TestCase {
 		self::assertStringContainsString("'/calendars'", $confirmForms);
 		self::assertStringContainsString('delete_calendar_event:', $confirmForms);
 		self::assertStringContainsString('delete_file:', $confirmForms);
+		self::assertStringContainsString('run_terminal_command:', $confirmForms);
+		self::assertStringContainsString("F('stdin', 'Interactive prompt input (optional)', 'textarea'", $confirmForms);
+		self::assertStringContainsString('run_terminal_sequence:', $confirmForms);
+		self::assertStringContainsString('JSON string array', $confirmForms);
 		// The chat stream carries the chat id so the server can resolve the
 		// per-chat folder scope, and scoped chats show a pill in the header
 		// (Issue #88).

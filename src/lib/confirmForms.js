@@ -23,6 +23,25 @@ const F = (key, labelKey, type = 'text', extra = {}) => ({ key, label: t(labelKe
  * `title` is a translation key describing the action for the heading.
  */
 const FORMS = {
+	run_terminal_command: {
+		title: 'Run a terminal command',
+		fields: [
+			F('command', 'Command', 'text', { required: true, full: true }),
+			F('stdin', 'Interactive prompt input (optional)', 'textarea', { full: true }),
+		],
+	},
+	run_terminal_sequence: {
+		title: 'Run terminal commands in sequence',
+		fields: [
+			F('commands', 'Commands (one JSON string array)', 'textarea', { required: true, full: true, transform: (value) => {
+				try { const parsed = JSON.parse(value); return Array.isArray(parsed) ? parsed.map((item) => String(item)) : value.split(/\\r?\\n/).map((item) => item.trim()).filter(Boolean) } catch (_) { return value.split(/\\r?\\n/).map((item) => item.trim()).filter(Boolean) }
+			} }),
+			F('stdin', 'Prompt input per command (optional JSON array)', 'textarea', { full: true, transform: (value) => {
+				if (!value.trim()) return []
+				try { const parsed = JSON.parse(value); return Array.isArray(parsed) ? parsed.map((item) => String(item)) : [value] } catch (_) { return [value] }
+			} }),
+		],
+	},
 	create_share: {
 		title: 'Create a share',
 		fields: [
@@ -248,6 +267,10 @@ export function buildConfirmForm(conf) {
 	if ((conf && conf.name) === 'create_share' && !args.type) args.type = 'link'
 
 	const state = { ...args }
+	if ((conf && conf.name) === 'run_terminal_sequence') {
+		state.commands = Array.isArray(args.commands) ? JSON.stringify(args.commands, null, 2) : String(args.commands || '')
+		state.stdin = Array.isArray(args.stdin) ? JSON.stringify(args.stdin, null, 2) : String(args.stdin || '')
+	}
 	// Split model-provided ISO/local datetimes into native date and time fields
 	// so the editable form remains useful even when only `start` was supplied.
 	for (const prefix of ['start', 'end']) {
@@ -373,7 +396,7 @@ export function buildConfirmForm(conf) {
 				delete out[field.key]
 				return
 			}
-			out[field.key] = getValue()
+			out[field.key] = typeof field.transform === 'function' ? field.transform(getValue()) : getValue()
 		})
 		// Combine native date/time controls into the backend's supported values.
 		if (conf && conf.name === 'create_calendar_event') {
