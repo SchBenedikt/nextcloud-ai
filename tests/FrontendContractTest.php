@@ -18,6 +18,8 @@ final class FrontendContractTest extends TestCase {
         self::assertStringContainsString('async function persistBriefings(rows, messageKey)', $settings);
         self::assertStringContainsString('if (await saveBriefingSchedule()) setMessage', $settings);
         self::assertStringContainsString('bounded stdin input', $settings);
+        self::assertStringContainsString("applyConnectorExample('immich')", $settings);
+        self::assertStringContainsString("applyConnectorExample('vaultwarden')", $settings);
         self::assertStringNotContainsString('<select v-model="connectorDraft.auth_type"', $settings);
         self::assertStringNotContainsString('class="briefing-toggle"', $settings);
     }

@@ -4,6 +4,13 @@ All notable changes to **EVA (eva_ai)** are documented here.
 Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); the project
 follows [Semantic Versioning](https://semver.org/).
 
+## [1.16.72] - 2026-09-14
+
+### Added
+
+- External connector settings now include native quick-setup presets for
+  Immich (`x-api-key`) and Vaultwarden (Bearer), alongside existing examples.
+
 ## [1.16.71] - 2026-09-14
 
 ### Added
