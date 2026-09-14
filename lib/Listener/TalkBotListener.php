@@ -11,7 +11,6 @@ use OCA\EvaAi\Service\RagService;
 use OCA\EvaAi\Service\TalkContextReader;
 use OCA\EvaAi\Service\TalkRoomState;
 use OCA\EvaAi\Service\TalkTranscriptService;
-use OCA\EvaAi\Service\TalkBotRegistrar;
 use OCA\EvaAi\Service\ToolPolicy;
 use OCA\Talk\Events\BotInvokeEvent;
 use OCA\Talk\Model\Bot;
@@ -90,10 +89,7 @@ PROMPT;
         $this->executor->setUserId($userId);
 
         $roomId = (int)($data['target']['id'] ?? 0);
-        // Talk already dispatches this event for the addressed bot. This is
-        // important for focused profiles such as "Eva Mail", whose display
-        // name does not match the administrator's generic trigger.
-        $explicit = $this->isExplicitlyMentioned($content) || $this->isKnownBotUrl($url);
+        $explicit = $this->isExplicitlyMentioned($content);
         if (!$explicit) {
             return;
         }
@@ -121,10 +117,6 @@ PROMPT;
 
         // Sprecher aus Mention-Liste entfernen, falls vorhanden.
         $cleanContent = $this->stripMention($content);
-        $profile = $this->profileInstruction($url);
-        if ($profile !== '') {
-            $cleanContent = $profile . "\n\nUser request:\n" . $cleanContent;
-        }
 
         // History der letzten Chatnachrichten laden.
         $history = $roomId > 0 ? $this->contextReader->buildHistoryMessages($roomId) : [];
@@ -146,31 +138,6 @@ PROMPT;
             $this->logger->error('eva_ai talk bot failed', ['exception' => $e]);
             $event->addAnswer('Something went wrong on my side. Please try again in a moment.');
         }
-    }
-
-    private function profileInstruction(string $url): string {
-        foreach (TalkBotRegistrar::PROFILES as $profile) {
-            if ($profile['url'] !== $url || $profile['id'] === 'general') {
-                continue;
-            }
-            return match ($profile['id']) {
-                'research' => '[Bot role: research assistant. Prefer web search, primary sources and clearly labeled citations.]',
-                'calendar' => '[Bot role: calendar assistant. Prefer calendar and availability tools; state timezone and ambiguity clearly.]',
-                'mail' => '[Bot role: mail assistant. Prefer Nextcloud Mail tools and summarize messages with action items and deadlines.]',
-                'files' => '[Bot role: file assistant. Prefer bounded Nextcloud file search and explain exact paths and source files.]',
-                default => '',
-            };
-        }
-        return '';
-    }
-
-    private function isKnownBotUrl(string $url): bool {
-        foreach (TalkBotRegistrar::PROFILES as $profile) {
-            if ($profile['url'] === $url) {
-                return true;
-            }
-        }
-        return false;
     }
 
     /**
