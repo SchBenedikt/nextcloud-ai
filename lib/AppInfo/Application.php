@@ -55,6 +55,12 @@ class Application extends App implements IBootstrap {
         $context->registerTaskProcessingProvider(\OCA\EvaAi\TaskProcessing\EvaReformatProvider::class);
         $context->registerTaskProcessingProvider(\OCA\EvaAi\TaskProcessing\EvaChangeToneProvider::class);
         $context->registerTaskProcessingProvider(\OCA\EvaAi\TaskProcessing\EvaContextWriteProvider::class);
+        // Additional Core text task types: local improve, simplify and
+        // formalize operations use the same bounded Ollama transform path.
+        $context->registerTaskProcessingProvider(\OCA\EvaAi\TaskProcessing\EvaImproveProvider::class);
+        $context->registerTaskProcessingProvider(\OCA\EvaAi\TaskProcessing\EvaSimplificationProvider::class);
+        $context->registerTaskProcessingProvider(\OCA\EvaAi\TaskProcessing\EvaFormalizationProvider::class);
+        $context->registerTaskProcessingProvider(\OCA\EvaAi\TaskProcessing\EvaEmojiProvider::class);
         // Talk-Bot: reagiert auf BotInvokeEvent, wenn Nextcloud Talk installiert ist.
         $context->registerEventListener(\OCA\Talk\Events\BotInvokeEvent::class, \OCA\EvaAi\Listener\TalkBotListener::class);
         // GDPR-Erasure: Kontenloeschung raeumt alle eva_ai-Daten des Users ab (Issue #83).

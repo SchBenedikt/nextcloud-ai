@@ -19,6 +19,8 @@ use PHPUnit\Framework\TestCase;
  * EvaHeadlineProvider, EvaTopicsProvider, EvaTranslateProvider,
  * EvaReformulateProvider, EvaProofreadProvider, EvaReformatProvider,
  * EvaChangeToneProvider, EvaContextWriteProvider
+ * EvaImproveProvider, EvaSimplificationProvider, EvaFormalizationProvider
+ * EvaEmojiProvider
  */
 class TaskProcessingContractTest extends TestCase {
 
@@ -50,6 +52,10 @@ class TaskProcessingContractTest extends TestCase {
             \OCA\EvaAi\TaskProcessing\EvaReformatProvider::class,
             \OCA\EvaAi\TaskProcessing\EvaChangeToneProvider::class,
             \OCA\EvaAi\TaskProcessing\EvaContextWriteProvider::class,
+            \OCA\EvaAi\TaskProcessing\EvaImproveProvider::class,
+            \OCA\EvaAi\TaskProcessing\EvaSimplificationProvider::class,
+            \OCA\EvaAi\TaskProcessing\EvaFormalizationProvider::class,
+            \OCA\EvaAi\TaskProcessing\EvaEmojiProvider::class,
         ];
     }
 
@@ -98,6 +104,10 @@ class TaskProcessingContractTest extends TestCase {
             'core:contextagent:interaction',
             'core:text2text:chatwithtools',
             'core:contextwrite',
+            'core:text2text:improve',
+            'core:text2text:simplification',
+            'core:text2text:formalization',
+            'core:generateemoji',
         ];
 
         foreach ($this->providerClasses() as $class) {

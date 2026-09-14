@@ -51,7 +51,10 @@ permissions.
 ### Nextcloud Assistant / TaskProcessing
 
 EVA registers providers for chat, summarisation, headline, topics, translation,
-rephrasing, correction, formatting, tone adjustment, and context-aware writing.
+rephrasing, correction, formatting, improvement, simplification, formalization,
+emoji generation, tone adjustment, and context-aware writing. These local
+providers run through Ollama, so the common Assistant tasks work without a
+hosted provider or API key.
 Additional providers exist for chat with shared tools and for multi-step agent
 interactions. Provider execution requires a running Nextcloud TaskProcessing
 worker.

@@ -4,6 +4,18 @@ All notable changes to **EVA (eva_ai)** are documented here.
 Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); the project
 follows [Semantic Versioning](https://semver.org/).
 
+## [1.16.80] - 2026-09-14
+
+### More Assistant task types
+
+- Add a local emoji-generation provider alongside the new improve, simplify and formalize providers.
+
+## [1.16.79] - 2026-09-14
+
+### More Assistant task types
+
+- Register local EVA providers for text improvement, simplification and formalization so the Assistant can use these Core task types without an external provider.
+
 ## [1.16.78] - 2026-09-14
 
 ### Index lock recovery
