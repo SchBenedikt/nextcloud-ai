@@ -21,6 +21,7 @@ use PHPUnit\Framework\TestCase;
  * EvaChangeToneProvider, EvaContextWriteProvider
  * EvaImproveProvider, EvaSimplificationProvider, EvaFormalizationProvider
  * EvaEmojiProvider
+ * EvaOcrProvider
  */
 class TaskProcessingContractTest extends TestCase {
 
@@ -56,6 +57,7 @@ class TaskProcessingContractTest extends TestCase {
             \OCA\EvaAi\TaskProcessing\EvaSimplificationProvider::class,
             \OCA\EvaAi\TaskProcessing\EvaFormalizationProvider::class,
             \OCA\EvaAi\TaskProcessing\EvaEmojiProvider::class,
+            \OCA\EvaAi\TaskProcessing\EvaOcrProvider::class,
         ];
     }
 
@@ -108,6 +110,7 @@ class TaskProcessingContractTest extends TestCase {
             'core:text2text:simplification',
             'core:text2text:formalization',
             'core:generateemoji',
+            'core:image2text:ocr',
         ];
 
         foreach ($this->providerClasses() as $class) {

@@ -4,6 +4,12 @@ All notable changes to **EVA (eva_ai)** are documented here.
 Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); the project
 follows [Semantic Versioning](https://semver.org/).
 
+## [1.16.81] - 2026-09-14
+
+### OCR in Assistant tasks
+
+- Register a bounded local OCR provider for image/PDF TaskProcessing inputs, reusing EVA's existing Tesseract safeguards and per-user file permissions.
+
 ## [1.16.80] - 2026-09-14
 
 ### More Assistant task types
