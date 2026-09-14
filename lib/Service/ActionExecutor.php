@@ -2314,7 +2314,16 @@ class ActionExecutor {
             $truncated = true;
             return;
         }
-        foreach ($folder->getDirectoryListing() as $node) {
+        try {
+            $entries = $folder->getDirectoryListing();
+        } catch (\Throwable) {
+            // A single unavailable remote folder must not discard matches
+            // already collected from other branches. Report a bounded,
+            // inspectable partial result instead.
+            $truncated = true;
+            return;
+        }
+        foreach ($entries as $node) {
             if (count($matches) >= $maxResults || $visited >= $maxNodes) {
                 $truncated = true;
                 return;

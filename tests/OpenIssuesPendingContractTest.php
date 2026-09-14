@@ -144,6 +144,26 @@ final class OpenIssuesPendingContractTest extends TestCase {
         self::assertStringContainsString('migration', $snippet);
     }
 
+    public function testIssue70SearchContinuesWithPartialResultWhenFolderListingFails(): void {
+        $reflection = new \ReflectionClass(ActionExecutor::class);
+        $instance = $reflection->newInstanceWithoutConstructor();
+        $file = $this->createMock(File::class);
+        $file->method('getName')->willReturn('notes.txt');
+        $file->method('getSize')->willReturn(64);
+        $file->method('getMimeType')->willReturn('text/plain');
+        $file->method('getContent')->willReturn('keep this result');
+        $broken = $this->createMock(Folder::class);
+        $broken->method('getName')->willReturn('offline-share');
+        $broken->method('getId')->willReturn(2);
+        $broken->method('getDirectoryListing')->willThrowException(new \RuntimeException('offline share'));
+        $root = $this->createMock(Folder::class);
+        $root->method('getDirectoryListing')->willReturn([$file, $broken]);
+        $result = $reflection->getMethod('searchFiles')->invoke($instance, $root, ['query' => 'keep']);
+        self::assertTrue($result['ok']);
+        self::assertCount(1, $result['result']['matches']);
+        self::assertTrue($result['result']['truncated']);
+    }
+
     /** MIME maps are not reliable for newly uploaded plain-text files. */
     public function testIssue70SearchFilesUsesSafeTextExtensionFallback(): void {
         $reflection = new \ReflectionClass(ActionExecutor::class);

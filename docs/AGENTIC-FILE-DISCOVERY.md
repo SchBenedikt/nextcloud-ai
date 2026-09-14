@@ -32,6 +32,10 @@ and `truncated`, so EVA can tell you whether an empty result is definitive or
 whether the configured scan limit was reached. Direct discovery never starts a
 full indexing job and never writes index rows.
 
+If a remote or permission-restricted folder cannot be listed, EVA keeps matches
+already found in other branches and marks the result as `truncated` instead of
+failing the entire search.
+
 When an answer needs a file that is not indexed, EVA may use these read-only
 tools in an authenticated web chat:
 
