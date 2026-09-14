@@ -53,6 +53,8 @@ OC.L10N.register("eva_ai", {
     "Interactive prompt input (optional)": "Interactive prompt input (optional)",
     "Commands (one JSON string array)": "Commands (one JSON string array)",
     "Prompt input per command (optional JSON array)": "Prompt input per command (optional JSON array)",
+    "Timeout (seconds)": "Timeout (seconds)",
+    "Timeout per command (seconds)": "Timeout per command (seconds)",
     "JSON fields": "JSON fields",
     "Parameters": "Parameters",
     "Discovery": "Discovery",

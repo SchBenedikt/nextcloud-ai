@@ -28,6 +28,7 @@ const FORMS = {
 		fields: [
 			F('command', 'Command', 'text', { required: true, full: true }),
 			F('stdin', 'Interactive prompt input (optional)', 'textarea', { full: true }),
+			F('timeout_seconds', 'Timeout (seconds)', 'number'),
 		],
 	},
 	run_terminal_sequence: {
@@ -36,6 +37,7 @@ const FORMS = {
 			F('commands', 'Commands (one JSON string array)', 'textarea', { required: true, full: true, transform: (value) => {
 				try { const parsed = JSON.parse(value); return Array.isArray(parsed) ? parsed.map((item) => String(item)) : value.split(/\\r?\\n/).map((item) => item.trim()).filter(Boolean) } catch (_) { return value.split(/\\r?\\n/).map((item) => item.trim()).filter(Boolean) }
 			} }),
+			F('timeout_seconds', 'Timeout per command (seconds)', 'number'),
 			F('stdin', 'Prompt input per command (optional JSON array)', 'textarea', { full: true, transform: (value) => {
 				if (!value.trim()) return []
 				try { const parsed = JSON.parse(value); return Array.isArray(parsed) ? parsed.map((item) => String(item)) : [value] } catch (_) { return [value] }
