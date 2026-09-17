@@ -99,43 +99,43 @@ class ToolPolicy {
         'create_file' => [
             'risk' => self::RISK_MUTATING,
             'surfaces' => [self::SURFACE_WEB, self::SURFACE_TASKPROCESSING_CONFIRMED],
-            'requiresConfirmation' => true,
+            'requiresConfirmation' => false,
             'description' => 'Create or overwrite a file',
         ],
         'create_files' => [
             'risk' => self::RISK_MUTATING,
             'surfaces' => [self::SURFACE_WEB, self::SURFACE_TASKPROCESSING_CONFIRMED],
-            'requiresConfirmation' => true,
+            'requiresConfirmation' => false,
             'description' => 'Create or overwrite several bounded text files',
         ],
         'create_note' => [
             'risk' => self::RISK_MUTATING,
             'surfaces' => [self::SURFACE_WEB, self::SURFACE_TASKPROCESSING_CONFIRMED],
-            'requiresConfirmation' => true,
+            'requiresConfirmation' => false,
             'description' => 'Create a Markdown note',
         ],
         'create_folder' => [
             'risk' => self::RISK_MUTATING,
             'surfaces' => [self::SURFACE_WEB, self::SURFACE_TASKPROCESSING_CONFIRMED],
-            'requiresConfirmation' => true,
+            'requiresConfirmation' => false,
             'description' => 'Create a folder',
         ],
         'rename_file' => [
             'risk' => self::RISK_MUTATING,
             'surfaces' => [self::SURFACE_WEB, self::SURFACE_TASKPROCESSING_CONFIRMED],
-            'requiresConfirmation' => true,
+            'requiresConfirmation' => false,
             'description' => 'Rename a file or folder',
         ],
         'move_file' => [
             'risk' => self::RISK_MUTATING,
             'surfaces' => [self::SURFACE_WEB, self::SURFACE_TASKPROCESSING_CONFIRMED],
-            'requiresConfirmation' => true,
+            'requiresConfirmation' => false,
             'description' => 'Move a file or folder to another directory',
         ],
         'copy_file' => [
             'risk' => self::RISK_MUTATING,
             'surfaces' => [self::SURFACE_WEB, self::SURFACE_TASKPROCESSING_CONFIRMED],
-            'requiresConfirmation' => true,
+            'requiresConfirmation' => false,
             'description' => 'Copy a file or folder to another directory',
         ],
         'file_checksum' => [
@@ -153,7 +153,7 @@ class ToolPolicy {
         'update_knowledge' => [
             'risk' => self::RISK_MUTATING,
             'surfaces' => [self::SURFACE_WEB, self::SURFACE_TASKPROCESSING_CONFIRMED],
-            'requiresConfirmation' => true,
+            'requiresConfirmation' => false,
             'description' => 'Update personal knowledge base',
         ],
 
@@ -173,13 +173,13 @@ class ToolPolicy {
         'create_contact' => [
             'risk' => self::RISK_MUTATING,
             'surfaces' => [self::SURFACE_WEB, self::SURFACE_TASKPROCESSING_CONFIRMED],
-            'requiresConfirmation' => true,
+            'requiresConfirmation' => false,
             'description' => 'Create a contact',
         ],
         'update_contact' => [
             'risk' => self::RISK_MUTATING,
             'surfaces' => [self::SURFACE_WEB, self::SURFACE_TASKPROCESSING_CONFIRMED],
-            'requiresConfirmation' => true,
+            'requiresConfirmation' => false,
             'description' => 'Update a contact',
         ],
         'delete_contact' => [
@@ -199,7 +199,7 @@ class ToolPolicy {
         'update_profile' => [
             'risk' => self::RISK_MUTATING,
             'surfaces' => [self::SURFACE_WEB, self::SURFACE_TASKPROCESSING_CONFIRMED],
-            'requiresConfirmation' => true,
+            'requiresConfirmation' => false,
             'description' => 'Update own profile',
         ],
 
@@ -219,13 +219,13 @@ class ToolPolicy {
         'create_calendar_event' => [
             'risk' => self::RISK_MUTATING,
             'surfaces' => [self::SURFACE_WEB, self::SURFACE_TASKPROCESSING_CONFIRMED],
-            'requiresConfirmation' => true,
+            'requiresConfirmation' => false,
             'description' => 'Create a calendar event',
         ],
         'update_calendar_event' => [
             'risk' => self::RISK_MUTATING,
             'surfaces' => [self::SURFACE_WEB, self::SURFACE_TASKPROCESSING_CONFIRMED],
-            'requiresConfirmation' => true,
+            'requiresConfirmation' => false,
             'description' => 'Update a calendar event',
         ],
         'delete_calendar_event' => [
@@ -283,13 +283,13 @@ class ToolPolicy {
         'create_share' => [
             'risk' => self::RISK_MUTATING,
             'surfaces' => [self::SURFACE_WEB, self::SURFACE_TASKPROCESSING_CONFIRMED],
-            'requiresConfirmation' => true,
+            'requiresConfirmation' => false,
             'description' => 'Create a share',
         ],
         'update_share' => [
             'risk' => self::RISK_MUTATING,
             'surfaces' => [self::SURFACE_WEB, self::SURFACE_TASKPROCESSING_CONFIRMED],
-            'requiresConfirmation' => true,
+            'requiresConfirmation' => false,
             'description' => 'Update a share',
         ],
         'delete_share' => [
@@ -309,19 +309,19 @@ class ToolPolicy {
         'create_task' => [
             'risk' => self::RISK_MUTATING,
             'surfaces' => [self::SURFACE_WEB, self::SURFACE_TASKPROCESSING_CONFIRMED],
-            'requiresConfirmation' => true,
+            'requiresConfirmation' => false,
             'description' => 'Create a task',
         ],
         'update_task' => [
             'risk' => self::RISK_MUTATING,
             'surfaces' => [self::SURFACE_WEB, self::SURFACE_TASKPROCESSING_CONFIRMED],
-            'requiresConfirmation' => true,
+            'requiresConfirmation' => false,
             'description' => 'Update a task',
         ],
         'complete_task' => [
             'risk' => self::RISK_MUTATING,
             'surfaces' => [self::SURFACE_WEB, self::SURFACE_TASKPROCESSING_CONFIRMED],
-            'requiresConfirmation' => true,
+            'requiresConfirmation' => false,
             'description' => 'Mark a task as completed',
         ],
         'delete_task' => [
@@ -374,7 +374,7 @@ class ToolPolicy {
         'add_comment' => [
             'risk' => self::RISK_MUTATING,
             'surfaces' => [self::SURFACE_WEB, self::SURFACE_TASKPROCESSING_CONFIRMED],
-            'requiresConfirmation' => true,
+            'requiresConfirmation' => false,
             'description' => 'Add a comment to a Nextcloud object',
         ],
         'delete_comment' => [
@@ -392,13 +392,13 @@ class ToolPolicy {
         'tag_file' => [
             'risk' => self::RISK_MUTATING,
             'surfaces' => [self::SURFACE_WEB, self::SURFACE_TASKPROCESSING_CONFIRMED],
-            'requiresConfirmation' => true,
+            'requiresConfirmation' => false,
             'description' => 'Assign a system tag to a Nextcloud file',
         ],
         'untag_file' => [
             'risk' => self::RISK_MUTATING,
             'surfaces' => [self::SURFACE_WEB, self::SURFACE_TASKPROCESSING_CONFIRMED],
-            'requiresConfirmation' => true,
+            'requiresConfirmation' => false,
             'description' => 'Remove a system tag from a Nextcloud file',
         ],
         'list_file_versions' => [
@@ -464,13 +464,13 @@ class ToolPolicy {
         'create_scheduled_briefing' => [
             'risk' => self::RISK_MUTATING,
             'surfaces' => [self::SURFACE_WEB],
-            'requiresConfirmation' => true,
+            'requiresConfirmation' => false,
             'description' => 'Create an EVA scheduled briefing',
         ],
         'update_scheduled_briefing' => [
             'risk' => self::RISK_MUTATING,
             'surfaces' => [self::SURFACE_WEB],
-            'requiresConfirmation' => true,
+            'requiresConfirmation' => false,
             'description' => 'Update an EVA scheduled briefing',
         ],
         'delete_scheduled_briefing' => [
@@ -488,13 +488,13 @@ class ToolPolicy {
         'create_scheduled_assignment' => [
             'risk' => self::RISK_MUTATING,
             'surfaces' => [self::SURFACE_WEB, self::SURFACE_TASKPROCESSING_CONFIRMED],
-            'requiresConfirmation' => true,
+            'requiresConfirmation' => false,
             'description' => 'Create a Nextcloud Assistant scheduled assignment (Geplante Aufgabe)',
         ],
         'update_scheduled_assignment' => [
             'risk' => self::RISK_MUTATING,
             'surfaces' => [self::SURFACE_WEB, self::SURFACE_TASKPROCESSING_CONFIRMED],
-            'requiresConfirmation' => true,
+            'requiresConfirmation' => false,
             'description' => 'Update a Nextcloud Assistant scheduled assignment',
         ],
         'delete_scheduled_assignment' => [
