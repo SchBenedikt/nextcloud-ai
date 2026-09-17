@@ -77,6 +77,9 @@ class ActionExecutor {
         'create_file' => ['path', 'content'],
         'create_files' => ['files'],
         'create_note' => ['title', 'content'],
+        'update_note' => ['path', 'content'],
+        'list_notes' => [],
+        'read_note' => ['path'],
         'create_folder' => ['path'],
         'rename_file' => ['path', 'new_name'],
         'move_file' => ['path', 'target_path'],
@@ -246,6 +249,28 @@ class ActionExecutor {
                     'title' => ['type' => 'string', 'description' => 'Title of the note without extension, e.g. "Meeting minutes".'],
                     'content' => ['type' => 'string', 'description' => 'The Markdown body of the note.'],
                 ], 'required' => ['title', 'content']],
+            ]],
+            ['type' => 'function', 'function' => [
+                'name' => 'list_notes',
+                'description' => 'List all Markdown notes in the user\'s Notes folder (Nextcloud Notes app). Returns file names and modification dates.',
+                'parameters' => ['type' => 'object', 'properties' => [
+                    'search' => ['type' => 'string', 'description' => 'Optional search term to filter notes by title.'],
+                ]],
+            ]],
+            ['type' => 'function', 'function' => [
+                'name' => 'read_note',
+                'description' => 'Read the content of a specific Markdown note from the Notes folder.',
+                'parameters' => ['type' => 'object', 'properties' => [
+                    'path' => ['type' => 'string', 'description' => 'Path to the note, e.g. "Meeting minutes.md" or "Notes/My Note.md".'],
+                ], 'required' => ['path']],
+            ]],
+            ['type' => 'function', 'function' => [
+                'name' => 'update_note',
+                'description' => 'Update the content of an existing Markdown note. The file must already exist.',
+                'parameters' => ['type' => 'object', 'properties' => [
+                    'path' => ['type' => 'string', 'description' => 'Path to the note, e.g. "Meeting minutes.md".'],
+                    'content' => ['type' => 'string', 'description' => 'The new Markdown content to replace the existing content.'],
+                ], 'required' => ['path', 'content']],
             ]],
             ['type' => 'function', 'function' => [
                 'name' => 'create_folder',
@@ -1166,10 +1191,9 @@ class ActionExecutor {
         }
 
         $fileTools = [
-            'list_files', 'create_file', 'create_files', 'create_note', 'create_folder',
-            'rename_file', 'move_file', 'copy_file', 'file_checksum', 'delete_file', 'read_file', 'read_files', 'inspect_file', 'search_files',
-            'extract_file_text', 'create_sticker',
-            'update_knowledge',
+            'list_files', 'create_file', 'create_files', 'create_note', 'list_notes', 'read_note', 'update_note',
+            'create_folder', 'rename_file', 'move_file', 'copy_file', 'file_checksum', 'delete_file', 'read_file',
+            'read_files', 'inspect_file', 'search_files', 'extract_file_text', 'create_sticker', 'update_knowledge',
         ];
         if (in_array($name, $fileTools, true) && $home === null) {
             return ['ok' => false, 'error' => 'File tools are not available in the background worker (CLI). Ask in the web chat instead.'];
@@ -1181,6 +1205,9 @@ class ActionExecutor {
                 'create_file' => $this->createFile($home, $args),
                 'create_files' => $this->createFiles($home, $args),
                 'create_note' => $this->createNote($home, $args),
+                'list_notes' => $this->listNotes($home, $args),
+                'read_note' => $this->readNote($home, $args),
+                'update_note' => $this->updateNote($home, $args),
                 'create_folder' => $this->createFolder($home, $args),
                 'rename_file' => $this->renameFile($home, $args),
                 'move_file' => $this->moveFile($home, $args),
@@ -2181,6 +2208,85 @@ class ActionExecutor {
         }
         $title = $this->cleanName($title);
         return $this->createFile($home, ['path' => self::NOTES_FOLDER . '/' . $title, 'content' => $content]);
+    }
+
+    private function listNotes(Folder $home, array $args): array {
+        $search = trim((string)($args['search'] ?? ''));
+        $notesDir = $this->folderAt($home, self::NOTES_FOLDER);
+        $out = [];
+        $count = 0;
+        foreach ($notesDir->getDirectoryListing() as $node) {
+            if ($count >= 300) break;
+            if (!$node instanceof \OCP\Files\File) continue;
+            $name = $node->getName();
+            if (!str_ends_with(strtolower($name), '.md')) continue;
+            if ($search !== '' && stripos($name, $search) === false) continue;
+            $out[] = [
+                'name' => $name,
+                'path' => self::NOTES_FOLDER . '/' . $name,
+                'size' => (int)$node->getNode()->getSize(),
+                'last_modified' => date('Y-m-d H:i:s', $node->getNode()->getMTime()),
+            ];
+            $count++;
+        }
+        usort($out, static fn($a, $b) => strcmp($b['last_modified'], $a['last_modified']));
+        return ['ok' => true, 'result' => ['notes' => $out, 'count' => count($out)]];
+    }
+
+    private function readNote(Folder $home, array $args): array {
+        $path = trim((string)($args['path'] ?? ''));
+        if ($path === '') return ['ok' => false, 'error' => 'Note path is required'];
+        // Ensure .md extension
+        if (!str_ends_with(strtolower($path), '.md')) {
+            $path .= '.md';
+        }
+        // If no folder prefix, assume Notes folder
+        if (strpos($path, '/') === false) {
+            $path = self::NOTES_FOLDER . '/' . $path;
+        }
+        $path = $this->cleanPath($path);
+        try {
+            $node = $home->get($path);
+            if (!$node instanceof \OCP\Files\File) {
+                return ['ok' => false, 'error' => 'Path is not a file'];
+            }
+            $content = (string)$node->getContent();
+            return ['ok' => true, 'result' => [
+                'path' => $path,
+                'name' => $node->getName(),
+                'content' => $content,
+                'size' => (int)$node->getSize(),
+                'last_modified' => date('Y-m-d H:i:s', $node->getMTime()),
+            ]];
+        } catch (\Throwable $e) {
+            return ['ok' => false, 'error' => 'Note not found: ' . $path];
+        }
+    }
+
+    private function updateNote(Folder $home, array $args): array {
+        $path = trim((string)($args['path'] ?? ''));
+        $content = (string)($args['content'] ?? '');
+        if ($path === '') return ['ok' => false, 'error' => 'Note path is required'];
+        // Ensure .md extension
+        if (!str_ends_with(strtolower($path), '.md')) {
+            $path .= '.md';
+        }
+        // If no folder prefix, assume Notes folder
+        if (strpos($path, '/') === false) {
+            $path = self::NOTES_FOLDER . '/' . $path;
+        }
+        $path = $this->cleanPath($path);
+        try {
+            $node = $home->get($path);
+            if (!$node instanceof \OCP\Files\File) {
+                return ['ok' => false, 'error' => 'Path is not a file'];
+            }
+            $node->putContent($content);
+            $this->bumpSearchRevision();
+            return ['ok' => true, 'result' => 'Updated note ' . $path];
+        } catch (\Throwable $e) {
+            return ['ok' => false, 'error' => 'Note not found: ' . $path];
+        }
     }
 
     /** @return array{ok:true,result:string} */
