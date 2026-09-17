@@ -1,27 +1,145 @@
 # Changelog
 
-## [1.16.95] - 2026-09-14
-
-- Guard native TaskProcessing provider registration by the availability of the
-  corresponding Nextcloud core task type, preventing Nextcloud 34 dashboard
-  requests from failing on newer optional task types.
-
-## [1.16.94] - 2026-09-14
-
-- Keep the optional plugin catalog from breaking EVA startup when a third-party
-  plugin provides an invalid or incomplete tool schema.
-
-## [1.16.93] - 2026-09-14
-
-- Add read-only email summarization through the Nextcloud Mail app.
-- Keep one Talk bot with focused read-only tools, avoiding duplicate responses.
-- Document image-capable provider configuration for image generation.
-- Register EVA's indexed file knowledge in Nextcloud Unified Search with live
-  VFS permission checks and direct links back to Files.
-
 All notable changes to **EVA (eva_ai)** are documented here.
 Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); the project
 follows [Semantic Versioning](https://semver.org/).
+
+## [1.16.95] - 2026-09-14
+
+A major release that transforms EVA from a RAG chat tool into a full multimodal
+AI assistant with vision, speech, audio, image generation, a plugin system, and
+deep Nextcloud integration.
+
+### Multimodal & Vision
+
+- **Image analysis in Assistant tasks.** A new bounded `core:analyze-images`
+  provider reads Nextcloud image files and sends them to the configured Ollama
+  vision or OpenAI-compatible model. Native Ollama image messages are preserved
+  and translated to OpenAI-compatible format for remote providers.
+- **Image generation.** A bounded `core:text2image` provider for configured
+  OpenAI-compatible image APIs. Generated images are stored in the user's `EVA`
+  folder with returned Nextcloud file IDs.
+- **Sticker tool.** A confirmation-gated `create_sticker` chat tool generates
+  PNG stickers from text prompts and saves them to the user's `EVA` folder.
+- **OCR.** A local OCR provider for image/PDF TaskProcessing inputs, reusing
+  EVA's Tesseract safeguards and per-user file permissions.
+- **Multimodal chat.** `core:text2text:multimodal-chatwithtools` supports
+  bounded image attachments (up to 4 files, 12 MB total) with the central EVA
+  tool policy.
+- **Multimodal ContextAgent.** `core:contextagent:multimodal-interaction` with
+  bounded, permission-checked image attachments while preserving EVA's
+  confirmation workflow.
+
+### Audio & Speech
+
+- **Audio transcription and subtitles.** `core:audio2text` and
+  `core:audio2text:subtitles` providers using configurable OpenAI-compatible
+  audio endpoints, with a 25 MB input limit and per-user file permissions.
+- **Text-to-Speech.** Configurable OpenAI-compatible TTS output stored as a
+  Nextcloud audio file.
+- **Audio-to-audio translation.** Transcribe, translate, and synthesize with
+  bounded provider calls.
+- **Audio chat.** `core:audio2audio:chat` transcribes a voice message, answers
+  with the configured chat model, and saves the spoken response.
+- **ContextAgent audio.** `core:contextagent:audio-interaction` routes bounded
+  voice input through the confirmation-aware EVA agent.
+
+### Provider Configuration
+
+- Modality-specific profile fields (`image_model`, `audio_model`,
+  `tts_model`, `tts_voice`) are now surfaced in Settings so image/audio
+  providers can be configured without guessing JSON keys.
+- Guard native TaskProcessing provider registration by the availability of the
+  corresponding Nextcloud core task type, preventing Nextcloud 34 dashboard
+  failures on newer optional task types.
+
+### Terminal & Tool System
+
+- **Native confirmation forms** for terminal commands and command sequences with
+  bounded interactive `stdin` input and per-command prompt support.
+- **Terminal command sequences** can run up to five bounded commands in order,
+  with redacted per-command results and timings in Agent runs.
+- **Terminal traces** expand automatically in live chat so confirmed commands
+  are easier to audit, with exposed execution timeouts.
+
+### Connector & Plugin System
+
+- **Generic connector discovery** probes common OpenAPI and Swagger YAML paths
+  in addition to JSON descriptions, without requiring PHP `ext-yaml`.
+- **Schema-free GraphQL connectors** are discovered through safe GET probes and
+  learned as confirmation-gated POST operations.
+- **OpenAPI YAML discovery** works without the optional PHP `ext-yaml`
+  extension through the bundled Symfony YAML parser.
+- **Plugin safety hardening.** Mutating or destructive plugins are always
+  confirmation-gated. Duplicate plugin tool names can no longer silently
+  replace earlier implementations. All five execution surfaces are now
+  supported, including RAG and task-processing proposal runs.
+- **Plugin metadata** is exposed in Settings: risk level, execution surfaces,
+  and confirmation requirements.
+- **Connector presets** for Immich (X-API-Key) and Vaultwarden (Bearer) with
+  security-focused documentation and recipes.
+- **Connector route learning** with automatic refresh of stale discovery,
+  validated path variables, and authenticated endpoint probing.
+- **Custom OpenAPI schema URLs** for connectors with safe path parameter
+  resolution.
+
+### Talk Integration
+
+- **Read and write Talk conversations** via `list_talk_rooms`,
+  `read_talk_chat`, and `send_talk_message` tools. Messages are posted as the
+  signed-in user with no bot label.
+- **Focused Talk bots** for research, calendar, mail, and files, preventing
+  duplicate responses.
+- **Email summarization** through the Nextcloud Mail app.
+
+### Search & Indexing
+
+- **Nextcloud Unified Search integration.** EVA's indexed file knowledge is
+  searchable from the Nextcloud search bar with live VFS permission checks and
+  direct links back to Files.
+- **Direct file search** now searches unindexed Office documents and reports
+  bounded diagnostics (nodes visited, documents extracted).
+- **Index lock recovery** prevents stale worker locks from blocking indexing.
+- **Partial results** on folder errors: accessible folders are returned even
+  when a nested remote folder cannot be listed.
+
+### Dashboard
+
+- **EVA starters** on the Nextcloud Dashboard with focused entry points for
+  common tasks.
+
+### Performance & Security
+
+- Memory bounds on index traversal, connector batches, and background queue
+  scans.
+- CPU spike prevention for local embeddings on cloud chat requests.
+- Session lock release during long chat requests.
+- Bearer token and credential handling hardened: secrets are encrypted and
+  never returned in settings or exports.
+- CSP-compatible native Nextcloud controls throughout Settings.
+- Third-party plugin output centrally bounded with credential redaction.
+
+### Bug Fixes
+
+- Talk chat histories are now properly indexed (previously threw silently on
+  every room).
+- Long Talk messages no longer break room indexing.
+- Google News redirect links are filtered to prevent consent interstitials.
+- Browser renderer now correctly reports availability and searches the right
+  directory.
+- Connector credentials are preserved on blank edits and properly
+  re-discovered on reconfiguration.
+- Shared calendars are included through canonical CalDAV ACLs.
+- Stale chat locks are recovered reliably.
+- Settings controls remain visible after rebuild.
+
+### Documentation
+
+- Complete external service plugin recipes for Immich and Vaultwarden with
+  ACL, secret-handling, and test guidance.
+- Terminal prompt guidance and connector quick-setup labels in both modern
+  JSON and legacy JavaScript translation catalogs.
+- App store screenshots and polished listing.
 
 ## [1.16.82] - 2026-09-14
 
