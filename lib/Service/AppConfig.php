@@ -279,12 +279,17 @@ class AppConfig {
 
     private ?string $userId = null;
 
+    /** @var array<string,string> Request-level cache: avoids repeated DB round-trips. */
+    private array $cache = [];
+
     public function __construct(private IConfig $config) {
     }
 
     /** Set the user whose personal settings should override instance defaults. */
     public function setUserId(?string $userId): void {
         $this->userId = $userId !== null && $userId !== '' ? $userId : null;
+        // A user change invalidates all cached user-scoped values.
+        $this->cache = [];
     }
 
     private function isUserSetting(string $key): bool {
@@ -298,6 +303,17 @@ class AppConfig {
     public function userId(): ?string { return $this->userId; }
 
     public function get(string $key): string {
+        // Request-level cache key includes the user scope to avoid leaking values.
+        $cacheKey = ($this->userId ?? '_') . ':' . $key;
+        if (array_key_exists($cacheKey, $this->cache)) {
+            return $this->cache[$cacheKey];
+        }
+        $value = $this->getUncached($key);
+        $this->cache[$cacheKey] = $value;
+        return $value;
+    }
+
+    private function getUncached(string $key): string {
         if ($this->userId !== null && $this->isUserSetting($key)) {
             $sentinel = "\0eva_ai_missing\0";
             $userValue = $this->config->getUserValue($this->userId, self::APP, $key, $sentinel);
@@ -338,9 +354,12 @@ class AppConfig {
     public function set(string $key, string $value): void {
         if ($this->userId !== null && $this->isUserSetting($key)) {
             $this->config->setUserValue($this->userId, self::APP, $key, $value);
-            return;
+        } else {
+            $this->config->setAppValue(self::APP, $key, $value);
         }
-        $this->config->setAppValue(self::APP, $key, $value);
+        // Invalidate cache so subsequent reads see the new value.
+        $cacheKey = ($this->userId ?? '_') . ':' . $key;
+        unset($this->cache[$cacheKey]);
     }
 
     public function increment(string $key): void {
