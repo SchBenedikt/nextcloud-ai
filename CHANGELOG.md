@@ -4,6 +4,22 @@ All notable changes to **EVA (eva_ai)** are documented here.
 Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); the project
 follows [Semantic Versioning](https://semver.org/).
 
+## [1.16.96] - 2026-09-17
+
+### Hotfix: Restore native Nextcloud Assistant integration
+
+- Fix `AgentInteractionProvider` using wrong tool surface (`SURFACE_WEB`
+  instead of `SURFACE_TASKPROCESSING`), which caused the LLM to receive tools
+  not allowed in the TaskProcessing context on NC35.
+- Add missing `output_attachments` key to `MultimodalChatWithToolsProvider`
+  required by the NC35 multimodal chat task type.
+- Add missing `output_attachments` and `sources` keys to
+  `MultimodalContextAgentProvider` required by the NC35 multimodal agent
+  task type.
+
+These three issues collectively broke the native Nextcloud Assistant
+integration with EVA AI on Nextcloud 35.
+
 ## [1.16.95] - 2026-09-14
 
 A major release that transforms EVA from a RAG chat tool into a full multimodal
