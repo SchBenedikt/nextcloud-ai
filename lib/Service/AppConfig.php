@@ -125,7 +125,7 @@ class AppConfig {
         // 'fast' renders follow-up chips from language-aware templates without
         // a second model call; 'llm' generates them with a small extra request.
         'followups_mode' => 'fast',
-        'ocr_enabled' => '0',
+        'ocr_enabled' => '1',
         'ocr_language' => 'eng',
         'top_k' => '6',
         'chunk_size' => '900',

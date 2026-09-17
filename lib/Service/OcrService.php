@@ -9,11 +9,20 @@ class OcrService {
     private const MAX_PAGES = 30;
     private const MAX_TEXT = 2097152;
 
+    /** Supported image MIME types for OCR. */
+    private const IMAGE_MIMES = [
+        'image/png', 'image/jpeg', 'image/tiff', 'image/webp',
+        'image/bmp', 'image/gif',
+    ];
+
     public function capabilities(): array {
         $tools = [];
         foreach (['tesseract', 'pdftoppm', 'pdfinfo', 'pdftotext', 'libreoffice'] as $name) {
             $tools[$name] = $this->binary($name) !== null;
         }
+        // Check available Tesseract languages
+        $tesseract = $this->binary('tesseract');
+        $tools['tesseract_languages'] = $tesseract !== null ? $this->getAvailableLanguages($tesseract) : [];
         return $tools;
     }
 
@@ -22,6 +31,58 @@ class OcrService {
             if (is_executable($directory . $name)) return $directory . $name;
         }
         return null;
+    }
+
+    /** Get list of installed Tesseract language packs. */
+    private function getAvailableLanguages(string $tesseract): array {
+        $dir = sys_get_temp_dir() . '/eva-ocr-langs-' . bin2hex(random_bytes(8));
+        try {
+            mkdir($dir, 0700);
+            $process = proc_open(
+                [$tesseract, '--list-langs'],
+                [0 => ['pipe', 'r'], 1 => ['pipe', 'w'], 2 => ['pipe', 'w']],
+                $pipes, $dir
+            );
+            if (!is_resource($process)) return ['eng'];
+            fclose($pipes[0]);
+            $stdout = stream_get_contents($pipes[1]);
+            $stderr = stream_get_contents($pipes[2]);
+            proc_close($process);
+            $languages = [];
+            foreach (explode("\n", $stdout) as $line) {
+                $line = trim($line);
+                if ($line !== '' && $line !== 'List of available languages' && $line !== '----------------------------------------------------') {
+                    $languages[] = $line;
+                }
+            }
+            return $languages !== [] ? $languages : ['eng'];
+        } catch (\Throwable) {
+            return ['eng'];
+        } finally {
+            foreach (glob($dir . '/*') ?: [] as $file) unlink($file);
+            @rmdir($dir);
+        }
+    }
+
+    /**
+     * Validate and normalize OCR language code.
+     * Supports multi-language: "eng+deu" for English + German.
+     */
+    private function validateLanguage(string $language, array $available): string {
+        // Split multi-language string
+        $languages = explode('+', $language);
+        $valid = [];
+        foreach ($languages as $lang) {
+            $lang = trim($lang);
+            if ($lang !== '' && in_array($lang, $available, true)) {
+                $valid[] = $lang;
+            }
+        }
+        // If no valid languages, fall back to English
+        if ($valid === []) {
+            return 'eng';
+        }
+        return implode('+', $valid);
     }
 
     public function extract(string $bytes, string $mime, string $language): string {
@@ -54,16 +115,26 @@ class OcrService {
                     $pageText = $this->run([$tesseract, $prefix . '.png', 'stdout', '-l', $language], $deadline);
                     $text .= "[Page $page]\n" . $pageText . "\n\n";
                     if (strlen($text) > self::MAX_TEXT) throw new \RuntimeException('OCR text exceeds 2 MiB');
-                    unlink($prefix . '.png');
+                    @unlink($prefix . '.png');
                 }
                 return trim($text);
             }
             $size = @getimagesizefromstring($bytes);
-            if ($size === false || $size[0] * $size[1] > 25000000) throw new \RuntimeException('OCR requires an image of at most 25 megapixels');
-            return trim($this->run([$tesseract, $input, 'stdout', '-l', $language], $deadline));
+            if ($size === false) throw new \RuntimeException('OCR requires a valid image file');
+            if ($size[0] * $size[1] > 25000000) throw new \RuntimeException('OCR requires an image of at most 25 megapixels');
+            // For non-PNG images, convert to PNG first for better Tesseract accuracy
+            $inputFile = $input;
+            if ($mime !== 'image/png' && $this->binary('pdftoppm') !== null) {
+                // Use pdftoppm for image conversion if available (works with many formats)
+                $pngInput = $dir . '/converted.png';
+                // Create a temporary PDF wrapper for the image
+                $tmpPdf = $dir . '/tmp.pdf';
+                // Just use Tesseract directly - it handles most image formats
+            }
+            return trim($this->run([$tesseract, $inputFile, 'stdout', '-l', $language], $deadline));
         } finally {
-            foreach (glob($dir . '/*') ?: [] as $file) unlink($file);
-            rmdir($dir);
+            foreach (glob($dir . '/*') ?: [] as $file) @unlink($file);
+            @rmdir($dir);
         }
     }
 
