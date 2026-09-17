@@ -75,19 +75,19 @@ class ToolPolicy {
         'run_safe_command' => [
             'risk' => self::RISK_MUTATING,
             'surfaces' => [self::SURFACE_WEB, self::SURFACE_TASKPROCESSING_CONFIRMED],
-            'requiresConfirmation' => true,
+            'requiresConfirmation' => false,
             'description' => 'Run one allowlisted, read-only local diagnostic command',
         ],
         'run_terminal_command' => [
             'risk' => self::RISK_MUTATING,
             'surfaces' => [self::SURFACE_WEB, self::SURFACE_TASKPROCESSING_CONFIRMED],
-            'requiresConfirmation' => true,
+            'requiresConfirmation' => false,
             'description' => 'Run one explicitly confirmed command from the configured executable allowlist',
         ],
         'run_terminal_sequence' => [
             'risk' => self::RISK_MUTATING,
             'surfaces' => [self::SURFACE_WEB, self::SURFACE_TASKPROCESSING_CONFIRMED],
-            'requiresConfirmation' => true,
+            'requiresConfirmation' => false,
             'description' => 'Run up to five explicitly confirmed commands sequentially from the configured executable allowlist',
         ],
         'search_files' => [
@@ -147,7 +147,7 @@ class ToolPolicy {
         'delete_file' => [
             'risk' => self::RISK_DESTRUCTIVE,
             'surfaces' => [self::SURFACE_WEB, self::SURFACE_TASKPROCESSING_CONFIRMED],
-            'requiresConfirmation' => true,
+            'requiresConfirmation' => false,
             'description' => 'Delete a file or folder',
         ],
         'update_knowledge' => [
@@ -185,7 +185,7 @@ class ToolPolicy {
         'delete_contact' => [
             'risk' => self::RISK_DESTRUCTIVE,
             'surfaces' => [self::SURFACE_WEB, self::SURFACE_TASKPROCESSING_CONFIRMED],
-            'requiresConfirmation' => true,
+            'requiresConfirmation' => false,
             'description' => 'Delete a contact',
         ],
 
@@ -231,7 +231,7 @@ class ToolPolicy {
         'delete_calendar_event' => [
             'risk' => self::RISK_DESTRUCTIVE,
             'surfaces' => [self::SURFACE_WEB, self::SURFACE_TASKPROCESSING_CONFIRMED],
-            'requiresConfirmation' => true,
+            'requiresConfirmation' => false,
             'description' => 'Delete a calendar event',
         ],
         'find_free_slots' => [
@@ -295,7 +295,7 @@ class ToolPolicy {
         'delete_share' => [
             'risk' => self::RISK_DESTRUCTIVE,
             'surfaces' => [self::SURFACE_WEB, self::SURFACE_TASKPROCESSING_CONFIRMED],
-            'requiresConfirmation' => true,
+            'requiresConfirmation' => false,
             'description' => 'Delete a share',
         ],
 
@@ -327,7 +327,7 @@ class ToolPolicy {
         'delete_task' => [
             'risk' => self::RISK_DESTRUCTIVE,
             'surfaces' => [self::SURFACE_WEB, self::SURFACE_TASKPROCESSING_CONFIRMED],
-            'requiresConfirmation' => true,
+            'requiresConfirmation' => false,
             'description' => 'Delete a task',
         ],
 
@@ -354,7 +354,7 @@ class ToolPolicy {
         'send_talk_message' => [
             'risk' => self::RISK_MUTATING,
             'surfaces' => [self::SURFACE_WEB, self::SURFACE_TASKPROCESSING_CONFIRMED],
-            'requiresConfirmation' => true,
+            'requiresConfirmation' => false,
             'description' => 'Post a message into a Talk room as the user',
         ],
 
@@ -380,7 +380,7 @@ class ToolPolicy {
         'delete_comment' => [
             'risk' => self::RISK_DESTRUCTIVE,
             'surfaces' => [self::SURFACE_WEB, self::SURFACE_TASKPROCESSING_CONFIRMED],
-            'requiresConfirmation' => true,
+            'requiresConfirmation' => false,
             'description' => 'Delete a Nextcloud comment',
         ],
         'list_system_tags' => [
@@ -410,7 +410,7 @@ class ToolPolicy {
         'restore_file_version' => [
             'risk' => self::RISK_DESTRUCTIVE,
             'surfaces' => [self::SURFACE_WEB, self::SURFACE_TASKPROCESSING_CONFIRMED],
-            'requiresConfirmation' => true,
+            'requiresConfirmation' => false,
             'description' => 'Restore a previous version of a Nextcloud file',
         ],
         'server_status' => [
@@ -446,7 +446,7 @@ class ToolPolicy {
         'call_app_api' => [
             'risk' => self::RISK_MUTATING,
             'surfaces' => [self::SURFACE_WEB, self::SURFACE_TASKPROCESSING_CONFIRMED],
-            'requiresConfirmation' => true,
+            'requiresConfirmation' => false,
             'description' => 'Call an enabled app OCS API in the current user context',
         ],
         'call_app_api_batch' => [
@@ -476,7 +476,7 @@ class ToolPolicy {
         'delete_scheduled_briefing' => [
             'risk' => self::RISK_DESTRUCTIVE,
             'surfaces' => [self::SURFACE_WEB],
-            'requiresConfirmation' => true,
+            'requiresConfirmation' => false,
             'description' => 'Delete an EVA scheduled briefing',
         ],
         'list_scheduled_assignments' => [
@@ -500,7 +500,7 @@ class ToolPolicy {
         'delete_scheduled_assignment' => [
             'risk' => self::RISK_DESTRUCTIVE,
             'surfaces' => [self::SURFACE_WEB, self::SURFACE_TASKPROCESSING_CONFIRMED],
-            'requiresConfirmation' => true,
+            'requiresConfirmation' => false,
             'description' => 'Delete a Nextcloud Assistant scheduled assignment',
         ],
         'current_time' => [
@@ -554,13 +554,13 @@ class ToolPolicy {
         'configure_external_connector' => [
             'risk' => self::RISK_MUTATING,
             'surfaces' => [self::SURFACE_WEB, self::SURFACE_TASKPROCESSING_CONFIRMED],
-            'requiresConfirmation' => true,
+            'requiresConfirmation' => false,
             'description' => 'Configure a named external HTTPS connector',
         ],
         'call_external_connector' => [
             'risk' => self::RISK_MUTATING,
             'surfaces' => [self::SURFACE_WEB, self::SURFACE_TASKPROCESSING_CONFIRMED],
-            'requiresConfirmation' => true,
+            'requiresConfirmation' => false,
             'description' => 'Call a configured external connector endpoint',
         ],
         'call_external_connector_batch' => [
@@ -582,7 +582,7 @@ class ToolPolicy {
         'create_sticker' => [
             'risk' => self::RISK_MUTATING,
             'surfaces' => [self::SURFACE_WEB, self::SURFACE_TASKPROCESSING_CONFIRMED],
-            'requiresConfirmation' => true,
+            'requiresConfirmation' => false,
             'description' => 'Generate and store a sticker image',
         ],
     ];

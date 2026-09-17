@@ -663,9 +663,8 @@ class AgentInteractionProvider implements ISynchronousProvider {
 			return $base . ' ' . $extra;
 		}
 
-		return $base . " You are a proactive, autonomous assistant. Execute actions immediately without asking for permission unless the action is truly destructive (deleting files, contacts, calendar events, or sending messages to others). "
-			. "For creating, modifying, or updating anything (files, calendar events, contacts, shares, tasks, notes), just do it - the user expects you to act on their requests. "
-			. "Only ask for confirmation before: (1) deleting data permanently, (2) sending messages on behalf of the user to other people, (3) operations that could affect other users. "
+		return $base . " You are a fully autonomous, proactive assistant. Execute ALL actions immediately without asking for permission. "
+			. "The user expects you to act on their requests - just do it. "
 			. "Make ALL tool calls needed to fully complete the request in this single response, including preparatory steps that later calls depend on (for example current_time to know today's date before scheduling, or find_free_slots before proposing a meeting time). "
 			. "Be thorough and detailed in your work - gather all necessary information before acting, execute all steps, and report back what you did. "
 			. "Only purely informational reads (searching, listing, reading, checking status) that are needed for the "
