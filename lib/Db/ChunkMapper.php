@@ -25,10 +25,13 @@ class ChunkMapper extends QBMapper {
         if ($documentIds === []) {
             return;
         }
-        $qb = $this->db->getQueryBuilder();
-        $qb->delete('eva_ai_chunks')
-            ->where($qb->expr()->in('document_id', $qb->createNamedParameter($documentIds, IQueryBuilder::PARAM_INT_ARRAY)));
-        $qb->executeStatement();
+        $documentIds = array_values(array_unique(array_filter(array_map('intval', $documentIds), static fn(int $id): bool => $id > 0)));
+        foreach (array_chunk($documentIds, 500) as $batch) {
+            $qb = $this->db->getQueryBuilder();
+            $qb->delete('eva_ai_chunks')
+                ->where($qb->expr()->in('document_id', $qb->createNamedParameter($batch, IQueryBuilder::PARAM_INT_ARRAY)));
+            $qb->executeStatement();
+        }
     }
 
     public function deleteForUser(string $userId): int {
@@ -198,14 +201,19 @@ class ChunkMapper extends QBMapper {
         if ($documentIds === []) {
             return [];
         }
-        $qb = $this->db->getQueryBuilder();
-        $qb->select('document_id', 'chunk_index', 'content', 'provenance')
-            ->from('eva_ai_chunks')
-            ->where($qb->expr()->in('document_id', $qb->createNamedParameter($documentIds, IQueryBuilder::PARAM_INT_ARRAY)))
-            ->orderBy('chunk_index', 'ASC');
-        $result = $qb->executeQuery();
-        $rows = $result->fetchAll();
-        $result->closeCursor();
-        return $rows;
+        $documentIds = array_values(array_unique(array_filter(array_map('intval', $documentIds), static fn(int $id): bool => $id > 0)));
+        $out = [];
+        foreach (array_chunk($documentIds, 500) as $batch) {
+            $qb = $this->db->getQueryBuilder();
+            $qb->select('document_id', 'chunk_index', 'content', 'provenance')
+                ->from('eva_ai_chunks')
+                ->where($qb->expr()->in('document_id', $qb->createNamedParameter($batch, IQueryBuilder::PARAM_INT_ARRAY)))
+                ->orderBy('chunk_index', 'ASC');
+            $result = $qb->executeQuery();
+            $rows = $result->fetchAll();
+            $result->closeCursor();
+            $out = array_merge($out, $rows);
+        }
+        return $out;
     }
 }

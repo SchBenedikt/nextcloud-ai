@@ -370,12 +370,16 @@ class DocumentMapper extends QBMapper {
             return [];
         }
         $ids = array_values(array_unique(array_map('intval', $fileIds)));
-        $qb = $this->db->getQueryBuilder();
-        $qb->select('*')
-            ->from('eva_ai_documents')
-            ->where($qb->expr()->eq('user_id', $qb->createNamedParameter($userId)))
-            ->andWhere($qb->expr()->in('file_id', $qb->createNamedParameter($ids, IQueryBuilder::PARAM_INT_ARRAY)));
-        return $this->findEntities($qb);
+        $out = [];
+        foreach (array_chunk($ids, 500) as $batch) {
+            $qb = $this->db->getQueryBuilder();
+            $qb->select('*')
+                ->from('eva_ai_documents')
+                ->where($qb->expr()->eq('user_id', $qb->createNamedParameter($userId)))
+                ->andWhere($qb->expr()->in('file_id', $qb->createNamedParameter($batch, IQueryBuilder::PARAM_INT_ARRAY)));
+            $out = array_merge($out, $this->findEntities($qb));
+        }
+        return $out;
     }
 
     public function findFileIdsForUser(string $userId): array {
@@ -398,11 +402,16 @@ class DocumentMapper extends QBMapper {
         if (empty($ids)) {
             return [];
         }
-        $qb = $this->db->getQueryBuilder();
-        $qb->select('*')
-            ->from('eva_ai_documents')
-            ->where($qb->expr()->in('id', $qb->createNamedParameter($ids, IQueryBuilder::PARAM_INT_ARRAY)));
-        return $this->findEntities($qb);
+        $ids = array_values(array_unique(array_filter(array_map('intval', $ids), static fn(int $id): bool => $id > 0)));
+        $out = [];
+        foreach (array_chunk($ids, 500) as $batch) {
+            $qb = $this->db->getQueryBuilder();
+            $qb->select('*')
+                ->from('eva_ai_documents')
+                ->where($qb->expr()->in('id', $qb->createNamedParameter($batch, IQueryBuilder::PARAM_INT_ARRAY)));
+            $out = array_merge($out, $this->findEntities($qb));
+        }
+        return $out;
     }
 
     /** @param int[] $ids */
@@ -410,10 +419,13 @@ class DocumentMapper extends QBMapper {
         if (empty($ids)) {
             return;
         }
-        $qb = $this->db->getQueryBuilder();
-        $qb->delete('eva_ai_documents')
-            ->where($qb->expr()->in('id', $qb->createNamedParameter($ids, IQueryBuilder::PARAM_INT_ARRAY)));
-        $qb->executeStatement();
+        $ids = array_values(array_unique(array_filter(array_map('intval', $ids), static fn(int $id): bool => $id > 0)));
+        foreach (array_chunk($ids, 500) as $batch) {
+            $qb = $this->db->getQueryBuilder();
+            $qb->delete('eva_ai_documents')
+                ->where($qb->expr()->in('id', $qb->createNamedParameter($batch, IQueryBuilder::PARAM_INT_ARRAY)));
+            $qb->executeStatement();
+        }
     }
 
     public function deleteByUser(string $userId): int {
