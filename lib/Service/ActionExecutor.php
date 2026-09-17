@@ -199,8 +199,15 @@ class ActionExecutor {
         return $this->toolPolicy;
     }
 
+    /** @var array<string,array<int,array{type:string,function:array}>> Surface → cached tools */
+    private static array $toolsCache = [];
+
     /** @return array<int,array{type:string,function:array}> */
     public function tools(): array {
+        $surface = $this->toolPolicy->getSurface();
+        if (isset(self::$toolsCache[$surface])) {
+            return self::$toolsCache[$surface];
+        }
         $output = [
             ['type' => 'function', 'function' => [
                 'name' => 'list_files',
@@ -914,6 +921,7 @@ class ActionExecutor {
                 || $this->pluginRegistryOrNull()?->get($name) !== null);
         }));
 
+        self::$toolsCache[$surface] = $output;
         return $output;
     }
 
