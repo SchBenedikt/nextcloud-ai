@@ -125,6 +125,10 @@ class ActionExecutor {
         'create_scheduled_briefing' => ['prompt', 'time', 'days'],
         'update_scheduled_briefing' => ['briefing_id'],
         'delete_scheduled_briefing' => ['briefing_id'],
+        'list_scheduled_assignments' => [],
+        'create_scheduled_assignment' => ['prompt', 'recurrence'],
+        'update_scheduled_assignment' => ['assignment_id'],
+        'delete_scheduled_assignment' => ['assignment_id'],
         'create_sticker' => ['prompt'],
     ];
 
@@ -170,7 +174,8 @@ class ActionExecutor {
         private ?ToolPluginRegistry $pluginRegistry = null,
         private ?IEventDispatcher $eventDispatcher = null,
         private ?OpenAICompatible $imageProvider = null,
-        private ?Ollama $ollama = null
+        private ?Ollama $ollama = null,
+        private ?ScheduledAssignmentService $scheduledAssignments = null,
     ) {
     }
 
@@ -765,6 +770,39 @@ class ActionExecutor {
                 ], 'required' => ['briefing_id']],
             ]],
             ['type' => 'function', 'function' => [
+                'name' => 'list_scheduled_assignments',
+                'description' => 'List all Nextcloud Assistant "Geplante Aufgaben" (scheduled assignments) for the user. These are recurring AI tasks that run automatically on a schedule.',
+                'parameters' => ['type' => 'object', 'properties' => new \stdClass()],
+            ]],
+            ['type' => 'function', 'function' => [
+                'name' => 'create_scheduled_assignment',
+                'description' => 'Create a new Nextcloud Assistant "Geplante Aufgabe" (scheduled assignment). This creates a recurring AI task that runs automatically on a schedule. Use natural language for recurrence like "täglich", "wöchentlich", "alle 2 Tage", "jeden Montag".',
+                'parameters' => ['type' => 'object', 'properties' => [
+                    'prompt' => ['type' => 'string', 'description' => 'The prompt/instruction for the AI to execute on schedule.'],
+                    'recurrence' => ['type' => 'string', 'description' => 'When to run: "täglich", "wöchentlich", "monatlich", "alle N Tage/Wochen", "jeden Montag", etc.'],
+                    'starts_at' => ['type' => 'string', 'description' => 'Optional start time in ISO format or relative like "morgen 09:00". Defaults to now.'],
+                    'timezone' => ['type' => 'string', 'description' => 'Optional timezone, e.g. "Europe/Berlin". Defaults to user timezone.'],
+                ], 'required' => ['prompt', 'recurrence']],
+            ]],
+            ['type' => 'function', 'function' => [
+                'name' => 'update_scheduled_assignment',
+                'description' => 'Update an existing Nextcloud Assistant scheduled assignment.',
+                'parameters' => ['type' => 'object', 'properties' => [
+                    'assignment_id' => ['type' => 'string', 'description' => 'Id from list_scheduled_assignments.'],
+                    'prompt' => ['type' => 'string', 'description' => 'New prompt/instruction.'],
+                    'recurrence' => ['type' => 'string', 'description' => 'New recurrence rule.'],
+                    'starts_at' => ['type' => 'string', 'description' => 'New start time.'],
+                    'timezone' => ['type' => 'string', 'description' => 'New timezone.'],
+                ], 'required' => ['assignment_id']],
+            ]],
+            ['type' => 'function', 'function' => [
+                'name' => 'delete_scheduled_assignment',
+                'description' => 'Delete a Nextcloud Assistant scheduled assignment.',
+                'parameters' => ['type' => 'object', 'properties' => [
+                    'assignment_id' => ['type' => 'string', 'description' => 'Id from list_scheduled_assignments.'],
+                ], 'required' => ['assignment_id']],
+            ]],
+            ['type' => 'function', 'function' => [
                 'name' => 'current_time',
                 'description' => 'Get the current date and time in the user\'s timezone. IMPORTANT: as an AI model you do not know today\'s date - always call this tool before computing dates, deadlines, appointments or relative times.',
                 'parameters' => ['type' => 'object', 'properties' => []],
@@ -1219,6 +1257,10 @@ class ActionExecutor {
                 'create_scheduled_briefing' => $this->createScheduledBriefing($args),
                 'update_scheduled_briefing' => $this->updateScheduledBriefing($args),
                 'delete_scheduled_briefing' => $this->deleteScheduledBriefing($args),
+                'list_scheduled_assignments' => $this->listScheduledAssignments(),
+                'create_scheduled_assignment' => $this->createScheduledAssignment($args),
+                'update_scheduled_assignment' => $this->updateScheduledAssignment($args),
+                'delete_scheduled_assignment' => $this->deleteScheduledAssignment($args),
                 'update_knowledge' => $this->updateKnowledge($home, $args),
                 default => ['ok' => false, 'error' => 'Unknown tool: ' . $name],
             };
@@ -1860,6 +1902,112 @@ class ActionExecutor {
         if (count($filtered) === count($rows)) return ['ok' => false, 'error' => 'Scheduled briefing not found.'];
         $this->persistBriefings($filtered);
         return ['ok' => true, 'result' => ['briefing_id' => $id, 'deleted' => true]];
+    }
+
+    private function listScheduledAssignments(): array {
+        if ($this->scheduledAssignments === null) {
+            return ['ok' => false, 'error' => 'Scheduled assignments service is not available.'];
+        }
+        $userId = $this->config->userId() ?? '';
+        if ($userId === '') return ['ok' => false, 'error' => 'No user logged in.'];
+        try {
+            $assignments = $this->scheduledAssignments->listAssignments($userId);
+            return ['ok' => true, 'result' => ['assignments' => $assignments]];
+        } catch (\Throwable $e) {
+            return ['ok' => false, 'error' => 'Failed to list scheduled assignments: ' . $e->getMessage()];
+        }
+    }
+
+    private function createScheduledAssignment(array $args): array {
+        if ($this->scheduledAssignments === null) {
+            return ['ok' => false, 'error' => 'Scheduled assignments service is not available.'];
+        }
+        $userId = $this->config->userId() ?? '';
+        if ($userId === '') return ['ok' => false, 'error' => 'No user logged in.'];
+        $prompt = trim((string)($args['prompt'] ?? ''));
+        if ($prompt === '') return ['ok' => false, 'error' => 'prompt is required.'];
+        $recurrence = trim((string)($args['recurrence'] ?? ''));
+        if ($recurrence === '') return ['ok' => false, 'error' => 'recurrence is required (e.g. "täglich", "wöchentlich", "alle 2 Tage").'];
+        // Parse human-readable recurrence to RFC 5545
+        $rrule = $this->scheduledAssignments->parseRecurrence($recurrence);
+        // Parse start time
+        $startsAt = time(); // Default: now
+        $startsAtStr = trim((string)($args['starts_at'] ?? ''));
+        if ($startsAtStr !== '') {
+            try {
+                $dt = new \DateTime($startsAtStr, new \DateTimeZone($args['timezone'] ?? 'Europe/Berlin'));
+                $startsAt = $dt->getTimestamp();
+            } catch (\Throwable $e) {
+                return ['ok' => false, 'error' => 'Invalid starts_at format: ' . $e->getMessage()];
+            }
+        }
+        $timezone = trim((string)($args['timezone'] ?? '')) ?: 'Europe/Berlin';
+        try {
+            $result = $this->scheduledAssignments->createAssignment($userId, $prompt, $rrule, $startsAt, $timezone);
+            if ($result === null) {
+                return ['ok' => false, 'error' => 'Failed to create scheduled assignment.'];
+            }
+            return ['ok' => true, 'result' => ['assignment' => $result]];
+        } catch (\Throwable $e) {
+            return ['ok' => false, 'error' => 'Failed to create scheduled assignment: ' . $e->getMessage()];
+        }
+    }
+
+    private function updateScheduledAssignment(array $args): array {
+        if ($this->scheduledAssignments === null) {
+            return ['ok' => false, 'error' => 'Scheduled assignments service is not available.'];
+        }
+        $userId = $this->config->userId() ?? '';
+        if ($userId === '') return ['ok' => false, 'error' => 'No user logged in.'];
+        $assignmentId = (int)($args['assignment_id'] ?? 0);
+        if ($assignmentId <= 0) return ['ok' => false, 'error' => 'assignment_id is required.'];
+        $updates = [];
+        if (array_key_exists('prompt', $args)) $updates['prompt'] = trim((string)$args['prompt']);
+        if (array_key_exists('recurrence', $args)) {
+            $recurrence = trim((string)$args['recurrence']);
+            $updates['recurrence'] = $this->scheduledAssignments->parseRecurrence($recurrence);
+        }
+        if (array_key_exists('starts_at', $args)) {
+            $startsAtStr = trim((string)$args['starts_at']);
+            if ($startsAtStr !== '') {
+                try {
+                    $dt = new \DateTime($startsAtStr, new \DateTimeZone($args['timezone'] ?? 'Europe/Berlin'));
+                    $updates['startsAt'] = $dt->getTimestamp();
+                } catch (\Throwable $e) {
+                    return ['ok' => false, 'error' => 'Invalid starts_at format: ' . $e->getMessage()];
+                }
+            }
+        }
+        if (array_key_exists('timezone', $args)) $updates['timezone'] = trim((string)$args['timezone']);
+        if (empty($updates)) return ['ok' => false, 'error' => 'No fields to update.'];
+        try {
+            $result = $this->scheduledAssignments->updateAssignment($userId, $assignmentId, $updates);
+            if ($result === null) {
+                return ['ok' => false, 'error' => 'Failed to update scheduled assignment.'];
+            }
+            return ['ok' => true, 'result' => ['assignment' => $result]];
+        } catch (\Throwable $e) {
+            return ['ok' => false, 'error' => 'Failed to update scheduled assignment: ' . $e->getMessage()];
+        }
+    }
+
+    private function deleteScheduledAssignment(array $args): array {
+        if ($this->scheduledAssignments === null) {
+            return ['ok' => false, 'error' => 'Scheduled assignments service is not available.'];
+        }
+        $userId = $this->config->userId() ?? '';
+        if ($userId === '') return ['ok' => false, 'error' => 'No user logged in.'];
+        $assignmentId = (int)($args['assignment_id'] ?? 0);
+        if ($assignmentId <= 0) return ['ok' => false, 'error' => 'assignment_id is required.'];
+        try {
+            $deleted = $this->scheduledAssignments->deleteAssignment($userId, $assignmentId);
+            if (!$deleted) {
+                return ['ok' => false, 'error' => 'Failed to delete scheduled assignment.'];
+            }
+            return ['ok' => true, 'result' => ['assignment_id' => (string)$assignmentId, 'deleted' => true]];
+        } catch (\Throwable $e) {
+            return ['ok' => false, 'error' => 'Failed to delete scheduled assignment: ' . $e->getMessage()];
+        }
     }
 
     /** @return array<array{name:string,path:string,type:string,size?:int}> */

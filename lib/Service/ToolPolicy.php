@@ -479,6 +479,30 @@ class ToolPolicy {
             'requiresConfirmation' => true,
             'description' => 'Delete an EVA scheduled briefing',
         ],
+        'list_scheduled_assignments' => [
+            'risk' => self::RISK_READONLY,
+            'surfaces' => [self::SURFACE_WEB, self::SURFACE_TALK, self::SURFACE_TASKPROCESSING, self::SURFACE_TASKPROCESSING_CONFIRMED, self::SURFACE_RAG],
+            'requiresConfirmation' => false,
+            'description' => 'List Nextcloud Assistant scheduled assignments (Geplante Aufgaben)',
+        ],
+        'create_scheduled_assignment' => [
+            'risk' => self::RISK_MUTATING,
+            'surfaces' => [self::SURFACE_WEB, self::SURFACE_TASKPROCESSING_CONFIRMED],
+            'requiresConfirmation' => true,
+            'description' => 'Create a Nextcloud Assistant scheduled assignment (Geplante Aufgabe)',
+        ],
+        'update_scheduled_assignment' => [
+            'risk' => self::RISK_MUTATING,
+            'surfaces' => [self::SURFACE_WEB, self::SURFACE_TASKPROCESSING_CONFIRMED],
+            'requiresConfirmation' => true,
+            'description' => 'Update a Nextcloud Assistant scheduled assignment',
+        ],
+        'delete_scheduled_assignment' => [
+            'risk' => self::RISK_DESTRUCTIVE,
+            'surfaces' => [self::SURFACE_WEB, self::SURFACE_TASKPROCESSING_CONFIRMED],
+            'requiresConfirmation' => true,
+            'description' => 'Delete a Nextcloud Assistant scheduled assignment',
+        ],
         'current_time' => [
             'risk' => self::RISK_READONLY,
             'surfaces' => [self::SURFACE_WEB, self::SURFACE_TALK, self::SURFACE_TASKPROCESSING, self::SURFACE_TASKPROCESSING_CONFIRMED, self::SURFACE_RAG],
