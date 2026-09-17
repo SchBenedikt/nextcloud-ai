@@ -895,8 +895,25 @@ class Ollama {
      * doesn't reject tool schemas with `Value looks like object, but can't find closing '}'`.
      * PHP encodes `[]` as JSON array, but Ollama requires `{}` for object fields
      * like `parameters.properties`. Also normalize nested structures.
+     *
+     * Results are cached per tools array hash to avoid repeated normalization.
      */
-    private function normalizePayload(mixed $value): mixed {
+    private static array $normalizedToolsCache = [];
+
+    private function normalizePayload(mixed $value, bool $isTools = false): mixed {
+        if ($isTools && is_array($value)) {
+            $hash = md5(json_encode($value));
+            if (isset(self::$normalizedToolsCache[$hash])) {
+                return self::$normalizedToolsCache[$hash];
+            }
+            $result = $this->doNormalizePayload($value);
+            self::$normalizedToolsCache[$hash] = $result;
+            return $result;
+        }
+        return $this->doNormalizePayload($value);
+    }
+
+    private function doNormalizePayload(mixed $value): mixed {
         if (is_array($value)) {
             $isAssoc = $value !== [] && array_keys($value) !== range(0, count($value) - 1);
             if ($isAssoc || $value === []) {
@@ -966,7 +983,7 @@ class Ollama {
             $payload['keep_alive'] = $keepAlive;
         }
         if ($tools !== []) {
-            $payload['tools'] = $this->normalizePayload($tools);
+            $payload['tools'] = $this->normalizePayload($tools, true);
         }
         $totalTimeout = $timeout ?? self::CHAT_TIMEOUT;
         $startedAt = microtime(true);
@@ -1119,7 +1136,7 @@ class Ollama {
             $payload['keep_alive'] = $keepAlive;
         }
         if ($tools !== []) {
-            $payload['tools'] = $this->normalizePayload($tools);
+            $payload['tools'] = $this->normalizePayload($tools, true);
         }
         $body = null;
         $startedAt = microtime(true);

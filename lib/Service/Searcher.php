@@ -35,11 +35,12 @@ class Searcher {
         if (trim($query) === '') {
             return [];
         }
-        if ($this->config->get('chat_provider') === 'groq' && $this->chunkMapper->countForUser($userId) === 0) return [];
-        // Skip the embedding call entirely when the user has no indexed documents.
-        // This avoids a blocking 2-30 second HTTP round-trip to Ollama for a
-        // query that can never return results anyway.
-        if ($this->chunkMapper->countForUser($userId) === 0) return [];
+        // Single count check: skip the embedding call entirely when the user
+        // has no indexed documents. This avoids a blocking 2-30 second
+        // HTTP round-trip to Ollama for a query that can never return results.
+        $chunkCount = $this->chunkMapper->countForUser($userId);
+        if ($chunkCount === 0) return [];
+        if ($this->config->get('chat_provider') === 'groq' && $chunkCount === 0) return [];
         // A model named `*:cloud` is served remotely through Ollama, but the
         // configured embedding model is often still local. Embedding every
         // chat query in that situation needlessly saturates the Nextcloud
@@ -58,8 +59,23 @@ class Searcher {
             $queryVector = $err === null && is_array($queryVec) && isset($queryVec[0]) ? $queryVec[0] : null;
         }
         $rows = $this->loadCandidates($userId, $query, $queryVector);
+
+        // Load document metadata ONCE for both scope filtering and lexical scoring.
+        $docIds = [];
+        foreach ($rows as $row) {
+            $docIds[(int)$row['document_id']] = true;
+        }
+        $docMeta = [];
+        if ($docIds !== []) {
+            $docs = $this->documentMapper->findByIds(array_keys($docIds));
+            foreach ($docs as $d) {
+                $docMeta[(int)$d->getId()] = $d;
+            }
+        }
+
+        // Apply scope filter using already-loaded metadata (no duplicate query).
         if ($scopePath !== null && trim($scopePath) !== '') {
-            $rows = $this->filterByScopePath($userId, $rows, $scopePath);
+            $rows = $this->filterByScopePath($rows, $scopePath, $docMeta);
         }
 
         $queryTokens = $this->tokens($query);
@@ -67,15 +83,6 @@ class Searcher {
         // Filename/path context for lexical scoring: a query that names a file
         // ("budget.xlsx", "Rechnung Maerz") must match even when the chunk body
         // never repeats the name. Collected once for all candidate rows.
-        $docIds = [];
-        foreach ($rows as $row) {
-            $docIds[(int)$row['document_id']] = true;
-        }
-        $docMeta = [];
-        $docs = $this->documentMapper->findByIds(array_keys($docIds));
-        foreach ($docs as $d) {
-            $docMeta[(int)$d->getId()] = $d;
-        }
         $docFields = [];
         foreach ($docMeta as $docId => $doc) {
             $docFields[$docId] = [
@@ -152,27 +159,21 @@ class Searcher {
      * so the scope matches the folder itself and everything below it.
      *
      * @param array<int,array<string,mixed>> $rows
+     * @param array<int,Document> $docMeta Already-loaded document metadata
      * @return array<int,array<string,mixed>>
      */
-    private function filterByScopePath(string $userId, array $rows, string $scopePath): array {
+    private function filterByScopePath(array $rows, string $scopePath, array $docMeta): array {
         $prefix = rtrim(trim($scopePath), '/');
         if ($prefix === '') {
             return $rows;
         }
-        $docIds = [];
-        foreach ($rows as $row) {
-            $docIds[(int)$row['document_id']] = true;
-        }
-        if ($docIds === []) {
-            return [];
-        }
-        $paths = [];
-        foreach ($this->documentMapper->findByIds(array_keys($docIds)) as $doc) {
-            $paths[(int)$doc->getId()] = (string)$doc->getPath();
-        }
         $out = [];
         foreach ($rows as $row) {
-            $path = $paths[(int)$row['document_id']] ?? '';
+            $doc = $docMeta[(int)$row['document_id']] ?? null;
+            if ($doc === null) {
+                continue;
+            }
+            $path = (string)$doc->getPath();
             if ($path === '') {
                 continue;
             }

@@ -1549,11 +1549,20 @@ class ActionExecutor {
         }
     }
 
+    private function getLearnedApis(): array {
+        if ($this->learnedApisCache !== null) {
+            return $this->learnedApisCache;
+        }
+        $raw = $this->config->get('learned_app_apis');
+        $decoded = json_decode($raw, true);
+        $this->learnedApisCache = is_array($decoded) ? $decoded : [];
+        return $this->learnedApisCache;
+    }
+
     private function rememberAppApi(string $appId, array $routes): void {
         if ($appId === '') return;
         try {
-            $known = json_decode($this->config->get('learned_app_apis'), true);
-            $known = is_array($known) ? $known : [];
+            $known = $this->getLearnedApis();
             $sanitized = [];
             foreach (array_slice($routes, 0, 300) as $route) {
                 if (!is_array($route)) continue;
@@ -1572,13 +1581,14 @@ class ActionExecutor {
                 $known = array_slice($known, 0, 30, true);
             }
             $this->config->set('learned_app_apis', json_encode($known, JSON_UNESCAPED_SLASHES) ?: '{}');
+            $this->learnedApisCache = $known;
         } catch (\Throwable) { /* Learning is best effort. */ }
     }
 
     private function listLearnedAppApis(): array {
         try {
-            $known = json_decode($this->config->get('learned_app_apis'), true);
-            return ['ok' => true, 'result' => ['apps' => is_array($known) ? $known : [], 'note' => 'Route metadata is cached per user and may be stale; refresh with discover_app_api before acting.']];
+            $known = $this->getLearnedApis();
+            return ['ok' => true, 'result' => ['apps' => $known, 'note' => 'Route metadata is cached per user and may be stale; refresh with discover_app_api before acting.']];
         } catch (\Throwable) { return ['ok' => true, 'result' => ['apps' => []]]; }
     }
 
@@ -1621,7 +1631,7 @@ class ActionExecutor {
         // loop useful while preventing arbitrary app API probing.
         $knownRoute = false;
         try {
-            $learned = json_decode($this->config->get('learned_app_apis'), true);
+            $learned = $this->getLearnedApis();
             $learnedAt = (int)($learned[$appId]['updated'] ?? 0);
             $routes = ($learnedAt > 0 && $learnedAt >= time() - self::LEARNED_API_TTL && is_array($learned[$appId]['routes'] ?? null)) ? $learned[$appId]['routes'] : [];
             foreach ($routes as $route) {
@@ -1779,8 +1789,7 @@ class ActionExecutor {
     private function rememberAppApiPattern(string $appId, string $method, string $path, array $paramKeys, array $responseShape = []): void {
         if ($appId === '' || $path === '') return;
         try {
-            $known = json_decode($this->config->get('learned_app_apis'), true);
-            $known = is_array($known) ? $known : [];
+            $known = $this->getLearnedApis();
             if (!is_array($known[$appId] ?? null)) $known[$appId] = ['updated' => time(), 'routes' => []];
             $patterns = is_array($known[$appId]['patterns'] ?? null) ? $known[$appId]['patterns'] : [];
             $keys = array_values(array_unique(array_filter(array_map('strval', $paramKeys), static fn(string $key): bool => preg_match('/^[A-Za-z0-9_.-]{1,80}$/', $key) === 1)));
@@ -1795,6 +1804,7 @@ class ActionExecutor {
                 $known = array_slice($known, 0, 30, true);
             }
             $this->config->set('learned_app_apis', json_encode($known, JSON_UNESCAPED_SLASHES) ?: '{}');
+            $this->learnedApisCache = $known;
         } catch (\Throwable) { /* Learning is best effort and must not break the action. */ }
     }
 
@@ -3797,12 +3807,22 @@ class ActionExecutor {
         ];
     }
 
+    private ?array $connectorRowsCache = null;
+    private ?array $learnedApisCache = null;
+
     private function connectorRows(): array {
+        if ($this->connectorRowsCache !== null) {
+            return $this->connectorRowsCache;
+        }
         $user = $this->config->userId() ?? '';
-        if ($user === '') return [];
+        if ($user === '') {
+            $this->connectorRowsCache = [];
+            return [];
+        }
         $raw = Server::get(\OCP\IConfig::class)->getUserValue($user, AppConfig::APP, 'external_connectors', '{}');
         $rows = json_decode($raw, true);
-        return is_array($rows) ? $rows : [];
+        $this->connectorRowsCache = is_array($rows) ? $rows : [];
+        return $this->connectorRowsCache;
     }
 
     private function listExternalConnectors(): array {
