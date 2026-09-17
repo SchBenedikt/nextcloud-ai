@@ -236,7 +236,8 @@ class AgentInteractionProvider implements ISynchronousProvider {
 		// confirmation. Multiple rounds are allowed so the model can first
 		// gather facts (current_time, find_free_slots, ...) and then propose
 		// the complete chain of actions.
-		[$pendingNext, $answer] = $this->proposalPhase($userId, $messages, $tools, $reportProgress);
+		$requestDeadline = microtime(true) + 180; // 3 minute deadline
+		[$pendingNext, $answer] = $this->proposalPhase($userId, $messages, $tools, $reportProgress, $requestDeadline);
 
 		$output = $answer;
 		if ($pendingNext !== []) {
@@ -305,7 +306,7 @@ class AgentInteractionProvider implements ISynchronousProvider {
 	}
 
 	/** @return array{0: array<int,array{name:string,args:array}>, 1: string} */
-	private function proposalPhase(string $userId, array $messages, array $tools, ?callable $reportProgress = null): array {
+	private function proposalPhase(string $userId, array $messages, array $tools, ?callable $reportProgress = null, float $deadline = 0.0): array {
 		$pending = [];
 		$seen = [];
 		$answer = '';
@@ -318,6 +319,10 @@ class AgentInteractionProvider implements ISynchronousProvider {
 			}
 		}
 		for ($round = 0; $round < 3; $round++) {
+			// Check deadline to avoid exceeding TaskProcessing worker timeout
+			if ($deadline > 0 && microtime(true) >= $deadline) {
+				break;
+			}
 			if ($reportProgress !== null) $reportProgress(0.3 + $round * 0.2);
 			$chat = $this->ollama->chat($messages, $tools);
 			if (isset($chat['error'])) {
