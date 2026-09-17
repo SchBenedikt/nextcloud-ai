@@ -219,7 +219,7 @@ class AgentInteractionProvider implements ISynchronousProvider {
 		// Assistant can present them for approval. They are never executed in
 		// this phase; proposalPhase executes only its explicit readonly allowlist.
 		$this->executor->setUserId($userId);
-		$tools = $this->executor->toolsForSurface(ToolPolicy::SURFACE_WEB);
+		$tools = $this->executor->toolsForSurface(ToolPolicy::SURFACE_TASKPROCESSING);
 		if ($ragEnabled && $prompt !== '') {
 			$this->injectRagContext($messages, $userId, $prompt);
 		}
