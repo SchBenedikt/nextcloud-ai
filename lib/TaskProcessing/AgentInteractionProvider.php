@@ -221,10 +221,12 @@ class AgentInteractionProvider implements ISynchronousProvider {
 		$this->executor->setUserId($userId);
 		$tools = $this->executor->toolsForSurface(ToolPolicy::SURFACE_TASKPROCESSING);
 		if ($ragEnabled && $prompt !== '') {
+			if ($reportProgress(0.15) === false) throw new RuntimeException('Task cancelled');
 			$this->injectRagContext($messages, $userId, $prompt);
 		}
 
 		if ($confirmation === 1) {
+			if ($reportProgress(0.2) === false) throw new RuntimeException('Task cancelled');
 			return $this->runConfirmed($userId, $messages, $token, $history, $pending);
 		}
 
@@ -234,7 +236,7 @@ class AgentInteractionProvider implements ISynchronousProvider {
 		// confirmation. Multiple rounds are allowed so the model can first
 		// gather facts (current_time, find_free_slots, ...) and then propose
 		// the complete chain of actions.
-		[$pendingNext, $answer] = $this->proposalPhase($userId, $messages, $tools);
+		[$pendingNext, $answer] = $this->proposalPhase($userId, $messages, $tools, $reportProgress);
 
 		$output = $answer;
 		if ($pendingNext !== []) {
@@ -303,7 +305,7 @@ class AgentInteractionProvider implements ISynchronousProvider {
 	}
 
 	/** @return array{0: array<int,array{name:string,args:array}>, 1: string} */
-	private function proposalPhase(string $userId, array $messages, array $tools): array {
+	private function proposalPhase(string $userId, array $messages, array $tools, ?callable $reportProgress = null): array {
 		$pending = [];
 		$seen = [];
 		$answer = '';
@@ -316,6 +318,7 @@ class AgentInteractionProvider implements ISynchronousProvider {
 			}
 		}
 		for ($round = 0; $round < 3; $round++) {
+			if ($reportProgress !== null) $reportProgress(0.3 + $round * 0.2);
 			$chat = $this->ollama->chat($messages, $tools);
 			if (isset($chat['error'])) {
 				throw new RuntimeException((string)$chat['error']);
