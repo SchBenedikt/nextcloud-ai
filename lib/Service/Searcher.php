@@ -36,6 +36,10 @@ class Searcher {
             return [];
         }
         if ($this->config->get('chat_provider') === 'groq' && $this->chunkMapper->countForUser($userId) === 0) return [];
+        // Skip the embedding call entirely when the user has no indexed documents.
+        // This avoids a blocking 2-30 second HTTP round-trip to Ollama for a
+        // query that can never return results anyway.
+        if ($this->chunkMapper->countForUser($userId) === 0) return [];
         // A model named `*:cloud` is served remotely through Ollama, but the
         // configured embedding model is often still local. Embedding every
         // chat query in that situation needlessly saturates the Nextcloud
