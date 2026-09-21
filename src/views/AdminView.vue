@@ -27,7 +27,7 @@
 			<span>{{ message.text }}</span>
 		</div>
 
-		<div class="admin-summary-grid" :aria-label="$t('Instance status')">
+		<div v-if="data" class="admin-summary-grid" :aria-label="$t('Instance status')">
 			<div class="summary-card" :class="data?.ollama?.online ? 'is-ok' : 'is-muted'">
 				<span class="status-dot" aria-hidden="true"></span>
 				<div>
@@ -55,8 +55,9 @@
 		</div>
 
 		<main class="admin-body">
-			<div v-if="!data && loading" class="admin-loading">{{ $t('Loading…') }}</div>
-			<div v-else-if="!data?.users?.length" class="admin-empty">{{ $t('No users have an index yet.') }}</div>
+			<div v-if="!data && loading" class="admin-loading" role="status">{{ $t('Loading admin overview…') }}</div>
+			<div v-else-if="!data && loadError" class="admin-empty">{{ $t('User indexing details are unavailable.') }}</div>
+			<div v-else-if="data && !data.users.length" class="admin-empty">{{ $t('No users have an index yet.') }}</div>
 			<div v-else class="admin-table-wrap">
 				<table class="admin-table">
 					<thead>
@@ -104,6 +105,17 @@
 				</table>
 			</div>
 		</main>
+		<NcModal v-if="resetTarget" size="small" :name="$t('Reset user index')" @close="closeResetDialog">
+			<div class="admin-reset-dialog">
+				<p>{{ $t('The index for {name} will be permanently deleted. This removes indexed content and search chunks; files in Nextcloud will not be changed.', { name: resetTarget.displayName }) }}</p>
+				<p class="admin-reset-dialog__identity">{{ resetTarget.userId }} · {{ resetTarget.documents }} {{ $t('Docs') }} · {{ resetTarget.chunks }} {{ $t('Chunks') }}</p>
+				<p v-if="resetError" class="admin-reset-dialog__error" role="alert">{{ resetError }}</p>
+				<div class="admin-reset-dialog__actions">
+					<NcButton type="button" variant="tertiary" :disabled="resetting" @click="closeResetDialog">{{ $t('Cancel') }}</NcButton>
+					<NcButton type="button" variant="error" :loading="resetting" :disabled="resetting" @click="confirmReset">{{ $t('Reset index') }}</NcButton>
+				</div>
+			</div>
+		</NcModal>
 	</div>
 </template>
 
@@ -120,11 +132,14 @@ export default {
 	name: 'AdminView',
 	setup() {
 		const data = ref(null)
-		const loading = ref(false)
+		const loading = ref(true)
 		const loadError = ref('')
 		const message = ref({ type: '', text: '' })
 		const busy = ref({}) // userId -> 'reindex' | 'reset' | 'enroll'
 		const stopping = ref(false)
+		const resetTarget = ref(null)
+		const resetting = ref(false)
+		const resetError = ref('')
 
 		const busyFor = (userId) => busy.value[userId] || ''
 
@@ -149,11 +164,12 @@ export default {
 			loadError.value = ''
 			try {
 				const res = await apiGet('admin/overview')
-				if (res && typeof res === 'object') {
-					data.value = res
-				} else {
-					throw new Error('Unexpected response')
+				if (!res || typeof res !== 'object' || !Array.isArray(res.users)
+					|| !res.scheduler || typeof res.scheduler !== 'object'
+					|| !res.ollama || typeof res.ollama !== 'object') {
+					throw new Error(t('The admin overview response was incomplete.'))
 				}
+				data.value = res
 			} catch (e) {
 				loadError.value = errMsg(e)
 			} finally {
@@ -183,19 +199,31 @@ export default {
 			}
 		}
 
-		async function resetUser(user) {
-			if (!window.confirm(t('Delete the complete index of {name}? This cannot be undone.', { name: user.displayName }))) {
-				return
-			}
+		function resetUser(user) {
+			if (!user || user.indexing || busy.value[user.userId]) return
+			resetTarget.value = { ...user }
+			resetError.value = ''
+		}
+
+		function closeResetDialog() {
+			if (!resetting.value) resetTarget.value = null
+		}
+
+		async function confirmReset() {
+			const user = resetTarget.value
+			if (!user || resetting.value) return
+			resetting.value = true
 			busy.value[user.userId] = 'reset'
 			try {
 				await apiPost(`admin/users/${encodeURIComponent(user.userId)}/reset`, {})
 				flash('success', t('Index of {name} was reset.', { name: user.displayName }))
+				resetTarget.value = null
 				await load()
 			} catch (e) {
-				flash('error', errMsg(e))
+				resetError.value = t('Index reset failed: {error}', { error: errMsg(e) })
 			} finally {
 				delete busy.value[user.userId]
+				resetting.value = false
 			}
 		}
 
@@ -221,7 +249,7 @@ export default {
 
 		onMounted(load)
 
-		return { data, loading, loadError, message, busyFor, stopping, load, stopBackground, reindex, resetUser, toggleEnrollment, formatTime }
+		return { data, loading, loadError, message, busyFor, stopping, resetTarget, resetting, resetError, load, stopBackground, reindex, resetUser, closeResetDialog, confirmReset, toggleEnrollment, formatTime }
 	},
 }
 </script>
@@ -356,6 +384,15 @@ export default {
 	gap: 6px;
 	flex-wrap: wrap;
 }
+.admin-reset-dialog {
+	display: grid;
+	gap: 12px;
+	padding: 4px 20px 20px;
+}
+.admin-reset-dialog p { margin: 0; line-height: 1.5; }
+.admin-reset-dialog__identity { color: var(--color-text-maxcontrast); font-size: 13px; }
+.admin-reset-dialog__error { color: var(--color-error); }
+.admin-reset-dialog__actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 4px; }
 .admin-loading,
 .admin-empty {
 	padding: 40px 16px;

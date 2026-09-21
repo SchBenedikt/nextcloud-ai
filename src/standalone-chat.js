@@ -10,7 +10,7 @@ import { readNdjson } from './lib/ndjson'
  * The standalone page pre-defines its DOM in standalone.php; this script
  * wires up event handlers, sidebar management and chat persistence.
  */
-import { escHtml, mdInline, mdToHtml, citedSources, copyText, installImageFallback } from './lib/chat-utils'
+import { escHtml, mdInline, mdToHtml, citedSources, formatToolName, copyText, installImageFallback } from './lib/chat-utils'
 
 function buildCalendarForm(args, tr) {
 	var form = document.createElement('div')
@@ -103,6 +103,14 @@ function buildCalendarForm(args, tr) {
 		empty: document.getElementById('empty'),
 		newchat: document.getElementById('newchat'),
 		chatlist: document.getElementById('chatlist'),
+		chatlistError: document.getElementById('chatlist-error'),
+		chatlistErrorMessage: document.getElementById('chatlist-error-message'),
+		chatlistRetry: document.getElementById('chatlist-retry'),
+		confirm: document.getElementById('chat-confirm'),
+		confirmTitle: document.getElementById('chat-confirm-title'),
+		confirmMessage: document.getElementById('chat-confirm-message'),
+		confirmCancel: document.getElementById('chat-confirm-cancel'),
+		confirmSubmit: document.getElementById('chat-confirm-submit'),
 	}
 
 	var messages = []
@@ -134,12 +142,59 @@ function buildCalendarForm(args, tr) {
 	// Title of the open chat (null until a restored/new chat reported one).
 	var chatTitle = null
 	var exportButton = document.getElementById('export')
+	var pendingConfirmation = null
+
+	function finishConfirmation(approved) {
+		if (!pendingConfirmation) return
+		var confirmation = pendingConfirmation
+		pendingConfirmation = null
+		els.confirm.hidden = true
+		confirmation.resolve(approved)
+		if (confirmation.returnFocus && confirmation.returnFocus.isConnected) confirmation.returnFocus.focus()
+	}
+
+	function confirmDeleteChat(chat) {
+		if (pendingConfirmation) return Promise.resolve(false)
+		return new Promise(function (resolve) {
+			pendingConfirmation = { resolve: resolve, returnFocus: document.activeElement }
+			els.confirmTitle.textContent = tr('Delete chat')
+			els.confirmMessage.textContent = tr('Delete “{title}”? This permanently removes the conversation and its messages.', { title: chat.title || tr('New chat') })
+			els.confirmCancel.textContent = tr('Cancel')
+			els.confirmSubmit.textContent = tr('Delete chat')
+			els.confirm.hidden = false
+			els.confirmCancel.focus()
+		})
+	}
+
+	els.confirmCancel.addEventListener('click', function () { finishConfirmation(false) })
+	els.confirmSubmit.addEventListener('click', function () { finishConfirmation(true) })
+	els.confirm.addEventListener('click', function (event) {
+		if (event.target === els.confirm) finishConfirmation(false)
+	})
+	document.addEventListener('keydown', function (event) {
+		if (!pendingConfirmation) return
+		if (event.key === 'Escape') {
+			event.preventDefault()
+			finishConfirmation(false)
+		} else if (event.key === 'Tab') {
+			var first = els.confirmCancel
+			var last = els.confirmSubmit
+			if (event.shiftKey && document.activeElement === first) {
+				event.preventDefault()
+				last.focus()
+			} else if (!event.shiftKey && document.activeElement === last) {
+				event.preventDefault()
+				first.focus()
+			}
+		}
+	})
 
 	function localizePage() {
 		document.title = tr('Chat with your files')
 		var topLink = document.querySelector('#topbar .toplink')
 		if (topLink) topLink.textContent = tr('Back to overview')
 		if (els.newchat) els.newchat.textContent = '+ ' + tr('New chat')
+		if (els.chatlistRetry) els.chatlistRetry.textContent = tr('Try again')
 		var navItems = document.querySelectorAll('#sidebar .nav-item')
 		if (navItems[0]) navItems[0].lastChild.textContent = ' ' + tr('Documents')
 		if (navItems[1]) navItems[1].lastChild.textContent = ' ' + tr('Settings')
@@ -148,12 +203,13 @@ function buildCalendarForm(args, tr) {
 		var exportButton = document.getElementById('export')
 		if (exportButton) {
 			exportButton.title = tr('Export chat as Markdown')
-			exportButton.innerHTML = '&#11015; ' + tr('Export')
+			var exportLabel = document.getElementById('export-label')
+			if (exportLabel) exportLabel.textContent = tr('Export')
 		}
 		var emptyTitle = document.querySelector('#empty .t')
 		if (emptyTitle) emptyTitle.textContent = tr('Ask a question about your files')
 		var emptyDescription = document.querySelector('#empty .d')
-		if (emptyDescription) emptyDescription.textContent = tr('Ask about notes, plans or files — I can even create files, write notes and remember personal facts in a KNOWLEDGE.md.')
+		if (emptyDescription) emptyDescription.textContent = tr('Ask about files, notes or plans. Attach files to include them as context.')
 		if (els.input) els.input.placeholder = tr('What does my note about X say?')
 	if (els.send) els.send.textContent = tr('Send')
 	}
@@ -208,7 +264,7 @@ function buildCalendarForm(args, tr) {
 		var row = document.createElement('div')
 		row.className = 'tool ' + (c.state === 'running' ? 'running' : c.state === 'ok' ? 'ok' : 'bad')
 		var label = document.createElement('span')
-				label.textContent = (c.state === 'running' ? '🛠 ' : c.state === 'ok' ? '✅ ' : '❌ ') + c.name + (c.state === 'running' ? ' …' : '') + (c.elapsed_ms != null ? ' · ' + c.elapsed_ms + ' ms' : '')
+				label.textContent = tr(c.state === 'running' ? 'Running' : c.state === 'ok' ? 'Completed' : 'Failed') + ' · ' + formatToolName(c.name) + (c.state === 'running' ? ' …' : '') + (c.elapsed_ms != null ? ' · ' + c.elapsed_ms + ' ms' : '')
 		row.appendChild(label)
 		if (c.arguments && Object.keys(c.arguments).length) {
 			var details = document.createElement('details')
@@ -330,7 +386,7 @@ function buildCalendarForm(args, tr) {
 			det.className = 'rth'
 			det.style.display = 'none'
 			var sum = document.createElement('summary')
-			sum.textContent = '🧠 ' + tr('Thinking…')
+			sum.textContent = tr('Thinking…')
 			var th = document.createElement('div')
 			th.className = 'rth-c'
 			det.appendChild(sum)
@@ -486,15 +542,15 @@ function buildCalendarForm(args, tr) {
 					})
 				}).then(function (result) {
 						if (!result || !result.ok) {
-							finish('⚠️ ' + (result && result.error || tr('The action could not be completed.')))
+							finish(result && result.error || tr('The action could not be completed.'))
 							return
 						}
 						var value = tr('The action was completed.')
 						if (typeof result.result === 'string') value = result.result
 						else if (result.result && result.result.url) value = tr('Share created: {url}', { url: result.result.url })
-						finish('✅ ' + value)
+						finish(value)
 					})
-					.catch(function (error) { finish('⚠️ ' + String(error && error.message || error)) })
+					.catch(function (error) { finish(String(error && error.message || error)) })
 			})
 			reject.addEventListener('click', function () { finish(tr('Action cancelled.')) })
 			actions.appendChild(approve)
@@ -783,23 +839,50 @@ function buildCalendarForm(args, tr) {
 			t.className = 't'
 			t.textContent = c.title || tr('New chat')
 			t.addEventListener('click', function () {
+				if (sending) {
+					showErr(tr('Finish or stop the current response before navigating.'))
+					return
+				}
+				showErr('')
 				chatId = c.id
 				loadChat(c.id).then(renderChatListAgain)
 			})
 			var x = document.createElement('button')
+			x.type = 'button'
 			x.className = 'x'
-			x.textContent = '✕'
+			x.setAttribute('aria-label', tr('Delete chat') + ': ' + (c.title || tr('New chat')))
 			x.title = tr('Delete chat')
+			var icon = document.createElementNS('http://www.w3.org/2000/svg', 'svg')
+			icon.setAttribute('viewBox', '0 0 24 24')
+			icon.setAttribute('fill', 'currentColor')
+			icon.setAttribute('aria-hidden', 'true')
+			var path = document.createElementNS('http://www.w3.org/2000/svg', 'path')
+			path.setAttribute('d', 'M9 3h6l1 2h5v2H3V5h5l1-2zm-3 6h12l-1 12H7L6 9zm3 2v8h2v-8H9zm4 0v8h2v-8h-2z')
+			icon.appendChild(path)
+			x.appendChild(icon)
 			x.addEventListener('click', function (e) {
 				e.stopPropagation()
-				if (!window.confirm(tr('Delete chat "{title}"?', { title: c.title }))) return
-				api('DELETE', '/chats/' + encodeURIComponent(c.id)).then(function () {
+				if (sending && c.id === chatId) {
+					showErr(tr('Finish or stop the current response before navigating.'))
+					return
+				}
+				confirmDeleteChat(c).then(function (approved) {
+					if (!approved) return
+					x.disabled = true
+					showErr('')
+					return api('DELETE', '/chats/' + encodeURIComponent(c.id)).then(function () {
 					if (chatId === c.id) {
 						chatId = null
+						chatTitle = null
+						var heading = document.querySelector('.head h1')
+						if (heading) heading.textContent = tr('Chat with your files')
 						messages.length = 0
 						renderAll(messages)
 					}
 					refreshChats()
+					}).catch(function (error) {
+						showErr(tr('The chat could not be deleted: {error}', { error: error && error.message ? error.message : String(error) }))
+					}).finally(function () { x.disabled = false })
 				})
 			})
 			entry.appendChild(t)
@@ -808,23 +891,41 @@ function buildCalendarForm(args, tr) {
 		})
 	}
 
+	function showChatListError(error) {
+		if (!els.chatlistError || !els.chatlistErrorMessage) return
+		els.chatlistErrorMessage.textContent = tr('Chat list unavailable: {error}', { error: error && error.message ? error.message : String(error || '') })
+		els.chatlistError.hidden = false
+	}
+
+	function clearChatListError() {
+		if (!els.chatlistError) return
+		els.chatlistError.hidden = true
+		if (els.chatlistErrorMessage) els.chatlistErrorMessage.textContent = ''
+	}
+
 	function refreshChats() {
+		if (els.newchat) els.newchat.disabled = true
 		api('GET', '/chats').then(function (list) {
-			if (els.newchat) els.newchat.disabled = false
-			renderChatList(Array.isArray(list) ? list : [])
-			if (!chatId && Array.isArray(list) && list.length) {
+			if (!Array.isArray(list)) throw new Error(tr('The chat list response was invalid.'))
+			clearChatListError()
+			renderChatList(list)
+			if (!chatId && list.length) {
 				chatId = list[0].id
 				loadChat(chatId)
 			}
-		}).catch(function () {
+		}).catch(function (error) {
+			showChatListError(error)
+		}).finally(function () {
 			if (els.newchat) els.newchat.disabled = false
 		})
 	}
 
 	function renderChatListAgain() {
 		api('GET', '/chats').then(function (list) {
-			renderChatList(Array.isArray(list) ? list : [])
-		}).catch(function () {})
+			if (!Array.isArray(list)) throw new Error(tr('The chat list response was invalid.'))
+			clearChatListError()
+			renderChatList(list)
+		}).catch(showChatListError)
 	}
 
 	function send() {
@@ -911,7 +1012,7 @@ function buildCalendarForm(args, tr) {
 						.then(renderChatListAgain)
 						.catch(function () {})
 				} else if (ev.type === 'error') {
-					last.text = '⚠️ ' + ev.message
+					last.text = tr('Error: {error}', { error: String(ev.message || '') })
 					last.done = true
 					saveUserMessage(msg)
 				}
@@ -922,7 +1023,7 @@ function buildCalendarForm(args, tr) {
 				var last = messages[messages.length - 1]
 				if (last && last.role === 'assistant' && !last.done) {
 					if (!stoppedByUser) {
-						last.text = (last.text || '') + '⚠️ ' + tr('Error: {error}', { error: String(e && e.message ? e.message : e) })
+						last.text = (last.text || '') + '\n\n' + tr('Error: {error}', { error: String(e && e.message ? e.message : e) })
 					}
 					last.done = true
 					updateMessage(messages.length - 1)
@@ -935,7 +1036,8 @@ function buildCalendarForm(args, tr) {
 					}
 				}
 				if (!stoppedByUser) {
-					showErr(tr('Network error — see console.'))
+					var reason = String(e && e.message ? e.message : e || tr('Unknown error')).replace(/\s+/g, ' ').slice(0, 240)
+					showErr(tr('The response could not be completed: {error}', { error: reason }))
 				}
 			}).finally(function () {
 				stoppedByUser = false
@@ -964,17 +1066,23 @@ function buildCalendarForm(args, tr) {
 	})
 	if (els.newchat) els.newchat.addEventListener('click', function () {
 		if (els.newchat.disabled) return
+		if (sending) {
+			showErr(tr('Finish or stop the current response before navigating.'))
+			return
+		}
 		els.newchat.disabled = true
 		api('POST', '/chats', {}).then(function (c) {
-			if (!c || !c.id) throw new Error('no id')
+			if (!c || !c.id) throw new Error(tr('The server returned no chat ID.'))
 			chatId = c.id
 			messages.length = 0
 			renderAll(messages)
 			return refreshChats()
-		}).catch(function () {
+		}).catch(function (error) {
 			els.newchat.disabled = false
+			showErr(tr('A new chat could not be created: {error}', { error: error && error.message ? error.message : String(error) }))
 		})
 	})
+	if (els.chatlistRetry) els.chatlistRetry.addEventListener('click', refreshChats)
 	if (exportButton) exportButton.addEventListener('click', exportMarkdown)
 	refreshChats()
 })()

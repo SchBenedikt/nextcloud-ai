@@ -96,9 +96,10 @@ export function mdToHtml(src) {
 /**
  * Returns the sources to show under an answer.
  *
- * Numbered file snippets are listed only when the text really cites them, so an
- * answer that used three of six files shows three. Supports single `[N]` and
- * range `[1-3]` syntax.
+ * Numbered snippets are listed only when the text really cites them. The
+ * backend source array must match the context snippet order, and original
+ * reference numbers are retained when unused snippets are skipped. Supports
+ * single `[N]` and range `[1-3]` syntax.
  *
  * Web pages are different: a `web_search` or `open_website` call retrieved them
  * during this answer, so they are real evidence the user should be able to check
@@ -132,6 +133,19 @@ export function citedSources(text, sources) {
 		.filter(s => !cited.some(c => c.src && c.src.url === s.url))
 		.map(src => ({ ref: undefined, src }))
 	return cited.concat(external)
+}
+
+/** Turn internal tool identifiers into readable labels for chat surfaces. */
+export function formatToolName(name) {
+	const formatted = String(name || '')
+		.replace(/[_-]+/g, ' ')
+		.replace(/\b\p{L}/gu, letter => letter.toUpperCase())
+	return formatted
+		.replace(/\bApi\b/g, 'API')
+		.replace(/\bId\b/g, 'ID')
+		.replace(/\bOcs\b/g, 'OCS')
+		.replace(/\bPdf\b/g, 'PDF')
+		.replace(/\bUrl\b/g, 'URL')
 }
 
 /** Copies text to clipboard with fallback. */

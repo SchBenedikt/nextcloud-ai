@@ -1,11 +1,17 @@
 <template>
 	<div class="file-context-root">
-		<div v-if="apiError" class="api-error" role="alert">{{ apiError }}</div>
+		<div v-if="statusLoading" class="selection-state" role="status">{{ $t('Loading selected files…') }}</div>
+		<div v-else-if="apiError" class="api-error" role="alert">
+			<span>{{ apiError }}</span>
+			<NcButton variant="tertiary" :loading="statusLoading" :disabled="statusLoading" @click="loadStatus">{{ $t('Try again') }}</NcButton>
+		</div>
+		<div v-else-if="fileIds.length === 0" class="selection-state">{{ $t('Select files in Nextcloud Files to start a file-context chat.') }}</div>
+		<div v-else-if="statusLoaded && files.length === 0" class="selection-state" role="status">{{ $t('None of the selected files is indexed yet.') }}</div>
 		<header class="head">
 			<div class="head-info">
 				<h1>{{ $t('File context chat') }}</h1>
 				<p class="subtitle">
-					{{ $t('Selected files provide the document evidence; your personal knowledge can personalise the answer.') }}
+					{{ $t('EVA uses selected files as document evidence. Personal knowledge can add context, but is not evidence from those files.') }}
 				</p>
 			</div>
 			<div class="file-chips">
@@ -20,21 +26,28 @@
 
 		<div class="messages" ref="messagesEl">
 			<div v-if="messages.length === 0" class="empty">
-				<div class="empty-icon">⌘</div>
-				<strong>{{ $t('Ask about the selected files') }}</strong>
-				<span>{{ $t('Eva uses the selected files for document evidence and may use your personal KNOWLEDGE.md for context.') }}</span>
+				<div class="empty-icon"><NcIconSvgWrapper :path="mdiFileDocumentOutline" :size="24" /></div>
+				<strong v-if="statusLoading">{{ $t('Loading selected files…') }}</strong>
+				<strong v-else-if="fileIds.length === 0">{{ $t('No files were selected.') }}</strong>
+				<strong v-else-if="apiError">{{ $t('Selected files could not be loaded.') }}</strong>
+				<strong v-else-if="files.length === 0">{{ $t('None of the selected files is indexed yet.') }}</strong>
+				<strong v-else>{{ $t('Ask about the selected files') }}</strong>
+				<span v-if="files.length">{{ $t('EVA answers from the selected files. Personal knowledge can add context, but does not serve as evidence about those files.') }}</span>
+				<span v-else-if="fileIds.length === 0">{{ $t('Select files in Nextcloud Files to start a file-context chat.') }}</span>
+				<span v-else-if="!statusLoading && !apiError">{{ $t('Index the selected files before starting a file-context chat.') }}</span>
 			</div>
 			<div v-for="(m, i) in messages" :key="i" :class="['msg', m.role]">
-				<div class="msg-author">{{ m.role === 'user' ? $t('You') : 'Eva' }}</div>
+				<div class="msg-author">{{ m.role === 'user' ? $t('You') : 'EVA' }}</div>
 				<div class="msg-body">{{ m.content }}</div>
 				<div v-if="m.sources && m.sources.length" class="msg-sources">
-					<a v-for="s in m.sources" :key="s.url" :href="s.url" target="_blank" rel="noreferrer">
-						{{ s.name }}
-					</a>
+					<template v-for="(s, index) in m.sources" :key="s.url || s.path || index">
+						<a v-if="s.url" :href="s.url" target="_blank" rel="noopener noreferrer">{{ s.ref !== undefined ? '[' + s.ref + '] ' : '' }}{{ s.name }}</a>
+						<span v-else>{{ s.ref !== undefined ? '[' + s.ref + '] ' : '' }}{{ s.name }}</span>
+					</template>
 				</div>
 			</div>
 			<div v-if="busy" class="msg assistant pending">
-				<div class="msg-author">Eva</div>
+				<div class="msg-author">EVA</div>
 				<div class="msg-body">…</div>
 			</div>
 		</div>
@@ -42,10 +55,10 @@
 		<form class="input-row" @submit.prevent="ask">
 			<NcTextField
 				v-model="input"
-				:placeholder="files.length === 0 ? $t('Loading…') : $t('Ask about these files…')"
-				:disabled="busy || files.length === 0"
+				:placeholder="statusLoading ? $t('Loading selected files…') : apiError ? $t('Selected files could not be loaded.') : files.length === 0 ? $t('No indexed files available') : $t('Ask about these files…')"
+				:disabled="busy || !canAsk"
 				@keydown.enter.exact.prevent="ask" />
-			<NcButton variant="primary" type="submit" :disabled="busy || !input.trim()">
+			<NcButton variant="primary" type="submit" :disabled="busy || !canAsk || !input.trim()">
 				<template #icon>
 					<svg width="18" height="18" viewBox="0 0 24 24"><path :d="mdiSend" fill="currentColor" /></svg>
 				</template>
@@ -56,26 +69,32 @@
 </template>
 
 <script>
-import { ref, onMounted, nextTick } from 'vue'
+import { ref, computed, onMounted, nextTick, watch } from 'vue'
 import { NcButton, NcTextField } from '@nextcloud/vue'
-import { mdiSend } from '@mdi/js'
+import NcIconSvgWrapper from '@nextcloud/vue/components/NcIconSvgWrapper'
+import { mdiSend, mdiFileDocumentOutline } from '@mdi/js'
 import { api, errMsg } from '../lib/api'
 import { translate as t } from '../lib/i18n'
+import { citedSources } from '../lib/chat-utils'
 
 export default {
 	name: 'FileContextChatView',
-	components: { NcButton, NcTextField },
+	components: { NcButton, NcTextField, NcIconSvgWrapper },
 	props: {
 		fileIds: { type: Array, default: () => [] },
 	},
 	setup(props) {
 		const files = ref([])
 		const missing = ref([])
+		const statusLoading = ref(true)
+		const statusLoaded = ref(false)
 		const messages = ref([])
 		const input = ref('')
 		const busy = ref(false)
 		const messagesEl = ref(null)
 		const apiError = ref('')
+		const canAsk = computed(() => statusLoaded.value && !apiError.value && files.value.length > 0)
+		let statusRequestId = 0
 
 		const scrollDown = async () => {
 			await nextTick()
@@ -85,30 +104,41 @@ export default {
 		}
 
 		const loadStatus = async () => {
-			if (!props.fileIds || props.fileIds.length === 0) {
+			const currentRequest = ++statusRequestId
+			const fileIds = [...new Set((props.fileIds || []).map(Number).filter(id => Number.isInteger(id) && id > 0))]
+			files.value = []
+			missing.value = []
+			if (fileIds.length === 0) {
+				statusLoaded.value = true
+				statusLoading.value = false
+				apiError.value = ''
 				return
 			}
+			statusLoading.value = true
+			statusLoaded.value = false
+			apiError.value = ''
 			try {
-				const r = await api('POST', '/fileContextStatus', { fileIds: props.fileIds })
-				apiError.value = ''
-				if (r && Array.isArray(r.files)) {
-					files.value = r.files
+				const r = await api('POST', '/fileContextStatus', { fileIds })
+				if (!r || !Array.isArray(r.files) || !Array.isArray(r.missing)
+					|| r.files.some(file => !file || !Number.isInteger(Number(file.fileId)) || Number(file.fileId) < 1 || typeof file.name !== 'string')) {
+					throw new Error(t('The file-context response was incomplete.'))
 				}
-				if (r && Array.isArray(r.missing)) {
-					missing.value = r.missing
-				}
+				if (currentRequest !== statusRequestId) return
+				const selected = new Set(fileIds)
+				files.value = r.files.filter(file => selected.has(Number(file.fileId)))
+				missing.value = r.missing.map(Number).filter(id => selected.has(id))
+				statusLoaded.value = true
 			} catch (e) {
-				apiError.value = t('The selected files could not be loaded: {error}', { error: errMsg(e) })
+				if (currentRequest === statusRequestId) apiError.value = t('The selected files could not be loaded: {error}', { error: errMsg(e) })
 				console.error('[eva-ai] fileContextStatus failed', e)
-			}
-			if (files.value.length === 0 && props.fileIds.length > 0) {
-				files.value = props.fileIds.map((id) => ({ fileId: id, name: t('File #{id}', { id }), path: '' }))
+			} finally {
+				if (currentRequest === statusRequestId) statusLoading.value = false
 			}
 		}
 
 		const ask = async () => {
 			const text = input.value.trim()
-			if (!text || busy.value) return
+			if (!text || busy.value || !canAsk.value) return
 			busy.value = true
 			messages.value.push({ role: 'user', content: text })
 			input.value = ''
@@ -125,31 +155,46 @@ export default {
 				})
 				if (r && r.error) {
 					messages.value.push({ role: 'assistant', content: t('Error: {error}', { error: r.error }), sources: [] })
+				} else if (!r || typeof r.answer !== 'string' || r.answer.trim() === '') {
+					messages.value.push({ role: 'assistant', content: t('The model returned an empty response. Try asking a more specific question.'), sources: [] })
 				} else {
+					const availableSources = Array.isArray(r.sources) ? r.sources : []
 					messages.value.push({
 						role: 'assistant',
-						content: (r && r.answer) || '(empty)',
-						sources: (r && r.sources) || [],
+						content: r.answer,
+						sources: citedSources(r.answer, availableSources)
+							.filter(item => item.src && typeof item.src.name === 'string')
+							.map(item => ({ ...item.src, ref: item.ref })),
 					})
 				}
 			} catch (e) {
-				apiError.value = t('The file-context request failed: {error}', { error: errMsg(e) })
-				messages.value.push({ role: 'assistant', content: t('Error: {error}', { error: errMsg(e) }), sources: [] })
+				messages.value.push({ role: 'assistant', content: t('The file-context request failed: {error}', { error: errMsg(e) }), sources: [] })
 			} finally {
 				busy.value = false
 				await scrollDown()
 			}
 		}
 
+		watch(() => (props.fileIds || []).join(','), () => {
+			files.value = []
+			missing.value = []
+			messages.value = []
+			input.value = ''
+			loadStatus()
+		})
 		onMounted(loadStatus)
 
-		return { files, missing, messages, input, busy, messagesEl, apiError, ask, mdiSend }
+		return { files, missing, messages, input, busy, messagesEl, apiError, statusLoading, statusLoaded, canAsk, loadStatus, ask, mdiSend, mdiFileDocumentOutline }
 	},
 }
 </script>
 
 <style scoped>
 .api-error {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 12px;
 	padding: 10px 12px;
 	border: 1px solid color-mix(in srgb, var(--color-error, #c00) 45%, var(--color-border));
 	border-radius: 10px;
@@ -158,9 +203,17 @@ export default {
 	font-size: 13px;
 }
 
+.selection-state {
+	padding: 10px 12px;
+	border: 1px solid var(--color-border);
+	border-radius: 10px;
+	color: var(--color-text-maxcontrast);
+	font-size: 13px;
+}
+
 .file-context-root {
 	width: 100%;
-	max-width: 1180px;
+	max-width: var(--eva-content-width, 1180px);
 	height: 100%;
 	margin: 0 auto;
 	box-sizing: border-box;
@@ -284,7 +337,8 @@ export default {
 	margin-top: 6px;
 	font-size: 12px;
 }
-.msg-sources a {
+.msg-sources a,
+.msg-sources span {
 	background: rgba(0, 0, 0, 0.08);
 	background: color-mix(in srgb, currentColor 10%, transparent);
 	padding: 3px 9px;

@@ -7,9 +7,9 @@
 				<p class="page-intro">{{ $t('Review the files in your personal EVA knowledge base and inspect their indexed text.') }}</p>
 			</div>
 			<div class="header-actions">
-				<NcButton variant="primary" :loading="indexing" :disabled="indexingActive" @click="startIndex">{{ $t('Index files & emails') }}</NcButton>
-				<NcButton variant="secondary" :disabled="indexingActive" @click="startMailIndex">{{ $t('Only emails') }}</NcButton>
-				<NcButton variant="secondary" :disabled="indexingActive" @click="startTalkIndex">{{ $t('Index Talk chats') }}</NcButton>
+				<NcButton variant="primary" :loading="indexing" :disabled="indexControlsLocked" @click="startIndex">{{ $t('Index files & emails') }}</NcButton>
+				<NcButton variant="secondary" :disabled="indexControlsLocked" @click="startMailIndex">{{ $t('Only emails') }}</NcButton>
+				<NcButton variant="secondary" :disabled="indexControlsLocked" @click="startTalkIndex">{{ $t('Index Talk chats') }}</NcButton>
 				<NcButton v-if="indexingActive" variant="tertiary-no-background" :loading="stopping" :disabled="indexStatus?.indexStopping" @click="stopIndex">{{ $t('Stop') }}</NcButton>
 			</div>
 		</header>
@@ -18,9 +18,11 @@
 			<strong>{{ indexStatus?.indexStopping ? $t('Stopping indexing…') : indexStatus?.indexMode === 'mail' ? $t('Email indexing is running') : indexStatus?.indexMode === 'talk' ? $t('Chat indexing is running') : $t('Indexing is running') }}</strong>
 			<span>{{ $t('The job continues on the server even if you close this page.') }}</span>
 		</div>
+		<div v-if="!indexStatusKnown && indexStatusLoading" class="callout" role="status">{{ $t('Checking indexing status…') }}</div>
+		<div v-if="indexStatusError" class="callout index-status-error" role="alert"><span>{{ $t('Indexing status could not be loaded: {error}', { error: indexStatusError }) }}</span><NcButton variant="tertiary" :loading="indexStatusLoading" :disabled="indexStatusLoading" @click="loadStatus">{{ $t('Try again') }}</NcButton></div>
 		<div v-if="progress" class="callout" role="status">{{ progress }}</div>
 
-		<div class="summary-grid" :aria-label="$t('Index summary')">
+		<div v-if="documentsLoaded" class="summary-grid" :aria-label="$t('Index summary')">
 			<div class="summary-card">
 				<span class="summary-label">{{ $t('Documents') }}</span>
 				<strong>{{ total }}</strong>
@@ -39,10 +41,10 @@
 		</div>
 
 		<section class="docs-toolbar">
-			<NcTextField v-model="search" :label="$t('Search documents')" :label-outside="true" :placeholder="$t('File name or path')" :disabled="loadingMore" @keydown.enter="load" />
+			<NcTextField v-model="search" :label="$t('Search documents')" :label-outside="true" :placeholder="$t('File name or path')" :disabled="loading || loadingMore" @keydown.enter="load" />
 			<label class="docs-filter">
 				<span class="docs-filter-label">{{ $t('Type') }}</span>
-				<select v-model="filterType" :disabled="loadingMore" @change="load">
+				<select v-model="filterType" :disabled="loading || loadingMore" @change="load">
 					<option value="">{{ $t('All types') }}</option>
 					<option value="text">text/*</option>
 					<option value="application">application/*</option>
@@ -54,11 +56,11 @@
 			</label>
 			<label class="docs-filter">
 				<span class="docs-filter-label">{{ $t('Folder') }}</span>
-				<input v-model="filterFolder" type="text" :placeholder="$t('Folder path')" :disabled="loadingMore" @keydown.enter="load" />
+				<input v-model="filterFolder" type="text" :placeholder="$t('Folder path')" :disabled="loading || loadingMore" @keydown.enter="load" />
 			</label>
 			<label class="docs-filter">
 				<span class="docs-filter-label">{{ $t('Minimum size') }}</span>
-				<select v-model="filterSize" :disabled="loadingMore" @change="load">
+				<select v-model="filterSize" :disabled="loading || loadingMore" @change="load">
 					<option value="">{{ $t('Any size') }}</option>
 					<option value="10000">≥ 10 KB</option>
 					<option value="100000">≥ 100 KB</option>
@@ -67,7 +69,7 @@
 			</label>
 			<label class="docs-filter">
 				<span class="docs-filter-label">{{ $t('Sort') }}</span>
-				<select v-model="filterSort" :disabled="loadingMore" @change="load">
+				<select v-model="filterSort" :disabled="loading || loadingMore" @change="load">
 					<option value="date-desc">{{ $t('Newest first') }}</option>
 					<option value="date-asc">{{ $t('Oldest first') }}</option>
 					<option value="name-asc">{{ $t('Name A–Z') }}</option>
@@ -81,15 +83,20 @@
 		</section>
 
 		<section class="docs-body">
-			<NcEmptyContent v-if="!loading && !docs.length" class="docs-empty">
-				<template #icon><span>📄</span></template>
+			<div v-if="documentsLoadError" class="docs-load-error" role="alert">
+				<span>{{ $t('Documents could not be loaded: {error}', { error: documentsLoadError }) }}</span>
+				<NcButton variant="tertiary" :disabled="loading" @click="load">{{ $t('Retry') }}</NcButton>
+			</div>
+			<NcEmptyContent v-if="documentsLoaded && !loading && !documentsLoadError && !docs.length" class="docs-empty">
+				<template #icon><NcIconSvgWrapper :path="mdiFileDocumentOutline" :size="48" /></template>
 				<template #name>{{ $t('No documents indexed yet') }}</template>
 				<template #description>
-					{{ $t('Use “Start indexing” to scan your files, then ask Eva about them.') }}
+					{{ $t('Use one of the indexing options above to add content, then ask EVA about it.') }}
 				</template>
 			</NcEmptyContent>
 
-			<table v-else class="docs-table">
+			<div v-if="(loading && !docs.length) || (!documentsLoaded && !documentsLoadError)" class="docs-loading" role="status">{{ $t('Loading documents…') }}</div>
+			<table v-if="docs.length" class="docs-table">
 				<thead>
 					<tr>
 						<th class="docs-caret-head"></th>
@@ -170,10 +177,12 @@
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { api, errMsg } from '../lib/api'
 import { translate as t } from '../lib/i18n'
-import { mdiChevronDown, mdiChevronRight } from '@mdi/js'
+import NcIconSvgWrapper from '@nextcloud/vue/components/NcIconSvgWrapper'
+import { mdiChevronDown, mdiChevronRight, mdiFileDocumentOutline } from '@mdi/js'
 
 export default {
 	name: 'DocumentsView',
+	components: { NcIconSvgWrapper },
 	setup() {
 		const docs = ref([])
 		const total = ref(0)
@@ -187,28 +196,46 @@ export default {
 		const filterSort = ref('date-desc')
 		const loading = ref(false)
 		const loadingMore = ref(false)
+		const documentsLoaded = ref(false)
+		const documentsLoadError = ref('')
 		const pageSize = 100
 		const hasMore = ref(true)
 		const loadMoreError = ref('')
 		const indexing = ref(false)
 		const stopping = ref(false)
 		const indexStatus = ref(null)
+		const indexStatusKnown = ref(false)
+		const indexStatusLoading = ref(true)
+		const indexStatusError = ref('')
 		const progress = ref('')
 		const indexingActive = computed(() => indexing.value || indexStatus.value?.indexing === true)
+		const indexControlsLocked = computed(() => !indexStatusKnown.value || !!indexStatusError.value || indexingActive.value)
+		let statusRequestInFlight = false
 		const expanded = ref(new Set())
 		const chunkCache = ref(new Map())
 
 
 		const loadStatus = async () => {
+			if (statusRequestInFlight) return
+			statusRequestInFlight = true
+			indexStatusLoading.value = true
 			try {
-				indexStatus.value = await api('GET', 'status')
-			} catch (e) {
-				console.error('[eva-ai] status error', e)
+				const status = await api('GET', 'status')
+				if (!status || typeof status !== 'object') throw new Error(t('The indexing status response was invalid.'))
+				indexStatus.value = status
+				indexStatusKnown.value = true
+				indexStatusError.value = ''
+			} catch (error) {
+				indexStatusError.value = errMsg(error)
+				console.error('[eva-ai] status error', error)
+			} finally {
+				indexStatusLoading.value = false
+				statusRequestInFlight = false
 			}
 		}
 
 		const startIndex = async () => {
-			if (indexingActive.value) return
+			if (indexControlsLocked.value) return
 			indexing.value = true
 			progress.value = t('Indexing is being queued in the background …')
 			try {
@@ -224,7 +251,7 @@ export default {
 		}
 
 		const startMailIndex = async () => {
-			if (indexingActive.value) return
+			if (indexControlsLocked.value) return
 			indexing.value = true
 			progress.value = t('Email indexing is being queued in the background …')
 			try {
@@ -239,7 +266,7 @@ export default {
 		}
 
 		const startTalkIndex = async () => {
-			if (indexingActive.value) return
+			if (indexControlsLocked.value) return
 			indexing.value = true
 			progress.value = t('Indexing your Nextcloud Talk chat histories is being queued in the background …')
 			try {
@@ -279,7 +306,7 @@ export default {
 				loadMoreError.value = ''
 			} else {
 				loading.value = true
-				loadMoreError.value = ''
+				documentsLoadError.value = ''
 			}
 			const offset = append ? docs.value.length : 0
 			try {
@@ -295,19 +322,21 @@ export default {
 				if (filterFolder.value.trim()) params.folder = filterFolder.value.trim()
 				if (filterSize.value) params.sizeMin = Number(filterSize.value)
 				const data = await api('GET', 'documents', params)
-				const incoming = Array.isArray(data?.documents) ? data.documents : []
+				const requiredTotals = ['total', 'totalChunks', 'totalSize']
+				if (!data || typeof data !== 'object' || !Array.isArray(data.documents)
+					|| requiredTotals.some(key => data[key] === null || data[key] === undefined || !Number.isFinite(Number(data[key])) || Number(data[key]) < 0)) {
+					throw new Error(t('The documents response was incomplete.'))
+				}
+				const incoming = data.documents
 				docs.value = append ? docs.value.concat(incoming) : incoming
-				total.value = Number.isFinite(Number(data?.total)) ? Number(data.total) : docs.value.length
-				totalChunks.value = Number(data?.totalChunks) || 0
-				totalSize.value = Number(data?.totalSize) || 0
+				total.value = Number(data.total)
+				totalChunks.value = Number(data.totalChunks)
+				totalSize.value = Number(data.totalSize)
 				hasMore.value = incoming.length === pageSize && docs.value.length < total.value
+				if (!append) documentsLoaded.value = true
 			} catch (e) {
 				if (!append) {
-					docs.value = []
-					total.value = 0
-					totalChunks.value = 0
-					totalSize.value = 0
-					hasMore.value = false
+					documentsLoadError.value = errMsg(e)
 				} else {
 					loadMoreError.value = t('More documents could not be loaded. Please try again.')
 				}
@@ -445,7 +474,7 @@ export default {
 			if (statusTimer !== null) window.clearInterval(statusTimer)
 		})
 
-		return { docs, total, totalChunks, totalSize, search, filterType, filterFolder, filterSize, filterSort, loading, loadingMore, hasMore, loadMoreError, indexing, stopping, indexStatus, indexingActive, progress, expanded, chunkCache, load, loadMore, loadStatus, toggle, startIndex, startMailIndex, startTalkIndex, stopIndex, fmtSize, fmtDate, mdiChevronDown, mdiChevronRight }
+		return { docs, total, totalChunks, totalSize, search, filterType, filterFolder, filterSize, filterSort, loading, loadingMore, documentsLoaded, documentsLoadError, hasMore, loadMoreError, indexing, stopping, indexStatus, indexStatusKnown, indexStatusLoading, indexStatusError, indexControlsLocked, indexingActive, progress, expanded, chunkCache, load, loadMore, loadStatus, toggle, startIndex, startMailIndex, startTalkIndex, stopIndex, fmtSize, fmtDate, mdiChevronDown, mdiChevronRight, mdiFileDocumentOutline }
 	},
 }
 </script>
@@ -474,6 +503,7 @@ export default {
 .header-actions { display: flex; align-items: center; justify-content: flex-end; flex-wrap: wrap; gap: 8px; flex-shrink: 0; }
 
 .callout {	margin: 0 0 16px; padding: 12px 14px; border: 1px solid var(--color-border); border-radius: 8px; color: var(--color-text-maxcontrast); font-size: 13px; }
+.index-status-error { display:flex; align-items:center; justify-content:space-between; gap:12px; border-color:var(--color-error); color:var(--color-error); }
 .indexing-callout { display: flex; align-items: center; gap: 8px; border-color: color-mix(in srgb, var(--color-primary-element) 42%, var(--color-border)); }
 .summary-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; margin-bottom: 16px; }
 .summary-card { min-height: 76px; padding: 14px; border: 1px solid var(--color-border); border-radius: 8px; background: var(--color-main-background); box-sizing: border-box; }
@@ -512,6 +542,8 @@ export default {
 .docs-empty {
 	padding: 40px 0;
 }
+.docs-load-error { display:flex; align-items:center; justify-content:space-between; gap:12px; padding:14px 16px; border-bottom:1px solid var(--color-border); color:var(--color-error); }
+.docs-loading { padding:24px 16px; color:var(--color-text-maxcontrast); }
 
 .docs-table {
 	width: 100%;

@@ -101,9 +101,13 @@ class Searcher {
         if ($queryVector !== null) {
             foreach ($rows as $i => $row) {
                 $vec = json_decode($row['embedding'], true);
-                $dense[$i] = is_array($vec) && $vec !== []
-                    ? $this->cosine($queryVector, $vec)
-                    : 0.0;
+                if (!is_array($vec)) {
+                    continue;
+                }
+                $similarity = $this->cosine($queryVector, $vec);
+                if ($similarity !== null) {
+                    $dense[$i] = $similarity;
+                }
             }
         }
 
@@ -277,10 +281,13 @@ class Searcher {
                     $page = $this->chunkMapper->chunksForUserPage($userId, self::DENSE_SCAN_PAGE, $offset);
                     foreach ($page as $row) {
                         $vec = json_decode($row['embedding'], true);
-                        if (!is_array($vec) || $vec === []) {
+                        if (!is_array($vec)) {
                             continue;
                         }
-                        $best[(int)$row['id']] = $this->cosine($queryVector, $vec);
+                        $similarity = $this->cosine($queryVector, $vec);
+                        if ($similarity !== null) {
+                            $best[(int)$row['id']] = $similarity;
+                        }
                     }
                     if (count($best) > $keep) {
                         arsort($best);
@@ -429,20 +436,26 @@ class Searcher {
         return max(1, (int)ceil($chars / 4));
     }
 
-    private function cosine(array $a, array $b): float {
+    private function cosine(array $a, array $b): ?float {
+        if ($a === [] || count($a) !== count($b)) {
+            return null;
+        }
         $dot = 0.0;
         $na = 0.0;
         $nb = 0.0;
-        $n = min(count($a), count($b));
-        for ($i = 0; $i < $n; $i++) {
-            $va = (float)$a[$i];
+        foreach ($a as $i => $value) {
+            if (!is_numeric($value) || !is_finite((float)$value)
+                || !array_key_exists($i, $b) || !is_numeric($b[$i]) || !is_finite((float)$b[$i])) {
+                return null;
+            }
+            $va = (float)$value;
             $vb = (float)$b[$i];
             $dot += $va * $vb;
             $na += $va * $va;
             $nb += $vb * $vb;
         }
         if ($na <= 0 || $nb <= 0) {
-            return 0.0;
+            return null;
         }
         return $dot / (sqrt($na) * sqrt($nb));
     }
