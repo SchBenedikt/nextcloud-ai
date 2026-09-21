@@ -4,15 +4,15 @@
 			<div class="header-copy">
 				<p class="eyebrow">EVA AI</p>
 				<h2 class="settings-title">{{ $t('Settings') }}</h2>
-				<p class="page-intro">{{ $t('Control how EVA connects to Ollama, searches your files and is allowed to act in Nextcloud.') }}</p>
+				<p class="page-intro">{{ $t('Configure model providers, file indexing, permissions and connected services.') }}</p>
 			</div>
 			<div class="header-actions">
 				<span v-if="saved" class="saved-label" role="status">{{ $t('Saved') }}</span>
-				<span v-else class="saved-label" role="status">{{ $t('Changes save automatically') }}</span>
+				<span v-else class="saved-label" role="status">{{ $t('Core settings save automatically') }}</span>
 			</div>
 		</header>
 		<nav class="settings-quicknav" :aria-label="$t('Settings sections')">
-			<a href="#settings-connection">{{ $t('Connection') }}</a><a href="#settings-safety">{{ $t('Safety') }}</a><a href="#settings-search">{{ $t('Search') }}</a><a href="#settings-indexing">{{ $t('Indexing') }}</a><a href="#settings-integrations">{{ $t('Integrations') }}</a><a href="#settings-privacy">{{ $t('Privacy') }}</a>
+			<a href="#settings-connection">{{ $t('Connection') }}</a><a href="#settings-safety">{{ $t('Safety') }}</a><a href="#settings-search">{{ $t('Search') }}</a><a href="#settings-indexing">{{ $t('Indexing') }}</a><a href="#settings-integrations">{{ $t('Integrations') }}</a><a href="#settings-briefings">{{ $t('Briefings') }}</a><a href="#settings-privacy">{{ $t('Privacy') }}</a>
 		</nav>
 
 		<div v-if="loadError" class="callout callout-error" role="alert">
@@ -20,14 +20,18 @@
 			<span>{{ loadError }}</span>
 			<NcButton variant="tertiary-no-background" @click="loadStatus(true)">{{ $t('Try again') }}</NcButton>
 		</div>
+		<div v-if="statusRefreshError" class="callout callout-info" role="status">
+			<span>{{ $t('The latest status could not be loaded. Showing the last successful status: {error}', { error: statusRefreshError }) }}</span>
+			<NcButton variant="tertiary-no-background" @click="loadStatus()">{{ $t('Try again') }}</NcButton>
+		</div>
 
-		<div class="summary-grid" :aria-label="$t('EVA status')">
+		<div v-if="status" class="summary-grid" :aria-label="$t('EVA status')">
 			<div class="summary-card" :class="status && status.ollamaOnline ? 'is-ok' : 'is-muted'">
 				<span class="status-dot" aria-hidden="true"></span>
 				<div>
 					<span class="summary-label">{{ $t('Ollama') }}</span>
 					<strong>{{ status ? (status.ollamaOnline ? $t('Connected') : $t('Not connected')) : $t('Checking…') }}</strong>
-					<small>{{ status?.ollamaError || status?.ollamaUrl || $t('Local AI server') }}</small>
+					<small>{{ status?.ollamaError || status?.ollamaUrl || $t('Configured Ollama endpoint') }}</small>
 				</div>
 			</div>
 			<div class="summary-card">
@@ -40,15 +44,23 @@
 			<div class="summary-card" :class="status?.indexing ? 'is-working' : ''">
 				<div>
 					<span class="summary-label">{{ $t('Indexing') }}</span>
-					<strong>{{ status?.indexing ? $t('In progress') : $t('Ready') }}</strong>
-					<small>{{ status?.lastFinished ? $t('Last finished {time}', { time: status.lastFinished }) : $t('Run indexing after changing scope') }}</small>
+					<strong>{{ status.indexing ? $t('In progress') : status.lastError ? $t('Needs attention') : $t('Ready') }}</strong>
+					<small>{{ status.lastError || (status.lastFinished ? $t('Last finished {time}', { time: status.lastFinished }) : $t('Run indexing after changing scope')) }}</small>
 				</div>
 			</div>
 		</div>
+		<p v-else-if="!loadError" class="settings-status-loading" role="status">{{ $t('Loading current status…') }}</p>
+		<div v-if="healthError" class="callout callout-error" role="alert">
+			<strong>{{ $t('System diagnostics could not be loaded.') }}</strong>
+			<span>{{ healthError }}</span>
+			<NcButton variant="tertiary-no-background" :disabled="healthLoading" @click="loadHealth">{{ $t('Try again') }}</NcButton>
+		</div>
 		<div v-if="health" class="health-strip" :class="health.ok ? 'health-ok' : 'health-warning'" role="status">
 			<strong>{{ health.ok ? $t('System healthy') : $t('System needs attention') }}</strong>
-			<span>{{ $t('Provider: {state}', { state: health.provider?.online ? $t('Connected') : $t('Not connected') }) }}</span>
+			<span>{{ $t('Ollama endpoint: {state}', { state: health.provider?.online ? $t('Connected') : $t('Not connected') }) }}</span>
+			<span>{{ $t('Chat model configured: {state}', { state: health.checks?.chat_model ? $t('Yes') : $t('No') }) }}</span>
 			<span>{{ $t('Queue: {count} active', { count: health.queue?.active || 0 }) }}</span>
+			<span v-if="health.index?.last_error">{{ $t('Last indexing error: {error}', { error: health.index.last_error }) }}</span>
 			<NcButton variant="tertiary-no-background" :disabled="healthLoading" @click="loadHealth">{{ $t('Refresh diagnosis') }}</NcButton>
 		</div>
 
@@ -69,7 +81,7 @@
 				</div>
 				<NcButton variant="secondary" :loading="stopping" :disabled="status?.indexStopping" @click="stopIndex">{{ $t('Stop indexing') }}</NcButton>
 			</div>
-			<fieldset class="settings-fieldset" :disabled="settingsLocked">
+			<fieldset class="settings-fieldset" :disabled="settingsLocked || !formReady">
 			<section id="settings-connection" class="settings-section">
 				<div class="section-heading">
 					<div>
@@ -86,8 +98,10 @@
 					<NcTextField id="custom-provider-id" v-model="f.chat_provider" :label="$t('Provider ID')" :label-outside="true" placeholder="openai" />
 					<NcTextField id="custom-provider-url" v-model="f.custom_provider_url" type="url" :label="$t('OpenAI-compatible endpoint')" :label-outside="true" placeholder="https://api.openai.com/v1" />
 					<NcTextField id="custom-provider-model" v-model="f.custom_provider_model" :label="$t('Model')" :label-outside="true" placeholder="gpt-4o-mini" />
-					<NcTextField id="custom-provider-key" v-model="customProviderKey" type="password" autocomplete="new-password" :label="$t('Provider API key')" :label-outside="true" />
-					<p class="field-help">{{ $t('Works with OpenAI, Azure OpenAI, Mistral, Together, DeepSeek, OpenRouter and any compatible self-hosted endpoint. Credentials are encrypted per user.') }}</p>
+					<NcTextField id="custom-provider-key" v-model="customProviderKey" type="password" autocomplete="new-password" :label="$t('Provider API key')" :label-outside="true" :disabled="removeCustomProviderKey" />
+					<p class="field-help">{{ status?.customProvider?.providerId === f.chat_provider && status?.customProvider?.keyConfigured ? $t('A key is saved. Leave blank to keep it.') : $t('Set an API key for this provider. It will be stored encrypted per user.') }}</p>
+					<NcCheckboxRadioSwitch v-if="status?.customProvider?.providerId === f.chat_provider && status?.customProvider?.keyConfigured" v-model="removeCustomProviderKey" type="switch">{{ $t('Remove saved provider API key on save') }}</NcCheckboxRadioSwitch>
+					<p class="field-help">{{ $t('Works with OpenAI, Azure OpenAI, Mistral, Together, DeepSeek, OpenRouter and compatible self-hosted endpoints.') }}</p>
 					<div class="field field-wide provider-profiles-editor">
 						<label class="native-label" for="provider-profiles">{{ $t('Additional provider profiles (JSON)') }}</label>
 						<NcTextArea id="provider-profiles" v-model="f.provider_profiles" :label="$t('Additional provider profiles (JSON)')" :label-outside="true" :placeholder="providerProfilesPlaceholder" resize="vertical" />
@@ -122,13 +136,13 @@
 					</div>
 					<div class="field">
 						<label class="native-label" for="embedding-model">{{ $t('Embedding model') }}</label>
-						<NcSelect input-id="embedding-model" v-model="f.embedding_model" :options="embeddingModelOptions" :input-label="$t('Embedding model')" :label-outside="true" :disabled="modelLoading || !embeddingModels.length" />
+						<NcSelect input-id="embedding-model" v-model="f.embedding_model" :options="embeddingModelOptions" :input-label="$t('Embedding model')" :label-outside="true" :disabled="modelLoading" />
 						<p class="field-help">{{ $t('EVA discovers installed models automatically from the Ollama endpoint and separates embedding from chat models by their declared capabilities. Embedding models turn file text into searchable vectors.') }}</p>
 						<div v-if="!modelLoading && embeddingInstalledHint" class="model-hint">{{ embeddingInstalledHint }}</div>
 					</div>
 					<div v-if="f.chat_provider !== 'groq'" class="field">
 						<label class="native-label" for="chat-model">{{ $t('Chat model') }}</label>
-						<NcSelect input-id="chat-model" v-model="f.chat_model" :options="chatModelOptions" :input-label="$t('Chat model')" :label-outside="true" :disabled="modelLoading || !chatModels.length" />
+						<NcSelect input-id="chat-model" v-model="f.chat_model" :options="chatModelOptions" :input-label="$t('Chat model')" :label-outside="true" :disabled="modelLoading" />
 						<p class="field-help">{{ $t('EVA discovers installed chat models automatically from the Ollama endpoint.') }}</p>
 						<div v-if="!modelLoading && chatInstalledHint" class="model-hint">{{ chatInstalledHint }}</div>
 					</div>
@@ -389,7 +403,9 @@
 						<p>{{ $t('Edit the facts EVA remembers about you. This file is read before every answer to personalise responses.') }}</p>
 					</div>
 				</div>
-				<div class="field field-wide">
+				<p v-if="knowledgeLoading" class="field-help" role="status">{{ $t('Loading personal knowledge…') }}</p>
+				<div v-else-if="knowledgeLoadError" class="load-error" role="alert"><span>{{ $t('Personal knowledge could not be loaded. Check the file in Nextcloud Files and try again.') }}</span><NcButton variant="tertiary" @click="loadKnowledge">{{ $t('Try again') }}</NcButton></div>
+				<div v-if="knowledgeReady" class="field field-wide">
 					<NcTextArea
 						v-model="knowledgeContent"
 						id="knowledge-editor"
@@ -398,14 +414,14 @@
 						:resize="'vertical'"
 						class="knowledge-editor"
 						:placeholder="$t('No knowledge file yet. EVA will create one with your profile on first use.')"
-						:disabled="settingsLocked"
+						:disabled="settingsLocked || !knowledgeReady"
 					/>
 					<p class="field-help">
 						{{ $t('{count} of {max} characters', { count: formatNumber(knowledgeContent.length), max: '60,000' }) }}
 					</p>
 				</div>
-				<div class="inline-actions">
-					<NcButton variant="primary" :loading="savingKnowledge" :disabled="settingsLocked || knowledgeContent === knowledgeOriginal" @click="saveKnowledgeContent">
+				<div v-if="knowledgeReady" class="inline-actions">
+					<NcButton variant="primary" :loading="savingKnowledge" :disabled="settingsLocked || !knowledgeReady || knowledgeContent === knowledgeOriginal" @click="saveKnowledgeContent">
 						{{ $t('Save knowledge') }}
 					</NcButton>
 					<span v-if="knowledgeSaved" class="action-hint" style="color: var(--color-success);">{{ $t('Saved') }}</span>
@@ -429,12 +445,12 @@
 						<p class="field-help">{{ $t('The name people mention to address EVA in Talk. Example: {mention}.', { mention: '@Eva' }) }}</p>
 					</div>
 				</div>
-				<div class="help-box">
-					<strong>{{ $t('Privacy reminder') }}</strong>
-					<span>{{ $t('Indexed content stays in Nextcloud and is sent to the Ollama server configured above. Review your indexing scope before enabling Mail or Talk features.') }}</span>
-				</div>
-				<div class="admin-subsection">
-					<div class="briefing-heading"><div><h4>{{ $t('Scheduled briefings') }}</h4><p>{{ $t('EVA can prepare recurring answers and deliver them in your Nextcloud notifications. They are read-only unless you explicitly enable actions per briefing.') }}</p></div><span class="briefing-count">{{ proactiveBriefings.length }} / 20</span></div>
+				</section>
+			</fieldset>
+
+			<fieldset class="settings-fieldset" :disabled="briefingsLocked">
+			<section id="settings-briefings" class="settings-section briefing-section">
+				<div class="section-heading"><div><h3>{{ $t('Scheduled briefings') }}</h3><p>{{ $t('EVA can prepare recurring answers and deliver them in your Nextcloud notifications. They are read-only unless you explicitly enable actions per briefing.') }}</p></div><span class="briefing-count">{{ proactiveBriefings.length }} / 20</span></div>
 					<NcCheckboxRadioSwitch v-model="proactiveEnabled" type="switch" class="native-toggle">{{ $t('Let EVA send scheduled notifications') }}</NcCheckboxRadioSwitch>
 					<div v-if="proactiveEnabled" class="briefing-note"><strong>{{ $t('How this works') }}</strong><span>{{ $t('Briefings use your server cron and account timezone. Every briefing is read-only by default. If you enable actions on one briefing, EVA may perform the requested changes automatically and reports the result in the notification.') }}</span></div>
 					<div v-if="proactiveEnabled" class="briefing-editor">
@@ -453,8 +469,10 @@
 						<div><span class="native-label">{{ $t('Repeat on') }}</span><div class="weekday-picker"><NcCheckboxRadioSwitch v-for="day in weekdays" :key="day.value" v-model="briefingDraft.days" type="checkbox" :value="day.value">{{ day.label }}</NcCheckboxRadioSwitch></div></div>
 						<div class="briefing-form-actions"><NcButton variant="primary" :disabled="saving || proactiveBriefings.length >= 20" @click="addBriefing">{{ $t('Add briefing') }}</NcButton><span>{{ $t('{count} slots remaining', { count: Math.max(0, 20 - proactiveBriefings.length) }) }}</span></div><p v-if="briefingFormError" class="field-help briefing-action-warning" role="alert">{{ briefingFormError }}</p></div>
 					</div>
-				</div>
 			</section>
+			</fieldset>
+
+			<fieldset class="settings-fieldset" :disabled="settingsLocked || !formReady">
 
 			<section class="settings-section">
 				<div class="section-heading">
@@ -489,22 +507,25 @@
 			<section class="settings-section">
 				<div class="section-heading"><div><h3>{{ $t('External connectors') }}</h3><p>{{ $t('Connect an external service that EVA can inspect and use only after confirmation. Credentials are encrypted and never shown again.') }}</p></div></div>
 				<div v-if="connectorsLoading" class="field-help">{{ $t('Loading connectors…') }}</div>
+				<div v-else-if="connectorLoadError" class="load-error" role="alert"><span>{{ $t('Could not load connectors: {error}', { error: connectorLoadError }) }}</span><NcButton variant="tertiary" @click="loadConnectors">{{ $t('Try again') }}</NcButton></div>
+				<div v-else-if="!connectors.length" class="empty-state">{{ $t('No external connectors are configured yet.') }}</div>
 				<div v-for="connector in connectors" :key="connector.id" class="connector-row">
 					<div class="connector-summary"><strong>{{ connector.name }}</strong><small>{{ connector.base_url }} · {{ connector.discovered_endpoint_count || 0 }} {{ $t('learned endpoints') }} · {{ connector.auth_type === 'none' ? $t('No authentication') : connector.auth_type === 'api_key' ? $t('API key') : connector.auth_type === 'basic' ? $t('Username and password') : $t('Bearer token') }}</small><div class="connector-credentials"><span :class="connectorCredentialClass(connector)">{{ connectorCredentialLabel(connector) }}</span><span v-if="connector.auth_type === 'api_key'" class="connector-header">{{ connector.api_key_header }}</span></div><details v-if="connector.learned_endpoints && connector.learned_endpoints.length" class="connector-endpoints"><summary>{{ $t('Explore learned routes') }} ({{ connector.learned_endpoints.length }})</summary><div class="connector-route-filter"><NcTextField v-model="connectorEndpointQuery" :label="$t('Filter routes')" :label-outside="true" :placeholder="$t('Search method, path or operation')" /></div><ul><li v-for="(endpoint, index) in filteredConnectorEndpoints(connector)" :key="index"><code>{{ endpoint.method }}</code> <span>{{ endpoint.path }}</span><small v-if="endpoint.operation_id">{{ endpoint.operation_id }}</small><small v-if="endpoint.parameters && endpoint.parameters.length">{{ $t('Parameters') }}: {{ endpoint.parameters.map(parameter => (parameter.in || 'query') + ':' + parameter.name + (parameter.required ? ' *' : '')).join(', ') }}</small><small v-if="endpoint.request_body && endpoint.request_body.fields && endpoint.request_body.fields.length">{{ $t('JSON fields') }}: {{ endpoint.request_body.fields.map(field => field.name + (field.required ? ' *' : '')).join(', ') }}</small></li></ul><p v-if="filteredConnectorEndpoints(connector).length === 0" class="field-help">{{ $t('No learned route matches this filter.') }}</p></details><div v-if="connectorDiagnostics[connector.id]" class="connector-diagnostic" role="status"><strong>{{ connectorDiagnostics[connector.id].category === 'authentication' ? $t('Authentication rejected') : connectorDiagnostics[connector.id].category === 'network' ? $t('Host unreachable') : $t('Connector reachable') }}</strong><span>HTTP {{ connectorDiagnostics[connector.id].status || '—' }} · {{ connectorDiagnostics[connector.id].elapsed_ms || 0 }} ms<span v-if="connectorDiagnostics[connector.id].resolved_ip"> · {{ connectorDiagnostics[connector.id].resolved_ip }}</span></span><small v-if="connectorDiagnostics[connector.id].hint">{{ connectorDiagnostics[connector.id].hint }}</small></div></div>
 					<div class="connector-actions"><NcButton variant="tertiary-no-background" :disabled="connectorsBusy" @click="editConnector(connector)">{{ $t('Edit') }}</NcButton><NcButton variant="tertiary-no-background" :disabled="connectorsBusy" @click="testConnector(connector.id)">{{ $t('Test connection') }}</NcButton><NcButton variant="tertiary-no-background" :disabled="connectorsBusy" @click="discoverConnector(connector.id)">{{ $t('Discover API') }}</NcButton><NcButton variant="tertiary-no-background" :disabled="connectorsBusy" @click="removeConnector(connector.id)">{{ $t('Remove') }}</NcButton></div>
 				</div>
-			<div v-if="connectors.length" class="connector-discovery-status"><span v-for="connector in connectors" :key="'discovery-' + connector.id"><strong>{{ connector.name }}</strong> · {{ $t('Discovery') }}: {{ connector.openapi_source || $t('not run yet') }}<span v-if="connector.openapi_updated_at"> · {{ new Date(connector.openapi_updated_at * 1000).toLocaleString() }}</span></span></div><p class="field-help connector-auto-note">EVA probes standard API descriptions automatically and learns available routes. Every external action still requires confirmation.</p>
+			<div v-if="connectors.length" class="connector-discovery-status"><span v-for="connector in connectors" :key="'discovery-' + connector.id"><strong>{{ connector.name }}</strong> · {{ $t('Discovery') }}: {{ connector.openapi_source || $t('not run yet') }}<span v-if="connector.openapi_updated_at"> · {{ new Date(connector.openapi_updated_at * 1000).toLocaleString() }}</span></span></div><p class="field-help connector-auto-note">{{ $t('EVA probes standard API descriptions automatically and learns available routes. Every external action still requires confirmation.') }}</p>
 			<div class="connector-examples"><span class="native-label">{{ $t('Quick setup examples') }}</span><NcButton variant="tertiary-no-background" @click="applyConnectorExample('immich')">{{ $t('Immich') }}</NcButton><NcButton variant="tertiary-no-background" @click="applyConnectorExample('vaultwarden')">{{ $t('Vaultwarden') }}</NcButton><NcButton variant="tertiary-no-background" @click="applyConnectorExample('truenas')">{{ $t('TrueNAS') }}</NcButton><NcButton variant="tertiary-no-background" @click="applyConnectorExample('homeassistant')">{{ $t('Home Assistant') }}</NcButton><NcButton variant="tertiary-no-background" @click="applyConnectorExample('github')">{{ $t('GitHub') }}</NcButton></div>
-			<div class="connector-form"><NcTextField v-model="connectorDraft.id" :label="$t('Connector ID')" :label-outside="true" placeholder="optional — generated automatically" /><NcTextField v-model="connectorDraft.name" :label="$t('Display name')" :label-outside="true" placeholder="optional — generated automatically" /><NcTextField v-model="connectorDraft.base_url" type="url" :label="$t('Service base URL')" :label-outside="true" placeholder="https://api.example.com" /><NcTextField v-model="connectorDraft.openapi_url" type="url" :label="$t('OpenAPI / Swagger URL (optional)')" :label-outside="true" placeholder="https://api.example.com/custom/openapi.json" /><div class="auth-choice"><span class="native-label">{{ $t('Authentication') }}</span><NcCheckboxRadioSwitch v-model="connectorDraft.auth_type" type="radio" name="eva-connector-auth" value="none">{{ $t('None') }}</NcCheckboxRadioSwitch><NcCheckboxRadioSwitch v-model="connectorDraft.auth_type" type="radio" name="eva-connector-auth" value="bearer">{{ $t('Bearer token') }}</NcCheckboxRadioSwitch><NcCheckboxRadioSwitch v-model="connectorDraft.auth_type" type="radio" name="eva-connector-auth" value="basic">{{ $t('Username and password') }}</NcCheckboxRadioSwitch><NcCheckboxRadioSwitch v-model="connectorDraft.auth_type" type="radio" name="eva-connector-auth" value="api_key">{{ $t('API key') }}</NcCheckboxRadioSwitch></div><NcTextField v-if="connectorDraft.auth_type === 'bearer'" v-model="connectorDraft.token" type="password" autocomplete="new-password" :label="$t('Bearer / service token (optional)')" :label-outside="true" :placeholder="$t('Leave empty to keep the saved secret')" /><template v-if="connectorDraft.auth_type === 'basic'"><NcTextField v-model="connectorDraft.username" autocomplete="username" :label="$t('Username (optional)')" :label-outside="true" /><NcTextField v-model="connectorDraft.password" type="password" autocomplete="new-password" :label="$t('Password (optional)')" :label-outside="true" :placeholder="$t('Leave empty to keep the saved secret')" /></template><template v-if="connectorDraft.auth_type === 'api_key'"><NcTextField v-model="connectorDraft.api_key" type="password" autocomplete="new-password" :label="$t('API key (optional)')" :label-outside="true" :placeholder="$t('Leave empty to keep the saved secret')" /><NcTextField v-model="connectorDraft.api_key_header" :label="$t('API key header')" :label-outside="true" placeholder="X-API-Key" /></template><NcButton variant="primary" :disabled="connectorsBusy || !connectorDraft.base_url" @click="saveConnector">{{ $t('Save connector') }}</NcButton></div>
+			<div class="connector-form"><NcTextField v-model="connectorDraft.id" :label="$t('Connector ID')" :label-outside="true" :placeholder="$t('Generated from service URL if left blank')" /><NcTextField v-model="connectorDraft.name" :label="$t('Display name')" :label-outside="true" :placeholder="$t('Uses connector ID if left blank')" /><NcTextField v-model="connectorDraft.base_url" type="url" :label="$t('Service base URL')" :label-outside="true" placeholder="https://api.example.com" /><NcTextField v-model="connectorDraft.openapi_url" type="url" :label="$t('OpenAPI / Swagger URL (optional)')" :label-outside="true" placeholder="https://api.example.com/custom/openapi.json" /><div class="auth-choice"><span class="native-label">{{ $t('Authentication') }}</span><NcCheckboxRadioSwitch v-model="connectorDraft.auth_type" type="radio" name="eva-connector-auth" value="none">{{ $t('None') }}</NcCheckboxRadioSwitch><NcCheckboxRadioSwitch v-model="connectorDraft.auth_type" type="radio" name="eva-connector-auth" value="bearer">{{ $t('Bearer token') }}</NcCheckboxRadioSwitch><NcCheckboxRadioSwitch v-model="connectorDraft.auth_type" type="radio" name="eva-connector-auth" value="basic">{{ $t('Username and password') }}</NcCheckboxRadioSwitch><NcCheckboxRadioSwitch v-model="connectorDraft.auth_type" type="radio" name="eva-connector-auth" value="api_key">{{ $t('API key') }}</NcCheckboxRadioSwitch></div><NcTextField v-if="connectorDraft.auth_type === 'bearer'" v-model="connectorDraft.token" type="password" autocomplete="new-password" :label="$t('Bearer / service token (optional)')" :label-outside="true" :placeholder="$t('Leave empty to keep the saved secret')" /><template v-if="connectorDraft.auth_type === 'basic'"><NcTextField v-model="connectorDraft.username" autocomplete="username" :label="$t('Username (optional)')" :label-outside="true" /><NcTextField v-model="connectorDraft.password" type="password" autocomplete="new-password" :label="$t('Password (optional)')" :label-outside="true" :placeholder="$t('Leave empty to keep the saved secret')" /></template><template v-if="connectorDraft.auth_type === 'api_key'"><NcTextField v-model="connectorDraft.api_key" type="password" autocomplete="new-password" :label="$t('API key (optional)')" :label-outside="true" :placeholder="$t('Leave empty to keep the saved secret')" /><NcTextField v-model="connectorDraft.api_key_header" :label="$t('API key header')" :label-outside="true" placeholder="X-API-Key" /></template><NcButton variant="primary" :disabled="connectorsBusy || !connectorDraft.base_url" @click="saveConnector">{{ $t('Save connector') }}</NcButton></div>
 			<p class="field-help">{{ $t('The connector adapter sends the selected authentication scheme (Bearer, Basic or API key). Secrets are encrypted at rest and never returned. Public HTTPS hosts and explicitly local HTTP(S) services are supported; every external action requires confirmation.') }}</p>
 			</section>
 
 			<section id="settings-plugins" class="settings-section">
 				<div class="section-heading"><div><h3>{{ $t('EVA extensions') }}</h3><p>{{ $t('Installed Nextcloud apps can add namespaced tools to EVA. Their schemas are visible here; actions still follow EVA confirmation and surface rules.') }}</p></div></div>
 				<div v-if="pluginsLoading" class="field-help">{{ $t('Loading extensions…') }}</div>
+				<div v-else-if="pluginLoadError" class="load-error" role="alert"><span>{{ $t('Could not load extensions: {error}', { error: pluginLoadError }) }}</span><NcButton variant="tertiary" @click="loadPlugins">{{ $t('Try again') }}</NcButton></div>
 				<div v-else-if="!plugins.length" class="empty-state">{{ $t('No third-party EVA tools are installed yet.') }}</div>
 				<div v-for="plugin in plugins" :key="plugin.name" class="plugin-row">
-					<div><strong>{{ plugin.name }}</strong><p>{{ plugin.description }}</p><div class="plugin-meta"><span>{{ plugin.risk || 'readonly' }}</span><span>{{ (plugin.surfaces || []).join(' · ') || 'web' }}</span><span v-if="plugin.requiresConfirmation">{{ $t('Confirmation required') }}</span><span v-else>{{ $t('No confirmation for read-only use') }}</span></div></div>
+					<div><strong>{{ plugin.name }}</strong><p>{{ plugin.description }}</p><div class="plugin-meta"><span>{{ pluginRiskLabel(plugin.risk) }}</span><span>{{ pluginSurfacesLabel(plugin.surfaces) }}</span><span v-if="plugin.requiresConfirmation">{{ $t('Confirmation required') }}</span><span v-else>{{ $t('No confirmation for read-only use') }}</span></div></div>
 					<code>{{ Object.keys(plugin.parameters?.properties || {}).join(', ') || $t('no arguments') }}</code>
 				</div>
 			</section>
@@ -516,34 +537,44 @@
 						<p>{{ $t('These settings apply to all users. Web search provider selection is per-user above.') }}</p>
 					</div>
 				</div>
+				<p v-if="adminLoading" class="field-help" role="status">{{ $t('Loading instance-wide settings…') }}</p>
+				<div v-else-if="adminLoadError" class="load-error" role="alert"><span>{{ $t('The instance-wide settings could not be loaded: {error}', { error: adminLoadError }) }}</span><NcButton variant="tertiary" @click="loadAdminSettings">{{ $t('Try again') }}</NcButton></div>
+				<fieldset class="admin-settings-fieldset" :disabled="!adminReady || savingAdmin">
 				<div class="admin-subsection">
-					<NcCheckboxRadioSwitch v-model="admin.weather_tool_enabled" type="switch" class="native-toggle compact-switch" :disabled="savingAdmin">
+					<NcCheckboxRadioSwitch v-model="admin.weather_tool_enabled" type="switch" class="native-toggle compact-switch">
 						{{ $t('Allow weather forecasts for all users') }}
 					</NcCheckboxRadioSwitch>
 					<p class="field-help">{{ $t('Weather uses the external Open-Meteo geocoding and forecast service. This is an instance-wide privacy switch.') }}</p>
 					<p class="field-help" style="margin-bottom:12px;">{{ $t('Instance-level web search infrastructure: configure the SearxNG URL, API keys for Brave/Tavily, and result limits below. Individual users choose their provider in the Web search section above.') }}</p>
-					<div v-if="admin.web_search_provider === 'searxng' || true" class="field">
-						<NcTextField id="web-search-url" v-model="admin.web_search_url" type="url" :label="$t('SearxNG base URL')" :label-outside="true" :disabled="savingAdmin" :placeholder="$t('https://searx.example.org')" />
+					<div class="field">
+						<NcTextField id="web-search-url" v-model="admin.web_search_url" type="url" :label="$t('SearxNG base URL')" :label-outside="true" :placeholder="$t('https://searx.example.org')" />
 						<p class="field-help">{{ $t('Required when users choose SearxNG as their provider.') }}</p>
 					</div>
 					<div class="field">
-						<NcTextField id="web-search-key" v-model="webSearchKey" @blur="saveAdminSettings" type="password" autocomplete="new-password" :label="$t('Brave / Tavily API key')" :label-outside="true" :disabled="savingAdmin" :placeholder="webSearchKeyStored ? $t('A key is stored - leave empty to keep it') : $t('Paste the API key')" />
+						<NcTextField id="web-search-key" v-model="webSearchKey" @blur="saveAdminSettings" type="password" autocomplete="new-password" :label="$t('Brave / Tavily API key')" :label-outside="true" :placeholder="webSearchKeyStored ? $t('A key is stored - leave empty to keep it') : $t('Paste the API key')" />
 						<p class="field-help">{{ $t('Required when users choose Brave or Tavily. Stored encrypted, never shown.') }}</p>
 					</div>
-					<NcCheckboxRadioSwitch v-model="removeWebSearchKey" type="checkbox" :disabled="savingAdmin">
+					<NcCheckboxRadioSwitch v-model="removeWebSearchKey" type="checkbox">
 						{{ $t('Remove the stored API key') }}
 					</NcCheckboxRadioSwitch>
 					<p class="field-help">{{ $t('Result limits, page reading, safe search, images and browser rendering are now personal settings above. This section only contains shared provider infrastructure.') }}</p>
 				</div>
-				<p class="field-help auto-save-note">{{ $t('Instance settings save automatically.') }}</p>
+				<p v-if="adminReady" class="field-help auto-save-note">{{ $t('Instance settings save automatically.') }}</p>
+				</fieldset>
 			</section>
 
 			<section id="settings-privacy" class="settings-section">
 				<div class="section-heading">
 					<div>
 						<h3>{{ $t('Privacy & data') }}</h3>
-						<p>{{ $t('Export everything EVA stores about you. Sensitive values are redacted before anything is saved.') }}</p>
+						<p>{{ $t('Review where EVA stores information and which services receive it.') }}</p>
 					</div>
+				</div>
+				<div class="privacy-flow">
+					<strong>{{ $t('How your data is processed') }}</strong>
+					<p>{{ $t('Your file index is stored on the Nextcloud server. During indexing, extracted text is sent to the configured Ollama endpoint to create embeddings. During chat, your question, selected excerpts and relevant personal knowledge are sent to {provider}.', { provider: selectedChatProvider }) }}</p>
+					<p>{{ $t('When EVA uses tools, web search or external connectors, the data needed for that request may also be sent to the connected service.') }}</p>
+					<p>{{ $t('Check the hosting location and privacy terms of your configured endpoints and connected services.') }}</p>
 				</div>
 				<div class="index-actions">
 					<div>
@@ -555,6 +586,17 @@
 			</section>
 			</fieldset>
 		</main>
+		<NcModal v-if="connectorToRemove" size="small" :name="$t('Remove connector')" @close="closeConnectorRemoval">
+			<div class="connector-removal-dialog">
+				<p>{{ $t('Remove {name}? This also deletes its saved credentials and discovered API routes. EVA will no longer be able to use this service.', { name: connectorToRemove.name || connectorToRemove.id }) }}</p>
+				<p class="field-help">{{ connectorToRemove.id }} · {{ connectorToRemove.base_url }}</p>
+				<p v-if="connectorRemovalError" class="connector-removal-error" role="alert">{{ connectorRemovalError }}</p>
+				<div class="connector-removal-actions">
+					<NcButton type="button" variant="tertiary" :disabled="connectorsBusy" @click="closeConnectorRemoval">{{ $t('Cancel') }}</NcButton>
+					<NcButton type="button" variant="error" :loading="connectorsBusy" :disabled="connectorsBusy" @click="confirmRemoveConnector">{{ $t('Remove connector') }}</NcButton>
+				</div>
+			</div>
+		</NcModal>
 	</div>
 </template>
 
@@ -631,6 +673,11 @@ export default {
 		const providerProfiles = computed(() => {
 			try { const rows = JSON.parse(f.value.provider_profiles || '[]'); return Array.isArray(rows) ? rows.filter(p => p && p.id && p.name) : [] } catch (_) { return [] }
 		})
+		const selectedChatProvider = computed(() => {
+			if (f.value.chat_provider === 'ollama') return 'Ollama'
+			if (f.value.chat_provider === 'groq') return 'Groq'
+			return providerProfiles.value.find(profile => profile.id === f.value.chat_provider)?.name || f.value.chat_provider || t('the configured provider')
+		})
 		// All settings controls use the official Nextcloud Vue components. Keep
 		// their models as plain strings so autosave and server validation remain
 		// backwards compatible with the existing API contract.
@@ -645,8 +692,8 @@ export default {
 			{ value: 'openai/gpt-oss-20b', label: 'GPT OSS 20B' },
 			{ value: 'openai/gpt-oss-120b', label: 'GPT OSS 120B' },
 		]
-		const embeddingModelOptions = computed(() => embeddingModels.value.length ? embeddingModels.value : [f.value.embedding_model])
-		const chatModelOptions = computed(() => chatModels.value.length ? chatModels.value : [f.value.chat_model])
+		const embeddingModelOptions = computed(() => [...new Set([...embeddingModels.value, f.value.embedding_model].filter(Boolean))])
+		const chatModelOptions = computed(() => [...new Set([...chatModels.value, f.value.chat_model].filter(Boolean))])
 		const summaryModelOptions = computed(() => ['', ...chatModels.value])
 		const chatRetentionOptions = [
 			{ value: '0', label: t('Never delete automatically') }, { value: '7', label: t('After 7 days') },
@@ -663,9 +710,11 @@ export default {
 		]
 		const groqKey = ref('')
 		const customProviderKey = ref('')
+		const removeCustomProviderKey = ref(false)
 		const nextcloudApiToken = ref('')
 		const removeGroqKey = ref(false)
 		const removeNextcloudApiToken = ref(false)
+		let credentialAutoSaveTimer = null
 		const status = ref(null)
 		const limits = ref({})
 		const availableModels = ref([])
@@ -681,6 +730,7 @@ export default {
 		const stopping = ref(false)
 		const saved = ref(false)
 		const loadError = ref('')
+		const statusRefreshError = ref('')
 		const message = ref({ type: '', text: '' })
 		const validationErrors = ref([])
 		// Keep the last server-confirmed form state. Autosave sends only values that
@@ -792,9 +842,13 @@ export default {
 		const connectorEndpointQuery = ref('')
 		const plugins = ref([])
 		const pluginsLoading = ref(false)
+		const pluginLoadError = ref('')
 		const connectorsLoading = ref(false)
+		const connectorLoadError = ref('')
 		const connectorsBusy = ref(false)
 		const connectorDiagnostics = ref({})
+		const connectorToRemove = ref(null)
+		const connectorRemovalError = ref('')
 		const connectorDraft = ref({ id: '', name: '', base_url: '', openapi_url: '', auth_type: 'bearer', token: '', username: '', password: '', api_key: '', api_key_header: 'X-API-Key' })
 		function applyConnectorExample(type) {
 			connectorDraft.value = type === 'immich'
@@ -809,11 +863,25 @@ export default {
 		}
 		async function loadConnectors() {
 			connectorsLoading.value = true
-			try { const data = await api('GET', 'connectors'); connectors.value = Array.isArray(data?.result?.connectors) ? data.result.connectors : [] } catch (_) { connectors.value = [] } finally { connectorsLoading.value = false }
+			connectorLoadError.value = ''
+			try {
+				const data = await api('GET', 'connectors')
+				if (!Array.isArray(data?.result?.connectors)) throw new Error(t('The connector list response was incomplete.'))
+				connectors.value = data.result.connectors
+				return true
+			} catch (error) {
+				connectorLoadError.value = errMsg(error)
+				return false
+			} finally { connectorsLoading.value = false }
 		}
 		async function loadPlugins() {
 			pluginsLoading.value = true
-			try { const data = await api('GET', 'plugins'); plugins.value = Array.isArray(data?.plugins) ? data.plugins : [] } catch (_) { plugins.value = [] } finally { pluginsLoading.value = false }
+			pluginLoadError.value = ''
+			try {
+				const data = await api('GET', 'plugins')
+				if (!Array.isArray(data?.plugins)) throw new Error(t('The extension list response was incomplete.'))
+				plugins.value = data.plugins
+			} catch (error) { pluginLoadError.value = errMsg(error) } finally { pluginsLoading.value = false }
 		}
 		async function saveConnector() {
 			connectorsBusy.value = true
@@ -833,10 +901,29 @@ export default {
 				}
 			} catch (error) { setMessage('error', t('Could not save connector: {error}', { error: errMsg(error) })) } finally { connectorsBusy.value = false }
 		}
-		async function removeConnector(id) {
-			if (!window.confirm(t('Remove connector {id}?', { id }))) return
+		function removeConnector(id) {
+			const connector = connectors.value.find(item => item.id === id)
+			if (!connector || connectorsBusy.value) return
+			connectorToRemove.value = connector
+			connectorRemovalError.value = ''
+		}
+		function closeConnectorRemoval() {
+			if (!connectorsBusy.value) connectorToRemove.value = null
+		}
+		async function confirmRemoveConnector() {
+			const connector = connectorToRemove.value
+			if (!connector || connectorsBusy.value) return
 			connectorsBusy.value = true
-			try { await api('DELETE', 'connectors', { id }); await loadConnectors(); setMessage('success', t('External connector removed.')) } catch (error) { setMessage('error', t('Could not remove connector: {error}', { error: errMsg(error) })) } finally { connectorsBusy.value = false }
+			connectorRemovalError.value = ''
+			try {
+				await api('DELETE', 'connectors', { id: connector.id })
+				connectors.value = connectors.value.filter(item => item.id !== connector.id)
+				connectorToRemove.value = null
+				setMessage('success', t('External connector removed.'))
+				await loadConnectors()
+			} catch (error) {
+				connectorRemovalError.value = t('Could not remove connector: {error}', { error: errMsg(error) })
+			} finally { connectorsBusy.value = false }
 		}
 		function editConnector(connector) {
 			connectorDraft.value = { id: connector.id || '', name: connector.name || '', base_url: connector.base_url || '', openapi_url: connector.openapi_url || '', auth_type: connector.auth_type || 'bearer', token: '', username: '', password: '', api_key: '', api_key_header: connector.api_key_header || 'X-API-Key' }
@@ -850,6 +937,13 @@ export default {
 		function connectorCredentialClass(connector) {
 			return connector.auth_type === 'none' || connectorCredentialLabel(connector) === t('Credential saved') || connectorCredentialLabel(connector) === t('No credentials required') ? 'connector-credential connector-credential-ok' : 'connector-credential connector-credential-warning'
 		}
+		function pluginRiskLabel(risk) {
+			return ({ readonly: t('Read-only'), mutating: t('Creates or updates data'), destructive: t('Deletes data') })[risk] || String(risk || t('Read-only'))
+		}
+		function pluginSurfacesLabel(surfaces) {
+			const labels = { web: t('Web chat'), talk: t('Nextcloud Talk'), rag: t('File and knowledge search'), taskprocessing: t('Nextcloud Assistant'), taskprocessing_confirmed: t('Confirmed Nextcloud Assistant actions') }
+			return (Array.isArray(surfaces) && surfaces.length ? surfaces : ['web']).map(surface => labels[surface] || String(surface)).join(' · ')
+		}
 		function filteredConnectorEndpoints(connector) {
 			const endpoints = Array.isArray(connector?.learned_endpoints) ? connector.learned_endpoints : []
 			const query = String(connectorEndpointQuery.value || '').trim().toLowerCase()
@@ -858,21 +952,21 @@ export default {
 		}
 		async function discoverConnector(id) {
 			connectorsBusy.value = true
-			setMessage('info', 'API discovery is running…')
+			setMessage('info', t('API discovery is running…'))
 			try { const result = await api('POST', 'connectors/discover', { id }); setMessage('success', t('Discovered {count} endpoints.', { count: result?.result?.endpoints?.length || 0 })); await loadConnectors() } catch (error) { setMessage('error', t('API discovery failed: {error}', { error: errMsg(error) })) } finally { connectorsBusy.value = false }
 		}
 		async function testConnector(id) {
 			connectorsBusy.value = true
-			setMessage('info', 'Connector test is running…')
+			setMessage('info', t('Connector test is running…'))
 			try {
 				const result = await api('POST', 'connectors/test', { id })
 				if (result?.result && typeof result.result === 'object') connectorDiagnostics.value = { ...connectorDiagnostics.value, [id]: result.result }
 				const status = Number(result?.result?.data?.status || result?.result?.status || 0)
 				const detail = status === 401
-					? ' Authentication is required. Configure the connector secret (for Immich use an API key with header x-api-key).'
-					: status === 403 ? ' The connector rejected the credentials or permission.' : ''
-				setMessage(result?.ok ? 'success' : 'error', 'Connector responded with HTTP ' + (status || 'unknown') + '.' + detail)
-			} catch (error) { setMessage('error', 'Connector test failed: ' + errMsg(error)) } finally { connectorsBusy.value = false }
+					? 'Authentication is required. Configure the connector secret; for Immich, use an API key with the x-api-key header.'
+					: status === 403 ? 'The connector rejected the credentials or permission.' : ''
+				setMessage(result?.ok ? 'success' : 'error', t('Connector responded with HTTP {status}.', { status: status || t('unknown') }) + (detail ? ' ' + t(detail) : ''))
+			} catch (error) { setMessage('error', t('Connector test failed: {error}', { error: errMsg(error) })) } finally { connectorsBusy.value = false }
 		}
 		// Admin settings form (Issue #82/#187): the same bundle is mounted inside
 		// the Nextcloud admin settings with data-admin="1". Only shared provider
@@ -890,15 +984,18 @@ export default {
 		const removeWebSearchKey = ref(false)
 		const webSearchKeyStored = ref(false)
 		const webSearchReady = ref(false)
-			const savingAdmin = ref(false)
-			const formReady = ref(false)
-			const adminReady = ref(false)
+		const savingAdmin = ref(false)
+		const adminLoading = ref(false)
+		const adminLoadError = ref('')
+		const formReady = ref(false)
+		const adminReady = ref(false)
 			let autoSaveTimer = null
 			let adminAutoSaveTimer = null
-			let autoSaveDirty = false
-			let adminAutoSaveDirty = false
-			let ignoreNextFormChange = false
-			let ignoreNextAdminChange = false
+		let autoSaveDirty = false
+		let adminAutoSaveDirty = false
+		let ignoreNextFormChange = false
+		let ignoreNextAdminChange = false
+		let statusRequestId = 0
 		function fillAdmin(data) {
 			if (!data || typeof data !== 'object') return
 			if (adminReady.value) ignoreNextAdminChange = true
@@ -911,10 +1008,17 @@ export default {
 
 		async function loadAdminSettings() {
 			if (!isAdminMode) return
+			adminLoading.value = true
+			adminLoadError.value = ''
 			try {
-				fillAdmin(await api('GET', 'admin/settings'))
+				const data = await api('GET', 'admin/settings')
+				if (!data || typeof data !== 'object' || !('weather_tool_enabled' in data) || !('web_search_url' in data)) throw new Error(t('The instance-wide settings response was incomplete.'))
+				fillAdmin(data)
+				adminReady.value = true
 			} catch (error) {
-				setMessage('error', t('The instance-wide settings could not be loaded: {error}', { error: errMsg(error) }))
+				adminLoadError.value = errMsg(error)
+			} finally {
+				adminLoading.value = false
 			}
 		}
 
@@ -952,7 +1056,9 @@ export default {
 			window.clearTimeout(autoSaveTimer)
 			autoSaveTimer = window.setTimeout(async () => {
 				if (!autoSaveDirty) return
-				if (settingsLocked.value) {
+				const changedKeys = changedSettingKeys()
+				const briefingOnly = changedKeys.length > 0 && changedKeys.every(key => key === 'proactive_enabled' || key === 'proactive_schedules')
+				if (settingsLocked.value && !(indexingActive.value && briefingOnly)) {
 					queueAutoSave()
 					return
 				}
@@ -1036,10 +1142,10 @@ export default {
 		const chatInstalledHint = computed(() => installedHintFor(f.value.chat_model, 'chat'))
 		const indexingActive = computed(() => indexing.value || status.value?.indexing === true)
 		const busy = computed(() => saving.value || checking.value || indexing.value || resetting.value || deletingChats.value || stopping.value)
-		// Briefings are independent from file indexing and must remain editable
-		// while an index worker is running. The API still rejects unrelated
-		// setting writes during indexing; only the schedule fields are allowed.
-		const settingsLocked = computed(() => busy.value)
+		const settingsLocked = computed(() => busy.value || indexingActive.value)
+		// Scheduled briefings stay editable during indexing, but avoid racing
+		// another settings write against their independent save request.
+		const briefingsLocked = computed(() => saving.value || checking.value || resetting.value || deletingChats.value || stopping.value || !formReady.value)
 		const maxFileSizeMb = computed({
 			get: () => {
 				const bytes = Number(f.value.max_file_size) || 0
@@ -1064,66 +1170,65 @@ export default {
 			const includes = key => keys === null || keys.includes(key)
 			const effective = (key, fallback) => limits.value[key] || fallback
 			const numberRules = [
-				['top_k', 'Sources per answer', ...effective('top_k', [1, 8])],
-				['context_size', 'Model context size', ...effective('context_size', [256, 131072])],
-				['temperature', 'Answer creativity', ...effective('temperature', [0, 2])],
-				['chunk_size', 'Chunk size', ...effective('chunk_size', [128, 10000])],
-				['chunk_overlap', 'Chunk overlap', ...effective('chunk_overlap', [0, 5000])],
-				['max_files_per_run', 'Files per indexing run', ...effective('max_files_per_run', [1, 10000])],
-				['embed_batch_size', 'Embeddings per batch', ...effective('embed_batch_size', [1, 200])],
-				['mail_index_max', 'Emails per indexing run', ...effective('mail_index_max', [1, 500])],
-				['talk_index_max_rooms', 'Chats per indexing run', ...effective('talk_index_max_rooms', [1, 200])],
-				['talk_index_max_messages', 'Messages per chat', ...effective('talk_index_max_messages', [10, 1000])],
-				['talk_history_size', 'Talk history size', ...effective('talk_history_size', [1, 500])],
-				['exec_write_max_chars', 'Maximum characters per file', ...effective('exec_write_max_chars', [1, 10000000])],
+				['top_k', t('Sources per answer'), ...effective('top_k', [1, 8])],
+				['context_size', t('Model context size'), ...effective('context_size', [256, 131072])],
+				['temperature', t('Answer creativity'), ...effective('temperature', [0, 2])],
+				['chunk_size', t('Chunk size'), ...effective('chunk_size', [128, 10000])],
+				['chunk_overlap', t('Chunk overlap'), ...effective('chunk_overlap', [0, 5000])],
+				['max_files_per_run', t('Files per indexing run'), ...effective('max_files_per_run', [1, 10000])],
+				['embed_batch_size', t('Embeddings per batch'), ...effective('embed_batch_size', [1, 200])],
+				['mail_index_max', t('Emails per indexing run'), ...effective('mail_index_max', [1, 500])],
+				['talk_index_max_rooms', t('Chats per indexing run'), ...effective('talk_index_max_rooms', [1, 200])],
+				['talk_index_max_messages', t('Messages per chat'), ...effective('talk_index_max_messages', [10, 1000])],
+				['talk_history_size', t('Talk history size'), ...effective('talk_history_size', [1, 500])],
+				['exec_write_max_chars', t('Maximum characters per file'), ...effective('exec_write_max_chars', [1, 10000000])],
 			]
-			if (includes('ollama_url') && !/^https?:\/\//i.test(f.value.ollama_url.trim())) errors.push('Ollama server URL must start with http:// or https://.')
+			if (includes('ollama_url') && !/^https?:\/\//i.test(f.value.ollama_url.trim())) errors.push(t('Ollama server URL must start with http:// or https://.'))
 			if (includes('provider_profiles')) {
 				try {
 					const profiles = JSON.parse(f.value.provider_profiles || '[]')
-					if (!Array.isArray(profiles) || profiles.length > 20) errors.push('Provider profiles must be a JSON array with at most 20 entries.')
-					for (const p of profiles) if (!p || !/^[a-z][a-z0-9_-]{1,31}$/.test(String(p.id || '')) || !String(p.name || '').trim() || !/^https?:\/\/\S+$/i.test(String(p.url || '')) || !String(p.model || '').trim()) errors.push('Each provider profile needs id, name, URL and model.')
-				} catch (_) { errors.push('Provider profiles must contain valid JSON.') }
+					if (!Array.isArray(profiles) || profiles.length > 20) errors.push(t('Provider profiles must be a JSON array with at most {max} entries.', { max: 20 }))
+					for (const p of profiles) if (!p || !/^[a-z][a-z0-9_-]{1,31}$/.test(String(p.id || '')) || !String(p.name || '').trim() || !/^https?:\/\/\S+$/i.test(String(p.url || '')) || !String(p.model || '').trim()) errors.push(t('Each provider profile needs an ID, name, URL and model.'))
+				} catch (_) { errors.push(t('Provider profiles must contain valid JSON.')) }
 			}
-			if (includes('embedding_model') && !f.value.embedding_model.trim()) errors.push('Embedding model is required.')
-			if ((includes('chat_provider') || includes('chat_model')) && f.value.chat_provider !== 'groq' && !f.value.chat_model.trim()) errors.push('Chat model is required.')
+			if (includes('embedding_model') && !f.value.embedding_model.trim()) errors.push(t('Embedding model is required.'))
+			if ((includes('chat_provider') || includes('chat_model')) && f.value.chat_provider !== 'groq' && !f.value.chat_model.trim()) errors.push(t('Chat model is required.'))
 			for (const [key, label, min, max] of numberRules) {
 				if (!includes(key)) continue
 				const value = Number(f.value[key])
-				if (!Number.isFinite(value) || value < min || value > max) errors.push(`${label} must be between ${min} and ${max}.`)
+				if (!Number.isFinite(value) || value < min || value > max) errors.push(t('{setting} must be between {min} and {max}.', { setting: label, min, max }))
 			}
 			const fileSizeMb = Number(maxFileSizeMb.value)
-			if (includes('max_file_size') && (!Number.isFinite(fileSizeMb) || fileSizeMb < 1 || fileSizeMb > 2048)) errors.push('Maximum file size must be between 1 and 2048 MB.')
-			if ((includes('chunk_overlap') || includes('chunk_size')) && Number(f.value.chunk_overlap) > Number(f.value.chunk_size)) errors.push('Chunk overlap cannot be larger than chunk size.')
+			if (includes('max_file_size') && (!Number.isFinite(fileSizeMb) || fileSizeMb < 1 || fileSizeMb > 2048)) errors.push(t('Maximum file size must be between {min} and {max} MB.', { min: 1, max: 2048 }))
+			if ((includes('chunk_overlap') || includes('chunk_size')) && Number(f.value.chunk_overlap) > Number(f.value.chunk_size)) errors.push(t('Chunk overlap cannot be larger than chunk size.'))
 			return errors
 		}
 
 		function applyModelDiscovery(names, roles = {}) {
 			availableModels.value = [...new Set((names || []).map((name) => String(name || '').trim()).filter(Boolean))]
 			if (roles && typeof roles === 'object') modelRoles.value = roles
-			const embeddings = embeddingModels.value
-			const chats = chatModels.value
-			if (embeddings.length && !embeddings.includes(f.value.embedding_model)) {
-				f.value.embedding_model = embeddings[0]
-			}
-			if (chats.length && !chats.includes(f.value.chat_model)) {
-				f.value.chat_model = chats[0]
-			}
 		}
 
+		let modelDiscoveryRequestId = 0
 		async function discoverModels(endpoint = f.value.ollama_url) {
+			const currentRequest = ++modelDiscoveryRequestId
 			const url = String(endpoint || '').trim()
-			if (!/^https?:\/\//i.test(url)) return
+			if (!/^https?:\/\//i.test(url)) {
+				modelLoading.value = false
+				modelError.value = ''
+				return
+			}
 			modelLoading.value = true
 			modelError.value = ''
 			try {
 				const data = await api('GET', 'models', { endpoint: url })
+				if (currentRequest !== modelDiscoveryRequestId) return
 					applyModelDiscovery(data?.models || [], data?.roles || {})
 					if (!availableModels.value.length) modelError.value = t('No models are installed in this Ollama endpoint.')
 				} catch (error) {
-					modelError.value = t('Models could not be loaded: {error}', { error: errMsg(error) })
+					if (currentRequest === modelDiscoveryRequestId) modelError.value = t('Models could not be loaded: {error}', { error: errMsg(error) })
 				} finally {
-					modelLoading.value = false
+					if (currentRequest === modelDiscoveryRequestId) modelLoading.value = false
 				}
 			}
 
@@ -1139,31 +1244,81 @@ export default {
 		}
 
 		async function loadStatus(syncForm = false) {
-			loadError.value = ''
+			if (!syncForm && !formReady.value) return false
+			const currentRequest = ++statusRequestId
+			if (syncForm) loadError.value = ''
 			try {
-				status.value = await api('GET', 'status')
-				limits.value = status.value?.limits || {}
-				if (syncForm) fill()
-				if (Array.isArray(status.value?.models)) {
-					applyModelDiscovery(status.value.models, status.value?.provider?.roles || {})
+				const response = await api('GET', 'status')
+				if (!response || typeof response !== 'object' || !response.settings || typeof response.settings !== 'object'
+					|| Object.keys(f.value).some(key => !(key in response.settings))) {
+					throw new Error(t('The settings response was incomplete.'))
+				}
+				if (currentRequest !== statusRequestId) return false
+				status.value = response
+				statusRefreshError.value = ''
+				limits.value = response.limits || {}
+				if (syncForm) {
+					fill(response.settings)
+					formReady.value = true
+				}
+				if (Array.isArray(response.models)) {
+					applyModelDiscovery(response.models, response?.provider?.roles || {})
 				}
 				if (syncForm) await discoverModels(f.value.ollama_url)
+				return true
 			} catch (error) {
-				loadError.value = errMsg(error)
+				if (currentRequest === statusRequestId) {
+					if (syncForm) {
+						loadError.value = errMsg(error)
+						formReady.value = false
+					} else {
+						statusRefreshError.value = errMsg(error)
+					}
+				}
+				return false
 			}
 		}
 
 		const health = ref(null)
 		const healthLoading = ref(false)
+		const healthError = ref('')
+		let healthRequestId = 0
 		async function loadHealth() {
+			const currentRequest = ++healthRequestId
 			healthLoading.value = true
-			try { health.value = await api('GET', 'health') } catch (error) { health.value = { ok: false, provider: { online: false }, queue: { active: 0 }, error: errMsg(error) } } finally { healthLoading.value = false }
+			try {
+				const data = await api('GET', 'health')
+				if (!data || typeof data.ok !== 'boolean' || !data.checks || typeof data.checks.chat_model !== 'boolean'
+					|| !data.index || !data.provider || typeof data.provider.online !== 'boolean'
+					|| !data.queue || !Number.isFinite(Number(data.queue.active))) {
+					throw new Error(t('The diagnostics response was incomplete.'))
+				}
+				if (currentRequest === healthRequestId) {
+					health.value = data
+					healthError.value = ''
+				}
+			} catch (error) {
+				const body = error?.response?.data?.ocs?.data || error?.response?.data
+				if (body && typeof body.ok === 'boolean' && body.checks && typeof body.checks.chat_model === 'boolean'
+					&& body.index && body.provider && typeof body.provider.online === 'boolean'
+					&& body.queue && Number.isFinite(Number(body.queue.active))) {
+					if (currentRequest === healthRequestId) {
+						health.value = body
+						healthError.value = ''
+					}
+				} else if (currentRequest === healthRequestId) {
+					health.value = null
+					healthError.value = errMsg(error)
+				}
+			} finally {
+				if (currentRequest === healthRequestId) healthLoading.value = false
+			}
 		}
 
 		async function save({ changedOnly = false } = {}) {
 			if (saving.value) return false
 			const keys = changedOnly ? changedSettingKeys() : Object.keys(f.value)
-			if (keys.length === 0 && !groqKey.value && !removeGroqKey.value && !nextcloudApiToken.value && !removeNextcloudApiToken.value) return true
+			if (keys.length === 0 && !groqKey.value && !removeGroqKey.value && !customProviderKey.value && !removeCustomProviderKey.value && !nextcloudApiToken.value && !removeNextcloudApiToken.value) return true
 			validationErrors.value = validate(changedOnly ? keys : null)
 			if (validationErrors.value.length) {
 				setMessage('error', t('Please correct the highlighted settings before saving.'))
@@ -1176,11 +1331,18 @@ export default {
 			const values = changedOnly
 				? Object.fromEntries(keys.map(key => [key, f.value[key]]))
 				: { ...f.value }
-				const settings = await api('PUT', 'settings', { ...values, ...(groqKey.value ? { groq_api_key: groqKey.value } : {}), ...(customProviderKey.value ? { custom_provider_api_key: customProviderKey.value } : {}), ...(nextcloudApiToken.value ? { nextcloud_api_token: nextcloudApiToken.value } : {}), remove_groq_api_key: removeGroqKey.value, remove_nextcloud_api_token: removeNextcloudApiToken.value })
+				const customProviderChanged = !!customProviderKey.value || removeCustomProviderKey.value
+				const customProviderId = f.value.chat_provider
+				const settings = await api('PUT', 'settings', { ...values, ...(groqKey.value ? { groq_api_key: groqKey.value } : {}), ...(customProviderKey.value ? { custom_provider_api_key: customProviderKey.value } : {}), ...(nextcloudApiToken.value ? { nextcloud_api_token: nextcloudApiToken.value } : {}), remove_groq_api_key: removeGroqKey.value, remove_custom_provider_api_key: removeCustomProviderKey.value, remove_nextcloud_api_token: removeNextcloudApiToken.value })
+				if (!settings || typeof settings !== 'object' || keys.some(key => settings[key] === undefined || settings[key] === null)) {
+					throw new Error(t('The settings save response was incomplete.'))
+				}
 				if (status.value && (groqKey.value || removeGroqKey.value)) status.value.groq = { ...(status.value.groq || {}), keyConfigured: !removeGroqKey.value }
+				if (status.value && customProviderChanged) status.value.customProvider = { providerId: customProviderId, keyConfigured: !removeCustomProviderKey.value }
 				if (status.value && (nextcloudApiToken.value || removeNextcloudApiToken.value)) status.value.genericApi = { ...(status.value.genericApi || {}), tokenConfigured: !removeNextcloudApiToken.value }
 				groqKey.value = ''
 				customProviderKey.value = ''
+				removeCustomProviderKey.value = false
 				nextcloudApiToken.value = ''
 				removeGroqKey.value = false
 				removeNextcloudApiToken.value = false
@@ -1196,6 +1358,17 @@ export default {
 			} finally {
 				saving.value = false
 			}
+		}
+		function queueCredentialAutoSave() {
+			if (!formReady.value) return
+			window.clearTimeout(credentialAutoSaveTimer)
+			credentialAutoSaveTimer = window.setTimeout(() => {
+				if (settingsLocked.value) {
+					queueCredentialAutoSave()
+					return
+				}
+				save({ changedOnly: true })
+			}, 700)
 		}
 
 		async function checkOllama() {
@@ -1392,14 +1565,25 @@ export default {
 		const knowledgeOriginal = ref('')
 		const savingKnowledge = ref(false)
 		const knowledgeSaved = ref(false)
+		const knowledgeLoading = ref(false)
+		const knowledgeLoadError = ref(false)
+		const knowledgeReady = ref(false)
 
 		async function loadKnowledge() {
+			knowledgeLoading.value = true
+			knowledgeLoadError.value = false
 			try {
 				const data = await api('GET', 'knowledge')
-				knowledgeContent.value = data?.content || ''
+				if (!data || typeof data.content !== 'string') throw new Error('Invalid knowledge response')
+				knowledgeContent.value = data.content
 				knowledgeOriginal.value = knowledgeContent.value
+				knowledgeReady.value = true
+				return true
 			} catch (e) {
-				// Silently fail - knowledge is optional
+				knowledgeLoadError.value = true
+				return false
+			} finally {
+				knowledgeLoading.value = false
 			}
 		}
 
@@ -1446,6 +1630,7 @@ export default {
 		let modelTimer = null
 		watch(f, queueAutoSave, { deep: true })
 		watch(admin, queueAdminAutoSave, { deep: true })
+		watch([groqKey, removeGroqKey, customProviderKey, removeCustomProviderKey, nextcloudApiToken, removeNextcloudApiToken], queueCredentialAutoSave)
 		watch(() => f.value.ollama_url, (value) => {
 			window.clearTimeout(modelTimer)
 			modelTimer = window.setTimeout(() => discoverModels(value), 500)
@@ -1457,8 +1642,6 @@ export default {
 			await loadKnowledge()
 			await loadConnectors()
 			await loadPlugins()
-			formReady.value = true
-			adminReady.value = isAdminMode
 			// Status is informational; polling every few seconds created needless
 			// PHP/database work on production instances with many open settings tabs.
 			// Ten seconds is still responsive while keeping the page lightweight.
@@ -1476,18 +1659,19 @@ export default {
 			if (modelTimer !== null) window.clearTimeout(modelTimer)
 			window.clearTimeout(autoSaveTimer)
 			window.clearTimeout(adminAutoSaveTimer)
+			window.clearTimeout(credentialAutoSaveTimer)
 		})
 
 		const ocrEnabled = computed({ get: () => f.value.ocr_enabled === '1', set: value => { f.value.ocr_enabled = value ? '1' : '0' } })
 		return {
-			groqKey, customProviderKey, removeGroqKey, ocrEnabled, f, providerProfiles, providerProfilesPlaceholder, chatProviderOptions, groqModelOptions, embeddingModelOptions, chatModelOptions, summaryModelOptions, chatRetentionOptions, webSearchProviderOptions, status, health, healthLoading, statusTimer, limits, availableModels, embeddingModels, chatModels, embeddingInstalledHint, chatInstalledHint, modelLoading, modelError, checkOut, saving, checking, indexing, resetting, deletingChats, stopping, saved, loadError, message, validationErrors, resetConfirm, chatsDeleteConfirm,
-			newExcludePath, excludeError, excludeList, actionsEnabled, backgroundActionsEnabled, notificationsEnabled, learningEnabled, safeCommandsEnabled, terminalCommandsEnabled, terminalCommandAny, mailIndexEnabled, talkIndexEnabled, talkWriteEnabled, indexEnrolled, actionsDisabled, busy, indexingActive, settingsLocked, maxFileSizeMb,
-			isAdminMode, admin, userWebSearchEnabled, userWebSearchSafeSearch, userWebSearchImages, userWebSearchBrowser, userWebSearchFetchContent, webSearchKey, removeWebSearchKey, webSearchKeyStored, webSearchReady, savingAdmin, saveAdminSettings, loadAdminSettings,
-			connectors, connectorsLoading, connectorsBusy, connectorDiagnostics, connectorDraft, connectorEndpointQuery, filteredConnectorEndpoints, applyConnectorExample, saveConnector, editConnector, connectorCredentialLabel, connectorCredentialClass, removeConnector, discoverConnector, testConnector, plugins, pluginsLoading,
+			groqKey, customProviderKey, removeCustomProviderKey, removeGroqKey, ocrEnabled, f, providerProfiles, selectedChatProvider, providerProfilesPlaceholder, chatProviderOptions, groqModelOptions, embeddingModelOptions, chatModelOptions, summaryModelOptions, webSearchProviderOptions, status, health, healthLoading, statusTimer, limits, availableModels, embeddingModels, chatModels, embeddingInstalledHint, chatInstalledHint, modelLoading, modelError, checkOut, saving, checking, indexing, resetting, deletingChats, stopping, saved, loadError, statusRefreshError, message, validationErrors, resetConfirm, chatsDeleteConfirm,
+			newExcludePath, excludeError, excludeList, actionsEnabled, backgroundActionsEnabled, notificationsEnabled, learningEnabled, safeCommandsEnabled, terminalCommandsEnabled, terminalCommandAny, mailIndexEnabled, talkIndexEnabled, talkWriteEnabled, indexEnrolled, actionsDisabled, busy, indexingActive, settingsLocked, briefingsLocked, maxFileSizeMb,
+			isAdminMode, admin, userWebSearchEnabled, userWebSearchSafeSearch, userWebSearchImages, userWebSearchBrowser, userWebSearchFetchContent, webSearchKey, removeWebSearchKey, webSearchKeyStored, webSearchReady, savingAdmin, adminLoading, adminLoadError, adminReady, saveAdminSettings, loadAdminSettings,
+			connectors, connectorsLoading, connectorsBusy, connectorDiagnostics, connectorDraft, connectorToRemove, connectorRemovalError, connectorEndpointQuery, filteredConnectorEndpoints, applyConnectorExample, saveConnector, editConnector, connectorCredentialLabel, connectorCredentialClass, removeConnector, closeConnectorRemoval, confirmRemoveConnector, discoverConnector, testConnector, loadConnectors, connectorLoadError, plugins, pluginsLoading, loadPlugins, pluginLoadError, pluginRiskLabel, pluginSurfacesLabel,
 			proactiveEnabled, proactiveBriefings, briefingDraft, briefingFormError, weekdays, dayName, addBriefing, removeBriefing, toggleBriefing, toggleBriefingActions,
 			exporting, downloadExport,
-			knowledgeContent, knowledgeOriginal, savingKnowledge, knowledgeSaved, saveKnowledgeContent,
-			formatNumber, loadStatus, loadHealth, save, checkOllama, addExclude, removeExclude, startIndex, startMailIndex, startTalkIndex, stopIndex, resetIndex, deleteAllChats,
+			knowledgeContent, knowledgeOriginal, savingKnowledge, knowledgeSaved, knowledgeLoading, knowledgeLoadError, knowledgeReady, loadKnowledge, saveKnowledgeContent,
+			formatNumber, loadStatus, loadHealth, healthError, save, checkOllama, addExclude, removeExclude, startIndex, startMailIndex, startTalkIndex, stopIndex, resetIndex, deleteAllChats,
 		}
 	},
 }
@@ -1525,6 +1709,7 @@ export default {
 .saved-label { color: var(--color-success); font-size: 13px; font-weight: 600; }
 
 .summary-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; margin-bottom: 20px; }
+.settings-status-loading { margin:0 0 20px; color:var(--color-text-maxcontrast); font-size:13px; }
 .summary-card {
 	display: flex; align-items: flex-start; gap: 12px; min-height: 76px; padding: 14px;
 	border: 1px solid var(--color-border); border-radius: 12px; background: var(--color-main-background);
@@ -1556,6 +1741,7 @@ export default {
 .settings-quicknav a { padding:6px 10px; border-radius:999px; color:var(--color-text-maxcontrast); font-size:12px; font-weight:600; text-decoration:none; }
 .settings-quicknav a:hover,.settings-quicknav a:focus { background:var(--color-primary-element); color:var(--color-primary-element-text); }
 .settings-fieldset { min-inline-size: 0; margin: 0; padding: 0; border: 0; }
+.admin-settings-fieldset { min-inline-size:0; margin:0; padding:0; border:0; }
 .settings-fieldset:disabled { opacity: .72; }
 .settings-fieldset > .settings-section + .settings-section { margin-top: 24px; }
 .indexing-banner { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-bottom: 4px; padding: 13px 14px; border: 1px solid color-mix(in srgb, var(--color-primary-element) 42%, var(--color-border)); background: color-mix(in srgb, var(--color-primary-element) 7%, var(--color-main-background)); }
@@ -1564,6 +1750,9 @@ export default {
 .settings-section { padding: 24px 20px; border:1px solid var(--color-border); border-radius:var(--border-radius-large); background:color-mix(in srgb,var(--color-main-background) 96%,var(--color-background-hover)); scroll-margin-top:64px; }
 .settings-section:first-child { padding-top: 0; }
 .settings-section:last-child { border-bottom: 0; }
+.privacy-flow { margin: 16px 0 22px; padding: 16px; border: 1px solid var(--color-border); border-left: 3px solid var(--color-primary-element); border-radius: var(--border-radius-large); background: var(--color-main-background); }
+.privacy-flow > strong { display:block; margin-bottom:8px; }
+.privacy-flow p { margin:6px 0 0; color:var(--color-text-maxcontrast); font-size:13px; line-height:1.55; }
 .section-heading { display: flex; align-items: flex-start; gap: 12px; margin-bottom: 20px; }
 .section-heading h3 { margin: 0; font-size: 17px; }
 .section-heading p { margin: 4px 0 0; color: var(--color-text-maxcontrast); font-size: 13px; line-height: 1.5; }
@@ -1717,6 +1906,11 @@ export default {
 .connector-examples { display:flex; flex-wrap:wrap; align-items:center; gap:8px; margin-top:14px; color:var(--color-text-maxcontrast); font-size:13px; }
 .connector-examples button { border:1px solid var(--color-border); border-radius:var(--border-radius-pill); background:var(--color-background-hover); color:var(--color-main-text); padding:4px 10px; cursor:pointer; }
 .connector-actions { display:flex; gap:6px; flex-shrink:0; }
+.connector-removal-dialog { display:grid; gap:12px; padding:4px 20px 20px; }
+.connector-removal-dialog p { margin:0; line-height:1.5; }
+.connector-removal-dialog .field-help { overflow-wrap:anywhere; }
+.connector-removal-error { color:var(--color-error); font-size:13px; }
+.connector-removal-actions { display:flex; justify-content:flex-end; gap:8px; margin-top:4px; }
 .connector-form { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:12px; align-items:end; margin-top:16px; padding:16px; border:1px solid var(--color-border); border-radius:var(--border-radius-large); background:var(--color-background-hover); }
 .auth-choice { display:grid; gap:5px; align-content:start; }
 .auth-choice .native-label { margin-bottom:2px; }
@@ -1731,6 +1925,8 @@ export default {
 .plugin-meta { display:flex; flex-wrap:wrap; gap:6px; margin-top:8px; }
 .plugin-meta span { padding:2px 7px; border-radius:999px; background:var(--color-main-background); color:var(--color-text-maxcontrast); font-size:11px; }
 .empty-state { padding:18px; border:1px dashed var(--color-border); border-radius:var(--border-radius-large); color:var(--color-text-maxcontrast); }
+.load-error { display:flex; align-items:center; justify-content:space-between; gap:12px; padding:12px 14px; border:1px solid var(--color-error); border-radius:var(--border-radius-large); color:var(--color-error); }
+@media (max-width:520px) { .load-error { align-items:flex-start; flex-direction:column; } }
 @media (max-width:960px) { .connector-form { grid-template-columns:repeat(2,minmax(0,1fr)); } }
 @media (max-width:760px) { .connector-row { align-items:flex-start; flex-direction:column; } .connector-form { grid-template-columns:1fr; padding:12px; } }
 

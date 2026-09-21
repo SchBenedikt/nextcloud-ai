@@ -105,8 +105,9 @@
 					</NcAppNavigationItem>
 				</template>
 				<li v-if="apiError" class="chat-list-error" role="alert">{{ apiError }}</li>
-				<li v-if="!chats.length" class="chat-list-empty">{{ $t('No chats yet — start a new one.') }}</li>
-				<li v-else-if="chatFilter.trim() && !listChats.length" class="chat-list-empty">{{ $t('No chats match your search.') }}</li>
+				<li v-if="chatsLoading" class="chat-list-empty" role="status">{{ $t('Loading chats…') }}</li>
+				<li v-else-if="!apiError && !chats.length" class="chat-list-empty">{{ $t('No chats yet — start a new one.') }}</li>
+				<li v-else-if="!apiError && chatFilter.trim() && !listChats.length" class="chat-list-empty">{{ $t('No chats match your search.') }}</li>
 			</template>
 			<template #footer>
 				<ul class="nav-footer">
@@ -125,7 +126,7 @@
 						<template #icon><svg width="16" height="16" viewBox="0 0 24 24"><path d="M5 19V5h2v14H5zm6 0V9h2v10h-2zm6 0V3h2v16h-2z" fill="currentColor" /></svg></template>
 					</NcAppNavigationItem>
 					<NcAppNavigationItem
-						:name="'Agent runs'"
+						:name="$t('Agent runs')"
 						:active="view === 'runs'"
 						@click="navigate('runs')">
 						<template #icon><svg width="16" height="16" viewBox="0 0 24 24"><path d="M12 2a10 10 0 1 0 10 10h-2a8 8 0 1 1-8-8V2zm1 0v9h9v2h-11V2h2z" fill="currentColor" /></svg></template>
@@ -155,6 +156,9 @@
 				<p v-if="pickerMode === 'scope'" class="folder-picker-hint">{{ $t('Only documents from this folder are used as context:') }}</p>
 				<p v-else class="folder-picker-hint">{{ $t('Choose a folder for this chat:') }}</p>
 				<ul class="folder-picker-list">
+					<li v-if="foldersLoading" class="folder-picker-state" role="status">{{ $t('Loading folders…') }}</li>
+					<li v-if="foldersLoadError" class="folder-picker-state folder-picker-state--error" role="alert"><span>{{ $t('Folders could not be loaded: {error}', { error: foldersLoadError }) }}</span><NcButton variant="tertiary" :disabled="foldersLoading" @click="loadFolders">{{ $t('Retry') }}</NcButton></li>
+					<li v-if="!foldersLoading && !foldersLoadError && !folders.length" class="folder-picker-state">{{ $t('No folders have been created yet.') }}</li>
 					<li v-if="pickerMode === 'scope' ? folderChat && folderChat.scopePath : folderChat && folderChat.folder">
 						<button type="button" class="folder-picker-row" @click="assignTarget('')">
 							<svg width="16" height="16" viewBox="0 0 24 24"><path :d="mdiFolderRemoveOutline" fill="currentColor" /></svg>
@@ -178,6 +182,18 @@
 				</form>
 			</div>
 		</NcModal>
+		<NcModal v-if="chatDialog" size="small" :name="chatDialog.mode === 'rename' ? $t('Rename chat') : $t('Delete chat')" @close="closeChatDialog">
+			<form class="chat-dialog" @submit.prevent="confirmChatDialog">
+				<p v-if="chatDialog.mode === 'delete'" class="chat-dialog__copy">{{ $t('Delete “{title}”? This permanently removes the conversation and its messages.', { title: chatDialog.title }) }}</p>
+				<NcTextField v-else v-model="chatDialog.draft" :label="$t('Chat title')" :label-outside="true" :disabled="chatDialog.busy" maxlength="120" autofocus />
+				<p v-if="chatDialog.error" class="chat-dialog__error" role="alert">{{ chatDialog.error }}</p>
+				<div class="chat-dialog__actions">
+					<NcButton type="button" variant="tertiary" :disabled="chatDialog.busy" @click="closeChatDialog">{{ $t('Cancel') }}</NcButton>
+					<NcButton v-if="chatDialog.mode === 'rename'" type="submit" variant="primary" :loading="chatDialog.busy" :disabled="chatDialog.busy || !chatDialog.draft.trim()">{{ $t('Save title') }}</NcButton>
+					<NcButton v-else type="submit" variant="error" :loading="chatDialog.busy" :disabled="chatDialog.busy">{{ $t('Delete chat') }}</NcButton>
+				</div>
+			</form>
+		</NcModal>
 	</NcContent>
 </template>
 
@@ -195,7 +211,7 @@ const AgentRunsView = defineAsyncComponent(() => import('./views/AgentRunsView.v
 const FileContextChatView = defineAsyncComponent(() => import('./views/FileContextChatView.vue'))
 const AdminView = defineAsyncComponent(() => import('./views/AdminView.vue'))
 import { mdiChatProcessing, mdiFileDocumentOutline, mdiTune, mdiTrashCanOutline, mdiMessagePlus, mdiPencilOutline, mdiChevronDown, mdiViewDashboardOutline, mdiPinOutline, mdiPinOffOutline, mdiFolderOutline, mdiFolderPlusOutline, mdiFolderRemoveOutline, mdiFolderSearchOutline, mdiFolderOffOutline, mdiArchiveOutline, mdiArchiveArrowUpOutline } from '@mdi/js'
-import { NcCounterBubble } from '@nextcloud/vue'
+import { NcCounterBubble, NcTextField } from '@nextcloud/vue'
 import NcAppNavigationSearch from '@nextcloud/vue/components/NcAppNavigationSearch'
 import NcActionButton from '@nextcloud/vue/components/NcActionButton'
 import NcActionSeparator from '@nextcloud/vue/components/NcActionSeparator'
@@ -205,42 +221,34 @@ import { translate as t } from './lib/i18n'
 
 export default {
 	name: 'EvaAiApp',
-	components: { HomeView, ChatView, DocumentsView, MetricsView, SettingsView, AgentRunsView, FileContextChatView, AdminView, NcCounterBubble, NcAppNavigationSearch, NcActionButton, NcActionSeparator, NcIconSvgWrapper },		setup() {
+	components: { HomeView, ChatView, DocumentsView, MetricsView, SettingsView, AgentRunsView, FileContextChatView, AdminView, NcCounterBubble, NcTextField, NcAppNavigationSearch, NcActionButton, NcActionSeparator, NcIconSvgWrapper },		setup() {
 			// Admin settings form (Issue #82): the template mounts the same app
 			// with data-admin="1" and renders the admin dashboard instead.
 			const rootEl = document.getElementById('eva_ai-root')
 			const isAdminMode = !!(rootEl && rootEl.dataset && rootEl.dataset.admin === '1')
 
-			const params = new URLSearchParams(window.location.search)
-		const initialFileIdsParam = params.get('fileIds')
-		const initialFileIds = initialFileIdsParam
-			? initialFileIdsParam.split(',').map((x) => parseInt(x, 10)).filter((x) => Number.isFinite(x) && x > 0)
-			: []
-		const path = window.location.pathname.replace(/\/+$/, '')
-		const pathView = path.endsWith('/settings')
-			? 'settings'
-			: path.endsWith('/documents')
-				? 'docs'
-					: path.endsWith('/metrics')
-						? 'metrics'
-							: path.endsWith('/runs') ? 'runs'
-						: 'home'
-		// Deep links from the dashboard widget (?chat=new | ?chat=<id>): they
-		// land on the chat view, everything else starts on the dashboard.
-		const initialChatParam = params.get('chat')
-		const initial = params.get('view') === 'fileContext'
-			? 'fileContext'
-			: params.get('view') === 'docs'
-				? 'docs'
-				: params.get('view') === 'settings'
-					? 'settings'
-					: params.get('view') === 'metrics'
-						? 'metrics'
-					: params.get('view') === 'runs'
-						? 'runs'
-					: (initialChatParam ? 'chat' : pathView)
-		const view = ref(initial)
-		const fileContextIds = ref(initialFileIds)
+		const parseFileIds = (value) => [...new Set(String(value || '').split(',').map((part) => Number.parseInt(part, 10)).filter((id) => Number.isSafeInteger(id) && id > 0))]
+		const resolveRoute = (location) => {
+			const url = new URL(location.href)
+			const explicitView = url.searchParams.get('view')
+			const validViews = ['home', 'docs', 'settings', 'metrics', 'runs', 'fileContext']
+			if (validViews.includes(explicitView)) {
+				return { view: explicitView, chatId: null, fileIds: explicitView === 'fileContext' ? parseFileIds(url.searchParams.get('fileIds')) : [] }
+			}
+			const path = url.pathname.replace(/\/+$/, '')
+			const pathView = path.endsWith('/settings') ? 'settings'
+				: path.endsWith('/documents') ? 'docs'
+					: path.endsWith('/metrics') ? 'metrics'
+						: path.endsWith('/runs') ? 'runs' : 'home'
+			const chatId = url.searchParams.get('chat')
+			return chatId ? { view: 'chat', chatId, fileIds: [] } : { view: pathView, chatId: null, fileIds: [] }
+		}
+		// Deep links from the dashboard widget (?chat=new | ?chat=<id>) use the
+		// same route parser as browser back/forward navigation.
+		const initialRoute = resolveRoute(window.location)
+		const initialChatParam = new URLSearchParams(window.location.search).get('chat')
+		const view = ref(initialRoute.view)
+		const fileContextIds = ref(initialRoute.fileIds)
 		const mobileOpen = ref(false)
 		const buildVersion = appVersion
 
@@ -248,11 +256,13 @@ export default {
 		const folders = ref([])
 		const currentChat = ref(null)
 		const busy = ref(false)
+		const chatsLoading = ref(true)
 		// First message typed on the dashboard hero: passed to the chat view
 		// and sent automatically as soon as the conversation is open.
 		const pendingPrompt = ref('')
 		const chatFilter = ref('')
 		const apiError = ref('')
+		const chatDialog = ref(null)
 		const showArchived = ref(false)
 		// Per-folder collapse state, persisted across reloads.
 		const collapsedFolders = ref(loadCollapsedFolders())
@@ -274,6 +284,8 @@ export default {
 		const pickerMode = ref('organize')
 		const folderChat = ref(null)
 		const newFolderName = ref('')
+		const foldersLoading = ref(false)
+		const foldersLoadError = ref('')
 		// Sidebar sections (Issue #87): pinned on top, folder groups, then the
 		// remaining chats, archived chats collapsed at the bottom.
 		const pinnedChats = computed(() => chats.value.filter((c) => c.pinned && !c.archived))
@@ -411,6 +423,8 @@ export default {
 		}
 
 		const loadChats = () => {
+			chatsLoading.value = true
+			apiError.value = ''
 			return requestApi('GET', '/chats').then((list) => {
 				apiError.value = ''
 				if (!Array.isArray(list)) throw new Error(t('The chat list response was invalid.'))
@@ -424,14 +438,21 @@ export default {
 			}).catch((error) => {
 				apiError.value = t('Chat list unavailable: {error}', { error: errMsg(error) })
 				return []
+			}).finally(() => {
+				chatsLoading.value = false
 			})
 		}
 
 		const loadFolders = () => {
+			foldersLoading.value = true
+			foldersLoadError.value = ''
 			return requestApi('GET', '/folders').then((list) => {
-				if (Array.isArray(list)) folders.value = list
-			}).catch(() => {
-				// Folder list is auxiliary — the chat list must not break.
+				if (!Array.isArray(list)) throw new Error(t('The folder list response was invalid.'))
+				folders.value = list
+			}).catch((error) => {
+				foldersLoadError.value = errMsg(error)
+			}).finally(() => {
+				foldersLoading.value = false
 			})
 		}
 
@@ -469,12 +490,14 @@ export default {
 			folderChat.value = chat
 			newFolderName.value = ''
 			folderPickerOpen.value = true
+			loadFolders()
 		}
 		const pickScope = (chat) => {
 			pickerMode.value = 'scope'
 			folderChat.value = chat
 			newFolderName.value = ''
 			folderPickerOpen.value = true
+			loadFolders()
 		}
 
 		const newChat = async (prompt = '') => {
@@ -509,27 +532,84 @@ export default {
 		}
 
 
-		const renameChat = async (id) => {
+		const renameChat = (id) => {
 			const c = chats.value.find((x) => x.id === id)
-			const name = window.prompt(t('New chat title:'), c ? c.title : '')
-			if (name === null || !name.trim()) return
+			if (!c) return
+			chatDialog.value = { mode: 'rename', id, title: displayTitle(c), draft: c.title || '', busy: false, error: '' }
+		}
+
+		const deleteChat = (id) => {
+			const c = chats.value.find((x) => x.id === id)
+			if (!c) return
+			chatDialog.value = { mode: 'delete', id, title: displayTitle(c), draft: '', busy: false, error: '' }
+		}
+
+		const closeChatDialog = () => {
+			if (!chatDialog.value?.busy) chatDialog.value = null
+		}
+
+		const confirmChatDialog = async () => {
+			const dialog = chatDialog.value
+			if (!dialog || dialog.busy) return
+			const title = String(dialog.draft || '').trim()
+			if (dialog.mode === 'rename' && !title) {
+				dialog.error = t('Enter a title for this chat.')
+				return
+			}
+			dialog.busy = true
+			dialog.error = ''
 			try {
-				await requestApi('POST', '/chats/' + encodeURIComponent(id) + '/title', { title: name.trim() })
-				await loadChats()
+				if (dialog.mode === 'rename') {
+					await requestApi('POST', '/chats/' + encodeURIComponent(dialog.id) + '/title', { title })
+					chatDialog.value = null
+					await loadChats()
+				} else {
+					const wasCurrentChat = currentChat.value === dialog.id
+					await requestApi('DELETE', '/chats/' + encodeURIComponent(dialog.id))
+					if (wasCurrentChat) currentChat.value = null
+					chatDialog.value = null
+					await loadChats()
+					if (wasCurrentChat) navigate('home')
+				}
 			} catch (error) {
-				apiError.value = t('The chat could not be renamed: {error}', { error: errMsg(error) })
+				dialog.error = dialog.mode === 'rename'
+					? t('The chat could not be renamed: {error}', { error: errMsg(error) })
+					: t('The chat could not be deleted: {error}', { error: errMsg(error) })
+			} finally {
+				if (chatDialog.value === dialog) dialog.busy = false
 			}
 		}
 
-		const deleteChat = async (id) => {
-			if (!window.confirm(t('Delete this chat?'))) return
-			try {
-				await requestApi('DELETE', '/chats/' + encodeURIComponent(id))
-				if (currentChat.value === id) currentChat.value = null
-				await loadChats()
-			} catch (error) {
-				apiError.value = t('The chat could not be deleted: {error}', { error: errMsg(error) })
+		const onPopState = () => {
+			const route = resolveRoute(window.location)
+			if (route.view === 'chat') {
+				if (route.chatId && route.chatId !== 'new' && chats.value.some((chat) => chat.id === route.chatId)) {
+					currentChat.value = route.chatId
+					view.value = 'chat'
+				} else {
+					currentChat.value = null
+					view.value = 'home'
+				}
+			} else {
+				view.value = route.view
 			}
+			fileContextIds.value = route.fileIds
+		}
+		const onChatsCleared = () => {
+			currentChat.value = null
+			loadChats()
+		}
+		const onFileContext = (event) => {
+			const ids = event && event.detail && Array.isArray(event.detail.fileIds) ? parseFileIds(event.detail.fileIds) : []
+			if (ids.length === 0) return
+			fileContextIds.value = ids
+			view.value = 'fileContext'
+			// URL anpassen, damit der User die Seite bookmarken/teilen kann.
+			const url = new URL(window.location.href)
+			url.searchParams.set('view', 'fileContext')
+			url.searchParams.set('fileIds', ids.join(','))
+			url.searchParams.delete('chat')
+			window.history.pushState({}, '', url.toString())
 		}
 
 		onMounted(() => {
@@ -544,42 +624,26 @@ export default {
 				}
 			})
 			if (typeof window !== 'undefined' && window.addEventListener) {
-				window.addEventListener('popstate', () => {
-					const current = window.location.pathname.replace(/\/+$/, '')
-					const hasChat = new URLSearchParams(window.location.search).get('chat')
-					view.value = current.endsWith('/settings') ? 'settings' : current.endsWith('/documents') ? 'docs' : current.endsWith('/metrics') ? 'metrics' : current.endsWith('/runs') ? 'runs' : (hasChat ? 'chat' : 'home')
-				})
-				window.addEventListener('eva-ai:chats-cleared', () => {
-					currentChat.value = null
-					loadChats()
-				})
-				window.addEventListener('eva-ai:file-context', (e) => {
-					const ids = e && e.detail && Array.isArray(e.detail.fileIds)
-						? e.detail.fileIds.map((x) => parseInt(x, 10)).filter((x) => Number.isFinite(x) && x > 0)
-						: []
-					if (ids.length === 0) return
-					fileContextIds.value = ids
-					view.value = 'fileContext'
-					// URL anpassen, damit der User die Seite bookmarken/teilen kann.
-					const url = new URL(window.location.href)
-					url.searchParams.set('view', 'fileContext')
-					url.searchParams.set('fileIds', ids.join(','))
-					window.history.replaceState({}, '', url.toString())
-				})
+				window.addEventListener('popstate', onPopState)
+				window.addEventListener('eva-ai:chats-cleared', onChatsCleared)
+				window.addEventListener('eva-ai:file-context', onFileContext)
 			}
 		})
 
 		onBeforeUnmount(() => {
 			if (searchTimer !== null) window.clearTimeout(searchTimer)
+			window.removeEventListener('popstate', onPopState)
+			window.removeEventListener('eva-ai:chats-cleared', onChatsCleared)
+			window.removeEventListener('eva-ai:file-context', onFileContext)
 		})
 
 		return {
 			view, adminMode: isAdminMode, mobileOpen, buildVersion,
-			chats, folders, currentChat, busy, chatFilter, apiError, showArchived,
+			chats, folders, currentChat, busy, chatsLoading, chatFilter, apiError, chatDialog, showArchived,
 			pinnedChats, folderGroups, plainChats, navItems, listChats, activeChats, archivedChats,
-			folderPickerOpen, folderChat, newFolderName, collapsedFolders, toggleFolder,
+			folderPickerOpen, folderChat, newFolderName, foldersLoading, foldersLoadError, collapsedFolders, toggleFolder,
 			fileContextIds, itemName, itemTip,
-			newChat, selectChat, renameChat, deleteChat, loadChats, navigate, updateChatMeta, pickFolder, pickScope, assignTarget, createAndAssign, pendingPrompt,
+			newChat, selectChat, renameChat, deleteChat, closeChatDialog, confirmChatDialog, loadChats, navigate, updateChatMeta, pickFolder, pickScope, assignTarget, createAndAssign, pendingPrompt,
 			pickerMode,
 			mdiChatProcessing, mdiFileDocumentOutline, mdiTune, mdiTrashCanOutline, mdiMessagePlus, mdiPencilOutline, mdiChevronDown, mdiViewDashboardOutline,
 			mdiPinOutline, mdiPinOffOutline, mdiFolderOutline, mdiFolderPlusOutline, mdiFolderRemoveOutline, mdiFolderSearchOutline, mdiFolderOffOutline, mdiArchiveOutline, mdiArchiveArrowUpOutline,
@@ -730,6 +794,31 @@ export default {
 .folder-picker-input {
 	flex: 1;
 	min-width: 0;
+}
+
+.chat-dialog {
+	display: grid;
+	gap: 16px;
+	padding: 4px 20px 20px;
+}
+
+.chat-dialog__copy {
+	color: var(--color-main-text, #222);
+	line-height: 1.5;
+	margin: 0;
+	overflow-wrap: anywhere;
+}
+
+.chat-dialog__error {
+	color: var(--color-error, #c00);
+	font-size: 13px;
+	margin: 0;
+}
+
+.chat-dialog__actions {
+	display: flex;
+	justify-content: flex-end;
+	gap: 8px;
 }
 
 .folder-picker-submit {

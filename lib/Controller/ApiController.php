@@ -131,11 +131,19 @@ class ApiController extends OCSController {
         $this->knowledgeInitializer->ensureInitialized($user);
         $status = $this->ragService->buildStatus($user);
         try {
+            $credentials = \OCP\Server::get(\OCA\EvaAi\Service\ProviderCredentials::class);
             $status['genericApi'] = [
-                'tokenConfigured' => \OCP\Server::get(\OCA\EvaAi\Service\ProviderCredentials::class)->nextcloudTokenConfigured($user),
+                'tokenConfigured' => $credentials->nextcloudTokenConfigured($user),
+            ];
+            $providerId = (string)$this->config->get('chat_provider');
+            $status['customProvider'] = [
+                'providerId' => $providerId,
+                'keyConfigured' => !in_array($providerId, ['ollama', 'groq'], true)
+                    && $credentials->customConfigured($user, $providerId),
             ];
         } catch (\Throwable) {
             $status['genericApi'] = ['tokenConfigured' => false];
+            $status['customProvider'] = ['providerId' => '', 'keyConfigured' => false];
         }
         // Fair multi-user scheduling snapshot (Issue #142): global running
         // count, limit and this user's queue position - cheap, no polling.
@@ -236,12 +244,7 @@ class ApiController extends OCSController {
         return new DataResponse($payload, !in_array(false, $checks, true) ? 200 : 503);
     }
 
-    /**
-     * Time-of-day aware greeting for the dashboard hero. The text is generated
-     * by the configured chat model once per user+period and cached for several
-     * hours, so a dashboard load never blocks on Ollama; when the model is
-     * unreachable a static greeting in the user's UI language is returned.
-     */
+    /** Return a concise, localized time-of-day greeting for the dashboard. */
     #[NoAdminRequired]
     public function greeting(): DataResponse {
         $user = $this->requireUser();
@@ -251,16 +254,13 @@ class ApiController extends OCSController {
         $this->config->setUserId($user);
         $period = $this->dayPeriod();
         $lang = $this->uiLanguage();
-        $cacheKey = 'greeting_' . substr(hash('sha256', $user), 0, 16) . '_' . $period;
+        $cacheKey = 'greeting_' . substr(hash('sha256', $user), 0, 16) . '_' . $period . '_' . substr(hash('sha256', $lang), 0, 8);
         $cache = $this->cacheFactory->createDistributed('eva_ai_greeting_');
         $cached = $cache->get($cacheKey);
         if (is_string($cached) && $cached !== '') {
             return new DataResponse(['greeting' => $cached, 'period' => $period]);
         }
-        $greeting = $this->generateGreeting($period, $lang);
-        if ($greeting === '') {
-            $greeting = $this->staticGreeting($period, $lang);
-        }
+        $greeting = $this->staticGreeting($period, $lang);
         $cache->set($cacheKey, $greeting, 6 * 3600);
         return new DataResponse(['greeting' => $greeting, 'period' => $period]);
     }
@@ -286,35 +286,6 @@ class ApiController extends OCSController {
             return \OCP\Server::get(\OCP\L10N\IFactory::class)->findLanguage('eva_ai');
         } catch (\Throwable $e) {
             return 'en';
-        }
-    }
-
-    /**
-     * One short AI-generated greeting sentence for the given period. Returns
-     * an empty string when Ollama is offline or produced no usable text.
-     */
-    private function generateGreeting(string $period, string $lang): string {
-        // Preserve the Groq quota for explicit user requests.
-        if ($this->config->get('chat_provider') === 'groq') return '';
-        try {
-            $periodLabel = [
-                'night' => 'at night',
-                'morning' => 'in the morning',
-                'afternoon' => 'in the afternoon',
-                'evening' => 'in the evening',
-            ][$period] ?? $period;
-            $chat = $this->ollama->chat([
-                ['role' => 'system', 'content' => 'You are EVA, the friendly assistant built into the user\'s Nextcloud. Reply with ONE short, warm greeting sentence (max 12 words) appropriate for the current time of day, in the user\'s language. No markdown, no emojis, no quotes, no question, no explanation.'],
-                ['role' => 'user', 'content' => 'Current time of day: ' . $periodLabel . '. Language: ' . $lang],
-            ], [], 30);
-            if (isset($chat['error']) || empty($chat['answer'])) {
-                return '';
-            }
-            $text = trim((string)$chat['answer']);
-            $text = preg_replace('/["\r\n]+/', ' ', $text) ?? $text;
-            return mb_substr($text, 0, 120);
-        } catch (\Throwable $e) {
-            return '';
         }
     }
 
@@ -1204,7 +1175,7 @@ class ApiController extends OCSController {
             }
             return new DataResponse(['content' => $content, 'length' => mb_strlen($content)]);
         } catch (\Throwable $e) {
-            return new DataResponse(['content' => '', 'length' => 0]);
+            return new DataResponse(['error' => 'Could not read personal knowledge file.'], 500);
         }
     }
 
@@ -1308,7 +1279,11 @@ class ApiController extends OCSController {
 
         $this->executor->setSurface(\OCA\EvaAi\Service\ToolPolicy::SURFACE_WEB);
         $result = $this->executor->runConfirmed($user, $name, $args);
-        return new DataResponse($result, !empty($result['ok']) ? 200 : 400);
+        // The confirmation token is claimed before execution. Return tool
+        // failures as structured data over HTTP 200 so the client can persist
+        // the consumed confirmation as a completed failure instead of offering
+        // a retry that the idempotency guard must reject.
+        return new DataResponse($result);
     }
 
     #[NoAdminRequired]

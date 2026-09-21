@@ -4,7 +4,7 @@
 			<div class="hero-copy">
 				<p class="eyebrow">EVA AI</p>
 				<h1>{{ greeting }}</h1>
-				<p class="hero-sub">{{ $t('Your personal assistant for Nextcloud — ask your files, manage chats and stay on top of your knowledge base.') }}</p>
+				<p class="hero-sub">{{ $t('Search your Nextcloud files and ask focused questions about them.') }}</p>
 			</div>
 			<div class="hero-actions">
 				<NcButton variant="secondary" @click="$emit('new-chat')">
@@ -22,9 +22,10 @@
 			</div>
 		</header>
 
-		<div v-if="error" class="home-callout home-callout--error" role="alert">{{ error }}</div>
+		<div v-if="error" class="home-callout home-callout--error" role="alert"><span>{{ error }}</span><NcButton variant="tertiary" :loading="busy" :disabled="busy" @click="load">{{ $t('Try again') }}</NcButton></div>
 
-		<section class="stat-grid" :aria-label="$t('Overview')">
+		<div v-if="busy && !loaded" class="home-loading" role="status">{{ $t('Loading dashboard…') }}</div>
+		<section v-if="loaded" class="stat-grid" :aria-label="$t('Overview')">
 			<div class="stat-card" v-for="card in statCards" :key="card.label">
 				<span class="stat-icon">
 					<NcIconSvgWrapper :path="card.icon" :size="20" aria-hidden="true" />
@@ -39,8 +40,7 @@
 
 		<section class="prompt-showcase" :aria-label="$t('Try EVA')">
 			<div class="prompt-showcase__intro">
-				<span class="prompt-showcase__spark">✦</span>
-				<div><strong>{{ $t('Make your next step effortless') }}</strong><span>{{ $t('Start with a focused request — EVA can search, understand and act across your Nextcloud.') }}</span></div>
+				<div><strong>{{ $t('Example requests') }}</strong><span>{{ $t('Select an example to start a chat.') }}</span></div>
 			</div>
 			<div class="prompt-cards">
 				<button v-for="prompt in quickPrompts" :key="prompt.text" type="button" class="prompt-card" @click="$emit('new-chat', prompt.text)">
@@ -75,7 +75,9 @@
 						</button>
 					</li>
 				</ul>
-				<p v-else class="panel-empty">{{ $t('No chats yet — start a new one.') }}</p>
+				<p v-else-if="busy && !loaded" class="panel-empty" role="status">{{ $t('Loading recent chats…') }}</p>
+				<p v-else-if="loaded" class="panel-empty">{{ $t('No chats yet — start a new one.') }}</p>
+				<p v-else class="panel-empty">{{ $t('Recent chats are unavailable until the dashboard loads.') }}</p>
 			</div>
 
 			<div class="home-panel">
@@ -86,7 +88,7 @@
 					</h2>
 					<button class="panel-link" type="button" @click="$emit('navigate', 'settings')">{{ $t('Settings') }}</button>
 				</div>
-				<ul class="status-list">
+				<ul v-if="loaded" class="status-list">
                     <li v-if="status.chatProvider === 'groq'">
                         <span class="status-label">Groq</span>
                         <span class="status-value">{{ status.groq?.keyConfigured ? $t('API key saved') : $t('API key missing') }}</span>
@@ -119,6 +121,7 @@
 						<span class="status-value status-value--warn">{{ status.lastError }}</span>
 					</li>
 				</ul>
+				<p v-else class="panel-empty">{{ $t('System status is unavailable until the dashboard loads.') }}</p>
 			</div>
 		</section>
 	</div>
@@ -136,7 +139,8 @@ export default {
 	components: { NcIconSvgWrapper },
 	emits: ['new-chat', 'navigate', 'open-chat'],
 	setup(_, { emit }) {
-		const busy = ref(false)
+		const busy = ref(true)
+		const loaded = ref(false)
 		const error = ref('')
 		const docs = ref({ count: 0, chunks: 0, size: 0 })
 		const chatSummary = ref({ total: 0, active: 0, archived: 0, recent: [] })
@@ -188,27 +192,29 @@ export default {
 			},
 		])
 		const quickPrompts = computed(() => [
-			{ text: t('Find the most relevant files for me'), icon: mdiMagnify },
-			{ text: t('What is on my calendar this week?'), icon: mdiCalendarClockOutline },
-			{ text: t('Help me turn my notes into a clear plan'), icon: mdiLightbulbOnOutline },
+			{ text: t('Find files I changed this week'), icon: mdiMagnify },
+			{ text: t('Summarize my calendar for this week'), icon: mdiCalendarClockOutline },
+			{ text: t('Turn my notes into a task list'), icon: mdiLightbulbOnOutline },
 		])
 
 		const load = async () => {
 			busy.value = true
 			try {
 				const data = await api('GET', '/stats')
+				if (!data || !data.documents || !data.chats || !data.status) throw new Error(t('The dashboard response was incomplete.'))
 				docs.value = data && data.documents ? data.documents : docs.value
 				chatSummary.value = data && data.chats ? data.chats : chatSummary.value
 				folders.value = data ? Number(data.folders || 0) : 0
 				status.value = data && data.status ? data.status : {}
+				loaded.value = true
 				error.value = ''
 			} catch (e) {
 				error.value = t('Dashboard unavailable: {error}', { error: errMsg(e) })
 			} finally {
 				busy.value = false
 			}
-			// AI-generated greeting (non-blocking; the static one stays until
-			// the response arrives or Ollama is offline).
+			// A localized server-time greeting arrives independently of the
+			// dashboard summary and never delays the main content.
 			api('GET', '/greeting')
 				.then((data) => {
 					const text = data && data.greeting ? String(data.greeting).trim() : ''
@@ -322,7 +328,6 @@ export default {
 .prompt-showcase__intro strong, .prompt-showcase__intro span { display: block; }
 .prompt-showcase__intro strong { font-size: 14px; color: var(--color-main-text, #222); }
 .prompt-showcase__intro div > span { margin-top: 4px; color: var(--color-text-maxcontrast, #666); font-size: 12px; line-height: 1.45; }
-.prompt-showcase__spark { color: var(--color-primary-element, #0082c9); font-size: 23px; line-height: 1; }
 .prompt-cards { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; position: relative; z-index: 1; }
 .prompt-card { display: flex; align-items: center; gap: 9px; min-height: 55px; padding: 10px 11px; border: 1px solid var(--color-border, #e6e6e6); border-radius: 11px; background: color-mix(in srgb, var(--color-main-background, #fff) 86%, transparent); color: var(--color-main-text, #222); text-align: left; font: inherit; font-size: 12px; line-height: 1.3; cursor: pointer; transition: transform .16s ease, border-color .16s ease, box-shadow .16s ease; }
 .prompt-card:hover, .prompt-card:focus-visible { transform: translateY(-2px); border-color: var(--color-primary-element, #0082c9); box-shadow: 0 5px 14px color-mix(in srgb, var(--color-primary-element, #0082c9) 16%, transparent); outline: none; }
@@ -578,6 +583,10 @@ export default {
 }
 
 .home-callout {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 12px;
 	padding: 10px 14px;
 	border-radius: var(--border-radius-large, 10px);
 	font-size: 13px;
@@ -586,6 +595,14 @@ export default {
 .home-callout--error {
 	background: var(--color-error-light, #fbecec);
 	color: var(--color-error, #c00);
+}
+
+.home-loading {
+	width: min(100%, var(--eva-content-width, 1180px));
+	margin: 0 auto;
+	padding: 18px 0;
+	color: var(--color-text-maxcontrast, #666);
+	font-size: 13px;
 }
 
 @media (max-width: 760px) {

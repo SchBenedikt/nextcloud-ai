@@ -92,7 +92,7 @@
             background: var(--color-primary-light, #e8f0f7);
             color: var(--color-primary-element, #00679c);
         }
-        #sidebar .nav-ico { font-size: 16px; width: 20px; text-align: center; }
+        #sidebar .nav-ico { display: block; flex: none; width: 20px; height: 20px; }
         #sidebar .sidebar-sep { height: 1px; background: var(--color-border, #ddd); margin: 12px 8px; }
 
         /* ============ Inhalt ============ */
@@ -130,7 +130,8 @@
             margin-bottom: 12px;
         }
         .empty { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; gap: 6px; padding: 24px; }
-        .empty .ico { font-size: 42px; }
+        .empty .ico { display: grid; place-items: center; color: var(--color-text-maxcontrast, #666); }
+        .empty .ico svg { display: block; width: 36px; height: 36px; }
         .empty .t { font-size: 16px; font-weight: 600; color: var(--color-main-text, #222); }
         .empty .d { font-size: 13px; color: var(--color-text-maxcontrast, #444); max-width: 480px; }
         .rm { display: flex; flex-direction: column; align-items: flex-start; width: 100%; }
@@ -171,6 +172,9 @@
         .nav-new:hover { filter: brightness(1.08); }
         .nav-new:disabled { opacity: .6; cursor: default; }
         #chatlist { flex: 1; overflow-y: auto; }
+        #chatlist-error { margin: 8px 4px; padding: 10px; border: 1px solid color-mix(in srgb, var(--color-error, #c00) 35%, transparent); border-radius: 8px; color: var(--color-error, #c00); font-size: 12px; line-height: 1.45; overflow-wrap: anywhere; }
+        #chatlist-error[hidden] { display: none !important; }
+        #chatlist-error button { display: block; margin-top: 8px; padding: 4px 8px; border: 1px solid var(--color-border, #ccc); border-radius: 5px; background: var(--color-main-background, #fff); color: var(--color-main-text, #222); cursor: pointer; font: inherit; }
         .chat-entry {
             display: flex; align-items: center; gap: 8px;
             padding: 7px 10px; margin: 2px 0; border-radius: 8px;
@@ -184,6 +188,8 @@
             font-size: 13px; line-height: 1; padding: 2px 4px; border-radius: 4px; font-family: inherit;
         }
         .chat-entry .x:hover { background: var(--color-error, #e9322d); color: #fff; }
+        .chat-entry .x:focus-visible { outline: 2px solid var(--color-primary-element, #00679c); outline-offset: 2px; }
+        .chat-entry .x svg { display: block; width: 16px; height: 16px; }
         .sidebar-spacer { flex: 1; }
         .chat-empty { font-size: 12px; color: var(--color-text-maxcontrast, #666); padding: 8px 12px; }
         .rth { margin-bottom: 8px; font-size: 12px; }
@@ -229,6 +235,7 @@
         .rconfirm-reject { color: var(--color-main-text, #222); background: var(--color-main-background, #fff); }
         .rconfirm-actions button:disabled { opacity: .6; cursor: default; }
         .export-btn {
+            display: inline-flex; align-items: center; gap: 6px;
             border: 1px solid var(--color-border, #ccc);
             background: var(--color-main-background, #fff);
             color: var(--color-main-text, #111);
@@ -237,6 +244,7 @@
             font-size: 12px;
             cursor: pointer;
         }
+        .export-icon { display: block; width: 15px; height: 15px; }
         .export-btn:disabled { opacity: .5; cursor: default; }
         @media (max-width: 600px) {
             .rconfirm-share-form { grid-template-columns: 1fr; }
@@ -271,6 +279,15 @@
         .form button:disabled { opacity: .6; cursor: default; }
         .form button.stop { background: var(--color-error, #e9322d); }
         .err { color: var(--color-error, #e9322d); font-size: 13px; margin: 8px 4px 0; white-space: pre-wrap; }
+        .chat-dialog-backdrop { position: fixed; inset: 0; z-index: 100; display: flex; align-items: center; justify-content: center; padding: 20px; background: rgba(0, 0, 0, .48); }
+        .chat-dialog-backdrop[hidden] { display: none !important; }
+        .chat-dialog { width: min(100%, 440px); padding: 22px; border: 1px solid var(--color-border, #ddd); border-radius: 12px; background: var(--color-main-background, #fff); color: var(--color-main-text, #222); box-shadow: 0 12px 40px rgba(0, 0, 0, .22); }
+        .chat-dialog h2 { margin: 0 0 10px; font-size: 18px; }
+        .chat-dialog p { margin: 0; line-height: 1.5; overflow-wrap: anywhere; }
+        .chat-dialog-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 22px; }
+        .chat-dialog-actions button { min-height: 38px; padding: 7px 14px; border: 1px solid var(--color-border, #ccd0d4); border-radius: 7px; background: var(--color-main-background, #fff); color: var(--color-main-text, #222); font: inherit; cursor: pointer; }
+        .chat-dialog-actions .danger { border-color: var(--color-error, #c00); background: var(--color-error, #c00); color: var(--color-primary-element-text, #fff); font-weight: 600; }
+        .chat-dialog-actions button:focus-visible { outline: 2px solid var(--color-primary-element, #00679c); outline-offset: 2px; }
         @media (max-width: 600px) {
             #content { padding: 18px 12px 20px; }
             .head { align-items: flex-start; flex-direction: column; }
@@ -293,12 +310,13 @@
         <nav id="sidebar">
             <button id="newchat" class="nav-new">+ New chat</button>
             <div id="chatlist"></div>
+            <div id="chatlist-error" role="alert" hidden><span id="chatlist-error-message"></span><button id="chatlist-retry" type="button">Try again</button></div>
             <div class="sidebar-spacer"></div>
             <a class="nav-item" href="<?php echo htmlspecialchars(\OC::$WEBROOT . '/apps/eva_ai/documents', ENT_QUOTES); ?>">
-                <span class="nav-ico">📄</span> Documents
+                <svg class="nav-ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 2h8l6 6v14H6a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2zm7 2v5h5l-5-5zM7 13h10v2H7v-2zm0 4h10v2H7v-2z" fill="currentColor"/></svg> Documents
             </a>
             <a class="nav-item" href="<?php echo htmlspecialchars(\OC::$WEBROOT . '/apps/eva_ai/settings', ENT_QUOTES); ?>">
-                <span class="nav-ico">⚙️</span> Settings
+                <svg class="nav-ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M19.4 13a7.8 7.8 0 0 0 0-2l2-1.5-2-3.5-2.4 1a7.5 7.5 0 0 0-1.7-1L15 3h-6l-.4 3a7.5 7.5 0 0 0-1.7 1l-2.4-1-2 3.5 2 1.5a7.8 7.8 0 0 0 0 2l-2 1.5 2 3.5 2.4-1a7.5 7.5 0 0 0 1.7 1L9 21h6l.4-3a7.5 7.5 0 0 0 1.7-1l2.4 1 2-3.5-2.1-1.5zM12 15.5a3.5 3.5 0 1 1 0-7 3.5 3.5 0 0 1 0 7z" fill="currentColor"/></svg> Settings
             </a>
             <div class="sidebar-sep"></div>
             <div style="font-size:12px;color:var(--color-text-maxcontrast,#666);padding:4px 12px;">
@@ -312,14 +330,14 @@
                     <h1>Chat with your files</h1>
                 </div>
                 <div class="head-right">
-                    <button id="export" class="export-btn" title="Download this chat as Markdown" disabled>&#11015; Export</button>
+                    <button id="export" class="export-btn" title="Download this chat as Markdown" disabled><svg class="export-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 20h14v-2H5v2zM11 2v11.17l-4.59-4.58L5 10l7 7 7-7-1.41-1.41L13 13.17V2h-2z" fill="currentColor"/></svg><span id="export-label">Export</span></button>
                     <span class="badge">eva_ai</span>
                 </div>
             </div>
 
             <div id="msgs">
                 <div class="empty" id="empty">
-                    <div class="ico">💬</div>
+                    <div class="ico" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M21 11.5a8.4 8.4 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.4 8.4 0 0 1-3.8-.9L3 21l1.9-5.7a8.4 8.4 0 0 1-.9-3.8A8.5 8.5 0 0 1 8.7 3.9a8.4 8.4 0 0 1 3.8-.9h.5a8.5 8.5 0 0 1 8 8z"/></svg></div>
                     <div class="t">Ask a question about your files</div>
                     <div class="d">Ask about notes, plans or files — I can even create files, write notes and remember personal facts in a KNOWLEDGE.md.</div>
                 </div>
@@ -331,6 +349,16 @@
             </form>
             <div class="err" id="err" style="display:none;"></div>
         </div>
+    </div>
+    <div id="chat-confirm" class="chat-dialog-backdrop" hidden>
+        <section class="chat-dialog" role="alertdialog" aria-modal="true" aria-labelledby="chat-confirm-title" aria-describedby="chat-confirm-message">
+            <h2 id="chat-confirm-title">Delete chat</h2>
+            <p id="chat-confirm-message"></p>
+            <div class="chat-dialog-actions">
+                <button id="chat-confirm-cancel" type="button">Cancel</button>
+                <button id="chat-confirm-submit" class="danger" type="button">Delete chat</button>
+            </div>
+        </section>
     </div>
 </body>
 </html>

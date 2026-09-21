@@ -1,9 +1,9 @@
 import './markdown.css'
 import { readNdjson } from './ndjson'
-import { mdiDownload, mdiTune } from '@mdi/js'
+import { mdiDownload, mdiPaperclip, mdiTune } from '@mdi/js'
 import { translate as t } from './i18n'
 import { buildConfirmForm } from './confirmForms'
-import { escHtml, mdInline, mdToHtml, citedSources, copyText, installImageFallback } from './chat-utils'
+import { escHtml, mdInline, mdToHtml, citedSources, formatToolName, copyText, installImageFallback } from './chat-utils'
 import { getFilePickerBuilder, FilePickerClosed } from '@nextcloud/dialogs'
 
 /* EvaAi – Vanilla-Chat-Mount.
@@ -150,7 +150,7 @@ export function mountChat(root, opts = {}) {
 			det.className = 'rth'
 			det.style.display = 'none'
 			const sum = document.createElement('summary')
-			sum.textContent = '🧠 ' + t('Thinking…')
+			sum.textContent = t('Thinking…')
 			const th = document.createElement('div')
 			th.className = 'rth-c'
 			det.append(sum, th)
@@ -210,7 +210,7 @@ export function mountChat(root, opts = {}) {
 				const row = document.createElement('div')
 				row.className = 'tool ' + (c.state === 'running' ? 'running' : c.state === 'ok' ? 'ok' : 'bad')
 				const label = document.createElement('span')
-				label.textContent = (c.state === 'running' ? '🛠 ' : c.state === 'ok' ? '✅ ' : '❌ ') + c.name + (c.state === 'running' ? ' …' : '') + (c.elapsed_ms != null ? ' · ' + c.elapsed_ms + ' ms' : '')
+				label.textContent = t(c.state === 'running' ? 'Running' : c.state === 'ok' ? 'Completed' : 'Failed') + ' · ' + formatToolName(c.name) + (c.state === 'running' ? ' …' : '') + (c.elapsed_ms != null ? ' · ' + c.elapsed_ms + ' ms' : '')
 				row.appendChild(label)
 				if (c.arguments && Object.keys(c.arguments).length) {
 					const details = document.createElement('details')
@@ -324,7 +324,10 @@ export function mountChat(root, opts = {}) {
 				// resolved payload replaces the stored pending placeholder
 				// (Issue #185) and keeps the result link for a later reload.
 				saveMessage('assistant', m.text, null, m.confirmation && m.confirmation.regenerateRev, m.confirmation, m.tools)
-					.then(() => { if (onRecent) onRecent() })
+					.then((saved) => {
+						if (saved && onRecent) onRecent()
+						else if (!saved) showHistorySaveWarning()
+					})
 			}
 			const disableButtons = (disabled) => {
 				approve.disabled = disabled
@@ -342,14 +345,24 @@ export function mountChat(root, opts = {}) {
 				// Wait for the pending placeholder (and its idempotency token) to
 				// be stored before running the action so the server-side claim can
 				// reject a duplicate approve after a reload (Issue #185).
-				Promise.resolve(m._pendingSave || true).then(() => api('POST', '/confirmTool', {
-					name: m.confirmation.name,
-					arguments: conf ? conf.getArguments() : (m.confirmation.arguments || {}),
-					chatId,
-					confirmationToken: m.confirmation.token || '',
-				})).then((result) => {
+				Promise.resolve(m._pendingSave || true).then((saved) => {
+					if (saved === false) {
+						approve.disabled = true
+						reject.disabled = false
+						errEl.textContent = t('This action has not run because its confirmation could not be saved.')
+						errEl.style.display = ''
+						return null
+					}
+					return api('POST', '/confirmTool', {
+						name: m.confirmation.name,
+						arguments: conf ? conf.getArguments() : (m.confirmation.arguments || {}),
+						chatId,
+						confirmationToken: m.confirmation.token || '',
+					})
+				}).then((result) => {
+					if (result === null) return
 					if (!result || !result.ok) {
-						finish('⚠️ ' + (result?.error || t('The action could not be completed.')))
+						finish(result?.error || t('The action could not be completed.'))
 						return
 					}
 					let value = t('The action was completed.')
@@ -359,8 +372,12 @@ export function mountChat(root, opts = {}) {
 						url = result.result.url
 						value = t('Share created: {url}', { url })
 					}
-					finish('✅ ' + value, url)
+					finish(value, url)
 				}).catch((error) => {
+					if (Number(error?.response?.status) === 409) {
+						finish(t('This action was already processed. Check the target item before trying again.'))
+						return
+					}
 					disableButtons(false)
 					errEl.textContent = String(error?.message || error)
 					errEl.style.display = ''
@@ -444,13 +461,26 @@ export function mountChat(root, opts = {}) {
 	emptyEl.className = 'empty'
 	const eico = document.createElement('div')
 	eico.className = 'ico'
-	eico.textContent = '💬'
+	eico.setAttribute('aria-hidden', 'true')
+	const emptyIcon = document.createElementNS('http://www.w3.org/2000/svg', 'svg')
+	emptyIcon.setAttribute('viewBox', '0 0 24 24')
+	emptyIcon.setAttribute('width', '28')
+	emptyIcon.setAttribute('height', '28')
+	emptyIcon.setAttribute('fill', 'none')
+	emptyIcon.setAttribute('stroke', 'currentColor')
+	emptyIcon.setAttribute('stroke-width', '1.7')
+	emptyIcon.setAttribute('stroke-linecap', 'round')
+	emptyIcon.setAttribute('stroke-linejoin', 'round')
+	const emptyIconPath = document.createElementNS('http://www.w3.org/2000/svg', 'path')
+	emptyIconPath.setAttribute('d', 'M21 11.5a8.4 8.4 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.4 8.4 0 0 1-3.8-.9L3 21l1.9-5.7a8.4 8.4 0 0 1-.9-3.8A8.5 8.5 0 0 1 8.7 3.9a8.4 8.4 0 0 1 3.8-.9h.5a8.5 8.5 0 0 1 8 8z')
+	emptyIcon.appendChild(emptyIconPath)
+	eico.appendChild(emptyIcon)
 	const et = document.createElement('div')
 	et.className = 't'
 	et.textContent = t('Ask a question about your files')
 	const ed = document.createElement('div')
 	ed.className = 'd'
-	ed.textContent = t('Ask about notes, plans or files — I can even create files, write notes and remember personal facts in a KNOWLEDGE.md.')
+	ed.textContent = t('Ask about files, notes or plans. Attach files to include them as context.')
 	emptyEl.append(eico, et, ed)
 	scroll.appendChild(emptyEl)
 
@@ -460,12 +490,21 @@ export function mountChat(root, opts = {}) {
 	input.id = 'chatinput'
 	input.type = 'text'
 	input.autocomplete = 'off'
-	input.placeholder = t('What do you want to do or know?')
-	input.setAttribute('aria-label', t('What do you want to do or know?'))
+	input.placeholder = t('Ask a question or describe a task')
+	input.setAttribute('aria-label', t('Ask a question or describe a task'))
 	const filesBtn = document.createElement('button')
 	filesBtn.type = 'button'
 	filesBtn.className = 'cbtn cbtn-ghost cbtn-files'
-	filesBtn.textContent = '📎'
+	const fileIcon = document.createElementNS('http://www.w3.org/2000/svg', 'svg')
+	fileIcon.setAttribute('viewBox', '0 0 24 24')
+	fileIcon.setAttribute('width', '18')
+	fileIcon.setAttribute('height', '18')
+	fileIcon.setAttribute('aria-hidden', 'true')
+	const fileIconPath = document.createElementNS('http://www.w3.org/2000/svg', 'path')
+	fileIconPath.setAttribute('d', mdiPaperclip)
+	fileIconPath.setAttribute('fill', 'currentColor')
+	fileIcon.appendChild(fileIconPath)
+	filesBtn.appendChild(fileIcon)
 	filesBtn.setAttribute('aria-label', t('Add files'))
 	filesBtn.title = t('Choose Nextcloud files to use as context')
 	filesBtn.addEventListener('click', async () => {
@@ -572,7 +611,7 @@ export function mountChat(root, opts = {}) {
 				const row = document.createElement('div')
 				row.className = 'tool ' + (c.state === 'running' ? 'running' : c.state === 'ok' ? 'ok' : 'bad')
 				const label = document.createElement('span')
-				label.textContent = (c.state === 'running' ? '🛠 ' : c.state === 'ok' ? '✅ ' : '❌ ') + c.name + (c.state === 'running' ? ' …' : '') + (c.elapsed_ms != null ? ' · ' + c.elapsed_ms + ' ms' : '')
+				label.textContent = t(c.state === 'running' ? 'Running' : c.state === 'ok' ? 'Completed' : 'Failed') + ' · ' + formatToolName(c.name) + (c.state === 'running' ? ' …' : '') + (c.elapsed_ms != null ? ' · ' + c.elapsed_ms + ' ms' : '')
 				row.appendChild(label)
 				if (c.arguments && Object.keys(c.arguments).length) {
 					const details = document.createElement('details')
@@ -655,10 +694,8 @@ export function mountChat(root, opts = {}) {
 			} else {
 				label.className = 'rs-plain'
 			}
-			// The visible list is always a compact 1..N sequence. Backend/model
-			// references can legitimately point at source 4 when sources 1-3 were
-		// not cited; showing "starting at 4" is confusing in the UI.
-			const prefix = item.ref !== undefined ? '[' + (sourceIndex + 1) + '] ' : ''
+			// Keep the displayed label identical to the reference in the answer.
+			const prefix = item.ref !== undefined ? '[' + item.ref + '] ' : ''
 			label.textContent = prefix + (src.path || src.name || '')
 			row.appendChild(label)
 			// A web source is labelled as such and shows the site it came from, so
@@ -719,10 +756,22 @@ export function mountChat(root, opts = {}) {
 			signal,
 		}).then((r) => {
 			if (!r.ok || !r.body) {
-				return r.text().then((t) => { throw new Error('HTTP ' + r.status + ' ' + (t || '').slice(0, 200)) })
+				return r.text().then((text) => {
+					let payload = null
+					try { payload = text ? JSON.parse(text) : null } catch (_) {}
+					const detail = payload?.ocs?.message || payload?.ocs?.data?.error || payload?.error || (text && text.length < 240 ? text : '')
+					throw new Error(('HTTP ' + r.status + (detail ? ': ' + String(detail) : '')).slice(0, 260))
+				})
 			}
 			return readNdjson(r.body, onLine)
 		})
+	}
+
+	function streamFailureMessage(error) {
+		const raw = String(error && error.message ? error.message : error || '').replace(/\s+/g, ' ').trim()
+		const isNetwork = error?.name === 'TypeError' || /failed to fetch|networkerror|load failed/i.test(raw)
+		const detail = isNetwork ? t('Check your connection and try again.') : raw || t('Check your connection and try again.')
+		return t('The response could not be completed: {error}', { error: detail })
 	}
 
 	async function ensureChat() {
@@ -906,8 +955,13 @@ export function mountChat(root, opts = {}) {
 				done: true,
 			}))
 			renderAll(messages)
-		})
-}
+			})
+	}
+
+	function showHistorySaveWarning() {
+		err.textContent = t('The response is visible, but could not be saved to chat history.')
+		err.style.display = 'block'
+	}
 
 	function personaLabel(slug) {
 		const labels = {
@@ -1118,11 +1172,13 @@ export function mountChat(root, opts = {}) {
 				// applies the edit atomically with this message. Without the
 				// token (or after a failure) the stored history stays intact.
 				saveMessage('assistant', last.text, last.followups, pendingRegenerateRev, null, last.tools)
-					.then(() => { if (onRecent) onRecent() })
-					.catch(() => {})
+					.then((saved) => {
+						if (saved && onRecent) onRecent()
+						else if (!saved) showHistorySaveWarning()
+					})
 				pendingRegenerateRev = null
 			} else if (ev.type === 'error') {
-				last.text = '⚠️ ' + ev.message
+				last.text = streamFailureMessage(ev.message)
 				last.done = true
 				pendingRegenerateRev = null
 			}
@@ -1131,20 +1187,22 @@ export function mountChat(root, opts = {}) {
 			const last = messages[messages.length - 1]
 			if (last && last.role === 'assistant' && !last.done) {
 				if (!stoppedByUser) {
-					last.text = (last.text || '') + '⚠️ Error: ' + String(e && e.message ? e.message : e)
+					last.text = (last.text || '') + '\n\n' + streamFailureMessage(e)
 				}
 				last.done = true
 				updateMessage(messages.length - 1)
 				// Persist the partial answer when the user stopped the stream so
 				// a reload keeps the conversation instead of dropping it. The
 				// token commits the truncation with the partial text.
-				if (stoppedByUser && last.text.trim() !== '') {
-					saveMessage('assistant', last.text, null, pendingRegenerateRev, null, last.tools).catch(() => {})
+					if (stoppedByUser && last.text.trim() !== '') {
+						saveMessage('assistant', last.text, null, pendingRegenerateRev, null, last.tools).then((saved) => {
+							if (!saved) showHistorySaveWarning()
+						})
 				}
 			}
 			pendingRegenerateRev = null
 			if (!stoppedByUser) {
-				err.textContent = t('Network error — see console.')
+				err.textContent = streamFailureMessage(e)
 				err.style.display = 'block'
 			}
 		}).finally(() => {
@@ -1294,13 +1352,15 @@ export function mountChat(root, opts = {}) {
 					// which can swap the question and answer after a reload.
 					saveUserMessage(msg)
 						.then((savedUser) => savedUser ? saveMessage('assistant', last.text, last.followups, null, null, last.tools) : false)
-						.then((saved) => { if (saved && onRecent) onRecent() })
-						.catch(() => {})
+						.then((saved) => {
+							if (saved && onRecent) onRecent()
+							else if (!saved) showHistorySaveWarning()
+						})
 				} else if (ev.type === 'error') {
 					cancelBackgroundJob()
-					last.text = '⚠️ ' + ev.message
+					last.text = streamFailureMessage(ev.message)
 					last.done = true
-					saveUserMessage(msg)
+					saveUserMessage(msg).then((saved) => { if (!saved) showHistorySaveWarning() })
 				}
 				// One coalesced update per frame instead of one DOM rebuild per
 				// NDJSON event; terminal states below still update immediately.
@@ -1309,7 +1369,7 @@ export function mountChat(root, opts = {}) {
 				const last = messages[messages.length - 1]
 				if (last && last.role === 'assistant' && !last.done) {
 					if (!stoppedByUser) {
-						last.text = (last.text || '') + '⚠️ Error: ' + String(e && e.message ? e.message : e)
+						last.text = (last.text || '') + '\n\n' + streamFailureMessage(e)
 					}
 					last.done = true
 					updateMessage(messages.length - 1)
@@ -1318,12 +1378,12 @@ export function mountChat(root, opts = {}) {
 					if (stoppedByUser && last.text.trim() !== '') {
 						saveUserMessage(msg)
 							.then((ok) => ok ? saveMessage('assistant', last.text, null, null, null, last.tools) : false)
-							.catch(() => {})
+							.then((saved) => { if (!saved) showHistorySaveWarning() })
 					}
 				}
 				if (!stoppedByUser) {
 					cancelBackgroundJob()
-					err.textContent = t('Network error — see console.')
+					err.textContent = streamFailureMessage(e)
 					err.style.display = 'block'
 				}
 			}).finally(() => {
