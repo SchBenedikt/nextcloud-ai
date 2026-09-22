@@ -21,7 +21,24 @@ export async function api(method, path, data, options = {}) {
 	} else if (method !== 'GET' && data !== undefined) {
 		cfg.data = data
 	}
-	const res = await axios.request(cfg)
+	const maxRetries = Number.isInteger(options?.retries)
+		? Math.max(0, Math.min(3, options.retries))
+		: (method === 'GET' || method === 'HEAD' ? 2 : 0)
+	let res
+	let lastError
+	for (let attempt = 0; attempt <= maxRetries; attempt++) {
+		try {
+			res = await axios.request(cfg)
+			break
+		} catch (error) {
+			lastError = error
+			const status = Number(error?.response?.status || 0)
+			const retryable = status === 408 || status === 429 || status >= 500 || !error?.response
+			if (!retryable || attempt >= maxRetries) throw error
+			await new Promise(resolve => setTimeout(resolve, 150 * (attempt + 1)))
+		}
+	}
+	if (!res) throw lastError || new Error('API request failed')
 	const body = res && res.data
 	const ocsStatus = Number(body?.ocs?.meta?.statuscode)
 	if (Number.isFinite(ocsStatus) && ocsStatus >= 400) {
