@@ -354,7 +354,7 @@ class ToolPolicy {
         'send_talk_message' => [
             'risk' => self::RISK_MUTATING,
             'surfaces' => [self::SURFACE_WEB, self::SURFACE_TASKPROCESSING_CONFIRMED],
-            'requiresConfirmation' => false,
+            'requiresConfirmation' => true,
             'description' => 'Post a message into a Talk room as the user',
         ],
 

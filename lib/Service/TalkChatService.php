@@ -104,6 +104,9 @@ class TalkChatService
                 $out[] = self::describeRoom($room, $userId);
             } catch (\Throwable $e) {
                 // One unreadable room must not hide the others.
+                $this->logger->warning('eva_ai: could not describe Talk room', [
+                    'exception' => $e->getMessage(),
+                ]);
                 continue;
             }
             if (count($out) >= $limit) {
@@ -137,6 +140,11 @@ class TalkChatService
                     ->getParticipant($talkRoom, $userId, false);
                 $lastReadMessage = (int)$participant->getAttendee()->getLastReadMessage();
             } catch (\Throwable $e) {
+                $this->logger->warning('eva_ai: could not read Talk unread marker', [
+                    'room' => $room['id'],
+                    'user' => $userId,
+                    'exception' => $e->getMessage(),
+                ]);
                 return ['ok' => false, 'room' => $room, 'error' => 'The unread marker for that room could not be read.'];
             }
         }
