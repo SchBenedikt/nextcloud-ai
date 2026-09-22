@@ -3514,6 +3514,14 @@ class ActionExecutor {
             if ($part === '' || mb_strlen($part) > 400) {
                 return ['ok' => false, 'error' => 'Command arguments are outside the allowed bounds.'];
             }
+            // Even with shell syntax disabled, an allowlisted program such as
+            // cat, cp or git could receive a relative path escaping the app's
+            // working directory. Reject traversal segments before the child
+            // process is created; ordinary absolute paths and filenames remain
+            // available to explicitly allowlisted diagnostic commands.
+            if (preg_match('#(?:^|[\\/])\.\.(?:[\\/]|$)#', $part) === 1) {
+                return ['ok' => false, 'error' => 'Command arguments may not contain path traversal segments.'];
+            }
             $argv[] = $part;
         }
         $executable = (string)($argv[0] ?? '');
