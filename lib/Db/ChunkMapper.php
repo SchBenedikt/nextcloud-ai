@@ -52,15 +52,22 @@ class ChunkMapper extends QBMapper {
     }
 
     /**
-     * All chunks for a user (used when the index fits the candidate pool).
+     * Chunks for a user up to the retrieval candidate pool.
+     *
+     * The caller uses this path only when the count already fits the pool;
+     * keeping the SQL limit here as a defensive boundary prevents accidental
+     * full-index materialisation when a new call site is added (Issue #394).
      * @return array<int,array<string,mixed>>
      */
-    public function chunksForUser(string $userId): array {
+    public function chunksForUser(string $userId, int $limit = 8000): array {
+        $limit = max(1, $limit);
         $qb = $this->db->getQueryBuilder();
         $qb->select('c.id', 'c.document_id', 'c.chunk_index', 'c.content', 'c.embedding', 'c.provenance')
             ->from('eva_ai_chunks', 'c')
             ->innerJoin('c', 'eva_ai_documents', 'd', $qb->expr()->eq('c.document_id', 'd.id'))
-            ->where($qb->expr()->eq('d.user_id', $qb->createNamedParameter($userId)));
+            ->where($qb->expr()->eq('d.user_id', $qb->createNamedParameter($userId)))
+            ->orderBy('c.id', 'ASC')
+            ->setMaxResults($limit);
         $result = $qb->executeQuery();
         $rows = $result->fetchAll();
         $result->closeCursor();
