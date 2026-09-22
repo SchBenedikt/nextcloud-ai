@@ -212,6 +212,13 @@ class Indexer {
                 }
                 return $this->documentMapper->stateForFile($userId, $fileId);
             };
+            $quota = max(0, $this->config->getInt('index_storage_quota', 0));
+            $indexedBytes = 0;
+            if ($stateCache !== null && $quota > 0) {
+                foreach ($stateCache as $stored) {
+                    $indexedBytes += max(0, (int)($stored['size'] ?? 0));
+                }
+            }
             $seen = [];
             $stale = []; // Track files that should be removed from index
             $batch = [];
@@ -275,6 +282,18 @@ class Indexer {
                 $mime = $file->getMimeType();
                 $size = $file->getSize();
                 $fileMtime = (int)($fileData['mtime'] ?? 0);
+
+                if ($quota > 0) {
+                    $oldSize = $state !== null ? max(0, (int)($state['size'] ?? 0)) : 0;
+                    $projected = $indexedBytes - $oldSize + max(0, (int)$size);
+                    if ($projected > $quota) {
+                        $result['skipped']++;
+                        $this->logger->notice('eva_ai: indexing quota reached; file skipped', [
+                            'user' => $userId, 'file' => $path, 'quota' => $quota,
+                        ]);
+                        continue;
+                    }
+                }
 
                 // Stored state comes from the one bulk read that opened this
                 // pass, so discovering "unchanged" costs no query at all.
@@ -394,6 +413,9 @@ class Indexer {
                 $doc->setChunkCount(count($chunks));
                 $doc->setIndexedAt(time());
                 $this->documentMapper->insert($doc);
+                if ($quota > 0) {
+                    $indexedBytes = $indexedBytes - ($state !== null ? max(0, (int)($state['size'] ?? 0)) : 0) + max(0, (int)$size);
+                }
 
                 foreach ($chunks as $i => $c) {
                     $batch[] = ['docId' => (int)$doc->getId(), 'index' => $i, 'content' => $c['content'], 'tokens' => $c['tokens'], 'provenance' => $c['provenance'] ?? [], 'oldDocId' => $oldDocId, 'path' => $path];

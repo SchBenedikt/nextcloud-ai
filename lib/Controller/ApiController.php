@@ -363,7 +363,7 @@ class ApiController extends OCSController {
         $allowed = [
             'chat_provider', 'groq_model', 'custom_provider_url', 'custom_provider_model', 'provider_profiles', 'ollama_url', 'embedding_model', 'chat_model', 'chat_model_fallback',
             'embedding_model_fallback', 'summary_model', 'top_k', 'chunk_size',
-            'chunk_overlap', 'max_file_size', 'max_files_per_run', 'scope_path', 'context_size', 'temperature',
+            'chunk_overlap', 'max_file_size', 'max_files_per_run', 'index_storage_quota', 'scope_path', 'context_size', 'temperature',
             'actions_enabled', 'background_actions_enabled', 'learning_enabled', 'safe_commands_enabled', 'terminal_commands_enabled', 'terminal_command_any', 'terminal_command_allowlist', 'agent_max_tool_rounds',
             'exec_write_types', 'exec_write_max_chars', 'exec_delete_mode',
             'notify_on_complete',
@@ -500,7 +500,7 @@ class ApiController extends OCSController {
             );
         }
         foreach ($pending as $key => $value) {
-                if (in_array($key, ['top_k', 'chunk_size', 'chunk_overlap', 'max_file_size', 'max_files_per_run', 'context_size', 'exec_write_max_chars', 'mail_index_max', 'talk_history_size', 'talk_index_max_rooms', 'talk_index_max_messages', 'chat_retention_days', 'embed_batch_size', 'agent_max_tool_rounds', 'web_search_max_results', 'web_search_timeout', 'web_search_content_chars', 'web_search_candidates', 'web_search_browser_timeout'], true)) {
+                if (in_array($key, ['top_k', 'chunk_size', 'chunk_overlap', 'max_file_size', 'max_files_per_run', 'index_storage_quota', 'context_size', 'exec_write_max_chars', 'mail_index_max', 'talk_history_size', 'talk_index_max_rooms', 'talk_index_max_messages', 'chat_retention_days', 'embed_batch_size', 'agent_max_tool_rounds', 'web_search_max_results', 'web_search_timeout', 'web_search_content_chars', 'web_search_candidates', 'web_search_browser_timeout'], true)) {
                     $value = (string)$value;
                 }
                 if ($key === 'exec_delete_mode') {
