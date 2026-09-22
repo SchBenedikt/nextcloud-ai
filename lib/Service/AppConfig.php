@@ -28,7 +28,7 @@ class AppConfig {
     private const USER_SETTINGS = [
         'chat_provider', 'groq_model', 'custom_provider_url', 'custom_provider_model', 'provider_profiles', 'ollama_url', 'embedding_model', 'chat_model', 'chat_model_fallback',
         'embedding_model_fallback', 'summary_model', 'top_k', 'chunk_size',
-        'chunk_overlap', 'max_file_size', 'max_files_per_run', 'scope_path',
+        'chunk_overlap', 'max_file_size', 'max_files_per_run', 'index_storage_quota', 'scope_path',
         'context_size', 'temperature', 'actions_enabled', 'background_actions_enabled', 'learning_enabled', 'safe_commands_enabled', 'terminal_commands_enabled', 'terminal_command_any', 'terminal_command_allowlist', 'agent_max_tool_rounds', 'exec_write_types',
         'exec_write_max_chars', 'exec_delete_mode',        'notify_on_complete',
         // Personal, opt-in scheduled briefings/reminders. Definitions are JSON;
@@ -145,6 +145,7 @@ class AppConfig {
         'chunk_overlap' => '120',
         'max_file_size' => '20971520',
         'max_files_per_run' => '40',
+        'index_storage_quota' => '0',
         'scope_path' => '',
         'index_user' => '',
         'context_size' => '12288',
@@ -270,6 +271,7 @@ class AppConfig {
         'chunk_overlap' => [0, 5000],
         'max_file_size' => [1048576, 2147483648],
         'max_files_per_run' => [1, 10000],
+        'index_storage_quota' => [0, 1099511627776],
         'context_size' => [256, 131072],
         'temperature' => [0.0, 2.0],
         'agent_max_tool_rounds' => [4, 32],
