@@ -24,6 +24,7 @@ class Ollama {
     private const CHAT_TIMEOUT = 120;
     private const STATUS_CACHE_TTL = 30;
     private const STATUS_CACHE_TTL_FALLBACK = 15;
+    private const MAX_PROCESS_CACHE_ENTRIES = 128;
 
     /** @var array<string,array{expires:int,ping:array,models:array}> */
     private static array $statusCache = [];
@@ -317,7 +318,16 @@ class Ollama {
                     'error' => null,
                     'candidates' => $candidates,
                 ];
-                self::$resolutionCache[$memoKey] = $result + ['at' => time()];
+                $now = time();
+                foreach (self::$resolutionCache as $key => $entry) {
+                    if ($now - (int)($entry['at'] ?? 0) >= self::STATUS_CACHE_TTL_FALLBACK) {
+                        unset(self::$resolutionCache[$key]);
+                    }
+                }
+                if (count(self::$resolutionCache) >= self::MAX_PROCESS_CACHE_ENTRIES) {
+                    array_shift(self::$resolutionCache);
+                }
+                self::$resolutionCache[$memoKey] = $result + ['at' => $now];
                 return $result;
             }
         }
@@ -424,6 +434,14 @@ class Ollama {
             'checkedAt' => $now,
             'latencyMs' => $latencyMs,
         ];
+        foreach (self::$statusCache as $cachedBase => $cachedEntry) {
+            if ((int)($cachedEntry['expires'] ?? 0) <= $now) {
+                unset(self::$statusCache[$cachedBase]);
+            }
+        }
+        if (count(self::$statusCache) >= self::MAX_PROCESS_CACHE_ENTRIES) {
+            array_shift(self::$statusCache);
+        }
         self::$statusCache[$base] = $entry;
         try {
             $this->statusStore()->set($key, $entry, self::STATUS_CACHE_TTL);
@@ -911,6 +929,9 @@ class Ollama {
                 return self::$normalizedToolsCache[$hash];
             }
             $result = $this->doNormalizePayload($value);
+            if (count(self::$normalizedToolsCache) >= self::MAX_PROCESS_CACHE_ENTRIES) {
+                array_shift(self::$normalizedToolsCache);
+            }
             self::$normalizedToolsCache[$hash] = $result;
             return $result;
         }
