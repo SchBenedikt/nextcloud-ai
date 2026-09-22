@@ -5,9 +5,18 @@ export async function readNdjson(body, onEvent) {
 	let buffer = ''
 	const emit = (line) => {
 		if (!line.trim()) return
-		const event = JSON.parse(line)
+		let event
+		try {
+			event = JSON.parse(line)
+		} catch (error) {
+			// A malformed line should not discard the valid events that follow it.
+			// Keep the warning local to the stream and continue decoding.
+			console.warn('Ignoring malformed chat stream event', error)
+			return
+		}
 		if (!event || typeof event !== 'object' || Array.isArray(event)) {
-			throw new Error('Invalid chat stream event')
+			console.warn('Ignoring invalid chat stream event')
+			return
 		}
 		onEvent(event)
 	}
