@@ -26,6 +26,7 @@ use OCA\EvaAi\Event\ToolPluginRegisterEvent;
  * (CardDAV-Adressbuch des Benutzers).
  */
 class ActionExecutor {
+    private ToolDomainRegistry $domainRegistry;
     private const MAX_SEARCH_DEPTH = 5;
     private const MAX_SEARCH_NODES = 2000;
     private const MAX_SEARCH_FILE_BYTES = 1048576; // 1 MB per text file
@@ -180,6 +181,30 @@ class ActionExecutor {
         private ?Ollama $ollama = null,
         private ?ScheduledAssignmentService $scheduledAssignments = null,
     ) {
+        $this->domainRegistry = new ToolDomainRegistry();
+        $this->registerDomainHandlers();
+    }
+
+    private function registerDomainHandlers(): void {
+        $this->domainRegistry->register('list_calendars', fn(string $user, array $args): array => ['ok' => true, 'result' => $this->calendar->calendars($user)]);
+        $this->domainRegistry->register('list_calendar_events', fn(string $user, array $args): array => $this->calendar->listEvents($user, $args));
+        $this->domainRegistry->register('create_calendar_event', fn(string $user, array $args): array => $this->calendar->createEvent($user, $args));
+        $this->domainRegistry->register('update_calendar_event', fn(string $user, array $args): array => $this->calendar->updateEvent($user, $args));
+        $this->domainRegistry->register('delete_calendar_event', fn(string $user, array $args): array => $this->calendar->deleteEvent($user, $args));
+        $this->domainRegistry->register('find_free_slots', fn(string $user, array $args): array => $this->calendar->findFreeSlots($user, $args));
+        $this->domainRegistry->register('list_tasks', fn(string $user, array $args): array => $this->calendar->listTasks($user, $args));
+        $this->domainRegistry->register('create_task', fn(string $user, array $args): array => $this->calendar->createTask($user, $args));
+        $this->domainRegistry->register('update_task', fn(string $user, array $args): array => $this->calendar->updateTask($user, $args));
+        $this->domainRegistry->register('complete_task', fn(string $user, array $args): array => $this->calendar->completeTask($user, $args));
+        $this->domainRegistry->register('delete_task', fn(string $user, array $args): array => $this->calendar->deleteTask($user, $args));
+        foreach (['list_shares' => 'list', 'create_share' => 'create', 'update_share' => 'update', 'delete_share' => 'delete'] as $tool => $method) {
+            $this->domainRegistry->register($tool, fn(string $user, array $args) => $this->shares->{$method}($user, $args));
+        }
+        $this->domainRegistry->register('search_mails', fn(string $user, array $args): array => $this->searchMails($user, $args));
+        $this->domainRegistry->register('list_mails', fn(string $user, array $args): array => $this->listMails($user, $args));
+        $this->domainRegistry->register('read_mail', fn(string $user, array $args): array => $this->readMail($user, $args));
+        $this->domainRegistry->register('unread_mail_count', fn(string $user, array $args): array => $this->unreadMailCount($user));
+        $this->domainRegistry->register('summarize_emails', fn(string $user, array $args): array => $this->summarizeEmails($user, $args));
     }
 
     /**
@@ -1200,7 +1225,8 @@ class ActionExecutor {
         }
 
         try {
-            $result = match ($name) {
+            $result = $this->domainRegistry->execute($name, $userId, $args);
+            if ($result === null) $result = match ($name) {
                 'list_files' => $this->listFiles($home, $args),
                 'create_file' => $this->createFile($home, $args),
                 'create_files' => $this->createFiles($home, $args),
