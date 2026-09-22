@@ -1,5 +1,18 @@
 # Changelog
 
+## [1.16.99] - 2026-09-22
+
+### Milestone 1.7.0: Security and product boundaries
+
+- Encrypt new and updated chat-history payloads at rest with Nextcloud's
+  `ICrypto` service, while keeping legacy plaintext stores migratable.
+- Validate and import chat-history backups without overwriting existing chats.
+- Add per-user chat and indexing safeguards, bounded retrieval behavior, and
+  clearer operational documentation across the completed milestone work.
+- Close the milestone's remaining enhancement proposals with documented
+  architecture decisions where the current provider and UI contracts do not
+  support a safe partial implementation.
+
 ## [1.16.98] - 2026-09-22
 
 ### Milestone 1.6.0: Performance and reliability
