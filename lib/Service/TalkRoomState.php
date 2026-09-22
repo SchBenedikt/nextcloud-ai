@@ -71,7 +71,16 @@ class TalkRoomState {
         $appData = $this->appDataFactory->get('eva_ai');
         $folder = $this->folder($appData);
         if (!$folder->fileExists(self::FILE)) {
-            $folder->newFile(self::FILE);
+            // fileExists() is only a fast path. Another Talk request may
+            // create the shared state file between the check and newFile();
+            // in that case the winner's file is the one we should use.
+            try {
+                $folder->newFile(self::FILE);
+            } catch (\Throwable $e) {
+                if (!$folder->fileExists(self::FILE)) {
+                    throw $e;
+                }
+            }
         }
         return $folder->getFile(self::FILE);
     }
