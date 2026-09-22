@@ -230,6 +230,10 @@ export default {
 
 		const view = ref('home')
 		const fileContextIds = ref([])
+		// The navigation composable reads the dashboard query parameter via
+		// params.get('chat') and preserves the existing deep-link contract.
+		// It also performs url.searchParams.set('chat', currentChat.value) when
+		// navigating to an open conversation.
 		const mobileOpen = ref(false)
 		const buildVersion = appVersion
 
