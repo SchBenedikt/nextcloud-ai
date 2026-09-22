@@ -196,7 +196,7 @@ class DocumentMapper extends QBMapper {
             ->where($qb->expr()->eq('user_id', $qb->createNamedParameter($userId)));
         if ($search !== null && $search !== '') {
             $qb->andWhere(
-                $qb->expr()->like('path', $qb->createNamedParameter('%' . $search . '%'))
+                $qb->expr()->like('path', $qb->createNamedParameter('%' . $this->escapeLike($search) . '%'))
             );
         }
         $row = $qb->executeQuery()->fetch();
@@ -218,7 +218,7 @@ class DocumentMapper extends QBMapper {
         $qb->andWhere($qb->expr()->eq('user_id', $qb->createNamedParameter($userId)));
         if ($search !== null && $search !== '') {
             $qb->andWhere(
-                $qb->expr()->like('path', $qb->createNamedParameter('%' . $search . '%'))
+                $qb->expr()->like('path', $qb->createNamedParameter('%' . $this->escapeLike($search) . '%'))
             );
         }
         if (isset($filters['type']) && $filters['type'] !== '') {
