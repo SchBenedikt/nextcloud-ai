@@ -66,6 +66,7 @@
 							<th class="num">{{ $t('Docs') }}</th>
 							<th class="num">{{ $t('Chunks') }}</th>
 							<th>{{ $t('Last indexed') }}</th>
+							<th>{{ $t('Progress') }}</th>
 							<th>{{ $t('Enrollment') }}</th>
 							<th>{{ $t('State') }}</th>
 							<th>{{ $t('Actions') }}</th>
@@ -81,6 +82,7 @@
 							<td class="num">{{ user.documents }}</td>
 							<td class="num">{{ user.chunks }}</td>
 							<td>{{ user.lastIndexedAt ? formatTime(user.lastIndexedAt) : '—' }}</td>
+							<td>{{ user.indexing && user.lastTotal ? `${user.lastProcessed} / ${user.lastTotal}` : (user.indexFinishedAt ? formatTime(user.indexFinishedAt) : '—') }}</td>
 							<td>
 								<NcCheckboxRadioSwitch :checked="user.enrolled" :disabled="busyFor(user.userId)"
 									@update:checked="toggleEnrollment(user)">
