@@ -845,12 +845,19 @@ class ApiController extends OCSController {
         // Totals describe the whole filtered index, independent of the page
         // that was requested (Issue #74).
         $aggregates = $this->documentMapper->aggregateForUser($user, $search, $filters);
-        return new DataResponse([
+        $payload = [
             'documents' => $out,
             'total' => $aggregates['count'],
             'totalChunks' => $aggregates['chunks'],
             'totalSize' => $aggregates['size'],
-        ], 200, ['Cache-Control' => 'private, max-age=300']);
+        ];
+        $etag = '"' . hash('sha256', (string)json_encode($payload, JSON_UNESCAPED_SLASHES)) . '"';
+        $headers = ['Cache-Control' => 'private, max-age=300', 'ETag' => $etag];
+        $ifNoneMatch = trim((string)$this->request->getHeader('If-None-Match'));
+        if ($ifNoneMatch !== '' && hash_equals($etag, $ifNoneMatch)) {
+            return new DataResponse([], 304, $headers);
+        }
+        return new DataResponse($payload, 200, $headers);
     }
 
     #[NoAdminRequired]
