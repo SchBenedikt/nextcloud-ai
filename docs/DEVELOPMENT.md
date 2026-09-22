@@ -83,6 +83,11 @@ been verified.
 - All tool execution must go through `ActionExecutor` and be registered in
   `ToolPolicy` (see [SECURITY.md](SECURITY.md))
 
+TaskProcessing providers are declared as task-type/provider pairs in
+`lib/AppInfo/Application.php`. The registration loop checks each task type
+with `class_exists`, so providers remain compatible with older Nextcloud
+cores that do not expose newer task types.
+
 ## Adding a new tool
 
 1. Register the tool in `ToolPolicy::TOOLS` with `risk`, `surfaces` and

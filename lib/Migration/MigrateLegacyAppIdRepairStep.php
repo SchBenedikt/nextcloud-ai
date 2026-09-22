@@ -33,6 +33,7 @@ class MigrateLegacyAppIdRepairStep implements IRepairStep {
 
     public function run(IOutput $output): void {
         $keys = $this->config->getAppKeys(self::LEGACY);
+        $userCount = 0;
         foreach ($keys as $key) {
             $value = $this->config->getAppValue(self::LEGACY, $key, '');
             if ($value !== '') {
@@ -40,7 +41,8 @@ class MigrateLegacyAppIdRepairStep implements IRepairStep {
             }
         }
 
-        $this->userManager->callForAllUsers(function ($user): void {
+        $this->userManager->callForAllUsers(function ($user) use (&$userCount): void {
+            $userCount++;
             $userId = (string)$user->getUID();
             foreach ($this->config->getUserKeys($userId, self::LEGACY) as $key) {
                 $value = $this->config->getUserValue($userId, self::LEGACY, $key, '');
@@ -59,6 +61,6 @@ class MigrateLegacyAppIdRepairStep implements IRepairStep {
         // returned by the user manager, so orphaned values are not retained
         // when an installation has no currently active users.
         $this->config->deleteAppFromAllUsers(self::LEGACY);
-        $output->info('Migrated legacy EVA configuration from eva-ai to eva_ai.');
+        $output->info('Migrated legacy EVA configuration from eva-ai to eva_ai for ' . $userCount . ' users.');
     }
 }
