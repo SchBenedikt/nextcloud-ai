@@ -88,7 +88,7 @@ class Ollama {
 
     private function groqClient(): Groq {
         $credentials = $this->providerCredentials ?? \OCP\Server::get(ProviderCredentials::class);
-        return $this->groq ??= new Groq($this->config, $this->clientService, $credentials, $this->usageMetrics);
+        return $this->groq ??= new Groq($this->config, $this->clientService, $credentials, $this->usageMetrics, $this->logger);
     }
     private function openAiCompatible(): OpenAICompatible {
         $credentials = $this->providerCredentials ?? \OCP\Server::get(ProviderCredentials::class);

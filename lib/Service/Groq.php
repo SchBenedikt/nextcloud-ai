@@ -5,6 +5,7 @@ namespace OCA\EvaAi\Service;
 
 use OCP\Http\Client\IClientService;
 use OCP\Http\Client\IResponse;
+use Psr\Log\LoggerInterface;
 
 /** Groq chat adapter. Embeddings deliberately remain on the local Ollama path. */
 class Groq {
@@ -12,7 +13,7 @@ class Groq {
     // General-purpose production chat models on the published Free Plan, 2026-09-09.
     // No Compound built-in tools, enterprise models or automatic paid fallback.
     public const MODELS = ['openai/gpt-oss-20b', 'openai/gpt-oss-120b'];
-    public function __construct(private AppConfig $config, private IClientService $clients, private ProviderCredentials $credentials, private ?UsageMetrics $usageMetrics = null) {}
+    public function __construct(private AppConfig $config, private IClientService $clients, private ProviderCredentials $credentials, private ?UsageMetrics $usageMetrics = null, private ?LoggerInterface $logger = null) {}
     public function info(): array {
         return ['name' => 'groq', 'models' => self::MODELS, 'keyConfigured' => $this->credentials->configured($this->config->userId() ?? ''), 'model' => $this->config->get('groq_model')];
     }
@@ -67,7 +68,7 @@ class Groq {
             $models = array_values(array_intersect(self::MODELS, array_column($data['data'] ?? [], 'id')));
             $ok = in_array($this->config->get('groq_model'), $models, true);
             return ['ok' => $ok, 'models' => $models, 'error' => $ok ? null : 'The selected Groq model is unavailable for this account'];
-        } catch (\Throwable $e) { return ['ok' => false, 'models' => [], 'error' => $this->safeError($e)]; }
+        } catch (\Throwable $e) { $this->logger?->warning('eva_ai: Groq provider check failed', ['exception' => $e->getMessage()]); return ['ok' => false, 'models' => [], 'error' => $this->safeError($e)]; }
     }
     private function safeError(\Throwable $e): string {
         // Never return/log HTTP exceptions: they can contain Authorization headers.
@@ -168,7 +169,7 @@ class Groq {
             $usage = $data['usage'] ?? [];
             $this->usageMetrics?->recordChat($this->config->userId(), 'groq', $this->config->get('groq_model'), $messages, $answer, isset($usage['prompt_tokens']) ? (int)$usage['prompt_tokens'] : null, isset($usage['completion_tokens']) ? (int)$usage['completion_tokens'] : null, (int)round((microtime(true) - $startedAt) * 1000));
             return ['answer' => $answer, 'model' => $this->config->get('groq_model'), 'tool_calls' => $this->calls($raw), 'raw_tool_calls' => $raw, 'usage' => $usage];
-        } catch (\Throwable $e) { return ['error' => $this->safeError($e)]; }
+        } catch (\Throwable $e) { $this->logger?->warning('eva_ai: Groq chat failed', ['model' => $this->config->get('groq_model'), 'exception' => $e->getMessage()]); return ['error' => $this->safeError($e)]; }
     }
     public function chatStream(array $messages, array $tools, int $timeout = 120): \Generator {
         $body = null;
@@ -218,7 +219,7 @@ class Groq {
             $this->usageMetrics?->recordChat($this->config->userId(), 'groq', $this->config->get('groq_model'), $messages, $streamAnswer, isset($usage['prompt_tokens']) ? (int)$usage['prompt_tokens'] : null, isset($usage['completion_tokens']) ? (int)$usage['completion_tokens'] : null, (int)round((microtime(true) - $startedAt) * 1000));
             if ($raw !== []) yield ['type' => 'tool_calls', 'tool_calls' => $this->calls($raw), 'raw' => $raw, 'model' => $this->config->get('groq_model')];
             else yield ['type' => 'finished', 'model' => $this->config->get('groq_model')];
-        } catch (\Throwable $e) { yield ['type' => 'error', 'delta' => $this->safeError($e)]; }
+        } catch (\Throwable $e) { $this->logger?->warning('eva_ai: Groq streaming chat failed', ['model' => $this->config->get('groq_model'), 'exception' => $e->getMessage()]); yield ['type' => 'error', 'delta' => $this->safeError($e)]; }
         finally {
             if (is_resource($body)) fclose($body);
             elseif (is_object($body) && method_exists($body, 'close')) $body->close();
