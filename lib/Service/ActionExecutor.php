@@ -3115,8 +3115,8 @@ class ActionExecutor {
                         }
                     }
                 }
-                $hay = strtolower(implode(' ', $hayParts));
-                if (str_contains($hay, strtolower($query))) {
+                $hay = mb_strtolower(implode(' ', $hayParts));
+                if (mb_strpos($hay, mb_strtolower($query)) !== false) {
                     return [
                         'bookId' => (int)$book['id'],
                         'uri' => (string)($card['uri'] ?? ''),
