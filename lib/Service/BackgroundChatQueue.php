@@ -334,9 +334,39 @@ final class BackgroundChatQueue {
     private function write(string $user, array $items): void { if ($items === []) { $this->config->deleteUserValue($user, AppConfig::APP, self::KEY); return; } $this->config->setUserValue($user, AppConfig::APP, self::KEY, json_encode(array_values($items), JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) ?: '[]'); }
     private function mutate(string $user, callable $fn): void { $this->withLock($user, function () use ($user, $fn): void { $this->write($user, $fn($this->read($user))); }); }
     private function withLock(string $user, callable $fn): mixed {
-        $path = 'eva_ai/bgchat/' . substr(hash('sha256', $user), 0, 40); $acquired = false;
-        try { $this->locks->acquireLock($path, ILockingProvider::LOCK_EXCLUSIVE, 'EVA background chat'); $acquired = true; return $fn(); }
-        catch (\Throwable $e) { $this->logger->debug('eva_ai: background chat queue busy', ['user' => $user, 'exception' => $e]); return null; }
-        finally { if ($acquired) { try { $this->locks->releaseLock($path, ILockingProvider::LOCK_EXCLUSIVE); } catch (\Throwable) {} } }
+        $path = 'eva_ai/bgchat/' . substr(hash('sha256', $user), 0, 40);
+        $acquired = false;
+        $lastError = null;
+        for ($attempt = 0; $attempt < 3; $attempt++) {
+            try {
+                $this->locks->acquireLock($path, ILockingProvider::LOCK_EXCLUSIVE, 'EVA background chat');
+                $acquired = true;
+                break;
+            } catch (\Throwable $e) {
+                $lastError = $e;
+                if ($attempt < 2) {
+                    usleep(50000 * ($attempt + 1));
+                }
+            }
+        }
+        if (!$acquired) {
+            $this->logger->warning('eva_ai: background chat queue lock unavailable; operation not applied', [
+                'user' => $user,
+                'exception' => $lastError?->getMessage(),
+            ]);
+            throw new \RuntimeException('Background chat queue is temporarily busy; please retry.', 0, $lastError);
+        }
+        try {
+            return $fn();
+        } finally {
+            try {
+                $this->locks->releaseLock($path, ILockingProvider::LOCK_EXCLUSIVE);
+            } catch (\Throwable $e) {
+                $this->logger->warning('eva_ai: background chat queue lock release failed', [
+                    'user' => $user,
+                    'exception' => $e->getMessage(),
+                ]);
+            }
+        }
     }
 }
