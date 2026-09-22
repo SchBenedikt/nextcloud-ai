@@ -58,6 +58,7 @@ export function mountChat(root, opts = {}) {
 	// fast models and high-frequency streams.
 	let pendingUpdateIdx = null
 	let updateScheduled = false
+	let pendingUpdateFrame = null
 	function scheduleUpdate(i) {
 		pendingUpdateIdx = i
 		if (updateScheduled) return
@@ -68,7 +69,7 @@ export function mountChat(root, opts = {}) {
 			pendingUpdateIdx = null
 			if (idx !== null && Number.isInteger(idx)) updateMessage(idx)
 		}
-		if (typeof requestAnimationFrame === 'function') requestAnimationFrame(flush)
+		if (typeof requestAnimationFrame === 'function') pendingUpdateFrame = requestAnimationFrame(() => { pendingUpdateFrame = null; flush() })
 		else flush()
 	}
 
@@ -1422,5 +1423,11 @@ export function mountChat(root, opts = {}) {
 	refreshBackgroundStatus()
 	input.focus()
 	form.addEventListener('submit', (e) => { e.preventDefault(); send() })
-	root.__evaAi = { destroy: () => clearInterval(backgroundStatusTimer) }
+	root.__evaAi = { destroy: () => {
+		if (pendingUpdateFrame !== null && typeof cancelAnimationFrame === 'function') cancelAnimationFrame(pendingUpdateFrame)
+		pendingUpdateFrame = null
+		updateScheduled = false
+		pendingUpdateIdx = null
+		clearInterval(backgroundStatusTimer)
+	} }
 }
