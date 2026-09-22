@@ -1295,8 +1295,28 @@ class ActionExecutor {
             $this->recordToolMetric($userId, $name, $startedAt, false);
             return ['ok' => false, 'error' => $e->getMessage()];
         }
+        if (($policy['risk'] ?? '') === ToolPolicy::RISK_DESTRUCTIVE) {
+            try {
+                \OC::$server->get(\Psr\Log\LoggerInterface::class)->notice('eva_ai destructive tool action', [
+                    'user' => $userId,
+                    'tool' => $name,
+                    'ok' => (bool)($result['ok'] ?? false),
+                    'target' => $this->auditTarget($args),
+                ]);
+            } catch (\Throwable) {
+            }
+        }
         $this->recordToolMetric($userId, $name, $startedAt, (bool)($result['ok'] ?? false));
         return $result;
+    }
+
+    private function auditTarget(array $args): string {
+        foreach (['path', 'share_id', 'event_id', 'task_id', 'comment_id', 'query', 'briefing_id', 'assignment_id'] as $key) {
+            if (isset($args[$key]) && is_scalar($args[$key])) {
+                return $key . '=' . mb_substr((string)$args[$key], 0, 200);
+            }
+        }
+        return 'target=redacted';
     }
 
     private function recordToolMetric(string $userId, string $name, float $startedAt, bool $ok): void {
