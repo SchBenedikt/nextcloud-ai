@@ -226,7 +226,13 @@ class RagService {
      * @param array<int,array{role:string,content:string}> $history
      * @return \Generator<string,string,void,void>
      */
-    public function askStream(string $userId, string $message, array $history, ?string $scopePath = null, ?string $instructions = null, ?string $persona = null): \Generator {
+    public function askStream(ChatRequest $request): \Generator {
+		$userId = $request->userId;
+		$message = $request->message;
+		$history = $request->history;
+		$scopePath = $request->scopePath;
+		$instructions = $request->instructions;
+		$persona = $request->persona;
 		// The stream also returns the retained document sources: $this->answerSources($byDoc).
         $this->config->setUserId($userId);
             $this->toolSources = [];
