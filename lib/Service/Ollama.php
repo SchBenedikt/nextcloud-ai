@@ -159,6 +159,7 @@ class Ollama {
             }
             return ['ok' => true, 'url' => $this->base()];
         } catch (\Throwable $e) {
+            $this->logger->warning('eva_ai: Ollama ping failed', ['url' => $this->base(), 'exception' => $e->getMessage()]);
             return ['ok' => false, 'url' => $this->base(), 'error' => $e->getMessage()];
         }
     }
@@ -410,6 +411,7 @@ class Ollama {
                 $ping = ['ok' => true, 'url' => $base];
             }
         } catch (\Throwable $e) {
+            $this->logger->warning('eva_ai: Ollama status request failed', ['url' => $base, 'exception' => $e->getMessage()]);
             $ping = ['ok' => false, 'url' => $base, 'error' => $e->getMessage()];
             $models = [];
         }
@@ -567,6 +569,7 @@ class Ollama {
             }
             return ['ok' => false, 'len' => 0, 'model' => $model, 'error' => 'No result vector returned.'];
         } catch (\Throwable $e) {
+            $this->logger->warning('eva_ai: Ollama embedding check failed', ['model' => $model, 'exception' => $e->getMessage()]);
             return ['ok' => false, 'len' => 0, 'model' => $model, 'error' => $e->getMessage()];
         }
     }
@@ -598,6 +601,7 @@ class Ollama {
             }
             return ['ok' => true, 'model' => $model, 'answer' => trim(substr($answer, 0, 80)), 'error' => null, 'seconds' => $elapsed];
         } catch (\Throwable $e) {
+            $this->logger->warning('eva_ai: Ollama chat check failed', ['model' => $model, 'exception' => $e->getMessage()]);
             return ['ok' => false, 'model' => $model, 'answer' => null, 'error' => $e->getMessage()];
         }
     }
