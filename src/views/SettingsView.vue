@@ -1647,6 +1647,10 @@ export default {
 			// Ten seconds is still responsive while keeping the page lightweight.
 			let lastHealthPoll = 0
 			statusTimer = window.setInterval(() => {
+				// An idle settings page does not need a request every ten seconds.
+				// Keep polling only while an index/reset/delete operation is active;
+				// the action handlers perform an immediate status refresh otherwise.
+				if (!indexingActive.value) return
 				loadStatus()
 				if (Date.now() - lastHealthPoll >= 60000) {
 					lastHealthPoll = Date.now()
