@@ -24,7 +24,7 @@ class SharesService {
     public function list(string $userId, array $args = []): array {
         $perUser = max(1, (int)($args['limit'] ?? 100));
         $outgoing = [];
-        foreach ([IShare::TYPE_USER, IShare::TYPE_GROUP, IShare::TYPE_LINK, IShare::TYPE_EMAIL, IShare::TYPE_CIRCLE, IShare::TYPE_ROOM] as $type) {
+        foreach ($this->outgoingTypes() as $type) {
             try {
                 $shares = $this->shareManager->getSharesBy($userId, $type, null, true, $perUser, 0);
             } catch (\Throwable $e) {
@@ -35,7 +35,7 @@ class SharesService {
             }
         }
         $incoming = [];
-        foreach ([IShare::TYPE_USER, IShare::TYPE_GROUP, IShare::TYPE_ROOM] as $type) {
+        foreach ($this->incomingTypes() as $type) {
             try {
                 $shares = $this->shareManager->getSharedWith($userId, $type, $perUser, 0);
             } catch (\Throwable $e) {
@@ -221,7 +221,7 @@ class SharesService {
         return ['ok' => true, 'result' => 'Deleted share ' . $share->getId() . ' of ' . $share->getNode()->getPath()];
     }
 
-    /** @return array{path:string,type:string,recipient:string,token:string,url:string,expiration:?string,note:string,permissions:int} */
+    /** @return array{path:string,type:string,recipient:string,remote:string,token:string,url:string,expiration:?string,note:string,permissions:int} */
     private function describe(IShare $share, string $direction, bool $includeNewLinkUrl = false): array {
         $path = '/';
         try {
@@ -261,6 +261,7 @@ class SharesService {
             'type' => $this->typeName($share->getShareType()),
             'path' => $path,
             'recipient' => (string)($share->getSharedWith() ?? ''),
+            'remote' => $this->remoteMetadata($share),
             // A token is a capability secret. Keep the field shape stable for
             // existing callers, but never return the actual value.
             'token' => $isLink ? '[redacted]' : '',
@@ -273,6 +274,9 @@ class SharesService {
     }
 
     private function typeName(int $type): string {
+        if (defined(IShare::class . '::TYPE_REMOTE') && $type === constant(IShare::class . '::TYPE_REMOTE')) {
+            return 'remote';
+        }
         return match ($type) {
             IShare::TYPE_USER => 'user',
             IShare::TYPE_GROUP => 'group',
@@ -282,6 +286,39 @@ class SharesService {
             IShare::TYPE_ROOM => 'room',
             default => (string)$type,
         };
+    }
+
+    /** @return list<int> */
+    private function outgoingTypes(): array {
+        $types = [IShare::TYPE_USER, IShare::TYPE_GROUP, IShare::TYPE_LINK, IShare::TYPE_EMAIL, IShare::TYPE_CIRCLE, IShare::TYPE_ROOM];
+        if (defined(IShare::class . '::TYPE_REMOTE')) {
+            $types[] = constant(IShare::class . '::TYPE_REMOTE');
+        }
+        return array_values(array_unique($types));
+    }
+
+    /** @return list<int> */
+    private function incomingTypes(): array {
+        $types = [IShare::TYPE_USER, IShare::TYPE_GROUP, IShare::TYPE_ROOM];
+        if (defined(IShare::class . '::TYPE_REMOTE')) {
+            $types[] = constant(IShare::class . '::TYPE_REMOTE');
+        }
+        return array_values(array_unique($types));
+    }
+
+    private function remoteMetadata(IShare $share): string {
+        foreach (['getRemote', 'getRemoteId', 'getRemoteUrl'] as $method) {
+            if (method_exists($share, $method)) {
+                try {
+                    $value = trim((string)$share->{$method}());
+                    if ($value !== '') {
+                        return $value;
+                    }
+                } catch (\Throwable $e) {
+                }
+            }
+        }
+        return '';
     }
 
     /**
