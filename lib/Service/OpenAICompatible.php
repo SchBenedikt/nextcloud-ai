@@ -4,10 +4,11 @@ namespace OCA\EvaAi\Service;
 
 use JsonException;
 use OCP\Http\Client\IClientService;
+use Psr\Log\LoggerInterface;
 
 /** Adapter for any provider exposing the OpenAI chat-completions contract. */
 class OpenAICompatible {
-    public function __construct(private AppConfig $config, private IClientService $clients, private ProviderCredentials $credentials, private ?UsageMetrics $usage = null) {}
+    public function __construct(private AppConfig $config, private IClientService $clients, private ProviderCredentials $credentials, private ?UsageMetrics $usage = null, private ?LoggerInterface $logger = null) {}
     private function provider(): string { return (string)$this->config->get('chat_provider'); }
     private function profile(): array {
         $profile = $this->config->providerProfile($this->provider());
@@ -31,7 +32,7 @@ class OpenAICompatible {
             $data = json_decode((string)$response->getBody(), true);
             $models = array_values(array_filter(array_map(static fn($row) => (string)($row['id'] ?? ''), is_array($data['data'] ?? null) ? $data['data'] : [])));
             return ['ok' => true, 'models' => $models, 'model' => $this->model()];
-        } catch (\Throwable $e) { return ['ok' => false, 'models' => [], 'error' => $e instanceof ProviderException ? $e->getMessage() : 'Provider connection failed. Check endpoint and key.']; }
+        } catch (\Throwable $e) { $this->logger?->warning('eva_ai: OpenAI-compatible provider check failed', ['provider' => $this->provider(), 'exception' => $e->getMessage()]); return ['ok' => false, 'models' => [], 'error' => $e instanceof ProviderException ? $e->getMessage() : 'Provider connection failed. Check endpoint and key.']; }
     }
     public function chat(array $messages, array $tools = [], int $timeout = 120): array {
         $id = $this->provider();
@@ -50,7 +51,7 @@ class OpenAICompatible {
             return ['answer' => $answer, 'model' => $this->model(), 'tool_calls' => $calls, 'raw_tool_calls' => $message['tool_calls'] ?? []];
         } catch (JsonException $e) {
             return ['error' => 'Provider returned invalid JSON: ' . $e->getMessage()];
-        } catch (\Throwable $e) { return ['error' => $e instanceof ProviderException ? $e->getMessage() : 'Provider connection or response failed. Check endpoint, key and model.']; }
+        } catch (\Throwable $e) { $this->logger?->warning('eva_ai: OpenAI-compatible chat failed', ['provider' => $id, 'model' => $this->model(), 'exception' => $e->getMessage()]); return ['error' => $e instanceof ProviderException ? $e->getMessage() : 'Provider connection or response failed. Check endpoint, key and model.']; }
     }
 
     /**
