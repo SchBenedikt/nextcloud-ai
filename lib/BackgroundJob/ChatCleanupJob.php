@@ -53,12 +53,12 @@ class ChatCleanupJob extends TimedJob {
                 if ($uid === '') {
                     continue;
                 }
-                $this->config->setUserId($uid);
-                $days = (int)$this->config->get('chat_retention_days');
-                if ($days <= 0) {
-                    continue;
-                }
                 try {
+                    $this->config->setUserId($uid);
+                    $days = (int)$this->config->get('chat_retention_days');
+                    if ($days <= 0) {
+                        continue;
+                    }
                     $deleted = $this->chatStore->deleteOlderThan($uid, $days);
                     if ($deleted > 0) {
                         $this->logger->info('eva_ai chat cleanup', [
@@ -72,6 +72,11 @@ class ChatCleanupJob extends TimedJob {
                         'user' => $uid,
                         'exception' => $e->getMessage(),
                     ]);
+                } finally {
+                    // AppConfig carries the active user for this request;
+                    // always clear it before the next account or an early
+                    // return so state cannot leak across job work.
+                    $this->config->setUserId(null);
                 }
             }
         }
