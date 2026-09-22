@@ -58,42 +58,42 @@ class Application extends App implements IBootstrap {
         $context->registerEventListener(AppUpdateEvent::class, \OCA\EvaAi\Listener\AppLifecycleListener::class);
         // Benachrichtigungs-Notifier: zeigt "EVA answer ready" in der Glocke an.
         $context->registerNotifierService(\OCA\EvaAi\Notification\Notifier::class);
-        // EVA-Provider: stellt den RAG-Chat für die Assistant-App (TaskProcessing) bereit.
-        $this->registerTaskProcessingProviderIfSupported($context, \OCP\TaskProcessing\TaskTypes\TextToTextChat::class, \OCA\EvaAi\TaskProcessing\TextToTextChatProvider::class);
-        // EVA-Provider fuer den Original-Chat, den Agenten mit Bestaetigungs-Flow (core:contextagent:interaction)
-        // und Chat mit Tool-Unterstuetzung (core:text2text:chatwithtools).
-        $this->registerTaskProcessingProviderIfSupported($context, \OCP\TaskProcessing\TaskTypes\ContextAgentInteraction::class, \OCA\EvaAi\TaskProcessing\AgentInteractionProvider::class);
-        $this->registerTaskProcessingProviderIfSupported($context, \OCP\TaskProcessing\TaskTypes\TextToTextChatWithTools::class, \OCA\EvaAi\TaskProcessing\TextToTextChatWithToolsProvider::class);
-        // EVA Text-Provider: lokale Ollama-basierte Alternative zu OpenAI für Text-Aufgaben.
-        $this->registerTaskProcessingProviderIfSupported($context, \OCP\TaskProcessing\TaskTypes\TextToText::class, \OCA\EvaAi\TaskProcessing\EvaTextToTextProvider::class);
-        $this->registerTaskProcessingProviderIfSupported($context, \OCP\TaskProcessing\TaskTypes\TextToTextSummary::class, \OCA\EvaAi\TaskProcessing\EvaSummaryProvider::class);
-        $this->registerTaskProcessingProviderIfSupported($context, \OCP\TaskProcessing\TaskTypes\TextToTextHeadline::class, \OCA\EvaAi\TaskProcessing\EvaHeadlineProvider::class);
-        $this->registerTaskProcessingProviderIfSupported($context, \OCP\TaskProcessing\TaskTypes\TextToTextTopics::class, \OCA\EvaAi\TaskProcessing\EvaTopicsProvider::class);
-        $this->registerTaskProcessingProviderIfSupported($context, \OCP\TaskProcessing\TaskTypes\TextToTextTranslate::class, \OCA\EvaAi\TaskProcessing\EvaTranslateProvider::class);
-        $this->registerTaskProcessingProviderIfSupported($context, \OCP\TaskProcessing\TaskTypes\TextToTextReformulation::class, \OCA\EvaAi\TaskProcessing\EvaReformulateProvider::class);
-        $this->registerTaskProcessingProviderIfSupported($context, \OCP\TaskProcessing\TaskTypes\TextToTextProofread::class, \OCA\EvaAi\TaskProcessing\EvaProofreadProvider::class);
-        $this->registerTaskProcessingProviderIfSupported($context, \OCP\TaskProcessing\TaskTypes\TextToTextReformatParagraphs::class, \OCA\EvaAi\TaskProcessing\EvaReformatProvider::class);
-        $this->registerTaskProcessingProviderIfSupported($context, \OCP\TaskProcessing\TaskTypes\TextToTextChangeTone::class, \OCA\EvaAi\TaskProcessing\EvaChangeToneProvider::class);
-        $this->registerTaskProcessingProviderIfSupported($context, \OCP\TaskProcessing\TaskTypes\ContextWrite::class, \OCA\EvaAi\TaskProcessing\EvaContextWriteProvider::class);
-        // Additional Core text task types: local improve, simplify and
-        // formalize operations use the same bounded Ollama transform path.
-        $this->registerTaskProcessingProviderIfSupported($context, \OCP\TaskProcessing\TaskTypes\TextToTextImprove::class, \OCA\EvaAi\TaskProcessing\EvaImproveProvider::class);
-        $this->registerTaskProcessingProviderIfSupported($context, \OCP\TaskProcessing\TaskTypes\TextToTextSimplification::class, \OCA\EvaAi\TaskProcessing\EvaSimplificationProvider::class);
-        $this->registerTaskProcessingProviderIfSupported($context, \OCP\TaskProcessing\TaskTypes\TextToTextFormalization::class, \OCA\EvaAi\TaskProcessing\EvaFormalizationProvider::class);
-        $this->registerTaskProcessingProviderIfSupported($context, \OCP\TaskProcessing\TaskTypes\GenerateEmoji::class, \OCA\EvaAi\TaskProcessing\EvaEmojiProvider::class);
-        $this->registerTaskProcessingProviderIfSupported($context, \OCP\TaskProcessing\TaskTypes\ImageToTextOpticalCharacterRecognition::class, \OCA\EvaAi\TaskProcessing\EvaOcrProvider::class);
-        // Vision provider for core image questions; supports Ollama vision
-        // models and OpenAI-compatible adapters through the shared chat path.
-        $this->registerTaskProcessingProviderIfSupported($context, \OCP\TaskProcessing\TaskTypes\AnalyzeImages::class, \OCA\EvaAi\TaskProcessing\EvaAnalyzeImagesProvider::class);
-        $this->registerTaskProcessingProviderIfSupported($context, \OCP\TaskProcessing\TaskTypes\TextToImage::class, \OCA\EvaAi\TaskProcessing\EvaTextToImageProvider::class);
-        $this->registerTaskProcessingProviderIfSupported($context, \OCP\TaskProcessing\TaskTypes\AudioToText::class, \OCA\EvaAi\TaskProcessing\EvaAudioToTextProvider::class);
-        $this->registerTaskProcessingProviderIfSupported($context, \OCP\TaskProcessing\TaskTypes\AudioToTextSubtitles::class, \OCA\EvaAi\TaskProcessing\EvaAudioSubtitlesProvider::class);
-        $this->registerTaskProcessingProviderIfSupported($context, \OCP\TaskProcessing\TaskTypes\TextToSpeech::class, \OCA\EvaAi\TaskProcessing\EvaTextToSpeechProvider::class);
-        $this->registerTaskProcessingProviderIfSupported($context, \OCP\TaskProcessing\TaskTypes\AudioToAudioTranslate::class, \OCA\EvaAi\TaskProcessing\EvaAudioTranslateProvider::class);
-        $this->registerTaskProcessingProviderIfSupported($context, \OCP\TaskProcessing\TaskTypes\AudioToAudioChat::class, \OCA\EvaAi\TaskProcessing\EvaAudioChatProvider::class);
-        $this->registerTaskProcessingProviderIfSupported($context, \OCP\TaskProcessing\TaskTypes\MultimodalChatWithTools::class, \OCA\EvaAi\TaskProcessing\MultimodalChatWithToolsProvider::class);
-        $this->registerTaskProcessingProviderIfSupported($context, \OCP\TaskProcessing\TaskTypes\ContextAgentAudioInteraction::class, \OCA\EvaAi\TaskProcessing\ContextAgentAudioProvider::class);
-        $this->registerTaskProcessingProviderIfSupported($context, \OCP\TaskProcessing\TaskTypes\MultimodalContextAgentInteraction::class, \OCA\EvaAi\TaskProcessing\MultimodalContextAgentProvider::class);
+        // Keep the TaskProcessing surface data-driven so adding a provider
+        // requires one entry and cannot accidentally skip the compatibility
+        // guard for older Nextcloud cores (Issue #323).
+        $taskProcessingProviders = [
+            [\OCP\TaskProcessing\TaskTypes\TextToTextChat::class, \OCA\EvaAi\TaskProcessing\TextToTextChatProvider::class],
+            [\OCP\TaskProcessing\TaskTypes\ContextAgentInteraction::class, \OCA\EvaAi\TaskProcessing\AgentInteractionProvider::class],
+            [\OCP\TaskProcessing\TaskTypes\TextToTextChatWithTools::class, \OCA\EvaAi\TaskProcessing\TextToTextChatWithToolsProvider::class],
+            [\OCP\TaskProcessing\TaskTypes\TextToText::class, \OCA\EvaAi\TaskProcessing\EvaTextToTextProvider::class],
+            [\OCP\TaskProcessing\TaskTypes\TextToTextSummary::class, \OCA\EvaAi\TaskProcessing\EvaSummaryProvider::class],
+            [\OCP\TaskProcessing\TaskTypes\TextToTextHeadline::class, \OCA\EvaAi\TaskProcessing\EvaHeadlineProvider::class],
+            [\OCP\TaskProcessing\TaskTypes\TextToTextTopics::class, \OCA\EvaAi\TaskProcessing\EvaTopicsProvider::class],
+            [\OCP\TaskProcessing\TaskTypes\TextToTextTranslate::class, \OCA\EvaAi\TaskProcessing\EvaTranslateProvider::class],
+            [\OCP\TaskProcessing\TaskTypes\TextToTextReformulation::class, \OCA\EvaAi\TaskProcessing\EvaReformulateProvider::class],
+            [\OCP\TaskProcessing\TaskTypes\TextToTextProofread::class, \OCA\EvaAi\TaskProcessing\EvaProofreadProvider::class],
+            [\OCP\TaskProcessing\TaskTypes\TextToTextReformatParagraphs::class, \OCA\EvaAi\TaskProcessing\EvaReformatProvider::class],
+            [\OCP\TaskProcessing\TaskTypes\TextToTextChangeTone::class, \OCA\EvaAi\TaskProcessing\EvaChangeToneProvider::class],
+            [\OCP\TaskProcessing\TaskTypes\ContextWrite::class, \OCA\EvaAi\TaskProcessing\EvaContextWriteProvider::class],
+            [\OCP\TaskProcessing\TaskTypes\TextToTextImprove::class, \OCA\EvaAi\TaskProcessing\EvaImproveProvider::class],
+            [\OCP\TaskProcessing\TaskTypes\TextToTextSimplification::class, \OCA\EvaAi\TaskProcessing\EvaSimplificationProvider::class],
+            [\OCP\TaskProcessing\TaskTypes\TextToTextFormalization::class, \OCA\EvaAi\TaskProcessing\EvaFormalizationProvider::class],
+            [\OCP\TaskProcessing\TaskTypes\GenerateEmoji::class, \OCA\EvaAi\TaskProcessing\EvaEmojiProvider::class],
+            [\OCP\TaskProcessing\TaskTypes\ImageToTextOpticalCharacterRecognition::class, \OCA\EvaAi\TaskProcessing\EvaOcrProvider::class],
+            [\OCP\TaskProcessing\TaskTypes\AnalyzeImages::class, \OCA\EvaAi\TaskProcessing\EvaAnalyzeImagesProvider::class],
+            [\OCP\TaskProcessing\TaskTypes\TextToImage::class, \OCA\EvaAi\TaskProcessing\EvaTextToImageProvider::class],
+            [\OCP\TaskProcessing\TaskTypes\AudioToText::class, \OCA\EvaAi\TaskProcessing\EvaAudioToTextProvider::class],
+            [\OCP\TaskProcessing\TaskTypes\AudioToTextSubtitles::class, \OCA\EvaAi\TaskProcessing\EvaAudioSubtitlesProvider::class],
+            [\OCP\TaskProcessing\TaskTypes\TextToSpeech::class, \OCA\EvaAi\TaskProcessing\EvaTextToSpeechProvider::class],
+            [\OCP\TaskProcessing\TaskTypes\AudioToAudioTranslate::class, \OCA\EvaAi\TaskProcessing\EvaAudioTranslateProvider::class],
+            [\OCP\TaskProcessing\TaskTypes\AudioToAudioChat::class, \OCA\EvaAi\TaskProcessing\EvaAudioChatProvider::class],
+            [\OCP\TaskProcessing\TaskTypes\MultimodalChatWithTools::class, \OCA\EvaAi\TaskProcessing\MultimodalChatWithToolsProvider::class],
+            [\OCP\TaskProcessing\TaskTypes\ContextAgentAudioInteraction::class, \OCA\EvaAi\TaskProcessing\ContextAgentAudioProvider::class],
+            [\OCP\TaskProcessing\TaskTypes\MultimodalContextAgentInteraction::class, \OCA\EvaAi\TaskProcessing\MultimodalContextAgentProvider::class],
+        ];
+        foreach ($taskProcessingProviders as [$taskType, $provider]) {
+            $this->registerTaskProcessingProviderIfSupported($context, $taskType, $provider);
+        }
         // Native Unified Search: expose bounded, permission-checked matches
         // from EVA's indexed file knowledge without invoking an AI model.
         $context->registerSearchProvider(\OCA\EvaAi\Search\EvaSearchProvider::class);
