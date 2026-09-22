@@ -29,6 +29,7 @@ use OCP\IRequest;
 use OCP\Lock\ILockingProvider;
 
 class ApiController extends OCSController {
+    private const MAX_MESSAGE_LENGTH = 50000;
     public function __construct(
         string $appName,
         IRequest $request,
@@ -91,6 +92,10 @@ class ApiController extends OCSController {
         }
         $body = $this->requestBody();
         return array_key_exists($key, $body) ? $body[$key] : $default;
+    }
+
+    private function messageTooLong(string $message): bool {
+        return mb_strlen($message) > self::MAX_MESSAGE_LENGTH;
     }
 
     private function requireUser(): ?string {
@@ -896,6 +901,9 @@ class ApiController extends OCSController {
         if ($message === '') {
             return new DataResponse(['error' => 'Empty message'], 400);
         }
+        if ($this->messageTooLong($message)) {
+            return new DataResponse(['error' => 'Message exceeds the maximum length of 50,000 characters.'], 400);
+        }
         $this->releaseSessionLock();
         $history = $this->requestParam('history') ?? [];
         if (is_string($history)) {
@@ -922,6 +930,7 @@ class ApiController extends OCSController {
         $requestId = $this->requestParam('requestId');
         if (is_string($history)) $history = json_decode($history, true) ?? [];
         if ($chatId === '' || $message === '' || !is_array($history)) return new DataResponse(['error' => 'chatId, message and history are required'], 400);
+        if ($this->messageTooLong($message)) return new DataResponse(['error' => 'Message exceeds the maximum length of 50,000 characters.'], 400);
         $this->releaseSessionLock();
         $chat = $this->chatStore->get($user, $chatId);
         if ($chat === null) return new DataResponse(['error' => 'Chat not found'], 404);
@@ -1141,6 +1150,9 @@ class ApiController extends OCSController {
         if ($message === '') {
             return new DataResponse(['error' => 'Empty message'], 400);
         }
+        if ($this->messageTooLong($message)) {
+            return new DataResponse(['error' => 'Message exceeds the maximum length of 50,000 characters.'], 400);
+        }
         $history = $this->requestParam('history') ?? [];
         if (is_string($history)) {
             $history = json_decode($history, true) ?? [];
@@ -1294,6 +1306,14 @@ class ApiController extends OCSController {
         $history = isset($body['history']) && is_array($body['history']) ? $body['history'] : [];
         if ($user !== null && $message !== '') {
             $this->releaseSessionLock();
+        }
+        if ($this->messageTooLong($message)) {
+            $body = json_encode(['type' => 'error', 'message' => 'Message exceeds the maximum length of 50,000 characters.']) . "\n";
+            return new StreamTraversableResponse(new \ArrayIterator([$body]), 400, [
+                'Content-Type' => 'application/x-ndjson',
+                'Cache-Control' => 'no-cache, no-store, must-revalidate',
+                'X-Accel-Buffering' => 'no',
+            ]);
         }
         // Per-chat folder scope (Issue #88) and custom instructions (Issue #90)
         // are resolved once, outside the generator, so they cannot change
@@ -1739,6 +1759,10 @@ class ApiController extends OCSController {
             return new StreamTraversableResponse(new \ArrayIterator([$body]), 400, $headers);
         }
         $newText = is_string($rawText) ? trim($rawText) : null;
+        if ($newText !== null && $this->messageTooLong($newText)) {
+            $body = json_encode(['type' => 'error', 'message' => 'Message exceeds the maximum length of 50,000 characters.']) . "\n";
+            return new StreamTraversableResponse(new \ArrayIterator([$body]), 400, $headers);
+        }
         // The revision the client loaded (Issue #182): a mismatch means the
         // chat was modified in another tab and the regenerate is rejected.
         $rawRev = $this->requestParam('rev');
