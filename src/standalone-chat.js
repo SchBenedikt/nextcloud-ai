@@ -944,6 +944,8 @@ function buildCalendarForm(args, tr) {
 		messages.push({ role: 'user', text: msg })
 		messages.push({ role: 'assistant', text: '', thinking: '', done: false, tools: [] })
 		renderAll(messages)
+		var assistantIdx = messages.length - 1
+		renderAll(messages)
 
 		var history = []
 		for (var i = 0; i < messages.length - 2; i++) {
@@ -952,7 +954,7 @@ function buildCalendarForm(args, tr) {
 
 		ensureChat().then(function () {
 			return apiStream({ message: msg, history: history, chatId: chatId }, function (ev) {
-				var last = messages[messages.length - 1]
+				var last = messages[assistantIdx]
 				if (!last || last.role !== 'assistant' || last.done) return
 				if (ev.type === 'thinking') {
 					last.thinking += ev.delta || ''
@@ -1019,7 +1021,7 @@ function buildCalendarForm(args, tr) {
 				}
 				// One coalesced update per frame instead of one DOM rebuild per
 				// NDJSON event; terminal states still update immediately.
-				scheduleUpdate(messages.length - 1)
+				scheduleUpdate(assistantIdx)
 			}, currentAbort.signal).catch(function (e) {
 				var last = messages[messages.length - 1]
 				if (last && last.role === 'assistant' && !last.done) {
