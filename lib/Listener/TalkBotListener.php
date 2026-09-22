@@ -471,7 +471,12 @@ PROMPT;
         $recall = $this->talkHistoryContext($userId, $roomId, $question);
 
         // RagService::ask() macht Vector-Search + Tool-Execution + LLM-Antwort
-        $result = $this->ragService->ask($userId, $question, $history, null, null, null, $recall);
+        $result = $this->ragService->ask(new \OCA\EvaAi\Dto\ChatRequest(
+            userId: $userId,
+            message: $question,
+            history: $history,
+            extraContext: $recall,
+        ));
 
         if (isset($result['error']) && $result['error'] !== '') {
             $this->logger->warning('eva_ai talk: rag error: ' . $result['error']);

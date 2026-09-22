@@ -969,7 +969,14 @@ class ApiController extends OCSController {
         $chatId = $this->requestParam('chatId');
         $custom = $this->customFor($user, $chatId);
         try {
-            return new DataResponse($this->ragService->ask($user, $message, $history, $this->scopePathFor($user, $chatId), $custom['instructions'], $custom['persona']));
+            return new DataResponse($this->ragService->ask(new \OCA\EvaAi\Dto\ChatRequest(
+                userId: $user,
+                message: $message,
+                history: $history,
+                scopePath: $this->scopePathFor($user, $chatId),
+                instructions: $custom['instructions'],
+                persona: $custom['persona'],
+            )));
         } finally {
             $this->releaseChatSlot($chatSlot);
         }

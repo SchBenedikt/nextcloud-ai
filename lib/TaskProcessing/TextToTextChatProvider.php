@@ -105,7 +105,7 @@ class TextToTextChatProvider implements ISynchronousProvider {
 			}
 		}
 
-		$result = $this->ragService->ask($userId, $prompt, $history);
+		$result = $this->ragService->ask(new \OCA\EvaAi\Dto\ChatRequest($userId, $prompt, $history));
 		$reportProgress(0.9);
 
 		if (!empty($result['error'])) {
