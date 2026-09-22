@@ -472,12 +472,22 @@ export default {
 		}
 
 		let statusTimer = null
+		const scheduleStatusPoll = () => {
+			if (statusTimer !== null) window.clearTimeout(statusTimer)
+			// Keep active indexing responsive, but let idle pages check only
+			// occasionally so an open Documents tab stays inexpensive.
+			const delay = indexingActive.value ? 3000 : 30000
+			statusTimer = window.setTimeout(async () => {
+				await loadStatus()
+				scheduleStatusPoll()
+			}, delay)
+		}
 		onMounted(async () => {
 			await Promise.all([load(), loadStatus()])
-			statusTimer = window.setInterval(loadStatus, 3000)
+			scheduleStatusPoll()
 		})
 		onUnmounted(() => {
-			if (statusTimer !== null) window.clearInterval(statusTimer)
+			if (statusTimer !== null) window.clearTimeout(statusTimer)
 		})
 
 		return { docs, total, totalChunks, totalSize, search, filterType, filterFolder, filterSize, filterSort, loading, loadingMore, documentsLoaded, documentsLoadError, hasMore, loadMoreError, indexing, stopping, indexStatus, indexStatusKnown, indexStatusLoading, indexStatusError, indexControlsLocked, indexingActive, progress, expanded, chunkCache, load, loadMore, loadStatus, toggle, startIndex, startMailIndex, startTalkIndex, stopIndex, fmtSize, fmtDate, mdiChevronDown, mdiChevronRight, mdiFileDocumentOutline }
