@@ -539,6 +539,9 @@ class ApiController extends OCSController {
                         $value = 'EVA'; // Default falls leer
                     }
                 }
+                // Keep the final storage coercion available to every settings
+                // client through AppConfig (Issue #319).
+                $value = $this->config->normalizeSetting($key, $value);
                 $this->config->set($key, (string)$value);
         }
         return new DataResponse($this->config->all());
