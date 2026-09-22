@@ -42,6 +42,9 @@ $webSearchBrowserInstallCommand = (string)($_['webSearchBrowserInstallCommand'] 
 $indexMaxConcurrent = $admin['index_max_concurrent'] ?? '2';
 $indexJobMaxSeconds = $admin['index_job_max_seconds'] ?? '50';
 $indexJobInterval = $admin['index_job_interval_minutes'] ?? '5';
+$rateLimitChat = $admin['rate_limit_chat_per_minute'] ?? '30';
+$rateLimitStream = $admin['rate_limit_stream_per_minute'] ?? '10';
+$rateLimitBackground = $admin['rate_limit_background_per_minute'] ?? '5';
 $lastIndexFailed = (int)($admin['last_index_failed'] ?? 0);
 
 $schedulerRunning = (int)($scheduler['running'] ?? 0);
@@ -186,6 +189,14 @@ $providerLabels = [
 				<?php p($l->t('Minutes between runs, 1–60, default 5. Together with the time budget this is how fast a large library is caught up. Takes effect after the next app update.')); ?>
 			</p>
 		</div>
+	</div>
+
+	<h3><?php p($l->t('Chat request limits')); ?></h3>
+	<p class="settings-hint"><?php p($l->t('Per-user limits per minute. Lower values protect small instances; higher values support larger deployments.')); ?></p>
+	<div class="eva-field-grid">
+		<div class="eva-field"><label for="eva-rate-chat"><?php p($l->t('Chat requests/minute')); ?></label><input type="number" id="eva-rate-chat" min="1" max="120" value="<?php p($rateLimitChat); ?>"></div>
+		<div class="eva-field"><label for="eva-rate-stream"><?php p($l->t('Streaming requests/minute')); ?></label><input type="number" id="eva-rate-stream" min="1" max="60" value="<?php p($rateLimitStream); ?>"></div>
+		<div class="eva-field"><label for="eva-rate-background"><?php p($l->t('Background requests/minute')); ?></label><input type="number" id="eva-rate-background" min="1" max="30" value="<?php p($rateLimitBackground); ?>"></div>
 	</div>
 
 	<p class="eva-actions">

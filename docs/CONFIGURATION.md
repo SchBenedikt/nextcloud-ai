@@ -214,6 +214,9 @@ from an instance-wide value.
 | `index_job_interval_minutes` | How often the periodic `IndexJob` runs (minutes, default `5`, range `1`–`60`). Lower values index a large library sooner at the cost of more frequent background work; each tick is still bounded by `index_job_max_seconds`. |
 | `index_job_last_user` | Last user finished by a periodic run; the next run rotates past it for fairness (Issue #112). |
 | `index_max_concurrent` | I | `2` | `1`–`16` | passes | Maximum index passes running concurrently across all users (Issue #142). Editable on the admin page (Indexing performance) or via `occ config:app:set eva_ai index_max_concurrent …`. |
+| `rate_limit_chat_per_minute` | I | `30` | `1`–`120` | requests | Per-user normal chat requests allowed per minute. |
+| `rate_limit_stream_per_minute` | I | `10` | `1`–`60` | requests | Per-user streaming chat requests allowed per minute. |
+| `rate_limit_background_per_minute` | I | `5` | `1`–`30` | requests | Per-user background chat requests allowed per minute. |
 | `index_scheduler_active` | JSON map `user → heartbeat` of currently running index slots (default `{}`, Issue #142); stale slots are reclaimed after 15 minutes. |
 | `index_scheduler_queue` | JSON FIFO list of users waiting behind the concurrency limit (default `[]`, Issue #142). |
 | `index_job_stop_requested` | Durable stop request (default `0`) for the periodic background run: the running tick aborts at the next user boundary and the following tick acknowledges (clears) the flag without starting. Set via the admin dashboard “Stop background indexing” action. |

@@ -102,6 +102,9 @@ class AppConfig {
         'index_max_concurrent',
         'index_job_max_seconds',
         'index_job_interval_minutes',
+        'rate_limit_chat_per_minute',
+        'rate_limit_stream_per_minute',
+        'rate_limit_background_per_minute',
     ];
 
     public function isAdminSetting(string $key): bool {
@@ -251,6 +254,9 @@ class AppConfig {
         // action): the running tick aborts at the next user boundary and the
         // following tick acknowledges (clears) the flag without starting.
         'index_job_stop_requested' => '0',
+        'rate_limit_chat_per_minute' => '30',
+        'rate_limit_stream_per_minute' => '10',
+        'rate_limit_background_per_minute' => '5',
     ];
 
     /**
@@ -282,6 +288,9 @@ class AppConfig {
         'index_max_concurrent' => [1, 16],
         'index_job_max_seconds' => [10, 600],
         'index_job_interval_minutes' => [1, 60],
+        'rate_limit_chat_per_minute' => [1, 120],
+        'rate_limit_stream_per_minute' => [1, 60],
+        'rate_limit_background_per_minute' => [1, 30],
     ];
 
     /** Accepted formats for the Ollama keep_alive setting (Issue: model residency). */

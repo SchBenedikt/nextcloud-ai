@@ -943,7 +943,7 @@ class ApiController extends OCSController {
         if ($user === null) {
             return new DataResponse(['error' => 'Not logged in'], 401);
         }
-        if (($limited = $this->rateLimitResponse($user, 'chat', 30)) !== null) return $limited;
+        if (($limited = $this->rateLimitResponse($user, 'chat', $this->config->getInt('rate_limit_chat_per_minute', 30))) !== null) return $limited;
         $chatSlot = $this->acquireChatSlot($user);
         if ($chatSlot === null) return new DataResponse(['error' => 'busy', 'message' => 'Another chat request is already running. Please retry shortly.'], 429, ['Retry-After' => '5']);
         $message = trim((string)($this->requestParam('message') ?? ''));
@@ -977,7 +977,7 @@ class ApiController extends OCSController {
     public function backgroundChat(): DataResponse {
         $user = $this->requireUser();
         if ($user === null) return new DataResponse(['error' => 'Not logged in'], 401);
-        if (($limited = $this->rateLimitResponse($user, 'background', 5)) !== null) return $limited;
+        if (($limited = $this->rateLimitResponse($user, 'background', $this->config->getInt('rate_limit_background_per_minute', 5))) !== null) return $limited;
         $chatId = trim((string)($this->requestParam('chatId') ?? ''));
         $message = trim((string)($this->requestParam('message') ?? ''));
         $history = $this->requestParam('history', []);
@@ -1195,7 +1195,7 @@ class ApiController extends OCSController {
         if ($user === null) {
             return new DataResponse(['error' => 'Not logged in'], 401);
         }
-        if (($limited = $this->rateLimitResponse($user, 'file_context', 30)) !== null) return $limited;
+        if (($limited = $this->rateLimitResponse($user, 'file_context', $this->config->getInt('rate_limit_chat_per_minute', 30))) !== null) return $limited;
         $chatSlot = $this->acquireChatSlot($user);
         if ($chatSlot === null) return new DataResponse(['error' => 'busy', 'message' => 'Another chat request is already running. Please retry shortly.'], 429, ['Retry-After' => '5']);
         $fileIds = $this->requestParam('fileIds');
@@ -1362,7 +1362,7 @@ class ApiController extends OCSController {
     #[NoAdminRequired]
     public function streamChat(): StreamTraversableResponse {
         $user = $this->requireUser();
-        if ($user !== null && ($limited = $this->rateLimitResponse($user, 'stream', 10)) !== null) {
+        if ($user !== null && ($limited = $this->rateLimitResponse($user, 'stream', $this->config->getInt('rate_limit_stream_per_minute', 10))) !== null) {
             return new StreamTraversableResponse(new \ArrayIterator([json_encode(['type' => 'error', 'message' => 'Too many requests. Please retry shortly.']) . "\n"]), 429, ['Content-Type' => 'application/x-ndjson', 'Retry-After' => '60', 'Cache-Control' => 'no-cache, no-store, must-revalidate']);
         }
         $chatSlot = $user !== null ? $this->acquireChatSlot($user) : null;
