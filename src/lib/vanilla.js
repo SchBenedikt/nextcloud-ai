@@ -859,7 +859,7 @@ export function mountChat(root, opts = {}) {
 		// message so a reload rebuilds the panel (Issue #185).
 		if (role === 'assistant' && confirmation) body.confirmation = confirmation
 		if (role === 'assistant' && Array.isArray(tools) && tools.length) body.tools = tools
-		return api('POST', '/chats/' + chatId + '/messages', body)
+		return api('POST', '/chats/' + encodeURIComponent(chatId) + '/messages', body)
 			.then((resp) => {
 				// Keep the client's revision in sync so the next regenerate/edit
 				// validates against the current stored state.
