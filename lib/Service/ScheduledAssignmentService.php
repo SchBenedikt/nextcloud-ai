@@ -7,6 +7,7 @@ namespace OCA\EvaAi\Service;
 use OCP\Http\Client\IClientService;
 use OCP\IURLGenerator;
 use OCP\IConfig;
+use Psr\Log\LoggerInterface;
 
 /**
  * Service for interacting with Nextcloud Assistant's "Geplante Aufgaben" (Scheduled Assignments).
@@ -20,6 +21,7 @@ class ScheduledAssignmentService {
         IClientService $clientService,
         private IURLGenerator $urlGenerator,
         private IConfig $config,
+        private LoggerInterface $logger,
     ) {
         $this->client = $clientService->newClient();
         $this->baseUrl = rtrim($this->urlGenerator->linkToRouteAbsolute('ocs.AssignmentApi.list'), '/');
@@ -50,6 +52,7 @@ class ScheduledAssignmentService {
             }
             return $body['ocs']['data'];
         } catch (\Throwable $e) {
+            $this->logger->warning('eva_ai scheduled assignment list failed', ['url' => $url, 'user' => $userId, 'exception' => $e->getMessage()]);
             return [];
         }
     }
@@ -86,6 +89,7 @@ class ScheduledAssignmentService {
             }
             return null;
         } catch (\Throwable $e) {
+            $this->logger->warning('eva_ai scheduled assignment create failed', ['url' => $url, 'user' => $userId, 'exception' => $e->getMessage()]);
             return null;
         }
     }
@@ -109,6 +113,7 @@ class ScheduledAssignmentService {
             $body = json_decode($response->getBody(), true);
             return isset($body['ocs']['meta']['statuscode']) && $body['ocs']['meta']['statuscode'] === 200;
         } catch (\Throwable $e) {
+            $this->logger->warning('eva_ai scheduled assignment delete failed', ['url' => $url, 'user' => $userId, 'assignment' => $assignmentId, 'exception' => $e->getMessage()]);
             return false;
         }
     }
@@ -138,6 +143,7 @@ class ScheduledAssignmentService {
             }
             return null;
         } catch (\Throwable $e) {
+            $this->logger->warning('eva_ai scheduled assignment update failed', ['url' => $url, 'user' => $userId, 'assignment' => $assignmentId, 'exception' => $e->getMessage()]);
             return null;
         }
     }
