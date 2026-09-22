@@ -118,6 +118,21 @@ class ApiController extends OCSController {
         return null;
     }
 
+    private function acquireChatSlot(string $user): ?string {
+        $path = 'eva_ai/chat/' . hash('sha256', $user);
+        try {
+            $this->lockingProvider->acquireLock($path, ILockingProvider::LOCK_EXCLUSIVE, 'EVA chat request');
+            return $path;
+        } catch (\Throwable) {
+            return null;
+        }
+    }
+
+    private function releaseChatSlot(?string $path): void {
+        if ($path === null) return;
+        try { $this->lockingProvider->releaseLock($path, ILockingProvider::LOCK_EXCLUSIVE); } catch (\Throwable) { }
+    }
+
     private function requireUser(): ?string {
         return $this->userId ?: null;
     }
@@ -929,6 +944,8 @@ class ApiController extends OCSController {
             return new DataResponse(['error' => 'Not logged in'], 401);
         }
         if (($limited = $this->rateLimitResponse($user, 'chat', 30)) !== null) return $limited;
+        $chatSlot = $this->acquireChatSlot($user);
+        if ($chatSlot === null) return new DataResponse(['error' => 'busy', 'message' => 'Another chat request is already running. Please retry shortly.'], 429, ['Retry-After' => '5']);
         $message = trim((string)($this->requestParam('message') ?? ''));
         if ($message === '') {
             return new DataResponse(['error' => 'Empty message'], 400);
@@ -948,7 +965,11 @@ class ApiController extends OCSController {
         // (Issue #90) are resolved from the chat's stored metadata.
         $chatId = $this->requestParam('chatId');
         $custom = $this->customFor($user, $chatId);
-        return new DataResponse($this->ragService->ask($user, $message, $history, $this->scopePathFor($user, $chatId), $custom['instructions'], $custom['persona']));
+        try {
+            return new DataResponse($this->ragService->ask($user, $message, $history, $this->scopePathFor($user, $chatId), $custom['instructions'], $custom['persona']));
+        } finally {
+            $this->releaseChatSlot($chatSlot);
+        }
     }
 
     /** Queue a chat request so a closed browser tab cannot lose it. */
@@ -1175,6 +1196,8 @@ class ApiController extends OCSController {
             return new DataResponse(['error' => 'Not logged in'], 401);
         }
         if (($limited = $this->rateLimitResponse($user, 'file_context', 30)) !== null) return $limited;
+        $chatSlot = $this->acquireChatSlot($user);
+        if ($chatSlot === null) return new DataResponse(['error' => 'busy', 'message' => 'Another chat request is already running. Please retry shortly.'], 429, ['Retry-After' => '5']);
         $fileIds = $this->requestParam('fileIds');
         if (!is_array($fileIds)) {
             $fileIds = [];
@@ -1194,7 +1217,11 @@ class ApiController extends OCSController {
         if (!is_array($history)) {
             $history = [];
         }
-        return new DataResponse($this->fileContextChat->chat($user, $fileIds, $message, $history));
+        try {
+            return new DataResponse($this->fileContextChat->chat($user, $fileIds, $message, $history));
+        } finally {
+            $this->releaseChatSlot($chatSlot);
+        }
     }
 
     /**
@@ -1338,6 +1365,10 @@ class ApiController extends OCSController {
         if ($user !== null && ($limited = $this->rateLimitResponse($user, 'stream', 10)) !== null) {
             return new StreamTraversableResponse(new \ArrayIterator([json_encode(['type' => 'error', 'message' => 'Too many requests. Please retry shortly.']) . "\n"]), 429, ['Content-Type' => 'application/x-ndjson', 'Retry-After' => '60', 'Cache-Control' => 'no-cache, no-store, must-revalidate']);
         }
+        $chatSlot = $user !== null ? $this->acquireChatSlot($user) : null;
+        if ($user !== null && $chatSlot === null) {
+            return new StreamTraversableResponse(new \ArrayIterator([json_encode(['type' => 'error', 'message' => 'Another chat request is already running. Please retry shortly.']) . "\n"]), 429, ['Content-Type' => 'application/x-ndjson', 'Retry-After' => '5']);
+        }
         $body = json_decode((string)file_get_contents('php://input'), true);
         $message = trim((string)($body['message'] ?? ''));
         $history = isset($body['history']) && is_array($body['history']) ? $body['history'] : [];
@@ -1358,7 +1389,7 @@ class ApiController extends OCSController {
         $scopePath = $this->scopePathFor($user, $body['chatId'] ?? null);
         $custom = $this->customFor($user, $body['chatId'] ?? null);
 
-        $generator = (function () use ($user, $message, $history, $scopePath, $custom): \Generator {
+        $generator = (function () use ($user, $message, $history, $scopePath, $custom, $chatSlot): \Generator {
             // Aber die PHP-Output-Buffering-Schicht (php.ini output_buffering)
             // würde jede erzeugte Zeile bis zum Ende puffern -> keine Live-Streams.
             // Deshalb entfernen wir hier alle Puffer und flush'eriessen wirklich.
@@ -1401,6 +1432,7 @@ class ApiController extends OCSController {
                 // Dropping the generator reference closes nested stream
                 // resources on every supported PHP version.
                 $gen = null;
+                $this->releaseChatSlot($chatSlot);
             }
         })();
 
