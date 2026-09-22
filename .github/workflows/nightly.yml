@@ -15,7 +15,7 @@ jobs:
       matrix:
         nc: ['stable30', 'stable31', 'stable32', 'stable33', 'stable34', 'stable35', 'latest']
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Install into Nextcloud ${{ matrix.nc }} and check code
         run: |
