@@ -205,6 +205,15 @@ class ActionExecutor {
         $this->domainRegistry->register('read_mail', fn(string $user, array $args): array => $this->readMail($user, $args));
         $this->domainRegistry->register('unread_mail_count', fn(string $user, array $args): array => $this->unreadMailCount($user));
         $this->domainRegistry->register('summarize_emails', fn(string $user, array $args): array => $this->summarizeEmails($user, $args));
+        $this->domainRegistry->register('run_safe_command', fn(string $user, array $args): array => $this->runSafeCommand($args));
+        $this->domainRegistry->register('run_terminal_command', fn(string $user, array $args): array => $this->runTerminalCommand($args));
+        $this->domainRegistry->register('run_terminal_sequence', fn(string $user, array $args): array => $this->runTerminalSequence($args));
+        $this->domainRegistry->register('list_external_connectors', fn(string $user, array $args): array => $this->listExternalConnectors());
+        $this->domainRegistry->register('discover_external_connector', fn(string $user, array $args): array => $this->discoverExternalConnector($args));
+        $this->domainRegistry->register('configure_external_connector', fn(string $user, array $args): array => $this->configureExternalConnector($args));
+        $this->domainRegistry->register('diagnose_external_connector', fn(string $user, array $args): array => $this->diagnoseExternalConnector($args));
+        $this->domainRegistry->register('call_external_connector', fn(string $user, array $args): array => $this->callExternalConnector($args));
+        $this->domainRegistry->register('call_external_connector_batch', fn(string $user, array $args): array => $this->callExternalConnectorBatch($args));
     }
 
     /**
@@ -1264,12 +1273,6 @@ class ActionExecutor {
                 'search_images' => $this->runImageSearch($args),
                 'create_sticker' => $this->createSticker($home, $args),
                 'open_website' => $this->openWebsite($args),
-                'list_external_connectors' => $this->listExternalConnectors(),
-                'discover_external_connector' => $this->discoverExternalConnector($args),
-                'configure_external_connector' => $this->configureExternalConnector($args),
-                'diagnose_external_connector' => $this->diagnoseExternalConnector($args),
-                'call_external_connector' => $this->callExternalConnector($args),
-                'call_external_connector_batch' => $this->callExternalConnectorBatch($args),
                 'list_talk_rooms' => $this->listTalkRooms($userId, $args),
                 'read_talk_chat' => $this->readTalkChat($userId, $args),
                 'send_talk_message' => $this->sendTalkMessage($userId, $args),
@@ -1297,9 +1300,6 @@ class ActionExecutor {
                 'list_file_versions' => $this->listFileVersions($home, $args),
                 'restore_file_version' => $this->restoreFileVersion($home, $args),
                 'server_status' => $this->serverStatus($userId),
-                'run_safe_command' => $this->runSafeCommand($args),
-                'run_terminal_command' => $this->runTerminalCommand($args),
-                'run_terminal_sequence' => $this->runTerminalSequence($args),
                 'list_nextcloud_capabilities' => $this->listNextcloudCapabilities(),
                 'discover_app_api' => $this->discoverAppApi($args),
                 'list_learned_app_apis' => $this->listLearnedAppApis(),
