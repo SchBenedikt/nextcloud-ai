@@ -6,6 +6,7 @@ namespace OCA\EvaAi\Service;
 
 use OCA\EvaAi\Db\ChunkMapper;
 use OCA\EvaAi\Db\DocumentMapper;
+use OCA\EvaAi\Dto\ChatRequest;
 use OCP\Files\IRootFolder;
 use OCP\IURLGenerator;
 use OCP\L10N\IFactory;
@@ -87,7 +88,17 @@ class RagService {
 	 *        the room's indexed chat history). It is wrapped as untrusted data
 	 *        like the file context, so it can never act as instructions.
 	 */
-	public function ask(string $userId, string $message, array $history, ?string $scopePath = null, ?string $instructions = null, ?string $persona = null, ?string $extraContext = null, bool $allowActions = true, bool $autonomousActions = false, ?callable $shouldStop = null, ?callable $onProgress = null): array {
+	public function ask(ChatRequest $request): array {
+        $userId = $request->userId;
+        $message = $request->message;
+        $history = $request->history;
+        $scopePath = $request->scopePath;
+        $instructions = $request->instructions;
+        $persona = $request->persona;
+        $extraContext = $request->extraContext;
+        $allowActions = $request->allowActions;
+        $shouldStop = $request->shouldStop;
+        $onProgress = $request->onProgress;
 		$this->config->setUserId($userId);
         $this->toolSources = [];
         $this->toolImages = [];

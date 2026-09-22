@@ -50,9 +50,19 @@ final class BackgroundChatJob extends TimedJob {
                 $this->rag->setUserIdForExecution($user);
                 $backgroundActions = $this->rag->backgroundActionsEnabled($user);
                 $deadline = (int)($item['deadline'] ?? 0);
-                $result = $this->rag->ask($user, (string)$item['message'], is_array($item['history'] ?? null) ? $item['history'] : [], (string)($chat['scopePath'] ?? ''), (string)($chat['instructions'] ?? ''), (string)($chat['persona'] ?? ''), null, $backgroundActions, $backgroundActions, fn(): bool => $this->queue->isCancellationRequested($user, $id) || ($deadline > 0 && time() >= $deadline), function (string $phase, ?string $tool, ?array $arguments = null) use ($user, $id): void {
+                $result = $this->rag->ask(new \OCA\EvaAi\Dto\ChatRequest(
+                    userId: $user,
+                    message: (string)$item['message'],
+                    history: is_array($item['history'] ?? null) ? $item['history'] : [],
+                    scopePath: (string)($chat['scopePath'] ?? ''),
+                    instructions: (string)($chat['instructions'] ?? ''),
+                    persona: (string)($chat['persona'] ?? ''),
+                    allowActions: $backgroundActions,
+                    autonomousActions: $backgroundActions,
+                    shouldStop: fn(): bool => $this->queue->isCancellationRequested($user, $id) || ($deadline > 0 && time() >= $deadline),
+                    onProgress: function (string $phase, ?string $tool, ?array $arguments = null) use ($user, $id): void {
                     $this->queue->updateProgress($user, $id, $phase, $tool, $arguments);
-                });
+                    }));
                 if (($result['error'] ?? null) === 'timeout') {
                     $this->queue->markTimedOut($user, $id);
                     $notification = $this->notifications->createNotification();

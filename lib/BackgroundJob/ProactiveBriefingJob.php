@@ -89,7 +89,12 @@ final class ProactiveBriefingJob extends TimedJob {
                 $mode = $allowActions
                     ? 'This briefing explicitly allows autonomous actions. Execute only actions needed for the request, and do not invent extra work.'
                     : 'You are in read-only scheduled mode: never execute, propose, or request confirmation for actions.';
-                $answer = $this->rag->ask($userId, "Scheduled EVA briefing. Answer the following request concisely. " . $mode . "\n\n" . $prompt, [], '', '', '', null, $allowActions, $allowActions);
+                $answer = $this->rag->ask(new \OCA\EvaAi\Dto\ChatRequest(
+                    userId: $userId,
+                    message: "Scheduled EVA briefing. Answer the following request concisely. " . $mode . "\n\n" . $prompt,
+                    allowActions: $allowActions,
+                    autonomousActions: $allowActions,
+                ));
                 $text = trim((string)($answer['answer'] ?? ''));
                 if ($text === '') {
                     throw new \RuntimeException('empty model answer');
