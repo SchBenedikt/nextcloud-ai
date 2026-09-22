@@ -123,7 +123,7 @@ class ChunkMapper extends QBMapper {
         }
         $like = $qb->expr()->orX();
         foreach (array_slice($tokens, 0, 12) as $tok) {
-            $like->add($qb->expr()->like('c.content', $qb->createNamedParameter('%' . $tok . '%')));
+            $like->add($qb->expr()->like('c.content', $qb->createNamedParameter('%' . $this->escapeLike($tok) . '%')));
         }
         $qb->andWhere($like);
         $qb->orderBy('c.document_id', 'ASC')
@@ -132,6 +132,10 @@ class ChunkMapper extends QBMapper {
         $rows = $result->fetchAll();
         $result->closeCursor();
         return $rows;
+    }
+
+    private function escapeLike(string $value): string {
+        return addcslashes($value, '%_\\');
     }
 
     /**
