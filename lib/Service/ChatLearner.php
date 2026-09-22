@@ -55,7 +55,7 @@ class ChatLearner {
      * @param array<int,array{role:string,text:string}> $messages
      */
     public function learnFromChat(string $userId, array $messages): void {
-        if ($userId === [] || $messages === []) {
+        if ($userId === '' || $messages === []) {
             return;
         }
         $this->config->setUserId($userId);
