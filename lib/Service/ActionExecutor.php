@@ -214,6 +214,12 @@ class ActionExecutor {
         $this->domainRegistry->register('diagnose_external_connector', fn(string $user, array $args): array => $this->diagnoseExternalConnector($args));
         $this->domainRegistry->register('call_external_connector', fn(string $user, array $args): array => $this->callExternalConnector($args));
         $this->domainRegistry->register('call_external_connector_batch', fn(string $user, array $args): array => $this->callExternalConnectorBatch($args));
+        $this->domainRegistry->register('current_time', fn(string $user, array $args): array => $this->currentTime($user));
+        $this->domainRegistry->register('server_status', fn(string $user, array $args): array => $this->serverStatus($user));
+        $this->domainRegistry->register('weather', fn(string $user, array $args): array => $this->weather($args));
+        $this->domainRegistry->register('web_search', fn(string $user, array $args): array => $this->runWebSearch($args));
+        $this->domainRegistry->register('search_images', fn(string $user, array $args): array => $this->runImageSearch($args));
+        $this->domainRegistry->register('open_website', fn(string $user, array $args): array => $this->openWebsite($args));
     }
 
     /**
@@ -1267,12 +1273,7 @@ class ActionExecutor {
                 'update_calendar_event' => $this->calendar->updateEvent($userId, $args),
                 'delete_calendar_event' => $this->calendar->deleteEvent($userId, $args),
                 'find_free_slots' => $this->calendar->findFreeSlots($userId, $args),
-                'current_time' => $this->currentTime($userId),
-                'weather' => $this->weather($args),
-                'web_search' => $this->runWebSearch($args),
-                'search_images' => $this->runImageSearch($args),
                 'create_sticker' => $this->createSticker($home, $args),
-                'open_website' => $this->openWebsite($args),
                 'list_talk_rooms' => $this->listTalkRooms($userId, $args),
                 'read_talk_chat' => $this->readTalkChat($userId, $args),
                 'send_talk_message' => $this->sendTalkMessage($userId, $args),
@@ -1299,7 +1300,6 @@ class ActionExecutor {
                 'untag_file' => $this->tagFile($userId, $args, true),
                 'list_file_versions' => $this->listFileVersions($home, $args),
                 'restore_file_version' => $this->restoreFileVersion($home, $args),
-                'server_status' => $this->serverStatus($userId),
                 'list_nextcloud_capabilities' => $this->listNextcloudCapabilities(),
                 'discover_app_api' => $this->discoverAppApi($args),
                 'list_learned_app_apis' => $this->listLearnedAppApis(),
