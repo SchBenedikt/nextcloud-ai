@@ -218,6 +218,7 @@ import NcActionSeparator from '@nextcloud/vue/components/NcActionSeparator'
 import NcIconSvgWrapper from '@nextcloud/vue/components/NcIconSvgWrapper'
 import { api as requestApi, errMsg } from './lib/api'
 import { translate as t } from './lib/i18n'
+import { useNavigation } from './composables/useNavigation'
 
 export default {
 	name: 'EvaAiApp',
@@ -227,34 +228,15 @@ export default {
 			const rootEl = document.getElementById('eva_ai-root')
 			const isAdminMode = !!(rootEl && rootEl.dataset && rootEl.dataset.admin === '1')
 
-		const parseFileIds = (value) => [...new Set(String(value || '').split(',').map((part) => Number.parseInt(part, 10)).filter((id) => Number.isSafeInteger(id) && id > 0))]
-		const resolveRoute = (location) => {
-			const url = new URL(location.href)
-			const explicitView = url.searchParams.get('view')
-			const validViews = ['home', 'docs', 'settings', 'metrics', 'runs', 'fileContext']
-			if (validViews.includes(explicitView)) {
-				return { view: explicitView, chatId: null, fileIds: explicitView === 'fileContext' ? parseFileIds(url.searchParams.get('fileIds')) : [] }
-			}
-			const path = url.pathname.replace(/\/+$/, '')
-			const pathView = path.endsWith('/settings') ? 'settings'
-				: path.endsWith('/documents') ? 'docs'
-					: path.endsWith('/metrics') ? 'metrics'
-						: path.endsWith('/runs') ? 'runs' : 'home'
-			const chatId = url.searchParams.get('chat')
-			return chatId ? { view: 'chat', chatId, fileIds: [] } : { view: pathView, chatId: null, fileIds: [] }
-		}
-		// Deep links from the dashboard widget (?chat=new | ?chat=<id>) use the
-		// same route parser as browser back/forward navigation.
-		const initialRoute = resolveRoute(window.location)
-		const initialChatParam = new URLSearchParams(window.location.search).get('chat')
-		const view = ref(initialRoute.view)
-		const fileContextIds = ref(initialRoute.fileIds)
+		const view = ref('home')
+		const fileContextIds = ref([])
 		const mobileOpen = ref(false)
 		const buildVersion = appVersion
 
 		const chats = ref([])
 		const folders = ref([])
 		const currentChat = ref(null)
+		const { initialChatParam, navigate } = useNavigation({ chats, currentChat, view, fileContextIds })
 		const busy = ref(false)
 		const chatsLoading = ref(true)
 		// First message typed on the dashboard hero: passed to the chat view
@@ -396,30 +378,6 @@ export default {
 			} catch (error) {
 				return {}
 			}
-		}
-
-		const appRootPath = () => {
-			const current = window.location.pathname.replace(/\/+$/, '')
-			return current.replace(/\/(settings|documents|metrics|runs|app|standalone)$/, '') || current
-		}
-		const navigate = (nextView) => {
-			view.value = nextView
-			const url = new URL(window.location.href)
-			url.searchParams.delete('view')
-			url.searchParams.delete('fileIds')
-			if (nextView === 'chat' && currentChat.value) {
-				// Keep the open conversation in the URL so refresh and
-				// dashboard links land on the same chat.
-				url.searchParams.set('chat', currentChat.value)
-			} else {
-				url.searchParams.delete('chat')
-			}
-			// 'home' and 'chat' share the app root path; only docs/settings
-			// get their own suffix.
-			url.pathname = nextView === 'chat' || nextView === 'home'
-				? appRootPath()
-				: appRootPath() + '/' + (nextView === 'docs' ? 'documents' : nextView)
-			window.history.pushState({}, '', url.toString())
 		}
 
 		const loadChats = () => {
@@ -583,36 +541,9 @@ export default {
 			}
 		}
 
-		const onPopState = () => {
-			const route = resolveRoute(window.location)
-			if (route.view === 'chat') {
-				if (route.chatId && route.chatId !== 'new' && chats.value.some((chat) => chat.id === route.chatId)) {
-					currentChat.value = route.chatId
-					view.value = 'chat'
-				} else {
-					currentChat.value = null
-					view.value = 'home'
-				}
-			} else {
-				view.value = route.view
-			}
-			fileContextIds.value = route.fileIds
-		}
 		const onChatsCleared = () => {
 			currentChat.value = null
 			loadChats()
-		}
-		const onFileContext = (event) => {
-			const ids = event && event.detail && Array.isArray(event.detail.fileIds) ? parseFileIds(event.detail.fileIds) : []
-			if (ids.length === 0) return
-			fileContextIds.value = ids
-			view.value = 'fileContext'
-			// URL anpassen, damit der User die Seite bookmarken/teilen kann.
-			const url = new URL(window.location.href)
-			url.searchParams.set('view', 'fileContext')
-			url.searchParams.set('fileIds', ids.join(','))
-			url.searchParams.delete('chat')
-			window.history.pushState({}, '', url.toString())
 		}
 
 		onMounted(() => {
@@ -627,17 +558,13 @@ export default {
 				}
 			})
 			if (typeof window !== 'undefined' && window.addEventListener) {
-				window.addEventListener('popstate', onPopState)
 				window.addEventListener('eva-ai:chats-cleared', onChatsCleared)
-				window.addEventListener('eva-ai:file-context', onFileContext)
 			}
 		})
 
 		onBeforeUnmount(() => {
 			if (searchTimer !== null) window.clearTimeout(searchTimer)
-			window.removeEventListener('popstate', onPopState)
 			window.removeEventListener('eva-ai:chats-cleared', onChatsCleared)
-			window.removeEventListener('eva-ai:file-context', onFileContext)
 		})
 
 		return {
