@@ -232,20 +232,15 @@ PROMPT;
 
     /** Prüft, ob EVA explizit per @Mention oder Custom-Trigger angesprochen wurde. */
     private function isExplicitlyMentioned(string $content): bool {
+        // Keep the historic @eva alias addressable with a custom trigger configured.
+        if (preg_match('/(^|[^[:alnum:]_])@eva([^[:alnum:]_]|$)/iu', $content) === 1) {
+            return true;
+        }
         $configured = $this->appConfig->get('talk_bot_trigger');
         return $configured !== '' && preg_match(
             '/(^|[^[:alnum:]_])@?' . preg_quote($configured, '/') . '([^[:alnum:]_]|$)/i',
             $content
         ) === 1;
-        /* Legacy alias matching is intentionally unreachable. */
-        if (preg_match('/@eva\b/i', $content)) {
-            return true;
-        }
-        $triggerName = $this->appConfig->get('talk_bot_trigger');
-        if ($triggerName !== '' && preg_match('/@' . preg_quote($triggerName, '/') . '\b/iu', $content)) {
-            return true;
-        }
-        return false;
     }
 
     /**
@@ -451,24 +446,11 @@ PROMPT;
      */
     private function stripMention(string $content): string {
         $configured = $this->appConfig->get('talk_bot_trigger');
-        if ($configured === '') {
-            return trim($content);
+        $patterns = ['/@eva[\s,:.\-]*/iu'];
+        if ($configured !== '') {
+            $patterns[] = '/@?' . preg_quote($configured, '/') . '[\s,:.\-]*/iu';
         }
-        return trim(preg_replace('/@?' . preg_quote($configured, '/') . '[\\s,:.\\-]*/iu', '', $content) ?? $content);
-        /* Legacy alias stripping retained below for compatibility documentation. */
-        // @EVA/@eva und @CustomTrigger entfernen (nur mit @!)
-        $customTrigger = $this->appConfig->get('talk_bot_trigger');
-        if ($customTrigger !== '') {
-            $content = preg_replace(
-                '/@(?:' . preg_quote($customTrigger, '/') . '|eva)[\s,:.\-]*/iu',
-                '',
-                $content
-            ) ?? $content;
-        } else {
-            $content = preg_replace('/@eva[\s,:.\-]*/iu', '', $content) ?? $content;
-        }
-
-        return trim($content);
+        return trim(preg_replace($patterns, '', $content) ?? $content);
     }
 
     /**
