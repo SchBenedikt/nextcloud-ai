@@ -7,6 +7,7 @@ namespace OCA\EvaAi\Service;
 use OCP\Files\File;
 use OCP\Files\IRootFolder;
 use OCP\IUserManager;
+use Psr\Log\LoggerInterface;
 
 /**
  * Creates a small, per-user identity section in KNOWLEDGE.md on first use.
@@ -20,7 +21,8 @@ class KnowledgeInitializer {
     public function __construct(
         private AppConfig $config,
         private IRootFolder $rootFolder,
-        private IUserManager $userManager
+        private IUserManager $userManager,
+        private LoggerInterface $logger
     ) {
     }
 
@@ -68,6 +70,10 @@ class KnowledgeInitializer {
             $this->config->set('knowledge_initialized', self::INITIALIZED);
         } catch (\Throwable $e) {
             // A transient VFS/profile failure must be retryable on the next app request.
+            $this->logger->warning('eva_ai knowledge profile initialization failed', [
+                'user' => $userId,
+                'exception' => $e->getMessage(),
+            ]);
         }
     }
 
