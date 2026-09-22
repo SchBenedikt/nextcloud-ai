@@ -54,6 +54,8 @@ The API controller must use Nextcloud's IRequest access plus one non-recursive J
 `.github/workflows/tests.yml`:
 
 - **PHPUnit matrix** on PHP 8.2, 8.3, 8.4
+- **Coverage report** on PHP 8.3 with Xdebug; the Clover XML is retained as a
+  workflow artifact for pull-request review and trend tracking
 - **PHP syntax check** (lint) on PHP 8.3
 - `composer install` has a built-in retry (3 attempts) because fresh GitHub
   runners can transiently fail downloading Composer dist archives from the

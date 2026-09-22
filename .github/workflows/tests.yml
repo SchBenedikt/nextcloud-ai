@@ -6,6 +6,27 @@ on:
   pull_request:
 
 jobs:
+  coverage:
+    name: PHPUnit coverage (PHP 8.3)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup PHP with Xdebug
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+          coverage: xdebug
+      - name: Install dependencies
+        run: composer install --no-interaction --prefer-dist
+      - name: Generate Clover coverage report
+        run: php -d xdebug.mode=coverage vendor/bin/phpunit --bootstrap tests/bootstrap.php --coverage-clover coverage.xml tests/
+      - name: Upload coverage artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: phpunit-coverage
+          path: coverage.xml
+          if-no-files-found: error
+
   phpunit:
     name: PHPUnit (${{ matrix.php }})
     runs-on: ubuntu-latest
