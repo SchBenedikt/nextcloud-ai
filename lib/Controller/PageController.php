@@ -69,23 +69,50 @@ class PageController extends Controller {
     #[NoCSRFRequired]
     public function standalone(): TemplateResponse {
         Util::addTranslations('eva_ai');
-        $jsDir = $this->appManager->getAppPath('eva_ai') . '/js';
-        $standalone = null;
+        $standalone = $this->findBundle('eva_ai_standalone');
+        if ($standalone !== null) {
+            \OCP\Util::addScript('eva_ai', $standalone);
+        }
+        $this->addPageHeaders('standalone-1');
+
+        $response = new TemplateResponse('eva_ai', 'standalone', [
+            'version' => 'standalone-1',
+        ]);
+        $this->allowWebImages($response);
+        return $this->noCache($response);
+    }
+
+    private function appPage(string $template): TemplateResponse {
+        Util::addTranslations('eva_ai');
+        $main = $this->findBundle('eva_ai-main');
+        if ($main !== null) {
+            \OCP\Util::addScript('eva_ai', $main);
+            $this->addPageHeaders('shell-v2');
+        }
+        $response = new TemplateResponse('eva_ai', $template, [
+            'apiBase' => $this->urlGenerator->getAbsoluteURL('/ocs/v2.php/apps/eva_ai/api/'),
+        ]);
+        $this->allowWebImages($response);
+        return $this->noCache($response);
+    }
+
+    private function findBundle(string $prefix): ?string {
+        $files = glob($this->appManager->getAppPath('eva_ai') . '/js/' . $prefix . '*.js') ?: [];
         $candidates = [];
-        foreach (glob($jsDir . '/eva_ai_standalone*.js') ?: [] as $file) {
-            $base = basename($file);
-            if ($base !== 'eva_ai_standalone.js' || str_ends_with($base, '.map')) {
+        foreach ($files as $file) {
+            if (basename($file) !== $prefix . '.js') {
                 continue;
             }
             $candidates[$file] = filemtime($file);
         }
-        if ($candidates !== []) {
-            arsort($candidates);
-            $standalone = basename((string)array_key_first($candidates), '.js');
+        if ($candidates === []) {
+            return null;
         }
-        if ($standalone !== null) {
-            \OCP\Util::addScript('eva_ai', $standalone);
-        }
+        arsort($candidates);
+        return basename((string)array_key_first($candidates), '.js');
+    }
+
+    private function addPageHeaders(string $version): void {
         \OCP\Util::addHeader('meta', [
             'name' => 'requesttoken',
             'content' => \OC::$server->get(\OC\Security\CSRF\CsrfTokenManager::class)->getToken()->getEncryptedValue(),
@@ -100,60 +127,8 @@ class PageController extends Controller {
         ]);
         \OCP\Util::addHeader('meta', [
             'name' => 'eva-ai-version',
-            'content' => 'standalone-1',
+            'content' => $version,
         ]);
-
-        $response = new TemplateResponse('eva_ai', 'standalone', [
-            'version' => 'standalone-1',
-        ]);
-        $this->allowWebImages($response);
-        return $this->noCache($response);
-    }
-
-    private function appPage(string $template): TemplateResponse {
-        Util::addTranslations('eva_ai');
-        $jsDir = $this->appManager->getAppPath('eva_ai') . '/js';
-        $main = null;
-        $candidates = [];
-        foreach (glob($jsDir . '/eva_ai-main*.js') ?: [] as $file) {
-            $base = basename($file);
-            // Only the webpack main bundle qualifies; leftover artifacts from
-            // older build configurations (e.g. eva_ai-main-groq.*.js) must
-            // never be picked as the app bundle.
-            if ($base !== 'eva_ai-main.js'
-                || str_ends_with($base, '.map')) {
-                continue;
-            }
-            $candidates[$file] = filemtime($file);
-        }
-        if ($candidates !== []) {
-            arsort($candidates);
-            $main = basename((string)array_key_first($candidates), '.js');
-        }
-        if ($main !== null) {
-            \OCP\Util::addScript('eva_ai', $main);
-            \OCP\Util::addHeader('meta', [
-                'name' => 'requesttoken',
-                'content' => \OC::$server->get(\OC\Security\CSRF\CsrfTokenManager::class)->getToken()->getEncryptedValue(),
-            ]);
-            \OCP\Util::addHeader('meta', [
-                'name' => 'eva-ai-api',
-                'content' => $this->urlGenerator->getAbsoluteURL('/ocs/v2.php/apps/eva_ai/api/'),
-            ]);
-            \OCP\Util::addHeader('meta', [
-                'name' => 'eva-ai-stream',
-                'content' => $this->urlGenerator->getAbsoluteURL('/ocs/v2.php/apps/eva_ai/api/streamChat?format=json'),
-            ]);
-            \OCP\Util::addHeader('meta', [
-                'name' => 'eva-ai-version',
-                'content' => 'shell-v2',
-            ]);
-        }
-        $response = new TemplateResponse('eva_ai', $template, [
-            'apiBase' => $this->urlGenerator->getAbsoluteURL('/ocs/v2.php/apps/eva_ai/api/'),
-        ]);
-        $this->allowWebImages($response);
-        return $this->noCache($response);
     }
 
     /**
