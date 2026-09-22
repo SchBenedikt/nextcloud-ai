@@ -27,6 +27,8 @@ class ChatStore {
     private const MAX_MESSAGES = 1000;
     private const MAX_TITLE = 60;
     private const SNIPPET_RADIUS = 60;
+    /** @var array<string,string> raw chat payloads read under the user lock */
+    private array $rawSnapshots = [];
 
     public function __construct(
         private IAppDataFactory $appDataFactory,
@@ -712,7 +714,22 @@ class ChatStore {
             $this->logger->warning('eva_ai: chat folder not readable (permissions?)', ['user' => $user]);
             throw $e;
         }
-        return $this->decodeStoredList($raw, 'chat data');
+        $this->rawSnapshots[$user] = $raw;
+        try {
+            return $this->decodeStoredList($raw, 'chat data');
+        } catch (\RuntimeException $error) {
+            // Recover the last complete payload when a worker was killed
+            // while replacing chats.json. The corrupt live file remains in
+            // place for the explicit repair command to inspect.
+            try {
+                $backup = $this->userFolderFor($user)->getFile('chats.json.backup')->getContent();
+                $recovered = $this->decodeStoredList($backup, 'chat backup');
+                $this->logger->warning('eva_ai: recovered chats from backup after corrupt write', ['user' => $user]);
+                return $recovered;
+            } catch (\Throwable) {
+                throw $error;
+            }
+        }
     }
 
     private function decodeStoredList(string $raw, string $label): array {
@@ -731,7 +748,27 @@ class ChatStore {
     private function write(string $user, array $data): void {
         try {
             $json = json_encode($data, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR);
-            $this->rootFor($user)->putContent($json);
+            $root = $this->rootFor($user);
+            // SimpleFS does not expose an atomic rename operation. Keep the
+            // last valid payload beside the live file before replacing it so a
+            // worker kill during putContent() cannot permanently destroy the
+            // conversation (Issue #389).
+            try {
+                $previous = $this->rawSnapshots[$user] ?? '';
+                if ($previous !== '') {
+                    $folder = $this->userFolderFor($user);
+                    $backupName = 'chats.json.backup';
+                    if ($folder->fileExists($backupName)) {
+                        $folder->getFile($backupName)->putContent($previous);
+                    } else {
+                        $folder->newFile($backupName, $previous);
+                    }
+                }
+            } catch (\Throwable $backupError) {
+                $this->logger->debug('eva_ai: chat backup could not be updated', ['exception' => $backupError->getMessage()]);
+            }
+            $root->putContent($json);
+            unset($this->rawSnapshots[$user]);
         } catch (\Throwable $e) {
             $this->logger->error('eva_ai: chat save failed - chats may disappear after reload', [
                 'user' => $user,
