@@ -386,6 +386,10 @@ class AdminController extends OCSController {
             'indexing' => $this->config->get('index_running') === '1',
             'mode' => $this->config->get('index_mode'),
             'error' => $this->config->get('last_index_error'),
+            'indexStartedAt' => (int)$this->config->get('index_started'),
+            'indexFinishedAt' => (int)$this->config->get('index_finished'),
+            'lastProcessed' => (int)$this->config->get('last_index_processed'),
+            'lastTotal' => (int)$this->config->get('last_index_total'),
             'actionsEnabled' => $this->config->get('actions_enabled') === '1',
             'mailIndexEnabled' => $this->config->get('mail_index_enabled') === '1',
         ];
