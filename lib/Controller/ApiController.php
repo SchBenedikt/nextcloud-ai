@@ -1963,4 +1963,15 @@ class ApiController extends OCSController {
         return $response;
     }
 
+    #[NoAdminRequired]
+    public function importData(): DataResponse {
+        $user = $this->requireUser();
+        if ($user === null) return new DataResponse(['error' => 'Not logged in'], 401);
+        $body = $this->requestBody();
+        $chats = $body['chats'] ?? null;
+        if (!is_array($chats)) return new DataResponse(['error' => 'A JSON export with a chats array is required.'], 400);
+        $count = $this->chatStore->importAll($user, $chats);
+        return new DataResponse(['ok' => true, 'imported' => $count]);
+    }
+
 }

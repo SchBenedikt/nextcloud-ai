@@ -227,6 +227,29 @@ class ChatStore {
         }, ILockingProvider::LOCK_SHARED);
     }
 
+    /** Import validated chat history as new chats, never overwriting existing IDs. */
+    public function importAll(string $user, array $chats): int {
+        return $this->withUserLock($user, function () use ($user, $chats): int {
+            $all = $this->read($user);
+            $imported = 0;
+            foreach (array_slice($chats, 0, 500) as $source) {
+                if (!is_array($source)) continue;
+                $messages = [];
+                foreach (array_slice((array)($source['messages'] ?? []), 0, 500) as $message) {
+                    if (!is_array($message) || !in_array($message['role'] ?? '', ['user', 'assistant'], true)) continue;
+                    $text = trim((string)($message['text'] ?? ''));
+                    if ($text === '' || mb_strlen($text) > 50000) continue;
+                    $messages[] = ['role' => $message['role'], 'text' => $text];
+                }
+                if ($messages === []) continue;
+                $all[] = ['id' => 'c' . date('YmdHis') . '-' . bin2hex(random_bytes(5)), 'title' => $this->clipTitle((string)($source['title'] ?? '')), 'created' => time(), 'updated' => time(), 'messages' => $messages, 'rev' => 1];
+                $imported++;
+            }
+            if ($imported > 0) $this->write($user, $all);
+            return $imported;
+        });
+    }
+
     /**
      * Remove the user's complete chat storage (hashed + legacy folders) when
      * their account is deleted (Issue #83).
