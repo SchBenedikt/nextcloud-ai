@@ -59,6 +59,14 @@ The API controller must use Nextcloud's IRequest access plus one non-recursive J
   runners can transiently fail downloading Composer dist archives from the
   GitHub API with an SSL error.
 
+### Dependency updates
+
+Dependabot checks Composer, npm and GitHub Actions dependencies monthly. It
+opens at most five pull requests per ecosystem and labels them for review.
+Every update still runs the normal CI matrix; merge only after the complete
+check suite is green and the dependency's supported Nextcloud/PHP range has
+been verified.
+
 ## Code style
 
 - PSR-4 namespaces (`OCA\EvaAi\…`)
