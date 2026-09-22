@@ -15,6 +15,7 @@ use Sabre\VObject\Recur\EventIterator;
  * ändern und Termine löschen über den CalDAV-Backend (eigener Benutzer).
  */
 class CalendarService {
+    private const MAX_TASK_RESULTS = 500;
     public function __construct(
         private CalDavBackend $backend,
         private IConfig $config
@@ -652,10 +653,14 @@ class CalendarService {
         }
         // Overdue-only: nur Aufgaben mit DUE < jetzt (in der Nutzer-Zeitzone).
         $overdueOnly = !empty($args['overdue_only']);
+        $limit = max(1, min(self::MAX_TASK_RESULTS, (int)($args['limit'] ?? self::MAX_TASK_RESULTS)));
         $now = new \DateTimeImmutable('now', $this->userTimeZone($userId));
         $out = [];
         foreach ($cals as $c) {
             foreach ($this->backend->getCalendarObjects((int)$c['id']) as $obj) {
+                if (count($out) >= $limit) {
+                    break 2;
+                }
                 if (strtolower((string)($obj['component'] ?? '')) !== 'vtodo') {
                     continue;
                 }
@@ -695,6 +700,9 @@ class CalendarService {
                         'categories' => $vt->CATEGORIES ? array_map('trim', explode(',', (string)$vt->CATEGORIES)) : [],
                         'overdue' => $due !== null && $due < $now && $status !== 'completed',
                     ];
+                    if (count($out) >= $limit) {
+                        break 2;
+                    }
                 }
             }
         }
