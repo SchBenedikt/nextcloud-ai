@@ -10,7 +10,7 @@ jobs:
     name: PHPUnit coverage (PHP 8.3)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Setup PHP with Xdebug
         uses: shivammathur/setup-php@v2
         with:
@@ -35,7 +35,7 @@ jobs:
       matrix:
         php: ['8.2', '8.3', '8.4']
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Setup PHP
         uses: shivammathur/setup-php@v2
@@ -64,8 +64,8 @@ jobs:
       matrix:
         php: ['8.2', '8.3', '8.4']
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
+      - uses: actions/checkout@v7
         with:
           repository: nextcloud/server
           ref: v32.0.0
@@ -85,7 +85,7 @@ jobs:
     name: Frontend production build
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Setup Node
         uses: actions/setup-node@v4
@@ -133,7 +133,7 @@ jobs:
     name: Migration and provider regression tests
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Setup PHP
         uses: shivammathur/setup-php@v2
@@ -157,7 +157,7 @@ jobs:
         # the newest supported line on every pull request.
         nc: ['stable30', 'stable33', 'stable35']
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Install and exercise the app in Nextcloud ${{ matrix.nc }}
         env:
           NC: ${{ matrix.nc }}
@@ -190,7 +190,7 @@ jobs:
     name: PHP syntax check
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Setup PHP
         uses: shivammathur/setup-php@v2
