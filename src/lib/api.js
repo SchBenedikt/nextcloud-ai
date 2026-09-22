@@ -18,6 +18,12 @@ export async function api(method, path, data) {
 	}
 	const res = await axios.request(cfg)
 	const body = res && res.data
+	const ocsStatus = Number(body?.ocs?.meta?.statuscode)
+	if (Number.isFinite(ocsStatus) && ocsStatus >= 400) {
+		const error = new Error(body?.ocs?.meta?.message || body?.ocs?.message || 'OCS request failed')
+		error.response = { status: ocsStatus, data: body }
+		throw error
+	}
 	if (body && body.ocs && typeof body.ocs.data !== 'undefined') {
 		return body.ocs.data
 	}
