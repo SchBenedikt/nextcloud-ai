@@ -10,7 +10,12 @@ import { generateOcsUrl } from '@nextcloud/router'
 export async function api(method, path, data, options = {}) {
 	const normalizedPath = String(path || '').replace(/^\/+/, '')
 	const url = generateOcsUrl('/apps/eva_ai/api/' + normalizedPath)
-	const cfg = { method, url, ...(options && typeof options === 'object' ? options : {}) }
+	const cfg = {
+		method,
+		url,
+		timeout: normalizedPath.toLowerCase().includes('chat') ? 60000 : 30000,
+		...(options && typeof options === 'object' ? options : {}),
+	}
 	if (method === 'GET' && data !== undefined && data !== null) {
 		cfg.params = data
 	} else if (method !== 'GET' && data !== undefined) {
