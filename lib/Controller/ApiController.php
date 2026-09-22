@@ -100,6 +100,24 @@ class ApiController extends OCSController {
         return mb_strlen($message) > self::MAX_MESSAGE_LENGTH;
     }
 
+    /** Enforce a bounded per-user request budget in a shared cache window. */
+    private function rateLimitResponse(string $user, string $bucket, int $max): ?DataResponse {
+        try {
+            $cache = $this->cacheFactory->createLocking('eva_ai_rate');
+            $window = intdiv(time(), 60);
+            $key = 'v1:' . hash('sha256', $user) . ':' . $bucket . ':' . $window;
+            $cache->add($key, 0, 61);
+            $count = $cache->inc($key);
+            if (is_int($count) && $count > $max) {
+                return new DataResponse(['error' => 'rate_limited', 'message' => 'Too many requests. Please retry shortly.'], 429, ['Retry-After' => '60']);
+            }
+        } catch (\Throwable $e) {
+            // A missing cache backend must not make the chat unavailable.
+            $this->logger->debug('eva_ai: rate limiter unavailable', ['exception' => $e]);
+        }
+        return null;
+    }
+
     private function requireUser(): ?string {
         return $this->userId ?: null;
     }
@@ -910,6 +928,7 @@ class ApiController extends OCSController {
         if ($user === null) {
             return new DataResponse(['error' => 'Not logged in'], 401);
         }
+        if (($limited = $this->rateLimitResponse($user, 'chat', 30)) !== null) return $limited;
         $message = trim((string)($this->requestParam('message') ?? ''));
         if ($message === '') {
             return new DataResponse(['error' => 'Empty message'], 400);
@@ -937,6 +956,7 @@ class ApiController extends OCSController {
     public function backgroundChat(): DataResponse {
         $user = $this->requireUser();
         if ($user === null) return new DataResponse(['error' => 'Not logged in'], 401);
+        if (($limited = $this->rateLimitResponse($user, 'background', 5)) !== null) return $limited;
         $chatId = trim((string)($this->requestParam('chatId') ?? ''));
         $message = trim((string)($this->requestParam('message') ?? ''));
         $history = $this->requestParam('history', []);
@@ -1154,6 +1174,7 @@ class ApiController extends OCSController {
         if ($user === null) {
             return new DataResponse(['error' => 'Not logged in'], 401);
         }
+        if (($limited = $this->rateLimitResponse($user, 'file_context', 30)) !== null) return $limited;
         $fileIds = $this->requestParam('fileIds');
         if (!is_array($fileIds)) {
             $fileIds = [];
@@ -1314,6 +1335,9 @@ class ApiController extends OCSController {
     #[NoAdminRequired]
     public function streamChat(): StreamTraversableResponse {
         $user = $this->requireUser();
+        if ($user !== null && ($limited = $this->rateLimitResponse($user, 'stream', 10)) !== null) {
+            return new StreamTraversableResponse(new \ArrayIterator([json_encode(['type' => 'error', 'message' => 'Too many requests. Please retry shortly.']) . "\n"]), 429, ['Content-Type' => 'application/x-ndjson', 'Retry-After' => '60', 'Cache-Control' => 'no-cache, no-store, must-revalidate']);
+        }
         $body = json_decode((string)file_get_contents('php://input'), true);
         $message = trim((string)($body['message'] ?? ''));
         $history = isset($body['history']) && is_array($body['history']) ? $body['history'] : [];
