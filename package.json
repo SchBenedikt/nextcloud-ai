@@ -30,7 +30,7 @@
     "@babel/preset-env": "^8.0.2",
     "@nextcloud/browserslist-config": "^3.1.2",
     "@playwright/test": "^1.63.0",
-    "@vue/compiler-sfc": "^3.5.41",
+    "@vue/compiler-sfc": "^3.5.43",
     "babel-loader": "^10.1.1",
     "css-loader": "^7.1.4",
     "sass": "^1.102.0",
