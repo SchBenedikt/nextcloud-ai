@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace OCA\EvaAi\Service;
 
 use OCP\IConfig;
+use OCP\Lock\ILockingProvider;
 
 class AppConfig {
     public const APP = 'eva_ai';
@@ -291,7 +292,7 @@ class AppConfig {
     /** @var array<string,string> Request-level cache: avoids repeated DB round-trips. */
     private array $cache = [];
 
-    public function __construct(private IConfig $config) {
+    public function __construct(private IConfig $config, private ?ILockingProvider $locks = null) {
     }
 
     /** Set the user whose personal settings should override instance defaults. */
@@ -372,7 +373,25 @@ class AppConfig {
     }
 
     public function increment(string $key): void {
-        $this->config->setAppValue(self::APP, $key, (string)((int)$this->get($key) + 1));
+        // IConfig exposes no atomic increment primitive. Serialize the
+        // read-modify-write pair through Nextcloud's shared locking backend so
+        // concurrent web and cron workers cannot overwrite each other's count.
+        if ($this->locks === null) {
+            $this->config->setAppValue(self::APP, $key, (string)((int)$this->get($key) + 1));
+            return;
+        }
+        $path = 'eva_ai/app-config/increment/' . hash('sha256', $key);
+        $acquired = false;
+        try {
+            $this->locks->acquireLock($path, ILockingProvider::LOCK_EXCLUSIVE, 'EVA app counter');
+            $acquired = true;
+            $current = (int)$this->config->getAppValue(self::APP, $key, '0');
+            $this->config->setAppValue(self::APP, $key, (string)($current + 1));
+        } finally {
+            if ($acquired) {
+                $this->locks->releaseLock($path, ILockingProvider::LOCK_EXCLUSIVE);
+            }
+        }
     }
 
     /**
