@@ -112,7 +112,8 @@ final class ImageEmbeddingContractTest extends TestCase {
         $controller = (string)file_get_contents(__DIR__ . '/../lib/Controller/PageController.php');
 
         self::assertStringContainsString('private function allowWebImages', $controller);
-        self::assertStringContainsString("addAllowedImageDomain('*')", $controller);
+        self::assertStringContainsString("addAllowedImageDomain('https:')", $controller);
+        self::assertStringNotContainsString("addAllowedImageDomain('*')", $controller);
         self::assertSame(
             2,
             substr_count($controller, '$this->allowWebImages($response);'),

@@ -149,7 +149,9 @@ class PageController extends Controller {
      */
     private function allowWebImages(TemplateResponse $response): void {
         $policy = new ContentSecurityPolicy();
-        $policy->addAllowedImageDomain('*');
+        // Remote answer images are useful, but an unrestricted source
+        // wildcard also permits insecure third-party tracking pixels.
+        $policy->addAllowedImageDomain('https:');
         $response->setContentSecurityPolicy($policy);
     }
 
