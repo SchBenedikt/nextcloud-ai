@@ -2,6 +2,7 @@
 declare(strict_types=1);
 namespace OCA\EvaAi\Service;
 
+use JsonException;
 use OCP\Http\Client\IClientService;
 
 /** Adapter for any provider exposing the OpenAI chat-completions contract. */
@@ -47,6 +48,8 @@ class OpenAICompatible {
             $answer = (string)($message['content'] ?? '');
             $this->usage?->recordChat($this->config->userId(), $id, $this->model(), $messages, $answer, null, null, 0);
             return ['answer' => $answer, 'model' => $this->model(), 'tool_calls' => $calls, 'raw_tool_calls' => $message['tool_calls'] ?? []];
+        } catch (JsonException $e) {
+            return ['error' => 'Provider returned invalid JSON: ' . $e->getMessage()];
         } catch (\Throwable $e) { return ['error' => $e instanceof ProviderException ? $e->getMessage() : 'Provider connection or response failed. Check endpoint, key and model.']; }
     }
 
