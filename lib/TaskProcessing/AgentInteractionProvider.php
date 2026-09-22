@@ -351,6 +351,7 @@ class AgentInteractionProvider implements ISynchronousProvider {
 					try {
 						$res = $this->executor->run($userId, $name, $args);
 					} catch (\Throwable $e) {
+						$this->logger->warning('eva_ai: agent read-only tool failed', ['tool' => $name, 'exception' => $e->getMessage()]);
 						$res = ['ok' => false, 'error' => $e->getMessage()];
 					}
 					$messages[] = ['role' => 'assistant', 'content' => '', 'tool_calls' => $this->canonical([$tc])];
@@ -427,6 +428,7 @@ class AgentInteractionProvider implements ISynchronousProvider {
 			try {
 				$res = $this->executor->runConfirmed($userId, $name, $args);
 			} catch (\Throwable $e) {
+				$this->logger->warning('eva_ai: agent confirmed tool failed', ['tool' => $name, 'exception' => $e->getMessage()]);
 				$res = ['ok' => false, 'error' => $e->getMessage()];
 			}
 			$executed[] = [
@@ -612,7 +614,10 @@ class AgentInteractionProvider implements ISynchronousProvider {
 					. $sourceFooter;
 			}
 		} catch (\Throwable $e) {
-			// RAG ist optional - bei Fehler einfach weitermachen ohne Context
+			$this->logger->warning('eva_ai: agent RAG context unavailable', [
+				'user' => $userId,
+				'exception' => $e->getMessage(),
+			]);
 		}
 	}
 
