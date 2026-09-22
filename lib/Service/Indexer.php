@@ -2194,7 +2194,6 @@ class Indexer {
             return;
         }
         
-        $allDocs = $this->documentMapper->findByUser($userId);
         $excludedDocIds = [];
         $offset = 0;
         $limit = 500;

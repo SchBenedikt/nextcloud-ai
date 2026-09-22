@@ -81,24 +81,34 @@ class DocumentMapper extends QBMapper {
      * @return array<int,array{id:int,content_hash:string,size:int,file_mtime:int,path:string,name:string,mime:string}>
      */
     public function stateForUser(string $userId): array {
-        $qb = $this->db->getQueryBuilder();
-        $qb->select('id', 'file_id', 'content_hash', 'size', 'file_mtime', 'path', 'name', 'mime')
-            ->from('eva_ai_documents')
-            ->where($qb->expr()->eq('user_id', $qb->createNamedParameter($userId)));
-        $result = $qb->executeQuery();
         $map = [];
-        while ($row = $result->fetch()) {
-            $map[(int)$row['file_id']] = [
-                'id' => (int)$row['id'],
-                'content_hash' => (string)($row['content_hash'] ?? ''),
-                'size' => (int)($row['size'] ?? 0),
-                'file_mtime' => (int)($row['file_mtime'] ?? 0),
-                'path' => (string)($row['path'] ?? ''),
-                'name' => (string)($row['name'] ?? ''),
-                'mime' => (string)($row['mime'] ?? ''),
-            ];
-        }
-        $result->closeCursor();
+        $offset = 0;
+        $pageSize = 500;
+        do {
+            $qb = $this->db->getQueryBuilder();
+            $qb->select('id', 'file_id', 'content_hash', 'size', 'file_mtime', 'path', 'name', 'mime')
+                ->from('eva_ai_documents')
+                ->where($qb->expr()->eq('user_id', $qb->createNamedParameter($userId)))
+                ->orderBy('id', 'ASC')
+                ->setMaxResults($pageSize)
+                ->setFirstResult($offset);
+            $result = $qb->executeQuery();
+            $count = 0;
+            while ($row = $result->fetch()) {
+                $map[(int)$row['file_id']] = [
+                    'id' => (int)$row['id'],
+                    'content_hash' => (string)($row['content_hash'] ?? ''),
+                    'size' => (int)($row['size'] ?? 0),
+                    'file_mtime' => (int)($row['file_mtime'] ?? 0),
+                    'path' => (string)($row['path'] ?? ''),
+                    'name' => (string)($row['name'] ?? ''),
+                    'mime' => (string)($row['mime'] ?? ''),
+                ];
+                $count++;
+            }
+            $result->closeCursor();
+            $offset += $count;
+        } while ($count === $pageSize);
         return $map;
     }
 
