@@ -565,6 +565,24 @@ class AppConfig {
         return implode(',', $types);
     }
 
+    /** Normalize a user setting at the persistence boundary (Issue #319). */
+    public function normalizeSetting(string $key, mixed $value): mixed {
+        if (in_array($key, ['top_k', 'chunk_size', 'chunk_overlap', 'max_file_size', 'max_files_per_run', 'index_storage_quota', 'context_size', 'exec_write_max_chars', 'mail_index_max', 'talk_history_size', 'talk_index_max_rooms', 'talk_index_max_messages', 'chat_retention_days', 'embed_batch_size', 'agent_max_tool_rounds', 'web_search_max_results', 'web_search_timeout', 'web_search_content_chars', 'web_search_candidates', 'web_search_browser_timeout'], true)) return (string)$value;
+        if ($key === 'exec_delete_mode') return in_array($value, ['off', 'own', 'all'], true) ? $value : 'own';
+        if ($key === 'exec_write_types') return $this->normalizeValue($key, $value);
+        if ($key === 'provider_profiles') return json_encode(is_array($value) ? $value : [], JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE) ?: '[]';
+        if (in_array($key, self::BOOLEAN_SETTINGS, true)) return in_array((string)$value, ['1', 'true', 'on'], true) ? '1' : '0';
+        if ($key === 'temperature') return (string)max(0.0, min(2.0, (float)$value));
+        if ($key === 'web_search_provider') {
+            $provider = trim((string)$value);
+            return in_array($provider, ['duckduckgo', 'bing', 'searxng', 'brave', 'tavily'], true) ? $provider : 'duckduckgo';
+        }
+        if ($key === 'ollama_keep_alive') return trim((string)$value) ?: '5m';
+        if ($key === 'followups_mode') return in_array(trim((string)$value), ['fast', 'llm'], true) ? trim((string)$value) : 'fast';
+        if ($key === 'talk_bot_trigger') return trim((string)$value) ?: 'EVA';
+        return $value;
+    }
+
     /**
      * Validate a value without coercing invalid input. Returns an error for
      * malformed, non-numeric, or out-of-range values.

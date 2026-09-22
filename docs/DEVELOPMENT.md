@@ -49,6 +49,11 @@ composer test
 
 The API controller must use Nextcloud's IRequest access plus one non-recursive JSON fallback for JSON/form bodies; do not add a recursively named custom request parser. Before opening a pull request, frontend changes must pass `npm run build` and the generated-bundle emission checks. Keep the relevant Markdown documentation and `CHANGELOG.md` synchronized with user-visible changes.
 
+Settings are validated before persistence and normalized through
+`AppConfig::normalizeSetting()`. New settings must add their storage coercion
+there so API clients cannot diverge in boolean, numeric, enum or serialized
+value handling.
+
 ## CI
 
 `.github/workflows/tests.yml`:
