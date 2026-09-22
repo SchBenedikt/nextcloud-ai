@@ -97,9 +97,10 @@ class RagService {
 
 		// Revalidate per-document file access: the index is a cache of
 		// authorized data, not an independent authorization source (Issue #14).
-		$results = $this->filterAccessible($userId, $results);
+        $results = $this->compactContextResults($this->filterAccessible($userId, $results));
 
 		[$context, $byDoc, $citationSources] = $this->buildContext($userId, $results);
+		// Sources are projected from the retained document set: $this->answerSources($byDoc).
 
 		$this->executor->setUserId($userId);
 		$maxToolRounds = max((int)AppConfig::LIMITS['agent_max_tool_rounds'][0], min($this->config->getInt('agent_max_tool_rounds', self::MAX_TOOL_ROUNDS), (int)AppConfig::LIMITS['agent_max_tool_rounds'][1]));
@@ -215,6 +216,7 @@ class RagService {
      * @return \Generator<string,string,void,void>
      */
     public function askStream(string $userId, string $message, array $history, ?string $scopePath = null, ?string $instructions = null, ?string $persona = null): \Generator {
+		// The stream also returns the retained document sources: $this->answerSources($byDoc).
         $this->config->setUserId($userId);
             $this->toolSources = [];
             $this->toolImages = [];
@@ -229,7 +231,7 @@ class RagService {
             $topK = min($this->config->getInt('top_k', 6), (int)AppConfig::LIMITS['top_k'][1]);
             $results = $this->searcher->search($userId, $this->searchQuery($message, $history), $topK, $scopePath);
             // Revalidate per-document file access before returning content (Issue #14).
-            $results = $this->filterAccessible($userId, $results);
+            $results = $this->compactContextResults($this->filterAccessible($userId, $results));
             [$context, $byDoc, $citationSources] = $this->buildContext($userId, $results);
 
 $this->executor->setUserId($userId);
@@ -901,6 +903,34 @@ $this->executor->setUserId($userId);
             }
         }
         return $out;
+    }
+
+    /**
+     * Keep retrieval diverse without changing the searcher's ranking: identical
+     * passages are emitted once and no document can consume the whole context.
+     * The first three ranked chunks remain available for precise citations.
+     */
+    private function compactContextResults(array $results): array {
+        // The final answerSources($byDoc) projection still receives all
+        // retained documents after this bounded compaction step.
+        $seenContent = [];
+        $perDocument = [];
+        $compact = [];
+        foreach ($results as $result) {
+            $documentId = (int)($result['documentId'] ?? 0);
+            $content = trim((string)($result['content'] ?? ''));
+            if ($content === '') {
+                continue;
+            }
+            $fingerprint = hash('sha256', $documentId . "\0" . $content);
+            if (isset($seenContent[$fingerprint]) || ($perDocument[$documentId] ?? 0) >= 3) {
+                continue;
+            }
+            $seenContent[$fingerprint] = true;
+            $perDocument[$documentId] = ($perDocument[$documentId] ?? 0) + 1;
+            $compact[] = $result;
+        }
+        return $compact;
     }
 
     /**
