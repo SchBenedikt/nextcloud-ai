@@ -1,5 +1,17 @@
 # Changelog
 
+## [1.16.98] - 2026-09-22
+
+### Milestone 1.6.0: Performance and reliability
+
+- Bound document and chunk state reads with deterministic pagination and retrieval limits.
+- Serialize dirty-index queue mutations and surface background-chat lock failures instead of silently dropping work.
+- Add chat-store recovery from the last valid payload after an interrupted write.
+- Bound Ollama process-local caches and handle concurrent Talk room state creation safely.
+- Escape user-provided LIKE wildcards in document and chunk search.
+- Bound calendar task results and add the composite chunk pagination index migration.
+- Improve AppConfig counter increments with shared locking to prevent lost updates.
+
 ## [1.16.97] - 2026-09-22
 
 ### Maintenance and reliability
