@@ -1274,6 +1274,8 @@ export function mountChat(root, opts = {}) {
 		messages.push({ role: 'user', text: msg })
 		messages.push({ role: 'assistant', text: '', thinking: '', done: false, tools: [] })
 		renderAll(messages)
+		const assistantIdx = messages.length - 1
+		renderAll(messages)
 
 		const history = []
 		for (let i = 0; i < messages.length - 2; i++) {
@@ -1283,7 +1285,7 @@ export function mountChat(root, opts = {}) {
 
 		ensureChat().then(() => {
 			apiStream(STREAM_URL, { message: msg, history, chatId }, (ev) => {
-				const last = messages[messages.length - 1]
+				const last = messages[assistantIdx]
 				if (!last || last.role !== 'assistant' || last.done) return
 				if (ev.type === 'thinking') {
 					last.thinking += ev.delta || ''
@@ -1365,7 +1367,7 @@ export function mountChat(root, opts = {}) {
 				}
 				// One coalesced update per frame instead of one DOM rebuild per
 				// NDJSON event; terminal states below still update immediately.
-				scheduleUpdate(messages.length - 1)
+				scheduleUpdate(assistantIdx)
 			}, currentAbort.signal).catch((e) => {
 				const last = messages[messages.length - 1]
 				if (last && last.role === 'assistant' && !last.done) {
