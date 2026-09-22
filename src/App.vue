@@ -52,7 +52,7 @@
 					</li>
 					<NcAppNavigationItem
 						v-else
-						v-show="!item.archivedChat || showArchived"
+						v-if="!item.archivedChat || showArchived"
 						:class="{ 'chat-item--nested': item.nested }"
 						:name="itemName(item.chat)"
 						:active="view === 'chat' && item.chat.id === currentChat"
