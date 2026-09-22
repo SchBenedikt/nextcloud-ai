@@ -36,13 +36,39 @@ class ChunkMapper extends QBMapper {
 
     public function deleteForUser(string $userId): int {
         $qb = $this->db->getQueryBuilder();
-        $qb->delete('eva_ai_chunks')
-            ->where(
-                $qb->expr()->in('document_id', $qb->createFunction(
-                    'SELECT id FROM `*PREFIX*eva_ai_documents` WHERE user_id = ' . $qb->createNamedParameter($userId)
-                ))
-            );
-        return $qb->executeStatement();
+        // Do not concatenate a named parameter into a raw SQL function. Read
+        // the document ids with a normal bound predicate, then delete chunks
+        // in bounded batches; this is portable across the supported databases
+        // and keeps the user id out of SQL fragments (Issue #384).
+        $qb->select('id')
+            ->from('eva_ai_documents')
+            ->where($qb->expr()->eq('user_id', $qb->createNamedParameter($userId)));
+        $result = $qb->executeQuery();
+        $documentIds = [];
+        while ($row = $result->fetch()) {
+            $documentIds[] = (int)$row['id'];
+        }
+        $result->closeCursor();
+        if ($documentIds === []) {
+            return 0;
+        }
+        $before = $this->countByDocumentIds($documentIds);
+        $this->deleteByDocumentIds($documentIds);
+        return $before;
+    }
+
+    /** @param int[] $documentIds */
+    private function countByDocumentIds(array $documentIds): int {
+        $total = 0;
+        foreach (array_chunk($documentIds, 500) as $batch) {
+            $qb = $this->db->getQueryBuilder();
+            $qb->selectAlias($qb->createFunction('COUNT(*)'), 'c')
+                ->from('eva_ai_chunks')
+                ->where($qb->expr()->in('document_id', $qb->createNamedParameter($batch, IQueryBuilder::PARAM_INT_ARRAY)));
+            $row = $qb->executeQuery()->fetch();
+            $total += (int)($row['c'] ?? 0);
+        }
+        return $total;
     }
 
     public function deleteAll(): int {
