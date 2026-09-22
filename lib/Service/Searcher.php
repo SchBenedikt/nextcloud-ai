@@ -92,6 +92,16 @@ class Searcher {
         }
 
         $lexical = $this->lexicalBm25($rows, $queryTokens, $docFields);
+        // Quoted phrases are an explicit exact-match signal. Give them a
+        // deterministic boost after BM25/RRF preparation so an exact result
+        // wins over a merely semantically related chunk.
+        foreach ($this->quotedPhrases($query) as $phrase) {
+            foreach ($rows as $i => $row) {
+                if (str_contains(mb_strtolower((string)$row['content']), mb_strtolower($phrase))) {
+                    $lexical[$i] = ($lexical[$i] ?? 0.0) + 5.0;
+                }
+            }
+        }
 
         // A lexical-only request (for example a cloud chat model with a local
         // embedding model disabled) must not deserialize every stored vector.
@@ -434,6 +444,12 @@ class Searcher {
 
     private function tokenCount(int $chars): int {
         return max(1, (int)ceil($chars / 4));
+    }
+
+    /** @return list<string> */
+    private function quotedPhrases(string $query): array {
+        preg_match_all('/"([^"\n]{2,200})"/u', $query, $matches);
+        return array_values(array_unique(array_filter(array_map('trim', $matches[1] ?? []))));
     }
 
     private function cosine(array $a, array $b): ?float {
