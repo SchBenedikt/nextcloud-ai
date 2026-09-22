@@ -19,6 +19,7 @@ use Psr\Log\LoggerInterface;
  * the full message body instead of the short DB preview (Issue #64).
  */
 class EmailService {
+    private const IMAP_RETRIES = 2;
     /** Recipient type constants matching Mail v5. */
     private const RCV_FROM = 0;
     private const RCV_TO   = 1;
@@ -311,15 +312,25 @@ class EmailService {
         if (!$this->appManager->isInstalled('mail')) {
             return '';
         }
-        try {
-            return $this->doFetchImapBody($userId, $messageId);
-        } catch (\Throwable $e) {
-            $this->logger->debug('eva_ai: IMAP body fetch failed, using DB preview', [
-                'messageId' => $messageId,
-                'error' => $e->getMessage(),
-            ]);
-            return '';
+        $lastError = null;
+        for ($attempt = 1; $attempt <= self::IMAP_RETRIES; $attempt++) {
+            try {
+                return $this->doFetchImapBody($userId, $messageId);
+            } catch (\Throwable $e) {
+                $lastError = $e;
+                if ($attempt < self::IMAP_RETRIES) {
+                    // A short retry covers transient socket/auth handshakes
+                    // without keeping an indexing worker blocked for long.
+                    usleep(75000 * $attempt);
+                }
+            }
         }
+        $this->logger->warning('eva_ai: IMAP body fetch failed after retries; using DB preview', [
+            'messageId' => $messageId,
+            'attempts' => self::IMAP_RETRIES,
+            'error' => $lastError?->getMessage(),
+        ]);
+        return '';
     }
 
     /**
