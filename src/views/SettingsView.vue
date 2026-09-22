@@ -1628,7 +1628,10 @@ export default {
 
 		let statusTimer = null
 		let modelTimer = null
-		watch(f, queueAutoSave, { deep: true })
+		// Watch the scalar settings values without Vue's recursive deep traversal.
+		// The form is flat, so a shallow value snapshot preserves autosave while
+		// avoiding a full object walk on every keystroke.
+		watch(() => Object.values(f.value), queueAutoSave)
 		watch(admin, queueAdminAutoSave, { deep: true })
 		watch([groqKey, removeGroqKey, customProviderKey, removeCustomProviderKey, nextcloudApiToken, removeNextcloudApiToken], queueCredentialAutoSave)
 		watch(() => f.value.ollama_url, (value) => {
