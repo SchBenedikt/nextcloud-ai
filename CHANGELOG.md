@@ -1,5 +1,15 @@
 # Changelog
 
+## [1.16.97] - 2026-09-22
+
+### Maintenance and reliability
+
+- Complete Milestone 1.5.0 fixes across indexing, Talk, provider diagnostics, bootstrap handling, API logging, Docker installation guidance, and PageController maintenance.
+- Add structured logging for optional bootstrap failures, Assistant tool failures, Ollama, Groq, OpenAI-compatible providers, and dashboard summary errors.
+- Improve Docker installation guidance for unwritable Nextcloud temporary directories.
+- Deduplicate shared PageController bundle and metadata setup.
+
+
 All notable changes to **EVA (eva_ai)** are documented here.
 Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); the project
 follows [Semantic Versioning](https://semver.org/).
