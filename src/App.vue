@@ -522,6 +522,9 @@ export default {
 		}
 
 		const selectChat = (id) => {
+			// A dashboard prompt belongs only to the chat that was just created.
+			// Clear it before switching to an existing conversation.
+			pendingPrompt.value = ''
 			currentChat.value = id
 			// Clear an active message search so the normal chat list returns.
 			if (chatFilter.value.trim()) {
