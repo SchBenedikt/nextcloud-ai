@@ -981,7 +981,7 @@ class Indexer {
      * Extract text from a PDF content blob via pdftotext.
      */
     private function pdfToTextFromBlob(string $blob): ?string {
-        $bin = trim((string)(shell_exec('command -v pdftotext 2>/dev/null') ?: ''));
+        $bin = $this->resolveSystemBinary('pdftotext');
         if ($bin === '') {
             return null;
         }
@@ -1355,7 +1355,7 @@ class Indexer {
 
     private function pdfToText(File $file): ?string {
         // Nur wenn das poppler-utils Binary vorhanden ist.
-        $bin = trim((string)(shell_exec('command -v pdftotext 2>/dev/null') ?: ''));
+        $bin = $this->resolveSystemBinary('pdftotext');
         if ($bin === '') {
             return null;
         }
@@ -1389,7 +1389,7 @@ class Indexer {
      * from fighting over the global LibreOffice profile lock.
      */
     private function legacyOfficeText(File $file, string $ext): string {
-        $bin = trim((string)(shell_exec('command -v soffice 2>/dev/null || command -v libreoffice 2>/dev/null') ?: ''));
+        $bin = $this->resolveSystemBinary('soffice') ?? $this->resolveSystemBinary('libreoffice');
         if ($bin === '') {
             $this->logWarning('eva_ai: legacy office file skipped - LibreOffice (soffice) is not installed', ['file' => $file->getPath(), 'ext' => $ext]);
             return '';
@@ -1414,8 +1414,34 @@ class Indexer {
             }
             return $txt;
         } finally {
-            @exec('rm -rf ' . escapeshellarg($tmpDir));
+            $this->removeTemporaryDirectory($tmpDir);
         }
+    }
+
+    /**
+     * Resolve only known absolute installation locations. Looking up a
+     * converter through the process PATH lets a compromised PATH select an
+     * attacker-controlled executable during indexing.
+     */
+    private function resolveSystemBinary(string $name): ?string {
+        foreach (['/usr/bin/', '/usr/local/bin/', '/bin/', '/opt/homebrew/bin/'] as $directory) {
+            $candidate = $directory . $name;
+            if (is_file($candidate) && is_executable($candidate)) {
+                return $candidate;
+            }
+        }
+        return null;
+    }
+
+    private function removeTemporaryDirectory(string $directory): void {
+        foreach (array_reverse((array)glob($directory . '/*')) as $path) {
+            if (is_dir($path) && !is_link($path)) {
+                $this->removeTemporaryDirectory($path);
+            } else {
+                @unlink($path);
+            }
+        }
+        @rmdir($directory);
     }
 
     /**
