@@ -122,15 +122,8 @@ class OcrService {
             $size = @getimagesizefromstring($bytes);
             if ($size === false) throw new \RuntimeException('OCR requires a valid image file');
             if ($size[0] * $size[1] > 25000000) throw new \RuntimeException('OCR requires an image of at most 25 megapixels');
-            // For non-PNG images, convert to PNG first for better Tesseract accuracy
+            // Tesseract handles the supported image formats directly.
             $inputFile = $input;
-            if ($mime !== 'image/png' && $this->binary('pdftoppm') !== null) {
-                // Use pdftoppm for image conversion if available (works with many formats)
-                $pngInput = $dir . '/converted.png';
-                // Create a temporary PDF wrapper for the image
-                $tmpPdf = $dir . '/tmp.pdf';
-                // Just use Tesseract directly - it handles most image formats
-            }
             return trim($this->run([$tesseract, $inputFile, 'stdout', '-l', $language], $deadline));
         } finally {
             foreach (glob($dir . '/*') ?: [] as $file) @unlink($file);
