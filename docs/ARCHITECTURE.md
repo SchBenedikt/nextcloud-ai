@@ -35,7 +35,7 @@ lib/
 | `SharesService` | File sharing: list/create/update/delete shares; provider-aware direct lookup avoids a 500-entry scan cap |
 | `EmailService` | Mail app integration: search/list/read mails + email indexing |
 | `FileContextChatService` | Chat strictly over selected files (Files app context menu) |
-| `ChatStore` | Chat history persistence in Nextcloud AppData (`eva_ai/chats/<user namespace>/chats.json`) |
+| `ChatStore` | Chat history persistence in Nextcloud AppData (`eva_ai/chats/<user namespace>/chats.json`); payloads are encrypted with Nextcloud's `ICrypto` service when available, while existing plaintext stores are read for migration compatibility |
 | `AgentStore` | Agent conversation state (`eva_ai_agent_store`) |
 | `ActivityService` | Reads the activity feed (all apps) |
 | `EvaSearchProvider` | Bounded Unified Search over indexed file names, paths and content; re-checks VFS access |
