@@ -127,7 +127,7 @@ class Application extends App implements IBootstrap {
             if (!$jobs->has(ProactiveBriefingJob::class, null)) $jobs->add(ProactiveBriefingJob::class);
             if (!$jobs->has(BackgroundChatJob::class, null)) $jobs->add(BackgroundChatJob::class);
         } catch (\Throwable $e) {
-            // Non-fatal: indexing is also triggered explicitly via the API.
+            $this->logBootstrapFailure('background jobs', $e);
         }
 
         // Talk-Bot: beim Boot sicherstellen, dass er in talk_bots_server
@@ -137,7 +137,7 @@ class Application extends App implements IBootstrap {
             $context->getAppContainer()->get(\OCA\EvaAi\Service\TalkBotRegistrar::class)
                 ->ensureRegistered();
         } catch (\Throwable $e) {
-            // Non-fatal: das OCC-Kommando 'eva_ai:talk:setup' bleibt als Fallback.
+            $this->logBootstrapFailure('Talk bot registration', $e);
         }
 
         // Header-Button: AI-Icon rechts oben neben den Benachrichtigungen,
@@ -147,7 +147,7 @@ class Application extends App implements IBootstrap {
                 Util::addScript(self::APP_ID, 'header');
             }
         } catch (\Throwable $e) {
-            // Non-fatal: Button ist ein reines Komfort-Feature.
+            $this->logBootstrapFailure('header button', $e);
         }
 
         // Files-Action: "Mit AI oeffnen" / "Mit diesen Dateien chatten" im
@@ -162,7 +162,19 @@ class Application extends App implements IBootstrap {
                 Util::addScript(self::APP_ID, 'eva_ai_filesaction', 'files');
             }
         } catch (\Throwable $e) {
-            // Non-fatal.
+            $this->logBootstrapFailure('Files action', $e);
+        }
+    }
+
+    /** Log optional bootstrap failures without making boot dependent on logging. */
+    private function logBootstrapFailure(string $component, \Throwable $e): void {
+        try {
+            \OC::$server->get(\Psr\Log\LoggerInterface::class)->warning(
+                'eva_ai: optional bootstrap component failed',
+                ['component' => $component, 'exception' => $e->getMessage()]
+            );
+        } catch (\Throwable) {
+            // Logging must never turn an optional bootstrap failure into a boot failure.
         }
     }
 }
