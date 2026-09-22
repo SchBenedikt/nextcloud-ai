@@ -135,6 +135,26 @@ chown -R www-data:www-data eva_ai
 sudo -u www-data php occ app:enable eva_ai
 ```
 
+### Docker install troubleshooting
+
+If `occ app:enable eva_ai` fails with `Unable to create path for /tmp/oc_tmp_...`,
+the Nextcloud container cannot write its temporary extraction directory. This
+is a container filesystem/permission problem, not an EVA migration error.
+Check the effective temporary directory and repair it inside the container:
+
+```bash
+docker exec --user 0 <nextcloud-container> sh -lc \
+  'mkdir -p /tmp && chmod 1777 /tmp && chown www-data:www-data /tmp'
+docker exec --user www-data <nextcloud-container> php occ app:enable eva_ai
+```
+
+If the image sets `sys_temp_dir` to a custom path, apply the same writable
+`1777` permissions to that directory or set `sys_temp_dir=/tmp` in the PHP
+configuration used by the Apache/FPM process. Also verify that the app volume
+is writable by `www-data` (`chown -R www-data:www-data
+/var/www/html/nextcloud/apps/eva_ai`). Do not run `occ` as root: the extracted
+app files must be owned by the web user for subsequent upgrades.
+
 ### Prepare Ollama
 
 ```bash
