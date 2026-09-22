@@ -9,6 +9,7 @@ use OCP\Files\NotFoundException;
 use OCP\Files\NotPermittedException;
 use OCP\Files\SimpleFS\ISimpleFolder;
 use OCP\Lock\ILockingProvider;
+use OCP\Security\ICrypto;
 use Psr\Log\LoggerInterface;
 
 /**
@@ -33,7 +34,8 @@ class ChatStore {
     public function __construct(
         private IAppDataFactory $appDataFactory,
         private LoggerInterface $logger,
-        private ILockingProvider $lockingProvider
+        private ILockingProvider $lockingProvider,
+        private ?ICrypto $crypto = null
     ) {
     }
 
@@ -756,6 +758,16 @@ class ChatStore {
     }
 
     private function decodeStoredList(string $raw, string $label): array {
+        if (str_starts_with($raw, "EVA-CHAT-1\n")) {
+            if ($this->crypto === null) {
+                throw new \RuntimeException('Encrypted EVA ' . $label . ' cannot be opened because Nextcloud crypto is unavailable.');
+            }
+            try {
+                $raw = $this->crypto->decrypt(substr($raw, strlen("EVA-CHAT-1\n")));
+            } catch (\Throwable $e) {
+                throw new \RuntimeException('Encrypted EVA ' . $label . ' could not be decrypted; stored data was preserved.', 0, $e);
+            }
+        }
         try {
             $data = json_decode($raw, true, 512, JSON_THROW_ON_ERROR);
         } catch (\JsonException $e) {
@@ -771,6 +783,9 @@ class ChatStore {
     private function write(string $user, array $data): void {
         try {
             $json = json_encode($data, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR);
+            if ($this->crypto !== null) {
+                $json = "EVA-CHAT-1\n" . $this->crypto->encrypt($json);
+            }
             $root = $this->rootFor($user);
             // SimpleFS does not expose an atomic rename operation. Keep the
             // last valid payload beside the live file before replacing it so a

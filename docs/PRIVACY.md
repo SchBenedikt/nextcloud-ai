@@ -97,3 +97,13 @@ This drops all database tables and removes the app-data folder.
   personal books.
 - The tools call your local Ollama; the app never sends file contents to third
   parties.
+### Chat history at rest
+
+Chat history is stored in the app's per-user AppData namespace. New and
+updated chat payloads are encrypted with Nextcloud's `ICrypto` service before
+they are written to `chats.json`; the encryption key is managed by Nextcloud,
+not by EVA. Existing installations with a legacy plaintext file remain
+readable and are transparently migrated the next time that user's chats are
+written. If Nextcloud's crypto service is unavailable, EVA keeps the existing
+data intact and refuses to open an encrypted payload rather than falling back
+to plaintext.
