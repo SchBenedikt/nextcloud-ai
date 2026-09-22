@@ -7,10 +7,10 @@ import { generateOcsUrl } from '@nextcloud/router'
  * CSRF requesttoken and the OCS-APIRequest header, exactly like core apps.
  * Unwraps the ocs envelope and returns the data object.
  */
-export async function api(method, path, data) {
+export async function api(method, path, data, options = {}) {
 	const normalizedPath = String(path || '').replace(/^\/+/, '')
 	const url = generateOcsUrl('/apps/eva_ai/api/' + normalizedPath)
-	const cfg = { method, url }
+	const cfg = { method, url, ...(options && typeof options === 'object' ? options : {}) }
 	if (method === 'GET' && data !== undefined && data !== null) {
 		cfg.params = data
 	} else if (method !== 'GET' && data !== undefined) {
