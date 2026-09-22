@@ -158,6 +158,10 @@ class PageController extends Controller {
             'Cache-Control' => 'no-store, no-cache, must-revalidate, max-age=0',
             'Pragma' => 'no-cache',
             'Expires' => '0',
+            // These pages contain an authenticated chat shell. Do not allow a
+            // foreign origin to frame it and trick a user into clicking inside
+            // their active Nextcloud session.
+            'X-Frame-Options' => 'SAMEORIGIN',
         ] as $name => $value) {
             $response->addHeader($name, $value);
         }
