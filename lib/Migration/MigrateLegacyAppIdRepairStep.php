@@ -40,8 +40,7 @@ class MigrateLegacyAppIdRepairStep implements IRepairStep {
             }
         }
 
-        $userCount = 0;
-        $this->userManager->callForAllUsers(function ($user) use (&$userCount): void {
+        $this->userManager->callForAllUsers(function ($user): void {
             $userId = (string)$user->getUID();
             foreach ($this->config->getUserKeys($userId, self::LEGACY) as $key) {
                 $value = $this->config->getUserValue($userId, self::LEGACY, $key, '');
@@ -49,7 +48,6 @@ class MigrateLegacyAppIdRepairStep implements IRepairStep {
                     $this->config->setUserValue($userId, self::CURRENT, $key, $value);
                 }
             }
-            $userCount++;
         });
 
         // Remove only after every value was copied. This avoids leaving a
@@ -57,9 +55,10 @@ class MigrateLegacyAppIdRepairStep implements IRepairStep {
         if ($keys !== []) {
             $this->config->deleteAppValues(self::LEGACY);
         }
-        if ($userCount > 0) {
-            $this->config->deleteAppFromAllUsers(self::LEGACY);
-        }
+        // The cleanup API also removes rows for users that are no longer
+        // returned by the user manager, so orphaned values are not retained
+        // when an installation has no currently active users.
+        $this->config->deleteAppFromAllUsers(self::LEGACY);
         $output->info('Migrated legacy EVA configuration from eva-ai to eva_ai.');
     }
 }
