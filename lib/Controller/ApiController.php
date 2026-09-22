@@ -27,6 +27,7 @@ use OCP\ICacheFactory;
 use OCP\App\IAppManager;
 use OCP\IRequest;
 use OCP\Lock\ILockingProvider;
+use Psr\Log\LoggerInterface;
 
 class ApiController extends OCSController {
     private const MAX_MESSAGE_LENGTH = 50000;
@@ -53,7 +54,8 @@ class ApiController extends OCSController {
         private ICacheFactory $cacheFactory,
         private \OCA\EvaAi\Service\IndexScheduler $indexScheduler,
         private \OCA\EvaAi\Service\UsageMetrics $usageMetrics,
-        private \OCA\EvaAi\Service\BackgroundChatQueue $backgroundChatQueue
+        private \OCA\EvaAi\Service\BackgroundChatQueue $backgroundChatQueue,
+        private LoggerInterface $logger
     ) {
         parent::__construct($appName, $request);
         $this->config->setUserId($this->userId);
@@ -201,6 +203,10 @@ class ApiController extends OCSController {
             if ($e instanceof \OCA\EvaAi\Service\ChatStoreBusyException) {
                 return new DataResponse(['error' => 'busy', 'message' => $e->getMessage()], 503);
             }
+            $this->logger->error('eva_ai: dashboard summary failed', [
+                'user' => $user,
+                'exception' => $e->getMessage(),
+            ]);
             return new DataResponse(['error' => 'Unable to build dashboard summary'], 500);
         }
     }
