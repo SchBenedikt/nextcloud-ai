@@ -266,6 +266,10 @@ See [docs/SECURITY.md](docs/SECURITY.md) for details.
 - **Tests:** `composer test` (PHPUnit)
 - **Frontend build:** `npm ci && npm run build`
 - **CI:** GitHub Actions on PHP 8.2 / 8.3 / 8.4
+
+The pull-request CI also installs the app into real Nextcloud 30, 33, and 35
+instances, enables it with `occ`, checks the app code and registered routes,
+and runs PHPUnit inside each installation. See [docs/CI.md](docs/CI.md).
 - **Architecture:** [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)
 - **FAQ:** [docs/FAQ.md](docs/FAQ.md)
 

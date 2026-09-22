@@ -1,5 +1,10 @@
 # RAG quality evaluation (Issue #146)
 
+The authoritative CI workflow and the real Nextcloud app lifecycle matrix are
+documented in [CI.md](CI.md). Quality claims in this document are backed by
+the same PHPUnit, compatibility, lint, and frontend checks used for pull
+requests.
+
 EVA ships a deterministic, offline quality evaluation that measures the
 extraction/chunking part of the RAG pipeline end to end. It exists so that
 performance or chunking changes cannot silently reduce answer depth,

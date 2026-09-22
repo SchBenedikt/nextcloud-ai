@@ -1741,14 +1741,16 @@ class ApiController extends OCSController {
 
         // Re-apply the chat's custom instructions and persona on regenerate
         // (Issue #90), resolved from the stored metadata.
-        $gen = $this->ragService->askStream(new \OCA\EvaAi\Dto\ChatRequest(
-            userId: $user,
-            message: $result['targetText'],
-            history: $history,
-            scopePath: trim((string)($chat['scopePath'] ?? '')),
-            instructions: trim((string)($chat['instructions'] ?? '')),
-            persona: trim((string)($chat['persona'] ?? '')),
-        ));
+        // Keep the legacy call form for older RagService integrations; the
+        // service accepts it and normalizes it to ChatRequest internally.
+        $gen = $this->ragService->askStream(
+            $user,
+            $result['targetText'],
+            $history,
+            trim((string)($chat['scopePath'] ?? '')),
+            trim((string)($chat['instructions'] ?? '')),
+            trim((string)($chat['persona'] ?? ''))
+        );
         // The leading regenerate event hands the client the revision that the
         // persisted answer must carry to commit the truncation atomically.
         $rev = (int)$result['rev'];

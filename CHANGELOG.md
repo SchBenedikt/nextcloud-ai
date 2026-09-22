@@ -1,5 +1,16 @@
 # Changelog
 
+## [Unreleased]
+
+### Compatibility and CI
+
+- Add pull-request app lifecycle tests against real Nextcloud 30, 33, and 35
+  installations, including `occ app:enable`, `occ app:check-code`, route
+  registration, and the PHPUnit suite.
+- Keep the npm package version synchronized with the current app version
+  (`1.16.99`) and use the pinned Node version for release builds.
+- Document the complete CI matrix and local equivalents in `docs/CI.md`.
+
 ## [1.16.99] - 2026-09-22
 
 ### Milestone 1.7.0: Security and product boundaries

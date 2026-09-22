@@ -226,7 +226,11 @@ class RagService {
      * @param array<int,array{role:string,content:string}> $history
      * @return \Generator<string,string,void,void>
      */
-    public function askStream(ChatRequest $request): \Generator {
+	/** @return \Generator<string,string,void,void> */
+    public function askStream(ChatRequest|string $request, ?string $legacyMessage = null, ?array $legacyHistory = null, ?string $legacyScopePath = null, ?string $legacyInstructions = null, ?string $legacyPersona = null): \Generator {
+		if (is_string($request)) {
+			$request = new ChatRequest($request, $legacyMessage ?? '', $legacyHistory ?? [], $legacyScopePath, $legacyInstructions, $legacyPersona);
+		}
 		$userId = $request->userId;
 		$message = $request->message;
 		$history = $request->history;
@@ -1056,7 +1060,21 @@ $this->executor->setUserId($userId);
      * @param array<int,array{role:string,content:string}> $history
      * @return array<int,array{role:string,content:string}>
      */
-    private function buildMessages(string $userId, string $message, array $history, string $context, int $sourceCount, array $tools = [], ?string $instructions = null, ?string $persona = null, ?string $currentDate = null, ?string $extraContext = null): array {
+    private function buildMessages(string $userId, string $message, array $history, string $context, int $sourceCount, array|bool $tools = [], ?string $instructions = null, ?string $persona = null, ?string $currentDate = null, ?string $extraContext = null): array {
+		if (is_bool($tools)) {
+			$actionsRequested = $tools;
+			$tools = $actionsRequested ? $this->executor->tools() : [];
+			if ($actionsRequested && $tools === [] && $this->talkTranscripts->isAvailable()) {
+				$tools = [
+					['type' => 'function', 'function' => ['name' => 'list_talk_rooms']],
+					['type' => 'function', 'function' => ['name' => 'read_talk_chat']],
+				];
+				if ($this->config->getInt('talk_write_enabled', 0) === 1) {
+					$tools[] = ['type' => 'function', 'function' => ['name' => 'send_talk_message']];
+				}
+			}
+			$tools ??= [];
+		}
         $sourceCount = max(0, $sourceCount);
         $sourceGuidance = $sourceCount > 0
             ? "The user's own file excerpts are provided below as supporting context. Use them when they add relevant, specific facts. The context contains exactly {$sourceCount} numbered snippets, labelled [1] through [{$sourceCount}]. Cite only labels that exist in this range; never invent citations. Use at most 3-5 citations in total, only for facts that came from a specific snippet. Never let the context block a direct answer: if the files do not contain the answer, answer from general knowledge without file citations. "

@@ -147,6 +147,45 @@ jobs:
       - name: Run migration/provider regression tests
         run: vendor/bin/phpunit --colors=always tests/MigrationRegressionTest.php tests/TaskProcessingContractTest.php tests/AppConfigUserSettingsTest.php
 
+  nextcloud-app:
+    name: Nextcloud app lifecycle (${{ matrix.nc }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # Exercise the oldest supported release, the current stable line, and
+        # the newest supported line on every pull request.
+        nc: ['stable30', 'stable33', 'stable35']
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install and exercise the app in Nextcloud ${{ matrix.nc }}
+        env:
+          NC: ${{ matrix.nc }}
+        run: |
+          docker run --rm \
+            -v "$PWD":/app:ro \
+            -e NC="$NC" \
+            ghcr.io/nextcloud/continuous-integration-php8.3 sh -euxc '
+              if [ "$NC" = "latest" ]; then
+                url="https://download.nextcloud.com/server/latest.tar.bz2"
+              else
+                url="https://download.nextcloud.com/server/$NC/latest.tar.bz2"
+              fi
+              curl -fsSL "$url" -o /tmp/nextcloud.tar.bz2
+              mkdir -p /srv
+              tar -xjf /tmp/nextcloud.tar.bz2 -C /srv
+              cp -a /app /srv/nextcloud/apps/eva_ai
+              cd /srv/nextcloud/apps/eva_ai
+              composer install --no-interaction --prefer-dist
+              cd /srv/nextcloud
+              php occ maintenance:install --database sqlite3 --database-name nextcloud --admin-user admin --admin-pass admin --admin-email admin@example.test
+              php occ app:enable eva_ai
+              php occ app:check-code eva_ai
+              php occ route:list | grep -F "eva_ai"
+              cd /srv/nextcloud/apps/eva_ai
+              composer test
+            '
+
   lint:
     name: PHP syntax check
     runs-on: ubuntu-latest

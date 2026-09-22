@@ -22,7 +22,7 @@ class KnowledgeInitializer {
         private AppConfig $config,
         private IRootFolder $rootFolder,
         private IUserManager $userManager,
-        private LoggerInterface $logger
+        private ?LoggerInterface $logger = null
     ) {
     }
 
@@ -70,7 +70,7 @@ class KnowledgeInitializer {
             $this->config->set('knowledge_initialized', self::INITIALIZED);
         } catch (\Throwable $e) {
             // A transient VFS/profile failure must be retryable on the next app request.
-            $this->logger->warning('eva_ai knowledge profile initialization failed', [
+            $this->logger?->warning('eva_ai knowledge profile initialization failed', [
                 'user' => $userId,
                 'exception' => $e->getMessage(),
             ]);

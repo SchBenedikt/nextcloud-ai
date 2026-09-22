@@ -56,6 +56,10 @@ value handling.
 
 ## CI
 
+The complete app lifecycle check is documented in [CI.md](CI.md). Pull requests
+install EVA into real Nextcloud 30, 33, and 35 containers, enable it with
+`occ`, verify code and routes, and run the PHPUnit suite inside each install.
+
 `.github/workflows/tests.yml`:
 
 - **PHPUnit matrix** on PHP 8.2, 8.3, 8.4
