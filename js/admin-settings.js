@@ -141,7 +141,10 @@
 		}
 		var interval = value('eva-job-interval')
 		if (interval !== null) {
-			payload.index_job_interval_minutes = interval
+		payload.index_job_interval_minutes = interval
+		payload.rate_limit_chat_per_minute = Number(document.getElementById('eva-rate-chat')?.value || 30)
+		payload.rate_limit_stream_per_minute = Number(document.getElementById('eva-rate-stream')?.value || 10)
+		payload.rate_limit_background_per_minute = Number(document.getElementById('eva-rate-background')?.value || 5)
 		}
 		return payload
 	})
