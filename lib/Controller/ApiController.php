@@ -473,7 +473,7 @@ class ApiController extends OCSController {
                 if ($key === 'provider_profiles') {
                     $value = json_encode(is_array($value) ? $value : [], JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE) ?: '[]';
                 }
-                if ($key === 'ocr_enabled' || $key === 'notify_on_complete' || $key === 'proactive_enabled' || $key === 'mail_index_enabled' || $key === 'index_enrolled' || $key === 'talk_classify_all' || $key === 'talk_index_enabled' || $key === 'talk_write_enabled' || $key === 'background_actions_enabled' || $key === 'learning_enabled' || $key === 'safe_commands_enabled' || $key === 'terminal_commands_enabled' || $key === 'web_search_enabled' || $key === 'web_search_safe_search' || $key === 'web_search_fetch_content' || $key === 'web_search_images' || $key === 'web_search_browser') {
+                if (in_array($key, AppConfig::BOOLEAN_SETTINGS, true)) {
                     $value = in_array((string)$value, ['1', 'true', 'on'], true) ? '1' : '0';
                 }
                 if ($key === 'temperature') {

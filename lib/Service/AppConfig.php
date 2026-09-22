@@ -9,6 +9,15 @@ use OCP\IConfig;
 class AppConfig {
     public const APP = 'eva_ai';
 
+    /** Canonical boolean setting keys used by validation and persistence. */
+    public const BOOLEAN_SETTINGS = [
+        'ocr_enabled', 'actions_enabled', 'background_actions_enabled', 'learning_enabled',
+        'safe_commands_enabled', 'terminal_commands_enabled', 'notify_on_complete',
+        'proactive_enabled', 'mail_index_enabled', 'talk_index_enabled', 'talk_write_enabled',
+        'index_enrolled', 'talk_classify_all', 'weather_tool_enabled', 'web_search_enabled',
+        'web_search_safe_search', 'web_search_fetch_content', 'web_search_images', 'web_search_browser',
+    ];
+
     /**
      * User-facing personal settings. These are stored per user, but when a
      * user has no personal value they fall back to the admin-configured
@@ -645,7 +654,7 @@ class AppConfig {
             }
             return 'must be an absolute path or a command name, without spaces';
         }
-        if (in_array($key, ['ocr_enabled', 'actions_enabled', 'background_actions_enabled', 'learning_enabled', 'safe_commands_enabled', 'terminal_commands_enabled', 'notify_on_complete', 'proactive_enabled', 'mail_index_enabled', 'talk_index_enabled', 'talk_write_enabled', 'index_enrolled', 'talk_classify_all', 'weather_tool_enabled', 'web_search_enabled', 'web_search_safe_search', 'web_search_fetch_content', 'web_search_images', 'web_search_browser'], true)) {
+        if (in_array($key, self::BOOLEAN_SETTINGS, true)) {
             return is_scalar($value) && in_array((string)$value, ['0', '1', 'true', 'false', 'on', 'off'], true)
                 ? null : 'must be a boolean value';
         }
