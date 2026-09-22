@@ -125,6 +125,7 @@ function buildCalendarForm(args, tr) {
 	// perceived latency identical while removing redundant reflows.
 	var pendingUpdateIdx = null
 	var updateScheduled = false
+	var pendingUpdateFrame = null
 	function scheduleUpdate(i) {
 		pendingUpdateIdx = i
 		if (updateScheduled) return
@@ -135,7 +136,7 @@ function buildCalendarForm(args, tr) {
 			pendingUpdateIdx = null
 			if (idx !== null) updateMessage(idx)
 		}
-		if (typeof requestAnimationFrame === 'function') requestAnimationFrame(flush)
+		if (typeof requestAnimationFrame === 'function') pendingUpdateFrame = requestAnimationFrame(function () { pendingUpdateFrame = null; flush() })
 		else flush()
 	}
 	var chatId = null
