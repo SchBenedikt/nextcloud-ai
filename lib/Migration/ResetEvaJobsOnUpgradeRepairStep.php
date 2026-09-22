@@ -51,7 +51,7 @@ class ResetEvaJobsOnUpgradeRepairStep implements IRepairStep {
         $this->config->setAppValue(self::APP, 'index_scheduler_queue', '[]');
         $this->config->setAppValue(self::APP, 'index_scheduler_active', '{}');
         $this->config->setAppValue(self::APP, 'index_job_running', '0');
-        $this->config->setAppValue(self::APP, 'index_job_stop_requested', '1');
+        $this->config->setAppValue(self::APP, 'index_job_stop_requested', '0');
         $this->config->setAppValue(self::APP, 'index_reset_requested', '0');
 
         $users = 0;
@@ -60,9 +60,9 @@ class ResetEvaJobsOnUpgradeRepairStep implements IRepairStep {
             foreach (self::USER_STATE as $key) {
                 try { $this->config->deleteUserValue($uid, self::APP, $key); } catch (\Throwable) { /* best effort */ }
             }
-            // Leave a durable stop marker for a worker that is already inside
-            // a model/tool loop; it will observe this between steps and exit.
-            $this->config->setUserValue($uid, self::APP, 'index_cancel_requested', '1');
+            // Jobs are removed and re-registered below; leave both stop flags
+            // clear so the next scheduled index run can start normally.
+            $this->config->setUserValue($uid, self::APP, 'index_cancel_requested', '0');
             $users++;
         });
 
