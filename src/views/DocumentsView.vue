@@ -211,6 +211,7 @@ export default {
 		const indexingActive = computed(() => indexing.value || indexStatus.value?.indexing === true)
 		const indexControlsLocked = computed(() => !indexStatusKnown.value || !!indexStatusError.value || indexingActive.value)
 		let statusRequestInFlight = false
+		let documentsRequestController = null
 		const expanded = ref(new Set())
 		const chunkCache = ref(new Map())
 
@@ -309,6 +310,9 @@ export default {
 				documentsLoadError.value = ''
 			}
 			const offset = append ? docs.value.length : 0
+			if (!append && documentsRequestController) documentsRequestController.abort()
+			const requestController = new AbortController()
+			if (!append) documentsRequestController = requestController
 			try {
 				const [sort, dir] = filterSort.value.split('-')
 				const params = {
@@ -321,7 +325,7 @@ export default {
 				if (filterType.value) params.type = filterType.value
 				if (filterFolder.value.trim()) params.folder = filterFolder.value.trim()
 				if (filterSize.value) params.sizeMin = Number(filterSize.value)
-				const data = await api('GET', 'documents', params)
+				const data = await api('GET', 'documents', params, { signal: requestController.signal })
 				const requiredTotals = ['total', 'totalChunks', 'totalSize']
 				if (!data || typeof data !== 'object' || !Array.isArray(data.documents)
 					|| requiredTotals.some(key => data[key] === null || data[key] === undefined || !Number.isFinite(Number(data[key])) || Number(data[key]) < 0)) {
@@ -335,6 +339,7 @@ export default {
 				hasMore.value = incoming.length === pageSize && docs.value.length < total.value
 				if (!append) documentsLoaded.value = true
 			} catch (e) {
+				if (e?.name === 'CanceledError' || e?.code === 'ERR_CANCELED' || e?.name === 'AbortError') return
 				if (!append) {
 					documentsLoadError.value = errMsg(e)
 				} else {
@@ -344,6 +349,7 @@ export default {
 			} finally {
 				loading.value = false
 				loadingMore.value = false
+				if (!append && documentsRequestController === requestController) documentsRequestController = null
 			}
 		}
 
