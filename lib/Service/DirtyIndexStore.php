@@ -7,6 +7,7 @@ namespace OCA\EvaAi\Service;
 use OCP\Files\AppData\IAppDataFactory;
 use OCP\Files\NotFoundException;
 use OCP\Files\SimpleFS\ISimpleFile;
+use OCP\Lock\ILockingProvider;
 
 /**
  * Per-user queue of filesystem changes that still need incremental indexing
@@ -20,7 +21,7 @@ use OCP\Files\SimpleFS\ISimpleFile;
  *   - r<oldPath>      folder renamed (re-point stored paths)
  */
 class DirtyIndexStore {
-    public function __construct(private IAppDataFactory $appDataFactory) {
+    public function __construct(private IAppDataFactory $appDataFactory, private ?ILockingProvider $locks = null) {
     }
 
     /** @return list<array{kind:string,fileId:int,path:string,oldPath:string}> */
@@ -55,15 +56,17 @@ class DirtyIndexStore {
      * @return list<array{kind:string,fileId:int,path:string,oldPath:string}>
      */
     public function drain(string $userId, int $limit = 300): array {
-        $file = $this->fileFor($userId);
-        $entries = $this->entries($userId);
-        if ($entries === []) {
-            return [];
-        }
-        $taken = array_slice($entries, 0, max(1, $limit));
-        $rest = array_slice($entries, count($taken));
-        $this->write($file, $rest);
-        return $taken;
+        return $this->withUserLock($userId, function () use ($userId, $limit): array {
+            $file = $this->fileFor($userId);
+            $entries = $this->entries($userId);
+            if ($entries === []) {
+                return [];
+            }
+            $taken = array_slice($entries, 0, max(1, $limit));
+            $rest = array_slice($entries, count($taken));
+            $this->write($file, $rest);
+            return $taken;
+        });
     }
 
     public function pending(string $userId): int {
@@ -71,20 +74,22 @@ class DirtyIndexStore {
     }
 
     private function mark(string $userId, string $key, array $entry): void {
-        $file = $this->fileFor($userId);
-        $entries = $this->entries($userId);
-        // Replace an existing entry for the same key (e.g. a write following
-        // a create) instead of accumulating duplicates.
-        $kept = [];
-        foreach ($entries as $e) {
-            $k = $this->keyFor($e);
-            if ($k === $key) {
-                continue;
+        $this->withUserLock($userId, function () use ($userId, $key, $entry): void {
+            $file = $this->fileFor($userId);
+            $entries = $this->entries($userId);
+            // Replace an existing entry for the same key (e.g. a write following
+            // a create) instead of accumulating duplicates.
+            $kept = [];
+            foreach ($entries as $e) {
+                $k = $this->keyFor($e);
+                if ($k === $key) {
+                    continue;
+                }
+                $kept[] = $e;
             }
-            $kept[] = $e;
-        }
-        $kept[] = $entry;
-        $this->write($file, $kept);
+            $kept[] = $entry;
+            $this->write($file, $kept);
+        });
     }
 
     private function keyFor(array $entry): string {
@@ -103,6 +108,23 @@ class DirtyIndexStore {
 
     private function write(ISimpleFile $file, array $entries): void {
         $file->putContent(json_encode($entries, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR));
+    }
+
+    private function withUserLock(string $userId, callable $callback): mixed {
+        if ($this->locks === null) {
+            return $callback();
+        }
+        $path = 'eva_ai/dirty-index/' . substr(hash('sha256', $userId), 0, 40);
+        $acquired = false;
+        try {
+            $this->locks->acquireLock($path, ILockingProvider::LOCK_EXCLUSIVE, 'EVA dirty index queue');
+            $acquired = true;
+            return $callback();
+        } finally {
+            if ($acquired) {
+                $this->locks->releaseLock($path, ILockingProvider::LOCK_EXCLUSIVE);
+            }
+        }
     }
 
     private function fileFor(string $userId): ISimpleFile {
