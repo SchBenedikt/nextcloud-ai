@@ -309,7 +309,7 @@ class ApiController extends OCSController {
             return new DataResponse(['error' => 'Not logged in'], 401);
         }
         $this->knowledgeInitializer->ensureInitialized($user);
-        return new DataResponse($this->config->all());
+        return new DataResponse($this->config->all(), 200, ['Cache-Control' => 'private, max-age=300']);
     }
 
     #[NoAdminRequired]
@@ -850,7 +850,7 @@ class ApiController extends OCSController {
             'total' => $aggregates['count'],
             'totalChunks' => $aggregates['chunks'],
             'totalSize' => $aggregates['size'],
-        ]);
+        ], 200, ['Cache-Control' => 'private, max-age=300']);
     }
 
     #[NoAdminRequired]
@@ -888,7 +888,7 @@ class ApiController extends OCSController {
                 'content' => (string)$c['content'],
                 'provenance' => json_decode((string)($c['provenance'] ?? '{}'), true) ?: [],
             ], $rows),
-        ]);
+        ], 200, ['Cache-Control' => 'private, max-age=300']);
     }
 
     #[NoAdminRequired]
