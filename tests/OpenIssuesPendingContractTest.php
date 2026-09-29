@@ -6,6 +6,7 @@ namespace OCA\EvaAi\Tests;
 
 use OCA\DAV\CalDAV\CalDavBackend;
 use OCA\EvaAi\Service\ActionExecutor;
+use OCA\EvaAi\Service\AppApiToolExecutor;
 use OCA\EvaAi\Service\TerminalToolExecutor;
 use OCA\EvaAi\Service\FileToolExecutor;
 use OCA\EvaAi\Service\ExternalToolExecutor;
@@ -48,7 +49,7 @@ final class OpenIssuesPendingContractTest extends TestCase {
 
 	/** Generic app APIs must not pass credential-shaped JSON fields to the model. */
 	public function testGenericAppApiPayloadRedactsSecrets(): void {
-		$reflection = new \ReflectionClass(ActionExecutor::class);
+		$reflection = new \ReflectionClass(AppApiToolExecutor::class);
 		$instance = $reflection->newInstanceWithoutConstructor();
 		$method = $reflection->getMethod('redactApiPayload');
 		$result = $method->invoke($instance, [
@@ -714,7 +715,7 @@ final class OpenIssuesPendingContractTest extends TestCase {
 
 	/** Generic app learning records response structure, never response values. */
 	public function testGenericAppLearningStoresOnlyResponseShape(): void {
-		$executor = (string)file_get_contents(__DIR__ . '/../lib/Service/ActionExecutor.php');
+		$executor = (string)file_get_contents(__DIR__ . '/../lib/Service/AppApiToolExecutor.php');
 		self::assertStringContainsString('response_shape', $executor);
 		self::assertStringContainsString('private function shapeOf', $executor);
 		self::assertStringContainsString('array_slice($value, 0, 40, true)', $executor);
@@ -739,12 +740,13 @@ final class OpenIssuesPendingContractTest extends TestCase {
 	public function testExternalConnectorsAreBoundedAndConfirmationReady(): void {
 		$executor = (string)file_get_contents(__DIR__ . '/../lib/Service/ActionExecutor.php');
 		$externalExecutor = (string)file_get_contents(__DIR__ . '/../lib/Service/ExternalToolExecutor.php');
+		$appExecutor = (string)file_get_contents(__DIR__ . '/../lib/Service/AppApiToolExecutor.php');
 		$fileExecutor = (string)file_get_contents(__DIR__ . '/../lib/Service/FileToolExecutor.php');
 		$policy = (string)file_get_contents(__DIR__ . '/../lib/Service/ToolPolicy.php');
 		self::assertStringContainsString('safeConnectorUrl', $externalExecutor);
 		self::assertStringContainsString('$this->domainRegistry->registerExecutor($this->externalExecutor)', $executor);
 		self::assertStringContainsString('$this->externalExecutor->hasConnector($alias)', $executor);
-		self::assertStringContainsString("execute('call_external_connector'", $executor);
+		self::assertStringContainsString("execute('call_external_connector'", $appExecutor);
 		self::assertStringContainsString("'https'", $externalExecutor);
 		self::assertStringContainsString('count($params) > 50', $externalExecutor);
 		self::assertStringContainsString("'call_external_connector'", $policy);
@@ -807,7 +809,7 @@ final class OpenIssuesPendingContractTest extends TestCase {
 		self::assertStringContainsString('recordToolMetric', $executor);
 		self::assertStringContainsString('public function recordTool', (string)file_get_contents(__DIR__ . '/../lib/Service/UsageMetrics.php'));
 		self::assertGreaterThanOrEqual(2, substr_count((string)file_get_contents(__DIR__ . '/../lib/Service/UsageMetrics.php'), "eq('operation', \$qb->createNamedParameter('chat')"));
-		self::assertStringContainsString("if (!is_array(\$known[\$appId] ?? null)) \$known[\$appId]", $executor);
+		self::assertStringContainsString("if (!is_array(\$known[\$appId] ?? null)) \$known[\$appId]", $appExecutor);
 	}
 
 	private function sliceBetween(string $haystack, string $start, string $end): string {

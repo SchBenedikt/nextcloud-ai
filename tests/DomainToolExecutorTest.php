@@ -18,6 +18,8 @@ use OCA\EvaAi\Service\TerminalToolExecutor;
 use OCA\EvaAi\Service\ContactsToolExecutor;
 use OCA\EvaAi\Service\FileToolExecutor;
 use OCA\EvaAi\Service\FileMetadataToolExecutor;
+use OCA\EvaAi\Service\AppApiToolExecutor;
+use OCA\EvaAi\Service\ExternalToolExecutor;
 use OCP\Accounts\IAccountManager;
 use OCP\Contacts\IManager as IContactsManager;
 use OCP\IUserManager;
@@ -138,6 +140,22 @@ final class DomainToolExecutorTest extends TestCase {
 		], $executor->tools());
 		self::assertSame(
 			['ok' => false, 'error' => 'Unsupported file metadata tool: not_a_tool'],
+			$executor->execute('not_a_tool', 'alice', []),
+		);
+	}
+
+	public function testAppApiExecutorOwnsDiscoveryAndCallTools(): void {
+		$config = $this->createMock(AppConfig::class);
+		$external = new ExternalToolExecutor($config);
+		$executor = new AppApiToolExecutor($config, $external);
+
+		self::assertSame([
+			'list_nextcloud_capabilities', 'discover_app_api', 'list_learned_app_apis',
+			'call_app_api', 'call_app_api_batch',
+		], $executor->tools());
+		self::assertStringContainsString('private const LEARNED_API_TTL = 2592000;', (string)file_get_contents(__DIR__ . '/../lib/Service/AppApiToolExecutor.php'));
+		self::assertSame(
+			['ok' => false, 'error' => 'Unsupported Nextcloud app API tool: not_a_tool'],
 			$executor->execute('not_a_tool', 'alice', []),
 		);
 	}
