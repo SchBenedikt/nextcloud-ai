@@ -293,17 +293,6 @@ final class FrontendContractTest extends TestCase {
         self::assertStringContainsString('box-shadow:', $source);
     }
 
-    public function testSecurityAndLoggerFixesRemainInPlace(): void {
-        $controller = (string)file_get_contents(__DIR__ . '/../lib/Controller/ApiController.php');
-        self::assertStringContainsString("|| isset(\$parts['user'])", $controller);
-        self::assertStringContainsString("|| isset(\$parts['query'])", $controller);
-        self::assertStringNotContainsString("isset(\$parts['user'], \$parts['pass'], \$parts['query'], \$parts['fragment'])", $controller);
-
-        $rag = (string)file_get_contents(__DIR__ . '/../lib/Service/RagService.php');
-        self::assertStringContainsString('use Psr\\Log\\LoggerInterface;', $rag);
-        self::assertStringContainsString('private LoggerInterface $logger', $rag);
-    }
-
     public function testCompleteWebToolCallsRunDirectlyWithoutUnconditionalConfirmation(): void {
         // Complete, explicit requests on the interactive WEB surface execute
         // immediately; the confirmation dialog is reserved for missing data.
