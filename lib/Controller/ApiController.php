@@ -20,6 +20,7 @@ use OCA\EvaAi\Service\RagService;
 use OCA\EvaAi\Service\KnowledgeInitializer;
 use OCA\EvaAi\Dto\ChatMetadataRequest;
 use OCA\EvaAi\Dto\ChatImportRequest;
+use OCA\EvaAi\Dto\ChatFolderRequest;
 use OCP\AppFramework\OCSController;
 use OCP\AppFramework\Http\Attribute\NoAdminRequired;
 use OCA\EvaAi\Http\StreamTraversableResponse;
@@ -1749,12 +1750,13 @@ class ApiController extends OCSController {
         if ($user === null) {
             return new ErrorDataResponse(['error' => 'Not logged in'], 401);
         }
-        $name = trim((string)$this->requestParam('name') ?? '');
-        if ($name === '') {
-            return new ErrorDataResponse(['error' => 'Folder name required'], 400);
+        try {
+            $request = ChatFolderRequest::create(['name' => $this->requestParam('name')]);
+        } catch (\InvalidArgumentException $e) {
+            return new ErrorDataResponse(['error' => $e->getMessage()], 400);
         }
         try {
-            return new ErrorDataResponse($this->chatStore->createFolder($user, $name));
+            return new ErrorDataResponse($this->chatStore->createFolder($user, $request->name));
         } catch (\Throwable $e) {
             return new ErrorDataResponse(['error' => 'Unable to create folder'], 500);
         }
@@ -1766,13 +1768,13 @@ class ApiController extends OCSController {
         if ($user === null) {
             return new ErrorDataResponse(['error' => 'Not logged in'], 401);
         }
-        $from = trim((string)$this->requestParam('from') ?? '');
-        $to = trim((string)$this->requestParam('to') ?? '');
-        if ($from === '' || $to === '') {
-            return new ErrorDataResponse(['error' => 'from and to are required'], 400);
+        try {
+            $request = ChatFolderRequest::rename(['from' => $this->requestParam('from'), 'to' => $this->requestParam('to')]);
+        } catch (\InvalidArgumentException $e) {
+            return new ErrorDataResponse(['error' => $e->getMessage()], 400);
         }
         try {
-            if (!$this->chatStore->renameFolder($user, $from, $to)) {
+            if (!$this->chatStore->renameFolder($user, $request->from, $request->to)) {
                 return new ErrorDataResponse(['error' => 'Requested resource was not found.'], 404);
             }
             return new ErrorDataResponse(['ok' => true]);
@@ -1785,13 +1787,13 @@ class ApiController extends OCSController {
     public function setFolderColor(): DataResponse {
         $user = $this->requireUser();
         if ($user === null) return new ErrorDataResponse(['error' => 'Not logged in'], 401);
-        $name = trim((string)$this->requestParam('name') ?? '');
-        $color = trim((string)$this->requestParam('color') ?? '');
-        if ($name === '' || ($color !== '' && !preg_match('/^#[0-9a-fA-F]{6}$/', $color))) {
-            return new ErrorDataResponse(['error' => 'A folder name and a valid hex color are required'], 400);
+        try {
+            $request = ChatFolderRequest::setColor(['name' => $this->requestParam('name'), 'color' => $this->requestParam('color', '')]);
+        } catch (\InvalidArgumentException $e) {
+            return new ErrorDataResponse(['error' => $e->getMessage()], 400);
         }
         try {
-            if (!$this->chatStore->setFolderColor($user, $name, $color === '' ? null : $color)) {
+            if (!$this->chatStore->setFolderColor($user, $request->name, $request->color)) {
                 return new ErrorDataResponse(['error' => 'Requested resource was not found.'], 404);
             }
             return new ErrorDataResponse(['ok' => true]);
@@ -1812,12 +1814,13 @@ class ApiController extends OCSController {
         if ($user === null) {
             return new ErrorDataResponse(['error' => 'Not logged in'], 401);
         }
-        $name = trim((string)$this->requestParam('name') ?? '');
-        if ($name === '') {
-            return new ErrorDataResponse(['error' => 'Folder name required'], 400);
+        try {
+            $request = ChatFolderRequest::delete(['name' => $this->requestParam('name')]);
+        } catch (\InvalidArgumentException $e) {
+            return new ErrorDataResponse(['error' => $e->getMessage()], 400);
         }
         try {
-            if (!$this->chatStore->deleteFolder($user, $name)) {
+            if (!$this->chatStore->deleteFolder($user, $request->name)) {
                 return new ErrorDataResponse(['error' => 'Requested resource was not found.'], 404);
             }
             return new ErrorDataResponse(['ok' => true]);
