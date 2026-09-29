@@ -123,6 +123,9 @@ final class DomainToolExecutorTest extends TestCase {
 	}
 
 	public function testFileMetadataExecutorOwnsCommentTagAndVersionTools(): void {
+		if (!interface_exists(IRootFolder::class)) {
+			$this->markTestSkipped('Nextcloud file APIs are not available');
+		}
 		$executor = new FileMetadataToolExecutor(
 			$this->createMock(IRootFolder::class),
 			$this->createMock(IUserManager::class),
