@@ -31,7 +31,8 @@ jobs:
                 URL="https://download.nextcloud.com/server/releases/latest-$VERSION.tar.bz2"
               fi
               echo "== Downloading $URL =="
-              apt-get update -qq
+              printf "deb https://deb.debian.org/debian bookworm main\n" > /tmp/eva-debian.list
+              apt-get update -qq -o Dir::Etc::sourcelist=/tmp/eva-debian.list -o Dir::Etc::sourceparts=- -o APT::Get::List-Cleanup=0
               apt-get install -y --no-install-recommends bzip2
               curl -fsSL "$URL" -o /tmp/nc.tar.bz2
               mkdir -p /srv

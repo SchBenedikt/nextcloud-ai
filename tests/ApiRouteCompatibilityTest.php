@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace OCA\EvaAi\Tests;
 
-use OCA\EvaAi\Controller\ApiController;
 use PHPUnit\Framework\TestCase;
 
 final class ApiRouteCompatibilityTest extends TestCase {
@@ -21,8 +20,9 @@ final class ApiRouteCompatibilityTest extends TestCase {
         ] as $signature) {
             self::assertContains($signature, $signatures);
         }
-        foreach (['startMailIndexSnake', 'startTalkIndexSnake', 'stopIndexSnake', 'resetIndexSnake', 'deleteFolderRest'] as $method) {
-            self::assertTrue(method_exists(ApiController::class, $method), 'Missing route handler ' . $method);
+        $routeNames = array_column($all, 'name');
+        foreach (['api#startMailIndexSnake', 'api#startTalkIndexSnake', 'api#stopIndexSnake', 'api#resetIndexSnake', 'api#deleteFolderRest'] as $routeName) {
+            self::assertContains($routeName, $routeNames, 'Missing route handler ' . $routeName);
         }
     }
 }
