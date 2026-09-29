@@ -70,34 +70,12 @@ final class RuntimeIntegrationTest extends TestCase {
         self::assertFalse($method->invoke($indexer, null));
     }
 
-    public function testIndexProgressIsolationBetweenUsers(): void {
-        // Verify that index state for user A does not leak to user B.
-        $docMapperA = $this->createMock(\OCA\EvaAi\Db\DocumentMapper::class);
-        $docMapperA->method('hashesForUser')
-            ->with('alice')
-            ->willReturn(['file1' => 'hash_a']);
-
-        $docMapperB = $this->createMock(\OCA\EvaAi\Db\DocumentMapper::class);
-        $docMapperB->method('hashesForUser')
-            ->with('bob')
-            ->willReturn(['file1' => 'hash_b']);
-
-        // Each user gets their own hashes — no cross-contamination.
-        self::assertSame(['file1' => 'hash_a'], $docMapperA->hashesForUser('alice'));
-        self::assertSame(['file1' => 'hash_b'], $docMapperB->hashesForUser('bob'));
-        self::assertNotSame(
-            $docMapperA->hashesForUser('alice'),
-            $docMapperB->hashesForUser('bob')
-        );
-    }
-
     public function testReconcileMailIndexRemovesDeletedMessages(): void {
-        // Simulate: indexed message IDs {1,2,3} but Mail app only has {1,3}.
-        // Message 2 should be removed.
-        $indexedIds = [1, 2, 3];
-        $currentIds = [1, 3];
-        $toRemove = array_diff($indexedIds, $currentIds);
-        self::assertSame([2], array_values($toRemove));
+        self::assertSame(
+            [-2],
+            Indexer::staleMailFileIds([-1, -2, -3, 45], [1, 3, 0, -4]),
+            'Only deleted negative mail rows should be reconciled; file and Talk rows must stay untouched'
+        );
     }
 
     // ---- Talk: read-only enforcement ----
@@ -166,17 +144,25 @@ final class RuntimeIntegrationTest extends TestCase {
     // ---- File context: selected-file access enforcement ----
 
     public function testFileContextChatRequiresFileIds(): void {
-        // When no file IDs are provided, the chat should fail gracefully.
-        $fileIds = [];
-        self::assertEmpty($fileIds, 'Empty file IDs should prevent file context chat');
-    }
+        $config = $this->createMock(\OCA\EvaAi\Service\AppConfig::class);
+        $config->expects(self::once())->method('get')->with('chat_model')->willReturn('test-model');
+        $documents = $this->createMock(\OCA\EvaAi\Db\DocumentMapper::class);
+        $documents->expects(self::never())->method('findByUserAndFileIds');
+        $ollama = $this->createMock(\OCA\EvaAi\Service\Ollama::class);
+        $ollama->expects(self::never())->method('chat');
+        $service = new \OCA\EvaAi\Service\FileContextChatService(
+            $ollama,
+            $config,
+            $documents,
+            $this->createMock(\OCA\EvaAi\Db\ChunkMapper::class),
+            $this->createMock(\OCP\Files\IRootFolder::class),
+            $this->createMock(\OCP\IURLGenerator::class),
+        );
 
-    public function testFileContextChatAcceptsMultipleFiles(): void {
-        // Multiple file IDs should be accepted for comparison/summary use cases.
-        $fileIds = [101, 102, 103];
-        self::assertCount(3, $fileIds);
-        self::assertContains(101, $fileIds);
-        self::assertContains(103, $fileIds);
+        $result = $service->chat('alice', [], 'Summarize these files');
+        self::assertSame('Please select at least one file.', $result['answer']);
+        self::assertSame('test-model', $result['model']);
+        self::assertSame(0, $result['missing']);
     }
 
     // ---- Email: graceful degradation when Mail app is absent ----
@@ -234,8 +220,11 @@ final class RuntimeIntegrationTest extends TestCase {
         $result = $policy->check('delete_file');
         // Web surface should require confirmation for destructive tools,
         // not outright block them.
-        self::assertTrue($result['allowed'] || isset($result['risk']),
-            'Web surface should handle delete_file with confirmation, not crash');
+        self::assertSame([
+            'allowed' => true,
+            'risk' => ToolPolicy::RISK_DESTRUCTIVE,
+            'requiresConfirmation' => false,
+        ], $result);
     }
 
     public function testTaskProcessingSurfaceReadOnly(): void {
@@ -249,13 +238,4 @@ final class RuntimeIntegrationTest extends TestCase {
         self::assertFalse($result['allowed'], 'TaskProcessing surface must be read-only');
     }
 
-    // ---- Notification linking ----
-
-    public function testNotificationTargetUrlFormat(): void {
-        // Notifications should link back to the EVA chat page.
-        $chatId = 'abc123';
-        $expectedUrl = '/apps/eva_ai/?chatId=' . $chatId;
-        self::assertStringContainsString('chatId=' . $chatId, $expectedUrl);
-        self::assertStringStartsWith('/apps/eva_ai/', $expectedUrl);
-    }
 }

@@ -2043,18 +2043,33 @@ class Indexer {
             $this->logger->warning('eva_ai: mail reconciliation failed', ['e' => $e->getMessage()]);
             return;
         }
-        $currentSet = array_flip($current);
         $stored = $this->documentMapper->fileIdsForSource($userId, Document::SOURCE_MAIL);
-        foreach ($stored as $fileId) {
-            $msgId = -$fileId;
-            if (!isset($currentSet[$msgId])) {
-                $this->removeStaleDocument($userId, $fileId);
-                $this->logger->info('eva_ai: Removed stale mail document (message deleted)', [
-                    'msgId' => $msgId,
-                    'userId' => $userId,
-                ]);
+        foreach (self::staleMailFileIds($stored, $current) as $fileId) {
+            $this->removeStaleDocument($userId, $fileId);
+            $this->logger->info('eva_ai: Removed stale mail document (message deleted)', [
+                'msgId' => -$fileId,
+                'userId' => $userId,
+            ]);
+        }
+    }
+
+    /** @param list<int> $indexedFileIds Negative synthetic IDs for mail rows. @param list<int> $currentMessageIds Positive Mail message IDs. @return list<int> */
+    public static function staleMailFileIds(array $indexedFileIds, array $currentMessageIds): array {
+        $currentFileIds = [];
+        foreach ($currentMessageIds as $messageId) {
+            $messageId = (int)$messageId;
+            if ($messageId > 0) {
+                $currentFileIds[-$messageId] = true;
             }
         }
+        $stale = [];
+        foreach ($indexedFileIds as $fileId) {
+            $fileId = (int)$fileId;
+            if ($fileId < 0 && !isset($currentFileIds[$fileId])) {
+                $stale[$fileId] = $fileId;
+            }
+        }
+        return array_values($stale);
     }
 
     /**

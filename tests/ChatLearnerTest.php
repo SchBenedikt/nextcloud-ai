@@ -9,10 +9,20 @@ use PHPUnit\Framework\TestCase;
 
 /** @covers \OCA\EvaAi\Service\ChatLearner */
 class ChatLearnerTest extends TestCase {
-    public function testUsesTheRegisteredLearningSetting(): void {
-        $source = (string)file_get_contents(__DIR__ . '/../lib/Service/ChatLearner.php');
-        self::assertStringContainsString("get('learning_enabled')", $source);
-        self::assertStringNotContainsString('chat_learning_enabled', $source);
+    public function testRegisteredLearningSettingStopsLearningBeforeReadingUserFiles(): void {
+        if (!defined('EVA_AI_OCP_AVAILABLE') || !EVA_AI_OCP_AVAILABLE) {
+            self::markTestSkipped('Nextcloud OCP interfaces are not available');
+        }
+        $config = $this->createMock(\OCA\EvaAi\Service\AppConfig::class);
+        $config->expects(self::once())->method('setUserId')->with('alice');
+        $config->expects(self::once())->method('get')->with('learning_enabled')->willReturn('0');
+        $root = $this->createMock(\OCP\Files\IRootFolder::class);
+        $root->expects(self::never())->method('getUserFolder');
+        $learner = new ChatLearner($root, $config, $this->createMock(\Psr\Log\LoggerInterface::class));
+
+        $learner->learnFromChat('alice', [
+            ['role' => 'user', 'text' => 'I prefer local models for private projects.'],
+        ]);
     }
 
     public function testExtractsGermanPersonalFacts(): void {
