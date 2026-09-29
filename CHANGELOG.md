@@ -11,6 +11,13 @@
   use the pinned Node version for release builds.
 - Document the complete CI matrix and local equivalents in `docs/CI.md`.
 
+## [1.17.1] - 2026-09-29
+
+### Chat organization
+
+- Add chat tags with folder and tag filters, drag-and-drop folder assignment,
+  folder colors, and folder rename/delete controls.
+
 ## [1.17.0] - 2026-09-29
 
 ### API integrations

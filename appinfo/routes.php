@@ -60,6 +60,7 @@ return [
         ['name' => 'api#folders', 'url' => '/api/folders', 'verb' => 'GET'],
         ['name' => 'api#createFolder', 'url' => '/api/folders', 'verb' => 'POST'],
         ['name' => 'api#renameFolder', 'url' => '/api/folders/rename', 'verb' => 'POST'],
+        ['name' => 'api#setFolderColor', 'url' => '/api/folders/color', 'verb' => 'POST'],
         ['name' => 'api#deleteFolder', 'url' => '/api/folders/delete', 'verb' => 'POST'],
         ['name' => 'api#deleteFolderRest', 'url' => '/api/folders', 'verb' => 'DELETE'],
         ['name' => 'api#models', 'url' => '/api/models', 'verb' => 'GET'],
