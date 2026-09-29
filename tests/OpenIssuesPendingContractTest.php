@@ -92,7 +92,7 @@ final class OpenIssuesPendingContractTest extends TestCase {
 
         $executor = (string)file_get_contents(__DIR__ . '/../lib/Service/ActionExecutor.php');
         self::assertStringContainsString("'reason' => 'content'", $executor);
-        self::assertStringContainsString('getContent()', $this->sliceBetween($executor, 'private function searchWalk', 'private function findContact'));
+        self::assertStringContainsString('getContent()', $this->sliceBetween($executor, 'private function searchWalk', 'private function marksFile'));
         self::assertStringContainsString('MAX_SEARCH_NODES', $executor);
         self::assertStringContainsString("'truncated' => \$truncated", $executor);
         self::assertStringContainsString('MAX_SEARCH_FILE_BYTES', $executor);

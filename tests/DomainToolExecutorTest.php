@@ -15,6 +15,10 @@ use OCA\EvaAi\Service\SharesService;
 use OCA\EvaAi\Service\TalkChatService;
 use OCA\EvaAi\Service\TalkToolExecutor;
 use OCA\EvaAi\Service\TerminalToolExecutor;
+use OCA\EvaAi\Service\ContactsToolExecutor;
+use OCP\Accounts\IAccountManager;
+use OCP\Contacts\IManager as IContactsManager;
+use OCP\IUserManager;
 use PHPUnit\Framework\TestCase;
 
 final class DomainToolExecutorTest extends TestCase {
@@ -81,5 +85,21 @@ final class DomainToolExecutorTest extends TestCase {
 		$executor = new TerminalToolExecutor($config);
 
 		self::assertSame(['ok' => false, 'error' => 'Safe local commands are disabled in EVA settings.'], $executor->execute('run_safe_command', 'alice', ['command' => 'date']));
+	}
+
+	public function testContactsExecutorSearchesForTheEffectiveUserQuery(): void {
+		if (!interface_exists(IContactsManager::class)) {
+			$this->markTestSkipped('The optional Contacts app interface is not available');
+		}
+		$contacts = $this->createMock(IContactsManager::class);
+		$contacts->expects(self::once())->method('search')->with('Ada', ['FN', 'NICKNAME', 'EMAIL', 'ORG'])->willReturn([
+			['FN' => 'Ada Lovelace', 'EMAIL' => ['ada@example.test'], 'TEL' => ['123'], 'ORG' => 'Analytical Engines'],
+		]);
+		$executor = new ContactsToolExecutor($contacts, $this->createMock(IAccountManager::class), $this->createMock(IUserManager::class));
+
+		self::assertContains('update_profile', $executor->tools());
+		self::assertSame(['ok' => true, 'result' => ['query' => 'Ada', 'contacts' => [[
+			'name' => 'Ada Lovelace', 'emails' => ['ada@example.test'], 'phones' => ['123'], 'org' => 'Analytical Engines',
+		]]]], $executor->execute('find_contact', 'alice', ['query' => 'Ada']));
 	}
 }

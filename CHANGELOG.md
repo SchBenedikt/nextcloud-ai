@@ -2,6 +2,13 @@
 
 ## [Unreleased]
 
+## [1.17.7] - 2026-09-29
+
+### Tool executor architecture
+
+- Move CardDAV contact and Nextcloud profile tools into a dedicated domain executor.
+- Preserve writable address book checks, shared/system book protection, and account property verification behavior.
+
 ## [1.17.6] - 2026-09-29
 
 ### Tool executor architecture
