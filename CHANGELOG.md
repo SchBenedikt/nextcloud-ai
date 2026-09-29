@@ -2,6 +2,13 @@
 
 ## [Unreleased]
 
+## [1.17.10] - 2026-09-29
+
+### Tool executor architecture
+
+- Move comments, system tags, and file version operations into a dedicated metadata executor.
+- Keep comment bounds, tag visibility and assignment checks, and file ownership checks inside the domain executor.
+
 ## [1.17.9] - 2026-09-29
 
 ### Tool executor architecture
