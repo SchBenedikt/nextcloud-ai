@@ -54,6 +54,8 @@ return [
         ['name' => 'api#chatDetail', 'url' => '/api/chats/{id}', 'verb' => 'GET'],
         ['name' => 'api#chatDelete', 'url' => '/api/chats/{id}', 'verb' => 'DELETE'],
         ['name' => 'api#chatAppend', 'url' => '/api/chats/{id}/messages', 'verb' => 'POST'],
+        ['name' => 'api#chatReaction', 'url' => '/api/chats/{id}/reaction', 'verb' => 'POST'],
+        ['name' => 'api#feedbackStats', 'url' => '/api/feedback/stats', 'verb' => 'GET'],
         ['name' => 'api#chatTitle', 'url' => '/api/chats/{id}/title', 'verb' => 'POST'],
         ['name' => 'api#chatMeta', 'url' => '/api/chats/{id}/meta', 'verb' => 'POST'],
         ['name' => 'api#chatRegenerate', 'url' => '/api/chats/{id}/regenerate', 'verb' => 'POST'],

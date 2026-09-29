@@ -11,6 +11,13 @@
   use the pinned Node version for release builds.
 - Document the complete CI matrix and local equivalents in `docs/CI.md`.
 
+## [1.17.2] - 2026-09-29
+
+### Chat feedback
+
+- Add persistent helpful/not-helpful reactions and bookmarks to assistant
+  answers, plus bookmark filtering, feedback metrics, and export support.
+
 ## [1.17.1] - 2026-09-29
 
 ### Chat organization

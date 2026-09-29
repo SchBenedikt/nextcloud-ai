@@ -221,6 +221,10 @@ function buildCalendarForm(args, tr) {
 		lines.push('_' + tr('Exported {date}', { date: new Date().toISOString() }) + '_')
 		messages.forEach(function (m) {
 			lines.push('', '## ' + (m.role === 'user' ? tr('You') : 'EVA'), '', m.text || '')
+			if (m.role === 'assistant' && m.reactions) {
+				if (typeof m.reactions.helpful === 'boolean') lines.push(tr(m.reactions.helpful ? 'Marked helpful' : 'Marked not helpful'))
+				if (m.reactions.bookmarked) lines.push(tr('Bookmarked'))
+			}
 		})
 		var blob = new Blob([lines.join('\n')], { type: 'text/markdown' })
 		var url = URL.createObjectURL(blob)
@@ -411,6 +415,44 @@ function buildCalendarForm(args, tr) {
 			cb.textContent = '⧉'
 			cb.addEventListener('click', function () { copyText(String(m.text || ''), cb) })
 			b.appendChild(cb)
+			if (m.done) {
+				var feedback = document.createElement('div')
+				feedback.className = 'rfeedback'
+				var status = document.createElement('span')
+				status.className = 'rfeedback-status'
+				status.setAttribute('role', 'status')
+				var reactionButtons = []
+				function addReaction(type, value, label, symbol) {
+					var button = document.createElement('button')
+					button.type = 'button'
+					button.className = 'rfeedback-button'
+					button.textContent = symbol
+					button.title = tr(label)
+					button.setAttribute('aria-label', tr(label))
+					button.setAttribute('aria-pressed', String(type === 'helpful' ? m.reactions && m.reactions.helpful === value : !!(m.reactions && m.reactions.bookmarked)))
+					button.disabled = !chatId
+					button.addEventListener('click', function () {
+						button.disabled = true
+						var next = type === 'bookmarked' ? !(m.reactions && m.reactions.bookmarked) : (m.reactions && m.reactions.helpful === value ? null : value)
+						saveReaction(idx, type, next).then(function (result) {
+							m.reactions = result && result.reactions && Object.keys(result.reactions).length ? result.reactions : undefined
+							reactionButtons.forEach(function (entry) {
+								entry.button.setAttribute('aria-pressed', String(entry.type === 'helpful' ? m.reactions && m.reactions.helpful === entry.value : !!(m.reactions && m.reactions.bookmarked)))
+								entry.button.classList.toggle('is-active', entry.button.getAttribute('aria-pressed') === 'true')
+							})
+							status.textContent = tr('Feedback saved')
+						}).catch(function () { status.textContent = tr('Feedback could not be saved.') }).finally(function () { button.disabled = !chatId })
+					})
+					button.classList.toggle('is-active', button.getAttribute('aria-pressed') === 'true')
+					reactionButtons.push({ button: button, type: type, value: value })
+					feedback.appendChild(button)
+				}
+				addReaction('helpful', true, 'Helpful', '👍')
+				addReaction('helpful', false, 'Not helpful', '👎')
+				addReaction('bookmarked', true, 'Bookmark answer', '🔖')
+				feedback.appendChild(status)
+				b.appendChild(feedback)
+			}
 		}
 		if (m.role === 'user' && m.done) {
 			var cb2 = document.createElement('button')
@@ -799,6 +841,11 @@ function buildCalendarForm(args, tr) {
 			.catch(function () { return false })
 	}
 
+	function saveReaction(index, type, value) {
+		if (!chatId) return Promise.reject(new Error(tr('Chat is not ready yet.')))
+		return api('POST', '/chats/' + encodeURIComponent(chatId) + '/reaction', { index: index, type: type, value: value })
+	}
+
 	// Only follow the stream down while the user is already near the bottom:
 	// scrolling up to read earlier context must not be yanked back on every
 	// streamed delta.
@@ -845,6 +892,7 @@ function buildCalendarForm(args, tr) {
 					text: m.text || '',
 					thinking: '',
 					followups: Array.isArray(m.followups) ? m.followups : [],
+					reactions: m.reactions && typeof m.reactions === 'object' ? m.reactions : undefined,
 					tools: Array.isArray(m.tools) ? m.tools : [],
 					// A persisted pending confirmation re-renders the inline panel so
 					// approving after a reload still works (Issue #185).
