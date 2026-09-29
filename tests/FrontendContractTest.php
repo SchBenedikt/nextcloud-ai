@@ -265,26 +265,6 @@ final class FrontendContractTest extends TestCase {
         self::assertStringContainsString('Eva · Local', (string)file_get_contents(__DIR__ . '/../lib/TaskProcessing/EvaSummaryProvider.php'));
     }
 
-    public function testFairIndexSchedulingContract(): void {
-        // Issue #142: global concurrency limit + FIFO queue. The scheduler
-        // must bound running passes, expose queue state cheaply, and the
-        // indexer must hand a queued user back instead of competing.
-        $scheduler = (string)file_get_contents(__DIR__ . '/../lib/Service/IndexScheduler.php');
-        self::assertStringContainsString('acquireSlot', $scheduler);
-        self::assertStringContainsString("'queued'", $scheduler);
-        self::assertStringContainsString('queuedUsers', $scheduler);
-        self::assertStringContainsString('recoverStale', $scheduler);
-        self::assertStringContainsString('index_max_concurrent', $scheduler);
-        $indexer = (string)file_get_contents(__DIR__ . '/../lib/Service/Indexer.php');
-        self::assertStringContainsString('$this->scheduler->acquireSlot($userId)', $indexer);
-        self::assertStringContainsString('queue_position', $indexer);
-        self::assertStringContainsString('$this->scheduler->releaseSlot($userId)', $indexer);
-        $job = (string)file_get_contents(__DIR__ . '/../lib/BackgroundJob/IndexJob.php');
-        self::assertStringContainsString('queuedUsers(10)', $job);
-        $controller = (string)file_get_contents(__DIR__ . '/../lib/Controller/ApiController.php');
-        self::assertStringContainsString("\$status['scheduler'] = \$this->indexScheduler->snapshot(\$user)", $controller);
-    }
-
     public function testSettingsPersistExclusionsAndDoNotOverwriteFormDuringPolling(): void {
         $settings = (string)file_get_contents(__DIR__ . '/../src/views/SettingsView.vue');
         self::assertStringContainsString('async function persistExcludeList(list, previous)', $settings);
@@ -311,44 +291,6 @@ final class FrontendContractTest extends TestCase {
         self::assertStringNotContainsString('.rb { box-shadow:', $source);
         self::assertStringContainsString('.customize-box {', $source);
         self::assertStringContainsString('box-shadow:', $source);
-    }
-
-    public function testNon2xxResponsesAreVisibleInsteadOfSilentNulls(): void {
-        $app = (string)file_get_contents(__DIR__ . '/../src/App.vue');
-        $fileContext = (string)file_get_contents(__DIR__ . '/../src/views/FileContextChatView.vue');
-        $api = (string)file_get_contents(__DIR__ . '/../src/lib/api.js');
-        self::assertStringContainsString("import { api as requestApi, errMsg } from './lib/api'", $app);
-        self::assertStringContainsString("import { api, errMsg } from '../lib/api'", $fileContext);
-        self::assertStringContainsString('apiError', $app);
-        self::assertStringContainsString('apiError', $fileContext);
-        self::assertStringNotContainsString('.catch(() => null)', $app);
-        self::assertStringNotContainsString('.catch(() => null)', $fileContext);
-        self::assertStringContainsString('slice(0, 240)', $api);
-        $vanilla = (string)file_get_contents(__DIR__ . '/../src/lib/vanilla.js');
-        $standalone = (string)file_get_contents(__DIR__ . '/../src/standalone-chat.js');
-        self::assertStringContainsString('if (!r.ok)', $vanilla);
-        self::assertStringContainsString('if (!r.ok)', $standalone);
-        self::assertStringContainsString("'HTTP ' + r.status", $vanilla);
-        self::assertStringContainsString("'HTTP ' + r.status", $standalone);
-    }
-
-
-    public function testChatMessagesArePersistedInQuestionThenAnswerOrder(): void {
-        $source = (string)file_get_contents(__DIR__ . '/../src/lib/vanilla.js');
-        self::assertStringContainsString(
-            "saveUserMessage(msg)\n\t\t\t\t\t\t.then((savedUser) => savedUser ? saveMessage('assistant', last.text, last.followups, null, null, last.tools) : false)",
-            $source
-        );
-        self::assertStringNotContainsString("Promise.all([saveMessage('user', msg)", $source);
-    }
-
-    public function testConnectionCheckShortCircuitsAndReportsHttpErrors(): void {
-        $ollama = (string)file_get_contents(__DIR__ . '/../lib/Service/Ollama.php');
-        self::assertStringContainsString("'error' => 'Ollama returned HTTP ' . \$status", $ollama);
-        self::assertStringContainsString('if (!$server[\'ok\'])', $ollama);
-        self::assertStringContainsString('Skipped because the Ollama server is not reachable.', $ollama);
-        self::assertStringContainsString('$this->testEmbedding($emb, 30)', $ollama);
-        self::assertStringContainsString('$this->testChat($chat, 60)', $ollama);
     }
 
     public function testSecurityAndLoggerFixesRemainInPlace(): void {

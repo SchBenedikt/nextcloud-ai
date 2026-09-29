@@ -58,6 +58,7 @@ function htmlWith(initialMock) {
     streamLines: [],
     streamMode: 'sync',
     streamController: null,
+    apiFailure: null,
     saved: [],
     aborted: 0,
   }, ${initialMock || '{}'})
@@ -86,6 +87,11 @@ function htmlWith(initialMock) {
       status,
       headers: { 'Content-Type': 'application/json' },
     }))])
+
+    const failure = window.__mock.apiFailure
+    if (failure && method === failure.method && u.endsWith(failure.path)) {
+      return json(failure.status, failure.data)
+    }
 
     if (u.includes('/chat/stream')) {
       if (window.__mock.streamMode === 'open') {
