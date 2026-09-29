@@ -21,6 +21,7 @@ use OCA\EvaAi\Service\KnowledgeInitializer;
 use OCA\EvaAi\Dto\ChatMetadataRequest;
 use OCA\EvaAi\Dto\ChatImportRequest;
 use OCA\EvaAi\Dto\ChatFolderRequest;
+use OCA\EvaAi\Dto\ChatTitleRequest;
 use OCP\AppFramework\OCSController;
 use OCP\AppFramework\Http\Attribute\NoAdminRequired;
 use OCA\EvaAi\Http\StreamTraversableResponse;
@@ -1394,8 +1395,11 @@ class ApiController extends OCSController {
             return new ErrorDataResponse(['error' => 'Not logged in'], 401);
         }
         try {
-            $chat = $this->chatStore->create($user, (string)($this->requestParam('title') ?? ''));
+            $request = ChatTitleRequest::create(['title' => $this->requestParam('title', '')]);
+            $chat = $this->chatStore->create($user, $request->title);
             return new ErrorDataResponse($chat);
+        } catch (\InvalidArgumentException $e) {
+            return new ErrorDataResponse(['error' => $e->getMessage()], 400);
         } catch (\Throwable $e) {
             return $this->chatErrorResponse($e);
         }
@@ -1689,12 +1693,11 @@ class ApiController extends OCSController {
             if ($this->chatStore->get($user, $id) === null) {
                 return new ErrorDataResponse(['error' => 'Requested resource was not found.'], 404);
             }
-            $title = trim((string)($this->requestParam('title') ?? ''));
-            if ($title === '') {
-                return new ErrorDataResponse(['error' => 'title required'], 400);
-            }
-            $this->chatStore->setTitle($user, $id, $title);
+            $request = ChatTitleRequest::update(['title' => $this->requestParam('title')]);
+            $this->chatStore->setTitle($user, $id, $request->title);
             return new ErrorDataResponse(['ok' => true]);
+        } catch (\InvalidArgumentException $e) {
+            return new ErrorDataResponse(['error' => $e->getMessage()], 400);
         } catch (\Throwable $e) {
             return $this->chatErrorResponse($e);
         }
