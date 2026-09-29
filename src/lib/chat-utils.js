@@ -169,3 +169,11 @@ export function copyText(txt, el) {
 		done()
 	}
 }
+
+/** Extract an API error message from legacy and normalized OCS payloads. */
+export function apiErrorMessage(payload) {
+	const data = payload?.ocs?.data || payload
+	const error = data?.error
+	const message = typeof error === 'object' ? error?.message : (data?.message || error)
+	return String(payload?.ocs?.message || message || payload?.message || '').trim()
+}

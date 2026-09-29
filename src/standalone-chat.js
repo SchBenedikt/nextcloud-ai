@@ -10,7 +10,7 @@ import { readNdjson } from './lib/ndjson'
  * The standalone page pre-defines its DOM in standalone.php; this script
  * wires up event handlers, sidebar management and chat persistence.
  */
-import { escHtml, mdInline, mdToHtml, citedSources, formatToolName, copyText, installImageFallback } from './lib/chat-utils'
+import { escHtml, mdInline, mdToHtml, citedSources, formatToolName, copyText, installImageFallback, apiErrorMessage } from './lib/chat-utils'
 
 function buildCalendarForm(args, tr) {
 	var form = document.createElement('div')
@@ -253,7 +253,7 @@ function buildCalendarForm(args, tr) {
 					var json = null
 					try { json = text ? JSON.parse(text) : null } catch (e) {}
 					if (!r.ok) {
-						var detail = json && json.ocs && json.ocs.message || json && json.ocs && json.ocs.data && json.ocs.data.error || json && json.error || text
+						var detail = apiErrorMessage(json) || text
 						throw new Error(('HTTP ' + r.status + ' ' + String(detail || '')).trim().slice(0, 260))
 					}
 					return json && json.ocs && typeof json.ocs.data !== 'undefined' ? json.ocs.data : json
@@ -543,7 +543,7 @@ function buildCalendarForm(args, tr) {
 					})
 				}).then(function (result) {
 						if (!result || !result.ok) {
-							finish(result && result.error || tr('The action could not be completed.'))
+							finish(apiErrorMessage(result) || tr('The action could not be completed.'))
 							return
 						}
 						var value = tr('The action was completed.')

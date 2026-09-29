@@ -20,8 +20,8 @@ use OCA\EvaAi\Service\KnowledgeInitializer;
 use OCP\AppFramework\OCSController;
 use OCP\AppFramework\Http\Attribute\NoAdminRequired;
 use OCA\EvaAi\Http\StreamTraversableResponse;
+use OCA\EvaAi\Http\ErrorDataResponse;
 use OCP\AppFramework\Http\DataResponse;
-use OCP\AppFramework\Http\NotFoundResponse;
 use OCP\BackgroundJob\IJobList;
 use OCP\ICacheFactory;
 use OCP\App\IAppManager;
@@ -110,7 +110,7 @@ class ApiController extends OCSController {
             $cache->add($key, 0, 61);
             $count = $cache->inc($key);
             if (is_int($count) && $count > $max) {
-                return new DataResponse(['error' => 'rate_limited', 'message' => 'Too many requests. Please retry shortly.'], 429, ['Retry-After' => '60']);
+                return new ErrorDataResponse(['error' => 'rate_limited', 'message' => 'Too many requests. Please retry shortly.'], 429, ['Retry-After' => '60']);
             }
         } catch (\Throwable $e) {
             // A missing cache backend must not make the chat unavailable.
@@ -150,17 +150,17 @@ class ApiController extends OCSController {
         // the frontend show "please retry" instead of taking the app down
         // with an opaque 500.
         if ($e instanceof \OCA\EvaAi\Service\ChatStoreBusyException) {
-            return new DataResponse(['error' => 'busy', 'message' => $e->getMessage()], 503);
+            return new ErrorDataResponse(['error' => 'busy', 'message' => $e->getMessage()], 503);
         }
         $message = $e->getMessage();
         if (str_contains($message, 'Invalid EVA chat data')
             || str_contains($message, 'Invalid EVA folder registry')) {
-            return new DataResponse([
+            return new ErrorDataResponse([
                 'error' => 'corrupt_store',
                 'message' => 'The EVA chat storage for this user is corrupt and was preserved. An administrator can recover it with: occ eva_ai:repair-chats <user>',
             ], 500);
         }
-        return new DataResponse(['error' => 'Unable to persist chat data'], 500);
+        return new ErrorDataResponse(['error' => 'Unable to persist chat data'], 500);
     }
 
     #[NoAdminRequired]
@@ -195,17 +195,17 @@ class ApiController extends OCSController {
     public function settings(): DataResponse {
         $user = $this->requireUser();
         if ($user === null) {
-            return new DataResponse(['error' => 'Not logged in'], 401);
+            return new ErrorDataResponse(['error' => 'Not logged in'], 401);
         }
         $this->knowledgeInitializer->ensureInitialized($user);
-        return new DataResponse($this->config->all(), 200, ['Cache-Control' => 'private, max-age=300']);
+        return new ErrorDataResponse($this->config->all(), 200, ['Cache-Control' => 'private, max-age=300']);
     }
 
     #[NoAdminRequired]
     public function saveSettings(): DataResponse {
         $user = $this->requireUser();
         if ($user === null) {
-            return new DataResponse(['error' => 'Not logged in'], 401);
+            return new ErrorDataResponse(['error' => 'Not logged in'], 401);
         }
         $this->config->setUserId($user);
         $this->recoverStaleIndex();
@@ -281,10 +281,10 @@ class ApiController extends OCSController {
             }
         }
         if ($indexRunning && array_diff(array_keys($pending), ['proactive_enabled', 'proactive_schedules']) !== []) {
-            return new DataResponse(['error' => 'Only scheduled briefings can be changed while indexing is running.'], 409);
+            return new ErrorDataResponse(['error' => 'Only scheduled briefings can be changed while indexing is running.'], 409);
         }
         if ($validationErrors !== []) {
-            return new DataResponse([
+            return new ErrorDataResponse([
                 'error' => 'Invalid settings.',
                 'validationErrors' => array_values($validationErrors),
             ], 400);
@@ -300,22 +300,22 @@ class ApiController extends OCSController {
             $customUrl = trim((string)($selectedProfile['url'] ?? $pending['custom_provider_url'] ?? $this->config->get('custom_provider_url')));
             $customModel = trim((string)($selectedProfile['model'] ?? $pending['custom_provider_model'] ?? $this->config->get('custom_provider_model')));
             if ($customUrl === '' || $customModel === '') {
-                return new DataResponse(['error' => 'Custom provider requires both an endpoint URL and model name.'], 400);
+                return new ErrorDataResponse(['error' => 'Custom provider requires both an endpoint URL and model name.'], 400);
             }
             $parts = parse_url($customUrl);
             if ($parts === false || isset($parts['user']) || isset($parts['pass']) || isset($parts['query']) || isset($parts['fragment']) || empty($parts['host'])) {
-                return new DataResponse(['error' => 'Custom provider endpoint must be a plain URL without credentials, query or fragment.'], 400);
+                return new ErrorDataResponse(['error' => 'Custom provider endpoint must be a plain URL without credentials, query or fragment.'], 400);
             }
         }
         $groqKey = $this->requestParam('groq_api_key');
         $removeGroqKey = $this->requestParam('remove_groq_api_key', false);
         if (($groqKey !== null && (!is_string($groqKey) || ($groqKey !== '' && !preg_match('/^gsk_[A-Za-z0-9_-]{16,256}$/D', $groqKey))))
             || !in_array($removeGroqKey, [true, false, 0, 1, '0', '1'], true)) {
-            return new DataResponse(['error' => 'Invalid Groq credential input.'], 400);
+            return new ErrorDataResponse(['error' => 'Invalid Groq credential input.'], 400);
         }
         $roleErrors = $this->validateModelRoles($pending);
         if ($roleErrors !== []) {
-            return new DataResponse([
+            return new ErrorDataResponse([
                 'error' => 'Invalid settings.',
                 'validationErrors' => array_values($roleErrors),
             ], 400);
@@ -325,12 +325,12 @@ class ApiController extends OCSController {
         $customKey = $this->requestParam('custom_provider_api_key');
         $removeCustomKey = $this->requestParam('remove_custom_provider_api_key', false);
         $providerId = (string)($pending['chat_provider'] ?? $this->config->get('chat_provider'));
-        if ($customKey !== null && (!is_string($customKey) || strlen($customKey) > 512)) return new DataResponse(['error' => 'Invalid custom provider credential input.'], 400);
-        if (!in_array($removeCustomKey, [true, false, 0, 1, '0', '1'], true)) return new DataResponse(['error' => 'Invalid custom provider credential input.'], 400);
+        if ($customKey !== null && (!is_string($customKey) || strlen($customKey) > 512)) return new ErrorDataResponse(['error' => 'Invalid custom provider credential input.'], 400);
+        if (!in_array($removeCustomKey, [true, false, 0, 1, '0', '1'], true)) return new ErrorDataResponse(['error' => 'Invalid custom provider credential input.'], 400);
         if ($providerId !== 'ollama' && $providerId !== 'groq') {
             $credentials = \OCP\Server::get(\OCA\EvaAi\Service\ProviderCredentials::class);
             if (!$removeCustomKey && (!is_string($customKey) || $customKey === '') && !$credentials->customConfigured($user, $providerId)) {
-                return new DataResponse(['error' => 'Save an API key for the selected custom provider first.'], 400);
+                return new ErrorDataResponse(['error' => 'Save an API key for the selected custom provider first.'], 400);
             }
             if ($removeCustomKey) $credentials->saveCustom($user, $providerId, '');
             elseif (is_string($customKey) && $customKey !== '') $credentials->saveCustom($user, $providerId, $customKey);
@@ -338,10 +338,10 @@ class ApiController extends OCSController {
         $nextcloudToken = $this->requestParam('nextcloud_api_token');
         $removeNextcloudToken = $this->requestParam('remove_nextcloud_api_token', false);
         if ($nextcloudToken !== null && (!is_string($nextcloudToken) || strlen($nextcloudToken) > 512 || preg_match('/\s/', $nextcloudToken))) {
-            return new DataResponse(['error' => 'Invalid Nextcloud app token input.'], 400);
+            return new ErrorDataResponse(['error' => 'Invalid Nextcloud app token input.'], 400);
         }
         if (!in_array($removeNextcloudToken, [true, false, 0, 1, '0', '1'], true)) {
-            return new DataResponse(['error' => 'Invalid Nextcloud app token input.'], 400);
+            return new ErrorDataResponse(['error' => 'Invalid Nextcloud app token input.'], 400);
         }
         if ($removeNextcloudToken || (is_string($nextcloudToken) && $nextcloudToken !== '')) {
             \OCP\Server::get(\OCA\EvaAi\Service\ProviderCredentials::class)->saveNextcloudToken(
@@ -394,7 +394,7 @@ class ApiController extends OCSController {
                 $value = $this->config->normalizeSetting($key, $value);
                 $this->config->set($key, (string)$value);
         }
-        return new DataResponse($this->config->all());
+        return new ErrorDataResponse($this->config->all());
     }
 
     /** Validate the small, deliberately data-only scheduler format. */
@@ -520,15 +520,15 @@ class ApiController extends OCSController {
     public function resetIndex(): DataResponse {
         $user = $this->requireUser();
         if ($user === null) {
-            return new DataResponse(['error' => 'Not logged in'], 401);
+            return new ErrorDataResponse(['error' => 'Not logged in'], 401);
         }
         $this->config->setUserId($user);
         $this->recoverStaleIndex();
         if ($this->config->get('index_running') === '1') {
-            return new DataResponse(['error' => 'Stop indexing before deleting the index.'], 409);
+            return new ErrorDataResponse(['error' => 'Stop indexing before deleting the index.'], 409);
         }
         $deleted = $this->indexer->reset($user);
-        return new DataResponse([
+        return new ErrorDataResponse([
             'result' => $deleted,
             'status' => $this->ragService->buildStatus($user),
         ]);
@@ -578,12 +578,12 @@ class ApiController extends OCSController {
     public function stopIndex(): DataResponse {
         $user = $this->requireUser();
         if ($user === null) {
-            return new DataResponse(['error' => 'Not logged in'], 401);
+            return new ErrorDataResponse(['error' => 'Not logged in'], 401);
         }
         $this->config->setUserId($user);
         $this->recoverStaleIndex();
         if ($this->config->get('index_running') !== '1') {
-            return new DataResponse(['stopped' => true, 'status' => $this->ragService->buildStatus($user)]);
+            return new ErrorDataResponse(['stopped' => true, 'status' => $this->ragService->buildStatus($user)]);
         }
         // Keep the run claim and heartbeat until the worker confirms that it
         // has stopped. Clearing them here makes the UI report a false
@@ -591,7 +591,7 @@ class ApiController extends OCSController {
         // The worker observes this durable cancellation flag at its next
         // boundary and owns the terminal-state transition in its finally block.
         $this->config->set('index_cancel_requested', '1');
-        return new DataResponse([
+        return new ErrorDataResponse([
             'stopped' => true,
             'stopping' => true,
             'status' => $this->ragService->buildStatus($user),
@@ -601,7 +601,7 @@ class ApiController extends OCSController {
     private function queueIndex(string $mode): DataResponse {
         $user = $this->requireUser();
         if ($user === null) {
-            return new DataResponse(['error' => 'Not logged in'], 401);
+            return new ErrorDataResponse(['error' => 'Not logged in'], 401);
         }
         $this->config->setUserId($user);
         $this->recoverStaleIndex();
@@ -616,17 +616,17 @@ class ApiController extends OCSController {
                         'mode' => $mode,
                         'waitForCancellation' => true,
                     ]);
-                    return new DataResponse([
+                    return new ErrorDataResponse([
                         'queued' => true,
                         'waitingForStop' => true,
                         'mode' => $mode,
                         'status' => $this->ragService->buildStatus($user),
                     ]);
                 } catch (\Throwable $e) {
-                    return new DataResponse(['error' => 'The follow-up index job could not be queued.'], 500);
+                    return new ErrorDataResponse(['error' => 'The follow-up index job could not be queued.'], 500);
                 }
             }
-            return new DataResponse([
+            return new ErrorDataResponse([
                 'queued' => false,
                 'alreadyRunning' => true,
                 'message' => 'Indexing is already running for this user.',
@@ -645,7 +645,7 @@ class ApiController extends OCSController {
             // maintenance job happens to clean file_locks.
             $this->lockGuard->acquireIndexLock($user, $lockPath);
         } catch (\Throwable $e) {
-            return new DataResponse([
+            return new ErrorDataResponse([
                 'queued' => false,
                 'error' => 'Indexing is currently locked by another worker. Please retry shortly.',
                 'status' => $this->ragService->buildStatus($user),
@@ -653,7 +653,7 @@ class ApiController extends OCSController {
         }
         if (!$this->config->tryClaimIndex($user)) {
             $this->lockingProvider->releaseLock($lockPath, ILockingProvider::LOCK_EXCLUSIVE);
-            return new DataResponse([
+            return new ErrorDataResponse([
                 'queued' => false,
                 'error' => 'Indexing could not be claimed because another worker is active. Please retry shortly.',
                 'status' => $this->ragService->buildStatus($user),
@@ -676,7 +676,7 @@ class ApiController extends OCSController {
             // A successful explicit start enrolls this user even if the
             // current pass eventually finds zero indexable documents.
             $this->config->setIndexEnrolled($user, true);
-            return new DataResponse([
+            return new ErrorDataResponse([
                 'queued' => true,
                 'mode' => $mode,
                 'status' => $this->ragService->buildStatus($user),
@@ -689,7 +689,7 @@ class ApiController extends OCSController {
                 $this->config->set('index_run_id', '');
                 $this->config->set('index_heartbeat', '');
             }
-            return new DataResponse(['error' => 'The background index job could not be queued.'], 500);
+            return new ErrorDataResponse(['error' => 'The background index job could not be queued.'], 500);
         } finally {
             $this->lockingProvider->releaseLock($lockPath, ILockingProvider::LOCK_EXCLUSIVE);
         }
@@ -705,7 +705,7 @@ class ApiController extends OCSController {
     public function documents(): DataResponse {
         $user = $this->requireUser();
         if ($user === null) {
-            return new DataResponse(['error' => 'Not logged in'], 401);
+            return new ErrorDataResponse(['error' => 'Not logged in'], 401);
         }
         $search = (string)($this->requestParam('search') ?? '');
         $limit = max(1, min(500, (int)($this->requestParam('limit') ?? 100)));
@@ -771,22 +771,22 @@ class ApiController extends OCSController {
         $headers = ['Cache-Control' => 'private, max-age=300', 'ETag' => $etag];
         $ifNoneMatch = trim((string)$this->request->getHeader('If-None-Match'));
         if ($ifNoneMatch !== '' && hash_equals($etag, $ifNoneMatch)) {
-            return new DataResponse([], 304, $headers);
+            return new ErrorDataResponse([], 304, $headers);
         }
-        return new DataResponse($payload, 200, $headers);
+        return new ErrorDataResponse($payload, 200, $headers);
     }
 
     #[NoAdminRequired]
     public function documentChunks(): DataResponse {
         $user = $this->requireUser();
         if ($user === null) {
-            return new DataResponse(['error' => 'Not logged in'], 401);
+            return new ErrorDataResponse(['error' => 'Not logged in'], 401);
         }
         $id = (int)($this->requestParam('id') ?? 0);
         $doc = $id > 0 ? $this->documentMapper->findById($id) : null;
         if ($doc === null || $doc->getUserId() !== $user
             || !$this->fileContextChat->fileAccessible($user, (int)$doc->getFileId())) {
-            return new DataResponse(['error' => 'Document not found'], 404);
+            return new ErrorDataResponse(['error' => 'Document not found'], 404);
         }
         // Bounded pagination (Issues #91/#140): a huge document must not be
         // transferred all at once. The client streams pages of LIMIT chunks
@@ -796,7 +796,7 @@ class ApiController extends OCSController {
         $rows = $this->chunkMapper->findByDocument($id, $limit, $offset);
         $totalChunks = (int)$doc->getChunkCount();
         $nextOffset = $offset + count($rows);
-        return new DataResponse([
+        return new ErrorDataResponse([
             'document' => [
                 'id' => (int)$doc->getId(),
                 'path' => $doc->getPath(),
@@ -818,17 +818,17 @@ class ApiController extends OCSController {
     public function chat(): DataResponse {
         $user = $this->requireUser();
         if ($user === null) {
-            return new DataResponse(['error' => 'Not logged in'], 401);
+            return new ErrorDataResponse(['error' => 'Not logged in'], 401);
         }
         if (($limited = $this->rateLimitResponse($user, 'chat', $this->config->getInt('rate_limit_chat_per_minute', 30))) !== null) return $limited;
         $chatSlot = $this->acquireChatSlot($user);
-        if ($chatSlot === null) return new DataResponse(['error' => 'busy', 'message' => 'Another chat request is already running. Please retry shortly.'], 429, ['Retry-After' => '5']);
+        if ($chatSlot === null) return new ErrorDataResponse(['error' => 'busy', 'message' => 'Another chat request is already running. Please retry shortly.'], 429, ['Retry-After' => '5']);
         $message = trim((string)($this->requestParam('message') ?? ''));
         if ($message === '') {
-            return new DataResponse(['error' => 'Empty message'], 400);
+            return new ErrorDataResponse(['error' => 'Empty message'], 400);
         }
         if ($this->messageTooLong($message)) {
-            return new DataResponse(['error' => 'Message exceeds the maximum length of 50,000 characters.'], 400);
+            return new ErrorDataResponse(['error' => 'Message exceeds the maximum length of 50,000 characters.'], 400);
         }
         $this->releaseSessionLock();
         $history = $this->requestParam('history') ?? [];
@@ -843,7 +843,7 @@ class ApiController extends OCSController {
         $chatId = $this->requestParam('chatId');
         $custom = $this->customFor($user, $chatId);
         try {
-            return new DataResponse($this->ragService->ask(new \OCA\EvaAi\Dto\ChatRequest(
+            return new ErrorDataResponse($this->ragService->ask(new \OCA\EvaAi\Dto\ChatRequest(
                 userId: $user,
                 message: $message,
                 history: $history,
@@ -860,18 +860,18 @@ class ApiController extends OCSController {
     #[NoAdminRequired]
     public function backgroundChat(): DataResponse {
         $user = $this->requireUser();
-        if ($user === null) return new DataResponse(['error' => 'Not logged in'], 401);
+        if ($user === null) return new ErrorDataResponse(['error' => 'Not logged in'], 401);
         if (($limited = $this->rateLimitResponse($user, 'background', $this->config->getInt('rate_limit_background_per_minute', 5))) !== null) return $limited;
         $chatId = trim((string)($this->requestParam('chatId') ?? ''));
         $message = trim((string)($this->requestParam('message') ?? ''));
         $history = $this->requestParam('history', []);
         $requestId = $this->requestParam('requestId');
         if (is_string($history)) $history = json_decode($history, true) ?? [];
-        if ($chatId === '' || $message === '' || !is_array($history)) return new DataResponse(['error' => 'chatId, message and history are required'], 400);
-        if ($this->messageTooLong($message)) return new DataResponse(['error' => 'Message exceeds the maximum length of 50,000 characters.'], 400);
+        if ($chatId === '' || $message === '' || !is_array($history)) return new ErrorDataResponse(['error' => 'chatId, message and history are required'], 400);
+        if ($this->messageTooLong($message)) return new ErrorDataResponse(['error' => 'Message exceeds the maximum length of 50,000 characters.'], 400);
         $this->releaseSessionLock();
         $chat = $this->chatStore->get($user, $chatId);
-        if ($chat === null) return new DataResponse(['error' => 'Chat not found'], 404);
+        if ($chat === null) return new ErrorDataResponse(['error' => 'Chat not found'], 404);
         // pagehide may fire before the normal user-message persistence call;
         // append it only when it is not already the final stored user message.
         $stored = $chat['messages'] ?? [];
@@ -880,25 +880,25 @@ class ApiController extends OCSController {
             $this->chatStore->append($user, $chatId, 'user', $message);
         }
         $id = $this->backgroundChatQueue->enqueue($user, $chatId, $message, $history, is_string($requestId) ? $requestId : null);
-        if ($id === null) return new DataResponse(['error' => 'Background queue is full or the message is too large'], 429);
+        if ($id === null) return new ErrorDataResponse(['error' => 'Background queue is full or the message is too large'], 429);
         // Wake the timed worker on the next cron tick instead of waiting for
         // its previous 30-second interval (or a stale 1970 last-run entry).
         try { $this->jobList->scheduleAfter(BackgroundChatJob::class, time() + 1); } catch (\Throwable) { /* cron remains the fallback */ }
-        return new DataResponse(['queued' => true, 'id' => $id]);
+        return new ErrorDataResponse(['queued' => true, 'id' => $id]);
     }
 
     #[NoAdminRequired]
     public function externalConnectors(): DataResponse {
         $user = $this->requireUser();
-        if ($user === null) return new DataResponse(['error' => 'Not logged in'], 401);
-        return new DataResponse($this->executor->run($user, 'list_external_connectors', []));
+        if ($user === null) return new ErrorDataResponse(['error' => 'Not logged in'], 401);
+        return new ErrorDataResponse($this->executor->run($user, 'list_external_connectors', []));
     }
 
     /** List installed third-party EVA tools without exposing plugin secrets. */
     #[NoAdminRequired]
     public function plugins(): DataResponse {
         $user = $this->requireUser();
-        if ($user === null) return new DataResponse(['error' => 'Not logged in'], 401);
+        if ($user === null) return new ErrorDataResponse(['error' => 'Not logged in'], 401);
         // The plugin catalog is optional UI metadata. A third-party plugin
         // must never make the EVA app page fail while the built-in tools and
         // chat remain available. Registration already isolates plugin events;
@@ -911,70 +911,70 @@ class ApiController extends OCSController {
         } catch (\Throwable) {
             $plugins = [];
         }
-        return new DataResponse(['plugins' => $plugins]);
+        return new ErrorDataResponse(['plugins' => $plugins]);
     }
 
     #[NoAdminRequired]
     public function saveExternalConnector(): DataResponse {
         $user = $this->requireUser();
-        if ($user === null) return new DataResponse(['error' => 'Not logged in'], 401);
+        if ($user === null) return new ErrorDataResponse(['error' => 'Not logged in'], 401);
         $body = $this->requestBody();
         $result = $this->executor->runConfirmed($user, 'configure_external_connector', $body);
-        return new DataResponse($result, ($result['ok'] ?? false) ? 200 : 400);
+        return new ErrorDataResponse($result, ($result['ok'] ?? false) ? 200 : 400);
     }
 
     #[NoAdminRequired]
     public function discoverExternalConnector(): DataResponse {
         $user = $this->requireUser();
-        if ($user === null) return new DataResponse(['error' => 'Not logged in'], 401);
+        if ($user === null) return new ErrorDataResponse(['error' => 'Not logged in'], 401);
         $result = $this->executor->run($user, 'discover_external_connector', $this->requestBody());
-        return new DataResponse($result, ($result['ok'] ?? false) ? 200 : 400);
+        return new ErrorDataResponse($result, ($result['ok'] ?? false) ? 200 : 400);
     }
 
     /** Read-only transport diagnostic executed on the Nextcloud host. */
     #[NoAdminRequired]
     public function diagnoseExternalConnector(): DataResponse {
         $user = $this->requireUser();
-        if ($user === null) return new DataResponse(['error' => 'Not logged in'], 401);
+        if ($user === null) return new ErrorDataResponse(['error' => 'Not logged in'], 401);
         $result = $this->executor->run($user, 'diagnose_external_connector', $this->requestBody());
-        return new DataResponse($result, ($result['ok'] ?? false) ? 200 : 400);
+        return new ErrorDataResponse($result, ($result['ok'] ?? false) ? 200 : 400);
     }
 
     /** Perform an explicit, read-only connectivity check against a connector. */
     #[NoAdminRequired]
     public function testExternalConnector(): DataResponse {
         $user = $this->requireUser();
-        if ($user === null) return new DataResponse(['error' => 'Not logged in'], 401);
+        if ($user === null) return new ErrorDataResponse(['error' => 'Not logged in'], 401);
         $id = strtolower(trim((string)($this->requestBody()['id'] ?? $this->requestParam('id') ?? '')));
-        if ($id === '') return new DataResponse(['error' => 'Connector id required'], 400);
+        if ($id === '') return new ErrorDataResponse(['error' => 'Connector id required'], 400);
         // A test must diagnose transport and authentication, not guess a
         // random learned route (which may be protected or require path
         // parameters). The diagnostic uses the same credentials and host
         // validation as normal calls and never returns response data.
         $result = $this->executor->run($user, 'diagnose_external_connector', ['id' => $id]);
         $httpStatus = (($result['ok'] ?? false) || isset($result['result'])) ? 200 : 400;
-        return new DataResponse($result, $httpStatus);
+        return new ErrorDataResponse($result, $httpStatus);
     }
 
     #[NoAdminRequired]
     public function deleteExternalConnector(): DataResponse {
         $user = $this->requireUser();
-        if ($user === null) return new DataResponse(['error' => 'Not logged in'], 401);
+        if ($user === null) return new ErrorDataResponse(['error' => 'Not logged in'], 401);
         $id = strtolower(trim((string)($this->requestParam('id') ?? $this->requestBody()['id'] ?? '')));
-        if (!preg_match('/^[a-z0-9][a-z0-9_-]{0,39}$/D', $id)) return new DataResponse(['error' => 'Valid connector id required'], 400);
+        if (!preg_match('/^[a-z0-9][a-z0-9_-]{0,39}$/D', $id)) return new ErrorDataResponse(['error' => 'Valid connector id required'], 400);
         $config = \OCP\Server::get(\OCP\IConfig::class);
         $raw = json_decode($config->getUserValue($user, AppConfig::APP, 'external_connectors', '{}'), true);
-        if (!is_array($raw) || !array_key_exists($id, $raw)) return new DataResponse(['error' => 'Connector not found'], 404);
+        if (!is_array($raw) || !array_key_exists($id, $raw)) return new ErrorDataResponse(['error' => 'Connector not found'], 404);
         unset($raw[$id]); $config->setUserValue($user, AppConfig::APP, 'external_connectors', json_encode($raw, JSON_UNESCAPED_SLASHES) ?: '{}');
         \OCP\Server::get(\OCA\EvaAi\Service\ProviderCredentials::class)->saveCustom($user, 'connector_' . $id, '');
-        return new DataResponse(['ok' => true, 'deleted' => $id]);
+        return new ErrorDataResponse(['ok' => true, 'deleted' => $id]);
     }
 
     /** Inspect queued background-agent work without exposing conversation history. */
     #[NoAdminRequired]
     public function backgroundChatStatus(): DataResponse {
         $user = $this->requireUser();
-        if ($user === null) return new DataResponse(['error' => 'Not logged in'], 401);
+        if ($user === null) return new ErrorDataResponse(['error' => 'Not logged in'], 401);
         $items = $this->backgroundChatQueue->status($user);
         // The UI polls this endpoint while a tab is open. Use that heartbeat
         // to recover gracefully when a cron tick was missed or another job
@@ -986,53 +986,53 @@ class ApiController extends OCSController {
         if ($needsWake) {
             try { $this->jobList->scheduleAfter(BackgroundChatJob::class, time() + 1); } catch (\Throwable) { /* cron remains the fallback */ }
         }
-        return new DataResponse(['items' => $items]);
+        return new ErrorDataResponse(['items' => $items]);
     }
 
     #[NoAdminRequired]
     public function cancelBackgroundChat(): DataResponse {
         $user = $this->requireUser();
-        if ($user === null) return new DataResponse(['error' => 'Not logged in'], 401);
+        if ($user === null) return new ErrorDataResponse(['error' => 'Not logged in'], 401);
         $id = trim((string)($this->requestParam('id') ?? ''));
-        if ($id === '') return new DataResponse(['error' => 'Queue id required'], 400);
-        if (!$this->backgroundChatQueue->cancel($user, $id)) return new DataResponse(['error' => 'Background job not found'], 404);
-        return new DataResponse(['ok' => true, 'cancelRequested' => true]);
+        if ($id === '') return new ErrorDataResponse(['error' => 'Queue id required'], 400);
+        if (!$this->backgroundChatQueue->cancel($user, $id)) return new ErrorDataResponse(['error' => 'Background job not found'], 404);
+        return new ErrorDataResponse(['ok' => true, 'cancelRequested' => true]);
     }
 
     #[NoAdminRequired]
     public function pauseBackgroundChat(): DataResponse {
         $user = $this->requireUser();
-        if ($user === null) return new DataResponse(['error' => 'Not logged in'], 401);
+        if ($user === null) return new ErrorDataResponse(['error' => 'Not logged in'], 401);
         $id = trim((string)($this->requestParam('id') ?? ''));
-        if ($id === '' || !$this->backgroundChatQueue->pause($user, $id)) return new DataResponse(['error' => 'Pending background job not found'], 404);
-        return new DataResponse(['ok' => true, 'paused' => true]);
+        if ($id === '' || !$this->backgroundChatQueue->pause($user, $id)) return new ErrorDataResponse(['error' => 'Pending background job not found'], 404);
+        return new ErrorDataResponse(['ok' => true, 'paused' => true]);
     }
 
     #[NoAdminRequired]
     public function resumeBackgroundChat(): DataResponse {
         $user = $this->requireUser();
-        if ($user === null) return new DataResponse(['error' => 'Not logged in'], 401);
+        if ($user === null) return new ErrorDataResponse(['error' => 'Not logged in'], 401);
         $id = trim((string)($this->requestParam('id') ?? ''));
-        if ($id === '' || !$this->backgroundChatQueue->resume($user, $id)) return new DataResponse(['error' => 'Paused background job not found'], 404);
-        return new DataResponse(['ok' => true, 'resumed' => true]);
+        if ($id === '' || !$this->backgroundChatQueue->resume($user, $id)) return new ErrorDataResponse(['error' => 'Paused background job not found'], 404);
+        return new ErrorDataResponse(['ok' => true, 'resumed' => true]);
     }
 
     /** Requeue a failed background run without losing its original context. */
     #[NoAdminRequired]
     public function retryBackgroundChat(): DataResponse {
         $user = $this->requireUser();
-        if ($user === null) return new DataResponse(['error' => 'Not logged in'], 401);
+        if ($user === null) return new ErrorDataResponse(['error' => 'Not logged in'], 401);
         $id = trim((string)($this->requestParam('id') ?? ''));
-        if ($id === '') return new DataResponse(['error' => 'Queue id required'], 400);
+        if ($id === '') return new ErrorDataResponse(['error' => 'Queue id required'], 400);
         $known = false;
         foreach ($this->backgroundChatQueue->status($user) as $item) {
             if (($item['id'] ?? '') === $id) { $known = true; break; }
         }
-        if (!$known) return new DataResponse(['error' => 'Background job not found'], 404);
+        if (!$known) return new ErrorDataResponse(['error' => 'Background job not found'], 404);
         if ($this->backgroundChatQueue->retry($user, $id, 'Retry limit reached.')) {
-            return new DataResponse(['error' => 'This background run has reached its retry limit.'], 409);
+            return new ErrorDataResponse(['error' => 'This background run has reached its retry limit.'], 409);
         }
-        return new DataResponse(['ok' => true, 'queued' => true]);
+        return new ErrorDataResponse(['ok' => true, 'queued' => true]);
     }
 
     /**
@@ -1077,11 +1077,11 @@ class ApiController extends OCSController {
     public function fileContextChat(): DataResponse {
         $user = $this->requireUser();
         if ($user === null) {
-            return new DataResponse(['error' => 'Not logged in'], 401);
+            return new ErrorDataResponse(['error' => 'Not logged in'], 401);
         }
         if (($limited = $this->rateLimitResponse($user, 'file_context', $this->config->getInt('rate_limit_chat_per_minute', 30))) !== null) return $limited;
         $chatSlot = $this->acquireChatSlot($user);
-        if ($chatSlot === null) return new DataResponse(['error' => 'busy', 'message' => 'Another chat request is already running. Please retry shortly.'], 429, ['Retry-After' => '5']);
+        if ($chatSlot === null) return new ErrorDataResponse(['error' => 'busy', 'message' => 'Another chat request is already running. Please retry shortly.'], 429, ['Retry-After' => '5']);
         $fileIds = $this->requestParam('fileIds');
         if (!is_array($fileIds)) {
             $fileIds = [];
@@ -1089,10 +1089,10 @@ class ApiController extends OCSController {
         $fileIds = array_values(array_filter(array_map('intval', $fileIds), static fn($v) => $v > 0));
         $message = trim((string)($this->requestParam('message') ?? ''));
         if ($message === '') {
-            return new DataResponse(['error' => 'Empty message'], 400);
+            return new ErrorDataResponse(['error' => 'Empty message'], 400);
         }
         if ($this->messageTooLong($message)) {
-            return new DataResponse(['error' => 'Message exceeds the maximum length of 50,000 characters.'], 400);
+            return new ErrorDataResponse(['error' => 'Message exceeds the maximum length of 50,000 characters.'], 400);
         }
         $history = $this->requestParam('history') ?? [];
         if (is_string($history)) {
@@ -1103,7 +1103,7 @@ class ApiController extends OCSController {
         }
         $this->releaseSessionLock();
         try {
-            return new DataResponse($this->fileContextChat->chat($user, $fileIds, $message, $history));
+            return new ErrorDataResponse($this->fileContextChat->chat($user, $fileIds, $message, $history));
         } finally {
             $this->releaseChatSlot($chatSlot);
         }
@@ -1118,7 +1118,7 @@ class ApiController extends OCSController {
     public function knowledge(): DataResponse {
         $user = $this->requireUser();
         if ($user === null) {
-            return new DataResponse(['error' => 'Not logged in'], 401);
+            return new ErrorDataResponse(['error' => 'Not logged in'], 401);
         }
         $this->knowledgeInitializer->ensureInitialized($user);
         try {
@@ -1131,9 +1131,9 @@ class ApiController extends OCSController {
                     $content = (string)$node->getContent();
                 }
             }
-            return new DataResponse(['content' => $content, 'length' => mb_strlen($content)]);
+            return new ErrorDataResponse(['content' => $content, 'length' => mb_strlen($content)]);
         } catch (\Throwable $e) {
-            return new DataResponse(['error' => 'Could not read personal knowledge file.'], 500);
+            return new ErrorDataResponse(['error' => 'Could not read personal knowledge file.'], 500);
         }
     }
 
@@ -1141,11 +1141,11 @@ class ApiController extends OCSController {
     public function saveKnowledge(): DataResponse {
         $user = $this->requireUser();
         if ($user === null) {
-            return new DataResponse(['error' => 'Not logged in'], 401);
+            return new ErrorDataResponse(['error' => 'Not logged in'], 401);
         }
         $content = (string)($this->requestParam('content', ''));
         if (mb_strlen($content) > 60000) {
-            return new DataResponse(['error' => 'Content exceeds 60,000 characters.'], 400);
+            return new ErrorDataResponse(['error' => 'Content exceeds 60,000 characters.'], 400);
         }
         try {
             $rootFolder = \OCP\Server::get(\OCP\Files\IRootFolder::class);
@@ -1156,9 +1156,9 @@ class ApiController extends OCSController {
             } else {
                 $home->newFile($path, $content);
             }
-            return new DataResponse(['ok' => true, 'length' => mb_strlen($content)]);
+            return new ErrorDataResponse(['ok' => true, 'length' => mb_strlen($content)]);
         } catch (\Throwable $e) {
-            return new DataResponse(['error' => 'Could not save knowledge file: ' . $e->getMessage()], 500);
+            return new ErrorDataResponse(['error' => 'Could not save knowledge file: ' . $e->getMessage()], 500);
         }
     }
 
@@ -1166,7 +1166,7 @@ class ApiController extends OCSController {
     public function fileContextStatus(): DataResponse {
         $user = $this->requireUser();
         if ($user === null) {
-            return new DataResponse(['error' => 'Not logged in'], 401);
+            return new ErrorDataResponse(['error' => 'Not logged in'], 401);
         }
         $fileIds = $this->requestParam('fileIds');
         if (!is_array($fileIds)) {
@@ -1174,7 +1174,7 @@ class ApiController extends OCSController {
         }
         $fileIds = array_values(array_filter(array_map('intval', $fileIds), static fn($v) => $v > 0));
         if ($fileIds === []) {
-            return new DataResponse(['indexed' => [], 'missing' => [], 'files' => []]);
+            return new ErrorDataResponse(['indexed' => [], 'missing' => [], 'files' => []]);
         }
         $docs = $this->fileContextChat->accessibleDocuments(
             $user,
@@ -1191,7 +1191,7 @@ class ApiController extends OCSController {
                 'path' => $d->getPath(),
             ];
         }
-        return new DataResponse([
+        return new ErrorDataResponse([
             'indexed' => $indexed,
             'missing' => array_values(array_diff($fileIds, $indexed)),
             'files' => $files,
@@ -1207,7 +1207,7 @@ class ApiController extends OCSController {
     public function confirmTool(): DataResponse {
         $user = $this->requireUser();
         if ($user === null) {
-            return new DataResponse(['error' => 'Not logged in'], 401);
+            return new ErrorDataResponse(['error' => 'Not logged in'], 401);
         }
         $name = trim((string)($this->requestParam('name') ?? ''));
         $args = $this->requestParam('arguments', $this->requestParam('args', []));
@@ -1216,7 +1216,7 @@ class ApiController extends OCSController {
             $args = is_array($decoded) ? $decoded : [];
         }
         if ($name === '' || !is_array($args)) {
-            return new DataResponse(['error' => 'A tool name and argument object are required.'], 400);
+            return new ErrorDataResponse(['error' => 'A tool name and argument object are required.'], 400);
         }
 
         // Idempotency guard (Issue #185): a persisted pending confirmation
@@ -1227,7 +1227,7 @@ class ApiController extends OCSController {
         if ($chatId !== '' && $confirmationToken !== '') {
             $claim = $this->chatStore->claimConfirmation($user, $chatId, $confirmationToken);
             if ($claim === 'already') {
-                return new DataResponse([
+                return new ErrorDataResponse([
                     'ok' => false,
                     'alreadyProcessed' => true,
                     'error' => 'This action was already processed - reload the chat to see its result.',
@@ -1241,7 +1241,7 @@ class ApiController extends OCSController {
         // failures as structured data over HTTP 200 so the client can persist
         // the consumed confirmation as a completed failure instead of offering
         // a retry that the idempotency guard must reject.
-        return new DataResponse($result);
+        return new ErrorDataResponse($result);
     }
 
     #[NoAdminRequired]
@@ -1364,7 +1364,7 @@ class ApiController extends OCSController {
     public function chats(): DataResponse {
         $user = $this->requireUser();
         if ($user === null) {
-            return new DataResponse(['error' => 'Not logged in'], 401);
+            return new ErrorDataResponse(['error' => 'Not logged in'], 401);
         }
         // Optional text search across chat titles and message content.
         $search = trim((string)($this->requestParam('search') ?? ''));
@@ -1372,7 +1372,7 @@ class ApiController extends OCSController {
         // its own section and would otherwise never see them again (Issue #87).
         // The dashboard widget reads the store directly and keeps hiding them.
         try {
-            return new DataResponse($this->chatStore->list($user, $search !== '' ? $search : null, true));
+            return new ErrorDataResponse($this->chatStore->list($user, $search !== '' ? $search : null, true));
         } catch (\Throwable $e) {
             return $this->chatErrorResponse($e);
         }
@@ -1382,11 +1382,11 @@ class ApiController extends OCSController {
     public function createChat(): DataResponse {
         $user = $this->requireUser();
         if ($user === null) {
-            return new DataResponse(['error' => 'Not logged in'], 401);
+            return new ErrorDataResponse(['error' => 'Not logged in'], 401);
         }
         try {
             $chat = $this->chatStore->create($user, (string)($this->requestParam('title') ?? ''));
-            return new DataResponse($chat);
+            return new ErrorDataResponse($chat);
         } catch (\Throwable $e) {
             return $this->chatErrorResponse($e);
         }
@@ -1396,10 +1396,10 @@ class ApiController extends OCSController {
     public function deleteAllChats(): DataResponse {
         $user = $this->requireUser();
         if ($user === null) {
-            return new DataResponse(['error' => 'Not logged in'], 401);
+            return new ErrorDataResponse(['error' => 'Not logged in'], 401);
         }
         try {
-            return new DataResponse(['ok' => true, 'deleted' => $this->chatStore->deleteAll($user)]);
+            return new ErrorDataResponse(['ok' => true, 'deleted' => $this->chatStore->deleteAll($user)]);
         } catch (\Throwable $e) {
             return $this->chatErrorResponse($e);
         }
@@ -1409,7 +1409,7 @@ class ApiController extends OCSController {
     public function chatDetail(string $id): DataResponse {
         $user = $this->requireUser();
         if ($user === null) {
-            return new DataResponse(['error' => 'Not logged in'], 401);
+            return new ErrorDataResponse(['error' => 'Not logged in'], 401);
         }
         try {
             $chat = $this->chatStore->get($user, $id);
@@ -1417,7 +1417,7 @@ class ApiController extends OCSController {
             return $this->chatErrorResponse($e);
         }
         if ($chat === null) {
-            return new NotFoundResponse();
+            return new ErrorDataResponse(['error' => 'Requested resource was not found.'], 404);
         }
         // Migrate old pending confirmations at read time. Before connector
         // alias normalization was added, chats could persist a
@@ -1425,7 +1425,7 @@ class ApiController extends OCSController {
         // response keeps existing chats usable immediately without mutating
         // the stored history or exposing connector secrets.
         $chat = $this->normalizeConnectorConfirmations($user, $chat);
-        return new DataResponse($chat);
+        return new ErrorDataResponse($chat);
     }
 
     private function normalizeConnectorConfirmations(string $user, array $chat): array {
@@ -1453,13 +1453,13 @@ class ApiController extends OCSController {
     public function chatDelete(string $id): DataResponse {
         $user = $this->requireUser();
         if ($user === null) {
-            return new DataResponse(['error' => 'Not logged in'], 401);
+            return new ErrorDataResponse(['error' => 'Not logged in'], 401);
         }
         try {
             if (!$this->chatStore->delete($user, $id)) {
-                return new NotFoundResponse();
+                return new ErrorDataResponse(['error' => 'Requested resource was not found.'], 404);
             }
-            return new DataResponse(['ok' => true]);
+            return new ErrorDataResponse(['ok' => true]);
         } catch (\Throwable $e) {
             return $this->chatErrorResponse($e);
         }
@@ -1469,17 +1469,17 @@ class ApiController extends OCSController {
     public function chatAppend(string $id): DataResponse {
         $user = $this->requireUser();
         if ($user === null) {
-            return new DataResponse(['error' => 'Not logged in'], 401);
+            return new ErrorDataResponse(['error' => 'Not logged in'], 401);
         }
         try {
             $chat = $this->chatStore->get($user, $id);
             if ($chat === null) {
-                return new NotFoundResponse();
+                return new ErrorDataResponse(['error' => 'Requested resource was not found.'], 404);
             }
             $role = (string)($this->requestParam('role') ?? '');
             $text = trim((string)($this->requestParam('text') ?? ''));
             if ($role === '' || $text === '') {
-                return new DataResponse(['error' => 'role and text are required'], 400);
+                return new ErrorDataResponse(['error' => 'role and text are required'], 400);
             }
             // Optional follow-up suggestions (assistant messages only).
             $followupsRaw = $this->requestParam('followups');
@@ -1543,7 +1543,7 @@ class ApiController extends OCSController {
                 }
             }
 
-            return new DataResponse(['ok' => true, 'rev' => $rev]);
+            return new ErrorDataResponse(['ok' => true, 'rev' => $rev]);
         } catch (\Throwable $e) {
             return $this->chatErrorResponse($e);
         }
@@ -1553,18 +1553,18 @@ class ApiController extends OCSController {
     public function chatTitle(string $id): DataResponse {
         $user = $this->requireUser();
         if ($user === null) {
-            return new DataResponse(['error' => 'Not logged in'], 401);
+            return new ErrorDataResponse(['error' => 'Not logged in'], 401);
         }
         try {
             if ($this->chatStore->get($user, $id) === null) {
-                return new NotFoundResponse();
+                return new ErrorDataResponse(['error' => 'Requested resource was not found.'], 404);
             }
             $title = trim((string)($this->requestParam('title') ?? ''));
             if ($title === '') {
-                return new DataResponse(['error' => 'title required'], 400);
+                return new ErrorDataResponse(['error' => 'title required'], 400);
             }
             $this->chatStore->setTitle($user, $id, $title);
-            return new DataResponse(['ok' => true]);
+            return new ErrorDataResponse(['ok' => true]);
         } catch (\Throwable $e) {
             return $this->chatErrorResponse($e);
         }
@@ -1581,7 +1581,7 @@ class ApiController extends OCSController {
     public function chatMeta(string $id): DataResponse {
         $user = $this->requireUser();
         if ($user === null) {
-            return new DataResponse(['error' => 'Not logged in'], 401);
+            return new ErrorDataResponse(['error' => 'Not logged in'], 401);
         }
         $meta = [];
         $body = $this->requestBody();
@@ -1606,13 +1606,13 @@ class ApiController extends OCSController {
             $meta['persona'] = array_key_exists($persona, RagService::PERSONAS) ? $persona : '';
         }
         if ($meta === []) {
-            return new DataResponse(['error' => 'No metadata given'], 400);
+            return new ErrorDataResponse(['error' => 'No metadata given'], 400);
         }
         try {
             if (!$this->chatStore->setMeta($user, $id, $meta)) {
-                return new NotFoundResponse();
+                return new ErrorDataResponse(['error' => 'Requested resource was not found.'], 404);
             }
-            return new DataResponse(['ok' => true]);
+            return new ErrorDataResponse(['ok' => true]);
         } catch (\Throwable $e) {
             return $this->chatErrorResponse($e);
         }
@@ -1622,10 +1622,10 @@ class ApiController extends OCSController {
     public function folders(): DataResponse {
         $user = $this->requireUser();
         if ($user === null) {
-            return new DataResponse(['error' => 'Not logged in'], 401);
+            return new ErrorDataResponse(['error' => 'Not logged in'], 401);
         }
         try {
-            return new DataResponse($this->chatStore->listFolders($user));
+            return new ErrorDataResponse($this->chatStore->listFolders($user));
         } catch (\Throwable $e) {
             return $this->chatErrorResponse($e);
         }
@@ -1635,16 +1635,16 @@ class ApiController extends OCSController {
     public function createFolder(): DataResponse {
         $user = $this->requireUser();
         if ($user === null) {
-            return new DataResponse(['error' => 'Not logged in'], 401);
+            return new ErrorDataResponse(['error' => 'Not logged in'], 401);
         }
         $name = trim((string)$this->requestParam('name') ?? '');
         if ($name === '') {
-            return new DataResponse(['error' => 'Folder name required'], 400);
+            return new ErrorDataResponse(['error' => 'Folder name required'], 400);
         }
         try {
-            return new DataResponse($this->chatStore->createFolder($user, $name));
+            return new ErrorDataResponse($this->chatStore->createFolder($user, $name));
         } catch (\Throwable $e) {
-            return new DataResponse(['error' => 'Unable to create folder'], 500);
+            return new ErrorDataResponse(['error' => 'Unable to create folder'], 500);
         }
     }
 
@@ -1652,20 +1652,20 @@ class ApiController extends OCSController {
     public function renameFolder(): DataResponse {
         $user = $this->requireUser();
         if ($user === null) {
-            return new DataResponse(['error' => 'Not logged in'], 401);
+            return new ErrorDataResponse(['error' => 'Not logged in'], 401);
         }
         $from = trim((string)$this->requestParam('from') ?? '');
         $to = trim((string)$this->requestParam('to') ?? '');
         if ($from === '' || $to === '') {
-            return new DataResponse(['error' => 'from and to are required'], 400);
+            return new ErrorDataResponse(['error' => 'from and to are required'], 400);
         }
         try {
             if (!$this->chatStore->renameFolder($user, $from, $to)) {
-                return new NotFoundResponse();
+                return new ErrorDataResponse(['error' => 'Requested resource was not found.'], 404);
             }
-            return new DataResponse(['ok' => true]);
+            return new ErrorDataResponse(['ok' => true]);
         } catch (\Throwable $e) {
-            return new DataResponse(['error' => 'Unable to rename folder'], 500);
+            return new ErrorDataResponse(['error' => 'Unable to rename folder'], 500);
         }
     }
 
@@ -1679,19 +1679,19 @@ class ApiController extends OCSController {
     public function deleteFolder(): DataResponse {
         $user = $this->requireUser();
         if ($user === null) {
-            return new DataResponse(['error' => 'Not logged in'], 401);
+            return new ErrorDataResponse(['error' => 'Not logged in'], 401);
         }
         $name = trim((string)$this->requestParam('name') ?? '');
         if ($name === '') {
-            return new DataResponse(['error' => 'Folder name required'], 400);
+            return new ErrorDataResponse(['error' => 'Folder name required'], 400);
         }
         try {
             if (!$this->chatStore->deleteFolder($user, $name)) {
-                return new NotFoundResponse();
+                return new ErrorDataResponse(['error' => 'Requested resource was not found.'], 404);
             }
-            return new DataResponse(['ok' => true]);
+            return new ErrorDataResponse(['ok' => true]);
         } catch (\Throwable $e) {
-            return new DataResponse(['error' => 'Unable to delete folder'], 500);
+            return new ErrorDataResponse(['error' => 'Unable to delete folder'], 500);
         }
     }
 
@@ -1797,24 +1797,24 @@ class ApiController extends OCSController {
     public function calendars(): DataResponse {
         $user = $this->requireUser();
         if ($user === null) {
-            return new DataResponse(['error' => 'Not logged in'], 401);
+            return new ErrorDataResponse(['error' => 'Not logged in'], 401);
         }
         // Read-only calendar metadata for the tool-confirmation dialogs
         // (calendar picker). Empty list when the calendar backend is absent.
-        return new DataResponse(['calendars' => $this->ragService->calendarList($user)]);
+        return new ErrorDataResponse(['calendars' => $this->ragService->calendarList($user)]);
     }
 
     #[NoAdminRequired]
     public function models(): DataResponse {
         $user = $this->requireUser();
         if ($user === null) {
-            return new DataResponse(['error' => 'Not logged in'], 401);
+            return new ErrorDataResponse(['error' => 'Not logged in'], 401);
         }
         $this->config->setUserId($user);
         $endpoint = trim((string)($this->requestParam('endpoint') ?? $this->config->ollamaUrl()));
         $urlError = $this->validateOllamaUrl($endpoint);
         if ($urlError !== null) {
-            return new DataResponse(['error' => $urlError], 400);
+            return new ErrorDataResponse(['error' => $urlError], 400);
         }
         $models = $this->ollama->listModels($endpoint);
         $names = array_values(array_filter(array_map(static fn($m) => (string)($m['name'] ?? ''), $models)));
@@ -1828,7 +1828,7 @@ class ApiController extends OCSController {
             $entryRoles = $this->ollama->rolesForModelEntry($entry);
             $roles[$name] = ['roles' => $entryRoles, 'declared' => $declared];
         }
-        return new DataResponse([
+        return new ErrorDataResponse([
             'models' => $names,
             'roles' => $roles,
             'embedding' => $this->config->get('embedding_model'),
@@ -1841,11 +1841,11 @@ class ApiController extends OCSController {
     public function check(): DataResponse {
         $user = $this->requireUser();
         if ($user === null) {
-            return new DataResponse(['error' => 'Not logged in'], 401);
+            return new ErrorDataResponse(['error' => 'Not logged in'], 401);
         }
-        if ($this->config->get('chat_provider') === 'groq') return new DataResponse(['provider' => 'groq', 'groq' => $this->ollama->checkGroq()]);
-        if ($this->config->get('chat_provider') !== 'ollama') return new DataResponse(['provider' => $this->config->get('chat_provider'), 'custom' => $this->ollama->checkCustomProvider()]);
-        return new DataResponse($this->ollama->testAll());
+        if ($this->config->get('chat_provider') === 'groq') return new ErrorDataResponse(['provider' => 'groq', 'groq' => $this->ollama->checkGroq()]);
+        if ($this->config->get('chat_provider') !== 'ollama') return new ErrorDataResponse(['provider' => $this->config->get('chat_provider'), 'custom' => $this->ollama->checkCustomProvider()]);
+        return new ErrorDataResponse($this->ollama->testAll());
     }
 
     /**
@@ -1856,10 +1856,10 @@ class ApiController extends OCSController {
     public function exportData(): DataResponse {
         $user = $this->requireUser();
         if ($user === null) {
-            return new DataResponse(['error' => 'Not logged in'], 401);
+            return new ErrorDataResponse(['error' => 'Not logged in'], 401);
         }
         $payload = $this->userDataService->export($user);
-        $response = new DataResponse($payload);
+        $response = new ErrorDataResponse($payload);
         $response->addHeader('Content-Disposition', 'attachment; filename="eva_ai_export_' . $user . '.json"');
         return $response;
     }
@@ -1867,12 +1867,12 @@ class ApiController extends OCSController {
     #[NoAdminRequired]
     public function importData(): DataResponse {
         $user = $this->requireUser();
-        if ($user === null) return new DataResponse(['error' => 'Not logged in'], 401);
+        if ($user === null) return new ErrorDataResponse(['error' => 'Not logged in'], 401);
         $body = $this->requestBody();
         $chats = $body['chats'] ?? null;
-        if (!is_array($chats)) return new DataResponse(['error' => 'A JSON export with a chats array is required.'], 400);
+        if (!is_array($chats)) return new ErrorDataResponse(['error' => 'A JSON export with a chats array is required.'], 400);
         $count = $this->chatStore->importAll($user, $chats);
-        return new DataResponse(['ok' => true, 'imported' => $count]);
+        return new ErrorDataResponse(['ok' => true, 'imported' => $count]);
     }
 
 }

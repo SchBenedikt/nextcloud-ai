@@ -59,7 +59,13 @@ export function errMsg(e) {
 		const status = Number(e.response.status || 0)
 		let detail = ''
 		try {
-			detail = data?.ocs?.data?.message || data?.ocs?.message || data?.ocs?.data?.error || data?.message || data?.error || ''
+			const apiError = data?.ocs?.data?.error ?? data?.error
+			detail = data?.ocs?.data?.message
+				|| (typeof apiError === 'object' ? apiError?.message : '')
+				|| data?.ocs?.message
+				|| data?.message
+				|| (typeof apiError === 'string' ? apiError : '')
+				|| ''
 		} catch (_) { /* ignore */ }
 		if (!detail && typeof data === 'string' && !/^\s*</.test(data)) detail = data
 		detail = String(detail || '').replace(/\s+/g, ' ').trim().slice(0, 240)
