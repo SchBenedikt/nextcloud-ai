@@ -186,25 +186,10 @@ class ActionExecutor {
     }
 
     private function registerDomainHandlers(): void {
-        $this->domainRegistry->register('list_calendars', fn(string $user, array $args): array => ['ok' => true, 'result' => $this->calendar->calendars($user)]);
-        $this->domainRegistry->register('list_calendar_events', fn(string $user, array $args): array => $this->calendar->listEvents($user, $args));
-        $this->domainRegistry->register('create_calendar_event', fn(string $user, array $args): array => $this->calendar->createEvent($user, $args));
-        $this->domainRegistry->register('update_calendar_event', fn(string $user, array $args): array => $this->calendar->updateEvent($user, $args));
-        $this->domainRegistry->register('delete_calendar_event', fn(string $user, array $args): array => $this->calendar->deleteEvent($user, $args));
-        $this->domainRegistry->register('find_free_slots', fn(string $user, array $args): array => $this->calendar->findFreeSlots($user, $args));
-        $this->domainRegistry->register('list_tasks', fn(string $user, array $args): array => $this->calendar->listTasks($user, $args));
-        $this->domainRegistry->register('create_task', fn(string $user, array $args): array => $this->calendar->createTask($user, $args));
-        $this->domainRegistry->register('update_task', fn(string $user, array $args): array => $this->calendar->updateTask($user, $args));
-        $this->domainRegistry->register('complete_task', fn(string $user, array $args): array => $this->calendar->completeTask($user, $args));
-        $this->domainRegistry->register('delete_task', fn(string $user, array $args): array => $this->calendar->deleteTask($user, $args));
-        foreach (['list_shares' => 'list', 'create_share' => 'create', 'update_share' => 'update', 'delete_share' => 'delete'] as $tool => $method) {
-            $this->domainRegistry->register($tool, fn(string $user, array $args) => $this->shares->{$method}($user, $args));
-        }
-        $this->domainRegistry->register('search_mails', fn(string $user, array $args): array => $this->searchMails($user, $args));
-        $this->domainRegistry->register('list_mails', fn(string $user, array $args): array => $this->listMails($user, $args));
-        $this->domainRegistry->register('read_mail', fn(string $user, array $args): array => $this->readMail($user, $args));
-        $this->domainRegistry->register('unread_mail_count', fn(string $user, array $args): array => $this->unreadMailCount($user));
-        $this->domainRegistry->register('summarize_emails', fn(string $user, array $args): array => $this->summarizeEmails($user, $args));
+        $this->domainRegistry->registerExecutor(new CalendarToolExecutor($this->calendar));
+        $this->domainRegistry->registerExecutor(new ShareToolExecutor($this->shares));
+        $this->domainRegistry->registerExecutor(new EmailToolExecutor($this->email, $this->ollama));
+        $this->domainRegistry->registerExecutor(new BriefingToolExecutor($this->config, $this->scheduledAssignments));
         $this->domainRegistry->register('run_safe_command', fn(string $user, array $args): array => $this->runSafeCommand($args));
         $this->domainRegistry->register('run_terminal_command', fn(string $user, array $args): array => $this->runTerminalCommand($args));
         $this->domainRegistry->register('run_terminal_sequence', fn(string $user, array $args): array => $this->runTerminalSequence($args));
@@ -1327,30 +1312,10 @@ class ActionExecutor {
                 'delete_contact' => $this->deleteContact($userId, $args),
                 'read_profile' => $this->readProfile($userId),
                 'update_profile' => $this->updateProfile($userId, $args),
-                'list_calendars' => ['ok' => true, 'result' => $this->calendar->calendars($userId)],
-                'list_calendar_events' => $this->calendar->listEvents($userId, $args),
-                'create_calendar_event' => $this->calendar->createEvent($userId, $args),
-                'update_calendar_event' => $this->calendar->updateEvent($userId, $args),
-                'delete_calendar_event' => $this->calendar->deleteEvent($userId, $args),
-                'find_free_slots' => $this->calendar->findFreeSlots($userId, $args),
                 'create_sticker' => $this->createSticker($home, $args),
                 'list_talk_rooms' => $this->listTalkRooms($userId, $args),
                 'read_talk_chat' => $this->readTalkChat($userId, $args),
                 'send_talk_message' => $this->sendTalkMessage($userId, $args),
-                'search_mails' => $this->searchMails($userId, $args),
-                'list_mails' => $this->listMails($userId, $args),
-                'read_mail' => $this->readMail($userId, $args),
-                'unread_mail_count' => $this->unreadMailCount($userId),
-                'summarize_emails' => $this->summarizeEmails($userId, $args),
-                'list_shares' => $this->shares->list($userId, $args),
-                'create_share' => $this->shares->create($userId, $args),
-                'update_share' => $this->shares->update($userId, $args),
-                'delete_share' => $this->shares->delete($userId, $args),
-                'list_tasks' => $this->calendar->listTasks($userId, $args),
-                'create_task' => $this->calendar->createTask($userId, $args),
-                'update_task' => $this->calendar->updateTask($userId, $args),
-                'complete_task' => $this->calendar->completeTask($userId, $args),
-                'delete_task' => $this->calendar->deleteTask($userId, $args),
                 'recent_activity' => $this->activity->recent($userId, $args),
                 'list_comments' => $this->listComments($args),
                 'add_comment' => $this->addComment($userId, $args),
@@ -1366,14 +1331,6 @@ class ActionExecutor {
                 'list_learned_file_locations' => $this->listLearnedFileLocations(),
                 'call_app_api' => $this->callAppApi($args),
                 'call_app_api_batch' => $this->callAppApiBatch($args),
-                'list_scheduled_briefings' => $this->listScheduledBriefings(),
-                'create_scheduled_briefing' => $this->createScheduledBriefing($args),
-                'update_scheduled_briefing' => $this->updateScheduledBriefing($args),
-                'delete_scheduled_briefing' => $this->deleteScheduledBriefing($args),
-                'list_scheduled_assignments' => $this->listScheduledAssignments(),
-                'create_scheduled_assignment' => $this->createScheduledAssignment($args),
-                'update_scheduled_assignment' => $this->updateScheduledAssignment($args),
-                'delete_scheduled_assignment' => $this->deleteScheduledAssignment($args),
                 'update_knowledge' => $this->updateKnowledge($home, $args),
                 default => ['ok' => false, 'error' => 'Unknown tool: ' . $name],
             };
@@ -1976,181 +1933,6 @@ class ActionExecutor {
         $quoted = preg_replace('/\\\\\{[^}]+\\\\\}/', '[^/]+', $quoted) ?? $quoted;
         $pattern = '#^' . $quoted . '/?$#';
         return preg_match($pattern, $path) === 1;
-    }
-
-    private function briefingRows(): array {
-        $rows = json_decode($this->config->get('proactive_schedules'), true);
-        return is_array($rows) ? array_values(array_filter($rows, 'is_array')) : [];
-    }
-
-    private function validBriefingFields(string $prompt, string $time, array $days): ?string {
-        if ($prompt === '' || mb_strlen($prompt) > 2000) return 'prompt must contain 1-2000 characters.';
-        if (preg_match('/^(?:[01]\d|2[0-3]):[0-5]\d$/', $time) !== 1) return 'time must use HH:MM format.';
-        $days = array_values(array_unique(array_map('intval', $days)));
-        if ($days === [] || count($days) > 7 || array_diff($days, [1, 2, 3, 4, 5, 6, 7]) !== []) return 'days must contain weekdays 1-7.';
-        return null;
-    }
-
-    private function listScheduledBriefings(): array {
-        $rows = $this->briefingRows();
-        return ['ok' => true, 'result' => ['briefings' => array_map(static function (array $row): array {
-            return ['id' => (string)($row['id'] ?? ''), 'prompt' => (string)($row['prompt'] ?? ''), 'time' => (string)($row['time'] ?? ''), 'days' => array_values(array_map('intval', is_array($row['days'] ?? null) ? $row['days'] : [])), 'enabled' => ($row['enabled'] ?? true) === true, 'allow_actions' => ($row['allow_actions'] ?? false) === true];
-        }, $rows)]];
-    }
-
-    private function persistBriefings(array $rows): void {
-        $this->config->set('proactive_schedules', json_encode(array_values($rows), JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) ?: '[]');
-    }
-
-    private function createScheduledBriefing(array $args): array {
-        $prompt = trim((string)($args['prompt'] ?? ''));
-        $time = trim((string)($args['time'] ?? ''));
-        $days = is_array($args['days'] ?? null) ? array_values(array_unique(array_map('intval', $args['days']))) : [];
-        $error = $this->validBriefingFields($prompt, $time, $days);
-        if ($error !== null) return ['ok' => false, 'error' => $error];
-        $rows = $this->briefingRows();
-        if (count($rows) >= 20) return ['ok' => false, 'error' => 'At most 20 scheduled briefings are allowed.'];
-        $id = 'briefing-' . bin2hex(random_bytes(5));
-        $row = ['id' => $id, 'prompt' => $prompt, 'time' => $time, 'days' => $days, 'enabled' => true, 'allow_actions' => ($args['allow_actions'] ?? false) === true];
-        $rows[] = $row; $this->persistBriefings($rows);
-        return ['ok' => true, 'result' => ['briefing' => $row]];
-    }
-
-    private function updateScheduledBriefing(array $args): array {
-        $id = preg_replace('/[^a-zA-Z0-9_-]/', '', (string)($args['briefing_id'] ?? '')) ?? '';
-        if ($id === '') return ['ok' => false, 'error' => 'briefing_id is required.'];
-        $rows = $this->briefingRows(); $found = false; $updated = null;
-        foreach ($rows as &$row) {
-            if ((string)($row['id'] ?? '') !== $id) continue;
-            $prompt = array_key_exists('prompt', $args) ? trim((string)$args['prompt']) : (string)($row['prompt'] ?? '');
-            $time = array_key_exists('time', $args) ? trim((string)$args['time']) : (string)($row['time'] ?? '');
-            $days = array_key_exists('days', $args) && is_array($args['days']) ? array_values(array_unique(array_map('intval', $args['days']))) : (array)$row['days'];
-            $error = $this->validBriefingFields($prompt, $time, $days);
-            if ($error !== null) return ['ok' => false, 'error' => $error];
-            $row['prompt'] = $prompt; $row['time'] = $time; $row['days'] = $days;
-            if (array_key_exists('enabled', $args)) $row['enabled'] = $args['enabled'] === true;
-            if (array_key_exists('allow_actions', $args)) $row['allow_actions'] = $args['allow_actions'] === true;
-            $updated = $row; $found = true; break;
-        }
-        unset($row);
-        if (!$found) return ['ok' => false, 'error' => 'Scheduled briefing not found.'];
-        $this->persistBriefings($rows);
-        return ['ok' => true, 'result' => ['briefing' => $updated]];
-    }
-
-    private function deleteScheduledBriefing(array $args): array {
-        $id = preg_replace('/[^a-zA-Z0-9_-]/', '', (string)($args['briefing_id'] ?? '')) ?? '';
-        if ($id === '') return ['ok' => false, 'error' => 'briefing_id is required.'];
-        $rows = $this->briefingRows(); $filtered = array_values(array_filter($rows, static fn(array $row): bool => (string)($row['id'] ?? '') !== $id));
-        if (count($filtered) === count($rows)) return ['ok' => false, 'error' => 'Scheduled briefing not found.'];
-        $this->persistBriefings($filtered);
-        return ['ok' => true, 'result' => ['briefing_id' => $id, 'deleted' => true]];
-    }
-
-    private function listScheduledAssignments(): array {
-        if ($this->scheduledAssignments === null) {
-            return ['ok' => false, 'error' => 'Scheduled assignments service is not available.'];
-        }
-        $userId = $this->config->userId() ?? '';
-        if ($userId === '') return ['ok' => false, 'error' => 'No user logged in.'];
-        try {
-            $assignments = $this->scheduledAssignments->listAssignments($userId);
-            return ['ok' => true, 'result' => ['assignments' => $assignments]];
-        } catch (\Throwable $e) {
-            return ['ok' => false, 'error' => 'Failed to list scheduled assignments: ' . $e->getMessage()];
-        }
-    }
-
-    private function createScheduledAssignment(array $args): array {
-        if ($this->scheduledAssignments === null) {
-            return ['ok' => false, 'error' => 'Scheduled assignments service is not available.'];
-        }
-        $userId = $this->config->userId() ?? '';
-        if ($userId === '') return ['ok' => false, 'error' => 'No user logged in.'];
-        $prompt = trim((string)($args['prompt'] ?? ''));
-        if ($prompt === '') return ['ok' => false, 'error' => 'prompt is required.'];
-        $recurrence = trim((string)($args['recurrence'] ?? ''));
-        if ($recurrence === '') return ['ok' => false, 'error' => 'recurrence is required (e.g. "täglich", "wöchentlich", "alle 2 Tage").'];
-        // Parse human-readable recurrence to RFC 5545
-        $rrule = $this->scheduledAssignments->parseRecurrence($recurrence);
-        // Parse start time
-        $startsAt = time(); // Default: now
-        $startsAtStr = trim((string)($args['starts_at'] ?? ''));
-        if ($startsAtStr !== '') {
-            try {
-                $dt = new \DateTime($startsAtStr, new \DateTimeZone($args['timezone'] ?? 'Europe/Berlin'));
-                $startsAt = $dt->getTimestamp();
-            } catch (\Throwable $e) {
-                return ['ok' => false, 'error' => 'Invalid starts_at format: ' . $e->getMessage()];
-            }
-        }
-        $timezone = trim((string)($args['timezone'] ?? '')) ?: 'Europe/Berlin';
-        try {
-            $result = $this->scheduledAssignments->createAssignment($userId, $prompt, $rrule, $startsAt, $timezone);
-            if ($result === null) {
-                return ['ok' => false, 'error' => 'Failed to create scheduled assignment.'];
-            }
-            return ['ok' => true, 'result' => ['assignment' => $result]];
-        } catch (\Throwable $e) {
-            return ['ok' => false, 'error' => 'Failed to create scheduled assignment: ' . $e->getMessage()];
-        }
-    }
-
-    private function updateScheduledAssignment(array $args): array {
-        if ($this->scheduledAssignments === null) {
-            return ['ok' => false, 'error' => 'Scheduled assignments service is not available.'];
-        }
-        $userId = $this->config->userId() ?? '';
-        if ($userId === '') return ['ok' => false, 'error' => 'No user logged in.'];
-        $assignmentId = (int)($args['assignment_id'] ?? 0);
-        if ($assignmentId <= 0) return ['ok' => false, 'error' => 'assignment_id is required.'];
-        $updates = [];
-        if (array_key_exists('prompt', $args)) $updates['prompt'] = trim((string)$args['prompt']);
-        if (array_key_exists('recurrence', $args)) {
-            $recurrence = trim((string)$args['recurrence']);
-            $updates['recurrence'] = $this->scheduledAssignments->parseRecurrence($recurrence);
-        }
-        if (array_key_exists('starts_at', $args)) {
-            $startsAtStr = trim((string)$args['starts_at']);
-            if ($startsAtStr !== '') {
-                try {
-                    $dt = new \DateTime($startsAtStr, new \DateTimeZone($args['timezone'] ?? 'Europe/Berlin'));
-                    $updates['startsAt'] = $dt->getTimestamp();
-                } catch (\Throwable $e) {
-                    return ['ok' => false, 'error' => 'Invalid starts_at format: ' . $e->getMessage()];
-                }
-            }
-        }
-        if (array_key_exists('timezone', $args)) $updates['timezone'] = trim((string)$args['timezone']);
-        if (empty($updates)) return ['ok' => false, 'error' => 'No fields to update.'];
-        try {
-            $result = $this->scheduledAssignments->updateAssignment($userId, $assignmentId, $updates);
-            if ($result === null) {
-                return ['ok' => false, 'error' => 'Failed to update scheduled assignment.'];
-            }
-            return ['ok' => true, 'result' => ['assignment' => $result]];
-        } catch (\Throwable $e) {
-            return ['ok' => false, 'error' => 'Failed to update scheduled assignment: ' . $e->getMessage()];
-        }
-    }
-
-    private function deleteScheduledAssignment(array $args): array {
-        if ($this->scheduledAssignments === null) {
-            return ['ok' => false, 'error' => 'Scheduled assignments service is not available.'];
-        }
-        $userId = $this->config->userId() ?? '';
-        if ($userId === '') return ['ok' => false, 'error' => 'No user logged in.'];
-        $assignmentId = (int)($args['assignment_id'] ?? 0);
-        if ($assignmentId <= 0) return ['ok' => false, 'error' => 'assignment_id is required.'];
-        try {
-            $deleted = $this->scheduledAssignments->deleteAssignment($userId, $assignmentId);
-            if (!$deleted) {
-                return ['ok' => false, 'error' => 'Failed to delete scheduled assignment.'];
-            }
-            return ['ok' => true, 'result' => ['assignment_id' => (string)$assignmentId, 'deleted' => true]];
-        } catch (\Throwable $e) {
-            return ['ok' => false, 'error' => 'Failed to delete scheduled assignment: ' . $e->getMessage()];
-        }
     }
 
     /** @return array<array{name:string,path:string,type:string,size?:int}> */
@@ -3842,88 +3624,6 @@ class ActionExecutor {
             }
         }
         return ['ok' => true, 'result' => ['completed' => count($results), 'results' => $results]];
-    }
-
-    /** @return array{ok:true,result:array}|array{ok:false,error:string} */
-    private function searchMails(string $userId, array $args): array {
-        try {
-            $res = $this->email->search($userId, (string)($args['query'] ?? ''), max(1, (int)($args['limit'] ?? 10)));
-        } catch (\Throwable $e) {
-            return ['ok' => false, 'error' => 'Mail access failed: ' . $e->getMessage()];
-        }
-        return ['ok' => true, 'result' => ['mails' => $res]];
-    }
-
-    /** @return array{ok:true,result:array}|array{ok:false,error:string} */
-    private function listMails(string $userId, array $args): array {
-        try {
-            $res = $this->email->listMessages($userId, max(1, (int)($args['limit'] ?? 15)), !empty($args['unread_only']));
-        } catch (\Throwable $e) {
-            return ['ok' => false, 'error' => 'Mail access failed: ' . $e->getMessage()];
-        }
-        return ['ok' => true, 'result' => ['mails' => $res]];
-    }
-
-    /** @return array{ok:true,result:array}|array{ok:false,error:string} */
-    private function readMail(string $userId, array $args): array {
-        try {
-            return $this->email->readMessage($userId, (int)($args['message_id'] ?? 0));
-        } catch (\Throwable $e) {
-            return ['ok' => false, 'error' => 'Mail access failed: ' . $e->getMessage()];
-        }
-    }
-
-    /** @return array{ok:true,result:array}|array{ok:false,error:string} */
-    private function unreadMailCount(string $userId): array {
-        try {
-            $n = $this->email->unreadCount($userId);
-        } catch (\Throwable $e) {
-            return ['ok' => false, 'error' => 'Mail access failed: ' . $e->getMessage()];
-        }
-        return ['ok' => true, 'result' => ['unread' => $n]];
-    }
-
-    /** @return array{ok:true,result:array}|array{ok:false,error:string} */
-    private function summarizeEmails(string $userId, array $args): array {
-        if ($this->ollama === null) {
-            return ['ok' => false, 'error' => 'Email summarization requires a configured chat provider.'];
-        }
-        $limit = max(1, min(20, (int)($args['limit'] ?? 8)));
-        $query = trim((string)($args['query'] ?? ''));
-        try {
-            $rows = $query !== ''
-                ? $this->email->search($userId, $query, $limit)
-                : $this->email->listMessages($userId, $limit, !empty($args['unread_only']));
-            if ($rows === []) {
-                return ['ok' => true, 'result' => ['count' => 0, 'summary' => 'No matching emails found.', 'messages' => []]];
-            }
-            $documents = [];
-            $metadata = [];
-            foreach (array_slice($rows, 0, $limit) as $row) {
-                $id = (int)($row['id'] ?? 0);
-                $full = $id > 0 ? $this->email->readMessage($userId, $id) : ['ok' => false];
-                $mail = is_array($full['result'] ?? null) ? $full['result'] : $row;
-                $body = trim((string)($mail['body'] ?? $mail['preview'] ?? ''));
-                $documents[] = sprintf("[%s] From: %s\nSubject: %s\nDate: %s\n%s", $id, (string)($mail['from'] ?? $row['from'] ?? ''), (string)($mail['subject'] ?? $row['subject'] ?? ''), (string)($mail['date'] ?? $row['sent'] ?? ''), mb_substr($body, 0, 5000));
-                $metadata[] = ['id' => $id, 'subject' => (string)($mail['subject'] ?? $row['subject'] ?? ''), 'from' => (string)($mail['from'] ?? $row['from'] ?? ''), 'date' => (string)($mail['date'] ?? $row['sent'] ?? ''), 'unread' => (bool)($row['unread'] ?? false)];
-            }
-            $focus = trim((string)($args['focus'] ?? ''));
-            $prompt = 'Summarize these emails in the language used by most messages. Give a concise overview, then bullet key points, explicit action items and dates/deadlines. Do not invent facts; say when a detail is unclear.';
-            if ($focus !== '') {
-                $prompt .= ' Pay special attention to: ' . mb_substr($focus, 0, 300) . '.';
-            }
-            $response = $this->ollama->chat([
-                ['role' => 'system', 'content' => 'You are EVA, a careful email assistant. Never expose secrets or claim an action was taken.'],
-                ['role' => 'user', 'content' => $prompt . "\n\n" . implode("\n\n", $documents)],
-            ], [], 90);
-            $summary = trim((string)($response['answer'] ?? ''));
-            if ($summary === '') {
-                return ['ok' => false, 'error' => (string)($response['error'] ?? 'The chat provider returned no summary.')];
-            }
-            return ['ok' => true, 'result' => ['count' => count($metadata), 'summary' => $summary, 'messages' => $metadata]];
-        } catch (\Throwable $e) {
-            return ['ok' => false, 'error' => 'Mail summarization failed: ' . $e->getMessage()];
-        }
     }
 
     /**
