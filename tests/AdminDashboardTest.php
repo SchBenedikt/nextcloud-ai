@@ -166,6 +166,10 @@ final class AdminDashboardTest extends TestCase {
             ['last_index_error', ''],
             ['actions_enabled', '1'],
             ['mail_index_enabled', '1'],
+            ['index_started', '0'],
+            ['index_finished', '0'],
+            ['last_index_processed', '0'],
+            ['last_index_total', '0'],
         ]);
         $indexer = $this->createMock(Indexer::class);
         $indexer->expects(self::once())->method('reset')->with('alice')->willReturn(['documents' => 5, 'chunks' => 100]);

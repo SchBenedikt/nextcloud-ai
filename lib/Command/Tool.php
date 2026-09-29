@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace OCA\EvaAi\Command;
 
 use OCA\EvaAi\Service\ActionExecutor;
+use OCP\IURLGenerator;
 use Symfony\Component\Console\Command\Command;
 use Symfony\Component\Console\Input\InputArgument;
 use Symfony\Component\Console\Input\InputInterface;
@@ -12,7 +13,8 @@ use Symfony\Component\Console\Output\OutputInterface;
 
 class Tool extends Command {
     public function __construct(
-        private ActionExecutor $executor
+        private ActionExecutor $executor,
+        private IURLGenerator $urlGenerator
     ) {
         parent::__construct();
     }
@@ -37,8 +39,8 @@ class Tool extends Command {
                 $mgr = \OCP\Server::get(\OCP\Notification\IManager::class);
                 $n = $mgr->createNotification();
                 $n->setApp('eva_ai')->setUser($user)->setObject('chat', 'answer')
-                    ->setSubject('answer_ready', ['text' => mb_strimwidth((string)($args['text'] ?? 'Hallo'), 0, 400, '…')])
-                    ->setLink('https://localhost/nextcloud/apps/eva_ai/')
+                    ->setSubject('answer_ready', ['text' => mb_strimwidth((string)($args['text'] ?? 'Test notification'), 0, 400, '…')])
+                    ->setLink($this->urlGenerator->linkToRouteAbsolute('eva_ai.page.app'))
                     ->setDateTime(new \DateTime());
                 $mgr->notify($n);
                 $output->writeln('OK notified');

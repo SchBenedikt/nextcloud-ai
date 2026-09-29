@@ -44,6 +44,11 @@ function htmlWith(initialMock) {
       <div class="err" id="err" style="display:none;"></div>
     </div>
   </div>
+  <div id="chat-confirm" hidden>
+    <h2 id="chat-confirm-title"></h2><p id="chat-confirm-message"></p>
+    <button id="chat-confirm-cancel" type="button">Cancel</button>
+    <button id="chat-confirm-submit" type="button">Delete chat</button>
+  </div>
   <script>
   window.__mock = Object.assign({
     chats: [],

@@ -32,20 +32,21 @@ class DocumentMapper extends QBMapper {
      */
     public function findByUserAndPathPrefix(string $userId, string $path): array {
         $prefix = trim($path, '/');
-        if ($prefix === '') {
-            return [];
-        }
         $qb = $this->db->getQueryBuilder();
-        $escaped = $this->escapeLike($prefix) . '/%';
         $qb->select('*')
             ->from('eva_ai_documents')
             ->where($qb->expr()->eq('user_id', $qb->createNamedParameter($userId)))
-            ->andWhere(
+            ->andWhere($qb->expr()->eq('source', $qb->createNamedParameter(Document::SOURCE_FILES)));
+        if ($prefix !== '') {
+            $escaped = $this->escapeLike($prefix) . '/%';
+            $qb->andWhere(
                 $qb->expr()->orX(
                     $qb->expr()->eq('path', $qb->createNamedParameter($prefix)),
                     $qb->expr()->like('path', $qb->createNamedParameter($escaped))
                 )
-            )
+            );
+        }
+        $qb
             ->setMaxResults(10000);
         return $this->findEntities($qb);
     }

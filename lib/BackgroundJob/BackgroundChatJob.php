@@ -66,7 +66,8 @@ final class BackgroundChatJob extends TimedJob {
                 if (($result['error'] ?? null) === 'timeout') {
                     $this->queue->markTimedOut($user, $id);
                     $notification = $this->notifications->createNotification();
-                    $notification->setApp(AppConfig::APP)->setUser($user)->setObject('chat', $chatId)->setSubject('background_failed', ['text' => 'EVA background run reached its three-minute time limit.'])->setLink($this->urls->linkToRouteAbsolute('eva_ai.page.app') . '?chat=' . rawurlencode($chatId))->setDateTime(new \DateTime());
+                    $minutes = max(1, (int)ceil(BackgroundChatQueue::MAX_RUNTIME_SECONDS / 60));
+                    $notification->setApp(AppConfig::APP)->setUser($user)->setObject('chat', $chatId)->setSubject('background_failed', ['text' => 'EVA background run reached its ' . $minutes . '-minute time limit.'])->setLink($this->urls->linkToRouteAbsolute('eva_ai.page.app') . '?chat=' . rawurlencode($chatId))->setDateTime(new \DateTime());
                     $this->notifications->notify($notification);
                     continue;
                 }
@@ -74,7 +75,8 @@ final class BackgroundChatJob extends TimedJob {
                     if ($deadline > 0 && time() >= $deadline) {
                         $this->queue->markTimedOut($user, $id);
                         $notification = $this->notifications->createNotification();
-                        $notification->setApp(AppConfig::APP)->setUser($user)->setObject('chat', $chatId)->setSubject('background_failed', ['text' => 'EVA background run exceeded its five-minute time limit.'])->setLink($this->urls->linkToRouteAbsolute('eva_ai.page.app') . '?chat=' . rawurlencode($chatId))->setDateTime(new \DateTime());
+                        $minutes = max(1, (int)ceil(BackgroundChatQueue::MAX_RUNTIME_SECONDS / 60));
+                        $notification->setApp(AppConfig::APP)->setUser($user)->setObject('chat', $chatId)->setSubject('background_failed', ['text' => 'EVA background run exceeded its ' . $minutes . '-minute time limit.'])->setLink($this->urls->linkToRouteAbsolute('eva_ai.page.app') . '?chat=' . rawurlencode($chatId))->setDateTime(new \DateTime());
                         $this->notifications->notify($notification);
                     } else $this->queue->complete($user, $id);
                     continue;

@@ -23,11 +23,15 @@ return [
         ['name' => 'api#saveSettings', 'url' => '/api/settings', 'verb' => 'PUT'],
         ['name' => 'api#startIndex', 'url' => '/api/index', 'verb' => 'POST'],
         ['name' => 'api#startMailIndex', 'url' => '/api/mailIndex', 'verb' => 'POST'],
+        ['name' => 'api#startMailIndexSnake', 'url' => '/api/mail_index', 'verb' => 'POST'],
         // Index the user's Nextcloud Talk chat histories on demand (the button
         // in the settings/documents view), independent of the automatic pass.
         ['name' => 'api#startTalkIndex', 'url' => '/api/talkIndex', 'verb' => 'POST'],
+        ['name' => 'api#startTalkIndexSnake', 'url' => '/api/talk_index', 'verb' => 'POST'],
         ['name' => 'api#stopIndex', 'url' => '/api/indexStop', 'verb' => 'POST'],
+        ['name' => 'api#stopIndexSnake', 'url' => '/api/index/stop', 'verb' => 'POST'],
         ['name' => 'api#resetIndex', 'url' => '/api/indexReset', 'verb' => 'POST'],
+        ['name' => 'api#resetIndexSnake', 'url' => '/api/index/reset', 'verb' => 'POST'],
         ['name' => 'api#documents', 'url' => '/api/documents', 'verb' => 'GET'],
         ['name' => 'api#documentChunks', 'url' => '/api/documentChunks', 'verb' => 'POST'],
         ['name' => 'api#chat', 'url' => '/api/chat', 'verb' => 'POST'],
@@ -57,6 +61,7 @@ return [
         ['name' => 'api#createFolder', 'url' => '/api/folders', 'verb' => 'POST'],
         ['name' => 'api#renameFolder', 'url' => '/api/folders/rename', 'verb' => 'POST'],
         ['name' => 'api#deleteFolder', 'url' => '/api/folders/delete', 'verb' => 'POST'],
+        ['name' => 'api#deleteFolderRest', 'url' => '/api/folders', 'verb' => 'DELETE'],
         ['name' => 'api#models', 'url' => '/api/models', 'verb' => 'GET'],
         ['name' => 'api#calendars', 'url' => '/api/calendars', 'verb' => 'GET'],
         ['name' => 'api#check', 'url' => '/api/check', 'verb' => 'POST'],

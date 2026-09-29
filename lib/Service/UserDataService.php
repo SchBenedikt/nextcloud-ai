@@ -28,6 +28,9 @@ class UserDataService {
     public function __construct(
         private AppConfig $config,
         private ChatStore $chatStore,
+        private DirtyIndexStore $dirtyIndexStore,
+        private AgentStore $agentStore,
+        private BackgroundChatQueue $backgroundChatQueue,
         private DocumentMapper $documentMapper,
         private ChunkMapper $chunkMapper,
         private EmbeddingCache $embeddingCache,
@@ -109,6 +112,21 @@ class UserDataService {
             $this->chatStore->deleteUserData($userId);
         } catch (\Throwable $e) {
             $this->logger->warning('eva_ai: chat cleanup failed on account deletion', ['user' => $userId]);
+        }
+        try {
+            $this->dirtyIndexStore->deleteUserData($userId);
+        } catch (\Throwable $e) {
+            $this->logger->warning('eva_ai: dirty index cleanup failed on account deletion', ['user' => $userId]);
+        }
+        try {
+            $this->agentStore->deleteUserData($userId);
+        } catch (\Throwable $e) {
+            $this->logger->warning('eva_ai: agent state cleanup failed on account deletion', ['user' => $userId]);
+        }
+        try {
+            $this->backgroundChatQueue->deleteUserData($userId);
+        } catch (\Throwable $e) {
+            $this->logger->warning('eva_ai: background queue cleanup failed on account deletion', ['user' => $userId]);
         }
         $this->deleteAiMarksFolder($userId);
         // KNOWLEDGE.md inside the home folder (if the folder still exists).

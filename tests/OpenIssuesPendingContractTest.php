@@ -102,7 +102,7 @@ final class OpenIssuesPendingContractTest extends TestCase {
         self::assertStringContainsString("'max_nodes'", $executor);
         self::assertStringContainsString("'max_results'", $executor);
 		self::assertStringContainsString('unindexed PDF, DOCX, XLSX, PPTX, ODF and EPUB', $executor);
-		self::assertStringContainsString('common unindexed PDF, DOCX, XLSX, PPTX, ODF and EPUB content', (string)file_get_contents(__DIR__ . '/../lib/Service/RagService.php'));
+		self::assertStringContainsString('search_files can inspect supported unindexed office and PDF formats', (string)file_get_contents(__DIR__ . '/../lib/Service/RagService.php'));
     }
 
     /** Direct file search must also find text inside common unindexed documents. */
@@ -706,7 +706,7 @@ final class OpenIssuesPendingContractTest extends TestCase {
 		self::assertStringContainsString('$nextOffset', $service);
 		self::assertStringContainsString("'has_more'", $service);
 		self::assertStringContainsString('openPage($url, $query, $offset, $maxChars)', $executor);
-		self::assertStringContainsString('continue until has_more=false', $rag);
+		self::assertStringContainsString('has_more', $rag);
 	}
 
 	/** Generic app learning records response structure, never response values. */

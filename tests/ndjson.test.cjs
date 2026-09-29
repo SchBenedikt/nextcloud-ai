@@ -14,11 +14,14 @@ test('stream delivers split UTF-8 and an unterminated final done event', async (
   assert.equal(JSON.stringify(events), JSON.stringify([{ type: 'content', delta: 'Grüße 😀' }, { type: 'done', answer: 'Fertig' }]))
   assert.equal(body.locked, false)
 })
-test('malformed events cancel the stream and release its reader', async () => {
-  let cancelled = false
-  const body = new ReadableStream({ start(controller) { controller.enqueue(new TextEncoder().encode('{broken}\n')) }, cancel() { cancelled = true } })
-  await assert.rejects(ctx.readNdjson(body, () => {}))
-  assert.equal(cancelled, true)
+test('malformed events are ignored and the stream continues', async () => {
+  const body = new ReadableStream({ start(controller) {
+    controller.enqueue(new TextEncoder().encode('{broken}\n{"type":"done"}\n'))
+    controller.close()
+  } })
+  const events = []
+  await ctx.readNdjson(body, event => events.push(event))
+  assert.equal(JSON.stringify(events), JSON.stringify([{ type: 'done' }]))
   assert.equal(body.locked, false)
 })
 test('transport and consumer errors propagate and release the reader', async () => {

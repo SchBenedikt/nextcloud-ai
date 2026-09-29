@@ -58,9 +58,6 @@ PROMPT;
     }
 
     public function handle(Event $event): void {
-        // Set tool policy surface to Talk (per request, at execution time)
-        $this->executor->setSurface(ToolPolicy::SURFACE_TALK);
-
         if (!($event instanceof BotInvokeEvent)) {
             return;
         }
@@ -68,6 +65,8 @@ PROMPT;
         if (!str_starts_with($url, Bot::URL_APP_PREFIX . 'eva_ai')) {
             return;
         }
+        // Set the execution surface only after confirming this is EVA's Talk bot.
+        $this->executor->setSurface(ToolPolicy::SURFACE_TALK);
         $data = $event->getMessage();
         // Nur auf Chat-Nachrichten reagieren; Reactions/System-Messages ignorieren.
         if (!isset($data['type']) || ($data['type'] !== 'Create' && $data['type'] !== 'Activity')) {
@@ -90,21 +89,22 @@ PROMPT;
 
         $roomId = (int)($data['target']['id'] ?? 0);
         $explicit = $this->isExplicitlyMentioned($content);
-        if (!$explicit) {
+        if (!$explicit && $this->appConfig->get('talk_classify_all') !== '1') {
             return;
         }
 
         // Per-room enable/disable (Issue #85): a disabled room stays silent
         // for everything except the /start command itself, so the bot can
         // always be re-enabled from the chat.
-        if (!$this->roomState->isEnabled($roomId)
-            && !$this->parseSlashCommand($content)['start']) {
+        // Parse once: the command gates disabled rooms and is handled before
+        // any LLM classification.
+        $command = $this->parseSlashCommand($content);
+        if (!$this->roomState->isEnabled($roomId) && !$command['start']) {
             return;
         }
 
         // Deterministic slash commands (Issue #85): handled before any LLM
         // classification, so @Eva /help etc. never depend on the model.
-        $command = $this->parseSlashCommand($content);
         if ($command['name'] !== '') {
             $this->handleSlashCommand($event, $command, $userId, $roomId);
             return;
@@ -185,10 +185,10 @@ PROMPT;
                 $status = $this->ragService->buildStatus($userId);
                 $lines = [];
                 $lines[] = 'Ollama: ' . ((bool)($status['ollamaOnline'] ?? false) ? '✅ online' : '❌ offline');
-                $lines[] = 'Chat-Modell: ' . ($status['chatModel'] ?? '') . ((bool)($status['chatModelInstalled'] ?? false) ? ' ✅' : ' ⚠️');
-                $lines[] = 'Embedding-Modell: ' . ($status['embeddingModel'] ?? '') . ((bool)($status['embeddingModelInstalled'] ?? false) ? ' ✅' : ' ⚠️');
-                $lines[] = 'Dokumente im Index: ' . (int)($status['documents'] ?? 0);
-                $lines[] = 'Index läuft gerade: ' . ((bool)($status['indexing'] ?? false) ? 'ja' : 'nein');
+                $lines[] = 'Chat model: ' . ($status['chatModel'] ?? '') . ((bool)($status['chatModelInstalled'] ?? false) ? ' ✅' : ' ⚠️');
+                $lines[] = 'Embedding model: ' . ($status['embeddingModel'] ?? '') . ((bool)($status['embeddingModelInstalled'] ?? false) ? ' ✅' : ' ⚠️');
+                $lines[] = 'Indexed documents: ' . (int)($status['documents'] ?? 0);
+                $lines[] = 'Indexing in progress: ' . ((bool)($status['indexing'] ?? false) ? 'yes' : 'no');
                 $event->addAnswer(implode("\n", $lines));
                 return;
             case 'summarize':
@@ -257,8 +257,6 @@ PROMPT;
      *    LLM-Anfrage aus und wird nie an ein Modell geschickt.
      */
     private function shouldRespond(string $content, string $currentUserId, int $roomId, bool $explicit = false): bool {
-        return $explicit;
-        /* Legacy classifier path retained below for compatibility documentation. */
         // 1. Explizite Adressierung – schneller Check, keine LLM-Anfrage nötig.
         if ($explicit) {
             return true;
@@ -448,7 +446,7 @@ PROMPT;
         $configured = $this->appConfig->get('talk_bot_trigger');
         $patterns = ['/@eva[\s,:.\-]*/iu'];
         if ($configured !== '') {
-            $patterns[] = '/@?' . preg_quote($configured, '/') . '[\s,:.\-]*/iu';
+            $patterns[] = '/@' . preg_quote($configured, '/') . '[\s,:.\-]*/iu';
         }
         return trim(preg_replace($patterns, '', $content) ?? $content);
     }

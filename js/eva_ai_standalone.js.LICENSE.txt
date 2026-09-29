@@ -1,1 +1,1 @@
-/*! markdown-it 15.0.1 https://github.com/markdown-it/markdown-it @license MIT */
+/*! markdown-it 15.0.2 https://github.com/markdown-it/markdown-it @license MIT */

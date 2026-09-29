@@ -56,12 +56,18 @@ export async function api(method, path, data, options = {}) {
 export function errMsg(e) {
 	if (e && e.response) {
 		const data = e.response.data
+		const status = Number(e.response.status || 0)
 		let detail = ''
 		try {
-			detail = data?.ocs?.message || data?.ocs?.data?.error || data?.error || (typeof data === 'string' ? data : '')
+			detail = data?.ocs?.data?.message || data?.ocs?.message || data?.ocs?.data?.error || data?.message || data?.error || ''
 		} catch (_) { /* ignore */ }
+		if (!detail && typeof data === 'string' && !/^\s*</.test(data)) detail = data
 		detail = String(detail || '').replace(/\s+/g, ' ').trim().slice(0, 240)
-		return String(e.response.status || 'HTTP error') + (detail ? ' ' + detail : '')
+		if (!detail || /<!doctype\s+html|<html[\s>]/i.test(detail)) {
+			if (status === 408 || status === 504) detail = 'The AI service took too long to respond. Please retry; if this continues, check the configured provider and gateway timeout.'
+			else if (status >= 500) detail = 'The AI service is temporarily unavailable. Please retry shortly.'
+		}
+		return String(status || 'HTTP error') + (detail ? ' ' + detail : '')
 	}
 	return e && e.message ? String(e.message).replace(/\s+/g, ' ').trim().slice(0, 240) : String(e)
 }

@@ -73,6 +73,21 @@ class DirtyIndexStore {
         return count($this->entries($userId));
     }
 
+    /** Remove the per-user queue file when the account is erased. */
+    public function deleteUserData(string $userId): void {
+        if ($userId === '') return;
+        $this->withUserLock($userId, function () use ($userId): void {
+            try {
+                $root = $this->appDataFactory->get(AppConfig::APP);
+                $folder = $root->getFolder('dirty');
+                $name = substr(hash('sha256', $userId), 0, 40) . '.json';
+                if ($folder->fileExists($name)) $folder->getFile($name)->delete();
+            } catch (NotFoundException) {
+                // The account had no queued file changes.
+            }
+        });
+    }
+
     private function mark(string $userId, string $key, array $entry): void {
         $this->withUserLock($userId, function () use ($userId, $key, $entry): void {
             $file = $this->fileFor($userId);

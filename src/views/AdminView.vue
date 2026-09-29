@@ -7,7 +7,7 @@
 				<p class="page-intro">{{ $t('Overview of the RAG index per user with re-index, reset and enrollment management.') }}</p>
 			</div>
 			<div class="header-actions">
-				<NcButton v-if="(data?.scheduler?.running ?? 0) > 0" type="tertiary" :loading="stopping" @click="stopBackground">
+				<NcButton v-if="(data?.scheduler?.running ?? 0) > 0" variant="tertiary" :loading="stopping" @click="stopBackground">
 					{{ $t('Stop background indexing') }}
 				</NcButton>
 				<NcButton variant="secondary" :loading="loading" @click="load">

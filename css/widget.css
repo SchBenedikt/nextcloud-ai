@@ -34,11 +34,21 @@
 	text-align: center;
 	padding: 6px 12px;
 	background: var(--color-primary, #0082c9);
-	color: #fff;
+	color: var(--color-primary-text, #fff);
 	border-radius: var(--border-radius, 3px);
 	text-decoration: none;
 	font-weight: 600;
 }
 .eva-widget-btn:hover {
 	background: var(--color-primary-element, #006aa8);
+}
+
+@media (forced-colors: active) {
+  .eva-widget-btn {
+    border: 1px solid ButtonText;
+    background: ButtonFace;
+    color: ButtonText;
+    forced-color-adjust: auto;
+  }
+  .eva-widget-btn:focus-visible { outline: 2px solid Highlight; outline-offset: 2px; }
 }

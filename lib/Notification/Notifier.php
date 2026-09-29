@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace OCA\EvaAi\Notification;
 
+use OCA\EvaAi\Service\AppConfig;
+use OCP\L10N\IFactory;
 use OCP\IURLGenerator;
 use OCP\Notification\INotification;
 use OCP\Notification\INotifier;
@@ -15,6 +17,7 @@ use OCP\Notification\UnknownNotificationException;
 class Notifier implements INotifier {
 	public function __construct(
 		private IURLGenerator $urlGenerator,
+		private IFactory $l10nFactory,
 	) {
 	}
 
@@ -23,7 +26,7 @@ class Notifier implements INotifier {
 	}
 
 	public function getName(): string {
-		return 'EVA – Chat';
+		return $this->l10nFactory->get(AppConfig::APP)->t('EVA – Chat');
 	}
 
 	public function prepare(INotification $notification, string $languageCode): INotification {
@@ -32,11 +35,15 @@ class Notifier implements INotifier {
 		}
 
 		if (in_array($notification->getSubject(), ['answer_ready', 'scheduled_briefing', 'background_failed'], true)) {
+			$l10n = $this->l10nFactory->get(AppConfig::APP, $languageCode);
 			$params = $notification->getSubjectParameters();
 			$subject = $notification->getSubject();
-			$notification->setParsedSubject($subject === 'scheduled_briefing'
-				? 'EVA scheduled briefing'
-				: ($subject === 'background_failed' ? 'EVA task failed' : 'EVA answer ready'));
+			$subjectKey = match ($subject) {
+				'scheduled_briefing' => 'EVA scheduled briefing',
+				'background_failed' => 'EVA task failed',
+				default => 'EVA answer ready',
+			};
+			$notification->setParsedSubject($l10n->t($subjectKey));
 			$notification->setParsedMessage((string)($params['text'] ?? ''));
 			// NC >= 30 verlangt absolute URLs fuer das Icon; relative Pfade
 			// werfen InvalidValueException (subklasse von \InvalidArgumentException)

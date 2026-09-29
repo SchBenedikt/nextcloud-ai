@@ -182,7 +182,7 @@ final class TalkChatServiceTest extends TestCase {
     // ---- The contract the model sees ---------------------------------------
 
     public function testTheThreeTalkToolsAreOfferedToTheModelWithTheirArguments(): void {
-        $policy = new ToolPolicy($this->config(1));
+        $policy = new ToolPolicy($this->config(1), $this->service(true, 1));
         $policy->setSurface(ToolPolicy::SURFACE_WEB);
         $executor = (new \ReflectionClass(ActionExecutor::class))->newInstanceWithoutConstructor();
         (new \ReflectionProperty(ActionExecutor::class, 'toolPolicy'))->setValue($executor, $policy);

@@ -166,21 +166,63 @@ class OpenAICompatible {
 
     /** Convert EVA's provider-neutral image message to OpenAI vision syntax. */
     private function normalizeMessages(array $messages): array {
-        return array_map(static function (array $message): array {
+        $normalized = [];
+        $pendingToolIds = [];
+        foreach ($messages as $index => $message) {
+            if (!is_array($message)) {
+                continue;
+            }
             $images = is_array($message['images'] ?? null) ? $message['images'] : [];
             $mimes = is_array($message['image_mimes'] ?? null) ? $message['image_mimes'] : [];
             unset($message['images'], $message['image_mimes']);
-            if ($images === []) {
-                return $message;
+
+            if ($images !== []) {
+                $parts = [['type' => 'text', 'text' => (string)($message['content'] ?? '')]];
+                foreach ($images as $imageIndex => $base64) {
+                    if (!is_string($base64) || $base64 === '') continue;
+                    $mime = is_string($mimes[$imageIndex] ?? null) ? $mimes[$imageIndex] : 'image/jpeg';
+                    $parts[] = ['type' => 'image_url', 'image_url' => ['url' => 'data:' . $mime . ';base64,' . $base64]];
+                }
+                $message['content'] = $parts;
             }
-            $parts = [['type' => 'text', 'text' => (string)($message['content'] ?? '')]];
-            foreach ($images as $index => $base64) {
-                if (!is_string($base64) || $base64 === '') continue;
-                $mime = is_string($mimes[$index] ?? null) ? $mimes[$index] : 'image/jpeg';
-                $parts[] = ['type' => 'image_url', 'image_url' => ['url' => 'data:' . $mime . ';base64,' . $base64]];
+
+            if (($message['role'] ?? '') === 'assistant' && is_array($message['tool_calls'] ?? null)) {
+                $pendingToolIds = [];
+                $calls = [];
+                foreach ($message['tool_calls'] as $callIndex => $call) {
+                    if (!is_array($call)) continue;
+                    $function = is_array($call['function'] ?? null) ? $call['function'] : $call;
+                    $name = trim((string)($function['name'] ?? ''));
+                    if ($name === '') continue;
+                    $id = trim((string)($call['id'] ?? ''));
+                    if ($id === '') $id = 'call_' . $index . '_' . $callIndex;
+                    $arguments = $function['arguments'] ?? [];
+                    if (is_string($arguments)) {
+                        $decoded = json_decode($arguments, true);
+                        $arguments = is_array($decoded) ? $decoded : [];
+                    } elseif (is_object($arguments)) {
+                        $arguments = get_object_vars($arguments);
+                    }
+                    if (!is_array($arguments)) $arguments = [];
+                    $encodedArguments = json_encode($arguments === [] ? new \stdClass() : $arguments, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR);
+                    $calls[] = [
+                        'id' => $id,
+                        'type' => 'function',
+                        'function' => ['name' => $name, 'arguments' => $encodedArguments],
+                    ];
+                    $pendingToolIds[] = $id;
+                }
+                if ($calls !== []) $message['tool_calls'] = $calls;
+                else unset($message['tool_calls']);
+            } elseif (($message['role'] ?? '') === 'tool') {
+                $toolCallId = array_shift($pendingToolIds);
+                if ($toolCallId === null) continue;
+                $message['tool_call_id'] = $toolCallId;
+                unset($message['name']);
             }
-            $message['content'] = $parts;
-            return $message;
-        }, $messages);
+
+            $normalized[] = $message;
+        }
+        return $normalized;
     }
 }

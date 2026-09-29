@@ -510,6 +510,12 @@ class ApiController extends OCSController {
         return null;
     }
 
+    /** REST-style URL alias for integrations; preserves the legacy route. */
+    #[NoAdminRequired]
+    public function resetIndexSnake(): DataResponse {
+        return $this->resetIndex();
+    }
+
     #[NoAdminRequired]
     public function resetIndex(): DataResponse {
         $user = $this->requireUser();
@@ -538,6 +544,12 @@ class ApiController extends OCSController {
         return $this->queueIndex('mail');
     }
 
+    /** REST-style URL alias for integrations; preserves the legacy route. */
+    #[NoAdminRequired]
+    public function startMailIndexSnake(): DataResponse {
+        return $this->startMailIndex();
+    }
+
     /**
      * Index the user's Nextcloud Talk chat histories.
      *
@@ -548,6 +560,18 @@ class ApiController extends OCSController {
     #[NoAdminRequired]
     public function startTalkIndex(): DataResponse {
         return $this->queueIndex('talk');
+    }
+
+    /** REST-style URL alias for integrations; preserves the legacy route. */
+    #[NoAdminRequired]
+    public function startTalkIndexSnake(): DataResponse {
+        return $this->startTalkIndex();
+    }
+
+    /** REST-style URL alias for integrations; preserves the legacy route. */
+    #[NoAdminRequired]
+    public function stopIndexSnake(): DataResponse {
+        return $this->stopIndex();
     }
 
     #[NoAdminRequired]
@@ -1077,6 +1101,7 @@ class ApiController extends OCSController {
         if (!is_array($history)) {
             $history = [];
         }
+        $this->releaseSessionLock();
         try {
             return new DataResponse($this->fileContextChat->chat($user, $fileIds, $message, $history));
         } finally {
@@ -1644,6 +1669,12 @@ class ApiController extends OCSController {
         }
     }
 
+    /** DELETE alias for the legacy POST /folders/delete contract. */
+    #[NoAdminRequired]
+    public function deleteFolderRest(): DataResponse {
+        return $this->deleteFolder();
+    }
+
     #[NoAdminRequired]
     public function deleteFolder(): DataResponse {
         $user = $this->requireUser();
@@ -1709,6 +1740,7 @@ class ApiController extends OCSController {
             $expectedRev = (int)$rawRev;
         }
 
+        $this->releaseSessionLock();
         $result = $this->chatStore->beginRegenerate($user, $id, $messageIndex, $newText, $expectedRev);
         if (!($result['ok'] ?? false)) {
             $error = (string)($result['error'] ?? 'invalid');

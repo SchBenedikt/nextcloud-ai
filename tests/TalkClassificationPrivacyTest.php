@@ -86,29 +86,42 @@ final class TalkClassificationPrivacyTest extends TestCase {
         self::assertTrue($this->shouldRespond($listener, '@Eva kannst du mir helfen?', true));
     }
 
-    public function testUnaddressedQuestionNeverReachesTheClassifier(): void {
+    public function testPlausibleQuestionReachesClassifierAndCanBeRejected(): void {
         [$listener, $ollama] = $this->listener('0');
-        $ollama->expects(self::never())->method('chat');
+        $ollama->expects(self::once())->method('chat')->willReturn(['answer' => 'no']);
         self::assertFalse($this->shouldRespond($listener, 'Wer hat den Raum gebucht?'));
     }
 
-    public function testClassifierCannotOverrideTheNameRequirement(): void {
+    public function testClassifierDecidesWhetherAQuestionWasForEva(): void {
         [$listener, $ollama] = $this->listener('0');
-        $ollama->expects(self::never())->method('chat');
+        $ollama->expects(self::once())->method('chat')->willReturn(['answer' => 'no']);
         self::assertFalse($this->shouldRespond($listener, 'Wer hat den Raum gebucht?'));
     }
 
-    public function testBotNameOnlyCountsWhenPassedAsExplicitAddressing(): void {
+    public function testBareBotNameIsClassifiedButExplicitMentionSkipsClassifier(): void {
         [$listener, $ollama] = $this->listener('0');
-        $ollama->expects(self::never())->method('chat');
+        $ollama->expects(self::once())->method('chat')->willReturn(['answer' => 'no']);
         self::assertFalse($this->shouldRespond($listener, 'Eva kannst du das bitte pruefen'));
         self::assertTrue($this->shouldRespond($listener, 'Eva kannst du das bitte pruefen', true));
     }
 
-    public function testClassifyAllCannotDisableTheNameRequirement(): void {
+    public function testClassifyAllRunsClassifierForUnaddressedMessages(): void {
         [$listener, $ollama] = $this->listener('1');
-        $ollama->expects(self::never())->method('chat');
-        self::assertFalse($this->shouldRespond($listener, 'Die Besprechung war wirklich lang.'));
+        $ollama->expects(self::once())->method('chat')->willReturn(['answer' => 'yes']);
+        self::assertTrue($this->shouldRespond($listener, 'Die Besprechung war wirklich lang.'));
+    }
+
+    public function testHeuristicPrefilterClassifiesPlausibleUnaddressedRequests(): void {
+        [$listener, $ollama] = $this->listener('0');
+        $ollama->expects(self::once())->method('chat')->willReturn(['answer' => 'yes']);
+        self::assertTrue($this->shouldRespond($listener, 'Eva, kannst du die Frage prüfen?'));
+    }
+
+    public function testMentionRemovalPreservesUnmentionedBotName(): void {
+        [$listener] = $this->listener('0');
+        $method = (new ReflectionClass(TalkBotListener::class))->getMethod('stripMention');
+        self::assertSame('Meeting with Eva tomorrow', $method->invoke($listener, 'Meeting with Eva tomorrow'));
+        self::assertSame('please help', $method->invoke($listener, '@Eva, please help'));
     }
 
     public function testClassificationFailureSkipsOnlyNonExplicitMessages(): void {

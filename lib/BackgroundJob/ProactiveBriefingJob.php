@@ -12,6 +12,7 @@ use OCP\BackgroundJob\TimedJob;
 use OCP\IConfig;
 use OCP\IURLGenerator;
 use OCP\Notification\IManager;
+use OCP\Lock\ILockingProvider;
 use Psr\Log\LoggerInterface;
 
 /**
@@ -29,6 +30,7 @@ final class ProactiveBriefingJob extends TimedJob {
         private IManager $notifications,
         private IURLGenerator $urlGenerator,
         private LoggerInterface $logger,
+        private ILockingProvider $lockingProvider,
     ) {
         parent::__construct($time);
         // Nextcloud cron itself may run less often. The per-minute interval
@@ -37,14 +39,35 @@ final class ProactiveBriefingJob extends TimedJob {
     }
 
     protected function run($argument): void {
+        $lockPath = 'eva_ai/proactive-briefing-job';
+        $locked = false;
         try {
-            $users = $this->rawConfig->getUsersForUserValue(AppConfig::APP, 'proactive_enabled', '1');
+            $this->lockingProvider->acquireLock($lockPath, ILockingProvider::LOCK_EXCLUSIVE, self::class);
+            $locked = true;
         } catch (\Throwable $e) {
-            $this->logger->warning('eva_ai: unable to enumerate proactive schedules', ['exception' => $e]);
+            // Nextcloud's lock provider rejects an overlapping cron run. Skip
+            // it; the active worker will persist the delivered time slots.
+            $this->logger->debug('eva_ai: skipped overlapping proactive briefing run', ['exception' => $e->getMessage()]);
             return;
         }
-        foreach (array_unique(array_map('strval', $users)) as $userId) {
-            $this->deliverDueSchedules($userId);
+        try {
+            try {
+                $users = $this->rawConfig->getUsersForUserValue(AppConfig::APP, 'proactive_enabled', '1');
+            } catch (\Throwable $e) {
+                $this->logger->warning('eva_ai: unable to enumerate proactive schedules', ['exception' => $e]);
+                return;
+            }
+            foreach (array_unique(array_map('strval', $users)) as $userId) {
+                $this->deliverDueSchedules($userId);
+            }
+        } finally {
+            if ($locked) {
+                try {
+                    $this->lockingProvider->releaseLock($lockPath, ILockingProvider::LOCK_EXCLUSIVE);
+                } catch (\Throwable $e) {
+                    $this->logger->debug('eva_ai: could not release proactive briefing lock', ['exception' => $e->getMessage()]);
+                }
+            }
         }
     }
 

@@ -15,8 +15,22 @@ final class StreamTraversableResponse extends Response implements ICallbackRespo
     }
 
     public function callback(IOutput $output): void {
-        foreach ($this->generator as $content) {
-            $output->setOutput($content);
+        try {
+            foreach ($this->generator as $content) {
+                if (connection_aborted()) {
+                    return;
+                }
+                $output->setOutput($content);
+                flush();
+            }
+        } catch (\Throwable) {
+            if (connection_aborted()) {
+                return;
+            }
+            $output->setOutput(json_encode([
+                'type' => 'error',
+                'message' => 'The response stream ended unexpectedly. Please retry.',
+            ], JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR) . "\n");
             flush();
         }
     }

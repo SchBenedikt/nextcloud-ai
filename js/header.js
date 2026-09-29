@@ -33,8 +33,9 @@
 		var a = document.createElement('a');
 		a.className = 'eva-ai-header-link';
 		a.href = OC.webroot + '/apps/eva_ai/';
-		a.title = 'AI – Chat with your files';
-		a.setAttribute('aria-label', 'AI – Chat with your files');
+		var label = OC.L10N && OC.L10N.translate ? OC.L10N.translate('eva_ai', 'AI – Chat with your files') : 'AI – Chat with your files';
+		a.title = label;
+		a.setAttribute('aria-label', label);
 		var img = document.createElement('img');
 		img.src = OC.webroot + '/apps/eva_ai/img/eva-icon.svg';
 		img.alt = 'AI';

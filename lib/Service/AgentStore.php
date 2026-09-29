@@ -71,6 +71,19 @@ class AgentStore {
 		}
 	}
 
+	/** Remove every persisted conversation state belonging to a deleted user. */
+	public function deleteUserData(string $userId): int {
+		if ($userId === '') return 0;
+		try {
+			$stmt = $this->db->prepare('DELETE FROM *PREFIX*eva_ai_agent_state WHERE user_id = ?');
+			$stmt->execute([$userId]);
+			return max(0, (int)$stmt->rowCount());
+		} catch (\Throwable $e) {
+			$this->logger->warning('eva_ai: agent state cleanup failed on account deletion', ['user' => $userId]);
+			return 0;
+		}
+	}
+
 	/** Atomically replace exactly the pending proposal the user approved. */
 	public function claim(string $userId, string $token, array $pending): ?array {
 		if ($pending === []) {

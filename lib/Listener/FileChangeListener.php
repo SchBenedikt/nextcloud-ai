@@ -81,11 +81,13 @@ class FileChangeListener implements IEventListener {
             if ($kind === 'file') {
                 $this->dirty->markFile($userId, (int)$node->getId());
             } elseif ($kind === 'folder-delete') {
-                $this->dirty->markFolderDeleted($userId, $this->relativePath($userId, $node->getPath()));
+                $path = $this->relativePath($userId, $node->getPath());
+                if ($path === null) return;
+                $this->dirty->markFolderDeleted($userId, $path);
             } elseif ($kind === 'folder-rename') {
                 $old = $this->relativePath($userId, $node->getPath());
                 $new = $target !== null ? $this->relativePath($userId, $target->getPath()) : $old;
-                if ($old === '' || $old === $new) {
+                if ($old === null || $new === null || $old === '' || $old === $new) {
                     return;
                 }
                 $this->dirty->markFolderRenamed($userId, $old, $new);
@@ -108,15 +110,24 @@ class FileChangeListener implements IEventListener {
         }
     }
 
-    private function relativePath(string $userId, string $path): string {
+    private function relativePath(string $userId, string $path): ?string {
         $prefix = '/' . $userId . '/files';
-        if (str_starts_with($path, $prefix)) {
-            return ltrim(substr($path, strlen($prefix)), '/');
+        if ($path === $prefix) {
+            return '';
         }
-        return ltrim($path, '/');
+        if (str_starts_with($path, $prefix . '/')) {
+            return substr($path, strlen($prefix) + 1);
+        }
+        return null;
     }
 
     private function userIdFor(Node $node): ?string {
+        // File events describe the path in the affected user's mounted tree.
+        // This is the correct index owner for shared and external storage, where
+        // getOwner() can name a different account than the path's user.
+        if (preg_match('#^/([^/]+)/files(?:/|$)#', (string)$node->getPath(), $m)) {
+            return $m[1];
+        }
         try {
             $owner = $node->getOwner();
             if ($owner !== null) {

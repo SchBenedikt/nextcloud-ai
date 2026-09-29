@@ -46,4 +46,21 @@ final class TranslationCatalogTest extends TestCase {
             }
         }
     }
+
+    public function testPhpLiteralTranslationKeysHaveCatalogEntries(): void {
+        $root = dirname(__DIR__);
+        $catalog = json_decode(file_get_contents($root . '/l10n/en.json'), true, 512, JSON_THROW_ON_ERROR)['translations'];
+        foreach (new \RecursiveIteratorIterator(new \RecursiveDirectoryIterator($root . '/lib')) as $file) {
+            if (!$file->isFile() || $file->getExtension() !== 'php') continue;
+            $source = file_get_contents($file->getPathname());
+            preg_match_all('/->t\(\s*([\'\"])((?:\\\\.|(?!\\1).)*)\\1/s', $source, $matches, PREG_SET_ORDER);
+            foreach ($matches as $match) {
+                $key = $match[2];
+                $key = $match[1] === "'"
+                    ? str_replace(["\\\\", "\\'"], ["\\", "'"], $key)
+                    : stripcslashes($key);
+                self::assertArrayHasKey($key, $catalog, $file->getPathname() . ': ' . $key);
+            }
+        }
+    }
 }

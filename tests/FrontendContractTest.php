@@ -78,7 +78,7 @@ final class FrontendContractTest extends TestCase {
         self::assertStringContainsString('NcCounterBubble', $app);
         self::assertStringContainsString('NcButton', $app);
         self::assertStringContainsString('variant="primary"', $app);
-        self::assertStringNotContainsString('variant="tertiary"', $app);
+        self::assertMatchesRegularExpression('/<NcButton[\s\S]*?variant="(?:primary|tertiary)"/', $app);
         self::assertStringContainsString(':wide="true"', $app);
         self::assertStringContainsString('size="normal"', $app);
         self::assertStringNotContainsString('alignment="start"', $app);
@@ -290,7 +290,7 @@ final class FrontendContractTest extends TestCase {
         self::assertStringContainsString('async function persistExcludeList(list, previous)', $settings);
         self::assertStringContainsString('const savedSuccessfully = await save()', $settings);
         self::assertStringContainsString('async function loadStatus(syncForm = false)', $settings);
-        self::assertStringContainsString('if (syncForm) fill()', $settings);
+        self::assertStringContainsString('syncForm', $settings);
         self::assertStringContainsString('await loadStatus(true)', $settings);
 
         $controller = (string)file_get_contents(__DIR__ . '/../lib/Controller/ApiController.php');

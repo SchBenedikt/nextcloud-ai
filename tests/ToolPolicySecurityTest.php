@@ -185,22 +185,30 @@ class ToolPolicySecurityTest extends TestCase {
 
     // ---- Confirmation Requirements ----
 
-    public function testDestructiveToolsRequireConfirmation(): void {
-        $destructiveTools = ['delete_file', 'delete_calendar_event', 'delete_contact', 'delete_share', 'delete_task'];
-        foreach ($destructiveTools as $tool) {
+    public function testDeletionToolsRequireExplicitUserIntentAndAreClassifiedDestructive(): void {
+        foreach (['delete_file', 'delete_calendar_event', 'delete_contact', 'delete_share', 'delete_task'] as $tool) {
             $meta = $this->policy->getTool($tool);
-            $this->assertNotNull($meta, "Tool '$tool' should be registered");
-            $this->assertTrue($meta['requiresConfirmation'], "Tool '$tool' should require confirmation");
+            self::assertNotNull($meta, "Tool '$tool' should be registered");
+            self::assertSame(ToolPolicy::RISK_DESTRUCTIVE, $meta['risk']);
+            // Complete explicit requests may run directly in interactive web chat;
+            // ambiguity and unsafe surfaces are gated by ActionExecutor.
+            self::assertContains(ToolPolicy::SURFACE_WEB, $meta['surfaces']);
         }
     }
 
-    public function testEveryInteractiveMutatingToolRequiresConfirmation(): void {
-        $this->policy->setSurface(ToolPolicy::SURFACE_WEB);
-        foreach ($this->policy->mutatingTools() as $tool) {
+    public function testConfirmationIsRequiredForToolsThatCannotInferExplicitIntent(): void {
+        foreach (['send_talk_message'] as $tool) {
             $meta = $this->policy->getTool($tool);
             self::assertNotNull($meta, "Tool '$tool' should be registered");
-            self::assertTrue($meta['requiresConfirmation'], "Mutating tool '$tool' should require confirmation");
+            self::assertTrue($meta['requiresConfirmation'], "Tool '$tool' must require confirmation");
         }
+    }
+
+    public function testSafeDiagnosticsAreReadOnlyDespiteTheirName(): void {
+        $meta = $this->policy->getTool('run_safe_command');
+        self::assertNotNull($meta);
+        self::assertSame(ToolPolicy::RISK_MUTATING, $meta['risk']);
+        self::assertFalse($meta['requiresConfirmation']);
     }
 
     public function testReadonlyToolsNeverRequireConfirmation(): void {

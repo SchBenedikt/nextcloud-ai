@@ -79,6 +79,30 @@ final class EvaSearchProviderTest extends TestCase {
         self::assertSame([], $result['entries']);
     }
 
+    public function testSearchCursorReturnsSubsequentAccessibleResults(): void {
+        $user = $this->createMock(IUser::class);
+        $user->method('getUID')->willReturn('alice');
+        $documents = $this->createMock(DocumentMapper::class);
+        $documents->method('findByUser')->willReturn([
+            $this->document(11, 51, 'First.md', 'First.md'),
+            $this->document(12, 52, 'Second.md', 'Second.md'),
+            $this->document(13, 53, 'Third.md', 'Third.md'),
+        ]);
+        $chunks = $this->createMock(ChunkMapper::class);
+        $chunks->method('filterChunksByTokens')->willReturn([]);
+        $root = $this->createMock(IRootFolder::class);
+        $folder = $this->createMock(Folder::class);
+        $folder->method('getById')->willReturnCallback(static fn(int $id): array => [$id]);
+        $root->method('getUserFolder')->willReturn($folder);
+
+        $result = $this->provider($documents, $chunks, $root)
+            ->search($user, $this->query('First', 1, 1))->jsonSerialize();
+
+        self::assertSame(2, $result['cursor']);
+        self::assertCount(1, $result['entries']);
+        self::assertSame('Second.md', $result['entries'][0]->jsonSerialize()['title']);
+    }
+
     private function provider(DocumentMapper $documents, ChunkMapper $chunks, IRootFolder $root): EvaSearchProvider {
         $l10n = $this->createMock(IL10N::class);
         $l10n->method('t')->willReturnCallback(static fn(string $text): string => $text);
@@ -87,11 +111,11 @@ final class EvaSearchProviderTest extends TestCase {
         return new EvaSearchProvider($l10n, $urls, $root, $documents, $chunks);
     }
 
-    private function query(string $term, int $limit): ISearchQuery {
+    private function query(string $term, int $limit, ?int $cursor = null): ISearchQuery {
         $query = $this->createMock(ISearchQuery::class);
         $query->method('getTerm')->willReturn($term);
         $query->method('getLimit')->willReturn($limit);
-        $query->method('getCursor')->willReturn(null);
+        $query->method('getCursor')->willReturn($cursor);
         return $query;
     }
 

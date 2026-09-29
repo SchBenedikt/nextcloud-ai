@@ -4,9 +4,7 @@ declare(strict_types=1);
 
 namespace OCA\EvaAi\AppInfo;
 
-use OCA\EvaAi\BackgroundJob\IndexJob;
-use OCA\EvaAi\BackgroundJob\ProactiveBriefingJob;
-use OCA\EvaAi\BackgroundJob\BackgroundChatJob;
+use OCA\EvaAi\BackgroundJob\JobRegistry;
 use OCP\AppFramework\App;
 use OCP\AppFramework\Bootstrap\IBootContext;
 use OCP\AppFramework\Bootstrap\IBootstrap;
@@ -120,12 +118,7 @@ class Application extends App implements IBootstrap {
         // the job is also (re-)added by the index API endpoint on demand.
         try {
             $container = $context->getAppContainer();
-            $jobs = $container->get(IJobList::class);
-            if (!$jobs->has(IndexJob::class, null)) $jobs->add(IndexJob::class);
-            // Existing installations do not re-read info.xml until the next
-            // enable/upgrade, therefore register the new opt-in job here too.
-            if (!$jobs->has(ProactiveBriefingJob::class, null)) $jobs->add(ProactiveBriefingJob::class);
-            if (!$jobs->has(BackgroundChatJob::class, null)) $jobs->add(BackgroundChatJob::class);
+            JobRegistry::ensureScheduled($container->get(IJobList::class));
         } catch (\Throwable $e) {
             $this->logBootstrapFailure('background jobs', $e);
         }

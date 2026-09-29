@@ -4,12 +4,16 @@ declare(strict_types=1);
 
 namespace OCA\EvaAi\Tests;
 
-use OCA\EvaAi\Service\ChatStore;
+use OCA\EvaAi\Service\{AgentStore, AppConfig, BackgroundChatQueue, ChatStore, DirtyIndexStore, EmbeddingCache, UserDataService};
+use OCA\EvaAi\Db\{ChunkMapper, DocumentMapper};
 use OCP\Files\AppData\IAppDataFactory;
 use OCP\Files\IAppData;
+use OCP\Files\IRootFolder;
+use OCP\Files\NotFoundException;
 use OCP\Files\SimpleFS\ISimpleFile;
 use OCP\Files\SimpleFS\ISimpleFolder;
 use OCP\Lock\ILockingProvider;
+use OCP\IConfig;
 use PHPUnit\Framework\TestCase;
 use Psr\Log\LoggerInterface;
 
@@ -62,5 +66,58 @@ final class GdprDataRemovalTest extends TestCase {
 
         // Deleting user data removes both the hashed and the legacy folder.
         $store->deleteUserData('alice');
+    }
+
+    public function testAccountDeletionErasesEveryUserScopedStore(): void {
+        $config = $this->createMock(AppConfig::class);
+        $config->expects(self::once())->method('deleteUserValues')->with('alice');
+        $chats = $this->createMock(ChatStore::class);
+        $chats->expects(self::once())->method('deleteUserData')->with('alice');
+        $dirty = $this->createMock(DirtyIndexStore::class);
+        $dirty->expects(self::once())->method('deleteUserData')->with('alice');
+        $agent = $this->createMock(AgentStore::class);
+        $agent->expects(self::once())->method('deleteUserData')->with('alice');
+        $queueConfig = $this->createMock(IConfig::class);
+        $queueConfig->expects(self::exactly(2))->method('deleteUserValue')->willReturnCallback(
+            static function (string $uid, string $app, string $key): void {
+                self::assertSame('alice', $uid);
+                self::assertSame('eva_ai', $app);
+                self::assertContains($key, [BackgroundChatQueue::KEY, BackgroundChatQueue::HISTORY_KEY]);
+            }
+        );
+        $queueConfig->method('getAppValue')->with('eva_ai', 'background_chat_users', '[]')->willReturn('["alice","bob"]');
+        $queueConfig->expects(self::once())->method('setAppValue')->with('eva_ai', 'background_chat_users', '["bob"]');
+        $queueLocks = $this->createMock(ILockingProvider::class);
+        $queueLocks->expects(self::exactly(2))->method('acquireLock');
+        $queueLocks->expects(self::exactly(2))->method('releaseLock');
+        $queue = new BackgroundChatQueue($queueConfig, $queueLocks, $this->createMock(LoggerInterface::class));
+        $documents = $this->createMock(DocumentMapper::class);
+        $documents->expects(self::once())->method('deleteByUser')->with('alice');
+        $chunks = $this->createMock(ChunkMapper::class);
+        $chunks->expects(self::once())->method('deleteForUser')->with('alice');
+        $embeddings = $this->createMock(EmbeddingCache::class);
+        $embeddings->expects(self::once())->method('clearUser')->with('alice');
+        $root = $this->createMock(IRootFolder::class);
+        $root->method('getUserFolder')->willThrowException(new \RuntimeException('account home is gone'));
+        $factory = $this->createMock(IAppDataFactory::class);
+        $appData = $this->createMock(IAppData::class);
+        $factory->method('get')->with('eva_ai')->willReturn($appData);
+        $appData->method('getFolder')->with('ai-marks')->willThrowException(new NotFoundException('missing'));
+
+        $service = new UserDataService(
+            $config,
+            $chats,
+            $dirty,
+            $agent,
+            $queue,
+            $documents,
+            $chunks,
+            $embeddings,
+            $root,
+            $factory,
+            $this->createMock(LoggerInterface::class),
+        );
+
+        $service->cleanupDeletedAccount('alice');
     }
 }

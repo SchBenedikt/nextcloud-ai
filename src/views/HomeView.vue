@@ -330,7 +330,7 @@ export default {
 .prompt-showcase__intro div > span { margin-top: 4px; color: var(--color-text-maxcontrast, #666); font-size: 12px; line-height: 1.45; }
 .prompt-cards { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; position: relative; z-index: 1; }
 .prompt-card { display: flex; align-items: center; gap: 9px; min-height: 55px; padding: 10px 11px; border: 1px solid var(--color-border, #e6e6e6); border-radius: 11px; background: color-mix(in srgb, var(--color-main-background, #fff) 86%, transparent); color: var(--color-main-text, #222); text-align: left; font: inherit; font-size: 12px; line-height: 1.3; cursor: pointer; transition: transform .16s ease, border-color .16s ease, box-shadow .16s ease; }
-.prompt-card:hover, .prompt-card:focus-visible { transform: translateY(-2px); border-color: var(--color-primary-element, #0082c9); box-shadow: 0 5px 14px color-mix(in srgb, var(--color-primary-element, #0082c9) 16%, transparent); outline: none; }
+.prompt-card:hover, .prompt-card:focus-visible { transform: translateY(-2px); border-color: var(--color-primary-element, #0082c9); box-shadow: 0 5px 14px color-mix(in srgb, var(--color-primary-element, #0082c9) 16%, transparent); outline: 2px solid var(--color-primary-element, #0082c9); outline-offset: 2px; }
 .prompt-card svg { flex: none; color: var(--color-primary-element, #0082c9); }
 .prompt-arrow { margin-left: auto; color: var(--color-text-maxcontrast, #888); font-size: 17px; }
 

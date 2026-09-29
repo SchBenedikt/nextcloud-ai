@@ -17,7 +17,7 @@ final class BackgroundChatQueue {
     private const MAX_ITEMS = 10;
     private const MAX_MESSAGE_CHARS = 20000;
     private const MAX_HISTORY_ITEMS = 100;
-    private const MAX_RUNTIME_SECONDS = 300;
+    public const MAX_RUNTIME_SECONDS = 300;
     private const MAX_HISTORY_RUNS = 30;
 
     public function __construct(private IConfig $config, private ILockingProvider $locks, private LoggerInterface $logger) {}
@@ -316,16 +316,54 @@ final class BackgroundChatQueue {
         }
     }
 
+    /** Erase both per-user queue records and the global discovery index. */
+    public function deleteUserData(string $user): void {
+        if ($user === '') return;
+        try {
+            $this->withLock($user, function () use ($user): void {
+                $this->config->deleteUserValue($user, AppConfig::APP, self::KEY);
+                $this->config->deleteUserValue($user, AppConfig::APP, self::HISTORY_KEY);
+            });
+        } catch (\Throwable $e) {
+            $this->logger->warning('eva_ai: background queue cleanup failed on account deletion', ['user' => $user]);
+        }
+        try {
+            $this->withUsersLock(function () use ($user): void {
+                $raw = $this->config->getAppValue(AppConfig::APP, self::USERS_KEY, '[]');
+                $users = json_decode($raw, true);
+                $users = is_array($users) ? array_values(array_unique(array_map('strval', $users))) : [];
+                $users = array_values(array_filter($users, static fn(string $uid): bool => $uid !== $user));
+                $this->config->setAppValue(AppConfig::APP, self::USERS_KEY, json_encode($users, JSON_UNESCAPED_SLASHES) ?: '[]');
+            });
+        } catch (\Throwable $e) {
+            $this->logger->warning('eva_ai: background queue user index cleanup failed', ['user' => $user]);
+        }
+    }
+
     private function rememberUser(string $user): void {
         try {
-            $raw = $this->config->getAppValue(AppConfig::APP, self::USERS_KEY, '[]');
-            $users = json_decode($raw, true);
-            $users = is_array($users) ? array_values(array_unique(array_filter(array_map('strval', $users)))) : [];
-            if (!in_array($user, $users, true)) {
-                $users[] = $user;
-                $this->config->setAppValue(AppConfig::APP, self::USERS_KEY, json_encode(array_slice($users, -10000), JSON_UNESCAPED_SLASHES) ?: '[]');
-            }
+            $this->withUsersLock(function () use ($user): void {
+                $raw = $this->config->getAppValue(AppConfig::APP, self::USERS_KEY, '[]');
+                $users = json_decode($raw, true);
+                $users = is_array($users) ? array_values(array_unique(array_filter(array_map('strval', $users)))) : [];
+                if (!in_array($user, $users, true)) {
+                    $users[] = $user;
+                    $this->config->setAppValue(AppConfig::APP, self::USERS_KEY, json_encode(array_slice($users, -10000), JSON_UNESCAPED_SLASHES) ?: '[]');
+                }
+            });
         } catch (\Throwable) { /* queue work must never fail on an index hint */ }
+    }
+
+    private function withUsersLock(callable $callback): mixed {
+        $path = 'eva_ai/bgchat-users';
+        $acquired = false;
+        try {
+            $this->locks->acquireLock($path, ILockingProvider::LOCK_EXCLUSIVE, 'EVA background chat users');
+            $acquired = true;
+            return $callback();
+        } finally {
+            if ($acquired) $this->locks->releaseLock($path, ILockingProvider::LOCK_EXCLUSIVE);
+        }
     }
 
     private function read(string $user): array { $raw = $this->config->getUserValue($user, AppConfig::APP, self::KEY, '[]'); $data = json_decode($raw, true); return is_array($data) ? array_values(array_filter($data, 'is_array')) : []; }

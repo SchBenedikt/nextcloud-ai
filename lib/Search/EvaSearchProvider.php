@@ -62,6 +62,7 @@ final class EvaSearchProvider implements IProvider {
         }
 
         $limit = max(1, min(self::MAX_RESULTS, $query->getLimit() > 0 ? $query->getLimit() : self::MAX_RESULTS));
+        $offset = max(0, (int)($query->getCursor() ?? 0));
         $uid = $user->getUID();
         $documents = [];
 
@@ -108,13 +109,20 @@ final class EvaSearchProvider implements IProvider {
             }
         }
 
-        $entries = [];
-        foreach (array_slice(array_values($documents), 0, $limit) as $row) {
+        $accessible = [];
+        foreach (array_values($documents) as $row) {
             $document = $row['document'];
             $fileId = (int)$document->getFileId();
             if ($fileId <= 0 || !$this->isCurrentlyAccessible($uid, $fileId)) {
                 continue;
             }
+            $accessible[] = $row;
+        }
+
+        $entries = [];
+        foreach (array_slice($accessible, $offset, $limit) as $row) {
+            $document = $row['document'];
+            $fileId = (int)$document->getFileId();
             $link = $this->urlGenerator->linkToRouteAbsolute('files.View.showFile', ['fileid' => $fileId]);
             $subline = (string)$document->getPath();
             if ($row['excerpt'] !== '') {
@@ -135,7 +143,7 @@ final class EvaSearchProvider implements IProvider {
             }
         }
 
-        return SearchResult::paginated($name, $entries, (int)($query->getCursor() ?? 0) + count($entries));
+        return SearchResult::paginated($name, $entries, $offset + count($entries));
     }
 
     /** @return list<string> */
