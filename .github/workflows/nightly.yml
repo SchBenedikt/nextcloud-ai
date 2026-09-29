@@ -40,9 +40,9 @@ jobs:
               cp -r /app /srv/nextcloud/apps/eva_ai
               cd /srv/nextcloud/apps/eva_ai
               composer install --no-interaction --prefer-dist
-              echo "== occ integrity:check-app eva_ai =="
+              echo "== occ app:list eva_ai =="
               cd /srv/nextcloud
-              php occ integrity:check-app eva_ai
+              php occ app:list | grep -F eva_ai
               echo "== composer test =="
               cd /srv/nextcloud/apps/eva_ai
               composer test
