@@ -704,7 +704,7 @@ final class OpenIssuesPendingContractTest extends TestCase {
 	 * dropping the tail of the source. */
 	public function testOpenWebsiteSupportsFullSourcePagination(): void {
 		$service = (string)file_get_contents(__DIR__ . '/../lib/Service/WebSearchService.php');
-		$executor = (string)file_get_contents(__DIR__ . '/../lib/Service/ActionExecutor.php');
+		$executor = (string)file_get_contents(__DIR__ . '/../lib/Service/EnvironmentToolExecutor.php');
 		$rag = (string)file_get_contents(__DIR__ . '/../lib/Service/RagService.php');
 		self::assertStringContainsString('int $offset = 0, ?int $maxChars = null', $service);
 		self::assertStringContainsString('$nextOffset', $service);

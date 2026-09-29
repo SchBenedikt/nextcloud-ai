@@ -2,6 +2,13 @@
 
 ## [Unreleased]
 
+## [1.17.12] - 2026-09-29
+
+### Tool executor architecture
+
+- Move time, server status, weather, web discovery, activity, and sticker tools into dedicated registry executors.
+- Keep sticker files in the user's EVA folder and remove a duplicate weather-code assignment.
+
 ## [1.17.11] - 2026-09-29
 
 ### Tool executor architecture

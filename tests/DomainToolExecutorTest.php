@@ -20,6 +20,11 @@ use OCA\EvaAi\Service\FileToolExecutor;
 use OCA\EvaAi\Service\FileMetadataToolExecutor;
 use OCA\EvaAi\Service\AppApiToolExecutor;
 use OCA\EvaAi\Service\ExternalToolExecutor;
+use OCA\EvaAi\Service\EnvironmentToolExecutor;
+use OCA\EvaAi\Service\StickerToolExecutor;
+use OCA\EvaAi\Service\ActivityToolExecutor;
+use OCA\EvaAi\Service\ActivityService;
+use OCA\EvaAi\Service\WebSearchService;
 use OCP\Accounts\IAccountManager;
 use OCP\Contacts\IManager as IContactsManager;
 use OCP\IUserManager;
@@ -158,5 +163,38 @@ final class DomainToolExecutorTest extends TestCase {
 			['ok' => false, 'error' => 'Unsupported Nextcloud app API tool: not_a_tool'],
 			$executor->execute('not_a_tool', 'alice', []),
 		);
+	}
+
+	public function testEnvironmentExecutorOwnsTimeStatusAndDiscoveryTools(): void {
+		if (!interface_exists(IRootFolder::class)) {
+			$this->markTestSkipped('Nextcloud file APIs are not available');
+		}
+		$executor = new EnvironmentToolExecutor(
+			$this->createMock(IRootFolder::class),
+			$this->createMock(AppConfig::class),
+			$this->createMock(WebSearchService::class),
+		);
+
+		self::assertSame(['current_time', 'server_status', 'weather', 'web_search', 'search_images', 'open_website'], $executor->tools());
+		self::assertSame(
+			['ok' => false, 'error' => 'Unsupported environment tool: not_a_tool'],
+			$executor->execute('not_a_tool', 'alice', []),
+		);
+	}
+
+	public function testActivityExecutorDelegatesForEffectiveUser(): void {
+		$activity = $this->createMock(ActivityService::class);
+		$activity->expects(self::once())->method('recent')->with('alice', ['limit' => 3])->willReturn(['ok' => true, 'result' => ['activities' => []]]);
+		$executor = new ActivityToolExecutor($activity);
+
+		self::assertSame(['ok' => true, 'result' => ['activities' => []]], $executor->execute('recent_activity', 'alice', ['limit' => 3]));
+	}
+
+	public function testStickerExecutorOwnsImageGenerationTool(): void {
+		if (!interface_exists(IRootFolder::class)) {
+			$this->markTestSkipped('Nextcloud file APIs are not available');
+		}
+		$executor = new StickerToolExecutor($this->createMock(IRootFolder::class));
+		self::assertSame(['create_sticker'], $executor->tools());
 	}
 }
