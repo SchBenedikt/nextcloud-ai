@@ -1040,6 +1040,23 @@ final class ChatStoreTest extends TestCase {
         self::assertFalse($report['released']);
     }
 
+    public function testChatTagsAndFolderColorsAreStoredAndNormalized(): void {
+        $seed = json_encode([
+            ['id' => 'a', 'title' => 'A', 'created' => 1, 'updated' => 1, 'messages' => []],
+        ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+        $written = null;
+        $foldersWritten = null;
+        [$store] = $this->chatFileHarness($seed, $written, '[]', $foldersWritten);
+
+        self::assertTrue($store->setMeta('alice', 'a', ['folder' => 'Work', 'tags' => [' Planning ', 'urgent', 'planning', '', str_repeat('x', 40)]]));
+        self::assertSame(['Planning', 'urgent', str_repeat('x', 32)], $store->list('alice')[0]['tags']);
+        self::assertTrue($store->setFolderColor('alice', 'Work', '#12abef'));
+        self::assertSame('#12ABEF', $store->listFolders('alice')[0]['color']);
+        self::assertFalse($store->setFolderColor('alice', 'Work', 'red'));
+        self::assertTrue($store->setFolderColor('alice', 'Work', null));
+        self::assertArrayNotHasKey('color', $store->listFolders('alice')[0]);
+    }
+
     /** A forced recovery also attempts release when isLocked() reports false.
      * Some DB locking-provider versions expose stale rows this way. */
     public function testForcedRecoveryReleasesAnUnreportedStaleLock(): void {

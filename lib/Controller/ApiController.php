@@ -1586,6 +1586,9 @@ class ApiController extends OCSController {
         if (array_key_exists('folder', $body)) {
             $meta['folder'] = trim((string)$body['folder']);
         }
+        if (array_key_exists('tags', $body)) {
+            $meta['tags'] = $body['tags'];
+        }
         if (array_key_exists('scopePath', $body)) {
             $meta['scopePath'] = trim((string)$body['scopePath']);
         }
@@ -1659,6 +1662,25 @@ class ApiController extends OCSController {
             return new ErrorDataResponse(['ok' => true]);
         } catch (\Throwable $e) {
             return new ErrorDataResponse(['error' => 'Unable to rename folder'], 500);
+        }
+    }
+
+    #[NoAdminRequired]
+    public function setFolderColor(): DataResponse {
+        $user = $this->requireUser();
+        if ($user === null) return new ErrorDataResponse(['error' => 'Not logged in'], 401);
+        $name = trim((string)$this->requestParam('name') ?? '');
+        $color = trim((string)$this->requestParam('color') ?? '');
+        if ($name === '' || ($color !== '' && !preg_match('/^#[0-9a-fA-F]{6}$/', $color))) {
+            return new ErrorDataResponse(['error' => 'A folder name and a valid hex color are required'], 400);
+        }
+        try {
+            if (!$this->chatStore->setFolderColor($user, $name, $color === '' ? null : $color)) {
+                return new ErrorDataResponse(['error' => 'Requested resource was not found.'], 404);
+            }
+            return new ErrorDataResponse(['ok' => true]);
+        } catch (\Throwable $e) {
+            return $this->chatErrorResponse($e);
         }
     }
 

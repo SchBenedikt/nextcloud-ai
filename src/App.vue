@@ -8,6 +8,10 @@
 		<NcAppNavigation :title="$t('Eva · v') + buildVersion" @close-navigation="mobileOpen = false">
 			<template #search>
 				<NcAppNavigationSearch v-model="chatFilter" :label="$t('Search chats')" :placeholder="$t('Search chats')" />
+				<div class="chat-filters">
+					<select v-model="selectedFolder" :aria-label="$t('Filter by folder')"><option value="">{{ $t('All folders') }}</option><option v-for="folder in folders" :key="folder.name" :value="folder.name">{{ folder.name }}</option></select>
+					<select v-model="selectedTag" :aria-label="$t('Filter by tag')"><option value="">{{ $t('All tags') }}</option><option v-for="tag in availableTags" :key="tag" :value="tag">{{ tag }}</option></select>
+				</div>
 				<div class="new-chat-container">
 					<NcButton
 						class="new-chat-button"
@@ -37,13 +41,18 @@
 				<li class="chat-list-heading">
 					<span>{{ $t('Chats') }}</span>
 					<NcCounterBubble :count="activeChats.length" />
+					<NcButton variant="tertiary" :aria-label="$t('Manage folders')" @click.stop="manageFolders">{{ $t('Folders') }}</NcButton>
 				</li>
 				<template v-for="item in navItems" :key="item.key">
 					<li
 						v-if="item.type === 'heading'"
 						class="chat-list-heading"
-						:class="{ 'chat-list-heading--archived': item.archived, 'chat-list-heading--folder': item.folder }"
+						:class="{ 'chat-list-heading--archived': item.archived, 'chat-list-heading--folder': item.folder, 'chat-list-heading--drop': item.folder && dragOverFolder === item.folderName }"
+						:style="item.folder && item.color ? { '--eva-folder-color': item.color } : undefined"
 						:title="item.folder ? (item.collapsed ? $t('Expand folder') : $t('Collapse folder')) : undefined"
+						@dragover.prevent="item.folder && (dragOverFolder = item.folderName)"
+						@dragleave="dragOverFolder = ''"
+						@drop.prevent="item.folder && dropChat(item.folderName)"
 						@click="item.folder ? toggleFolder(item.folderName) : (item.archived && (showArchived = !showArchived))">
 						<svg v-if="item.icon" width="14" height="14" viewBox="0 0 24 24" class="chat-list-heading-icon"><path :d="item.icon" fill="currentColor" /></svg>
 						<span>{{ item.label }}</span>
@@ -57,6 +66,8 @@
 						:name="itemName(item.chat)"
 						:active="view === 'chat' && item.chat.id === currentChat"
 						:force-menu="true"
+						:draggable="!item.chat.archived"
+						@dragstart="startChatDrag(item.chat, $event)"
 						:title="itemTip(item.chat)"
 						@click="selectChat(item.chat.id)">
 						<template #icon>
@@ -68,6 +79,7 @@
 								<template #icon><NcIconSvgWrapper :path="item.chat.pinned ? mdiPinOffOutline : mdiPinOutline" :size="16" aria-hidden="true" /></template>
 								{{ item.chat.pinned ? $t('Unpin chat') : $t('Pin chat') }}
 							</NcActionButton>
+							<NcActionButton v-if="!item.chat.archived" :aria-label="$t('Edit tags')" :close-after-click="true" @click.stop="editChatTags(item.chat)">{{ $t('Edit tags') }}</NcActionButton>
 							<NcActionButton v-if="!item.chat.archived && item.chat.folder" :aria-label="$t('Remove from folder')" :close-after-click="true" @click.stop="updateChatMeta(item.chat.id, { folder: '' })">
 								<template #icon><NcIconSvgWrapper :path="mdiFolderRemoveOutline" :size="16" aria-hidden="true" /></template>
 								{{ $t('Remove from folder') }}
@@ -151,9 +163,10 @@
 			<AgentRunsView v-else-if="view === 'runs'" />
 			<SettingsView v-else />
 		</NcAppContent>
-		<NcModal v-if="folderPickerOpen" size="small" :name="pickerMode === 'scope' ? $t('Chat with folder') : $t('Move to folder')" @close="folderPickerOpen = false">
+		<NcModal v-if="folderPickerOpen" size="small" :name="pickerMode === 'scope' ? $t('Chat with folder') : (pickerMode === 'manage' ? $t('Manage folders') : $t('Move to folder'))" @close="folderPickerOpen = false">
 			<div class="folder-picker">
 				<p v-if="pickerMode === 'scope'" class="folder-picker-hint">{{ $t('Only documents from this folder are used as context:') }}</p>
+				<p v-else-if="pickerMode === 'manage'" class="folder-picker-hint">{{ $t('Create, rename, color, or delete chat folders.') }}</p>
 				<p v-else class="folder-picker-hint">{{ $t('Choose a folder for this chat:') }}</p>
 				<ul class="folder-picker-list">
 					<li v-if="foldersLoading" class="folder-picker-state" role="status">{{ $t('Loading folders…') }}</li>
@@ -166,19 +179,25 @@
 						</button>
 					</li>
 					<li v-for="f in folders" :key="f.name">
+						<div class="folder-picker-manage-row">
 						<button
 							type="button"
 							class="folder-picker-row"
 							:class="{ 'folder-picker-row--active': pickerMode === 'scope' ? folderChat && folderChat.scopePath === f.name : folderChat && folderChat.folder === f.name }"
-							@click="assignTarget(f.name)">
-							<svg width="16" height="16" viewBox="0 0 24 24"><path :d="mdiFolderOutline" fill="currentColor" /></svg>
+							@click="pickerMode === 'manage' ? undefined : assignTarget(f.name)">
+							<svg width="16" height="16" viewBox="0 0 24 24" :style="f.color ? { color: f.color } : undefined"><path :d="mdiFolderOutline" fill="currentColor" /></svg>
 							<span>{{ f.name }}</span>
 						</button>
+							<input v-if="pickerMode === 'organize'" type="color" :value="f.color || '#0082c9'" :aria-label="$t('Folder color')" @change="setFolderColor(f.name, $event.target.value)" />
+							<NcButton v-if="pickerMode === 'organize' && f.color" variant="tertiary" :aria-label="$t('Clear folder color')" @click="setFolderColor(f.name, '')">{{ $t('Clear color') }}</NcButton>
+							<NcButton v-if="pickerMode === 'organize'" variant="tertiary" :aria-label="$t('Rename folder')" @click="renameFolder(f.name)">{{ $t('Rename') }}</NcButton>
+							<NcButton v-if="pickerMode === 'organize'" variant="tertiary" :aria-label="$t('Delete folder')" @click="deleteFolder(f.name)">{{ $t('Delete') }}</NcButton>
+						</div>
 					</li>
 				</ul>
-				<form class="folder-picker-create" @submit.prevent="createAndAssign">
+				<form class="folder-picker-create" @submit.prevent="pickerMode === 'manage' ? createFolderOnly() : createAndAssign()">
 					<input v-model="newFolderName" class="folder-picker-input" type="text" :placeholder="$t('New folder name')" />
-					<button type="submit" class="folder-picker-submit" :disabled="!newFolderName.trim()">{{ pickerMode === 'scope' ? $t('Scope to folder') : $t('Create folder') }}</button>
+					<button type="submit" class="folder-picker-submit" :disabled="!newFolderName.trim()">{{ pickerMode === 'scope' ? $t('Scope to folder') : (pickerMode === 'manage' ? $t('Create folder') : $t('Create and move')) }}</button>
 				</form>
 			</div>
 		</NcModal>
@@ -247,6 +266,10 @@ export default {
 		// and sent automatically as soon as the conversation is open.
 		const pendingPrompt = ref('')
 		const chatFilter = ref('')
+		const selectedFolder = ref('')
+		const selectedTag = ref('')
+		const dragChatId = ref('')
+		const dragOverFolder = ref('')
 		const apiError = ref('')
 		const chatDialog = ref(null)
 		const showArchived = ref(false)
@@ -274,19 +297,22 @@ export default {
 		const foldersLoadError = ref('')
 		// Sidebar sections (Issue #87): pinned on top, folder groups, then the
 		// remaining chats, archived chats collapsed at the bottom.
-		const pinnedChats = computed(() => chats.value.filter((c) => c.pinned && !c.archived))
+		const facetChats = computed(() => chats.value.filter((c) => (!selectedFolder.value || c.folder === selectedFolder.value) && (!selectedTag.value || (c.tags || []).some((tag) => tag.toLowerCase() === selectedTag.value.toLowerCase()))))
+		const availableTags = computed(() => [...new Set(chats.value.flatMap((chat) => chat.tags || []))].sort((a, b) => a.localeCompare(b)))
+		const pinnedChats = computed(() => facetChats.value.filter((c) => c.pinned && !c.archived))
 		const folderGroups = computed(() => {
 			const groups = new Map()
-			for (const c of chats.value) {
+			for (const folder of folders.value) groups.set(folder.name, [])
+			for (const c of facetChats.value) {
 				if (c.archived || c.pinned || !c.folder) continue
 				if (!groups.has(c.folder)) groups.set(c.folder, [])
 				groups.get(c.folder).push(c)
 			}
 			return [...groups.entries()]
 				.sort((a, b) => a[0].localeCompare(b[0]))
-				.map(([name, group]) => ({ name, chats: group }))
+				.map(([name, group]) => ({ name, chats: group, color: folders.value.find((folder) => folder.name === name)?.color || '' }))
 		})
-		const plainChats = computed(() => chats.value.filter((c) => !c.archived && !c.pinned && !c.folder))
+		const plainChats = computed(() => facetChats.value.filter((c) => !c.archived && !c.pinned && !c.folder))
 		// Search results (null while not searching). The server matches chat
 		// titles AND message text (Issue #152), so results may carry a snippet
 		// + matchCount from the first content hit.
@@ -296,7 +322,7 @@ export default {
 			const query = chatFilter.value.trim()
 			if (query) {
 				const base = searchResults.value || chats.value.filter((chat) => String(chat.title || '').toLowerCase().includes(query.toLowerCase()))
-				return base.filter((c) => !c.archived).map((c) => ({ type: 'chat', key: 'chat-' + c.id, chat: c }))
+				return base.filter((c) => facetChats.value.some((facet) => facet.id === c.id) && !c.archived).map((c) => ({ type: 'chat', key: 'chat-' + c.id, chat: c }))
 			}
 			const items = []
 			if (pinnedChats.value.length) {
@@ -322,12 +348,12 @@ export default {
 			return items
 		})
 		const activeChats = computed(() => chats.value.filter((c) => !c.archived))
-		const archivedChats = computed(() => chats.value.filter((c) => c.archived))
+		const archivedChats = computed(() => facetChats.value.filter((c) => c.archived))
 		const listChats = computed(() => {
 			const query = chatFilter.value.trim().toLowerCase()
 			if (!query) return []
-			if (searchResults.value) return searchResults.value.filter((c) => !c.archived)
-			return chats.value.filter((chat) => !chat.archived && String(chat.title || '').toLowerCase().includes(query))
+			if (searchResults.value) return searchResults.value.filter((c) => !c.archived && facetChats.value.some((facet) => facet.id === c.id))
+			return facetChats.value.filter((chat) => !chat.archived && String(chat.title || '').toLowerCase().includes(query))
 		})
 		let searchTimer = null
 		const searchMessages = async () => {
@@ -428,6 +454,44 @@ export default {
 				apiError.value = t('The chat could not be updated: {error}', { error: errMsg(error) })
 			}
 		}
+		const startChatDrag = (chat, event) => {
+			dragChatId.value = chat.id
+			if (event.dataTransfer) {
+				event.dataTransfer.effectAllowed = 'move'
+				event.dataTransfer.setData('text/plain', chat.id)
+			}
+		}
+		const dropChat = async (folder) => {
+			const id = dragChatId.value
+			dragChatId.value = ''
+			dragOverFolder.value = ''
+			if (id) await updateChatMeta(id, { folder, pinned: false })
+		}
+		const editChatTags = async (chat) => {
+			const value = window.prompt(t('Enter tags separated by commas'), (chat.tags || []).join(', '))
+			if (value !== null) await updateChatMeta(chat.id, { tags: value })
+		}
+		const setFolderColor = async (name, color) => {
+			try {
+				await requestApi('POST', '/folders/color', { name, color })
+				await loadFolders()
+			} catch (error) { apiError.value = t('The folder could not be updated: {error}', { error: errMsg(error) }) }
+		}
+		const renameFolder = async (from) => {
+			const to = window.prompt(t('Enter a new folder name'), from)
+			if (to === null || !to.trim()) return
+			try {
+				await requestApi('POST', '/folders/rename', { from, to })
+				await loadFolders(); await loadChats()
+			} catch (error) { apiError.value = t('The folder could not be renamed: {error}', { error: errMsg(error) }) }
+		}
+		const deleteFolder = async (name) => {
+			if (!window.confirm(t('Delete folder “{folder}”? Chats will remain and become unfiled.', { folder: name }))) return
+			try {
+				await requestApi('DELETE', '/folders', { name })
+				await loadFolders(); await loadChats()
+			} catch (error) { apiError.value = t('The folder could not be deleted: {error}', { error: errMsg(error) }) }
+		}
 
 		// Folder assignment (Issue #87): pick an existing folder, clear the
 		// assignment, or type a new name — unknown names create the folder.
@@ -446,6 +510,22 @@ export default {
 			const name = newFolderName.value.trim()
 			if (!name) return
 			assignTarget(name)
+		}
+		const manageFolders = () => {
+			pickerMode.value = 'manage'
+			folderChat.value = null
+			newFolderName.value = ''
+			folderPickerOpen.value = true
+			loadFolders()
+		}
+		const createFolderOnly = async () => {
+			const name = newFolderName.value.trim()
+			if (!name) return
+			try {
+				await requestApi('POST', '/folders', { name })
+				newFolderName.value = ''
+				await loadFolders()
+			} catch (error) { foldersLoadError.value = errMsg(error) }
 		}
 		const pickFolder = (chat) => {
 			pickerMode.value = 'organize'
@@ -574,10 +654,10 @@ export default {
 		return {
 			view, adminMode: isAdminMode, mobileOpen, buildVersion,
 			chats, folders, currentChat, busy, chatsLoading, chatFilter, apiError, chatDialog, showArchived,
-			pinnedChats, folderGroups, plainChats, navItems, listChats, activeChats, archivedChats,
+			pinnedChats, folderGroups, plainChats, navItems, listChats, activeChats, archivedChats, selectedFolder, selectedTag, availableTags, dragOverFolder,
 			folderPickerOpen, folderChat, newFolderName, foldersLoading, foldersLoadError, collapsedFolders, toggleFolder,
 			fileContextIds, itemName, itemTip,
-			newChat, selectChat, renameChat, deleteChat, closeChatDialog, confirmChatDialog, loadChats, navigate, updateChatMeta, pickFolder, pickScope, assignTarget, createAndAssign, pendingPrompt,
+			newChat, selectChat, renameChat, deleteChat, closeChatDialog, confirmChatDialog, loadChats, loadFolders, navigate, updateChatMeta, pickFolder, pickScope, assignTarget, createAndAssign, createFolderOnly, manageFolders, pendingPrompt, startChatDrag, dropChat, editChatTags, setFolderColor, renameFolder, deleteFolder,
 			pickerMode,
 			mdiChatProcessing, mdiFileDocumentOutline, mdiTune, mdiTrashCanOutline, mdiMessagePlus, mdiPencilOutline, mdiChevronDown, mdiViewDashboardOutline,
 			mdiPinOutline, mdiPinOffOutline, mdiFolderOutline, mdiFolderPlusOutline, mdiFolderRemoveOutline, mdiFolderSearchOutline, mdiFolderOffOutline, mdiArchiveOutline, mdiArchiveArrowUpOutline,
@@ -673,6 +753,10 @@ export default {
 	gap: var(--default-grid-baseline, 4px);
 }
 
+.chat-filters { display: grid; gap: 6px; grid-template-columns: 1fr 1fr; padding: 0 var(--app-navigation-padding, 8px) 8px; }
+.chat-filters select { background: var(--color-main-background, #fff); border: 1px solid var(--color-border, #bbb); border-radius: var(--border-radius, 6px); color: var(--color-main-text, #222); min-width: 0; padding: 5px; }
+.chat-list-heading--folder { border-left: 3px solid var(--eva-folder-color, transparent); }
+.chat-list-heading--drop { background: var(--color-primary-light, #e8f0f7); }
 </style>
 
 <style>
@@ -718,6 +802,10 @@ export default {
 	color: var(--color-primary-text, #00679c);
 	font-weight: 600;
 }
+
+.folder-picker-manage-row { align-items: center; display: flex; gap: 5px; }
+.folder-picker-manage-row .folder-picker-row { flex: 1; min-width: 0; }
+.folder-picker-manage-row input[type="color"] { border: 0; height: 30px; padding: 2px; width: 34px; }
 
 .folder-picker-create {
 	display: flex;

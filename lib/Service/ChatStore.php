@@ -74,6 +74,7 @@ class ChatStore {
                     // chats and defaulted so old data keeps working unchanged.
                     'pinned' => !empty($chat['pinned']),
                     'folder' => (string)($chat['folder'] ?? ''),
+                    'tags' => $this->normalizeTags($chat['tags'] ?? []),
                     'archived' => !empty($chat['archived']),
                     // Per-chat RAG folder scope (Issue #88); empty = global.
                     'scopePath' => (string)($chat['scopePath'] ?? ''),
@@ -321,6 +322,9 @@ class ChatStore {
                     }
                     $chat['folder'] = $folder;
                 }
+                if (array_key_exists('tags', $meta)) {
+                    $chat['tags'] = $this->normalizeTags($meta['tags']);
+                }
                 if (array_key_exists('scopePath', $meta)) {
                     // Per-chat retrieval scope (Issue #88): restricts RAG to
                     // documents at/under this folder path. Empty clears it.
@@ -437,10 +441,48 @@ class ChatStore {
         });
     }
 
+    /** Set or clear a folder's accent color (hex RGB). */
+    public function setFolderColor(string $user, string $name, ?string $color): bool {
+        return $this->withUserLock($user, function () use ($user, $name, $color): bool {
+            $folders = $this->foldersLocked($user);
+            $found = false;
+            foreach ($folders as &$folder) {
+                if (($folder['name'] ?? '') !== $name) continue;
+                if ($color === null || $color === '') {
+                    unset($folder['color']);
+                } elseif (preg_match('/^#[0-9a-fA-F]{6}$/', $color)) {
+                    $folder['color'] = strtoupper($color);
+                } else {
+                    return false;
+                }
+                $found = true;
+                break;
+            }
+            unset($folder);
+            if ($found) $this->writeFoldersLocked($user, $folders);
+            return $found;
+        });
+    }
+
+    /** @return list<string> */
+    private function normalizeTags(mixed $tags): array {
+        if (is_string($tags)) $tags = preg_split('/[,;\\n]+/', $tags) ?: [];
+        if (!is_array($tags)) return [];
+        $clean = [];
+        foreach ($tags as $tag) {
+            if (!is_string($tag)) continue;
+            $tag = mb_substr(trim(preg_replace('/\\s+/', ' ', $tag) ?? ''), 0, 32);
+            if ($tag === '') continue;
+            $key = mb_strtolower($tag);
+            if (!isset($clean[$key]) && count($clean) < 20) $clean[$key] = $tag;
+        }
+        return array_values($clean);
+    }
+
     /**
      * All folders of the user, sorted by name.
      *
-     * @return list<array{name:string,created:int}>
+     * @return list<array{name:string,created:int,color?:string}>
      */
     public function listFolders(string $user): array {
         return $this->withUserLock($user, function () use ($user): array {
