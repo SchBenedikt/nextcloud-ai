@@ -172,6 +172,8 @@ jobs:
                 version="${NC#stable}"
                 url="https://download.nextcloud.com/server/releases/latest-$version.tar.bz2"
               fi
+              apt-get update -qq
+              apt-get install -y --no-install-recommends bzip2
               curl -fsSL "$url" -o /tmp/nextcloud.tar.bz2
               mkdir -p /srv
               tar -xjf /tmp/nextcloud.tar.bz2 -C /srv

@@ -13,6 +13,9 @@
 		return
 	}
 	var apiBase = root.dataset.apiBase || '/ocs/v2.php/apps/eva_ai/api/'
+	function tr(text) {
+		return window.OC && OC.L10N && OC.L10N.translate ? OC.L10N.translate('eva_ai', text) : text
+	}
 
 	// ── Helpers ──────────────────────────────────────────────────────────
 
@@ -109,17 +112,17 @@
 		}
 		button.addEventListener('click', function () {
 			button.disabled = true
-			setStatus(statusId, 'info', 'Saving…')
+			setStatus(statusId, 'info', tr('Saving…'))
 			var payload = collect()
 			api('PUT', 'admin/settings', payload)
 				.then(function () {
-					setStatus(statusId, 'success', 'Saved.')
+					setStatus(statusId, 'success', tr('Saved.'))
 					if (typeof onSuccess === 'function') {
 						onSuccess()
 					}
 				})
 				.catch(function (err) {
-					setStatus(statusId, 'error', 'Could not save: ' + err.message)
+					setStatus(statusId, 'error', tr('Could not save: ') + err.message)
 				})
 				.finally(function () {
 					button.disabled = false
@@ -281,7 +284,7 @@
 				parts.push(new Date(hit.published * 1000).toLocaleDateString())
 			}
 			if (hit.news) {
-				parts.push('news')
+				parts.push(tr('news'))
 			}
 			source.textContent = parts.join(' · ')
 			row.appendChild(source)
@@ -289,7 +292,7 @@
 			var read = document.createElement('td')
 			read.textContent = hit.chars > 0
 				? hit.chars + ' chars' + (hit.highlightChars > 0 ? ' + ' + hit.highlightChars + ' highlighted' : '')
-				: 'snippet only'
+				: tr('snippet only')
 			row.appendChild(read)
 
 			var images = document.createElement('td')
@@ -309,17 +312,17 @@
 			var modeSelect = el('eva-test-mode')
 			var query = input === null ? '' : input.value.trim()
 			if (query === '') {
-				setStatus('eva-test-status', 'error', 'Enter a query first.')
+				setStatus('eva-test-status', 'error', tr('Enter a query first.'))
 				return
 			}
 			runTest.disabled = true
-			setStatus('eva-test-status', 'info', 'Searching…')
+			setStatus('eva-test-status', 'info', tr('Searching…'))
 			api('POST', 'admin/websearch/test', {
 				query: query,
 				mode: modeSelect === null ? 'web' : modeSelect.value,
 			})
 				.then(function (data) {
-					setStatus('eva-test-status', data.ok ? 'success' : 'error', data.ok ? 'Done' : 'No results')
+					setStatus('eva-test-status', data.ok ? 'success' : 'error', data.ok ? tr('Done') : tr('No results'))
 					renderSearchTest(data)
 				})
 				.catch(function (err) {
@@ -361,13 +364,13 @@
 			.then(function () {
 				if (window.OC && OC.Notification && OC.Notification.showTemporary) {
 					OC.Notification.showTemporary(
-						enabled ? 'Indexing enabled for ' + userId : 'Indexing disabled for ' + userId
+						enabled ? tr('Indexing enabled for ') + userId : tr('Indexing disabled for ') + userId
 					)
 				}
 			})
 			.catch(function (err) {
 				toggle.checked = !enabled
-				window.alert('Could not change enrollment: ' + err.message)
+				window.alert(tr('Could not change enrollment: ') + err.message)
 			})
 			.finally(function () {
 				toggle.disabled = false
@@ -387,8 +390,8 @@
 		}
 		var isReset = button.classList.contains('eva-btn-reset')
 		if (isReset && !window.confirm(
-			'Delete the complete index for ' + userId + '? '
-			+ 'This removes indexed documents and their vectors. Original Nextcloud files stay untouched.'
+			tr('Delete the complete index for ') + userId + '? '
+			+ tr('This removes indexed documents and their vectors. Original Nextcloud files stay untouched.')
 		)) {
 			return
 		}
@@ -402,16 +405,16 @@
 				if (isReset) {
 					var result = data.result || {}
 					window.alert(
-						'Index deleted: ' + (result.documents || 0) + ' documents and '
-						+ (result.chunks || 0) + ' chunks removed.'
+						tr('Index deleted: ') + (result.documents || 0) + tr(' documents and ')
+						+ (result.chunks || 0) + tr(' chunks removed.')
 					)
 				} else {
-					window.alert('Re-index queued for ' + userId + '.')
+					window.alert(tr('Re-index queued for ') + userId + '.')
 				}
 				window.location.reload()
 			})
 			.catch(function (err) {
-				window.alert('Action failed: ' + err.message)
+				window.alert(tr('Action failed: ') + err.message)
 				button.disabled = false
 			})
 	})
@@ -422,21 +425,21 @@
 	if (stopButton !== null) {
 		stopButton.addEventListener('click', function () {
 			stopButton.disabled = true
-			setStatus('eva-background-status', 'info', 'Stopping…')
+			setStatus('eva-background-status', 'info', tr('Stopping…'))
 			api('POST', 'admin/stop')
 				.then(function (data) {
 					var users = (data.requestedFor || [])
 					setStatus(
 						'eva-background-status',
 						'success',
-						'Stop requested for ' + (users.length ? users.join(', ') : 'the next run') + '.'
+						tr('Stop requested for ') + (users.length ? users.join(', ') : tr('the next run')) + '.'
 					)
 					window.setTimeout(function () {
 						window.location.reload()
 					}, 1500)
 				})
 				.catch(function (err) {
-					setStatus('eva-background-status', 'error', 'Could not stop: ' + err.message)
+					setStatus('eva-background-status', 'error', tr('Could not stop: ') + err.message)
 					stopButton.disabled = false
 				})
 		})

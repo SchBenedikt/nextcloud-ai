@@ -31,6 +31,8 @@ jobs:
                 URL="https://download.nextcloud.com/server/releases/latest-$VERSION.tar.bz2"
               fi
               echo "== Downloading $URL =="
+              apt-get update -qq
+              apt-get install -y --no-install-recommends bzip2
               curl -fsSL "$URL" -o /tmp/nc.tar.bz2
               mkdir -p /srv
               tar -xjf /tmp/nc.tar.bz2 -C /srv
