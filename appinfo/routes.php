@@ -72,6 +72,14 @@ return [
         ['name' => 'api#fileContextStatus', 'url' => '/api/fileContextStatus', 'verb' => 'POST'],
         ['name' => 'api#knowledge', 'url' => '/api/knowledge', 'verb' => 'GET'],
         ['name' => 'api#saveKnowledge', 'url' => '/api/knowledge', 'verb' => 'PUT'],
+        ['name' => 'api_key#listKeys', 'url' => '/api/keys', 'verb' => 'GET'],
+        ['name' => 'api_key#createKey', 'url' => '/api/keys', 'verb' => 'POST'],
+        ['name' => 'api_key#revokeKey', 'url' => '/api/keys/{id}', 'verb' => 'DELETE'],
+        ['name' => 'api_key#externalChat', 'url' => '/api/v1/chat', 'verb' => 'POST'],
+        ['name' => 'api_key#externalChats', 'url' => '/api/v1/chats', 'verb' => 'GET'],
+        ['name' => 'api_key#externalChatDetail', 'url' => '/api/v1/chats/{id}', 'verb' => 'GET'],
+        ['name' => 'api_key#externalDocuments', 'url' => '/api/v1/documents', 'verb' => 'GET'],
+        ['name' => 'api_key#externalDocumentChunks', 'url' => '/api/v1/documents/{id}/chunks', 'verb' => 'GET'],
         // Admin-only endpoints (Issue #82): instance settings, overview and
         // per-user management. The settings routes were missing, so the admin
         // page's save buttons used to hit a 404 and silently changed nothing.

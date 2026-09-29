@@ -7,9 +7,18 @@
 - Add pull-request app lifecycle tests against real Nextcloud 30, 33, and 35
   installations, including `occ app:enable`, `occ app:check-code`, route
   registration, and the PHPUnit suite.
-- Keep the npm package version synchronized with the current app version
-  (`1.16.99`) and use the pinned Node version for release builds.
+- Keep the npm package version synchronized with the current app version and
+  use the pinned Node version for release builds.
 - Document the complete CI matrix and local equivalents in `docs/CI.md`.
+
+## [1.17.0] - 2026-09-29
+
+### API integrations
+
+- Add user-managed, hash-only API keys with one-time secret display, scopes,
+  optional expiry and IP restrictions, revocation, and per-key usage/rate limits.
+- Add a bearer-authenticated external API scoped to the key owner; external chat
+  cannot execute tools or mutating actions.
 
 ## [1.16.99] - 2026-09-22
 
