@@ -2,6 +2,13 @@
 
 ## [Unreleased]
 
+## [1.17.5] - 2026-09-29
+
+### Tool executor architecture
+
+- Move calendar/task, mail, and share tool dispatch into domain-specific executors registered through the tool registry.
+- Add focused domain dispatch and error-boundary regression coverage.
+
 ## [1.17.4] - 2026-09-29
 
 ### Scheduled briefings

@@ -17,6 +17,12 @@ final class ToolDomainRegistry {
         $this->handlers[$tool] = $handler;
     }
 
+    public function registerExecutor(DomainToolExecutor $executor): void {
+        foreach ($executor->tools() as $tool) {
+            $this->register($tool, static fn(string $userId, array $args): array => $executor->execute($tool, $userId, $args));
+        }
+    }
+
     public function has(string $tool): bool {
         return isset($this->handlers[$tool]);
     }
