@@ -1580,6 +1580,61 @@ class ApiController extends OCSController {
     }
 
     #[NoAdminRequired]
+    public function templates(): DataResponse {
+        $user = $this->requireUser();
+        if ($user === null) return new ErrorDataResponse(['error' => 'Not logged in'], 401);
+        try { return new ErrorDataResponse($this->chatStore->listTemplates($user)); }
+        catch (\Throwable $e) { return $this->chatErrorResponse($e); }
+    }
+
+    #[NoAdminRequired]
+    public function saveTemplate(): DataResponse {
+        $user = $this->requireUser();
+        if ($user === null) return new ErrorDataResponse(['error' => 'Not logged in'], 401);
+        try { return new ErrorDataResponse($this->chatStore->saveTemplate($user, $this->requestBody())); }
+        catch (\InvalidArgumentException $e) { return new ErrorDataResponse(['error' => $e->getMessage()], 400); }
+        catch (\Throwable $e) { return $this->chatErrorResponse($e); }
+    }
+
+    #[NoAdminRequired]
+    public function deleteTemplate(string $id): DataResponse {
+        $user = $this->requireUser();
+        if ($user === null) return new ErrorDataResponse(['error' => 'Not logged in'], 401);
+        try {
+            if (!$this->chatStore->deleteTemplate($user, $id)) return new ErrorDataResponse(['error' => 'Requested template was not found.'], 404);
+            return new ErrorDataResponse(['ok' => true]);
+        } catch (\Throwable $e) { return $this->chatErrorResponse($e); }
+    }
+
+    #[NoAdminRequired]
+    public function exportTemplates(): DataResponse {
+        return $this->templates();
+    }
+
+    #[NoAdminRequired]
+    public function importTemplates(): DataResponse {
+        $user = $this->requireUser();
+        if ($user === null) return new ErrorDataResponse(['error' => 'Not logged in'], 401);
+        $templates = $this->requestParam('templates');
+        if (!is_array($templates)) return new ErrorDataResponse(['error' => 'A template list is required'], 400);
+        try { return new ErrorDataResponse(['imported' => $this->chatStore->importTemplates($user, $templates)]); }
+        catch (\InvalidArgumentException $e) { return new ErrorDataResponse(['error' => $e->getMessage()], 400); }
+        catch (\Throwable $e) { return $this->chatErrorResponse($e); }
+    }
+
+    #[NoAdminRequired]
+    public function useTemplate(string $id): DataResponse {
+        $user = $this->requireUser();
+        if ($user === null) return new ErrorDataResponse(['error' => 'Not logged in'], 401);
+        try {
+            $template = $this->chatStore->useTemplate($user, $id);
+            return $template === null
+                ? new ErrorDataResponse(['error' => 'Requested template was not found.'], 404)
+                : new ErrorDataResponse($template);
+        } catch (\Throwable $e) { return $this->chatErrorResponse($e); }
+    }
+
+    #[NoAdminRequired]
     public function chatTitle(string $id): DataResponse {
         $user = $this->requireUser();
         if ($user === null) {

@@ -26,6 +26,7 @@ export function mountChat(root, opts = {}) {
 
 	const { onRecent } = opts
 	let chatId = opts.chatId || null
+	let pendingTemplatePersona = ''
 	// Title of the open chat (displayed in the header once known; null until
 	// a restored/new chat has told us its real title).
 	let chatTitle = null
@@ -668,7 +669,167 @@ export function mountChat(root, opts = {}) {
 		anchor.click()
 		URL.revokeObjectURL(url)
 	})
-	promptPanel.append(promptSummary, promptSearch, promptList, promptExport)
+	const templatePanel = document.createElement('details')
+	templatePanel.className = 'prompt-templates'
+	const templateSummary = document.createElement('summary')
+	templateSummary.textContent = t('Saved templates')
+	const templateSearch = document.createElement('input')
+	templateSearch.type = 'search'
+	templateSearch.placeholder = t('Search templates')
+	templateSearch.setAttribute('aria-label', t('Search templates'))
+	const templateList = document.createElement('div')
+	templateList.className = 'prompt-template-list'
+	const templateStatus = document.createElement('p')
+	templateStatus.className = 'prompt-history-meta'
+	templateStatus.setAttribute('role', 'status')
+	const templateSave = document.createElement('button')
+	templateSave.type = 'button'
+	templateSave.className = 'cbtn cbtn-ghost'
+	templateSave.textContent = t('Save current prompt as template')
+	const templateExport = document.createElement('button')
+	templateExport.type = 'button'
+	templateExport.className = 'cbtn cbtn-ghost'
+	templateExport.textContent = t('Export templates')
+	const templateImport = document.createElement('button')
+	templateImport.type = 'button'
+	templateImport.className = 'cbtn cbtn-ghost'
+	templateImport.textContent = t('Import templates')
+	const templateFile = document.createElement('input')
+	templateFile.type = 'file'
+	templateFile.accept = 'application/json,.json'
+	templateFile.hidden = true
+	let savedTemplates = []
+	const renderTemplates = async () => {
+		templateList.replaceChildren()
+		try {
+			const result = await api('GET', '/templates')
+			savedTemplates = Array.isArray(result) ? result : []
+		} catch (error) {
+			templateStatus.textContent = t('Templates could not be loaded: {error}', { error: String(error.message || error) })
+			return
+		}
+		const query = templateSearch.value.trim().toLocaleLowerCase()
+		const matches = savedTemplates.filter((item) => !query || [item.name, item.description, item.category, item.body].some((value) => String(value || '').toLocaleLowerCase().includes(query)))
+		if (!matches.length) {
+			const empty = document.createElement('p')
+			empty.className = 'prompt-history-empty'
+			empty.textContent = t('No saved templates match this search.')
+			templateList.appendChild(empty)
+			return
+		}
+		matches.forEach((template) => {
+			const row = document.createElement('div')
+			row.className = 'prompt-history-row'
+			const use = document.createElement('button')
+			use.type = 'button'
+			use.className = 'prompt-history-reuse'
+			use.textContent = template.name
+			use.title = template.description || template.name
+			use.addEventListener('click', async () => {
+				try {
+					const values = []
+					for (const variable of template.variables || []) {
+						const value = window.prompt(t('Value for {name}', { name: variable }), '')
+						if (value === null) return
+						values.push([variable, value])
+					}
+					const current = await api('POST', '/templates/' + encodeURIComponent(template.id) + '/use', {})
+					let prompt = String(current.body || '')
+					for (const [variable, value] of values) prompt = prompt.replace(new RegExp('\\{' + variable + '\\}', 'g'), value)
+					input.value = prompt
+					if (current.persona) {
+						if (chatId) await api('POST', '/chats/' + encodeURIComponent(chatId) + '/meta', { instructions: current.persona })
+						else pendingTemplatePersona = current.persona
+						refreshCustomizePill({ instructions: current.persona })
+					}
+					templatePanel.open = false
+					input.focus()
+					templateStatus.textContent = t('Template ready to use.')
+					await renderTemplates()
+				} catch (error) { templateStatus.textContent = t('The template could not be used: {error}', { error: String(error.message || error) }) }
+			})
+			const details = document.createElement('span')
+			details.className = 'prompt-history-meta'
+			details.textContent = [template.category, template.description, t('Used {count} times', { count: template.usageCount || 0 })].filter(Boolean).join(' · ')
+			const edit = document.createElement('button')
+			edit.type = 'button'; edit.className = 'prompt-history-action'; edit.textContent = t('Edit')
+			edit.addEventListener('click', async () => {
+				const name = window.prompt(t('Template name'), template.name)
+				if (name === null) return
+				const body = window.prompt(t('Template prompt body'), template.body)
+				if (body === null) return
+				const description = window.prompt(t('Template description'), template.description || '')
+				if (description === null) return
+				const category = window.prompt(t('Template category'), template.category || '')
+				if (category === null) return
+				const persona = window.prompt(t('Persona instructions (optional)'), template.persona || '')
+				if (persona === null) return
+				try {
+					await api('POST', '/templates', { id: template.id, name, body, description, category, persona })
+					templateStatus.textContent = t('Template saved.')
+					await renderTemplates()
+				} catch (error) { templateStatus.textContent = t('The template could not be saved: {error}', { error: String(error.message || error) }) }
+			})
+			const remove = document.createElement('button')
+			remove.type = 'button'; remove.className = 'prompt-history-action'; remove.textContent = t('Delete')
+			remove.addEventListener('click', async () => {
+				if (!window.confirm(t('Delete template “{name}”?', { name: template.name }))) return
+				try {
+					await api('DELETE', '/templates/' + encodeURIComponent(template.id))
+					templateStatus.textContent = t('Template deleted.')
+					await renderTemplates()
+				} catch (error) { templateStatus.textContent = t('The template could not be deleted: {error}', { error: String(error.message || error) }) }
+			})
+			row.append(use, details, edit, remove)
+			templateList.appendChild(row)
+		})
+	}
+	templateSave.addEventListener('click', async () => {
+		const body = input.value.trim()
+		if (!body) { templateStatus.textContent = t('Enter a prompt before saving it as a template.'); return }
+		const name = window.prompt(t('Template name'), '')
+		if (name === null) return
+		const description = window.prompt(t('Template description'), '')
+		if (description === null) return
+		const category = window.prompt(t('Template category'), '')
+		if (category === null) return
+		const persona = window.prompt(t('Persona instructions (optional)'), '')
+		if (persona === null) return
+		try {
+			await api('POST', '/templates', { name, description, category, body, persona })
+			templateStatus.textContent = t('Template saved.')
+			await renderTemplates()
+		} catch (error) { templateStatus.textContent = t('The template could not be saved: {error}', { error: String(error.message || error) }) }
+	})
+	templateSearch.addEventListener('input', renderTemplates)
+	templatePanel.addEventListener('toggle', () => { if (templatePanel.open) renderTemplates() })
+	templateExport.addEventListener('click', async () => {
+		try {
+			const templates = await api('GET', '/templates/export')
+			const blob = new Blob([JSON.stringify(templates, null, 2)], { type: 'application/json' })
+			const url = URL.createObjectURL(blob); const anchor = document.createElement('a')
+			anchor.href = url; anchor.download = 'eva-prompt-templates.json'; anchor.click(); URL.revokeObjectURL(url)
+		} catch (error) { templateStatus.textContent = t('Templates could not be exported: {error}', { error: String(error.message || error) }) }
+	})
+	templateImport.addEventListener('click', () => templateFile.click())
+	templateFile.addEventListener('change', async () => {
+		const file = templateFile.files && templateFile.files[0]
+		if (!file) return
+		try {
+			const parsed = JSON.parse(await file.text())
+			const templates = Array.isArray(parsed) ? parsed : parsed.templates
+			if (!Array.isArray(templates)) throw new Error(t('The file does not contain a template list.'))
+			const result = await api('POST', '/templates/import', { templates })
+			templateStatus.textContent = t('Imported {count} templates.', { count: result.imported || 0 })
+			await renderTemplates()
+		} catch (error) { templateStatus.textContent = t('Templates could not be imported: {error}', { error: String(error.message || error) }) }
+		finally { templateFile.value = '' }
+	})
+	templatePanel.append(templateSummary, templateSearch, templateList, templateStatus, templateSave, templateExport, templateImport, templateFile)
+	const shareHelp = document.createElement('p')
+	shareHelp.className = 'prompt-history-meta'
+	shareHelp.textContent = t('Export a JSON template library to share it with teammates; import their file to reuse it.')
+	promptPanel.append(promptSummary, promptSearch, promptList, promptExport, templatePanel, shareHelp)
 	const scopePill = document.createElement('span')
 	scopePill.className = 'pill pill-warn'
 	scopePill.hidden = true
@@ -1106,12 +1267,23 @@ export function mountChat(root, opts = {}) {
 		return t('The response could not be completed: {error}', { error: detail })
 	}
 
+	async function applyPendingTemplatePersona() {
+		if (!chatId || !pendingTemplatePersona) return
+		const instructions = pendingTemplatePersona
+		await api('POST', '/chats/' + encodeURIComponent(chatId) + '/meta', { instructions })
+		pendingTemplatePersona = ''
+		refreshCustomizePill({ instructions })
+	}
+
 	async function ensureChat() {
-		if (chatId) return true
+		if (chatId) {
+			try { await applyPendingTemplatePersona(); return true } catch (_) { return false }
+		}
 		try {
 			const c = await api('POST', '/chats', {})
 			chatId = (c && c.id) || null
 			if (c && c.rev != null) chatRev = parseInt(c.rev, 10) || null
+			await applyPendingTemplatePersona()
 			return !!chatId
 		} catch (_) {
 			return false

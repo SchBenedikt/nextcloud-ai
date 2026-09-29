@@ -72,6 +72,26 @@ curl -X POST 'https://nextcloud.example.com/ocs/v2.php/apps/eva_ai/api/v1/chat' 
 
 Keep the returned secret private. The key list includes its name, masked
 prefix, scope, expiry, last-use time, and call count, but never the secret.
+
+## Prompt templates
+
+Signed-in users can manage their own prompt templates through the chat API.
+Templates support `{variable}` placeholders, optional per-template persona
+instructions, and a usage counter. JSON export and import let users share
+templates by passing the exported file to another user.
+
+| Operation | Method and path |
+| --- | --- |
+| List or export this user's templates | `GET /api/templates` or `GET /api/templates/export` |
+| Create or update a template | `POST /api/templates` |
+| Import templates from `{ "templates": [...] }` | `POST /api/templates/import` |
+| Record use and fetch a template | `POST /api/templates/{id}/use` |
+| Delete a template | `DELETE /api/templates/{id}` |
+
+Template data is stored in the user's private EVA app data. Import creates new
+IDs and accepts at most 100 templates per request; each prompt is limited to
+8,000 characters.
+
 | Reset index | `POST /api/index/reset` |
 | Delete a chat folder | `DELETE /api/folders` with `{ "name": "…" }` |
 

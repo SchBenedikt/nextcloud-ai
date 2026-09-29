@@ -2,6 +2,13 @@
 
 ## [Unreleased]
 
+## [1.17.3] - 2026-09-29
+
+### Prompt templates
+
+- Add encrypted per-user prompt templates with variable substitution, personas, usage counts, editing, import, and export for sharing.
+- Add the Nextcloud Browserslist config as a direct build dependency so clean installs can run the frontend build.
+
 ### Compatibility and CI
 
 - Add pull-request app lifecycle tests against real Nextcloud 30, 33, and 35

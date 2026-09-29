@@ -415,6 +415,11 @@ export default {
 .chatview-root .prompt-history-empty { margin: 8px 4px; color: var(--color-text-maxcontrast, #666); }
 .chatview-root .prompt-history > .cbtn { margin-top: 6px; }
 .chatview-root .prompt-history :focus-visible { outline: 2px solid var(--color-main-text, #222); outline-offset: 2px; }
+.chatview-root .prompt-templates { position: relative; margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--color-border, #ddd); }
+.chatview-root .prompt-templates > summary { padding: 6px 4px; cursor: pointer; font-weight: 600; }
+.chatview-root .prompt-templates > input { display: block; width: 100%; box-sizing: border-box; margin: 6px 0; padding: 8px 10px; border: 1px solid var(--color-border, #ccd0d4); border-radius: var(--border-radius-element, 8px); background: var(--color-main-background, #fff); color: var(--color-main-text, #222); }
+.chatview-root .prompt-template-list { max-height: 240px; overflow: auto; }
+.chatview-root .prompt-templates > .cbtn { margin: 5px 4px 0 0; }
 
 /* Per-chat custom instructions dialog (Issue #90). */
 .customize-overlay { position: fixed; inset: 0; z-index: 2000; display: flex; align-items: center; justify-content: center; padding: 24px; background: rgba(0, 0, 0, .45); }
