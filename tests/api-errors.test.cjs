@@ -7,6 +7,10 @@ const source = fs.readFileSync(`${__dirname}/../src/lib/api.js`, 'utf8')
   .replace(/^export /gm, '')
 const context = vm.createContext({ setTimeout })
 vm.runInContext(source, context)
+const chatUtils = fs.readFileSync(`${__dirname}/../src/lib/chat-utils.js`, 'utf8')
+const apiErrorHelper = chatUtils.match(/export function apiErrorMessage\([\s\S]*?\n\}/)?.[0]
+if (!apiErrorHelper) throw new Error('apiErrorMessage helper was not found')
+vm.runInContext(apiErrorHelper.replace(/^export /, '') + '\nthis.apiErrorMessage = apiErrorMessage', context)
 
 test('API errors prefer structured Nextcloud messages', () => {
   assert.equal(context.errMsg({ response: { status: 400, data: { ocs: { data: { message: 'Invalid setting' }, meta: { message: 'Bad request' } } } } }), '400 Invalid setting')
@@ -14,6 +18,15 @@ test('API errors prefer structured Nextcloud messages', () => {
 
 test('busy responses show their human-readable recovery message', () => {
   assert.equal(context.errMsg({ response: { status: 503, data: { error: 'busy', message: 'Another chat request is already running. Please retry shortly.' } } }), '503 Another chat request is already running. Please retry shortly.')
+})
+
+test('normalized API errors show the nested human-readable message', () => {
+  assert.equal(context.errMsg({ response: { status: 409, data: { ocs: { data: { error: { code: 'conflict', message: 'This chat changed in another tab.' } } } } } }), '409 This chat changed in another tab.')
+})
+
+test('fetch clients extract legacy and normalized OCS error messages', () => {
+  assert.equal(context.apiErrorMessage({ ocs: { data: { error: { code: 'invalid_request', message: 'Choose a provider.' } } } }), 'Choose a provider.')
+  assert.equal(context.apiErrorMessage({ ocs: { data: { error: 'busy', message: 'Retry shortly.' } } }), 'Retry shortly.')
 })
 
 test('gateway HTML is replaced with a useful timeout message', () => {

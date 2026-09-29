@@ -12,6 +12,7 @@ use OCA\EvaAi\Service\Ollama;
 use OCA\EvaAi\Service\RagService;
 use OCA\EvaAi\Service\WebSearchService;
 use OCP\AppFramework\Http\Attribute\AdminRequired;
+use OCA\EvaAi\Http\ErrorDataResponse;
 use OCP\AppFramework\Http\DataResponse;
 use OCP\AppFramework\OCSController;
 use OCP\BackgroundJob\IJobList;
@@ -54,7 +55,7 @@ class AdminController extends OCSController {
     #[AdminRequired]
     public function getSettings(): DataResponse {
         $this->config->setUserId(null);
-        return new DataResponse($this->adminSettingsPayload());
+        return new ErrorDataResponse($this->adminSettingsPayload());
     }
 
     /**
@@ -77,13 +78,13 @@ class AdminController extends OCSController {
             $mode = 'web';
         }
         if ($query === '') {
-            return new DataResponse(['ok' => false, 'error' => 'Enter a search query first.'], 400);
+            return new ErrorDataResponse(['ok' => false, 'error' => 'Enter a search query first.'], 400);
         }
 
         $provider = $this->webSearch->provider();
         $result = $this->webSearch->search($query, 5, $mode);
         if (!$result['ok']) {
-            return new DataResponse([
+            return new ErrorDataResponse([
                 'ok' => false,
                 'provider' => $provider,
                 'mode' => $mode,
@@ -107,7 +108,7 @@ class AdminController extends OCSController {
             ];
         }
 
-        return new DataResponse([
+        return new ErrorDataResponse([
             'ok' => true,
             'provider' => $provider,
             'mode' => $mode,
@@ -155,7 +156,7 @@ class AdminController extends OCSController {
         }
 
         if ($validationErrors !== []) {
-            return new DataResponse([
+            return new ErrorDataResponse([
                 'error' => 'Invalid settings.',
                 'validationErrors' => array_values($validationErrors),
             ], 400);
@@ -175,13 +176,13 @@ class AdminController extends OCSController {
                 $this->webSearch->saveApiKey((string)$apiKey);
             }
         } catch (\InvalidArgumentException $e) {
-            return new DataResponse([
+            return new ErrorDataResponse([
                 'error' => 'Invalid settings.',
                 'validationErrors' => ['web_search_api_key must be 8-256 characters: letters, digits, dot, underscore or dash.'],
             ], 400);
         }
 
-        return new DataResponse($this->adminSettingsPayload());
+        return new ErrorDataResponse($this->adminSettingsPayload());
     }
 
     /**
@@ -246,7 +247,7 @@ class AdminController extends OCSController {
         }
         usort($users, static fn(array $a, array $b): int => strcmp((string)$a['userId'], (string)$b['userId']));
 
-        return new DataResponse([
+        return new ErrorDataResponse([
             'users' => $users,
             'scheduler' => $this->scheduler->overview(),
             'ollama' => [
@@ -275,7 +276,7 @@ class AdminController extends OCSController {
             $this->config->set('index_cancel_requested', '1');
         }
         $this->config->setUserId(null);
-        return new DataResponse([
+        return new ErrorDataResponse([
             'stopped' => true,
             'requestedFor' => $activeUsers,
             'scheduler' => $this->scheduler->overview(),
@@ -286,32 +287,32 @@ class AdminController extends OCSController {
     public function reindex(string $userId): DataResponse {
         $user = $this->resolveUser($userId);
         if ($user === null) {
-            return new DataResponse(['error' => 'Unknown user.'], 404);
+            return new ErrorDataResponse(['error' => 'Unknown user.'], 404);
         }
         $this->config->setUserId($user);
         if ($this->config->get('index_running') === '1') {
-            return new DataResponse(['error' => 'Indexing is already running for this user.'], 409);
+            return new ErrorDataResponse(['error' => 'Indexing is already running for this user.'], 409);
         }
         $this->jobList->add(\OCA\EvaAi\BackgroundJob\IndexRequestJob::class, [
             'userId' => $user,
             'mode' => 'all',
         ]);
         $this->config->setIndexEnrolled($user, true);
-        return new DataResponse(['queued' => true, 'userId' => $user]);
+        return new ErrorDataResponse(['queued' => true, 'userId' => $user]);
     }
 
     #[AdminRequired]
     public function reset(string $userId): DataResponse {
         $user = $this->resolveUser($userId);
         if ($user === null) {
-            return new DataResponse(['error' => 'Unknown user.'], 404);
+            return new ErrorDataResponse(['error' => 'Unknown user.'], 404);
         }
         $this->config->setUserId($user);
         if ($this->config->get('index_running') === '1') {
-            return new DataResponse(['error' => 'Stop indexing before deleting the index.'], 409);
+            return new ErrorDataResponse(['error' => 'Stop indexing before deleting the index.'], 409);
         }
         $deleted = $this->indexer->reset($user);
-        return new DataResponse([
+        return new ErrorDataResponse([
             'result' => $deleted,
             'userId' => $user,
             'user' => $this->userRow($user, null),
@@ -322,13 +323,13 @@ class AdminController extends OCSController {
     public function setEnrollment(string $userId): DataResponse {
         $user = $this->resolveUser($userId);
         if ($user === null) {
-            return new DataResponse(['error' => 'Unknown user.'], 404);
+            return new ErrorDataResponse(['error' => 'Unknown user.'], 404);
         }
         // The Vue client sends the toggle as a JSON body; read it the same
         // way the chat endpoints do (query param first, body second).
         $enabled = $this->boolParam('enabled', false);
         $this->config->setIndexEnrolled($user, $enabled);
-        return new DataResponse([
+        return new ErrorDataResponse([
             'userId' => $user,
             'enrolled' => $this->config->isIndexEnrolled($user),
         ]);

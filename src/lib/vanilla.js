@@ -3,7 +3,7 @@ import { readNdjson } from './ndjson'
 import { mdiDownload, mdiPaperclip, mdiTune } from '@mdi/js'
 import { translate as t } from './i18n'
 import { buildConfirmForm } from './confirmForms'
-import { escHtml, mdInline, mdToHtml, citedSources, formatToolName, copyText, installImageFallback } from './chat-utils'
+import { escHtml, mdInline, mdToHtml, citedSources, formatToolName, copyText, installImageFallback, apiErrorMessage } from './chat-utils'
 import { getFilePickerBuilder, FilePickerClosed } from '@nextcloud/dialogs'
 import { createPromptHistory } from './prompt-history'
 
@@ -98,7 +98,7 @@ export function mountChat(root, opts = {}) {
 					let json = null
 					try { json = text ? JSON.parse(text) : null } catch (_) {}
 					if (!r.ok) {
-						const detail = json?.ocs?.message || json?.ocs?.data?.error || json?.error || text
+						const detail = apiErrorMessage(json) || text
 						throw new Error(('HTTP ' + r.status + ' ' + String(detail || '')).trim().slice(0, 260))
 					}
 					const data = json && json.ocs && typeof json.ocs.data !== 'undefined' ? json.ocs.data : json
@@ -367,7 +367,7 @@ export function mountChat(root, opts = {}) {
 				}).then((result) => {
 					if (result === null) return
 					if (!result || !result.ok) {
-						finish(result?.error || t('The action could not be completed.'))
+						finish(apiErrorMessage(result) || t('The action could not be completed.'))
 						return
 					}
 					let value = t('The action was completed.')
@@ -834,7 +834,7 @@ export function mountChat(root, opts = {}) {
 				return r.text().then((text) => {
 					let payload = null
 					try { payload = text ? JSON.parse(text) : null } catch (_) {}
-					const detail = payload?.ocs?.message || payload?.ocs?.data?.error || payload?.error || (text && text.length < 240 ? text : '')
+					const detail = apiErrorMessage(payload) || (text && text.length < 240 ? text : '')
 					throw new Error(('HTTP ' + r.status + (detail ? ': ' + String(detail) : '')).slice(0, 260))
 				})
 			}

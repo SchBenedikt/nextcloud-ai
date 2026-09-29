@@ -5,6 +5,24 @@ The Vue client uses `@nextcloud/axios`, which supplies Nextcloud's request token
 and OCS headers. Admin routes live under `api/admin/` and require administrator
 privileges.
 
+## Error responses
+
+Non-streaming API and admin errors use one OCS data shape:
+
+```json
+{
+  "error": {
+    "code": "conflict",
+    "message": "This chat changed in another tab."
+  }
+}
+```
+
+`code` is a stable machine-readable identifier and `message` is suitable for
+display to the user. HTTP status codes remain authoritative. NDJSON streaming
+endpoints report failures as `{ "type": "error", "message": "…" }` records
+inside the stream.
+
 ## Compatibility aliases
 
 Older releases exposed camelCase paths. They remain available for existing

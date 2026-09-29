@@ -1,0 +1,35 @@
+openapi: 3.1.0
+info:
+  title: EVA AI API error contract
+  version: 1.0.0
+  description: Shared error payload used by non-streaming EVA OCS API and admin responses.
+paths: {}
+components:
+  schemas:
+    ApiError:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: object
+          required: [code, message]
+          properties:
+            code:
+              type: string
+              description: Stable machine-readable error identifier.
+              examples: [invalid_request, unauthorized, not_found, conflict, rate_limited, server_error]
+            message:
+              type: string
+              description: Human-readable message suitable for display to the user.
+        validationErrors:
+          type: array
+          items:
+            type: string
+          description: Optional field-specific validation details.
+  responses:
+    ApiError:
+      description: The request failed. The HTTP status is authoritative.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ApiError'

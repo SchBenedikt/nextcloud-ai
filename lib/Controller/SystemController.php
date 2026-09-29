@@ -14,6 +14,7 @@ use OCA\EvaAi\Service\Ollama;
 use OCA\EvaAi\Service\RagService;
 use OCA\EvaAi\Service\UsageMetrics;
 use OCP\AppFramework\Http\Attribute\NoAdminRequired;
+use OCA\EvaAi\Http\ErrorDataResponse;
 use OCP\AppFramework\Http\DataResponse;
 use OCP\AppFramework\OCSController;
 use OCP\ICacheFactory;
@@ -50,7 +51,7 @@ final class SystemController extends OCSController {
     public function status(): DataResponse {
         $user = $this->requireUser();
         if ($user === null) {
-            return new DataResponse(['error' => 'Not logged in'], 401);
+            return new ErrorDataResponse(['error' => 'Not logged in'], 401);
         }
         $this->knowledgeInitializer->ensureInitialized($user);
         $status = $this->ragService->buildStatus($user);
@@ -72,7 +73,7 @@ final class SystemController extends OCSController {
         // Fair multi-user scheduling snapshot (Issue #142): global running
         // count, limit and this user's queue position - cheap, no polling.
         $status['scheduler'] = $this->indexScheduler->snapshot($user);
-        return new DataResponse($status);
+        return new ErrorDataResponse($status);
     }
 
     /**
@@ -83,7 +84,7 @@ final class SystemController extends OCSController {
     public function stats(): DataResponse {
         $user = $this->requireUser();
         if ($user === null) {
-            return new DataResponse(['error' => 'Not logged in'], 401);
+            return new ErrorDataResponse(['error' => 'Not logged in'], 401);
         }
         try {
             $this->knowledgeInitializer->ensureInitialized($user);
@@ -93,7 +94,7 @@ final class SystemController extends OCSController {
             $active = array_values(array_filter($chats, static fn($c) => empty($c['archived'])));
             $recent = $active;
             usort($recent, static fn($a, $b) => ($b['updated'] ?? 0) <=> ($a['updated'] ?? 0));
-            return new DataResponse([
+            return new ErrorDataResponse([
                 'documents' => [
                     'count' => $agg['count'],
                     'chunks' => $agg['chunks'],
@@ -118,13 +119,13 @@ final class SystemController extends OCSController {
             ]);
         } catch (\Throwable $e) {
             if ($e instanceof \OCA\EvaAi\Service\ChatStoreBusyException) {
-                return new DataResponse(['error' => 'busy', 'message' => $e->getMessage()], 503);
+                return new ErrorDataResponse(['error' => 'busy', 'message' => $e->getMessage()], 503);
             }
             $this->logger->error('eva_ai: dashboard summary failed', [
                 'user' => $user,
                 'exception' => $e->getMessage(),
             ]);
-            return new DataResponse(['error' => 'Unable to build dashboard summary'], 500);
+            return new ErrorDataResponse(['error' => 'Unable to build dashboard summary'], 500);
         }
     }
 
@@ -133,22 +134,22 @@ final class SystemController extends OCSController {
     public function metrics(): DataResponse {
         $user = $this->requireUser();
         if ($user === null) {
-            return new DataResponse(['error' => 'Not logged in'], 401);
+            return new ErrorDataResponse(['error' => 'Not logged in'], 401);
         }
-        return new DataResponse($this->usageMetrics->summaryForUser($user));
+        return new ErrorDataResponse($this->usageMetrics->summaryForUser($user));
     }
 
     /** Lightweight diagnostics for troubleshooting a slow or incomplete install. */
     #[NoAdminRequired]
     public function health(): DataResponse {
         $user = $this->requireUser();
-        if ($user === null) return new DataResponse(['error' => 'Not logged in'], 401);
+        if ($user === null) return new ErrorDataResponse(['error' => 'Not logged in'], 401);
         $cache = $this->cacheFactory->createDistributed('eva_ai_health_');
         $cacheKey = 'health_' . substr(hash('sha256', $user), 0, 24);
         $cached = $cache->get($cacheKey);
         if (is_string($cached) && $cached !== '') {
             $decoded = json_decode($cached, true);
-            if (is_array($decoded)) return new DataResponse($decoded, !empty($decoded['ok']) ? 200 : 503);
+            if (is_array($decoded)) return new ErrorDataResponse($decoded, !empty($decoded['ok']) ? 200 : 503);
         }
         $provider = $this->ollama->status();
         $queue = $this->backgroundChatQueue->status($user);
@@ -169,7 +170,7 @@ final class SystemController extends OCSController {
             'generated_at' => time(),
         ];
         try { $cache->set($cacheKey, json_encode($payload, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) ?: '{}', 10); } catch (\Throwable) { }
-        return new DataResponse($payload, !in_array(false, $checks, true) ? 200 : 503);
+        return new ErrorDataResponse($payload, !in_array(false, $checks, true) ? 200 : 503);
     }
 
     /** Return a concise, localized time-of-day greeting for the dashboard. */
@@ -177,7 +178,7 @@ final class SystemController extends OCSController {
     public function greeting(): DataResponse {
         $user = $this->requireUser();
         if ($user === null) {
-            return new DataResponse(['error' => 'Not logged in'], 401);
+            return new ErrorDataResponse(['error' => 'Not logged in'], 401);
         }
         $this->config->setUserId($user);
         $period = $this->dayPeriod();
@@ -186,11 +187,11 @@ final class SystemController extends OCSController {
         $cache = $this->cacheFactory->createDistributed('eva_ai_greeting_');
         $cached = $cache->get($cacheKey);
         if (is_string($cached) && $cached !== '') {
-            return new DataResponse(['greeting' => $cached, 'period' => $period]);
+            return new ErrorDataResponse(['greeting' => $cached, 'period' => $period]);
         }
         $greeting = $this->staticGreeting($period, $lang);
         $cache->set($cacheKey, $greeting, 6 * 3600);
-        return new DataResponse(['greeting' => $greeting, 'period' => $period]);
+        return new ErrorDataResponse(['greeting' => $greeting, 'period' => $period]);
     }
 
     /** 'night'|'morning'|'afternoon'|'evening' based on the server's clock. */
