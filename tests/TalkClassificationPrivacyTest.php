@@ -92,12 +92,6 @@ final class TalkClassificationPrivacyTest extends TestCase {
         self::assertFalse($this->shouldRespond($listener, 'Wer hat den Raum gebucht?'));
     }
 
-    public function testClassifierDecidesWhetherAQuestionWasForEva(): void {
-        [$listener, $ollama] = $this->listener('0');
-        $ollama->expects(self::once())->method('chat')->willReturn(['answer' => 'no']);
-        self::assertFalse($this->shouldRespond($listener, 'Wer hat den Raum gebucht?'));
-    }
-
     public function testBareBotNameIsClassifiedButExplicitMentionSkipsClassifier(): void {
         [$listener, $ollama] = $this->listener('0');
         $ollama->expects(self::once())->method('chat')->willReturn(['answer' => 'no']);

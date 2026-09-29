@@ -25,7 +25,9 @@ final class Version110000Date20260912000001 extends SimpleMigrationStep {
 			$table->addColumn('input_tokens', Types::INTEGER, ['notnull' => true, 'default' => 0]);
 			$table->addColumn('output_tokens', Types::INTEGER, ['notnull' => true, 'default' => 0]);
 			$table->addColumn('total_tokens', Types::INTEGER, ['notnull' => true, 'default' => 0]);
-			$table->addColumn('estimated', Types::BOOLEAN, ['notnull' => true, 'default' => false]);
+			// Nextcloud's schema checker rejects a NOT NULL SQLite boolean with
+			// a false default. Store this privacy-safe flag as a portable 0/1.
+			$table->addColumn('estimated', Types::INTEGER, ['notnull' => true, 'default' => 0]);
 			$table->addColumn('duration_ms', Types::INTEGER, ['notnull' => true, 'default' => 0]);
 			$table->setPrimaryKey(['id']);
 			$table->addIndex(['user_id', 'created_at'], 'eva_ai_usage_user_time');

@@ -92,6 +92,8 @@ export default {
 }
 
 .chatview-root .head h1 {
+	flex: 1 1 auto;
+	min-width: 0;
 	margin: 0;
 	font-size: 18px;
 	font-weight: 650;
@@ -361,6 +363,8 @@ export default {
 	.chatview-root { padding-inline: 12px; }
 	.chatview-root .head { min-height: 48px; }
 	.chatview-root .head h1 { font-size: 16px; }
+	.chatview-root .head { gap: 6px; }
+	.chatview-root .prompt-history > summary { padding-inline: 7px; }
 	.chatview-root .head-right { gap: 4px; }
 	.chatview-root .chat-log { padding-top: 18px; gap: 16px; }
 	.chatview-root .rb { max-width: 94%; }
@@ -375,6 +379,20 @@ export default {
 .chatview-root .head .export:disabled { opacity: .5; cursor: default; }
 .chatview-root .head .export-icon { width: 16px; height: 16px; fill: currentColor; }
 .chatview-root .head .customize-btn { min-width: 0; }
+.chatview-root .prompt-history { position: relative; flex: 0 0 auto; font-size: 13px; }
+.chatview-root .prompt-history > summary { display: inline-flex; align-items: center; min-height: var(--default-clickable-area, 34px); padding: 6px 10px; border: 1px solid var(--color-border, #ccd0d4); border-radius: var(--border-radius-element, 8px); cursor: pointer; list-style: none; white-space: nowrap; }
+.chatview-root .prompt-history > summary::-webkit-details-marker { display: none; }
+.chatview-root .prompt-history[open] > summary { border-color: var(--color-primary-element, #0082c9); }
+.chatview-root .prompt-history-list { position: absolute; z-index: 30; top: calc(100% + 8px); right: 0; width: min(520px, calc(100vw - 32px)); max-height: min(60vh, 480px); overflow: auto; padding: 8px; border: 1px solid var(--color-border, #ccd0d4); border-radius: var(--border-radius-large, 12px); background: var(--color-main-background, #fff); box-shadow: 0 8px 28px rgba(0, 0, 0, .2); }
+.chatview-root .prompt-history > input { position: absolute; z-index: 31; top: calc(100% + 8px); right: 0; width: min(520px, calc(100vw - 32px)); box-sizing: border-box; padding: 8px 10px; border: 1px solid var(--color-border, #ccd0d4); border-radius: var(--border-radius-element, 8px); background: var(--color-main-background, #fff); color: var(--color-main-text, #222); }
+.chatview-root .prompt-history[open] .prompt-history-list { margin-top: 43px; }
+.chatview-root .prompt-history-row { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; gap: 4px 8px; align-items: center; padding: 7px 4px; border-bottom: 1px solid var(--color-border, #ddd); }
+.chatview-root .prompt-history-reuse { grid-column: 1 / -1; overflow: hidden; border: 0; background: transparent; color: var(--color-main-text, #222); text-align: left; text-overflow: ellipsis; white-space: nowrap; cursor: pointer; font: inherit; }
+.chatview-root .prompt-history-meta { overflow: hidden; color: var(--color-text-maxcontrast, #666); font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }
+.chatview-root .prompt-history-action { min-height: 30px; padding: 3px 8px; border: 1px solid var(--color-border, #ccd0d4); border-radius: var(--border-radius-element, 8px); background: var(--color-main-background, #fff); color: var(--color-main-text, #222); cursor: pointer; font: inherit; }
+.chatview-root .prompt-history-empty { margin: 8px 4px; color: var(--color-text-maxcontrast, #666); }
+.chatview-root .prompt-history > .cbtn { margin-top: 6px; }
+.chatview-root .prompt-history :focus-visible { outline: 2px solid var(--color-main-text, #222); outline-offset: 2px; }
 
 /* Per-chat custom instructions dialog (Issue #90). */
 .customize-overlay { position: fixed; inset: 0; z-index: 2000; display: flex; align-items: center; justify-content: center; padding: 24px; background: rgba(0, 0, 0, .45); }

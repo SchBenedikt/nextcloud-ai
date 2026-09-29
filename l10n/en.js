@@ -1040,5 +1040,15 @@ OC.L10N.register("eva_ai", {
   "Read": "Read",
   "Pictures": "Pictures",
   "characters": "characters",
-  "highlighted": "highlighted"
+  "highlighted": "highlighted",
+  "Prompt history": "Prompt history",
+  "Search prompts": "Search prompts",
+  "No saved prompts match this search.": "No saved prompts match this search.",
+  "Export prompt library": "Export prompt library",
+  "Use prompt": "Use prompt",
+  "Used {count} times": "Used {count} times",
+  "Favorite prompt": "Favorite prompt",
+  "Remove prompt favorite": "Remove prompt favorite",
+  "Category": "Category",
+  "Prompt category": "Prompt category"
 }, "nplurals=2; plural=(n != 1);");

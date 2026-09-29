@@ -5,6 +5,7 @@ import { translate as t } from './i18n'
 import { buildConfirmForm } from './confirmForms'
 import { escHtml, mdInline, mdToHtml, citedSources, formatToolName, copyText, installImageFallback } from './chat-utils'
 import { getFilePickerBuilder, FilePickerClosed } from '@nextcloud/dialogs'
+import { createPromptHistory } from './prompt-history'
 
 /* EvaAi – Vanilla-Chat-Mount.
  * Wird von ChatView.vue aufgerufen und rendert den kompletten Chat
@@ -32,6 +33,9 @@ export function mountChat(root, opts = {}) {
 	const API_BASE = meta('eva-ai-api')
 	const REQUEST_TOKEN = meta('requesttoken')
 	const STREAM_URL = meta('eva-ai-stream') || ''
+	let promptStorage
+	try { promptStorage = window.localStorage } catch (_) { promptStorage = { getItem: () => null, setItem: () => {} } }
+	const promptHistory = createPromptHistory(promptStorage, 'eva-ai.prompts.' + encodeURIComponent(meta('oc-userid') || window.OC?.currentUser || 'default'))
 
 	const STORE_KEY = 'eva-ai.conv'
 	const messages = []
@@ -424,6 +428,76 @@ export function mountChat(root, opts = {}) {
 	exportBtn.append(exportIcon, exportLabel)
 	exportBtn.disabled = true
 	exportBtn.addEventListener('click', exportMarkdown)
+	const promptPanel = document.createElement('details')
+	promptPanel.className = 'prompt-history'
+	const promptSummary = document.createElement('summary')
+	promptSummary.textContent = t('Prompt history')
+	const promptSearch = document.createElement('input')
+	promptSearch.type = 'search'
+	promptSearch.placeholder = t('Search prompts')
+	promptSearch.setAttribute('aria-label', t('Search prompts'))
+	const promptList = document.createElement('div')
+	promptList.className = 'prompt-history-list'
+	const promptExport = document.createElement('button')
+	promptExport.type = 'button'
+	promptExport.className = 'cbtn cbtn-ghost'
+	promptExport.textContent = t('Export prompt library')
+	const renderPromptHistory = () => {
+		promptList.replaceChildren()
+		const items = promptHistory.list(promptSearch.value)
+		if (!items.length) {
+			const empty = document.createElement('p')
+			empty.className = 'prompt-history-empty'
+			empty.textContent = t('No saved prompts match this search.')
+			promptList.appendChild(empty)
+			return
+		}
+		items.forEach((item) => {
+			const row = document.createElement('div')
+			row.className = 'prompt-history-row'
+			const reuse = document.createElement('button')
+			reuse.type = 'button'
+			reuse.className = 'prompt-history-reuse'
+			reuse.textContent = item.text
+			reuse.title = t('Use prompt')
+			reuse.addEventListener('click', () => {
+				input.value = item.text
+				promptPanel.open = false
+				input.focus()
+			})
+			const metaText = document.createElement('span')
+			metaText.className = 'prompt-history-meta'
+			metaText.textContent = (item.category ? item.category + ' · ' : '') + t('Used {count} times', { count: item.usageCount || 1 })
+			const favorite = document.createElement('button')
+			favorite.type = 'button'
+			favorite.className = 'prompt-history-action'
+			favorite.textContent = item.favorite ? '★' : '☆'
+			favorite.setAttribute('aria-label', item.favorite ? t('Remove prompt favorite') : t('Favorite prompt'))
+			favorite.addEventListener('click', () => { promptHistory.update(item.id, { favorite: !item.favorite }); renderPromptHistory() })
+			const category = document.createElement('button')
+			category.type = 'button'
+			category.className = 'prompt-history-action'
+			category.textContent = t('Category')
+			category.addEventListener('click', () => {
+				const value = window.prompt(t('Prompt category'), item.category || '')
+				if (value !== null) { promptHistory.update(item.id, { category: value }); renderPromptHistory() }
+			})
+			row.append(reuse, metaText, favorite, category)
+			promptList.appendChild(row)
+		})
+	}
+	promptSearch.addEventListener('input', renderPromptHistory)
+	promptPanel.addEventListener('toggle', () => { if (promptPanel.open) renderPromptHistory() })
+	promptExport.addEventListener('click', () => {
+		const blob = new Blob([promptHistory.export()], { type: 'application/json' })
+		const url = URL.createObjectURL(blob)
+		const anchor = document.createElement('a')
+		anchor.href = url
+		anchor.download = 'eva-prompt-library.json'
+		anchor.click()
+		URL.revokeObjectURL(url)
+	})
+	promptPanel.append(promptSummary, promptSearch, promptList, promptExport)
 	const scopePill = document.createElement('span')
 	scopePill.className = 'pill pill-warn'
 	scopePill.hidden = true
@@ -453,7 +527,7 @@ export function mountChat(root, opts = {}) {
 	agentStatusPill.hidden = true
 	agentStatusPill.setAttribute('role', 'status')
 	customizeBtn.addEventListener('click', () => openCustomizeDialog())
-	head.append(h1, scopePill, customizePill, agentStatusPill, customizeBtn, exportBtn)
+	head.append(h1, scopePill, customizePill, agentStatusPill, customizeBtn, promptPanel, exportBtn)
 
 	const scroll = document.createElement('div')
 	scroll.className = 'chat-log'
@@ -1245,6 +1319,8 @@ export function mountChat(root, opts = {}) {
 	const queueInBackground = () => {
 		const msg = input.value.trim()
 		if (!msg || sending) return
+		promptHistory.record(msg)
+		renderPromptHistory()
 		const history = messages.filter((m) => m && (m.role === 'user' || m.role === 'assistant') && m.text).slice(-100).map((m) => ({ role: m.role, content: String(m.text).slice(0, 20000) }))
 		backgroundBtn.disabled = true
 		ensureChat().then((ok) => { if (!ok) throw new Error('Chat is unavailable'); return api('POST', '/backgroundChat', { chatId, message: msg, history, requestId: backgroundRequestId || undefined }) })
@@ -1263,6 +1339,8 @@ export function mountChat(root, opts = {}) {
 	const send = () => {
 		const msg = input.value.trim()
 		if (!msg || sending) return
+		promptHistory.record(msg)
+		renderPromptHistory()
 		sending = true
 		currentAbort = new AbortController()
 		stoppedByUser = false

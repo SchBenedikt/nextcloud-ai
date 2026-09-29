@@ -23,6 +23,13 @@ final class FileChangeListenerPathTest extends TestCase {
         self::assertNull($relativePath->invoke($listener, 'alice', '/bob/files/plan.md'));
     }
 
+    public function testFilesRootIsAValidFolderPurgePath(): void {
+        $listener = (new \ReflectionClass(FileChangeListener::class))->newInstanceWithoutConstructor();
+        $relativePath = (new \ReflectionClass(FileChangeListener::class))->getMethod('relativePath');
+
+        self::assertSame('', $relativePath->invoke($listener, 'alice', '/alice/files'));
+    }
+
     public function testMountedPathTakesPrecedenceOverOriginalOwner(): void {
         $listener = (new \ReflectionClass(FileChangeListener::class))->newInstanceWithoutConstructor();
         $file = $this->createMock(File::class);

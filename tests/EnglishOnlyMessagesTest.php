@@ -137,22 +137,21 @@ final class EnglishOnlyMessagesTest extends TestCase {
         $missing = [];
         foreach (glob(dirname(__DIR__) . '/lib/TaskProcessing/Eva*Provider.php') ?: [] as $file) {
             $name = basename($file);
-            // Providers that pass the prompt straight through (chat, text-to-text)
-            // delegate their language handling elsewhere.
-            if (in_array($name, ['EvaTextToTextProvider.php', 'EvaChangeToneProvider.php'], true)) {
+            // These providers do not generate prose in the input language:
+            // emoji emits symbols, OCR extracts source text, and translation
+            // deliberately emits the selected target language.
+            if (in_array($name, ['EvaEmojiProvider.php', 'EvaOcrProvider.php', 'EvaTranslateProvider.php'], true)) {
                 continue;
             }
             $source = $this->withoutComments((string)file_get_contents($file));
-            if (preg_match('/same language as/i', $source) !== 1) {
+            if (str_contains($source, 'extends EvaTextTransformProvider')) {
+                $source .= $this->withoutComments((string)file_get_contents(dirname(__DIR__) . '/lib/TaskProcessing/EvaTextTransformProvider.php'));
+            }
+            if (preg_match('/same language as|language of (?:the )?(?:user|input|question)/i', $source) !== 1) {
                 $missing[] = $name;
             }
         }
-        self::assertNotContains(
-            'EvaChangeToneProvider.php',
-            $missing,
-            'the tone provider must keep answering in the text language'
-        );
-        self::assertLessThanOrEqual(6, count($missing), 'prompts should state the answer language: ' . implode(', ', $missing));
+        self::assertSame([], $missing, 'generated text must preserve the input language: ' . implode(', ', $missing));
     }
 
     private function looksGerman(string $text): bool
