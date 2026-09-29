@@ -170,7 +170,8 @@ final class TalkBotAddressingTest extends TestCase {
 
     /** With classify-all every message is classified, but only a yes answers. */
     public function testClassifyAllStillRequiresAYes(): void {
-        [$listener, , $rag] = $this->harness(static fn(): array => ['answer' => 'no', 'model' => 'test'], classifyAll: '1');
+        [$listener, $ollama, $rag] = $this->harness(static fn(): array => ['answer' => 'no', 'model' => 'test'], classifyAll: '1');
+        $ollama->expects(self::once())->method('chat')->willReturn(['answer' => 'no', 'model' => 'test']);
         $rag->expects(self::never())->method('ask');
 
         $event = $this->event('Der Kaffee ist alle.');
