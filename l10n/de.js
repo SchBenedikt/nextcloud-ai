@@ -1050,5 +1050,13 @@ OC.L10N.register("eva_ai", {
   "Favorite prompt": "Prompt als Favorit markieren",
   "Remove prompt favorite": "Favorit entfernen",
   "Category": "Kategorie",
-  "Prompt category": "Prompt-Kategorie"
+  "Prompt category": "Prompt-Kategorie",
+  "Read answer aloud": "Antwort vorlesen",
+  "Pause speech": "Vorlesen pausieren",
+  "Resume speech": "Vorlesen fortsetzen",
+  "Stop speech": "Vorlesen stoppen",
+  "Playback speed": "Vorlesegeschwindigkeit",
+  "Voice": "Stimme",
+  "Default voice": "Standardstimme",
+  "Speech playback is not supported in this browser.": "Dieser Browser unterstützt keine Sprachausgabe."
 }, "nplurals=2; plural=(n != 1);");

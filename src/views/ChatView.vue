@@ -247,6 +247,7 @@ export default {
 
 .chatview-root .racts { position: absolute; top: -2px; right: 0; display: flex; gap: 2px; opacity: 0; transition: opacity .12s; }
 .chatview-root .rm:hover .racts { opacity: 1; }
+.chatview-root .rm:focus-within .racts { opacity: 1; }
 .chatview-root .racts .rcopy,
 .chatview-root .racts .ract {
 	width: 24px; height: 24px; padding: 0; border: 0; border-radius: 5px;
@@ -256,6 +257,12 @@ export default {
 }
 .chatview-root .racts .ract:hover,
 .chatview-root .racts .rcopy:hover { background: var(--color-background-hover, #e5e5e5); }
+.chatview-root .racts .rspeech-rate,
+.chatview-root .racts .rspeech-voice { align-self: center; min-height: 28px; max-width: 110px; padding: 2px 6px; border: 1px solid var(--color-border, #bbb); border-radius: 6px; color: var(--color-main-text, #222); background: var(--color-main-background, #fff); font: inherit; font-size: 11px; }
+.chatview-root .racts .rspeech-rate:focus-visible,
+.chatview-root .racts .rspeech-voice:focus-visible { outline: 2px solid var(--color-primary-element, #00679c); outline-offset: 1px; }
+.chatview-root .racts button:disabled { opacity: .55; cursor: not-allowed; }
+@media (prefers-reduced-motion: reduce) { .chatview-root .racts { transition: none; } }
 
 
 .chatview-root .rth { margin: 0 0 9px; font-size: 12px; }
