@@ -1,9 +1,23 @@
 # EVA AI — Your AI assistant for Nextcloud
 
-EVA brings searchable knowledge, cited answers, and practical AI tools into
-Nextcloud. It combines semantic and keyword search across files with optional
-integrations for Nextcloud Mail, Talk, Calendar, and other apps. Choose local
-models or a hosted provider and control which data each integration can use.
+EVA turns your Nextcloud files into a searchable knowledge base and answers
+questions with links back to the source documents. It combines semantic and
+keyword search with practical tools for Nextcloud Files, Mail, Talk, Calendar,
+and more. Choose local models or a hosted provider, and review each integration's
+data flow before enabling it.
+
+[![License: AGPL v3](https://img.shields.io/badge/License-AGPL%20v3-blue.svg)](https://www.gnu.org/licenses/agpl-3.0)
+[![Nextcloud](https://img.shields.io/badge/Nextcloud-30--35-blue)](https://nextcloud.com)
+[![PHP](https://img.shields.io/badge/PHP-8.2%2B-purple)](https://php.net)
+[![GitHub stars](https://img.shields.io/github/stars/SchBenedikt/nextcloud-ai?style=social)](https://github.com/SchBenedikt/nextcloud-ai/stargazers)
+
+**Get started:** [Install EVA](#installation) · [See what it can do](#features) ·
+[Privacy and security](docs/SECURITY.md) · [Configuration](#configuration) ·
+[Report a bug or request a feature](https://github.com/SchBenedikt/nextcloud-ai/issues)
+
+If EVA is useful in your Nextcloud setup, a
+[GitHub star](https://github.com/SchBenedikt/nextcloud-ai/stargazers) helps
+others discover it.
 
 ## See Eva in action
 
@@ -19,15 +33,9 @@ Screenshots show EVA inside the Nextcloud shell. The chat overview uses sample
 workspace data; private chat and file labels elsewhere were anonymised before
 publication.
 
-[![License: AGPL v3](https://img.shields.io/badge/License-AGPL%20v3-blue.svg)](https://www.gnu.org/licenses/agpl-3.0)
-[![Nextcloud](https://img.shields.io/badge/Nextcloud-30--35-blue)](https://nextcloud.com)
-[![PHP](https://img.shields.io/badge/PHP-8.2%2B-purple)](https://php.net)
-
-Ask questions in natural language and get answers grounded in your files, with
-source links so you can check the evidence. EVA stores its index in Nextcloud's
-database and can use local Ollama models or configured hosted providers. Review
-the [data and privacy notes](#data-and-privacy) before indexing or enabling an
-external provider.
+EVA keeps its index in Nextcloud's database. Before indexing files or enabling
+an external provider, review [data and privacy](#data-and-privacy) so you can
+choose which content leaves your server.
 
 ---
 
