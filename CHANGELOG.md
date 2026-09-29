@@ -2,6 +2,13 @@
 
 ## [Unreleased]
 
+## [1.17.11] - 2026-09-29
+
+### Tool executor architecture
+
+- Move Nextcloud capability discovery, route learning, and confirmation-gated app API calls into a dedicated executor.
+- Preserve same-origin route checks, credential redaction, and external connector alias routing.
+
 ## [1.17.10] - 2026-09-29
 
 ### Tool executor architecture
