@@ -18,6 +18,8 @@ use OCA\EvaAi\Service\Ollama;
 use OCA\EvaAi\Service\OllamaUrlValidator;
 use OCA\EvaAi\Service\RagService;
 use OCA\EvaAi\Service\KnowledgeInitializer;
+use OCA\EvaAi\Dto\ChatMetadataRequest;
+use OCA\EvaAi\Dto\ChatImportRequest;
 use OCP\AppFramework\OCSController;
 use OCP\AppFramework\Http\Attribute\NoAdminRequired;
 use OCA\EvaAi\Http\StreamTraversableResponse;
@@ -1710,33 +1712,13 @@ class ApiController extends OCSController {
         if ($user === null) {
             return new ErrorDataResponse(['error' => 'Not logged in'], 401);
         }
-        $meta = [];
-        $body = $this->requestBody();
-        foreach (['pinned', 'archived'] as $flag) {
-            if (array_key_exists($flag, $body)) {
-                $meta[$flag] = !empty($body[$flag]);
-            }
+        try {
+            $meta = ChatMetadataRequest::fromArray($this->requestBody())->metadata;
+        } catch (\InvalidArgumentException $e) {
+            return new ErrorDataResponse(['error' => $e->getMessage()], 400);
         }
-        if (array_key_exists('folder', $body)) {
-            $meta['folder'] = trim((string)$body['folder']);
-        }
-        if (array_key_exists('tags', $body)) {
-            $meta['tags'] = $body['tags'];
-        }
-        if (array_key_exists('scopePath', $body)) {
-            $meta['scopePath'] = trim((string)$body['scopePath']);
-        }
-        if (array_key_exists('instructions', $body)) {
-            // Free-text custom instructions (Issue #90); capped server-side.
-            $meta['instructions'] = mb_substr(trim((string)$body['instructions']), 0, 2000);
-        }
-        if (array_key_exists('persona', $body)) {
-            // Preset persona slug (Issue #90); only known slugs are stored.
-            $persona = trim((string)$body['persona']);
-            $meta['persona'] = array_key_exists($persona, RagService::PERSONAS) ? $persona : '';
-        }
-        if ($meta === []) {
-            return new ErrorDataResponse(['error' => 'No metadata given'], 400);
+        if (isset($meta['persona']) && !array_key_exists($meta['persona'], RagService::PERSONAS)) {
+            $meta['persona'] = '';
         }
         try {
             if (!$this->chatStore->setMeta($user, $id, $meta)) {
@@ -2017,10 +1999,12 @@ class ApiController extends OCSController {
     public function importData(): DataResponse {
         $user = $this->requireUser();
         if ($user === null) return new ErrorDataResponse(['error' => 'Not logged in'], 401);
-        $body = $this->requestBody();
-        $chats = $body['chats'] ?? null;
-        if (!is_array($chats)) return new ErrorDataResponse(['error' => 'A JSON export with a chats array is required.'], 400);
-        $count = $this->chatStore->importAll($user, $chats);
+        try {
+            $request = ChatImportRequest::fromArray($this->requestBody());
+        } catch (\InvalidArgumentException $e) {
+            return new ErrorDataResponse(['error' => $e->getMessage()], 400);
+        }
+        $count = $this->chatStore->importAll($user, $request->chats);
         return new ErrorDataResponse(['ok' => true, 'imported' => $count]);
     }
 
