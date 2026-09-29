@@ -17,6 +17,7 @@ use OCA\EvaAi\Service\TalkToolExecutor;
 use OCA\EvaAi\Service\TerminalToolExecutor;
 use OCA\EvaAi\Service\ContactsToolExecutor;
 use OCA\EvaAi\Service\FileToolExecutor;
+use OCA\EvaAi\Service\FileMetadataToolExecutor;
 use OCP\Accounts\IAccountManager;
 use OCP\Contacts\IManager as IContactsManager;
 use OCP\IUserManager;
@@ -119,5 +120,25 @@ final class DomainToolExecutorTest extends TestCase {
 		self::assertContains('update_knowledge', $executor->tools());
 		self::assertContains('list_learned_file_locations', $executor->tools());
 		self::assertSame(['ok' => true, 'result' => ['locations' => [], 'note' => 'Only paths and types are stored; refresh with list_files or search_files when a location may have changed.']], $executor->execute('list_learned_file_locations', 'alice', []));
+	}
+
+	public function testFileMetadataExecutorOwnsCommentTagAndVersionTools(): void {
+		if (!interface_exists(IRootFolder::class)) {
+			$this->markTestSkipped('Nextcloud file APIs are not available');
+		}
+		$executor = new FileMetadataToolExecutor(
+			$this->createMock(IRootFolder::class),
+			$this->createMock(IUserManager::class),
+			$this->createMock(AppConfig::class),
+		);
+
+		self::assertSame([
+			'list_comments', 'add_comment', 'delete_comment', 'list_system_tags',
+			'tag_file', 'untag_file', 'list_file_versions', 'restore_file_version',
+		], $executor->tools());
+		self::assertSame(
+			['ok' => false, 'error' => 'Unsupported file metadata tool: not_a_tool'],
+			$executor->execute('not_a_tool', 'alice', []),
+		);
 	}
 }
