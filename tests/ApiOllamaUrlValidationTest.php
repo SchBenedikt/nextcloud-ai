@@ -4,15 +4,13 @@ declare(strict_types=1);
 
 namespace OCA\EvaAi\Tests;
 
-use OCA\EvaAi\Controller\ApiController;
+use OCA\EvaAi\Service\OllamaUrlValidator;
 use PHPUnit\Framework\TestCase;
 
 /** Input validation for the configurable Ollama endpoint (Issue #594). */
 final class ApiOllamaUrlValidationTest extends TestCase {
     private function validate(string $url): ?string {
-        $controller = (new \ReflectionClass(ApiController::class))->newInstanceWithoutConstructor();
-        $method = new \ReflectionMethod(ApiController::class, 'validateOllamaUrl');
-        return $method->invoke($controller, $url);
+        return OllamaUrlValidator::validate($url);
     }
 
     public function testAcceptsOnlyPlainHttpServiceBaseUrls(): void {
