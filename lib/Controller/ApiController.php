@@ -22,6 +22,7 @@ use OCA\EvaAi\Dto\ChatMetadataRequest;
 use OCA\EvaAi\Dto\ChatImportRequest;
 use OCA\EvaAi\Dto\ChatFolderRequest;
 use OCA\EvaAi\Dto\ChatTitleRequest;
+use OCA\EvaAi\Dto\ChatRegenerateRequest;
 use OCP\AppFramework\OCSController;
 use OCP\AppFramework\Http\Attribute\NoAdminRequired;
 use OCA\EvaAi\Http\StreamTraversableResponse;
@@ -1855,30 +1856,19 @@ class ApiController extends OCSController {
             $body = json_encode(['type' => 'error', 'message' => 'Not logged in']) . "\n";
             return new StreamTraversableResponse(new \ArrayIterator([$body]), 401, $headers);
         }
-        $rawIndex = $this->requestParam('messageIndex', -1);
-        $messageIndex = is_int($rawIndex) ? $rawIndex : -1;
-        $rawText = $this->requestParam('message');
-        if ($rawText !== null && !is_string($rawText)) {
-            $body = json_encode(['type' => 'error', 'message' => 'A valid user message index and non-empty message are required']) . "\n";
+        try {
+            $request = ChatRegenerateRequest::fromArray([
+                'messageIndex' => $this->requestParam('messageIndex', -1),
+                'message' => $this->requestParam('message'),
+                'rev' => $this->requestParam('rev'),
+            ]);
+        } catch (\InvalidArgumentException $e) {
+            $body = json_encode(['type' => 'error', 'message' => $e->getMessage()]) . "\n";
             return new StreamTraversableResponse(new \ArrayIterator([$body]), 400, $headers);
-        }
-        $newText = is_string($rawText) ? trim($rawText) : null;
-        if ($newText !== null && $this->messageTooLong($newText)) {
-            $body = json_encode(['type' => 'error', 'message' => 'Message exceeds the maximum length of 50,000 characters.']) . "\n";
-            return new StreamTraversableResponse(new \ArrayIterator([$body]), 400, $headers);
-        }
-        // The revision the client loaded (Issue #182): a mismatch means the
-        // chat was modified in another tab and the regenerate is rejected.
-        $rawRev = $this->requestParam('rev');
-        $expectedRev = null;
-        if (is_int($rawRev)) {
-            $expectedRev = $rawRev;
-        } elseif (is_string($rawRev) && $rawRev !== '' && ctype_digit($rawRev)) {
-            $expectedRev = (int)$rawRev;
         }
 
         $this->releaseSessionLock();
-        $result = $this->chatStore->beginRegenerate($user, $id, $messageIndex, $newText, $expectedRev);
+        $result = $this->chatStore->beginRegenerate($user, $id, $request->messageIndex, $request->message, $request->revision);
         if (!($result['ok'] ?? false)) {
             $error = (string)($result['error'] ?? 'invalid');
             if ($error === 'conflict') {
