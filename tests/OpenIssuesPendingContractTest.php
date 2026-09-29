@@ -7,6 +7,7 @@ namespace OCA\EvaAi\Tests;
 use OCA\DAV\CalDAV\CalDavBackend;
 use OCA\EvaAi\Service\ActionExecutor;
 use OCA\EvaAi\Service\TerminalToolExecutor;
+use OCA\EvaAi\Service\FileToolExecutor;
 use OCA\EvaAi\Service\CalendarService;
 use OCA\EvaAi\Service\AppConfig;
 use OCA\EvaAi\Service\Indexer;
@@ -75,7 +76,7 @@ final class OpenIssuesPendingContractTest extends TestCase {
      * filenames and report when its traversal limits are reached.
      */
     public function testIssue70SearchFilesSearchesBoundedTextContent(): void {
-        $reflection = new \ReflectionClass(ActionExecutor::class);
+        $reflection = new \ReflectionClass(FileToolExecutor::class);
         $instance = $reflection->newInstanceWithoutConstructor();
         $search = $reflection->getMethod('searchFiles');
         $file = $this->createMock(File::class);
@@ -90,7 +91,7 @@ final class OpenIssuesPendingContractTest extends TestCase {
         self::assertStringContainsString('budget', $result['result']['matches'][0]['snippet']);
         self::assertFalse($result['result']['truncated']);
 
-        $executor = (string)file_get_contents(__DIR__ . '/../lib/Service/ActionExecutor.php');
+        $executor = (string)file_get_contents(__DIR__ . '/../lib/Service/FileToolExecutor.php');
         self::assertStringContainsString("'reason' => 'content'", $executor);
         self::assertStringContainsString('getContent()', $this->sliceBetween($executor, 'private function searchWalk', 'private function marksFile'));
         self::assertStringContainsString('MAX_SEARCH_NODES', $executor);
@@ -102,13 +103,13 @@ final class OpenIssuesPendingContractTest extends TestCase {
         self::assertStringContainsString("'max_depth'", $executor);
         self::assertStringContainsString("'max_nodes'", $executor);
         self::assertStringContainsString("'max_results'", $executor);
-		self::assertStringContainsString('unindexed PDF, DOCX, XLSX, PPTX, ODF and EPUB', $executor);
+		self::assertStringContainsString('unindexed PDF, DOCX, XLSX, PPTX, ODF and EPUB', (string)file_get_contents(__DIR__ . '/../lib/Service/ActionExecutor.php'));
 		self::assertStringContainsString('search_files can inspect supported unindexed office and PDF formats', (string)file_get_contents(__DIR__ . '/../lib/Service/RagService.php'));
     }
 
     /** Direct file search must also find text inside common unindexed documents. */
     public function testIssue70SearchFilesExtractsUnindexedOfficeDocuments(): void {
-        $reflection = new \ReflectionClass(ActionExecutor::class);
+        $reflection = new \ReflectionClass(FileToolExecutor::class);
         $instance = $reflection->newInstanceWithoutConstructor();
         $indexer = $this->createMock(Indexer::class);
         $indexer->expects(self::once())
@@ -131,7 +132,7 @@ final class OpenIssuesPendingContractTest extends TestCase {
     }
 
     public function testIssue70SearchFilesReadsUnknownTextMimeOnlyOnce(): void {
-        $reflection = new \ReflectionClass(ActionExecutor::class);
+        $reflection = new \ReflectionClass(FileToolExecutor::class);
         $instance = $reflection->newInstanceWithoutConstructor();
         $file = $this->createMock(File::class);
         $file->expects(self::once())->method('getContent')->willReturn('Uploaded notes contain the migration keyword.');
@@ -146,7 +147,7 @@ final class OpenIssuesPendingContractTest extends TestCase {
     }
 
     public function testIssue70SearchContinuesWithPartialResultWhenFolderListingFails(): void {
-        $reflection = new \ReflectionClass(ActionExecutor::class);
+        $reflection = new \ReflectionClass(FileToolExecutor::class);
         $instance = $reflection->newInstanceWithoutConstructor();
         $file = $this->createMock(File::class);
         $file->method('getName')->willReturn('notes.txt');
@@ -167,7 +168,7 @@ final class OpenIssuesPendingContractTest extends TestCase {
 
     /** MIME maps are not reliable for newly uploaded plain-text files. */
     public function testIssue70SearchFilesUsesSafeTextExtensionFallback(): void {
-        $reflection = new \ReflectionClass(ActionExecutor::class);
+        $reflection = new \ReflectionClass(FileToolExecutor::class);
         $instance = $reflection->newInstanceWithoutConstructor();
         $file = $this->createMock(File::class);
         $file->method('getName')->willReturn('notes.md');
@@ -185,7 +186,7 @@ final class OpenIssuesPendingContractTest extends TestCase {
 
     /** Unknown octet-stream uploads are accepted only when they look like UTF-8 text. */
     public function testIssue70SearchFilesSniffsUnknownPlainTextSafely(): void {
-        $reflection = new \ReflectionClass(ActionExecutor::class);
+        $reflection = new \ReflectionClass(FileToolExecutor::class);
         $instance = $reflection->newInstanceWithoutConstructor();
         $file = $this->createMock(File::class);
         $file->method('getName')->willReturn('export.data');
@@ -443,7 +444,7 @@ final class OpenIssuesPendingContractTest extends TestCase {
      * while dropping old non-profile lines.
      */
     public function testIssue93KnowledgeTrimPreservesIdentityBlock(): void {
-        $executor = new \ReflectionClass(ActionExecutor::class);
+        $executor = new \ReflectionClass(FileToolExecutor::class);
         $instance = $executor->newInstanceWithoutConstructor();
         $method = $executor->getMethod('trimKnowledge');
         $content = implode("\n", [
@@ -736,6 +737,7 @@ final class OpenIssuesPendingContractTest extends TestCase {
 
 	public function testExternalConnectorsAreBoundedAndConfirmationReady(): void {
 		$executor = (string)file_get_contents(__DIR__ . '/../lib/Service/ActionExecutor.php');
+		$fileExecutor = (string)file_get_contents(__DIR__ . '/../lib/Service/FileToolExecutor.php');
 		$policy = (string)file_get_contents(__DIR__ . '/../lib/Service/ToolPolicy.php');
 		self::assertStringContainsString('safeConnectorUrl', $executor);
 		self::assertStringContainsString("'https'", $executor);
@@ -772,13 +774,13 @@ final class OpenIssuesPendingContractTest extends TestCase {
 		self::assertStringContainsString('OPENVERSE_IMAGE_ENDPOINT', $webSearch);
 		self::assertStringContainsString('searchOpenverseImages', $webSearch);
 		self::assertStringContainsString("'create_files'", $executor);
-		self::assertStringContainsString('private function createFiles', $executor);
+		self::assertStringContainsString('private function createFiles', $fileExecutor);
 		self::assertStringContainsString("'move_file'", $executor);
-		self::assertStringContainsString('private function moveFile', $executor);
+		self::assertStringContainsString('private function moveFile', $fileExecutor);
 		self::assertStringContainsString("'copy_file'", $executor);
-		self::assertStringContainsString('private function copyFile', $executor);
+		self::assertStringContainsString('private function copyFile', $fileExecutor);
 		self::assertStringContainsString("'file_checksum'", $executor);
-		self::assertStringContainsString('private function fileChecksum', $executor);
+		self::assertStringContainsString('private function fileChecksum', $fileExecutor);
 		self::assertStringContainsString("'read_files'", $executor);
 		$searcher = (string)file_get_contents(__DIR__ . '/../lib/Service/Searcher.php');
 		self::assertStringContainsString('cloudChatWithLocalEmbedding', $searcher);
@@ -789,14 +791,14 @@ final class OpenIssuesPendingContractTest extends TestCase {
 		self::assertStringContainsString('gc_collect_cycles()', $indexer);
 		self::assertStringContainsString("customValueConfigured(\$user, \$prefix, 'token')", $executor);
 		self::assertStringContainsString("getCustomValue(\$user, \$prefix, 'token')", $executor);
-		self::assertStringContainsString('private function readFiles', $executor);
+		self::assertStringContainsString('private function readFiles', $fileExecutor);
 		self::assertStringContainsString("'extension' => ['type' => 'string'", $executor);
-		self::assertStringContainsString('$scopePath = $this->cleanPath', $executor);
-		self::assertStringContainsString('SEARCH_CACHE_TTL', $executor);
-		self::assertStringContainsString('createDistributed(\'eva_ai_search_\')', $executor);
-		self::assertStringContainsString('bumpSearchRevision', $executor);
+		self::assertStringContainsString('$scopePath = $this->cleanPath', $fileExecutor);
+		self::assertStringContainsString('SEARCH_CACHE_TTL', $fileExecutor);
+		self::assertStringContainsString('createDistributed(\'eva_ai_search_\')', $fileExecutor);
+		self::assertStringContainsString('bumpSearchRevision', $fileExecutor);
 		self::assertStringContainsString("'search_revision'", (string)file_get_contents(__DIR__ . '/../lib/Service/AppConfig.php'));
-		self::assertStringContainsString("'file_id' => (int)\$node->getId()", $executor);
+		self::assertStringContainsString("'file_id' => (int)\$node->getId()", $fileExecutor);
 		self::assertStringContainsString('recordToolMetric', $executor);
 		self::assertStringContainsString('public function recordTool', (string)file_get_contents(__DIR__ . '/../lib/Service/UsageMetrics.php'));
 		self::assertGreaterThanOrEqual(2, substr_count((string)file_get_contents(__DIR__ . '/../lib/Service/UsageMetrics.php'), "eq('operation', \$qb->createNamedParameter('chat')"));
