@@ -2,6 +2,13 @@
 
 ## [Unreleased]
 
+## [1.17.4] - 2026-09-29
+
+### Scheduled briefings
+
+- Add editable briefing types and delivery through notifications, the instance mailer, or a user-authorized Talk room.
+- Add queued run-now actions and a private 50-entry delivery history with partial/failure outcomes.
+
 ## [1.17.3] - 2026-09-29
 
 ### Prompt templates

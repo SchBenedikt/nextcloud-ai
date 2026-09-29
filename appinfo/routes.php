@@ -56,6 +56,8 @@ return [
         ['name' => 'api#chatAppend', 'url' => '/api/chats/{id}/messages', 'verb' => 'POST'],
         ['name' => 'api#chatReaction', 'url' => '/api/chats/{id}/reaction', 'verb' => 'POST'],
         ['name' => 'api#feedbackStats', 'url' => '/api/feedback/stats', 'verb' => 'GET'],
+        ['name' => 'api#briefingHistory', 'url' => '/api/briefings/history', 'verb' => 'GET'],
+        ['name' => 'api#runBriefingNow', 'url' => '/api/briefings/{id}/run', 'verb' => 'POST'],
         ['name' => 'api#templates', 'url' => '/api/templates', 'verb' => 'GET'],
         ['name' => 'api#saveTemplate', 'url' => '/api/templates', 'verb' => 'POST'],
         ['name' => 'api#exportTemplates', 'url' => '/api/templates/export', 'verb' => 'GET'],

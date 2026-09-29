@@ -1166,4 +1166,31 @@ OC.L10N.register("eva_ai", {
   "Templates could not be imported: {error}": "Vorlagen konnten nicht importiert werden: {error}",
   "Export a JSON template library to share it with teammates; import their file to reuse it.": "Exportiere die JSON-Vorlagenbibliothek, um sie mit anderen zu teilen. Importiere deren Datei, um Vorlagen wiederzuverwenden.",
   "Enter a prompt before saving it as a template.": "Gib einen Prompt ein, bevor du ihn als Vorlage speicherst."
+,
+  "EVA can prepare recurring answers and deliver them by notification, email or Talk. They are read-only unless you explicitly enable actions per briefing.": "EVA kann wiederkehrende Antworten erstellen und per Benachrichtigung, E-Mail oder Talk zustellen. Sie sind schreibgeschützt, sofern du Aktionen nicht ausdrücklich für eine Vorlage aktivierst.",
+  "Run now": "Jetzt ausführen",
+  "Edit briefing": "Briefing bearbeiten",
+  "Briefing type": "Briefingtyp",
+  "Morning briefing": "Morgen-Briefing",
+  "Document digest": "Dokumentenübersicht",
+  "Custom report": "Eigener Bericht",
+  "Delivery channels": "Zustellungswege",
+  "Nextcloud notification": "Nextcloud-Benachrichtigung",
+  "Email": "E-Mail",
+  "Talk room name or token": "Name oder Token des Talk-Raums",
+  "EVA checks that you are still a member of this room and that Talk posting is enabled in your settings.": "EVA prüft, ob du noch Mitglied des Raums bist und das Schreiben in Talk in deinen Einstellungen aktiviert ist.",
+  "Choose at least one delivery channel.": "Wähle mindestens einen Zustellungsweg.",
+  "Enter a Talk room name or token.": "Gib den Namen oder das Token eines Talk-Raums ein.",
+  "Recent briefing history": "Letzte Briefings",
+  "Scheduled": "Geplant",
+  "No response was delivered.": "Es wurde keine Antwort zugestellt.",
+  "Briefing queued. It will appear in the history when delivery finishes.": "Briefing ist eingeplant. Es erscheint nach der Zustellung im Verlauf.",
+  "The briefing could not be started: {error}": "Briefing konnte nicht gestartet werden: {error}"
+,
+  "success": "Erfolgreich",
+  "partial": "Teilweise zugestellt",
+  "failed": "Fehlgeschlagen"
+,
+  "Enable scheduled briefings": "Geplante Briefings aktivieren",
+  "Briefings use your server cron and account timezone. Every briefing is read-only by default. If you enable actions on one briefing, EVA may perform the requested changes automatically and reports the result through the selected delivery channels.": "Briefings verwenden den Server-Cron und die Zeitzone deines Kontos. Standardmäßig arbeiten sie schreibgeschützt. Wenn du Aktionen für ein Briefing aktivierst, kann EVA angeforderte Änderungen automatisch ausführen und meldet das Ergebnis über die gewählten Zustellungswege."
 }, "nplurals=2; plural=(n != 1);");

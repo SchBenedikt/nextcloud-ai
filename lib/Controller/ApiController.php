@@ -422,6 +422,19 @@ class ApiController extends OCSController {
             if (array_key_exists('allow_actions', $row) && !is_bool($row['allow_actions'])) {
                 return 'Scheduled briefing allow_actions must be a boolean.';
             }
+            if (array_key_exists('type', $row) && !in_array($row['type'], ['morning', 'document_digest', 'custom'], true)) {
+                return 'Scheduled briefing type must be morning, document_digest or custom.';
+            }
+            if (array_key_exists('channels', $row)) {
+                $channels = $row['channels'];
+                if (!is_array($channels) || $channels === [] || count($channels) > 3 || array_diff($channels, ['notification', 'email', 'talk']) !== []) {
+                    return 'Choose one or more supported briefing delivery channels.';
+                }
+                if (in_array('talk', $channels, true)
+                    && (!is_string($row['talk_room'] ?? null) || trim($row['talk_room']) === '' || mb_strlen($row['talk_room']) > 128)) {
+                    return 'A Talk briefing needs a room name or room token of at most 128 characters.';
+                }
+            }
             foreach ($row['days'] as $day) {
                 if (!is_int($day) && !ctype_digit((string)$day) || (int)$day < 1 || (int)$day > 7) {
                     return 'Scheduled briefing weekdays must be between 1 (Monday) and 7 (Sunday).';
@@ -1576,6 +1589,35 @@ class ApiController extends OCSController {
             return new ErrorDataResponse($this->chatStore->feedbackStats($user));
         } catch (\Throwable $e) {
             return $this->chatErrorResponse($e);
+        }
+    }
+
+    #[NoAdminRequired]
+    public function briefingHistory(): DataResponse {
+        $user = $this->requireUser();
+        if ($user === null) return new ErrorDataResponse(['error' => 'Not logged in'], 401);
+        $this->config->setUserId($user);
+        $history = json_decode($this->config->get('proactive_schedule_history'), true);
+        return new ErrorDataResponse(['items' => is_array($history) ? array_slice($history, -50) : []]);
+    }
+
+    #[NoAdminRequired]
+    public function runBriefingNow(string $id): DataResponse {
+        $user = $this->requireUser();
+        if ($user === null) return new ErrorDataResponse(['error' => 'Not logged in'], 401);
+        if (preg_match('/^[a-zA-Z0-9_-]{1,64}$/', $id) !== 1) return new ErrorDataResponse(['error' => 'Invalid briefing id.'], 400);
+        $this->config->setUserId($user);
+        if ($this->config->get('proactive_enabled') !== '1') return new ErrorDataResponse(['error' => 'Enable scheduled briefings before running one.'], 409);
+        $schedules = json_decode($this->config->get('proactive_schedules'), true);
+        $matches = is_array($schedules) ? array_values(array_filter($schedules, static fn($item) => is_array($item) && ($item['id'] ?? '') === $id)) : [];
+        $schedule = $matches[0] ?? null;
+        if (!is_array($schedule) || ($schedule['enabled'] ?? true) !== true) return new ErrorDataResponse(['error' => 'The enabled briefing was not found.'], 404);
+        try {
+            $this->jobList->scheduleAfter(\OCA\EvaAi\BackgroundJob\ProactiveBriefingJob::class, time() + 1, ['userId' => $user, 'briefingId' => $id, 'manual' => true]);
+            return new ErrorDataResponse(['ok' => true, 'queued' => true]);
+        } catch (\Throwable $e) {
+            $this->logger->warning('eva_ai: could not queue a manual briefing', ['user' => $user, 'briefing' => $id, 'exception' => $e]);
+            return new ErrorDataResponse(['error' => 'The briefing could not be queued.'], 503);
         }
     }
 

@@ -452,25 +452,29 @@
 
 			<fieldset class="settings-fieldset" :disabled="briefingsLocked">
 			<section id="settings-briefings" class="settings-section briefing-section">
-				<div class="section-heading"><div><h3>{{ $t('Scheduled briefings') }}</h3><p>{{ $t('EVA can prepare recurring answers and deliver them in your Nextcloud notifications. They are read-only unless you explicitly enable actions per briefing.') }}</p></div><span class="briefing-count">{{ proactiveBriefings.length }} / 20</span></div>
-					<NcCheckboxRadioSwitch v-model="proactiveEnabled" type="switch" class="native-toggle">{{ $t('Let EVA send scheduled notifications') }}</NcCheckboxRadioSwitch>
-					<div v-if="proactiveEnabled" class="briefing-note"><strong>{{ $t('How this works') }}</strong><span>{{ $t('Briefings use your server cron and account timezone. Every briefing is read-only by default. If you enable actions on one briefing, EVA may perform the requested changes automatically and reports the result in the notification.') }}</span></div>
+				<div class="section-heading"><div><h3>{{ $t('Scheduled briefings') }}</h3><p>{{ $t('EVA can prepare recurring answers and deliver them by notification, email or Talk. They are read-only unless you explicitly enable actions per briefing.') }}</p></div><span class="briefing-count">{{ proactiveBriefings.length }} / 20</span></div>
+					<NcCheckboxRadioSwitch v-model="proactiveEnabled" type="switch" class="native-toggle">{{ $t('Enable scheduled briefings') }}</NcCheckboxRadioSwitch>
+					<div v-if="proactiveEnabled" class="briefing-note"><strong>{{ $t('How this works') }}</strong><span>{{ $t('Briefings use your server cron and account timezone. Every briefing is read-only by default. If you enable actions on one briefing, EVA may perform the requested changes automatically and reports the result through the selected delivery channels.') }}</span></div>
 					<div v-if="proactiveEnabled" class="briefing-editor">
 						<div v-if="!proactiveBriefings.length" class="briefing-empty"><strong>{{ $t('No briefings yet') }}</strong><span>{{ $t('Add your first briefing below, for example a morning calendar summary or a weekly file digest.') }}</span></div>
 						<div v-for="briefing in proactiveBriefings" :key="briefing.id" class="briefing-card">
-							<div class="briefing-card-top"><div class="briefing-time"><span>{{ briefing.time }}</span><small>{{ briefing.days.map(dayName).join(' · ') }}</small></div><div class="briefing-card-actions"><NcCheckboxRadioSwitch :model-value="briefing.enabled !== false" type="switch" :aria-label="$t('Toggle briefing')" @update:model-value="toggleBriefing(briefing.id)">{{ briefing.enabled === false ? $t('Paused') : $t('Active') }}</NcCheckboxRadioSwitch><NcButton variant="tertiary-no-background" @click="toggleBriefingActions(briefing.id)">{{ briefing.allow_actions ? $t('Disable actions') : $t('Enable actions') }}</NcButton><NcButton variant="tertiary-no-background" @click="removeBriefing(briefing.id)">{{ $t('Remove') }}</NcButton></div></div>
-							<p class="briefing-prompt">{{ briefing.prompt }}</p><small class="briefing-next">{{ briefing.enabled === false ? $t('Paused') : $t('Runs on {days} at {time}', { days: briefing.days.map(dayName).join(', '), time: briefing.time }) }} <span v-if="briefing.allow_actions" class="briefing-action-badge">{{ $t('Actions enabled') }}</span></small>
+							<div class="briefing-card-top"><div class="briefing-time"><span>{{ briefing.time }}</span><small>{{ briefing.days.map(dayName).join(' · ') }}</small></div><div class="briefing-card-actions"><NcCheckboxRadioSwitch :model-value="briefing.enabled !== false" type="switch" :aria-label="$t('Toggle briefing')" @update:model-value="toggleBriefing(briefing.id)">{{ briefing.enabled === false ? $t('Paused') : $t('Active') }}</NcCheckboxRadioSwitch><NcButton variant="tertiary-no-background" @click="editBriefing(briefing)">{{ $t('Edit') }}</NcButton><NcButton variant="tertiary-no-background" :disabled="briefing.enabled === false" @click="runBriefingNow(briefing.id)">{{ $t('Run now') }}</NcButton><NcButton variant="tertiary-no-background" @click="toggleBriefingActions(briefing.id)">{{ briefing.allow_actions ? $t('Disable actions') : $t('Enable actions') }}</NcButton><NcButton variant="tertiary-no-background" @click="removeBriefing(briefing.id)">{{ $t('Remove') }}</NcButton></div></div>
+							<p class="briefing-prompt">{{ briefing.prompt }}</p><small class="briefing-next">{{ briefing.enabled === false ? $t('Paused') : $t('Runs on {days} at {time}', { days: briefing.days.map(dayName).join(', '), time: briefing.time }) }} · {{ briefingTypeName(briefing.type) }} · {{ (briefing.channels || ['notification']).map(channelName).join(', ') }} <span v-if="briefing.allow_actions" class="briefing-action-badge">{{ $t('Actions enabled') }}</span></small>
 						</div>
-						<div class="briefing-form"><div class="briefing-form-title"><strong>{{ $t('Create a briefing') }}</strong><span>{{ $t('Choose what EVA should prepare and when you want it.') }}</span></div>
+						<div class="briefing-form"><div class="briefing-form-title"><strong>{{ editingBriefingId ? $t('Edit briefing') : $t('Create a briefing') }}</strong><span>{{ $t('Choose what EVA should prepare and when you want it.') }}</span></div>
 						<div class="field-grid">
 							<div class="field field-wide"><NcTextField v-model="briefingDraft.prompt" :label="$t('What should EVA do?')" :label-outside="true" :placeholder="$t('For example: summarize my calendar for today')" /><p class="field-help">{{ $t('Write a question or instruction in plain language. You can ask about files, calendar, tasks or your knowledge base.') }}</p></div>
+							<div class="field"><NcSelect input-id="briefing-type" v-model="briefingDraft.type" :options="briefingTypeOptions" label="label" :reduce="option => option.value" :input-label="$t('Briefing type')" :label-outside="true" /></div>
 							<div class="briefing-time-field"><NcTextField v-model="briefingDraft.time" type="time" :label="$t('Time')" :label-outside="true" /></div>
 						</div>
+						<div><span class="native-label">{{ $t('Delivery channels') }}</span><div class="weekday-picker"><NcCheckboxRadioSwitch v-model="briefingDraft.channels" type="checkbox" value="notification">{{ $t('Nextcloud notification') }}</NcCheckboxRadioSwitch><NcCheckboxRadioSwitch v-model="briefingDraft.channels" type="checkbox" value="email">{{ $t('Email') }}</NcCheckboxRadioSwitch><NcCheckboxRadioSwitch v-model="briefingDraft.channels" type="checkbox" value="talk">{{ $t('Nextcloud Talk') }}</NcCheckboxRadioSwitch></div></div>
+						<div v-if="briefingDraft.channels.includes('talk')" class="field"><NcTextField v-model="briefingDraft.talk_room" :label="$t('Talk room name or token')" :label-outside="true" /><p class="field-help">{{ $t('EVA checks that you are still a member of this room and that Talk posting is enabled in your settings.') }}</p></div>
 						<NcCheckboxRadioSwitch v-model="briefingDraft.allow_actions" type="switch">{{ $t('Allow EVA to perform requested actions automatically') }}</NcCheckboxRadioSwitch>
 						<p v-if="briefingDraft.allow_actions" class="field-help briefing-action-warning">{{ $t('Use only for prompts you trust. EVA will execute needed changes in the background without a second dialog; generic app APIs still need the encrypted Nextcloud app token.') }}</p>
 						<div><span class="native-label">{{ $t('Repeat on') }}</span><div class="weekday-picker"><NcCheckboxRadioSwitch v-for="day in weekdays" :key="day.value" v-model="briefingDraft.days" type="checkbox" :value="day.value">{{ day.label }}</NcCheckboxRadioSwitch></div></div>
-						<div class="briefing-form-actions"><NcButton variant="primary" :disabled="saving || proactiveBriefings.length >= 20" @click="addBriefing">{{ $t('Add briefing') }}</NcButton><span>{{ $t('{count} slots remaining', { count: Math.max(0, 20 - proactiveBriefings.length) }) }}</span></div><p v-if="briefingFormError" class="field-help briefing-action-warning" role="alert">{{ briefingFormError }}</p></div>
+						<div class="briefing-form-actions"><NcButton variant="primary" :disabled="saving || (!editingBriefingId && proactiveBriefings.length >= 20)" @click="saveBriefing">{{ editingBriefingId ? $t('Save changes') : $t('Add briefing') }}</NcButton><NcButton v-if="editingBriefingId" variant="tertiary" @click="cancelEditBriefing">{{ $t('Cancel') }}</NcButton><span>{{ $t('{count} slots remaining', { count: Math.max(0, 20 - proactiveBriefings.length) }) }}</span></div><p v-if="briefingFormError" class="field-help briefing-action-warning" role="alert">{{ briefingFormError }}</p></div>
 					</div>
+					<div v-if="briefingHistory.length" class="briefing-history"><h4>{{ $t('Recent briefing history') }}</h4><article v-for="(run, index) in briefingHistory.slice(0, 10)" :key="run.id + '-' + run.time + '-' + index" class="briefing-history-row"><div><strong>{{ briefingTypeName(run.type) }}</strong><small>{{ formatDateTime(run.time) }} · {{ run.manual ? $t('Run now') : $t('Scheduled') }} · {{ $t(run.status) }} · {{ (run.channels || []).map(channelName).join(', ') }}<span v-if="failureSummary(run)"> · {{ failureSummary(run) }}</span></small></div><p>{{ run.text || failureSummary(run) || $t('No response was delivered.') }}</p></article></div>
 			</section>
 			</fieldset>
 
@@ -810,12 +814,23 @@ export default {
 			{ value: 1, label: t('Mon') }, { value: 2, label: t('Tue') }, { value: 3, label: t('Wed') },
 			{ value: 4, label: t('Thu') }, { value: 5, label: t('Fri') }, { value: 6, label: t('Sat') }, { value: 7, label: t('Sun') },
 		]
-		const briefingDraft = ref({ prompt: '', time: '08:00', days: [1, 2, 3, 4, 5], allow_actions: false })
+		const briefingDraft = ref({ prompt: '', time: '08:00', days: [1, 2, 3, 4, 5], allow_actions: false, type: 'custom', channels: ['notification'], talk_room: '' })
 		const briefingFormError = ref('')
+		const editingBriefingId = ref(null)
+		const briefingHistory = ref([])
+		const briefingTypeOptions = [
+			{ value: 'morning', label: t('Morning briefing') },
+			{ value: 'document_digest', label: t('Document digest') },
+			{ value: 'custom', label: t('Custom report') },
+		]
 		const proactiveBriefings = computed(() => {
 			try { const rows = JSON.parse(f.value.proactive_schedules || '[]'); return Array.isArray(rows) ? rows : [] } catch (_) { return [] }
 		})
 		const dayName = day => (weekdays.find(item => item.value === Number(day)) || {}).label || String(day)
+		const briefingTypeName = type => briefingTypeOptions.find(item => item.value === type)?.label || t('Custom report')
+		const channelName = channel => ({ notification: t('Nextcloud notification'), email: t('Email'), talk: t('Nextcloud Talk') }[channel] || String(channel))
+		const formatDateTime = timestamp => new Date(Number(timestamp || 0) * 1000).toLocaleString()
+		const failureSummary = run => Object.values(run?.failures || {}).join('; ')
 		function writeBriefings(rows) { f.value.proactive_schedules = JSON.stringify(rows.slice(0, 20)) }
 		async function persistBriefings(rows, messageKey) {
 			writeBriefings(rows)
@@ -839,7 +854,7 @@ export default {
 				return false
 			}
 		}
-		async function addBriefing() {
+		async function saveBriefing() {
 			const prompt = briefingDraft.value.prompt.trim()
 			const rawTime = String(briefingDraft.value.time || '').trim()
 			briefingFormError.value = ''
@@ -849,15 +864,43 @@ export default {
 			// first interaction instead of making Add appear to do nothing.
 			const time = rawTime || '08:00'
 			if (!briefingDraft.value.days.length) { briefingFormError.value = t('Choose at least one weekday.'); return }
-			if (proactiveBriefings.value.length >= 20) { briefingFormError.value = t('You can create up to 20 briefings.'); return }
-			writeBriefings([...proactiveBriefings.value, { id: `briefing-${Date.now()}`, prompt, time, days: [...new Set(briefingDraft.value.days)].sort(), enabled: true, allow_actions: briefingDraft.value.allow_actions === true }])
-			briefingDraft.value.prompt = ''
-			setMessage('info', t('Briefing added. Saving your schedule…'))
-			if (await saveBriefingSchedule()) setMessage('success', t('Briefing saved.'))
+			if (!briefingDraft.value.channels.length) { briefingFormError.value = t('Choose at least one delivery channel.'); return }
+			if (briefingDraft.value.channels.includes('talk') && !briefingDraft.value.talk_room.trim()) { briefingFormError.value = t('Enter a Talk room name or token.'); return }
+			if (!editingBriefingId.value && proactiveBriefings.value.length >= 20) { briefingFormError.value = t('You can create up to 20 briefings.'); return }
+			const current = proactiveBriefings.value.find(item => item.id === editingBriefingId.value)
+			const item = { ...(current || {}), id: editingBriefingId.value || `briefing-${Date.now()}`, prompt, time, days: [...new Set(briefingDraft.value.days)].sort(), enabled: current?.enabled !== false, allow_actions: briefingDraft.value.allow_actions === true, type: briefingDraft.value.type, channels: [...new Set(briefingDraft.value.channels)], talk_room: briefingDraft.value.talk_room.trim() }
+			writeBriefings(editingBriefingId.value ? proactiveBriefings.value.map(entry => entry.id === editingBriefingId.value ? item : entry) : [...proactiveBriefings.value, item])
+			setMessage('info', t('Saving briefing changes…'))
+			if (await saveBriefingSchedule()) {
+				editingBriefingId.value = null
+				briefingDraft.value = { prompt: '', time: '08:00', days: [1, 2, 3, 4, 5], allow_actions: false, type: 'custom', channels: ['notification'], talk_room: '' }
+				setMessage('success', t('Briefing saved.'))
+			}
+		}
+		function editBriefing(item) {
+			editingBriefingId.value = item.id
+			briefingDraft.value = { prompt: item.prompt || '', time: item.time || '08:00', days: [...(item.days || [])], allow_actions: item.allow_actions === true, type: item.type || 'custom', channels: [...(item.channels || ['notification'])], talk_room: item.talk_room || '' }
+			briefingFormError.value = ''
+			document.querySelector('.briefing-form')?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+		}
+		function cancelEditBriefing() {
+			editingBriefingId.value = null
+			briefingDraft.value = { prompt: '', time: '08:00', days: [1, 2, 3, 4, 5], allow_actions: false, type: 'custom', channels: ['notification'], talk_room: '' }
+			briefingFormError.value = ''
 		}
 		async function removeBriefing(id) { await persistBriefings(proactiveBriefings.value.filter(item => item.id !== id), 'Briefing changes saved.') }
 		async function toggleBriefing(id) { await persistBriefings(proactiveBriefings.value.map(item => item.id === id ? { ...item, enabled: item.enabled === false } : item), 'Briefing changes saved.') }
 		async function toggleBriefingActions(id) { await persistBriefings(proactiveBriefings.value.map(item => item.id === id ? { ...item, allow_actions: item.allow_actions !== true } : item), 'Briefing changes saved.') }
+		async function loadBriefingHistory() {
+			try { const result = await api('GET', 'briefings/history'); briefingHistory.value = Array.isArray(result?.items) ? result.items.reverse() : [] } catch (_) { briefingHistory.value = [] }
+		}
+		async function runBriefingNow(id) {
+			try {
+				await api('POST', `briefings/${encodeURIComponent(id)}/run`, {})
+				setMessage('success', t('Briefing queued. It will appear in the history when delivery finishes.'))
+				window.setTimeout(loadBriefingHistory, 5000)
+			} catch (error) { setMessage('error', t('The briefing could not be started: {error}', { error: errMsg(error) })) }
+		}
 		const userWebSearchEnabled = computed({
 			get: () => f.value.web_search_enabled === '1',
 			set: value => { f.value.web_search_enabled = value ? '1' : '0' },
@@ -1712,6 +1755,7 @@ export default {
 		})
 		onMounted(async () => {
 			await loadStatus(true)
+			await loadBriefingHistory()
 			await loadHealth()
 			await loadAdminSettings()
 			await loadKnowledge()
@@ -1749,7 +1793,7 @@ export default {
 			isAdminMode, admin, userWebSearchEnabled, userWebSearchSafeSearch, userWebSearchImages, userWebSearchBrowser, userWebSearchFetchContent, webSearchKey, removeWebSearchKey, webSearchKeyStored, webSearchReady, savingAdmin, adminLoading, adminLoadError, adminReady, saveAdminSettings, loadAdminSettings,
 			connectors, connectorsLoading, connectorsBusy, connectorDiagnostics, connectorDraft, connectorToRemove, connectorRemovalError, connectorEndpointQuery, filteredConnectorEndpoints, applyConnectorExample, saveConnector, editConnector, connectorCredentialLabel, connectorCredentialClass, removeConnector, closeConnectorRemoval, confirmRemoveConnector, discoverConnector, testConnector, loadConnectors, connectorLoadError, plugins, pluginsLoading, loadPlugins, pluginLoadError, pluginRiskLabel, pluginSurfacesLabel,
 			apiKeys, apiKeysLoading, apiKeysBusy, apiKeyError, createdApiKey, apiKeyDraft, apiKeyScopeOptions, apiDocsUrl, loadApiKeys, createApiKey, revokeApiKey, copyApiKey,
-			proactiveEnabled, proactiveBriefings, briefingDraft, briefingFormError, weekdays, dayName, addBriefing, removeBriefing, toggleBriefing, toggleBriefingActions,
+			proactiveEnabled, proactiveBriefings, briefingDraft, briefingFormError, editingBriefingId, briefingHistory, briefingTypeOptions, weekdays, dayName, briefingTypeName, channelName, formatDateTime, failureSummary, saveBriefing, editBriefing, cancelEditBriefing, removeBriefing, toggleBriefing, toggleBriefingActions, runBriefingNow,
 			exporting, downloadExport,
 			knowledgeContent, knowledgeOriginal, savingKnowledge, knowledgeSaved, knowledgeLoading, knowledgeLoadError, knowledgeReady, loadKnowledge, saveKnowledgeContent,
 			formatNumber, loadStatus, loadHealth, healthError, save, checkOllama, addExclude, removeExclude, startIndex, startMailIndex, startTalkIndex, stopIndex, resetIndex, deleteAllChats,
@@ -1925,6 +1969,12 @@ export default {
 .weekday-picker .checkbox-radio-switch { margin:0; }
 .briefing-form-actions { justify-content:flex-start; }
 .briefing-form-actions span { color:var(--color-text-maxcontrast); font-size:11px; }
+.briefing-history { display:grid; gap:8px; margin-top:10px; }
+.briefing-history h4 { margin:0; font-size:14px; }
+.briefing-history-row { display:grid; gap:5px; padding:12px 14px; border:1px solid var(--color-border); border-radius:10px; background:var(--color-main-background); }
+.briefing-history-row > div { display:flex; align-items:baseline; justify-content:space-between; gap:10px; }
+.briefing-history-row small { color:var(--color-text-maxcontrast); font-size:11px; }
+.briefing-history-row p { margin:0; font-size:13px; line-height:1.5; white-space:pre-wrap; overflow-wrap:anywhere; }
 
 .exclude-paths { margin-top: 22px; padding-top: 18px; border-top: 1px solid var(--color-border); }
 .sub-heading span { display: block; margin-top: -2px; color: var(--color-text-maxcontrast); font-size: 12px; }

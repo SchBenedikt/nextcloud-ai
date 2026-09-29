@@ -92,6 +92,22 @@ Template data is stored in the user's private EVA app data. Import creates new
 IDs and accepts at most 100 templates per request; each prompt is limited to
 8,000 characters.
 
+## Scheduled briefings
+
+Briefing definitions are configured through the signed-in user's settings.
+They use the account timezone and server cron. Run-now requests are queued for
+background delivery; history contains the latest 50 outcomes for that user.
+
+| Operation | Method and path |
+| --- | --- |
+| Read recent briefing history | `GET /api/briefings/history` |
+| Queue an enabled briefing immediately | `POST /api/briefings/{id}/run` |
+
+Each schedule can deliver through Nextcloud notifications, the configured
+instance mailer, or a Talk room the user belongs to. Talk posting still requires
+the user's Talk-write setting. Delivery failures and partial deliveries are
+recorded in history.
+
 | Reset index | `POST /api/index/reset` |
 | Delete a chat folder | `DELETE /api/folders` with `{ "name": "…" }` |
 

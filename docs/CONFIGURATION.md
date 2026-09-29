@@ -108,7 +108,7 @@ rows; that action never touches the original files.
 |---|---|---|---|---|---|
 | `notify_on_complete` | P | `1` | `1`/`0` | – | Send an "AI answer ready" notification (Notifications app). |
 | `proactive_enabled` | P | `0` | `1`/`0` | – | Opt in to scheduled, read-only EVA briefings. |
-| `proactive_schedules` | P | `[]` | JSON | max. 20 | Briefings with `id`, `prompt`, local `HH:MM` time and ISO weekdays (`1` = Monday … `7` = Sunday). |
+| `proactive_schedules` | P | `[]` | JSON | max. 20 | Briefings with `id`, `prompt`, type (`morning`, `document_digest`, `custom`), local `HH:MM` time, ISO weekdays (`1` = Monday … `7` = Sunday), and delivery channels (`notification`, `email`, `talk`). |
 | `talk_history_size` | P | `50` | `1`–`500` | messages | Number of previous Talk messages sent as bot context. |
 | `talk_write_enabled` | P | `0` | `1`/`0` | – | Allow EVA to post messages into a Nextcloud Talk chat as the signed-in user (`send_talk_message`). Off by default: a message written in the user's name is an act, not a lookup, so each user opts in themselves. Reading a chat (`read_talk_chat`) stays available either way, and only rooms the user is a member of can be resolved. See [TALK-INDEXING.md](TALK-INDEXING.md). |
 | `talk_bot_trigger` | P | `Eva` | non-empty string | – | Trigger word (with `@`) the Talk bot reacts to. |
@@ -204,6 +204,7 @@ from an instance-wide value.
 ### Global scheduler state (G)
 
 | `proactive_schedule_runs` | JSON map of the last delivered local time slot per scheduled briefing; prevents duplicate notifications after cron retries. |
+| `proactive_schedule_history` | Private user history of the last 50 briefing outcomes, including delivery channels, response excerpts, and failures. |
 | `background_chat_queue` | Internal per-user queue for chat requests handed to the background worker when a browser tab closes; never configure manually. |
 | `learned_app_apis` | Internal per-user JSON cache of sanitized Nextcloud OCS route metadata learned by EVA; credentials and response bodies are never stored, and the cache is refreshed by `discover_app_api`. |
 | `learned_file_locations` | Internal per-user JSON cache of bounded file/folder paths discovered during EVA listings and searches; only path, type and last-seen time are stored. |

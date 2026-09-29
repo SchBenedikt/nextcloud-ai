@@ -66,7 +66,7 @@ class AppConfig {
         'last_index_total', 'last_index_error', 'last_index_cache_hits', 'last_index_cache_misses',
         'last_index_ollama_requests', 'last_index_failed', 'index_config_hash', 'index_mode',
         'index_cancel_requested', 'index_run_id', 'index_enrolled', 'knowledge_initialized',
-        'proactive_schedule_runs', 'search_revision',
+        'proactive_schedule_runs', 'proactive_schedule_history', 'search_revision',
         'background_chat_queue',
         // Sanitised OCS route metadata learned by EVA; credentials and
         // response bodies are never stored here.
@@ -178,6 +178,7 @@ class AppConfig {
         'proactive_schedules' => '[]',
         'proactive_enabled' => '0',
         'proactive_schedule_runs' => '{}',
+        'proactive_schedule_history' => '[]',
         'background_chat_queue' => '[]',
         'learned_app_apis' => '{}',
         'learned_file_locations' => '{}',
