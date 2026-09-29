@@ -91,6 +91,7 @@ rows; that action never touches the original files.
 |---|---|---|---|---|---|
 | `actions_enabled` | P | `1` | `1`/`0` | – | `1` = chat tools enabled; `0` = read-only chat. |
 | `background_actions_enabled` | P | `0` | `1`/`0` | – | Explicit opt-in for queued chats to execute requested mutating tools after the browser closes. Requires `actions_enabled=1`; disabled queued jobs remain read-only. |
+| `voice_input_enabled` | P | `0` | `1`/`0` | – | Personal opt-in for browser speech recognition. The instance administrator must also enable `voice_input_available`; audio is processed by the browser's speech service. |
 | `learning_enabled` | P | `1` | `1`/`0` | – | Allow EVA to learn explicit preferences and facts from completed chats. The personal knowledge file remains editable and deletable by the user. |
 | `safe_commands_enabled` | P | `0` | `1`/`0` | – | Enable explicitly confirmed, read-only local diagnostics from a fixed allowlist; no arbitrary shell syntax is accepted. |
 | `terminal_commands_enabled` | P | `0` | `1`/`0` | – | Opt in to explicitly confirmed terminal commands. Commands are executed without a shell and remain limited to the executable allowlist. |
@@ -113,6 +114,7 @@ rows; that action never touches the original files.
 | `talk_bot_trigger` | P | `Eva` | non-empty string | – | Trigger word (with `@`) the Talk bot reacts to. |
 | `talk_classify_all` | P | `0` | `1`/`0` | – | `0` = heuristic pre-filter decides before any LLM call (Issue #77, default); `1` = classify every room message via the LLM (legacy, higher cost/privacy exposure). |
 | `weather_tool_enabled` | I | `1` | `1`/`0` | – | **Admin only.** `0` disables the weather tool (external Open-Meteo requests) everywhere (Issue #69). Read and written through the admin settings API only, so a regular user cannot flip it. |
+| `voice_input_available` | I | `0` | `1`/`0` | – | **Admin only.** Master switch for browser speech recognition. Users must also enable their personal `voice_input_enabled` setting; turning this off disables dictation for everyone. |
 | `index_enrolled` | P/S | `0` | `1`/`0` | – | Per-user opt-in for recurring background indexing. |
 | `chat_retention_days` | P | `0` | `0`–`3650` | days | Automatically delete chats not used for this many days (`0` = keep everything). The daily `ChatCleanupJob` applies it per user. |
 

@@ -1,12 +1,13 @@
 import './markdown.css'
 import { readNdjson } from './ndjson'
-import { mdiDownload, mdiPaperclip, mdiTune } from '@mdi/js'
+import { mdiDownload, mdiMicrophone, mdiPaperclip, mdiTune } from '@mdi/js'
 import { translate as t } from './i18n'
 import { buildConfirmForm } from './confirmForms'
 import { escHtml, mdInline, mdToHtml, citedSources, formatToolName, copyText, installImageFallback, apiErrorMessage } from './chat-utils'
 import { getFilePickerBuilder, FilePickerClosed } from '@nextcloud/dialogs'
 import { createPromptHistory } from './prompt-history'
 import { createSpeechService } from './speech'
+import { createVoiceInput } from './voice-input'
 
 /* EvaAi – Vanilla-Chat-Mount.
  * Wird von ChatView.vue aufgerufen und rendert den kompletten Chat
@@ -21,6 +22,7 @@ export function mountChat(root, opts = {}) {
 	if (!root || root.__evaAi) return
 	root.__evaAi = true
 	const speech = createSpeechService()
+	const voiceState = { enabled: false }
 
 	const { onRecent } = opts
 	let chatId = opts.chatId || null
@@ -692,6 +694,92 @@ export function mountChat(root, opts = {}) {
 			}
 		} finally { filesBtn.disabled = false }
 	})
+	const micBtn = document.createElement('button')
+	micBtn.type = 'button'
+	micBtn.className = 'cbtn cbtn-ghost cbtn-mic'
+	micBtn.setAttribute('aria-label', t('Start voice input'))
+	micBtn.title = t('Start voice input')
+	micBtn.hidden = true
+	const micIcon = document.createElementNS('http://www.w3.org/2000/svg', 'svg')
+	micIcon.setAttribute('viewBox', '0 0 24 24')
+	micIcon.setAttribute('width', '18')
+	micIcon.setAttribute('height', '18')
+	micIcon.setAttribute('aria-hidden', 'true')
+	const micIconPath = document.createElementNS('http://www.w3.org/2000/svg', 'path')
+	micIconPath.setAttribute('d', mdiMicrophone)
+	micIconPath.setAttribute('fill', 'currentColor')
+	micIcon.appendChild(micIconPath)
+	micBtn.appendChild(micIcon)
+	const cancelVoiceBtn = document.createElement('button')
+	cancelVoiceBtn.type = 'button'
+	cancelVoiceBtn.className = 'cbtn cbtn-ghost cbtn-voice-cancel'
+	cancelVoiceBtn.textContent = t('Cancel recording')
+	cancelVoiceBtn.hidden = true
+	const voiceStatus = document.createElement('div')
+	voiceStatus.className = 'voice-status'
+	voiceStatus.setAttribute('role', 'status')
+	voiceStatus.setAttribute('aria-live', 'polite')
+	voiceStatus.hidden = true
+	let voiceInput
+	function setVoiceState(state) {
+		const recording = state === 'recording'
+		micBtn.classList.toggle('is-recording', recording)
+		micBtn.setAttribute('aria-pressed', recording ? 'true' : 'false')
+		micBtn.setAttribute('aria-label', t(recording ? 'Stop voice input' : 'Start voice input'))
+		micBtn.title = t(recording ? 'Stop voice input' : 'Start voice input')
+		cancelVoiceBtn.hidden = !recording
+		if (!recording && voiceStatus.dataset.persistent !== '1') voiceStatus.hidden = true
+	}
+	voiceInput = createVoiceInput({
+		onState: setVoiceState,
+		onInterim: text => {
+			if (!voiceState.enabled) return
+			voiceStatus.textContent = text ? `${t('Listening')} … ${text}` : t('Listening')
+			voiceStatus.hidden = false
+		},
+		onFinal: (text, details) => {
+			if (details?.cancel) {
+				input.value = details.restore
+				return
+			}
+			if (text) input.value = input.value.trim() ? `${input.value.trim()} ${text}` : text
+			input.focus()
+		},
+		onError: error => {
+			const message = error === 'not-allowed' || error === 'service-not-allowed'
+				? t('Microphone permission was denied. Allow microphone access in your browser to use voice input.')
+				: error === 'no-speech' ? t('No speech was detected. Try again.') : t('Voice input could not start in this browser.')
+			voiceStatus.textContent = message
+			voiceStatus.dataset.persistent = '1'
+			voiceStatus.hidden = false
+		},
+	})
+	micBtn.addEventListener('click', () => {
+		if (voiceInput.recording) voiceInput.stop()
+		else {
+			voiceStatus.textContent = ''
+			voiceStatus.dataset.persistent = '0'
+			if (!voiceInput.start(input.value)) {
+				voiceStatus.textContent = t('Voice input could not start in this browser.')
+				voiceStatus.hidden = false
+			}
+		}
+	})
+	cancelVoiceBtn.addEventListener('click', () => voiceInput.cancel())
+	if (voiceInput.supported) {
+		api('GET', '/settings').then(settings => {
+			voiceState.enabled = String(settings?.voice_input_enabled || '0') === '1' && String(settings?.voice_input_available || '0') === '1'
+			micBtn.hidden = !voiceState.enabled
+		}).catch(() => { micBtn.hidden = true })
+	} else {
+		api('GET', '/settings').then(settings => {
+			if (String(settings?.voice_input_enabled || '0') !== '1' || String(settings?.voice_input_available || '0') !== '1') return
+			voiceState.enabled = true
+			voiceStatus.textContent = t('Voice input is not supported in this browser.')
+			voiceStatus.dataset.persistent = '1'
+			voiceStatus.hidden = false
+		}).catch(() => {})
+	}
 	const sendBtn = document.createElement('button')
 	sendBtn.type = 'submit'
 	sendBtn.className = 'cbtn'
@@ -705,13 +793,13 @@ export function mountChat(root, opts = {}) {
 	backgroundBtn.textContent = t('Run in background')
 	backgroundBtn.title = t('Queue this request and continue even if this page is closed')
 	backgroundBtn.addEventListener('click', () => queueInBackground())
-	form.append(filesBtn, input, sendBtn, backgroundBtn)
+	form.append(filesBtn, micBtn, input, cancelVoiceBtn, sendBtn, backgroundBtn)
 
 	const err = document.createElement('div')
 	err.className = 'err'
 	err.style.display = 'none'
 
-	root.append(head, scroll, form, err)
+	root.append(head, scroll, form, voiceStatus, err)
 
 	const renderAll = (list) => {
 		refs.length = 0
@@ -1585,6 +1673,7 @@ export function mountChat(root, opts = {}) {
 	form.addEventListener('submit', (e) => { e.preventDefault(); send() })
 	root.__evaAi = { destroy: () => {
 		speech.stop()
+		voiceInput.cancel()
 		if (pendingUpdateFrame !== null && typeof cancelAnimationFrame === 'function') cancelAnimationFrame(pendingUpdateFrame)
 		pendingUpdateFrame = null
 		updateScheduled = false
