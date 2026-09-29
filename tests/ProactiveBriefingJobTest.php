@@ -19,6 +19,15 @@ use PHPUnit\Framework\TestCase;
 use Psr\Log\LoggerInterface;
 
 final class ProactiveBriefingJobTest extends TestCase {
+	protected function setUp(): void {
+		parent::setUp();
+		foreach ([IConfig::class, ITimeFactory::class, IManager::class, IURLGenerator::class, IUserManager::class, ILockingProvider::class, IMailer::class] as $interface) {
+			if (!interface_exists($interface)) {
+				self::markTestSkipped('Nextcloud interfaces unavailable; run the Nextcloud app lifecycle job');
+			}
+		}
+	}
+
 	public function testManualRunIgnoresScheduleTimeAndRecordsTheTalkDelivery(): void {
 		$state = [
 			'proactive_enabled' => '1',
