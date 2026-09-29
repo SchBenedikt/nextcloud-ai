@@ -8,6 +8,7 @@ use OCP\Server;
 
 /** Discovers and executes confirmation-gated same-origin Nextcloud app APIs. */
 final class AppApiToolExecutor implements DomainToolExecutor {
+    private const LEARNED_API_TTL = 2592000;
     private const APP_API_TIMEOUT = 30;
     private const APP_API_BATCH_BUDGET = 20;
     private ?array $learnedApisCache = null;

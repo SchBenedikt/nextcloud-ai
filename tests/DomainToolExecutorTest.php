@@ -153,6 +153,7 @@ final class DomainToolExecutorTest extends TestCase {
 			'list_nextcloud_capabilities', 'discover_app_api', 'list_learned_app_apis',
 			'call_app_api', 'call_app_api_batch',
 		], $executor->tools());
+		self::assertStringContainsString('private const LEARNED_API_TTL = 2592000;', (string)file_get_contents(__DIR__ . '/../lib/Service/AppApiToolExecutor.php'));
 		self::assertSame(
 			['ok' => false, 'error' => 'Unsupported Nextcloud app API tool: not_a_tool'],
 			$executor->execute('not_a_tool', 'alice', []),
