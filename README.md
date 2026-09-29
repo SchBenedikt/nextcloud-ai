@@ -300,6 +300,7 @@ The pull-request CI also installs the app into real Nextcloud 30, 33, and 35
 instances, enables it with `occ`, checks the app code and registered routes,
 and runs PHPUnit inside each installation. See [docs/CI.md](docs/CI.md).
 - **Architecture:** [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)
+- **Programmatic API:** [docs/API.md](docs/API.md) — create scoped API keys and connect scripts or external applications.
 - **FAQ:** [docs/FAQ.md](docs/FAQ.md)
 
 ---

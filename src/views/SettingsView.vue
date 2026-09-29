@@ -12,7 +12,7 @@
 			</div>
 		</header>
 		<nav class="settings-quicknav" :aria-label="$t('Settings sections')">
-			<a href="#settings-connection">{{ $t('Connection') }}</a><a href="#settings-safety">{{ $t('Safety') }}</a><a href="#settings-search">{{ $t('Search') }}</a><a href="#settings-indexing">{{ $t('Indexing') }}</a><a href="#settings-integrations">{{ $t('Integrations') }}</a><a href="#settings-briefings">{{ $t('Briefings') }}</a><a href="#settings-privacy">{{ $t('Privacy') }}</a>
+			<a href="#settings-connection">{{ $t('Connection') }}</a><a href="#settings-safety">{{ $t('Safety') }}</a><a href="#settings-search">{{ $t('Search') }}</a><a href="#settings-indexing">{{ $t('Indexing') }}</a><a href="#settings-integrations">{{ $t('Integrations') }}</a><a href="#settings-api-keys">{{ $t('API keys') }}</a><a href="#settings-briefings">{{ $t('Briefings') }}</a><a href="#settings-privacy">{{ $t('Privacy') }}</a>
 		</nav>
 
 		<div v-if="loadError" class="callout callout-error" role="alert">
@@ -569,6 +569,23 @@
 				</fieldset>
 			</section>
 
+			<section id="settings-api-keys" class="settings-section">
+				<div class="section-heading"><div><h3>{{ $t('Programmatic API keys') }}</h3><p>{{ $t('Create credentials for scripts and integrations. Keys inherit your Nextcloud account access.') }}</p></div><NcButton variant="tertiary" :disabled="apiKeysLoading" @click="loadApiKeys">{{ $t('Refresh') }}</NcButton></div>
+				<form class="api-key-form" @submit.prevent="createApiKey">
+					<input v-model="apiKeyDraft.name" class="native-input" maxlength="80" :placeholder="$t('Key name, for example Home automation')" required />
+					<NcSelect v-model="apiKeyDraft.scope" :options="apiKeyScopeOptions" label="label" :reduce="option => option.value" :input-label="$t('API key scope')" :label-outside="true" />
+					<input v-model="apiKeyDraft.expires" class="native-input" type="date" :aria-label="$t('Optional expiration date')" />
+					<input v-model="apiKeyDraft.ips" class="native-input" :placeholder="$t('Optional allowed IPs, comma separated')" />
+					<NcButton type="submit" variant="primary" :disabled="apiKeysBusy || !apiKeyDraft.name.trim()">{{ $t('Create key') }}</NcButton>
+				</form>
+				<p v-if="apiKeyError" class="field-help action-error" role="alert">{{ apiKeyError }}</p>
+				<div v-if="createdApiKey" class="api-key-secret" role="alert"><strong>{{ $t('Copy this key now. It will not be shown again.') }}</strong><code>{{ createdApiKey }}</code><NcButton variant="tertiary" @click="copyApiKey">{{ $t('Copy key') }}</NcButton><NcButton variant="tertiary" @click="createdApiKey = ''">{{ $t('Dismiss') }}</NcButton></div>
+				<p v-if="apiKeysLoading" class="field-help" role="status">{{ $t('Loading API keys…') }}</p>
+				<p v-else-if="!apiKeys.length" class="field-help">{{ $t('No API keys have been created.') }}</p>
+				<div v-for="key in apiKeys" :key="key.id" class="api-key-row"><div><strong>{{ key.name }}</strong><small><code>{{ key.key_prefix }}…</code> · {{ key.scope }} · {{ $t('{count} calls', { count: key.call_count }) }} · {{ key.last_used_at ? $t('Last used {time}', { time: new Date(key.last_used_at * 1000).toLocaleString() }) : $t('Never used') }}<span v-if="key.expires_at"> · {{ $t('Expires {time}', { time: new Date(key.expires_at * 1000).toLocaleDateString() }) }}</span><span v-if="key.ip_whitelist.length"> · {{ $t('IP restricted') }}: {{ key.ip_whitelist.join(', ') }}</span></small></div><NcButton variant="error" :disabled="apiKeysBusy" @click="revokeApiKey(key)">{{ $t('Revoke') }}</NcButton></div>
+				<p class="field-help">{{ $t('Use a key with the Authorization: Bearer header. External chat requires write scope and does not execute tools.') }} <a :href="apiDocsUrl" target="_blank" rel="noopener noreferrer">{{ $t('API documentation') }}</a></p>
+			</section>
+
 			<section id="settings-privacy" class="settings-section">
 				<div class="section-heading">
 					<div>
@@ -858,6 +875,18 @@ export default {
 		const connectorLoadError = ref('')
 		const connectorsBusy = ref(false)
 		const connectorDiagnostics = ref({})
+		const apiKeys = ref([])
+		const apiKeysLoading = ref(false)
+		const apiKeysBusy = ref(false)
+		const apiKeyError = ref('')
+		const createdApiKey = ref('')
+		const apiKeyDraft = ref({ name: '', scope: 'read', expires: '', ips: '' })
+		const apiKeyScopeOptions = computed(() => [
+			{ value: 'read', label: t('Read only · 100 requests/min') },
+			{ value: 'write', label: t('Read and write · 30 requests/min') },
+			...(isAdminMode ? [{ value: 'admin', label: t('Admin · 10 requests/min') }] : []),
+		])
+		const apiDocsUrl = 'https://github.com/SchBenedikt/nextcloud-ai/blob/main/docs/API.md'
 		const connectorToRemove = ref(null)
 		const connectorRemovalError = ref('')
 		const connectorDraft = ref({ id: '', name: '', base_url: '', openapi_url: '', auth_type: 'bearer', token: '', username: '', password: '', api_key: '', api_key_header: 'X-API-Key' })
@@ -884,6 +913,37 @@ export default {
 				connectorLoadError.value = errMsg(error)
 				return false
 			} finally { connectorsLoading.value = false }
+		}
+		async function loadApiKeys() {
+			apiKeysLoading.value = true
+			apiKeyError.value = ''
+			try {
+				const result = await api('GET', 'keys')
+				if (!Array.isArray(result?.keys)) throw new Error(t('The API key list response was incomplete.'))
+				apiKeys.value = result.keys
+			} catch (error) { apiKeyError.value = errMsg(error) } finally { apiKeysLoading.value = false }
+		}
+		async function createApiKey() {
+			apiKeysBusy.value = true
+			apiKeyError.value = ''
+			createdApiKey.value = ''
+			try {
+				const expiresAt = apiKeyDraft.value.expires ? Math.floor(new Date(apiKeyDraft.value.expires + 'T23:59:59').getTime() / 1000) : null
+				const created = await api('POST', 'keys', { name: apiKeyDraft.value.name, scope: apiKeyDraft.value.scope, expiresAt, ipWhitelist: apiKeyDraft.value.ips })
+				if (!created?.key || !created?.record?.id) throw new Error(t('The API key response was incomplete.'))
+				createdApiKey.value = created.key
+				apiKeyDraft.value = { name: '', scope: 'read', expires: '', ips: '' }
+				await loadApiKeys()
+			} catch (error) { apiKeyError.value = errMsg(error) } finally { apiKeysBusy.value = false }
+		}
+		async function revokeApiKey(key) {
+			if (!window.confirm(t('Revoke the API key “{name}”? Integrations using it will stop working.', { name: key.name }))) return
+			apiKeysBusy.value = true
+			apiKeyError.value = ''
+			try { await api('DELETE', 'keys/' + encodeURIComponent(key.id)); await loadApiKeys() } catch (error) { apiKeyError.value = errMsg(error) } finally { apiKeysBusy.value = false }
+		}
+		async function copyApiKey() {
+			try { await navigator.clipboard.writeText(createdApiKey.value); setMessage('success', t('API key copied to clipboard.')) } catch (_) { apiKeyError.value = t('Clipboard access failed. Select and copy the key manually.') }
 		}
 		async function loadPlugins() {
 			pluginsLoading.value = true
@@ -1656,6 +1716,7 @@ export default {
 			await loadAdminSettings()
 			await loadKnowledge()
 			await loadConnectors()
+			await loadApiKeys()
 			await loadPlugins()
 			// Status is informational; polling every few seconds created needless
 			// PHP/database work on production instances with many open settings tabs.
@@ -1687,6 +1748,7 @@ export default {
 			newExcludePath, excludeError, excludeList, actionsEnabled, backgroundActionsEnabled, voiceInputEnabled, notificationsEnabled, learningEnabled, safeCommandsEnabled, terminalCommandsEnabled, terminalCommandAny, mailIndexEnabled, talkIndexEnabled, talkWriteEnabled, indexEnrolled, actionsDisabled, busy, indexingActive, settingsLocked, briefingsLocked, maxFileSizeMb,
 			isAdminMode, admin, userWebSearchEnabled, userWebSearchSafeSearch, userWebSearchImages, userWebSearchBrowser, userWebSearchFetchContent, webSearchKey, removeWebSearchKey, webSearchKeyStored, webSearchReady, savingAdmin, adminLoading, adminLoadError, adminReady, saveAdminSettings, loadAdminSettings,
 			connectors, connectorsLoading, connectorsBusy, connectorDiagnostics, connectorDraft, connectorToRemove, connectorRemovalError, connectorEndpointQuery, filteredConnectorEndpoints, applyConnectorExample, saveConnector, editConnector, connectorCredentialLabel, connectorCredentialClass, removeConnector, closeConnectorRemoval, confirmRemoveConnector, discoverConnector, testConnector, loadConnectors, connectorLoadError, plugins, pluginsLoading, loadPlugins, pluginLoadError, pluginRiskLabel, pluginSurfacesLabel,
+			apiKeys, apiKeysLoading, apiKeysBusy, apiKeyError, createdApiKey, apiKeyDraft, apiKeyScopeOptions, apiDocsUrl, loadApiKeys, createApiKey, revokeApiKey, copyApiKey,
 			proactiveEnabled, proactiveBriefings, briefingDraft, briefingFormError, weekdays, dayName, addBriefing, removeBriefing, toggleBriefing, toggleBriefingActions,
 			exporting, downloadExport,
 			knowledgeContent, knowledgeOriginal, savingKnowledge, knowledgeSaved, knowledgeLoading, knowledgeLoadError, knowledgeReady, loadKnowledge, saveKnowledgeContent,
@@ -1943,11 +2005,21 @@ export default {
 .plugin-row code { flex:0 0 auto; max-width:42%; overflow-wrap:anywhere; color:var(--color-primary-element); font-size:11px; }
 .plugin-meta { display:flex; flex-wrap:wrap; gap:6px; margin-top:8px; }
 .plugin-meta span { padding:2px 7px; border-radius:999px; background:var(--color-main-background); color:var(--color-text-maxcontrast); font-size:11px; }
+.api-key-form { display:grid; grid-template-columns: minmax(180px,1.3fr) minmax(160px,1fr) minmax(140px,.8fr) minmax(180px,1fr) auto; gap:10px; align-items:center; margin:12px 0; }
+.native-input { width:100%; min-width:0; min-height:42px; padding:8px 10px; border:1px solid var(--color-border); border-radius:var(--border-radius); background:var(--color-main-background); color:var(--color-main-text); box-sizing:border-box; }
+.api-key-row { display:flex; align-items:center; justify-content:space-between; gap:16px; padding:12px 0; border-bottom:1px solid var(--color-border); }
+.api-key-row > div { display:grid; gap:4px; min-width:0; }
+.api-key-row small { color:var(--color-text-maxcontrast); overflow-wrap:anywhere; }
+.api-key-secret { display:flex; align-items:center; flex-wrap:wrap; gap:10px; margin:12px 0; padding:14px; border:1px solid var(--color-warning); border-radius:var(--border-radius-large); background:var(--color-background-hover); }
+.api-key-secret strong { flex-basis:100%; }
+.api-key-secret code { min-width:0; flex:1 1 300px; overflow-wrap:anywhere; user-select:all; }
 .empty-state { padding:18px; border:1px dashed var(--color-border); border-radius:var(--border-radius-large); color:var(--color-text-maxcontrast); }
 .load-error { display:flex; align-items:center; justify-content:space-between; gap:12px; padding:12px 14px; border:1px solid var(--color-error); border-radius:var(--border-radius-large); color:var(--color-error); }
 @media (max-width:520px) { .load-error { align-items:flex-start; flex-direction:column; } }
 @media (max-width:960px) { .connector-form { grid-template-columns:repeat(2,minmax(0,1fr)); } }
 @media (max-width:760px) { .connector-row { align-items:flex-start; flex-direction:column; } .connector-form { grid-template-columns:1fr; padding:12px; } }
+@media (max-width:900px) { .api-key-form { grid-template-columns:repeat(2,minmax(0,1fr)); } }
+@media (max-width:520px) { .api-key-form { grid-template-columns:1fr; } .api-key-row { align-items:flex-start; flex-direction:column; } }
 
 @media (max-width: 800px) {
 	.page-header { align-items: flex-start; flex-direction: column; }
