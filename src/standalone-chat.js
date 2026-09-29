@@ -495,8 +495,36 @@ function buildCalendarForm(args, tr) {
 			details.className = 'rconfirm-args'
 			if (m.confirmation.preview) {
 				var preview = m.confirmation.preview
-				details.className = 'rconfirm-args rconfirm-diff'
-				details.textContent = (preview.path || '') + '\n' + (preview.previewable ? preview.diff : 'Text diff unavailable; check the file path and action before approving.')
+				details.className = 'rconfirm-preview'
+				details.textContent = preview.path || ''
+				if (preview.previewable && Array.isArray(preview.hunks) && preview.hunks.length) {
+					preview.hunks.forEach(function (hunk) {
+						var row = document.createElement('div')
+						row.className = 'rconfirm-hunk'
+						var choice = document.createElement('label')
+						var input = document.createElement('input')
+						input.type = 'checkbox'
+						input.checked = true
+						input.setAttribute('data-hunk-id', String(hunk.id))
+						var title = document.createElement('span')
+						title.textContent = 'Changes: +' + (hunk.added || 0) + ' -' + (hunk.removed || 0) + ' lines'
+						choice.appendChild(input)
+						choice.appendChild(title)
+						var diff = document.createElement('pre')
+						diff.className = 'rconfirm-args rconfirm-diff'
+						diff.textContent = String(hunk.diff || '')
+						row.appendChild(choice)
+						row.appendChild(diff)
+						details.appendChild(row)
+					})
+				} else if (!preview.previewable) {
+					details.textContent += '\nText diff unavailable; check the file path and action before approving.'
+				} else {
+					var diff = document.createElement('pre')
+					diff.className = 'rconfirm-args rconfirm-diff'
+					diff.textContent = String(preview.diff || '')
+					details.appendChild(diff)
+				}
 			} else if (shareForm || calendarForm) {
 				details.textContent = shareForm
 					? tr('Review the share details before creating it. You can change the path, recipient, password and expiration date.')
@@ -539,9 +567,15 @@ function buildCalendarForm(args, tr) {
 				// be stored before running the action so the server-side claim can
 				// reject a duplicate approve after a reload (Issue #185).
 				Promise.resolve(m._pendingSave || true).then(function () {
+					var approvedArguments = Object.assign({}, args)
+					if (m.confirmation.preview && m.confirmation.preview.previewable && Array.isArray(m.confirmation.preview.hunks) && m.confirmation.preview.hunks.length) {
+						approvedArguments._eva_selected_hunks = Array.prototype.map.call(panel.querySelectorAll('.rconfirm-hunk input:checked'), function (input) {
+							return Number(input.getAttribute('data-hunk-id'))
+						})
+					}
 					return api('POST', '/confirmTool', {
 						name: m.confirmation.name,
-						arguments: args,
+						arguments: approvedArguments,
 						chatId: chatId,
 						confirmationToken: m.confirmation.token || '',
 					})

@@ -3,22 +3,22 @@
       xsi:noNamespaceSchemaLocation="https://apps.nextcloud.com/schema/apps/info.xsd">
     <id>eva_ai</id>
     <name>Eva</name>
-    <summary>Private AI assistant — RAG chat over your Nextcloud files with Ollama or Groq</summary>
+    <summary>AI assistant for Nextcloud with cited file search and local or hosted models</summary>
     <!-- IMPORTANT: keep the description flush-left. CommonMark (which the App
           Store uses to render this field) turns any line indented by four or
           more spaces into a code block, so indenting the copy makes the whole
           store listing render as source code. See docs/VERSIONING.md. -->
     <description>
-Eva AI turns your Nextcloud into a private, searchable knowledge base powered by Large Language Models. Ask questions in natural language and get instant, cited answers drawn from your own files — fully local with Ollama, or optionally via Groq for cloud-hosted inference.
+EVA adds AI-powered search and chat to your Nextcloud. Ask questions about your files and get answers with source links, so you can check where the information came from. Choose local Ollama models or configure a hosted provider.
 
 ## Why Eva AI?
 
-Your data stays yours. No third-party indexing, no external databases, no cloud required. Eva runs entirely within your Nextcloud instance, giving you full control over your files and conversations.
+EVA stores its search index in Nextcloud. Where AI inference happens depends on the model and integrations you configure. The default chat model, gemma4:cloud, uses Ollama Cloud; choose a local model in EVA Settings if chat prompts and retrieved file excerpts must stay on your infrastructure.
 
 ## Key Features
 
 **Intelligent File Indexing**
-Eva automatically reads, chunks, and embeds your files for semantic search. Supports a wide range of formats: plain text (txt, md, csv, json, xml, yaml, sql, ...), PDF, Microsoft Office (docx/xlsx/pptx with macros and templates), OpenDocument (odt/ods/odp), EPUB, saved mail (eml, mbox), web archives (mht/mhtml), Jupyter notebooks (ipynb), and many more. A file that cannot be read is skipped instead of stopping the run.
+EVA reads and chunks supported files for semantic search, including plain text, PDF, Microsoft Office, OpenDocument, EPUB, saved mail, web archives, and Jupyter notebooks. Extraction covers readable document content; macros are not executed. Unsupported or unreadable files are skipped without stopping the indexing run.
 
 **Hybrid Retrieval Engine**
 Combines vector-based semantic search with lexical search (BM25) using Reciprocal Rank Fusion (RRF) to deliver the most relevant results — even for exact-match queries.
@@ -27,34 +27,31 @@ Combines vector-based semantic search with lexical search (BM25) using Reciproca
 Every answer includes the exact file path where the information was found, so you can always verify the source. Answers that used the web list the pages they actually retrieved, with their site and an excerpt, marked as web sources.
 
 **Nextcloud Integration**
-Eva can perform actions directly within Nextcloud: search for files, create documents, rename items, and work with templates across your entire home space — including Notes and Contacts.
+EVA can work with Nextcloud Files, Mail, Calendar, Contacts, Tasks, Shares, and Talk. The available tools depend on enabled apps and execution surface; review action confirmations and settings before enabling write-capable features.
 
 **Ollama and Groq Support**
-Start fully local with Ollama (no configuration required) or optionally connect to Groq for cloud-hosted inference. Embeddings always run locally via Ollama.
-
-**Zero Configuration**
-Just install and go. Eva automatically detects your local Ollama instance and selects appropriate models.
+Use Ollama or configure an OpenAI-compatible hosted provider. Check each provider's settings to understand where prompts, retrieved excerpts, and tool results are processed.
 
 **Talk Integration**
-Optionally integrate with Nextcloud Talk for conversational AI within your chat rooms.
+Optionally add EVA to Nextcloud Talk. EVA registers one bot and can use its supported read-only tools in conversations.
 
 ## Requirements
 
 - Nextcloud 30–35
 - PHP 8.2+
-- [Ollama](https://ollama.com) running locally (default: http://localhost:11434)
-- Optional: Groq API key for cloud-hosted inference
+- Ollama reachable from the Nextcloud server (default: http://127.0.0.1:11434)
+- Optional: hosted provider credentials, if you choose a cloud model
 
 ## Get Started
 
 1. Install the app
-2. Ensure Ollama is running on your server
-3. Open Eva from the left sidebar
-4. Start chatting with your files
+2. Choose a local Ollama model or configure the default hosted chat model
+3. Open EVA from the left sidebar and select your models in Settings
+4. Start indexing and chat with your files
 
 ## Privacy
 
-With Ollama, all processing happens on your server. Your files never leave your infrastructure. No analytics, no telemetry, no external calls.
+The default chat model is hosted by Ollama Cloud, so prompts and retrieved file excerpts are sent there for inference. To keep this chat data on your infrastructure, select a local chat model and local embedding model, and do not enable hosted providers or external connectors. Optional services such as web search, Mail, Talk, and OCR have their own data flows; configure them deliberately. EVA does not add third-party indexing or analytics.
 
 ## Support
 

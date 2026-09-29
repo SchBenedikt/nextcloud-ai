@@ -1111,7 +1111,50 @@ class ActionExecutor {
                 return $snapshot;
             }
             $snapshotConfirmed = true;
+            if (array_key_exists('_eva_selected_hunks', $args)) {
+                $selected = is_array($args['_eva_selected_hunks']) ? $args['_eva_selected_hunks'] : [];
+                if ($selected === []) {
+                    return ['ok' => false, 'error' => 'No diff blocks were approved; no file changes were applied.'];
+                }
+                $oldContent = (string)($snapshot['content'] ?? '');
+                if ($name === 'delete_file') {
+                    $proposedContent = '';
+                } elseif (array_key_exists('content_base64', $args)) {
+                    $proposedContent = base64_decode((string)$args['content_base64'], true);
+                    if ($proposedContent === false) {
+                        return ['ok' => false, 'error' => 'The proposed file content could not be verified; no changes were applied.'];
+                    }
+                } else {
+                    $proposedContent = (string)($args['content'] ?? '');
+                }
+                // Rebuild the diff from the snapshot and proposed content. The
+                // browser sends selected IDs, but its preview payload is not a
+                // trusted source for the lines that may be written.
+                $preview = (new DiffService())->generateDiff($oldContent, $proposedContent);
+                if (empty($preview['previewable']) || empty($preview['hunks'])) {
+                    return ['ok' => false, 'error' => 'The diff blocks could not be verified; no changes were applied.'];
+                }
+                try {
+                    $newContent = (new DiffService())->applySelectedHunks(
+                        $oldContent,
+                        $preview['hunks'],
+                        $selected,
+                        $preview['ends_with_newline'],
+                        $preview['old_ends_with_newline'],
+                    );
+                } catch (\InvalidArgumentException $e) {
+                    return ['ok' => false, 'error' => $e->getMessage()];
+                }
+                if ($name === 'delete_file' && $newContent !== '') {
+                    $name = 'create_file';
+                    $args['content'] = $newContent;
+                } elseif ($name !== 'delete_file') {
+                    $args['content'] = $newContent;
+                }
+                unset($args['content_base64']);
+            }
             unset($args['_eva_expected_sha256'], $args['_eva_preview_path'], $args['_eva_preview']);
+            unset($args['_eva_selected_hunks']);
         }
         // Normalize a common model mistake before policy/confirmation is
         // evaluated. Connected external services are not Nextcloud apps;
@@ -2221,7 +2264,7 @@ class ActionExecutor {
         return $this->cleanPath($path);
     }
 
-    /** @return array{ok:false,error:string} */
+    /** @return array{ok:bool,error?:string,content?:string} */
     private function validateFileChangeSnapshot(string $userId, string $name, array $args): array {
         try {
             if (PHP_SAPI === 'cli') {
@@ -2230,19 +2273,21 @@ class ActionExecutor {
             $home = $this->rootFolder->getUserFolder($userId);
             $path = (string)($args['_eva_preview_path'] ?? $this->fileChangePath($name, $args));
             $expected = (string)$args['_eva_expected_sha256'];
+            $currentContent = '';
             try {
                 $node = $home->get($path);
                 if (!$node instanceof File || $node->getSize() > self::MAX_READ_FILE_BYTES) {
                     return ['ok' => false, 'error' => 'The file changed after the preview. Ask EVA to prepare a new preview.'];
                 }
-                $actual = hash('sha256', (string)$node->getContent());
+                $currentContent = (string)$node->getContent();
+                $actual = hash('sha256', $currentContent);
             } catch (NotFoundException) {
                 $actual = '__missing__';
             }
             if (!hash_equals($expected, $actual)) {
                 return ['ok' => false, 'error' => 'The file changed after the preview. Ask EVA to prepare a new preview.'];
             }
-            return ['ok' => true];
+            return ['ok' => true, 'content' => $currentContent];
         } catch (\Throwable) {
             return ['ok' => false, 'error' => 'The preview could not be verified; EVA has not changed the file.'];
         }

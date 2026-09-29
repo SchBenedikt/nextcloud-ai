@@ -38,4 +38,39 @@ class DiffServiceTest extends TestCase {
 		self::assertSame(0, $deleted['added']);
 		self::assertSame(2, $deleted['removed']);
 	}
+
+	public function testSelectedDiffBlocksApplyOnlyApprovedChanges(): void {
+		$service = new DiffService();
+		$old = "one\nkeep\nthree\n";
+		$new = "ONE\nkeep\nTHREE\n";
+		$preview = $service->generateDiff($old, $new);
+
+		self::assertCount(2, $preview['hunks']);
+		self::assertSame("ONE\nkeep\nthree\n", $service->applySelectedHunks($old, $preview['hunks'], [0], true, true));
+		self::assertSame($old, $service->applySelectedHunks($old, $preview['hunks'], [], true, true));
+		self::assertSame($new, $service->applySelectedHunks($old, $preview['hunks'], [0, 1], true, true));
+
+		$noFinalNewline = "one\nkeep\nthree";
+		$withFinalNewline = "ONE\nkeep\nTHREE\n";
+		$endingPreview = $service->generateDiff($noFinalNewline, $withFinalNewline);
+		self::assertSame("ONE\nkeep\nthree", $service->applySelectedHunks($noFinalNewline, $endingPreview['hunks'], [0], true, false));
+
+		$appendPreview = $service->generateDiff("one\n", "one\ntwo\n");
+		self::assertSame("one\ntwo\n", $service->applySelectedHunks("one\n", $appendPreview['hunks'], [0], true, true));
+		self::assertSame("one\n", $service->applySelectedHunks("one\n", $appendPreview['hunks'], [], true, true));
+	}
+
+	public function testSelectedDiffBlocksRejectUnknownOrDuplicateIds(): void {
+		$service = new DiffService();
+		$preview = $service->generateDiff("old\n", "new\n");
+
+		foreach ([[4], [0, 0], ['0']] as $selected) {
+			try {
+				$service->applySelectedHunks("old\n", $preview['hunks'], $selected, true, true);
+				self::fail('Invalid diff block IDs must be rejected.');
+			} catch (\InvalidArgumentException) {
+				self::assertTrue(true);
+			}
+		}
+	}
 }

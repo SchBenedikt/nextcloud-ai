@@ -153,10 +153,15 @@ test('file change confirmation displays a text diff and submits its snapshot tok
   const preview = {
     path: 'Documents/settings.txt',
     action: 'update',
-    added: 1,
-    removed: 1,
+    added: 2,
+    removed: 2,
     previewable: true,
-    diff: '--- current\n+++ proposed\n@@ -1,1 +1,1 @@\n-old value\n+<script>new value</script>',
+    diff: '--- current\n+++ proposed\n@@ -1,4 +1,4 @@\n-old value\n+<script>new value</script>\n keep this\n-old ending\n+new ending',
+    ends_with_newline: false,
+    hunks: [
+      { id: 0, diff: '@@ -1,1 +1,1 @@\n-old value\n+<script>new value</script>', added: 1, removed: 1, old_start: 0, old_count: 1, new_lines: ['<script>new value</script>'] },
+      { id: 1, diff: '@@ -3,1 +3,1 @@\n-old ending\n+new ending', added: 1, removed: 1, old_start: 2, old_count: 1, new_lines: ['new ending'] },
+    ],
   }
   const streamLines = [line({
     type: 'confirmation',
@@ -177,10 +182,12 @@ test('file change confirmation displays a text diff and submits its snapshot tok
   await page.click('#send')
 
   const panel = page.locator('.rconfirm')
-  await expect(panel.locator('.rconfirm-diff')).toContainText('-old value')
-  await expect(panel.locator('.rconfirm-diff')).toContainText('+<script>new value</script>')
+  await expect(panel.locator('.rconfirm-diff').first()).toContainText('-old value')
+  await expect(panel.locator('.rconfirm-diff').first()).toContainText('+<script>new value</script>')
   await expect(panel.locator('.rconfirm-diff script')).toHaveCount(0)
   await expect(panel.locator('.rconfirm-form')).toHaveCount(0)
+  await expect(panel.locator('.rconfirm-hunk input')).toHaveCount(2)
+  await panel.locator('.rconfirm-hunk input').nth(1).uncheck()
   await page.click('.rconfirm-approve')
 
   await expect.poll(() => page.evaluate(`window.__mock.saved.find((r) => r.url.includes('/confirmTool'))`)).toEqual(
@@ -190,6 +197,7 @@ test('file change confirmation displays a text diff and submits its snapshot tok
         arguments: expect.objectContaining({
           _eva_expected_sha256: 'snapshot-sha256',
           _eva_preview_path: 'Documents/settings.txt',
+          _eva_selected_hunks: [0],
         }),
       }),
     })
