@@ -1125,5 +1125,18 @@ OC.L10N.register("eva_ai", {
   "Manage folders": "Manage folders",
   "Folders": "Folders",
   "Create, rename, color, or delete chat folders.": "Create, rename, color, or delete chat folders.",
-  "Create and move": "Create and move"
+  "Create and move": "Create and move",
+  "Bookmarked answers": "Bookmarked answers",
+  "No bookmarked answers yet.": "No bookmarked answers yet.",
+  "Helpful": "Helpful",
+  "Not helpful": "Not helpful",
+  "Bookmark answer": "Bookmark answer",
+  "Feedback saved": "Feedback saved",
+  "Feedback could not be saved.": "Feedback could not be saved.",
+  "Marked helpful": "Marked helpful",
+  "Marked not helpful": "Marked not helpful",
+  "Bookmarked": "Bookmarked",
+  "Chat is not ready yet.": "Chat is not ready yet.",
+  "Answer feedback": "Answer feedback",
+  "All-time feedback on assistant answers": "All-time feedback on assistant answers"
 }, "nplurals=2; plural=(n != 1);");

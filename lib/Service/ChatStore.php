@@ -48,7 +48,7 @@ class ChatStore {
      * around the first match and a count of matching messages, so the chat list
      * can find content, not only titles (Issue #152).
      *
-     * @return list<array{id:string,title:string,created:int,updated:int,count:int,pinned:bool,folder:string,archived:bool,snippet?:string,matchCount?:int,trimmed?:int}>
+     * @return list<array{id:string,title:string,created:int,updated:int,count:int,pinned:bool,folder:string,tags:list<string>,bookmarkedCount:int,archived:bool,snippet?:string,matchCount?:int,trimmed?:int}>
      */
     public function list(string $user, ?string $search = null, bool $includeArchived = false): array {
         return $this->withUserLock($user, function () use ($user, $search, $includeArchived): array {
@@ -69,6 +69,7 @@ class ChatStore {
                     'created' => $chat['created'] ?? 0,
                     'updated' => $chat['updated'] ?? 0,
                     'count' => count($messages),
+                    'bookmarkedCount' => count(array_filter($messages, static fn($message) => !empty($message['reactions']['bookmarked']))),
                     'trimmed' => (int)($chat['trimmed'] ?? 0),
                     // Organisational metadata (Issue #87); missing on legacy
                     // chats and defaulted so old data keeps working unchanged.
@@ -242,7 +243,14 @@ class ChatStore {
                     if (!is_array($message) || !in_array($message['role'] ?? '', ['user', 'assistant'], true)) continue;
                     $text = trim((string)($message['text'] ?? ''));
                     if ($text === '' || mb_strlen($text) > 50000) continue;
-                    $messages[] = ['role' => $message['role'], 'text' => $text];
+                    $entry = ['role' => $message['role'], 'text' => $text];
+                    if ($entry['role'] === 'assistant' && is_array($message['reactions'] ?? null)) {
+                        $reactions = [];
+                        if (is_bool($message['reactions']['helpful'] ?? null)) $reactions['helpful'] = $message['reactions']['helpful'];
+                        if (is_bool($message['reactions']['bookmarked'] ?? null)) $reactions['bookmarked'] = $message['reactions']['bookmarked'];
+                        if ($reactions !== []) $entry['reactions'] = $reactions;
+                    }
+                    $messages[] = $entry;
                 }
                 if ($messages === []) continue;
                 $all[] = ['id' => 'c' . date('YmdHis') . '-' . bin2hex(random_bytes(5)), 'title' => $this->clipTitle((string)($source['title'] ?? '')), 'created' => time(), 'updated' => time(), 'messages' => $messages, 'rev' => 1];
@@ -349,6 +357,51 @@ class ChatStore {
             unset($chat);
             return false;
         });
+    }
+
+    /** @return array{reactions:array<string,mixed>,rev:int}|null Set, change, or clear feedback on one assistant message. */
+    public function setMessageReaction(string $user, string $id, int $index, string $type, ?bool $value): ?array {
+        if (!in_array($type, ['helpful', 'bookmarked'], true)) return null;
+        return $this->withUserLock($user, function () use ($user, $id, $index, $type, $value): ?array {
+            $all = $this->read($user);
+            foreach ($all as &$chat) {
+                if (($chat['id'] ?? '') !== $id) continue;
+                if (!isset($chat['messages'][$index]) || ($chat['messages'][$index]['role'] ?? '') !== 'assistant') {
+                    return null;
+                }
+                $reactions = is_array($chat['messages'][$index]['reactions'] ?? null) ? $chat['messages'][$index]['reactions'] : [];
+                if ($value === null) unset($reactions[$type]);
+                else $reactions[$type] = $value;
+                if ($reactions === []) unset($chat['messages'][$index]['reactions']);
+                else {
+                    $reactions['updated'] = time();
+                    $chat['messages'][$index]['reactions'] = $reactions;
+                }
+                $chat['updated'] = time();
+                $chat['rev'] = (int)($chat['rev'] ?? 0) + 1;
+                $this->write($user, $all);
+                return ['reactions' => $reactions, 'rev' => $chat['rev']];
+            }
+            unset($chat);
+            return null;
+        });
+    }
+
+    /** @return array{helpful:int,notHelpful:int,bookmarked:int} */
+    public function feedbackStats(string $user): array {
+        return $this->withUserLock($user, function () use ($user): array {
+            $stats = ['helpful' => 0, 'notHelpful' => 0, 'bookmarked' => 0];
+            foreach ($this->read($user) as $chat) {
+                foreach ($chat['messages'] ?? [] as $message) {
+                    if (($message['role'] ?? '') !== 'assistant') continue;
+                    $reactions = $message['reactions'] ?? [];
+                    if (($reactions['helpful'] ?? null) === true) $stats['helpful']++;
+                    if (($reactions['helpful'] ?? null) === false) $stats['notHelpful']++;
+                    if (!empty($reactions['bookmarked'])) $stats['bookmarked']++;
+                }
+            }
+            return $stats;
+        }, ILockingProvider::LOCK_SHARED);
     }
 
     /**

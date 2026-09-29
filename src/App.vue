@@ -38,6 +38,12 @@
 						<svg width="16" height="16" viewBox="0 0 24 24"><path :d="mdiViewDashboardOutline" fill="currentColor" /></svg>
 					</template>
 				</NcAppNavigationItem>
+				<NcAppNavigationItem
+					:name="$t('Bookmarked answers') + ' (' + bookmarkedCount + ')'"
+					:active="showBookmarked"
+					@click="showBookmarked = !showBookmarked">
+					<template #icon><svg width="16" height="16" viewBox="0 0 24 24"><path :d="mdiBookmarkOutline" fill="currentColor" /></svg></template>
+				</NcAppNavigationItem>
 				<li class="chat-list-heading">
 					<span>{{ $t('Chats') }}</span>
 					<NcCounterBubble :count="activeChats.length" />
@@ -119,6 +125,7 @@
 				<li v-if="apiError" class="chat-list-error" role="alert">{{ apiError }}</li>
 				<li v-if="chatsLoading" class="chat-list-empty" role="status">{{ $t('Loading chats…') }}</li>
 				<li v-else-if="!apiError && !chats.length" class="chat-list-empty">{{ $t('No chats yet — start a new one.') }}</li>
+				<li v-else-if="showBookmarked && !chatFilter.trim() && !bookmarkedChats.length" class="chat-list-empty">{{ $t('No bookmarked answers yet.') }}</li>
 				<li v-else-if="!apiError && chatFilter.trim() && !listChats.length" class="chat-list-empty">{{ $t('No chats match your search.') }}</li>
 			</template>
 			<template #footer>
@@ -229,7 +236,7 @@ const SettingsView = defineAsyncComponent(() => import('./views/SettingsView.vue
 const AgentRunsView = defineAsyncComponent(() => import('./views/AgentRunsView.vue'))
 const FileContextChatView = defineAsyncComponent(() => import('./views/FileContextChatView.vue'))
 const AdminView = defineAsyncComponent(() => import('./views/AdminView.vue'))
-import { mdiChatProcessing, mdiFileDocumentOutline, mdiTune, mdiTrashCanOutline, mdiMessagePlus, mdiPencilOutline, mdiChevronDown, mdiViewDashboardOutline, mdiPinOutline, mdiPinOffOutline, mdiFolderOutline, mdiFolderPlusOutline, mdiFolderRemoveOutline, mdiFolderSearchOutline, mdiFolderOffOutline, mdiArchiveOutline, mdiArchiveArrowUpOutline } from '@mdi/js'
+import { mdiChatProcessing, mdiFileDocumentOutline, mdiTune, mdiTrashCanOutline, mdiMessagePlus, mdiPencilOutline, mdiChevronDown, mdiViewDashboardOutline, mdiPinOutline, mdiPinOffOutline, mdiFolderOutline, mdiFolderPlusOutline, mdiFolderRemoveOutline, mdiFolderSearchOutline, mdiFolderOffOutline, mdiArchiveOutline, mdiArchiveArrowUpOutline, mdiBookmarkOutline } from '@mdi/js'
 import { NcCounterBubble, NcTextField } from '@nextcloud/vue'
 import NcAppNavigationSearch from '@nextcloud/vue/components/NcAppNavigationSearch'
 import NcActionButton from '@nextcloud/vue/components/NcActionButton'
@@ -268,6 +275,7 @@ export default {
 		const chatFilter = ref('')
 		const selectedFolder = ref('')
 		const selectedTag = ref('')
+		const showBookmarked = ref(false)
 		const dragChatId = ref('')
 		const dragOverFolder = ref('')
 		const apiError = ref('')
@@ -299,6 +307,8 @@ export default {
 		// remaining chats, archived chats collapsed at the bottom.
 		const facetChats = computed(() => chats.value.filter((c) => (!selectedFolder.value || c.folder === selectedFolder.value) && (!selectedTag.value || (c.tags || []).some((tag) => tag.toLowerCase() === selectedTag.value.toLowerCase()))))
 		const availableTags = computed(() => [...new Set(chats.value.flatMap((chat) => chat.tags || []))].sort((a, b) => a.localeCompare(b)))
+		const bookmarkedChats = computed(() => chats.value.filter((chat) => Number(chat.bookmarkedCount || 0) > 0))
+		const bookmarkedCount = computed(() => bookmarkedChats.value.reduce((total, chat) => total + Number(chat.bookmarkedCount || 0), 0))
 		const pinnedChats = computed(() => facetChats.value.filter((c) => c.pinned && !c.archived))
 		const folderGroups = computed(() => {
 			const groups = new Map()
@@ -320,6 +330,11 @@ export default {
 		// One flat, ordered list of headings + chat items for the sidebar.
 		const navItems = computed(() => {
 			const query = chatFilter.value.trim()
+			if (showBookmarked.value) {
+				const base = query ? (searchResults.value || chats.value.filter((chat) => String(chat.title || '').toLowerCase().includes(query.toLowerCase()))) : bookmarkedChats.value
+				const matches = base.filter((chat) => Number(chat.bookmarkedCount || 0) > 0 && facetChats.value.some((facet) => facet.id === chat.id))
+				return [{ type: 'heading', key: 'h-bookmarks', label: t('Bookmarked answers'), icon: mdiBookmarkOutline, count: bookmarkedCount.value }, ...matches.map((chat) => ({ type: 'chat', key: 'chat-' + chat.id, chat }))]
+			}
 			if (query) {
 				const base = searchResults.value || chats.value.filter((chat) => String(chat.title || '').toLowerCase().includes(query.toLowerCase()))
 				return base.filter((c) => facetChats.value.some((facet) => facet.id === c.id) && !c.archived).map((c) => ({ type: 'chat', key: 'chat-' + c.id, chat: c }))
@@ -567,6 +582,7 @@ export default {
 			// A dashboard prompt belongs only to the chat that was just created.
 			// Clear it before switching to an existing conversation.
 			pendingPrompt.value = ''
+			showBookmarked.value = false
 			currentChat.value = id
 			// Clear an active message search so the normal chat list returns.
 			if (chatFilter.value.trim()) {
@@ -654,13 +670,13 @@ export default {
 		return {
 			view, adminMode: isAdminMode, mobileOpen, buildVersion,
 			chats, folders, currentChat, busy, chatsLoading, chatFilter, apiError, chatDialog, showArchived,
-			pinnedChats, folderGroups, plainChats, navItems, listChats, activeChats, archivedChats, selectedFolder, selectedTag, availableTags, dragOverFolder,
+			pinnedChats, folderGroups, plainChats, navItems, listChats, activeChats, archivedChats, selectedFolder, selectedTag, availableTags, showBookmarked, bookmarkedChats, bookmarkedCount, dragOverFolder,
 			folderPickerOpen, folderChat, newFolderName, foldersLoading, foldersLoadError, collapsedFolders, toggleFolder,
 			fileContextIds, itemName, itemTip,
 			newChat, selectChat, renameChat, deleteChat, closeChatDialog, confirmChatDialog, loadChats, loadFolders, navigate, updateChatMeta, pickFolder, pickScope, assignTarget, createAndAssign, createFolderOnly, manageFolders, pendingPrompt, startChatDrag, dropChat, editChatTags, setFolderColor, renameFolder, deleteFolder,
 			pickerMode,
 			mdiChatProcessing, mdiFileDocumentOutline, mdiTune, mdiTrashCanOutline, mdiMessagePlus, mdiPencilOutline, mdiChevronDown, mdiViewDashboardOutline,
-			mdiPinOutline, mdiPinOffOutline, mdiFolderOutline, mdiFolderPlusOutline, mdiFolderRemoveOutline, mdiFolderSearchOutline, mdiFolderOffOutline, mdiArchiveOutline, mdiArchiveArrowUpOutline,
+			mdiPinOutline, mdiPinOffOutline, mdiBookmarkOutline, mdiFolderOutline, mdiFolderPlusOutline, mdiFolderRemoveOutline, mdiFolderSearchOutline, mdiFolderOffOutline, mdiArchiveOutline, mdiArchiveArrowUpOutline,
 		}
 	},
 }

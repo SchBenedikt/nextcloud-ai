@@ -8,6 +8,7 @@
 		<div v-if="loading" class="metrics-loading">{{ $t('Loading metrics…') }}</div>
 		<template v-else-if="hasCurrentData">
 			<section class="metrics-cards" :aria-label="$t('Usage totals')"><div v-for="card in cards" :key="card.label" class="metrics-card"><span>{{ card.label }}</span><strong>{{ format(card.value) }}</strong><small>{{ card.hint }}</small></div></section>
+			<section class="metrics-panel feedback-metrics" :aria-label="$t('Answer feedback')"><h2>{{ $t('Answer feedback') }}</h2><p class="metrics-note">{{ $t('All-time feedback on assistant answers') }}</p><div class="feedback-totals"><div><strong>{{ format(feedbackStats.helpful) }}</strong><span>{{ $t('Helpful') }}</span></div><div><strong>{{ format(feedbackStats.notHelpful) }}</strong><span>{{ $t('Not helpful') }}</span></div><div><strong>{{ format(feedbackStats.bookmarked) }}</strong><span>{{ $t('Bookmarked') }}</span></div></div></section>
 			<section v-if="totals.total_tokens" class="metrics-insights" :aria-label="$t('Usage breakdown')">
 				<div class="metrics-panel token-split"><h2>{{ $t('Total tokens') }}</h2><div class="split-chart" :style="{ '--input': inputShare + '%' }" aria-hidden="true"><span>{{ format(totals.total_tokens) }}</span></div><div class="chart-legend"><span><i class="input-dot"></i>{{ $t('Input tokens') }} · {{ inputShare }}%</span><span><i class="output-dot"></i>{{ $t('Output tokens') }} · {{ 100 - inputShare }}%</span></div></div>
 				<div class="metrics-panel"><h2>{{ $t('Top models by token use') }}</h2><div class="model-bars"><div v-for="row in byModel.slice(0, 5)" :key="row.provider + row.model" class="model-bar"><span :title="row.provider + ' / ' + row.model">{{ row.provider }} / {{ row.model }}</span><div><i :style="{ width: (Number(row.total_tokens || 0) / maxModel * 100) + '%' }"></i></div><strong>{{ format(row.total_tokens) }}</strong></div></div></div>
@@ -30,6 +31,7 @@ export default {
 	name: 'MetricsView',
 	setup() {
 		const days = ref(30); const loading = ref(true); const error = ref(''); const dataDays = ref(null); const data = ref({ totals: {}, by_model: [], daily: [], slow_tools: [] })
+		const feedbackStats = ref({ helpful: 0, notHelpful: 0, bookmarked: 0 })
 		let requestId = 0
 		const hasCurrentData = computed(() => dataDays.value === days.value)
 		const totals = computed(() => data.value.totals || {}); const byModel = computed(() => data.value.by_model || []); const daily = computed(() => data.value.daily || []); const slowTools = computed(() => data.value.slow_tools || [])
@@ -46,9 +48,13 @@ export default {
 			loading.value = true
 			error.value = ''
 			try {
-				const result = await api('GET', 'metrics', { days: period })
+				const [result, feedback] = await Promise.all([
+					api('GET', 'metrics', { days: period }),
+					api('GET', 'feedback/stats').catch(() => null),
+				])
 				if (currentRequest !== requestId) return
 				data.value = result
+				if (feedback) feedbackStats.value = feedback
 				dataDays.value = period
 			} catch (e) {
 				if (currentRequest === requestId) error.value = t('Could not load usage metrics: {error}', { error: errMsg(e) })
@@ -56,11 +62,12 @@ export default {
 				if (currentRequest === requestId) loading.value = false
 			}
 		}
-		onMounted(() => load(days.value)); return { days, loading, error, hasCurrentData, totals, byModel, daily, slowTools, maxDaily, maxModel, inputShare, cards, format, load }
+		onMounted(() => load(days.value)); return { days, loading, error, hasCurrentData, totals, byModel, daily, slowTools, feedbackStats, maxDaily, maxModel, inputShare, cards, format, load }
 	},
 }
 </script>
 
 <style scoped>
 .metrics-view { max-width: var(--eva-content-width, 1180px); margin: 0 auto; padding: 32px; }.page-header { display: flex; align-items: end; justify-content: space-between; gap: 24px; margin-bottom: 28px; }.page-header h1 { margin: 4px 0 8px; }.page-header p:not(.eyebrow) { color: var(--color-text-maxcontrast); margin: 0; }.eyebrow { color: var(--color-primary-element); font-size: .75rem; font-weight: 700; letter-spacing: .12em; margin: 0; }.period-switcher { display: flex; gap: 4px; }.period-switcher button { border: 1px solid var(--color-border); background: var(--color-main-background); color: var(--color-main-text); border-radius: var(--border-radius-element); padding: 7px 12px; cursor: pointer; }.period-switcher button.active { background: var(--color-primary-element); color: var(--color-primary-element-text); }.period-switcher button:focus-visible, .metrics-retry:focus-visible { outline: 2px solid var(--color-primary-element); outline-offset: 2px; }.metrics-cards,.metrics-insights { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; margin-bottom: 20px; }.metrics-insights { grid-template-columns: 1fr 2fr; }.metrics-card, .metrics-panel { background: var(--color-main-background); border: 1px solid var(--color-border); border-radius: var(--border-radius-large); padding: 18px; }.metrics-card { display: flex; flex-direction: column; gap: 7px; }.metrics-card span { color: var(--color-text-maxcontrast); }.metrics-card strong { font-size: 1.7rem; }.metrics-card small, .metrics-panel small { color: var(--color-text-maxcontrast); }.metrics-panel { margin-top: 20px; overflow-x: auto; }.metrics-insights .metrics-panel { margin-top: 0; }.metrics-panel h2 { margin: 0 0 14px; font-size: 1.15rem; }.token-split { text-align:center }.split-chart { width:116px;height:116px;border-radius:50%;margin:auto;background:conic-gradient(var(--color-primary-element) 0 var(--input),var(--color-success) var(--input) 100%);display:grid;place-items:center }.split-chart span { width:76px;height:76px;border-radius:50%;background:var(--color-main-background);display:grid;place-items:center;font-weight:700;font-size:.8rem }.chart-legend { display:grid;gap:5px;text-align:left;margin-top:14px;font-size:.85rem }.chart-legend i { display:inline-block;width:9px;height:9px;border-radius:50%;margin-right:6px }.input-dot { background:var(--color-primary-element) }.output-dot { background:var(--color-success) }.model-bars { display:grid;gap:9px }.model-bar { display:grid;grid-template-columns:minmax(100px,1fr) 2fr auto;gap:9px;align-items:center;font-size:.85rem }.model-bar span { overflow:hidden;text-overflow:ellipsis;white-space:nowrap }.model-bar div { background:var(--color-background-hover);height:9px;border-radius:9px;overflow:hidden }.model-bar i { display:block;background:var(--color-primary-element);height:100%;border-radius:inherit } table { width:100%; border-collapse: collapse; } th, td { padding: 9px 8px; text-align: left; border-bottom: 1px solid var(--color-border); white-space: nowrap; } th { color: var(--color-text-maxcontrast); font-size: .85rem; }.mono { font-family: var(--font-face-monospace); }.metrics-empty, .metrics-loading, .metrics-error { color: var(--color-text-maxcontrast); }.metrics-error { display:flex; align-items:center; justify-content:space-between; gap:12px; background:var(--color-error-hover); border-radius:var(--border-radius-element); color:var(--color-error); padding:12px; }.metrics-retry { flex-shrink:0; border:1px solid var(--color-border); border-radius:var(--border-radius-element); padding:6px 10px; background:var(--color-main-background); color:var(--color-main-text); cursor:pointer; }.metrics-retry:hover { background:var(--color-background-hover); }.daily-list { display: grid; gap: 8px; }.daily-row { display: grid; grid-template-columns: 100px 1fr 90px; align-items: center; gap: 12px; font-size: .9rem; }.daily-row time { color: var(--color-text-maxcontrast); }.daily-row strong { text-align: right; }.daily-bar { height: 10px; background: var(--color-background-hover); border-radius: 8px; overflow: hidden; }.daily-bar span { display: block; height: 100%; min-width: 2px; background: var(--color-primary-element); border-radius: inherit; } @media (max-width: 760px) { .metrics-view { padding: 20px 12px; } .page-header { align-items: start; flex-direction: column; } .metrics-cards { grid-template-columns: repeat(2, minmax(0, 1fr)); }.metrics-insights { grid-template-columns:1fr; } }
+.feedback-metrics { margin-top: 0; }.feedback-totals { display: flex; gap: 32px; flex-wrap: wrap; }.feedback-totals div { display: grid; gap: 3px; }.feedback-totals strong { font-size: 1.35rem; }.feedback-totals span { color: var(--color-text-maxcontrast); }
 </style>

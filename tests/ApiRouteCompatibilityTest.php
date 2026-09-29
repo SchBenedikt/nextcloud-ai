@@ -17,11 +17,12 @@ final class ApiRouteCompatibilityTest extends TestCase {
             '/api/indexStop POST', '/api/index/stop POST',
             '/api/indexReset POST', '/api/index/reset POST',
             '/api/folders/delete POST', '/api/folders DELETE',
+            '/api/chats/{id}/reaction POST', '/api/feedback/stats GET',
         ] as $signature) {
             self::assertContains($signature, $signatures);
         }
         $routeNames = array_column($all, 'name');
-        foreach (['api#startMailIndexSnake', 'api#startTalkIndexSnake', 'api#stopIndexSnake', 'api#resetIndexSnake', 'api#deleteFolderRest'] as $routeName) {
+        foreach (['api#startMailIndexSnake', 'api#startTalkIndexSnake', 'api#stopIndexSnake', 'api#resetIndexSnake', 'api#deleteFolderRest', 'api#chatReaction', 'api#feedbackStats'] as $routeName) {
             self::assertContains($routeName, $routeNames, 'Missing route handler ' . $routeName);
         }
     }

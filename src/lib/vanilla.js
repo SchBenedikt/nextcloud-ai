@@ -133,6 +133,10 @@ export function mountChat(root, opts = {}) {
 			lines.push('## ' + (m.role === 'user' ? t('You') : 'Eva'))
 			lines.push('')
 			lines.push(m.text || '')
+			if (m.role === 'assistant' && m.reactions) {
+				if (typeof m.reactions.helpful === 'boolean') lines.push(t(m.reactions.helpful ? 'Marked helpful' : 'Marked not helpful'))
+				if (m.reactions.bookmarked) lines.push(t('Bookmarked'))
+			}
 		})
 		const blob = new Blob([lines.join('\n')], { type: 'text/markdown' })
 		const url = URL.createObjectURL(blob)
@@ -269,6 +273,48 @@ export function mountChat(root, opts = {}) {
 			rb.addEventListener('click', () => regenerateMessage(idx))
 			actBar.appendChild(rb)
 			b.appendChild(actBar)
+			const feedback = document.createElement('div')
+			feedback.className = 'rfeedback'
+			const status = document.createElement('span')
+			status.className = 'rfeedback-status'
+			status.setAttribute('role', 'status')
+			status.setAttribute('aria-live', 'polite')
+			const buttons = []
+			const addReactionButton = (type, value, label, symbol) => {
+				const button = document.createElement('button')
+				button.type = 'button'
+				button.className = 'rfeedback-button'
+				button.textContent = symbol
+				button.title = t(label)
+				button.setAttribute('aria-label', t(label))
+				button.setAttribute('aria-pressed', String(type === 'helpful' ? m.reactions?.helpful === value : !!m.reactions?.bookmarked))
+				button.classList.toggle('is-active', button.getAttribute('aria-pressed') === 'true')
+				button.disabled = !chatId
+				button.addEventListener('click', () => {
+					button.disabled = true
+					const next = type === 'bookmarked' ? !m.reactions?.bookmarked : (m.reactions?.helpful === value ? null : value)
+						saveReaction(idx, type, next)
+						.then((result) => {
+							if (result && result.rev != null) chatRev = parseInt(result.rev, 10) || null
+							m.reactions = result && result.reactions && Object.keys(result.reactions).length ? result.reactions : undefined
+							buttons.forEach(({ button: item, type: itemType, value: itemValue }) => {
+								item.setAttribute('aria-pressed', String(itemType === 'helpful' ? m.reactions?.helpful === itemValue : !!m.reactions?.bookmarked))
+								item.classList.toggle('is-active', item.getAttribute('aria-pressed') === 'true')
+							})
+							status.textContent = t('Feedback saved')
+							if (typeof onRecent === 'function') onRecent()
+						})
+						.catch(() => { status.textContent = t('Feedback could not be saved.') })
+						.finally(() => { button.disabled = !chatId })
+				})
+				buttons.push({ button, type, value })
+				feedback.appendChild(button)
+			}
+			addReactionButton('helpful', true, 'Helpful', '👍')
+			addReactionButton('helpful', false, 'Not helpful', '👎')
+			addReactionButton('bookmarked', true, 'Bookmark answer', m.reactions?.bookmarked ? '🔖' : '♧')
+			feedback.appendChild(status)
+			b.appendChild(feedback)
 		}
 		if (m.role === 'user' && m.done) {
 			const actBar = document.createElement('div')
@@ -1155,6 +1201,11 @@ export function mountChat(root, opts = {}) {
 			.catch(() => false)
 	}
 
+	function saveReaction(index, type, value) {
+		if (!chatId) return Promise.reject(new Error(t('Chat is not ready yet.')))
+		return api('POST', '/chats/' + encodeURIComponent(chatId) + '/reaction', { index, type, value })
+	}
+
 	// The server derives the title of an untitled chat from its first user
 	// message, so the header follows once that message has been persisted.
 	const refreshTitle = () => {
@@ -1234,6 +1285,7 @@ export function mountChat(root, opts = {}) {
 				text: m.text || '',
 				thinking: '',
 				followups: Array.isArray(m.followups) ? m.followups : [],
+				reactions: m.reactions && typeof m.reactions === 'object' ? m.reactions : undefined,
 				tools: Array.isArray(m.tools) ? m.tools : [],
 				// A persisted pending confirmation re-renders the inline panel so
 				// approving after a reload still works (Issue #185).

@@ -269,6 +269,10 @@
         }
         .rm:hover .rcopy { opacity: 1; }
         .rcopy:hover { background: var(--color-background-hover, #e5e5e5); }
+        .rfeedback { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; margin-top: 8px; min-height: 26px; }
+        .rfeedback-button { border: 1px solid transparent; border-radius: 6px; background: transparent; color: var(--color-text-maxcontrast, #555); cursor: pointer; padding: 3px 6px; font-size: 14px; }
+        .rfeedback-button:hover, .rfeedback-button.is-active { background: var(--color-background-hover, #eee); border-color: var(--color-border, #ccc); color: var(--color-main-text, #222); }
+        .rfeedback-status { color: var(--color-text-maxcontrast, #666); font-size: 11px; }
         .form { display: flex; gap: 8px; align-items: center; padding: 8px; border: 1px solid var(--color-border, #ddd); border-radius: 12px; background: var(--color-main-background, #fff); }
         .form input {
             flex: 1; min-width: 0; padding: 10px 12px; border: 1px solid transparent; border-radius: 8px;

@@ -1057,6 +1057,28 @@ final class ChatStoreTest extends TestCase {
         self::assertArrayNotHasKey('color', $store->listFolders('alice')[0]);
     }
 
+    public function testAssistantMessageReactionsPersistAndAppearInFeedbackStats(): void {
+        $seed = json_encode([
+            ['id' => 'a', 'title' => 'A', 'created' => 1, 'updated' => 1, 'messages' => [
+                ['role' => 'user', 'text' => 'Question'],
+                ['role' => 'assistant', 'text' => 'Answer'],
+            ]],
+        ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+        $written = null;
+        [$store] = $this->chatFileHarness($seed, $written);
+
+        self::assertIsArray($store->setMessageReaction('alice', 'a', 1, 'helpful', true));
+        self::assertIsArray($store->setMessageReaction('alice', 'a', 1, 'bookmarked', true));
+        self::assertSame(1, $store->list('alice')[0]['bookmarkedCount']);
+        self::assertSame(['helpful' => 1, 'notHelpful' => 0, 'bookmarked' => 1], $store->feedbackStats('alice'));
+        self::assertNull($store->setMessageReaction('alice', 'a', 0, 'helpful', true), 'User messages cannot receive reactions');
+        self::assertNull($store->setMessageReaction('alice', 'missing', 1, 'helpful', true));
+        self::assertSame(['role' => 'assistant', 'text' => 'Answer', 'reactions' => json_decode((string)$written, true)[0]['messages'][1]['reactions']], $store->exportAll('alice')[0]['messages'][1]);
+
+        self::assertIsArray($store->setMessageReaction('alice', 'a', 1, 'helpful', null));
+        self::assertSame(['helpful' => 0, 'notHelpful' => 0, 'bookmarked' => 1], $store->feedbackStats('alice'));
+    }
+
     /** A forced recovery also attempts release when isLocked() reports false.
      * Some DB locking-provider versions expose stale rows this way. */
     public function testForcedRecoveryReleasesAnUnreportedStaleLock(): void {

@@ -246,6 +246,11 @@ export default {
 .chatview-root .rcopy:hover { background: var(--color-background-hover, #e5e5e5); }
 
 .chatview-root .racts { position: absolute; top: -2px; right: 0; display: flex; gap: 2px; opacity: 0; transition: opacity .12s; }
+.chatview-root .rfeedback { display: flex; align-items: center; gap: 4px; margin-top: 8px; min-height: 26px; }
+.chatview-root .rfeedback-button { border: 1px solid transparent; border-radius: 6px; background: transparent; color: var(--color-text-maxcontrast, #555); cursor: pointer; padding: 3px 6px; font-size: 14px; }
+.chatview-root .rfeedback-button:hover, .chatview-root .rfeedback-button.is-active { background: var(--color-background-hover, #eee); border-color: var(--color-border, #ccc); color: var(--color-main-text, #222); }
+.chatview-root .rfeedback-status { color: var(--color-text-maxcontrast, #666); font-size: 11px; }
+.chatview-root .rfeedback { flex-wrap: wrap; }
 .chatview-root .rm:hover .racts { opacity: 1; }
 .chatview-root .rm:focus-within .racts { opacity: 1; }
 .chatview-root .racts .rcopy,
