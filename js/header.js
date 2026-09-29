@@ -10,6 +10,10 @@
 		return el ? el.getAttribute('content') : '';
 	}
 
+	function tr(text) {
+		return window.OC && OC.L10N && OC.L10N.translate ? OC.L10N.translate('eva_ai', text) : text;
+	}
+
 	function inject() {
 		if (typeof OC === 'undefined' || !OC.webroot) return;
 		if (/\/apps\/eva_ai($|\/)/.test(location.pathname)) return;
@@ -33,7 +37,7 @@
 		var a = document.createElement('a');
 		a.className = 'eva-ai-header-link';
 		a.href = OC.webroot + '/apps/eva_ai/';
-		var label = OC.L10N && OC.L10N.translate ? OC.L10N.translate('eva_ai', 'AI – Chat with your files') : 'AI – Chat with your files';
+		var label = tr('AI – Chat with your files');
 		a.title = label;
 		a.setAttribute('aria-label', label);
 		var img = document.createElement('img');

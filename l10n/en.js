@@ -1029,5 +1029,16 @@ OC.L10N.register("eva_ai", {
   "Stopping…": "Stopping…",
   "Stop requested for ": "Stop requested for ",
   "the next run": "the next run",
-  "Could not stop: ": "Could not stop: "
+  "Could not stop: ": "Could not stop: ",
+  "The server did not return JSON (HTTP {status}).": "The server did not return JSON (HTTP {status}).",
+  "Web search is switched off for your account. Turn it on in your personal Eva AI settings and choose a provider.": "Web search is switched off for your account. Turn it on in your personal Eva AI settings and choose a provider.",
+  "Results: {count} · Provider: {provider} · Mode: {mode}": "Results: {count} · Provider: {provider} · Mode: {mode}",
+  "{count} pages needed the browser because their text only exists after JavaScript runs.": "{count} pages needed the browser because their text only exists after JavaScript runs.",
+  "No page needed the browser this time. Every result was readable with a plain request; this does not indicate whether rendering works.": "No page needed the browser this time. Every result was readable with a plain request; this does not indicate whether rendering works.",
+  "No results. Try another query, another mode, or a different provider.": "No results. Try another query, another mode, or a different provider.",
+  "Source": "Source",
+  "Read": "Read",
+  "Pictures": "Pictures",
+  "characters": "characters",
+  "highlighted": "highlighted"
 }, "nplurals=2; plural=(n != 1);");

@@ -13,8 +13,11 @@
 		return
 	}
 	var apiBase = root.dataset.apiBase || '/ocs/v2.php/apps/eva_ai/api/'
-	function tr(text) {
-		return window.OC && OC.L10N && OC.L10N.translate ? OC.L10N.translate('eva_ai', text) : text
+	function tr(text, vars) {
+		var translated = window.OC && OC.L10N && OC.L10N.translate ? OC.L10N.translate('eva_ai', text, vars || {}) : text
+		return String(translated).replace(/\{([^{}]+)\}/g, function (match, key) {
+			return vars && Object.prototype.hasOwnProperty.call(vars, key) ? String(vars[key]) : match
+		})
 	}
 
 	// ── Helpers ──────────────────────────────────────────────────────────
@@ -48,7 +51,7 @@
 					data = raw === '' ? null : JSON.parse(raw)
 				} catch (parseError) {
 					if (res.ok) {
-						throw new Error('the server did not return JSON (HTTP ' + res.status + ')')
+						throw new Error(tr('The server did not return JSON (HTTP {status}).', { status: res.status }))
 					}
 					data = null
 				}
@@ -204,7 +207,7 @@
 			if (data && data.enabled === false) {
 				var hint = document.createElement('p')
 				hint.className = 'settings-hint'
-				hint.textContent = 'Web search is switched off for your account. Turn it on in your personal Eva AI settings and choose a provider.'
+				hint.textContent = tr('Web search is switched off for your account. Turn it on in your personal Eva AI settings and choose a provider.')
 				box.appendChild(hint)
 			}
 			box.appendChild(problem)
@@ -214,8 +217,7 @@
 		var results = data.results || []
 		var summary = document.createElement('p')
 		summary.className = 'eva-test-summary'
-		summary.textContent = results.length + ' result' + (results.length === 1 ? '' : 's')
-			+ ' from ' + (data.provider || '?') + ' (mode: ' + (data.mode || 'web') + ')'
+		summary.textContent = tr('Results: {count} · Provider: {provider} · Mode: {mode}', { count: results.length, provider: data.provider || '?', mode: data.mode || 'web' })
 		box.appendChild(summary)
 
 		// Whether the browser did any work is the one fact a search result list
@@ -226,17 +228,16 @@
 		if (data.browserStatus) {
 			browserNote.textContent = 'No page was read in a browser: ' + data.browserStatus
 		} else if (rendered > 0) {
-			browserNote.textContent = rendered + ' page' + (rendered === 1 ? '' : 's')
-				+ ' needed the browser: their text only exists after JavaScript has run, so these results would have been empty without it.'
+			browserNote.textContent = tr('{count} pages needed the browser because their text only exists after JavaScript runs.', { count: rendered })
 		} else {
-			browserNote.textContent = 'No page needed the browser this time - every result was readable with a plain request. That is normal; it says nothing about whether rendering works.'
+			browserNote.textContent = tr('No page needed the browser this time. Every result was readable with a plain request; this does not indicate whether rendering works.')
 		}
 		box.appendChild(browserNote)
 
 		if (results.length === 0) {
 			var none = document.createElement('p')
 			none.className = 'settings-hint'
-			none.textContent = 'No results. Try another query, another mode, or a different provider.'
+			none.textContent = tr('No results. Try another query, another mode, or a different provider.')
 			box.appendChild(none)
 			return
 		}
@@ -245,7 +246,7 @@
 		table.className = 'grid eva-search-table'
 		var head = document.createElement('thead')
 		var headRow = document.createElement('tr')
-		;['#', 'Result', 'Source', 'Read', 'Pictures'].forEach(function (label) {
+		;['#', tr('Result'), tr('Source'), tr('Read'), tr('Pictures')].forEach(function (label) {
 			var th = document.createElement('th')
 			th.scope = 'col'
 			th.textContent = label
@@ -291,7 +292,7 @@
 
 			var read = document.createElement('td')
 			read.textContent = hit.chars > 0
-				? hit.chars + ' chars' + (hit.highlightChars > 0 ? ' + ' + hit.highlightChars + ' highlighted' : '')
+				? hit.chars + ' ' + tr('characters') + (hit.highlightChars > 0 ? ' + ' + hit.highlightChars + ' ' + tr('highlighted') : '')
 				: tr('snippet only')
 			row.appendChild(read)
 
