@@ -345,6 +345,11 @@ export default {
 	outline: 2px solid color-mix(in srgb, var(--color-primary-element, #00679c) 22%, transparent);
 	outline-offset: 0;
 }
+.chatview-root .voice-status { width: min(100%, var(--eva-content-width, 1180px)); box-sizing: border-box; margin: -6px auto 10px; color: var(--color-text-maxcontrast, #666); font-size: 12px; }
+.chatview-root .cbtn-mic { flex: 0 0 auto; min-width: 42px; padding-inline: 10px; font-size: 18px; }
+.chatview-root .cbtn-mic.is-recording { color: var(--color-error, #e9322d); animation: eva-mic-pulse 1.2s ease-in-out infinite; }
+.chatview-root .cbtn-voice-cancel { padding-inline: 10px; white-space: nowrap; }
+@keyframes eva-mic-pulse { 50% { box-shadow: 0 0 0 5px color-mix(in srgb, var(--color-error, #e9322d) 18%, transparent); } }
 .chatview-root .cbtn {
 	padding: 10px 16px;
 	border: 0;

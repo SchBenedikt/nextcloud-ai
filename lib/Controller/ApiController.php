@@ -198,7 +198,10 @@ class ApiController extends OCSController {
             return new ErrorDataResponse(['error' => 'Not logged in'], 401);
         }
         $this->knowledgeInitializer->ensureInitialized($user);
-        return new ErrorDataResponse($this->config->all(), 200, ['Cache-Control' => 'private, max-age=300']);
+        return new ErrorDataResponse($this->config->all() + [
+            // Instance-wide kill switch: dictation requires both admin and user opt-in.
+            'voice_input_available' => $this->config->get('voice_input_available'),
+        ], 200, ['Cache-Control' => 'private, max-age=300']);
     }
 
     #[NoAdminRequired]
@@ -217,6 +220,7 @@ class ApiController extends OCSController {
             'actions_enabled', 'background_actions_enabled', 'learning_enabled', 'safe_commands_enabled', 'terminal_commands_enabled', 'terminal_command_any', 'terminal_command_allowlist', 'agent_max_tool_rounds',
             'exec_write_types', 'exec_write_max_chars', 'exec_delete_mode',
             'notify_on_complete',
+            'voice_input_enabled',
             'proactive_enabled', 'proactive_schedules',
             'mail_index_enabled',
             'mail_index_max',

@@ -17,6 +17,7 @@ class AppConfig {
         'proactive_enabled', 'mail_index_enabled', 'talk_index_enabled', 'talk_write_enabled',
         'index_enrolled', 'talk_classify_all', 'weather_tool_enabled', 'web_search_enabled',
         'web_search_safe_search', 'web_search_fetch_content', 'web_search_images', 'web_search_browser',
+        'voice_input_enabled', 'voice_input_available',
     ];
 
     /**
@@ -52,6 +53,7 @@ class AppConfig {
         'web_search_enabled', 'web_search_provider', 'web_search_max_results', 'web_search_timeout',
         'web_search_safe_search', 'web_search_fetch_content', 'web_search_content_chars',
         'web_search_candidates', 'web_search_images', 'web_search_browser', 'web_search_browser_timeout',
+        'voice_input_enabled',
     ];
 
     /**
@@ -81,6 +83,7 @@ class AppConfig {
      * Admin-only: weather tool, instance-wide web search infra (URL, key, limits).
      */
     public const ADMIN_SETTINGS = [
+        'voice_input_available',
         // Weather reaches the external Open-Meteo geocoding/forecast APIs and
         // is therefore an instance-wide privacy switch, not a per-user one.
         'weather_tool_enabled',
@@ -139,6 +142,9 @@ class AppConfig {
         // a second model call; 'llm' generates them with a small extra request.
         'followups_mode' => 'fast',
         'ocr_enabled' => '1',
+        // Browser speech recognition can send audio to the browser's speech service.
+        // It is opt-in for each user and remains unavailable until enabled here.
+        'voice_input_enabled' => '0',
         'ocr_language' => 'eng',
         'top_k' => '6',
         'chunk_size' => '900',
@@ -195,6 +201,7 @@ class AppConfig {
         // Opt-in by design: the weather and web search tools call external
         // services, so a fresh install never sends anything off the server.
         'weather_tool_enabled' => '1',
+        'voice_input_available' => '0',
         'web_search_enabled' => '0',
         'web_search_provider' => 'duckduckgo',
         'web_search_url' => '',

@@ -184,7 +184,9 @@
 					</div>
 				</div>
 				<NcCheckboxRadioSwitch v-model="actionsEnabled" type="switch" class="native-toggle" :description="$t('Let EVA create, read, rename and search files, plus work with supported contacts and notes.')">{{ $t('Allow file actions') }}
-					</NcCheckboxRadioSwitch>
+				</NcCheckboxRadioSwitch>
+				<NcCheckboxRadioSwitch v-model="voiceInputEnabled" type="switch" class="native-toggle" :description="$t('Voice input uses your browser speech service to transcribe audio. Enable it only if you are comfortable with that service processing your audio.')">{{ $t('Enable voice input') }}
+				</NcCheckboxRadioSwitch>
 				<NcCheckboxRadioSwitch v-model="backgroundActionsEnabled" type="switch" class="native-toggle" :disabled="actionsDisabled" :description="$t('When a chat continues after you close the page, EVA may execute requested changes without an open confirmation dialog.')">
 					{{ $t('Allow background actions after I close the page') }}
 				</NcCheckboxRadioSwitch>
@@ -541,6 +543,10 @@
 				<div v-else-if="adminLoadError" class="load-error" role="alert"><span>{{ $t('The instance-wide settings could not be loaded: {error}', { error: adminLoadError }) }}</span><NcButton variant="tertiary" @click="loadAdminSettings">{{ $t('Try again') }}</NcButton></div>
 				<fieldset class="admin-settings-fieldset" :disabled="!adminReady || savingAdmin">
 				<div class="admin-subsection">
+					<NcCheckboxRadioSwitch v-model="admin.voice_input_available" type="switch" class="native-toggle compact-switch">
+						{{ $t('Allow voice input for all users') }}
+					</NcCheckboxRadioSwitch>
+					<p class="field-help">{{ $t('Users must also opt in individually. Speech is processed by their browser speech service.') }}</p>
 					<NcCheckboxRadioSwitch v-model="admin.weather_tool_enabled" type="switch" class="native-toggle compact-switch">
 						{{ $t('Allow weather forecasts for all users') }}
 					</NcCheckboxRadioSwitch>
@@ -624,6 +630,7 @@ export default {
 			summary_model: '',
 			temperature: '0.1',
 			 actions_enabled: '1',
+			voice_input_enabled: '0',
 			learning_enabled: '1',
 			safe_commands_enabled: '0',
 			terminal_commands_enabled: '0',
@@ -753,6 +760,10 @@ export default {
 		const backgroundActionsEnabled = computed({
 			get: () => f.value.background_actions_enabled === '1',
 			set: value => { f.value.background_actions_enabled = value ? '1' : '0' },
+		})
+		const voiceInputEnabled = computed({
+			get: () => f.value.voice_input_enabled === '1',
+			set: value => { f.value.voice_input_enabled = value ? '1' : '0' },
 		})
 		const notificationsEnabled = computed({
 			get: () => f.value.notify_on_complete === '1',
@@ -977,6 +988,7 @@ export default {
 			return !!(rootEl && rootEl.dataset && rootEl.dataset.admin === '1')
 		})()
 		const admin = ref({
+			voice_input_available: '0',
 			weather_tool_enabled: '1',
 			web_search_url: '',
 		})
@@ -1672,7 +1684,7 @@ export default {
 		const ocrEnabled = computed({ get: () => f.value.ocr_enabled === '1', set: value => { f.value.ocr_enabled = value ? '1' : '0' } })
 		return {
 			groqKey, customProviderKey, removeCustomProviderKey, removeGroqKey, ocrEnabled, f, providerProfiles, selectedChatProvider, providerProfilesPlaceholder, chatProviderOptions, groqModelOptions, embeddingModelOptions, chatModelOptions, summaryModelOptions, webSearchProviderOptions, status, health, healthLoading, statusTimer, limits, availableModels, embeddingModels, chatModels, embeddingInstalledHint, chatInstalledHint, modelLoading, modelError, checkOut, saving, checking, indexing, resetting, deletingChats, stopping, saved, loadError, statusRefreshError, message, validationErrors, resetConfirm, chatsDeleteConfirm,
-			newExcludePath, excludeError, excludeList, actionsEnabled, backgroundActionsEnabled, notificationsEnabled, learningEnabled, safeCommandsEnabled, terminalCommandsEnabled, terminalCommandAny, mailIndexEnabled, talkIndexEnabled, talkWriteEnabled, indexEnrolled, actionsDisabled, busy, indexingActive, settingsLocked, briefingsLocked, maxFileSizeMb,
+			newExcludePath, excludeError, excludeList, actionsEnabled, backgroundActionsEnabled, voiceInputEnabled, notificationsEnabled, learningEnabled, safeCommandsEnabled, terminalCommandsEnabled, terminalCommandAny, mailIndexEnabled, talkIndexEnabled, talkWriteEnabled, indexEnrolled, actionsDisabled, busy, indexingActive, settingsLocked, briefingsLocked, maxFileSizeMb,
 			isAdminMode, admin, userWebSearchEnabled, userWebSearchSafeSearch, userWebSearchImages, userWebSearchBrowser, userWebSearchFetchContent, webSearchKey, removeWebSearchKey, webSearchKeyStored, webSearchReady, savingAdmin, adminLoading, adminLoadError, adminReady, saveAdminSettings, loadAdminSettings,
 			connectors, connectorsLoading, connectorsBusy, connectorDiagnostics, connectorDraft, connectorToRemove, connectorRemovalError, connectorEndpointQuery, filteredConnectorEndpoints, applyConnectorExample, saveConnector, editConnector, connectorCredentialLabel, connectorCredentialClass, removeConnector, closeConnectorRemoval, confirmRemoveConnector, discoverConnector, testConnector, loadConnectors, connectorLoadError, plugins, pluginsLoading, loadPlugins, pluginLoadError, pluginRiskLabel, pluginSurfacesLabel,
 			proactiveEnabled, proactiveBriefings, briefingDraft, briefingFormError, weekdays, dayName, addBriefing, removeBriefing, toggleBriefing, toggleBriefingActions,

@@ -130,6 +130,26 @@ final class WebSearchConfigTest extends TestCase {
         self::assertNull($config->validateValue('web_search_max_results', '5'));
         self::assertNull($config->validateValue('web_search_timeout', '10'));
         self::assertNull($config->validateValue('weather_tool_enabled', '0'));
+        self::assertNull($config->validateValue('voice_input_available', '1'));
+        self::assertNull($config->validateValue('voice_input_enabled', '1'));
+    }
+
+    public function testVoiceInputRequiresInstanceAndPersonalOptIn(): void {
+        [$config, $users, $app] = $this->harness();
+        $config->setUserId('alice');
+        self::assertSame('0', $config->get('voice_input_enabled'));
+        self::assertSame('0', $config->get('voice_input_available'));
+
+        $config->set('voice_input_enabled', '1');
+        self::assertSame('1', $users['alice']['voice_input_enabled']);
+        self::assertArrayNotHasKey('voice_input_enabled', $app);
+        self::assertSame('0', $config->get('voice_input_available'));
+
+        $config->setUserId(null);
+        $config->set('voice_input_available', '1');
+        self::assertSame('1', $app['voice_input_available']);
+        self::assertSame('1', $config->get('voice_input_available'));
+        self::assertSame('1', $users['alice']['voice_input_enabled']);
     }
 
     public function testValidateValueRejectsInvalidWebSearchSettings(): void {
