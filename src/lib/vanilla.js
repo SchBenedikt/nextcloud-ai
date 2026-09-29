@@ -363,7 +363,7 @@ export function mountChat(root, opts = {}) {
 			panel.className = 'rconfirm'
 			const danger = (m.confirmation.risk || 'mutating') === 'destructive'
 			if (danger) panel.classList.add('rconfirm--danger')
-			const conf = buildConfirmForm(m.confirmation)
+			const conf = m.confirmation.preview ? null : buildConfirmForm(m.confirmation)
 			const label = document.createElement('div')
 			label.className = 'rconfirm-label'
 			label.textContent = conf ? t(conf.title) : t('EVA wants to run: {tool}', { tool: m.confirmation.name })
@@ -373,9 +373,11 @@ export function mountChat(root, opts = {}) {
 			summary.className = 'rconfirm-summary'
 			summary.textContent = missing.length
 				? t('Some required details are missing - please complete them below.')
-				: (danger
+				: (m.confirmation.preview
+					? t('Review the file diff before applying this change.')
+					: (danger
 					? t('This action cannot be undone.')
-					: t('Please review this action and confirm it explicitly.'))
+					: t('Please review this action and confirm it explicitly.')))
 			panel.appendChild(summary)
 			const errEl = document.createElement('div')
 			errEl.className = 'rconfirm-error'
@@ -384,6 +386,23 @@ export function mountChat(root, opts = {}) {
 				panel.appendChild(conf.element)
 				// Show which fields still need input right away (reason: missing).
 				if (missing.length) conf.validate()
+			} else if (m.confirmation.preview) {
+				const preview = m.confirmation.preview
+				const path = document.createElement('div')
+				path.className = 'rconfirm-preview-path'
+				path.textContent = t('Proposed change: {path}', { path: preview.path || '' })
+				const counts = document.createElement('div')
+				counts.className = 'rconfirm-summary'
+				counts.textContent = preview.previewable
+					? t('Changes: +{added} -{removed} lines', { added: preview.added || 0, removed: preview.removed || 0 })
+					: t('A text diff is unavailable for this file; review its path and action before approving.')
+				panel.append(path, counts)
+				if (preview.previewable) {
+					const diff = document.createElement('pre')
+					diff.className = 'rconfirm-args rconfirm-diff'
+					diff.textContent = String(preview.diff || '')
+					panel.appendChild(diff)
+				}
 			} else {
 				const details = document.createElement('pre')
 				details.className = 'rconfirm-args'
@@ -1393,6 +1412,7 @@ export function mountChat(root, opts = {}) {
 					arguments: ev.arguments || {},
 					risk: ev.risk || 'mutating',
 					missing,
+					preview: ev.preview || null,
 					resolved: false,
 					// The answer persisted after approval must still commit the
 					// deferred truncation (Issue #182).
@@ -1566,6 +1586,7 @@ export function mountChat(root, opts = {}) {
 						arguments: ev.arguments || {},
 						risk: ev.risk || 'mutating',
 						missing,
+						preview: ev.preview || null,
 						resolved: false,
 					}
 					last.text = missing.length
@@ -1585,6 +1606,7 @@ export function mountChat(root, opts = {}) {
 							arguments: last.confirmation.arguments,
 							risk: last.confirmation.risk,
 							missing,
+							preview: last.confirmation.preview,
 							token: last.confirmation.token,
 							resolved: false,
 						}) : false)

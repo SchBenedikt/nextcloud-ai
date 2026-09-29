@@ -148,6 +148,54 @@ test('confirmation panel approves with a claim token and persists the resolved a
   await expect(page.locator('.rb').last()).toContainText('Share created: https://cloud.example/s/abc')
 })
 
+test('file change confirmation displays a text diff and submits its snapshot token', async ({ page }) => {
+  await openChat(page)
+  const preview = {
+    path: 'Documents/settings.txt',
+    action: 'update',
+    added: 1,
+    removed: 1,
+    previewable: true,
+    diff: '--- current\n+++ proposed\n@@ -1,1 +1,1 @@\n-old value\n+<script>new value</script>',
+  }
+  const streamLines = [line({
+    type: 'confirmation',
+    name: 'create_file',
+    arguments: {
+      path: 'Documents/settings.txt',
+      content: '<script>new value</script>',
+      _eva_expected_sha256: 'snapshot-sha256',
+      _eva_preview_path: 'Documents/settings.txt',
+      _eva_preview: preview,
+    },
+    preview,
+    risk: 'mutating',
+    missing: [],
+  })]
+  await page.evaluate((lines) => { window.__mock.streamLines = lines }, streamLines)
+  await page.fill('#q', 'Update settings')
+  await page.click('#send')
+
+  const panel = page.locator('.rconfirm')
+  await expect(panel.locator('.rconfirm-diff')).toContainText('-old value')
+  await expect(panel.locator('.rconfirm-diff')).toContainText('+<script>new value</script>')
+  await expect(panel.locator('.rconfirm-diff script')).toHaveCount(0)
+  await expect(panel.locator('.rconfirm-form')).toHaveCount(0)
+  await page.click('.rconfirm-approve')
+
+  await expect.poll(() => page.evaluate(`window.__mock.saved.find((r) => r.url.includes('/confirmTool'))`)).toEqual(
+    expect.objectContaining({
+      body: expect.objectContaining({
+        name: 'create_file',
+        arguments: expect.objectContaining({
+          _eva_expected_sha256: 'snapshot-sha256',
+          _eva_preview_path: 'Documents/settings.txt',
+        }),
+      }),
+    })
+  )
+})
+
 test('a duplicate approve after reload is rejected and resolves the panel', async ({ page }) => {
   // Restored chat carrying an unresolved pending confirmation from a previous
   // run (exactly what chatDetail returns after a mid-confirmation reload).

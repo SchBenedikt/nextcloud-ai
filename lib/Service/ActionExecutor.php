@@ -1104,6 +1104,15 @@ class ActionExecutor {
     public function run(string $userId, string $name, array $args, bool $confirmed = false): array {
         $startedAt = microtime(true);
         $this->setUserId($userId);
+        $snapshotConfirmed = false;
+        if ($confirmed && isset($args['_eva_expected_sha256'])) {
+            $snapshot = $this->validateFileChangeSnapshot($userId, $name, $args);
+            if (empty($snapshot['ok'])) {
+                return $snapshot;
+            }
+            $snapshotConfirmed = true;
+            unset($args['_eva_expected_sha256'], $args['_eva_preview_path'], $args['_eva_preview']);
+        }
         // Normalize a common model mistake before policy/confirmation is
         // evaluated. Connected external services are not Nextcloud apps;
         // presenting call_app_api here used to show the wrong confirmation
@@ -1158,6 +1167,20 @@ class ActionExecutor {
         $policy = $this->toolPolicy->check($name);
         if (!$policy['allowed']) {
             return ['ok' => false, 'error' => $policy['reason'] ?? 'Tool not allowed'];
+        }
+        // File writes and deletes in interactive chat must be reviewed before
+        // execution. Bind the approval to the file version shown in the diff.
+        if (!$snapshotConfirmed && in_array($name, ['create_file', 'create_note', 'update_note', 'delete_file'], true)) {
+            if ($this->toolPolicy->getSurface() !== ToolPolicy::SURFACE_WEB) {
+                return ['ok' => false, 'error' => 'File changes require a preview and explicit approval in web chat.'];
+            }
+            $missing = $this->missingRequiredArgs($name, $args);
+            if ($missing !== []) {
+                return ['ok' => false, 'confirmation_required' => true, 'tool' => $name,
+                    'arguments' => $args, 'risk' => (string)($policy['risk'] ?? ToolPolicy::RISK_MUTATING),
+                    'missing' => $missing, 'error' => 'This action needs more information before it can run: ' . implode(', ', $missing)];
+            }
+            return $this->buildFileChangeConfirmation($userId, $name, $args, (string)($policy['risk'] ?? ToolPolicy::RISK_MUTATING));
         }
         if (($policy['requiresConfirmation'] ?? false) && !$confirmed) {
             // Generic app API calls are never auto-approved, even when the
@@ -2117,6 +2140,111 @@ class ActionExecutor {
                     $this->walk($node, $out, $depth + 1, $count, $rootLen);
                 }
             }
+        }
+    }
+
+    /**
+     * Prepare a confirmation payload for text file changes without writing.
+     * The expected checksum is returned with the arguments and checked again
+     * by runConfirmed() immediately before the change is applied.
+     */
+    private function buildFileChangeConfirmation(string $userId, string $name, array $args, string $risk): array {
+        try {
+            if (PHP_SAPI === 'cli') {
+                \OC_Util::setupFS($userId);
+            }
+            $home = $this->rootFolder->getUserFolder($userId);
+            $path = $this->fileChangePath($name, $args);
+            if ($path === '') {
+                return ['ok' => false, 'error' => 'A valid file path is required before EVA can prepare a preview.'];
+            }
+            $old = '';
+            $expected = '__missing__';
+            try {
+                $node = $home->get($path);
+                if (!$node instanceof File) {
+                    return ['ok' => false, 'error' => 'The preview target is not a file.'];
+                }
+                if ($node->getSize() > self::MAX_READ_FILE_BYTES) {
+                    return ['ok' => false, 'error' => 'This file is too large to preview safely; EVA has not changed it.'];
+                }
+                $old = (string)$node->getContent();
+                $expected = hash('sha256', $old);
+            } catch (NotFoundException) {
+                if ($name === 'update_note' || $name === 'delete_file') {
+                    return ['ok' => false, 'error' => 'The file no longer exists; EVA has not changed it.'];
+                }
+            }
+
+            if ($name === 'delete_file') {
+                $new = '';
+            } elseif ($name === 'create_note' || $name === 'update_note') {
+                $new = (string)($args['content'] ?? '');
+            } elseif (array_key_exists('content_base64', $args)) {
+                $decoded = base64_decode((string)$args['content_base64'], true);
+                $new = $decoded === false ? "\0" : $decoded;
+            } else {
+                $new = (string)($args['content'] ?? '');
+            }
+            $preview = (new DiffService())->generateDiff($old, $new);
+            $args['_eva_expected_sha256'] = $expected;
+            $args['_eva_preview_path'] = $path;
+            $args['_eva_preview'] = $preview + [
+                'path' => $path,
+                'action' => $name === 'delete_file' ? 'delete' : ($expected === '__missing__' ? 'create' : 'update'),
+            ];
+            return [
+                'ok' => false,
+                'confirmation_required' => true,
+                'tool' => $name,
+                'arguments' => $args,
+                'risk' => $risk,
+                'error' => 'Review the proposed file change before applying it.',
+            ];
+        } catch (\Throwable $e) {
+            return ['ok' => false, 'error' => 'A file preview could not be prepared; EVA has not changed the file.'];
+        }
+    }
+
+    private function fileChangePath(string $name, array $args): string {
+        $path = $name === 'create_note'
+            ? trim((string)($args['title'] ?? ''))
+            : trim((string)($args['path'] ?? ''));
+        if ($name === 'create_note' || $name === 'update_note') {
+            if (!str_ends_with(strtolower($path), '.md')) {
+                $path .= '.md';
+            }
+            if (strpos($path, '/') === false) {
+                $path = self::NOTES_FOLDER . '/' . $path;
+            }
+        }
+        return $this->cleanPath($path);
+    }
+
+    /** @return array{ok:false,error:string} */
+    private function validateFileChangeSnapshot(string $userId, string $name, array $args): array {
+        try {
+            if (PHP_SAPI === 'cli') {
+                \OC_Util::setupFS($userId);
+            }
+            $home = $this->rootFolder->getUserFolder($userId);
+            $path = (string)($args['_eva_preview_path'] ?? $this->fileChangePath($name, $args));
+            $expected = (string)$args['_eva_expected_sha256'];
+            try {
+                $node = $home->get($path);
+                if (!$node instanceof File || $node->getSize() > self::MAX_READ_FILE_BYTES) {
+                    return ['ok' => false, 'error' => 'The file changed after the preview. Ask EVA to prepare a new preview.'];
+                }
+                $actual = hash('sha256', (string)$node->getContent());
+            } catch (NotFoundException) {
+                $actual = '__missing__';
+            }
+            if (!hash_equals($expected, $actual)) {
+                return ['ok' => false, 'error' => 'The file changed after the preview. Ask EVA to prepare a new preview.'];
+            }
+            return ['ok' => true];
+        } catch (\Throwable) {
+            return ['ok' => false, 'error' => 'The preview could not be verified; EVA has not changed the file.'];
         }
     }
 

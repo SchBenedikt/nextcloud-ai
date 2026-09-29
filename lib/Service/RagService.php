@@ -180,6 +180,7 @@ class RagService {
 						'confirmation' => [
 							'name' => $confirmationName,
 							'arguments' => is_array($res['arguments'] ?? null) ? $res['arguments'] : $toolArgs,
+							'preview' => is_array($res['arguments']['_eva_preview'] ?? null) ? $res['arguments']['_eva_preview'] : null,
 							'risk' => $res['risk'] ?? ToolPolicy::RISK_MUTATING,
 							'reason' => ($res['missing'] ?? []) !== [] ? 'missing' : 'review',
 							'missing' => $res['missing'] ?? [],
@@ -328,6 +329,7 @@ $this->executor->setUserId($userId);
 							'name' => $confirmationName,
 							'arguments' => is_array($res['arguments'] ?? null) ? $res['arguments'] : $toolArgs,
                             'risk' => $res['risk'] ?? ToolPolicy::RISK_MUTATING,
+                            'preview' => is_array($res['arguments']['_eva_preview'] ?? null) ? $res['arguments']['_eva_preview'] : null,
                             'reason' => ($res['missing'] ?? []) !== [] ? 'missing' : 'review',
                             'missing' => $res['missing'] ?? [],
                         ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) . "\n";

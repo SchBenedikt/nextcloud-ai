@@ -195,7 +195,9 @@ final class FrontendContractTest extends TestCase {
         $vanilla = (string)file_get_contents(__DIR__ . '/../src/lib/vanilla.js');
         $confirmForms = (string)file_get_contents(__DIR__ . '/../src/lib/confirmForms.js');
         self::assertStringContainsString("import { buildConfirmForm } from './confirmForms'", $vanilla);
-        self::assertStringContainsString('const conf = buildConfirmForm(m.confirmation)', $vanilla);		self::assertStringContainsString('create_share:', $confirmForms);
+		self::assertStringContainsString('const conf = m.confirmation.preview ? null : buildConfirmForm(m.confirmation)', $vanilla);
+		self::assertStringContainsString("diff.textContent = String(preview.diff || '')", $vanilla);
+		self::assertStringContainsString('create_share:', $confirmForms);
 		self::assertStringContainsString('create_calendar_event:', $confirmForms);
 		self::assertStringContainsString("F('start_time', 'Start time', 'time')", $confirmForms);
 		self::assertStringContainsString("F('calendar', 'Calendar', 'calendar')", $confirmForms);
