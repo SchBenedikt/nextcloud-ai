@@ -16,9 +16,11 @@ use OCA\EvaAi\Service\TalkChatService;
 use OCA\EvaAi\Service\TalkToolExecutor;
 use OCA\EvaAi\Service\TerminalToolExecutor;
 use OCA\EvaAi\Service\ContactsToolExecutor;
+use OCA\EvaAi\Service\FileToolExecutor;
 use OCP\Accounts\IAccountManager;
 use OCP\Contacts\IManager as IContactsManager;
 use OCP\IUserManager;
+use OCP\Files\IRootFolder;
 use PHPUnit\Framework\TestCase;
 
 final class DomainToolExecutorTest extends TestCase {
@@ -101,5 +103,18 @@ final class DomainToolExecutorTest extends TestCase {
 		self::assertSame(['ok' => true, 'result' => ['query' => 'Ada', 'contacts' => [[
 			'name' => 'Ada Lovelace', 'emails' => ['ada@example.test'], 'phones' => ['123'], 'org' => 'Analytical Engines',
 		]]]], $executor->execute('find_contact', 'alice', ['query' => 'Ada']));
+	}
+
+	public function testFileExecutorOwnsFileAndKnowledgeTools(): void {
+		$rootFolder = $this->createMock(IRootFolder::class);
+		$rootFolder->expects(self::never())->method('getUserFolder');
+		$config = $this->createMock(AppConfig::class);
+		$config->expects(self::once())->method('get')->with('learned_file_locations')->willReturn('{}');
+		$executor = new FileToolExecutor($rootFolder, $config);
+
+		self::assertContains('search_files', $executor->tools());
+		self::assertContains('update_knowledge', $executor->tools());
+		self::assertContains('list_learned_file_locations', $executor->tools());
+		self::assertSame(['ok' => true, 'result' => ['locations' => [], 'note' => 'Only paths and types are stored; refresh with list_files or search_files when a location may have changed.']], $executor->execute('list_learned_file_locations', 'alice', []));
 	}
 }

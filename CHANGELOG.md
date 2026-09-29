@@ -2,6 +2,13 @@
 
 ## [Unreleased]
 
+## [1.17.8] - 2026-09-29
+
+### Tool executor architecture
+
+- Move file, notes, bounded search, learned file locations, ownership checks, and personal knowledge updates into a dedicated executor.
+- Keep file search bounds, ownership safety, and content size limits in the domain executor.
+
 ## [1.17.7] - 2026-09-29
 
 ### Tool executor architecture
