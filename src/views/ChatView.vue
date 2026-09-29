@@ -288,6 +288,8 @@ export default {
 .chatview-root .rconfirm-label { font-size: 13px; font-weight: 650; color: var(--color-main-text, #222); }
 .chatview-root .rconfirm-summary { margin: 3px 0 0; font-size: 12px; color: var(--color-text-maxcontrast, #555); }
 .chatview-root .rconfirm-args { max-height: 150px; margin: 8px 0; padding: 8px; overflow: auto; white-space: pre-wrap; word-break: break-word; font: 12px/1.45 var(--font-family-monospace, monospace); color: var(--color-text-maxcontrast, #555); background: var(--color-main-background, #fff); border: 1px solid var(--color-border, #ddd); border-radius: 5px; }
+.chatview-root .rconfirm-diff { max-height: 280px; white-space: pre; }
+.chatview-root .rconfirm-preview-path { margin-top: 8px; overflow-wrap: anywhere; font-size: 12px; font-weight: 600; }
 .chatview-root .rconfirm-error { margin: 8px 0 0; color: var(--color-error, #e9322d); font-size: 12px; white-space: pre-wrap; word-break: break-word; }
 .chatview-root .rconfirm-share-form, .chatview-root .rconfirm-form { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; margin: 10px 0 12px; }
 .chatview-root .rconfirm-field { display: flex; flex-direction: column; gap: 4px; min-width: 0; }

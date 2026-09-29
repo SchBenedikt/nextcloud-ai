@@ -493,7 +493,11 @@ function buildCalendarForm(args, tr) {
 			var calendarForm = m.confirmation.name === 'create_calendar_event' ? buildCalendarForm(args, tr) : null
 			var details = document.createElement('pre')
 			details.className = 'rconfirm-args'
-			if (shareForm || calendarForm) {
+			if (m.confirmation.preview) {
+				var preview = m.confirmation.preview
+				details.className = 'rconfirm-args rconfirm-diff'
+				details.textContent = (preview.path || '') + '\n' + (preview.previewable ? preview.diff : 'Text diff unavailable; check the file path and action before approving.')
+			} else if (shareForm || calendarForm) {
 				details.textContent = shareForm
 					? tr('Review the share details before creating it. You can change the path, recipient, password and expiration date.')
 					: tr('Please review the calendar event details before creating it.')
@@ -983,6 +987,8 @@ function buildCalendarForm(args, tr) {
 						name: ev.name || '?',
 						arguments: ev.arguments || {},
 						risk: ev.risk || 'mutating',
+						preview: ev.preview || null,
+						missing: Array.isArray(ev.missing) ? ev.missing : [],
 						resolved: false,
 					}
 					last.text = tr('Please review this action and confirm it explicitly.')
@@ -997,6 +1003,7 @@ function buildCalendarForm(args, tr) {
 							name: last.confirmation.name,
 							arguments: last.confirmation.arguments,
 							risk: last.confirmation.risk,
+							preview: last.confirmation.preview,
 							token: last.confirmation.token,
 							resolved: false,
 						}) : false })
