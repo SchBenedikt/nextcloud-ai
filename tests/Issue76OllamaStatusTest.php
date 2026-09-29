@@ -50,4 +50,39 @@ final class Issue76OllamaStatusTest extends TestCase {
         self::assertSame(['name' => 'gemma4:cloud'], $ollama->status()['models'][0]);
         self::assertSame(['name' => 'gemma4:cloud'], $ollama->status()['models'][0]);
     }
+
+    public function testConnectionCheckStopsAfterAnUnreachableServerResponse(): void {
+        $config = $this->createMock(AppConfig::class);
+        $config->method('ollamaUrl')->willReturn('http://127.0.0.1:11434');
+        $config->method('get')->willReturnMap([
+            ['embedding_model', 'nomic-embed-text'],
+            ['chat_model', 'gemma4:cloud'],
+        ]);
+        $client = $this->createMock(\OCP\Http\Client\IClient::class);
+        $response = $this->createMock(\OCP\Http\Client\IResponse::class);
+        $response->method('getStatusCode')->willReturn(503);
+        $client->expects(self::once())
+            ->method('get')
+            ->with('http://127.0.0.1:11434/api/tags', ['timeout' => 10])
+            ->willReturn($response);
+        $client->expects(self::never())->method('post');
+        $clientService = $this->createMock(\OCP\Http\Client\IClientService::class);
+        $clientService->expects(self::once())->method('newClient')->willReturn($client);
+
+        $ollama = new Ollama(
+            $config,
+            $clientService,
+            $this->createMock(LoggerInterface::class),
+            $this->createMock(\OCP\ICacheFactory::class),
+            $this->createMock(\OCA\EvaAi\Service\EmbeddingCache::class)
+        );
+
+        $result = $ollama->testAll();
+
+        self::assertFalse($result['server']['ok']);
+        self::assertSame('Ollama returned HTTP 503.', $result['server']['error']);
+        self::assertSame([], $result['models']);
+        self::assertStringContainsString('Skipped because the Ollama server is not reachable.', $result['embedding']['error']);
+        self::assertStringContainsString('Skipped because the Ollama server is not reachable.', $result['chat']['error']);
+    }
 }

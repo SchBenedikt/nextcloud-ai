@@ -42,7 +42,7 @@ final class IndexerFastPathTest extends TestCase {
      * @param (callable(Folder):void)|null $configureUserFolder lets a test set
      *        its own expectations on the user folder (e.g. getById never called)
      */
-    private function harness(array $files, array $stored, ?callable $configureUserFolder = null): array {
+    private function harness(array $files, array $stored, ?callable $configureUserFolder = null, array $schedulerSlot = ['state' => 'running', 'position' => 0]): array {
         $config = $this->createMock(AppConfig::class);
         $config->method('get')->willReturnCallback(static function (string $key, ?string $default = null): string {
             return match ($key) {
@@ -143,13 +143,13 @@ final class IndexerFastPathTest extends TestCase {
         $email = $this->createMock(EmailService::class);
 
         $scheduler = $this->createMock(\OCA\EvaAi\Service\IndexScheduler::class);
-        $scheduler->method('acquireSlot')->willReturn(['state' => 'running', 'position' => 0]);
+        $scheduler->method('acquireSlot')->willReturn($schedulerSlot);
         $indexer = new Indexer(
             $config, $rootFolder, $docMapper, $chunkMapper, $chunker, $ollama,
             $embeddingCache, $email, $this->talkTranscripts(), $logger, $lockingProvider, $lockGuard, $scheduler
         );
 
-        return [$indexer, $docMapper, $chunkMapper, $ollama];
+        return [$indexer, $docMapper, $chunkMapper, $ollama, $scheduler, $rootFolder, $lockGuard, $lockingProvider];
     }
 
     private function file(int $id, int $mtime, string $content, int $size = 128): File {
@@ -274,6 +274,28 @@ final class IndexerFastPathTest extends TestCase {
 
         $result = $indexer->run('alice', 10000, 'files');
         self::assertSame(1, $result['processed'], 'empty stored hash forces a re-embed');
+    }
+
+    public function testQueuedPassReturnsPositionAndReleasesItsPerUserLockBeforeReadingFiles(): void {
+        [$indexer, $docMapper, , , $scheduler, $rootFolder, $lockGuard, $lockingProvider] = $this->harness(
+            [],
+            [],
+            null,
+            ['state' => 'queued', 'position' => 3]
+        );
+        $scheduler->expects(self::once())->method('acquireSlot')->with('alice');
+        $rootFolder->expects(self::never())->method('getUserFolder');
+        $docMapper->expects(self::never())->method('stateForUser');
+        $lockPath = LockGuard::indexLockPath('alice');
+        $lockGuard->expects(self::once())->method('acquireIndexLock')->with('alice', $lockPath);
+        $lockingProvider->expects(self::once())->method('releaseLock')->with($lockPath, ILockingProvider::LOCK_EXCLUSIVE);
+
+        $result = $indexer->run('alice', 10000, 'files');
+
+        self::assertTrue($result['queued']);
+        self::assertSame(3, $result['queue_position']);
+        self::assertSame(0, $result['processed']);
+        self::assertNull($result['error']);
     }
 
     /** Talk indexing is not exercised here; a mock keeps the constructor honest. */

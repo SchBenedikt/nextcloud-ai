@@ -33,6 +33,23 @@ test('streams an answer and persists the question/answer pair in order', async (
   ])
 })
 
+test('a failed chat request shows the server error instead of leaving the user without feedback', async ({ page }) => {
+  await openChat(page, JSON.stringify({
+    apiFailure: {
+      method: 'POST',
+      path: '/chat/stream',
+      status: 503,
+      data: { error: { code: 'busy', message: 'EVA is handling another request. Try again shortly.' } },
+    },
+  }))
+
+  await page.fill('#q', 'Hello EVA')
+  await page.click('#send')
+
+  await expect(page.locator('.err')).toBeVisible()
+  await expect(page.locator('.err')).toContainText('EVA is handling another request. Try again shortly.')
+})
+
 // A web answer the user cannot check is half an answer: the pages the tools
 // retrieved have to be visible under it, labelled as web sources so they are
 // never mistaken for the user's own files.
