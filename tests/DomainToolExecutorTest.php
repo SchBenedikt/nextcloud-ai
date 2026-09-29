@@ -106,6 +106,9 @@ final class DomainToolExecutorTest extends TestCase {
 	}
 
 	public function testFileExecutorOwnsFileAndKnowledgeTools(): void {
+		if (!interface_exists(IRootFolder::class)) {
+			$this->markTestSkipped('Nextcloud file APIs are not available');
+		}
 		$rootFolder = $this->createMock(IRootFolder::class);
 		$rootFolder->expects(self::never())->method('getUserFolder');
 		$config = $this->createMock(AppConfig::class);
