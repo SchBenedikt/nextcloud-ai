@@ -88,6 +88,9 @@ final class DomainToolExecutorTest extends TestCase {
 	}
 
 	public function testContactsExecutorSearchesForTheEffectiveUserQuery(): void {
+		if (!interface_exists(IContactsManager::class)) {
+			$this->markTestSkipped('The optional Contacts app interface is not available');
+		}
 		$contacts = $this->createMock(IContactsManager::class);
 		$contacts->expects(self::once())->method('search')->with('Ada', ['FN', 'NICKNAME', 'EMAIL', 'ORG'])->willReturn([
 			['FN' => 'Ada Lovelace', 'EMAIL' => ['ada@example.test'], 'TEL' => ['123'], 'ORG' => 'Analytical Engines'],
