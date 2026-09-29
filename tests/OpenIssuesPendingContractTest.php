@@ -8,6 +8,7 @@ use OCA\DAV\CalDAV\CalDavBackend;
 use OCA\EvaAi\Service\ActionExecutor;
 use OCA\EvaAi\Service\TerminalToolExecutor;
 use OCA\EvaAi\Service\FileToolExecutor;
+use OCA\EvaAi\Service\ExternalToolExecutor;
 use OCA\EvaAi\Service\CalendarService;
 use OCA\EvaAi\Service\AppConfig;
 use OCA\EvaAi\Service\Indexer;
@@ -209,7 +210,7 @@ final class OpenIssuesPendingContractTest extends TestCase {
 
     /** OpenAPI security schemes make first-time connector setup self-describing. */
     public function testConnectorAuthInferenceRecognizesApiKeyAndBasicSchemes(): void {
-        $reflection = new \ReflectionClass(ActionExecutor::class);
+        $reflection = new \ReflectionClass(ExternalToolExecutor::class);
         $instance = $reflection->newInstanceWithoutConstructor();
         $infer = $reflection->getMethod('inferConnectorAuth');
         self::assertSame(['auth_type' => 'api_key', 'api_key_header' => 'x-api-key'], $infer->invoke($instance, [
@@ -218,12 +219,12 @@ final class OpenIssuesPendingContractTest extends TestCase {
         self::assertSame(['auth_type' => 'basic'], $infer->invoke($instance, [
             'securityDefinitions' => ['auth' => ['type' => 'basic']],
         ]));
-        $executor = (string)file_get_contents(__DIR__ . '/../lib/Service/ActionExecutor.php');
+        $executor = (string)file_get_contents(__DIR__ . '/../lib/Service/ExternalToolExecutor.php');
         self::assertStringContainsString("\$currentRow['api_key_header'] = 'x-api-key'", $executor);
     }
 
     public function testConnectorRequestBodyRequiresOnlyLearnedRequiredFields(): void {
-        $reflection = new \ReflectionClass(ActionExecutor::class);
+        $reflection = new \ReflectionClass(ExternalToolExecutor::class);
         $instance = $reflection->newInstanceWithoutConstructor();
         $validate = $reflection->getMethod('validateConnectorRequestBody');
         $endpoint = ['request_body' => ['required' => true, 'fields' => [
@@ -234,14 +235,14 @@ final class OpenIssuesPendingContractTest extends TestCase {
     }
 
     public function testConnectorRequestUsesLearnedContentType(): void {
-        $executor = (string)file_get_contents(__DIR__ . '/../lib/Service/ActionExecutor.php');
+        $executor = (string)file_get_contents(__DIR__ . '/../lib/Service/ExternalToolExecutor.php');
         self::assertStringContainsString('application/x-www-form-urlencoded', $executor);
         self::assertStringContainsString("'multipart/form-data' => \$params", $executor);
         self::assertStringContainsString('content_type', $executor);
     }
 
     public function testConnectorSchemaDecodesYamlWithoutExtYaml(): void {
-        $reflection = new \ReflectionClass(ActionExecutor::class);
+        $reflection = new \ReflectionClass(ExternalToolExecutor::class);
         $instance = $reflection->newInstanceWithoutConstructor();
         $decoded = $reflection->getMethod('decodeConnectorSchema')->invoke($instance, "openapi: 3.0.0\npaths:\n  /health:\n    get:\n      responses: {}\n");
         self::assertIsArray($decoded);
@@ -251,7 +252,7 @@ final class OpenIssuesPendingContractTest extends TestCase {
 
     /** A stale connector catalog is refreshed once before an exact route is rejected. */
     public function testConnectorCallsAutoRefreshStaleDiscoveryOnce(): void {
-        $executor = (string)file_get_contents(__DIR__ . '/../lib/Service/ActionExecutor.php');
+        $executor = (string)file_get_contents(__DIR__ . '/../lib/Service/ExternalToolExecutor.php');
         self::assertStringContainsString("\$args['_auto_discover'] ?? true", $executor);
         self::assertStringContainsString("discoverExternalConnector(['id' => \$id])", $executor);
         self::assertStringContainsString("\$args['_auto_discover'] = false", $executor);
@@ -267,13 +268,13 @@ final class OpenIssuesPendingContractTest extends TestCase {
     }
 
     public function testGraphqlConnectorDiscoveryLearnsValidatedPostBody(): void {
-        $reflection = new \ReflectionClass(ActionExecutor::class);
+        $reflection = new \ReflectionClass(ExternalToolExecutor::class);
         $instance = $reflection->newInstanceWithoutConstructor();
         $meta = $reflection->getMethod('graphqlEndpointMeta')->invoke($instance, '/api/graphql', 405);
         self::assertIsArray($meta);
         self::assertSame('POST', $meta['method']);
         self::assertSame('query', $meta['request_body']['fields'][0]['name']);
-        $executor = (string)file_get_contents(__DIR__ . '/../lib/Service/ActionExecutor.php');
+        $executor = (string)file_get_contents(__DIR__ . '/../lib/Service/ExternalToolExecutor.php');
         self::assertStringContainsString('runtime-graphql', $executor);
         self::assertLessThan(strpos($executor, "if (\$reachableRoutes !== [] &&"), strpos($executor, "if (\$graphqlEndpoints !== [])"));
     }
@@ -338,7 +339,7 @@ final class OpenIssuesPendingContractTest extends TestCase {
     }
 
     public function testConnectorOpenApiServerVariablesResolveSafeRoutePrefix(): void {
-        $reflection = new \ReflectionClass(ActionExecutor::class);
+        $reflection = new \ReflectionClass(ExternalToolExecutor::class);
         $instance = $reflection->newInstanceWithoutConstructor();
         $method = $reflection->getMethod('connectorSchemaPrefix');
         self::assertSame('/api/v1', $method->invoke($instance, [
@@ -737,39 +738,43 @@ final class OpenIssuesPendingContractTest extends TestCase {
 
 	public function testExternalConnectorsAreBoundedAndConfirmationReady(): void {
 		$executor = (string)file_get_contents(__DIR__ . '/../lib/Service/ActionExecutor.php');
+		$externalExecutor = (string)file_get_contents(__DIR__ . '/../lib/Service/ExternalToolExecutor.php');
 		$fileExecutor = (string)file_get_contents(__DIR__ . '/../lib/Service/FileToolExecutor.php');
 		$policy = (string)file_get_contents(__DIR__ . '/../lib/Service/ToolPolicy.php');
-		self::assertStringContainsString('safeConnectorUrl', $executor);
-		self::assertStringContainsString("'https'", $executor);
-		self::assertStringContainsString('count($params) > 50', $executor);
+		self::assertStringContainsString('safeConnectorUrl', $externalExecutor);
+		self::assertStringContainsString('$this->domainRegistry->registerExecutor($this->externalExecutor)', $executor);
+		self::assertStringContainsString('$this->externalExecutor->hasConnector($alias)', $executor);
+		self::assertStringContainsString("execute('call_external_connector'", $executor);
+		self::assertStringContainsString("'https'", $externalExecutor);
+		self::assertStringContainsString('count($params) > 50', $externalExecutor);
 		self::assertStringContainsString("'call_external_connector'", $policy);
 		self::assertStringContainsString("'diagnose_external_connector'", $policy);
 		self::assertStringContainsString("'configure_external_connector'", $policy);
-		self::assertStringContainsString('$ip !== $host', $executor);
-		self::assertStringContainsString("(\$parameter['in'] ?? '') !== 'query'", $executor);
-		self::assertStringContainsString('http_build_query($queryParams', $executor);
-		self::assertStringContainsString('discoverExternalConnector', $executor);
-		self::assertStringContainsString("'/openapi.json'", $executor);
-		self::assertStringContainsString("'/openapi.yaml'", $executor);
-		self::assertStringContainsString("'/swagger.yml'", $executor);
-		self::assertStringContainsString("'openapi'", $executor);
-        self::assertStringContainsString('decodeConnectorSchema', $executor);
-        self::assertStringContainsString("function_exists('yaml_parse')", $executor);
-        self::assertStringContainsString('Symfony\\Component\\Yaml\\Yaml', $executor);
-		self::assertStringContainsString("\$meta['parameters'] = \$params", $executor);
-		self::assertStringContainsString('connectorRequestBodyMeta', $executor);
-		self::assertStringContainsString("'request_body'", $executor);
-		self::assertStringContainsString("'required' => !empty(\$parameter['required'])", $executor);
-		self::assertStringContainsString('splitRequestPath', $executor);
-		self::assertStringContainsString('JSON_THROW_ON_ERROR', $executor);
-		self::assertStringContainsString('Learned routes belong to a specific service origin', $executor);
-		self::assertStringContainsString('empty secret fields', $executor);
-		self::assertStringContainsString('CONNECTOR_DISCOVERY_BUDGET', $executor);
-		self::assertStringContainsString('same-origin JavaScript bundles', $executor);
-		self::assertStringContainsString("'runtime_probe'", $executor);
-		self::assertStringContainsString("'requires_auth'", $executor);
-		self::assertStringContainsString('normalizeBearerToken', $executor);
-		self::assertStringContainsString("trim((string)\$args['token']) !== ''", $executor);
+		self::assertStringContainsString('$ip !== $host', $externalExecutor);
+		self::assertStringContainsString("(\$parameter['in'] ?? '') !== 'query'", $externalExecutor);
+		self::assertStringContainsString('http_build_query($queryParams', $externalExecutor);
+		self::assertStringContainsString('discoverExternalConnector', $externalExecutor);
+		self::assertStringContainsString("'/openapi.json'", $externalExecutor);
+		self::assertStringContainsString("'/openapi.yaml'", $externalExecutor);
+		self::assertStringContainsString("'/swagger.yml'", $externalExecutor);
+		self::assertStringContainsString("'openapi'", $externalExecutor);
+		self::assertStringContainsString('decodeConnectorSchema', $externalExecutor);
+		self::assertStringContainsString("function_exists('yaml_parse')", $externalExecutor);
+		self::assertStringContainsString('Symfony\\Component\\Yaml\\Yaml', $externalExecutor);
+		self::assertStringContainsString("\$meta['parameters'] = \$params", $externalExecutor);
+		self::assertStringContainsString('connectorRequestBodyMeta', $externalExecutor);
+		self::assertStringContainsString("'request_body'", $externalExecutor);
+		self::assertStringContainsString("'required' => !empty(\$parameter['required'])", $externalExecutor);
+		self::assertStringContainsString('splitRequestPath', $externalExecutor);
+		self::assertStringContainsString('JSON_THROW_ON_ERROR', $externalExecutor);
+		self::assertStringContainsString('Learned routes belong to a specific service origin', $externalExecutor);
+		self::assertStringContainsString('empty secret fields', $externalExecutor);
+		self::assertStringContainsString('CONNECTOR_DISCOVERY_BUDGET', $externalExecutor);
+		self::assertStringContainsString('same-origin JavaScript bundles', $externalExecutor);
+		self::assertStringContainsString("'runtime_probe'", $externalExecutor);
+		self::assertStringContainsString("'requires_auth'", $externalExecutor);
+		self::assertStringContainsString('normalizeBearerToken', $externalExecutor);
+		self::assertStringContainsString("trim((string)\$args['token']) !== ''", $externalExecutor);
 		$webSearch = (string)file_get_contents(__DIR__ . '/../lib/Service/WebSearchService.php');
 		self::assertStringContainsString('OPENVERSE_IMAGE_ENDPOINT', $webSearch);
 		self::assertStringContainsString('searchOpenverseImages', $webSearch);
@@ -789,8 +794,8 @@ final class OpenIssuesPendingContractTest extends TestCase {
 		$indexer = (string)file_get_contents(__DIR__ . '/../lib/Service/Indexer.php');
 		self::assertStringContainsString('yield from $this->collectFilesGenerator', $indexer);
 		self::assertStringContainsString('gc_collect_cycles()', $indexer);
-		self::assertStringContainsString("customValueConfigured(\$user, \$prefix, 'token')", $executor);
-		self::assertStringContainsString("getCustomValue(\$user, \$prefix, 'token')", $executor);
+		self::assertStringContainsString("customValueConfigured(\$user, \$prefix, 'token')", $externalExecutor);
+		self::assertStringContainsString("getCustomValue(\$user, \$prefix, 'token')", $externalExecutor);
 		self::assertStringContainsString('private function readFiles', $fileExecutor);
 		self::assertStringContainsString("'extension' => ['type' => 'string'", $executor);
 		self::assertStringContainsString('$scopePath = $this->cleanPath', $fileExecutor);

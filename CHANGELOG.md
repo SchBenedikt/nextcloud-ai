@@ -2,6 +2,13 @@
 
 ## [Unreleased]
 
+## [1.17.9] - 2026-09-29
+
+### Tool executor architecture
+
+- Move external connector discovery, configuration, diagnostics, and bounded calls into a dedicated executor.
+- Preserve connector aliases used by the generic Nextcloud app API tools.
+
 ## [1.17.8] - 2026-09-29
 
 ### Tool executor architecture
