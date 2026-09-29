@@ -813,9 +813,6 @@ class ApiController extends OCSController {
         if ($user === null) {
             return new ErrorDataResponse(['error' => 'Not logged in'], 401);
         }
-        if (($limited = $this->rateLimitResponse($user, 'chat', $this->config->getInt('rate_limit_chat_per_minute', 30))) !== null) return $limited;
-        $chatSlot = $this->acquireChatSlot($user);
-        if ($chatSlot === null) return new ErrorDataResponse(['error' => 'busy', 'message' => 'Another chat request is already running. Please retry shortly.'], 429, ['Retry-After' => '5']);
         $message = trim((string)($this->requestParam('message') ?? ''));
         if ($message === '') {
             return new ErrorDataResponse(['error' => 'Empty message'], 400);
@@ -823,6 +820,9 @@ class ApiController extends OCSController {
         if ($this->messageTooLong($message)) {
             return new ErrorDataResponse(['error' => 'Message exceeds the maximum length of 50,000 characters.'], 400);
         }
+        if (($limited = $this->rateLimitResponse($user, 'chat', $this->config->getInt('rate_limit_chat_per_minute', 30))) !== null) return $limited;
+        $chatSlot = $this->acquireChatSlot($user);
+        if ($chatSlot === null) return new ErrorDataResponse(['error' => 'busy', 'message' => 'Another chat request is already running. Please retry shortly.'], 429, ['Retry-After' => '5']);
         $this->releaseSessionLock();
         $history = $this->requestParam('history') ?? [];
         if (is_string($history)) {

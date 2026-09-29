@@ -186,6 +186,7 @@ jobs:
               php occ app:enable eva_ai
               php occ app:list | grep -F eva_ai
               cd /srv/nextcloud/apps/eva_ai
+              NEXTCLOUD_ROOT=/srv/nextcloud vendor/bin/phpunit --fail-on-skipped tests/ApiControllerIntegrationTest.php
               composer test
             '
 
