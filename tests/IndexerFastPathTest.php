@@ -42,13 +42,13 @@ final class IndexerFastPathTest extends TestCase {
      * @param (callable(Folder):void)|null $configureUserFolder lets a test set
      *        its own expectations on the user folder (e.g. getById never called)
      */
-    private function harness(array $files, array $stored, ?callable $configureUserFolder = null, array $schedulerSlot = ['state' => 'running', 'position' => 0]): array {
+    private function harness(array $files, array $stored, ?callable $configureUserFolder = null, array $schedulerSlot = ['state' => 'running', 'position' => 0], bool $cancelAtStart = false): array {
         $config = $this->createMock(AppConfig::class);
-        $config->method('get')->willReturnCallback(static function (string $key, ?string $default = null): string {
+        $config->method('get')->willReturnCallback(static function (string $key, ?string $default = null) use ($cancelAtStart): string {
             return match ($key) {
                 'scope_path' => '',
                 'exclude_paths' => '',
-                'index_cancel_requested' => '0',
+                'index_cancel_requested' => $cancelAtStart ? '1' : '0',
                 'index_running' => '0',
                 'index_run_id' => '',
                 default => $default ?? '',
@@ -235,6 +235,31 @@ final class IndexerFastPathTest extends TestCase {
 
         self::assertSame(1, $result['processed'], 'the changed file must be re-extracted and re-embedded');
         self::assertSame(0, $result['skipped']);
+        self::assertNull($result['error']);
+    }
+
+    public function testRunCancellationStopsBeforeProcessingFilesOrDeletingStaleRows(): void {
+        $file = $this->file(3, 3000, 'must not be read while cancelled');
+        [$indexer, $docMapper, $chunkMapper, $ollama] = $this->harness(
+            [$file],
+            [],
+            schedulerSlot: ['state' => 'running', 'position' => 0],
+            cancelAtStart: true,
+        );
+
+        $docMapper->expects(self::never())->method('insert');
+        $docMapper->expects(self::never())->method('findFileIdsForUser');
+        $docMapper->expects(self::never())->method('delete');
+        $chunkMapper->expects(self::never())->method('insert');
+        $chunkMapper->expects(self::never())->method('deleteByDocumentIds');
+        $ollama->expects(self::never())->method('embedBatch');
+        $file->expects(self::never())->method('getContent');
+
+        $result = $indexer->run('alice', 10000, 'files');
+
+        self::assertSame(0, $result['processed']);
+        self::assertSame(0, $result['total_seen']);
+        self::assertSame(0, $result['failed']);
         self::assertNull($result['error']);
     }
 

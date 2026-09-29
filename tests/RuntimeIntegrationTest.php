@@ -9,7 +9,6 @@ use OCA\EvaAi\Service\ToolPolicy;
 use OCA\EvaAi\Service\EmailService;
 use PHPUnit\Framework\TestCase;
 use Psr\Log\LoggerInterface;
-use ReflectionClass;
 
 /**
  * Runtime integration tests for indexing, Talk, file actions, and
@@ -27,48 +26,6 @@ final class RuntimeIntegrationTest extends TestCase {
     }
 
     // ---- Indexing: start, cancel, restart, consistency ----
-
-    public function testIndexCancellationSetsFlagAndWorkerRespectsIt(): void {
-        $config = $this->createMock(\OCP\IConfig::class);
-        $config->method('getAppValue')->willReturnMap([
-            ['eva_ai', 'index_cancel_' . md5('alice'), '0', '0'],
-        ]);
-        $config->method('setAppValue');
-
-        $reflection = new ReflectionClass(Indexer::class);
-        $indexer = $reflection->newInstanceWithoutConstructor();
-
-        // Inject a mock config (AppConfig wrapper around IConfig).
-        $appConfig = $this->createMock(\OCA\EvaAi\Service\AppConfig::class);
-        $appConfig->method('get')->willReturnMap([
-            ['index_enabled', '0'],
-            ['mail_index_enabled', '0'],
-            ['index_cancel_requested', ''],
-            ['index_run_id', ''],
-        ]);
-        $appConfig->method('getInt')->willReturnMap([
-            ['index_max_files', 0],
-            ['index_max_filesize', 0],
-            ['mail_index_max', 0],
-        ]);
-        $configProp = $reflection->getProperty('config');
-        $configProp->setValue($indexer, $appConfig);
-
-        // Logger mock
-        $logger = $this->createMock(LoggerInterface::class);
-        $loggerProp = $reflection->getProperty('logger');
-        $loggerProp->setValue($indexer, $logger);
-
-        // DocumentMapper mock — hashesForUser returns empty
-        $docMapper = $this->createMock(\OCA\EvaAi\Db\DocumentMapper::class);
-        $docMapper->method('hashesForUser')->willReturn([]);
-        $docMapperProp = $reflection->getProperty('documentMapper');
-        $docMapperProp->setValue($indexer, $docMapper);
-
-        // Verify cancellationRequested returns false when no cancel flag is set
-        $method = $reflection->getMethod('cancellationRequested');
-        self::assertFalse($method->invoke($indexer, null));
-    }
 
     public function testReconcileMailIndexRemovesDeletedMessages(): void {
         self::assertSame(
