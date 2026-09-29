@@ -1,6 +1,6 @@
 {
   "name": "eva-ai",
-  "version": "1.17.2",
+  "version": "1.17.3",
   "private": true,
   "engines": {
     "node": "^24.0.0",
@@ -27,6 +27,7 @@
   "devDependencies": {
     "@babel/core": "^8.0.1",
     "@babel/preset-env": "^8.0.2",
+    "@nextcloud/browserslist-config": "^3.1.2",
     "@playwright/test": "^1.63.0",
     "@vue/compiler-sfc": "^3.5.43",
     "babel-loader": "^10.1.1",

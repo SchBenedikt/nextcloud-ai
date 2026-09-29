@@ -401,13 +401,14 @@ final class ChatStoreTest extends TestCase {
         self::assertSame('Actually, never mind', $chat['messages'][2]['text']);
     }
 
-    private function chatFileHarness(string $json, ?string &$written, string $foldersJson = '[]', ?string &$foldersWritten = null): array {
+    private function chatFileHarness(string $json, ?string &$written, string $foldersJson = '[]', ?string &$foldersWritten = null, string $templatesJson = '[]', ?string &$templatesWritten = null): array {
         $factory = $this->createMock(IAppDataFactory::class);
         $appData = $this->createMock(IAppData::class);
         $chats = $this->createMock(ISimpleFolder::class);
         $userFolder = $this->createMock(ISimpleFolder::class);
         $file = $this->createMock(ISimpleFile::class);
         $foldersFile = $this->createMock(ISimpleFile::class);
+        $templatesFile = $this->createMock(ISimpleFile::class);
         $logger = $this->createMock(LoggerInterface::class);
         $lockingProvider = $this->createMock(ILockingProvider::class);
         $lockingProvider->method('acquireLock');
@@ -418,9 +419,9 @@ final class ChatStoreTest extends TestCase {
         $chats->method('getFolder')
             ->with(substr(hash('sha256', 'alice'), 0, 40))
             ->willReturn($userFolder);
-        $userFolder->method('fileExists')->willReturnCallback(static fn(string $name): bool => $name === 'chats.json' || $name === 'folders.json');
-        $userFolder->method('getFile')->willReturnCallback(static function (string $name) use ($file, $foldersFile) {
-            return $name === 'folders.json' ? $foldersFile : $file;
+        $userFolder->method('fileExists')->willReturnCallback(static fn(string $name): bool => in_array($name, ['chats.json', 'folders.json', 'templates.json'], true));
+        $userFolder->method('getFile')->willReturnCallback(static function (string $name) use ($file, $foldersFile, $templatesFile) {
+            return $name === 'folders.json' ? $foldersFile : ($name === 'templates.json' ? $templatesFile : $file);
         });
         $file->method('getContent')->willReturnCallback(static function () use (&$written, $json): string {
             // Subsequent reads observe what was written (like a real file).
@@ -434,6 +435,12 @@ final class ChatStoreTest extends TestCase {
         });
         $foldersFile->method('putContent')->willReturnCallback(static function (string $content) use (&$foldersWritten): void {
             $foldersWritten = $content;
+        });
+        $templatesFile->method('getContent')->willReturnCallback(static function () use (&$templatesWritten, $templatesJson): string {
+            return $templatesWritten ?? $templatesJson;
+        });
+        $templatesFile->method('putContent')->willReturnCallback(static function (string $content) use (&$templatesWritten): void {
+            $templatesWritten = $content;
         });
 
         return [new ChatStore($factory, $logger, $lockingProvider), $file];
@@ -1077,6 +1084,35 @@ final class ChatStoreTest extends TestCase {
 
         self::assertIsArray($store->setMessageReaction('alice', 'a', 1, 'helpful', null));
         self::assertSame(['helpful' => 0, 'notHelpful' => 0, 'bookmarked' => 1], $store->feedbackStats('alice'));
+    }
+
+    public function testPromptTemplatesSupportVariablesUsageImportAndDeletion(): void {
+        $written = null;
+        $foldersWritten = null;
+        $templatesWritten = null;
+        [$store] = $this->chatFileHarness('[]', $written, '[]', $foldersWritten, '[]', $templatesWritten);
+
+        $template = $store->saveTemplate('alice', [
+            'name' => 'Translate',
+            'description' => 'Translate a document to another language.',
+            'category' => 'Writing',
+            'body' => 'Translate {document} into {language}.',
+            'persona' => 'Be a concise professional translator.',
+        ]);
+        self::assertSame(['document', 'language'], $template['variables']);
+        self::assertSame('Be a concise professional translator.', $template['persona']);
+        self::assertSame(1, count($store->listTemplates('alice')));
+
+        $used = $store->useTemplate('alice', $template['id']);
+        self::assertSame(1, $used['usageCount']);
+        $updated = $store->saveTemplate('alice', ['id' => $template['id'], 'name' => 'Translate', 'body' => 'Translate {document} into {language} using a friendly tone.']);
+        self::assertSame(1, $updated['usageCount']);
+        self::assertSame('Writing', $updated['category'], 'Omitted edit fields keep their saved values.');
+
+        self::assertSame(1, $store->importTemplates('alice', [['name' => 'Summarize', 'body' => 'Summarize {document}.', 'id' => 'foreign-id']]));
+        self::assertCount(2, $store->listTemplates('alice'));
+        self::assertTrue($store->deleteTemplate('alice', $template['id']));
+        self::assertFalse($store->deleteTemplate('alice', $template['id']));
     }
 
     /** A forced recovery also attempts release when isLocked() reports false.

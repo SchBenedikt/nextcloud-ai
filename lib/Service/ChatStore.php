@@ -261,6 +261,123 @@ class ChatStore {
         });
     }
 
+    /** List this user's saved prompt templates, newest first. */
+    public function listTemplates(string $user): array {
+        return $this->withUserLock($user, function () use ($user): array {
+            $templates = $this->readTemplatesLocked($user);
+            usort($templates, static fn($a, $b) => ((int)($b['updated'] ?? 0)) <=> ((int)($a['updated'] ?? 0)));
+            return $templates;
+        }, ILockingProvider::LOCK_SHARED);
+    }
+
+    /** Create or update one of this user's prompt templates. */
+    public function saveTemplate(string $user, array $input): array {
+        return $this->withUserLock($user, function () use ($user, $input): array {
+            $templates = $this->readTemplatesLocked($user);
+            $result = $this->upsertTemplateLocked($templates, $input);
+            $this->writeTemplatesLocked($user, $templates);
+            return $result;
+        });
+    }
+
+    /** Delete a prompt template owned by this user. */
+    public function deleteTemplate(string $user, string $id): bool {
+        return $this->withUserLock($user, function () use ($user, $id): bool {
+            $templates = $this->readTemplatesLocked($user);
+            $kept = array_values(array_filter($templates, static fn($template) => ($template['id'] ?? '') !== $id));
+            if (count($kept) === count($templates)) return false;
+            $this->writeTemplatesLocked($user, $kept);
+            return true;
+        });
+    }
+
+    /** Increment usage and return the saved template for the chat picker. */
+    public function useTemplate(string $user, string $id): ?array {
+        return $this->withUserLock($user, function () use ($user, $id): ?array {
+            $templates = $this->readTemplatesLocked($user);
+            foreach ($templates as &$template) {
+                if (($template['id'] ?? '') !== $id) continue;
+                $template['usageCount'] = (int)($template['usageCount'] ?? 0) + 1;
+                $template['updated'] = time();
+                $result = $template;
+                unset($template);
+                $this->writeTemplatesLocked($user, $templates);
+                return $result;
+            }
+            unset($template);
+            return null;
+        });
+    }
+
+    /** Import a bounded list of prompt templates without accepting foreign IDs. */
+    public function importTemplates(string $user, array $inputs): int {
+        return $this->withUserLock($user, function () use ($user, $inputs): int {
+            $templates = $this->readTemplatesLocked($user);
+            $imported = 0;
+            foreach (array_slice($inputs, 0, 100) as $input) {
+                if (!is_array($input) || trim((string)($input['name'] ?? '')) === '') continue;
+                $this->upsertTemplateLocked($templates, $input, true);
+                $imported++;
+            }
+            if ($imported > 0) $this->writeTemplatesLocked($user, $templates);
+            return $imported;
+        });
+    }
+
+    /** Normalize and save one template while the user's chat lock is held. */
+    private function upsertTemplateLocked(array &$templates, array $input, bool $newId = false): array {
+        $name = mb_substr(trim((string)($input['name'] ?? '')), 0, 100);
+        $body = trim((string)($input['body'] ?? ''));
+        if ($name === '' || $body === '' || mb_strlen($body) > 8000) {
+            throw new \InvalidArgumentException('A template name and a prompt up to 8,000 characters are required.');
+        }
+        $id = !$newId ? trim((string)($input['id'] ?? '')) : '';
+        $existingIndex = -1;
+        if (preg_match('/^t[a-f0-9]{12}$/', $id)) {
+            foreach ($templates as $index => $template) if (($template['id'] ?? '') === $id) { $existingIndex = $index; break; }
+        }
+        $previous = $existingIndex >= 0 ? $templates[$existingIndex] : [];
+        $variables = [];
+        if (preg_match_all('/\{([A-Za-z_][A-Za-z0-9_]*)\}/', $body, $matches)) $variables = array_values(array_unique(array_slice($matches[1], 0, 30)));
+        $template = [
+            'id' => $existingIndex >= 0 ? $id : 't' . bin2hex(random_bytes(6)),
+            'name' => $name,
+            'description' => mb_substr(trim((string)($input['description'] ?? $previous['description'] ?? '')), 0, 300),
+            'category' => mb_substr(trim((string)($input['category'] ?? $previous['category'] ?? '')), 0, 48),
+            'body' => $body,
+            'persona' => mb_substr(trim((string)($input['persona'] ?? $previous['persona'] ?? '')), 0, 2000),
+            'variables' => $variables,
+            'usageCount' => (int)($previous['usageCount'] ?? 0),
+            'created' => (int)($previous['created'] ?? time()),
+            'updated' => time(),
+        ];
+        if ($existingIndex >= 0) $templates[$existingIndex] = $template;
+        else $templates[] = $template;
+        return $template;
+    }
+
+    /** @return list<array<string,mixed>> */
+    private function readTemplatesLocked(string $user): array {
+        try {
+            $raw = $this->templatesFile($user)->getContent();
+            return $this->decodeStoredList($raw, 'prompt templates');
+        } catch (NotFoundException $e) {
+            return [];
+        }
+    }
+
+    private function writeTemplatesLocked(string $user, array $templates): void {
+        $json = json_encode($templates, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR);
+        if ($this->crypto !== null) $json = "EVA-CHAT-1\n" . $this->crypto->encrypt($json);
+        $this->templatesFile($user)->putContent($json);
+    }
+
+    private function templatesFile(string $user): \OCP\Files\SimpleFS\ISimpleFile {
+        $folder = $this->userFolderFor($user);
+        if (!$folder->fileExists('templates.json')) $folder->newFile('templates.json', '[]');
+        return $folder->getFile('templates.json');
+    }
+
     /**
      * Remove the user's complete chat storage (hashed + legacy folders) when
      * their account is deleted (Issue #83).
