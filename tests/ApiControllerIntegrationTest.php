@@ -219,11 +219,11 @@ final class ApiControllerIntegrationTest extends TestCase {
 			$dependencies['logger'],
 			$dependencies['jobList'],
 		) extends IndexRequestJob {
-			public function execute(array $arguments): void {
+			public function runJobDirectly(array $arguments): void {
 				$this->run($arguments);
 			}
 		};
-		$job->execute($jobArguments);
+		$job->runJobDirectly($jobArguments);
 
 		$dependencies['config']->setUserId('alice');
 		self::assertSame('0', $dependencies['config']->get('index_running'));
