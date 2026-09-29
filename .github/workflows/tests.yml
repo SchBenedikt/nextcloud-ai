@@ -184,7 +184,7 @@ jobs:
               cd /srv/nextcloud
               php occ maintenance:install --database sqlite --database-name nextcloud --admin-user admin --admin-pass admin --admin-email admin@example.test
               php occ app:enable eva_ai
-              php occ app:check-code eva_ai
+              php occ integrity:check-app eva_ai
               php occ route:list | grep -F "eva_ai"
               cd /srv/nextcloud/apps/eva_ai
               composer test

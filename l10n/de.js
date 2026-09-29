@@ -1040,5 +1040,15 @@ OC.L10N.register("eva_ai", {
   "Read": "Gelesen",
   "Pictures": "Bilder",
   "characters": "Zeichen",
-  "highlighted": "hervorgehoben"
+  "highlighted": "hervorgehoben",
+  "Prompt history": "Prompt-Verlauf",
+  "Search prompts": "Prompts suchen",
+  "No saved prompts match this search.": "Kein gespeicherter Prompt passt zu dieser Suche.",
+  "Export prompt library": "Prompt-Bibliothek exportieren",
+  "Use prompt": "Prompt verwenden",
+  "Used {count} times": "{count} Mal verwendet",
+  "Favorite prompt": "Prompt als Favorit markieren",
+  "Remove prompt favorite": "Favorit entfernen",
+  "Category": "Kategorie",
+  "Prompt category": "Prompt-Kategorie"
 }, "nplurals=2; plural=(n != 1);");
