@@ -398,10 +398,30 @@ export function mountChat(root, opts = {}) {
 					: t('A text diff is unavailable for this file; review its path and action before approving.')
 				panel.append(path, counts)
 				if (preview.previewable) {
-					const diff = document.createElement('pre')
-					diff.className = 'rconfirm-args rconfirm-diff'
-					diff.textContent = String(preview.diff || '')
-					panel.appendChild(diff)
+					if (Array.isArray(preview.hunks) && preview.hunks.length) {
+						for (const hunk of preview.hunks) {
+							const row = document.createElement('div')
+							row.className = 'rconfirm-hunk'
+							const choice = document.createElement('label')
+							const input = document.createElement('input')
+							input.type = 'checkbox'
+							input.checked = true
+							input.dataset.hunkId = String(hunk.id)
+							const title = document.createElement('span')
+							title.textContent = t('Changes: +{added} -{removed} lines', { added: hunk.added || 0, removed: hunk.removed || 0 })
+							choice.append(input, title)
+							const diff = document.createElement('pre')
+							diff.className = 'rconfirm-args rconfirm-diff'
+							diff.textContent = String(hunk.diff || '')
+							row.append(choice, diff)
+							panel.appendChild(row)
+						}
+					} else {
+						const diff = document.createElement('pre')
+						diff.className = 'rconfirm-args rconfirm-diff'
+						diff.textContent = String(preview.diff || '')
+						panel.appendChild(diff)
+					}
 				}
 			} else {
 				const details = document.createElement('pre')
@@ -448,6 +468,10 @@ export function mountChat(root, opts = {}) {
 				}
 				errEl.style.display = 'none'
 				disableButtons(true)
+				const approvalArguments = conf ? conf.getArguments() : { ...(m.confirmation.arguments || {}) }
+				if (!conf && m.confirmation.preview?.previewable && Array.isArray(m.confirmation.preview.hunks) && m.confirmation.preview.hunks.length) {
+					approvalArguments._eva_selected_hunks = Array.from(panel.querySelectorAll('.rconfirm-hunk input:checked')).map((input) => Number(input.dataset.hunkId))
+				}
 				// Wait for the pending placeholder (and its idempotency token) to
 				// be stored before running the action so the server-side claim can
 				// reject a duplicate approve after a reload (Issue #185).
@@ -461,7 +485,7 @@ export function mountChat(root, opts = {}) {
 					}
 					return api('POST', '/confirmTool', {
 						name: m.confirmation.name,
-						arguments: conf ? conf.getArguments() : (m.confirmation.arguments || {}),
+						arguments: approvalArguments,
 						chatId,
 						confirmationToken: m.confirmation.token || '',
 					})

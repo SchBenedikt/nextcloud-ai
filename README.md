@@ -1,26 +1,33 @@
-# Eva AI — Private RAG Assistant for Nextcloud
+# EVA AI — Your AI assistant for Nextcloud
 
-Eva is a privacy-first AI assistant for your Nextcloud. It combines semantic and lexical search over your files with cited answers, safe actions, background jobs, and configurable AI providers.
+EVA brings searchable knowledge, cited answers, and practical AI tools into
+Nextcloud. It combines semantic and keyword search across files with optional
+integrations for Nextcloud Mail, Talk, Calendar, and other apps. Choose local
+models or a hosted provider and control which data each integration can use.
 
 ## See Eva in action
 
-![Eva settings in Nextcloud](screenshots/eva-settings.png)
+![EVA chat and knowledge workspace in Nextcloud](screenshots/eva-chat-overview.png)
+
+![EVA settings in Nextcloud](screenshots/eva-settings.png)
 
 ![Eva document index in Nextcloud](screenshots/eva-documents.png)
 
 ![Eva usage metrics in Nextcloud](screenshots/eva-metrics.png)
 
-All screenshots above show the real Eva app inside the Nextcloud shell (not the
-legacy standalone page). Private chat and file labels were anonymised before
+Screenshots show EVA inside the Nextcloud shell. The chat overview uses sample
+workspace data; private chat and file labels elsewhere were anonymised before
 publication.
 
 [![License: AGPL v3](https://img.shields.io/badge/License-AGPL%20v3-blue.svg)](https://www.gnu.org/licenses/agpl-3.0)
 [![Nextcloud](https://img.shields.io/badge/Nextcloud-30--35-blue)](https://nextcloud.com)
 [![PHP](https://img.shields.io/badge/PHP-8.2%2B-purple)](https://php.net)
 
-**Eva AI** turns your Nextcloud into a private, searchable knowledge base powered by Large Language Models. Ask questions in natural language and get instant, cited answers drawn from your own files — fully local with [Ollama](https://ollama.com), or optionally via [Groq](https://groq.com) for cloud-hosted inference.
-
-Your data stays yours. No third-party indexing, no external databases, no cloud required.
+Ask questions in natural language and get answers grounded in your files, with
+source links so you can check the evidence. EVA stores its index in Nextcloud's
+database and can use local Ollama models or configured hosted providers. Review
+the [data and privacy notes](#data-and-privacy) before indexing or enabling an
+external provider.
 
 ---
 
@@ -34,7 +41,7 @@ Eva automatically reads, chunks, and embeds your files for semantic search. Supp
 |--------|----------|
 | **Plain text** | txt, md, code, csv, tsv, html, json, xml, yaml, toml, rtf, sql, and more |
 | **PDF** | Full text extraction via `pdftotext` |
-| **Microsoft Office** | docx, xlsx, pptx (including macros and templates) |
+| **Microsoft Office** | docx, docm, dotx, xlsx, xlsm, xltx, pptx, pptm, ppsx, potx |
 | **OpenDocument** | odt, ods, odp with full table and sheet support |
 | **EPUB** | Full content extraction |
 | **Legacy formats** | doc, xls, ppt via LibreOffice (when installed) |
@@ -67,7 +74,9 @@ Eva can perform actions directly within Nextcloud:
 - **Profile** — Read and update your Nextcloud profile
 - **Unified Search** — Search indexed file content from Nextcloud's global search and open the original file directly
 
-Mutating and destructive actions always require explicit **Confirm and run** — the model never executes changes directly.
+Tool access depends on the configured policy and the surface (web chat, Talk,
+background jobs, or Assistant). EVA exposes risk and confirmation controls in
+the app; review [Security](docs/SECURITY.md) before enabling write-capable tools.
 
 ### TaskProcessing Providers
 
@@ -90,9 +99,16 @@ icon, the Files action and the Assistant), and new features land there first. Th
 standalone page receives security and compatibility fixes only — do not build on
 it, and expect it to be removed in a future major release.
 
-### Zero Configuration
+### Choose where inference runs
 
-Just install and go. Eva automatically detects your local Ollama instance and selects appropriate models. No external services required.
+EVA connects to Ollama at `http://127.0.0.1:11434` by default. The default chat
+model is `gemma4:cloud`, which uses Ollama's hosted cloud inference. To keep
+chat prompts and retrieved file excerpts on your own infrastructure, configure
+a locally installed chat model in EVA Settings and verify that the selected
+provider and model are local. Embeddings and indexing use the configured Ollama
+endpoint. Optional integrations such as Groq, web search, OCR, and external
+connectors have their own data flows; configure only the services you intend
+to use.
 
 ---
 
@@ -104,12 +120,17 @@ Just install and go. Eva automatically detects your local Ollama instance and se
 | PHP | ≥ 8.2 (module `curl` required) |
 | Ollama | Reachable from the web server (default: `http://127.0.0.1:11434`) |
 
-Recommended models:
+For the default setup, install the embedding model and sign in to Ollama if you
+use its hosted cloud model:
 
 ```bash
-ollama pull gemma4:cloud            # chat model (default)
+ollama pull gemma4:cloud            # hosted chat model (default)
 ollama pull nomic-embed-text:latest # embeddings (default)
 ```
+
+For local-only chat, install a chat model supported by your hardware and select
+it in **EVA → Settings**. Ollama's [model library](https://ollama.com/library)
+lists available models. The cloud model is optional.
 
 **Multi-node / horizontal scaling:** Eva works on clustered Nextcloud deployments that share the same database and storage. Chat mutations are serialized per user through Nextcloud's own locking provider. Ollama must be reachable from every app server.
 
@@ -183,7 +204,7 @@ Instance defaults live in `oc_appconfig`; per-user settings are stored in Nextcl
 | Setting | Default | Description |
 |---------|---------|-------------|
 | `ollama_url` | `http://127.0.0.1:11434` | Ollama instance URL |
-| `chat_model` | `gemma4:cloud` | Chat/LLM model |
+| `chat_model` | `gemma4:cloud` | Chat model; this default uses Ollama Cloud |
 | `embedding_model` | `nomic-embed-text` | Embedding model |
 | `temperature` | `0.1` | LLM creativity |
 | `context_size` | `12288` | Context window length |
@@ -223,7 +244,14 @@ sudo -u www-data php occ config:app:set eva_ai top_k --value=6
 
 ## Data & Privacy
 
-Eva operates on your personal Nextcloud data. All processing with Ollama happens on your server. Your files never leave your infrastructure.
+EVA stores indexed document metadata, text chunks, and embeddings in the
+Nextcloud database. Where prompts and excerpts are processed depends on the
+selected model and enabled integrations. With the default `gemma4:cloud` chat
+model, chat prompts and retrieved context are sent to Ollama Cloud for
+inference. For local-only processing, select a local chat model and local
+embedding model in EVA Settings and avoid enabling hosted providers or external
+connectors. Mail, Talk, web search, OCR, and background actions can have
+additional data flows described in their settings and [security guide](docs/SECURITY.md).
 
 | Data | Location | Retention |
 |------|----------|-----------|
@@ -255,9 +283,10 @@ sudo -u www-data php occ app:remove eva_ai
 
 ## Security
 
-All tools are classified by **risk** (readonly / mutating / destructive) and restricted by **execution surface** (web chat, Talk, RAG, TaskProcessing). Mutating and destructive tools always require explicit user confirmation.
-
-See [docs/SECURITY.md](docs/SECURITY.md) for details.
+Tools are classified by risk and by supported execution surface. Confirmation
+requirements depend on the action and surface; the settings page describes
+write-capable and background behavior. See [docs/SECURITY.md](docs/SECURITY.md)
+for the current policy and limitations.
 
 ---
 
@@ -283,11 +312,3 @@ and runs PHPUnit inside each installation. See [docs/CI.md](docs/CI.md).
 See [`docs/TERMINAL_TOOLS.md`](docs/TERMINAL_TOOLS.md) for the confirmed
 terminal-command workflow and [`docs/PLUGIN_API.md`](docs/PLUGIN_API.md) for
 third-party EVA extensions.
-# EVA AI
-
-EVA can now summarize messages from the Nextcloud Mail app with the read-only
-`summarize_emails` tool. Talk registers one EVA bot to prevent duplicate
-responses; its read-only tools cover research, calendar, mail and files. Image
-generation requires an image-capable provider profile (for example an
-OpenAI-compatible endpoint exposing `/images/generations`) and an
-`image_model`; text-only models cannot generate images.
