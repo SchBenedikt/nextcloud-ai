@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace OCA\EvaAi\Listener;
 
+use OCA\EvaAi\Service\AppConfig;
 use OCA\EvaAi\Service\DirtyIndexStore;
 use OCP\BackgroundJob\IJobList;
 use OCP\EventDispatcher\Event;
@@ -96,8 +97,8 @@ class FileChangeListener implements IEventListener {
             // incremental index job is intentionally debounced, but a user
             // asking about a just-uploaded unindexed file must not receive a
             // stale empty result for the cache TTL.
-            $revision = (int)$this->config->getUserValue($userId, 'eva_ai', 'search_revision', '0');
-            $this->config->setUserValue($userId, 'eva_ai', 'search_revision', (string)(($revision + 1) % 2147483647));
+            $revision = (int)$this->config->getUserValue($userId, AppConfig::APP, 'search_revision', '0');
+            $this->config->setUserValue($userId, AppConfig::APP, 'search_revision', (string)(($revision + 1) % 2147483647));
             // One debounced job per user drains the whole queue (IJobList
             // updates the run time when the argument already exists).
             $this->jobList->scheduleAfter(\OCA\EvaAi\BackgroundJob\ReindexFileJob::class, self::DEBOUNCE_SECONDS, ['userId' => $userId]);

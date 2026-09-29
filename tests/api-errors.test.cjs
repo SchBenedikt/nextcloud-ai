@@ -12,6 +12,10 @@ test('API errors prefer structured Nextcloud messages', () => {
   assert.equal(context.errMsg({ response: { status: 400, data: { ocs: { data: { message: 'Invalid setting' }, meta: { message: 'Bad request' } } } } }), '400 Invalid setting')
 })
 
+test('busy responses show their human-readable recovery message', () => {
+  assert.equal(context.errMsg({ response: { status: 503, data: { error: 'busy', message: 'Another chat request is already running. Please retry shortly.' } } }), '503 Another chat request is already running. Please retry shortly.')
+})
+
 test('gateway HTML is replaced with a useful timeout message', () => {
   const message = context.errMsg({ response: { status: 504, data: '<!DOCTYPE html><html><body>upstream secret</body></html>' } })
   assert.match(message, /^504 The AI service took too long to respond/)
