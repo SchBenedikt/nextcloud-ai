@@ -6,6 +6,7 @@ namespace OCA\EvaAi\Tests;
 
 use OCA\DAV\CalDAV\CalDavBackend;
 use OCA\EvaAi\Service\ActionExecutor;
+use OCA\EvaAi\Service\TerminalToolExecutor;
 use OCA\EvaAi\Service\CalendarService;
 use OCA\EvaAi\Service\AppConfig;
 use OCA\EvaAi\Service\Indexer;
@@ -293,7 +294,7 @@ final class OpenIssuesPendingContractTest extends TestCase {
 
     /** Terminal prompts never get a shell parser and remain confirmation-gated. */
     public function testConfirmedTerminalCommandRejectsShellSyntax(): void {
-        $reflection = new \ReflectionClass(ActionExecutor::class);
+        $reflection = new \ReflectionClass(TerminalToolExecutor::class);
         $instance = $reflection->newInstanceWithoutConstructor();
         $config = $this->createMock(AppConfig::class);
         $config->method('get')->willReturnMap([
@@ -318,7 +319,7 @@ final class OpenIssuesPendingContractTest extends TestCase {
     }
 
     public function testConfirmedTerminalSequenceCanProvideBoundedPromptInput(): void {
-        $reflection = new \ReflectionClass(ActionExecutor::class);
+        $reflection = new \ReflectionClass(TerminalToolExecutor::class);
         $instance = $reflection->newInstanceWithoutConstructor();
         $config = $this->createMock(AppConfig::class);
         $config->method('get')->willReturnMap([
@@ -354,7 +355,7 @@ final class OpenIssuesPendingContractTest extends TestCase {
     }
 
     public function testSafeCommandUsesBoundedNonBlockingProcessHandling(): void {
-        $reflection = new \ReflectionClass(ActionExecutor::class);
+        $reflection = new \ReflectionClass(TerminalToolExecutor::class);
         $instance = $reflection->newInstanceWithoutConstructor();
         $config = $this->createMock(AppConfig::class);
         $config->method('get')->willReturnMap([['safe_commands_enabled', '1']]);
@@ -362,12 +363,12 @@ final class OpenIssuesPendingContractTest extends TestCase {
         $result = $reflection->getMethod('runSafeCommand')->invoke($instance, ['command' => 'date']);
         self::assertTrue($result['ok']);
         self::assertArrayHasKey('timed_out', $result['result']);
-        self::assertStringContainsString('stream_set_blocking', (string)file_get_contents(__DIR__ . '/../lib/Service/ActionExecutor.php'));
+        self::assertStringContainsString('stream_set_blocking', (string)file_get_contents(__DIR__ . '/../lib/Service/TerminalToolExecutor.php'));
     }
 
     /** Absolute executable paths must be explicitly allowlisted. */
     public function testConfirmedTerminalCommandDoesNotAllowPathAlias(): void {
-        $reflection = new \ReflectionClass(ActionExecutor::class);
+        $reflection = new \ReflectionClass(TerminalToolExecutor::class);
         $instance = $reflection->newInstanceWithoutConstructor();
         $config = $this->createMock(AppConfig::class);
         $config->method('get')->willReturnMap([
@@ -383,7 +384,7 @@ final class OpenIssuesPendingContractTest extends TestCase {
 
     /** Custom executable mode still uses argv execution and bounded output. */
     public function testCustomTerminalExecutableModeRunsExplicitPath(): void {
-        $reflection = new \ReflectionClass(ActionExecutor::class);
+        $reflection = new \ReflectionClass(TerminalToolExecutor::class);
         $instance = $reflection->newInstanceWithoutConstructor();
         $config = $this->createMock(AppConfig::class);
         $config->method('get')->willReturnMap([
@@ -398,7 +399,7 @@ final class OpenIssuesPendingContractTest extends TestCase {
     }
 
     public function testConfirmedTerminalCommandCanProvideBoundedStdin(): void {
-        $reflection = new \ReflectionClass(ActionExecutor::class);
+        $reflection = new \ReflectionClass(TerminalToolExecutor::class);
         $instance = $reflection->newInstanceWithoutConstructor();
         $config = $this->createMock(AppConfig::class);
         $config->method('get')->willReturnMap([

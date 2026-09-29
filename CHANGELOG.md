@@ -2,6 +2,14 @@
 
 ## [Unreleased]
 
+## [1.17.6] - 2026-09-29
+
+### Tool executor architecture
+
+- Move Nextcloud Talk and explicitly enabled terminal tools into dedicated domain executors.
+- Preserve per-user room access, terminal opt-in, and the existing command safety boundaries.
+- Add focused dispatch and disabled-by-default regression coverage.
+
 ## [1.17.5] - 2026-09-29
 
 ### Tool executor architecture

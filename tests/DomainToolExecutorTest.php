@@ -12,6 +12,9 @@ use OCA\EvaAi\Service\EmailService;
 use OCA\EvaAi\Service\EmailToolExecutor;
 use OCA\EvaAi\Service\ShareToolExecutor;
 use OCA\EvaAi\Service\SharesService;
+use OCA\EvaAi\Service\TalkChatService;
+use OCA\EvaAi\Service\TalkToolExecutor;
+use OCA\EvaAi\Service\TerminalToolExecutor;
 use PHPUnit\Framework\TestCase;
 
 final class DomainToolExecutorTest extends TestCase {
@@ -61,5 +64,22 @@ final class DomainToolExecutorTest extends TestCase {
 		$result = (new EmailToolExecutor($broken))->execute('search_mails', 'alice', ['query' => 'invoice']);
 		self::assertFalse($result['ok']);
 		self::assertSame('Mail access failed: offline', $result['error']);
+	}
+
+	public function testTalkExecutorDelegatesRoomListingForEffectiveUser(): void {
+		$talk = $this->createMock(TalkChatService::class);
+		$talk->expects(self::once())->method('rooms')->with('alice', 5)->willReturn(['rooms' => [['token' => 'room-1']]]);
+		$executor = new TalkToolExecutor($talk);
+
+		self::assertContains('send_talk_message', $executor->tools());
+		self::assertSame(['ok' => true, 'result' => ['rooms' => [['token' => 'room-1']]]], $executor->execute('list_talk_rooms', 'alice', ['limit' => 5]));
+	}
+
+	public function testTerminalExecutorKeepsCommandsDisabledByDefault(): void {
+		$config = $this->createMock(AppConfig::class);
+		$config->expects(self::once())->method('get')->with('safe_commands_enabled')->willReturn('0');
+		$executor = new TerminalToolExecutor($config);
+
+		self::assertSame(['ok' => false, 'error' => 'Safe local commands are disabled in EVA settings.'], $executor->execute('run_safe_command', 'alice', ['command' => 'date']));
 	}
 }
