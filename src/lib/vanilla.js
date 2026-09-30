@@ -248,6 +248,18 @@ export function mountChat(root, opts = {}) {
 
 		const textEl = document.createElement('div')
 		textEl.className = 'rt'
+		if (m.role === 'user' && Array.isArray(m.attachments) && m.attachments.length) {
+			const images = document.createElement('div')
+			images.className = 'message-images'
+			for (const attachment of m.attachments) {
+				if (!attachment || typeof attachment.url !== 'string') continue
+				const image = document.createElement('img')
+				image.src = attachment.url
+				image.alt = attachment.name || t('Attached image')
+				images.appendChild(image)
+			}
+			if (images.childElementCount) b.appendChild(images)
+		}
 		if (m.role === 'assistant' && m.text && m.done) {
 			textEl.innerHTML = mdToHtml(m.text)
 			installImageFallback(textEl)
@@ -1046,6 +1058,88 @@ export function mountChat(root, opts = {}) {
 			}
 		} finally { filesBtn.disabled = false }
 	})
+	const imageInput = document.createElement('input')
+	imageInput.id = 'chat-image-input'
+	imageInput.type = 'file'
+	imageInput.accept = 'image/png,image/jpeg,image/webp'
+	imageInput.multiple = true
+	imageInput.hidden = true
+	const imageBtn = document.createElement('button')
+	imageBtn.type = 'button'
+	imageBtn.className = 'cbtn cbtn-ghost cbtn-images'
+	imageBtn.textContent = '▧'
+	imageBtn.setAttribute('aria-label', t('Attach images'))
+	imageBtn.title = t('Choose images to analyze with EVA')
+	imageBtn.addEventListener('click', () => imageInput.click())
+	const imageAttachments = document.createElement('div')
+	imageAttachments.className = 'image-attachments'
+	imageAttachments.hidden = true
+	const pendingImages = []
+	function renderImageAttachments() {
+		imageAttachments.replaceChildren()
+		imageAttachments.hidden = pendingImages.length === 0
+		if (pendingImages.length === 0) return
+		const notice = document.createElement('p')
+		notice.className = 'image-privacy-note'
+		notice.textContent = t('Images are sent to your configured AI provider for this request and are not stored in chat history.')
+		imageAttachments.appendChild(notice)
+		for (const [index, attachment] of pendingImages.entries()) {
+			const item = document.createElement('div')
+			item.className = 'image-attachment'
+			const preview = document.createElement('img')
+			preview.src = attachment.url
+			preview.alt = attachment.file.name
+			const name = document.createElement('span')
+			name.textContent = attachment.file.name
+			const remove = document.createElement('button')
+			remove.type = 'button'
+			remove.textContent = '×'
+			remove.setAttribute('aria-label', t('Remove image {name}', { name: attachment.file.name }))
+			remove.addEventListener('click', () => {
+				URL.revokeObjectURL(attachment.url)
+				pendingImages.splice(index, 1)
+				renderImageAttachments()
+			})
+			item.append(preview, name, remove)
+			imageAttachments.appendChild(item)
+		}
+	}
+	imageInput.addEventListener('change', () => {
+		const files = Array.from(imageInput.files || [])
+		imageInput.value = ''
+		if (pendingImages.length + files.length > 4) {
+			err.textContent = t('Attach up to four images at a time.')
+			err.style.display = 'block'
+			return
+		}
+		const allowed = new Set(['image/jpeg', 'image/png', 'image/webp'])
+		if (files.some((file) => !allowed.has(file.type) || file.size <= 0)) {
+			err.textContent = t('Choose PNG, JPEG, or WebP images.')
+			err.style.display = 'block'
+			return
+		}
+		const total = files.reduce((sum, file) => sum + file.size, 0) + pendingImages.reduce((sum, item) => sum + item.file.size, 0)
+		if (total > 4 * 1024 * 1024) {
+			err.textContent = t('Attached images must total no more than 4 MB.')
+			err.style.display = 'block'
+			return
+		}
+		for (const file of files) pendingImages.push({ file, url: URL.createObjectURL(file) })
+		err.style.display = 'none'
+		renderImageAttachments()
+	})
+	function encodeImage(attachment) {
+		return new Promise((resolve, reject) => {
+			const reader = new FileReader()
+			reader.onerror = () => reject(new Error(t('An attached image could not be read.')))
+			reader.onload = () => {
+				const match = String(reader.result || '').match(/^data:(image\/(?:jpeg|png|webp));base64,([A-Za-z0-9+/=]+)$/)
+				if (!match) { reject(new Error(t('An attached image could not be read.'))); return }
+				resolve({ name: attachment.file.name, mime: match[1], data: match[2] })
+			}
+			reader.readAsDataURL(attachment.file)
+		})
+	}
 	const micBtn = document.createElement('button')
 	micBtn.type = 'button'
 	micBtn.className = 'cbtn cbtn-ghost cbtn-mic'
@@ -1145,13 +1239,13 @@ export function mountChat(root, opts = {}) {
 	backgroundBtn.textContent = t('Run in background')
 	backgroundBtn.title = t('Queue this request and continue even if this page is closed')
 	backgroundBtn.addEventListener('click', () => queueInBackground())
-	form.append(filesBtn, micBtn, input, cancelVoiceBtn, sendBtn, backgroundBtn)
+	form.append(filesBtn, imageBtn, imageInput, micBtn, input, cancelVoiceBtn, sendBtn, backgroundBtn)
 
 	const err = document.createElement('div')
 	err.className = 'err'
 	err.style.display = 'none'
 
-	root.append(head, scroll, form, voiceStatus, err)
+	root.append(head, scroll, imageAttachments, form, voiceStatus, err)
 
 	const renderAll = (list) => {
 		if (selectionChatId !== chatId) {
@@ -1879,8 +1973,16 @@ export function mountChat(root, opts = {}) {
 	}
 
 	const send = () => {
-		const msg = input.value.trim()
-		if (!msg || sending) return
+		const typedMessage = input.value.trim()
+		if ((!typedMessage && pendingImages.length === 0) || sending) return
+		const outgoingImages = pendingImages.splice(0)
+		const msg = typedMessage || t('Describe these images.')
+		const attachmentNames = outgoingImages.map((attachment) => attachment.file.name)
+		const savedUserText = attachmentNames.length
+			? msg + '\n\n[' + t('Attached images') + ': ' + attachmentNames.join(', ') + ']'
+			: msg
+		const localAttachments = outgoingImages.map((attachment) => ({ name: attachment.file.name, url: attachment.url }))
+		renderImageAttachments()
 		promptHistory.record(msg)
 		renderPromptHistory()
 		sending = true
@@ -1891,7 +1993,7 @@ export function mountChat(root, opts = {}) {
 		err.style.display = 'none'
 		if (emptyEl.parentNode) scroll.removeChild(emptyEl)
 
-		messages.push({ role: 'user', text: msg })
+		messages.push({ role: 'user', text: savedUserText, attachments: localAttachments })
 		messages.push({ role: 'assistant', text: '', thinking: '', done: false, tools: [] })
 		renderAll(messages)
 		const assistantIdx = messages.length - 1
@@ -1903,8 +2005,9 @@ export function mountChat(root, opts = {}) {
 			history.push({ role: m.role, content: m.text })
 		}
 
-		ensureChat().then(() => {
-			apiStream(STREAM_URL, { message: msg, history, chatId }, (ev) => {
+		ensureChat().then(async () => {
+			const images = await Promise.all(outgoingImages.map(encodeImage))
+			return apiStream(STREAM_URL, { message: msg, history, chatId, images }, (ev) => {
 				const last = messages[assistantIdx]
 				if (!last || last.role !== 'assistant' || last.done) return
 				if (ev.type === 'thinking') {
@@ -1954,7 +2057,7 @@ export function mountChat(root, opts = {}) {
 					// message is saved first so the placeholder stays the last
 					// stored assistant message.
 					last.confirmation.token = (window.crypto && crypto.randomUUID) ? crypto.randomUUID() : String(Date.now()) + '-' + Math.random().toString(36).slice(2)
-					last._pendingSave = saveUserMessage(msg)
+					last._pendingSave = saveUserMessage(savedUserText)
 						.then((savedUser) => savedUser ? saveMessage('assistant', last.text, null, null, {
 							name: last.confirmation.name,
 							arguments: last.confirmation.arguments,
@@ -1975,7 +2078,7 @@ export function mountChat(root, opts = {}) {
 					// Persist the pair in conversation order. Sending both requests at
 					// once lets the per-user file lock acquire them in either order,
 					// which can swap the question and answer after a reload.
-					saveUserMessage(msg)
+					saveUserMessage(savedUserText)
 						.then((savedUser) => savedUser ? saveMessage('assistant', last.text, last.followups, null, null, last.tools) : false)
 						.then((saved) => {
 							if (saved && onRecent) onRecent()
@@ -1985,7 +2088,7 @@ export function mountChat(root, opts = {}) {
 					cancelBackgroundJob()
 					last.text = streamFailureMessage(ev.message)
 					last.done = true
-					saveUserMessage(msg).then((saved) => { if (!saved) showHistorySaveWarning() })
+					saveUserMessage(savedUserText).then((saved) => { if (!saved) showHistorySaveWarning() })
 				}
 				// One coalesced update per frame instead of one DOM rebuild per
 				// NDJSON event; terminal states below still update immediately.
@@ -2001,7 +2104,7 @@ export function mountChat(root, opts = {}) {
 					// Persist the partial answer when the user stopped the stream so
 					// a reload keeps the conversation instead of dropping it.
 					if (stoppedByUser && last.text.trim() !== '') {
-						saveUserMessage(msg)
+						saveUserMessage(savedUserText)
 							.then((ok) => ok ? saveMessage('assistant', last.text, null, null, null, last.tools) : false)
 							.then((saved) => { if (!saved) showHistorySaveWarning() })
 					}
@@ -2050,6 +2153,8 @@ export function mountChat(root, opts = {}) {
 	root.__evaAi = { destroy: () => {
 		speech.stop()
 		voiceInput.cancel()
+		pendingImages.forEach((attachment) => URL.revokeObjectURL(attachment.url))
+		messages.forEach((message) => (message.attachments || []).forEach((attachment) => URL.revokeObjectURL(attachment.url)))
 		if (pendingUpdateFrame !== null && typeof cancelAnimationFrame === 'function') cancelAnimationFrame(pendingUpdateFrame)
 		pendingUpdateFrame = null
 		updateScheduled = false

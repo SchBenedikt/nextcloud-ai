@@ -287,6 +287,11 @@
         .form button { padding: 10px 18px; border: 0; border-radius: 8px; background: var(--color-primary-element, #00679c); color: var(--color-primary-element-text, #fff); font-size: 14px; font-weight: 600; cursor: pointer; }
         .form button:disabled { opacity: .6; cursor: default; }
         .form button.stop { background: var(--color-error, #e9322d); }
+        .image-attachments { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; margin: 0 0 8px; padding: 8px 10px; border: 1px solid var(--color-border, #ddd); border-radius: 8px; color: var(--color-text-maxcontrast, #666); font-size: 12px; }
+        .image-attachments[hidden] { display: none; }
+        .image-attachment { display: inline-flex; align-items: center; gap: 6px; padding: 4px 8px; border-radius: 6px; background: var(--color-background-hover, #eee); color: var(--color-main-text, #222); }
+        .image-attachment button { padding: 0 4px; background: transparent; color: inherit; }
+        .image-privacy-note { flex-basis: 100%; }
         .err { color: var(--color-error, #e9322d); font-size: 13px; margin: 8px 4px 0; white-space: pre-wrap; }
         .chat-dialog-backdrop { position: fixed; inset: 0; z-index: 100; display: flex; align-items: center; justify-content: center; padding: 20px; background: rgba(0, 0, 0, .48); }
         .chat-dialog-backdrop[hidden] { display: none !important; }
@@ -355,7 +360,10 @@
                 </div>
             </div>
 
+            <div id="image-attachments" class="image-attachments" hidden></div>
             <form class="form" id="form">
+                <input id="chat-image-input" type="file" accept="image/png,image/jpeg,image/webp" multiple hidden>
+                <button type="button" id="attach-images" aria-label="Attach images" title="Choose images to analyze with EVA">▧</button>
                 <input id="q" type="text" autocomplete="off" placeholder="What does my note about X say?">
                 <button type="submit" id="send">Send</button>
             </form>

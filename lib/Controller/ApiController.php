@@ -839,6 +839,7 @@ class ApiController extends OCSController {
                 'message' => $this->requestParam('message'),
                 'history' => $this->requestParam('history', []),
                 'chatId' => $this->requestParam('chatId'),
+                'images' => $this->requestParam('images', []),
             ]);
         } catch (\InvalidArgumentException $e) {
             return new ErrorDataResponse(['error' => $e->getMessage()], 400);
@@ -856,6 +857,7 @@ class ApiController extends OCSController {
                 message: $request->message,
                 history: $request->history,
                 scopePath: $this->scopePathFor($user, $request->chatId),
+                images: $request->images,
                 instructions: $custom['instructions'],
                 persona: $custom['persona'],
             )));
@@ -1259,7 +1261,13 @@ class ApiController extends OCSController {
     #[NoAdminRequired]
     public function streamChat(): StreamTraversableResponse {
         $user = $this->requireUser();
-        $body = json_decode((string)file_get_contents('php://input'), true);
+        $input = fopen('php://input', 'rb');
+        $rawBody = $input !== false ? stream_get_contents($input, 12 * 1024 * 1024 + 1) : false;
+        if (is_resource($input)) fclose($input);
+        if (is_string($rawBody) && strlen($rawBody) > 12 * 1024 * 1024) {
+            return new StreamTraversableResponse(new \ArrayIterator([json_encode(['type' => 'error', 'message' => 'Chat request exceeds the 12 MB limit.']) . "\n"]), 413, ['Content-Type' => 'application/x-ndjson', 'Cache-Control' => 'no-cache, no-store, must-revalidate']);
+        }
+        $body = is_string($rawBody) ? json_decode($rawBody, true) : null;
         $request = null;
         if ($user !== null) {
             try {
@@ -1277,6 +1285,7 @@ class ApiController extends OCSController {
         }
         $message = $request?->message ?? '';
         $history = $request?->history ?? [];
+        $images = $request?->images ?? [];
         if ($user !== null && $message !== '') {
             $this->releaseSessionLock();
         }
@@ -1286,7 +1295,7 @@ class ApiController extends OCSController {
         $scopePath = $this->scopePathFor($user, $request?->chatId);
         $custom = $this->customFor($user, $request?->chatId);
 
-        $generator = (function () use ($user, $message, $history, $scopePath, $custom, $chatSlot): \Generator {
+        $generator = (function () use ($user, $message, $history, $images, $scopePath, $custom, $chatSlot): \Generator {
             // Aber die PHP-Output-Buffering-Schicht (php.ini output_buffering)
             // würde jede erzeugte Zeile bis zum Ende puffern -> keine Live-Streams.
             // Deshalb entfernen wir hier alle Puffer und flush'eriessen wirklich.
@@ -1309,6 +1318,7 @@ class ApiController extends OCSController {
                     scopePath: $scopePath,
                     instructions: $custom['instructions'],
                     persona: $custom['persona'],
+                    images: $images,
                 ));
                 foreach ($gen as $line) {
                     if ($this->clientDisconnected()) {

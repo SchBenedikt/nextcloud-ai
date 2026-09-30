@@ -216,7 +216,7 @@ final class FrontendContractTest extends TestCase {
 		// The chat stream carries the chat id so the server can resolve the
 		// per-chat folder scope, and scoped chats show a pill in the header
 		// (Issue #88).
-		self::assertStringContainsString('history, chatId }', $vanilla);
+		self::assertStringContainsString('history, chatId, images }', $vanilla);
 		self::assertStringContainsString('Scoped to {path}', $vanilla);
 		self::assertStringContainsString('chat.scopePath', $vanilla);
 		self::assertStringContainsString('queueInBackground', $vanilla);

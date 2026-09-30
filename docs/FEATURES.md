@@ -19,6 +19,10 @@ states are reflected in the UI. The document view lets you browse your personal
 index page by page. Settings expose Ollama, models, index, retrieval quality,
 and tool configuration.
 
+Chat messages can include up to four PNG, JPEG, or WebP images (4 MB total).
+Image bytes go to the configured chat provider for that request and are not
+stored in chat history; filenames remain with the saved message.
+
 EVA may only suggest changes in an interactive, authenticated context. Before
 execution the UI shows the exact tool name and its arguments. Only **Confirm and
 execute** carries out the action; **Cancel** changes nothing.
