@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace OCA\EvaAi\Controller;
 
 use OCA\EvaAi\Dto\ImageGenerationRequest;
+use OCA\EvaAi\Dto\GeneratedImageListResponse;
 use OCA\EvaAi\Http\ErrorDataResponse;
 use OCA\EvaAi\Service\ImageGenerationService;
 use OCP\AppFramework\Http\Attribute\NoAdminRequired;
@@ -34,7 +35,9 @@ final class ImageController extends OCSController {
 		if ($this->userId === null || $this->userId === '') return new ErrorDataResponse(['error' => 'Not logged in'], 401);
 		try {
 			$limit = (int)$this->request->getParam('limit', 24);
-			return new ErrorDataResponse(['images' => $this->images->listForUser($this->userId, $limit)]);
+			return new ErrorDataResponse(GeneratedImageListResponse::fromArray(
+				$this->images->listForUser($this->userId, $limit),
+			)->toArray());
 		} catch (Throwable $e) {
 			$this->logger->warning('eva_ai: generated image gallery unavailable', ['exception' => $e]);
 			return new ErrorDataResponse(['error' => 'Could not load generated images.'], 500);
@@ -71,7 +74,9 @@ final class ImageController extends OCSController {
 			return new ErrorDataResponse(['error' => 'rate_limited', 'message' => 'Image generation limit reached. Try again in a few minutes.'], 429, ['Retry-After' => '900']);
 		}
 		try {
-			return new ErrorDataResponse(['images' => $this->images->generate($this->userId, $input->prompt, $input->count)], 201);
+			return new ErrorDataResponse(GeneratedImageListResponse::fromArray(
+				$this->images->generate($this->userId, $input->prompt, $input->count),
+			)->toArray(), 201);
 		} catch (Throwable $e) {
 			$this->logger->warning('eva_ai: image generation failed', ['user' => $this->userId, 'exception' => $e]);
 			return new ErrorDataResponse([
