@@ -23,6 +23,7 @@ use OCA\EvaAi\Dto\ChatImportRequest;
 use OCA\EvaAi\Dto\ChatFolderRequest;
 use OCA\EvaAi\Dto\ChatTitleRequest;
 use OCA\EvaAi\Dto\ChatRegenerateRequest;
+use OCA\EvaAi\Dto\ChatCompletionRequest;
 use OCP\AppFramework\OCSController;
 use OCP\AppFramework\Http\Attribute\NoAdminRequired;
 use OCA\EvaAi\Http\StreamTraversableResponse;
@@ -831,34 +832,28 @@ class ApiController extends OCSController {
         if ($user === null) {
             return new ErrorDataResponse(['error' => 'Not logged in'], 401);
         }
-        $message = trim((string)($this->requestParam('message') ?? ''));
-        if ($message === '') {
-            return new ErrorDataResponse(['error' => 'Empty message'], 400);
-        }
-        if ($this->messageTooLong($message)) {
-            return new ErrorDataResponse(['error' => 'Message exceeds the maximum length of 50,000 characters.'], 400);
+        try {
+            $request = ChatCompletionRequest::fromArray([
+                'message' => $this->requestParam('message'),
+                'history' => $this->requestParam('history', []),
+                'chatId' => $this->requestParam('chatId'),
+            ]);
+        } catch (\InvalidArgumentException $e) {
+            return new ErrorDataResponse(['error' => $e->getMessage()], 400);
         }
         if (($limited = $this->rateLimitResponse($user, 'chat', $this->config->getInt('rate_limit_chat_per_minute', 30))) !== null) return $limited;
         $chatSlot = $this->acquireChatSlot($user);
         if ($chatSlot === null) return new ErrorDataResponse(['error' => 'busy', 'message' => 'Another chat request is already running. Please retry shortly.'], 429, ['Retry-After' => '5']);
         $this->releaseSessionLock();
-        $history = $this->requestParam('history') ?? [];
-        if (is_string($history)) {
-            $history = json_decode($history, true) ?? [];
-        }
-        if (!is_array($history)) {
-            $history = [];
-        }
         // Per-chat folder scope (Issue #88) and custom instructions
         // (Issue #90) are resolved from the chat's stored metadata.
-        $chatId = $this->requestParam('chatId');
-        $custom = $this->customFor($user, $chatId);
+        $custom = $this->customFor($user, $request->chatId);
         try {
             return new ErrorDataResponse($this->ragService->ask(new \OCA\EvaAi\Dto\ChatRequest(
                 userId: $user,
-                message: $message,
-                history: $history,
-                scopePath: $this->scopePathFor($user, $chatId),
+                message: $request->message,
+                history: $request->history,
+                scopePath: $this->scopePathFor($user, $request->chatId),
                 instructions: $custom['instructions'],
                 persona: $custom['persona'],
             )));
@@ -1258,6 +1253,15 @@ class ApiController extends OCSController {
     #[NoAdminRequired]
     public function streamChat(): StreamTraversableResponse {
         $user = $this->requireUser();
+        $body = json_decode((string)file_get_contents('php://input'), true);
+        $request = null;
+        if ($user !== null) {
+            try {
+                $request = ChatCompletionRequest::fromArray(is_array($body) ? $body : []);
+            } catch (\InvalidArgumentException $e) {
+                return new StreamTraversableResponse(new \ArrayIterator([json_encode(['type' => 'error', 'message' => $e->getMessage()]) . "\n"]), 400, ['Content-Type' => 'application/x-ndjson', 'Cache-Control' => 'no-cache, no-store, must-revalidate']);
+            }
+        }
         if ($user !== null && ($limited = $this->rateLimitResponse($user, 'stream', $this->config->getInt('rate_limit_stream_per_minute', 10))) !== null) {
             return new StreamTraversableResponse(new \ArrayIterator([json_encode(['type' => 'error', 'message' => 'Too many requests. Please retry shortly.']) . "\n"]), 429, ['Content-Type' => 'application/x-ndjson', 'Retry-After' => '60', 'Cache-Control' => 'no-cache, no-store, must-revalidate']);
         }
@@ -1265,25 +1269,16 @@ class ApiController extends OCSController {
         if ($user !== null && $chatSlot === null) {
             return new StreamTraversableResponse(new \ArrayIterator([json_encode(['type' => 'error', 'message' => 'Another chat request is already running. Please retry shortly.']) . "\n"]), 429, ['Content-Type' => 'application/x-ndjson', 'Retry-After' => '5']);
         }
-        $body = json_decode((string)file_get_contents('php://input'), true);
-        $message = trim((string)($body['message'] ?? ''));
-        $history = isset($body['history']) && is_array($body['history']) ? $body['history'] : [];
+        $message = $request?->message ?? '';
+        $history = $request?->history ?? [];
         if ($user !== null && $message !== '') {
             $this->releaseSessionLock();
-        }
-        if ($this->messageTooLong($message)) {
-            $body = json_encode(['type' => 'error', 'message' => 'Message exceeds the maximum length of 50,000 characters.']) . "\n";
-            return new StreamTraversableResponse(new \ArrayIterator([$body]), 400, [
-                'Content-Type' => 'application/x-ndjson',
-                'Cache-Control' => 'no-cache, no-store, must-revalidate',
-                'X-Accel-Buffering' => 'no',
-            ]);
         }
         // Per-chat folder scope (Issue #88) and custom instructions (Issue #90)
         // are resolved once, outside the generator, so they cannot change
         // mid-stream.
-        $scopePath = $this->scopePathFor($user, $body['chatId'] ?? null);
-        $custom = $this->customFor($user, $body['chatId'] ?? null);
+        $scopePath = $this->scopePathFor($user, $request?->chatId);
+        $custom = $this->customFor($user, $request?->chatId);
 
         $generator = (function () use ($user, $message, $history, $scopePath, $custom, $chatSlot): \Generator {
             // Aber die PHP-Output-Buffering-Schicht (php.ini output_buffering)
