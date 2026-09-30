@@ -24,6 +24,8 @@ use OCA\EvaAi\Dto\ChatFolderRequest;
 use OCA\EvaAi\Dto\ChatTitleRequest;
 use OCA\EvaAi\Dto\ChatRegenerateRequest;
 use OCA\EvaAi\Dto\ChatCompletionRequest;
+use OCA\EvaAi\Dto\FileContextChatRequest;
+use OCA\EvaAi\Dto\KnowledgeContentRequest;
 use OCP\AppFramework\OCSController;
 use OCP\AppFramework\Http\Attribute\NoAdminRequired;
 use OCA\EvaAi\Http\StreamTraversableResponse;
@@ -1085,31 +1087,21 @@ class ApiController extends OCSController {
         if ($user === null) {
             return new ErrorDataResponse(['error' => 'Not logged in'], 401);
         }
+        try {
+            $request = FileContextChatRequest::fromArray([
+                'fileIds' => $this->requestParam('fileIds'),
+                'message' => $this->requestParam('message'),
+                'history' => $this->requestParam('history'),
+            ]);
+        } catch (\InvalidArgumentException $e) {
+            return new ErrorDataResponse(['error' => $e->getMessage()], 400);
+        }
         if (($limited = $this->rateLimitResponse($user, 'file_context', $this->config->getInt('rate_limit_chat_per_minute', 30))) !== null) return $limited;
         $chatSlot = $this->acquireChatSlot($user);
         if ($chatSlot === null) return new ErrorDataResponse(['error' => 'busy', 'message' => 'Another chat request is already running. Please retry shortly.'], 429, ['Retry-After' => '5']);
-        $fileIds = $this->requestParam('fileIds');
-        if (!is_array($fileIds)) {
-            $fileIds = [];
-        }
-        $fileIds = array_values(array_filter(array_map('intval', $fileIds), static fn($v) => $v > 0));
-        $message = trim((string)($this->requestParam('message') ?? ''));
-        if ($message === '') {
-            return new ErrorDataResponse(['error' => 'Empty message'], 400);
-        }
-        if ($this->messageTooLong($message)) {
-            return new ErrorDataResponse(['error' => 'Message exceeds the maximum length of 50,000 characters.'], 400);
-        }
-        $history = $this->requestParam('history') ?? [];
-        if (is_string($history)) {
-            $history = json_decode($history, true) ?? [];
-        }
-        if (!is_array($history)) {
-            $history = [];
-        }
         $this->releaseSessionLock();
         try {
-            return new ErrorDataResponse($this->fileContextChat->chat($user, $fileIds, $message, $history));
+            return new ErrorDataResponse($this->fileContextChat->chat($user, $request->fileIds, $request->message, $request->history));
         } finally {
             $this->releaseChatSlot($chatSlot);
         }
@@ -1149,10 +1141,12 @@ class ApiController extends OCSController {
         if ($user === null) {
             return new ErrorDataResponse(['error' => 'Not logged in'], 401);
         }
-        $content = (string)($this->requestParam('content', ''));
-        if (mb_strlen($content) > 60000) {
-            return new ErrorDataResponse(['error' => 'Content exceeds 60,000 characters.'], 400);
+        try {
+            $request = KnowledgeContentRequest::fromArray(['content' => $this->requestParam('content', '')]);
+        } catch (\InvalidArgumentException $e) {
+            return new ErrorDataResponse(['error' => $e->getMessage()], 400);
         }
+        $content = $request->content;
         try {
             $rootFolder = \OCP\Server::get(\OCP\Files\IRootFolder::class);
             $home = $rootFolder->getUserFolder($user);
