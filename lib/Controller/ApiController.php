@@ -30,6 +30,8 @@ use OCA\EvaAi\Dto\ConfirmToolRequest;
 use OCA\EvaAi\Dto\ChatTemplateImportRequest;
 use OCA\EvaAi\Dto\DocumentsQuery;
 use OCA\EvaAi\Dto\DocumentChunksQuery;
+use OCA\EvaAi\Dto\ChatListQuery;
+use OCA\EvaAi\Dto\ChatListResponse;
 use OCP\AppFramework\OCSController;
 use OCP\AppFramework\Http\Attribute\NoAdminRequired;
 use OCA\EvaAi\Http\StreamTraversableResponse;
@@ -1358,12 +1360,17 @@ class ApiController extends OCSController {
             return new ErrorDataResponse(['error' => 'Not logged in'], 401);
         }
         // Optional text search across chat titles and message content.
-        $search = trim((string)($this->requestParam('search') ?? ''));
+        try {
+            $query = ChatListQuery::fromArray(['search' => $this->requestParam('search', '')]);
+        } catch (\InvalidArgumentException $e) {
+            return new ErrorDataResponse(['error' => $e->getMessage()], 400);
+        }
         // Archived chats are always included: the sidebar splits them into
         // its own section and would otherwise never see them again (Issue #87).
         // The dashboard widget reads the store directly and keeps hiding them.
         try {
-            return new ErrorDataResponse($this->chatStore->list($user, $search !== '' ? $search : null, true));
+            $response = ChatListResponse::fromArray($this->chatStore->list($user, $query->search, true));
+            return new ErrorDataResponse($response->toArray());
         } catch (\Throwable $e) {
             return $this->chatErrorResponse($e);
         }
