@@ -60,7 +60,8 @@ non-empty `text` up to 50,000 characters. Assistant messages may include up to
 three string `followups`, an optional non-negative `regenerateRev`, a
 `confirmation` object, and a `tools` list of objects. Legacy form clients may
 send the array/object fields as JSON strings; malformed or wrongly typed data
-returns HTTP 400.
+returns HTTP 400. A successful append returns `{ "ok": true, "rev": 1 }`,
+where `rev` is the updated chat revision.
 
 ## Programmatic API keys
 
