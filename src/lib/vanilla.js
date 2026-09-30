@@ -4,6 +4,7 @@ import { mdiDownload, mdiMicrophone, mdiPaperclip, mdiTune } from '@mdi/js'
 import { translate as t } from './i18n'
 import { buildConfirmForm } from './confirmForms'
 import { escHtml, mdInline, mdToHtml, citedSources, formatToolName, copyText, installImageFallback, apiErrorMessage } from './chat-utils'
+import { createChatExport } from './chat-export'
 import { getFilePickerBuilder, FilePickerClosed } from '@nextcloud/dialogs'
 import { createPromptHistory } from './prompt-history'
 import { createSpeechService } from './speech'
@@ -122,32 +123,37 @@ export function mountChat(root, opts = {}) {
 		} catch (_) { return [] }
 	}
 
-	function exportMarkdown() {
-		const lines = []
-		lines.push('# ' + t('Eva chat export'))
-		lines.push('')
-		const d = new Date()
-		lines.push('_' + t('Exported {date}', { date: d.toISOString() }) + '_')
-		lines.push('')
-		messages.forEach((m) => {
-			lines.push('')
-			lines.push('## ' + (m.role === 'user' ? t('You') : 'Eva'))
-			lines.push('')
-			lines.push(m.text || '')
-			if (m.role === 'assistant' && m.reactions) {
-				if (typeof m.reactions.helpful === 'boolean') lines.push(t(m.reactions.helpful ? 'Marked helpful' : 'Marked not helpful'))
-				if (m.reactions.bookmarked) lines.push(t('Bookmarked'))
-			}
+	function exportChat() {
+		const format = exportFormat.value
+		const file = createChatExport(messages, {
+			format,
+			title: t('Eva chat export'),
+			language: document.documentElement.lang || 'en',
+			labels: {
+				you: t('You'), eva: 'Eva', helpful: t('Marked helpful'), notHelpful: t('Marked not helpful'), bookmarked: t('Bookmarked'),
+				exportedAt: (date) => t('Exported {date}', { date }),
+			},
 		})
-		const blob = new Blob([lines.join('\n')], { type: 'text/markdown' })
+		if (file.print) {
+			const printWindow = window.open('', '_blank')
+			if (printWindow) {
+				printWindow.document.open()
+				printWindow.document.write(file.content)
+				printWindow.document.close()
+				printWindow.focus()
+				setTimeout(() => printWindow.print(), 250)
+			}
+			return
+		}
+		const blob = new Blob([file.content], { type: file.mime })
 		const url = URL.createObjectURL(blob)
 		const a = document.createElement('a')
 		a.href = url
-		a.download = 'eva-chat-' + (chatId || 'export') + '.md'
+		a.download = 'eva-chat-' + (chatId || 'export') + '.' + file.extension
 		document.body.appendChild(a)
 		a.click()
 		a.remove()
-		URL.revokeObjectURL(url)
+		setTimeout(() => URL.revokeObjectURL(url), 1000)
 	}
 
 	function renderMsg(scroll, emptyEl, m, idx) {
@@ -597,9 +603,18 @@ export function mountChat(root, opts = {}) {
 	exportIcon.append(exportPath)
 	const exportLabel = document.createElement('span')
 	exportLabel.textContent = t('Export')
+	const exportFormat = document.createElement('select')
+	exportFormat.className = 'export-format'
+	exportFormat.setAttribute('aria-label', t('Export format'))
+	;[['md', 'Markdown'], ['txt', t('Plain text')], ['html', 'HTML'], ['pdf', t('Print / Save as PDF')]].forEach(([value, label]) => {
+		const option = document.createElement('option')
+		option.value = value
+		option.textContent = label
+		exportFormat.append(option)
+	})
 	exportBtn.append(exportIcon, exportLabel)
 	exportBtn.disabled = true
-	exportBtn.addEventListener('click', exportMarkdown)
+	exportBtn.addEventListener('click', exportChat)
 	const promptPanel = document.createElement('details')
 	promptPanel.className = 'prompt-history'
 	const promptSummary = document.createElement('summary')
@@ -859,7 +874,7 @@ export function mountChat(root, opts = {}) {
 	agentStatusPill.hidden = true
 	agentStatusPill.setAttribute('role', 'status')
 	customizeBtn.addEventListener('click', () => openCustomizeDialog())
-	head.append(h1, scopePill, customizePill, agentStatusPill, customizeBtn, promptPanel, exportBtn)
+	head.append(h1, scopePill, customizePill, agentStatusPill, customizeBtn, promptPanel, exportFormat, exportBtn)
 
 	const scroll = document.createElement('div')
 	scroll.className = 'chat-log'

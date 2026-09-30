@@ -2,6 +2,7 @@
 // API, so the send → stream → tool → confirmation → approve → persist flow and
 // the stop button are covered without a Nextcloud or Ollama instance.
 const { test, expect } = require('@playwright/test')
+const fs = require('node:fs/promises')
 const { openChat, line } = require('./standalone-harness.cjs')
 
 // All helpers used inside page.evaluate must be defined in the browser: inline
@@ -31,6 +32,44 @@ test('streams an answer and persists the question/answer pair in order', async (
     expect.objectContaining({ body: expect.objectContaining({ role: 'user', text: 'Hi' }) }),
     expect.objectContaining({ body: expect.objectContaining({ role: 'assistant', text: 'Hello world', followups: ['And now?'] }) }),
   ])
+})
+
+test('exports a plain text chat and a safe standalone HTML document', async ({ page }) => {
+  await openChat(page)
+  const answer = '<script>window.pwned=true</script> **safe answer**'
+  await page.evaluate((lines) => { window.__mock.streamLines = lines }, [
+    line({ type: 'content', delta: answer }),
+    line({ type: 'done', answer, sources: [], followups: [] }),
+  ])
+  await page.fill('#q', 'Export me')
+  await page.click('#send')
+  await expect(page.locator('.rb').last()).toContainText('safe answer')
+
+  await page.selectOption('#export-format', 'txt')
+  const textDownloadPromise = page.waitForEvent('download')
+  await page.click('#export')
+  const textDownload = await textDownloadPromise
+  expect(textDownload.suggestedFilename()).toMatch(/\.txt$/)
+  const textContents = await fs.readFile(await textDownload.path(), 'utf8')
+  expect(textContents).toContain('Export me')
+  expect(textContents).toContain('safe answer')
+
+  await page.selectOption('#export-format', 'html')
+  const htmlDownloadPromise = page.waitForEvent('download')
+  await page.click('#export')
+  const htmlDownload = await htmlDownloadPromise
+  expect(htmlDownload.suggestedFilename()).toMatch(/\.html$/)
+  const htmlContents = await fs.readFile(await htmlDownload.path(), 'utf8')
+  expect(htmlContents).toContain('<!doctype html>')
+  expect(htmlContents).toContain('&lt;script&gt;window.pwned=true&lt;/script&gt;')
+  expect(htmlContents).not.toContain('<script>window.pwned=true</script>')
+
+  await page.selectOption('#export-format', 'pdf')
+  const printPagePromise = page.waitForEvent('popup')
+  await page.click('#export')
+  const printPage = await printPagePromise
+  await expect(printPage).toHaveTitle('Chat with your files')
+  await expect(printPage.locator('body')).toContainText('safe answer')
 })
 
 test('a failed chat request shows the server error instead of leaving the user without feedback', async ({ page }) => {
