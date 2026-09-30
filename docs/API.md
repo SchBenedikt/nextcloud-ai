@@ -50,6 +50,11 @@ The Metrics page can download these sections as a CSV report.
 `helpful`, `notHelpful`, and `bookmarked` answer counts as non-negative
 integers.
 
+`POST /api/chats/{id}/reaction` accepts a non-negative `index`, a `type` of
+`helpful` or `bookmarked`, and an optional boolean `value`. Omit or set
+`value: null` to clear helpful feedback; clearing a bookmark sets it to false.
+The response returns the current `reactions` object and chat `rev`.
+
 ## Programmatic API keys
 
 Users manage their own credentials with the authenticated routes below. The
