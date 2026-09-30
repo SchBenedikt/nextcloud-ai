@@ -115,6 +115,9 @@ function buildCalendarForm(args, tr) {
 	}
 
 	var messages = []
+	var selectedMessageIndexes = new Set()
+	var selectionMode = false
+	var selectionChatId = null
 	var refs = []
 	var sending = false
 	var currentAbort = null
@@ -218,6 +221,10 @@ function buildCalendarForm(args, tr) {
 			var exportLabel = document.getElementById('export-label')
 			if (exportLabel) exportLabel.textContent = tr('Export')
 		}
+		var selectionToggle = document.getElementById('export-selection-toggle')
+		var selectionText = document.getElementById('export-selection-label')
+		if (selectionToggle) selectionToggle.setAttribute('aria-label', tr('Select messages for export'))
+		if (selectionText) selectionText.textContent = tr('Select messages for export')
 		var emptyTitle = document.querySelector('#empty .t')
 		if (emptyTitle) emptyTitle.textContent = tr('Ask a question about your files')
 		var emptyDescription = document.querySelector('#empty .d')
@@ -229,7 +236,9 @@ function buildCalendarForm(args, tr) {
 
 	function exportChat() {
 		var format = document.getElementById('export-format').value
-		var file = createChatExport(messages, {
+		var exportMessages = selectionMode ? messages.filter(function (_, index) { return selectedMessageIndexes.has(index) }) : messages
+		if (selectionMode && exportMessages.length === 0) return
+		var file = createChatExport(exportMessages, {
 			format: format,
 			title: tr('Chat with your files'),
 			language: document.documentElement.lang || 'en',
@@ -403,6 +412,21 @@ function buildCalendarForm(args, tr) {
 	function renderMsg(m, idx) {
 		var wrap = document.createElement('div')
 		wrap.className = 'rm ' + m.role
+		var selectionLabel = document.createElement('label')
+		selectionLabel.className = 'message-export-select'
+		selectionLabel.hidden = !selectionMode
+		var selectionCheckbox = document.createElement('input')
+		selectionCheckbox.type = 'checkbox'
+		selectionCheckbox.checked = selectedMessageIndexes.has(idx)
+		selectionCheckbox.setAttribute('aria-label', tr('Select message {number}', { number: idx + 1 }))
+		selectionCheckbox.addEventListener('change', function () {
+			if (selectionCheckbox.checked) selectedMessageIndexes.add(idx)
+			else selectedMessageIndexes.delete(idx)
+			exportButton.disabled = !messages.length || (selectionMode && selectedMessageIndexes.size === 0)
+		})
+		selectionLabel.appendChild(selectionCheckbox)
+		selectionLabel.appendChild(document.createTextNode(tr('Select')))
+		wrap.appendChild(selectionLabel)
 
 		var b = document.createElement('div')
 		b.className = 'rb'
@@ -677,6 +701,10 @@ function buildCalendarForm(args, tr) {
 	}
 
 	function renderAll(list) {
+		if (selectionChatId !== chatId) {
+			selectedMessageIndexes.clear()
+			selectionChatId = chatId
+		}
 		refs.length = 0
 		while (els.msgs.firstChild) {
 			els.msgs.removeChild(els.msgs.firstChild)
@@ -686,7 +714,7 @@ function buildCalendarForm(args, tr) {
 			els.empty.style.display = ''
 		}
 		list.forEach(function (m, i) { renderMsg(m, i) })
-		if (exportButton) exportButton.disabled = list.length === 0
+		if (exportButton) exportButton.disabled = list.length === 0 || (selectionMode && selectedMessageIndexes.size === 0)
 		els.msgs.scrollTop = els.msgs.scrollHeight
 	}
 
@@ -1198,6 +1226,12 @@ function buildCalendarForm(args, tr) {
 		})
 	})
 	if (els.chatlistRetry) els.chatlistRetry.addEventListener('click', refreshChats)
+	var exportSelectionToggle = document.getElementById('export-selection-toggle')
+	if (exportSelectionToggle) exportSelectionToggle.addEventListener('change', function () {
+		selectionMode = exportSelectionToggle.checked
+		selectedMessageIndexes.clear()
+		renderAll(messages)
+	})
 	if (exportButton) exportButton.addEventListener('click', exportChat)
 	refreshChats()
 })()
