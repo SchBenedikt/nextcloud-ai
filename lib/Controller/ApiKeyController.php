@@ -5,6 +5,9 @@ declare(strict_types=1);
 namespace OCA\EvaAi\Controller;
 
 use OCA\EvaAi\Dto\ChatRequest;
+use OCA\EvaAi\Dto\ApiKeyCreateRequest;
+use OCA\EvaAi\Dto\ApiKeyCreateResponse;
+use OCA\EvaAi\Dto\ApiKeyListResponse;
 use OCA\EvaAi\Db\DocumentMapper;
 use OCA\EvaAi\Db\ChunkMapper;
 use OCA\EvaAi\Service\ChatStore;
@@ -41,27 +44,25 @@ final class ApiKeyController extends OCSController {
 	#[NoAdminRequired]
 	public function listKeys(): DataResponse {
 		if ($this->userId === null) return new DataResponse(['error' => 'not_authenticated'], 401);
-		return new DataResponse(['keys' => $this->keys->listForUser($this->userId)]);
+		return new DataResponse(ApiKeyListResponse::fromArray($this->keys->listForUser($this->userId))->toArray());
 	}
 
 	#[NoAdminRequired]
 	public function createKey(): DataResponse {
 		if ($this->userId === null) return new DataResponse(['error' => 'not_authenticated'], 401);
-		$body = $this->jsonBody();
-		$scope = (string)($body['scope'] ?? 'read');
-		if ($scope === 'admin' && !$this->groupManager->isAdmin($this->userId)) {
+		try {
+			$input = ApiKeyCreateRequest::fromArray($this->jsonBody());
+		} catch (\InvalidArgumentException $e) {
+			return new DataResponse(['error' => $e->getMessage()], 400);
+		}
+		if ($input->scope === 'admin' && !$this->groupManager->isAdmin($this->userId)) {
 			return new DataResponse(['error' => 'admin_scope_requires_instance_admin'], 403);
 		}
-		$expiresAt = null;
-		if (isset($body['expiresAt']) && $body['expiresAt'] !== '') {
-			if (!is_numeric($body['expiresAt'])) return new DataResponse(['error' => 'invalid_expiration'], 400);
-			$expiresAt = (int)$body['expiresAt'];
-		}
-		$ips = $body['ipWhitelist'] ?? [];
-		if (is_string($ips)) $ips = preg_split('/[,\s]+/', trim($ips), -1, PREG_SPLIT_NO_EMPTY) ?: [];
-		if (!is_array($ips)) return new DataResponse(['error' => 'invalid_ip_whitelist'], 400);
 		try {
-			return new DataResponse($this->keys->create($this->userId, (string)($body['name'] ?? ''), $scope, $expiresAt, $ips), 201);
+			$response = ApiKeyCreateResponse::fromArray($this->keys->create(
+				$this->userId, $input->name, $input->scope, $input->expiresAt, $input->ipWhitelist,
+			));
+			return new DataResponse($response->toArray(), 201);
 		} catch (\InvalidArgumentException $e) {
 			return new DataResponse(['error' => $e->getMessage()], 400);
 		}
