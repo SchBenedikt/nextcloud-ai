@@ -34,6 +34,8 @@ use OCA\EvaAi\Dto\ChatListQuery;
 use OCA\EvaAi\Dto\ChatListResponse;
 use OCA\EvaAi\Dto\BackgroundChatIdRequest;
 use OCA\EvaAi\Dto\FeedbackStatsResponse;
+use OCA\EvaAi\Dto\ChatReactionRequest;
+use OCA\EvaAi\Dto\ChatReactionResponse;
 use OCP\AppFramework\OCSController;
 use OCP\AppFramework\Http\Attribute\NoAdminRequired;
 use OCA\EvaAi\Http\StreamTraversableResponse;
@@ -1572,23 +1574,20 @@ class ApiController extends OCSController {
     public function chatReaction(string $id): DataResponse {
         $user = $this->requireUser();
         if ($user === null) return new ErrorDataResponse(['error' => 'Not logged in'], 401);
-        $indexRaw = $this->requestParam('index');
-        $index = filter_var($indexRaw, FILTER_VALIDATE_INT);
-        $type = (string)($this->requestParam('type') ?? '');
-        $valueRaw = $this->requestParam('value');
-        if ($index === false || $index < 0 || !in_array($type, ['helpful', 'bookmarked'], true)) {
-            return new ErrorDataResponse(['error' => 'A valid message index and reaction type are required'], 400);
-        }
-        $value = null;
-        if (is_bool($valueRaw)) $value = $valueRaw;
-        elseif ($valueRaw === 'true' || $valueRaw === '1') $value = true;
-        elseif ($valueRaw === 'false' || $valueRaw === '0') $value = false;
-        elseif ($valueRaw !== null) return new ErrorDataResponse(['error' => 'Reaction value must be boolean or null'], 400);
-        if ($type === 'bookmarked' && $value === null) $value = false;
         try {
-            $result = $this->chatStore->setMessageReaction($user, $id, (int)$index, $type, $value);
+            $request = ChatReactionRequest::fromArray([
+                'index' => $this->requestParam('index'),
+                'type' => $this->requestParam('type'),
+                'value' => $this->requestParam('value'),
+            ]);
+        } catch (\InvalidArgumentException $e) {
+            return new ErrorDataResponse(['error' => $e->getMessage()], 400);
+        }
+        try {
+            $result = $this->chatStore->setMessageReaction($user, $id, $request->index, $request->type, $request->value);
             if ($result === null) return new ErrorDataResponse(['error' => 'Requested assistant message was not found.'], 404);
-            return new ErrorDataResponse(['ok' => true] + $result);
+            $response = ChatReactionResponse::fromArray($result);
+            return new ErrorDataResponse($response->toArray());
         } catch (\Throwable $e) {
             return $this->chatErrorResponse($e);
         }
