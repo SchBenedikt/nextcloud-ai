@@ -61,8 +61,9 @@ final class FrontendContractTest extends TestCase {
         self::assertStringContainsString('private function escapeLike(string $value): string', $mapper);
         self::assertStringContainsString('->expr()->eq(\'mime\'', $mapper);
         self::assertStringContainsString("escapeLike(\$folder) . '/%'", $mapper);
-        self::assertStringContainsString("filters['type'] = \$type", $controller);
-        self::assertStringContainsString("filters['folder'] = \$folder", $controller);
+        $query = (string)file_get_contents(__DIR__ . '/../lib/Dto/DocumentsQuery.php');
+        self::assertStringContainsString("\$filters['type'] = \$type", $query);
+        self::assertStringContainsString("\$filters['folder'] = \$folder", $query);
     }
 
     public function testAppSharesContentWidthAndProvidesSearchableChatActions(): void {

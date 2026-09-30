@@ -35,9 +35,11 @@ final class DocumentChunksPaginationTest extends TestCase {
         self::assertStringContainsString("'offset'", $method);
         self::assertStringContainsString("'hasMore'", $method);
         self::assertStringContainsString("'nextOffset'", $method);
-        self::assertStringContainsString('max(1, min(500, (int)($this->requestParam(\'limit\') ?? 200)))', $method);
-        self::assertStringContainsString('max(0, (int)($this->requestParam(\'offset\') ?? 0))', $method);
-        self::assertStringContainsString('$this->chunkMapper->findByDocument($id, $limit, $offset)', $method);
+        self::assertStringContainsString('DocumentChunksQuery::fromArray', $method);
+        self::assertStringContainsString('$this->chunkMapper->findByDocument($id, $query->limit, $query->offset)', $method);
+        $query = (string)file_get_contents(__DIR__ . '/../lib/Dto/DocumentChunksQuery.php');
+        self::assertStringContainsString('max(1, min(500, self::integerValue($input, \'limit\', 200)))', $query);
+        self::assertStringContainsString('max(0, self::integerValue($input, \'offset\', 0))', $query);
         // The response must still expose the total and paging metadata.
         self::assertStringContainsString("'chunks' => \$totalChunks,", $method);
         self::assertStringContainsString("'hasMore' => \$nextOffset < \$totalChunks,", $method);

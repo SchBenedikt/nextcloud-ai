@@ -28,6 +28,8 @@ use OCA\EvaAi\Dto\FileContextChatRequest;
 use OCA\EvaAi\Dto\KnowledgeContentRequest;
 use OCA\EvaAi\Dto\ConfirmToolRequest;
 use OCA\EvaAi\Dto\ChatTemplateImportRequest;
+use OCA\EvaAi\Dto\DocumentsQuery;
+use OCA\EvaAi\Dto\DocumentChunksQuery;
 use OCP\AppFramework\OCSController;
 use OCP\AppFramework\Http\Attribute\NoAdminRequired;
 use OCA\EvaAi\Http\StreamTraversableResponse;
@@ -723,46 +725,24 @@ class ApiController extends OCSController {
         if ($user === null) {
             return new ErrorDataResponse(['error' => 'Not logged in'], 401);
         }
-        $search = (string)($this->requestParam('search') ?? '');
-        $limit = max(1, min(500, (int)($this->requestParam('limit') ?? 100)));
-        $offset = max(0, (int)($this->requestParam('offset') ?? 0));
-        // Document filters and sorting (Issue #88). Every value is validated
-        // and bounded server-side; unknown sort keys fall back to the default.
-        $filters = [];
-        $type = trim((string)($this->requestParam('type') ?? ''));
-        if ($type !== '') {
-            // MIME group (text) or full MIME type (application/pdf), safe charset.
-            if (preg_match('/^[a-z0-9.+-]+(?:\/[a-z0-9.+-]+)?$/i', $type)) {
-                $filters['type'] = $type;
-            }
+        try {
+            $query = DocumentsQuery::fromArray([
+                'search' => $this->requestParam('search'),
+                'limit' => $this->requestParam('limit'),
+                'offset' => $this->requestParam('offset'),
+                'type' => $this->requestParam('type'),
+                'folder' => $this->requestParam('folder'),
+                'dateFrom' => $this->requestParam('dateFrom'),
+                'dateTo' => $this->requestParam('dateTo'),
+                'sizeMin' => $this->requestParam('sizeMin'),
+                'sizeMax' => $this->requestParam('sizeMax'),
+                'sort' => $this->requestParam('sort'),
+                'dir' => $this->requestParam('dir'),
+            ]);
+        } catch (\InvalidArgumentException $e) {
+            return new ErrorDataResponse(['error' => $e->getMessage()], 400);
         }
-        $folder = trim((string)($this->requestParam('folder') ?? ''));
-        if ($folder !== '') {
-            // Relative folder path without traversal or wildcards.
-            $folder = trim($folder, '/');
-            if (preg_match('#^(?:[^/\\]{1,120}/)*[^/\\]{1,120}$#', $folder) && !str_contains($folder, '..')) {
-                $filters['folder'] = $folder;
-            }
-        }
-        $dateFrom = (int)($this->requestParam('dateFrom') ?? 0);
-        if ($dateFrom > 0) {
-            $filters['dateFrom'] = $dateFrom;
-        }
-        $dateTo = (int)($this->requestParam('dateTo') ?? 0);
-        if ($dateTo > 0) {
-            $filters['dateTo'] = $dateTo;
-        }
-        $sizeMin = (int)($this->requestParam('sizeMin') ?? 0);
-        if ($sizeMin > 0) {
-            $filters['sizeMin'] = $sizeMin;
-        }
-        $sizeMax = (int)($this->requestParam('sizeMax') ?? 0);
-        if ($sizeMax > 0) {
-            $filters['sizeMax'] = $sizeMax;
-        }
-        $sort = (string)($this->requestParam('sort') ?? '');
-        $dir = strtolower((string)($this->requestParam('dir') ?? 'desc'));
-        $docs = $this->documentMapper->findByUser($user, $search, $limit, $offset, $filters, $sort !== '' ? $sort : null, $dir);
+        $docs = $this->documentMapper->findByUser($user, $query->search, $query->limit, $query->offset, $query->filters, $query->sort, $query->direction);
         $out = array_map(static function ($d) {
             return [
                 'id' => (int)$d->getId(),
@@ -776,7 +756,7 @@ class ApiController extends OCSController {
         }, $docs);
         // Totals describe the whole filtered index, independent of the page
         // that was requested (Issue #74).
-        $aggregates = $this->documentMapper->aggregateForUser($user, $search, $filters);
+        $aggregates = $this->documentMapper->aggregateForUser($user, $query->search, $query->filters);
         $payload = [
             'documents' => $out,
             'total' => $aggregates['count'],
@@ -798,7 +778,16 @@ class ApiController extends OCSController {
         if ($user === null) {
             return new ErrorDataResponse(['error' => 'Not logged in'], 401);
         }
-        $id = (int)($this->requestParam('id') ?? 0);
+        try {
+            $query = DocumentChunksQuery::fromArray([
+                'id' => $this->requestParam('id'),
+                'limit' => $this->requestParam('limit'),
+                'offset' => $this->requestParam('offset'),
+            ]);
+        } catch (\InvalidArgumentException $e) {
+            return new ErrorDataResponse(['error' => $e->getMessage()], 400);
+        }
+        $id = $query->id;
         $doc = $id > 0 ? $this->documentMapper->findById($id) : null;
         if ($doc === null || $doc->getUserId() !== $user
             || !$this->fileContextChat->fileAccessible($user, (int)$doc->getFileId())) {
@@ -807,19 +796,17 @@ class ApiController extends OCSController {
         // Bounded pagination (Issues #91/#140): a huge document must not be
         // transferred all at once. The client streams pages of LIMIT chunks
         // until it reached document.chunks.
-        $limit = max(1, min(500, (int)($this->requestParam('limit') ?? 200)));
-        $offset = max(0, (int)($this->requestParam('offset') ?? 0));
-        $rows = $this->chunkMapper->findByDocument($id, $limit, $offset);
+        $rows = $this->chunkMapper->findByDocument($id, $query->limit, $query->offset);
         $totalChunks = (int)$doc->getChunkCount();
-        $nextOffset = $offset + count($rows);
+        $nextOffset = $query->offset + count($rows);
         return new ErrorDataResponse([
             'document' => [
                 'id' => (int)$doc->getId(),
                 'path' => $doc->getPath(),
                 'chunks' => $totalChunks,
             ],
-            'offset' => $offset,
-            'limit' => $limit,
+            'offset' => $query->offset,
+            'limit' => $query->limit,
             'hasMore' => $nextOffset < $totalChunks,
             'nextOffset' => $nextOffset,
             'chunks' => array_map(static fn($c) => [
