@@ -331,7 +331,8 @@ final class FrontendContractTest extends TestCase {
 
         $controller = (string)file_get_contents(__DIR__ . '/../lib/Controller/ApiController.php');
         self::assertStringContainsString('public function confirmTool', $controller);
-        self::assertStringContainsString('runConfirmed($user, $name, $args)', $controller);
+        self::assertStringContainsString('ConfirmToolRequest::fromArray', $controller);
+        self::assertStringContainsString('runConfirmed($user, $request->name, $request->arguments)', $controller);
         self::assertStringContainsString('api#confirmTool', (string)file_get_contents(__DIR__ . '/../appinfo/routes.php'));
 
         $rag = (string)file_get_contents(__DIR__ . '/../lib/Service/RagService.php');

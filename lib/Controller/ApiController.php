@@ -26,6 +26,7 @@ use OCA\EvaAi\Dto\ChatRegenerateRequest;
 use OCA\EvaAi\Dto\ChatCompletionRequest;
 use OCA\EvaAi\Dto\FileContextChatRequest;
 use OCA\EvaAi\Dto\KnowledgeContentRequest;
+use OCA\EvaAi\Dto\ConfirmToolRequest;
 use OCP\AppFramework\OCSController;
 use OCP\AppFramework\Http\Attribute\NoAdminRequired;
 use OCA\EvaAi\Http\StreamTraversableResponse;
@@ -1209,21 +1210,23 @@ class ApiController extends OCSController {
         if ($user === null) {
             return new ErrorDataResponse(['error' => 'Not logged in'], 401);
         }
-        $name = trim((string)($this->requestParam('name') ?? ''));
-        $args = $this->requestParam('arguments', $this->requestParam('args', []));
-        if (is_string($args)) {
-            $decoded = json_decode($args, true);
-            $args = is_array($decoded) ? $decoded : [];
-        }
-        if ($name === '' || !is_array($args)) {
-            return new ErrorDataResponse(['error' => 'A tool name and argument object are required.'], 400);
+        try {
+            $request = ConfirmToolRequest::fromArray([
+                'name' => $this->requestParam('name'),
+                'arguments' => $this->requestParam('arguments'),
+                'args' => $this->requestParam('args', []),
+                'chatId' => $this->requestParam('chatId'),
+                'confirmationToken' => $this->requestParam('confirmationToken'),
+            ]);
+        } catch (\InvalidArgumentException $e) {
+            return new ErrorDataResponse(['error' => $e->getMessage()], 400);
         }
 
         // Idempotency guard (Issue #185): a persisted pending confirmation
         // carries a token; approving the same token twice (e.g. after a reload)
         // must not run a mutating action again.
-        $chatId = (string)($this->requestParam('chatId') ?? '');
-        $confirmationToken = (string)($this->requestParam('confirmationToken') ?? '');
+        $chatId = $request->chatId ?? '';
+        $confirmationToken = $request->confirmationToken ?? '';
         if ($chatId !== '' && $confirmationToken !== '') {
             $claim = $this->chatStore->claimConfirmation($user, $chatId, $confirmationToken);
             if ($claim === 'already') {
@@ -1236,7 +1239,7 @@ class ApiController extends OCSController {
         }
 
         $this->executor->setSurface(\OCA\EvaAi\Service\ToolPolicy::SURFACE_WEB);
-        $result = $this->executor->runConfirmed($user, $name, $args);
+        $result = $this->executor->runConfirmed($user, $request->name, $request->arguments);
         // The confirmation token is claimed before execution. Return tool
         // failures as structured data over HTTP 200 so the client can persist
         // the consumed confirmation as a completed failure instead of offering
