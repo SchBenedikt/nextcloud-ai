@@ -2,7 +2,7 @@
 	<div class="metrics-view">
 		<header class="page-header">
 			<div><p class="eyebrow">EVA AI</p><h1>{{ $t('Usage metrics') }}</h1><p>{{ $t('See how many model tokens your requests used, grouped by model and day.') }}</p></div>
-			<div class="metrics-actions"><div class="period-switcher" role="group" :aria-label="$t('Metrics period')"><button v-for="value in [7, 30, 90]" :key="value" type="button" :class="{ active: days === value }" :aria-pressed="days === value" @click="load(value)">{{ value }} {{ $t('days') }}</button></div><button type="button" class="metrics-download" :disabled="loading || !hasCurrentData" @click="downloadCsv">{{ $t('Download CSV') }}</button><button type="button" class="metrics-download" :disabled="loading || !hasCurrentData" @click="printReport">{{ $t('Print / Save as PDF') }}</button><span class="metrics-refresh-status" role="status" aria-live="polite">{{ $t('Refreshes automatically every minute') }}<template v-if="updatedLabel"> · {{ updatedLabel }}</template></span></div>
+			<div class="metrics-actions"><label v-if="canFilterUsers && adminUsers.length" class="metrics-user-filter"><span>{{ $t('User') }}</span><select v-model="selectedUser" :aria-label="$t('Filter metrics by user')" @change="load()"><option value="">{{ $t('My metrics') }}</option><option v-for="user in adminUsers" :key="user.userId" :value="user.userId">{{ user.displayName }} ({{ user.userId }})</option></select></label><div class="period-switcher" role="group" :aria-label="$t('Metrics period')"><button v-for="value in [7, 30, 90]" :key="value" type="button" :class="{ active: days === value }" :aria-pressed="days === value" @click="load(value)">{{ value }} {{ $t('days') }}</button></div><button type="button" class="metrics-download" :disabled="loading || !hasCurrentData" @click="downloadCsv">{{ $t('Download CSV') }}</button><button type="button" class="metrics-download" :disabled="loading || !hasCurrentData" @click="printReport">{{ $t('Print / Save as PDF') }}</button><span class="metrics-refresh-status" role="status" aria-live="polite">{{ $t('Refreshes automatically every minute') }}<template v-if="updatedLabel"> · {{ updatedLabel }}</template></span></div>
 		</header>
 		<div v-if="error" class="metrics-error" role="alert"><span>{{ error }}</span><button type="button" class="metrics-retry" @click="load()">{{ $t('Try again') }}</button></div>
 		<div v-if="loading" class="metrics-loading">{{ $t('Loading metrics…') }}</div>
@@ -14,7 +14,7 @@
 				<div class="metrics-panel"><h2>{{ $t('Top models by token use') }}</h2><div class="model-bars"><div v-for="row in byModel.slice(0, 5)" :key="row.provider + row.model" class="model-bar"><span :title="row.provider + ' / ' + row.model">{{ row.provider }} / {{ row.model }}</span><div><i :style="{ width: (Number(row.total_tokens || 0) / maxModel * 100) + '%' }"></i></div><strong>{{ format(row.total_tokens) }}</strong></div></div></div>
 			</section>
 			<section class="metrics-panel"><h2>{{ $t('Model usage details') }}</h2><p v-if="!byModel.length" class="metrics-empty">{{ $t('No model usage has been recorded in this period.') }}</p><div v-else class="metrics-table-scroll"><table><thead><tr><th>{{ $t('Provider') }}</th><th>{{ $t('Model') }}</th><th>{{ $t('Requests') }}</th><th>{{ $t('Average response') }}</th><th>{{ $t('Input tokens') }}</th><th>{{ $t('Output tokens') }}</th><th>{{ $t('Total tokens') }}</th></tr></thead><tbody><tr v-for="row in byModel" :key="row.provider + row.model"><td>{{ row.provider }}</td><td class="mono">{{ row.model }}</td><td>{{ format(row.requests) }}</td><td>{{ format(row.average_duration_ms) }} ms</td><td>{{ format(row.input_tokens) }}</td><td>{{ format(row.output_tokens) }}</td><td>{{ format(row.total_tokens) }}<small v-if="row.estimated_requests"> · {{ $t('estimated') }}</small></td></tr></tbody></table></div></section>
-			<section class="metrics-panel pricing-panel">
+			<section v-if="!selectedUser" class="metrics-panel pricing-panel">
 				<h2>{{ $t('Estimated model costs') }}</h2>
 				<p class="metrics-note">{{ $t('Enter the prices from your provider. Estimates use USD per million tokens and your recorded token counts; local model costs are not included unless you enter a rate.') }}</p>
 				<form v-if="byModel.length" @submit.prevent="savePricing">
@@ -45,12 +45,13 @@ export default {
 	setup() {
 		const days = ref(30); const loading = ref(true); const error = ref(''); const dataDays = ref(null); const data = ref({ totals: {}, by_model: [], daily: [], slow_tools: [] })
 		const feedbackStats = ref({ helpful: 0, notHelpful: 0, bookmarked: 0 })
+		const adminUsers = ref([]); const selectedUser = ref(''); const canFilterUsers = ref(false)
 		const prices = ref({}); const pricesLoaded = ref(false); const savingPricing = ref(false); const pricingStatus = ref('')
 		const lastUpdated = ref(0)
 		const updatedLabel = computed(() => lastUpdated.value
 			? t('Updated {time}', { time: new Intl.DateTimeFormat(undefined, { hour: '2-digit', minute: '2-digit' }).format(lastUpdated.value) })
 			: '')
-		let requestId = 0; let refreshTimer = null
+		let requestId = 0; let refreshTimer = null; let adminUsersChecked = false
 		const hasCurrentData = computed(() => dataDays.value === days.value)
 		const totals = computed(() => data.value.totals || {}); const byModel = computed(() => data.value.by_model || []); const daily = computed(() => data.value.daily || []); const slowTools = computed(() => data.value.slow_tools || [])
 		const maxDaily = computed(() => Math.max(1, ...daily.value.map(row => Number(row.total_tokens) || 0))); const maxModel = computed(() => Math.max(1, ...byModel.value.map(row => Number(row.total_tokens) || 0))); const inputShare = computed(() => Math.round((Number(totals.value.input_tokens || 0) / Math.max(1, Number(totals.value.total_tokens || 0))) * 100)); const format = value => Number(value || 0).toLocaleString()
@@ -69,6 +70,14 @@ export default {
 			{ label: t('Total tokens'), value: totals.value.total_tokens, hint: totals.value.estimated_requests ? t('{count} requests use estimates.', { count: totals.value.estimated_requests }) : t('Exact provider usage reported') },
 			...(byModel.value.some(row => row.estimated_cost_usd !== null && row.estimated_cost_usd !== undefined) ? [{ label: t('Estimated spend'), value: estimatedCost.value, hint: t('USD estimate from configured rates'), money: true }] : []),
 		])
+		const loadAdminUsers = async () => {
+			if (adminUsersChecked) return
+			adminUsersChecked = true
+			try {
+				const result = await api('GET', 'admin/metrics/users')
+				if (Array.isArray(result?.users)) { adminUsers.value = result.users; canFilterUsers.value = true }
+			} catch (_) { /* ordinary users keep their private self-only metrics */ }
+		}
 		const load = async (period = days.value, background = false) => {
 			if (background && (loading.value || !hasCurrentData.value)) return
 			const currentRequest = ++requestId
@@ -78,10 +87,13 @@ export default {
 				error.value = ''
 			}
 			try {
+				await loadAdminUsers()
+				const otherUser = selectedUser.value !== ''
+				const metricsPath = otherUser ? `admin/users/${encodeURIComponent(selectedUser.value)}/metrics` : 'metrics'
 				const [result, feedback, settings] = await Promise.all([
-					api('GET', 'metrics', { days: period }),
-					api('GET', 'feedback/stats').catch(() => null),
-					pricesLoaded.value ? Promise.resolve(null) : api('GET', 'settings').catch(() => null),
+					api('GET', metricsPath, { days: period }),
+					otherUser ? Promise.resolve(null) : api('GET', 'feedback/stats').catch(() => null),
+					otherUser || pricesLoaded.value ? Promise.resolve(null) : api('GET', 'settings').catch(() => null),
 				])
 				if (currentRequest !== requestId) return
 				if (settings) {
@@ -94,7 +106,7 @@ export default {
 				if (settings) pricesLoaded.value = true
 				data.value = result
 				for (const row of result.by_model || []) ensurePrice(row)
-				if (feedback) feedbackStats.value = feedback
+				if (feedback || result.feedback) feedbackStats.value = feedback || result.feedback
 				dataDays.value = period
 				lastUpdated.value = Date.now()
 				error.value = ''
@@ -147,13 +159,15 @@ export default {
 			document.removeEventListener('visibilitychange', refreshWhenVisible)
 			requestId++
 		})
-		return { days, loading, error, hasCurrentData, totals, byModel, daily, slowTools, feedbackStats, maxDaily, maxModel, inputShare, cards, format, formatMoney, priceKey, ensurePrice, savingPricing, pricingStatus, savePricing, load, downloadCsv, printReport, updatedLabel }
+		return { days, loading, error, hasCurrentData, totals, byModel, daily, slowTools, feedbackStats, adminUsers, selectedUser, canFilterUsers, maxDaily, maxModel, inputShare, cards, format, formatMoney, priceKey, ensurePrice, savingPricing, pricingStatus, savePricing, load, downloadCsv, printReport, updatedLabel }
 	},
 }
 </script>
 
 <style scoped>
 .metrics-refresh-status { color: var(--color-text-maxcontrast); font-size: .8rem; }
+.metrics-user-filter { display:grid; gap:3px; color:var(--color-text-maxcontrast); font-size:11px; }
+.metrics-user-filter select { max-width:220px; min-height:36px; padding:5px 8px; border:1px solid var(--color-border); border-radius:var(--border-radius-element); background:var(--color-main-background); color:var(--color-main-text); font:inherit; font-size:12px; }
 .feedback-metrics { margin-top: 0; }.feedback-totals { display: flex; gap: 32px; flex-wrap: wrap; }.feedback-totals div { display: grid; gap: 3px; }.feedback-totals strong { font-size: 1.35rem; }.feedback-totals span { color: var(--color-text-maxcontrast); }
 .pricing-panel table { width: 100%; }.pricing-panel input { box-sizing: border-box; width: min(100%, 11rem); }.pricing-actions { display: flex; align-items: center; gap: 12px; margin-top: 12px; }.visually-hidden { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
 .metrics-panel, .metrics-insights { min-width: 0; }.metrics-table-scroll { width: 100%; max-width: 100%; min-width: 0; overflow-x: auto; -webkit-overflow-scrolling: touch; }

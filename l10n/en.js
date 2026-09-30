@@ -1163,6 +1163,8 @@ OC.L10N.register("eva_ai", {
   "Filter by folder": "Filter by folder",
   "All folders": "All folders",
   "Filter by tag": "Filter by tag",
+  "Filter metrics by user": "Filter metrics by user",
+  "My metrics": "My metrics",
   "All tags": "All tags",
   "Edit tags": "Edit tags",
   "Enter tags separated by commas": "Enter tags separated by commas",

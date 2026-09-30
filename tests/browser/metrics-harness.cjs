@@ -24,7 +24,14 @@ async function openMetrics(page, width = 1280) {
 		const request = route.request()
 		const endpoint = new URL(request.url()).pathname.split('/api/').pop()
 		let data = {}
-		if (endpoint.startsWith('metrics')) data = {
+		if (endpoint === 'admin/metrics/users') data = { users: [{ userId: 'alice', displayName: 'Alice Example' }] }
+		else if (endpoint.startsWith('admin/users/alice/metrics')) data = {
+			days: 30, user_id: 'alice', display_name: 'Alice Example',
+			totals: { requests: 5, input_tokens: 300, output_tokens: 150, total_tokens: 450, estimated_requests: 1 },
+			by_model: [{ provider: 'ollama', model: 'llama3.2', requests: 5, input_tokens: 300, output_tokens: 150, total_tokens: 450, estimated_requests: 1, average_duration_ms: 800, max_duration_ms: 1100, estimated_cost_usd: null }],
+			daily: [], slow_tools: [], feedback: { helpful: 4, notHelpful: 1, bookmarked: 2 },
+		}
+		else if (endpoint.startsWith('metrics')) data = {
 			days: 30,
 			totals: { requests: 2, input_tokens: 250000, output_tokens: 100000, total_tokens: 350000, estimated_requests: 0 },
 			by_model: [{ provider: 'openai', model: 'gpt-test', requests: 2, input_tokens: 250000, output_tokens: 100000, total_tokens: 350000, estimated_requests: 0, average_duration_ms: 1200, max_duration_ms: 1800, estimated_cost_usd: 1.3 }],

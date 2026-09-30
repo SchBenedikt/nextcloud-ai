@@ -24,6 +24,20 @@ class UsageMetrics {
 		return $text === '' ? 0 : max(1, (int)ceil(mb_strlen($text) / 4));
 	}
 
+	/** @return list<string> User IDs with recorded metrics; caller must enforce admin access. */
+	public function userIdsWithUsage(): array {
+		$qb = $this->db->getQueryBuilder();
+		$qb->selectDistinct('user_id')->from('eva_ai_usage')->orderBy('user_id', 'ASC');
+		$result = $qb->executeQuery();
+		$users = [];
+		while ($row = $result->fetch()) {
+			$userId = trim((string)($row['user_id'] ?? ''));
+			if ($userId !== '') $users[] = $userId;
+		}
+		$result->closeCursor();
+		return $users;
+	}
+
 	/** @param array<int,array{role?:string,content?:string}> $messages */
 	public function recordChat(
 		?string $userId,

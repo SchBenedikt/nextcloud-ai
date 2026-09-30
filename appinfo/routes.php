@@ -1,99 +1,4 @@
-<?php
-
-declare(strict_types=1);
-
-return [
-    'routes' => [
-        ['name' => 'page#index', 'url' => '/', 'verb' => 'GET'],
-        ['name' => 'page#app', 'url' => '/app', 'verb' => 'GET'],
-        ['name' => 'page#settings', 'url' => '/settings', 'verb' => 'GET'],
-        ['name' => 'page#documents', 'url' => '/documents', 'verb' => 'GET'],
-		// The Metrics view is a first-class SPA route. Without this server-side
-		// route, refreshing /apps/eva_ai/metrics bypasses Vue and returns 404.
-        ['name' => 'page#metrics', 'url' => '/metrics', 'verb' => 'GET'],
-        ['name' => 'page#standalone', 'url' => '/standalone', 'verb' => 'GET'],
-    ],
-    'ocs' => [
-        ['name' => 'system#status', 'url' => '/api/status', 'verb' => 'GET'],
-        ['name' => 'system#stats', 'url' => '/api/stats', 'verb' => 'GET'],
-        ['name' => 'system#metrics', 'url' => '/api/metrics', 'verb' => 'GET'],
-        ['name' => 'system#saveMetricsPricing', 'url' => '/api/metrics/pricing', 'verb' => 'PUT'],
-        ['name' => 'system#health', 'url' => '/api/health', 'verb' => 'GET'],
-        ['name' => 'system#greeting', 'url' => '/api/greeting', 'verb' => 'GET'],
-        ['name' => 'image#listImages', 'url' => '/api/images', 'verb' => 'GET'],
-        ['name' => 'image#generate', 'url' => '/api/images/generate', 'verb' => 'POST'],
-        ['name' => 'image#download', 'url' => '/api/images/{id}/download', 'verb' => 'GET'],
-        ['name' => 'api#settings', 'url' => '/api/settings', 'verb' => 'GET'],
-        ['name' => 'api#saveSettings', 'url' => '/api/settings', 'verb' => 'PUT'],
-        ['name' => 'api#startIndex', 'url' => '/api/index', 'verb' => 'POST'],
-        ['name' => 'api#startMailIndex', 'url' => '/api/mailIndex', 'verb' => 'POST'],
-        ['name' => 'api#startMailIndexSnake', 'url' => '/api/mail_index', 'verb' => 'POST'],
-        // Index the user's Nextcloud Talk chat histories on demand (the button
-        // in the settings/documents view), independent of the automatic pass.
-        ['name' => 'api#startTalkIndex', 'url' => '/api/talkIndex', 'verb' => 'POST'],
-        ['name' => 'api#startTalkIndexSnake', 'url' => '/api/talk_index', 'verb' => 'POST'],
-        ['name' => 'api#stopIndex', 'url' => '/api/indexStop', 'verb' => 'POST'],
-        ['name' => 'api#stopIndexSnake', 'url' => '/api/index/stop', 'verb' => 'POST'],
-        ['name' => 'api#resetIndex', 'url' => '/api/indexReset', 'verb' => 'POST'],
-        ['name' => 'api#resetIndexSnake', 'url' => '/api/index/reset', 'verb' => 'POST'],
-        ['name' => 'api#documents', 'url' => '/api/documents', 'verb' => 'GET'],
-        ['name' => 'api#documentChunks', 'url' => '/api/documentChunks', 'verb' => 'POST'],
-        ['name' => 'api#chat', 'url' => '/api/chat', 'verb' => 'POST'],
-        ['name' => 'api#backgroundChat', 'url' => '/api/backgroundChat', 'verb' => 'POST'],
-        ['name' => 'api#backgroundChatStatus', 'url' => '/api/backgroundChat', 'verb' => 'GET'],
-        ['name' => 'api#externalConnectors', 'url' => '/api/connectors', 'verb' => 'GET'],
-        ['name' => 'api#plugins', 'url' => '/api/plugins', 'verb' => 'GET'],
-        ['name' => 'api#saveExternalConnector', 'url' => '/api/connectors', 'verb' => 'PUT'],
-        ['name' => 'api#deleteExternalConnector', 'url' => '/api/connectors', 'verb' => 'DELETE'],
-        ['name' => 'api#discoverExternalConnector', 'url' => '/api/connectors/discover', 'verb' => 'POST'],
-        ['name' => 'api#testExternalConnector', 'url' => '/api/connectors/test', 'verb' => 'POST'],
-        ['name' => 'api#diagnoseExternalConnector', 'url' => '/api/connectors/diagnose', 'verb' => 'POST'],
-        ['name' => 'api#cancelBackgroundChat', 'url' => '/api/backgroundChat', 'verb' => 'DELETE'],
-        ['name' => 'api#pauseBackgroundChat', 'url' => '/api/backgroundChat/pause', 'verb' => 'POST'],
-        ['name' => 'api#resumeBackgroundChat', 'url' => '/api/backgroundChat/resume', 'verb' => 'POST'],
-        ['name' => 'api#retryBackgroundChat', 'url' => '/api/backgroundChat/retry', 'verb' => 'POST'],
-        ['name' => 'api#chats', 'url' => '/api/chats', 'verb' => 'GET'],
-        ['name' => 'api#createChat', 'url' => '/api/chats', 'verb' => 'POST'],
-        ['name' => 'api#deleteAllChats', 'url' => '/api/chats', 'verb' => 'DELETE'],
-        ['name' => 'api#chatDetail', 'url' => '/api/chats/{id}', 'verb' => 'GET'],
-        ['name' => 'api#chatDelete', 'url' => '/api/chats/{id}', 'verb' => 'DELETE'],
-        ['name' => 'api#chatAppend', 'url' => '/api/chats/{id}/messages', 'verb' => 'POST'],
-        ['name' => 'api#chatReaction', 'url' => '/api/chats/{id}/reaction', 'verb' => 'POST'],
-        ['name' => 'api#feedbackStats', 'url' => '/api/feedback/stats', 'verb' => 'GET'],
-        ['name' => 'api#briefingHistory', 'url' => '/api/briefings/history', 'verb' => 'GET'],
-        ['name' => 'api#runBriefingNow', 'url' => '/api/briefings/{id}/run', 'verb' => 'POST'],
-        ['name' => 'api#templates', 'url' => '/api/templates', 'verb' => 'GET'],
-        ['name' => 'api#saveTemplate', 'url' => '/api/templates', 'verb' => 'POST'],
-        ['name' => 'api#exportTemplates', 'url' => '/api/templates/export', 'verb' => 'GET'],
-        ['name' => 'api#importTemplates', 'url' => '/api/templates/import', 'verb' => 'POST'],
-        ['name' => 'api#deleteTemplate', 'url' => '/api/templates/{id}', 'verb' => 'DELETE'],
-        ['name' => 'api#useTemplate', 'url' => '/api/templates/{id}/use', 'verb' => 'POST'],
-        ['name' => 'api#chatTitle', 'url' => '/api/chats/{id}/title', 'verb' => 'POST'],
-        ['name' => 'api#chatMeta', 'url' => '/api/chats/{id}/meta', 'verb' => 'POST'],
-        ['name' => 'api#chatRegenerate', 'url' => '/api/chats/{id}/regenerate', 'verb' => 'POST'],
-        ['name' => 'api#folders', 'url' => '/api/folders', 'verb' => 'GET'],
-        ['name' => 'api#createFolder', 'url' => '/api/folders', 'verb' => 'POST'],
-        ['name' => 'api#renameFolder', 'url' => '/api/folders/rename', 'verb' => 'POST'],
-        ['name' => 'api#setFolderColor', 'url' => '/api/folders/color', 'verb' => 'POST'],
-        ['name' => 'api#deleteFolder', 'url' => '/api/folders/delete', 'verb' => 'POST'],
-        ['name' => 'api#deleteFolderRest', 'url' => '/api/folders', 'verb' => 'DELETE'],
-        ['name' => 'api#models', 'url' => '/api/models', 'verb' => 'GET'],
-        ['name' => 'api#calendars', 'url' => '/api/calendars', 'verb' => 'GET'],
-        ['name' => 'api#check', 'url' => '/api/check', 'verb' => 'POST'],
-        ['name' => 'api#exportData', 'url' => '/api/export', 'verb' => 'GET'],
-        ['name' => 'api#streamChat', 'url' => '/api/streamChat', 'verb' => 'POST'],
-        ['name' => 'api#confirmTool', 'url' => '/api/confirmTool', 'verb' => 'POST'],
-        ['name' => 'api#fileContextChat', 'url' => '/api/fileContextChat', 'verb' => 'POST'],
-        ['name' => 'api#fileContextStatus', 'url' => '/api/fileContextStatus', 'verb' => 'POST'],
-        ['name' => 'api#knowledge', 'url' => '/api/knowledge', 'verb' => 'GET'],
-        ['name' => 'api#saveKnowledge', 'url' => '/api/knowledge', 'verb' => 'PUT'],
-        ['name' => 'api_key#listKeys', 'url' => '/api/keys', 'verb' => 'GET'],
-        ['name' => 'api_key#createKey', 'url' => '/api/keys', 'verb' => 'POST'],
-        ['name' => 'api_key#revokeKey', 'url' => '/api/keys/{id}', 'verb' => 'DELETE'],
-        ['name' => 'api_key#externalChat', 'url' => '/api/v1/chat', 'verb' => 'POST'],
-        ['name' => 'api_key#externalChats', 'url' => '/api/v1/chats', 'verb' => 'GET'],
-        ['name' => 'api_key#externalChatDetail', 'url' => '/api/v1/chats/{id}', 'verb' => 'GET'],
-        ['name' => 'api_key#externalDocuments', 'url' => '/api/v1/documents', 'verb' => 'GET'],
+YªçŠx-®éÜj×¢ëiºÚ+Š§j[h‘éÜ¢éíßN¸N‹Z–‹­¦ëeŠw¬ÔðýÁ¡À()‘•±…É”¡ÍÑÉ¥Ñ}ÑåÁ•ÌôÄ¤ì()É•ÑÕÉ¸l(€€€€É½ÕÑ•Ìœ€ôøl(€€€€€€€l¹…µ”œ€ôø€Á…”¥¹‘•àœ°€ÕÉ°œ€ôø€œ¼œ°€Ù•Éˆœ€ôø€Pt°(€€€€€€€l¹…µ”œ€ôø€Á…”…ÁÀœ°€ÕÉ°œ€ôø€œ½…ÁÀœ°€Ù•Éˆœ€ôø€Pt°(€€€€€€€l¹…µ”œ€ôø€Á…”Í•ÑÑ¥¹Ìœ°€ÕÉ°œ€ôø€œ½Í•ÑÑ¥¹Ìœ°€Ù•Éˆœ€ôø€Pt°(€€€€€€€l¹…µ”œ€ôø€Á…”‘½Õµ•¹ÑÌœ°€ÕÉ°œ€ôø€œ½‘½Õµ•¹ÑÌœ°€Ù•Éˆœ€ôø€Pt°($$¼¼Q¡”5•ÑÉ¥ÌÙ¥•Ü¥Ì„™¥ÉÍÐµ±…ÍÌMAÉ½ÕÑ”¸]¥Ñ¡½ÕÐÑ¡¥ÌÍ•ÉÙ•ÈµÍ¥‘”($$¼¼É½ÕÑ”°É•™É•Í¡¥¹œ€½…ÁÁÌ½•Ù…}…¤½µ•ÑÉ¥Ì‰åÁ…ÍÍ•ÌYÕ”…¹É•ÑÕÉ¹Ì€ÐÀÐ¸(€€€€€€€l¹…µ”œ€ôø€Á…”µ•ÑÉ¥Ìœ°€ÕÉ°œ€ôø€œ½µ•ÑÉ¥Ìœ°€Ù•Éˆœ€ôø€Pt°(€€€€€€€l¹…µ”œ€ôø€Á…”ÍÑ…¹‘…±½¹”œ°€ÕÉ°œ€ôø€œ½ÍÑ…¹‘…±½¹”œ°€Ù•Éˆœ€ôø€Pt°(€€€t°(€€€€½Ìœ€ôøl(€€€€€€€l¹…µ”œ€ôø€ÍåÍÑ•´ÍÑ…ÑÕÌœ°€ÕÉ°œ€ôø€œ½…Á¤½ÍÑ…ÑÕÌœ°€Ù•Éˆœ€ôø€Pt°(€€€€€€€l¹…µ”œ€ôø€ÍåÍÑ•´ÍÑ…ÑÌœ°€ÕÉ°œ€ôø€œ½…Á¤½ÍÑ…ÑÌœ°€Ù•Éˆœ€ôø€Pt°(€€€€€€€l¹…µ”œ€ôø€ÍåÍÑ•´µ•ÑÉ¥Ìœ°€ÕÉ°œ€ôø€œ½…Á¤½µ•ÑÉ¥Ìœ°€Ù•Éˆœ€ôø€Pt°(€€€€€€€l¹…µ”œ€ôø€ÍåÍÑ•´Í…Ù•5•ÑÉ¥ÍAÉ¥¥¹œœ°€ÕÉ°œ€ôø€œ½…Á¤½µ•ÑÉ¥Ì½ÁÉ¥¥¹œœ°€Ù•Éˆœ€ôø€AUPt°(€€€€€€€l¹…µ”œ€ôø€ÍåÍÑ•´¡•…±Ñ œ°€ÕÉ°œ€ôø€œ½…Á¤½¡•…±Ñ œ°€Ù•Éˆœ€ôø€Pt°(€€€€€€€l¹…µ”œ€ôø€ÍåÍÑ•´É••Ñ¥¹œœ°€ÕÉ°œ€ôø€œ½…Á¤½É••Ñ¥¹œœ°€Ù•Éˆœ€ôø€Pt°(€€€€€€€l¹…µ”œ€ôø€¥µ…”±¥ÍÑ%µ…•Ìœ°€ÕÉ°œ€ôø€œ½…Á¤½¥µ…•Ìœ°€Ù•Éˆœ€ôø€Pt°(€€€€€€€l¹…µ”œ€ôø€¥µ…”•¹•É…Ñ”œ°€ÕÉ°œ€ôø€œ½…Á¤½¥µ…•Ì½•¹•É…Ñ”œ°€Ù•Éˆœ€ôø€A=MPt°(€€€€€€€l¹…µ”œ€ôø€¥µ…”‘½Ý¹±½…œ°€ÕÉ°œ€ôø€œ½…Á¤½¥µ…•Ì½í¥‘ô½‘½Ý¹±½…œ°€Ù•Éˆœ€ôø€Pt°(€€€€€€€l¹…µ”œ€ôø€…Á¤Í•ÑÑ¥¹Ìœ°€ÕÉ°œ€ôø€œ½…Á¤½Í•ÑÑ¥¹Ìœ°€Ù•Éˆœ€ôø€m:âÚ$z{-®éÜj×ments', 'verb' => 'GET'],
         ['name' => 'api_key#externalDocumentChunks', 'url' => '/api/v1/documents/{id}/chunks', 'verb' => 'GET'],
         // Admin-only endpoints (Issue #82): instance settings, overview and
         // per-user management. The settings routes were missing, so the admin
@@ -101,6 +6,8 @@ return [
         ['name' => 'admin#getSettings', 'url' => '/api/admin/settings', 'verb' => 'GET'],
         ['name' => 'admin#saveSettings', 'url' => '/api/admin/settings', 'verb' => 'PUT'],
         ['name' => 'admin#overview', 'url' => '/api/admin/overview', 'verb' => 'GET'],
+        ['name' => 'admin#metricsUsers', 'url' => '/api/admin/metrics/users', 'verb' => 'GET'],
+        ['name' => 'admin#userMetrics', 'url' => '/api/admin/users/{userId}/metrics', 'verb' => 'GET'],
         ['name' => 'admin#reindex', 'url' => '/api/admin/users/{userId}/reindex', 'verb' => 'POST'],
         ['name' => 'admin#reset', 'url' => '/api/admin/users/{userId}/reset', 'verb' => 'POST'],
         ['name' => 'admin#setEnrollment', 'url' => '/api/admin/users/{userId}/enrollment', 'verb' => 'POST'],

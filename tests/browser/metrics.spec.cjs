@@ -22,6 +22,18 @@ test('keeps metrics tables inside a narrow viewport', async ({ page }) => {
 	expect(widths.page).toBeLessThanOrEqual(widths.viewport)
 })
 
+test('allows administrators to filter metrics to a user without exposing pricing controls', async ({ page }) => {
+	await openMetrics(page)
+	const filter = page.getByRole('combobox', { name: 'Filter metrics by user' })
+	await expect(filter).toBeVisible()
+	const requestPromise = page.waitForRequest(request => new URL(request.url()).pathname.endsWith('/api/admin/users/alice/metrics'))
+	await filter.selectOption('alice')
+	await requestPromise
+	const modelRow = page.getByRole('row').filter({ hasText: 'llama3.2' })
+	await expect(modelRow).toContainText('5')
+	await expect(page.locator('.pricing-panel')).toHaveCount(0)
+})
+
 test('opens the browser print flow for a PDF report', async ({ page }) => {
 	await openMetrics(page)
 	await page.evaluate(() => { window.__printed = false; window.print = () => { window.__printed = true } })
