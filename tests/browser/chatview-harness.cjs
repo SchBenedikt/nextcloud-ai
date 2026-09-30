@@ -29,7 +29,7 @@ function html() {
       else if (path.endsWith('/streamChat') && method === 'POST') data = { stream: true }
       return new Response(JSON.stringify(data), { status: 200, headers: { 'Content-Type': 'application/json' } })
     }
-  </script></body></html>`
+  </script><style>html,body{margin:0;min-height:100%;}#chat-root{height:100vh;min-height:0}</style></body></html>`
 }
 
 async function openChatView(page) {

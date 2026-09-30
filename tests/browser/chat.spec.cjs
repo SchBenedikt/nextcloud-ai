@@ -87,6 +87,23 @@ test('generates images from the selected provider and shows the saved Files gall
   await expect(page.locator('.generated-image a').first()).toHaveAttribute('href', '/download/11')
 })
 
+test('image generation remains usable at a narrow mobile viewport', async ({ page }) => {
+  await page.setViewportSize({ width: 375, height: 812 })
+  await openChatView(page)
+  await page.getByRole('button', { name: 'Create images' }).click()
+  await expect(page.locator('.image-generator')).toBeVisible()
+  await expect(page.locator('.image-generator textarea')).toBeVisible()
+  await expect(page.locator('.image-generator select')).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Generate', exact: true })).toBeVisible()
+  const dimensions = await page.evaluate(() => ({
+    viewport: document.documentElement.clientWidth,
+    document: document.documentElement.scrollWidth,
+    panel: document.querySelector('.image-generator').getBoundingClientRect().right,
+  }))
+  expect(dimensions.document).toBeLessThanOrEqual(dimensions.viewport)
+  expect(dimensions.panel).toBeLessThanOrEqual(dimensions.viewport)
+})
+
 test('exports a plain text chat and a safe standalone HTML document', async ({ page }) => {
   await openChat(page)
   const answer = '<script>window.pwned=true</script> **safe answer**\n```js\nconst count = 2;\n```'

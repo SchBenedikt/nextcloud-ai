@@ -1,4 +1,4 @@
-import { mountChat } from '../../src/lib/vanilla'
+import { createApp } from 'vue'
+import ChatView from '../../src/views/ChatView.vue'
 
-const root = document.getElementById('chat-root')
-if (root) mountChat(root)
+createApp(ChatView).mount('#chat-root')
