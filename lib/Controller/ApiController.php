@@ -32,6 +32,7 @@ use OCA\EvaAi\Dto\DocumentsQuery;
 use OCA\EvaAi\Dto\DocumentChunksQuery;
 use OCA\EvaAi\Dto\ChatListQuery;
 use OCA\EvaAi\Dto\ChatListResponse;
+use OCA\EvaAi\Dto\BackgroundChatIdRequest;
 use OCP\AppFramework\OCSController;
 use OCP\AppFramework\Http\Attribute\NoAdminRequired;
 use OCA\EvaAi\Http\StreamTraversableResponse;
@@ -992,8 +993,12 @@ class ApiController extends OCSController {
     public function cancelBackgroundChat(): DataResponse {
         $user = $this->requireUser();
         if ($user === null) return new ErrorDataResponse(['error' => 'Not logged in'], 401);
-        $id = trim((string)($this->requestParam('id') ?? ''));
-        if ($id === '') return new ErrorDataResponse(['error' => 'Queue id required'], 400);
+        try {
+            $request = BackgroundChatIdRequest::fromArray(['id' => $this->requestParam('id')]);
+        } catch (\InvalidArgumentException $e) {
+            return new ErrorDataResponse(['error' => $e->getMessage()], 400);
+        }
+        $id = $request->id;
         if (!$this->backgroundChatQueue->cancel($user, $id)) return new ErrorDataResponse(['error' => 'Background job not found'], 404);
         return new ErrorDataResponse(['ok' => true, 'cancelRequested' => true]);
     }
@@ -1002,8 +1007,12 @@ class ApiController extends OCSController {
     public function pauseBackgroundChat(): DataResponse {
         $user = $this->requireUser();
         if ($user === null) return new ErrorDataResponse(['error' => 'Not logged in'], 401);
-        $id = trim((string)($this->requestParam('id') ?? ''));
-        if ($id === '' || !$this->backgroundChatQueue->pause($user, $id)) return new ErrorDataResponse(['error' => 'Pending background job not found'], 404);
+        try {
+            $request = BackgroundChatIdRequest::fromArray(['id' => $this->requestParam('id')]);
+        } catch (\InvalidArgumentException $e) {
+            return new ErrorDataResponse(['error' => $e->getMessage()], 400);
+        }
+        if (!$this->backgroundChatQueue->pause($user, $request->id)) return new ErrorDataResponse(['error' => 'Pending background job not found'], 404);
         return new ErrorDataResponse(['ok' => true, 'paused' => true]);
     }
 
@@ -1011,8 +1020,12 @@ class ApiController extends OCSController {
     public function resumeBackgroundChat(): DataResponse {
         $user = $this->requireUser();
         if ($user === null) return new ErrorDataResponse(['error' => 'Not logged in'], 401);
-        $id = trim((string)($this->requestParam('id') ?? ''));
-        if ($id === '' || !$this->backgroundChatQueue->resume($user, $id)) return new ErrorDataResponse(['error' => 'Paused background job not found'], 404);
+        try {
+            $request = BackgroundChatIdRequest::fromArray(['id' => $this->requestParam('id')]);
+        } catch (\InvalidArgumentException $e) {
+            return new ErrorDataResponse(['error' => $e->getMessage()], 400);
+        }
+        if (!$this->backgroundChatQueue->resume($user, $request->id)) return new ErrorDataResponse(['error' => 'Paused background job not found'], 404);
         return new ErrorDataResponse(['ok' => true, 'resumed' => true]);
     }
 
@@ -1021,8 +1034,12 @@ class ApiController extends OCSController {
     public function retryBackgroundChat(): DataResponse {
         $user = $this->requireUser();
         if ($user === null) return new ErrorDataResponse(['error' => 'Not logged in'], 401);
-        $id = trim((string)($this->requestParam('id') ?? ''));
-        if ($id === '') return new ErrorDataResponse(['error' => 'Queue id required'], 400);
+        try {
+            $request = BackgroundChatIdRequest::fromArray(['id' => $this->requestParam('id')]);
+        } catch (\InvalidArgumentException $e) {
+            return new ErrorDataResponse(['error' => $e->getMessage()], 400);
+        }
+        $id = $request->id;
         $known = false;
         foreach ($this->backgroundChatQueue->status($user) as $item) {
             if (($item['id'] ?? '') === $id) { $known = true; break; }
