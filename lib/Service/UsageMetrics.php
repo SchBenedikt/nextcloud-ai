@@ -24,6 +24,20 @@ class UsageMetrics {
 		return $text === '' ? 0 : max(1, (int)ceil(mb_strlen($text) / 4));
 	}
 
+	/** @return list<string> User IDs with recorded metrics; caller must enforce admin access. */
+	public function userIdsWithUsage(): array {
+		$qb = $this->db->getQueryBuilder();
+		$qb->selectDistinct('user_id')->from('eva_ai_usage')->orderBy('user_id', 'ASC');
+		$result = $qb->executeQuery();
+		$users = [];
+		while ($row = $result->fetch()) {
+			$userId = trim((string)($row['user_id'] ?? ''));
+			if ($userId !== '') $users[] = $userId;
+		}
+		$result->closeCursor();
+		return $users;
+	}
+
 	/** @param array<int,array{role?:string,content?:string}> $messages */
 	public function recordChat(
 		?string $userId,
@@ -84,7 +98,7 @@ class UsageMetrics {
 	}
 
 	/** @return array{totals:array<string,int>,by_model:list<array<string,mixed>>,daily:list<array<string,mixed>>} */
-	public function summaryForUser(string $userId, int $days = 30): array {
+	public function summaryForUser(string $userId, int $days = 30, array $pricing = []): array {
 		$since = time() - max(1, min(365, $days)) * 86400;
 		$totals = ['requests' => 0, 'input_tokens' => 0, 'output_tokens' => 0, 'total_tokens' => 0, 'estimated_requests' => 0];
 		$byModel = [];
@@ -114,6 +128,8 @@ class UsageMetrics {
 					'average_duration_ms' => (int)round((float)($row['average_duration_ms'] ?? 0)),
 					'max_duration_ms' => (int)($row['max_duration_ms'] ?? 0),
 				];
+				$price = ModelPricing::find($pricing, $item['provider'], $item['model']);
+				$item['estimated_cost_usd'] = $price === null ? null : ModelPricing::estimate($item, $price);
 				$byModel[] = $item;
 				foreach (array_keys($totals) as $key) $totals[$key] += $item[$key];
 			}

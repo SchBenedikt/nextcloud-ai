@@ -230,6 +230,12 @@ function buildCalendarForm(args, tr) {
 		var selectionText = document.getElementById('export-selection-label')
 		if (selectionToggle) selectionToggle.setAttribute('aria-label', tr('Select messages for export'))
 		if (selectionText) selectionText.textContent = tr('Select messages for export')
+		var exportOptions = document.querySelector('#export-options summary')
+		if (exportOptions) exportOptions.textContent = tr('Export options')
+		var includeTimestamps = document.querySelector('#export-include-timestamps')
+		if (includeTimestamps && includeTimestamps.parentElement) includeTimestamps.parentElement.lastChild.textContent = tr('Include timestamps')
+		var includeModel = document.querySelector('#export-include-model')
+		if (includeModel && includeModel.parentElement) includeModel.parentElement.lastChild.textContent = tr('Include model information')
 		if (exportAllButton) exportAllButton.textContent = tr('Export all chats')
 		var emptyTitle = document.querySelector('#empty .t')
 		if (emptyTitle) emptyTitle.textContent = tr('Ask a question about your files')
@@ -248,9 +254,13 @@ function buildCalendarForm(args, tr) {
 			format: format,
 			title: tr('Chat with your files'),
 			language: document.documentElement.lang || 'en',
+			includeTimestamps: document.getElementById('export-include-timestamps').checked,
+			includeModelInfo: document.getElementById('export-include-model').checked,
 			labels: {
 				you: tr('You'), eva: 'EVA', helpful: tr('Marked helpful'), notHelpful: tr('Marked not helpful'), bookmarked: tr('Bookmarked'),
 				exportedAt: function (date) { return tr('Exported {date}', { date: date }) },
+				timestamp: function (date) { return tr('Sent {date}', { date: date }) },
+				model: function (name) { return tr('Model: {name}', { name: name }) },
 			},
 		})
 		if (file.print) {
@@ -302,7 +312,9 @@ function buildCalendarForm(args, tr) {
 			var archive = createChatArchive(chats, {
 				format: format,
 				language: document.documentElement.lang || 'en',
-				labels: { you: tr('You'), eva: 'EVA', exportedAt: function (date) { return tr('Exported {date}', { date: date }) } },
+				includeTimestamps: document.getElementById('export-include-timestamps').checked,
+				includeModelInfo: document.getElementById('export-include-model').checked,
+				labels: { you: tr('You'), eva: 'EVA', exportedAt: function (date) { return tr('Exported {date}', { date: date }) }, timestamp: function (date) { return tr('Sent {date}', { date: date }) }, model: function (name) { return tr('Model: {name}', { name: name }) } },
 			})
 			var url = URL.createObjectURL(new Blob([archive], { type: 'application/zip' }))
 			var link = document.createElement('a')
@@ -934,7 +946,7 @@ function buildCalendarForm(args, tr) {
 		els.err.style.display = msg ? 'block' : 'none'
 	}
 
-	function saveMessage(role, text, followups, confirmation, tools) {
+	function saveMessage(role, text, followups, confirmation, tools, model) {
 		if (!chatId) return Promise.resolve(false)
 		var body = { role: role, text: text }
 		// Follow-up suggestions are persisted for assistant messages so the
@@ -946,6 +958,7 @@ function buildCalendarForm(args, tr) {
 		// reload rebuilds the inline panel (Issue #185).
 		if (role === 'assistant' && confirmation) body.confirmation = confirmation
 		if (role === 'assistant' && Array.isArray(tools) && tools.length) body.tools = tools
+		if (role === 'assistant' && typeof model === 'string' && model.length <= 128) body.model = model
 		return api('POST', '/chats/' + encodeURIComponent(chatId) + '/messages', body)
 			.then(function () { return true })
 			.catch(function () { return false })
@@ -1000,6 +1013,8 @@ function buildCalendarForm(args, tr) {
 				messages.push({
 					role: m.role === 'user' || m.role === 'assistant' ? m.role : 'assistant',
 					text: m.text || '',
+					createdAt: Number.isSafeInteger(m.createdAt) ? m.createdAt : null,
+					model: typeof m.model === 'string' ? m.model : null,
 					thinking: '',
 					followups: Array.isArray(m.followups) ? m.followups : [],
 					reactions: m.reactions && typeof m.reactions === 'object' ? m.reactions : undefined,
@@ -1142,7 +1157,7 @@ function buildCalendarForm(args, tr) {
 		els.send.classList.add('stop')
 		showErr('')
 
-		messages.push({ role: 'user', text: savedUserText })
+		messages.push({ role: 'user', text: savedUserText, createdAt: Math.floor(Date.now() / 1000) })
 		messages.push({ role: 'assistant', text: '', thinking: '', done: false, tools: [] })
 		renderAll(messages)
 		var assistantIdx = messages.length - 1
@@ -1209,6 +1224,8 @@ function buildCalendarForm(args, tr) {
 					renderAll(messages)
 				} else if (ev.type === 'done') {
 					last.text = ev.answer || last.text
+					last.createdAt = Math.floor(Date.now() / 1000)
+					last.model = typeof ev.model === 'string' ? ev.model : null
 					last.sources = citedSources(last.text, ev.sources || [])
 					last.followups = ev.followups || []
 					last.done = true
@@ -1216,7 +1233,7 @@ function buildCalendarForm(args, tr) {
 					// at once lets the per-user file lock acquire them in either
 					// order, which can swap the question and answer after a reload.
 					saveUserMessage(savedUserText)
-						.then(function (savedUser) { return savedUser ? saveMessage('assistant', last.text, last.followups, null, last.tools) : false })
+						.then(function (savedUser) { return savedUser ? saveMessage('assistant', last.text, last.followups, null, last.tools, last.model) : false })
 						.then(renderChatListAgain)
 						.catch(function () {})
 				} else if (ev.type === 'error') {

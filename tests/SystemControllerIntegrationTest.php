@@ -29,9 +29,9 @@ final class SystemControllerIntegrationTest extends TestCase {
         }
     }
 
-    private function controller(IRequest $request, ?string $userId, UsageMetrics $usageMetrics): SystemController {
+    private function controller(IRequest $request, ?string $userId, UsageMetrics $usageMetrics, ?AppConfig $config = null): SystemController {
         return new SystemController(
-            'eva_ai', $request, $userId, $this->createMock(AppConfig::class),
+            'eva_ai', $request, $userId, $config ?? $this->createMock(AppConfig::class),
             $this->createMock(RagService::class), $this->createMock(DocumentMapper::class),
             $this->createMock(ChatStore::class), $this->createMock(KnowledgeInitializer::class),
             $this->createMock(IndexScheduler::class), $usageMetrics, $this->createMock(Ollama::class),
@@ -48,7 +48,7 @@ final class SystemControllerIntegrationTest extends TestCase {
     public function testUnauthenticatedSystemEndpointsReturn401(): void {
         $controller = $this->controller($this->createMock(IRequest::class), null, $this->createMock(UsageMetrics::class));
 
-        foreach (['status', 'stats', 'metrics', 'health', 'greeting'] as $method) {
+        foreach (['status', 'stats', 'metrics', 'saveMetricsPricing', 'health', 'greeting'] as $method) {
             $response = $controller->{$method}();
             self::assertSame(401, $response->getStatus(), $method . ' must reject anonymous requests');
         }
@@ -77,6 +77,20 @@ final class SystemControllerIntegrationTest extends TestCase {
         $response = $this->controller($request, 'alice', $usageMetrics)->metrics();
 
         self::assertSame(400, $response->getStatus());
+    }
+
+    public function testMetricsPricingSavesValidatedUserSpecificPrices(): void {
+        $prices = [['provider' => 'openai', 'model' => 'gpt-test', 'input_per_million' => 2, 'output_per_million' => 8]];
+        $normalized = [['provider' => 'openai', 'model' => 'gpt-test', 'input_per_million' => 2.0, 'output_per_million' => 8.0]];
+        $request = $this->createMock(IRequest::class);
+        $request->expects(self::once())->method('getParam')->with('prices', null)->willReturn($prices);
+        $config = $this->createMock(AppConfig::class);
+        $config->expects(self::once())->method('set')->with('model_pricing', json_encode($normalized, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE));
+
+        $response = $this->controller($request, 'alice', $this->createMock(UsageMetrics::class), $config)->saveMetricsPricing();
+
+        self::assertSame(200, $response->getStatus());
+        self::assertSame(['prices' => $normalized], $response->getData());
     }
 
     public function testSystemRoutesKeepTheirPublicUrls(): void {

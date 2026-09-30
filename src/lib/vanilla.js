@@ -130,15 +130,24 @@ export function mountChat(root, opts = {}) {
 		const format = exportFormat.value
 		const exportMessages = selectionMode ? messages.filter((_, index) => selectedMessageIndexes.has(index)) : messages
 		if (selectionMode && exportMessages.length === 0) return
-		const file = createChatExport(exportMessages, {
+		let file
+		try { file = createChatExport(exportMessages, {
 			format,
 			title: t('Eva chat export'),
 			language: document.documentElement.lang || 'en',
+			includeTimestamps: exportTimestampToggle.checked,
+			includeModelInfo: exportModelToggle.checked,
+			includeUserName: exportUserNameToggle.checked,
+			userName: document.querySelector('meta[name="eva-ai-display-name"]')?.content || '',
+			fromDate: exportFromDate.value,
+			toDate: exportToDate.value,
 			labels: {
 				you: t('You'), eva: 'Eva', helpful: t('Marked helpful'), notHelpful: t('Marked not helpful'), bookmarked: t('Bookmarked'),
 				exportedAt: (date) => t('Exported {date}', { date }),
+				timestamp: (date) => t('Sent {date}', { date }),
+				model: (name) => t('Model: {name}', { name }),
 			},
-		})
+		}) } catch (error) { showErr(t(error?.message || 'Could not export this chat.')); return }
 		if (file.print) {
 			const printWindow = window.open('', '_blank')
 			if (printWindow) {
@@ -185,7 +194,13 @@ export function mountChat(root, opts = {}) {
 			const archive = createChatArchive(chats, {
 				format,
 				language: document.documentElement.lang || 'en',
-				labels: { you: t('You'), eva: 'Eva', exportedAt: (date) => t('Exported {date}', { date }) },
+				includeTimestamps: exportTimestampToggle.checked,
+				includeModelInfo: exportModelToggle.checked,
+				includeUserName: exportUserNameToggle.checked,
+				userName: document.querySelector('meta[name="eva-ai-display-name"]')?.content || '',
+				fromDate: exportFromDate.value,
+				toDate: exportToDate.value,
+				labels: { you: t('You'), eva: 'Eva', exportedAt: (date) => t('Exported {date}', { date }), timestamp: (date) => t('Sent {date}', { date }), model: (name) => t('Model: {name}', { name }) },
 			})
 			const url = URL.createObjectURL(new Blob([archive], { type: 'application/zip' }))
 			const link = document.createElement('a')
@@ -203,6 +218,8 @@ export function mountChat(root, opts = {}) {
 				'A chat archive can contain up to 100 conversations at a time.',
 				'The chat archive is larger than 50 MB.',
 				'A conversation in the archive is invalid.',
+				'The export date is invalid.',
+				'The start date must be on or before the end date.',
 			]
 			const detail = knownErrors.includes(message) ? t(message) : message
 			showErr(t('Could not export chats: {error}', { error: detail }))
@@ -267,6 +284,12 @@ export function mountChat(root, opts = {}) {
 			textEl.textContent = m.text || (m.role === 'assistant' ? '…' : '')
 		}
 		b.appendChild(textEl)
+		if (m.role === 'assistant' && m.done && m.model) {
+			const modelLabel = document.createElement('div')
+			modelLabel.className = 'rmodel'
+			modelLabel.textContent = t('Model: {name}', { name: m.model })
+			b.appendChild(modelLabel)
+		}
 		if (m.role === 'assistant' && m.done) {
 			const actBar = document.createElement('div')
 			actBar.className = 'racts'
@@ -670,7 +693,106 @@ export function mountChat(root, opts = {}) {
 	head.innerHTML = ''
 	const h1 = document.createElement('h1')
 	h1.textContent = t('Chat with your files')
+	const imageModeBtn = document.createElement('button')
+	imageModeBtn.type = 'button'
+	imageModeBtn.className = 'export image-mode-toggle'
+	imageModeBtn.textContent = t('Create images')
+	imageModeBtn.setAttribute('aria-expanded', 'false')
+	const imagePanel = document.createElement('section')
+	imagePanel.className = 'image-generator'
+	imagePanel.hidden = true
+	const imagePanelTitle = document.createElement('h2')
+	imagePanelTitle.textContent = t('Generate images')
+	const imagePrompt = document.createElement('textarea')
+	imagePrompt.maxLength = 1000
+	imagePrompt.rows = 3
+	imagePrompt.placeholder = t('Describe the image you want to create')
+	imagePrompt.setAttribute('aria-label', t('Image prompt'))
+	const imageCount = document.createElement('select')
+	imageCount.setAttribute('aria-label', t('Number of images'))
+	for (let count = 1; count <= 4; count++) {
+		const option = document.createElement('option')
+		option.value = String(count)
+		option.textContent = String(count)
+		imageCount.appendChild(option)
+	}
+	const generateBtn = document.createElement('button')
+	generateBtn.type = 'button'
+	generateBtn.className = 'cbtn'
+	generateBtn.textContent = t('Generate')
+	const imagePanelClose = document.createElement('button')
+	imagePanelClose.type = 'button'
+	imagePanelClose.className = 'cbtn cbtn-ghost'
+	imagePanelClose.textContent = t('Close')
+	const imagePanelStatus = document.createElement('p')
+	imagePanelStatus.className = 'image-generator-status'
+	imagePanelStatus.setAttribute('role', 'status')
+	const imagePrivacy = document.createElement('p')
+	imagePrivacy.className = 'image-generator-privacy'
+	imagePrivacy.textContent = t('The prompt is sent to your configured image provider. Generated images are saved in Files / EVA.')
+	const imageGallery = document.createElement('div')
+	imageGallery.className = 'image-gallery'
+	imagePanel.append(imagePanelTitle, imagePrivacy, imagePrompt, imageCount, generateBtn, imagePanelClose, imagePanelStatus, imageGallery)
+	const renderGeneratedImages = (images) => {
+		imageGallery.replaceChildren()
+		for (const image of images) {
+			if (!image || typeof image.previewUrl !== 'string') continue
+			const card = document.createElement('article')
+			card.className = 'generated-image'
+			const download = document.createElement('a')
+			download.href = typeof image.downloadUrl === 'string' ? image.downloadUrl : image.previewUrl
+			download.download = image.name || 'eva-generated.png'
+			download.setAttribute('aria-label', t('Download {name}', { name: image.name || t('generated image') }))
+			const preview = document.createElement('img')
+			preview.src = image.previewUrl
+			preview.alt = image.name || t('Generated image')
+			download.appendChild(preview)
+			const name = document.createElement('span')
+			name.textContent = image.name || t('Generated image')
+			card.append(download, name)
+			imageGallery.appendChild(card)
+		}
+	}
+	const loadGeneratedImages = () => api('GET', '/images').then((result) => {
+		const images = Array.isArray(result?.images) ? result.images : []
+		renderGeneratedImages(images)
+	}).catch((error) => {
+		imagePanelStatus.textContent = t('Could not load generated images: {error}', { error: apiErrorMessage(error) })
+	})
+	imageModeBtn.addEventListener('click', () => {
+		imagePanel.hidden = !imagePanel.hidden
+		imageModeBtn.setAttribute('aria-expanded', String(!imagePanel.hidden))
+		if (!imagePanel.hidden) { imagePrompt.focus(); loadGeneratedImages() }
+	})
+	imagePanelClose.addEventListener('click', () => {
+		imagePanel.hidden = true
+		imageModeBtn.setAttribute('aria-expanded', 'false')
+		imageModeBtn.focus()
+	})
+	generateBtn.addEventListener('click', async () => {
+		const prompt = imagePrompt.value.trim()
+		if (!prompt || prompt.length > 1000) {
+			imagePanelStatus.textContent = t('Enter an image prompt between 1 and 1,000 characters.')
+			imagePrompt.focus()
+			return
+		}
+		generateBtn.disabled = true
+		imagePanelStatus.textContent = t('Generating images…')
+		try {
+			const result = await api('POST', '/images/generate', { prompt, count: Number(imageCount.value) })
+			const images = Array.isArray(result?.images) ? result.images : []
+			renderGeneratedImages(images)
+			imagePanelStatus.textContent = images.length
+				? t('Saved {count} generated images to your EVA folder.', { count: images.length })
+				: t('The image provider returned no images.')
+		} catch (error) {
+			imagePanelStatus.textContent = t('Could not generate images: {error}', { error: apiErrorMessage(error?.response?.data) || error?.message || String(error) })
+		} finally {
+			generateBtn.disabled = false
+		}
+	})
 	const exportBtn = document.createElement('button')
+	exportBtn.id = 'export'
 	exportBtn.className = 'export'
 	exportBtn.type = 'button'
 	exportBtn.setAttribute('aria-label', t('Export chat as Markdown'))
@@ -701,6 +823,43 @@ export function mountChat(root, opts = {}) {
 	const exportSelectionText = document.createElement('span')
 	exportSelectionText.textContent = t('Select messages for export')
 	exportSelectionLabel.append(exportSelectionToggle, exportSelectionText)
+	const exportOptions = document.createElement('details')
+	exportOptions.className = 'export-options'
+	const exportOptionsSummary = document.createElement('summary')
+	exportOptionsSummary.textContent = t('Export options')
+	const exportTimestampToggle = document.createElement('input')
+	exportTimestampToggle.id = 'export-include-timestamps'
+	exportTimestampToggle.type = 'checkbox'
+	exportTimestampToggle.checked = true
+	exportTimestampToggle.setAttribute('aria-label', t('Include timestamps'))
+	const exportTimestampLabel = document.createElement('label')
+	exportTimestampLabel.append(exportTimestampToggle, document.createTextNode(t('Include timestamps')))
+	const exportModelToggle = document.createElement('input')
+	exportModelToggle.id = 'export-include-model'
+	exportModelToggle.type = 'checkbox'
+	exportModelToggle.checked = true
+	exportModelToggle.setAttribute('aria-label', t('Include model information'))
+	const exportModelLabel = document.createElement('label')
+	exportModelLabel.append(exportModelToggle, document.createTextNode(t('Include model information')))
+	const exportUserNameToggle = document.createElement('input')
+	exportUserNameToggle.id = 'export-include-user-name'
+	exportUserNameToggle.type = 'checkbox'
+	exportUserNameToggle.setAttribute('aria-label', t('Include your name'))
+	const exportUserNameLabel = document.createElement('label')
+	exportUserNameLabel.append(exportUserNameToggle, document.createTextNode(t('Include your name')))
+	const exportFromDate = document.createElement('input')
+	exportFromDate.id = 'export-from-date'
+	exportFromDate.type = 'date'
+	exportFromDate.setAttribute('aria-label', t('From date'))
+	const exportFromLabel = document.createElement('label')
+	exportFromLabel.append(document.createTextNode(t('From date')), exportFromDate)
+	const exportToDate = document.createElement('input')
+	exportToDate.id = 'export-to-date'
+	exportToDate.type = 'date'
+	exportToDate.setAttribute('aria-label', t('To date'))
+	const exportToLabel = document.createElement('label')
+	exportToLabel.append(document.createTextNode(t('To date')), exportToDate)
+	exportOptions.append(exportOptionsSummary, exportTimestampLabel, exportModelLabel, exportUserNameLabel, exportFromLabel, exportToLabel)
 	exportSelectionToggle.addEventListener('change', () => {
 		selectionMode = exportSelectionToggle.checked
 		selectedMessageIndexes.clear()
@@ -973,7 +1132,7 @@ export function mountChat(root, opts = {}) {
 	agentStatusPill.hidden = true
 	agentStatusPill.setAttribute('role', 'status')
 	customizeBtn.addEventListener('click', () => openCustomizeDialog())
-	head.append(h1, scopePill, customizePill, agentStatusPill, customizeBtn, promptPanel, exportSelectionLabel, exportFormat, exportBtn, exportAllBtn)
+	head.append(h1, imageModeBtn, scopePill, customizePill, agentStatusPill, customizeBtn, promptPanel, exportSelectionLabel, exportOptions, exportFormat, exportBtn, exportAllBtn)
 
 	const scroll = document.createElement('div')
 	scroll.className = 'chat-log'
@@ -1013,6 +1172,31 @@ export function mountChat(root, opts = {}) {
 	input.autocomplete = 'off'
 	input.placeholder = t('Ask a question or describe a task')
 	input.setAttribute('aria-label', t('Ask a question or describe a task'))
+	const modelSelect = document.createElement('select')
+	modelSelect.className = 'chat-model-select'
+	modelSelect.setAttribute('aria-label', t('Chat model'))
+	modelSelect.title = t('Chat model')
+	modelSelect.hidden = true
+	let defaultChatModel = ''
+	api('GET', '/models').then((data) => {
+		if (!data || String(data.provider || 'ollama').toLowerCase() !== 'ollama') return
+		const roles = data.roles && typeof data.roles === 'object' ? data.roles : {}
+		const available = (Array.isArray(data.models) ? data.models : []).filter((name) => {
+			const modelRoles = roles[name]?.roles
+			return !Array.isArray(modelRoles) || modelRoles.length === 0 || modelRoles.includes('chat')
+		})
+		defaultChatModel = String(data.chat || '')
+		if (defaultChatModel && !available.includes(defaultChatModel)) available.unshift(defaultChatModel)
+		if (available.length < 2) return
+		available.forEach((name) => {
+			const option = document.createElement('option')
+			option.value = name
+			option.textContent = name
+			modelSelect.appendChild(option)
+		})
+		modelSelect.value = defaultChatModel || available[0]
+		modelSelect.hidden = false
+	}).catch(() => {})
 	const filesBtn = document.createElement('button')
 	filesBtn.type = 'button'
 	filesBtn.className = 'cbtn cbtn-ghost cbtn-files'
@@ -1239,13 +1423,13 @@ export function mountChat(root, opts = {}) {
 	backgroundBtn.textContent = t('Run in background')
 	backgroundBtn.title = t('Queue this request and continue even if this page is closed')
 	backgroundBtn.addEventListener('click', () => queueInBackground())
-	form.append(filesBtn, imageBtn, imageInput, micBtn, input, cancelVoiceBtn, sendBtn, backgroundBtn)
+	form.append(filesBtn, imageBtn, imageInput, micBtn, modelSelect, input, cancelVoiceBtn, sendBtn, backgroundBtn)
 
 	const err = document.createElement('div')
 	err.className = 'err'
 	err.style.display = 'none'
 
-	root.append(head, scroll, imageAttachments, form, voiceStatus, err)
+	root.append(head, imagePanel, scroll, imageAttachments, form, voiceStatus, err)
 
 	const renderAll = (list) => {
 		if (selectionChatId !== chatId) {
@@ -1291,6 +1475,17 @@ export function mountChat(root, opts = {}) {
 			det.style.display = m.thinking ? '' : 'none'
 			if (m.done) det.open = false
 		}
+		let modelLabel = wrap.querySelector('.rmodel')
+		if (m.done && m.model) {
+			if (!modelLabel) {
+				modelLabel = document.createElement('div')
+				modelLabel.className = 'rmodel'
+				const text = wrap.querySelector('.rt')
+				if (text) text.insertAdjacentElement('afterend', modelLabel)
+				else wrap.appendChild(modelLabel)
+			}
+			modelLabel.textContent = t('Model: {name}', { name: m.model })
+		} else if (modelLabel) modelLabel.remove()
 		let ta = wrap.querySelector('.rtools')
 		if (m.tools && m.tools.length) {
 			if (!ta) {
@@ -1548,7 +1743,7 @@ export function mountChat(root, opts = {}) {
 		if (force || nearBottom) scroll.scrollTop = scroll.scrollHeight
 	}
 
-	function saveMessage(role, text, followups, regenerateRev, confirmation, tools) {
+	function saveMessage(role, text, followups, regenerateRev, confirmation, tools, model = null) {
 		if (!chatId) return Promise.resolve(false)
 		const body = { role, text }
 		// Follow-up suggestions are persisted for assistant messages so the
@@ -1563,6 +1758,7 @@ export function mountChat(root, opts = {}) {
 		// message so a reload rebuilds the panel (Issue #185).
 		if (role === 'assistant' && confirmation) body.confirmation = confirmation
 		if (role === 'assistant' && Array.isArray(tools) && tools.length) body.tools = tools
+		if (role === 'assistant' && typeof model === 'string' && model.length <= 128) body.model = model
 		return api('POST', '/chats/' + encodeURIComponent(chatId) + '/messages', body)
 			.then((resp) => {
 				// Keep the client's revision in sync so the next regenerate/edit
@@ -1655,6 +1851,8 @@ export function mountChat(root, opts = {}) {
 			;(chat.messages || []).forEach((m) => messages.push({
 				role: m.role === 'user' || m.role === 'assistant' ? m.role : 'assistant',
 				text: m.text || '',
+				createdAt: Number.isSafeInteger(m.createdAt) ? m.createdAt : null,
+				model: typeof m.model === 'string' ? m.model : null,
 				thinking: '',
 				followups: Array.isArray(m.followups) ? m.followups : [],
 				reactions: m.reactions && typeof m.reactions === 'object' ? m.reactions : undefined,
@@ -1875,6 +2073,8 @@ export function mountChat(root, opts = {}) {
 				return
 			} else if (ev.type === 'done') {
 				last.text = ev.answer || last.text
+				last.createdAt = Math.floor(Date.now() / 1000)
+				last.model = typeof ev.model === 'string' ? ev.model : null
 				last.sources = citedSources(last.text, ev.sources || [])
 				last.followups = ev.followups || []
 				last.done = true
@@ -1882,7 +2082,7 @@ export function mountChat(root, opts = {}) {
 				// Persist with the regeneration token: the server truncates and
 				// applies the edit atomically with this message. Without the
 				// token (or after a failure) the stored history stays intact.
-				saveMessage('assistant', last.text, last.followups, pendingRegenerateRev, null, last.tools)
+				saveMessage('assistant', last.text, last.followups, pendingRegenerateRev, null, last.tools, last.model)
 					.then((saved) => {
 						if (saved && onRecent) onRecent()
 						else if (!saved) showHistorySaveWarning()
@@ -1963,6 +2163,7 @@ export function mountChat(root, opts = {}) {
 			.then((result) => {
 				input.value = ''
 				messages.push({ role: 'user', text: msg })
+				messages[messages.length - 1].createdAt = Math.floor(Date.now() / 1000)
 				renderAll(messages)
 				agentStatusPill.textContent = t('EVA will continue this chat in the background')
 				agentStatusPill.hidden = false
@@ -1975,6 +2176,7 @@ export function mountChat(root, opts = {}) {
 	const send = () => {
 		const typedMessage = input.value.trim()
 		if ((!typedMessage && pendingImages.length === 0) || sending) return
+		const selectedModel = modelSelect.value || null
 		const outgoingImages = pendingImages.splice(0)
 		const msg = typedMessage || t('Describe these images.')
 		const attachmentNames = outgoingImages.map((attachment) => attachment.file.name)
@@ -1993,7 +2195,7 @@ export function mountChat(root, opts = {}) {
 		err.style.display = 'none'
 		if (emptyEl.parentNode) scroll.removeChild(emptyEl)
 
-		messages.push({ role: 'user', text: savedUserText, attachments: localAttachments })
+		messages.push({ role: 'user', text: savedUserText, attachments: localAttachments, createdAt: Math.floor(Date.now() / 1000) })
 		messages.push({ role: 'assistant', text: '', thinking: '', done: false, tools: [] })
 		renderAll(messages)
 		const assistantIdx = messages.length - 1
@@ -2007,7 +2209,7 @@ export function mountChat(root, opts = {}) {
 
 		ensureChat().then(async () => {
 			const images = await Promise.all(outgoingImages.map(encodeImage))
-			return apiStream(STREAM_URL, { message: msg, history, chatId, images }, (ev) => {
+			return apiStream(STREAM_URL, { message: msg, history, chatId, images, model: selectedModel }, (ev) => {
 				const last = messages[assistantIdx]
 				if (!last || last.role !== 'assistant' || last.done) return
 				if (ev.type === 'thinking') {
@@ -2072,6 +2274,8 @@ export function mountChat(root, opts = {}) {
 				} else if (ev.type === 'done') {
 					cancelBackgroundJob()
 					last.text = ev.answer || last.text
+					last.createdAt = Math.floor(Date.now() / 1000)
+					last.model = typeof ev.model === 'string' ? ev.model : null
 					last.sources = citedSources(last.text, ev.sources || [])
 					last.followups = ev.followups || []
 					last.done = true
@@ -2079,7 +2283,7 @@ export function mountChat(root, opts = {}) {
 					// once lets the per-user file lock acquire them in either order,
 					// which can swap the question and answer after a reload.
 					saveUserMessage(savedUserText)
-						.then((savedUser) => savedUser ? saveMessage('assistant', last.text, last.followups, null, null, last.tools) : false)
+						.then((savedUser) => savedUser ? saveMessage('assistant', last.text, last.followups, null, null, last.tools, last.model) : false)
 						.then((saved) => {
 							if (saved && onRecent) onRecent()
 							else if (!saved) showHistorySaveWarning()

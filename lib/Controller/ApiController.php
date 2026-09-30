@@ -41,6 +41,8 @@ use OCA\EvaAi\Dto\ChatReactionRequest;
 use OCA\EvaAi\Dto\ChatReactionResponse;
 use OCA\EvaAi\Dto\ChatAppendRequest;
 use OCA\EvaAi\Dto\ChatAppendResponse;
+use OCA\EvaAi\Dto\PluginToggleRequest;
+use OCA\EvaAi\Service\PluginToolSettings;
 use OCP\AppFramework\OCSController;
 use OCP\AppFramework\Http\Attribute\NoAdminRequired;
 use OCA\EvaAi\Http\StreamTraversableResponse;
@@ -840,6 +842,7 @@ class ApiController extends OCSController {
                 'history' => $this->requestParam('history', []),
                 'chatId' => $this->requestParam('chatId'),
                 'images' => $this->requestParam('images', []),
+                'model' => $this->requestParam('model'),
             ]);
         } catch (\InvalidArgumentException $e) {
             return new ErrorDataResponse(['error' => $e->getMessage()], 400);
@@ -858,6 +861,7 @@ class ApiController extends OCSController {
                 history: $request->history,
                 scopePath: $this->scopePathFor($user, $request->chatId),
                 images: $request->images,
+                model: $request->model,
                 instructions: $custom['instructions'],
                 persona: $custom['persona'],
             )));
@@ -922,6 +926,40 @@ class ApiController extends OCSController {
             $plugins = [];
         }
         return new ErrorDataResponse(['plugins' => $plugins]);
+    }
+
+    #[NoAdminRequired]
+    public function setPluginEnabled(): DataResponse {
+        $user = $this->requireUser();
+        if ($user === null) return new ErrorDataResponse(['error' => 'Not logged in'], 401);
+        $raw = file_get_contents('php://input', false, null, 0, 4097);
+        if (!is_string($raw) || strlen($raw) > 4096) return new ErrorDataResponse(['error' => 'Plugin settings request is too large.'], 413);
+        $decoded = json_decode($raw, true);
+        try {
+            $input = PluginToggleRequest::fromArray(is_array($decoded) ? $decoded : []);
+        } catch (\InvalidArgumentException $e) {
+            return new ErrorDataResponse(['error' => $e->getMessage()], 400);
+        }
+        $this->config->setUserId($user);
+        $this->executor->setUserId($user);
+        $known = [];
+        try {
+            foreach ($this->executor->pluginCatalog() as $plugin) {
+                $name = (string)($plugin['name'] ?? '');
+                if ($name !== '') $known[$name] = true;
+            }
+        } catch (\Throwable) {
+            return new ErrorDataResponse(['error' => 'The EVA extension catalog is unavailable.'], 503);
+        }
+        if (!isset($known[$input->name])) return new ErrorDataResponse(['error' => 'Plugin tool not found.'], 404);
+
+        $this->config->set('plugin_tools_enabled', PluginToolSettings::withEnabledState(
+            $this->config->get('plugin_tools_enabled'),
+            $input->name,
+            $input->enabled,
+            array_keys($known),
+        ));
+        return new ErrorDataResponse(['name' => $input->name, 'enabled' => $input->enabled]);
     }
 
     #[NoAdminRequired]
@@ -1286,6 +1324,7 @@ class ApiController extends OCSController {
         $message = $request?->message ?? '';
         $history = $request?->history ?? [];
         $images = $request?->images ?? [];
+        $model = $request?->model;
         if ($user !== null && $message !== '') {
             $this->releaseSessionLock();
         }
@@ -1295,7 +1334,7 @@ class ApiController extends OCSController {
         $scopePath = $this->scopePathFor($user, $request?->chatId);
         $custom = $this->customFor($user, $request?->chatId);
 
-        $generator = (function () use ($user, $message, $history, $images, $scopePath, $custom, $chatSlot): \Generator {
+        $generator = (function () use ($user, $message, $history, $images, $model, $scopePath, $custom, $chatSlot): \Generator {
             // Aber die PHP-Output-Buffering-Schicht (php.ini output_buffering)
             // würde jede erzeugte Zeile bis zum Ende puffern -> keine Live-Streams.
             // Deshalb entfernen wir hier alle Puffer und flush'eriessen wirklich.
@@ -1319,6 +1358,7 @@ class ApiController extends OCSController {
                     instructions: $custom['instructions'],
                     persona: $custom['persona'],
                     images: $images,
+                    model: $model,
                 ));
                 foreach ($gen as $line) {
                     if ($this->clientDisconnected()) {
@@ -1514,12 +1554,13 @@ class ApiController extends OCSController {
                     'regenerateRev' => $this->requestParam('regenerateRev'),
                     'confirmation' => $this->requestParam('confirmation'),
                     'tools' => $this->requestParam('tools'),
+                    'model' => $this->requestParam('model'),
                 ]);
             } catch (\InvalidArgumentException $e) {
                 return new ErrorDataResponse(['error' => $e->getMessage()], 400);
             }
             // Store validates and redacts the nested confirmation and tool trace.
-            $this->chatStore->append($user, $id, $request->role, $request->text, $request->followups, $request->regenerateRev, $request->confirmation, $request->tools);
+            $this->chatStore->append($user, $id, $request->role, $request->text, $request->followups, $request->regenerateRev, $request->confirmation, $request->tools, $request->model);
             // Return the bumped revision so the client can validate later
             // regenerate/edit requests against the current state (Issue #182).
             $appended = $this->chatStore->getChat($user, $id);
@@ -1938,6 +1979,7 @@ class ApiController extends OCSController {
             $roles[$name] = ['roles' => $entryRoles, 'declared' => $declared];
         }
         return new ErrorDataResponse([
+            'provider' => $this->config->get('chat_provider') ?: 'ollama',
             'models' => $names,
             'roles' => $roles,
             'embedding' => $this->config->get('embedding_model'),

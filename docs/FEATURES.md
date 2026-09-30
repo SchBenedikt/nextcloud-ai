@@ -12,16 +12,25 @@ boundaries exist.
 
 The web app is the full-featured workspace. Users can create, search, rename,
 delete, and export chats. Exports support Markdown, plain text, safe HTML, and
-DOCX; selected messages can be exported on their own, and multiple chats can be
-packaged into a ZIP. A single conversation can be printed to PDF from its
+DOCX; selected messages can be exported on their own, and an inclusive date
+range can limit a single chat or batch export. Multiple chats can be packaged
+into a ZIP. A single conversation can be printed to PDF from its
 print-ready HTML view. Responses are streamed; loading, empty, error, and retry
-states are reflected in the UI. The document view lets you browse your personal
+states are reflected in the UI. Exports can include or omit per-message
+timestamps, model names, and the current user's display name. The document view lets you browse your personal
 index page by page. Settings expose Ollama, models, index, retrieval quality,
 and tool configuration.
 
 Chat messages can include up to four PNG, JPEG, or WebP images (4 MB total).
 Image bytes go to the configured chat provider for that request and are not
 stored in chat history; filenames remain with the saved message.
+With Ollama, users can choose a different installed chat model for each
+message. Answers record the model that handled them, and model-specific usage
+is reflected in the metrics.
+The image generator accepts up to four outputs per prompt from the selected
+OpenAI-compatible provider, stores them in the user's `EVA` Files folder, and
+shows a gallery with in-place previews and downloads. Ollama and Groq do not
+provide this image-generation endpoint.
 
 EVA may only suggest changes in an interactive, authenticated context. Before
 execution the UI shows the exact tool name and its arguments. Only **Confirm and

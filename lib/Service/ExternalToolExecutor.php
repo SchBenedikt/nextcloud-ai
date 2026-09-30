@@ -13,6 +13,10 @@ final class ExternalToolExecutor implements DomainToolExecutor {
     private const CONNECTOR_GET_ATTEMPTS = 2;
     private const CONNECTOR_DISCOVERY_BUDGET = 20;
 
+    /** @var array<string, array<string, mixed>> */
+    private array $connectorRowsCache = [];
+    private ?string $connectorRowsCacheUser = null;
+
     public function __construct(private AppConfig $config) {
     }
 
@@ -57,10 +61,11 @@ final class ExternalToolExecutor implements DomainToolExecutor {
     }
 
 private function connectorRows(): array {
-        if ($this->connectorRowsCache !== null) {
+        $user = $this->config->userId() ?? '';
+        if ($this->connectorRowsCacheUser === $user) {
             return $this->connectorRowsCache;
         }
-        $user = $this->config->userId() ?? '';
+        $this->connectorRowsCacheUser = $user;
         if ($user === '') {
             $this->connectorRowsCache = [];
             return [];

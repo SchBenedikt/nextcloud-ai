@@ -6,10 +6,13 @@ namespace OCA\EvaAi\Controller;
 
 use OCA\EvaAi\Db\DocumentMapper;
 use OCA\EvaAi\Service\AppConfig;
+use OCA\EvaAi\Service\ChatStore;
 use OCA\EvaAi\Service\Indexer;
 use OCA\EvaAi\Service\IndexScheduler;
+use OCA\EvaAi\Service\ModelPricing;
 use OCA\EvaAi\Service\Ollama;
 use OCA\EvaAi\Service\RagService;
+use OCA\EvaAi\Service\UsageMetrics;
 use OCA\EvaAi\Service\WebSearchService;
 use OCP\AppFramework\Http\Attribute\AdminRequired;
 use OCA\EvaAi\Http\ErrorDataResponse;
@@ -41,6 +44,8 @@ class AdminController extends OCSController {
         private IJobList $jobList,
         private IUserManager $userManager,
         private WebSearchService $webSearch,
+        private UsageMetrics $usageMetrics,
+        private ChatStore $chatStore,
     ) {
         parent::__construct($appName, $request);
     }
@@ -254,6 +259,50 @@ class AdminController extends OCSController {
                 // ping is a detail array; the boolean lives in its 'ok' key.
                 'online' => (bool)($this->ollama->status()['ping']['ok'] ?? false),
             ],
+        ]);
+    }
+
+    /** List accounts with metrics for the admin-only user filter. */
+    #[AdminRequired]
+    public function metricsUsers(): DataResponse {
+        $users = [];
+        foreach ($this->usageMetrics->userIdsWithUsage() as $userId) {
+            $user = $this->userManager->get($userId);
+            if ($user === null) continue;
+            $name = trim((string)$user->getDisplayName());
+            $users[] = ['userId' => $userId, 'displayName' => $name !== '' ? $name : $userId];
+        }
+        return new ErrorDataResponse(['users' => $users]);
+    }
+
+    /** Return one user's metrics and user-entered rates to administrators only. */
+    #[AdminRequired]
+    public function userMetrics(string $userId): DataResponse {
+        $target = $this->resolveUser($userId);
+        if ($target === null) return new ErrorDataResponse(['error' => 'Unknown user.'], 404);
+        $rawDays = $this->request->getParam('days', 30);
+        $days = filter_var($rawDays, FILTER_VALIDATE_INT);
+        if ($days === false || $days < 1 || $days > 365) {
+            return new ErrorDataResponse(['error' => 'days must be an integer between 1 and 365'], 400);
+        }
+
+        $this->config->setUserId($target);
+        try {
+            $pricing = json_decode($this->config->get('model_pricing'), true);
+            $data = $this->usageMetrics->summaryForUser($target, $days, ModelPricing::normalize($pricing) ?? []);
+            $feedback = $this->chatStore->feedbackStats($target);
+        } finally {
+            // AppConfig is shared within the request. Restore the authenticated
+            // admin scope so a subsequent controller call cannot inherit the
+            // selected account's per-user settings.
+            $this->config->setUserId($this->userId);
+        }
+        $user = $this->userManager->get($target);
+        $name = $user !== null ? trim((string)$user->getDisplayName()) : '';
+        return new ErrorDataResponse($data + [
+            'user_id' => $target,
+            'display_name' => $name !== '' ? $name : $target,
+            'feedback' => $feedback,
         ]);
     }
 

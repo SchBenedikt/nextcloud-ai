@@ -7,11 +7,13 @@ namespace OCA\EvaAi\Tests;
 use OCA\EvaAi\Controller\AdminController;
 use OCA\EvaAi\Db\DocumentMapper;
 use OCA\EvaAi\Service\AppConfig;
+use OCA\EvaAi\Service\ChatStore;
 use OCA\EvaAi\Service\Indexer;
 use OCA\EvaAi\Service\IndexScheduler;
 use OCA\EvaAi\Service\Ollama;
 use OCA\EvaAi\Service\RagService;
 use OCA\EvaAi\Service\WebSearchService;
+use OCA\EvaAi\Service\UsageMetrics;
 use OCP\AppFramework\Http\Attribute\AdminRequired;
 use OCP\BackgroundJob\IJobList;
 use OCP\IRequest;
@@ -36,7 +38,7 @@ final class AdminDashboardTest extends TestCase {
 
     public function testAllEndpointsAreAdminRequired(): void {
         $reflection = new ReflectionClass(AdminController::class);
-        foreach (['getSettings', 'saveSettings', 'overview', 'reindex', 'reset', 'setEnrollment', 'stopBackgroundIndex'] as $method) {
+        foreach (['getSettings', 'saveSettings', 'overview', 'metricsUsers', 'userMetrics', 'reindex', 'reset', 'setEnrollment', 'stopBackgroundIndex'] as $method) {
             $m = $reflection->getMethod($method);
             $attributes = $m->getAttributes(AdminRequired::class);
             self::assertNotEmpty(
@@ -104,6 +106,46 @@ final class AdminDashboardTest extends TestCase {
         self::assertSame('Carol', $data['users'][0]['displayName']);
         self::assertSame(0, $data['users'][0]['documents']);
         self::assertTrue($data['users'][0]['enrolled']);
+    }
+
+    public function testMetricsUserFilterOnlyListsExistingUsersWithUsage(): void {
+        $metrics = $this->createMock(UsageMetrics::class);
+        $metrics->expects(self::once())->method('userIdsWithUsage')->willReturn(['alice', 'deleted-user']);
+        $alice = $this->createMock(IUser::class);
+        $alice->method('getDisplayName')->willReturn('Alice Example');
+        $users = $this->createMock(IUserManager::class);
+        $users->method('get')->willReturnCallback(static fn(string $userId) => $userId === 'alice' ? $alice : null);
+
+        $data = $this->controller(userManager: $users, usageMetrics: $metrics)->metricsUsers()->getData();
+
+        self::assertSame([['userId' => 'alice', 'displayName' => 'Alice Example']], $data['users']);
+    }
+
+    public function testAdminCanReadOneUsersMetricsAndTheConfigScopeIsRestored(): void {
+        $request = $this->createMock(IRequest::class);
+        $request->method('getParam')->with('days', 30)->willReturn('90');
+        $config = $this->createMock(AppConfig::class);
+        $scopes = [];
+        $config->expects(self::exactly(2))->method('setUserId')->willReturnCallback(static function (?string $userId) use (&$scopes): void { $scopes[] = $userId; });
+        $config->method('get')->with('model_pricing')->willReturn('[]');
+        $metrics = $this->createMock(UsageMetrics::class);
+        $metrics->expects(self::once())->method('summaryForUser')->with('alice', 90, [])->willReturn([
+            'days' => 90, 'totals' => ['requests' => 2], 'by_model' => [], 'daily' => [], 'slow_tools' => [],
+        ]);
+        $chatStore = $this->createMock(ChatStore::class);
+        $chatStore->expects(self::once())->method('feedbackStats')->with('alice')->willReturn(['helpful' => 1, 'notHelpful' => 0, 'bookmarked' => 0]);
+        $alice = $this->createMock(IUser::class);
+        $alice->method('getDisplayName')->willReturn('Alice Example');
+        $users = $this->createMock(IUserManager::class);
+        $users->method('get')->with('alice')->willReturn($alice);
+
+        $response = $this->controller(request: $request, config: $config, userManager: $users, usageMetrics: $metrics, chatStore: $chatStore)->userMetrics('alice');
+
+        self::assertSame(200, $response->getStatus());
+        self::assertSame('alice', $response->getData()['user_id']);
+        self::assertSame('Alice Example', $response->getData()['display_name']);
+        self::assertSame(1, $response->getData()['feedback']['helpful']);
+        self::assertSame(['alice', 'admin'], $scopes);
     }
 
     public function testReindexQueuesJobAndEnrolls(): void {
@@ -314,6 +356,8 @@ final class AdminDashboardTest extends TestCase {
         ?IJobList $jobList = null,
         ?IRequest $request = null,
         ?IndexScheduler $scheduler = null,
+        ?UsageMetrics $usageMetrics = null,
+        ?ChatStore $chatStore = null,
     ): AdminController {
         return new AdminController(
             'eva_ai',
@@ -328,6 +372,8 @@ final class AdminDashboardTest extends TestCase {
             $jobList ?? $this->createMock(IJobList::class),
             $userManager ?? $this->createMock(IUserManager::class),
             $this->createMock(WebSearchService::class),
+            $usageMetrics ?? $this->createMock(UsageMetrics::class),
+            $chatStore ?? $this->createMock(ChatStore::class),
         );
     }
 }

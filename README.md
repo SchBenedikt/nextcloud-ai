@@ -8,6 +8,8 @@ data flow before enabling it.
 
 [![License: AGPL v3](https://img.shields.io/badge/License-AGPL%20v3-blue.svg)](https://www.gnu.org/licenses/agpl-3.0)
 [![Nextcloud](https://img.shields.io/badge/Nextcloud-30--35-blue)](https://nextcloud.com)
+[![Tests](https://github.com/SchBenedikt/nextcloud-ai/actions/workflows/tests.yml/badge.svg?branch=main)](https://github.com/SchBenedikt/nextcloud-ai/actions/workflows/tests.yml)
+[![Quality](https://github.com/SchBenedikt/nextcloud-ai/actions/workflows/quality.yml/badge.svg?branch=main)](https://github.com/SchBenedikt/nextcloud-ai/actions/workflows/quality.yml)
 [![Nextcloud App Store](https://img.shields.io/badge/Nextcloud%20App%20Store-Eva-brightgreen)](https://apps.nextcloud.com/apps/eva_ai)
 [![PHP](https://img.shields.io/badge/PHP-8.2%2B-purple)](https://php.net)
 [![GitHub stars](https://img.shields.io/github/stars/SchBenedikt/nextcloud-ai?style=social)](https://github.com/SchBenedikt/nextcloud-ai/stargazers)
@@ -75,7 +77,27 @@ Every answer includes the exact **file path** where the information was found, s
 Export a full conversation or selected messages as Markdown, plain text, safe
 HTML, or editable DOCX. Print a single conversation to PDF from the formatted
 HTML view, or download multiple chats together in a ZIP archive. The export
-keeps the conversation readable outside Nextcloud and includes the export time.
+keeps the conversation readable outside Nextcloud; its export time, per-message
+timestamps, and model names can be included or omitted.
+
+### Choose a model per message
+
+When Ollama has multiple chat-capable models installed, choose the model for
+each message in the same conversation. EVA records the model used on each
+answer, so exported chats and usage metrics keep the model context visible.
+
+### Usage metrics
+
+See your requests, token use by model, response times, answer feedback, and slow
+tool calls over 7, 30, or 90 days. Download the report as CSV or print/save it
+as PDF. Optional cost
+estimates use rates you enter per provider and model; EVA does not guess current
+provider prices, and estimated token counts stay marked as estimates.
+
+EVA can also analyze images attached to a chat and generate up to four images
+from a prompt. Generated files are saved in the user's `EVA` folder in Files;
+the gallery previews and downloads those saved files. Generation uses the
+currently selected OpenAI-compatible provider and its configured image model.
 
 The web chat can analyze up to four PNG, JPEG, or WebP images per message.
 Attachments are sent to the configured chat provider for that request; EVA

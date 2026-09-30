@@ -531,7 +531,7 @@
 				<div v-else-if="pluginLoadError" class="load-error" role="alert"><span>{{ $t('Could not load extensions: {error}', { error: pluginLoadError }) }}</span><NcButton variant="tertiary" @click="loadPlugins">{{ $t('Try again') }}</NcButton></div>
 				<div v-else-if="!plugins.length" class="empty-state">{{ $t('No third-party EVA tools are installed yet.') }}</div>
 				<div v-for="plugin in plugins" :key="plugin.name" class="plugin-row">
-					<div><strong>{{ plugin.name }}</strong><p>{{ plugin.description }}</p><div class="plugin-meta"><span>{{ pluginRiskLabel(plugin.risk) }}</span><span>{{ pluginSurfacesLabel(plugin.surfaces) }}</span><span v-if="plugin.requiresConfirmation">{{ $t('Confirmation required') }}</span><span v-else>{{ $t('No confirmation for read-only use') }}</span></div></div>
+					<div><strong>{{ plugin.name }}</strong><p>{{ plugin.description }}</p><div class="plugin-meta"><span>{{ pluginRiskLabel(plugin.risk) }}</span><span>{{ pluginSurfacesLabel(plugin.surfaces) }}</span><span v-if="plugin.requiresConfirmation">{{ $t('Confirmation required') }}</span><span v-else>{{ $t('No confirmation for read-only use') }}</span></div><NcCheckboxRadioSwitch :model-value="plugin.enabled" :disabled="pluginsSaving.includes(plugin.name)" @update:model-value="enabled => setPluginEnabled(plugin, enabled)">{{ $t('Enable this tool in EVA chat') }}</NcCheckboxRadioSwitch></div>
 					<code>{{ Object.keys(plugin.parameters?.properties || {}).join(', ') || $t('no arguments') }}</code>
 				</div>
 			</section>
@@ -912,6 +912,7 @@ export default {
 		const connectors = ref([])
 		const connectorEndpointQuery = ref('')
 		const plugins = ref([])
+		const pluginsSaving = ref([])
 		const pluginsLoading = ref(false)
 		const pluginLoadError = ref('')
 		const connectorsLoading = ref(false)
@@ -996,6 +997,18 @@ export default {
 				if (!Array.isArray(data?.plugins)) throw new Error(t('The extension list response was incomplete.'))
 				plugins.value = data.plugins
 			} catch (error) { pluginLoadError.value = errMsg(error) } finally { pluginsLoading.value = false }
+		}
+		async function setPluginEnabled(plugin, enabled) {
+			if (pluginsSaving.value.includes(plugin.name)) return
+			pluginsSaving.value = [...pluginsSaving.value, plugin.name]
+			try {
+				const result = await api('PUT', 'plugins', { name: plugin.name, enabled: Boolean(enabled) })
+				plugin.enabled = result?.enabled === true
+			} catch (error) {
+				setMessage('error', t('Could not update plugin setting: {error}', { error: errMsg(error) }))
+			} finally {
+				pluginsSaving.value = pluginsSaving.value.filter(name => name !== plugin.name)
+			}
 		}
 		async function saveConnector() {
 			connectorsBusy.value = true
@@ -1791,7 +1804,7 @@ export default {
 			groqKey, customProviderKey, removeCustomProviderKey, removeGroqKey, ocrEnabled, f, providerProfiles, selectedChatProvider, providerProfilesPlaceholder, chatProviderOptions, groqModelOptions, embeddingModelOptions, chatModelOptions, summaryModelOptions, webSearchProviderOptions, status, health, healthLoading, statusTimer, limits, availableModels, embeddingModels, chatModels, embeddingInstalledHint, chatInstalledHint, modelLoading, modelError, checkOut, saving, checking, indexing, resetting, deletingChats, stopping, saved, loadError, statusRefreshError, message, validationErrors, resetConfirm, chatsDeleteConfirm,
 			newExcludePath, excludeError, excludeList, actionsEnabled, backgroundActionsEnabled, voiceInputEnabled, notificationsEnabled, learningEnabled, safeCommandsEnabled, terminalCommandsEnabled, terminalCommandAny, mailIndexEnabled, talkIndexEnabled, talkWriteEnabled, indexEnrolled, actionsDisabled, busy, indexingActive, settingsLocked, briefingsLocked, maxFileSizeMb,
 			isAdminMode, admin, userWebSearchEnabled, userWebSearchSafeSearch, userWebSearchImages, userWebSearchBrowser, userWebSearchFetchContent, webSearchKey, removeWebSearchKey, webSearchKeyStored, webSearchReady, savingAdmin, adminLoading, adminLoadError, adminReady, saveAdminSettings, loadAdminSettings,
-			connectors, connectorsLoading, connectorsBusy, connectorDiagnostics, connectorDraft, connectorToRemove, connectorRemovalError, connectorEndpointQuery, filteredConnectorEndpoints, applyConnectorExample, saveConnector, editConnector, connectorCredentialLabel, connectorCredentialClass, removeConnector, closeConnectorRemoval, confirmRemoveConnector, discoverConnector, testConnector, loadConnectors, connectorLoadError, plugins, pluginsLoading, loadPlugins, pluginLoadError, pluginRiskLabel, pluginSurfacesLabel,
+			connectors, connectorsLoading, connectorsBusy, connectorDiagnostics, connectorDraft, connectorToRemove, connectorRemovalError, connectorEndpointQuery, filteredConnectorEndpoints, applyConnectorExample, saveConnector, editConnector, connectorCredentialLabel, connectorCredentialClass, removeConnector, closeConnectorRemoval, confirmRemoveConnector, discoverConnector, testConnector, loadConnectors, connectorLoadError, plugins, pluginsLoading, pluginsSaving, setPluginEnabled, loadPlugins, pluginLoadError, pluginRiskLabel, pluginSurfacesLabel,
 			apiKeys, apiKeysLoading, apiKeysBusy, apiKeyError, createdApiKey, apiKeyDraft, apiKeyScopeOptions, apiDocsUrl, loadApiKeys, createApiKey, revokeApiKey, copyApiKey,
 			proactiveEnabled, proactiveBriefings, briefingDraft, briefingFormError, editingBriefingId, briefingHistory, briefingTypeOptions, weekdays, dayName, briefingTypeName, channelName, formatDateTime, failureSummary, saveBriefing, editBriefing, cancelEditBriefing, removeBriefing, toggleBriefing, toggleBriefingActions, runBriefingNow,
 			exporting, downloadExport,

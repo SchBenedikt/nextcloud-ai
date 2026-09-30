@@ -5,6 +5,7 @@ const { test, expect } = require('@playwright/test')
 const { execFileSync } = require('node:child_process')
 const fs = require('node:fs/promises')
 const { openChat, line } = require('./standalone-harness.cjs')
+const { openChatView } = require('./chatview-harness.cjs')
 
 function storedZipEntries(buffer) {
   const entries = new Map()
@@ -69,6 +70,118 @@ test('sends image attachments for analysis, including an image-only prompt', asy
   await expect(page.locator('.rb').first()).toContainText('Describe these images.')
   await expect(page.locator('.rb').first()).toContainText('tiny.png')
   await expect(page.locator('.rb').last()).toContainText('The image is a tiny PNG.')
+})
+
+test('generates images from the selected provider and shows the saved Files gallery', async ({ page }) => {
+  await openChatView(page)
+  await page.getByRole('button', { name: 'Create images' }).click()
+  await expect(page.locator('.image-generator')).toBeVisible()
+  await expect(page.locator('.image-generator-privacy')).toContainText('sent to your configured image provider')
+  await page.locator('.image-generator textarea').fill('A fox reading beneath an apple tree')
+  await page.locator('.image-generator select').selectOption('2')
+  await page.getByRole('button', { name: 'Generate', exact: true }).click()
+  await expect(page.locator('.generated-image')).toHaveCount(2)
+  await expect(page.locator('.image-generator-status')).toContainText('Saved 2 generated images')
+  const request = await page.evaluate(() => window.__calls.find((call) => call.url.endsWith('/images/generate')))
+  expect(request).toMatchObject({ method: 'POST', body: { prompt: 'A fox reading beneath an apple tree', count: 2 } })
+  await expect(page.locator('.generated-image a').first()).toHaveAttribute('href', '/download/11')
+})
+
+test('image generation remains usable at a narrow mobile viewport', async ({ page }) => {
+  await page.setViewportSize({ width: 375, height: 812 })
+  await openChatView(page)
+  await page.getByRole('button', { name: 'Create images' }).click()
+  await expect(page.locator('.image-generator')).toBeVisible()
+  await expect(page.locator('.image-generator textarea')).toBeVisible()
+  await expect(page.locator('.image-generator select')).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Generate', exact: true })).toBeVisible()
+  const dimensions = await page.evaluate(() => ({
+    viewport: document.documentElement.clientWidth,
+    document: document.documentElement.scrollWidth,
+    panel: document.querySelector('.image-generator').getBoundingClientRect().right,
+  }))
+  expect(dimensions.document).toBeLessThanOrEqual(dimensions.viewport)
+  expect(dimensions.panel).toBeLessThanOrEqual(dimensions.viewport)
+})
+
+test('chat exports can include or omit per-message timestamps and model details', async ({ page }) => {
+  await openChatView(page)
+  await page.fill('#chatinput', 'Export metadata')
+  await page.locator('.chatform button[type="submit"]').click()
+  await expect(page.locator('.rb').last()).toContainText('A test answer')
+
+  await expect(page.locator('#export-include-timestamps')).toBeChecked()
+  await expect(page.locator('#export-include-model')).toBeChecked()
+  const fullExportPromise = page.waitForEvent('download')
+  await page.click('#export')
+  const fullExport = await fullExportPromise
+  const fullText = await fs.readFile(await fullExport.path(), 'utf8')
+  expect(fullText).toContain('Sent 20')
+  expect(fullText).toContain('Model: gpt-test')
+
+  await page.getByText('Export options', { exact: true }).click()
+  await page.uncheck('#export-include-timestamps')
+  await page.uncheck('#export-include-model')
+  const minimalExportPromise = page.waitForEvent('download')
+  await page.click('#export')
+  const minimalExport = await minimalExportPromise
+  const minimalText = await fs.readFile(await minimalExport.path(), 'utf8')
+  expect(minimalText).not.toContain('Sent 20')
+  expect(minimalText).not.toContain('Model: gpt-test')
+
+  const userNameOption = page.getByLabel('Include your name')
+  await expect(userNameOption).not.toBeChecked()
+  await userNameOption.check()
+  const namedExportPromise = page.waitForEvent('download')
+  await page.click('#export')
+  const namedExport = await namedExportPromise
+  const namedText = await fs.readFile(await namedExport.path(), 'utf8')
+  expect(namedText).toContain('Alice Example')
+  expect(namedText).not.toContain('## You')
+})
+
+test('chat exports can be limited to an inclusive date range', async ({ page }) => {
+  await openChatView(page)
+  await page.fill('#chatinput', 'Date filtered export')
+  await page.locator('.chatform button[type="submit"]').click()
+  await expect(page.locator('.rb').last()).toContainText('A test answer')
+  await page.getByText('Export options', { exact: true }).click()
+
+  const dates = await page.evaluate(() => {
+    const format = (value) => [value.getFullYear(), String(value.getMonth() + 1).padStart(2, '0'), String(value.getDate()).padStart(2, '0')].join('-')
+    const today = new Date()
+    const tomorrow = new Date(today.getFullYear(), today.getMonth(), today.getDate() + 1)
+    return { today: format(today), tomorrow: format(tomorrow) }
+  })
+  await page.getByLabel('From date').fill(dates.tomorrow)
+  await page.locator('.export-format').selectOption('txt')
+  const emptyDownloadPromise = page.waitForEvent('download')
+  await page.click('#export')
+  const emptyDownload = await emptyDownloadPromise
+  const emptyText = await fs.readFile(await emptyDownload.path(), 'utf8')
+  expect(emptyText).not.toContain('Date filtered export')
+  expect(emptyText).not.toContain('A test answer')
+
+  await page.getByLabel('From date').fill(dates.today)
+  const matchingDownloadPromise = page.waitForEvent('download')
+  await page.click('#export')
+  const matchingDownload = await matchingDownloadPromise
+  const matchingText = await fs.readFile(await matchingDownload.path(), 'utf8')
+  expect(matchingText).toContain('Date filtered export')
+  expect(matchingText).toContain('A test answer')
+})
+
+test('selects a chat model per message and shows the model returned by the server', async ({ page }) => {
+  await openChatView(page)
+  const model = page.locator('.chat-model-select')
+  await expect(model).toBeVisible()
+  await expect(model).toHaveValue('gemma4:cloud')
+  await model.selectOption('llama3.2:latest')
+  await page.fill('#chatinput', 'Use the selected model')
+  await page.locator('.chatform button[type="submit"]').click()
+
+  await expect.poll(() => page.evaluate(() => window.__calls.find((call) => call.url.endsWith('/streamChat'))?.body?.model)).toBe('llama3.2:latest')
+  await expect(page.locator('.rb').last()).toContainText('Model: gpt-test')
 })
 
 test('exports a plain text chat and a safe standalone HTML document', async ({ page }) => {

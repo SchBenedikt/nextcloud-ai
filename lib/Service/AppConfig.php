@@ -27,7 +27,7 @@ class AppConfig {
      * default (Issue #73).
      */
     private const USER_SETTINGS = [
-        'chat_provider', 'groq_model', 'custom_provider_url', 'custom_provider_model', 'provider_profiles', 'ollama_url', 'embedding_model', 'chat_model', 'chat_model_fallback',
+        'chat_provider', 'groq_model', 'custom_provider_url', 'custom_provider_model', 'provider_profiles', 'model_pricing', 'plugin_tools_enabled', 'ollama_url', 'embedding_model', 'chat_model', 'chat_model_fallback',
         'embedding_model_fallback', 'summary_model', 'top_k', 'chunk_size',
         'chunk_overlap', 'max_file_size', 'max_files_per_run', 'index_storage_quota', 'scope_path',
         'context_size', 'temperature', 'actions_enabled', 'background_actions_enabled', 'learning_enabled', 'safe_commands_enabled', 'terminal_commands_enabled', 'terminal_command_any', 'terminal_command_allowlist', 'agent_max_tool_rounds', 'exec_write_types',
@@ -121,6 +121,8 @@ class AppConfig {
         'custom_provider_url' => '',
         'custom_provider_model' => '',
         'provider_profiles' => '[]',
+        'model_pricing' => '[]',
+        'plugin_tools_enabled' => '{}',
         'ollama_url' => 'http://127.0.0.1:11434',
         'embedding_model' => 'nomic-embed-text',
         'chat_model' => 'gemma4:cloud',
@@ -579,6 +581,7 @@ class AppConfig {
         if ($key === 'exec_delete_mode') return in_array($value, ['off', 'own', 'all'], true) ? $value : 'own';
         if ($key === 'exec_write_types') return $this->normalizeValue($key, $value);
         if ($key === 'provider_profiles') return json_encode(is_array($value) ? $value : [], JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE) ?: '[]';
+        if ($key === 'model_pricing') return json_encode(ModelPricing::normalize($value) ?? [], JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE) ?: '[]';
         if (in_array($key, self::BOOLEAN_SETTINGS, true)) return in_array((string)$value, ['1', 'true', 'on'], true) ? '1' : '0';
         if ($key === 'temperature') return (string)max(0.0, min(2.0, (float)$value));
         if ($key === 'web_search_provider') {
@@ -616,6 +619,9 @@ class AppConfig {
                 }
             }
             return null;
+        }
+        if ($key === 'model_pricing') {
+            return ModelPricing::normalize($value) !== null ? null : 'must contain at most 50 unique provider/model prices with non-negative rates up to 10000 USD per million tokens';
         }
         if ($key === 'chat_provider') return is_string($value) && (in_array($value, ['ollama', 'groq'], true) || preg_match('/^[a-z][a-z0-9_-]{1,31}$/', $value) === 1) ? null : 'must be Ollama, Groq or a custom provider id';
         if ($key === 'custom_provider_model') return is_string($value) && strlen(trim($value)) <= 128 ? null : 'must be a model name';

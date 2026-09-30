@@ -165,6 +165,15 @@ final class DomainToolExecutorTest extends TestCase {
 		);
 	}
 
+	public function testExternalConnectorCacheIsInitializedForUnauthenticatedContext(): void {
+		$config = $this->createMock(AppConfig::class);
+		$config->expects(self::exactly(2))->method('userId')->willReturn(null);
+		$executor = new ExternalToolExecutor($config);
+
+		self::assertFalse($executor->hasConnector('example'));
+		self::assertFalse($executor->hasConnector('example'));
+	}
+
 	public function testEnvironmentExecutorOwnsTimeStatusAndDiscoveryTools(): void {
 		if (!interface_exists(IRootFolder::class)) {
 			$this->markTestSkipped('Nextcloud file APIs are not available');

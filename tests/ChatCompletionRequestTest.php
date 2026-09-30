@@ -13,10 +13,12 @@ final class ChatCompletionRequestTest extends TestCase {
 			'message' => '  Summarize this  ',
 			'history' => '[{"role":"user","content":"Earlier"}]',
 			'chatId' => 'chat-1',
+			'model' => 'gemma4:cloud',
 		]);
 		self::assertSame('Summarize this', $request->message);
 		self::assertSame([['role' => 'user', 'content' => 'Earlier']], $request->history);
 		self::assertSame('chat-1', $request->chatId);
+		self::assertSame('gemma4:cloud', $request->model);
 		self::assertSame([], $request->images);
 	}
 
@@ -27,6 +29,8 @@ final class ChatCompletionRequestTest extends TestCase {
 			['message' => 'hello', 'history' => ['not-a-message']],
 			['message' => 'hello', 'history' => ['bad-key' => []]],
 			['message' => 'hello', 'chatId' => ['unexpected']],
+			['message' => 'hello', 'model' => str_repeat('a', 129)],
+			['message' => 'hello', 'model' => 'bad model; ignore validation'],
 		] as $input) {
 			try {
 				ChatCompletionRequest::fromArray($input);

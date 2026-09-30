@@ -38,6 +38,7 @@ endpoint rejects them.
 | `chat_provider` | P | `ollama` | `ollama`, `groq` | – | Chat provider; embeddings remain on Ollama. |
 | `groq_model` | P | `openai/gpt-oss-20b` | `openai/gpt-oss-20b`, `openai/gpt-oss-120b` | – | Groq Free Plan model selection; no fallback. |
 | `provider_profiles` | P | `[]` | JSON array, max. 20 profiles | – | OpenAI-compatible profiles with `id`, `name`, `url` and `model`; optional `image_model`, `audio_model`, `tts_model` and `tts_voice` select modality-specific endpoints; API keys are stored encrypted separately per profile. |
+| `model_pricing` | P | `[]` | JSON array, max. 50 entries | – | Personal USD rates per million input/output tokens for the Metrics cost estimate. Configure these in **Metrics**; they are estimates and are never fetched from or represented as official provider pricing. |
 | `ollama_url` | P | `http://127.0.0.1:11434` | plain `http(s)://host[:port]`, no path/credentials | – | Base URL of the Ollama HTTP API; trailing slashes are stripped. |
 | `chat_model` | P | `gemma4:cloud` | non-empty string | – | Model used for chat/generation. |
 | `chat_model_fallback` | P | `''` | comma-separated model names | – | Models tried in order when the primary chat model is unavailable (Issue #86). |
@@ -96,6 +97,7 @@ rows; that action never touches the original files.
 | `safe_commands_enabled` | P | `0` | `1`/`0` | – | Enable explicitly confirmed, read-only local diagnostics from a fixed allowlist; no arbitrary shell syntax is accepted. |
 | `terminal_commands_enabled` | P | `0` | `1`/`0` | – | Opt in to explicitly confirmed terminal commands. Commands are executed without a shell and remain limited to the executable allowlist. |
 | `terminal_command_any` | P | `0` | `1`/`0` | – | Optional custom-executable mode. When enabled, any executable path may be requested, but shell syntax is still rejected and every exact command requires explicit confirmation. |
+| `plugin_tools_enabled` | P | `{}` | JSON object of disabled plugin tool names | – | Per-user plugin switches. Tools are enabled by default; only entries set to `false` are disabled. Plugin code runs inside the Nextcloud PHP process and is trusted code, not sandboxed. |
 | `terminal_command_allowlist` | P | `date,uptime,php,node,git,ls,find,grep,rg,cat,head,tail,df,du,free,uname` | comma-separated names/absolute paths, max. 32 | – | Executables that the confirmed terminal tool may start; bare names resolve through `PATH`, while absolute entries require an exact path match; pipes, redirects, substitutions and newlines are rejected. |
 | `agent_max_tool_rounds` | P | `16` | `4`–`32` | steps | Maximum model/tool rounds in one request. Higher values allow longer multi-tool workflows; duplicate-call protection still applies. |
 | `exec_write_types` | P | `''` (all) | `*`, empty, or ≤32 extensions `md,txt,…` | – | Allowed extensions for AI-created files. |

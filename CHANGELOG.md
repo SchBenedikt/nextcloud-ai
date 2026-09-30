@@ -2,6 +2,26 @@
 
 ## [Unreleased]
 
+### Image generation
+
+- Generate up to four images from an OpenAI-compatible image model, then preview or download them from the user's EVA Files folder.
+- Add per-user request limits and keep generated images scoped to their owner.
+
+### Chat exports
+
+- Store message timestamps and the model used for assistant replies, with export controls to include or omit those details across Markdown, text, HTML, DOCX, PDF and batch archives.
+- Filter single-chat and batch exports to an inclusive date range; messages without timestamps are omitted when a date filter is active.
+- Let users optionally include their Nextcloud display name in exported conversations; it is excluded by default.
+
+### Usage metrics
+
+- Estimate model costs from per-user USD rates entered per provider and model; leave the estimate unconfigured when rates are unknown. Print the dashboard as a PDF report.
+- Include estimated costs in metrics CSV exports and document the calculation and its limits.
+
+### EVA tool plugins
+
+- Let each user enable or disable discovered third-party EVA tools from Settings; disabled tools are removed from model discovery and rejected at execution.
+
 ## [1.17.12] - 2026-09-29
 
 ### Tool executor architecture

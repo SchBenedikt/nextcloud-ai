@@ -84,7 +84,7 @@ final class BackgroundChatJob extends TimedJob {
                 $this->queue->updateProgress($user, $id, 'finalizing');
                 $answer = trim((string)($result['answer'] ?? ''));
                 if ($answer === '') throw new \RuntimeException((string)($result['error'] ?? 'The model returned no answer'));
-                $this->chats->append($user, $chatId, 'assistant', $answer, is_array($result['followups'] ?? null) ? $result['followups'] : []);
+                $this->chats->append($user, $chatId, 'assistant', $answer, is_array($result['followups'] ?? null) ? $result['followups'] : [], null, null, [], is_string($result['model'] ?? null) ? $result['model'] : null);
                 $notification = $this->notifications->createNotification();
                 $notification->setApp(AppConfig::APP)->setUser($user)->setObject('chat', $chatId)->setSubject('answer_ready', ['text' => mb_strimwidth($answer, 0, 400, '…')])->setLink($this->urls->linkToRouteAbsolute('eva_ai.page.app') . '?chat=' . rawurlencode($chatId))->setDateTime(new \DateTime());
                 $this->notifications->notify($notification);

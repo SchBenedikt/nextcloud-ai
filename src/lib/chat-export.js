@@ -128,19 +128,51 @@ function createDocx(markdown) {
 }
 
 /** Build a downloadable or printable export from the messages currently loaded in a chat. */
-export function createChatExport(messages, { format = 'md', title = 'Eva chat export', exportedAt = new Date().toISOString(), language = 'en', labels = {} } = {}) {
-	const items = Array.isArray(messages) ? messages : []
-	const roleName = (message) => message?.role === 'user' ? (labels.you || 'You') : (labels.eva || 'EVA')
+export function createChatExport(messages, { format = 'md', title = 'Eva chat export', exportedAt = new Date().toISOString(), language = 'en', labels = {}, includeTimestamps = true, includeModelInfo = true, includeUserName = false, userName = '', fromDate = '', toDate = '' } = {}) {
+	const boundary = (date, endOfDay) => {
+		if (!date) return null
+		const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(date)
+		if (!match) throw new Error('The export date is invalid.')
+		const parts = match.slice(1).map(Number)
+		const value = new Date(parts[0], parts[1] - 1, parts[2], endOfDay ? 23 : 0, endOfDay ? 59 : 0, endOfDay ? 59 : 0, endOfDay ? 999 : 0)
+		if (value.getFullYear() !== parts[0] || value.getMonth() !== parts[1] - 1 || value.getDate() !== parts[2]) throw new Error('The export date is invalid.')
+		return value.getTime()
+	}
+	const startAt = boundary(fromDate, false)
+	const endAt = boundary(toDate, true)
+	if (startAt !== null && endAt !== null && startAt > endAt) throw new Error('The start date must be on or before the end date.')
+	const items = (Array.isArray(messages) ? messages : []).filter((message) => {
+		if (startAt === null && endAt === null) return true
+		const timestamp = Number(message?.createdAt)
+		if (!Number.isFinite(timestamp) || timestamp <= 0) return false
+		const time = timestamp < 10_000_000_000 ? timestamp * 1000 : timestamp
+		return (startAt === null || time >= startAt) && (endAt === null || time <= endAt)
+	})
+	const roleName = (message) => {
+		const name = message?.role === 'user'
+			? (includeUserName && userName ? userName : (labels.you || 'You'))
+			: (labels.eva || 'EVA')
+		return String(name).replace(/[\r\n\u0000-\u001F\u007F]/g, ' ').slice(0, 120)
+	}
 	const exportedLine = labels.exportedAt ? labels.exportedAt(exportedAt) : 'Exported ' + exportedAt
 	const messageText = (message) => {
-		const lines = [String(message?.text || '')]
+		const lines = []
+		const createdAt = Number(message?.createdAt)
+		if (includeTimestamps && Number.isFinite(createdAt) && createdAt > 0) {
+			const date = new Date(createdAt < 10_000_000_000 ? createdAt * 1000 : createdAt).toISOString()
+			lines.push(labels.timestamp ? labels.timestamp(date) : 'Sent ' + date, '')
+		}
+		if (includeModelInfo && message?.role === 'assistant' && typeof message.model === 'string' && message.model !== '') {
+			lines.push(labels.model ? labels.model(message.model) : 'Model: ' + message.model, '')
+		}
+		lines.push(String(message?.text || ''))
 		if (message?.role === 'assistant' && message.reactions) {
 			if (typeof message.reactions.helpful === 'boolean') lines.push(labels[message.reactions.helpful ? 'helpful' : 'notHelpful'] || (message.reactions.helpful ? 'Marked helpful' : 'Marked not helpful'))
 			if (message.reactions.bookmarked) lines.push(labels.bookmarked || 'Bookmarked')
 		}
 		return lines.join('\n\n')
 	}
-	const markdown = ['# ' + title, '', '_' + exportedLine + '_', ...items.flatMap((message) => [
+	const markdown = ['# ' + title, '', ...(includeTimestamps ? ['_' + exportedLine + '_'] : []), ...items.flatMap((message) => [
 		'', '## ' + roleName(message), '', messageText(message),
 	])].join('\n')
 	if (format === 'docx') return { content: createDocx(markdown), mime: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', extension: 'docx' }

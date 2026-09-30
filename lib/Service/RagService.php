@@ -95,6 +95,7 @@ class RagService {
         $scopePath = $request->scopePath;
         $instructions = $request->instructions;
         $persona = $request->persona;
+        $preferredModel = $request->model;
         $extraContext = $request->extraContext;
         $allowActions = $request->allowActions;
         $shouldStop = $request->shouldStop;
@@ -128,7 +129,7 @@ class RagService {
             if (microtime(true) >= $requestDeadline) return ['answer' => '', 'sources' => $this->answerSources($citationSources), 'model' => $this->config->get('chat_model'), 'error' => 'timeout', 'followups' => []];
             if ($onProgress !== null) $onProgress('model', null);
             $modelTimeout = max(1, min(120, (int)ceil($requestDeadline - microtime(true))));
-            $chat = $this->ollama->chat($messages, $tools, $modelTimeout);
+			$chat = $this->ollama->chat($messages, $tools, $modelTimeout, null, $preferredModel);
 			if (isset($chat['error'])) {
 				return ['answer' => '', 'sources' => $this->answerSources($citationSources), 'model' => $this->config->get('chat_model'), 'error' => $chat['error'], 'followups' => []];
 			}
@@ -201,7 +202,7 @@ class RagService {
         // the model already gathered everything it needs, and this forces it to
         // answer with that instead of returning nothing. Turning a completed
         // tool chain into an empty reply was the worst possible outcome.
-        $final = $this->ollama->chat($messages, []);
+		$final = $this->ollama->chat($messages, [], null, null, $preferredModel);
         $answer = trim((string)($final['answer'] ?? ''));
         $answer = $this->appendImageMarkdown($answer);
         if ($answer !== '') {
@@ -239,6 +240,7 @@ class RagService {
 		$scopePath = $request->scopePath;
 		$instructions = $request->instructions;
 		$persona = $request->persona;
+		$preferredModel = $request->model;
 		// The stream also returns the retained document sources: $this->answerSources($byDoc).
         $this->config->setUserId($userId);
             $this->toolSources = [];
@@ -263,7 +265,7 @@ $this->executor->setUserId($userId);
             $this->attachImages($messages, $request->images);
 
             $answer = '';
-            $model = $this->ollama->selectedChatModel();
+        $model = $preferredModel ?? $this->ollama->selectedChatModel();
             $toolActivity = false;
             $toolFailure = false;
             $seenToolCalls = [];
@@ -277,7 +279,7 @@ $this->executor->setUserId($userId);
                 $toolCalls = [];
                 $rawToolCalls = [];
 				$modelTimeout = max(1, min(120, (int)ceil($requestDeadline - microtime(true))));
-				foreach ($this->ollama->chatStream($messages, $tools, $modelTimeout) as $ev) {
+				foreach ($this->ollama->chatStream($messages, $tools, $modelTimeout, $preferredModel) as $ev) {
                     if ($this->clientDisconnected()) {
                         return;
                     }

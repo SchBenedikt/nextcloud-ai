@@ -16,6 +16,7 @@ final class ChatAppendRequest {
 		public readonly ?int $regenerateRev,
 		public readonly ?array $confirmation,
 		public readonly array $tools,
+		public readonly ?string $model,
 	) {
 	}
 
@@ -49,8 +50,15 @@ final class ChatAppendRequest {
 				throw new InvalidArgumentException('tools must contain only objects');
 			}
 		}
+		$model = $input['model'] ?? null;
+		if ($model !== null && (!is_string($model) || trim($model) === '' || mb_strlen($model) > 128 || preg_match('/[\x00-\x1f\x7f]/', $model))) {
+			throw new InvalidArgumentException('model must be a non-empty string of at most 128 characters');
+		}
+		if ($model !== null && $role !== 'assistant') {
+			throw new InvalidArgumentException('model can only be set for an assistant message');
+		}
 
-		return new self($role, trim($text), array_values($followups), $regenerateRev, $confirmation, array_values($tools));
+		return new self($role, trim($text), array_values($followups), $regenerateRev, $confirmation, array_values($tools), $model !== null ? trim($model) : null);
 	}
 
 	/** @return array<mixed> */
