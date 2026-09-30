@@ -11,6 +11,7 @@
 
 - Store message timestamps and the model used for assistant replies, with export controls to include or omit those details across Markdown, text, HTML, DOCX, PDF and batch archives.
 - Filter single-chat and batch exports to an inclusive date range; messages without timestamps are omitted when a date filter is active.
+- Let users optionally include their Nextcloud display name in exported conversations; it is excluded by default.
 
 ### Usage metrics
 

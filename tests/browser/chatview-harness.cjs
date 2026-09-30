@@ -9,6 +9,7 @@ function html() {
     <meta name="eva-ai-api" content="/apps/eva_ai/api">
     <meta name="eva-ai-stream" content="/apps/eva_ai/api/streamChat">
     <meta name="requesttoken" content="test-token">
+    <meta name="eva-ai-display-name" content="Alice Example">
   </head><body><main id="chat-root"></main><script>
     window.__calls = []
     window.__generatedImages = [

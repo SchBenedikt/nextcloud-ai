@@ -61,6 +61,7 @@ OC.L10N.register("eva_ai", {
   "Export options": "Exportoptionen",
   "Include timestamps": "Zeitstempel einschließen",
   "Include model information": "Modellinformationen einschließen",
+  "Include your name": "Eigenen Namen einschließen",
   "From date": "Ab Datum",
   "To date": "Bis Datum",
   "The export date is invalid.": "Das Exportdatum ist ungültig.",

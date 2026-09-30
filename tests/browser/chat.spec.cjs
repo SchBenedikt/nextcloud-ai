@@ -128,6 +128,16 @@ test('chat exports can include or omit per-message timestamps and model details'
   const minimalText = await fs.readFile(await minimalExport.path(), 'utf8')
   expect(minimalText).not.toContain('Sent 20')
   expect(minimalText).not.toContain('Model: gpt-test')
+
+  const userNameOption = page.getByLabel('Include your name')
+  await expect(userNameOption).not.toBeChecked()
+  await userNameOption.check()
+  const namedExportPromise = page.waitForEvent('download')
+  await page.click('#export')
+  const namedExport = await namedExportPromise
+  const namedText = await fs.readFile(await namedExport.path(), 'utf8')
+  expect(namedText).toContain('Alice Example')
+  expect(namedText).not.toContain('## You')
 })
 
 test('chat exports can be limited to an inclusive date range', async ({ page }) => {

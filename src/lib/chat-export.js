@@ -128,7 +128,7 @@ function createDocx(markdown) {
 }
 
 /** Build a downloadable or printable export from the messages currently loaded in a chat. */
-export function createChatExport(messages, { format = 'md', title = 'Eva chat export', exportedAt = new Date().toISOString(), language = 'en', labels = {}, includeTimestamps = true, includeModelInfo = true, fromDate = '', toDate = '' } = {}) {
+export function createChatExport(messages, { format = 'md', title = 'Eva chat export', exportedAt = new Date().toISOString(), language = 'en', labels = {}, includeTimestamps = true, includeModelInfo = true, includeUserName = false, userName = '', fromDate = '', toDate = '' } = {}) {
 	const boundary = (date, endOfDay) => {
 		if (!date) return null
 		const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(date)
@@ -148,7 +148,12 @@ export function createChatExport(messages, { format = 'md', title = 'Eva chat ex
 		const time = timestamp < 10_000_000_000 ? timestamp * 1000 : timestamp
 		return (startAt === null || time >= startAt) && (endAt === null || time <= endAt)
 	})
-	const roleName = (message) => message?.role === 'user' ? (labels.you || 'You') : (labels.eva || 'EVA')
+	const roleName = (message) => {
+		const name = message?.role === 'user'
+			? (includeUserName && userName ? userName : (labels.you || 'You'))
+			: (labels.eva || 'EVA')
+		return String(name).replace(/[\r\n\u0000-\u001F\u007F]/g, ' ').slice(0, 120)
+	}
 	const exportedLine = labels.exportedAt ? labels.exportedAt(exportedAt) : 'Exported ' + exportedAt
 	const messageText = (message) => {
 		const lines = []

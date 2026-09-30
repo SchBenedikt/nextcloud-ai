@@ -137,6 +137,8 @@ export function mountChat(root, opts = {}) {
 			language: document.documentElement.lang || 'en',
 			includeTimestamps: exportTimestampToggle.checked,
 			includeModelInfo: exportModelToggle.checked,
+			includeUserName: exportUserNameToggle.checked,
+			userName: document.querySelector('meta[name="eva-ai-display-name"]')?.content || '',
 			fromDate: exportFromDate.value,
 			toDate: exportToDate.value,
 			labels: {
@@ -194,6 +196,8 @@ export function mountChat(root, opts = {}) {
 				language: document.documentElement.lang || 'en',
 				includeTimestamps: exportTimestampToggle.checked,
 				includeModelInfo: exportModelToggle.checked,
+				includeUserName: exportUserNameToggle.checked,
+				userName: document.querySelector('meta[name="eva-ai-display-name"]')?.content || '',
 				fromDate: exportFromDate.value,
 				toDate: exportToDate.value,
 				labels: { you: t('You'), eva: 'Eva', exportedAt: (date) => t('Exported {date}', { date }), timestamp: (date) => t('Sent {date}', { date }), model: (name) => t('Model: {name}', { name }) },
@@ -837,6 +841,12 @@ export function mountChat(root, opts = {}) {
 	exportModelToggle.setAttribute('aria-label', t('Include model information'))
 	const exportModelLabel = document.createElement('label')
 	exportModelLabel.append(exportModelToggle, document.createTextNode(t('Include model information')))
+	const exportUserNameToggle = document.createElement('input')
+	exportUserNameToggle.id = 'export-include-user-name'
+	exportUserNameToggle.type = 'checkbox'
+	exportUserNameToggle.setAttribute('aria-label', t('Include your name'))
+	const exportUserNameLabel = document.createElement('label')
+	exportUserNameLabel.append(exportUserNameToggle, document.createTextNode(t('Include your name')))
 	const exportFromDate = document.createElement('input')
 	exportFromDate.id = 'export-from-date'
 	exportFromDate.type = 'date'
@@ -849,7 +859,7 @@ export function mountChat(root, opts = {}) {
 	exportToDate.setAttribute('aria-label', t('To date'))
 	const exportToLabel = document.createElement('label')
 	exportToLabel.append(document.createTextNode(t('To date')), exportToDate)
-	exportOptions.append(exportOptionsSummary, exportTimestampLabel, exportModelLabel, exportFromLabel, exportToLabel)
+	exportOptions.append(exportOptionsSummary, exportTimestampLabel, exportModelLabel, exportUserNameLabel, exportFromLabel, exportToLabel)
 	exportSelectionToggle.addEventListener('change', () => {
 		selectionMode = exportSelectionToggle.checked
 		selectedMessageIndexes.clear()

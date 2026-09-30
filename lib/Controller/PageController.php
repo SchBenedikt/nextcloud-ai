@@ -113,6 +113,13 @@ class PageController extends Controller {
     }
 
     private function addPageHeaders(string $version): void {
+        $user = $this->userId !== null ? \OC::$server->getUserManager()->get($this->userId) : null;
+        $displayName = $user !== null ? (string)$user->getDisplayName() : '';
+        if ($displayName === '') $displayName = $this->userId ?? '';
+        \OCP\Util::addHeader('meta', [
+            'name' => 'eva-ai-display-name',
+            'content' => $displayName,
+        ]);
         \OCP\Util::addHeader('meta', [
             'name' => 'requesttoken',
             'content' => \OC::$server->get(\OC\Security\CSRF\CsrfTokenManager::class)->getToken()->getEncryptedValue(),
