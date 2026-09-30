@@ -98,6 +98,8 @@ class UsageMetrics {
 				->selectAlias($qb->createFunction('SUM(output_tokens)'), 'output_tokens')
 				->selectAlias($qb->createFunction('SUM(total_tokens)'), 'total_tokens')
 				->selectAlias($qb->createFunction('SUM(estimated)'), 'estimated_requests')
+				->selectAlias($qb->createFunction('AVG(duration_ms)'), 'average_duration_ms')
+				->selectAlias($qb->createFunction('MAX(duration_ms)'), 'max_duration_ms')
 				->from('eva_ai_usage')
 				->where($qb->expr()->eq('user_id', $qb->createNamedParameter($userId)))
 				->andWhere($qb->expr()->eq('operation', $qb->createNamedParameter('chat')))
@@ -106,7 +108,12 @@ class UsageMetrics {
 				->orderBy('total_tokens', 'DESC');
 			$result = $qb->executeQuery();
 			while ($row = $result->fetch()) {
-				$item = $this->numbers($row) + ['provider' => (string)$row['provider'], 'model' => (string)$row['model']];
+				$item = $this->numbers($row) + [
+					'provider' => (string)$row['provider'],
+					'model' => (string)$row['model'],
+					'average_duration_ms' => (int)round((float)($row['average_duration_ms'] ?? 0)),
+					'max_duration_ms' => (int)($row['max_duration_ms'] ?? 0),
+				];
 				$byModel[] = $item;
 				foreach (array_keys($totals) as $key) $totals[$key] += $item[$key];
 			}

@@ -1192,5 +1192,7 @@ OC.L10N.register("eva_ai", {
   "failed": "Failed"
 ,
   "Enable scheduled briefings": "Enable scheduled briefings",
-  "Briefings use your server cron and account timezone. Every briefing is read-only by default. If you enable actions on one briefing, EVA may perform the requested changes automatically and reports the result through the selected delivery channels.": "Briefings use your server cron and account timezone. Every briefing is read-only by default. If you enable actions on one briefing, EVA may perform the requested changes automatically and reports the result through the selected delivery channels."
+  "Briefings use your server cron and account timezone. Every briefing is read-only by default. If you enable actions on one briefing, EVA may perform the requested changes automatically and reports the result through the selected delivery channels.": "Briefings use your server cron and account timezone. Every briefing is read-only by default. If you enable actions on one briefing, EVA may perform the requested changes automatically and reports the result through the selected delivery channels.",
+  "Average response": "Average response",
+  "Download CSV": "Download CSV"
 }, "nplurals=2; plural=(n != 1);");

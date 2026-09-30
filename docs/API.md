@@ -36,6 +36,16 @@ clients. New integrations should use the consistent paths below:
 | Start Talk indexing | `POST /api/talk_index` |
 | Stop indexing | `POST /api/index/stop` |
 
+## Personal usage metrics
+
+`GET /api/metrics?days=30` returns usage for the signed-in user only. The
+optional `days` parameter accepts an integer from 1 to 365 (default: 30). The
+response groups request counts, token totals, average and maximum response
+times by provider/model, and daily totals. It also includes slow tool-call
+timings and all-time answer feedback counts. Estimated token totals are marked
+as estimates. EVA does not store prompts or responses in this metrics table.
+The Metrics page can download these sections as a CSV report.
+
 ## Programmatic API keys
 
 Users manage their own credentials with the authenticated routes below. The

@@ -29,19 +29,12 @@ final class SystemControllerIntegrationTest extends TestCase {
         }
     }
 
-    public function testUnauthenticatedSystemEndpointsReturn401(): void {
-        $controller = new SystemController(
-            'eva_ai',
-            $this->createMock(IRequest::class),
-            null,
-            $this->createMock(AppConfig::class),
-            $this->createMock(RagService::class),
-            $this->createMock(DocumentMapper::class),
-            $this->createMock(ChatStore::class),
-            $this->createMock(KnowledgeInitializer::class),
-            $this->createMock(IndexScheduler::class),
-            $this->createMock(UsageMetrics::class),
-            $this->createMock(Ollama::class),
+    private function controller(IRequest $request, ?string $userId, UsageMetrics $usageMetrics): SystemController {
+        return new SystemController(
+            'eva_ai', $request, $userId, $this->createMock(AppConfig::class),
+            $this->createMock(RagService::class), $this->createMock(DocumentMapper::class),
+            $this->createMock(ChatStore::class), $this->createMock(KnowledgeInitializer::class),
+            $this->createMock(IndexScheduler::class), $usageMetrics, $this->createMock(Ollama::class),
             $this->createMock(ICacheFactory::class),
             new BackgroundChatQueue(
                 $this->createMock(IConfig::class),
@@ -50,11 +43,40 @@ final class SystemControllerIntegrationTest extends TestCase {
             ),
             $this->createMock(LoggerInterface::class),
         );
+    }
+
+    public function testUnauthenticatedSystemEndpointsReturn401(): void {
+        $controller = $this->controller($this->createMock(IRequest::class), null, $this->createMock(UsageMetrics::class));
 
         foreach (['status', 'stats', 'metrics', 'health', 'greeting'] as $method) {
             $response = $controller->{$method}();
             self::assertSame(401, $response->getStatus(), $method . ' must reject anonymous requests');
         }
+    }
+
+    public function testMetricsUsesTheRequestedDateRange(): void {
+        $request = $this->createMock(IRequest::class);
+        $request->expects(self::once())->method('getParam')->with('days', 30)->willReturn('7');
+        $usageMetrics = $this->createMock(UsageMetrics::class);
+        $usageMetrics->expects(self::once())->method('summaryForUser')->with('alice', 7)->willReturn([
+            'days' => 7, 'totals' => [], 'by_model' => [], 'daily' => [], 'slow_tools' => [],
+        ]);
+
+        $response = $this->controller($request, 'alice', $usageMetrics)->metrics();
+
+        self::assertSame(200, $response->getStatus());
+        self::assertSame(7, $response->getData()['days']);
+    }
+
+    public function testMetricsRejectsInvalidDateRanges(): void {
+        $request = $this->createMock(IRequest::class);
+        $request->method('getParam')->with('days', 30)->willReturn('0');
+        $usageMetrics = $this->createMock(UsageMetrics::class);
+        $usageMetrics->expects(self::never())->method('summaryForUser');
+
+        $response = $this->controller($request, 'alice', $usageMetrics)->metrics();
+
+        self::assertSame(400, $response->getStatus());
     }
 
     public function testSystemRoutesKeepTheirPublicUrls(): void {

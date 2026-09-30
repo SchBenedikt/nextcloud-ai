@@ -136,7 +136,12 @@ final class SystemController extends OCSController {
         if ($user === null) {
             return new ErrorDataResponse(['error' => 'Not logged in'], 401);
         }
-        return new ErrorDataResponse($this->usageMetrics->summaryForUser($user));
+        $rawDays = $this->request->getParam('days', 30);
+        $days = filter_var($rawDays, FILTER_VALIDATE_INT);
+        if ($days === false || $days < 1 || $days > 365) {
+            return new ErrorDataResponse(['error' => 'days must be an integer between 1 and 365'], 400);
+        }
+        return new ErrorDataResponse($this->usageMetrics->summaryForUser($user, $days));
     }
 
     /** Lightweight diagnostics for troubleshooting a slow or incomplete install. */
