@@ -8,10 +8,11 @@ data flow before enabling it.
 
 [![License: AGPL v3](https://img.shields.io/badge/License-AGPL%20v3-blue.svg)](https://www.gnu.org/licenses/agpl-3.0)
 [![Nextcloud](https://img.shields.io/badge/Nextcloud-30--35-blue)](https://nextcloud.com)
+[![Nextcloud App Store](https://img.shields.io/badge/Nextcloud%20App%20Store-Eva-brightgreen)](https://apps.nextcloud.com/apps/eva_ai)
 [![PHP](https://img.shields.io/badge/PHP-8.2%2B-purple)](https://php.net)
 [![GitHub stars](https://img.shields.io/github/stars/SchBenedikt/nextcloud-ai?style=social)](https://github.com/SchBenedikt/nextcloud-ai/stargazers)
 
-**Get started:** [Install EVA](#installation) · [See what it can do](#features) ·
+**Get started:** [Install from the Nextcloud App Store](https://apps.nextcloud.com/apps/eva_ai) · [See what it can do](#features) ·
 [Privacy and security](docs/SECURITY.md) · [Configuration](#configuration) ·
 [Report a bug or request a feature](https://github.com/SchBenedikt/nextcloud-ai/issues)
 
@@ -146,11 +147,15 @@ lists available models. The cloud model is optional.
 
 ## Installation
 
-### Option 1: From Release (Recommended)
+### Option 1: Nextcloud App Store (Recommended)
 
-Download the `.tar.gz` from the [latest release](https://github.com/SchBenedikt/nextcloud-ai/releases) and install via **Apps → Upload app**.
+Install **Eva** from the [Nextcloud App Store](https://apps.nextcloud.com/apps/eva_ai), or find it under **Apps → AI** in your Nextcloud instance.
 
-### Option 2: Manual Installation
+### Option 2: From a Release
+
+Download the `.tar.gz` from the [latest GitHub release](https://github.com/SchBenedikt/nextcloud-ai/releases) and install via **Apps → Upload app**.
+
+### Option 3: Manual Installation
 
 ```bash
 cd /var/www/html/nextcloud/apps/
