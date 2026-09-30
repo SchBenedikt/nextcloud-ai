@@ -7,6 +7,10 @@
 - Generate up to four images from an OpenAI-compatible image model, then preview or download them from the user's EVA Files folder.
 - Add per-user request limits and keep generated images scoped to their owner.
 
+### Chat exports
+
+- Store message timestamps and the model used for assistant replies, with export controls to include or omit those details across Markdown, text, HTML, DOCX, PDF and batch archives.
+
 ## [1.17.12] - 2026-09-29
 
 ### Tool executor architecture

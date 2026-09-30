@@ -26,7 +26,12 @@ function html() {
       else if (path.endsWith('/images/generate') && method === 'POST') data = { images: window.__generatedImages }
       else if (path.endsWith('/chats') && method === 'POST') data = { id: 'generated-test-chat', rev: 1 }
       else if (path.endsWith('/backgroundChat') && method === 'GET') data = { items: [] }
-      else if (path.endsWith('/streamChat') && method === 'POST') data = { stream: true }
+      else if (path.endsWith('/streamChat') && method === 'POST') {
+        return new Response('{"type":"done","answer":"A test answer","model":"gpt-test","sources":[],"followups":[]}\\n', {
+          status: 200,
+          headers: { 'Content-Type': 'application/x-ndjson' }
+        })
+      }
       return new Response(JSON.stringify(data), { status: 200, headers: { 'Content-Type': 'application/json' } })
     }
   </script><style>html,body{margin:0;min-height:100%;}#chat-root{height:100vh;min-height:0}</style></body></html>`

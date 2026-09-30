@@ -450,6 +450,9 @@ export default {
 .chatview-root .generated-image img { width: 100%; aspect-ratio: 1; object-fit: contain; border: 1px solid var(--color-border, #ddd); border-radius: 8px; background: var(--color-main-background, #fff); }
 .chatview-root .generated-image span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .chatview-root .head .image-mode-toggle { white-space: nowrap; }
+.chatview-root .export-options { position: relative; white-space: nowrap; }
+.chatview-root .export-options > summary { cursor: pointer; font-size: 12px; }
+.chatview-root .export-options > label { display: flex; align-items: center; gap: 6px; margin-top: 6px; font-size: 12px; }
 
 /* Per-chat custom instructions dialog (Issue #90). */
 .customize-overlay { position: fixed; inset: 0; z-index: 2000; display: flex; align-items: center; justify-content: center; padding: 24px; background: rgba(0, 0, 0, .45); }

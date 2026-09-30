@@ -16,6 +16,7 @@ final class ChatAppendRequestTest extends TestCase {
 			'regenerateRev' => '12',
 			'confirmation' => '{"name":"create_file","arguments":{"path":"Notes/a.md"}}',
 			'tools' => '[{"name":"search","status":"ok"}]',
+			'model' => 'llama3.3:70b',
 		]);
 
 		self::assertSame('assistant', $request->role);
@@ -24,6 +25,7 @@ final class ChatAppendRequestTest extends TestCase {
 		self::assertSame(12, $request->regenerateRev);
 		self::assertSame(['name' => 'create_file', 'arguments' => ['path' => 'Notes/a.md']], $request->confirmation);
 		self::assertSame([['name' => 'search', 'status' => 'ok']], $request->tools);
+		self::assertSame('llama3.3:70b', $request->model);
 	}
 
 	public function testDefaultsOptionalFieldsAndBoundsFollowups(): void {
@@ -37,6 +39,7 @@ final class ChatAppendRequestTest extends TestCase {
 		self::assertNull($request->regenerateRev);
 		self::assertNull($request->confirmation);
 		self::assertSame([], $request->tools);
+		self::assertNull($request->model);
 	}
 
 	public function testRejectsInvalidMessageFieldsAndNestedPayloads(): void {
@@ -51,6 +54,9 @@ final class ChatAppendRequestTest extends TestCase {
 			['regenerateRev' => '-1'],
 			['confirmation' => '[]'],
 			['tools' => [['name' => 'ok'], 'bad']],
+			['model' => str_repeat('x', 129)],
+			['model' => 'bad' . "\n" . 'model'],
+			['role' => 'user', 'model' => 'llama3.3'],
 		] as $overrides) {
 			try {
 				ChatAppendRequest::fromArray(array_replace($valid, $overrides));

@@ -15,7 +15,8 @@ delete, and export chats. Exports support Markdown, plain text, safe HTML, and
 DOCX; selected messages can be exported on their own, and multiple chats can be
 packaged into a ZIP. A single conversation can be printed to PDF from its
 print-ready HTML view. Responses are streamed; loading, empty, error, and retry
-states are reflected in the UI. The document view lets you browse your personal
+states are reflected in the UI. Exports can include or omit per-message
+timestamps and model names. The document view lets you browse your personal
 index page by page. Settings expose Ollama, models, index, retrieval quality,
 and tool configuration.
 

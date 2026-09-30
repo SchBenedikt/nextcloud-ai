@@ -1514,12 +1514,13 @@ class ApiController extends OCSController {
                     'regenerateRev' => $this->requestParam('regenerateRev'),
                     'confirmation' => $this->requestParam('confirmation'),
                     'tools' => $this->requestParam('tools'),
+                    'model' => $this->requestParam('model'),
                 ]);
             } catch (\InvalidArgumentException $e) {
                 return new ErrorDataResponse(['error' => $e->getMessage()], 400);
             }
             // Store validates and redacts the nested confirmation and tool trace.
-            $this->chatStore->append($user, $id, $request->role, $request->text, $request->followups, $request->regenerateRev, $request->confirmation, $request->tools);
+            $this->chatStore->append($user, $id, $request->role, $request->text, $request->followups, $request->regenerateRev, $request->confirmation, $request->tools, $request->model);
             // Return the bumped revision so the client can validate later
             // regenerate/edit requests against the current state (Issue #182).
             $appended = $this->chatStore->getChat($user, $id);

@@ -58,10 +58,11 @@ The response returns the current `reactions` object and chat `rev`.
 `POST /api/chats/{id}/messages` accepts a `role` (`user` or `assistant`) and
 non-empty `text` up to 50,000 characters. Assistant messages may include up to
 three string `followups`, an optional non-negative `regenerateRev`, a
-`confirmation` object, and a `tools` list of objects. Legacy form clients may
-send the array/object fields as JSON strings; malformed or wrongly typed data
-returns HTTP 400. A successful append returns `{ "ok": true, "rev": 1 }`,
-where `rev` is the updated chat revision.
+`confirmation` object, a `tools` list of objects, and an optional `model` name
+up to 128 characters. The server records a `createdAt` timestamp for each new
+message. Legacy form clients may send the array/object fields as JSON strings;
+malformed or wrongly typed data returns HTTP 400. A successful append returns
+`{ "ok": true, "rev": 1 }`, where `rev` is the updated chat revision.
 
 `POST /api/streamChat` and `POST /api/chat` also accept an optional `images`
 list for the current user message. Each entry contains a `name`, a `mime`

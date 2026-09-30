@@ -221,6 +221,23 @@ final class ChatStoreTest extends TestCase {
         self::assertCount(4, json_decode($written, true));
     }
 
+    public function testAppendedMessagesStoreTimestampsAndAssistantModelMetadata(): void {
+        $written = null;
+        [$store] = $this->chatFileHarness(json_encode([
+            ['id' => 'c1', 'title' => 'Chat', 'created' => 1, 'updated' => 1, 'messages' => []],
+        ]), $written);
+
+        $before = time();
+        $store->append('alice', 'c1', 'user', 'Question');
+        $store->append('alice', 'c1', 'assistant', 'Answer', [], null, null, [], 'llama3.3:70b');
+        $messages = json_decode((string)$written, true)[0]['messages'];
+
+        self::assertGreaterThanOrEqual($before, $messages[0]['createdAt']);
+        self::assertGreaterThanOrEqual($before, $messages[1]['createdAt']);
+        self::assertArrayNotHasKey('model', $messages[0]);
+        self::assertSame('llama3.3:70b', $messages[1]['model']);
+    }
+
     public function testPendingConfirmationIsPersistedOnTheAssistantMessage(): void {
         $seed = json_encode([[
             'id' => 'c1',

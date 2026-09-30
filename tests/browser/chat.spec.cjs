@@ -104,6 +104,32 @@ test('image generation remains usable at a narrow mobile viewport', async ({ pag
   expect(dimensions.panel).toBeLessThanOrEqual(dimensions.viewport)
 })
 
+test('chat exports can include or omit per-message timestamps and model details', async ({ page }) => {
+  await openChatView(page)
+  await page.fill('#chatinput', 'Export metadata')
+  await page.locator('.chatform button[type="submit"]').click()
+  await expect(page.locator('.rb').last()).toContainText('A test answer')
+
+  await expect(page.locator('#export-include-timestamps')).toBeChecked()
+  await expect(page.locator('#export-include-model')).toBeChecked()
+  const fullExportPromise = page.waitForEvent('download')
+  await page.click('#export')
+  const fullExport = await fullExportPromise
+  const fullText = await fs.readFile(await fullExport.path(), 'utf8')
+  expect(fullText).toContain('Sent 20')
+  expect(fullText).toContain('Model: gpt-test')
+
+  await page.getByText('Export options', { exact: true }).click()
+  await page.uncheck('#export-include-timestamps')
+  await page.uncheck('#export-include-model')
+  const minimalExportPromise = page.waitForEvent('download')
+  await page.click('#export')
+  const minimalExport = await minimalExportPromise
+  const minimalText = await fs.readFile(await minimalExport.path(), 'utf8')
+  expect(minimalText).not.toContain('Sent 20')
+  expect(minimalText).not.toContain('Model: gpt-test')
+})
+
 test('exports a plain text chat and a safe standalone HTML document', async ({ page }) => {
   await openChat(page)
   const answer = '<script>window.pwned=true</script> **safe answer**\n```js\nconst count = 2;\n```'

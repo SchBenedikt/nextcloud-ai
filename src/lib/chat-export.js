@@ -128,19 +128,28 @@ function createDocx(markdown) {
 }
 
 /** Build a downloadable or printable export from the messages currently loaded in a chat. */
-export function createChatExport(messages, { format = 'md', title = 'Eva chat export', exportedAt = new Date().toISOString(), language = 'en', labels = {} } = {}) {
+export function createChatExport(messages, { format = 'md', title = 'Eva chat export', exportedAt = new Date().toISOString(), language = 'en', labels = {}, includeTimestamps = true, includeModelInfo = true } = {}) {
 	const items = Array.isArray(messages) ? messages : []
 	const roleName = (message) => message?.role === 'user' ? (labels.you || 'You') : (labels.eva || 'EVA')
 	const exportedLine = labels.exportedAt ? labels.exportedAt(exportedAt) : 'Exported ' + exportedAt
 	const messageText = (message) => {
-		const lines = [String(message?.text || '')]
+		const lines = []
+		const createdAt = Number(message?.createdAt)
+		if (includeTimestamps && Number.isFinite(createdAt) && createdAt > 0) {
+			const date = new Date(createdAt < 10_000_000_000 ? createdAt * 1000 : createdAt).toISOString()
+			lines.push(labels.timestamp ? labels.timestamp(date) : 'Sent ' + date, '')
+		}
+		if (includeModelInfo && message?.role === 'assistant' && typeof message.model === 'string' && message.model !== '') {
+			lines.push(labels.model ? labels.model(message.model) : 'Model: ' + message.model, '')
+		}
+		lines.push(String(message?.text || ''))
 		if (message?.role === 'assistant' && message.reactions) {
 			if (typeof message.reactions.helpful === 'boolean') lines.push(labels[message.reactions.helpful ? 'helpful' : 'notHelpful'] || (message.reactions.helpful ? 'Marked helpful' : 'Marked not helpful'))
 			if (message.reactions.bookmarked) lines.push(labels.bookmarked || 'Bookmarked')
 		}
 		return lines.join('\n\n')
 	}
-	const markdown = ['# ' + title, '', '_' + exportedLine + '_', ...items.flatMap((message) => [
+	const markdown = ['# ' + title, '', ...(includeTimestamps ? ['_' + exportedLine + '_'] : []), ...items.flatMap((message) => [
 		'', '## ' + roleName(message), '', messageText(message),
 	])].join('\n')
 	if (format === 'docx') return { content: createDocx(markdown), mime: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', extension: 'docx' }

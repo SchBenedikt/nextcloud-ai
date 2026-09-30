@@ -737,15 +737,18 @@ class ChatStore {
      * pending confirmation replaces that placeholder instead of appending a
      * duplicate — that is how the confirmed answer is persisted.
      */
-    public function append(string $user, string $id, string $role, string $text, array $followups = [], ?int $regenerateRev = null, ?array $confirmation = null, array $tools = []): void {
+    public function append(string $user, string $id, string $role, string $text, array $followups = [], ?int $regenerateRev = null, ?array $confirmation = null, array $tools = [], ?string $model = null): void {
         if ($role !== 'user' && $role !== 'assistant') {
             return;
         }
-        $this->withUserLock($user, function () use ($user, $id, $role, $text, $followups, $regenerateRev, $confirmation, $tools): void {
+        $this->withUserLock($user, function () use ($user, $id, $role, $text, $followups, $regenerateRev, $confirmation, $tools, $model): void {
             $all = $this->read($user);
             foreach ($all as &$chat) {
                 if (($chat['id'] ?? '') === $id) {
-                    $message = ['role' => $role, 'text' => $text];
+                    $message = ['role' => $role, 'text' => $text, 'createdAt' => time()];
+                    if ($role === 'assistant' && is_string($model) && trim($model) !== '') {
+                        $message['model'] = mb_substr(trim($model), 0, 128);
+                    }
                     // Follow-up suggestions belong to assistant messages and
                     // must survive a reload so the chips stay usable.
                     if ($role === 'assistant' && $followups !== []) {

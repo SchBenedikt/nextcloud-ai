@@ -134,9 +134,13 @@ export function mountChat(root, opts = {}) {
 			format,
 			title: t('Eva chat export'),
 			language: document.documentElement.lang || 'en',
+			includeTimestamps: exportTimestampToggle.checked,
+			includeModelInfo: exportModelToggle.checked,
 			labels: {
 				you: t('You'), eva: 'Eva', helpful: t('Marked helpful'), notHelpful: t('Marked not helpful'), bookmarked: t('Bookmarked'),
 				exportedAt: (date) => t('Exported {date}', { date }),
+				timestamp: (date) => t('Sent {date}', { date }),
+				model: (name) => t('Model: {name}', { name }),
 			},
 		})
 		if (file.print) {
@@ -185,7 +189,9 @@ export function mountChat(root, opts = {}) {
 			const archive = createChatArchive(chats, {
 				format,
 				language: document.documentElement.lang || 'en',
-				labels: { you: t('You'), eva: 'Eva', exportedAt: (date) => t('Exported {date}', { date }) },
+				includeTimestamps: exportTimestampToggle.checked,
+				includeModelInfo: exportModelToggle.checked,
+				labels: { you: t('You'), eva: 'Eva', exportedAt: (date) => t('Exported {date}', { date }), timestamp: (date) => t('Sent {date}', { date }), model: (name) => t('Model: {name}', { name }) },
 			})
 			const url = URL.createObjectURL(new Blob([archive], { type: 'application/zip' }))
 			const link = document.createElement('a')
@@ -769,6 +775,7 @@ export function mountChat(root, opts = {}) {
 		}
 	})
 	const exportBtn = document.createElement('button')
+	exportBtn.id = 'export'
 	exportBtn.className = 'export'
 	exportBtn.type = 'button'
 	exportBtn.setAttribute('aria-label', t('Export chat as Markdown'))
@@ -799,6 +806,25 @@ export function mountChat(root, opts = {}) {
 	const exportSelectionText = document.createElement('span')
 	exportSelectionText.textContent = t('Select messages for export')
 	exportSelectionLabel.append(exportSelectionToggle, exportSelectionText)
+	const exportOptions = document.createElement('details')
+	exportOptions.className = 'export-options'
+	const exportOptionsSummary = document.createElement('summary')
+	exportOptionsSummary.textContent = t('Export options')
+	const exportTimestampToggle = document.createElement('input')
+	exportTimestampToggle.id = 'export-include-timestamps'
+	exportTimestampToggle.type = 'checkbox'
+	exportTimestampToggle.checked = true
+	exportTimestampToggle.setAttribute('aria-label', t('Include timestamps'))
+	const exportTimestampLabel = document.createElement('label')
+	exportTimestampLabel.append(exportTimestampToggle, document.createTextNode(t('Include timestamps')))
+	const exportModelToggle = document.createElement('input')
+	exportModelToggle.id = 'export-include-model'
+	exportModelToggle.type = 'checkbox'
+	exportModelToggle.checked = true
+	exportModelToggle.setAttribute('aria-label', t('Include model information'))
+	const exportModelLabel = document.createElement('label')
+	exportModelLabel.append(exportModelToggle, document.createTextNode(t('Include model information')))
+	exportOptions.append(exportOptionsSummary, exportTimestampLabel, exportModelLabel)
 	exportSelectionToggle.addEventListener('change', () => {
 		selectionMode = exportSelectionToggle.checked
 		selectedMessageIndexes.clear()
@@ -1071,7 +1097,7 @@ export function mountChat(root, opts = {}) {
 	agentStatusPill.hidden = true
 	agentStatusPill.setAttribute('role', 'status')
 	customizeBtn.addEventListener('click', () => openCustomizeDialog())
-	head.append(h1, imageModeBtn, scopePill, customizePill, agentStatusPill, customizeBtn, promptPanel, exportSelectionLabel, exportFormat, exportBtn, exportAllBtn)
+	head.append(h1, imageModeBtn, scopePill, customizePill, agentStatusPill, customizeBtn, promptPanel, exportSelectionLabel, exportOptions, exportFormat, exportBtn, exportAllBtn)
 
 	const scroll = document.createElement('div')
 	scroll.className = 'chat-log'
@@ -1646,7 +1672,7 @@ export function mountChat(root, opts = {}) {
 		if (force || nearBottom) scroll.scrollTop = scroll.scrollHeight
 	}
 
-	function saveMessage(role, text, followups, regenerateRev, confirmation, tools) {
+	function saveMessage(role, text, followups, regenerateRev, confirmation, tools, model = null) {
 		if (!chatId) return Promise.resolve(false)
 		const body = { role, text }
 		// Follow-up suggestions are persisted for assistant messages so the
@@ -1661,6 +1687,7 @@ export function mountChat(root, opts = {}) {
 		// message so a reload rebuilds the panel (Issue #185).
 		if (role === 'assistant' && confirmation) body.confirmation = confirmation
 		if (role === 'assistant' && Array.isArray(tools) && tools.length) body.tools = tools
+		if (role === 'assistant' && typeof model === 'string' && model.length <= 128) body.model = model
 		return api('POST', '/chats/' + encodeURIComponent(chatId) + '/messages', body)
 			.then((resp) => {
 				// Keep the client's revision in sync so the next regenerate/edit
@@ -1753,6 +1780,8 @@ export function mountChat(root, opts = {}) {
 			;(chat.messages || []).forEach((m) => messages.push({
 				role: m.role === 'user' || m.role === 'assistant' ? m.role : 'assistant',
 				text: m.text || '',
+				createdAt: Number.isSafeInteger(m.createdAt) ? m.createdAt : null,
+				model: typeof m.model === 'string' ? m.model : null,
 				thinking: '',
 				followups: Array.isArray(m.followups) ? m.followups : [],
 				reactions: m.reactions && typeof m.reactions === 'object' ? m.reactions : undefined,
@@ -1973,6 +2002,8 @@ export function mountChat(root, opts = {}) {
 				return
 			} else if (ev.type === 'done') {
 				last.text = ev.answer || last.text
+				last.createdAt = Math.floor(Date.now() / 1000)
+				last.model = typeof ev.model === 'string' ? ev.model : null
 				last.sources = citedSources(last.text, ev.sources || [])
 				last.followups = ev.followups || []
 				last.done = true
@@ -1980,7 +2011,7 @@ export function mountChat(root, opts = {}) {
 				// Persist with the regeneration token: the server truncates and
 				// applies the edit atomically with this message. Without the
 				// token (or after a failure) the stored history stays intact.
-				saveMessage('assistant', last.text, last.followups, pendingRegenerateRev, null, last.tools)
+				saveMessage('assistant', last.text, last.followups, pendingRegenerateRev, null, last.tools, last.model)
 					.then((saved) => {
 						if (saved && onRecent) onRecent()
 						else if (!saved) showHistorySaveWarning()
@@ -2061,6 +2092,7 @@ export function mountChat(root, opts = {}) {
 			.then((result) => {
 				input.value = ''
 				messages.push({ role: 'user', text: msg })
+				messages[messages.length - 1].createdAt = Math.floor(Date.now() / 1000)
 				renderAll(messages)
 				agentStatusPill.textContent = t('EVA will continue this chat in the background')
 				agentStatusPill.hidden = false
@@ -2091,7 +2123,7 @@ export function mountChat(root, opts = {}) {
 		err.style.display = 'none'
 		if (emptyEl.parentNode) scroll.removeChild(emptyEl)
 
-		messages.push({ role: 'user', text: savedUserText, attachments: localAttachments })
+		messages.push({ role: 'user', text: savedUserText, attachments: localAttachments, createdAt: Math.floor(Date.now() / 1000) })
 		messages.push({ role: 'assistant', text: '', thinking: '', done: false, tools: [] })
 		renderAll(messages)
 		const assistantIdx = messages.length - 1
@@ -2170,6 +2202,8 @@ export function mountChat(root, opts = {}) {
 				} else if (ev.type === 'done') {
 					cancelBackgroundJob()
 					last.text = ev.answer || last.text
+					last.createdAt = Math.floor(Date.now() / 1000)
+					last.model = typeof ev.model === 'string' ? ev.model : null
 					last.sources = citedSources(last.text, ev.sources || [])
 					last.followups = ev.followups || []
 					last.done = true
@@ -2177,7 +2211,7 @@ export function mountChat(root, opts = {}) {
 					// once lets the per-user file lock acquire them in either order,
 					// which can swap the question and answer after a reload.
 					saveUserMessage(savedUserText)
-						.then((savedUser) => savedUser ? saveMessage('assistant', last.text, last.followups, null, null, last.tools) : false)
+						.then((savedUser) => savedUser ? saveMessage('assistant', last.text, last.followups, null, null, last.tools, last.model) : false)
 						.then((saved) => {
 							if (saved && onRecent) onRecent()
 							else if (!saved) showHistorySaveWarning()

@@ -75,7 +75,8 @@ Every answer includes the exact **file path** where the information was found, s
 Export a full conversation or selected messages as Markdown, plain text, safe
 HTML, or editable DOCX. Print a single conversation to PDF from the formatted
 HTML view, or download multiple chats together in a ZIP archive. The export
-keeps the conversation readable outside Nextcloud and includes the export time.
+keeps the conversation readable outside Nextcloud; its export time, per-message
+timestamps, and model names can be included or omitted.
 
 EVA can also analyze images attached to a chat and generate up to four images
 from a prompt. Generated files are saved in the user's `EVA` folder in Files;
