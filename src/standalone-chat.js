@@ -11,7 +11,7 @@ import { readNdjson } from './lib/ndjson'
  * wires up event handlers, sidebar management and chat persistence.
  */
 import { escHtml, mdInline, mdToHtml, citedSources, formatToolName, copyText, installImageFallback, apiErrorMessage } from './lib/chat-utils'
-import { createChatExport } from './lib/chat-export'
+import { createChatExport, createChatArchive } from './lib/chat-export'
 
 function buildCalendarForm(args, tr) {
 	var form = document.createElement('div')
@@ -147,6 +147,7 @@ function buildCalendarForm(args, tr) {
 	// Title of the open chat (null until a restored/new chat reported one).
 	var chatTitle = null
 	var exportButton = document.getElementById('export')
+	var exportAllButton = document.getElementById('export-all')
 	var pendingConfirmation = null
 
 	function finishConfirmation(approved) {
@@ -225,6 +226,7 @@ function buildCalendarForm(args, tr) {
 		var selectionText = document.getElementById('export-selection-label')
 		if (selectionToggle) selectionToggle.setAttribute('aria-label', tr('Select messages for export'))
 		if (selectionText) selectionText.textContent = tr('Select messages for export')
+		if (exportAllButton) exportAllButton.textContent = tr('Export all chats')
 		var emptyTitle = document.querySelector('#empty .t')
 		if (emptyTitle) emptyTitle.textContent = tr('Ask a question about your files')
 		var emptyDescription = document.querySelector('#empty .d')
@@ -267,6 +269,59 @@ function buildCalendarForm(args, tr) {
 		a.click()
 		a.remove()
 		setTimeout(function () { URL.revokeObjectURL(url) }, 1000)
+	}
+
+	function exportAllChats() {
+		if (exportAllButton) exportAllButton.disabled = true
+		showErr('')
+		api('GET', '/chats').then(function (summaries) {
+			if (!Array.isArray(summaries)) throw new Error(tr('The chat list response was invalid.'))
+			var chats = new Array(summaries.length)
+			var next = 0
+			var failed = false
+			function worker() {
+				return Promise.resolve().then(function runNext() {
+					if (failed || next >= summaries.length) return
+					var index = next++
+					return api('GET', '/chats/' + encodeURIComponent(summaries[index].id)).then(function (chat) {
+						chats[index] = chat
+						return runNext()
+					}).catch(function (error) {
+						failed = true
+						throw error
+					})
+				})
+			}
+			return Promise.all(Array.from({ length: Math.min(4, summaries.length) }, worker)).then(function () { return chats })
+		}).then(function (chats) {
+			var format = document.getElementById('export-format').value
+			var archive = createChatArchive(chats, {
+				format: format,
+				language: document.documentElement.lang || 'en',
+				labels: { you: tr('You'), eva: 'EVA', exportedAt: function (date) { return tr('Exported {date}', { date: date }) } },
+			})
+			var url = URL.createObjectURL(new Blob([archive], { type: 'application/zip' }))
+			var link = document.createElement('a')
+			link.href = url
+			link.download = 'eva-chats-' + new Date().toISOString().slice(0, 10) + '.zip'
+			document.body.appendChild(link)
+			link.click()
+			link.remove()
+			setTimeout(function () { URL.revokeObjectURL(url) }, 1000)
+		}).catch(function (error) {
+			var detail = error && error.message ? error.message : String(error)
+			var knownErrors = [
+				'Print to PDF is available for one chat at a time; choose HTML for a batch archive.',
+				'There are no conversations to export.',
+				'A chat archive can contain up to 100 conversations at a time.',
+				'The chat archive is larger than 50 MB.',
+				'A conversation in the archive is invalid.',
+			]
+			if (knownErrors.indexOf(detail) !== -1) detail = tr(detail)
+			showErr(tr('Could not export chats: {error}', { error: detail }))
+		}).finally(function () {
+			if (exportAllButton) exportAllButton.disabled = false
+		})
 	}
 
 	function api(method, path, body) {
@@ -1233,5 +1288,6 @@ function buildCalendarForm(args, tr) {
 		renderAll(messages)
 	})
 	if (exportButton) exportButton.addEventListener('click', exportChat)
+	if (exportAllButton) exportAllButton.addEventListener('click', exportAllChats)
 	refreshChats()
 })()
