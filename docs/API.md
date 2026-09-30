@@ -46,6 +46,10 @@ timings and all-time answer feedback counts. Estimated token totals are marked
 as estimates. EVA does not store prompts or responses in this metrics table.
 The Metrics page can download these sections as a CSV report.
 
+`GET /api/feedback/stats` returns the signed-in user's all-time
+`helpful`, `notHelpful`, and `bookmarked` answer counts as non-negative
+integers.
+
 ## Programmatic API keys
 
 Users manage their own credentials with the authenticated routes below. The
