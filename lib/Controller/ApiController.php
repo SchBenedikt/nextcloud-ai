@@ -37,6 +37,7 @@ use OCA\EvaAi\Dto\FeedbackStatsResponse;
 use OCA\EvaAi\Dto\ChatReactionRequest;
 use OCA\EvaAi\Dto\ChatReactionResponse;
 use OCA\EvaAi\Dto\ChatAppendRequest;
+use OCA\EvaAi\Dto\ChatAppendResponse;
 use OCP\AppFramework\OCSController;
 use OCP\AppFramework\Http\Attribute\NoAdminRequired;
 use OCA\EvaAi\Http\StreamTraversableResponse;
@@ -1529,7 +1530,8 @@ class ApiController extends OCSController {
                 }
             }
 
-            return new ErrorDataResponse(['ok' => true, 'rev' => $rev]);
+            $response = ChatAppendResponse::fromArray(['ok' => true, 'rev' => $rev]);
+            return new ErrorDataResponse($response->toArray());
         } catch (\Throwable $e) {
             return $this->chatErrorResponse($e);
         }
