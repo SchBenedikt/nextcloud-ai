@@ -144,6 +144,18 @@ final class ApiControllerIntegrationTest extends TestCase {
 		}
 	}
 
+	public function testBackgroundChatLifecycleEndpointsRejectInvalidQueueIds(): void {
+		foreach (['cancelBackgroundChat', 'pauseBackgroundChat', 'resumeBackgroundChat', 'retryBackgroundChat'] as $method) {
+			$stored = [];
+			$dependencies = [];
+			$controller = $this->controller('alice', ['id' => []], $dependencies, $stored);
+
+			$response = $controller->{$method}();
+
+			self::assertSame(400, $response->getStatus(), $method . ' should reject a non-string queue id');
+		}
+	}
+
 	public function testValidChatRequestCallsRagAndReturnsItsResponse(): void {
 		$stored = [];
 		$dependencies = [];
