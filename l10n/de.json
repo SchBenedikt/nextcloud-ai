@@ -1189,7 +1189,9 @@
     "partial": "Teilweise zugestellt",
     "failed": "Fehlgeschlagen",
     "Enable scheduled briefings": "Geplante Briefings aktivieren",
-    "Briefings use your server cron and account timezone. Every briefing is read-only by default. If you enable actions on one briefing, EVA may perform the requested changes automatically and reports the result through the selected delivery channels.": "Briefings verwenden den Server-Cron und die Zeitzone deines Kontos. Standardmäßig arbeiten sie schreibgeschützt. Wenn du Aktionen für ein Briefing aktivierst, kann EVA angeforderte Änderungen automatisch ausführen und meldet das Ergebnis über die gewählten Zustellungswege."
+    "Briefings use your server cron and account timezone. Every briefing is read-only by default. If you enable actions on one briefing, EVA may perform the requested changes automatically and reports the result through the selected delivery channels.": "Briefings verwenden den Server-Cron und die Zeitzone deines Kontos. Standardmäßig arbeiten sie schreibgeschützt. Wenn du Aktionen für ein Briefing aktivierst, kann EVA angeforderte Änderungen automatisch ausführen und meldet das Ergebnis über die gewählten Zustellungswege.",
+    "Average response": "Durchschnittliche Antwortzeit",
+    "Download CSV": "CSV herunterladen"
   },
   "pluralForm": "nplurals=2; plural=(n != 1);",
   "EVA – Chat": "EVA – Chat",
