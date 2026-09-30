@@ -606,7 +606,7 @@ export function mountChat(root, opts = {}) {
 	const exportFormat = document.createElement('select')
 	exportFormat.className = 'export-format'
 	exportFormat.setAttribute('aria-label', t('Export format'))
-	;[['md', 'Markdown'], ['txt', t('Plain text')], ['html', 'HTML'], ['pdf', t('Print / Save as PDF')]].forEach(([value, label]) => {
+	;[['md', 'Markdown'], ['txt', t('Plain text')], ['html', 'HTML'], ['docx', t('Word (DOCX)')], ['pdf', t('Print / Save as PDF')]].forEach(([value, label]) => {
 		const option = document.createElement('option')
 		option.value = value
 		option.textContent = label

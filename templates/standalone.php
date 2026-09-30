@@ -335,7 +335,7 @@
                     <h1>Chat with your files</h1>
                 </div>
                 <div class="head-right">
-                    <select id="export-format" class="export-format" aria-label="Export format"><option value="md">Markdown</option><option value="txt">Plain text</option><option value="html">HTML</option><option value="pdf">Print / Save as PDF</option></select>
+                    <select id="export-format" class="export-format" aria-label="Export format"><option value="md">Markdown</option><option value="txt">Plain text</option><option value="html">HTML</option><option value="docx">Word (DOCX)</option><option value="pdf">Print / Save as PDF</option></select>
                     <button id="export" class="export-btn" title="Export chat" disabled><svg class="export-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 20h14v-2H5v2zM11 2v11.17l-4.59-4.58L5 10l7 7 7-7-1.41-1.41L13 13.17V2h-2z" fill="currentColor"/></svg><span id="export-label">Export</span></button>
                     <span class="badge">eva_ai</span>
                 </div>

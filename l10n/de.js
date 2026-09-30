@@ -875,6 +875,7 @@ OC.L10N.register("eva_ai", {
   "Could not load usage metrics: {error}": "Nutzungsmetriken konnten nicht geladen werden: {error}",
   "Usage metrics are not available yet.": "Nutzungsmetriken sind derzeit nicht verfügbar.",
   "Updated {time}": "Aktualisiert um {time}",
+  "Word (DOCX)": "Word (DOCX)",
   "Loading instance-wide settings…": "Instanzweite Einstellungen werden geladen …",
   "The instance-wide settings response was incomplete.": "Die Antwort auf die instanzweiten Einstellungen war unvollständig.",
   "Generated from service URL if left blank": "Wird aus der Dienst-URL erzeugt, wenn das Feld leer bleibt",

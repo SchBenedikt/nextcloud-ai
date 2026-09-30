@@ -210,8 +210,10 @@ function buildCalendarForm(args, tr) {
 				formatSelect.setAttribute('aria-label', tr('Export format'))
 				var plainTextOption = formatSelect.querySelector('option[value="txt"]')
 				var pdfOption = formatSelect.querySelector('option[value="pdf"]')
+				var docxOption = formatSelect.querySelector('option[value="docx"]')
 				if (plainTextOption) plainTextOption.textContent = tr('Plain text')
 				if (pdfOption) pdfOption.textContent = tr('Print / Save as PDF')
+				if (docxOption) docxOption.textContent = tr('Word (DOCX)')
 			}
 			var exportLabel = document.getElementById('export-label')
 			if (exportLabel) exportLabel.textContent = tr('Export')

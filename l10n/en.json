@@ -876,6 +876,7 @@
     "Could not load usage metrics: {error}": "Could not load usage metrics: {error}",
     "Usage metrics are not available yet.": "Usage metrics are not available yet.",
     "Updated {time}": "Updated {time}",
+    "Word (DOCX)": "Word (DOCX)",
     "Loading instance-wide settings…": "Loading instance-wide settings…",
     "The instance-wide settings response was incomplete.": "The instance-wide settings response was incomplete.",
     "Generated from service URL if left blank": "Generated from service URL if left blank",
