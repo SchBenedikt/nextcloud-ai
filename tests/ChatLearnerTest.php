@@ -5,9 +5,10 @@ declare(strict_types=1);
 namespace OCA\EvaAi\Tests;
 
 use OCA\EvaAi\Service\ChatLearner;
+use PHPUnit\Framework\Attributes\CoversClass;
 use PHPUnit\Framework\TestCase;
 
-/** @covers \OCA\EvaAi\Service\ChatLearner */
+#[CoversClass(ChatLearner::class)]
 class ChatLearnerTest extends TestCase {
     public function testRegisteredLearningSettingStopsLearningBeforeReadingUserFiles(): void {
         if (!defined('EVA_AI_OCP_AVAILABLE') || !EVA_AI_OCP_AVAILABLE) {
