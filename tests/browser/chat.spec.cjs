@@ -51,6 +51,26 @@ test('streams an answer and persists the question/answer pair in order', async (
   ])
 })
 
+test('sends image attachments for analysis, including an image-only prompt', async ({ page }) => {
+  await openChat(page)
+  await page.evaluate((lines) => { window.__mock.streamLines = lines }, [
+    line({ type: 'done', answer: 'The image is a tiny PNG.', sources: [], followups: [] }),
+  ])
+  const png = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAADUlEQVR4nGP4z8AAAAMBAQDJ/pLvAAAAAElFTkSuQmCC', 'base64')
+  await page.locator('#chat-image-input').setInputFiles({ name: 'tiny.png', mimeType: 'image/png', buffer: png })
+  await expect(page.locator('.image-privacy-note')).toContainText('not stored in chat history')
+  await page.click('#send')
+
+  const streamRequest = await page.waitForFunction(() => window.__mock.saved.find((request) => request.url.includes('/chat/stream')) || null)
+  const payload = await streamRequest.jsonValue()
+  expect(payload.body.images).toHaveLength(1)
+  expect(payload.body.images[0]).toMatchObject({ name: 'tiny.png', mime: 'image/png' })
+  expect(payload.body.images[0].data).toBe(png.toString('base64'))
+  await expect(page.locator('.rb').first()).toContainText('Describe these images.')
+  await expect(page.locator('.rb').first()).toContainText('tiny.png')
+  await expect(page.locator('.rb').last()).toContainText('The image is a tiny PNG.')
+})
+
 test('exports a plain text chat and a safe standalone HTML document', async ({ page }) => {
   await openChat(page)
   const answer = '<script>window.pwned=true</script> **safe answer**\n```js\nconst count = 2;\n```'

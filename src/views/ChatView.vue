@@ -356,6 +356,16 @@ export default {
 	outline-offset: 0;
 }
 .chatview-root .voice-status { width: min(100%, var(--eva-content-width, 1180px)); box-sizing: border-box; margin: -6px auto 10px; color: var(--color-text-maxcontrast, #666); font-size: 12px; }
+.chatview-root .image-attachments { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; width: min(100%, var(--eva-content-width, 1180px)); box-sizing: border-box; margin: 0 auto 8px; }
+.chatview-root .image-attachments[hidden] { display: none; }
+.chatview-root .image-privacy-note { flex: 1 0 100%; margin: 0; color: var(--color-text-maxcontrast, #666); font-size: 12px; }
+.chatview-root .image-attachment { display: flex; align-items: center; gap: 6px; max-width: 240px; padding: 4px 6px; border: 1px solid var(--color-border, #ddd); border-radius: 8px; background: var(--color-main-background, #fff); font-size: 12px; }
+.chatview-root .image-attachment img { width: 36px; height: 36px; object-fit: cover; border-radius: 4px; }
+.chatview-root .image-attachment span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.chatview-root .image-attachment button { border: 0; border-radius: 50%; background: transparent; color: var(--color-main-text, #333); cursor: pointer; font-size: 18px; line-height: 1; }
+.chatview-root .cbtn-images { flex: 0 0 auto; min-width: 42px; padding-inline: 10px; font-size: 20px; }
+.chatview-root .message-images { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 6px; }
+.chatview-root .message-images img { max-width: min(220px, 62vw); max-height: 180px; object-fit: contain; border-radius: 8px; }
 .chatview-root .cbtn-mic { flex: 0 0 auto; min-width: 42px; padding-inline: 10px; font-size: 18px; }
 .chatview-root .cbtn-mic.is-recording { color: var(--color-error, #e9322d); animation: eva-mic-pulse 1.2s ease-in-out infinite; }
 .chatview-root .cbtn-voice-cancel { padding-inline: 10px; white-space: nowrap; }

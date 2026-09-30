@@ -98,6 +98,9 @@ function buildCalendarForm(args, tr) {
 	var els = {
 		form: document.getElementById('form'),
 		input: document.getElementById('q'),
+		imageInput: document.getElementById('chat-image-input'),
+		imageButton: document.getElementById('attach-images'),
+		imageAttachments: document.getElementById('image-attachments'),
 		send: document.getElementById('send'),
 		msgs: document.getElementById('msgs'),
 		err: document.getElementById('err'),
@@ -115,6 +118,7 @@ function buildCalendarForm(args, tr) {
 	}
 
 	var messages = []
+	var pendingImages = []
 	var selectedMessageIndexes = new Set()
 	var selectionMode = false
 	var selectionChatId = null
@@ -1122,8 +1126,13 @@ function buildCalendarForm(args, tr) {
 	}
 
 	function send() {
-		var msg = els.input.value.trim()
-		if (!msg || sending) return
+		var typedMessage = els.input.value.trim()
+		if ((!typedMessage && pendingImages.length === 0) || sending) return
+		var outgoingImages = pendingImages.splice(0)
+		var msg = typedMessage || tr('Describe these images.')
+		var attachmentNames = outgoingImages.map(function (attachment) { return attachment.file.name })
+		var savedUserText = attachmentNames.length ? msg + '\n\n[' + tr('Attached images') + ': ' + attachmentNames.join(', ') + ']' : msg
+		if (els.imageAttachments) { els.imageAttachments.replaceChildren(); els.imageAttachments.hidden = true }
 		sending = true
 		currentAbort = new AbortController()
 		stoppedByUser = false
@@ -1133,7 +1142,7 @@ function buildCalendarForm(args, tr) {
 		els.send.classList.add('stop')
 		showErr('')
 
-		messages.push({ role: 'user', text: msg })
+		messages.push({ role: 'user', text: savedUserText })
 		messages.push({ role: 'assistant', text: '', thinking: '', done: false, tools: [] })
 		renderAll(messages)
 		var assistantIdx = messages.length - 1
@@ -1145,7 +1154,8 @@ function buildCalendarForm(args, tr) {
 		}
 
 		ensureChat().then(function () {
-			return apiStream({ message: msg, history: history, chatId: chatId }, function (ev) {
+			return Promise.all(outgoingImages.map(encodeImage)).then(function (images) {
+			return apiStream({ message: msg, history: history, chatId: chatId, images: images }, function (ev) {
 				var last = messages[assistantIdx]
 				if (!last || last.role !== 'assistant' || last.done) return
 				if (ev.type === 'thinking') {
@@ -1186,7 +1196,7 @@ function buildCalendarForm(args, tr) {
 					// question (Issue #185). The idempotency token makes approve
 					// safe: the same action cannot run twice after a reload.
 					last.confirmation.token = (window.crypto && crypto.randomUUID) ? crypto.randomUUID() : String(Date.now()) + '-' + Math.random().toString(36).slice(2)
-					last._pendingSave = saveUserMessage(msg)
+					last._pendingSave = saveUserMessage(savedUserText)
 						.then(function (savedUser) { return savedUser ? saveMessage('assistant', last.text, null, {
 							name: last.confirmation.name,
 							arguments: last.confirmation.arguments,
@@ -1205,14 +1215,14 @@ function buildCalendarForm(args, tr) {
 					// Persist the pair in conversation order. Sending both requests
 					// at once lets the per-user file lock acquire them in either
 					// order, which can swap the question and answer after a reload.
-					saveUserMessage(msg)
+					saveUserMessage(savedUserText)
 						.then(function (savedUser) { return savedUser ? saveMessage('assistant', last.text, last.followups, null, last.tools) : false })
 						.then(renderChatListAgain)
 						.catch(function () {})
 				} else if (ev.type === 'error') {
 					last.text = tr('Error: {error}', { error: String(ev.message || '') })
 					last.done = true
-					saveUserMessage(msg)
+					saveUserMessage(savedUserText)
 				}
 				// One coalesced update per frame instead of one DOM rebuild per
 				// NDJSON event; terminal states still update immediately.
@@ -1228,7 +1238,7 @@ function buildCalendarForm(args, tr) {
 					// Persist the partial answer when the user stopped the stream so
 					// a reload keeps the conversation instead of dropping it.
 					if (stoppedByUser && last.text.trim() !== '') {
-						saveUserMessage(msg)
+						saveUserMessage(savedUserText)
 							.then(function (ok) { return ok ? saveMessage('assistant', last.text, null, null, last.tools) : false })
 							.catch(function () {})
 					}
@@ -1247,9 +1257,75 @@ function buildCalendarForm(args, tr) {
 				els.input.focus()
 				stickToBottom()
 			})
+			})
+		}).catch(function (e) {
+			sending = false
+			currentAbort = null
+			els.send.disabled = false
+			els.send.textContent = tr('Send')
+			els.send.classList.remove('stop')
+			var last = messages[messages.length - 1]
+			if (last && last.role === 'assistant' && !last.done) {
+				last.text = tr('Error: {error}', { error: String(e && e.message ? e.message : e) })
+				last.done = true
+				updateMessage(messages.length - 1)
+			}
+			showErr(tr('The response could not be completed: {error}', { error: String(e && e.message ? e.message : e) }))
 		})
 	}
 
+	function renderPendingImages() {
+		if (!els.imageAttachments) return
+		els.imageAttachments.replaceChildren()
+		els.imageAttachments.hidden = pendingImages.length === 0
+		if (!pendingImages.length) return
+		var notice = document.createElement('span')
+		notice.className = 'image-privacy-note'
+		notice.textContent = tr('Images are sent to your configured AI provider for this request and are not stored in chat history.')
+		els.imageAttachments.appendChild(notice)
+		pendingImages.forEach(function (attachment, index) {
+			var chip = document.createElement('span')
+			chip.className = 'image-attachment'
+			var name = document.createElement('span')
+			name.textContent = attachment.file.name
+			var remove = document.createElement('button')
+			remove.type = 'button'
+			remove.textContent = '×'
+			remove.setAttribute('aria-label', tr('Remove image {name}', { name: attachment.file.name }))
+			remove.addEventListener('click', function () {
+				URL.revokeObjectURL(attachment.url)
+				pendingImages.splice(index, 1)
+				renderPendingImages()
+			})
+			chip.append(name, remove)
+			els.imageAttachments.appendChild(chip)
+		})
+	}
+	function encodeImage(attachment) {
+		return new Promise(function (resolve, reject) {
+			var reader = new FileReader()
+			reader.onerror = function () { reject(new Error(tr('An attached image could not be read.'))) }
+			reader.onload = function () {
+				var match = String(reader.result || '').match(/^data:(image\/(?:jpeg|png|webp));base64,([A-Za-z0-9+/=]+)$/)
+				if (!match) { reject(new Error(tr('An attached image could not be read.'))); return }
+				resolve({ name: attachment.file.name, mime: match[1], data: match[2] })
+			}
+			reader.readAsDataURL(attachment.file)
+		})
+	}
+	if (els.imageButton && els.imageInput) els.imageButton.addEventListener('click', function () { els.imageInput.click() })
+	if (els.imageInput) els.imageInput.addEventListener('change', function () {
+		var files = Array.from(els.imageInput.files || [])
+		els.imageInput.value = ''
+		var count = pendingImages.length + files.length
+		var bytes = files.reduce(function (sum, file) { return sum + file.size }, pendingImages.reduce(function (sum, item) { return sum + item.file.size }, 0))
+		if (count > 4) { showErr(tr('Attach up to four supported images at a time.')); return }
+		if (files.some(function (file) { return !['image/png', 'image/jpeg', 'image/webp'].includes(file.type) })) { showErr(tr('Choose PNG, JPEG, or WebP images.')); return }
+		if (bytes > 4 * 1024 * 1024) { showErr(tr('Attached images must total no more than 4 MB.')); return }
+		files.forEach(function (file) { pendingImages.push({ file: file, url: URL.createObjectURL(file) }) })
+		showErr('')
+		renderPendingImages()
+	})
 	if (els.form) els.form.addEventListener('submit', function (e) {
 		e.preventDefault()
 		send()

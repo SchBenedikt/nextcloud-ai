@@ -40,7 +40,8 @@ function htmlWith(initialMock) {
       <div id="msgs">
         <div class="empty" id="empty"><div class="ico">💬</div><div class="t">Ask a question about your files</div><div class="d">Ask about notes, plans or files.</div></div>
       </div>
-      <form class="form" id="form"><input id="q" type="text" autocomplete="off" placeholder="What does my note about X say?"><button type="submit" id="send">Send</button></form>
+      <div id="image-attachments" class="image-attachments" hidden></div>
+      <form class="form" id="form"><input id="chat-image-input" type="file" accept="image/png,image/jpeg,image/webp" multiple hidden><button type="button" id="attach-images" aria-label="Attach images">▧</button><input id="q" type="text" autocomplete="off" placeholder="What does my note about X say?"><button type="submit" id="send">Send</button></form>
       <div class="err" id="err" style="display:none;"></div>
     </div>
   </div>

@@ -77,6 +77,10 @@ HTML, or editable DOCX. Print a single conversation to PDF from the formatted
 HTML view, or download multiple chats together in a ZIP archive. The export
 keeps the conversation readable outside Nextcloud and includes the export time.
 
+The web chat can analyze up to four PNG, JPEG, or WebP images per message.
+Attachments are sent to the configured chat provider for that request; EVA
+keeps their filenames with the conversation but does not store the image bytes.
+
 ### Nextcloud Integration
 
 Eva can perform actions directly within Nextcloud:

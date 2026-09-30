@@ -63,6 +63,15 @@ send the array/object fields as JSON strings; malformed or wrongly typed data
 returns HTTP 400. A successful append returns `{ "ok": true, "rev": 1 }`,
 where `rev` is the updated chat revision.
 
+`POST /api/streamChat` and `POST /api/chat` also accept an optional `images`
+list for the current user message. Each entry contains a `name`, a `mime`
+(`image/png`, `image/jpeg`, or `image/webp`), and base64 `data`. Up to four
+images with a combined decoded size of 4 MB are accepted; files are verified
+against their actual image type and limited to 25 megapixels each. Image bytes
+are sent to the configured vision-capable chat provider for that request and
+are not saved in chat history. The text and attachment names are saved so the
+conversation remains understandable after reload.
+
 ## Programmatic API keys
 
 Users manage their own credentials with the authenticated routes below. The

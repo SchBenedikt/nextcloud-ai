@@ -6,7 +6,7 @@ namespace OCA\EvaAi\Dto;
 
 /** Immutable input for one RAG chat request. */
 final class ChatRequest {
-    /** @param array<int,array{role:string,content:string}> $history */
+    /** @param array<int,array{role:string,content:string}> $history @param list<array{name:string,mime:string,data:string}> $images */
     public function __construct(
         public readonly string $userId,
         public readonly string $message,
@@ -19,6 +19,7 @@ final class ChatRequest {
         public readonly bool $autonomousActions = false,
         ?callable $shouldStop = null,
         ?callable $onProgress = null,
+        public readonly array $images = [],
     ) {
         $this->shouldStop = $shouldStop !== null ? \Closure::fromCallable($shouldStop) : null;
         $this->onProgress = $onProgress !== null ? \Closure::fromCallable($onProgress) : null;

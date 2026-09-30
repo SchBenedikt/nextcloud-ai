@@ -119,7 +119,8 @@ class RagService {
 		// action tools. A prompt instruction alone is not a security boundary:
 		// the model must never receive mutating tools for a read-only run.
 		$tools = $allowActions && $this->actionsEnabled() ? $this->executor->tools() : [];
-		$messages = $this->buildMessages($userId, $message, $history, $context, count($results), $tools, $instructions, $persona, $this->dateContext($userId), $extraContext);
+        $messages = $this->buildMessages($userId, $message, $history, $context, count($results), $tools, $instructions, $persona, $this->dateContext($userId), $extraContext);
+        $this->attachImages($messages, $request->images);
 		$seenToolCalls = [];
 
         for ($round = 0; $round < $maxToolRounds; $round++) {
@@ -259,6 +260,7 @@ class RagService {
 $this->executor->setUserId($userId);
             $tools = $this->actionsEnabled() ? $this->executor->tools() : [];
             $messages = $this->buildMessages($userId, $message, $history, $context, count($results), $tools, $instructions, $persona, $this->dateContext($userId));
+            $this->attachImages($messages, $request->images);
 
             $answer = '';
             $model = $this->ollama->selectedChatModel();
@@ -1038,6 +1040,24 @@ $this->executor->setUserId($userId);
     /** Advertise web search only when its filtered tools reached this request. */
     private function webSearchAvailable(array $toolNames): bool {
         return isset($toolNames['web_search'], $toolNames['open_website']);
+    }
+
+    /** Add validated, one-request image bytes to the final user turn only. */
+    private function attachImages(array &$messages, array $images): void {
+        if ($images === []) return;
+        $index = array_key_last($messages);
+        if ($index === null || ($messages[$index]['role'] ?? null) !== 'user') return;
+        $data = [];
+        $mimes = [];
+        foreach ($images as $image) {
+            if (!is_array($image) || !is_string($image['data'] ?? null) || !is_string($image['mime'] ?? null)) continue;
+            $data[] = $image['data'];
+            $mimes[] = $image['mime'];
+        }
+        if ($data !== []) {
+            $messages[$index]['images'] = $data;
+            $messages[$index]['image_mimes'] = $mimes;
+        }
     }
 
     /** Describe only Talk operations present in this request's filtered tool set. */
