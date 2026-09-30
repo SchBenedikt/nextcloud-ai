@@ -23,6 +23,9 @@ and tool configuration.
 Chat messages can include up to four PNG, JPEG, or WebP images (4 MB total).
 Image bytes go to the configured chat provider for that request and are not
 stored in chat history; filenames remain with the saved message.
+With Ollama, users can choose a different installed chat model for each
+message. Answers record the model that handled them, and model-specific usage
+is reflected in the metrics.
 The image generator accepts up to four outputs per prompt from the selected
 OpenAI-compatible provider, stores them in the user's `EVA` Files folder, and
 shows a gallery with in-place previews and downloads. Ollama and Groq do not

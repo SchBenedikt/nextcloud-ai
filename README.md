@@ -8,6 +8,8 @@ data flow before enabling it.
 
 [![License: AGPL v3](https://img.shields.io/badge/License-AGPL%20v3-blue.svg)](https://www.gnu.org/licenses/agpl-3.0)
 [![Nextcloud](https://img.shields.io/badge/Nextcloud-30--35-blue)](https://nextcloud.com)
+[![Tests](https://github.com/SchBenedikt/nextcloud-ai/actions/workflows/tests.yml/badge.svg?branch=main)](https://github.com/SchBenedikt/nextcloud-ai/actions/workflows/tests.yml)
+[![Quality](https://github.com/SchBenedikt/nextcloud-ai/actions/workflows/quality.yml/badge.svg?branch=main)](https://github.com/SchBenedikt/nextcloud-ai/actions/workflows/quality.yml)
 [![Nextcloud App Store](https://img.shields.io/badge/Nextcloud%20App%20Store-Eva-brightgreen)](https://apps.nextcloud.com/apps/eva_ai)
 [![PHP](https://img.shields.io/badge/PHP-8.2%2B-purple)](https://php.net)
 [![GitHub stars](https://img.shields.io/github/stars/SchBenedikt/nextcloud-ai?style=social)](https://github.com/SchBenedikt/nextcloud-ai/stargazers)
@@ -77,6 +79,12 @@ HTML, or editable DOCX. Print a single conversation to PDF from the formatted
 HTML view, or download multiple chats together in a ZIP archive. The export
 keeps the conversation readable outside Nextcloud; its export time, per-message
 timestamps, and model names can be included or omitted.
+
+### Choose a model per message
+
+When Ollama has multiple chat-capable models installed, choose the model for
+each message in the same conversation. EVA records the model used on each
+answer, so exported chats and usage metrics keep the model context visible.
 
 ### Usage metrics
 
