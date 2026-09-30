@@ -1,5 +1,108 @@
 import { escHtml, mdToHtml } from './chat-utils'
 
+const xmlEscape = (value) => String(value ?? '')
+	.replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F]/g, '')
+	.replace(/[&<>"']/g, (char) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&apos;' })[char])
+
+function markdownParagraphs(markdown) {
+	const paragraphs = []
+	let inCode = false
+	for (const line of String(markdown).split(/\r?\n/)) {
+		if (/^\s*```/.test(line)) {
+			inCode = !inCode
+			continue
+		}
+		if (inCode) {
+			paragraphs.push({ text: line || ' ', style: 'CodeBlock' })
+			continue
+		}
+		if (!line.trim()) {
+			paragraphs.push({ text: ' ', style: 'Normal' })
+			continue
+		}
+		const heading = line.match(/^(#{1,3})\s+(.*)$/)
+		if (heading) {
+			paragraphs.push({ text: heading[2], style: heading[1].length === 1 ? 'Title' : 'Heading' + (heading[1].length - 1) })
+			continue
+		}
+		const image = line.match(/^!\[([^\]]*)\]\((https?:\/\/[^)]+)\)$/)
+		if (image) {
+			paragraphs.push({ text: image[1] ? image[1] + ' (' + image[2] + ')' : image[2], style: 'Normal' })
+			continue
+		}
+		const link = line.match(/^\[([^\]]+)\]\((https?:\/\/[^)]+)\)$/)
+		let text = image ? image[1] : link ? link[1] + ' (' + link[2] + ')' : line
+		let style = 'Normal'
+		if (/^\s*>/.test(text)) { text = text.replace(/^\s*>\s?/, ''); style = 'Quote' }
+		else if (/^\s*[-*+]\s+/.test(text)) text = '• ' + text.replace(/^\s*[-*+]\s+/, '')
+		else if (/^\s*\d+[.)]\s+/.test(text)) text = text.replace(/^\s*(\d+)[.)]\s+/, '$1. ')
+		text = text.replace(/`([^`]+)`/g, '$1').replace(/\*\*([^*]+)\*\*/g, '$1').replace(/\*([^*]+)\*/g, '$1').replace(/_([^_]+)_/g, '$1')
+		paragraphs.push({ text, style })
+	}
+	return paragraphs
+}
+
+function crc32(bytes) {
+	let crc = 0xffffffff
+	for (const byte of bytes) {
+		crc ^= byte
+		for (let bit = 0; bit < 8; bit++) crc = (crc >>> 1) ^ (crc & 1 ? 0xedb88320 : 0)
+	}
+	return (crc ^ 0xffffffff) >>> 0
+}
+
+/** Create a small standards-compliant, uncompressed ZIP package for a DOCX. */
+function zipStore(entries) {
+	const encoder = new TextEncoder()
+	const chunks = []
+	const central = []
+	let offset = 0
+	for (const [name, content] of Object.entries(entries)) {
+		const nameBytes = encoder.encode(name)
+		const data = encoder.encode(content)
+		const crc = crc32(data)
+		const local = new Uint8Array(30 + nameBytes.length + data.length)
+		const view = new DataView(local.buffer)
+		view.setUint32(0, 0x04034b50, true); view.setUint16(4, 20, true); view.setUint16(6, 0x0800, true)
+		view.setUint16(8, 0, true); view.setUint32(14, crc, true); view.setUint32(18, data.length, true); view.setUint32(22, data.length, true)
+		view.setUint16(26, nameBytes.length, true); view.setUint16(28, 0, true)
+		local.set(nameBytes, 30); local.set(data, 30 + nameBytes.length)
+		chunks.push(local)
+
+		const directory = new Uint8Array(46 + nameBytes.length)
+		const directoryView = new DataView(directory.buffer)
+		directoryView.setUint32(0, 0x02014b50, true); directoryView.setUint16(4, 20, true); directoryView.setUint16(6, 20, true)
+		directoryView.setUint16(8, 0x0800, true); directoryView.setUint16(10, 0, true)
+		directoryView.setUint32(16, crc, true); directoryView.setUint32(20, data.length, true); directoryView.setUint32(24, data.length, true)
+		directoryView.setUint16(28, nameBytes.length, true); directoryView.setUint16(30, 0, true); directoryView.setUint16(32, 0, true)
+		directoryView.setUint32(38, 0, true); directoryView.setUint32(42, offset, true)
+		directory.set(nameBytes, 46); central.push(directory)
+		offset += local.length
+	}
+	const centralSize = central.reduce((sum, chunk) => sum + chunk.length, 0)
+	const end = new Uint8Array(22)
+	const endView = new DataView(end.buffer)
+	endView.setUint32(0, 0x06054b50, true); endView.setUint16(8, central.length, true); endView.setUint16(10, central.length, true)
+	endView.setUint32(12, centralSize, true); endView.setUint32(16, offset, true)
+	const output = new Uint8Array(offset + centralSize + end.length)
+	let cursor = 0
+	for (const chunk of [...chunks, ...central, end]) { output.set(chunk, cursor); cursor += chunk.length }
+	return output
+}
+
+function createDocx(markdown) {
+	const paragraphs = markdownParagraphs(markdown).map(({ text, style }) => '<w:p><w:pPr><w:pStyle w:val="' + style + '"/></w:pPr><w:r><w:t xml:space="preserve">' + xmlEscape(text) + '</w:t></w:r></w:p>').join('')
+	const documentXml = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body>' + paragraphs + '<w:sectPr><w:pgSz w:w="12240" w:h="15840"/><w:pgMar w:top="1440" w:right="1440" w:bottom="1440" w:left="1440"/></w:sectPr></w:body></w:document>'
+	const stylesXml = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><w:styles xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:style w:type="paragraph" w:default="1" w:styleId="Normal"><w:name w:val="Normal"/></w:style><w:style w:type="paragraph" w:styleId="Title"><w:name w:val="Title"/><w:rPr><w:b/><w:sz w:val="36"/></w:rPr></w:style><w:style w:type="paragraph" w:styleId="Heading1"><w:name w:val="heading 1"/><w:rPr><w:b/><w:sz w:val="30"/></w:rPr></w:style><w:style w:type="paragraph" w:styleId="Heading2"><w:name w:val="heading 2"/><w:rPr><w:b/><w:sz w:val="26"/></w:rPr></w:style><w:style w:type="paragraph" w:styleId="CodeBlock"><w:name w:val="Code Block"/><w:rPr><w:rFonts w:ascii="Consolas" w:hAnsi="Consolas"/></w:rPr></w:style><w:style w:type="paragraph" w:styleId="Quote"><w:name w:val="Quote"/><w:pPr><w:ind w:left="360"/></w:pPr></w:style></w:styles>'
+	return zipStore({
+		'[Content_Types].xml': '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/><Override PartName="/word/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.styles+xml"/></Types>',
+		'_rels/.rels': '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/></Relationships>',
+		'word/document.xml': documentXml,
+		'word/styles.xml': stylesXml,
+		'word/_rels/document.xml.rels': '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/></Relationships>',
+	})
+}
+
 /** Build a downloadable or printable export from the messages currently loaded in a chat. */
 export function createChatExport(messages, { format = 'md', title = 'Eva chat export', exportedAt = new Date().toISOString(), language = 'en', labels = {} } = {}) {
 	const items = Array.isArray(messages) ? messages : []
@@ -16,7 +119,7 @@ export function createChatExport(messages, { format = 'md', title = 'Eva chat ex
 	const markdown = ['# ' + title, '', '_' + exportedLine + '_', ...items.flatMap((message) => [
 		'', '## ' + roleName(message), '', messageText(message),
 	])].join('\n')
-	const stem = 'eva-chat-export'
+	if (format === 'docx') return { content: createDocx(markdown), mime: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', extension: 'docx' }
 	if (format === 'md') return { content: markdown, mime: 'text/markdown;charset=utf-8', extension: 'md' }
 	if (format === 'txt') {
 		const plain = markdown

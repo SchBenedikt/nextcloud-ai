@@ -2,8 +2,25 @@
 // API, so the send → stream → tool → confirmation → approve → persist flow and
 // the stop button are covered without a Nextcloud or Ollama instance.
 const { test, expect } = require('@playwright/test')
+const { execFileSync } = require('node:child_process')
 const fs = require('node:fs/promises')
 const { openChat, line } = require('./standalone-harness.cjs')
+
+function storedZipEntries(buffer) {
+  const entries = new Map()
+  let offset = 0
+  while (buffer.readUInt32LE(offset) === 0x04034b50) {
+    const nameLength = buffer.readUInt16LE(offset + 26)
+    const extraLength = buffer.readUInt16LE(offset + 28)
+    const size = buffer.readUInt32LE(offset + 18)
+    const nameStart = offset + 30
+    const name = buffer.toString('utf8', nameStart, nameStart + nameLength)
+    const dataStart = nameStart + nameLength + extraLength
+    entries.set(name, buffer.toString('utf8', dataStart, dataStart + size))
+    offset = dataStart + size
+  }
+  return entries
+}
 
 // All helpers used inside page.evaluate must be defined in the browser: inline
 // the filters instead of referencing Node-scope functions.
@@ -36,7 +53,7 @@ test('streams an answer and persists the question/answer pair in order', async (
 
 test('exports a plain text chat and a safe standalone HTML document', async ({ page }) => {
   await openChat(page)
-  const answer = '<script>window.pwned=true</script> **safe answer**'
+  const answer = '<script>window.pwned=true</script> **safe answer**\n```js\nconst count = 2;\n```'
   await page.evaluate((lines) => { window.__mock.streamLines = lines }, [
     line({ type: 'content', delta: answer }),
     line({ type: 'done', answer, sources: [], followups: [] }),
@@ -63,6 +80,23 @@ test('exports a plain text chat and a safe standalone HTML document', async ({ p
   expect(htmlContents).toContain('<!doctype html>')
   expect(htmlContents).toContain('&lt;script&gt;window.pwned=true&lt;/script&gt;')
   expect(htmlContents).not.toContain('<script>window.pwned=true</script>')
+
+  await page.selectOption('#export-format', 'docx')
+  const wordDownloadPromise = page.waitForEvent('download')
+  await page.click('#export')
+  const wordDownload = await wordDownloadPromise
+  expect(wordDownload.suggestedFilename()).toMatch(/\.docx$/)
+  const wordPath = await wordDownload.path()
+  expect(execFileSync('unzip', ['-t', wordPath], { encoding: 'utf8' })).toContain('No errors detected')
+  const wordContents = await fs.readFile(wordPath)
+  expect(wordContents.subarray(0, 4)).toEqual(Buffer.from([0x50, 0x4b, 0x03, 0x04]))
+  const wordEntries = storedZipEntries(wordContents)
+  expect(wordEntries.has('[Content_Types].xml')).toBe(true)
+  expect(wordEntries.has('word/document.xml')).toBe(true)
+  expect(wordEntries.get('word/document.xml')).toContain('&lt;script&gt;window.pwned=true&lt;/script&gt;')
+  expect(wordEntries.get('word/document.xml')).toContain('<w:pStyle w:val="Title"/>')
+  expect(wordEntries.get('word/document.xml')).toContain('<w:pStyle w:val="CodeBlock"/>')
+  expect(wordEntries.get('word/document.xml')).toContain('const count = 2;')
 
   await page.selectOption('#export-format', 'pdf')
   const printPagePromise = page.waitForEvent('popup')

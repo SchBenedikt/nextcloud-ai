@@ -35,7 +35,7 @@ function htmlWith(initialMock) {
     <div id="content">
       <div class="head">
         <div class="head-left"><h1>Chat with your files</h1></div>
-        <div class="head-right"><select id="export-format" aria-label="Export format"><option value="md">Markdown</option><option value="txt">Plain text</option><option value="html">HTML</option><option value="pdf">Print / Save as PDF</option></select><button id="export" class="export-btn" disabled>&#11015; <span id="export-label">Export</span></button><span class="badge">eva_ai</span></div>
+        <div class="head-right"><select id="export-format" aria-label="Export format"><option value="md">Markdown</option><option value="txt">Plain text</option><option value="html">HTML</option><option value="docx">Word (DOCX)</option><option value="pdf">Print / Save as PDF</option></select><button id="export" class="export-btn" disabled>&#11015; <span id="export-label">Export</span></button><span class="badge">eva_ai</span></div>
       </div>
       <div id="msgs">
         <div class="empty" id="empty"><div class="ico">💬</div><div class="t">Ask a question about your files</div><div class="d">Ask about notes, plans or files.</div></div>
