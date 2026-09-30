@@ -55,6 +55,13 @@ SHA-256 hash. `admin` keys can only be created by a Nextcloud instance admin.
 
 Create with JSON fields `name`, `scope` (`read`, `write`, or `admin`), optional
 `expiresAt` (Unix timestamp), and optional `ipWhitelist` (exact IP addresses).
+The name must contain 1–80 characters. `ipWhitelist` accepts a list of IP
+address strings or a comma/space-separated string. `GET /api/keys` returns a
+`keys` list whose entries contain `id`, `name`, `key_prefix`, `scope`,
+`created_at`, `expires_at`, `ip_whitelist`, `last_used_at`, and `call_count`.
+The create response contains the one-time `key` secret and its `record` using
+the same metadata fields; never store or log the secret in client-visible
+history.
 Read keys can list chats and indexed documents and read their content in bounded
 pages. They are limited to 100 requests per minute; write keys (30/min) can also send a chat request, and
 admin keys (10/min) inherit both capabilities. The external chat route never
