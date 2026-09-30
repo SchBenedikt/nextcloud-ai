@@ -128,8 +128,26 @@ function createDocx(markdown) {
 }
 
 /** Build a downloadable or printable export from the messages currently loaded in a chat. */
-export function createChatExport(messages, { format = 'md', title = 'Eva chat export', exportedAt = new Date().toISOString(), language = 'en', labels = {}, includeTimestamps = true, includeModelInfo = true } = {}) {
-	const items = Array.isArray(messages) ? messages : []
+export function createChatExport(messages, { format = 'md', title = 'Eva chat export', exportedAt = new Date().toISOString(), language = 'en', labels = {}, includeTimestamps = true, includeModelInfo = true, fromDate = '', toDate = '' } = {}) {
+	const boundary = (date, endOfDay) => {
+		if (!date) return null
+		const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(date)
+		if (!match) throw new Error('The export date is invalid.')
+		const parts = match.slice(1).map(Number)
+		const value = new Date(parts[0], parts[1] - 1, parts[2], endOfDay ? 23 : 0, endOfDay ? 59 : 0, endOfDay ? 59 : 0, endOfDay ? 999 : 0)
+		if (value.getFullYear() !== parts[0] || value.getMonth() !== parts[1] - 1 || value.getDate() !== parts[2]) throw new Error('The export date is invalid.')
+		return value.getTime()
+	}
+	const startAt = boundary(fromDate, false)
+	const endAt = boundary(toDate, true)
+	if (startAt !== null && endAt !== null && startAt > endAt) throw new Error('The start date must be on or before the end date.')
+	const items = (Array.isArray(messages) ? messages : []).filter((message) => {
+		if (startAt === null && endAt === null) return true
+		const timestamp = Number(message?.createdAt)
+		if (!Number.isFinite(timestamp) || timestamp <= 0) return false
+		const time = timestamp < 10_000_000_000 ? timestamp * 1000 : timestamp
+		return (startAt === null || time >= startAt) && (endAt === null || time <= endAt)
+	})
 	const roleName = (message) => message?.role === 'user' ? (labels.you || 'You') : (labels.eva || 'EVA')
 	const exportedLine = labels.exportedAt ? labels.exportedAt(exportedAt) : 'Exported ' + exportedAt
 	const messageText = (message) => {

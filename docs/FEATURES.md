@@ -12,8 +12,9 @@ boundaries exist.
 
 The web app is the full-featured workspace. Users can create, search, rename,
 delete, and export chats. Exports support Markdown, plain text, safe HTML, and
-DOCX; selected messages can be exported on their own, and multiple chats can be
-packaged into a ZIP. A single conversation can be printed to PDF from its
+DOCX; selected messages can be exported on their own, and an inclusive date
+range can limit a single chat or batch export. Multiple chats can be packaged
+into a ZIP. A single conversation can be printed to PDF from its
 print-ready HTML view. Responses are streamed; loading, empty, error, and retry
 states are reflected in the UI. Exports can include or omit per-message
 timestamps and model names. The document view lets you browse your personal

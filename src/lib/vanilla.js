@@ -130,19 +130,22 @@ export function mountChat(root, opts = {}) {
 		const format = exportFormat.value
 		const exportMessages = selectionMode ? messages.filter((_, index) => selectedMessageIndexes.has(index)) : messages
 		if (selectionMode && exportMessages.length === 0) return
-		const file = createChatExport(exportMessages, {
+		let file
+		try { file = createChatExport(exportMessages, {
 			format,
 			title: t('Eva chat export'),
 			language: document.documentElement.lang || 'en',
 			includeTimestamps: exportTimestampToggle.checked,
 			includeModelInfo: exportModelToggle.checked,
+			fromDate: exportFromDate.value,
+			toDate: exportToDate.value,
 			labels: {
 				you: t('You'), eva: 'Eva', helpful: t('Marked helpful'), notHelpful: t('Marked not helpful'), bookmarked: t('Bookmarked'),
 				exportedAt: (date) => t('Exported {date}', { date }),
 				timestamp: (date) => t('Sent {date}', { date }),
 				model: (name) => t('Model: {name}', { name }),
 			},
-		})
+		}) } catch (error) { showErr(t(error?.message || 'Could not export this chat.')); return }
 		if (file.print) {
 			const printWindow = window.open('', '_blank')
 			if (printWindow) {
@@ -191,6 +194,8 @@ export function mountChat(root, opts = {}) {
 				language: document.documentElement.lang || 'en',
 				includeTimestamps: exportTimestampToggle.checked,
 				includeModelInfo: exportModelToggle.checked,
+				fromDate: exportFromDate.value,
+				toDate: exportToDate.value,
 				labels: { you: t('You'), eva: 'Eva', exportedAt: (date) => t('Exported {date}', { date }), timestamp: (date) => t('Sent {date}', { date }), model: (name) => t('Model: {name}', { name }) },
 			})
 			const url = URL.createObjectURL(new Blob([archive], { type: 'application/zip' }))
@@ -209,6 +214,8 @@ export function mountChat(root, opts = {}) {
 				'A chat archive can contain up to 100 conversations at a time.',
 				'The chat archive is larger than 50 MB.',
 				'A conversation in the archive is invalid.',
+				'The export date is invalid.',
+				'The start date must be on or before the end date.',
 			]
 			const detail = knownErrors.includes(message) ? t(message) : message
 			showErr(t('Could not export chats: {error}', { error: detail }))
@@ -830,7 +837,19 @@ export function mountChat(root, opts = {}) {
 	exportModelToggle.setAttribute('aria-label', t('Include model information'))
 	const exportModelLabel = document.createElement('label')
 	exportModelLabel.append(exportModelToggle, document.createTextNode(t('Include model information')))
-	exportOptions.append(exportOptionsSummary, exportTimestampLabel, exportModelLabel)
+	const exportFromDate = document.createElement('input')
+	exportFromDate.id = 'export-from-date'
+	exportFromDate.type = 'date'
+	exportFromDate.setAttribute('aria-label', t('From date'))
+	const exportFromLabel = document.createElement('label')
+	exportFromLabel.append(document.createTextNode(t('From date')), exportFromDate)
+	const exportToDate = document.createElement('input')
+	exportToDate.id = 'export-to-date'
+	exportToDate.type = 'date'
+	exportToDate.setAttribute('aria-label', t('To date'))
+	const exportToLabel = document.createElement('label')
+	exportToLabel.append(document.createTextNode(t('To date')), exportToDate)
+	exportOptions.append(exportOptionsSummary, exportTimestampLabel, exportModelLabel, exportFromLabel, exportToLabel)
 	exportSelectionToggle.addEventListener('change', () => {
 		selectionMode = exportSelectionToggle.checked
 		selectedMessageIndexes.clear()

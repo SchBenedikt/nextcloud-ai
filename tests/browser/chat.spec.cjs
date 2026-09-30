@@ -130,6 +130,37 @@ test('chat exports can include or omit per-message timestamps and model details'
   expect(minimalText).not.toContain('Model: gpt-test')
 })
 
+test('chat exports can be limited to an inclusive date range', async ({ page }) => {
+  await openChatView(page)
+  await page.fill('#chatinput', 'Date filtered export')
+  await page.locator('.chatform button[type="submit"]').click()
+  await expect(page.locator('.rb').last()).toContainText('A test answer')
+  await page.getByText('Export options', { exact: true }).click()
+
+  const dates = await page.evaluate(() => {
+    const format = (value) => [value.getFullYear(), String(value.getMonth() + 1).padStart(2, '0'), String(value.getDate()).padStart(2, '0')].join('-')
+    const today = new Date()
+    const tomorrow = new Date(today.getFullYear(), today.getMonth(), today.getDate() + 1)
+    return { today: format(today), tomorrow: format(tomorrow) }
+  })
+  await page.getByLabel('From date').fill(dates.tomorrow)
+  await page.locator('.export-format').selectOption('txt')
+  const emptyDownloadPromise = page.waitForEvent('download')
+  await page.click('#export')
+  const emptyDownload = await emptyDownloadPromise
+  const emptyText = await fs.readFile(await emptyDownload.path(), 'utf8')
+  expect(emptyText).not.toContain('Date filtered export')
+  expect(emptyText).not.toContain('A test answer')
+
+  await page.getByLabel('From date').fill(dates.today)
+  const matchingDownloadPromise = page.waitForEvent('download')
+  await page.click('#export')
+  const matchingDownload = await matchingDownloadPromise
+  const matchingText = await fs.readFile(await matchingDownload.path(), 'utf8')
+  expect(matchingText).toContain('Date filtered export')
+  expect(matchingText).toContain('A test answer')
+})
+
 test('selects a chat model per message and shows the model returned by the server', async ({ page }) => {
   await openChatView(page)
   const model = page.locator('.chat-model-select')
