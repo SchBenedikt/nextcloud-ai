@@ -11,6 +11,7 @@ import { readNdjson } from './lib/ndjson'
  * wires up event handlers, sidebar management and chat persistence.
  */
 import { escHtml, mdInline, mdToHtml, citedSources, formatToolName, copyText, installImageFallback, apiErrorMessage } from './lib/chat-utils'
+import { createChatExport } from './lib/chat-export'
 
 function buildCalendarForm(args, tr) {
 	var form = document.createElement('div')
@@ -203,7 +204,15 @@ function buildCalendarForm(args, tr) {
 		if (heading) heading.textContent = tr('Chat with your files')
 		var exportButton = document.getElementById('export')
 		if (exportButton) {
-			exportButton.title = tr('Export chat as Markdown')
+			exportButton.title = tr('Export chat')
+			var formatSelect = document.getElementById('export-format')
+			if (formatSelect) {
+				formatSelect.setAttribute('aria-label', tr('Export format'))
+				var plainTextOption = formatSelect.querySelector('option[value="txt"]')
+				var pdfOption = formatSelect.querySelector('option[value="pdf"]')
+				if (plainTextOption) plainTextOption.textContent = tr('Plain text')
+				if (pdfOption) pdfOption.textContent = tr('Print / Save as PDF')
+			}
 			var exportLabel = document.getElementById('export-label')
 			if (exportLabel) exportLabel.textContent = tr('Export')
 		}
@@ -216,25 +225,37 @@ function buildCalendarForm(args, tr) {
 	}
 	localizePage()
 
-	function exportMarkdown() {
-		var lines = ['# ' + tr('Chat with your files'), '']
-		lines.push('_' + tr('Exported {date}', { date: new Date().toISOString() }) + '_')
-		messages.forEach(function (m) {
-			lines.push('', '## ' + (m.role === 'user' ? tr('You') : 'EVA'), '', m.text || '')
-			if (m.role === 'assistant' && m.reactions) {
-				if (typeof m.reactions.helpful === 'boolean') lines.push(tr(m.reactions.helpful ? 'Marked helpful' : 'Marked not helpful'))
-				if (m.reactions.bookmarked) lines.push(tr('Bookmarked'))
-			}
+	function exportChat() {
+		var format = document.getElementById('export-format').value
+		var file = createChatExport(messages, {
+			format: format,
+			title: tr('Chat with your files'),
+			language: document.documentElement.lang || 'en',
+			labels: {
+				you: tr('You'), eva: 'EVA', helpful: tr('Marked helpful'), notHelpful: tr('Marked not helpful'), bookmarked: tr('Bookmarked'),
+				exportedAt: function (date) { return tr('Exported {date}', { date: date }) },
+			},
 		})
-		var blob = new Blob([lines.join('\n')], { type: 'text/markdown' })
+		if (file.print) {
+			var printWindow = window.open('', '_blank')
+			if (printWindow) {
+				printWindow.document.open()
+				printWindow.document.write(file.content)
+				printWindow.document.close()
+				printWindow.focus()
+				setTimeout(function () { printWindow.print() }, 250)
+			}
+			return
+		}
+		var blob = new Blob([file.content], { type: file.mime })
 		var url = URL.createObjectURL(blob)
 		var a = document.createElement('a')
 		a.href = url
-		a.download = 'eva-chat-' + (chatId || 'export') + '.md'
+		a.download = 'eva-chat-' + (chatId || 'export') + '.' + file.extension
 		document.body.appendChild(a)
 		a.click()
 		a.remove()
-		URL.revokeObjectURL(url)
+		setTimeout(function () { URL.revokeObjectURL(url) }, 1000)
 	}
 
 	function api(method, path, body) {
@@ -1175,6 +1196,6 @@ function buildCalendarForm(args, tr) {
 		})
 	})
 	if (els.chatlistRetry) els.chatlistRetry.addEventListener('click', refreshChats)
-	if (exportButton) exportButton.addEventListener('click', exportMarkdown)
+	if (exportButton) exportButton.addEventListener('click', exportChat)
 	refreshChats()
 })()
