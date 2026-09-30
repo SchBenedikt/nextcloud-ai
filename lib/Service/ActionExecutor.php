@@ -970,7 +970,8 @@ class ActionExecutor {
     /** @return list<array{type:string,function:array<string,mixed>}> */
     private function pluginDefinitions(): array {
         $this->loadPlugins();
-        return $this->pluginRegistryOrNull()?->definitionsForSurface($this->toolPolicy->getSurface()) ?? [];
+        $definitions = $this->pluginRegistryOrNull()?->definitionsForSurface($this->toolPolicy->getSurface()) ?? [];
+        return array_values(array_filter($definitions, fn(array $tool): bool => $this->pluginToolEnabled((string)($tool['function']['name'] ?? ''))));
     }
 
     private function pluginRegistryOrNull(): ?ToolPluginRegistry {
@@ -1015,6 +1016,7 @@ class ActionExecutor {
     /** Safe catalog for the settings UI; schemas contain no credentials. */
     public function pluginCatalog(): array {
         $registry = $this->pluginRegistryOrNull();
+        $tools = $registry?->definitionsForSurface(ToolPolicy::SURFACE_WEB) ?? [];
         return array_map(function (array $tool) use ($registry): array {
             $fn = $tool['function'] ?? [];
             $entry = $registry?->get((string)($fn['name'] ?? ''));
@@ -1026,8 +1028,13 @@ class ActionExecutor {
                 'risk' => (string)($definition['risk'] ?? ToolPolicy::RISK_READONLY),
                 'surfaces' => array_values(array_map('strval', (array)($definition['surfaces'] ?? []))),
                 'requiresConfirmation' => (bool)($definition['requiresConfirmation'] ?? false),
+                'enabled' => $this->pluginToolEnabled((string)($fn['name'] ?? '')),
             ];
-        }, $this->toolsForSurface(ToolPolicy::SURFACE_WEB));
+        }, $tools);
+    }
+
+    private function pluginToolEnabled(string $name): bool {
+        return PluginToolSettings::isEnabled($this->config->get('plugin_tools_enabled'), $name);
     }
 
     /**
@@ -1140,6 +1147,9 @@ class ActionExecutor {
         $registry = $this->pluginRegistryOrNull();
         $plugin = $registry?->get($name);
         if ($plugin !== null) {
+            if (!$this->pluginToolEnabled($name)) {
+                return ['ok' => false, 'error' => 'This plugin tool is disabled in your EVA settings.'];
+            }
             $definition = $plugin['definition'];
             if (!in_array($this->toolPolicy->getSurface(), $definition['surfaces'], true)) {
                 return ['ok' => false, 'error' => 'Plugin tool is not available on this execution surface.'];

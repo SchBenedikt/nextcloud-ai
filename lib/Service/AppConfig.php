@@ -27,7 +27,7 @@ class AppConfig {
      * default (Issue #73).
      */
     private const USER_SETTINGS = [
-        'chat_provider', 'groq_model', 'custom_provider_url', 'custom_provider_model', 'provider_profiles', 'model_pricing', 'ollama_url', 'embedding_model', 'chat_model', 'chat_model_fallback',
+        'chat_provider', 'groq_model', 'custom_provider_url', 'custom_provider_model', 'provider_profiles', 'model_pricing', 'plugin_tools_enabled', 'ollama_url', 'embedding_model', 'chat_model', 'chat_model_fallback',
         'embedding_model_fallback', 'summary_model', 'top_k', 'chunk_size',
         'chunk_overlap', 'max_file_size', 'max_files_per_run', 'index_storage_quota', 'scope_path',
         'context_size', 'temperature', 'actions_enabled', 'background_actions_enabled', 'learning_enabled', 'safe_commands_enabled', 'terminal_commands_enabled', 'terminal_command_any', 'terminal_command_allowlist', 'agent_max_tool_rounds', 'exec_write_types',
@@ -122,6 +122,7 @@ class AppConfig {
         'custom_provider_model' => '',
         'provider_profiles' => '[]',
         'model_pricing' => '[]',
+        'plugin_tools_enabled' => '{}',
         'ollama_url' => 'http://127.0.0.1:11434',
         'embedding_model' => 'nomic-embed-text',
         'chat_model' => 'gemma4:cloud',

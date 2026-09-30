@@ -93,6 +93,15 @@ includes a `previewUrl` and an authenticated `downloadUrl` at
 `GET /api/images/{id}/download`; a user can download only images in their own
 EVA folder.
 
+`GET /api/plugins` lists installed third-party EVA tools and their schemas,
+risk, execution surfaces, confirmation requirement, and per-user enabled
+state. `PUT /api/plugins` accepts `{ "name": "plugin_example_lookup",
+"enabled": false }` to disable or re-enable one listed tool for the signed-in
+user. Disabled tools are omitted from model tool discovery and rejected if
+called directly. Plugin code still runs inside the trusted Nextcloud PHP
+process; use an external connector when the code must run outside that trust
+boundary.
+
 ## Programmatic API keys
 
 Users manage their own credentials with the authenticated routes below. The

@@ -138,6 +138,8 @@ OC.L10N.register("eva_ai", {
   "Installed Nextcloud apps can add namespaced tools to EVA. Their schemas are visible here; actions still follow EVA confirmation and surface rules.": "Installierte Nextcloud-Apps können EVA um eigene Werkzeuge erweitern. Ihre Schemas werden hier angezeigt; Aktionen folgen weiterhin den EVA-Bestätigungen und Oberflächenregeln.",
   "Loading extensions…": "Erweiterungen werden geladen …",
   "No third-party EVA tools are installed yet.": "Noch keine EVA-Werkzeuge von Drittanbieter-Apps installiert.",
+  "Enable this tool in EVA chat": "Dieses Tool im EVA-Chat aktivieren",
+  "Could not update plugin setting: {error}": "Plugin-Einstellung konnte nicht geändert werden: {error}",
   "no arguments": "keine Argumente",
   "Confirmation required": "Bestätigung erforderlich",
   "No confirmation for read-only use": "Keine Bestätigung für Lesezugriffe",

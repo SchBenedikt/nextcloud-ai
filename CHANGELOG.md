@@ -18,6 +18,10 @@
 - Estimate model costs from per-user USD rates entered per provider and model; leave the estimate unconfigured when rates are unknown. Print the dashboard as a PDF report.
 - Include estimated costs in metrics CSV exports and document the calculation and its limits.
 
+### EVA tool plugins
+
+- Let each user enable or disable discovered third-party EVA tools from Settings; disabled tools are removed from model discovery and rejected at execution.
+
 ## [1.17.12] - 2026-09-29
 
 ### Tool executor architecture

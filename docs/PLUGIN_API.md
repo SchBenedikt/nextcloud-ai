@@ -57,6 +57,20 @@ Nextcloud service contracts, check the current user's permissions and return a
 small structured result. It is loaded at runtime through the event dispatcher;
 EVA's built-in tools remain available if a plugin is broken or absent.
 
+Users can enable or disable each discovered tool under **Settings → EVA
+extensions**. The switch is per user and applies to both tool discovery and
+execution; a disabled tool cannot be invoked by sending its name directly to
+the API. Tools are enabled by default to preserve an app's declared behavior.
+
+### Trust boundary
+
+PHP plugins run inside the Nextcloud server process. EVA enforces tool names,
+argument schemas, user identity, output limits, execution surfaces and
+confirmation rules, but it cannot sandbox arbitrary PHP code from another
+installed app. Install only trusted Nextcloud apps. If code must run outside
+the server trust boundary, expose it through an isolated service and configure
+it as an external connector instead.
+
 For generic connectors, discovered request-body schemas are also used as a
 local guard: fields marked `required` must be present before EVA sends a
 POST, PUT or PATCH request. Optional and additional fields remain allowed, so

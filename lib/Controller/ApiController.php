@@ -41,6 +41,8 @@ use OCA\EvaAi\Dto\ChatReactionRequest;
 use OCA\EvaAi\Dto\ChatReactionResponse;
 use OCA\EvaAi\Dto\ChatAppendRequest;
 use OCA\EvaAi\Dto\ChatAppendResponse;
+use OCA\EvaAi\Dto\PluginToggleRequest;
+use OCA\EvaAi\Service\PluginToolSettings;
 use OCP\AppFramework\OCSController;
 use OCP\AppFramework\Http\Attribute\NoAdminRequired;
 use OCA\EvaAi\Http\StreamTraversableResponse;
@@ -924,6 +926,40 @@ class ApiController extends OCSController {
             $plugins = [];
         }
         return new ErrorDataResponse(['plugins' => $plugins]);
+    }
+
+    #[NoAdminRequired]
+    public function setPluginEnabled(): DataResponse {
+        $user = $this->requireUser();
+        if ($user === null) return new ErrorDataResponse(['error' => 'Not logged in'], 401);
+        $raw = file_get_contents('php://input', false, null, 0, 4097);
+        if (!is_string($raw) || strlen($raw) > 4096) return new ErrorDataResponse(['error' => 'Plugin settings request is too large.'], 413);
+        $decoded = json_decode($raw, true);
+        try {
+            $input = PluginToggleRequest::fromArray(is_array($decoded) ? $decoded : []);
+        } catch (\InvalidArgumentException $e) {
+            return new ErrorDataResponse(['error' => $e->getMessage()], 400);
+        }
+        $this->config->setUserId($user);
+        $this->executor->setUserId($user);
+        $known = [];
+        try {
+            foreach ($this->executor->pluginCatalog() as $plugin) {
+                $name = (string)($plugin['name'] ?? '');
+                if ($name !== '') $known[$name] = true;
+            }
+        } catch (\Throwable) {
+            return new ErrorDataResponse(['error' => 'The EVA extension catalog is unavailable.'], 503);
+        }
+        if (!isset($known[$input->name])) return new ErrorDataResponse(['error' => 'Plugin tool not found.'], 404);
+
+        $this->config->set('plugin_tools_enabled', PluginToolSettings::withEnabledState(
+            $this->config->get('plugin_tools_enabled'),
+            $input->name,
+            $input->enabled,
+            array_keys($known),
+        ));
+        return new ErrorDataResponse(['name' => $input->name, 'enabled' => $input->enabled]);
     }
 
     #[NoAdminRequired]

@@ -43,6 +43,7 @@ return [
         ['name' => 'api#backgroundChatStatus', 'url' => '/api/backgroundChat', 'verb' => 'GET'],
         ['name' => 'api#externalConnectors', 'url' => '/api/connectors', 'verb' => 'GET'],
         ['name' => 'api#plugins', 'url' => '/api/plugins', 'verb' => 'GET'],
+        ['name' => 'api#setPluginEnabled', 'url' => '/api/plugins', 'verb' => 'PUT'],
         ['name' => 'api#saveExternalConnector', 'url' => '/api/connectors', 'verb' => 'PUT'],
         ['name' => 'api#deleteExternalConnector', 'url' => '/api/connectors', 'verb' => 'DELETE'],
         ['name' => 'api#discoverExternalConnector', 'url' => '/api/connectors/discover', 'verb' => 'POST'],
