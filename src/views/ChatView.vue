@@ -387,7 +387,7 @@ export default {
 	.chatview-root .head h1 { font-size: 16px; }
 	.chatview-root .head h1 { flex: 1 0 100%; }
 	.chatview-root .prompt-history > summary { padding-inline: 7px; }
-	.chatview-root .head-right { gap: 4px; }
+	.chatview-root .head-right { gap: 4px; flex-wrap: wrap; }
 	.chatview-root .chat-log { padding-top: 18px; gap: 16px; }
 	.chatview-root .rb { max-width: 94%; }
 	.chatview-root .rm.assistant .rb { padding-right: 28px; }

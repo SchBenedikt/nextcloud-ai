@@ -122,6 +122,23 @@ test('exports a plain text chat and a safe standalone HTML document', async ({ p
   await expect(page.locator('#export')).toBeDisabled()
   await page.uncheck('#export-selection-toggle')
   await expect(page.locator('#export')).toBeEnabled()
+
+  await page.evaluate(() => {
+    window.__mock.chats = [{ id: 'alpha' }, { id: 'beta' }]
+    window.__mock.detail = { id: 'alpha', title: 'Archived chat', messages: [{ role: 'user', text: 'Archive contents' }] }
+  })
+  const archiveDownloadPromise = page.waitForEvent('download')
+  await page.click('#export-all')
+  const archiveDownload = await archiveDownloadPromise
+  expect(archiveDownload.suggestedFilename()).toMatch(/\.zip$/)
+  const archivePath = await archiveDownload.path()
+  expect(execFileSync('unzip', ['-t', archivePath], { encoding: 'utf8' })).toContain('No errors detected')
+  const archiveEntries = storedZipEntries(await fs.readFile(archivePath))
+  expect(archiveEntries.get('chat-alpha.txt')).toContain('Archive contents')
+  expect(archiveEntries.get('chat-beta.txt')).toContain('Archive contents')
+  await page.selectOption('#export-format', 'pdf')
+  await page.click('#export-all')
+  await expect(page.locator('.err')).toContainText('Print to PDF is available for one chat at a time')
 })
 
 test('a failed chat request shows the server error instead of leaving the user without feedback', async ({ page }) => {

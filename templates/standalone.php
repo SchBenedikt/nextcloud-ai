@@ -300,7 +300,7 @@
         @media (max-width: 600px) {
             #content { padding: 18px 12px 20px; }
             .head { align-items: flex-start; flex-direction: column; }
-            .head-right { width: 100%; justify-content: flex-end; }
+            .head-right { width: 100%; justify-content: flex-end; flex-wrap: wrap; }
             .rb { max-width: 94%; }
         }
     </style>
@@ -342,6 +342,7 @@
                     <label class="export-selection-mode"><input id="export-selection-toggle" type="checkbox"><span id="export-selection-label">Select messages for export</span></label>
                     <select id="export-format" class="export-format" aria-label="Export format"><option value="md">Markdown</option><option value="txt">Plain text</option><option value="html">HTML</option><option value="docx">Word (DOCX)</option><option value="pdf">Print / Save as PDF</option></select>
                     <button id="export" class="export-btn" title="Export chat" disabled><svg class="export-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 20h14v-2H5v2zM11 2v11.17l-4.59-4.58L5 10l7 7 7-7-1.41-1.41L13 13.17V2h-2z" fill="currentColor"/></svg><span id="export-label">Export</span></button>
+                    <button id="export-all" class="export-btn export-all" type="button">Export all chats</button>
                     <span class="badge">eva_ai</span>
                 </div>
             </div>

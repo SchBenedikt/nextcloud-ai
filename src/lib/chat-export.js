@@ -59,7 +59,7 @@ function zipStore(entries) {
 	let offset = 0
 	for (const [name, content] of Object.entries(entries)) {
 		const nameBytes = encoder.encode(name)
-		const data = encoder.encode(content)
+		const data = content instanceof Uint8Array ? content : encoder.encode(content)
 		const crc = crc32(data)
 		const local = new Uint8Array(30 + nameBytes.length + data.length)
 		const view = new DataView(local.buffer)
@@ -88,6 +88,30 @@ function zipStore(entries) {
 	let cursor = 0
 	for (const chunk of [...chunks, ...central, end]) { output.set(chunk, cursor); cursor += chunk.length }
 	return output
+}
+
+/** Package multiple conversations into one bounded archive. */
+export function createChatArchive(chats, { format = 'md', ...options } = {}) {
+	const conversations = Array.isArray(chats) ? chats : []
+	if (conversations.length === 0) throw new Error('There are no conversations to export.')
+	if (conversations.length > 100) throw new Error('A chat archive can contain up to 100 conversations at a time.')
+	if (format === 'pdf') throw new Error('Print to PDF is available for one chat at a time; choose HTML for a batch archive.')
+	const entries = {}
+	const encoder = new TextEncoder()
+	let totalTextBytes = 0
+	const usedNames = new Set()
+	conversations.forEach((chat, index) => {
+		if (!chat || typeof chat.id !== 'string' || !Array.isArray(chat.messages)) throw new Error('A conversation in the archive is invalid.')
+		for (const message of chat.messages) totalTextBytes += encoder.encode(String(message?.text || '')).length
+		if (totalTextBytes > 50 * 1024 * 1024) throw new Error('The chat archive is larger than 50 MB.')
+		const file = createChatExport(chat.messages, { ...options, format, title: chat.title || 'Eva chat export' })
+		const id = chat.id.replace(/[^a-zA-Z0-9_-]/g, '_').slice(0, 80) || 'chat'
+		let name = 'chat-' + id + '.' + file.extension
+		if (usedNames.has(name)) name = 'chat-' + id + '-' + (index + 1) + '.' + file.extension
+		usedNames.add(name)
+		entries[name] = file.content
+	})
+	return zipStore(entries)
 }
 
 function createDocx(markdown) {

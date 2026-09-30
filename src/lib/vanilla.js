@@ -4,7 +4,7 @@ import { mdiDownload, mdiMicrophone, mdiPaperclip, mdiTune } from '@mdi/js'
 import { translate as t } from './i18n'
 import { buildConfirmForm } from './confirmForms'
 import { escHtml, mdInline, mdToHtml, citedSources, formatToolName, copyText, installImageFallback, apiErrorMessage } from './chat-utils'
-import { createChatExport } from './chat-export'
+import { createChatExport, createChatArchive } from './chat-export'
 import { getFilePickerBuilder, FilePickerClosed } from '@nextcloud/dialogs'
 import { createPromptHistory } from './prompt-history'
 import { createSpeechService } from './speech'
@@ -159,6 +159,56 @@ export function mountChat(root, opts = {}) {
 		a.click()
 		a.remove()
 		setTimeout(() => URL.revokeObjectURL(url), 1000)
+	}
+
+	async function exportAllChats() {
+		exportAllBtn.disabled = true
+		showErr('')
+		try {
+			const summaries = await api('GET', '/chats')
+			if (!Array.isArray(summaries)) throw new Error(t('The chat list response was invalid.'))
+			const chats = new Array(summaries.length)
+			let next = 0; let failed = false
+			const worker = async () => {
+				while (!failed && next < summaries.length) {
+					const index = next++
+					try {
+						chats[index] = await api('GET', '/chats/' + encodeURIComponent(summaries[index].id))
+					} catch (error) {
+						failed = true
+						throw error
+					}
+				}
+			}
+			await Promise.all(Array.from({ length: Math.min(4, summaries.length) }, worker))
+			const format = exportFormat.value
+			const archive = createChatArchive(chats, {
+				format,
+				language: document.documentElement.lang || 'en',
+				labels: { you: t('You'), eva: 'Eva', exportedAt: (date) => t('Exported {date}', { date }) },
+			})
+			const url = URL.createObjectURL(new Blob([archive], { type: 'application/zip' }))
+			const link = document.createElement('a')
+			link.href = url
+			link.download = 'eva-chats-' + new Date().toISOString().slice(0, 10) + '.zip'
+			document.body.appendChild(link)
+			link.click()
+			link.remove()
+			setTimeout(() => URL.revokeObjectURL(url), 1000)
+		} catch (error) {
+			const message = error?.message || String(error)
+			const knownErrors = [
+				'Print to PDF is available for one chat at a time; choose HTML for a batch archive.',
+				'There are no conversations to export.',
+				'A chat archive can contain up to 100 conversations at a time.',
+				'The chat archive is larger than 50 MB.',
+				'A conversation in the archive is invalid.',
+			]
+			const detail = knownErrors.includes(message) ? t(message) : message
+			showErr(t('Could not export chats: {error}', { error: detail }))
+		} finally {
+			exportAllBtn.disabled = false
+		}
 	}
 
 	function renderMsg(scroll, emptyEl, m, idx) {
@@ -644,6 +694,11 @@ export function mountChat(root, opts = {}) {
 		selectedMessageIndexes.clear()
 		renderAll(messages)
 	})
+	const exportAllBtn = document.createElement('button')
+	exportAllBtn.className = 'export export-all'
+	exportAllBtn.type = 'button'
+	exportAllBtn.textContent = t('Export all chats')
+	exportAllBtn.addEventListener('click', exportAllChats)
 	exportBtn.append(exportIcon, exportLabel)
 	exportBtn.disabled = true
 	exportBtn.addEventListener('click', exportChat)
@@ -906,7 +961,7 @@ export function mountChat(root, opts = {}) {
 	agentStatusPill.hidden = true
 	agentStatusPill.setAttribute('role', 'status')
 	customizeBtn.addEventListener('click', () => openCustomizeDialog())
-	head.append(h1, scopePill, customizePill, agentStatusPill, customizeBtn, promptPanel, exportSelectionLabel, exportFormat, exportBtn)
+	head.append(h1, scopePill, customizePill, agentStatusPill, customizeBtn, promptPanel, exportSelectionLabel, exportFormat, exportBtn, exportAllBtn)
 
 	const scroll = document.createElement('div')
 	scroll.className = 'chat-log'
