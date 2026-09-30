@@ -382,10 +382,10 @@ export default {
 }
 
 @media (max-width: 600px) {
-	.chatview-root { padding-inline: 12px; }
-	.chatview-root .head { min-height: 48px; }
+	.chatview-root { padding: 36px 12px 0; }
+	.chatview-root .head { min-height: 48px; flex-wrap: wrap; }
 	.chatview-root .head h1 { font-size: 16px; }
-	.chatview-root .head { gap: 6px; }
+	.chatview-root .head h1 { flex: 1 0 100%; }
 	.chatview-root .prompt-history > summary { padding-inline: 7px; }
 	.chatview-root .head-right { gap: 4px; }
 	.chatview-root .chat-log { padding-top: 18px; gap: 16px; }
@@ -394,6 +394,8 @@ export default {
 	.chatview-root .rconfirm-share-form { grid-template-columns: 1fr; }
 	.chatview-root .rconfirm-field:first-child { grid-column: auto; }
 	.chatview-root .cbtn { padding-inline: 13px; }
+	.chatview-root .chatform { flex-wrap: wrap; gap: 8px; }
+	.chatview-root .chatform input { flex: 1 0 100%; }
 }
 .chatview-root .head .export { display: inline-flex; align-items: center; justify-content: center; gap: 6px; min-height: var(--default-clickable-area, 34px); padding: 6px 12px; border: 1px solid var(--color-border, #ccd0d4); border-radius: var(--border-radius-element, 8px); background: var(--color-main-background, #fff); color: var(--color-main-text, #222); cursor: pointer; font: inherit; font-size: 13px; font-weight: 500; line-height: 1.2; transition: background-color var(--animation-quick, .2s), border-color var(--animation-quick, .2s), color var(--animation-quick, .2s); }
 .chatview-root .head .export:hover:not(:disabled) { border-color: var(--color-border-dark, #b5b9bd); background: var(--color-background-hover, #f1f2f4); }

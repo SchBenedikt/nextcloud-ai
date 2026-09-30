@@ -224,7 +224,7 @@
 </template>
 
 <script>
-import { ref, computed, watch, onMounted, onBeforeUnmount, defineAsyncComponent } from 'vue'
+import { ref, computed, watch, onMounted, onBeforeUnmount, defineAsyncComponent, nextTick } from 'vue'
 import HomeView from './views/HomeView.vue'
 import ChatView from './views/ChatView.vue'
 // Keep the initial chat bundle small. These views are opened on demand and
@@ -605,8 +605,27 @@ export default {
 			chatDialog.value = { mode: 'delete', id, title: displayTitle(c), draft: '', busy: false, error: '' }
 		}
 
+		const focusChatNavigationItem = async (id) => {
+			await nextTick()
+			await new Promise((resolve) => window.setTimeout(resolve, 700))
+			const chat = chats.value.find((item) => item.id === id)
+			const name = chat ? itemName(chat) : ''
+			const item = name
+				? Array.from(document.querySelectorAll('.app-navigation-entry-link'))
+					.find((element) => element.querySelector('.app-navigation-entry__name')?.textContent?.trim() === name)
+				: null
+			if (item?.isConnected) {
+				item.focus()
+				return
+			}
+			document.querySelector('.new-chat-button')?.focus()
+		}
+
 		const closeChatDialog = () => {
-			if (!chatDialog.value?.busy) chatDialog.value = null
+			if (chatDialog.value?.busy) return
+			const id = chatDialog.value?.id
+			chatDialog.value = null
+			if (id) focusChatNavigationItem(id)
 		}
 
 		const confirmChatDialog = async () => {
@@ -624,6 +643,7 @@ export default {
 					await requestApi('POST', '/chats/' + encodeURIComponent(dialog.id) + '/title', { title })
 					chatDialog.value = null
 					await loadChats()
+					await focusChatNavigationItem(dialog.id)
 				} else {
 					const wasCurrentChat = currentChat.value === dialog.id
 					await requestApi('DELETE', '/chats/' + encodeURIComponent(dialog.id))
@@ -631,6 +651,7 @@ export default {
 					chatDialog.value = null
 					await loadChats()
 					if (wasCurrentChat) navigate('home')
+					await focusChatNavigationItem(dialog.id)
 				}
 			} catch (error) {
 				dialog.error = dialog.mode === 'rename'
