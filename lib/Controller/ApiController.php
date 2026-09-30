@@ -33,6 +33,7 @@ use OCA\EvaAi\Dto\DocumentChunksQuery;
 use OCA\EvaAi\Dto\ChatListQuery;
 use OCA\EvaAi\Dto\ChatListResponse;
 use OCA\EvaAi\Dto\BackgroundChatIdRequest;
+use OCA\EvaAi\Dto\FeedbackStatsResponse;
 use OCP\AppFramework\OCSController;
 use OCP\AppFramework\Http\Attribute\NoAdminRequired;
 use OCA\EvaAi\Http\StreamTraversableResponse;
@@ -1598,7 +1599,8 @@ class ApiController extends OCSController {
         $user = $this->requireUser();
         if ($user === null) return new ErrorDataResponse(['error' => 'Not logged in'], 401);
         try {
-            return new ErrorDataResponse($this->chatStore->feedbackStats($user));
+            $response = FeedbackStatsResponse::fromArray($this->chatStore->feedbackStats($user));
+            return new ErrorDataResponse($response->toArray());
         } catch (\Throwable $e) {
             return $this->chatErrorResponse($e);
         }

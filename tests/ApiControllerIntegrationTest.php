@@ -10,6 +10,7 @@ use OCA\EvaAi\Controller\SystemController;
 use OCA\EvaAi\Db\ChunkMapper;
 use OCA\EvaAi\Db\DocumentMapper;
 use OCA\EvaAi\Dto\ChatRequest;
+use OCA\EvaAi\Dto\FeedbackStatsResponse;
 use OCA\EvaAi\Service\ActionExecutor;
 use OCA\EvaAi\Service\AppConfig;
 use OCA\EvaAi\Service\BackgroundChatQueue;
@@ -154,6 +155,20 @@ final class ApiControllerIntegrationTest extends TestCase {
 
 			self::assertSame(400, $response->getStatus(), $method . ' should reject a non-string queue id');
 		}
+	}
+
+	public function testFeedbackStatsReturnsItsTypedResponseShape(): void {
+		$stored = [];
+		$dependencies = [];
+		$controller = $this->controller('alice', [], $dependencies, $stored);
+		$dependencies['chatStore']->expects(self::once())->method('feedbackStats')->with('alice')->willReturn([
+			'helpful' => 4, 'notHelpful' => 2, 'bookmarked' => 3,
+		]);
+
+		$response = $controller->feedbackStats();
+
+		self::assertSame(200, $response->getStatus());
+		self::assertSame(['helpful' => 4, 'notHelpful' => 2, 'bookmarked' => 3], $response->getData());
 	}
 
 	public function testValidChatRequestCallsRagAndReturnsItsResponse(): void {
