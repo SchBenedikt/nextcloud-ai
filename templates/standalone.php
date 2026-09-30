@@ -247,6 +247,10 @@
         .export-icon { display: block; width: 15px; height: 15px; }
         .export-btn:disabled { opacity: .5; cursor: default; }
         .export-format { min-height: 32px; max-width: 132px; padding: 4px 6px; border: 1px solid var(--color-border, #ccc); border-radius: 6px; background: var(--color-main-background, #fff); color: var(--color-main-text, #111); font: inherit; font-size: 12px; }
+        .export-selection-mode { display: inline-flex; align-items: center; gap: 5px; color: var(--color-text-maxcontrast, #666); font-size: 12px; white-space: nowrap; cursor: pointer; }
+        .export-selection-mode input { margin: 0; }
+        .message-export-select { display: flex; align-items: center; gap: 5px; margin-bottom: -12px; color: var(--color-text-maxcontrast, #666); font-size: 12px; cursor: pointer; }
+        .message-export-select[hidden] { display: none; }
         @media (max-width: 600px) {
             .rconfirm-share-form { grid-template-columns: 1fr; }
             .rconfirm-field:first-child { grid-column: auto; }
@@ -335,6 +339,7 @@
                     <h1>Chat with your files</h1>
                 </div>
                 <div class="head-right">
+                    <label class="export-selection-mode"><input id="export-selection-toggle" type="checkbox"><span id="export-selection-label">Select messages for export</span></label>
                     <select id="export-format" class="export-format" aria-label="Export format"><option value="md">Markdown</option><option value="txt">Plain text</option><option value="html">HTML</option><option value="docx">Word (DOCX)</option><option value="pdf">Print / Save as PDF</option></select>
                     <button id="export" class="export-btn" title="Export chat" disabled><svg class="export-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 20h14v-2H5v2zM11 2v11.17l-4.59-4.58L5 10l7 7 7-7-1.41-1.41L13 13.17V2h-2z" fill="currentColor"/></svg><span id="export-label">Export</span></button>
                     <span class="badge">eva_ai</span>

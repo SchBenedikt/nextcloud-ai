@@ -403,6 +403,10 @@ export default {
 .chatview-root .head .export:disabled { opacity: .5; cursor: default; }
 .chatview-root .head .export-icon { width: 16px; height: 16px; fill: currentColor; }
 .chatview-root .head .export-format { min-height: var(--default-clickable-area, 34px); max-width: 120px; padding: 5px 7px; border: 1px solid var(--color-border, #ccd0d4); border-radius: var(--border-radius-element, 8px); background: var(--color-main-background, #fff); color: var(--color-main-text, #222); font: inherit; font-size: 12px; }
+.chatview-root .export-selection-mode { display: inline-flex; align-items: center; gap: 5px; color: var(--color-text-maxcontrast, #555); font-size: 12px; white-space: nowrap; cursor: pointer; }
+.chatview-root .export-selection-mode input { margin: 0; }
+.chatview-root .message-export-select { display: flex; align-items: center; gap: 5px; margin-bottom: -12px; color: var(--color-text-maxcontrast, #555); font-size: 12px; cursor: pointer; }
+.chatview-root .message-export-select[hidden] { display: none; }
 .chatview-root .head .customize-btn { min-width: 0; }
 .chatview-root .prompt-history { position: relative; flex: 0 0 auto; font-size: 13px; }
 .chatview-root .prompt-history > summary { display: inline-flex; align-items: center; min-height: var(--default-clickable-area, 34px); padding: 6px 10px; border: 1px solid var(--color-border, #ccd0d4); border-radius: var(--border-radius-element, 8px); cursor: pointer; list-style: none; white-space: nowrap; }

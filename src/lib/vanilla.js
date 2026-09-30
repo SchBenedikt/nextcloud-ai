@@ -45,6 +45,9 @@ export function mountChat(root, opts = {}) {
 
 	const STORE_KEY = 'eva-ai.conv'
 	const messages = []
+	const selectedMessageIndexes = new Set()
+	let selectionMode = false
+	let selectionChatId = null
 	let sending = false
 	let currentAbort = null
 	let stoppedByUser = false
@@ -125,7 +128,9 @@ export function mountChat(root, opts = {}) {
 
 	function exportChat() {
 		const format = exportFormat.value
-		const file = createChatExport(messages, {
+		const exportMessages = selectionMode ? messages.filter((_, index) => selectedMessageIndexes.has(index)) : messages
+		if (selectionMode && exportMessages.length === 0) return
+		const file = createChatExport(exportMessages, {
 			format,
 			title: t('Eva chat export'),
 			language: document.documentElement.lang || 'en',
@@ -159,6 +164,20 @@ export function mountChat(root, opts = {}) {
 	function renderMsg(scroll, emptyEl, m, idx) {
 		const wrap = document.createElement('div')
 		wrap.className = 'rm ' + m.role
+		const selectionLabel = document.createElement('label')
+		selectionLabel.className = 'message-export-select'
+		selectionLabel.hidden = !selectionMode
+		const selectionCheckbox = document.createElement('input')
+		selectionCheckbox.type = 'checkbox'
+		selectionCheckbox.checked = selectedMessageIndexes.has(idx)
+		selectionCheckbox.setAttribute('aria-label', t('Select message {number}', { number: idx + 1 }))
+		selectionCheckbox.addEventListener('change', () => {
+			if (selectionCheckbox.checked) selectedMessageIndexes.add(idx)
+			else selectedMessageIndexes.delete(idx)
+			exportBtn.disabled = !messages.length || (selectionMode && selectedMessageIndexes.size === 0)
+		})
+		selectionLabel.append(selectionCheckbox, document.createTextNode(t('Select')))
+		wrap.appendChild(selectionLabel)
 
 		const b = document.createElement('div')
 		b.className = 'rb'
@@ -612,6 +631,19 @@ export function mountChat(root, opts = {}) {
 		option.textContent = label
 		exportFormat.append(option)
 	})
+	const exportSelectionLabel = document.createElement('label')
+	exportSelectionLabel.className = 'export-selection-mode'
+	const exportSelectionToggle = document.createElement('input')
+	exportSelectionToggle.type = 'checkbox'
+	exportSelectionToggle.setAttribute('aria-label', t('Select messages for export'))
+	const exportSelectionText = document.createElement('span')
+	exportSelectionText.textContent = t('Select messages for export')
+	exportSelectionLabel.append(exportSelectionToggle, exportSelectionText)
+	exportSelectionToggle.addEventListener('change', () => {
+		selectionMode = exportSelectionToggle.checked
+		selectedMessageIndexes.clear()
+		renderAll(messages)
+	})
 	exportBtn.append(exportIcon, exportLabel)
 	exportBtn.disabled = true
 	exportBtn.addEventListener('click', exportChat)
@@ -874,7 +906,7 @@ export function mountChat(root, opts = {}) {
 	agentStatusPill.hidden = true
 	agentStatusPill.setAttribute('role', 'status')
 	customizeBtn.addEventListener('click', () => openCustomizeDialog())
-	head.append(h1, scopePill, customizePill, agentStatusPill, customizeBtn, promptPanel, exportFormat, exportBtn)
+	head.append(h1, scopePill, customizePill, agentStatusPill, customizeBtn, promptPanel, exportSelectionLabel, exportFormat, exportBtn)
 
 	const scroll = document.createElement('div')
 	scroll.className = 'chat-log'
@@ -1067,6 +1099,10 @@ export function mountChat(root, opts = {}) {
 	root.append(head, scroll, form, voiceStatus, err)
 
 	const renderAll = (list) => {
+		if (selectionChatId !== chatId) {
+			selectedMessageIndexes.clear()
+			selectionChatId = chatId
+		}
 		refs.length = 0
 		while (scroll.firstChild) scroll.removeChild(scroll.firstChild)
 		if (trimmedMessages > 0) {
@@ -1078,7 +1114,7 @@ export function mountChat(root, opts = {}) {
 			scroll.appendChild(note)
 		}
 		list.forEach((m, i) => renderMsg(scroll, null, m, i))
-		exportBtn.disabled = !list.length
+		exportBtn.disabled = !list.length || (selectionMode && selectedMessageIndexes.size === 0)
 		scroll.scrollTop = scroll.scrollHeight
 	}
 

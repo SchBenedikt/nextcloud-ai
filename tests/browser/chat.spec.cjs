@@ -104,6 +104,24 @@ test('exports a plain text chat and a safe standalone HTML document', async ({ p
   const printPage = await printPagePromise
   await expect(printPage).toHaveTitle('Chat with your files')
   await expect(printPage.locator('body')).toContainText('safe answer')
+
+  await page.check('#export-selection-toggle')
+  const messageSelections = page.locator('.message-export-select input')
+  await expect(messageSelections).toHaveCount(2)
+  await expect(page.locator('#export')).toBeDisabled()
+  await messageSelections.first().check()
+  await expect(page.locator('#export')).toBeEnabled()
+  await page.selectOption('#export-format', 'txt')
+  const selectedDownloadPromise = page.waitForEvent('download')
+  await page.click('#export')
+  const selectedDownload = await selectedDownloadPromise
+  const selectedContents = await fs.readFile(await selectedDownload.path(), 'utf8')
+  expect(selectedContents).toContain('Export me')
+  expect(selectedContents).not.toContain('safe answer')
+  await messageSelections.first().uncheck()
+  await expect(page.locator('#export')).toBeDisabled()
+  await page.uncheck('#export-selection-toggle')
+  await expect(page.locator('#export')).toBeEnabled()
 })
 
 test('a failed chat request shows the server error instead of leaving the user without feedback', async ({ page }) => {
