@@ -355,6 +355,9 @@ export default {
 	outline: 2px solid color-mix(in srgb, var(--color-primary-element, #00679c) 22%, transparent);
 	outline-offset: 0;
 }
+.chatview-root .chat-model-select { flex: 0 0 auto; max-width: min(210px, 34vw); min-width: 100px; min-height: 40px; padding: 8px 10px; border: 1px solid var(--color-border, #bbb); border-radius: 8px; color: var(--color-main-text, #222); background: var(--color-main-background, #fff); font: inherit; font-size: 13px; }
+.chatview-root .chat-model-select[hidden] { display: none; }
+.chatview-root .rmodel { margin-top: 6px; color: var(--color-text-maxcontrast, #666); font-size: 11px; }
 .chatview-root .voice-status { width: min(100%, var(--eva-content-width, 1180px)); box-sizing: border-box; margin: -6px auto 10px; color: var(--color-text-maxcontrast, #666); font-size: 12px; }
 .chatview-root .image-attachments { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; width: min(100%, var(--eva-content-width, 1180px)); box-sizing: border-box; margin: 0 auto 8px; }
 .chatview-root .image-attachments[hidden] { display: none; }
@@ -406,6 +409,7 @@ export default {
 	.chatview-root .cbtn { padding-inline: 13px; }
 	.chatview-root .chatform { flex-wrap: wrap; gap: 8px; }
 	.chatview-root .chatform input { flex: 1 0 100%; }
+	.chatview-root .chat-model-select { flex: 1 1 120px; }
 }
 .chatview-root .head .export { display: inline-flex; align-items: center; justify-content: center; gap: 6px; min-height: var(--default-clickable-area, 34px); padding: 6px 12px; border: 1px solid var(--color-border, #ccd0d4); border-radius: var(--border-radius-element, 8px); background: var(--color-main-background, #fff); color: var(--color-main-text, #222); cursor: pointer; font: inherit; font-size: 13px; font-weight: 500; line-height: 1.2; transition: background-color var(--animation-quick, .2s), border-color var(--animation-quick, .2s), color var(--animation-quick, .2s); }
 .chatview-root .head .export:hover:not(:disabled) { border-color: var(--color-border-dark, #b5b9bd); background: var(--color-background-hover, #f1f2f4); }

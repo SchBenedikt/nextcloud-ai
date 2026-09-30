@@ -19,6 +19,7 @@ final class ChatCompletionRequest {
 		public readonly array $history,
 		public readonly ?string $chatId,
 		public readonly array $images,
+		public readonly ?string $model,
 	) {
 	}
 
@@ -57,6 +58,10 @@ final class ChatCompletionRequest {
 		$chatId = $input['chatId'] ?? null;
 		if ($chatId !== null && !is_string($chatId)) {
 			throw new InvalidArgumentException('chatId must be a string');
+		}
+		$model = $input['model'] ?? null;
+		if ($model !== null && (!is_string($model) || strlen($model) > 128 || !preg_match('/^[A-Za-z0-9][A-Za-z0-9._:\/-]{0,127}$/D', $model))) {
+			throw new InvalidArgumentException('model must be a valid model identifier of at most 128 characters');
 		}
 
 		$images = $input['images'] ?? [];
@@ -102,6 +107,6 @@ final class ChatCompletionRequest {
 			$name = mb_substr(trim(preg_replace('/[\x00-\x1F\x7F]/u', '', basename($name)) ?? ''), 0, 120) ?: 'image';
 			$cleanImages[] = ['name' => $name, 'mime' => $image['mime'], 'data' => $image['data']];
 		}
-		return new self($message, $cleanHistory, $chatId, $cleanImages);
+		return new self($message, $cleanHistory, $chatId, $cleanImages, $model);
 	}
 }

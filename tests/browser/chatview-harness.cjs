@@ -22,7 +22,8 @@ function html() {
       window.__calls.push({ url: String(url), method, body })
       const path = String(url)
       let data = {}
-      if (path.endsWith('/images') && method === 'GET') data = { images: window.__generatedImages }
+      if (path.endsWith('/models') && method === 'GET') data = { provider: 'ollama', chat: 'gemma4:cloud', models: ['gemma4:cloud', 'llama3.2:latest'], roles: { 'gemma4:cloud': { roles: ['chat'] }, 'llama3.2:latest': { roles: ['chat'] } } }
+      else if (path.endsWith('/images') && method === 'GET') data = { images: window.__generatedImages }
       else if (path.endsWith('/images/generate') && method === 'POST') data = { images: window.__generatedImages }
       else if (path.endsWith('/chats') && method === 'POST') data = { id: 'generated-test-chat', rev: 1 }
       else if (path.endsWith('/backgroundChat') && method === 'GET') data = { items: [] }

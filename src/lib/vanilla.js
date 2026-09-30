@@ -273,6 +273,12 @@ export function mountChat(root, opts = {}) {
 			textEl.textContent = m.text || (m.role === 'assistant' ? '…' : '')
 		}
 		b.appendChild(textEl)
+		if (m.role === 'assistant' && m.done && m.model) {
+			const modelLabel = document.createElement('div')
+			modelLabel.className = 'rmodel'
+			modelLabel.textContent = t('Model: {name}', { name: m.model })
+			b.appendChild(modelLabel)
+		}
 		if (m.role === 'assistant' && m.done) {
 			const actBar = document.createElement('div')
 			actBar.className = 'racts'
@@ -1137,6 +1143,31 @@ export function mountChat(root, opts = {}) {
 	input.autocomplete = 'off'
 	input.placeholder = t('Ask a question or describe a task')
 	input.setAttribute('aria-label', t('Ask a question or describe a task'))
+	const modelSelect = document.createElement('select')
+	modelSelect.className = 'chat-model-select'
+	modelSelect.setAttribute('aria-label', t('Chat model'))
+	modelSelect.title = t('Chat model')
+	modelSelect.hidden = true
+	let defaultChatModel = ''
+	api('GET', '/models').then((data) => {
+		if (!data || String(data.provider || 'ollama').toLowerCase() !== 'ollama') return
+		const roles = data.roles && typeof data.roles === 'object' ? data.roles : {}
+		const available = (Array.isArray(data.models) ? data.models : []).filter((name) => {
+			const modelRoles = roles[name]?.roles
+			return !Array.isArray(modelRoles) || modelRoles.length === 0 || modelRoles.includes('chat')
+		})
+		defaultChatModel = String(data.chat || '')
+		if (defaultChatModel && !available.includes(defaultChatModel)) available.unshift(defaultChatModel)
+		if (available.length < 2) return
+		available.forEach((name) => {
+			const option = document.createElement('option')
+			option.value = name
+			option.textContent = name
+			modelSelect.appendChild(option)
+		})
+		modelSelect.value = defaultChatModel || available[0]
+		modelSelect.hidden = false
+	}).catch(() => {})
 	const filesBtn = document.createElement('button')
 	filesBtn.type = 'button'
 	filesBtn.className = 'cbtn cbtn-ghost cbtn-files'
@@ -1363,7 +1394,7 @@ export function mountChat(root, opts = {}) {
 	backgroundBtn.textContent = t('Run in background')
 	backgroundBtn.title = t('Queue this request and continue even if this page is closed')
 	backgroundBtn.addEventListener('click', () => queueInBackground())
-	form.append(filesBtn, imageBtn, imageInput, micBtn, input, cancelVoiceBtn, sendBtn, backgroundBtn)
+	form.append(filesBtn, imageBtn, imageInput, micBtn, modelSelect, input, cancelVoiceBtn, sendBtn, backgroundBtn)
 
 	const err = document.createElement('div')
 	err.className = 'err'
@@ -1415,6 +1446,17 @@ export function mountChat(root, opts = {}) {
 			det.style.display = m.thinking ? '' : 'none'
 			if (m.done) det.open = false
 		}
+		let modelLabel = wrap.querySelector('.rmodel')
+		if (m.done && m.model) {
+			if (!modelLabel) {
+				modelLabel = document.createElement('div')
+				modelLabel.className = 'rmodel'
+				const text = wrap.querySelector('.rt')
+				if (text) text.insertAdjacentElement('afterend', modelLabel)
+				else wrap.appendChild(modelLabel)
+			}
+			modelLabel.textContent = t('Model: {name}', { name: m.model })
+		} else if (modelLabel) modelLabel.remove()
 		let ta = wrap.querySelector('.rtools')
 		if (m.tools && m.tools.length) {
 			if (!ta) {
@@ -2105,6 +2147,7 @@ export function mountChat(root, opts = {}) {
 	const send = () => {
 		const typedMessage = input.value.trim()
 		if ((!typedMessage && pendingImages.length === 0) || sending) return
+		const selectedModel = modelSelect.value || null
 		const outgoingImages = pendingImages.splice(0)
 		const msg = typedMessage || t('Describe these images.')
 		const attachmentNames = outgoingImages.map((attachment) => attachment.file.name)
@@ -2137,7 +2180,7 @@ export function mountChat(root, opts = {}) {
 
 		ensureChat().then(async () => {
 			const images = await Promise.all(outgoingImages.map(encodeImage))
-			return apiStream(STREAM_URL, { message: msg, history, chatId, images }, (ev) => {
+			return apiStream(STREAM_URL, { message: msg, history, chatId, images, model: selectedModel }, (ev) => {
 				const last = messages[assistantIdx]
 				if (!last || last.role !== 'assistant' || last.done) return
 				if (ev.type === 'thinking') {

@@ -840,6 +840,7 @@ class ApiController extends OCSController {
                 'history' => $this->requestParam('history', []),
                 'chatId' => $this->requestParam('chatId'),
                 'images' => $this->requestParam('images', []),
+                'model' => $this->requestParam('model'),
             ]);
         } catch (\InvalidArgumentException $e) {
             return new ErrorDataResponse(['error' => $e->getMessage()], 400);
@@ -858,6 +859,7 @@ class ApiController extends OCSController {
                 history: $request->history,
                 scopePath: $this->scopePathFor($user, $request->chatId),
                 images: $request->images,
+                model: $request->model,
                 instructions: $custom['instructions'],
                 persona: $custom['persona'],
             )));
@@ -1286,6 +1288,7 @@ class ApiController extends OCSController {
         $message = $request?->message ?? '';
         $history = $request?->history ?? [];
         $images = $request?->images ?? [];
+        $model = $request?->model;
         if ($user !== null && $message !== '') {
             $this->releaseSessionLock();
         }
@@ -1295,7 +1298,7 @@ class ApiController extends OCSController {
         $scopePath = $this->scopePathFor($user, $request?->chatId);
         $custom = $this->customFor($user, $request?->chatId);
 
-        $generator = (function () use ($user, $message, $history, $images, $scopePath, $custom, $chatSlot): \Generator {
+        $generator = (function () use ($user, $message, $history, $images, $model, $scopePath, $custom, $chatSlot): \Generator {
             // Aber die PHP-Output-Buffering-Schicht (php.ini output_buffering)
             // würde jede erzeugte Zeile bis zum Ende puffern -> keine Live-Streams.
             // Deshalb entfernen wir hier alle Puffer und flush'eriessen wirklich.
@@ -1319,6 +1322,7 @@ class ApiController extends OCSController {
                     instructions: $custom['instructions'],
                     persona: $custom['persona'],
                     images: $images,
+                    model: $model,
                 ));
                 foreach ($gen as $line) {
                     if ($this->clientDisconnected()) {
@@ -1939,6 +1943,7 @@ class ApiController extends OCSController {
             $roles[$name] = ['roles' => $entryRoles, 'declared' => $declared];
         }
         return new ErrorDataResponse([
+            'provider' => $this->config->get('chat_provider') ?: 'ollama',
             'models' => $names,
             'roles' => $roles,
             'embedding' => $this->config->get('embedding_model'),

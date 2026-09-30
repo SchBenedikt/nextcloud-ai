@@ -130,6 +130,19 @@ test('chat exports can include or omit per-message timestamps and model details'
   expect(minimalText).not.toContain('Model: gpt-test')
 })
 
+test('selects a chat model per message and shows the model returned by the server', async ({ page }) => {
+  await openChatView(page)
+  const model = page.locator('.chat-model-select')
+  await expect(model).toBeVisible()
+  await expect(model).toHaveValue('gemma4:cloud')
+  await model.selectOption('llama3.2:latest')
+  await page.fill('#chatinput', 'Use the selected model')
+  await page.locator('.chatform button[type="submit"]').click()
+
+  await expect.poll(() => page.evaluate(() => window.__calls.find((call) => call.url.endsWith('/streamChat'))?.body?.model)).toBe('llama3.2:latest')
+  await expect(page.locator('.rb').last()).toContainText('Model: gpt-test')
+})
+
 test('exports a plain text chat and a safe standalone HTML document', async ({ page }) => {
   await openChat(page)
   const answer = '<script>window.pwned=true</script> **safe answer**\n```js\nconst count = 2;\n```'

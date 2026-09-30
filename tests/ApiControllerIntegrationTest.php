@@ -198,7 +198,7 @@ final class ApiControllerIntegrationTest extends TestCase {
 	public function testValidChatRequestCallsRagAndReturnsItsResponse(): void {
 		$stored = [];
 		$dependencies = [];
-		$controller = $this->controller('alice', ['message' => 'Summarize my notes'], $dependencies, $stored);
+		$controller = $this->controller('alice', ['message' => 'Summarize my notes', 'model' => 'gemma4:cloud'], $dependencies, $stored);
 		$cache = $this->createMock(IMemcache::class);
 		$cache->method('inc')->willReturn(1);
 		$dependencies['cacheFactory']->method('createLocking')->with('eva_ai_rate')->willReturn($cache);
@@ -209,7 +209,7 @@ final class ApiControllerIntegrationTest extends TestCase {
 			'eva_ai/chat/' . hash('sha256', 'alice'), ILockingProvider::LOCK_EXCLUSIVE
 		);
 		$dependencies['rag']->expects(self::once())->method('ask')
-			->with(self::callback(static fn(ChatRequest $request): bool => $request->userId === 'alice' && $request->message === 'Summarize my notes'))
+			->with(self::callback(static fn(ChatRequest $request): bool => $request->userId === 'alice' && $request->message === 'Summarize my notes' && $request->model === 'gemma4:cloud'))
 			->willReturn(['answer' => 'Your notes contain three tasks.', 'sources' => []]);
 
 		$response = $controller->chat();
