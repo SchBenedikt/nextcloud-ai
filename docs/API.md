@@ -126,6 +126,19 @@ Template data is stored in the user's private EVA app data. Import creates new
 IDs and accepts at most 100 templates per request; each prompt is limited to
 8,000 characters.
 
+## Personal knowledge and selected-file context
+
+`GET /api/knowledge` returns the signed-in user's private `KNOWLEDGE.md` as
+`{ "content": "…", "length": 12 }`. `length` is the Unicode character count,
+not the UTF-8 byte count. `PUT /api/knowledge` accepts a `content` string up to
+60,000 characters and returns `{ "ok": true, "length": 12 }` after the file is
+saved.
+
+`POST /api/fileContextStatus` accepts selected Nextcloud `fileIds` and returns
+three typed lists: positive integer IDs in `indexed` and `missing`, and
+accessible `files` entries containing `fileId`, `name`, and `path`. Files the
+current user cannot access are not included in `files` and remain unindexed.
+
 ## Scheduled briefings
 
 Briefing definitions are configured through the signed-in user's settings.

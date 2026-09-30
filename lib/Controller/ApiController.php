@@ -26,6 +26,9 @@ use OCA\EvaAi\Dto\ChatRegenerateRequest;
 use OCA\EvaAi\Dto\ChatCompletionRequest;
 use OCA\EvaAi\Dto\FileContextChatRequest;
 use OCA\EvaAi\Dto\KnowledgeContentRequest;
+use OCA\EvaAi\Dto\KnowledgeContentResponse;
+use OCA\EvaAi\Dto\KnowledgeContentSaveResponse;
+use OCA\EvaAi\Dto\FileContextStatusResponse;
 use OCA\EvaAi\Dto\ConfirmToolRequest;
 use OCA\EvaAi\Dto\ChatTemplateImportRequest;
 use OCA\EvaAi\Dto\DocumentsQuery;
@@ -1142,7 +1145,7 @@ class ApiController extends OCSController {
                     $content = (string)$node->getContent();
                 }
             }
-            return new ErrorDataResponse(['content' => $content, 'length' => mb_strlen($content)]);
+            return new ErrorDataResponse(KnowledgeContentResponse::fromContent($content)->toArray());
         } catch (\Throwable $e) {
             return new ErrorDataResponse(['error' => 'Could not read personal knowledge file.'], 500);
         }
@@ -1169,7 +1172,7 @@ class ApiController extends OCSController {
             } else {
                 $home->newFile($path, $content);
             }
-            return new ErrorDataResponse(['ok' => true, 'length' => mb_strlen($content)]);
+            return new ErrorDataResponse(KnowledgeContentSaveResponse::saved($content)->toArray());
         } catch (\Throwable $e) {
             return new ErrorDataResponse(['error' => 'Could not save knowledge file: ' . $e->getMessage()], 500);
         }
@@ -1187,28 +1190,22 @@ class ApiController extends OCSController {
         }
         $fileIds = array_values(array_filter(array_map('intval', $fileIds), static fn($v) => $v > 0));
         if ($fileIds === []) {
-            return new ErrorDataResponse(['indexed' => [], 'missing' => [], 'files' => []]);
+            return new ErrorDataResponse(FileContextStatusResponse::forRequestedFiles([], [])->toArray());
         }
         $docs = $this->fileContextChat->accessibleDocuments(
             $user,
             $this->documentMapper->findByUserAndFileIds($user, $fileIds)
         );
-        $indexed = [];
         $files = [];
         foreach ($docs as $d) {
             $fid = (int)$d->getFileId();
-            $indexed[] = $fid;
             $files[] = [
                 'fileId' => $fid,
                 'name' => $d->getName(),
                 'path' => $d->getPath(),
             ];
         }
-        return new ErrorDataResponse([
-            'indexed' => $indexed,
-            'missing' => array_values(array_diff($fileIds, $indexed)),
-            'files' => $files,
-        ]);
+        return new ErrorDataResponse(FileContextStatusResponse::forRequestedFiles($fileIds, $files)->toArray());
     }
 
     /**
