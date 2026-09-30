@@ -11,10 +11,13 @@ boundaries exist.
 ### EVA Web App
 
 The web app is the full-featured workspace. Users can create, search, rename,
-delete, and export chats as Markdown. Responses are streamed; loading, empty,
-error, and retry states are reflected in the UI. The document view lets you
-browse your personal index page by page. Settings expose Ollama, models, index,
-retrieval quality, and tool configuration.
+delete, and export chats. Exports support Markdown, plain text, safe HTML, and
+DOCX; selected messages can be exported on their own, and multiple chats can be
+packaged into a ZIP. A single conversation can be printed to PDF from its
+print-ready HTML view. Responses are streamed; loading, empty, error, and retry
+states are reflected in the UI. The document view lets you browse your personal
+index page by page. Settings expose Ollama, models, index, retrieval quality,
+and tool configuration.
 
 EVA may only suggest changes in an interactive, authenticated context. Before
 execution the UI shows the exact tool name and its arguments. Only **Confirm and

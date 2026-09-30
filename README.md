@@ -70,6 +70,13 @@ Combines **vector-based semantic search** with **lexical search (BM25)** using R
 
 Every answer includes the exact **file path** where the information was found, so you can always verify the source. When the answer also used the web, the pages that were actually retrieved are listed as **web sources** with their site and a short excerpt, marked "Web" so they are never confused with your own files.
 
+### Chat Exports
+
+Export a full conversation or selected messages as Markdown, plain text, safe
+HTML, or editable DOCX. Print a single conversation to PDF from the formatted
+HTML view, or download multiple chats together in a ZIP archive. The export
+keeps the conversation readable outside Nextcloud and includes the export time.
+
 ### Nextcloud Integration
 
 Eva can perform actions directly within Nextcloud:
