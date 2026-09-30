@@ -27,6 +27,7 @@ use OCA\EvaAi\Dto\ChatCompletionRequest;
 use OCA\EvaAi\Dto\FileContextChatRequest;
 use OCA\EvaAi\Dto\KnowledgeContentRequest;
 use OCA\EvaAi\Dto\ConfirmToolRequest;
+use OCA\EvaAi\Dto\ChatTemplateImportRequest;
 use OCP\AppFramework\OCSController;
 use OCP\AppFramework\Http\Attribute\NoAdminRequired;
 use OCA\EvaAi\Http\StreamTraversableResponse;
@@ -1657,11 +1658,14 @@ class ApiController extends OCSController {
     public function importTemplates(): DataResponse {
         $user = $this->requireUser();
         if ($user === null) return new ErrorDataResponse(['error' => 'Not logged in'], 401);
-        $templates = $this->requestParam('templates');
-        if (!is_array($templates)) return new ErrorDataResponse(['error' => 'A template list is required'], 400);
-        try { return new ErrorDataResponse(['imported' => $this->chatStore->importTemplates($user, $templates)]); }
-        catch (\InvalidArgumentException $e) { return new ErrorDataResponse(['error' => $e->getMessage()], 400); }
-        catch (\Throwable $e) { return $this->chatErrorResponse($e); }
+        try {
+            $request = ChatTemplateImportRequest::fromArray(['templates' => $this->requestParam('templates')]);
+            return new ErrorDataResponse(['imported' => $this->chatStore->importTemplates($user, $request->templates)]);
+        } catch (\InvalidArgumentException $e) {
+            return new ErrorDataResponse(['error' => $e->getMessage()], 400);
+        } catch (\Throwable $e) {
+            return $this->chatErrorResponse($e);
+        }
     }
 
     #[NoAdminRequired]
