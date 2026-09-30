@@ -5,6 +5,7 @@ const { test, expect } = require('@playwright/test')
 const { execFileSync } = require('node:child_process')
 const fs = require('node:fs/promises')
 const { openChat, line } = require('./standalone-harness.cjs')
+const { openChatView } = require('./chatview-harness.cjs')
 
 function storedZipEntries(buffer) {
   const entries = new Map()
@@ -69,6 +70,21 @@ test('sends image attachments for analysis, including an image-only prompt', asy
   await expect(page.locator('.rb').first()).toContainText('Describe these images.')
   await expect(page.locator('.rb').first()).toContainText('tiny.png')
   await expect(page.locator('.rb').last()).toContainText('The image is a tiny PNG.')
+})
+
+test('generates images from the selected provider and shows the saved Files gallery', async ({ page }) => {
+  await openChatView(page)
+  await page.getByRole('button', { name: 'Create images' }).click()
+  await expect(page.locator('.image-generator')).toBeVisible()
+  await expect(page.locator('.image-generator-privacy')).toContainText('sent to your configured image provider')
+  await page.locator('.image-generator textarea').fill('A fox reading beneath an apple tree')
+  await page.locator('.image-generator select').selectOption('2')
+  await page.getByRole('button', { name: 'Generate', exact: true }).click()
+  await expect(page.locator('.generated-image')).toHaveCount(2)
+  await expect(page.locator('.image-generator-status')).toContainText('Saved 2 generated images')
+  const request = await page.evaluate(() => window.__calls.find((call) => call.url.endsWith('/images/generate')))
+  expect(request).toMatchObject({ method: 'POST', body: { prompt: 'A fox reading beneath an apple tree', count: 2 } })
+  await expect(page.locator('.generated-image a').first()).toHaveAttribute('href', '/download/11')
 })
 
 test('exports a plain text chat and a safe standalone HTML document', async ({ page }) => {

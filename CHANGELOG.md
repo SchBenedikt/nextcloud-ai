@@ -2,6 +2,11 @@
 
 ## [Unreleased]
 
+### Image generation
+
+- Generate up to four images from an OpenAI-compatible image model, then preview or download them from the user's EVA Files folder.
+- Add per-user request limits and keep generated images scoped to their owner.
+
 ## [1.17.12] - 2026-09-29
 
 ### Tool executor architecture

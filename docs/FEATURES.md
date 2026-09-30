@@ -22,6 +22,10 @@ and tool configuration.
 Chat messages can include up to four PNG, JPEG, or WebP images (4 MB total).
 Image bytes go to the configured chat provider for that request and are not
 stored in chat history; filenames remain with the saved message.
+The image generator accepts up to four outputs per prompt from the selected
+OpenAI-compatible provider, stores them in the user's `EVA` Files folder, and
+shows a gallery with in-place previews and downloads. Ollama and Groq do not
+provide this image-generation endpoint.
 
 EVA may only suggest changes in an interactive, authenticated context. Before
 execution the UI shows the exact tool name and its arguments. Only **Confirm and

@@ -148,6 +148,13 @@ final class FrontendContractTest extends TestCase {
 		self::assertStringNotContainsString("emit('new-chat', text)", $home);
 		self::assertStringContainsString("public function greeting(): DataResponse", (string)file_get_contents(__DIR__ . '/../lib/Controller/ApiController.php'));
 		self::assertStringContainsString("'url' => '/api/greeting'", (string)file_get_contents(__DIR__ . '/../appinfo/routes.php'));
+		$imageController = (string)file_get_contents(__DIR__ . '/../lib/Controller/ImageController.php');
+		$imageService = (string)file_get_contents(__DIR__ . '/../lib/Service/ImageGenerationService.php');
+		self::assertStringContainsString("'url' => '/api/images/generate'", (string)file_get_contents(__DIR__ . '/../appinfo/routes.php'));
+		self::assertStringContainsString("api('POST', '/images/generate'", (string)file_get_contents(__DIR__ . '/../src/lib/vanilla.js'));
+		self::assertStringContainsString('saved in Files / EVA', (string)file_get_contents(__DIR__ . '/../l10n/en.js'));
+		self::assertStringContainsString('rateLimited(', $imageController);
+		self::assertStringContainsString('core.Preview.getPreviewByFileId', $imageService);
 		// Chat retention: per-user setting, store cleanup + background job.
 		self::assertStringContainsString('chat_retention_days', (string)file_get_contents(__DIR__ . '/../lib/Service/AppConfig.php'));
 		self::assertStringContainsString("public function deleteOlderThan(string \$user, int \$days): int", (string)file_get_contents(__DIR__ . '/../lib/Service/ChatStore.php'));

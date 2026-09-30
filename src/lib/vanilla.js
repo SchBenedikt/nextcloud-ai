@@ -670,6 +670,104 @@ export function mountChat(root, opts = {}) {
 	head.innerHTML = ''
 	const h1 = document.createElement('h1')
 	h1.textContent = t('Chat with your files')
+	const imageModeBtn = document.createElement('button')
+	imageModeBtn.type = 'button'
+	imageModeBtn.className = 'export image-mode-toggle'
+	imageModeBtn.textContent = t('Create images')
+	imageModeBtn.setAttribute('aria-expanded', 'false')
+	const imagePanel = document.createElement('section')
+	imagePanel.className = 'image-generator'
+	imagePanel.hidden = true
+	const imagePanelTitle = document.createElement('h2')
+	imagePanelTitle.textContent = t('Generate images')
+	const imagePrompt = document.createElement('textarea')
+	imagePrompt.maxLength = 1000
+	imagePrompt.rows = 3
+	imagePrompt.placeholder = t('Describe the image you want to create')
+	imagePrompt.setAttribute('aria-label', t('Image prompt'))
+	const imageCount = document.createElement('select')
+	imageCount.setAttribute('aria-label', t('Number of images'))
+	for (let count = 1; count <= 4; count++) {
+		const option = document.createElement('option')
+		option.value = String(count)
+		option.textContent = String(count)
+		imageCount.appendChild(option)
+	}
+	const generateBtn = document.createElement('button')
+	generateBtn.type = 'button'
+	generateBtn.className = 'cbtn'
+	generateBtn.textContent = t('Generate')
+	const imagePanelClose = document.createElement('button')
+	imagePanelClose.type = 'button'
+	imagePanelClose.className = 'cbtn cbtn-ghost'
+	imagePanelClose.textContent = t('Close')
+	const imagePanelStatus = document.createElement('p')
+	imagePanelStatus.className = 'image-generator-status'
+	imagePanelStatus.setAttribute('role', 'status')
+	const imagePrivacy = document.createElement('p')
+	imagePrivacy.className = 'image-generator-privacy'
+	imagePrivacy.textContent = t('The prompt is sent to your configured image provider. Generated images are saved in Files / EVA.')
+	const imageGallery = document.createElement('div')
+	imageGallery.className = 'image-gallery'
+	imagePanel.append(imagePanelTitle, imagePrivacy, imagePrompt, imageCount, generateBtn, imagePanelClose, imagePanelStatus, imageGallery)
+	const renderGeneratedImages = (images) => {
+		imageGallery.replaceChildren()
+		for (const image of images) {
+			if (!image || typeof image.previewUrl !== 'string') continue
+			const card = document.createElement('article')
+			card.className = 'generated-image'
+			const download = document.createElement('a')
+			download.href = typeof image.downloadUrl === 'string' ? image.downloadUrl : image.previewUrl
+			download.download = image.name || 'eva-generated.png'
+			download.setAttribute('aria-label', t('Download {name}', { name: image.name || t('generated image') }))
+			const preview = document.createElement('img')
+			preview.src = image.previewUrl
+			preview.alt = image.name || t('Generated image')
+			download.appendChild(preview)
+			const name = document.createElement('span')
+			name.textContent = image.name || t('Generated image')
+			card.append(download, name)
+			imageGallery.appendChild(card)
+		}
+	}
+	const loadGeneratedImages = () => api('GET', '/images').then((result) => {
+		const images = Array.isArray(result?.images) ? result.images : []
+		renderGeneratedImages(images)
+	}).catch((error) => {
+		imagePanelStatus.textContent = t('Could not load generated images: {error}', { error: apiErrorMessage(error) })
+	})
+	imageModeBtn.addEventListener('click', () => {
+		imagePanel.hidden = !imagePanel.hidden
+		imageModeBtn.setAttribute('aria-expanded', String(!imagePanel.hidden))
+		if (!imagePanel.hidden) { imagePrompt.focus(); loadGeneratedImages() }
+	})
+	imagePanelClose.addEventListener('click', () => {
+		imagePanel.hidden = true
+		imageModeBtn.setAttribute('aria-expanded', 'false')
+		imageModeBtn.focus()
+	})
+	generateBtn.addEventListener('click', async () => {
+		const prompt = imagePrompt.value.trim()
+		if (!prompt || prompt.length > 1000) {
+			imagePanelStatus.textContent = t('Enter an image prompt between 1 and 1,000 characters.')
+			imagePrompt.focus()
+			return
+		}
+		generateBtn.disabled = true
+		imagePanelStatus.textContent = t('Generating images…')
+		try {
+			const result = await api('POST', '/images/generate', { prompt, count: Number(imageCount.value) })
+			const images = Array.isArray(result?.images) ? result.images : []
+			renderGeneratedImages(images)
+			imagePanelStatus.textContent = images.length
+				? t('Saved {count} generated images to your EVA folder.', { count: images.length })
+				: t('The image provider returned no images.')
+		} catch (error) {
+			imagePanelStatus.textContent = t('Could not generate images: {error}', { error: apiErrorMessage(error?.response?.data) || error?.message || String(error) })
+		} finally {
+			generateBtn.disabled = false
+		}
+	})
 	const exportBtn = document.createElement('button')
 	exportBtn.className = 'export'
 	exportBtn.type = 'button'
@@ -973,7 +1071,7 @@ export function mountChat(root, opts = {}) {
 	agentStatusPill.hidden = true
 	agentStatusPill.setAttribute('role', 'status')
 	customizeBtn.addEventListener('click', () => openCustomizeDialog())
-	head.append(h1, scopePill, customizePill, agentStatusPill, customizeBtn, promptPanel, exportSelectionLabel, exportFormat, exportBtn, exportAllBtn)
+	head.append(h1, imageModeBtn, scopePill, customizePill, agentStatusPill, customizeBtn, promptPanel, exportSelectionLabel, exportFormat, exportBtn, exportAllBtn)
 
 	const scroll = document.createElement('div')
 	scroll.className = 'chat-log'
@@ -1245,7 +1343,7 @@ export function mountChat(root, opts = {}) {
 	err.className = 'err'
 	err.style.display = 'none'
 
-	root.append(head, scroll, imageAttachments, form, voiceStatus, err)
+	root.append(head, imagePanel, scroll, imageAttachments, form, voiceStatus, err)
 
 	const renderAll = (list) => {
 		if (selectionChatId !== chatId) {

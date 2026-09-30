@@ -77,6 +77,11 @@ HTML, or editable DOCX. Print a single conversation to PDF from the formatted
 HTML view, or download multiple chats together in a ZIP archive. The export
 keeps the conversation readable outside Nextcloud and includes the export time.
 
+EVA can also analyze images attached to a chat and generate up to four images
+from a prompt. Generated files are saved in the user's `EVA` folder in Files;
+the gallery previews and downloads those saved files. Generation uses the
+currently selected OpenAI-compatible provider and its configured image model.
+
 The web chat can analyze up to four PNG, JPEG, or WebP images per message.
 Attachments are sent to the configured chat provider for that request; EVA
 keeps their filenames with the conversation but does not store the image bytes.

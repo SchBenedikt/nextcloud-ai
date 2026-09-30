@@ -438,6 +438,19 @@ export default {
 .chatview-root .prompt-template-list { max-height: 240px; overflow: auto; }
 .chatview-root .prompt-templates > .cbtn { margin: 5px 4px 0 0; }
 
+.chatview-root .image-generator { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; gap: 8px; width: min(100%, var(--eva-content-width, 1180px)); box-sizing: border-box; margin: 10px auto; padding: 12px; border: 1px solid var(--color-border, #ddd); border-radius: 12px; background: var(--color-background-dark, #f7f7f7); }
+.chatview-root .image-generator[hidden] { display: none; }
+.chatview-root .image-generator h2, .chatview-root .image-generator-privacy, .chatview-root .image-generator-status, .chatview-root .image-gallery { grid-column: 1 / -1; margin: 0; }
+.chatview-root .image-generator h2 { font-size: 16px; }
+.chatview-root .image-generator-privacy, .chatview-root .image-generator-status { color: var(--color-text-maxcontrast, #666); font-size: 12px; }
+.chatview-root .image-generator textarea { width: 100%; min-width: 0; min-height: 72px; box-sizing: border-box; padding: 8px; border: 1px solid var(--color-border, #ccc); border-radius: 8px; background: var(--color-main-background, #fff); color: var(--color-main-text, #222); font: inherit; resize: vertical; }
+.chatview-root .image-generator select { align-self: start; min-height: 36px; padding: 6px; border: 1px solid var(--color-border, #ccc); border-radius: 8px; background: var(--color-main-background, #fff); color: var(--color-main-text, #222); }
+.chatview-root .image-gallery { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px; }
+.chatview-root .generated-image { display: grid; gap: 5px; min-width: 0; font-size: 12px; }
+.chatview-root .generated-image img { width: 100%; aspect-ratio: 1; object-fit: contain; border: 1px solid var(--color-border, #ddd); border-radius: 8px; background: var(--color-main-background, #fff); }
+.chatview-root .generated-image span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.chatview-root .head .image-mode-toggle { white-space: nowrap; }
+
 /* Per-chat custom instructions dialog (Issue #90). */
 .customize-overlay { position: fixed; inset: 0; z-index: 2000; display: flex; align-items: center; justify-content: center; padding: 24px; background: rgba(0, 0, 0, .45); }
 .customize-box { width: min(480px, 100%); max-height: 90vh; overflow: auto; padding: 22px 24px; border-radius: var(--border-radius-large, 12px); background: var(--color-main-background, #fff); box-shadow: 0 8px 32px rgba(0, 0, 0, .25); color: var(--color-main-text, #222); }

@@ -10,6 +10,7 @@
     "build": "NODE_ENV=production webpack --config webpack.js",
     "dev": "NODE_ENV=development webpack --config webpack.js --watch",
     "test": "node --test tests/*.test.cjs",
+    "pretest:browser": "node tests/browser/build-chatview.cjs",
     "test:browser": "playwright test tests/browser --workers=1 --reporter=line"
   },
   "dependencies": {
