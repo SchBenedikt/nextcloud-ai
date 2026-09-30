@@ -446,4 +446,15 @@ final class FrontendContractTest extends TestCase {
         self::assertStringContainsString('public function backgroundChatStatus()', $api);
         self::assertStringContainsString('scheduleAfter(BackgroundChatJob::class, time() + 1)', $api);
     }
+
+    public function testMetricsRefreshQuietlyWhileVisibleAndCleanUpTheTimer(): void {
+        $view = (string)file_get_contents(__DIR__ . '/../src/views/MetricsView.vue');
+        self::assertStringContainsString("load(days.value, true)", $view);
+        self::assertStringContainsString('window.setInterval(refreshWhenVisible, 60000)', $view);
+        self::assertStringContainsString("document.visibilityState === 'visible'", $view);
+        self::assertStringContainsString('if (background && (loading.value || !hasCurrentData.value)) return', $view);
+        self::assertStringContainsString('window.clearInterval(refreshTimer)', $view);
+        self::assertStringContainsString("document.removeEventListener('visibilitychange', refreshWhenVisible)", $view);
+        self::assertStringContainsString('Refreshes automatically every minute', $view);
+    }
 }
