@@ -10,6 +10,7 @@ use OCA\EvaAi\Service\BackgroundChatQueue;
 use OCA\EvaAi\Service\ChatStore;
 use OCA\EvaAi\Service\IndexScheduler;
 use OCA\EvaAi\Service\KnowledgeInitializer;
+use OCA\EvaAi\Service\ModelPricing;
 use OCA\EvaAi\Service\Ollama;
 use OCA\EvaAi\Service\RagService;
 use OCA\EvaAi\Service\UsageMetrics;
@@ -21,7 +22,7 @@ use OCP\ICacheFactory;
 use OCP\IRequest;
 use Psr\Log\LoggerInterface;
 
-/** Read-only system and dashboard endpoints for the EVA application. */
+/** System, dashboard and metrics endpoints for the EVA application. */
 final class SystemController extends OCSController {
     public function __construct(
         string $appName,
@@ -141,7 +142,28 @@ final class SystemController extends OCSController {
         if ($days === false || $days < 1 || $days > 365) {
             return new ErrorDataResponse(['error' => 'days must be an integer between 1 and 365'], 400);
         }
-        return new ErrorDataResponse($this->usageMetrics->summaryForUser($user, $days));
+        $pricing = json_decode($this->config->get('model_pricing'), true);
+        return new ErrorDataResponse($this->usageMetrics->summaryForUser($user, $days, ModelPricing::normalize($pricing) ?? []));
+    }
+
+    /** Save a user's explicitly supplied model prices without changing provider settings. */
+    #[NoAdminRequired]
+    public function saveMetricsPricing(): DataResponse {
+        $user = $this->requireUser();
+        if ($user === null) return new ErrorDataResponse(['error' => 'Not logged in'], 401);
+        $prices = $this->request->getParam('prices', null);
+        if ($prices === null) {
+            $raw = (string)file_get_contents('php://input');
+            $body = $raw !== '' ? json_decode($raw, true) : null;
+            $prices = is_array($body) ? ($body['prices'] ?? null) : null;
+        }
+        $normalized = ModelPricing::normalize($prices);
+        if ($normalized === null) {
+            return new ErrorDataResponse(['error' => 'Prices must contain at most 50 unique provider/model entries with valid non-negative USD rates.'], 400);
+        }
+        $this->config->setUserId($user);
+        $this->config->set('model_pricing', json_encode($normalized, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE) ?: '[]');
+        return new ErrorDataResponse(['prices' => $normalized]);
     }
 
     /** Lightweight diagnostics for troubleshooting a slow or incomplete install. */

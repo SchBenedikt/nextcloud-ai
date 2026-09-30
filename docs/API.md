@@ -44,7 +44,16 @@ response groups request counts, token totals, average and maximum response
 times by provider/model, and daily totals. It also includes slow tool-call
 timings and all-time answer feedback counts. Estimated token totals are marked
 as estimates. EVA does not store prompts or responses in this metrics table.
-The Metrics page can download these sections as a CSV report.
+Each model row includes `estimated_cost_usd` when that user configured input and
+output rates per million tokens; otherwise it is `null`. The estimate is based
+on the recorded token counts and user-entered USD rates, not a live provider
+price lookup. The Metrics page can download these sections as a CSV report and
+manage the rates.
+
+`PUT /api/metrics/pricing` saves a user-specific array of `{provider, model,
+input_per_million, output_per_million}` prices. Rates must be non-negative USD
+amounts no greater than 10,000 per million tokens; at most 50 unique model
+entries are accepted. Sending an empty `prices` array clears the estimates.
 
 `GET /api/feedback/stats` returns the signed-in user's all-time
 `helpful`, `notHelpful`, and `bookmarked` answer counts as non-negative

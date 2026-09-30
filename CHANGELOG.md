@@ -11,6 +11,11 @@
 
 - Store message timestamps and the model used for assistant replies, with export controls to include or omit those details across Markdown, text, HTML, DOCX, PDF and batch archives.
 
+### Usage metrics
+
+- Estimate model costs from per-user USD rates entered per provider and model; leave the estimate unconfigured when rates are unknown. Print the dashboard as a PDF report.
+- Include estimated costs in metrics CSV exports and document the calculation and its limits.
+
 ## [1.17.12] - 2026-09-29
 
 ### Tool executor architecture

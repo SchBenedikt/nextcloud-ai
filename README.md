@@ -78,6 +78,14 @@ HTML view, or download multiple chats together in a ZIP archive. The export
 keeps the conversation readable outside Nextcloud; its export time, per-message
 timestamps, and model names can be included or omitted.
 
+### Usage metrics
+
+See your requests, token use by model, response times, answer feedback, and slow
+tool calls over 7, 30, or 90 days. Download the report as CSV or print/save it
+as PDF. Optional cost
+estimates use rates you enter per provider and model; EVA does not guess current
+provider prices, and estimated token counts stay marked as estimates.
+
 EVA can also analyze images attached to a chat and generate up to four images
 from a prompt. Generated files are saved in the user's `EVA` folder in Files;
 the gallery previews and downloads those saved files. Generation uses the
