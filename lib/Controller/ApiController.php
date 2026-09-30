@@ -36,6 +36,7 @@ use OCA\EvaAi\Dto\BackgroundChatIdRequest;
 use OCA\EvaAi\Dto\FeedbackStatsResponse;
 use OCA\EvaAi\Dto\ChatReactionRequest;
 use OCA\EvaAi\Dto\ChatReactionResponse;
+use OCA\EvaAi\Dto\ChatAppendRequest;
 use OCP\AppFramework\OCSController;
 use OCP\AppFramework\Http\Attribute\NoAdminRequired;
 use OCA\EvaAi\Http\StreamTraversableResponse;
@@ -1497,63 +1498,27 @@ class ApiController extends OCSController {
             if ($chat === null) {
                 return new ErrorDataResponse(['error' => 'Requested resource was not found.'], 404);
             }
-            $role = (string)($this->requestParam('role') ?? '');
-            $text = trim((string)($this->requestParam('text') ?? ''));
-            if ($role === '' || $text === '') {
-                return new ErrorDataResponse(['error' => 'role and text are required'], 400);
+            try {
+                $request = ChatAppendRequest::fromArray([
+                    'role' => $this->requestParam('role'),
+                    'text' => $this->requestParam('text'),
+                    'followups' => $this->requestParam('followups'),
+                    'regenerateRev' => $this->requestParam('regenerateRev'),
+                    'confirmation' => $this->requestParam('confirmation'),
+                    'tools' => $this->requestParam('tools'),
+                ]);
+            } catch (\InvalidArgumentException $e) {
+                return new ErrorDataResponse(['error' => $e->getMessage()], 400);
             }
-            // Optional follow-up suggestions (assistant messages only).
-            $followupsRaw = $this->requestParam('followups');
-            $followups = [];
-            if (is_array($followupsRaw)) {
-                $followups = array_slice(array_map('strval', $followupsRaw), 0, 3);
-            } elseif (is_string($followupsRaw) && $followupsRaw !== '') {
-                $decoded = json_decode($followupsRaw, true);
-                if (is_array($decoded)) {
-                    $followups = array_slice(array_map('strval', $decoded), 0, 3);
-                }
-            }
-            $rawRegenerateRev = $this->requestParam('regenerateRev');
-            $regenerateRev = null;
-            if (is_int($rawRegenerateRev)) {
-                $regenerateRev = $rawRegenerateRev;
-            } elseif (is_string($rawRegenerateRev) && $rawRegenerateRev !== '' && ctype_digit($rawRegenerateRev)) {
-                $regenerateRev = (int)$rawRegenerateRev;
-            }
-            // Pending tool confirmation persisted with the assistant message so
-            // a reload can rebuild the inline panel (Issue #185). The store
-            // normalizes the payload and drops arguments after resolution.
-            $rawConfirmation = $this->requestParam('confirmation');
-            $confirmation = null;
-            if (is_array($rawConfirmation)) {
-                $confirmation = $rawConfirmation;
-            } elseif (is_string($rawConfirmation) && $rawConfirmation !== '') {
-                $decoded = json_decode($rawConfirmation, true);
-                if (is_array($decoded)) {
-                    $confirmation = $decoded;
-                }
-            }
-            // The client may persist the bounded live tool trace with an
-            // assistant answer so it remains auditable after a reload. The
-            // store performs the authoritative redaction and size limiting.
-            $rawTools = $this->requestParam('tools');
-            $tools = [];
-            if (is_array($rawTools)) {
-                $tools = $rawTools;
-            } elseif (is_string($rawTools) && $rawTools !== '') {
-                $decoded = json_decode($rawTools, true);
-                if (is_array($decoded)) {
-                    $tools = $decoded;
-                }
-            }
-            $this->chatStore->append($user, $id, $role, $text, $followups, $regenerateRev, $confirmation, $tools);
+            // Store validates and redacts the nested confirmation and tool trace.
+            $this->chatStore->append($user, $id, $request->role, $request->text, $request->followups, $request->regenerateRev, $request->confirmation, $request->tools);
             // Return the bumped revision so the client can validate later
             // regenerate/edit requests against the current state (Issue #182).
             $appended = $this->chatStore->getChat($user, $id);
             $rev = $appended !== null ? (int)($appended['rev'] ?? 0) : 0;
 
             // After an assistant message is saved, learn from the full chat.
-            if ($role === 'assistant') {
+            if ($request->role === 'assistant') {
                 try {
                     $fullChat = $this->chatStore->getChat($user, $id);
                     if ($fullChat !== null && count($fullChat['messages']) >= 4 && $this->config->get('learning_enabled') === '1') {

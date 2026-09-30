@@ -55,6 +55,13 @@ integers.
 `value: null` to clear helpful feedback; clearing a bookmark sets it to false.
 The response returns the current `reactions` object and chat `rev`.
 
+`POST /api/chats/{id}/messages` accepts a `role` (`user` or `assistant`) and
+non-empty `text` up to 50,000 characters. Assistant messages may include up to
+three string `followups`, an optional non-negative `regenerateRev`, a
+`confirmation` object, and a `tools` list of objects. Legacy form clients may
+send the array/object fields as JSON strings; malformed or wrongly typed data
+returns HTTP 400.
+
 ## Programmatic API keys
 
 Users manage their own credentials with the authenticated routes below. The
