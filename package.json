@@ -27,7 +27,7 @@
   },
   "devDependencies": {
     "@babel/core": "^8.0.1",
-    "@babel/preset-env": "^8.0.2",
+    "@babel/preset-env": "^8.0.6",
     "@nextcloud/browserslist-config": "^3.1.2",
     "@playwright/test": "^1.63.0",
     "@vue/compiler-sfc": "^3.5.43",
