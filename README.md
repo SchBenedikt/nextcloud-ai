@@ -340,6 +340,7 @@ for the current policy and limitations.
 
 - **Tests:** `composer test` (PHPUnit)
 - **Frontend build:** `npm ci && npm run build`
+- **Contributing:** [CONTRIBUTING.md](CONTRIBUTING.md) · [Code of Conduct](CODE_OF_CONDUCT.md)
 - **CI:** GitHub Actions on PHP 8.2 / 8.3 / 8.4
 
 The pull-request CI also installs the app into real Nextcloud 30, 33, and 35
@@ -353,7 +354,8 @@ and runs PHPUnit inside each installation. See [docs/CI.md](docs/CI.md).
 
 ## License
 
-[AGPL-3.0-or-later](https://www.gnu.org/licenses/agpl-3.0.html)
+[AGPL-3.0-or-later](https://www.gnu.org/licenses/agpl-3.0.html) — see the
+[LICENSE](LICENSE) file for the full terms.
 
 *Bugs & feature requests:* https://github.com/SchBenedikt/nextcloud-ai/issues
 See [`docs/TERMINAL_TOOLS.md`](docs/TERMINAL_TOOLS.md) for the confirmed
