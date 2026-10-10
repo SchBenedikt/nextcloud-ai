@@ -1,42 +1,48 @@
 # Continuous integration
 
-EVA uses separate checks for application compatibility, backend behavior, and
-frontend bundles. The checks run on every pull request and push to `main`.
+EVA's checks run on every pull request and push to `main`. Workflows live in
+`.github/workflows/`. `Tests` and `Quality` set least-privilege
+`permissions: contents: read` and a per-ref `concurrency` group that cancels
+superseded in-progress runs.
 
-## Nextcloud app lifecycle
+## Tests (`tests.yml`)
 
-The `nextcloud-app` job in `.github/workflows/tests.yml` downloads supported
-Nextcloud releases (`stable30`, `stable33`, and `stable35`) into the official
-Nextcloud PHP CI container. For each release it:
+- **coverage** — PHPUnit with Xdebug coverage on PHP 8.3, uploaded to Codecov.
+- **phpunit** — the PHPUnit suite on PHP 8.2, 8.3, and 8.4.
+- **groq-contract** — runs `tests/GroqTest.php` (`--fail-on-skipped`) against
+  the real Nextcloud public API checked out from `nextcloud/server`.
+- **migration-regression** — `tests/MigrationRegressionTest.php`,
+  `tests/TaskProcessingContractTest.php`, `tests/AppConfigUserSettingsTest.php`.
+- **nextcloud-app** — installs the app into real Nextcloud `stable30`/`stable33`/
+  `stable35` in the official Nextcloud PHP CI container: fresh SQLite instance →
+  `occ app:enable eva_ai` → `occ app:list` → `tests/ApiControllerIntegrationTest.php`
+  inside the install → `composer test`. This catches metadata, bootstrap, route,
+  dependency, and runtime-API breakage across the oldest/middle/newest lines.
+- **frontend** — `npm ci`, `npm test` (`node --test`), Playwright browser tests,
+  a production `npm run build`, and a Git check that the committed `js/` bundles
+  match a fresh build (a `src/` change must be rebuilt and committed).
+- **lint** — `php -l` over every PHP file in `lib/` and `tests/`.
 
-1. installs the app's Composer dependencies;
-2. creates a fresh SQLite Nextcloud instance;
-3. enables `eva_ai` through `occ`;
-4. runs `occ app:check-code eva_ai`;
-5. confirms that EVA routes are registered; and
-6. runs the app's PHPUnit suite inside that installation.
+## Quality (`quality.yml`)
 
-This catches incompatible app metadata, bootstrap registration, route loading,
-dependency resolution, and runtime API changes. The matrix intentionally covers
-the oldest, middle, and newest supported Nextcloud lines. The nightly workflow
-extends the same check to every supported line and `latest`.
+- **audit** — `composer audit` and `npm audit --omit=dev`.
+- **eslint (advisory)** — `npx eslint .` with `continue-on-error`; findings are
+  surfaced but never block merges (see `AGENTS.md`).
 
-## Backend and frontend checks
+## Nightly (`nightly.yml`)
 
-- PHPUnit runs on PHP 8.2, 8.3, and 8.4.
-- The PHP lint job parses every PHP file in `lib/` and `tests/`.
-- Frontend CI runs the Node behavior tests, Playwright browser checks, a
-  production webpack build, and verifies that committed bundles match the build.
-- Dependency audits run separately for Composer and npm.
+- **compat** — scheduled across `stable30`–`stable35` and `latest`: a fresh SQLite
+  Nextcloud install, `occ app:enable eva_ai`, `occ app:list`, then `composer test`.
 
-Run the local equivalents from the app directory:
+## Local equivalents
 
 ```bash
 composer test
 npm test
 npm run build
+npm run lint     # advisory ESLint
 ```
 
-The app lifecycle job requires Docker and a network connection to download a
-Nextcloud release. It is therefore executed in GitHub Actions rather than
-inside the standalone local PHPUnit bootstrap.
+The app-lifecycle jobs need Docker and network access to a Nextcloud release, so
+they run in GitHub Actions rather than against the standalone local PHPUnit
+bootstrap.
