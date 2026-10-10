@@ -37,11 +37,14 @@ jobs:
               curl -fsSL "$URL" -o /tmp/nc.tar.bz2
               mkdir -p /srv
               tar -xjf /tmp/nc.tar.bz2 -C /srv
-              cp -r /app /srv/nextcloud/apps/eva_ai
+              cp -a /app /srv/nextcloud/apps/eva_ai
               cd /srv/nextcloud/apps/eva_ai
               composer install --no-interaction --prefer-dist
-              echo "== occ app:list eva_ai =="
+              echo "== Install Nextcloud =="
               cd /srv/nextcloud
+              php occ maintenance:install --database sqlite --database-name nextcloud --admin-user admin --admin-pass admin --admin-email admin@example.test
+              php occ app:enable eva_ai
+              echo "== occ app:list eva_ai =="
               php occ app:list | grep -F eva_ai
               echo "== composer test =="
               cd /srv/nextcloud/apps/eva_ai
