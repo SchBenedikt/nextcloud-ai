@@ -132,14 +132,19 @@ Optional Nextcloud Talk bot — Eva answers in conversations using read-only too
 
 Right-click any file in the Files app → **"Open with EVA"** for targeted Q&A based on that specific file's content.
 
-### Standalone Chat (legacy, frozen)
+### Standalone Chat (reference / test surface)
 
-A self-contained chat page (`apps/eva_ai/standalone.php`) is still shipped for
-embeddable use, and it is covered by the browser tests so it cannot rot silently.
-It is **not** the supported surface: the app is used through Nextcloud (the Eva
-icon, the Files action and the Assistant), and new features land there first. The
-standalone page receives security and compatibility fixes only — do not build on
-it, and expect it to be removed in a future major release.
+A self-contained chat page (`templates/standalone.php`, served at `/standalone`)
+is still shipped for embeddable use. It is **not** the primary surface — you use
+Eva through Nextcloud (the Eva icon, the Files "Open with EVA" action, and the
+Assistant), and new features land there first. It receives security and
+compatibility fixes only.
+
+It is also the **reference surface for the chat browser tests**: the core chat
+flow (streaming, tool confirmation, web sources, exports, stop) is exercised
+through it, so it is actively kept from rotting rather than left behind. Any
+future removal must first port that browser coverage to the Vue ChatView so the
+core chat behavior stays tested.
 
 ### Choose where inference runs
 
@@ -340,12 +345,13 @@ for the current policy and limitations.
 
 - **Tests:** `composer test` (PHPUnit)
 - **Frontend build:** `npm ci && npm run build`
-- **Contributing:** [CONTRIBUTING.md](CONTRIBUTING.md) · [Code of Conduct](CODE_OF_CONDUCT.md)
+- **Contributing:** [CONTRIBUTING.md](CONTRIBUTING.md) · [Agent playbook](AGENTS.md) · [Code of Conduct](CODE_OF_CONDUCT.md)
 - **CI:** GitHub Actions on PHP 8.2 / 8.3 / 8.4
 
 The pull-request CI also installs the app into real Nextcloud 30, 33, and 35
 instances, enables it with `occ`, checks the app code and registered routes,
 and runs PHPUnit inside each installation. See [docs/CI.md](docs/CI.md).
+
 - **Architecture:** [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)
 - **Programmatic API:** [docs/API.md](docs/API.md) — create scoped API keys and connect scripts or external applications.
 - **FAQ:** [docs/FAQ.md](docs/FAQ.md)
