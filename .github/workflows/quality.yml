@@ -35,3 +35,24 @@ jobs:
 
       - name: Audit npm dependencies (production only)
         run: npm audit --omit=dev
+
+  eslint:
+    name: ESLint (advisory)
+    runs-on: ubuntu-latest
+    # Advisory only: findings are surfaced but never block merges (see AGENTS.md).
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Setup Node
+        uses: actions/setup-node@v7
+        with:
+          node-version-file: '.nvmrc'
+          cache: npm
+
+      - name: Install frontend dependencies
+        run: npm ci
+
+      - name: Run ESLint
+        run: npx eslint .
+        continue-on-error: true
