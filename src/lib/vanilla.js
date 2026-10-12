@@ -1429,6 +1429,12 @@ export function mountChat(root, opts = {}) {
 	err.className = 'err'
 	err.style.display = 'none'
 
+	// Show or clear the chat error line. The export handlers use this helper.
+	function showErr(msg) {
+		err.textContent = msg || ''
+		err.style.display = msg ? 'block' : 'none'
+	}
+
 	root.append(head, imagePanel, scroll, imageAttachments, form, voiceStatus, err)
 
 	const renderAll = (list) => {
