@@ -38,6 +38,6 @@ test('CSV quotes delimiters and neutralizes spreadsheet formula cells', () => {
 		],
 	})
 	assert.match(csv, /"'=HYPERLINK\(""https:\/\/bad\.invalid""\)"/)
-	assert.match(csv, /"'  =1\+1"/)
+	assert.match(csv, /"' {2}=1\+1"/)
 	assert.match(csv, /"line 1\nline 2"/)
 })
