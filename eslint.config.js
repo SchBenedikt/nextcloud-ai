@@ -85,4 +85,12 @@ module.exports = [
 			'vue/multi-word-component-names': 'off',
 		},
 	},
+	{
+		// Base no-unused-vars cannot see <script setup> variables that are only
+		// used in the template (e.g. @click="loadMoreChunks(id)"), so it
+		// false-positives on them. Disable it for .vue; the Vue plugin rules
+		// still run, and no-unused-vars stays on for plain JS.
+		files: ['**/*.vue'],
+		rules: { 'no-unused-vars': 'off' },
+	},
 ];
