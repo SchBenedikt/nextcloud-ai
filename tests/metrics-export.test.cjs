@@ -23,7 +23,7 @@ test('CSV report includes the selected period and each supported metric section'
 	assert.ok(csv.startsWith('\uFEFF'))
 	assert.match(csv, /"period_days","7"/)
 	assert.match(csv, /"estimated_cost_usd","0.00005"/)
-	assert.match(csv, /"average_response_ms","maximum_response_ms","estimated_cost_usd"/)
+	assert.match(csv, /"average_duration_ms","maximum_duration_ms","estimated_cost_usd"/)
 	assert.match(csv, /"ollama","llama","2","10","5","15","1","1234","2000","0.00005"/)
 	assert.match(csv, /"search_files","1","120","120","0"/)
 	assert.match(csv, /"helpful_answers_all_time","3"/)

@@ -17,7 +17,7 @@ export function buildMetricsCsv({ days, totals = {}, byModel = [], daily = [], s
 		['bookmarked_answers_all_time', feedbackStats.bookmarked ?? 0],
 		[],
 		['model_usage'],
-		['provider', 'model', 'requests', 'input_tokens', 'output_tokens', 'total_tokens', 'estimated_requests', 'average_response_ms', 'maximum_response_ms', 'estimated_cost_usd'],
+		['provider', 'model', 'requests', 'input_tokens', 'output_tokens', 'total_tokens', 'estimated_requests', 'average_duration_ms', 'maximum_duration_ms', 'estimated_cost_usd'],
 		...byModel.map(row => [row.provider, row.model, row.requests, row.input_tokens, row.output_tokens, row.total_tokens, row.estimated_requests, row.average_duration_ms, row.max_duration_ms, row.estimated_cost_usd ?? '']),
 		[],
 		['daily_usage'],
