@@ -46,8 +46,9 @@ an individual is officially representing the community in public spaces.
 ## Enforcement
 
 Instances of abusive, harassing, or otherwise unacceptable behavior may be
-reported to the community leaders responsible for enforcement at the maintainer's
-private contact (see SECURITY.md). All complaints will be reviewed and
+reported privately to the repository owner. For anything that is also a security
+vulnerability, use the private advisory process described in
+[.github/SECURITY.md](.github/SECURITY.md). All complaints will be reviewed and
 investigated promptly and fairly.
 
 All community leaders are obligated to respect the privacy and security of the
