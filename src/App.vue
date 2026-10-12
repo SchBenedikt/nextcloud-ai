@@ -65,9 +65,8 @@
 						<NcCounterBubble v-if="item.count !== undefined" :count="item.count" />
 						<svg v-if="item.archived || item.folder" width="16" height="16" viewBox="0 0 24 24" :class="{ rotated: item.archived && showArchived, 'chevron-collapsed': item.folder && item.collapsed }"><path :d="mdiChevronDown" fill="currentColor" /></svg>
 					</li>
-					<NcAppNavigationItem
-						v-else
-						v-if="!item.archivedChat || showArchived"
+				<NcAppNavigationItem
+					v-else-if="!item.archivedChat || showArchived"
 						:class="{ 'chat-item--nested': item.nested }"
 						:name="itemName(item.chat)"
 						:active="view === 'chat' && item.chat.id === currentChat"
