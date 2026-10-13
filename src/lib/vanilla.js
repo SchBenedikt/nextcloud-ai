@@ -1,14 +1,12 @@
 import './markdown.css'
 import { readNdjson } from './ndjson'
-import { mdiDownload, mdiMicrophone, mdiPaperclip, mdiTune } from '@mdi/js'
+import { mdiDownload, mdiTune } from '@mdi/js'
 import { translate as t } from './i18n'
 import { buildConfirmForm } from './confirmForms'
-import { escHtml, mdInline, mdToHtml, citedSources, formatToolName, copyText, installImageFallback, apiErrorMessage } from './chat-utils'
+import { mdToHtml, citedSources, formatToolName, copyText, installImageFallback, apiErrorMessage } from './chat-utils'
 import { createChatExport, createChatArchive } from './chat-export'
-import { getFilePickerBuilder, FilePickerClosed } from '@nextcloud/dialogs'
 import { createPromptHistory } from './prompt-history'
 import { createSpeechService } from './speech'
-import { createVoiceInput } from './voice-input'
 
 /* EvaAi – Vanilla-Chat-Mount.
  * Wird von ChatView.vue aufgerufen und rendert den kompletten Chat
@@ -23,7 +21,6 @@ export function mountChat(root, opts = {}) {
 	if (!root || root.__evaAi) return
 	root.__evaAi = true
 	const speech = createSpeechService()
-	const voiceState = { enabled: false }
 
 	const { onRecent } = opts
 	let chatId = opts.chatId || null
@@ -1172,244 +1169,6 @@ export function mountChat(root, opts = {}) {
 	input.autocomplete = 'off'
 	input.placeholder = t('Ask a question or describe a task')
 	input.setAttribute('aria-label', t('Ask a question or describe a task'))
-	const modelSelect = document.createElement('select')
-	modelSelect.className = 'chat-model-select'
-	modelSelect.setAttribute('aria-label', t('Chat model'))
-	modelSelect.title = t('Chat model')
-	modelSelect.hidden = true
-	let defaultChatModel = ''
-	api('GET', '/models').then((data) => {
-		if (!data || String(data.provider || 'ollama').toLowerCase() !== 'ollama') return
-		const roles = data.roles && typeof data.roles === 'object' ? data.roles : {}
-		const available = (Array.isArray(data.models) ? data.models : []).filter((name) => {
-			const modelRoles = roles[name]?.roles
-			return !Array.isArray(modelRoles) || modelRoles.length === 0 || modelRoles.includes('chat')
-		})
-		defaultChatModel = String(data.chat || '')
-		if (defaultChatModel && !available.includes(defaultChatModel)) available.unshift(defaultChatModel)
-		if (available.length < 2) return
-		available.forEach((name) => {
-			const option = document.createElement('option')
-			option.value = name
-			option.textContent = name
-			modelSelect.appendChild(option)
-		})
-		modelSelect.value = defaultChatModel || available[0]
-		modelSelect.hidden = false
-	}).catch(() => {})
-	const filesBtn = document.createElement('button')
-	filesBtn.type = 'button'
-	filesBtn.className = 'cbtn cbtn-ghost cbtn-files'
-	const fileIcon = document.createElementNS('http://www.w3.org/2000/svg', 'svg')
-	fileIcon.setAttribute('viewBox', '0 0 24 24')
-	fileIcon.setAttribute('width', '18')
-	fileIcon.setAttribute('height', '18')
-	fileIcon.setAttribute('aria-hidden', 'true')
-	const fileIconPath = document.createElementNS('http://www.w3.org/2000/svg', 'path')
-	fileIconPath.setAttribute('d', mdiPaperclip)
-	fileIconPath.setAttribute('fill', 'currentColor')
-	fileIcon.appendChild(fileIconPath)
-	filesBtn.appendChild(fileIcon)
-	filesBtn.setAttribute('aria-label', t('Add files'))
-	filesBtn.title = t('Choose Nextcloud files to use as context')
-	filesBtn.addEventListener('click', async () => {
-		filesBtn.disabled = true
-		try {
-			// The modern builder returns server-side Nextcloud paths and works in
-			// both the full app and standalone EVA view. Limit to files (not
-			// folders) and allow selecting several context files at once.
-			const paths = await getFilePickerBuilder(t('Choose files for EVA'))
-				.setMultiSelect(true)
-				.setType(1)
-				.build()
-				.pick()
-			const clean = (Array.isArray(paths) ? paths : [paths]).filter((p) => typeof p === 'string' && p.startsWith('/')).slice(0, 10)
-			if (clean.length) {
-				const prefix = t('Use these Nextcloud files as context') + ': ' + clean.join(', ')
-				input.value = input.value.trim() ? prefix + '\\n' + input.value.trim() : prefix
-				input.focus()
-			}
-		} catch (error) {
-			if (!(error instanceof FilePickerClosed)) {
-				// Keep compatibility with older Nextcloud versions that expose only
-				// the legacy global picker.
-				const legacy = window.OC && window.OC.dialogs && window.OC.dialogs.filepicker
-				if (typeof legacy === 'function') legacy(t('Choose files for EVA'), (paths) => {
-					const clean = (Array.isArray(paths) ? paths : [paths]).map((p) => typeof p === 'string' ? p : (p && (p.path || p.name))).filter(Boolean).slice(0, 10)
-					if (clean.length) input.value = (t('Use these Nextcloud files as context') + ': ' + clean.join(', ')) + (input.value.trim() ? '\\n' + input.value.trim() : '')
-				}, true, '', true)
-				else { err.textContent = t('The Nextcloud file picker is not available on this page.'); err.style.display = '' }
-			}
-		} finally { filesBtn.disabled = false }
-	})
-	const imageInput = document.createElement('input')
-	imageInput.id = 'chat-image-input'
-	imageInput.type = 'file'
-	imageInput.accept = 'image/png,image/jpeg,image/webp'
-	imageInput.multiple = true
-	imageInput.hidden = true
-	const imageBtn = document.createElement('button')
-	imageBtn.type = 'button'
-	imageBtn.className = 'cbtn cbtn-ghost cbtn-images'
-	imageBtn.textContent = '▧'
-	imageBtn.setAttribute('aria-label', t('Attach images'))
-	imageBtn.title = t('Choose images to analyze with EVA')
-	imageBtn.addEventListener('click', () => imageInput.click())
-	const imageAttachments = document.createElement('div')
-	imageAttachments.className = 'image-attachments'
-	imageAttachments.hidden = true
-	const pendingImages = []
-	function renderImageAttachments() {
-		imageAttachments.replaceChildren()
-		imageAttachments.hidden = pendingImages.length === 0
-		if (pendingImages.length === 0) return
-		const notice = document.createElement('p')
-		notice.className = 'image-privacy-note'
-		notice.textContent = t('Images are sent to your configured AI provider for this request and are not stored in chat history.')
-		imageAttachments.appendChild(notice)
-		for (const [index, attachment] of pendingImages.entries()) {
-			const item = document.createElement('div')
-			item.className = 'image-attachment'
-			const preview = document.createElement('img')
-			preview.src = attachment.url
-			preview.alt = attachment.file.name
-			const name = document.createElement('span')
-			name.textContent = attachment.file.name
-			const remove = document.createElement('button')
-			remove.type = 'button'
-			remove.textContent = '×'
-			remove.setAttribute('aria-label', t('Remove image {name}', { name: attachment.file.name }))
-			remove.addEventListener('click', () => {
-				URL.revokeObjectURL(attachment.url)
-				pendingImages.splice(index, 1)
-				renderImageAttachments()
-			})
-			item.append(preview, name, remove)
-			imageAttachments.appendChild(item)
-		}
-	}
-	imageInput.addEventListener('change', () => {
-		const files = Array.from(imageInput.files || [])
-		imageInput.value = ''
-		if (pendingImages.length + files.length > 4) {
-			err.textContent = t('Attach up to four images at a time.')
-			err.style.display = 'block'
-			return
-		}
-		const allowed = new Set(['image/jpeg', 'image/png', 'image/webp'])
-		if (files.some((file) => !allowed.has(file.type) || file.size <= 0)) {
-			err.textContent = t('Choose PNG, JPEG, or WebP images.')
-			err.style.display = 'block'
-			return
-		}
-		const total = files.reduce((sum, file) => sum + file.size, 0) + pendingImages.reduce((sum, item) => sum + item.file.size, 0)
-		if (total > 4 * 1024 * 1024) {
-			err.textContent = t('Attached images must total no more than 4 MB.')
-			err.style.display = 'block'
-			return
-		}
-		for (const file of files) pendingImages.push({ file, url: URL.createObjectURL(file) })
-		err.style.display = 'none'
-		renderImageAttachments()
-	})
-	function encodeImage(attachment) {
-		return new Promise((resolve, reject) => {
-			const reader = new FileReader()
-			reader.onerror = () => reject(new Error(t('An attached image could not be read.')))
-			reader.onload = () => {
-				const match = String(reader.result || '').match(/^data:(image\/(?:jpeg|png|webp));base64,([A-Za-z0-9+/=]+)$/)
-				if (!match) { reject(new Error(t('An attached image could not be read.'))); return }
-				resolve({ name: attachment.file.name, mime: match[1], data: match[2] })
-			}
-			reader.readAsDataURL(attachment.file)
-		})
-	}
-	const micBtn = document.createElement('button')
-	micBtn.type = 'button'
-	micBtn.className = 'cbtn cbtn-ghost cbtn-mic'
-	micBtn.setAttribute('aria-label', t('Start voice input'))
-	micBtn.title = t('Start voice input')
-	micBtn.hidden = true
-	const micIcon = document.createElementNS('http://www.w3.org/2000/svg', 'svg')
-	micIcon.setAttribute('viewBox', '0 0 24 24')
-	micIcon.setAttribute('width', '18')
-	micIcon.setAttribute('height', '18')
-	micIcon.setAttribute('aria-hidden', 'true')
-	const micIconPath = document.createElementNS('http://www.w3.org/2000/svg', 'path')
-	micIconPath.setAttribute('d', mdiMicrophone)
-	micIconPath.setAttribute('fill', 'currentColor')
-	micIcon.appendChild(micIconPath)
-	micBtn.appendChild(micIcon)
-	const cancelVoiceBtn = document.createElement('button')
-	cancelVoiceBtn.type = 'button'
-	cancelVoiceBtn.className = 'cbtn cbtn-ghost cbtn-voice-cancel'
-	cancelVoiceBtn.textContent = t('Cancel recording')
-	cancelVoiceBtn.hidden = true
-	const voiceStatus = document.createElement('div')
-	voiceStatus.className = 'voice-status'
-	voiceStatus.setAttribute('role', 'status')
-	voiceStatus.setAttribute('aria-live', 'polite')
-	voiceStatus.hidden = true
-	let voiceInput
-	function setVoiceState(state) {
-		const recording = state === 'recording'
-		micBtn.classList.toggle('is-recording', recording)
-		micBtn.setAttribute('aria-pressed', recording ? 'true' : 'false')
-		micBtn.setAttribute('aria-label', t(recording ? 'Stop voice input' : 'Start voice input'))
-		micBtn.title = t(recording ? 'Stop voice input' : 'Start voice input')
-		cancelVoiceBtn.hidden = !recording
-		if (!recording && voiceStatus.dataset.persistent !== '1') voiceStatus.hidden = true
-	}
-	voiceInput = createVoiceInput({
-		onState: setVoiceState,
-		onInterim: text => {
-			if (!voiceState.enabled) return
-			voiceStatus.textContent = text ? `${t('Listening')} … ${text}` : t('Listening')
-			voiceStatus.hidden = false
-		},
-		onFinal: (text, details) => {
-			if (details?.cancel) {
-				input.value = details.restore
-				return
-			}
-			if (text) input.value = input.value.trim() ? `${input.value.trim()} ${text}` : text
-			input.focus()
-		},
-		onError: error => {
-			const message = error === 'not-allowed' || error === 'service-not-allowed'
-				? t('Microphone permission was denied. Allow microphone access in your browser to use voice input.')
-				: error === 'no-speech' ? t('No speech was detected. Try again.') : t('Voice input could not start in this browser.')
-			voiceStatus.textContent = message
-			voiceStatus.dataset.persistent = '1'
-			voiceStatus.hidden = false
-		},
-	})
-	micBtn.addEventListener('click', () => {
-		if (voiceInput.recording) voiceInput.stop()
-		else {
-			voiceStatus.textContent = ''
-			voiceStatus.dataset.persistent = '0'
-			if (!voiceInput.start(input.value)) {
-				voiceStatus.textContent = t('Voice input could not start in this browser.')
-				voiceStatus.hidden = false
-			}
-		}
-	})
-	cancelVoiceBtn.addEventListener('click', () => voiceInput.cancel())
-	if (voiceInput.supported) {
-		api('GET', '/settings').then(settings => {
-			voiceState.enabled = String(settings?.voice_input_enabled || '0') === '1' && String(settings?.voice_input_available || '0') === '1'
-			micBtn.hidden = !voiceState.enabled
-		}).catch(() => { micBtn.hidden = true })
-	} else {
-		api('GET', '/settings').then(settings => {
-			if (String(settings?.voice_input_enabled || '0') !== '1' || String(settings?.voice_input_available || '0') !== '1') return
-			voiceState.enabled = true
-			voiceStatus.textContent = t('Voice input is not supported in this browser.')
-			voiceStatus.dataset.persistent = '1'
-			voiceStatus.hidden = false
-		}).catch(() => {})
-	}
 	const sendBtn = document.createElement('button')
 	sendBtn.type = 'submit'
 	sendBtn.className = 'cbtn'
@@ -1417,13 +1176,7 @@ export function mountChat(root, opts = {}) {
 	sendBtn.addEventListener('click', () => {
 		if (sending) stopStream()
 	})
-	const backgroundBtn = document.createElement('button')
-	backgroundBtn.type = 'button'
-	backgroundBtn.className = 'cbtn cbtn-ghost'
-	backgroundBtn.textContent = t('Run in background')
-	backgroundBtn.title = t('Queue this request and continue even if this page is closed')
-	backgroundBtn.addEventListener('click', () => queueInBackground())
-	form.append(filesBtn, imageBtn, imageInput, micBtn, modelSelect, input, cancelVoiceBtn, sendBtn, backgroundBtn)
+	form.append(input, sendBtn)
 
 	const err = document.createElement('div')
 	err.className = 'err'
@@ -1435,7 +1188,7 @@ export function mountChat(root, opts = {}) {
 		err.style.display = msg ? 'block' : 'none'
 	}
 
-	root.append(head, imagePanel, scroll, imageAttachments, form, voiceStatus, err)
+	root.append(head, imagePanel, scroll, form, err)
 
 	const renderAll = (list) => {
 		if (selectionChatId !== chatId) {
@@ -2158,39 +1911,10 @@ export function mountChat(root, opts = {}) {
 		streamRegenerateAnswer({ messageIndex: userIdx, message: newText.trim() })
 	}
 
-	const queueInBackground = () => {
-		const msg = input.value.trim()
-		if (!msg || sending) return
-		promptHistory.record(msg)
-		renderPromptHistory()
-		const history = messages.filter((m) => m && (m.role === 'user' || m.role === 'assistant') && m.text).slice(-100).map((m) => ({ role: m.role, content: String(m.text).slice(0, 20000) }))
-		backgroundBtn.disabled = true
-		ensureChat().then((ok) => { if (!ok) throw new Error('Chat is unavailable'); return api('POST', '/backgroundChat', { chatId, message: msg, history, requestId: backgroundRequestId || undefined }) })
-			.then((result) => {
-				input.value = ''
-				messages.push({ role: 'user', text: msg })
-				messages[messages.length - 1].createdAt = Math.floor(Date.now() / 1000)
-				renderAll(messages)
-				agentStatusPill.textContent = t('EVA will continue this chat in the background')
-				agentStatusPill.hidden = false
-				if (result && result.id) backgroundRequestId = result.id
-			})
-			.catch((e) => { err.textContent = String(e && e.message ? e.message : e); err.style.display = 'block' })
-			.finally(() => { backgroundBtn.disabled = false })
-	}
-
 	const send = () => {
 		const typedMessage = input.value.trim()
-		if ((!typedMessage && pendingImages.length === 0) || sending) return
-		const selectedModel = modelSelect.value || null
-		const outgoingImages = pendingImages.splice(0)
-		const msg = typedMessage || t('Describe these images.')
-		const attachmentNames = outgoingImages.map((attachment) => attachment.file.name)
-		const savedUserText = attachmentNames.length
-			? msg + '\n\n[' + t('Attached images') + ': ' + attachmentNames.join(', ') + ']'
-			: msg
-		const localAttachments = outgoingImages.map((attachment) => ({ name: attachment.file.name, url: attachment.url }))
-		renderImageAttachments()
+		if (!typedMessage || sending) return
+		const msg = typedMessage
 		promptHistory.record(msg)
 		renderPromptHistory()
 		sending = true
@@ -2201,7 +1925,7 @@ export function mountChat(root, opts = {}) {
 		err.style.display = 'none'
 		if (emptyEl.parentNode) scroll.removeChild(emptyEl)
 
-		messages.push({ role: 'user', text: savedUserText, attachments: localAttachments, createdAt: Math.floor(Date.now() / 1000) })
+		messages.push({ role: 'user', text: msg, createdAt: Math.floor(Date.now() / 1000) })
 		messages.push({ role: 'assistant', text: '', thinking: '', done: false, tools: [] })
 		renderAll(messages)
 		const assistantIdx = messages.length - 1
@@ -2214,8 +1938,7 @@ export function mountChat(root, opts = {}) {
 		}
 
 		ensureChat().then(async () => {
-			const images = await Promise.all(outgoingImages.map(encodeImage))
-			return apiStream(STREAM_URL, { message: msg, history, chatId, images, model: selectedModel }, (ev) => {
+			return apiStream(STREAM_URL, { message: msg, history, chatId }, (ev) => {
 				const last = messages[assistantIdx]
 				if (!last || last.role !== 'assistant' || last.done) return
 				if (ev.type === 'thinking') {
@@ -2265,7 +1988,7 @@ export function mountChat(root, opts = {}) {
 					// message is saved first so the placeholder stays the last
 					// stored assistant message.
 					last.confirmation.token = (window.crypto && crypto.randomUUID) ? crypto.randomUUID() : String(Date.now()) + '-' + Math.random().toString(36).slice(2)
-					last._pendingSave = saveUserMessage(savedUserText)
+					last._pendingSave = saveUserMessage(msg)
 						.then((savedUser) => savedUser ? saveMessage('assistant', last.text, null, null, {
 							name: last.confirmation.name,
 							arguments: last.confirmation.arguments,
@@ -2288,7 +2011,7 @@ export function mountChat(root, opts = {}) {
 					// Persist the pair in conversation order. Sending both requests at
 					// once lets the per-user file lock acquire them in either order,
 					// which can swap the question and answer after a reload.
-					saveUserMessage(savedUserText)
+					saveUserMessage(msg)
 						.then((savedUser) => savedUser ? saveMessage('assistant', last.text, last.followups, null, null, last.tools, last.model) : false)
 						.then((saved) => {
 							if (saved && onRecent) onRecent()
@@ -2298,7 +2021,7 @@ export function mountChat(root, opts = {}) {
 					cancelBackgroundJob()
 					last.text = streamFailureMessage(ev.message)
 					last.done = true
-					saveUserMessage(savedUserText).then((saved) => { if (!saved) showHistorySaveWarning() })
+					saveUserMessage(msg).then((saved) => { if (!saved) showHistorySaveWarning() })
 				}
 				// One coalesced update per frame instead of one DOM rebuild per
 				// NDJSON event; terminal states below still update immediately.
@@ -2314,7 +2037,7 @@ export function mountChat(root, opts = {}) {
 					// Persist the partial answer when the user stopped the stream so
 					// a reload keeps the conversation instead of dropping it.
 					if (stoppedByUser && last.text.trim() !== '') {
-						saveUserMessage(savedUserText)
+						saveUserMessage(msg)
 							.then((ok) => ok ? saveMessage('assistant', last.text, null, null, null, last.tools) : false)
 							.then((saved) => { if (!saved) showHistorySaveWarning() })
 					}
@@ -2362,8 +2085,6 @@ export function mountChat(root, opts = {}) {
 	form.addEventListener('submit', (e) => { e.preventDefault(); send() })
 	root.__evaAi = { destroy: () => {
 		speech.stop()
-		voiceInput.cancel()
-		pendingImages.forEach((attachment) => URL.revokeObjectURL(attachment.url))
 		messages.forEach((message) => (message.attachments || []).forEach((attachment) => URL.revokeObjectURL(attachment.url)))
 		if (pendingUpdateFrame !== null && typeof cancelAnimationFrame === 'function') cancelAnimationFrame(pendingUpdateFrame)
 		pendingUpdateFrame = null
