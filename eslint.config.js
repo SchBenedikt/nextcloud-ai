@@ -23,6 +23,7 @@ module.exports = [
 	{
 		ignores: [
 			'node_modules/**',
+			'vendor/**',
 			'js/**', // committed build output (rebuilt with webpack)
 			'coverage/**',
 			'dist/**',

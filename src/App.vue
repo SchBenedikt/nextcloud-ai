@@ -49,17 +49,13 @@
 					<li
 						v-if="item.type === 'heading'"
 						class="chat-list-heading"
-						:class="{ 'chat-list-heading--archived': item.archived, 'chat-list-heading--folder': item.folder, 'chat-list-heading--drop': item.folder && dragOverFolder === item.folderName }"
-						:style="item.folder && item.color ? { '--eva-folder-color': item.color } : undefined"
-						:title="item.folder ? (item.collapsed ? $t('Expand folder') : $t('Collapse folder')) : undefined"
-						@dragover.prevent="item.folder && (dragOverFolder = item.folderName)"
-						@dragleave="dragOverFolder = ''"
-						@drop.prevent="item.folder && dropChat(item.folderName)"
-						@click="item.folder ? toggleFolder(item.folderName) : (item.archived && (showArchived = !showArchived))">
+						:class="{ 'chat-list-heading--archived': item.archived }"
+						:title="item.archived ? (showArchived ? $t('Collapse archived') : $t('Expand archived')) : undefined"
+						@click="item.archived && (showArchived = !showArchived)">
 						<svg v-if="item.icon" width="14" height="14" viewBox="0 0 24 24" class="chat-list-heading-icon"><path :d="item.icon" fill="currentColor" /></svg>
 						<span>{{ item.label }}</span>
 						<NcCounterBubble v-if="item.count !== undefined" :count="item.count" />
-						<svg v-if="item.archived || item.folder" width="16" height="16" viewBox="0 0 24 24" :class="{ rotated: item.archived && showArchived, 'chevron-collapsed': item.folder && item.collapsed }"><path :d="mdiChevronDown" fill="currentColor" /></svg>
+						<svg v-if="item.archived" width="16" height="16" viewBox="0 0 24 24" :class="{ rotated: showArchived }"><path :d="mdiChevronDown" fill="currentColor" /></svg>
 					</li>
 				<NcAppNavigationItem
 					v-else-if="!item.archivedChat || showArchived"

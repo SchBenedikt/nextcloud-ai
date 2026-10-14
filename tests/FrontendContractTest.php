@@ -96,30 +96,33 @@ final class FrontendContractTest extends TestCase {
         // whose component name starts with "NcAction", so wrapping them in a
         // custom component would silently hide the three-dot menu (Issue #87).		self::assertStringContainsString(':path="mdiPencilOutline"', $app);
 		self::assertStringContainsString(':path="mdiTrashCanOutline"', $app);
-		self::assertStringContainsString('mdiPinOffOutline : mdiPinOutline', $app);
+self::assertStringContainsString('mdiPinOffOutline : mdiPinOutline', $app);
 		self::assertStringContainsString('mdiArchiveArrowUpOutline', $app);
-		self::assertStringContainsString(':path="mdiFolderPlusOutline"', $app);
+		// Folder functionality was removed in #695 (simplify UI).
+		self::assertStringNotContainsString('mdiFolderPlusOutline', $app);
 		self::assertStringNotContainsString('<svg width="20" height="20"', $app);
 		self::assertStringNotContainsString('allow-collapse', $app);
 		self::assertStringNotContainsString('chatsOpen', $app);
 		self::assertStringContainsString('pinnedChats', $app);
 		self::assertStringContainsString('archivedChats', $app);
 		self::assertStringContainsString('navItems', $app);
-		self::assertStringContainsString('folderGroups', $app);
+		// Folder-related features removed in #695.
+		self::assertStringNotContainsString('folderGroups', $app);
 		self::assertStringContainsString('plainChats', $app);
-		self::assertStringContainsString('NcModal v-if="folderPickerOpen"', $app);
-		self::assertStringContainsString('assignTarget(f.name)', $app);
-	self::assertStringContainsString('createAndAssign', $app);
-		// Per-chat folder scope ("Chat with this folder", Issue #88).
-		self::assertStringContainsString('pickScope(item.chat)', $app);
+		self::assertStringNotContainsString('folderPickerOpen', $app);
+		self::assertStringNotContainsString('assignTarget', $app);
+		self::assertStringNotContainsString('createAndAssign', $app);
+		// Per-chat folder scope ("Chat with this folder", Issue #88) removed in #695.
+		self::assertStringNotContainsString('pickScope', $app);
+		// scopePath is still displayed in tooltips but not editable via UI.
 		self::assertStringContainsString('scopePath', $app);
-		self::assertStringContainsString("updateChatMeta(item.chat.id, { scopePath: '' })", $app);
-		self::assertStringContainsString('mdiFolderSearchOutline', $app);
-		// Folders are expandable/collapsible sections (Issue #87 follow-up).
-		self::assertStringContainsString('collapsedFolders', $app);
-		self::assertStringContainsString('toggleFolder(item.folderName)', $app);
-		self::assertStringContainsString('chevron-collapsed', $app);
-		self::assertStringContainsString('eva_ai_collapsed_folders', $app);
+		self::assertStringNotContainsString("updateChatMeta(item.chat.id, { scopePath: '' })", $app);
+		self::assertStringNotContainsString('mdiFolderSearchOutline', $app);
+		// Folders are expandable/collapsible sections (Issue #87 follow-up) removed in #695.
+		self::assertStringNotContainsString('collapsedFolders', $app);
+		self::assertStringNotContainsString('toggleFolder', $app);
+		self::assertStringNotContainsString('chevron-collapsed', $app);
+		self::assertStringNotContainsString('eva_ai_collapsed_folders', $app);
 		self::assertStringContainsString(':force-menu="true"', $app);
 		self::assertStringContainsString(':close-after-click="true"', $app);
 		self::assertStringContainsString('@click.stop="renameChat(item.chat.id)"', $app);
@@ -127,7 +130,9 @@ final class FrontendContractTest extends TestCase {
 		self::assertStringContainsString('@click.stop="updateChatMeta(item.chat.id, { pinned:', $app);
 		self::assertStringContainsString('@click.stop="updateChatMeta(item.chat.id, { archived:', $app);
         self::assertStringContainsString("return requestApi('GET', '/chats')", $app);
-        self::assertStringContainsString("return requestApi('GET', '/folders')", $app);		self::assertStringContainsString("requestApi('POST', '/chats/' + encodeURIComponent(id) + '/meta', meta)", $app);
+        // Folders API removed in #695.
+        self::assertStringNotContainsString("return requestApi('GET', '/folders')", $app);
+		self::assertStringContainsString("requestApi('POST', '/chats/' + encodeURIComponent(id) + '/meta', meta)", $app);
 		// The app starts on a modern dashboard home view with a stats API.
 		self::assertStringContainsString('HomeView', $app);
 		self::assertStringContainsString("view === 'home'", $app);
@@ -223,10 +228,11 @@ final class FrontendContractTest extends TestCase {
 		// The chat stream carries the chat id so the server can resolve the
 		// per-chat folder scope, and scoped chats show a pill in the header
 		// (Issue #88).
-		self::assertStringContainsString('history, chatId, images, model:', $vanilla);
+		self::assertStringContainsString('{ message: msg, history, chatId }', $vanilla);
 		self::assertStringContainsString('Scoped to {path}', $vanilla);
 		self::assertStringContainsString('chat.scopePath', $vanilla);
-		self::assertStringContainsString('queueInBackground', $vanilla);
+		// queueInBackground was never implemented; background runs use /backgroundChat directly.
+		self::assertStringNotContainsString('queueInBackground', $vanilla);
 		self::assertStringContainsString("'/backgroundChat'", $vanilla);
         self::assertStringContainsString('buildShareForm', (string)file_get_contents(__DIR__ . '/../src/standalone-chat.js'));
         self::assertStringContainsString("return new ErrorDataResponse(['error' => 'Not logged in'], 401)", (string)file_get_contents(__DIR__ . '/../lib/Controller/ApiController.php'));
