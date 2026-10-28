@@ -2,6 +2,12 @@
 
 ## [Unreleased]
 
+### Generation embedding identity (1.18.9)
+
+- Add exact, bounded Ollama/OpenAI-compatible generation embedding requests with fresh SQL endpoint/key snapshots, transfer-time guards and strict model/vector validation.
+- Reuse proven vectors across matching owned generations through a versioned cache family; never infer provenance from legacy/fallback entries.
+- Add native administrator generation selection and an explicit public-text model/dimension check, plus an OCC equivalent. Metadata reads do not probe providers; backfill and retrieval activation remain unavailable.
+
 ### Chat persistence corrections (1.18.8)
 
 - Save completed questions and answers in one revision-guarded, idempotent request and one protected encrypted-file write, including confirmation placeholders and stopped partial answers.
@@ -984,6 +990,12 @@ deep Nextcloud integration.
   deeper than five levels, are handled without recursion into the file.
 
 ## [Unreleased]
+
+### Generation embedding identity (1.18.9)
+
+- Add exact, bounded Ollama/OpenAI-compatible generation embedding requests with fresh SQL endpoint/key snapshots, transfer-time guards and strict model/vector validation.
+- Reuse proven vectors across matching owned generations through a versioned cache family; never infer provenance from legacy/fallback entries.
+- Add native administrator generation selection and an explicit public-text model/dimension check, plus an OCC equivalent. Metadata reads do not probe providers; backfill and retrieval activation remain unavailable.
 
 ### Chat persistence corrections (1.18.8)
 

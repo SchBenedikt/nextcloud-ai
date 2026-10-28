@@ -32,6 +32,43 @@ class EmbeddingCache {
      */
     private array $dimensionMemo = [];
 
+    /** Proven generation entries never read legacy/fallback cache records. */
+    public function getForGeneration(\OCA\EvaAi\Vector\VectorGeneration $generation, string $text): ?array {
+        try {
+            $entry = $this->store()->get($this->generationKey($generation, $text));
+            if (!is_array($entry) || ($entry['schema'] ?? null) !== 2
+                || ($entry['identity'] ?? null) !== $this->generationIdentity($generation)
+                || !is_array($entry['vector'] ?? null)) return null;
+            $generation->validateVector($entry['vector']);
+            return array_map('floatval', $entry['vector']);
+        } catch (\Throwable) { return null; }
+    }
+
+    /** Cache availability cannot turn a successful generation batch into a failure. */
+    public function putForGeneration(\OCA\EvaAi\Vector\VectorGeneration $generation, array $texts, array $vectors): void {
+        if (!array_is_list($texts) || !array_is_list($vectors) || count($texts) !== count($vectors)) return;
+        try {
+            foreach ($texts as $i => $text) {
+                if (!is_string($text) || trim($text) === '' || strlen($text) > 40000) return;
+                $generation->validateVector($vectors[$i]);
+            }
+            $identity = $this->generationIdentity($generation);
+            foreach ($texts as $i => $text) {
+                $this->store()->set($this->generationKey($generation, $text),
+                    ['schema'=>2, 'identity'=>$identity, 'vector'=>array_map('floatval', $vectors[$i])], self::TTL);
+            }
+        } catch (\Throwable) { /* Valid vectors remain usable without caching. */ }
+    }
+
+    private function generationIdentity(\OCA\EvaAi\Vector\VectorGeneration $generation): string {
+        return hash('sha256', json_encode([$generation->embeddingProvider, $generation->profileId,
+            $generation->endpointHash, $generation->embeddingModel, $generation->dimension, $generation->distance()], JSON_THROW_ON_ERROR));
+    }
+
+    private function generationKey(\OCA\EvaAi\Vector\VectorGeneration $generation, string $text): string {
+        return $this->userPrefix($generation->userId) . 'pinned_v2_' . $this->generationIdentity($generation) . '_' . hash('sha256', $text);
+    }
+
     public function __construct(
         private ICacheFactory $cacheFactory,
         private AppConfig $config,

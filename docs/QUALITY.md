@@ -186,3 +186,25 @@ writes keep their visible text instead of hiding an unconfirmed response. The
 refresh is bounded to ten seconds. Separate fixture cases cover model errors
 and abort before the first model event, while the live suite can replace a real
 regeneration response with an error after the native backend advances its marker.
+
+## Generation embedding protocol probe
+
+The new explicit probe uses actual native HTTP and isolated in-memory SQL,
+without changing a real owner's preferences, credentials or global flags:
+
+```sh
+EVA_EMBED_FIXTURE_COUNTER=/tmp/eva-embedding-fixture-local.count \
+php -S 127.0.0.1:16435 tests/runtime/embedding-fixture-server.php
+# In another terminal, as the web-server user:
+NEXTCLOUD_ROOT=/var/www/html/nextcloud \
+EVA_EMBED_TEST_URL=http://127.0.0.1:16435 \
+EVA_EMBED_FIXTURE_COUNTER=/tmp/eva-embedding-fixture-local.count \
+php tests/runtime/generation-embedding.php
+```
+
+Stop the fixture server afterward and remove its disposable count file. The
+fixture key is public synthetic test data, not an application credential. The
+checked path includes actual profile/key SQL mutations after DNS resolution,
+zero transfer after that mutation, per-owner key/cache isolation, native response
+parsing and compatible index ordering. It does not establish a hosted provider's
+availability, generation backfill, complete verification or retrieval cutover.

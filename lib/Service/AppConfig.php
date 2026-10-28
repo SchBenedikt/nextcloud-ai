@@ -9,6 +9,7 @@ use OCP\Lock\ILockingProvider;
 
 class AppConfig {
     public const APP = 'eva_ai';
+    public const DEFAULT_OLLAMA_URL = 'http://127.0.0.1:11434';
 
     /** Canonical boolean setting keys used by validation and persistence. */
     public const BOOLEAN_SETTINGS = [
@@ -123,7 +124,7 @@ class AppConfig {
         'provider_profiles' => '[]',
         'model_pricing' => '[]',
         'plugin_tools_enabled' => '{}',
-        'ollama_url' => 'http://127.0.0.1:11434',
+        'ollama_url' => self::DEFAULT_OLLAMA_URL,
         'embedding_model' => 'nomic-embed-text',
         'chat_model' => 'gemma4:cloud',
         // Optional comma-separated fallback chains (Issue #86): when the
