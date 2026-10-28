@@ -14,17 +14,16 @@ class VectorSourceDeletion {
     public function __construct(private IDBConnection $db, private VectorOutboxRepository $outbox) {}
 
     /** @return array{chunks:int,documents:int} */
-    public function deleteDocuments(array $ids, bool $removeDocuments = false): array {
+    public function deleteDocuments(array $ids, bool $removeDocuments = false, bool $generationOnly = false): array {
+        if ($removeDocuments && $generationOnly) throw new \InvalidArgumentException('Document removal must include legacy chunks.');
         $ids = array_values(array_unique(array_filter(array_map('intval', $ids), static fn(int $id): bool => $id > 0)));
         if (count($ids) > 500) throw new \InvalidArgumentException('Source deletion requires bounded document batches.');
         if ($ids === []) return ['chunks' => 0, 'documents' => 0];
         sort($ids, SORT_NUMERIC);
-        return $this->outbox->transaction(function () use ($ids, $removeDocuments): array {
+        return $this->outbox->transaction(function () use ($ids, $removeDocuments, $generationOnly): array {
             // Same source-row boundary as putBuildingChunk. A concurrent writer
             // must recheck the source after this transaction releases the lock.
-            $lock = $this->db->getQueryBuilder();
-            $lock->update('eva_ai_documents')->set('file_mtime', $lock->func()->add('file_mtime', $lock->createNamedParameter(0, IQueryBuilder::PARAM_INT)))
-                ->where($lock->expr()->in('id', $lock->createNamedParameter($ids, IQueryBuilder::PARAM_INT_ARRAY)))->executeStatement();
+            $this->lockDocuments($ids);
             $cursor = 0;
             do {
                 $qb = $this->db->getQueryBuilder();
@@ -49,6 +48,7 @@ class VectorSourceDeletion {
             } while (count($rows) === 250);
             $delete = $this->db->getQueryBuilder();
             $delete->delete('eva_ai_chunks')->where($delete->expr()->in('document_id', $delete->createNamedParameter($ids, IQueryBuilder::PARAM_INT_ARRAY)));
+            if ($generationOnly) $delete->andWhere($delete->expr()->isNotNull('vector_generation_id'));
             $chunks = $delete->executeStatement();
             $documents = 0;
             if ($removeDocuments) {
@@ -58,6 +58,46 @@ class VectorSourceDeletion {
             }
             return ['chunks' => $chunks, 'documents' => $documents];
         });
+    }
+
+    /** Source metadata and invalidation commit together, without re-embedding. */
+    public function mutateDocuments(array $ids, callable $mutation): mixed {
+        $ids = array_values(array_unique(array_filter(array_map('intval', $ids), static fn(int $id): bool => $id > 0)));
+        if (count($ids) > 500) throw new \InvalidArgumentException('Source mutation requires bounded document batches.');
+        sort($ids, SORT_NUMERIC);
+        if ($ids === []) return $mutation();
+        return $this->outbox->transaction(function () use ($ids, $mutation): mixed {
+            $this->lockDocuments($ids);
+            $before = $this->sourceMetadata($ids);
+            $result = $mutation();
+            $after = $this->sourceMetadata($ids);
+            $changed = [];
+            foreach ($before as $id => $metadata) {
+                if (isset($after[$id]) && $metadata['user_id'] !== $after[$id]['user_id']) throw new VectorStoreException('source_identity_mismatch');
+                if ($metadata !== ($after[$id] ?? null)) $changed[] = $id;
+            }
+            // Old point IDs become terminal tombstones. A later backfill uses
+            // fresh IDs and a new source stamp; legacy search stays available.
+            if ($changed !== []) $this->deleteDocuments($changed, false, true);
+            return $result;
+        });
+    }
+
+    private function lockDocuments(array $ids): void {
+        $lock = $this->db->getQueryBuilder();
+        $lock->update('eva_ai_documents')->set('file_mtime', $lock->func()->add('file_mtime', $lock->createNamedParameter(0, IQueryBuilder::PARAM_INT)))
+            ->where($lock->expr()->in('id', $lock->createNamedParameter($ids, IQueryBuilder::PARAM_INT_ARRAY)))->executeStatement();
+    }
+
+    private function sourceMetadata(array $ids): array {
+        $qb = $this->db->getQueryBuilder();
+        $qb->select('id', 'user_id', 'file_id', 'path', 'name', 'source', 'content_hash', 'file_mtime', 'size', 'mime')->from('eva_ai_documents')
+            ->where($qb->expr()->in('id', $qb->createNamedParameter($ids, IQueryBuilder::PARAM_INT_ARRAY)));
+        $result = $qb->executeQuery();
+        try { $rows = $result->fetchAll(); } finally { $result->closeCursor(); }
+        $metadata = [];
+        foreach ($rows as $row) $metadata[(int)$row['id']] = $row;
+        return $metadata;
     }
 
     private function generation(string $id, ?string $userId): array {

@@ -180,7 +180,7 @@ $providerLabels = [
 			<p role="alert"><?php p($l->t('Some background operations exhausted their retries. An administrator needs to inspect them before retrying.')); ?></p>
 		<?php endif; ?>
 		<p class="settings-hint"><?php p($l->t('Configuration status is not a connection test. Generation cleanup only removes retired search collections; it does not index files or switch search backends.')); ?></p>
-		<p class="settings-hint"><?php p($l->t('Removing a file clears its local index and queues cleanup for any prepared vector points. Point cleanup remains queued until chunk synchronization is available.')); ?></p>
+		<p class="settings-hint"><?php p($l->t('Removing a file clears its local index and queues cleanup for prepared vector points. Renaming or changing a source discards its prepared entries for rebuilding. Point cleanup remains queued until chunk synchronization is available.')); ?></p>
 		<?php if ($storage['staged_chunks'] > 0): ?>
 			<p class="settings-hint"><?php p($l->t('Prepared generation chunks are separate from the SQL search index. Their presence does not mean migration is verified or active.')); ?></p>
 		<?php endif; ?>
