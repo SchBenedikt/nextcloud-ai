@@ -19,6 +19,12 @@ use OCP\AppFramework\Db\Entity;
  * @method void setEmbedding(string $json)
  * @method int getTokenCount()
  * @method void setTokenCount(int $n)
+ * @method ?string getVectorGenerationId()
+ * @method void setVectorGenerationId(?string $id)
+ * @method string getVectorState()
+ * @method void setVectorState(string $state)
+ * @method ?string getContentHash()
+ * @method void setContentHash(?string $hash)
  */
 class Chunk extends Entity {
     protected ?int $documentId = null;
@@ -27,6 +33,9 @@ class Chunk extends Entity {
     protected ?string $embedding = '';
     protected ?string $provenance = '{}';
     protected ?int $tokenCount = 0;
+    protected ?string $vectorGenerationId = null;
+    protected ?string $vectorState = 'legacy';
+    protected ?string $contentHash = null;
 
     public function __construct() {
         $this->addType('documentId', 'integer');
