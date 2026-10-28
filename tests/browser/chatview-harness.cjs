@@ -31,7 +31,7 @@ function html() {
         if (!body || typeof body.requestId !== 'string' || !/^[A-Za-z0-9_-]{16,128}$/.test(body.requestId) || !Number.isSafeInteger(body.expectedRev)) {
           return new Response(JSON.stringify({ error: 'Invalid turn receipt' }), { status: 400, headers: { 'Content-Type': 'application/json' } })
         }
-        data = { ok: true, rev: 1 + 2 * window.__calls.filter(call => call.url.endsWith('/turns')).length }
+        data = { ok: true, rev: body.expectedRev + 2 }
       }
       else if (path.endsWith('/backgroundChat') && method === 'GET') data = { items: [] }
       else if (path.endsWith('/streamChat') && method === 'POST') {

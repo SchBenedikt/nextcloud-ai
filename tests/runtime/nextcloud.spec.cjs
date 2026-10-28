@@ -99,7 +99,7 @@ test.describe('authenticated Nextcloud runtime', () => {
 		}
 	})
 
-	test('two real chat requests and regeneration finish and survive reload', async () => {
+	test('real chat, regeneration and interrupted-response recovery survive reload', async () => {
 		test.setTimeout(180000)
 		await page.goto(app(''), { waitUntil: 'domcontentloaded' })
 		await page.getByRole('textbox', { name: 'Message EVA', exact: true }).fill('Reply exactly: EVA runtime ready.')
@@ -112,9 +112,30 @@ test.describe('authenticated Nextcloud runtime', () => {
 		await page.getByTitle('Regenerate', { exact: true }).last().click()
 		await expect(page.locator('.rm.assistant').last()).toContainText('second request ready', { timeout: 75000 })
 		await expect(page.getByRole('button', { name: 'Send message', exact: true })).toBeVisible()
+		// The real backend advances its regeneration marker. Simulate losing
+		// the model response after that mutation, without changing provider settings.
+		const regenerateRoute = '**/chats/*/regenerate*'
+		await page.route(regenerateRoute, async route => {
+			const response = await route.fetch()
+			expect(response.ok()).toBe(true)
+			const events = (await response.text()).trim().split('\n').map(line => JSON.parse(line))
+			const marker = events.find(event => event.type === 'regenerate')
+			expect(Number.isSafeInteger(marker?.rev)).toBe(true)
+			await route.fulfill({ status: 200, contentType: 'application/x-ndjson', body: JSON.stringify(marker) + '\n' + JSON.stringify({ type: 'error', message: 'Simulated interrupted response' }) + '\n' })
+		})
+		try {
+			await page.getByTitle('Regenerate', { exact: true }).last().click()
+			await expect(page.locator('.err')).toContainText('Simulated interrupted response', { timeout: 75000 })
+			await expect(page.getByRole('button', { name: 'Send message', exact: true })).toBeVisible()
+			await expect(page.locator('.rm.assistant').last()).toContainText('second request ready')
+		} finally { await page.unroute(regenerateRoute) }
+		await page.getByRole('textbox', { name: 'Message EVA', exact: true }).fill('Reply exactly: after failure ready.')
+		await page.getByRole('button', { name: 'Send message', exact: true }).click()
+		await expect(page.locator('.rm.assistant').last()).toContainText('after failure ready', { timeout: 75000 })
+		await expect(page.getByRole('button', { name: 'Send message', exact: true })).toBeVisible()
 		await page.reload({ waitUntil: 'domcontentloaded' })
-		await expect(page.locator('.rm.assistant')).toHaveCount(2)
-		await expect(page.locator('.rm.assistant').last()).toContainText('second request ready')
+		await expect(page.locator('.rm.assistant')).toHaveCount(3)
+		await expect(page.locator('.rm.assistant').last()).toContainText('after failure ready')
 		expect(errors).toEqual([])
 	})
 })

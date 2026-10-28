@@ -177,6 +177,11 @@ placeholders and stopped partial answers. It does not rerun the model to save.
 
 Individual assistant appends carrying a stale or superseded `regenerateRev`
 now return HTTP 409 instead of appending an answer to a newer conversation.
+A failed or empty-stopped regeneration leaves the original stored conversation
+intact. Before another turn, the native client refreshes the revision and
+restores that conversation; a retry may use the original base or the freshly
+read current revision. If answer storage itself failed, the visible new answer
+is preserved for copying and persistence stays unconfirmed.
 Successful metadata updates also return the current `rev` so personalization
 changes made by the open chat keep its revision guard current.
 

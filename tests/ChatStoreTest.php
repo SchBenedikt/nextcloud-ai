@@ -853,6 +853,14 @@ final class ChatStoreTest extends TestCase {
 		self::assertSame(7, $retry['rev']);
 		// A different base revision while a regeneration is pending -> conflict.
 		self::assertSame('conflict', $store->beginRegenerate('alice', 'c1', 0, null, 6)['error']);
+        // A client that refreshed after failure may retry from the latest revision.
+        $currentRetry = $store->beginRegenerate('alice', 'c1', 0, null, 7);
+        self::assertTrue($currentRetry['ok']);
+        self::assertSame(8, $currentRetry['rev']);
+        $turn = \OCA\EvaAi\Dto\ChatTurnRequest::fromArray(['requestId'=>'turn_after_failed_regeneration','expectedRev'=>8,'question'=>'Next question','answer'=>['text'=>'Next answer']]);
+        self::assertSame(['ok'=>true,'rev'=>10], $store->appendTurn('alice','c1',$turn));
+        self::assertArrayNotHasKey('regenerate', $store->get('alice','c1'));
+
 	}
 
 	public function testRepairStoreReportsCorruptionWithoutWritingAndAppliesWithBackup(): void {

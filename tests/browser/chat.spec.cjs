@@ -598,3 +598,41 @@ test('regeneration waits for its revision-bound answer save', async ({ page }) =
   await page.evaluate(() => window.__releaseRegeneration())
   await expect(page.getByRole('button', { name: 'Send message', exact: true })).toBeVisible()
 })
+
+for (const mode of ['error', 'stop']) {
+  test(`a ${mode === 'error' ? 'failed' : 'stopped empty'} regeneration refreshes the revision before the next send`, async ({ page }) => {
+    await openChatView(page)
+    await page.fill('#chatinput', 'Initial question')
+    await page.getByRole('button', { name: 'Send message', exact: true }).click()
+    await expect(page.locator('.rm.assistant')).toContainText('A test answer')
+    await expect(page.getByRole('button', { name: 'Send message', exact: true })).toBeVisible()
+    await page.evaluate(mode => {
+      const fetch = window.fetch
+      window.fetch = (url, options) => {
+        if (String(url).endsWith('/regenerate')) {
+          window.__regenerationStarted = true
+          if (mode === 'stop') return new Promise((resolve, reject) => options.signal.addEventListener('abort', () => reject(new DOMException('Stopped', 'AbortError')), { once: true }))
+          return Promise.resolve(new Response(JSON.stringify({type:'regenerate',rev:4})+'\n'+JSON.stringify({type:'error',message:'Model failed'})+'\n', {headers:{'Content-Type':'application/x-ndjson'}}))
+        }
+        if (String(url).endsWith('/chats/generated-test-chat') && (!options?.method || options.method === 'GET')) {
+          window.__revisionRefreshed = true
+          return Promise.resolve(new Response(JSON.stringify({rev:4,messages:[{role:'user',text:'Initial question'},{role:'assistant',text:'A test answer'}]}), {headers:{'Content-Type':'application/json'}}))
+        }
+        return fetch(url, options)
+      }
+    }, mode)
+    await page.getByTitle('Regenerate', { exact: true }).click()
+    if (mode === 'stop') {
+      await expect.poll(() => page.evaluate(() => window.__regenerationStarted)).toBe(true)
+      await page.getByRole('button', { name: 'Stop', exact: true }).click()
+    }
+    await expect.poll(() => page.evaluate(() => window.__revisionRefreshed)).toBe(true)
+    await expect(page.getByRole('button', { name: 'Send message', exact: true })).toBeVisible()
+    await expect(page.locator('.rm.assistant')).toContainText('A test answer')
+    await page.fill('#chatinput', 'Next question')
+    await page.getByRole('button', { name: 'Send message', exact: true }).click()
+    await expect(page.getByRole('button', { name: 'Send message', exact: true })).toBeVisible()
+    const turn = await page.evaluate(() => window.__calls.filter(call => call.url.endsWith('/turns')).at(-1).body)
+    expect(turn).toMatchObject({question:'Next question',expectedRev:4})
+  })
+}

@@ -84,11 +84,12 @@ export function mountChat(root, opts = {}) {
 		else flush()
 	}
 
-	function api(method, path, body) {
+	function api(method, path, body, { timeout = 0 } = {}) {
 		return new Promise((resolve, reject) => {
 			const historyWrite = method === 'POST' && /\/(messages|turns)$/.test(path)
-			const controller = historyWrite ? new AbortController() : null
-			const timer = controller ? setTimeout(() => { controller.abort(); reject(new Error('Chat history save timed out')) }, 15000) : null
+			const deadline = historyWrite ? 15000 : timeout
+			const controller = deadline > 0 ? new AbortController() : null
+			const timer = controller ? setTimeout(() => { controller.abort(); reject(new Error('Chat request timed out')) }, deadline) : null
 			const opts = {
 				method,
 				credentials: 'same-origin',
@@ -1518,9 +1519,10 @@ export function mountChat(root, opts = {}) {
 		}
 	}
 
-	function restoreServerChat(id) {
-		return api('GET', '/chats/' + id).then((chat) => {
+	function restoreServerChat(id, requestOptions = {}) {
+		return api('GET', '/chats/' + id, null, requestOptions).then((chat) => {
 			if (destroyed) return
+			if (requestOptions.requireRevision && (!Number.isSafeInteger(chat?.rev) || !Array.isArray(chat.messages))) throw new Error('Missing chat state')
 			// Per-chat folder scope (Issue #88): visible in the header so the
 			// user knows the answer only uses documents from that folder.
 			if (chat && chat.scopePath) {
@@ -1710,6 +1712,7 @@ export function mountChat(root, opts = {}) {
 		setStreamingUI(true)
 		err.style.display = 'none'
 		messages.push({ role: 'assistant', text: '', thinking: '', done: false, tools: [] })
+		let persistedOrPending = false
 		renderAll(messages)
 		const unlock = () => {
 			sending = false
@@ -1721,6 +1724,7 @@ export function mountChat(root, opts = {}) {
 				// The server commits the deferred truncation only when the
 				// persisted answer carries this revision token (Issue #182).
 				pendingRegenerateRev = ev.rev != null ? ev.rev : null
+				if (Number.isSafeInteger(ev.rev)) chatRev = Math.max(chatRev ?? 0, ev.rev)
 				return
 			}
 			if (!last || last.role !== 'assistant' || last.done) return
@@ -1769,6 +1773,7 @@ export function mountChat(root, opts = {}) {
 					? t('Some required details are missing - please complete them below.')
 					: t('Please review this action and confirm it explicitly.')
 				last.done = true
+				persistedOrPending = true
 				renderAll(messages)
 				scroll.scrollTop = scroll.scrollHeight
 				return
@@ -1785,6 +1790,7 @@ export function mountChat(root, opts = {}) {
 				// token (or after a failure) the stored history stays intact.
 				last._pendingSave = saveMessage('assistant', last.text, last.followups, pendingRegenerateRev, null, last.tools, last.model)
 					.then((saved) => {
+						persistedOrPending = saved
 						if (saved && onRecent) onRecent()
 						else if (!saved) showHistorySaveWarning()
 					})
@@ -1792,6 +1798,8 @@ export function mountChat(root, opts = {}) {
 			} else if (ev.type === 'error') {
 				last.text = streamFailureMessage(ev.message)
 				last.done = true
+				err.textContent = last.text
+				err.style.display = 'block'
 				pendingRegenerateRev = null
 			}
 			stickToBottom()
@@ -1808,6 +1816,7 @@ export function mountChat(root, opts = {}) {
 				// token commits the truncation with the partial text.
 					if (stoppedByUser && last.text.trim() !== '') {
 						last._pendingSave = saveMessage('assistant', last.text, null, pendingRegenerateRev, null, last.tools).then((saved) => {
+							persistedOrPending = saved
 							if (!saved) showHistorySaveWarning()
 						})
 				}
@@ -1818,7 +1827,23 @@ export function mountChat(root, opts = {}) {
 				err.style.display = 'block'
 			}
 		}).finally(async () => {
-			try { await messages[messages.length - 1]?._pendingSave } catch (_) { showHistorySaveWarning() }
+			const attemptedSave = messages[messages.length - 1]?._pendingSave
+			try { await attemptedSave } catch (_) { showHistorySaveWarning() }
+			if (!persistedOrPending) {
+				// beginRegenerate advances SQL/AppData state even if no model
+				// event reaches us. Refresh before the next revision-guarded send.
+				try {
+					if (!attemptedSave) {
+						// Restore the original answer/context after a model failure or
+						// empty stop. A failed write keeps its visible answer for copying.
+						await restoreServerChat(chatId, { timeout: 10000, requireRevision: true })
+					} else {
+						const chat = await api('GET', '/chats/' + encodeURIComponent(chatId), null, { timeout: 10000 })
+						if (!Number.isSafeInteger(chat?.rev)) throw new Error('Missing chat revision')
+						chatRev = Math.max(chatRev ?? 0, chat.rev)
+					}
+				} catch (_) { showHistorySaveWarning() }
+			}
 			stoppedByUser = false
 			currentAbort = null
 			pendingRegenerateRev = null

@@ -177,3 +177,12 @@ message. The correction gives the turn a separate stable receipt ID and makes
 the browser fixture reject malformed receipts too. This failure is not counted
 as a passing runtime validation; the corrected installation must pass the real
 consecutive-answer, regeneration and reload path before integration.
+
+A later review identified the failed-regeneration revision gap introduced by the
+new turn guard. Error/empty-stop paths now refresh the server revision and
+restore the unchanged stored conversation before another send; pending retries
+accept the original base or the freshly read current revision. Failed answer
+writes keep their visible text instead of hiding an unconfirmed response. The
+refresh is bounded to ten seconds. Separate fixture cases cover model errors
+and abort before the first model event, while the live suite can replace a real
+regeneration response with an error after the native backend advances its marker.

@@ -847,9 +847,9 @@ class ChatStore {
                 $pending = $chat['regenerate'] ?? null;
                 if (is_array($pending)) {
                     // A regeneration is already pending. The same client (same
-                    // base revision) may retry after a failed stream; anything
-                    // else means a concurrent edit and is rejected.
-                    if ($expectedRev === null || (int)($pending['baseRev'] ?? -1) !== $expectedRev) {
+                    // base revision, or its freshly read current revision) may retry
+                    // after a failed stream; other revisions are rejected.
+                    if ($expectedRev === null || ((int)($pending['baseRev'] ?? -1) !== $expectedRev && $currentRev !== $expectedRev)) {
                         return ['ok' => false, 'error' => 'conflict'];
                     }
                 } elseif ($expectedRev !== null && $currentRev !== $expectedRev) {
