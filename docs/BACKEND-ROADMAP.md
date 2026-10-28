@@ -424,3 +424,19 @@ stale-token rejection close the reviewed readiness races. This is a transitional
 AppData correction; stage 13 normalized encrypted SQL messages, migration and
 recovery remain pending. Large browser-dismissal durability is also not proven
 by fetch keepalive.
+
+### Stage 09 first slice: pinned generation embeddings (1.18.9)
+
+A separate generation adapter sends exact model requests to Ollama or an existing
+OpenAI-compatible profile and validates named model, dimension, magnitude and
+complete input-index correspondence. Fresh SQL profile/encrypted-key snapshots
+are checked at transfer time; model fallback and implicit truncation are absent.
+Proven cache records can be reused across generations with identical owned
+embedding identity, but legacy/fallback records are not guessed into that space.
+
+Native administration and OCC expose an explicit public-text compatibility check
+for existing building generations. Metadata reads do not probe providers. This is
+preparation for the bounded document backfill, not a completed backfill worker or
+rollout gate. Durable cursors/leases/control, canonical source extraction and full
+remote verification remain pending. Details and protocol sources are recorded in
+[GENERATION-EMBEDDINGS.md](GENERATION-EMBEDDINGS.md).

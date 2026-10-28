@@ -8,6 +8,7 @@ config.mode = 'development'
 config.entry = {
   chatview: path.join(__dirname, 'chatview-entry.js'),
   vectorstatus: path.join(__dirname, 'vectorstatus-entry.js'),
+  generations: path.join(__dirname, 'generation-entry.js'),
   metricsview: path.join(__dirname, 'metricsview-entry.js'),
   workspace: path.join(root, 'src/main.js'),
 }

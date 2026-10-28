@@ -61,6 +61,8 @@ return [
         ['name' => 'api#deleteAllChats', 'url' => '/api/chats', 'verb' => 'DELETE'],
         ['name' => 'api#chatDetail', 'url' => '/api/chats/{id}', 'verb' => 'GET'],
         ['name' => 'api#chatDelete', 'url' => '/api/chats/{id}', 'verb' => 'DELETE'],
+        ['name' => 'generationAdmin#listing', 'url' => '/api/admin/vector-generations/{userId}', 'verb' => 'GET'],
+        ['name' => 'generationAdmin#check', 'url' => '/api/admin/vector-generations/{userId}/{id}/check', 'verb' => 'POST'],
         ['name' => 'api#chatAppend', 'url' => '/api/chats/{id}/messages', 'verb' => 'POST'],
         ['name' => 'api#chatTurn', 'url' => '/api/chats/{id}/turns', 'verb' => 'POST'],
         ['name' => 'api#briefingHistory', 'url' => '/api/briefings/history', 'verb' => 'GET'],

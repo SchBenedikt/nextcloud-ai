@@ -339,3 +339,23 @@ cleanup worker; disabling points does not disable cleanup. No provider/collectio
 probe, backfill or retrieval switch runs in the request. Read the shared status
 snapshot after saving, including after HTTP 503, to observe authoritative gates.
 Existing connection disable stops all Qdrant transfers.
+
+## Generation embedding administration
+
+`GET /api/admin/vector-generations/{userId}?after=<generation ID>` returns
+`items` and `next_after` (null except for a full 50-row page). It requires an
+existing enabled canonical Nextcloud owner and returns only generation ID,
+lifecycle state, provider/profile ID, model, dimension, chunk settings and
+creation timestamp. Credentials, endpoint URLs/hashes and vector content are
+not included. The `after` cursor is a lowercase 32-character hexadecimal ID.
+This GET never contacts the provider.
+
+`POST /api/admin/vector-generations/{userId}/{id}/check` explicitly checks an
+owned building generation with a fixed public test sentence. No client text,
+vector or credential is accepted. Success returns `available: true`,
+`generation_id`, `dimension`, `retrieval_changed: false` and
+`document_content_sent: false`. Invalid selections return 400; configuration,
+model-space or transport failures return 503 with a sanitized error message.
+Both routes require an administrator; the POST retains native CSRF protection.
+A successful probe does not activate a generation or verify its complete index.
+See [generation embeddings](GENERATION-EMBEDDINGS.md).

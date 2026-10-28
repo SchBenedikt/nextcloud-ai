@@ -107,6 +107,7 @@ Read [Privacy](docs/PRIVACY.md), [Security](docs/SECURITY.md) and
 - [Architecture](docs/ARCHITECTURE.md), [performance](docs/PERFORMANCE.md) and
   [workspace migration](docs/WORKSPACE-MIGRATION.md).
 - [API reference](docs/API.md), [plugins](docs/PLUGIN_API.md) and [connectors](docs/CONNECTORS.md).
+- [Optional generation embeddings](docs/GENERATION-EMBEDDINGS.md): native administrator model/space checks; SQL remains the installation default.
 - [Contributing](CONTRIBUTING.md), [development](docs/DEVELOPMENT.md) and [CI](docs/CI.md).
 
 ```bash

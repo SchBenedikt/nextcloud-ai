@@ -28,6 +28,7 @@ reference pages describe the complete configuration and API surface.
 - [Retrieval benchmark](RETRIEVAL-BENCHMARK.md): frozen corpus, exact reference and ranking metrics.
 - [Backend migration ledger](BACKEND-ROADMAP.md): current implementation stages, native integration and rollout gates.
 - [Vector storage](VECTOR-STORAGE.md): generation identity, additive schema and operating boundaries.
+- [Generation embeddings](GENERATION-EMBEDDINGS.md): pinned provider/model contracts, proven cache reuse and explicit native checks.
 - [Generation chunks](GENERATION-CHUNKS.md): separate SQL rows, source stamps and atomic upsert intent.
 - [Qdrant](QDRANT.md): optional server configuration and deployment.
 - [Vector outbox](VECTOR-OUTBOX.md): durable intent, ownership fencing and delivery invariants.
