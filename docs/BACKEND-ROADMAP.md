@@ -148,3 +148,18 @@ proxy and remote-host checks and introduces no allow-local bypass. The full
 admin-owned address/DNS policy and its validation are still pending; this change
 must not be presented as complete SSRF protection. Endpoint operators must enter
 the final base URL. PHP syntax/patch checks only; automated checks remain deferred.
+
+### Stage 04 destination policy implementation
+
+ProviderEndpointPolicy enforces instance-only exact private-origin approval,
+reserved/metadata address rejection, HTTPS for unapproved origins and validated
+DNS pinning at the cURL transfer boundary. All compatible-provider paths, including
+returned-image downloads, use the guard. CNAME work is bounded and ambiguous
+responses fail closed. Core TLS/local-host checks remain in force. Proxy and
+hosts-file limitations and private-provider upgrade instructions are documented
+in PROVIDERS.md. Built-in Ollama remains unchanged; the security criteria here
+concern the user-defined compatible-provider surface introduced by #697.
+
+Implementation is present; adversarial and live transport verification remains
+unperformed under the user's instruction to defer tests. Do not mark the security
+acceptance gate verified on the basis of PHP syntax checks.
