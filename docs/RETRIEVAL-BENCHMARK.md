@@ -94,3 +94,76 @@ Evaluation metadata is capped at 100,000 distinct referenced chunk IDs (labels
 plus top-20 results); inputs exceeding that bound are rejected. Corpus file paths
 must be canonical relative paths without traversal, duplicate separators or
 backslashes, so scope metrics cannot be distorted by ambiguous path syntax.
+
+## Explicit live EVA snapshot and run
+
+An administrator can export one existing user's index and record the current
+SQL Searcher through OCC. These operations are not run during installation,
+requests, cron or upgrades. Stop indexing and quiesce index/configuration changes
+before running them; the command does not suspend the scheduler or acquire a
+long-lived lock. Fingerprints are a before/after consistency check, not a claim
+of serializable database snapshot isolation across the entire benchmark.
+
+Create a private query seed file with actual chunk relevance labels:
+
+```json
+[
+  {"id":"my-query-1","text":"A question for the frozen corpus","category":"semantic","relevance":{"123":3},"scope":"Documents"}
+]
+```
+
+The ID `123` is an example; choose real relevant chunk IDs from the user's index.
+Supply 1–100 queries. The export rejects malformed query shapes before inference.
+Query seed text is explicitly sent to the user's configured embedding endpoint;
+no document text is sent by this export. Existing stored embeddings are copied.
+
+```sh
+# Run as the Nextcloud web-server user from the Nextcloud directory.
+php occ eva_ai:retrieval:benchmark export alice /private/eva-baseline --queries=/private/query-seeds.json
+php occ eva_ai:retrieval:benchmark record alice /private/eva-baseline --output=/private/eva-sql-runs.jsonl
+
+# From the EVA repository, evaluate the two baselines separately.
+php tools/retrieval-benchmark.php exact /private/eva-baseline > /private/exact-report.json
+php tools/retrieval-benchmark.php evaluate /private/eva-baseline /private/eva-sql-runs.jsonl eva-sql-legacy > /private/eva-report.json
+```
+
+Export directories and output files must be new. They are created with private
+permissions (0700 directory, 0600 files) under a restrictive temporary umask.
+Exports contain real user identifiers, paths, names, vectors and query text;
+treat the entire directory as personal data. Content/provenance hashes are
+included instead of chunk text. The endpoint is represented by a hash; provider
+credentials are never exported. Failed exports remove the files they created;
+failed recordings remove incomplete result files and restore the previous config
+user context. Existing targets are never overwritten.
+
+The SQL mapper uses tenant-bound keyset pagination with at most 500 rows per page.
+Snapshot bytes pin IDs, document metadata, content/provenance hashes and vectors.
+Full keyset fingerprints are checked before and after query embedding and after
+recording. A separate direct-SQL hash of the user's preferences and instance app
+configuration detects changes without relying on IConfig's process-local cache;
+only that hash, not raw configuration or secrets, is exported. A running index or
+changed corpus/configuration/revision aborts the operation. Unrelated user changes
+are not read; unrelated settings for the selected account can conservatively
+invalidate the snapshot.
+
+Record verifies that fresh query vectors equal the frozen vectors, then calls
+the actual Searcher, preserving its lexical, RRF, phrase and diversification rules.
+This preflight warms the query embedding cache and is marked in every run row;
+reported duration covers the Searcher call, excludes fingerprint/preflight time,
+and must not be labeled a cold-cache end-to-end measurement. A changing or
+nondeterministic embedding provider causes rejection instead of silently comparing
+different vector spaces. The full quality/latency evaluator validates the recorded
+file before success; isolation violations make recording fail.
+
+Only the explicitly selected user's index is exported. A returned foreign chunk
+not present in this corpus is an unknown-ID isolation violation; it cannot be
+classified by the foreign owner's identity without a deliberately constructed
+multi-tenant offline corpus. This avoids automatically exporting another account's
+data just to run an adversarial evaluation.
+
+Legacy chunks do not carry a trustworthy embedding-model identity. Manifests
+therefore set `embedding_provenance=legacy_unverified` and
+`vector_migration_eligible=false`. The declared configuration documents the current
+runtime, not the model that produced every old chunk. Successful snapshot recording
+does not authorize adopting these vectors into a verified production generation.
+No live snapshot or performance measurement is claimed by committing this command.

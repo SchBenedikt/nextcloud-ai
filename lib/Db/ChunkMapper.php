@@ -9,6 +9,21 @@ use OCP\DB\QueryBuilder\IQueryBuilder;
 use OCP\IDBConnection;
 
 class ChunkMapper extends QBMapper {
+    /** Bounded keyset export of one tenant's exact retrieval snapshot. */
+    public function benchmarkRowsAfter(string $userId, int $afterId, int $limit = 250): array {
+        $qb = $this->db->getQueryBuilder();
+        $qb->select('c.id', 'c.document_id', 'c.content', 'c.embedding', 'c.provenance',
+            'd.user_id', 'd.path', 'd.name', 'd.source', 'd.file_id')
+            ->from('eva_ai_chunks', 'c')
+            ->innerJoin('c', 'eva_ai_documents', 'd', $qb->expr()->eq('c.document_id', 'd.id'))
+            ->where($qb->expr()->eq('d.user_id', $qb->createNamedParameter($userId)))
+            ->andWhere($qb->expr()->gt('c.id', $qb->createNamedParameter(max(0, $afterId), IQueryBuilder::PARAM_INT)))
+            ->orderBy('c.id', 'ASC')->setMaxResults(max(1, min(500, $limit)));
+        $result = $qb->executeQuery();
+        try { return $result->fetchAll(); }
+        finally { $result->closeCursor(); }
+    }
+
     public function __construct(IDBConnection $db) {
         parent::__construct($db, 'eva_ai_chunks');
     }

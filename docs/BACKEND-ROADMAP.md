@@ -180,3 +180,15 @@ strict corpus/query hashes. Quality, isolation, duplicate and nearest-rank laten
 metrics are documented in RETRIEVAL-BENCHMARK.md. Live EVA/Qdrant snapshot recording,
 representative corpus collection, load execution and empirical acceptance gates
 remain pending. The synthetic example is not a real retrieval-quality benchmark.
+
+### Stage 05 live SQL baseline integration
+
+`eva_ai:retrieval:benchmark export|record` now exports an explicit user's private
+snapshot and invokes the actual SQL Searcher with before/after corpus and direct
+SQL configuration fingerprints. Keyset reads, output permissions, query embedding
+preflight, failure cleanup and legacy provenance restrictions are documented in
+RETRIEVAL-BENCHMARK.md. No external vector service is required. Quiescence is an
+operator prerequisite; the fingerprint protocol is not a serializable transaction.
+Live executions, representative datasets and acceptance measurements remain pending
+under the instruction to defer tests. Neither successful syntax checking nor the
+synthetic dataset satisfies the production quality/performance gates.
