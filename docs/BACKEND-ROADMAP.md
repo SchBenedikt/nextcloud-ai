@@ -128,3 +128,10 @@ it to the existing Ollama instance. Ollama implements the contract directly, so
 existing constructors and test doubles remain valid. No additional provider is
 activated. Automated tests remain deferred at user request; only syntax/patch
 checks are recorded for this stage.
+
+### Stage 03 implementation
+
+Searcher now emits optional privacy-preserving debug stage measurements using a
+monotonic clock. Logging failures cannot fail retrieval. Candidate selection and
+ranking remain unchanged. These events are not yet a metrics exporter, benchmark
+corpus, latency claim or completed shadow/soak gate. Automated tests remain deferred.

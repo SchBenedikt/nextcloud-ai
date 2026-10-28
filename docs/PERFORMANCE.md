@@ -56,3 +56,29 @@ Capability validation can read a proposed Ollama endpoint directly. It no longer
 writes and restores the user configuration just to test model roles. Cancelled
 HTTP requests are not retried. Independent settings resources are split into
 focused composables and loaded on demand.
+
+## Backend retrieval timing baseline
+
+Searcher writes an optional debug-level `eva_ai: retrieval timings` event through
+Nextcloud's logger. It records `backend=sql_legacy`, `total_ms`, `failed`, result
+count, `count_ms`, `index_chunks`, `embedding_ms`, `dense_enabled`,
+`candidates_ms`, `candidates`, `hydrate_ms`, `scope_ms`, `scoped_candidates` and
+`ranking_ms`. Durations use the monotonic clock and are in milliseconds.
+
+These are per-request measurements, not aggregated percentiles or a Prometheus
+exporter. Debug events follow the Nextcloud logging level and retention policy;
+no special log level is enabled by the app. Query text, user identifiers, paths,
+chunk contents, vectors and exception text are deliberately excluded. Logging
+failure is ignored so it cannot mask a successful result or the original error.
+
+Early empty-query/empty-index returns and failures emit only the stages reached.
+`dense_enabled=false` also covers an unavailable query embedding. Candidate time
+currently includes SQL dense scanning and lexical candidate selection; ranking
+includes BM25, phrase boosting, dense reranking, fusion and diversification.
+Do not interpret either number as an isolated vector-database or BM25 latency.
+Stage separation can become finer when those operations gain independent adapters.
+
+For a representative baseline, collect the debug events with a frozen corpus and
+query set and record hardware, model, index size, concurrency and warm/cold cache
+state. Obtain p50/p95/p99 from that sample; do not infer them from one request.
+See [the backend migration ledger](BACKEND-ROADMAP.md) for quality and cutover gates.

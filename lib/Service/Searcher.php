@@ -7,6 +7,7 @@ namespace OCA\EvaAi\Service;
 use OCA\EvaAi\Db\ChunkMapper;
 use OCA\EvaAi\Db\DocumentMapper;
 use OCA\EvaAi\Db\Chunk;
+use Psr\Log\LoggerInterface;
 
 class Searcher {
     private const POOL = 8000;
@@ -18,7 +19,8 @@ class Searcher {
         private EmbeddingProvider $ollama,
         private ChunkMapper $chunkMapper,
         private DocumentMapper $documentMapper,
-        private AppConfig $config
+        private AppConfig $config,
+        private ?LoggerInterface $logger = null
     ) {
     }
 
@@ -31,6 +33,27 @@ class Searcher {
      * @return array<int,array{chunk:array,doc:?array,cosine:float,lexical:float,score:float}>
      */
     public function search(string $userId, string $query, int $topK, ?string $scopePath = null): array {
+        $started = hrtime(true);
+        $measurements = ['backend' => 'sql_legacy'];
+        $failed = true;
+        try {
+            $results = $this->searchMeasured($userId, $query, $topK, $scopePath, $measurements);
+            $measurements['results'] = count($results);
+            $failed = false;
+            return $results;
+        } finally {
+            $measurements['total_ms'] = (hrtime(true) - $started) / 1_000_000;
+            $measurements['failed'] = $failed;
+            try {
+                // No query, account ID, path, content or exception payload.
+                $this->logger?->debug('eva_ai: retrieval timings', $measurements);
+            } catch (\Throwable) {
+                // Telemetry must not change retrieval availability.
+            }
+        }
+    }
+
+    private function searchMeasured(string $userId, string $query, int $topK, ?string $scopePath, array &$measurements): array {
         $topK = max(1, min($topK, (int)AppConfig::LIMITS['top_k'][1]));
         if (trim($query) === '') {
             return [];
@@ -38,7 +61,10 @@ class Searcher {
         // Single count check: skip the embedding call entirely when the user
         // has no indexed documents. This avoids a blocking 2-30 second
         // HTTP round-trip to Ollama for a query that can never return results.
+        $phase = hrtime(true);
         $chunkCount = $this->chunkMapper->countForUser($userId);
+        $measurements['count_ms'] = (hrtime(true) - $phase) / 1_000_000;
+        $measurements['index_chunks'] = $chunkCount;
         if ($chunkCount === 0) return [];
         if ($this->config->get('chat_provider') === 'groq' && $chunkCount === 0) return [];
         // A model named `*:cloud` is served remotely through Ollama, but the
@@ -54,13 +80,20 @@ class Searcher {
             && str_ends_with($chatModel, ':cloud')
             && !str_ends_with($embeddingModel, ':cloud');
         $queryVector = null;
+        $phase = hrtime(true);
         if (!$cloudChatWithLocalEmbedding) {
             [$queryVec, $err] = $this->ollama->embedQuery([$query], $userId);
             $queryVector = $err === null && is_array($queryVec) && isset($queryVec[0]) ? $queryVec[0] : null;
         }
+        $measurements['embedding_ms'] = (hrtime(true) - $phase) / 1_000_000;
+        $measurements['dense_enabled'] = $queryVector !== null;
+        $phase = hrtime(true);
         $rows = $this->loadCandidates($userId, $query, $queryVector);
+        $measurements['candidates_ms'] = (hrtime(true) - $phase) / 1_000_000;
+        $measurements['candidates'] = count($rows);
 
         // Load document metadata ONCE for both scope filtering and lexical scoring.
+        $phase = hrtime(true);
         $docIds = [];
         foreach ($rows as $row) {
             $docIds[(int)$row['document_id']] = true;
@@ -73,11 +106,16 @@ class Searcher {
             }
         }
 
+        $measurements['hydrate_ms'] = (hrtime(true) - $phase) / 1_000_000;
+        $phase = hrtime(true);
         // Apply scope filter using already-loaded metadata (no duplicate query).
         if ($scopePath !== null && trim($scopePath) !== '') {
             $rows = $this->filterByScopePath($rows, $scopePath, $docMeta);
         }
 
+        $measurements['scope_ms'] = (hrtime(true) - $phase) / 1_000_000;
+        $measurements['scoped_candidates'] = count($rows);
+        $phase = hrtime(true);
         $queryTokens = $this->tokens($query);
 
         // Filename/path context for lexical scoring: a query that names a file
@@ -164,7 +202,9 @@ class Searcher {
             return $byScore !== 0 ? $byScore : ($a['chunkId'] <=> $b['chunkId']);
         });
 
-        return $this->diversify($results, $topK);
+        $results = $this->diversify($results, $topK);
+        $measurements['ranking_ms'] = (hrtime(true) - $phase) / 1_000_000;
+        return $results;
     }
 
     /**
