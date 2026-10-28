@@ -1,9 +1,9 @@
 <template>
 	<div class="settings-group">
-		<NcSettingsSection :name="$t('Chat providers')" :description="$t('Choose where your questions and conversation context are sent.')">
+		<NcSettingsSection class="settings-section" :name="$t('Chat providers')" :description="$t('Choose where your questions and conversation context are sent.')">
 			<ProviderSettings :status="status" :locked="settingsLocked || !formReady" @saved="loadStatus(true)" />
 		</NcSettingsSection>
-		<NcSettingsSection :name="$t('Document search')" :description="$t('Ollama creates the embeddings used to search your documents, independently of the chat provider.')">
+		<NcSettingsSection class="settings-section" :name="$t('Document search')" :description="$t('Ollama creates the embeddings used to search your documents, independently of the chat provider.')">
 			<div class="field-grid">
 				<NcTextField id="ollama-url" v-model="f.ollama_url" :label="$t('Ollama server URL')" type="url" placeholder="http://127.0.0.1:11434" />
 				<div class="field"><NcSelect input-id="embedding-model" v-model="f.embedding_model" :options="embeddingModelOptions" :input-label="$t('Embedding model')" :label-outside="true" :disabled="modelLoading" /></div>
