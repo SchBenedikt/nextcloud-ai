@@ -166,10 +166,6 @@ export function createChatExport(messages, { format = 'md', title = 'Eva chat ex
 			lines.push(labels.model ? labels.model(message.model) : 'Model: ' + message.model, '')
 		}
 		lines.push(String(message?.text || ''))
-		if (message?.role === 'assistant' && message.reactions) {
-			if (typeof message.reactions.helpful === 'boolean') lines.push(labels[message.reactions.helpful ? 'helpful' : 'notHelpful'] || (message.reactions.helpful ? 'Marked helpful' : 'Marked not helpful'))
-			if (message.reactions.bookmarked) lines.push(labels.bookmarked || 'Bookmarked')
-		}
 		return lines.join('\n\n')
 	}
 	const markdown = ['# ' + title, '', ...(includeTimestamps ? ['_' + exportedLine + '_'] : []), ...items.flatMap((message) => [

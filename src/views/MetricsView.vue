@@ -8,7 +8,6 @@
 		<div v-if="loading" class="metrics-loading">{{ $t('Loading metrics…') }}</div>
 		<template v-else-if="hasCurrentData">
 			<section class="metrics-cards" :aria-label="$t('Usage totals')"><div v-for="card in cards" :key="card.label" class="metrics-card"><span>{{ card.label }}</span><strong>{{ card.money ? formatMoney(card.value) : format(card.value) }}</strong><small>{{ card.hint }}</small></div></section>
-			<section class="metrics-panel feedback-metrics" :aria-label="$t('Answer feedback')"><h2>{{ $t('Answer feedback') }}</h2><p class="metrics-note">{{ $t('All-time feedback on assistant answers') }}</p><div class="feedback-totals"><div><strong>{{ format(feedbackStats.helpful) }}</strong><span>{{ $t('Helpful') }}</span></div><div><strong>{{ format(feedbackStats.notHelpful) }}</strong><span>{{ $t('Not helpful') }}</span></div><div><strong>{{ format(feedbackStats.bookmarked) }}</strong><span>{{ $t('Bookmarked') }}</span></div></div></section>
 			<section v-if="totals.total_tokens" class="metrics-insights" :aria-label="$t('Usage breakdown')">
 				<div class="metrics-panel token-split"><h2>{{ $t('Total tokens') }}</h2><div class="split-chart" :style="{ '--input': inputShare + '%' }" aria-hidden="true"><span>{{ format(totals.total_tokens) }}</span></div><div class="chart-legend"><span><i class="input-dot"></i>{{ $t('Input tokens') }} · {{ inputShare }}%</span><span><i class="output-dot"></i>{{ $t('Output tokens') }} · {{ 100 - inputShare }}%</span></div></div>
 				<div class="metrics-panel"><h2>{{ $t('Top models by token use') }}</h2><div class="model-bars"><div v-for="row in byModel.slice(0, 5)" :key="row.provider + row.model" class="model-bar"><span :title="row.provider + ' / ' + row.model">{{ row.provider }} / {{ row.model }}</span><div><i :style="{ width: (Number(row.total_tokens || 0) / maxModel * 100) + '%' }"></i></div><strong>{{ format(row.total_tokens) }}</strong></div></div></div>
@@ -46,7 +45,6 @@ export default {
 	components: { NcButton },
 	setup() {
 		const days = ref(30); const loading = ref(true); const error = ref(''); const dataDays = ref(null); const data = ref({ totals: {}, by_model: [], daily: [], slow_tools: [] })
-		const feedbackStats = ref({ helpful: 0, notHelpful: 0, bookmarked: 0 })
 		const adminUsers = ref([]); const selectedUser = ref(''); const canFilterUsers = ref(false)
 		const prices = ref({}); const pricesLoaded = ref(false); const savingPricing = ref(false); const pricingStatus = ref('')
 		const lastUpdated = ref(0)
@@ -92,9 +90,8 @@ export default {
 				await loadAdminUsers()
 				const otherUser = selectedUser.value !== ''
 				const metricsPath = otherUser ? `admin/users/${encodeURIComponent(selectedUser.value)}/metrics` : 'metrics'
-				const [result, feedback, settings] = await Promise.all([
+				const [result, settings] = await Promise.all([
 					api('GET', metricsPath, { days: period }),
-					otherUser ? Promise.resolve(null) : api('GET', 'feedback/stats').catch(() => null),
 					otherUser || pricesLoaded.value ? Promise.resolve(null) : api('GET', 'settings').catch(() => null),
 				])
 				if (currentRequest !== requestId) return
@@ -108,7 +105,6 @@ export default {
 				if (settings) pricesLoaded.value = true
 				data.value = result
 				for (const row of result.by_model || []) ensurePrice(row)
-				if (feedback || result.feedback) feedbackStats.value = feedback || result.feedback
 				dataDays.value = period
 				lastUpdated.value = Date.now()
 				error.value = ''
@@ -137,7 +133,7 @@ export default {
 		}
 		const downloadCsv = () => {
 			if (!hasCurrentData.value) return
-			const content = buildMetricsCsv({ days: days.value, totals: totals.value, byModel: byModel.value, daily: daily.value, slowTools: slowTools.value, feedbackStats: feedbackStats.value })
+			const content = buildMetricsCsv({ days: days.value, totals: totals.value, byModel: byModel.value, daily: daily.value, slowTools: slowTools.value })
 			const url = URL.createObjectURL(new Blob([content], { type: 'text/csv;charset=utf-8' }))
 			const link = document.createElement('a')
 			link.href = url
@@ -161,7 +157,7 @@ export default {
 			document.removeEventListener('visibilitychange', refreshWhenVisible)
 			requestId++
 		})
-		return { days, loading, error, hasCurrentData, totals, byModel, daily, slowTools, feedbackStats, adminUsers, selectedUser, canFilterUsers, maxDaily, maxModel, inputShare, cards, format, formatMoney, priceKey, ensurePrice, savingPricing, pricingStatus, savePricing, load, downloadCsv, printReport, updatedLabel }
+		return { days, loading, error, hasCurrentData, totals, byModel, daily, slowTools, adminUsers, selectedUser, canFilterUsers, maxDaily, maxModel, inputShare, cards, format, formatMoney, priceKey, ensurePrice, savingPricing, pricingStatus, savePricing, load, downloadCsv, printReport, updatedLabel }
 	},
 }
 </script>
@@ -170,7 +166,6 @@ export default {
 .metrics-refresh-status { color: var(--color-text-maxcontrast); font-size: .8rem; }
 .metrics-user-filter { display:grid; gap:3px; color:var(--color-text-maxcontrast); font-size:11px; }
 .metrics-user-filter select { max-width:220px; min-height:36px; padding:5px 8px; border:1px solid var(--color-border); border-radius:var(--border-radius-element); background:var(--color-main-background); color:var(--color-main-text); font:inherit; font-size:12px; }
-.feedback-metrics { margin-top: 0; }.feedback-totals { display: flex; gap: 32px; flex-wrap: wrap; }.feedback-totals div { display: grid; gap: 3px; }.feedback-totals strong { font-size: 1.35rem; }.feedback-totals span { color: var(--color-text-maxcontrast); }
 .pricing-panel table { width: 100%; }.pricing-panel input { box-sizing: border-box; width: min(100%, 11rem); }.pricing-actions { display: flex; align-items: center; gap: 12px; margin-top: 12px; }.visually-hidden { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
 .metrics-panel, .metrics-insights { min-width: 0; }.metrics-table-scroll { width: 100%; max-width: 100%; min-width: 0; overflow-x: auto; -webkit-overflow-scrolling: touch; }
 @media print { .metrics-actions, .metrics-error, .metrics-loading, .pricing-actions, .metrics-refresh-status { display: none !important; }.metrics-panel, .metrics-cards { break-inside: avoid; box-shadow: none !important; }.metrics-table-scroll { overflow: visible; }.metrics-view { max-width: none; }.pricing-panel input { border: 0; background: transparent; color: inherit; } }

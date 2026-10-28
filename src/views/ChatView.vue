@@ -1,13 +1,40 @@
 <template>
-	<div ref="root" class="chatview-root"></div>
+	<div class="chatview-shell">
+		<div ref="root" class="chatview-root"></div>
+		<form ref="composerForm" class="chat-composer">
+			<NcTextField
+				ref="composerField"
+				v-model="draft"
+				id="chatinput"
+				class="chat-composer__field"
+				:label="$t('Message EVA')"
+				:placeholder="$t('Ask a question or describe a task')"
+				:disabled="!ready || sending"
+				pill
+			/>
+			<NcButton
+				ref="sendButton"
+				class="chat-composer__send"
+				size="small"
+				:type="sending ? 'button' : 'submit'"
+				:variant="sending ? 'error' : 'tertiary'"
+				:aria-label="sending ? $t('Stop') : $t('Send message')"
+				:disabled="!ready">
+				<template #icon><NcIconSvgWrapper :path="sending ? mdiStopCircleOutline : mdiSendOutline" :size="20" /></template>
+			</NcButton>
+		</form>
+	</div>
 </template>
 
 <script>
 import { ref, onMounted, onBeforeUnmount, watch } from 'vue'
+import { NcButton, NcIconSvgWrapper, NcTextField } from '@nextcloud/vue'
+import { mdiSendOutline, mdiStopCircleOutline } from '@mdi/js'
 import { mountChat } from '../lib/vanilla'
 
 export default {
 	name: 'ChatView',
+	components: { NcButton, NcIconSvgWrapper, NcTextField },
 	props: {
 		chatId: { type: String, default: null },
 		initialPrompt: { type: String, default: '' },
@@ -19,15 +46,22 @@ export default {
 	emits: ['chat-updated', 'prompt-consumed'],
 	setup(props, { emit }) {
 		const root = ref(null)
+		const composerForm = ref(null)
+		const composerField = ref(null)
+		const sendButton = ref(null)
+		const draft = ref('')
+		const ready = ref(false)
+		const sending = ref(false)
 		let mounted = false
-		let ready = false
 
 		const applyInitialPrompt = () => {
-			if (!mounted || !ready || !root.value || !props.initialPrompt) return
-			const input = root.value.querySelector('#chatinput')
-			const form = root.value.querySelector('form.chatform')
+			if (!mounted || !ready.value || !composerField.value || !props.initialPrompt) return
+			const input = composerField.value.$el?.querySelector('input')
+			const form = composerForm.value
 			if (!input || !form) return
+			draft.value = props.initialPrompt
 			input.value = props.initialPrompt
+			input.dispatchEvent(new Event('input', { bubbles: true }))
 			input.focus()
 			if (props.autoSend && input.value.trim()) {
 				// The vanilla chat listens on the form's submit event, so
@@ -42,17 +76,23 @@ export default {
 			if (!root.value) return
 			if (root.value.__evaAi && typeof root.value.__evaAi.destroy === 'function') root.value.__evaAi.destroy()
 			root.value.innerHTML = ''
-			ready = false
+			ready.value = false
+			sending.value = false
 			delete root.value.__evaAi
 			mountChat(root.value, {
 				chatId: props.chatId || null,
+				form: composerForm.value,
+				input: composerField.value?.$el?.querySelector('input'),
+				sendBtn: sendButton.value?.$el,
+				onInputValueChange: value => { draft.value = value },
+				onStreamingChange: value => { sending.value = value },
 				onRecent: () => emit('chat-updated'),
 			})
 			mounted = true
 			const renderer = root.value.__evaAi
 			renderer.ready.then(loaded => {
 				if (!mounted || root.value?.__evaAi !== renderer || !loaded) return
-				ready = true
+				ready.value = true
 				applyInitialPrompt()
 			})
 		}
@@ -69,7 +109,7 @@ export default {
 			if (mounted) mount()
 		})
 
-		return { root }
+		return { root, composerForm, composerField, sendButton, draft, ready, sending, mdiSendOutline, mdiStopCircleOutline }
 	},
 }
 </script>
@@ -79,11 +119,12 @@ export default {
 .chatview-root {
 	width: 100%;
 	height: 100%;
+	flex: 1 1 auto;
 	min-height: 0;
 	box-sizing: border-box;
 	display: flex;
 	flex-direction: column;
-	padding: 0 clamp(16px, 3vw, 44px);
+	padding: 0;
 	overflow: hidden;
 	background: var(--color-main-background, #fff);
 }
@@ -97,7 +138,7 @@ export default {
 	width: min(100%, var(--eva-content-width, 1180px));
 	min-height: 52px;
 	margin: 0 auto;
-	padding: 8px 0 9px 44px;
+	padding: 8px 0 9px;
 	border-bottom: 1px solid var(--color-border, #ddd);
 	box-sizing: border-box;
 }
@@ -117,7 +158,7 @@ export default {
 .chatview-root .chat-context { width: min(100%, 800px); margin: 8px auto 0; display: flex; gap: 8px; flex-wrap: wrap; }
 .chatview-root .chat-context:not(:has(.pill:not([hidden]))) { display: none; }
 .chatview-root .head > .pill { max-width: 40%; overflow-wrap: anywhere; }
-.chatview-root .chat-log, .chatview-root .chatform { max-width: 800px; }
+.chatview-root .chat-log { max-width: 800px; }
 
 
 
@@ -217,11 +258,6 @@ export default {
 .chatview-root .rcopy:hover { background: var(--color-background-hover, #e5e5e5); }
 
 .chatview-root .racts { position: absolute; top: -2px; right: 0; display: flex; gap: 2px; opacity: 0; transition: opacity .12s; }
-.chatview-root .rfeedback { display: flex; align-items: center; gap: 4px; margin-top: 8px; min-height: 26px; }
-.chatview-root .rfeedback-button { border: 1px solid transparent; border-radius: 6px; background: transparent; color: var(--color-text-maxcontrast, #555); cursor: pointer; padding: 3px 6px; font-size: 14px; }
-.chatview-root .rfeedback-button:hover, .chatview-root .rfeedback-button.is-active { background: var(--color-background-hover, #eee); border-color: var(--color-border, #ccc); color: var(--color-main-text, #222); }
-.chatview-root .rfeedback-status { color: var(--color-text-maxcontrast, #666); font-size: 11px; }
-.chatview-root .rfeedback { flex-wrap: wrap; }
 .chatview-root .rm:hover .racts { opacity: 1; }
 .chatview-root .rm:focus-within .racts { opacity: 1; }
 .chatview-root .racts .rcopy,
@@ -233,10 +269,6 @@ export default {
 }
 .chatview-root .racts .ract:hover,
 .chatview-root .racts .rcopy:hover { background: var(--color-background-hover, #e5e5e5); }
-.chatview-root .racts .rspeech-rate,
-.chatview-root .racts .rspeech-voice { align-self: center; min-height: 28px; max-width: 110px; padding: 2px 6px; border: 1px solid var(--color-border, #bbb); border-radius: 6px; color: var(--color-main-text, #222); background: var(--color-main-background, #fff); font: inherit; font-size: 11px; }
-.chatview-root .racts .rspeech-rate:focus-visible,
-.chatview-root .racts .rspeech-voice:focus-visible { outline: 2px solid var(--color-primary-element, #00679c); outline-offset: 1px; }
 .chatview-root .racts button:disabled { opacity: .55; cursor: not-allowed; }
 @media (prefers-reduced-motion: reduce) { .chatview-root .racts { transition: none; } }
 
@@ -299,33 +331,6 @@ export default {
 .chatview-root .rtools pre { margin: 4px 0 0; padding: 6px 8px; max-width: min(720px, 80vw); max-height: 180px; overflow: auto; white-space: pre-wrap; word-break: break-word; border: 1px solid var(--color-border, #ddd); border-radius: 4px; background: var(--color-main-background, #fff); color: var(--color-main-text, #222); font: 11px/1.4 var(--font-family-monospace, monospace); }
 .chatview-root .rtools .tool-error { margin: 3px 0 0 18px; color: var(--color-error, #e9322d); font-family: var(--font-family-sans-serif, sans-serif); font-size: 11px; white-space: pre-wrap; word-break: break-word; }
 
-.chatview-root .chatform {
-	display: flex;
-	align-items: center;
-	gap: 8px;
-	flex: 0 0 auto;
-	width: min(100%, var(--eva-content-width, 1180px));
-	margin: 0 auto;
-	padding: 12px 0 16px;
-	border-top: 1px solid var(--color-border, #ddd);
-	box-sizing: border-box;
-	background: transparent;
-}
-.chatview-root .chatform input {
-	flex: 1;
-	min-width: 0;
-	padding: 10px 12px;
-	border: 1px solid var(--color-border, #bbb);
-	border-radius: 8px;
-	font-size: 14px;
-	color: var(--color-main-text, #111);
-	background: var(--color-main-background, #fff);
-}
-.chatview-root .chatform input:focus {
-	border-color: var(--color-primary-element, #00679c);
-	outline: 2px solid color-mix(in srgb, var(--color-primary-element, #00679c) 22%, transparent);
-	outline-offset: 0;
-}
 .chatview-root .chat-model-select { flex: 0 0 auto; max-width: min(210px, 34vw); min-width: 100px; min-height: 40px; padding: 8px 10px; border: 1px solid var(--color-border, #bbb); border-radius: 8px; color: var(--color-main-text, #222); background: var(--color-main-background, #fff); font: inherit; font-size: 13px; }
 .chatview-root .chat-model-select[hidden] { display: none; }
 .chatview-root .rmodel { margin-top: 6px; color: var(--color-text-maxcontrast, #666); font-size: 11px; }
@@ -360,13 +365,11 @@ export default {
 .chatview-root .err { margin: 0 0 8px; color: var(--color-error, #e9322d); font-size: 13px; white-space: pre-wrap; }
 
 @media (min-width: 1400px) {
-	.chatview-root { padding-inline: clamp(28px, 7vw, 120px); }
 	.chatview-root .chat-log { padding-top: 30px; padding-bottom: 24px; }
 	.chatview-root .rt { font-size: 15px; line-height: 1.65; }
 }
 
 @media (max-width: 600px) {
-	.chatview-root { padding: 36px 12px 0; }
 	.chatview-root .head { min-height: 48px; flex-wrap: nowrap; }
 	.chatview-root .head h1 { font-size: 16px; }
 
@@ -376,11 +379,9 @@ export default {
 	.chatview-root .rconfirm-share-form { grid-template-columns: 1fr; }
 	.chatview-root .rconfirm-field:first-child { grid-column: auto; }
 	.chatview-root .cbtn { padding-inline: 13px; }
-	.chatview-root .chatform { flex-wrap: wrap; gap: 8px; }
-	.chatview-root .chatform input { flex: 1 0 100%; }
 	.chatview-root .chat-model-select { flex: 1 1 120px; }
 }
-.chatview-root .image-generator { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; gap: 8px; width: min(100%, var(--eva-content-width, 1180px)); box-sizing: border-box; margin: 10px auto; padding: 12px; border: 1px solid var(--color-border, #ddd); border-radius: 12px; background: var(--color-background-dark, #f7f7f7); }
+.chatview-root .image-generator { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; gap: 8px; width: min(100%, var(--eva-chat-column-width, 900px)); box-sizing: border-box; margin: 10px auto; padding: 12px; border: 1px solid var(--color-border, #ddd); border-radius: 12px; background: var(--color-background-dark, #f7f7f7); }
 .chatview-root .image-generator[hidden] { display: none; }
 .chatview-root .image-generator h2, .chatview-root .image-generator-privacy, .chatview-root .image-generator-status, .chatview-root .image-gallery { grid-column: 1 / -1; margin: 0; }
 .chatview-root .image-generator h2 { font-size: 16px; }
@@ -407,4 +408,116 @@ export default {
 .customize-actions .cbtn { padding-inline: 16px; }
 .chatview-root .cbtn-ghost { background: transparent; border: 1px solid var(--color-border, #ccd0d4); color: var(--color-main-text, #222); }
 .customize-err { margin-top: 10px; color: var(--color-error, #e9322d); font-size: 12px; white-space: pre-wrap; }
+
+/* Keep the conversation and composer on one readable, centered column. */
+.chatview-root {
+	padding: 0 clamp(16px, 3vw, 40px);
+}
+
+.chatview-root .head {
+	width: min(100%, var(--eva-chat-column-width, 900px));
+	min-height: 56px;
+	padding-block: 8px;
+	border-bottom-color: color-mix(in srgb, var(--color-border, #ddd) 65%, transparent);
+}
+
+.chatview-root .head h1 {
+	font-size: 16px;
+	font-weight: 600;
+}
+
+.chatview-root .chat-context,
+.chatview-root .chat-log,
+.chatview-root .voice-status,
+.chatview-root .image-attachments {
+	width: min(100%, var(--eva-chat-column-width, 900px));
+	max-width: var(--eva-chat-column-width, 900px);
+}
+
+.chatview-root .chat-context {
+	margin-top: 8px;
+}
+
+.chatview-root .chat-log {
+	gap: 28px;
+	padding: 32px 0 24px;
+}
+
+.chatview-root .rm {
+	width: 100%;
+	max-width: 100%;
+	margin-inline: auto;
+}
+
+.chatview-root .rb {
+	max-width: 100%;
+	font-size: 15px;
+	line-height: 1.7;
+}
+
+.chatview-root .rm.user .rb {
+	max-width: min(82%, 720px);
+	padding: 10px 16px;
+	border-radius: 20px 20px 5px 20px;
+}
+
+.chatview-root .rm.assistant .rb {
+	padding-right: 0;
+}
+
+.chatview-shell {
+	--eva-chat-column-width: 900px;
+	width: 100%;
+	height: 100%;
+	min-height: 0;
+	box-sizing: border-box;
+	display: flex;
+	flex-direction: column;
+	padding: 0 clamp(16px, 3vw, 40px);
+	overflow: hidden;
+	background: var(--color-main-background, #fff);
+}
+
+.chatview-root {
+	height: auto;
+	min-height: 0;
+	padding: 0;
+}
+
+.chat-composer {
+	display: flex;
+	align-items: center;
+	gap: var(--default-grid-baseline, 4px);
+	flex: 0 0 auto;
+	width: min(100%, var(--eva-chat-column-width, 900px));
+	margin: 0 auto;
+	padding: 4px 0 max(8px, env(safe-area-inset-bottom));
+	box-sizing: border-box;
+}
+
+.chat-composer__field {
+	flex: 1 1 auto;
+	min-width: 0;
+}
+
+.chat-composer__field :deep(.input-field) {
+	width: 100%;
+	margin: 0;
+}
+
+.chat-composer__send {
+	flex: 0 0 auto;
+}
+
+@media (max-width: 600px) {
+	.chatview-shell { padding-inline: 12px; }
+	.chatview-root .head { min-height: 48px; }
+	.chatview-root .chat-log { gap: 20px; padding-top: 18px; padding-bottom: 16px; }
+	.chatview-root .rm.user .rb { max-width: 90%; }
+	.chatview-root .rb { font-size: 15px; }
+}
+
+@media (hover: none) {
+	.chatview-root .racts { opacity: 1; }
+}
 </style>

@@ -82,7 +82,6 @@
 				</NcCheckboxRadioSwitch>
 				<div v-if="userWebSearchEnabled" class="admin-subsection">
 					<div class="field">
-						<label class="native-label" for="user-web-search-provider">{{ $t('Search provider') }}</label>
 						<NcSelect input-id="user-web-search-provider" v-model="f.web_search_provider" :options="webSearchProviderOptions" label="label" :reduce="option => option.value" :input-label="$t('Search provider')" :label-outside="true" />
 						<p class="field-help">{{ $t('News articles come from free news feeds and work with every provider; the web index is what differs. SearxNG, Brave and Tavily require the administrator to configure the URL or API key in the Eva AI admin settings.') }}</p>
 					</div>

@@ -61,7 +61,7 @@ clients. New integrations should use the consistent paths below:
 optional `days` parameter accepts an integer from 1 to 365 (default: 30). The
 response groups request counts, token totals, average and maximum response
 times by provider/model, and daily totals. It also includes slow tool-call
-timings and all-time answer feedback counts. Estimated token totals are marked
+timings. Estimated token totals are marked
 as estimates. EVA does not store prompts or responses in this metrics table.
 Each model row includes `estimated_cost_usd` when that user configured input and
 output rates per million tokens; otherwise it is `null`. The estimate is based
@@ -73,15 +73,6 @@ manage the rates.
 input_per_million, output_per_million}` prices. Rates must be non-negative USD
 amounts no greater than 10,000 per million tokens; at most 50 unique model
 entries are accepted. Sending an empty `prices` array clears the estimates.
-
-`GET /api/feedback/stats` returns the signed-in user's all-time
-`helpful`, `notHelpful`, and `bookmarked` answer counts as non-negative
-integers.
-
-`POST /api/chats/{id}/reaction` accepts a non-negative `index`, a `type` of
-`helpful` or `bookmarked`, and an optional boolean `value`. Omit or set
-`value: null` to clear helpful feedback; clearing a bookmark sets it to false.
-The response returns the current `reactions` object and chat `rev`.
 
 `POST /api/chats/{id}/messages` accepts a `role` (`user` or `assistant`) and
 non-empty `text` up to 50,000 characters. Assistant messages may include up to
@@ -218,3 +209,10 @@ recorded in history.
 
 The legacy `/api/mailIndex`, `/api/talkIndex`, `/api/indexStop`,
 `/api/indexReset`, and `POST /api/folders/delete` paths remain supported.
+
+### Document list freshness
+
+`GET /api/documents` returns `Cache-Control: private, no-cache` with its ETag.
+Clients may retain a private copy but must revalidate before reusing it; an
+explicit refresh therefore sees new indexing results. Chunk previews retain
+the existing 200-row bounded pagination contract.

@@ -7,7 +7,6 @@ namespace OCA\EvaAi\Tests;
 use OCA\EvaAi\Controller\AdminController;
 use OCA\EvaAi\Db\DocumentMapper;
 use OCA\EvaAi\Service\AppConfig;
-use OCA\EvaAi\Service\ChatStore;
 use OCA\EvaAi\Service\Indexer;
 use OCA\EvaAi\Service\IndexScheduler;
 use OCA\EvaAi\Service\Ollama;
@@ -132,14 +131,12 @@ final class AdminDashboardTest extends TestCase {
         $metrics->expects(self::once())->method('summaryForUser')->with('alice', 90, [])->willReturn([
             'days' => 90, 'totals' => ['requests' => 2], 'by_model' => [], 'daily' => [], 'slow_tools' => [],
         ]);
-        $chatStore = $this->createMock(ChatStore::class);
-        $chatStore->expects(self::once())->method('feedbackStats')->with('alice')->willReturn(['helpful' => 1, 'notHelpful' => 0, 'bookmarked' => 0]);
         $alice = $this->createMock(IUser::class);
         $alice->method('getDisplayName')->willReturn('Alice Example');
         $users = $this->createMock(IUserManager::class);
         $users->method('get')->with('alice')->willReturn($alice);
 
-        $response = $this->controller(request: $request, config: $config, userManager: $users, usageMetrics: $metrics, chatStore: $chatStore)->userMetrics('alice');
+        $response = $this->controller(request: $request, config: $config, userManager: $users, usageMetrics: $metrics)->userMetrics('alice');
 
         self::assertSame(200, $response->getStatus());
         self::assertSame('alice', $response->getData()['user_id']);
@@ -357,7 +354,6 @@ final class AdminDashboardTest extends TestCase {
         ?IRequest $request = null,
         ?IndexScheduler $scheduler = null,
         ?UsageMetrics $usageMetrics = null,
-        ?ChatStore $chatStore = null,
     ): AdminController {
         return new AdminController(
             'eva_ai',
@@ -373,7 +369,6 @@ final class AdminDashboardTest extends TestCase {
             $userManager ?? $this->createMock(IUserManager::class),
             $this->createMock(WebSearchService::class),
             $usageMetrics ?? $this->createMock(UsageMetrics::class),
-            $chatStore ?? $this->createMock(ChatStore::class),
         );
     }
 }

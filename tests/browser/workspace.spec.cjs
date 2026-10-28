@@ -94,17 +94,6 @@ test('file-context replies render safe Markdown with an accessible composer', as
 	expect(errors).toEqual([])
 })
 
-test('bookmarked conversations can be filtered without breaking navigation', async ({ page }) => {
-	const { errors } = await openWorkspace(page, { chats: [
-		{ id: 'saved', title: 'Saved source', updated: 2, bookmarkedCount: 1 },
-		{ id: 'regular', title: 'Regular conversation', updated: 1, bookmarkedCount: 0 },
-	] })
-	await page.getByRole('link', { name: 'Bookmarked answers (1)', exact: true }).click()
-	await expect(page.locator('#app-navigation-vue').getByRole('link', { name: 'Saved source', exact: true })).toBeVisible()
-	await expect(page.locator('#app-navigation-vue').getByRole('link', { name: 'Regular conversation', exact: true })).toHaveCount(0)
-	expect(errors).toEqual([])
-})
-
 test('all native settings sections render on mobile and retain browser navigation', async ({ page }) => {
 	const { errors } = await openWorkspace(page, { view: 'settings', width: 390 })
 	for (const [id, label] of [['knowledge', 'Documents'], ['tools', 'Tools & permissions'], ['automation', 'Automation'], ['personal', 'Personal & data'], ['advanced', 'Advanced']]) {
@@ -174,5 +163,40 @@ test('a delayed provider refresh preserves newer edits and autosaves them', asyn
 	release()
 	await expect(sources).toHaveValue('7')
 	await expect.poll(() => calls.some(call => call.method === 'PUT' && call.body?.top_k === '7')).toBe(true)
+	expect(errors).toEqual([])
+})
+
+test('documents can retry a failed chunk request and load the remaining text', async ({ page }) => {
+	const { errors } = await openWorkspace(page, { documents: [{ id: 7, path: 'Notes.md', name: 'Notes.md', size: 1000, chunks: 2, mime: 'text/markdown', indexedAt: 123 }] })
+	let requests = 0
+	await page.route('**/api/documentChunks', async route => {
+		requests++
+		if (requests === 1) { await route.fulfill({ status: 503, contentType: 'application/json', body: '{"message":"Temporarily unavailable"}' }); return }
+		const { offset } = route.request().postDataJSON()
+		await route.fulfill({ contentType: 'application/json', body: JSON.stringify({ chunks: [{ index: offset, content: offset ? 'Remaining indexed text' : 'First indexed text' }], document: { chunks: 2 } }) })
+	})
+	await page.locator('#app-navigation-vue').getByRole('link', { name: 'Documents', exact: true }).click()
+	await page.getByRole('row', { name: /Notes.md/ }).click()
+	await expect(page.getByRole('alert')).toContainText('Chunks could not be loaded.')
+	await page.getByRole('button', { name: 'Retry', exact: true }).click()
+	await expect(page.getByText('First indexed text', { exact: true })).toBeVisible()
+	await page.getByRole('button', { name: 'Load 1 more chunks', exact: true }).click()
+	await expect(page.getByText('Remaining indexed text', { exact: true })).toBeVisible()
+	await expect(page.getByText('Loading chunks …', { exact: true })).toHaveCount(0)
+	expect(requests).toBe(3)
+	expect(errors).toEqual([])
+})
+
+test('native document filters send the chosen type and sort to the API', async ({ page }) => {
+	const { calls, errors } = await openWorkspace(page, { view: 'docs', width: 390 })
+	await page.getByText('Filters & sorting', { exact: true }).click()
+	await page.getByRole('combobox', { name: 'Type', exact: true }).fill('text')
+	await page.getByRole('option', { name: 'text/*', exact: true }).click()
+	await expect.poll(() => calls.filter(call => call.endpoint === 'documents').at(-1)?.query.type).toBe('text')
+	await page.getByRole('combobox', { name: 'Sort', exact: true }).fill('Largest')
+	await page.getByRole('option', { name: 'Largest first', exact: true }).click()
+	await expect.poll(() => calls.filter(call => call.endpoint === 'documents').at(-1)?.query.sort).toBe('size')
+	expect(calls.filter(call => call.endpoint === 'documents').at(-1).query.dir).toBe('desc')
+	expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true)
 	expect(errors).toEqual([])
 })

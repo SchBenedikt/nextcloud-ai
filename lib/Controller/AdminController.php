@@ -6,7 +6,6 @@ namespace OCA\EvaAi\Controller;
 
 use OCA\EvaAi\Db\DocumentMapper;
 use OCA\EvaAi\Service\AppConfig;
-use OCA\EvaAi\Service\ChatStore;
 use OCA\EvaAi\Service\Indexer;
 use OCA\EvaAi\Service\IndexScheduler;
 use OCA\EvaAi\Service\ModelPricing;
@@ -45,7 +44,6 @@ class AdminController extends OCSController {
         private IUserManager $userManager,
         private WebSearchService $webSearch,
         private UsageMetrics $usageMetrics,
-        private ChatStore $chatStore,
     ) {
         parent::__construct($appName, $request);
     }
@@ -290,7 +288,6 @@ class AdminController extends OCSController {
         try {
             $pricing = json_decode($this->config->get('model_pricing'), true);
             $data = $this->usageMetrics->summaryForUser($target, $days, ModelPricing::normalize($pricing) ?? []);
-            $feedback = $this->chatStore->feedbackStats($target);
         } finally {
             // AppConfig is shared within the request. Restore the authenticated
             // admin scope so a subsequent controller call cannot inherit the
@@ -302,7 +299,6 @@ class AdminController extends OCSController {
         return new ErrorDataResponse($data + [
             'user_id' => $target,
             'display_name' => $name !== '' ? $name : $target,
-            'feedback' => $feedback,
         ]);
     }
 

@@ -8,7 +8,6 @@ import { buildConfirmForm } from './confirmForms'
 import { mdToHtml, citedSources, formatToolName, copyText, installImageFallback, apiErrorMessage } from './chat-utils'
 import { createChatExport, createChatArchive } from './chat-export'
 import { createPromptHistory } from './prompt-history'
-import { createSpeechService } from './speech'
 
 /* EvaAi – Vanilla-Chat-Mount.
  * Wird von ChatView.vue aufgerufen und rendert den kompletten Chat
@@ -22,7 +21,6 @@ import { createSpeechService } from './speech'
 export function mountChat(root, opts = {}) {
 	if (!root || root.__evaAi) return
 	root.__evaAi = true
-	const speech = createSpeechService()
 
 	const { onRecent } = opts
 	let chatId = opts.chatId || null
@@ -141,8 +139,8 @@ export function mountChat(root, opts = {}) {
 			userName: document.querySelector('meta[name="eva-ai-display-name"]')?.content || '',
 			fromDate: exportFromDate.value,
 			toDate: exportToDate.value,
-			labels: {
-				you: t('You'), eva: 'Eva', helpful: t('Marked helpful'), notHelpful: t('Marked not helpful'), bookmarked: t('Bookmarked'),
+				labels: {
+					you: t('You'), eva: 'Eva',
 				exportedAt: (date) => t('Exported {date}', { date }),
 				timestamp: (date) => t('Sent {date}', { date }),
 				model: (name) => t('Model: {name}', { name }),
@@ -299,84 +297,6 @@ export function mountChat(root, opts = {}) {
 			cb.textContent = '⧉'
 			cb.addEventListener('click', () => copyText(String(m.text || ''), cb))
 			actBar.appendChild(cb)
-			const speak = document.createElement('button')
-			speak.className = 'ract rspeak'
-			speak.type = 'button'
-			speak.textContent = '▶'
-			speak.setAttribute('aria-label', t('Read answer aloud'))
-			speak.title = speech.supported ? t('Read answer aloud') : t('Speech playback is not supported in this browser.')
-			speak.disabled = !speech.supported
-			const stopSpeech = document.createElement('button')
-			stopSpeech.className = 'ract rspeak-stop'
-			stopSpeech.type = 'button'
-			stopSpeech.textContent = '■'
-			stopSpeech.setAttribute('aria-label', t('Stop speech'))
-			stopSpeech.title = t('Stop speech')
-			stopSpeech.disabled = !speech.supported
-			const rate = document.createElement('select')
-			rate.className = 'rspeech-rate'
-			rate.setAttribute('aria-label', t('Playback speed'))
-			;[0.75, 1, 1.25, 1.5, 2].forEach((value) => {
-				const option = document.createElement('option')
-				option.value = String(value)
-				option.textContent = value + '×'
-				option.selected = value === 1
-				rate.appendChild(option)
-			})
-			const voice = document.createElement('select')
-			voice.className = 'rspeech-voice'
-			voice.setAttribute('aria-label', t('Voice'))
-			const setVoices = () => {
-				const selected = voice.value
-				voice.replaceChildren()
-				const defaultVoice = document.createElement('option')
-				defaultVoice.value = ''
-				defaultVoice.textContent = t('Default voice')
-				voice.appendChild(defaultVoice)
-				speech.getVoices().forEach((entry) => {
-					const option = document.createElement('option')
-					option.value = entry.voiceURI || entry.name
-					option.textContent = entry.name + (entry.lang ? ' (' + entry.lang + ')' : '')
-					voice.appendChild(option)
-				})
-				voice.value = selected
-			}
-			setVoices()
-			if (speech.supported && typeof window.speechSynthesis.addEventListener === 'function') {
-				window.speechSynthesis.addEventListener('voiceschanged', setVoices, { once: true })
-			}
-			let speechState = 'idle'
-			const setSpeechState = (state) => {
-				speechState = state
-				const paused = state === 'paused'
-				speak.textContent = state === 'speaking' ? 'Ⅱ' : '▶'
-				speak.setAttribute('aria-label', t(state === 'speaking' ? 'Pause speech' : paused ? 'Resume speech' : 'Read answer aloud'))
-				speak.title = t(state === 'speaking' ? 'Pause speech' : paused ? 'Resume speech' : 'Read answer aloud')
-			}
-			const renderedText = document.createElement('div')
-			renderedText.innerHTML = mdToHtml(String(m.text || ''))
-			const speechText = renderedText.textContent || ''
-			speak.disabled = !speech.supported || !speechText.trim()
-			stopSpeech.disabled = !speech.supported || !speechText.trim()
-			speak.addEventListener('click', () => {
-				if (speechState === 'speaking') {
-					speech.pause()
-					setSpeechState('paused')
-				} else if (speechState === 'paused') {
-					speech.resume()
-					setSpeechState('speaking')
-				} else {
-					setSpeechState('speaking')
-					speech.speak(speechText, {
-						rate: rate.value,
-						voice: voice.value,
-						lang: document.documentElement.lang || 'en',
-						onState: setSpeechState,
-					})
-				}
-			})
-			stopSpeech.addEventListener('click', () => speech.stop())
-			actBar.append(speak, stopSpeech, rate, voice)
 			const rb = document.createElement('button')
 			rb.className = 'ract'
 			rb.title = t('Regenerate')
@@ -384,48 +304,6 @@ export function mountChat(root, opts = {}) {
 			rb.addEventListener('click', () => regenerateMessage(idx))
 			actBar.appendChild(rb)
 			b.appendChild(actBar)
-			const feedback = document.createElement('div')
-			feedback.className = 'rfeedback'
-			const status = document.createElement('span')
-			status.className = 'rfeedback-status'
-			status.setAttribute('role', 'status')
-			status.setAttribute('aria-live', 'polite')
-			const buttons = []
-			const addReactionButton = (type, value, label, symbol) => {
-				const button = document.createElement('button')
-				button.type = 'button'
-				button.className = 'rfeedback-button'
-				button.textContent = symbol
-				button.title = t(label)
-				button.setAttribute('aria-label', t(label))
-				button.setAttribute('aria-pressed', String(type === 'helpful' ? m.reactions?.helpful === value : !!m.reactions?.bookmarked))
-				button.classList.toggle('is-active', button.getAttribute('aria-pressed') === 'true')
-				button.disabled = !chatId
-				button.addEventListener('click', () => {
-					button.disabled = true
-					const next = type === 'bookmarked' ? !m.reactions?.bookmarked : (m.reactions?.helpful === value ? null : value)
-						saveReaction(idx, type, next)
-						.then((result) => {
-							if (result && result.rev != null) chatRev = parseInt(result.rev, 10) || null
-							m.reactions = result && result.reactions && Object.keys(result.reactions).length ? result.reactions : undefined
-							buttons.forEach(({ button: item, type: itemType, value: itemValue }) => {
-								item.setAttribute('aria-pressed', String(itemType === 'helpful' ? m.reactions?.helpful === itemValue : !!m.reactions?.bookmarked))
-								item.classList.toggle('is-active', item.getAttribute('aria-pressed') === 'true')
-							})
-							status.textContent = t('Feedback saved')
-							if (typeof onRecent === 'function') onRecent()
-						})
-						.catch(() => { status.textContent = t('Feedback could not be saved.') })
-						.finally(() => { button.disabled = !chatId })
-				})
-				buttons.push({ button, type, value })
-				feedback.appendChild(button)
-			}
-			addReactionButton('helpful', true, 'Helpful', '👍')
-			addReactionButton('helpful', false, 'Not helpful', '👎')
-			addReactionButton('bookmarked', true, 'Bookmark answer', m.reactions?.bookmarked ? '🔖' : '♧')
-			feedback.appendChild(status)
-			b.appendChild(feedback)
 		}
 		if (m.role === 'user' && m.done) {
 			const actBar = document.createElement('div')
@@ -906,7 +784,7 @@ export function mountChat(root, opts = {}) {
 			reuse.textContent = item.text
 			reuse.title = t('Use prompt')
 			reuse.addEventListener('click', () => {
-				input.value = item.text
+				setInputValue(item.text)
 				promptPanel.open = false
 				input.focus()
 			})
@@ -1009,7 +887,7 @@ export function mountChat(root, opts = {}) {
 					const current = await api('POST', '/templates/' + encodeURIComponent(template.id) + '/use', {})
 					let prompt = String(current.body || '')
 					for (const [variable, value] of values) prompt = prompt.replace(new RegExp('\\{' + variable + '\\}', 'g'), value)
-					input.value = prompt
+					setInputValue(prompt)
 					if (current.persona) {
 						if (chatId) await api('POST', '/chats/' + encodeURIComponent(chatId) + '/meta', { instructions: current.persona })
 						else pendingTemplatePersona = current.persona
@@ -1168,22 +1046,30 @@ export function mountChat(root, opts = {}) {
 	emptyEl.append(eico, et, ed)
 	scroll.appendChild(emptyEl)
 
-	const form = document.createElement('form')
-	form.className = 'chatform'
-	const input = document.createElement('input')
-	input.id = 'chatinput'
-	input.type = 'text'
-	input.autocomplete = 'off'
-	input.placeholder = t('Ask a question or describe a task')
-	input.setAttribute('aria-label', t('Ask a question or describe a task'))
-	const sendBtn = document.createElement('button')
-	sendBtn.type = 'submit'
-	sendBtn.className = 'cbtn'
-	sendBtn.textContent = t('Send message')
+	const form = opts.form || document.createElement('form')
+	if (!opts.form) form.className = 'chatform'
+	const input = opts.input || document.createElement('input')
+	if (!opts.input) {
+		input.id = 'chatinput'
+		input.type = 'text'
+		input.autocomplete = 'off'
+		input.placeholder = t('Ask a question or describe a task')
+		input.setAttribute('aria-label', t('Ask a question or describe a task'))
+	}
+	const sendBtn = opts.sendBtn || document.createElement('button')
+	if (!opts.sendBtn) {
+		sendBtn.type = 'submit'
+		sendBtn.className = 'cbtn'
+		sendBtn.textContent = t('Send message')
+	}
 	sendBtn.addEventListener('click', () => {
 		if (sending) stopStream()
 	})
-	form.append(input, sendBtn)
+	if (!opts.form) form.append(input, sendBtn)
+	const setInputValue = (value) => {
+		input.value = String(value ?? '')
+		if (typeof opts.onInputValueChange === 'function') opts.onInputValueChange(input.value)
+	}
 
 	const err = document.createElement('div')
 	err.className = 'err'
@@ -1195,7 +1081,7 @@ export function mountChat(root, opts = {}) {
 		err.style.display = msg ? 'block' : 'none'
 	}
 
-	root.append(head, contextBar, imagePanel, scroll, form, err)
+	root.append(head, contextBar, imagePanel, scroll, err)
 
 	const renderAll = (list) => {
 		if (selectionChatId !== chatId) {
@@ -1388,7 +1274,7 @@ export function mountChat(root, opts = {}) {
 			btn.textContent = q
 			btn.addEventListener('click', () => {
 				if (sending) return
-				input.value = q
+				setInputValue(q)
 				send()
 			})
 			chips.appendChild(btn)
@@ -1494,9 +1380,12 @@ export function mountChat(root, opts = {}) {
 	// The server checks connection_aborted() between events, so aborting the
 	// fetch also stops the generation server-side.
 	const setStreamingUI = (active) => {
-		sendBtn.type = active ? 'button' : 'submit'
-	sendBtn.textContent = active ? t('Stop') : t('Send message')
-		sendBtn.classList.toggle('cbtn-stop', active)
+		if (typeof opts.onStreamingChange === 'function') opts.onStreamingChange(active)
+		else {
+			sendBtn.type = active ? 'button' : 'submit'
+			sendBtn.textContent = active ? t('Stop') : t('Send message')
+			sendBtn.classList.toggle('cbtn-stop', active)
+		}
 	}
 	const stopStream = () => {
 		if (!sending) return
@@ -1536,11 +1425,6 @@ export function mountChat(root, opts = {}) {
 				return true
 			})
 			.catch(() => false)
-	}
-
-	function saveReaction(index, type, value) {
-		if (!chatId) return Promise.reject(new Error(t('Chat is not ready yet.')))
-		return api('POST', '/chats/' + encodeURIComponent(chatId) + '/reaction', { index, type, value })
 	}
 
 	// The server derives the title of an untitled chat from its first user
@@ -1625,7 +1509,6 @@ export function mountChat(root, opts = {}) {
 				model: typeof m.model === 'string' ? m.model : null,
 				thinking: '',
 				followups: Array.isArray(m.followups) ? m.followups : [],
-				reactions: m.reactions && typeof m.reactions === 'object' ? m.reactions : undefined,
 				tools: Array.isArray(m.tools) ? m.tools : [],
 				// A persisted pending confirmation re-renders the inline panel so
 				// approving after a reload still works (Issue #185).
@@ -1943,7 +1826,7 @@ export function mountChat(root, opts = {}) {
 		currentAbort = new AbortController()
 		stoppedByUser = false
 		setStreamingUI(true)
-		input.value = ''
+		setInputValue('')
 		err.style.display = 'none'
 		if (emptyEl.parentNode) scroll.removeChild(emptyEl)
 
@@ -2112,7 +1995,6 @@ export function mountChat(root, opts = {}) {
 		queueOnPageHide()
 		window.removeEventListener('pagehide', queueOnPageHide)
 		if (currentAbort) currentAbort.abort()
-		speech.stop()
 		messages.forEach((message) => (message.attachments || []).forEach((attachment) => URL.revokeObjectURL(attachment.url)))
 		if (pendingUpdateFrame !== null && typeof cancelAnimationFrame === 'function') cancelAnimationFrame(pendingUpdateFrame)
 		pendingUpdateFrame = null

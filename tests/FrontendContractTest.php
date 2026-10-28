@@ -49,7 +49,7 @@ final class FrontendContractTest extends TestCase {
         self::assertStringContainsString('async function loadMore()', $documents);
         self::assertStringContainsString('loadMoreError', $documents);
         self::assertStringContainsString('hasMore.value = incoming.length === pageSize', $documents);
-        self::assertStringContainsString('loadMore, loadStatus', $documents);
+        self::assertStringContainsString('loadMore, loadChunks, loadMoreChunks, loadStatus', $documents);
 
         $controller = (string)file_get_contents(__DIR__ . '/../lib/Controller/ApiController.php');
         // The document summary must come from full-index aggregates (computed

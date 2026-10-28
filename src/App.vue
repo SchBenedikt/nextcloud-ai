@@ -42,13 +42,6 @@
 						<svg width="16" height="16" viewBox="0 0 24 24"><path :d="mdiViewDashboardOutline" fill="currentColor" /></svg>
 					</template>
 				</NcAppNavigationItem>
-				<NcAppNavigationItem
-					v-if="bookmarkedCount > 0 || showBookmarked"
-					:name="$t('Bookmarked answers') + ' (' + bookmarkedCount + ')'"
-					:active="showBookmarked"
-					@click.prevent="showBookmarked = !showBookmarked">
-					<template #icon><svg width="16" height="16" viewBox="0 0 24 24"><path :d="mdiBookmarkOutline" fill="currentColor" /></svg></template>
-				</NcAppNavigationItem>
 				<li class="chat-list-heading">
 					<span>{{ $t('Chats') }}</span>
 					<NcCounterBubble :count="activeChats.length" />
@@ -103,7 +96,6 @@
 				<li v-if="apiError" class="chat-list-error" role="alert">{{ apiError }}</li>
 				<li v-if="chatsLoading" class="chat-list-empty" role="status">{{ $t('Loading chats…') }}</li>
 				<li v-else-if="!apiError && !chats.length" class="chat-list-empty">{{ $t('No chats yet — start a new one.') }}</li>
-				<li v-else-if="showBookmarked && !chatFilter.trim() && !bookmarkedChats.length" class="chat-list-empty">{{ $t('No bookmarked answers yet.') }}</li>
 				<li v-else-if="!apiError && chatFilter.trim() && !listChats.length" class="chat-list-empty">{{ $t('No chats match your search.') }}</li>
 				</template>
 			</template>
@@ -165,7 +157,7 @@ const FileContextChatView = defineAsyncComponent(() => import('./views/FileConte
 const AdminView = defineAsyncComponent(() => import('./views/AdminView.vue'))
 const MetricsView = defineAsyncComponent(() => import('./views/MetricsView.vue'))
 const AgentRunsView = defineAsyncComponent(() => import('./views/AgentRunsView.vue'))
-import { mdiChatProcessing, mdiFileDocumentOutline, mdiTune, mdiTrashCanOutline, mdiMessagePlus, mdiPencilOutline, mdiViewDashboardOutline, mdiPinOutline, mdiBookmarkOutline, mdiArchiveOutline, mdiArchiveArrowUpOutline, mdiChevronDown, mdiPinOffOutline, mdiArrowLeft } from '@mdi/js'
+import { mdiChatProcessing, mdiFileDocumentOutline, mdiTune, mdiTrashCanOutline, mdiMessagePlus, mdiPencilOutline, mdiViewDashboardOutline, mdiPinOutline, mdiArchiveOutline, mdiArchiveArrowUpOutline, mdiChevronDown, mdiPinOffOutline, mdiArrowLeft } from '@mdi/js'
 import { NcTextField } from '@nextcloud/vue'
 import { settingsSections } from './lib/settings-sections'
 import NcAppNavigationCaption from '@nextcloud/vue/components/NcAppNavigationCaption'
@@ -204,7 +196,6 @@ export default {
 		// and sent automatically as soon as the conversation is open.
 		const pendingPrompt = ref('')
 		const chatFilter = ref('')
-		const showBookmarked = ref(false)
 		const apiError = ref('')
 		const chatDialog = ref(null)
 		const showArchived = ref(false)
@@ -215,11 +206,6 @@ export default {
 		// One flat, ordered list of headings + chat items for the sidebar.
 		const navItems = computed(() => {
 			const query = chatFilter.value.trim()
-			if (showBookmarked.value) {
-				const base = query ? (searchResults.value || chats.value.filter((chat) => String(chat.title || '').toLowerCase().includes(query.toLowerCase()))) : bookmarkedChats.value
-				const matches = base.filter((chat) => Number(chat.bookmarkedCount || 0) > 0)
-				return [{ type: 'heading', key: 'h-bookmarks', label: t('Bookmarked answers'), icon: mdiBookmarkOutline, count: bookmarkedCount.value }, ...matches.map((chat) => ({ type: 'chat', key: 'chat-' + chat.id, chat }))]
-			}
 			if (query) {
 				const base = searchResults.value || chats.value.filter((chat) => String(chat.title || '').toLowerCase().includes(query.toLowerCase()))
 				return base.filter((c) => c.id && !c.archived).map((c) => ({ type: 'chat', key: 'chat-' + c.id, chat: c }))
@@ -240,8 +226,6 @@ export default {
 			return items
 		})
 		const activeChats = computed(() => chats.value.filter((c) => !c.archived))
-		const bookmarkedChats = computed(() => chats.value.filter((chat) => Number(chat.bookmarkedCount || 0) > 0))
-		const bookmarkedCount = computed(() => bookmarkedChats.value.reduce((total, chat) => total + Number(chat.bookmarkedCount || 0), 0))
 		const listChats = computed(() => {
 			const query = chatFilter.value.trim().toLowerCase()
 			if (!query) return []
@@ -343,7 +327,6 @@ export default {
 			// A dashboard prompt belongs only to the chat that was just created.
 			// Clear it before switching to an existing conversation.
 			pendingPrompt.value = ''
-			showBookmarked.value = false
 			currentChat.value = id
 			// Clear an active message search so the normal chat list returns.
 			if (chatFilter.value.trim()) {
@@ -451,11 +434,11 @@ export default {
 		return {
 			view, settingsSection, settingsSections, mdiArrowLeft, adminMode: isAdminMode,
 			chats, currentChat, busy, chatsLoading, chatFilter, apiError, chatDialog, showArchived,
-			navItems, listChats, activeChats, showBookmarked, bookmarkedChats, bookmarkedCount,
+			navItems, listChats, activeChats,
 			fileContextIds, itemName, itemTip,
 			newChat, selectChat, renameChat, deleteChat, closeChatDialog, confirmChatDialog, loadChats, navigate, updateChatMeta, pendingPrompt,
 			mdiChatProcessing, mdiFileDocumentOutline, mdiTune, mdiTrashCanOutline, mdiMessagePlus, mdiPencilOutline, mdiViewDashboardOutline,
-			mdiPinOutline, mdiBookmarkOutline, mdiArchiveOutline, mdiArchiveArrowUpOutline, mdiChevronDown, mdiPinOffOutline,
+			mdiPinOutline, mdiArchiveOutline, mdiArchiveArrowUpOutline, mdiChevronDown, mdiPinOffOutline,
 		}
 	},
 }
@@ -539,10 +522,13 @@ export default {
 </style>
 
 <style>
-/* NcAppContent places its navigation toggle over the first header row. */
+/* Keep page headers on the same content rail as their view. */
 .eva-ai-app .page-header,
 .eva-ai-app .agent-runs__header,
-.eva-ai-app .file-context-root > .head { padding-inline-start: 44px; }
+.eva-ai-app .file-context-root > .head {
+	width: 100%;
+	box-sizing: border-box;
+}
 
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after {

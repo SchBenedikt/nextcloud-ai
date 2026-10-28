@@ -38,10 +38,10 @@
 <NcSettingsSection id="settings-api-keys" class="settings-section" :name="$t('Programmatic API keys')" :description="$t('Create credentials for scripts and integrations. Keys inherit your Nextcloud account access.')">
 
 				<form class="api-key-form" @submit.prevent="createApiKey">
-					<input v-model="apiKeyDraft.name" class="native-input" maxlength="80" :placeholder="$t('Key name, for example Home automation')" required />
+					<NcTextField v-model="apiKeyDraft.name" maxlength="80" :label="$t('Key name')" :placeholder="$t('Key name, for example Home automation')" required />
 					<NcSelect v-model="apiKeyDraft.scope" :options="apiKeyScopeOptions" label="label" :reduce="option => option.value" :input-label="$t('API key scope')" :label-outside="true" />
-					<input v-model="apiKeyDraft.expires" class="native-input" type="date" :aria-label="$t('Optional expiration date')" />
-					<input v-model="apiKeyDraft.ips" class="native-input" :placeholder="$t('Optional allowed IPs, comma separated')" />
+					<NcTextField v-model="apiKeyDraft.expires" type="date" :label="$t('Optional expiration date')" />
+					<NcTextField v-model="apiKeyDraft.ips" :label="$t('Optional allowed IPs, comma separated')" />
 					<NcButton type="submit" variant="primary" :disabled="apiKeysBusy || !apiKeyDraft.name.trim()">{{ $t('Create key') }}</NcButton>
 				</form>
 				<p v-if="apiKeyError" class="field-help action-error" role="alert">{{ apiKeyError }}</p>

@@ -3,7 +3,6 @@
 <NcSettingsSection class="settings-section" :name="$t('Chat history')" :description="$t('Manage the conversations stored for your Nextcloud account. This does not affect indexed files.')">
 
 				<div class="field">
-					<label class="native-label" for="chat-retention">{{ $t('Automatically delete old chats') }}</label>
 					<NcSelect input-id="chat-retention" v-model="f.chat_retention_days" :options="chatRetentionOptions" label="label" :reduce="option => option.value" :input-label="$t('Automatically delete old chats')" :label-outside="true" />
 					<p class="field-help">{{ $t('Chats that have not been used for this many days are deleted automatically by the background job. 0 keeps everything.') }}</p>
 				</div>
