@@ -381,7 +381,7 @@ export default {
 	.chatview-root .cbtn { padding-inline: 13px; }
 	.chatview-root .chat-model-select { flex: 1 1 120px; }
 }
-.chatview-root .image-generator { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; gap: 8px; width: min(100%, var(--eva-content-width, 1180px)); box-sizing: border-box; margin: 10px auto; padding: 12px; border: 1px solid var(--color-border, #ddd); border-radius: 12px; background: var(--color-background-dark, #f7f7f7); }
+.chatview-root .image-generator { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; gap: 8px; width: min(100%, var(--eva-chat-column-width, 900px)); box-sizing: border-box; margin: 10px auto; padding: 12px; border: 1px solid var(--color-border, #ddd); border-radius: 12px; background: var(--color-background-dark, #f7f7f7); }
 .chatview-root .image-generator[hidden] { display: none; }
 .chatview-root .image-generator h2, .chatview-root .image-generator-privacy, .chatview-root .image-generator-status, .chatview-root .image-gallery { grid-column: 1 / -1; margin: 0; }
 .chatview-root .image-generator h2 { font-size: 16px; }
@@ -409,13 +409,13 @@ export default {
 .chatview-root .cbtn-ghost { background: transparent; border: 1px solid var(--color-border, #ccd0d4); color: var(--color-main-text, #222); }
 .customize-err { margin-top: 10px; color: var(--color-error, #e9322d); font-size: 12px; white-space: pre-wrap; }
 
-/* Keep the familiar Nextcloud frame while giving the conversation room to read. */
+/* Keep the conversation and composer on one readable, centered column. */
 .chatview-root {
 	padding: 0 clamp(16px, 3vw, 40px);
 }
 
 .chatview-root .head {
-	width: min(100%, 1120px);
+	width: min(100%, var(--eva-chat-column-width, 900px));
 	min-height: 56px;
 	padding-block: 8px;
 	border-bottom-color: color-mix(in srgb, var(--color-border, #ddd) 65%, transparent);
@@ -430,8 +430,8 @@ export default {
 .chatview-root .chat-log,
 .chatview-root .voice-status,
 .chatview-root .image-attachments {
-	width: 100%;
-	max-width: none;
+	width: min(100%, var(--eva-chat-column-width, 900px));
+	max-width: var(--eva-chat-column-width, 900px);
 }
 
 .chatview-root .chat-context {
@@ -445,7 +445,7 @@ export default {
 
 .chatview-root .rm {
 	width: 100%;
-	max-width: 900px;
+	max-width: 100%;
 	margin-inline: auto;
 }
 
@@ -466,6 +466,7 @@ export default {
 }
 
 .chatview-shell {
+	--eva-chat-column-width: 900px;
 	width: 100%;
 	height: 100%;
 	min-height: 0;
@@ -488,7 +489,7 @@ export default {
 	align-items: center;
 	gap: var(--default-grid-baseline, 4px);
 	flex: 0 0 auto;
-	width: 100%;
+	width: min(100%, var(--eva-chat-column-width, 900px));
 	margin: 0 auto;
 	padding: 4px 0 max(8px, env(safe-area-inset-bottom));
 	box-sizing: border-box;
