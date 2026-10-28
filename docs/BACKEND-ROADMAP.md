@@ -138,3 +138,13 @@ Searcher now emits optional privacy-preserving debug stage measurements using a
 monotonic clock. Logging failures cannot fail retrieval. Candidate selection and
 ranking remain unchanged. These events are not yet a metrics exporter, benchmark
 corpus, latency claim or completed shadow/soak gate. Automated tests remain deferred.
+
+### Stage 04 first slice: redirect boundary
+
+All OpenAI-compatible request paths now explicitly reject redirects, including
+models, chat, image generation and audio. Returned-image downloads already did so.
+Inspected Nextcloud 35's Client implementation: EVA retains default certificate,
+proxy and remote-host checks and introduces no allow-local bypass. The full
+admin-owned address/DNS policy and its validation are still pending; this change
+must not be presented as complete SSRF protection. Endpoint operators must enter
+the final base URL. PHP syntax/patch checks only; automated checks remain deferred.

@@ -66,3 +66,21 @@ keeps a stored key; the status response exposes only `providerKeys` presence fla
 Base URLs must be plain HTTP(S) URLs without embedded credentials, query strings
 or fragments. Review [Privacy](PRIVACY.md) and [Security](SECURITY.md) before
 changing providers.
+
+## Endpoint redirects and network access
+
+OpenAI-compatible model discovery, chat completions, image generation,
+transcription/translation and speech requests do not follow HTTP redirects.
+A 3xx response is handled as a provider error. Configure the final API base URL
+in the profile rather than relying on an HTTP-to-HTTPS or host redirect. This
+also prevents a 307/308 from forwarding a request body to another destination.
+Returned image downloads already reject redirects and continue to do so.
+
+Requests continue through Nextcloud's HTTP client, preserving its certificate,
+proxy and remote-host validation. EVA does not set `allow_local_address` to bypass
+those checks. On the inspected Nextcloud 35 installation, system-wide
+`allow_local_remote_servers` can permit local destinations; this is broader than
+an EVA-specific endpoint allowlist. Redirect rejection alone is not a complete
+SSRF policy or DNS-rebinding defense. The dedicated admin-owned endpoint policy,
+metadata/link-local restrictions and adversarial validation remain pending in the
+[backend migration ledger](BACKEND-ROADMAP.md).

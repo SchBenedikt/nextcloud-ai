@@ -31,7 +31,7 @@ class OpenAICompatible {
     public function check(): array {
         try {
             $base = $this->baseUrl();
-            $response = $this->clients->newClient()->get($base . '/models', ['headers' => $this->headers(), 'timeout' => 15, 'http_errors' => false]);
+            $response = $this->clients->newClient()->get($base . '/models', ['headers' => $this->headers(), 'timeout' => 15, 'allow_redirects' => false, 'http_errors' => false]);
             $status = $response->getStatusCode();
             if ($status < 200 || $status >= 300) return ['ok' => false, 'error' => 'Provider returned HTTP ' . $status . '.'];
             $data = json_decode((string)$response->getBody(), true);
@@ -44,7 +44,7 @@ class OpenAICompatible {
         try {
             $payload = ['model' => $this->model(), 'messages' => $this->normalizeMessages($messages), 'temperature' => max(0.0, min(2.0, (float)$this->config->get('temperature'))), 'stream' => false];
             if ($tools !== []) $payload['tools'] = $tools;
-            $response = $this->clients->newClient()->post($this->endpoint(), ['headers' => $this->headers() + ['Content-Type' => 'application/json'], 'json' => $payload, 'timeout' => max(1, min(300, $timeout)), 'http_errors' => false]);
+            $response = $this->clients->newClient()->post($this->endpoint(), ['headers' => $this->headers() + ['Content-Type' => 'application/json'], 'json' => $payload, 'timeout' => max(1, min(300, $timeout)), 'allow_redirects' => false, 'http_errors' => false]);
             $status = $response->getStatusCode();
             if ($status < 200 || $status >= 300) return ['error' => 'Provider request failed (HTTP ' . $status . ').'];
             $data = json_decode((string)$response->getBody(), true, 512, JSON_THROW_ON_ERROR);
@@ -77,7 +77,7 @@ class OpenAICompatible {
             $response = $this->clients->newClient()->post($this->baseUrl() . '/images/generations', [
                 'headers' => $this->headers() + ['Content-Type' => 'application/json'],
                 'json' => ['model' => $model, 'prompt' => $prompt, 'n' => max(1, min(4, $count)), 'size' => (string)($profile['image_size'] ?? '1024x1024'), 'response_format' => 'b64_json'],
-                'timeout' => max(1, min(300, $timeout)), 'http_errors' => false,
+                'timeout' => max(1, min(300, $timeout)), 'allow_redirects' => false, 'http_errors' => false,
             ]);
             $status = $response->getStatusCode();
             if ($status < 200 || $status >= 300) throw new ProviderException('Image provider returned HTTP ' . $status . '. Check the configured model and API key.');
@@ -129,7 +129,7 @@ class OpenAICompatible {
                     ['name' => 'response_format', 'contents' => $responseFormat],
                     ['name' => 'prompt', 'contents' => 'Transcribe faithfully in the same language as the audio. Preserve names and timestamps where available.'],
                 ],
-                'timeout' => max(1, min(300, $timeout)), 'http_errors' => false,
+                'timeout' => max(1, min(300, $timeout)), 'allow_redirects' => false, 'http_errors' => false,
             ]);
             $status = $response->getStatusCode();
             if ($status < 200 || $status >= 300) throw new ProviderException('Audio provider returned HTTP ' . $status . '. Check the configured model and API key.');
@@ -159,7 +159,7 @@ class OpenAICompatible {
             $response = $this->clients->newClient()->post($this->baseUrl() . '/audio/speech', [
                 'headers' => $this->headers() + ['Content-Type' => 'application/json'],
                 'json' => ['model' => $model, 'input' => mb_substr($text, 0, 12000), 'voice' => $voice, 'response_format' => 'mp3'],
-                'timeout' => max(1, min(300, $timeout)), 'http_errors' => false,
+                'timeout' => max(1, min(300, $timeout)), 'allow_redirects' => false, 'http_errors' => false,
             ]);
             if ($response->getStatusCode() < 200 || $response->getStatusCode() >= 300) throw new ProviderException('Speech provider returned HTTP ' . $response->getStatusCode() . '. Check the configured model and API key.');
             $bytes = (string)$response->getBody();
