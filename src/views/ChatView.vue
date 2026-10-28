@@ -426,7 +426,8 @@ export default {
 .chatview-root .chatform,
 .chatview-root .voice-status,
 .chatview-root .image-attachments {
-	width: min(100%, 960px);
+	width: 100%;
+	max-width: none;
 }
 
 .chatview-root .chat-context {
