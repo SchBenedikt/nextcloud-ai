@@ -262,8 +262,11 @@ export default {
 
 <style scoped>
 .admin-view {
+	width: 100%;
+	box-sizing: border-box;
+	margin: 0 auto;
 	max-width: 1080px;
-	padding: 0 8px 48px;
+	padding: 24px 16px 48px;
 }
 .page-header {
 	display: flex;

@@ -158,6 +158,7 @@ $providerLabels = [
 	</table>
 
 	<h3><?php p($l->t('Knowledge storage')); ?></h3>
+	<p><a href="<?php p($_['storageAdminUrl']); ?>"><?php p($l->t('Open storage settings and connection check')); ?></a></p>
 	<p class="settings-hint"><?php p($l->t('Search uses the built-in database. Optional vector storage is being prepared for larger knowledge bases.')); ?></p>
 	<?php $storage = $_['vectorStorage'] ?? ['available' => false]; ?>
 	<?php if (!$storage['available']): ?>

@@ -126,6 +126,7 @@ class Admin implements ISettings {
             'totalChunks' => $totalChunks,
             'scheduler' => $schedulerOverview,
             'apiBase' => $apiBase,
+            'storageAdminUrl' => $this->urlGenerator->linkToRoute('eva_ai.page.admin'),
             'webSearchConfigured' => $this->webSearch->isConfigured(),
             'webSearchKeyConfigured' => $this->webSearch->hasApiKey(),
             'webSearchProviders' => WebSearchService::PROVIDERS,

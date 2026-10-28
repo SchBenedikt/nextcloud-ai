@@ -11,6 +11,7 @@ return [
 		// The Metrics view is a first-class SPA route. Without this server-side
 		// route, refreshing /apps/eva_ai/metrics bypasses Vue and returns 404.
         ['name' => 'page#metrics', 'url' => '/metrics', 'verb' => 'GET'],
+        ['name' => 'page#admin', 'url' => '/admin', 'verb' => 'GET'],
         ['name' => 'page#standalone', 'url' => '/standalone', 'verb' => 'GET'],
     ],
     'ocs' => [
@@ -102,6 +103,10 @@ return [
         ['name' => 'admin#saveSettings', 'url' => '/api/admin/settings', 'verb' => 'PUT'],
         ['name' => 'admin#overview', 'url' => '/api/admin/overview', 'verb' => 'GET'],
         ['name' => 'admin#vectorStorage', 'url' => '/api/admin/vector-storage', 'verb' => 'GET'],
+        ['name' => 'vector_admin#connection', 'url' => '/api/admin/vector-storage/connection', 'verb' => 'GET'],
+        ['name' => 'vector_admin#configure', 'url' => '/api/admin/vector-storage/connection', 'verb' => 'PUT'],
+        ['name' => 'vector_admin#disable', 'url' => '/api/admin/vector-storage/disable', 'verb' => 'POST'],
+        ['name' => 'vector_admin#check', 'url' => '/api/admin/vector-storage/check', 'verb' => 'POST'],
         ['name' => 'admin#metricsUsers', 'url' => '/api/admin/metrics/users', 'verb' => 'GET'],
         ['name' => 'admin#userMetrics', 'url' => '/api/admin/users/{userId}/metrics', 'verb' => 'GET'],
         ['name' => 'admin#reindex', 'url' => '/api/admin/users/{userId}/reindex', 'verb' => 'POST'],

@@ -1,10 +1,5 @@
 <template>
-	<NcContent v-if="adminMode" class="eva-ai-admin" :app-name="'eva_ai'">
-		<NcAppContent>
-			<AdminView />
-		</NcAppContent>
-	</NcContent>
-	<NcContent v-else class="eva-ai-app" :app-name="'eva_ai'">
+	<NcContent class="eva-ai-app" :app-name="'eva_ai'">
 		<NcAppNavigation :key="view === 'settings' ? 'settings' : 'workspace'" :title="'EVA'">
 			<template v-if="view !== 'settings'" #search>
 				<NcAppNavigationSearch v-model="chatFilter" :label="$t('Search chats')" :placeholder="$t('Search chats')" />
@@ -154,7 +149,6 @@ import ChatView from './views/ChatView.vue'
 const DocumentsView = defineAsyncComponent(() => import('./views/DocumentsView.vue'))
 const SettingsView = defineAsyncComponent(() => import('./views/SettingsView.vue'))
 const FileContextChatView = defineAsyncComponent(() => import('./views/FileContextChatView.vue'))
-const AdminView = defineAsyncComponent(() => import('./views/AdminView.vue'))
 const MetricsView = defineAsyncComponent(() => import('./views/MetricsView.vue'))
 const AgentRunsView = defineAsyncComponent(() => import('./views/AgentRunsView.vue'))
 import { mdiChatProcessing, mdiFileDocumentOutline, mdiTune, mdiTrashCanOutline, mdiMessagePlus, mdiPencilOutline, mdiViewDashboardOutline, mdiPinOutline, mdiArchiveOutline, mdiArchiveArrowUpOutline, mdiChevronDown, mdiPinOffOutline, mdiArrowLeft } from '@mdi/js'
@@ -172,12 +166,8 @@ import { useNavigation } from './composables/useNavigation'
 
 export default {
 	name: 'EvaAiApp',
-	components: { NcAppNavigationCaption, MetricsView, AgentRunsView, NcCounterBubble, HomeView, ChatView, DocumentsView, SettingsView, FileContextChatView, AdminView, NcTextField, NcAppNavigationSearch, NcActionButton, NcActionSeparator, NcIconSvgWrapper },
+	components: { NcAppNavigationCaption, MetricsView, AgentRunsView, NcCounterBubble, HomeView, ChatView, DocumentsView, SettingsView, FileContextChatView, NcTextField, NcAppNavigationSearch, NcActionButton, NcActionSeparator, NcIconSvgWrapper },
 	setup() {
-			// Admin settings form (Issue #82): the template mounts the same app
-			// with data-admin="1" and renders the admin dashboard instead.
-			const rootEl = document.getElementById('eva_ai-root')
-			const isAdminMode = !!(rootEl && rootEl.dataset && rootEl.dataset.admin === '1')
 
 		const view = ref('home')
 		const settingsSection = ref('general')
@@ -432,7 +422,7 @@ export default {
 		})
 
 		return {
-			view, settingsSection, settingsSections, mdiArrowLeft, adminMode: isAdminMode,
+			view, settingsSection, settingsSections, mdiArrowLeft,
 			chats, currentChat, busy, chatsLoading, chatFilter, apiError, chatDialog, showArchived,
 			navItems, listChats, activeChats,
 			fileContextIds, itemName, itemTip,

@@ -66,6 +66,7 @@ class AdminController extends OCSController {
     #[AdminRequired]
     public function vectorStorage(): DataResponse {
         $status = $this->vectorStorageStatus?->snapshot() ?? ['available' => false];
+        if (!$status['available']) $status['error'] = ['code' => 'storage_status_unavailable', 'message' => 'Storage status could not be loaded.'];
         return new ErrorDataResponse($status, $status['available'] ? 200 : 503);
     }
 
