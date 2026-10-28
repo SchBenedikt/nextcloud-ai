@@ -18,6 +18,11 @@
 
 ### Reliability and documentation
 
+- Keep prompt-library dialogs reusable, retain unsaved provider model edits, announce indexing progress and ignore stale chunk responses after document refreshes.
+- Persist generation-erasure grace independently of retries and register optional-storage targets safely under concurrent requests.
+- Record benchmarks with the exact checked query vector, accept source-aware Mail/Talk paths and preserve timings for failed retrieval stages.
+- Restore the background-runs page route and retain the backend analysis with a page-by-page implementation map.
+
 - Fix oversized chat request lock keys and release coordination before terminal stream events; distinguish genuine contention from coordination failures.
 - Remove superseded dated reviews, the old 2.0 roadmap and duplicate RAG baseline document; consolidate current guidance and remove stale passing-test counts.
 

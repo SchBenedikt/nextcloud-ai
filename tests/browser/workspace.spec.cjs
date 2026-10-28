@@ -188,7 +188,13 @@ test('documents can retry a failed chunk request and load the remaining text', a
 })
 
 test('native document filters send the chosen type and sort to the API', async ({ page }) => {
-	const { calls, errors } = await openWorkspace(page, { view: 'docs', width: 390 })
+	const documents = [{ id: 11, path: 'Documents/' + 'long-folder-name/'.repeat(12) + 'meeting-notes.txt', mime: 'text/plain', size: 4096, chunks: 12, indexedAt: 1700000000 }]
+	const { calls, errors } = await openWorkspace(page, { view: 'docs', width: 390, documents })
+	const row = page.locator('.docs-row').first()
+	await expect(row).toBeVisible()
+	await expect(row.locator('td').nth(3)).toHaveText('4.0 KB')
+	await expect(row.locator('.docs-chunks')).toHaveText('12')
+	expect(await page.locator('.docs-body').evaluate(element => element.scrollWidth <= element.clientWidth)).toBe(true)
 	await page.getByText('Filters & sorting', { exact: true }).click()
 	await page.getByRole('combobox', { name: 'Type', exact: true }).fill('text')
 	await page.getByRole('option', { name: 'text/*', exact: true }).click()

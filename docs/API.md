@@ -7,6 +7,13 @@ The Vue client uses `@nextcloud/axios`, which supplies Nextcloud's request token
 and OCS headers. Admin routes live under `api/admin/` and require administrator
 privileges.
 
+## Application pages
+
+Signed-in pages under `/index.php/apps/eva_ai/` include `chat`, `documents`,
+`settings`, `metrics`, and `runs`. The `/runs` page opens the background-run
+workspace; it is separate from the OCS endpoints that list and control runs.
+The administrator workspace remains at `/admin` and requires an administrator.
+
 ## Administrator storage snapshot
 
 `GET /api/admin/vector-storage` is admin-only and read-only. It reads local

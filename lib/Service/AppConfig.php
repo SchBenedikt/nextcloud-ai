@@ -316,6 +316,9 @@ class AppConfig {
     public function __construct(private IConfig $config, private ?ILockingProvider $locks = null) {
     }
 
+    /** Instance-owned network policy for every compatible-provider construction path. */
+    public function providerEndpointPolicy(): ProviderEndpointPolicy { return new ProviderEndpointPolicy($this->config); }
+
     /** Set the user whose personal settings should override instance defaults. */
     public function setUserId(?string $userId): void {
         $this->userId = $userId !== null && $userId !== '' ? $userId : null;

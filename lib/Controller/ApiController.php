@@ -1199,55 +1199,7 @@ class ApiController extends OCSController {
         if ($user !== null && $message !== '') {
             $this->releaseSessionLock();
         }
-        $generator = (function () use ($user, $message, $history, $images, $model, $scopePath, $custom, $chatSlot): \Generator {
-            // Aber die PHP-Output-Buffering-Schicht (php.ini output_buffering)
-            // würde jede erzeugte Zeile bis zum Ende puffern -> keine Live-Streams.
-            // Deshalb entfernen wir hier alle Puffer und flush'eriessen wirklich.
-            $gen = null;
-            $terminal = null;
-            try {
-                while (ob_get_level() > 0) @ob_end_flush();
-                if ($user === null) {
-                    yield json_encode(['type' => 'error', 'message' => 'Not logged in']) . "\n";
-                    return;
-                }
-                if ($this->clientDisconnected()) return;
-                $gen = $this->ragService->askStream(new \OCA\EvaAi\Dto\ChatRequest(
-                    userId: $user,
-                    message: $message,
-                    history: $history,
-                    scopePath: $scopePath,
-                    instructions: $custom['instructions'],
-                    persona: $custom['persona'],
-                    images: $images,
-                    model: $model,
-                ));
-                foreach ($gen as $line) {
-                    if ($this->clientDisconnected()) {
-                        return;
-                    }
-                    $ev = json_decode((string)$line, true);
-                    if (is_array($ev) && in_array($ev['type'] ?? '', ['done', 'confirmation', 'error'], true)) {
-                        if (($ev['type'] ?? '') === 'done') {
-                            $answer = (string)($ev['answer'] ?? '');
-                            if ($answer !== '' && $this->config->get('notify_on_complete') === '1') $this->sendAnswerNotification($user, $answer);
-                        }
-                        // Close the producer and release coordination BEFORE the
-                        // browser sees a terminal event and can send again.
-                        $terminal = $line;
-                        break;
-                    }
-                    yield $line;
-                    if ($this->clientDisconnected()) return;
-                }
-            } finally {
-                // Dropping the generator reference closes nested stream
-                // resources on every supported PHP version.
-                $gen = null;
-                $this->releaseChatSlot($chatSlot);
-            }
-            if ($terminal !== null && !$this->clientDisconnected()) yield $terminal;
-        })();
+        $generator = $this->streamEvents($user, $message, $history, $images, $model, $scopePath, $custom, $chatSlot);
 
         return new StreamTraversableResponse($generator, 200, [
             'Content-Type' => 'application/x-ndjson',
@@ -1256,6 +1208,54 @@ class ApiController extends OCSController {
         ]);
     }
 
+
+    private function streamEvents(?string $user, string $message, array $history, array $images, ?string $model, string $scopePath, array $custom, ?string $chatSlot): \Generator {
+        // Flush each frame in web requests; preserve CLI test-runner buffers.
+        $gen = null;
+        $terminal = null;
+        try {
+            if (!in_array(PHP_SAPI, ['cli', 'phpdbg'], true)) while (ob_get_level() > 0) @ob_end_flush();
+            if ($user === null) {
+                yield json_encode(['type' => 'error', 'message' => 'Not logged in']) . "\n";
+                return;
+            }
+            if ($this->clientDisconnected()) return;
+            $gen = $this->ragService->askStream(new \OCA\EvaAi\Dto\ChatRequest(
+                userId: $user,
+                message: $message,
+                history: $history,
+                scopePath: $scopePath,
+                instructions: $custom['instructions'],
+                persona: $custom['persona'],
+                images: $images,
+                model: $model,
+            ));
+            foreach ($gen as $line) {
+                if ($this->clientDisconnected()) {
+                    return;
+                }
+                $ev = json_decode((string)$line, true);
+                if (is_array($ev) && in_array($ev['type'] ?? '', ['done', 'confirmation', 'error'], true)) {
+                    if (($ev['type'] ?? '') === 'done') {
+                        $answer = (string)($ev['answer'] ?? '');
+                        if ($answer !== '' && $this->config->get('notify_on_complete') === '1') $this->sendAnswerNotification($user, $answer);
+                    }
+                    // Close the producer and release coordination BEFORE the
+                    // browser sees a terminal event and can send again.
+                    $terminal = $line;
+                    break;
+                }
+                yield $line;
+                if ($this->clientDisconnected()) return;
+            }
+        } finally {
+            // Dropping the generator reference closes nested stream
+            // resources on every supported PHP version.
+            $gen = null;
+            $this->releaseChatSlot($chatSlot);
+        }
+        if ($terminal !== null && !$this->clientDisconnected()) yield $terminal;
+    }
 
     private function clientDisconnected(): bool {
         return function_exists('connection_aborted') && connection_aborted() > 0;

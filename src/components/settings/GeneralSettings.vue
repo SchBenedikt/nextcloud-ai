@@ -1,7 +1,7 @@
 <template>
 	<div class="settings-group">
 		<NcSettingsSection class="settings-section" :name="$t('Chat providers')" :description="$t('Choose where your questions and conversation context are sent.')">
-			<ProviderSettings :status="status" :locked="settingsLocked || !formReady" @saved="loadStatus(true)" />
+			<ProviderSettings :status="status" :settings="f" :locked="settingsLocked || !formReady" @saved="loadStatus(true)" />
 		</NcSettingsSection>
 		<NcSettingsSection class="settings-section" :name="$t('Document search')" :description="$t('Ollama creates the embeddings used to search your documents, independently of the chat provider.')">
 			<div class="field-grid">

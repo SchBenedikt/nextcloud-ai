@@ -1,6 +1,6 @@
 # Backend migration work ledger
 
-Source: *Technische Backend-Analyse von EVA AI*, 23 pages, dated 28 October
+Source: [*Technische Backend-Analyse von EVA AI*](reports/eva-backend-analysis.pdf), 23 pages, dated 28 October
 2026. The report audits main `24e7982` and PR #697. This ledger additionally
 accounts for the workspace stack #698–#699. Vendor pricing, product lifecycle
 claims and estimated latency in the report are not measured EVA results.
@@ -12,6 +12,31 @@ missing Qdrant configuration must not block app installation, upgrades, chat or
 SQL indexing. Never start an external service or transmit existing documents to
 one merely because the app was installed. Deployment automation and operating
 instructions must support both standalone-app and optional-vector-store modes.
+
+## Report coverage and evidence
+
+The retained PDF has SHA-256
+`986da45fdf74d1da2e169226f0b8daa4b9420d64ceb947d25de73e9016d9e660`.
+Page numbers below are PDF page numbers. This map makes recommendations traceable;
+a stage listed here is not evidence that its acceptance criteria have passed.
+The implementation entries further below record the actual delivered slices.
+
+| PDF pages | Finding or recommendation | Implementation stage and remaining evidence |
+| --- | --- | --- |
+| 1, 4–5, 7 | PHP dense full scan, JSON vectors and SQL LIKE bottlenecks | 03, 05–12: measure the baseline, then replace candidates through a verified optional backend. SQL remains the installation default. |
+| 2, 9–10, 20–21 | Engine comparison, cost estimates and deployment choices | 07, 14: Qdrant is the selected optional adapter; document single-node/managed/HA operations. Alternative engines and estimated prices are decision inputs, not a requirement to ship five adapters or measured savings. |
+| 3, 16 | P0 main protection, database matrix and security checks | 04, 14: endpoint boundary implemented in the stack; administrative branch protection and executed portability/security gates remain pending. Test execution is currently deferred by the user. |
+| 6, 8, 18 | Provider contracts, encrypted secrets, SSRF/DNS/TLS and local-service approvals | 02, 04, 07, 14: use native HTTP guards and explicit admin policy on every transfer. Hosted-provider contract tests remain opt-in; no account credentials are needed for installation. |
+| 7–8, 11–12 | Immutable embedding generations, tenant filters, SQL hydration and transactional outbox | 06–09: additive schema, isolated chunk journal and deletion worker exist; mutation coverage, point delivery and generation verification remain in progress. |
+| 9 | Major dependency upgrades require compatibility evidence | 14: assess PHPUnit/Symfony upgrades separately; do not merge them merely to clear Dependabot notifications. |
+| 13–14 | Resumable backfill, immutable model rebuild, activation pointer, shadow/canary rollout and rollback | 09–11: cursor/heartbeat, full verification and guarded activation remain pending; retain legacy SQL data for at least one release. |
+| 15 | Native hybrid BM25/RRF, phrases, scope and diversification | 12: preserve current relevance behavior before enabling backend hybrid retrieval; compare quality against both exact and current hybrid baselines. |
+| 7, 15, 22 | ChatStore hot-file writes, normalized encrypted SQL messages and distributed chat coordination | 13–14: independent additive chat migration, recovery and erasure; lock lifecycle fix is only the immediate consecutive-request repair. |
+| 15–18 | OTel correlation, provider/tool/DB/lock metrics, cache outages, restore/delete drills and domain extraction | 03, 14: retrieval stage timing is available; exporter, cross-service traces, drills and controller decomposition remain pending. |
+| 16, 18 | PHPStan/Psalm, SAST, secrets, SBOM, dependency and pinned-action policy | 14: define supported versions and executed evidence before enabling enforced checks; no claim of completed CI hardening. |
+| 18–19 | Frozen corpus, adversarial tenants, quality thresholds and cold/warm load at concurrency 1/5/20/50 | 05, 09–12, 14: offline evaluator and explicit SQL snapshot runner exist; representative real datasets, ANN comparisons, load/soak and resource measurements remain pending. |
+| 20–22 | Optional deployments, authoritative Nextcloud SQL/VFS and reconstructible vector index | 07, 09, 14: standalone default preserved; backup/restore and reconstruction drills remain pending. |
+| 23 | External references | Retained as historical report sources; verify current vendor/API facts against primary documentation when implementing the corresponding adapter. |
 
 ## Verified starting point
 

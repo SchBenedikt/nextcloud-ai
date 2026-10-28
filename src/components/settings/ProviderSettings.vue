@@ -58,16 +58,16 @@ const presets = [
 export default {
 	name: 'ProviderSettings',
 	components: { NcActionButton, NcButton, NcCheckboxRadioSwitch, NcIconSvgWrapper, NcListItem, NcModal, NcNoteCard, NcSelect, NcTextField },
-	props: { status: { type: Object, default: null }, locked: { type: Boolean, default: false } },
+	props: { status: { type: Object, default: null }, settings: { type: Object, default: null }, locked: { type: Boolean, default: false } },
 	emits: ['saved'],
 	setup(props, { emit }) {
 		const titleId = 'eva-provider-' + useId()
 		const profiles = computed(() => {
-			try { const value = JSON.parse(props.status?.settings?.provider_profiles || '[]'); return Array.isArray(value) ? value : [] } catch { return [] }
+			try { const value = JSON.parse((props.settings || props.status?.settings)?.provider_profiles || '[]'); return Array.isArray(value) ? value : [] } catch { return [] }
 		})
-		const active = computed(() => props.status?.settings?.chat_provider || 'ollama')
+		const active = computed(() => (props.settings || props.status?.settings)?.chat_provider || 'ollama')
 		const providers = computed(() => {
-			const settings = props.status?.settings || {}
+			const settings = props.settings || props.status?.settings || {}
 			const rows = [
 				{ id: 'ollama', name: 'Ollama', model: settings.chat_model },
 				{ id: 'groq', name: 'Groq', model: settings.groq_model },

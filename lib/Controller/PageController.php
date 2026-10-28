@@ -61,6 +61,12 @@ class PageController extends Controller {
 
     #[NoAdminRequired]
     #[NoCSRFRequired]
+    public function runs(): TemplateResponse {
+        return $this->appPage('index');
+    }
+
+    #[NoAdminRequired]
+    #[NoCSRFRequired]
     public function metrics(): TemplateResponse {
         return $this->appPage('index');
     }

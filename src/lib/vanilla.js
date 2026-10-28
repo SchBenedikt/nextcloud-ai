@@ -786,6 +786,7 @@ export function mountChat(root, opts = {}) {
 			reuse.addEventListener('click', () => {
 				setInputValue(item.text)
 				promptPanel.open = false
+				promptPanel.dispatchEvent(new CustomEvent('eva-prompt-chosen', { bubbles: true }))
 				input.focus()
 			})
 			const metaText = document.createElement('span')

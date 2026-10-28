@@ -33,15 +33,36 @@ class Searcher {
      * @return array<int,array{chunk:array,doc:?array,cosine:float,lexical:float,score:float}>
      */
     public function search(string $userId, string $query, int $topK, ?string $scopePath = null): array {
+        return $this->runSearch($userId, $query, $topK, $scopePath, null);
+    }
+
+    /** Explicit benchmark mode: rank with the checked frozen vector, without another provider call. */
+    public function searchWithQueryVector(string $userId, string $query, int $topK, array $vector, ?string $scopePath = null): array {
+        if (!array_is_list($vector) || $vector === [] || count($vector) > 16384) throw new \InvalidArgumentException('Invalid frozen query vector.');
+        $norm = 0.0;
+        foreach ($vector as $value) {
+            if ((!is_int($value) && !is_float($value)) || !is_finite((float)$value)) throw new \InvalidArgumentException('Invalid frozen query vector.');
+            $norm += $value * $value;
+        }
+        if (!is_finite($norm) || $norm <= 0) throw new \InvalidArgumentException('Invalid frozen query vector.');
+        return $this->runSearch($userId, $query, $topK, $scopePath, array_map('floatval', $vector));
+    }
+
+    private function runSearch(string $userId, string $query, int $topK, ?string $scopePath, ?array $fixedVector): array {
         $started = hrtime(true);
-        $measurements = ['backend' => 'sql_legacy'];
+        $measurements = ['backend' => 'sql_legacy', 'query_vector_mode' => $fixedVector === null ? 'automatic' : 'frozen'];
         $failed = true;
         try {
-            $results = $this->searchMeasured($userId, $query, $topK, $scopePath, $measurements);
+            $results = $this->searchMeasured($userId, $query, $topK, $scopePath, $measurements, $fixedVector);
             $measurements['results'] = count($results);
             $failed = false;
             return $results;
         } finally {
+            $active = $measurements['_active_stage'] ?? null;
+            unset($measurements['_active_stage']);
+            if ($active !== null && !array_key_exists($active['name'], $measurements)) {
+                $measurements[$active['name']] = (hrtime(true) - $active['started']) / 1_000_000;
+            }
             $measurements['total_ms'] = (hrtime(true) - $started) / 1_000_000;
             $measurements['failed'] = $failed;
             try {
@@ -53,7 +74,13 @@ class Searcher {
         }
     }
 
-    private function searchMeasured(string $userId, string $query, int $topK, ?string $scopePath, array &$measurements): array {
+    private function startStage(array &$measurements, string $name): int {
+        $started = hrtime(true);
+        $measurements['_active_stage'] = ['name' => $name, 'started' => $started];
+        return $started;
+    }
+
+    private function searchMeasured(string $userId, string $query, int $topK, ?string $scopePath, array &$measurements, ?array $fixedVector): array {
         $topK = max(1, min($topK, (int)AppConfig::LIMITS['top_k'][1]));
         if (trim($query) === '') {
             return [];
@@ -61,7 +88,7 @@ class Searcher {
         // Single count check: skip the embedding call entirely when the user
         // has no indexed documents. This avoids a blocking 2-30 second
         // HTTP round-trip to Ollama for a query that can never return results.
-        $phase = hrtime(true);
+        $phase = $this->startStage($measurements, 'count_ms');
         $chunkCount = $this->chunkMapper->countForUser($userId);
         $measurements['count_ms'] = (hrtime(true) - $phase) / 1_000_000;
         $measurements['index_chunks'] = $chunkCount;
@@ -73,27 +100,27 @@ class Searcher {
         // host's CPU while the actual answer is generated in the cloud. Keep
         // retrieval responsive by using the lexical index unless the user
         // explicitly selected a cloud embedding model as well.
+        $phase = $this->startStage($measurements, 'embedding_ms');
         $chatModel = strtolower(trim($this->config->get('chat_model')));
         $embeddingModel = strtolower(trim($this->config->get('embedding_model')));
         $cloudChatWithLocalEmbedding = $this->config->userId() !== null
             && $this->config->get('chat_provider') === 'ollama'
             && str_ends_with($chatModel, ':cloud')
             && !str_ends_with($embeddingModel, ':cloud');
-        $queryVector = null;
-        $phase = hrtime(true);
-        if (!$cloudChatWithLocalEmbedding) {
+        $queryVector = $fixedVector;
+        if ($queryVector === null && !$cloudChatWithLocalEmbedding) {
             [$queryVec, $err] = $this->ollama->embedQuery([$query], $userId);
             $queryVector = $err === null && is_array($queryVec) && isset($queryVec[0]) ? $queryVec[0] : null;
         }
         $measurements['embedding_ms'] = (hrtime(true) - $phase) / 1_000_000;
         $measurements['dense_enabled'] = $queryVector !== null;
-        $phase = hrtime(true);
+        $phase = $this->startStage($measurements, 'candidates_ms');
         $rows = $this->loadCandidates($userId, $query, $queryVector);
         $measurements['candidates_ms'] = (hrtime(true) - $phase) / 1_000_000;
         $measurements['candidates'] = count($rows);
 
         // Load document metadata ONCE for both scope filtering and lexical scoring.
-        $phase = hrtime(true);
+        $phase = $this->startStage($measurements, 'hydrate_ms');
         $docIds = [];
         foreach ($rows as $row) {
             $docIds[(int)$row['document_id']] = true;
@@ -107,7 +134,7 @@ class Searcher {
         }
 
         $measurements['hydrate_ms'] = (hrtime(true) - $phase) / 1_000_000;
-        $phase = hrtime(true);
+        $phase = $this->startStage($measurements, 'scope_ms');
         // Apply scope filter using already-loaded metadata (no duplicate query).
         if ($scopePath !== null && trim($scopePath) !== '') {
             $rows = $this->filterByScopePath($rows, $scopePath, $docMeta);
@@ -115,7 +142,7 @@ class Searcher {
 
         $measurements['scope_ms'] = (hrtime(true) - $phase) / 1_000_000;
         $measurements['scoped_candidates'] = count($rows);
-        $phase = hrtime(true);
+        $phase = $this->startStage($measurements, 'ranking_ms');
         $queryTokens = $this->tokens($query);
 
         // Filename/path context for lexical scoring: a query that names a file
@@ -227,6 +254,7 @@ class Searcher {
             if ($doc === null) {
                 continue;
             }
+            if ($doc->getSource() !== \OCA\EvaAi\Db\Document::SOURCE_FILES) continue;
             $path = (string)$doc->getPath();
             if ($path === '') {
                 continue;

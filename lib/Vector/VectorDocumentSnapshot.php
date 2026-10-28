@@ -15,7 +15,7 @@ final readonly class VectorDocumentSnapshot {
             'file_mtime' => (int)$row['file_mtime'], 'size' => (int)$row['size'], 'mime' => $row['mime']];
         if ($metadata['id'] < 1 || $metadata['user_id'] === '' || mb_strlen($metadata['user_id']) > 64
             || !in_array($metadata['source'], ['files', 'mail', 'talk'], true)
-            || preg_match('/^[a-f0-9]{64}$/D', $metadata['content_hash']) !== 1
+            || preg_match('/^(?:[a-f0-9]{32}|[a-f0-9]{64})$/D', $metadata['content_hash']) !== 1
             || strlen($metadata['path']) > 4096 || preg_match('/[\x00-\x1f\x7f]/', $metadata['path'])) throw new VectorStoreException('invalid_source_snapshot');
         $stamp = hash('sha256', json_encode($metadata, JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES));
         return new self($metadata['id'], $metadata['user_id'], $metadata, $stamp);

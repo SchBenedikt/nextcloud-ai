@@ -93,7 +93,7 @@ class Ollama implements EmbeddingProvider {
     }
     private function openAiCompatible(): OpenAICompatible {
         $credentials = $this->providerCredentials ?? \OCP\Server::get(ProviderCredentials::class);
-        return new OpenAICompatible($this->config, $this->clientService, $credentials, $this->usageMetrics, $this->logger);
+        return new OpenAICompatible($this->config, $this->clientService, $credentials, $this->usageMetrics, $this->logger, $this->config->providerEndpointPolicy());
     }
     public function groqInfo(): array { return $this->groqClient()->info(); }
     public function saveGroqKey(string $key): void { $this->groqClient()->saveKey($key); }

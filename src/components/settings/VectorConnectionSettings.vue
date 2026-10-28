@@ -4,7 +4,7 @@
 			<NcButton variant="secondary" :disabled="!enabled || !!busy" :loading="busy === 'check'" @click="check">
 				{{ $t('Check saved connection') }}
 			</NcButton>
-			<NcButton v-if="enabled" variant="tertiary" :disabled="!!busy" :loading="busy === 'disable'" @click="disable">
+			<NcButton variant="tertiary" :disabled="!!busy" :loading="busy === 'disable'" @click="disable">
 				{{ $t('Disable storage requests') }}
 			</NcButton>
 		</div>
@@ -87,7 +87,7 @@ export default {
 			}
 		}
 		async function disable() {
-			if (busy.value || !props.enabled) return
+			if (busy.value) return
 			busy.value = 'disable'
 			notice.value.text = ''
 			try {
