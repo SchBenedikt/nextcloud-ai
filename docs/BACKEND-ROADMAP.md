@@ -171,3 +171,12 @@ concern the user-defined compatible-provider surface introduced by #697.
 Implementation is present; adversarial and live transport verification remains
 unperformed under the user's instruction to defer tests. Do not mark the security
 acceptance gate verified on the basis of PHP syntax checks.
+
+### Stage 05 offline benchmark foundation
+
+The streaming exact-cosine oracle and backend ranking evaluator are implemented
+in `tools/retrieval-benchmark.php`, with a frozen synthetic format example and
+strict corpus/query hashes. Quality, isolation, duplicate and nearest-rank latency
+metrics are documented in RETRIEVAL-BENCHMARK.md. Live EVA/Qdrant snapshot recording,
+representative corpus collection, load execution and empirical acceptance gates
+remain pending. The synthetic example is not a real retrieval-quality benchmark.
