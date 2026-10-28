@@ -45,6 +45,32 @@ Open **Settings → Advanced → Background tasks**. Pausing a queued run differ
 from stopping the browser stream. Inspect the existing run before submitting
 the same expensive task again.
 
+## A completed answer is followed by "Another chat request is already running"
+
+Update all application nodes to the chat-request lock fix. The previous request
+key was 76 bytes, exceeding Nextcloud's 64-character `file_locks.key` column.
+On databases that truncate oversized values, the first acquisition could succeed
+while release using the original untruncated key matched no row, blocking later
+requests. Strict databases could reject acquisition outright and also receive the
+misleading busy message. The fixed purpose-specific key is 60 ASCII characters,
+separate from the chat-history storage lock. Do not widen or edit Nextcloud's core
+lock table and do not delete active locks blindly.
+
+Stream producers now close and release the request slot before exposing a final
+answer, confirmation or error. Early disconnects, metadata exceptions and output
+failures also release coordination through protected cleanup. Non-lock backend
+failures return temporary-unavailable (503), not falsely occupied (429), with
+sanitized coordination diagnostics in the server log. Real simultaneous chat
+requests still receive a busy response; the request-rate budget remains enforced.
+
+This changes the request-lock namespace, so quiesce chat requests and deploy the
+fix together on all application nodes. Do not serve old and new request-gate code
+concurrently during rollout. Legacy abandoned rows can expire under Nextcloud's
+normal policy; this fix does not clear locks owned by other requests. The
+`eva_ai:clear-chat-lock` recovery command addresses chat-history storage and is not
+a general request-slot reset. SQL syntax/streaming/concurrency runtime validation
+remains outstanding while tests are deferred.
+
 ## Reporting a problem
 
 Include app and Nextcloud versions, the screen, expected and actual behavior,

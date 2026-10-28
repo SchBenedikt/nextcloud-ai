@@ -164,10 +164,10 @@ final class ApiControllerIntegrationTest extends TestCase {
 		$cache->method('inc')->willReturn(1);
 		$dependencies['cacheFactory']->method('createLocking')->with('eva_ai_rate')->willReturn($cache);
 		$dependencies['lockingProvider']->expects(self::once())->method('acquireLock')->with(
-			'eva_ai/chat/' . hash('sha256', 'alice'), ILockingProvider::LOCK_EXCLUSIVE, 'EVA chat request'
+            'eva_ai/chat-request/' . substr(hash('sha256', 'alice'), 0, 40), ILockingProvider::LOCK_EXCLUSIVE, 'EVA chat request'
 		);
 		$dependencies['lockingProvider']->expects(self::once())->method('releaseLock')->with(
-			'eva_ai/chat/' . hash('sha256', 'alice'), ILockingProvider::LOCK_EXCLUSIVE
+            'eva_ai/chat-request/' . substr(hash('sha256', 'alice'), 0, 40), ILockingProvider::LOCK_EXCLUSIVE
 		);
 		$dependencies['rag']->expects(self::once())->method('ask')
 			->with(self::callback(static fn(ChatRequest $request): bool => $request->userId === 'alice' && $request->message === 'Summarize my notes' && $request->model === 'gemma4:cloud'))

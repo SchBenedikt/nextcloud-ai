@@ -143,18 +143,25 @@ class ApiController extends OCSController {
     }
 
     private function acquireChatSlot(string $user): ?string {
-        $path = 'eva_ai/chat/' . hash('sha256', $user);
+        // file_locks.key is VARCHAR(64). The old prefix + full SHA-256 was
+        // 76 bytes: permissive SQL could truncate insertion, so release by the
+        // original key never matched. Keep this separate from ChatStore's lock.
+        $path = 'eva_ai/chat-request/' . substr(hash('sha256', $user), 0, 40);
         try {
             $this->lockingProvider->acquireLock($path, ILockingProvider::LOCK_EXCLUSIVE, 'EVA chat request');
             return $path;
-        } catch (\Throwable) {
+        } catch (\OCP\Lock\LockedException) {
             return null;
+        } catch (\Throwable $e) {
+            $this->logger->warning('eva_ai: chat request coordination unavailable', ['exception_class' => get_class($e)]);
+            throw $e;
         }
     }
 
     private function releaseChatSlot(?string $path): void {
         if ($path === null) return;
-        try { $this->lockingProvider->releaseLock($path, ILockingProvider::LOCK_EXCLUSIVE); } catch (\Throwable) { }
+        try { $this->lockingProvider->releaseLock($path, ILockingProvider::LOCK_EXCLUSIVE); }
+        catch (\Throwable $e) { $this->logger->warning('eva_ai: chat request release failed', ['exception_class' => get_class($e)]); }
     }
 
     private function requireUser(): ?string {
@@ -706,13 +713,12 @@ class ApiController extends OCSController {
             return new ErrorDataResponse(['error' => $e->getMessage()], 400);
         }
         if (($limited = $this->rateLimitResponse($user, 'chat', $this->config->getInt('rate_limit_chat_per_minute', 30))) !== null) return $limited;
-        $chatSlot = $this->acquireChatSlot($user);
+        try { $chatSlot = $this->acquireChatSlot($user); }
+        catch (\Throwable) { return new ErrorDataResponse(['error' => 'chat_unavailable', 'message' => 'Chat is temporarily unavailable. Please retry shortly.'], 503); }
         if ($chatSlot === null) return new ErrorDataResponse(['error' => 'busy', 'message' => 'Another chat request is already running. Please retry shortly.'], 429, ['Retry-After' => '5']);
-        $this->releaseSessionLock();
-        // Per-chat folder scope (Issue #88) and custom instructions
-        // (Issue #90) are resolved from the chat's stored metadata.
-        $custom = $this->customFor($user, $request->chatId);
         try {
+            $this->releaseSessionLock();
+            $custom = $this->customFor($user, $request->chatId);
             return new ErrorDataResponse($this->ragService->ask(new \OCA\EvaAi\Dto\ChatRequest(
                 userId: $user,
                 message: $request->message,
@@ -1011,10 +1017,11 @@ class ApiController extends OCSController {
             return new ErrorDataResponse(['error' => $e->getMessage()], 400);
         }
         if (($limited = $this->rateLimitResponse($user, 'file_context', $this->config->getInt('rate_limit_chat_per_minute', 30))) !== null) return $limited;
-        $chatSlot = $this->acquireChatSlot($user);
+        try { $chatSlot = $this->acquireChatSlot($user); }
+        catch (\Throwable) { return new ErrorDataResponse(['error' => 'chat_unavailable', 'message' => 'Chat is temporarily unavailable. Please retry shortly.'], 503); }
         if ($chatSlot === null) return new ErrorDataResponse(['error' => 'busy', 'message' => 'Another chat request is already running. Please retry shortly.'], 429, ['Retry-After' => '5']);
-        $this->releaseSessionLock();
         try {
+            $this->releaseSessionLock();
             return new ErrorDataResponse($this->fileContextChat->chat($user, $request->fileIds, $request->message, $request->history));
         } finally {
             $this->releaseChatSlot($chatSlot);
@@ -1175,7 +1182,13 @@ class ApiController extends OCSController {
         if ($user !== null && ($limited = $this->rateLimitResponse($user, 'stream', $this->config->getInt('rate_limit_stream_per_minute', 10))) !== null) {
             return new StreamTraversableResponse(new \ArrayIterator([json_encode(['type' => 'error', 'message' => 'Too many requests. Please retry shortly.']) . "\n"]), 429, ['Content-Type' => 'application/x-ndjson', 'Retry-After' => '60', 'Cache-Control' => 'no-cache, no-store, must-revalidate']);
         }
-        $chatSlot = $user !== null ? $this->acquireChatSlot($user) : null;
+        // Resolve potentially failing storage reads before acquiring the slot.
+        $scopePath = $this->scopePathFor($user, $request?->chatId);
+        $custom = $this->customFor($user, $request?->chatId);
+        try { $chatSlot = $user !== null ? $this->acquireChatSlot($user) : null; }
+        catch (\Throwable) {
+            return new StreamTraversableResponse(new \ArrayIterator([json_encode(['type' => 'error', 'message' => 'Chat is temporarily unavailable. Please retry shortly.']) . "\n"]), 503, ['Content-Type' => 'application/x-ndjson']);
+        }
         if ($user !== null && $chatSlot === null) {
             return new StreamTraversableResponse(new \ArrayIterator([json_encode(['type' => 'error', 'message' => 'Another chat request is already running. Please retry shortly.']) . "\n"]), 429, ['Content-Type' => 'application/x-ndjson', 'Retry-After' => '5']);
         }
@@ -1186,28 +1199,19 @@ class ApiController extends OCSController {
         if ($user !== null && $message !== '') {
             $this->releaseSessionLock();
         }
-        // Per-chat folder scope (Issue #88) and custom instructions (Issue #90)
-        // are resolved once, outside the generator, so they cannot change
-        // mid-stream.
-        $scopePath = $this->scopePathFor($user, $request?->chatId);
-        $custom = $this->customFor($user, $request?->chatId);
-
         $generator = (function () use ($user, $message, $history, $images, $model, $scopePath, $custom, $chatSlot): \Generator {
             // Aber die PHP-Output-Buffering-Schicht (php.ini output_buffering)
             // würde jede erzeugte Zeile bis zum Ende puffern -> keine Live-Streams.
             // Deshalb entfernen wir hier alle Puffer und flush'eriessen wirklich.
-            while (ob_get_level() > 0) {
-                @ob_end_flush();
-            }
-            if ($user === null) {
-                yield json_encode(['type' => 'error', 'message' => 'Not logged in']) . "\n";
-                return;
-            }
-            if ($this->clientDisconnected()) {
-                return;
-            }
             $gen = null;
+            $terminal = null;
             try {
+                while (ob_get_level() > 0) @ob_end_flush();
+                if ($user === null) {
+                    yield json_encode(['type' => 'error', 'message' => 'Not logged in']) . "\n";
+                    return;
+                }
+                if ($this->clientDisconnected()) return;
                 $gen = $this->ragService->askStream(new \OCA\EvaAi\Dto\ChatRequest(
                     userId: $user,
                     message: $message,
@@ -1222,23 +1226,19 @@ class ApiController extends OCSController {
                     if ($this->clientDisconnected()) {
                         return;
                     }
-                    try {
-                        $ev = json_decode((string)$line, true);
-                        if (is_array($ev) && ($ev['type'] ?? '') === 'done') {
+                    $ev = json_decode((string)$line, true);
+                    if (is_array($ev) && in_array($ev['type'] ?? '', ['done', 'confirmation', 'error'], true)) {
+                        if (($ev['type'] ?? '') === 'done') {
                             $answer = (string)($ev['answer'] ?? '');
-                            if ($answer !== '' && $this->config->get('notify_on_complete') === '1') {
-                                $this->sendAnswerNotification($user, $answer);
-                            }
+                            if ($answer !== '' && $this->config->get('notify_on_complete') === '1') $this->sendAnswerNotification($user, $answer);
                         }
-                        yield $line;
-                        if ($this->clientDisconnected()) {
-                            return;
-                        }
-                    } catch (\Throwable $e) {
-                        if (!$this->clientDisconnected()) {
-                            yield json_encode(['type' => 'error', 'message' => $e->getMessage()]) . "\n";
-                        }
+                        // Close the producer and release coordination BEFORE the
+                        // browser sees a terminal event and can send again.
+                        $terminal = $line;
+                        break;
                     }
+                    yield $line;
+                    if ($this->clientDisconnected()) return;
                 }
             } finally {
                 // Dropping the generator reference closes nested stream
@@ -1246,6 +1246,7 @@ class ApiController extends OCSController {
                 $gen = null;
                 $this->releaseChatSlot($chatSlot);
             }
+            if ($terminal !== null && !$this->clientDisconnected()) yield $terminal;
         })();
 
         return new StreamTraversableResponse($generator, 200, [
