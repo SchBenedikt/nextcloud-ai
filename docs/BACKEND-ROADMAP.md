@@ -451,3 +451,19 @@ chunk/document cleanup, native user deletion, AppData removal and repeat cleanup
 have passed locally; known disposable audit remnants were removed and checked.
 This advances the sequential delete drill in stage 14. Durable retry coordination,
 in-flight legacy-writer fencing and distributed/remote erasure remain pending.
+
+### Stage 09 source-input slice: shared canonical extraction
+
+The ordinary Indexer now delegates parsers and Files/Mail/Talk text assembly to
+shared services. Generation source preparation rechecks native access, reconstructs
+the complete canonical source, requires its SQL content hash and chunks with
+immutable generation settings. File stream reads and generated chunk counts are
+bounded; text beyond the separate agent excerpt is preserved. A deterministic
+plan hash binds source/generation/chunker/content. Streaming chunk boundaries also
+fix oversized headings and overlap overruns in ordinary indexing.
+
+Actual installed DI/VFS/SQL preparation and changed-file rejection have passed
+locally. This supplies the input needed by the durable worker; document keyset
+cursors, leases/heartbeat, cancel/resume, build progress/control API, native build
+controls, external conversion time budgets and full remote verification are still
+required. No backfill or activation is claimed from source planning alone.

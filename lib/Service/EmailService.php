@@ -98,19 +98,28 @@ class EmailService {
 
         $out = [];
         foreach ($rows as $row) {
-            $id = (int)$row['id'];
-            $out[] = [
-                'id'       => $id,
-                'mailbox'  => $mailboxNames[(int)($row['mailbox_id'] ?? 0)] ?? '',
-                'subject'  => (string)($row['subject'] ?? ''),
-                'from'     => $this->senderOf($id),
-                'to'       => $this->recipients($id, self::RCV_TO),
-                'preview'  => (string)($row['preview_text'] ?? $row['summary'] ?? ''),
-                'sent'     => (int)($row['sent_at'] ?? 0),
-                'unread'   => (int)($row['flag_seen'] ?? 1) === 0,
-            ];
+            $out[] = $this->indexMetadata($row, $mailboxNames[(int)($row['mailbox_id'] ?? 0)] ?? '');
         }
         return $out;
+    }
+
+    /** One exact owned source, independent of the recent-message listing limit. */
+    public function messageForIndexing(string $userId, int $messageId): ?array {
+        if ($userId === '' || $messageId < 1) return null;
+        $rows = $this->q('SELECT m.`id`, m.`subject`, m.`sent_at`, m.`flag_seen`, m.`preview_text`, m.`summary`
+            FROM *PREFIX*mail_messages m
+            INNER JOIN *PREFIX*mail_mailboxes b ON m.`mailbox_id` = b.`id`
+            INNER JOIN *PREFIX*mail_accounts a ON b.`account_id` = a.`id`
+            WHERE a.`user_id` = ? AND m.`id` = ?', [$userId, $messageId]);
+        return $rows === [] ? null : $this->indexMetadata($rows[0]);
+    }
+
+    private function indexMetadata(array $row, string $mailbox = ''): array {
+        $id = (int)$row['id'];
+        return ['id' => $id, 'mailbox' => $mailbox, 'subject' => (string)($row['subject'] ?? ''),
+            'from' => $this->senderOf($id), 'to' => $this->recipients($id, self::RCV_TO),
+            'preview' => (string)($row['preview_text'] ?? $row['summary'] ?? ''),
+            'sent' => (int)($row['sent_at'] ?? 0), 'unread' => (int)($row['flag_seen'] ?? 1) === 0];
     }
 
     /**

@@ -245,3 +245,33 @@ zero chunks for their former document IDs. No frontend source changed, so no
 frontend compilation was needed. These are sequential local checks, not proof of
 in-flight legacy-writer fencing, a durable cleanup retry coordinator, distributed
 races or external vector erasure; those acceptance gates remain open.
+
+## Canonical generation-source preparation
+
+The source-input refactor passed a PHP suite of 772 tests / 13,661 assertions /
+8 skipped. After the final bounded-stream and optional-converter corrections,
+65 focused extraction/indexer/chunk/provenance/Mail tests passed with 3,122
+assertions. Cases include text beyond 100,000 characters, explicit pinned settings,
+stable plan hashes, same-size content changes, a source growing after metadata
+capture, access revocation, changed IMAP fallback, oversized headings, retained
+overlap and early stop at a chunk budget. File/blob format tests now exercise the
+shared extractor used by the ordinary Indexer too.
+
+The installed Nextcloud probe uses actual native DI, VFS and SQL source metadata.
+It creates and deletes its own fresh disposable account; the password remains
+only in memory. Run as the web-server user:
+
+```sh
+NEXTCLOUD_ROOT=/var/www/html/nextcloud \
+EVA_TEST_USER=eva-runtime-audit-source-example \
+EVA_TEST_CREATE_DELETE_ACCOUNT=1 \
+php tests/runtime/generation-source.php
+```
+
+The local run passed full-source preparation beyond the agent excerpt, pinned
+chunk bounds, repeat plan identity and changed-source refusal. The disposable
+account and source rows were removed through native deletion. No provider was
+contacted, no migration worker was enabled and no frontend compilation was needed.
+Mail/Talk preparation has contract coverage; live IMAP/room reconstruction,
+converter/OCR time budgets, durable backfill control and complete remote
+verification remain separately required evidence.

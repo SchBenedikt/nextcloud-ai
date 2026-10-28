@@ -20,30 +20,42 @@ class Chunker {
      * @return array<int,array{content:string,tokens:int}>
      */
     public function chunk(string $text): array {
-        if (trim($text) === '') {
-            return [];
-        }
         $chunkSize = $this->config->getInt('chunk_size', 900);
         $overlap = $this->config->getInt('chunk_overlap', 120);
         if ($overlap >= $chunkSize) {
             $overlap = max(0, (int)($chunkSize / 4));
         }
 
+        return iterator_to_array($this->chunks($text, $chunkSize, $overlap), false);
+    }
+
+    /** Explicit immutable generation settings; bounded before materializing chunks. */
+    public function chunkWithSettings(string $text, int $chunkSize, int $overlap, int $maxChunks = 4096): array {
+        if ($chunkSize < 1 || $chunkSize > 10000 || $overlap < 0 || $overlap >= $chunkSize
+            || $maxChunks < 1 || $maxChunks > 10000) throw new \InvalidArgumentException('Invalid bounded chunk settings.');
+        $chunks = [];
+        foreach ($this->chunks($text, $chunkSize, $overlap) as $chunk) {
+            if (count($chunks) === $maxChunks) throw new \LengthException('Source exceeds the generation chunk budget.');
+            $chunks[] = $chunk;
+        }
+        return $chunks;
+    }
+
+    private function chunks(string $text, int $chunkSize, int $overlap): \Generator {
+        if (trim($text) === '') return;
         // Normalise whitespace runs but keep line structure.
         $text = preg_replace('/[ \t]+/', ' ', $text);
         $text = preg_replace('/\n{3,}/', "\n\n", $text);
 
-        $chunks = [];
         foreach ($this->sectionsWithHeadings($text) as $section) {
             foreach ($this->chunkSection($section['heading'], $section['body'], $chunkSize, $overlap) as $c) {
                 $c['provenance'] = ['version' => 1, 'section' => mb_substr($section['heading'], 0, 200), 'section_offset' => $section['offset'], 'heading_path' => $section['headings']];
                 if (preg_match('/^\[Page (\d+)\]$/', $section['heading'], $match)) $c['provenance']['page'] = (int)$match[1];
                 if (preg_match('/^\[Slide (\d+)\]$/', $section['heading'], $match)) $c['provenance']['slide'] = (int)$match[1];
                 if (preg_match('/^\[Sheet: (.+)\]$/u', $section['heading'], $match)) $c['provenance']['sheet'] = mb_substr($match[1], 0, 100);
-                $chunks[] = $c;
+                yield $c;
             }
         }
-        return $chunks;
     }
 
     /**
@@ -51,21 +63,23 @@ class Chunker {
      * of the section it belongs to (a heading alone marks the start of the
      * next section, it is never part of the body).
      *
-     * @return list<array{heading:string,body:string}>
+     * @return \Generator<int,array{heading:string,body:string,offset:int,headings:array}>
      */
-    private function sectionsWithHeadings(string $text): array {
-        $lines = preg_split('/\n/', $text) ?: [];
-        $sections = [];
+    private function sectionsWithHeadings(string $text): \Generator {
         $currentHeading = '';
         $currentBody = '';
         $offset = 0;
         $sectionOffset = 0;
         $headings = [];
-        foreach ($lines as $line) {
+        $length = strlen($text);
+        for ($start = 0; $start <= $length; $start = $end + 1) {
+            $end = strpos($text, "\n", $start);
+            if ($end === false) $end = $length;
+            $line = substr($text, $start, $end - $start);
             $trimmed = trim($line);
             if (preg_match('/^#{1,6}\s+\S/u', $trimmed) || preg_match('/^\[[^\]\r\n]{1,100}\]$/u', $trimmed)) {
                 // Start a new section: flush the previous one.
-                $sections[] = ['heading' => $currentHeading, 'body' => $currentBody, 'offset' => $sectionOffset, 'headings' => array_values($headings)];
+                yield ['heading' => $currentHeading, 'body' => $currentBody, 'offset' => $sectionOffset, 'headings' => array_values($headings)];
                 $currentHeading = $trimmed;
                 $sectionOffset = $offset;
                 if (preg_match('/^(#{1,6})\s+(.*)$/u', $trimmed, $match)) {
@@ -80,8 +94,7 @@ class Chunker {
             $currentBody .= ($currentBody === '' ? '' : "\n") . $line;
             $offset += mb_strlen($line) + 1;
         }
-        $sections[] = ['heading' => $currentHeading, 'body' => $currentBody, 'offset' => $sectionOffset, 'headings' => array_values($headings)];
-        return $sections;
+        yield ['heading' => $currentHeading, 'body' => $currentBody, 'offset' => $sectionOffset, 'headings' => array_values($headings)];
     }
 
     /**
@@ -89,36 +102,37 @@ class Chunker {
      * the section; the body budget is reduced by the heading length so a
      * chunk never exceeds the configured chunk size.
      *
-     * @return list<array{content:string,tokens:int}>
+     * @return \Generator<int,array{content:string,tokens:int}>
      */
-    private function chunkSection(string $heading, string $body, int $chunkSize, int $overlap): array {
+    private function chunkSection(string $heading, string $body, int $chunkSize, int $overlap): \Generator {
         if (trim($body) === '') {
-            return $heading !== '' ? [['content' => $heading, 'tokens' => $this->estimateTokens($heading)]] : [];
+            if ($heading !== '') yield from $this->chunkPlain($heading, $chunkSize, $overlap);
+            return;
         }
         $prefix = $heading !== '' ? trim($heading) . "\n\n" : '';
+        if (mb_strlen($prefix) >= $chunkSize) {
+            // Keep the complete heading as text instead of exceeding the model
+            // budget or silently dropping its suffix. Provenance keeps context.
+            yield from $this->chunkPlain($prefix . $body, $chunkSize, $overlap);
+            return;
+        }
         // Only shrink the body budget when a heading actually consumes space;
         // heading-free text must keep the exact configured chunk size.
         $budget = $prefix === '' ? $chunkSize : max(1, $chunkSize - mb_strlen($prefix));
-        $out = [];
         foreach ($this->chunkPlain($body, $budget, $overlap) as $c) {
             $content = trim($prefix . $c['content']);
-            $out[] = ['content' => $content, 'tokens' => $this->estimateTokens($content)];
+            yield ['content' => $content, 'tokens' => $this->estimateTokens($content)];
         }
-        return $out;
     }
 
     /**
      * The plain sentence-boundary chunker (no heading context).
      *
-     * @return list<array{content:string,tokens:int}>
+     * @return \Generator<int,array{content:string,tokens:int}>
      */
-    private function chunkPlain(string $text, int $chunkSize, int $overlap): array {
+    private function chunkPlain(string $text, int $chunkSize, int $overlap): \Generator {
         $sentences = $this->splitSentences($text);
-        if (empty($sentences)) {
-            return [];
-        }
 
-        $chunks = [];
         $current = '';
         foreach ($sentences as $sentence) {
             if (mb_strlen($current . $sentence) <= $chunkSize) {
@@ -126,50 +140,49 @@ class Chunker {
                 continue;
             }
             if ($current !== '') {
-                $chunks[] = ['content' => trim($current), 'tokens' => $this->estimateTokens(trim($current))];
+                yield ['content' => trim($current), 'tokens' => $this->estimateTokens(trim($current))];
             }
             // A single sentence longer than the chunk size gets hard-split.
             if (mb_strlen($sentence) > $chunkSize) {
                 foreach ($this->hardSplit($sentence, $chunkSize, $overlap) as $piece) {
-                    $chunks[] = ['content' => trim($piece), 'tokens' => $this->estimateTokens(trim($piece))];
+                    $piece = trim($piece);
+                    if ($piece !== '') yield ['content' => $piece, 'tokens' => $this->estimateTokens($piece)];
                 }
                 $current = '';
                 continue;
             }
-            $current = $overlap > 0 ? mb_substr($current, -$overlap) : '';
+            $retained = min($overlap, max(0, $chunkSize - mb_strlen($sentence)));
+            $current = $retained > 0 ? mb_substr($current, -$retained) : '';
             $current .= $sentence;
         }
         if (trim($current) !== '') {
-            $chunks[] = ['content' => trim($current), 'tokens' => $this->estimateTokens(trim($current))];
+            yield ['content' => trim($current), 'tokens' => $this->estimateTokens(trim($current))];
         }
-        return $chunks;
     }
 
-    private function splitSentences(string $text): array {
+    private function splitSentences(string $text): \Generator {
         // Keep punctuation with the sentence; normalise line breaks as separators.
         // Preserve line boundaries for rows and paragraphs.
-        $parts = preg_split('/(?<=[.!?:;])[ \t]+(?=\S)|(?<=\n)/u', $text) ?: [];
-        $result = [];
-        foreach ($parts as $p) {
-            $separator = str_ends_with($p, "\n") ? "\n" : ' ';
-            $p = trim($p);
-            if ($p !== '') {
-                $result[] = $p . $separator;
-            }
+        $length = strlen($text);
+        for ($start = 0; $start < $length; $start = $end) {
+            $found = preg_match('/(?<=[.!?:;])[ \t]+(?=\S)|\n/u', $text, $match, PREG_OFFSET_CAPTURE, $start);
+            if ($found === false) throw new \InvalidArgumentException('Chunk text must be valid UTF-8.');
+            $position = $found === 1 ? $match[0][1] : $length;
+            $newline = $found === 1 && $match[0][0] === "\n";
+            $part = trim(substr($text, $start, $position - $start));
+            $end = $found === 1 ? $position + strlen($match[0][0]) : $length;
+            if ($part !== '') yield $part . ($newline ? "\n" : ' ');
         }
-        return $result;
     }
 
-    private function hardSplit(string $text, int $size, int $overlap): array {
-        $pieces = [];
+    private function hardSplit(string $text, int $size, int $overlap): \Generator {
         $len = mb_strlen($text);
         $step = max(1, $size - $overlap);
         $start = 0;
         while ($start < $len) {
-            $pieces[] = mb_substr($text, $start, $size);
+            yield mb_substr($text, $start, $size);
             $start += $step;
         }
-        return $pieces;
     }
 
     public function estimateTokens(string $text): int {

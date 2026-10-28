@@ -24,8 +24,10 @@ lib/
 
 | Service | Responsibility |
 |---|---|
-| `Indexer` | Walks the user's files (generator-based), extracts text, calls `Chunker`, writes documents/chunks, reconciles deleted/modified files |
-| `Chunker` | Splits extracted text into overlapping chunks |
+| `Indexer` | Walks native sources, delegates canonical text extraction, writes documents/chunks and reconciles deleted/modified sources |
+| `IndexTextExtractor` | Shared file/blob parsers, native format detection and an optional bounded VFS stream read |
+| `IndexDocumentText` | Canonical file, Mail envelope/attachment and Talk text shared by indexing and generation preparation |
+| `Chunker` | Streams sections/sentences into overlapping chunks; generation plans use explicit immutable settings and a chunk-count bound |
 | `Ollama` | Thin HTTP client for the Ollama API (embedding + chat) |
 | `Searcher` | Hybrid retrieval: vector search + BM25, fused with RRF |
 | `RagService` | Orchestrates retrieval + prompt building + answer generation |
