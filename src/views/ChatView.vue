@@ -17,7 +17,7 @@
 				class="chat-composer__send"
 				size="small"
 				:type="sending ? 'button' : 'submit'"
-				:variant="sending ? 'error' : 'primary'"
+				:variant="sending ? 'error' : 'tertiary'"
 				:aria-label="sending ? $t('Stop') : $t('Send message')"
 				:disabled="!ready">
 				<template #icon><NcIconSvgWrapper :path="sending ? mdiStopCircleOutline : mdiSendOutline" :size="20" /></template>
@@ -486,11 +486,11 @@ export default {
 .chat-composer {
 	display: flex;
 	align-items: center;
-	gap: 8px;
+	gap: var(--default-grid-baseline, 4px);
 	flex: 0 0 auto;
 	width: 100%;
 	margin: 0 auto;
-	padding: 8px 0 max(12px, env(safe-area-inset-bottom));
+	padding: 4px 0 max(8px, env(safe-area-inset-bottom));
 	box-sizing: border-box;
 }
 
