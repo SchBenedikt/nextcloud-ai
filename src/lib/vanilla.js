@@ -784,7 +784,7 @@ export function mountChat(root, opts = {}) {
 			reuse.textContent = item.text
 			reuse.title = t('Use prompt')
 			reuse.addEventListener('click', () => {
-				input.value = item.text
+				setInputValue(item.text)
 				promptPanel.open = false
 				input.focus()
 			})
@@ -887,7 +887,7 @@ export function mountChat(root, opts = {}) {
 					const current = await api('POST', '/templates/' + encodeURIComponent(template.id) + '/use', {})
 					let prompt = String(current.body || '')
 					for (const [variable, value] of values) prompt = prompt.replace(new RegExp('\\{' + variable + '\\}', 'g'), value)
-					input.value = prompt
+					setInputValue(prompt)
 					if (current.persona) {
 						if (chatId) await api('POST', '/chats/' + encodeURIComponent(chatId) + '/meta', { instructions: current.persona })
 						else pendingTemplatePersona = current.persona
@@ -1046,22 +1046,30 @@ export function mountChat(root, opts = {}) {
 	emptyEl.append(eico, et, ed)
 	scroll.appendChild(emptyEl)
 
-	const form = document.createElement('form')
-	form.className = 'chatform'
-	const input = document.createElement('input')
-	input.id = 'chatinput'
-	input.type = 'text'
-	input.autocomplete = 'off'
-	input.placeholder = t('Ask a question or describe a task')
-	input.setAttribute('aria-label', t('Ask a question or describe a task'))
-	const sendBtn = document.createElement('button')
-	sendBtn.type = 'submit'
-	sendBtn.className = 'cbtn'
-	sendBtn.textContent = t('Send message')
+	const form = opts.form || document.createElement('form')
+	if (!opts.form) form.className = 'chatform'
+	const input = opts.input || document.createElement('input')
+	if (!opts.input) {
+		input.id = 'chatinput'
+		input.type = 'text'
+		input.autocomplete = 'off'
+		input.placeholder = t('Ask a question or describe a task')
+		input.setAttribute('aria-label', t('Ask a question or describe a task'))
+	}
+	const sendBtn = opts.sendBtn || document.createElement('button')
+	if (!opts.sendBtn) {
+		sendBtn.type = 'submit'
+		sendBtn.className = 'cbtn'
+		sendBtn.textContent = t('Send message')
+	}
 	sendBtn.addEventListener('click', () => {
 		if (sending) stopStream()
 	})
-	form.append(input, sendBtn)
+	if (!opts.form) form.append(input, sendBtn)
+	const setInputValue = (value) => {
+		input.value = String(value ?? '')
+		if (typeof opts.onInputValueChange === 'function') opts.onInputValueChange(input.value)
+	}
 
 	const err = document.createElement('div')
 	err.className = 'err'
@@ -1073,7 +1081,7 @@ export function mountChat(root, opts = {}) {
 		err.style.display = msg ? 'block' : 'none'
 	}
 
-	root.append(head, contextBar, imagePanel, scroll, form, err)
+	root.append(head, contextBar, imagePanel, scroll, err)
 
 	const renderAll = (list) => {
 		if (selectionChatId !== chatId) {
@@ -1266,7 +1274,7 @@ export function mountChat(root, opts = {}) {
 			btn.textContent = q
 			btn.addEventListener('click', () => {
 				if (sending) return
-				input.value = q
+				setInputValue(q)
 				send()
 			})
 			chips.appendChild(btn)
@@ -1372,9 +1380,12 @@ export function mountChat(root, opts = {}) {
 	// The server checks connection_aborted() between events, so aborting the
 	// fetch also stops the generation server-side.
 	const setStreamingUI = (active) => {
-		sendBtn.type = active ? 'button' : 'submit'
-	sendBtn.textContent = active ? t('Stop') : t('Send message')
-		sendBtn.classList.toggle('cbtn-stop', active)
+		if (typeof opts.onStreamingChange === 'function') opts.onStreamingChange(active)
+		else {
+			sendBtn.type = active ? 'button' : 'submit'
+			sendBtn.textContent = active ? t('Stop') : t('Send message')
+			sendBtn.classList.toggle('cbtn-stop', active)
+		}
 	}
 	const stopStream = () => {
 		if (!sending) return
@@ -1815,7 +1826,7 @@ export function mountChat(root, opts = {}) {
 		currentAbort = new AbortController()
 		stoppedByUser = false
 		setStreamingUI(true)
-		input.value = ''
+		setInputValue('')
 		err.style.display = 'none'
 		if (emptyEl.parentNode) scroll.removeChild(emptyEl)
 

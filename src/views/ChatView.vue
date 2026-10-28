@@ -1,13 +1,40 @@
 <template>
-	<div ref="root" class="chatview-root"></div>
+	<div class="chatview-shell">
+		<div ref="root" class="chatview-root"></div>
+		<form ref="composerForm" class="chat-composer">
+			<NcTextField
+				ref="composerField"
+				v-model="draft"
+				id="chatinput"
+				class="chat-composer__field"
+				:label="$t('Message EVA')"
+				:placeholder="$t('Ask a question or describe a task')"
+				:disabled="!ready || sending"
+				pill
+			/>
+			<NcButton
+				ref="sendButton"
+				class="chat-composer__send"
+				size="small"
+				:type="sending ? 'button' : 'submit'"
+				:variant="sending ? 'error' : 'primary'"
+				:aria-label="sending ? $t('Stop') : $t('Send message')"
+				:disabled="!ready">
+				<template #icon><NcIconSvgWrapper :path="sending ? mdiStopCircleOutline : mdiSendOutline" :size="20" /></template>
+			</NcButton>
+		</form>
+	</div>
 </template>
 
 <script>
 import { ref, onMounted, onBeforeUnmount, watch } from 'vue'
+import { NcButton, NcIconSvgWrapper, NcTextField } from '@nextcloud/vue'
+import { mdiSendOutline, mdiStopCircleOutline } from '@mdi/js'
 import { mountChat } from '../lib/vanilla'
 
 export default {
 	name: 'ChatView',
+	components: { NcButton, NcIconSvgWrapper, NcTextField },
 	props: {
 		chatId: { type: String, default: null },
 		initialPrompt: { type: String, default: '' },
@@ -19,15 +46,22 @@ export default {
 	emits: ['chat-updated', 'prompt-consumed'],
 	setup(props, { emit }) {
 		const root = ref(null)
+		const composerForm = ref(null)
+		const composerField = ref(null)
+		const sendButton = ref(null)
+		const draft = ref('')
+		const ready = ref(false)
+		const sending = ref(false)
 		let mounted = false
-		let ready = false
 
 		const applyInitialPrompt = () => {
-			if (!mounted || !ready || !root.value || !props.initialPrompt) return
-			const input = root.value.querySelector('#chatinput')
-			const form = root.value.querySelector('form.chatform')
+			if (!mounted || !ready.value || !composerField.value || !props.initialPrompt) return
+			const input = composerField.value.$el?.querySelector('input')
+			const form = composerForm.value
 			if (!input || !form) return
+			draft.value = props.initialPrompt
 			input.value = props.initialPrompt
+			input.dispatchEvent(new Event('input', { bubbles: true }))
 			input.focus()
 			if (props.autoSend && input.value.trim()) {
 				// The vanilla chat listens on the form's submit event, so
@@ -42,17 +76,23 @@ export default {
 			if (!root.value) return
 			if (root.value.__evaAi && typeof root.value.__evaAi.destroy === 'function') root.value.__evaAi.destroy()
 			root.value.innerHTML = ''
-			ready = false
+			ready.value = false
+			sending.value = false
 			delete root.value.__evaAi
 			mountChat(root.value, {
 				chatId: props.chatId || null,
+				form: composerForm.value,
+				input: composerField.value?.$el?.querySelector('input'),
+				sendBtn: sendButton.value?.$el,
+				onInputValueChange: value => { draft.value = value },
+				onStreamingChange: value => { sending.value = value },
 				onRecent: () => emit('chat-updated'),
 			})
 			mounted = true
 			const renderer = root.value.__evaAi
 			renderer.ready.then(loaded => {
 				if (!mounted || root.value?.__evaAi !== renderer || !loaded) return
-				ready = true
+				ready.value = true
 				applyInitialPrompt()
 			})
 		}
@@ -69,7 +109,7 @@ export default {
 			if (mounted) mount()
 		})
 
-		return { root }
+		return { root, composerForm, composerField, sendButton, draft, ready, sending, mdiSendOutline, mdiStopCircleOutline }
 	},
 }
 </script>
@@ -79,11 +119,12 @@ export default {
 .chatview-root {
 	width: 100%;
 	height: 100%;
+	flex: 1 1 auto;
 	min-height: 0;
 	box-sizing: border-box;
 	display: flex;
 	flex-direction: column;
-	padding: 0 clamp(16px, 3vw, 44px);
+	padding: 0;
 	overflow: hidden;
 	background: var(--color-main-background, #fff);
 }
@@ -117,7 +158,7 @@ export default {
 .chatview-root .chat-context { width: min(100%, 800px); margin: 8px auto 0; display: flex; gap: 8px; flex-wrap: wrap; }
 .chatview-root .chat-context:not(:has(.pill:not([hidden]))) { display: none; }
 .chatview-root .head > .pill { max-width: 40%; overflow-wrap: anywhere; }
-.chatview-root .chat-log, .chatview-root .chatform { max-width: 800px; }
+.chatview-root .chat-log { max-width: 800px; }
 
 
 
@@ -290,33 +331,6 @@ export default {
 .chatview-root .rtools pre { margin: 4px 0 0; padding: 6px 8px; max-width: min(720px, 80vw); max-height: 180px; overflow: auto; white-space: pre-wrap; word-break: break-word; border: 1px solid var(--color-border, #ddd); border-radius: 4px; background: var(--color-main-background, #fff); color: var(--color-main-text, #222); font: 11px/1.4 var(--font-family-monospace, monospace); }
 .chatview-root .rtools .tool-error { margin: 3px 0 0 18px; color: var(--color-error, #e9322d); font-family: var(--font-family-sans-serif, sans-serif); font-size: 11px; white-space: pre-wrap; word-break: break-word; }
 
-.chatview-root .chatform {
-	display: flex;
-	align-items: center;
-	gap: 8px;
-	flex: 0 0 auto;
-	width: min(100%, var(--eva-content-width, 1180px));
-	margin: 0 auto;
-	padding: 12px 0 16px;
-	border-top: 1px solid var(--color-border, #ddd);
-	box-sizing: border-box;
-	background: transparent;
-}
-.chatview-root .chatform input {
-	flex: 1;
-	min-width: 0;
-	padding: 10px 12px;
-	border: 1px solid var(--color-border, #bbb);
-	border-radius: 8px;
-	font-size: 14px;
-	color: var(--color-main-text, #111);
-	background: var(--color-main-background, #fff);
-}
-.chatview-root .chatform input:focus {
-	border-color: var(--color-primary-element, #00679c);
-	outline: 2px solid color-mix(in srgb, var(--color-primary-element, #00679c) 22%, transparent);
-	outline-offset: 0;
-}
 .chatview-root .chat-model-select { flex: 0 0 auto; max-width: min(210px, 34vw); min-width: 100px; min-height: 40px; padding: 8px 10px; border: 1px solid var(--color-border, #bbb); border-radius: 8px; color: var(--color-main-text, #222); background: var(--color-main-background, #fff); font: inherit; font-size: 13px; }
 .chatview-root .chat-model-select[hidden] { display: none; }
 .chatview-root .rmodel { margin-top: 6px; color: var(--color-text-maxcontrast, #666); font-size: 11px; }
@@ -351,13 +365,11 @@ export default {
 .chatview-root .err { margin: 0 0 8px; color: var(--color-error, #e9322d); font-size: 13px; white-space: pre-wrap; }
 
 @media (min-width: 1400px) {
-	.chatview-root { padding-inline: clamp(28px, 7vw, 120px); }
 	.chatview-root .chat-log { padding-top: 30px; padding-bottom: 24px; }
 	.chatview-root .rt { font-size: 15px; line-height: 1.65; }
 }
 
 @media (max-width: 600px) {
-	.chatview-root { padding: 36px 12px 0; }
 	.chatview-root .head { min-height: 48px; flex-wrap: nowrap; }
 	.chatview-root .head h1 { font-size: 16px; }
 
@@ -367,8 +379,6 @@ export default {
 	.chatview-root .rconfirm-share-form { grid-template-columns: 1fr; }
 	.chatview-root .rconfirm-field:first-child { grid-column: auto; }
 	.chatview-root .cbtn { padding-inline: 13px; }
-	.chatview-root .chatform { flex-wrap: wrap; gap: 8px; }
-	.chatview-root .chatform input { flex: 1 0 100%; }
 	.chatview-root .chat-model-select { flex: 1 1 120px; }
 }
 .chatview-root .image-generator { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; gap: 8px; width: min(100%, var(--eva-content-width, 1180px)); box-sizing: border-box; margin: 10px auto; padding: 12px; border: 1px solid var(--color-border, #ddd); border-radius: 12px; background: var(--color-background-dark, #f7f7f7); }
@@ -418,7 +428,6 @@ export default {
 
 .chatview-root .chat-context,
 .chatview-root .chat-log,
-.chatview-root .chatform,
 .chatview-root .voice-status,
 .chatview-root .image-attachments {
 	width: 100%;
@@ -456,58 +465,55 @@ export default {
 	padding-right: 0;
 }
 
-.chatview-root .chatform {
-	gap: 10px;
-	margin-bottom: max(12px, env(safe-area-inset-bottom));
-	padding: 9px 10px 9px 18px;
-	border: 1px solid var(--color-border, #d5d7da);
-	border-radius: 24px;
+.chatview-shell {
+	width: 100%;
+	height: 100%;
+	min-height: 0;
+	box-sizing: border-box;
+	display: flex;
+	flex-direction: column;
+	padding: 0 clamp(16px, 3vw, 40px);
+	overflow: hidden;
 	background: var(--color-main-background, #fff);
-	box-shadow: 0 2px 10px color-mix(in srgb, var(--color-main-text, #222) 7%, transparent);
-	transition: border-color .15s ease, box-shadow .15s ease;
 }
 
-.chatview-root .chatform:focus-within {
-	border-color: color-mix(in srgb, var(--color-primary-element, #00679c) 60%, var(--color-border, #d5d7da));
-	box-shadow: 0 2px 12px color-mix(in srgb, var(--color-primary-element, #00679c) 12%, transparent);
+.chatview-root {
+	height: auto;
+	min-height: 0;
+	padding: 0;
 }
 
-.chatview-root .chatform input {
-	min-height: 42px;
-	padding: 8px 0;
-	border: 0;
-	border-radius: 0;
-	outline: 0;
-	background: transparent;
-	font-size: 15px;
+.chat-composer {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	flex: 0 0 auto;
+	width: 100%;
+	margin: 0 auto;
+	padding: 8px 0 max(12px, env(safe-area-inset-bottom));
+	box-sizing: border-box;
 }
 
-.chatview-root .chatform input:focus {
-	border: 0;
-	outline: 0;
-	box-shadow: none;
+.chat-composer__field {
+	flex: 1 1 auto;
+	min-width: 0;
 }
 
-.chatview-root .cbtn {
-	min-width: 42px;
-	min-height: 42px;
-	padding: 8px 15px;
-	border-radius: 18px;
+.chat-composer__field :deep(.input-field) {
+	width: 100%;
+	margin: 0;
 }
 
-.chatview-root .cbtn-stop {
-	border-radius: 18px;
+.chat-composer__send {
+	flex: 0 0 auto;
 }
 
 @media (max-width: 600px) {
-	.chatview-root { padding: 36px 12px 0; }
+	.chatview-shell { padding-inline: 12px; }
 	.chatview-root .head { min-height: 48px; }
 	.chatview-root .chat-log { gap: 20px; padding-top: 18px; padding-bottom: 16px; }
 	.chatview-root .rm.user .rb { max-width: 90%; }
 	.chatview-root .rb { font-size: 15px; }
-	.chatview-root .chatform { flex-wrap: nowrap; padding-inline-start: 14px; }
-	.chatview-root .chatform input { flex: 1 1 auto; min-width: 0; }
-	.chatview-root .cbtn { flex: 0 0 auto; padding: 8px 12px; }
 }
 
 @media (hover: none) {
