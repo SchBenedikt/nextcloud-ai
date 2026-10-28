@@ -36,9 +36,6 @@ use OCA\EvaAi\Dto\DocumentChunksQuery;
 use OCA\EvaAi\Dto\ChatListQuery;
 use OCA\EvaAi\Dto\ChatListResponse;
 use OCA\EvaAi\Dto\BackgroundChatIdRequest;
-use OCA\EvaAi\Dto\FeedbackStatsResponse;
-use OCA\EvaAi\Dto\ChatReactionRequest;
-use OCA\EvaAi\Dto\ChatReactionResponse;
 use OCA\EvaAi\Dto\ChatAppendRequest;
 use OCA\EvaAi\Dto\ChatAppendResponse;
 use OCA\EvaAi\Dto\PluginToggleRequest;
@@ -1440,41 +1437,6 @@ class ApiController extends OCSController {
             }
 
             $response = ChatAppendResponse::fromArray(['ok' => true, 'rev' => $rev]);
-            return new ErrorDataResponse($response->toArray());
-        } catch (\Throwable $e) {
-            return $this->chatErrorResponse($e);
-        }
-    }
-
-    #[NoAdminRequired]
-    public function chatReaction(string $id): DataResponse {
-        $user = $this->requireUser();
-        if ($user === null) return new ErrorDataResponse(['error' => 'Not logged in'], 401);
-        try {
-            $request = ChatReactionRequest::fromArray([
-                'index' => $this->requestParam('index'),
-                'type' => $this->requestParam('type'),
-                'value' => $this->requestParam('value'),
-            ]);
-        } catch (\InvalidArgumentException $e) {
-            return new ErrorDataResponse(['error' => $e->getMessage()], 400);
-        }
-        try {
-            $result = $this->chatStore->setMessageReaction($user, $id, $request->index, $request->type, $request->value);
-            if ($result === null) return new ErrorDataResponse(['error' => 'Requested assistant message was not found.'], 404);
-            $response = ChatReactionResponse::fromArray($result);
-            return new ErrorDataResponse($response->toArray());
-        } catch (\Throwable $e) {
-            return $this->chatErrorResponse($e);
-        }
-    }
-
-    #[NoAdminRequired]
-    public function feedbackStats(): DataResponse {
-        $user = $this->requireUser();
-        if ($user === null) return new ErrorDataResponse(['error' => 'Not logged in'], 401);
-        try {
-            $response = FeedbackStatsResponse::fromArray($this->chatStore->feedbackStats($user));
             return new ErrorDataResponse($response->toArray());
         } catch (\Throwable $e) {
             return $this->chatErrorResponse($e);

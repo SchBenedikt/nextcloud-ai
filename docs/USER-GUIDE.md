@@ -10,9 +10,6 @@ menu offers rename, pin, archive and delete. Archived conversations remain in
 the expandable **Archived** section. Deletion requires confirmation and
 permanently removes that conversation.
 
-**Bookmarked answers** finds chats with bookmarked replies. Bookmarks and
-pinned conversations are separate.
-
 ## Chat actions
 
 The compact header shows the title and a background status when relevant.

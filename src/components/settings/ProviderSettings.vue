@@ -12,7 +12,6 @@
 		<NcModal v-if="draft" size="normal" :label-id="titleId" @close="close">
 			<form class="provider-editor" @submit.prevent="save">
 				<h2 :id="titleId">{{ editing ? t('Configure provider') : t('Add AI provider') }}</h2>
-				<label v-if="!editing" for="provider-template">{{ t('Provider template') }}</label>
 				<NcSelect v-if="!editing" input-id="provider-template" v-model="presetId" :options="presets" label="name" :reduce="item => item.id" :input-label="t('Provider template')" :label-outside="true" :clearable="false" @update:model-value="applyPreset" />
 				<NcTextField v-if="!builtin" v-model="draft.name" :label="t('Display name')" :disabled="saving" required maxlength="120" />
 				<NcTextField v-if="!builtin" v-model="draft.url" type="url" :label="t('API base URL')" :disabled="saving" required placeholder="https://api.example.com/v1" />

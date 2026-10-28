@@ -94,17 +94,6 @@ test('file-context replies render safe Markdown with an accessible composer', as
 	expect(errors).toEqual([])
 })
 
-test('bookmarked conversations can be filtered without breaking navigation', async ({ page }) => {
-	const { errors } = await openWorkspace(page, { chats: [
-		{ id: 'saved', title: 'Saved source', updated: 2, bookmarkedCount: 1 },
-		{ id: 'regular', title: 'Regular conversation', updated: 1, bookmarkedCount: 0 },
-	] })
-	await page.getByRole('link', { name: 'Bookmarked answers (1)', exact: true }).click()
-	await expect(page.locator('#app-navigation-vue').getByRole('link', { name: 'Saved source', exact: true })).toBeVisible()
-	await expect(page.locator('#app-navigation-vue').getByRole('link', { name: 'Regular conversation', exact: true })).toHaveCount(0)
-	expect(errors).toEqual([])
-})
-
 test('all native settings sections render on mobile and retain browser navigation', async ({ page }) => {
 	const { errors } = await openWorkspace(page, { view: 'settings', width: 390 })
 	for (const [id, label] of [['knowledge', 'Documents'], ['tools', 'Tools & permissions'], ['automation', 'Automation'], ['personal', 'Personal & data'], ['advanced', 'Advanced']]) {

@@ -1,5 +1,5 @@
 /** Build a privacy-preserving CSV from the signed-in user's metrics response. */
-export function buildMetricsCsv({ days, totals = {}, byModel = [], daily = [], slowTools = [], feedbackStats = {}, generatedAt = new Date() } = {}) {
+export function buildMetricsCsv({ days, totals = {}, byModel = [], daily = [], slowTools = [], generatedAt = new Date() } = {}) {
 	const rows = [
 		['report', 'EVA AI usage metrics'],
 		['period_days', days ?? ''],
@@ -12,9 +12,6 @@ export function buildMetricsCsv({ days, totals = {}, byModel = [], daily = [], s
 		['total_tokens', totals.total_tokens ?? 0],
 		['estimated_requests', totals.estimated_requests ?? 0],
 		['estimated_cost_usd', byModel.reduce((sum, row) => sum + (Number(row.estimated_cost_usd) || 0), 0)],
-		['helpful_answers_all_time', feedbackStats.helpful ?? 0],
-		['not_helpful_answers_all_time', feedbackStats.notHelpful ?? 0],
-		['bookmarked_answers_all_time', feedbackStats.bookmarked ?? 0],
 		[],
 		['model_usage'],
 		['provider', 'model', 'requests', 'input_tokens', 'output_tokens', 'total_tokens', 'estimated_requests', 'average_duration_ms', 'maximum_duration_ms', 'estimated_cost_usd'],
