@@ -36,14 +36,15 @@ class UserDataService {
         private EmbeddingCache $embeddingCache,
         private IRootFolder $rootFolder,
         private IAppDataFactory $appDataFactory,
-        private LoggerInterface $logger
+        private LoggerInterface $logger,
+        private ?\OCA\EvaAi\Db\VectorGenerationRepository $vectorGenerations = null
     ) {
     }
 
     /**
      * Build the user's complete EVA data export.
      *
-     * @return array{user:string,exported_at:int,chats:array,knowledge:string,index_meta:array<int,array<string,mixed>>}
+     * @return array{user:string,exported_at:int,chats:array,knowledge:string,index_meta:array,vector_generations:array}
      */
     public function export(string $userId): array {
         $knowledge = '';
@@ -77,12 +78,23 @@ class UserDataService {
             // Metadata listing must not fail the whole export.
         }
 
+        $generationMeta = [];
+        if ($this->vectorGenerations !== null) {
+            $cursor = '';
+            do {
+                $page = $this->vectorGenerations->page($userId, $cursor);
+                foreach ($page as $row) $generationMeta[] = $row;
+                if ($page !== []) $cursor = $page[count($page) - 1]['id'];
+            } while (count($page) === 50);
+        }
+
         return [
             'user' => $userId,
             'exported_at' => time(),
             'chats' => $this->chatStore->exportAll($userId),
             'knowledge' => $knowledge,
             'index_meta' => $indexMeta,
+            'vector_generations' => $generationMeta,
         ];
     }
 
@@ -99,6 +111,11 @@ class UserDataService {
             $this->documentMapper->deleteByUser($userId);
         } catch (\Throwable $e) {
             $this->logger->warning('eva_ai: index cleanup failed on account deletion; document ownership retained for retry', ['user' => $userId]);
+        }
+        try {
+            $this->vectorGenerations?->deleteUser($userId);
+        } catch (\Throwable $e) {
+            $this->logger->warning('eva_ai: vector-generation metadata cleanup failed on account deletion', ['user' => $userId]);
         }
         try {
             $this->embeddingCache->clearUser($userId);

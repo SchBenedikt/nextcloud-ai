@@ -2,6 +2,12 @@
 
 ## [Unreleased]
 
+### Backend migration foundations (1.18.0 schema)
+
+- Add immutable, user-owned vector-generation metadata and an explicit OCC preparation command.
+- Keep SQL retrieval and legacy embeddings as the installation default; no external database is activated.
+- Add optional vector-store/filter contracts and account cleanup for local generation metadata.
+
 ### Dependency security
 
 - Update DOMPurify, Markdown-it, follow-redirects and fast-uri to patched versions, and raise the direct Markdown-it and DOMPurify minimums.

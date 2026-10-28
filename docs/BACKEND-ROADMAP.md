@@ -202,3 +202,14 @@ A chunk-deletion failure retains the ownership mapping for a retry while the
 remaining best-effort account cleanup continues. This prevents newly orphaning
 chunks in this path; it does not retroactively identify owners of historical
 orphans or implement a durable retry queue. Those remain storage-erasure work.
+
+### Stage 06 generation schema and contracts
+
+The 1.18.0 additive migration, immutable VectorGeneration, tenant-bound repository,
+VectorStore/SearchFilters contracts and explicit prepare/list/fail OCC operations
+are implemented. Old chunks remain legacy/unassigned and SQL retrieval remains
+default. There is no unverified activation path. Local generation metadata joins
+account cleanup; durable remote tombstones must precede any remote writes.
+VECTOR-STORAGE.md documents fields, invariants, compatibility and rollback limits.
+Schema execution, concurrency and database-portability validation remain pending;
+syntax checking is not proof of a successful upgrade or backfill verification.

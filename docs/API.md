@@ -216,3 +216,13 @@ The legacy `/api/mailIndex`, `/api/talkIndex`, `/api/indexStop`,
 Clients may retain a private copy but must revalidate before reusing it; an
 explicit refresh therefore sees new indexing results. Chunk previews retain
 the existing 200-row bounded pagination contract.
+
+### Vector-generation metadata in personal data export
+
+The existing authenticated personal-data export adds `vector_generations`, an
+array of the requesting account's generation metadata (empty before preparation).
+Rows include immutable embedding/collection identity and lifecycle state, with an
+endpoint hash rather than a URL. Provider credentials are not included. Retrieval
+of this metadata is ownership-filtered and keyset-paged; a metadata read failure
+fails the export rather than falsely presenting it as complete. This addition
+creates no vector-management HTTP routes; generation preparation is OCC-only.
