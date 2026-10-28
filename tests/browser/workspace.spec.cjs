@@ -115,3 +115,62 @@ test('all native settings sections render on mobile and retain browser navigatio
 	}
 	expect(errors).toEqual([])
 })
+
+test('a delayed briefing response preserves newer edits in another settings section', async ({ page }) => {
+	const { calls, errors, settings } = await openWorkspace(page, { view: 'settings' })
+	let release
+	let started
+	const pending = new Promise(resolve => { started = resolve })
+	const gate = new Promise(resolve => { release = resolve })
+	await page.route('**/api/settings', async route => {
+		const body = route.request().postDataJSON()
+		if (!body.proactive_schedules || body.top_k) { await route.fallback(); return }
+		const reply = { ...settings, ...body }
+		Object.assign(settings, body)
+		started()
+		await gate
+		await route.fulfill({ contentType: 'application/json', body: JSON.stringify(reply) })
+	})
+	await page.getByRole('link', { name: 'Automation', exact: true }).click()
+	await page.getByText('Enable scheduled briefings', { exact: true }).click()
+	await expect(page.getByRole('checkbox', { name: 'Enable scheduled briefings', exact: true })).toBeChecked()
+	await page.getByRole('textbox', { name: 'What should EVA do?', exact: true }).fill('Summarize my calendar')
+	await page.getByRole('button', { name: 'Add briefing', exact: true }).click()
+	await pending
+	await page.getByRole('link', { name: 'Documents', exact: true }).click()
+	const sources = page.getByRole('spinbutton', { name: 'Sources per answer', exact: true })
+	await sources.fill('7')
+	release()
+	await expect(sources).toHaveValue('7')
+	await expect.poll(() => calls.some(call => call.method === 'PUT' && call.body?.top_k === '7')).toBe(true)
+	expect(errors).toEqual([])
+})
+
+test('a delayed provider refresh preserves newer edits and autosaves them', async ({ page }) => {
+	const { calls, errors, settings } = await openWorkspace(page, { view: 'settings' })
+	await expect(page.getByRole('button', { name: 'Add AI provider', exact: true })).toBeEnabled()
+	let release
+	let started
+	const pending = new Promise(resolve => { started = resolve })
+	const gate = new Promise(resolve => { release = resolve })
+	await page.route('**/api/status', async route => {
+		const reply = { settings: { ...settings }, models: [], provider: { roles: {} }, indexing: false }
+		started()
+		await gate
+		await route.fulfill({ contentType: 'application/json', body: JSON.stringify(reply) })
+	})
+	await page.getByRole('button', { name: 'Add AI provider', exact: true }).click()
+	const dialog = page.getByRole('dialog')
+	await dialog.getByRole('textbox', { name: 'Display name', exact: true }).fill('Test provider')
+	await dialog.getByRole('textbox', { name: 'Chat model', exact: true }).fill('test-model')
+	await dialog.getByRole('textbox', { name: 'API key', exact: true }).fill('synthetic-key')
+	await dialog.getByRole('button', { name: 'Save & use provider' }).click()
+	await pending
+	await page.getByRole('link', { name: 'Documents', exact: true }).click()
+	const sources = page.getByRole('spinbutton', { name: 'Sources per answer', exact: true })
+	await sources.fill('7')
+	release()
+	await expect(sources).toHaveValue('7')
+	await expect.poll(() => calls.some(call => call.method === 'PUT' && call.body?.top_k === '7')).toBe(true)
+	expect(errors).toEqual([])
+})

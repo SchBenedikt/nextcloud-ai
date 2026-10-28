@@ -44,7 +44,9 @@ export function useBriefingSettings({ f, fill, setMessage }) {
 		}
 		try {
 			const settings = await api('PUT', 'settings', payload)
-			if (settings) fill(settings)
+			if (!settings || Object.keys(payload).some(key => settings[key] === undefined || settings[key] === null)) throw new Error(t('The settings save response was incomplete.'))
+			// A briefing request only confirms its own fields, never other form edits.
+			fill(Object.fromEntries(Object.keys(payload).map(key => [key, settings[key]])), payload)
 			return true
 		} catch (error) {
 			setMessage('error', t('The briefing could not be saved: {error}', { error: errMsg(error) }))
