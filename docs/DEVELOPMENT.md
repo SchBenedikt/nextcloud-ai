@@ -168,3 +168,11 @@ Run `npm run test:browser` after changing these paths. Changes under `src/`
 also require `npm run build` and committing all changed or removed `js/` files.
 See [Performance](PERFORMANCE.md) for request ownership and
 [Workspace migration](WORKSPACE-MIGRATION.md) for deployment checks.
+
+### Reproducible production builds
+
+Production builds run loaders and minification serially. Parallel production
+compilation produced identical JavaScript but inconsistent Vue source-map
+positions across fresh builds. Serial compilation keeps committed bundles and
+maps reproducible while bounding memory on smaller Nextcloud hosts. Development
+builds remain parallel; `EVA_LOW_MEMORY_BUILD=1` also bounds development builds.

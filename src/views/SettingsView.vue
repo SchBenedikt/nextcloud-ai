@@ -42,13 +42,7 @@
 				<PersonalSettings v-if="group === 'personal'" />
 				<AdvancedSettings v-if="group === 'advanced'" />
 			</fieldset>
-			<template v-if="group === 'advanced'">
-				<NcSettingsSection :name="$t('Diagnostics & activity')">
-					<p v-if="health" role="status">{{ health.ok ? $t('System healthy') : $t('System needs attention') }}</p>
-					<p v-if="healthError" role="alert">{{ healthError }}</p>
-					<div class="button-group"><NcButton :disabled="healthLoading" @click="loadHealth">{{ $t('Refresh diagnosis') }}</NcButton><NcButton @click="$emit('navigate', 'metrics')">{{ $t('Usage metrics') }}</NcButton><NcButton @click="$emit('navigate', 'runs')">{{ $t('Background tasks') }}</NcButton></div>
-				</NcSettingsSection>
-			</template>
+			<SettingsDiagnostics v-if="group === 'advanced'" :health="health" :health-error="healthError" :health-loading="healthLoading" @refresh="loadHealth" @navigate="$emit('navigate', $event)" />
 		</main>
 
 		<NcModal v-if="connectorToRemove" size="small" :name="$t('Remove connector')" @close="closeConnectorRemoval">
@@ -68,7 +62,8 @@
 
 <script>
 import { computed, defineAsyncComponent, provide, toRef } from 'vue'
-import { NcButton, NcModal, NcNoteCard, NcSettingsSection } from '@nextcloud/vue'
+import { NcButton, NcModal, NcNoteCard } from '@nextcloud/vue'
+import SettingsDiagnostics from '../components/settings/SettingsDiagnostics.vue'
 import { settingsSections } from '../lib/settings-sections'
 import { useEvaSettings } from '../composables/useEvaSettings'
 const GeneralSettings = defineAsyncComponent(() => import('../components/settings/GeneralSettings.vue'))
@@ -80,7 +75,7 @@ const AdvancedSettings = defineAsyncComponent(() => import('../components/settin
 
 export default {
 	name: 'SettingsView',
-	components: { NcButton, NcModal, NcNoteCard, NcSettingsSection, GeneralSettings, KnowledgeSettings, ToolsSettings, AutomationSettings, PersonalSettings, AdvancedSettings },
+	components: { SettingsDiagnostics, NcButton, NcModal, NcNoteCard, GeneralSettings, KnowledgeSettings, ToolsSettings, AutomationSettings, PersonalSettings, AdvancedSettings },
 	props: { section: { type: String, default: 'general' } },
 	emits: ['navigate'],
 	setup(props) {
