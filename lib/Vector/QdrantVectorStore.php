@@ -7,7 +7,9 @@ namespace OCA\EvaAi\Vector;
 /** Optional dense index. It is not selected by Searcher or indexing yet. */
 class QdrantVectorStore implements VectorStore {
     private ?\Closure $beforeTransfer = null;
-    private const INDEXES = ['user_id' => 'keyword', 'generation_id' => 'keyword', 'document_id' => 'integer', 'source' => 'keyword', 'scope_paths' => 'keyword'];
+    // Qdrant numeric range comparisons use doubles; retain exact revision ordering.
+    private const MAX_REVISION = 9007199254740991;
+    private const INDEXES = ['user_id' => 'keyword', 'generation_id' => 'keyword', 'document_id' => 'integer', 'source' => 'keyword', 'scope_paths' => 'keyword', 'revision' => 'integer', 'deleted' => 'bool'];
     public function __construct(private QdrantConnection $connection, private ?string $targetHash = null) {}
 
     public function forTarget(string $targetHash, ?\Closure $beforeTransfer = null): self {
@@ -59,7 +61,8 @@ class QdrantVectorStore implements VectorStore {
         }
     }
 
-    public function upsert(VectorGeneration $generation, array $points): void {
+    public function upsert(VectorGeneration $generation, array $points, int $revision): void {
+        $this->validateRevision($revision);
         if (!array_is_list($points) || count($points) > 200) throw new VectorStoreException('invalid_batch');
         if ($points === []) return;
         $prepared = []; $ids = []; $elements = 0;
@@ -77,19 +80,47 @@ class QdrantVectorStore implements VectorStore {
             if ($elements > 250000) throw new VectorStoreException('batch_too_large');
             $ids[$point['id']] = true;
             $prepared[] = ['id' => $point['id'], 'vector' => ['dense' => array_map('floatval', $point['vector'])],
-                'payload' => ['user_id' => $this->tenant($generation), 'generation_id' => $generation->id,
+                'payload' => ['user_id' => $this->tenant($generation), 'generation_id' => $generation->id, 'revision' => $revision, 'deleted' => false,
                     'document_id' => $point['document_id'], 'file_id' => $point['file_id'], 'chunk_index' => $point['chunk_index'],
                     'source' => $point['source'], 'content_hash' => $point['content_hash'], 'scope_paths' => $this->scopes($point['path'])]];
         }
         // Validate the entire batch before the first network request.
-        $this->completed($this->request('put', $this->collection($generation) . '/points?wait=true&ordering=strong', ['points' => $prepared]));
+        $this->writeRevision($generation, $prepared, $revision, false);
     }
 
-    public function deleteDocument(VectorGeneration $generation, int $documentId): void {
-        if ($documentId < 1) throw new VectorStoreException('invalid_document');
-        $filter = $this->filter($generation, new SearchFilters(documentIds: [$documentId]));
-        $data = $this->request('post', $this->collection($generation) . '/points/delete?wait=true&ordering=strong', ['filter' => $filter], true);
-        if ($data !== null) $this->completed($data);
+    public function tombstoneChunks(VectorGeneration $generation, array $chunkIds, int $revision): void {
+        $this->validateRevision($revision);
+        if (!array_is_list($chunkIds) || count($chunkIds) > 200) throw new VectorStoreException('invalid_batch');
+        if ($chunkIds === []) return;
+        if (count($chunkIds) * $generation->dimension > 250000) throw new VectorStoreException('batch_too_large');
+        // Overwrite the old embedding and metadata; a tombstone must reveal no file content.
+        $dummy = array_fill(0, $generation->dimension, 0.0); $dummy[0] = 1.0;
+        $points = []; $seen = [];
+        foreach ($chunkIds as $id) {
+            if (!is_int($id) || $id < 1 || isset($seen[$id])) throw new VectorStoreException('invalid_point');
+            $seen[$id] = true;
+            $points[] = ['id' => $id, 'vector' => ['dense' => $dummy], 'payload' => [
+                'user_id' => $this->tenant($generation), 'generation_id' => $generation->id,
+                'revision' => $revision, 'deleted' => true]];
+        }
+        // Materialize even missing points: physical deletion would allow a late insert.
+        $this->writeRevision($generation, $points, $revision, true);
+    }
+
+    private function writeRevision(VectorGeneration $generation, array $points, int $revision, bool $deleted): void {
+        $must = [['key' => 'user_id', 'match' => ['value' => $this->tenant($generation)]],
+            ['key' => 'generation_id', 'match' => ['value' => $generation->id]],
+            ['key' => 'revision', 'range' => ['lte' => $revision]]];
+        // Tombstones are terminal for a stable ID, even for a higher-revision upsert.
+        if (!$deleted) $must[] = ['key' => 'deleted', 'match' => ['value' => false]];
+        $this->completed($this->request('put', $this->collection($generation) . '/points?wait=true&ordering=strong',
+            ['points' => $points, 'update_filter' => ['must' => $must]]));
+        // "completed" confirms execution, not that every conditional update matched.
+        // A later generation verifier must compare IDs, revisions and deletion state.
+    }
+
+    private function validateRevision(int $revision): void {
+        if ($revision < 1 || $revision > self::MAX_REVISION) throw new VectorStoreException('invalid_revision');
     }
 
     /** A missing collection already satisfies terminal generation erasure. */
@@ -107,7 +138,7 @@ class QdrantVectorStore implements VectorStore {
         $data = $this->request('post', $this->collection($generation) . '/points/query?timeout=3',
             ['query' => array_map('floatval', $queryVector), 'using' => 'dense', 'limit' => $topK,
                 'filter' => $this->filter($generation, $filters), 'with_vector' => false,
-                'with_payload' => ['user_id', 'generation_id', 'document_id', 'source', 'scope_paths']], false, 5);
+                'with_payload' => ['user_id', 'generation_id', 'document_id', 'source', 'scope_paths', 'revision', 'deleted']], false, 5);
         $this->ok($data);
         $points = $data['result']['points'] ?? null;
         if (!is_array($points) || !array_is_list($points) || count($points) > $topK) throw new VectorStoreException('invalid_search_response');
@@ -118,6 +149,8 @@ class QdrantVectorStore implements VectorStore {
             $score = $point['score'] ?? null;
             if (!is_int($id) || $id < 1 || isset($seen[$id]) || (!is_int($score) && !is_float($score)) || !is_finite((float)$score)
                 || !is_array($payload) || ($payload['user_id'] ?? '') !== $this->tenant($generation) || ($payload['generation_id'] ?? '') !== $generation->id
+                || ($payload['deleted'] ?? null) !== false
+                || !is_int($payload['revision'] ?? null) || $payload['revision'] < 1 || $payload['revision'] > self::MAX_REVISION
                 || !is_int($payload['document_id'] ?? null) || $payload['document_id'] < 1
                 || !in_array($payload['source'] ?? null, ['files', 'mail', 'talk'], true)
                 || ($filters->source !== null && $payload['source'] !== $filters->source)
@@ -127,14 +160,15 @@ class QdrantVectorStore implements VectorStore {
                 throw new VectorStoreException('search_isolation_violation');
             }
             $seen[$id] = true;
-            $results[] = ['chunkId' => $id, 'score' => (float)$score];
+            $results[] = ['chunkId' => $id, 'revision' => $payload['revision'], 'score' => (float)$score];
         }
         return $results;
     }
 
     private function filter(VectorGeneration $generation, SearchFilters $filters): array {
         $must = [['key' => 'user_id', 'match' => ['value' => $this->tenant($generation)]],
-            ['key' => 'generation_id', 'match' => ['value' => $generation->id]]];
+            ['key' => 'generation_id', 'match' => ['value' => $generation->id]],
+            ['key' => 'deleted', 'match' => ['value' => false]]];
         if ($filters->source !== null) $must[] = ['key' => 'source', 'match' => ['value' => $filters->source]];
         if ($filters->documentIds !== []) $must[] = ['key' => 'document_id', 'match' => ['any' => $filters->documentIds]];
         if ($filters->scopePath !== null && $filters->scopePath !== '') $must[] = ['key' => 'scope_paths', 'match' => ['value' => hash('sha256', $filters->scopePath)]];

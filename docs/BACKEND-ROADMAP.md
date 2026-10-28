@@ -265,3 +265,14 @@ target identity at that boundary. CLI `outbox run` reports execution counts.
 Chunk operations remain unclaimed; there are no automatic point writes or primary
 reads. VECTOR-OUTBOX.md states the soft-budget, process-suspension, account fencing
 and retention limits. Runtime crash/race/remote validation remains outstanding.
+
+### Stage 08 remote point revision boundary
+
+The adapter requires monotonic journal revisions for live point writes, rejects
+older overwrites, materializes terminal tombstones for exact chunk IDs (including
+never-delivered points), and overwrites deleted embeddings/metadata with a unit
+vector and minimal deletion payload. Physical document deletion is removed from
+the interface. Search forces deleted=false and returns checked revisions for later
+SQL hydration. QDRANT.md records the missing-point insertion trap and safe-integer
+bound. No point-event consumer or mutation producer is enabled by this change;
+remote concurrency and deletion semantics remain unverified acceptance gates.

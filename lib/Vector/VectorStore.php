@@ -11,9 +11,12 @@ interface VectorStore {
      * Implementations enforce tenant and generation payload, never caller overrides.
      * @param list<array{id:int,document_id:int,file_id:int,chunk_index:int,source:string,path:string,content_hash:string,vector:array}> $points
      */
-    public function upsert(VectorGeneration $generation, array $points): void;
-    public function deleteDocument(VectorGeneration $generation, int $documentId): void;
-    /** @return list<array{chunkId:int,score:float}> Tenant-filtered IDs only; hydrate text from owned SQL rows. */
+    public function upsert(VectorGeneration $generation, array $points, int $revision): void;
+    /** Replace exact stable IDs with terminal tombstones, including points not delivered yet.
+     * @param list<int> $chunkIds Never reuse these IDs within the generation.
+     */
+    public function tombstoneChunks(VectorGeneration $generation, array $chunkIds, int $revision): void;
+    /** @return list<array{chunkId:int,revision:int,score:float}> Hydrate owned SQL rows only at the returned revision. */
     public function search(VectorGeneration $generation, array $queryVector, int $topK, SearchFilters $filters): array;
     /** @return array{available:bool,code:string} No endpoint secrets or raw remote errors. */
     public function health(): array;

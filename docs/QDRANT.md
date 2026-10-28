@@ -17,39 +17,74 @@ Protocol references used during implementation:
 - [Create collections](https://api.qdrant.tech/api-reference/collections/create-collection)
 - [Create payload indexes](https://api.qdrant.tech/api-reference/indexes/create-field-index)
 - [Upsert points](https://api.qdrant.tech/api-reference/points/upsert-points)
-- [Delete by filter](https://api.qdrant.tech/api-reference/points/delete-points)
+- [Conditional point updates](https://qdrant.tech/documentation/manage-data/points/#conditional-updates)
 - [Query points](https://api.qdrant.tech/api-reference/search/query-points)
 
 Each server-owned generation uses its own randomly named collection and a named
 `dense` vector with pinned dimension and Cosine distance. Preparation checks the
-existing vector schema and indexes tenant, generation, document, source and scope
+existing vector schema and indexes tenant, generation, document, source, scope, revision and deletion
 fields before data ingestion. It rejects incompatible schemas rather than silently
 reusing a differently shaped collection.
 
 Points use stable positive SQL chunk IDs within that collection. Payloads contain
 SHA-256 tenant tokens, generation IDs, document/file/chunk identifiers, source,
-content hash and hashed path ancestors. Raw account names, file paths and document
+content hash, monotonic revision, deletion state and hashed path ancestors. Raw account names, file paths and document
 text are not copied. These unsalted tokens are pseudonyms, not encryption or proof
 against guessing; vectors and identifiers remain personal data requiring access
 controls and retention policy.
 
 Folder filtering is exact ancestor-token matching, including full-path equality,
 so `Notes` does not match `NotesArchive`. It does not require a newer prefix-index
-feature. Every search and document-delete forces tenant AND generation filters;
+feature. Every search forces tenant AND generation AND `deleted=false` filters;
 callers cannot provide arbitrary filter JSON. Returned payloads are checked again
 for identity/source/scope/document violations. Any violation fails the entire
-request instead of silently hiding a violated invariant. Search returns only IDs
-and scores; future readers must still hydrate and recheck SQL ownership.
+request instead of silently hiding a violated invariant. Search returns IDs,
+revisions and scores; future readers must hydrate owned SQL rows at exactly the
+returned revision and reject stale metadata.
 
 Upsert validates the complete batch before its first request, enforces generation
 dimension and finite nonzero vectors, and caps batches at 200 points / 250,000
 vector elements / 8 MiB encoded request. Scope ancestry is capped at 128 levels.
 Writes use wait=true and strong ordering and only accept completed operations.
-Document deletion is filtered and idempotent; an absent collection is already
-empty. Search is bounded to 100 results, 3 seconds of server time and 5 seconds
+Chunk deletion uses exact-ID tombstones as detailed below. Search is bounded to 100 results, 3 seconds of server time and 5 seconds
 HTTP time. Health uses 3 seconds; other requests cap at 30 seconds. Responses are
 limited to 2 MiB with transfer progress and read bounds. There are no hidden
 unbounded retries. An outbox worker must perform bounded, observable retries.
+
+## Revision and terminal chunk deletion protocol
+
+Upsert now requires one positive monotonic journal revision per batch. Conditional
+updates require the existing tenant/generation and a stored revision no greater
+than the incoming revision. Live updates also require `deleted=false`: a chunk
+tombstone is terminal even when a later erroneous live write has a larger revision.
+Revisions are capped at 2^53-1 to preserve exact ordering in Qdrant's numeric range
+comparisons. Stop synchronization rather than round a larger journal ID.
+
+The former physical document-delete operation has been removed from the contract.
+SQL deletion must journal every affected stable chunk ID before discarding it,
+including chunks whose first remote upsert has not completed. `tombstoneChunks`
+inserts or replaces those IDs with only tenant/generation/revision/deleted metadata
+and a non-content unit vector. Existing file identifiers, scope hashes, content
+hash and embedding are overwritten. Tombstones are retained for the lifetime of
+the collection; never reuse a chunk ID or physically purge its tombstone while
+old writes can still arrive. Whole-generation erasure may remove the collection;
+workers must never recreate it automatically.
+
+This deliberately uses conditional upsert's missing-point insertion behavior:
+deleting only existing remote points misses a delayed first insert. The official
+Qdrant documentation above explains that an `update_filter` does not prevent a
+missing point from being inserted. A materialized tombstone blocks that late live
+write. Strong ordering and wait=true remain required. A completed conditional
+operation is not proof that each point matched: subsequent verification must
+compare exact IDs, revisions and deletion state, not just delivery acknowledgements.
+
+Unversioned points fail the update predicate and the read checks. An earlier
+experimental nonempty collection must be rebuilt in a new generation, never
+silently adopted. This stack has not populated collections. Mutation producers,
+current-SQL/lease guards and point-event consumers are still pending, so this
+adapter protocol alone does not enable synchronization. Request-shape, reordered
+upsert/delete, missing-point deletion, duplicate retry, metadata erasure and
+multi-node concurrency checks remain unexecuted while tests are suspended.
 
 ## Configure explicitly
 
