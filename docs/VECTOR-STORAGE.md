@@ -80,6 +80,13 @@ in this stage; see VECTOR-OUTBOX.md for the concurrency and recovery boundaries.
 
 ## Vector-store boundary
 
+Building text/vectors now have separate generation-tagged SQL rows and stable
+chunk IDs. Legacy reads and counts explicitly select unassigned rows, preserving
+rollback and preventing mixed-model ranking. The internal writer commits chunks
+and upsert revisions atomically; provider-pinned backfill and deletion/consumer
+integration remain pending. The 1.18.3 slot index and native preparation counter
+are described in [GENERATION-CHUNKS.md](GENERATION-CHUNKS.md). No read mode changes.
+
 The `VectorStore` contract defines generation-bound revisioned upsert, exact chunk
 tombstones, search and sanitized health results. Search returns IDs/revisions/scores;
 authoritative text and ownership must be hydrated from SQL at the matching revision.

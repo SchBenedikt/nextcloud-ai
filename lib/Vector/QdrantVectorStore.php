@@ -74,7 +74,14 @@ class QdrantVectorStore implements VectorStore {
                 || !is_string($point['path'] ?? null) || $point['path'] === ''
                 || !is_string($point['content_hash'] ?? null) || preg_match('/^[a-f0-9]{64}$/D', $point['content_hash']) !== 1
                 || !is_array($point['vector'] ?? null)) throw new VectorStoreException('invalid_point');
-            new SearchFilters($point['path']); // Canonical scope syntax, not arbitrary filter JSON.
+            if ($point['source'] === 'files') {
+                new SearchFilters($point['path']);
+                $scopes = $this->scopes($point['path']);
+            } else {
+                if (!str_starts_with($point['path'], $point['source'] . '://') || strlen($point['path']) > 4096
+                    || preg_match('/[\x00-\x1f\x7f]/', $point['path'])) throw new VectorStoreException('invalid_point');
+                $scopes = []; // Mail/Talk URIs are not Files folder ancestors.
+            }
             $generation->validateVector($point['vector']);
             $elements += count($point['vector']);
             if ($elements > 250000) throw new VectorStoreException('batch_too_large');
@@ -82,7 +89,7 @@ class QdrantVectorStore implements VectorStore {
             $prepared[] = ['id' => $point['id'], 'vector' => ['dense' => array_map('floatval', $point['vector'])],
                 'payload' => ['user_id' => $this->tenant($generation), 'generation_id' => $generation->id, 'revision' => $revision, 'deleted' => false,
                     'document_id' => $point['document_id'], 'file_id' => $point['file_id'], 'chunk_index' => $point['chunk_index'],
-                    'source' => $point['source'], 'content_hash' => $point['content_hash'], 'scope_paths' => $this->scopes($point['path'])]];
+                    'source' => $point['source'], 'content_hash' => $point['content_hash'], 'scope_paths' => $scopes]];
         }
         // Validate the entire batch before the first network request.
         $this->writeRevision($generation, $prepared, $revision, false);

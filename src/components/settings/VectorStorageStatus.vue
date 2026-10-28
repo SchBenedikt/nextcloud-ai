@@ -11,6 +11,7 @@
 				<div><dt>{{ $t('Optional Qdrant connection') }}</dt><dd>{{ !status.connection.configured ? $t('Not configured') : status.connection.enabled ? $t('Configured · requests allowed') : $t('Configured · requests disabled') }}</dd></div>
 				<div><dt>{{ $t('Generation cleanup') }}</dt><dd>{{ status.erasure_worker_enabled ? $t('Enabled') : $t('Paused') }}</dd></div>
 				<div><dt>{{ $t('Chunk synchronization') }}</dt><dd>{{ $t('Not available yet') }}</dd></div>
+				<div><dt>{{ $t('Generation chunks in SQL') }}</dt><dd>{{ status.staged_chunks }}</dd></div>
 				<div><dt>{{ $t('Waiting operations') }}</dt><dd>{{ status.queue.pending }}</dd></div>
 				<div><dt>{{ $t('Claimed operations') }}</dt><dd>{{ status.queue.processing }}</dd></div>
 				<div><dt>{{ $t('Operations needing attention') }}</dt><dd>{{ status.queue.dead }}</dd></div>
@@ -19,6 +20,7 @@
 				{{ $t('Some background operations exhausted their retries. An administrator needs to inspect them before retrying.') }}
 			</NcNoteCard>
 			<p class="storage-hint">{{ $t('Configuration status is not a connection test. Generation cleanup only removes retired search collections; it does not index files or switch search backends.') }}</p>
+			<p v-if="status.staged_chunks > 0" class="storage-hint">{{ $t('Prepared generation chunks are separate from the SQL search index. Their presence does not mean migration is verified or active.') }}</p>
 		</template>
 		<NcButton variant="secondary" :disabled="loading" @click="refresh">{{ $t('Refresh storage status') }}</NcButton>
 		<VectorConnectionSettings :enabled="status?.connection?.enabled === true" @changed="refresh" />
@@ -48,6 +50,7 @@ export default {
 			try {
 				const result = await api('GET', 'admin/vector-storage', null, { signal: controller.signal, retries: 0, timeout: 10000 })
 				if (result?.available !== true || result.retrieval_backend !== 'sql_legacy'
+					|| !Number.isSafeInteger(result.staged_chunks) || result.staged_chunks < 0
 					|| result.chunk_sync_available !== false || !result.connection
 					|| ['configured', 'enabled'].some(key => typeof result.connection[key] !== 'boolean')
 					|| typeof result.erasure_worker_enabled !== 'boolean'

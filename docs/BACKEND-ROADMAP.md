@@ -344,3 +344,20 @@ No unblock/prune or general cleanup retry coordinator exists yet. SQL writes and
 chunk consumers are still pending; no remote activation, migration lifecycle or
 concurrency gate is verified. Privacy documentation now distinguishes local
 extraction/storage from provider-dependent inference and retained deletion state.
+
+### Stage 08 isolated building chunks and atomic upsert intent
+
+GenerationChunkRepository now stores separate building-generation rows in the
+existing chunk table, preserving NULL-generation legacy text/vectors. It locks
+owner/generation/source, rejects stale document stamps, validates prepared vectors
+and commits row changes plus monotonic journal revisions atomically. Repeated
+identical slots are no-ops; the 1.18.3 unique slot index supports bounded lookup.
+All nine legacy read/count paths explicitly exclude generation rows, and later
+delivery hydration checks ownership, revision and current source metadata. Native
+administration displays an offline preparation count, without enabling delivery.
+
+The live Indexer/backfill does not invoke this internal writer yet. General chunk
+deletion/metadata invalidation/reset integration, point consumers, actual source/
+provider-pinned backfill and verification remain pending. GENERATION-CHUNKS.md
+records those boundaries and storage overhead. Syntax/build checks do not verify
+SQL lifecycle, concurrency, isolation or rollout readiness.

@@ -14,7 +14,7 @@ configuration and actionable outbox counts, never contacting Qdrant or an
 embedding provider. The OCS data on success is:
 
 ```json
-{"available":true,"retrieval_backend":"sql_legacy","connection":{"enabled":false,"configured":false,"key_configured":false},"erasure_worker_enabled":false,"chunk_sync_available":false,"queue":{"pending":0,"processing":0,"dead":0},"observed_at":1793209009}
+{"available":true,"retrieval_backend":"sql_legacy","connection":{"enabled":false,"configured":false,"key_configured":false},"erasure_worker_enabled":false,"chunk_sync_available":false,"staged_chunks":0,"queue":{"pending":0,"processing":0,"dead":0},"observed_at":1793209009}
 ```
 
 `observed_at` is a Unix timestamp. Claimed operations can include expired leases;
@@ -25,6 +25,10 @@ flags do not establish remote reachability or collection readiness. SQL remains
 the only selected retrieval backend in this stack; chunk synchronization is not
 available. The future rollout implementation must update this contract and UI
 together when those modes become real.
+
+`staged_chunks` counts generation-tagged SQL rows separately from the NULL-
+generation legacy index. It does not assert delivery, verification or readiness.
+Both native admin surfaces display it; count failures make the snapshot unavailable.
 
 Metadata/database failures return HTTP 503 with `available=false` (plus the common
 error envelope), never zeroed healthy counters or raw database errors. Non-admins
