@@ -233,10 +233,6 @@ export default {
 }
 .chatview-root .racts .ract:hover,
 .chatview-root .racts .rcopy:hover { background: var(--color-background-hover, #e5e5e5); }
-.chatview-root .racts .rspeech-rate,
-.chatview-root .racts .rspeech-voice { align-self: center; min-height: 28px; max-width: 110px; padding: 2px 6px; border: 1px solid var(--color-border, #bbb); border-radius: 6px; color: var(--color-main-text, #222); background: var(--color-main-background, #fff); font: inherit; font-size: 11px; }
-.chatview-root .racts .rspeech-rate:focus-visible,
-.chatview-root .racts .rspeech-voice:focus-visible { outline: 2px solid var(--color-primary-element, #00679c); outline-offset: 1px; }
 .chatview-root .racts button:disabled { opacity: .55; cursor: not-allowed; }
 @media (prefers-reduced-motion: reduce) { .chatview-root .racts { transition: none; } }
 
@@ -407,4 +403,118 @@ export default {
 .customize-actions .cbtn { padding-inline: 16px; }
 .chatview-root .cbtn-ghost { background: transparent; border: 1px solid var(--color-border, #ccd0d4); color: var(--color-main-text, #222); }
 .customize-err { margin-top: 10px; color: var(--color-error, #e9322d); font-size: 12px; white-space: pre-wrap; }
+
+/* Keep the familiar Nextcloud frame while giving the conversation room to read. */
+.chatview-root {
+	padding: 0 clamp(16px, 3vw, 40px);
+}
+
+.chatview-root .head {
+	width: min(100%, 1120px);
+	min-height: 56px;
+	padding-block: 8px;
+	border-bottom-color: color-mix(in srgb, var(--color-border, #ddd) 65%, transparent);
+}
+
+.chatview-root .head h1 {
+	font-size: 16px;
+	font-weight: 600;
+}
+
+.chatview-root .chat-context,
+.chatview-root .chat-log,
+.chatview-root .chatform,
+.chatview-root .voice-status,
+.chatview-root .image-attachments {
+	width: min(100%, 960px);
+}
+
+.chatview-root .chat-context {
+	margin-top: 8px;
+}
+
+.chatview-root .chat-log {
+	gap: 28px;
+	padding: 32px 0 24px;
+}
+
+.chatview-root .rm {
+	width: 100%;
+	max-width: 900px;
+	margin-inline: auto;
+}
+
+.chatview-root .rb {
+	max-width: 100%;
+	font-size: 15px;
+	line-height: 1.7;
+}
+
+.chatview-root .rm.user .rb {
+	max-width: min(82%, 720px);
+	padding: 10px 16px;
+	border-radius: 20px 20px 5px 20px;
+}
+
+.chatview-root .rm.assistant .rb {
+	padding-right: 0;
+}
+
+.chatview-root .chatform {
+	gap: 10px;
+	margin-bottom: max(12px, env(safe-area-inset-bottom));
+	padding: 9px 10px 9px 18px;
+	border: 1px solid var(--color-border, #d5d7da);
+	border-radius: 24px;
+	background: var(--color-main-background, #fff);
+	box-shadow: 0 2px 10px color-mix(in srgb, var(--color-main-text, #222) 7%, transparent);
+	transition: border-color .15s ease, box-shadow .15s ease;
+}
+
+.chatview-root .chatform:focus-within {
+	border-color: color-mix(in srgb, var(--color-primary-element, #00679c) 60%, var(--color-border, #d5d7da));
+	box-shadow: 0 2px 12px color-mix(in srgb, var(--color-primary-element, #00679c) 12%, transparent);
+}
+
+.chatview-root .chatform input {
+	min-height: 42px;
+	padding: 8px 0;
+	border: 0;
+	border-radius: 0;
+	outline: 0;
+	background: transparent;
+	font-size: 15px;
+}
+
+.chatview-root .chatform input:focus {
+	border: 0;
+	outline: 0;
+	box-shadow: none;
+}
+
+.chatview-root .cbtn {
+	min-width: 42px;
+	min-height: 42px;
+	padding: 8px 15px;
+	border-radius: 18px;
+}
+
+.chatview-root .cbtn-stop {
+	border-radius: 18px;
+}
+
+@media (max-width: 600px) {
+	.chatview-root { padding: 36px 12px 0; }
+	.chatview-root .head { min-height: 48px; }
+	.chatview-root .chat-log { gap: 20px; padding-top: 18px; padding-bottom: 16px; }
+	.chatview-root .rm.user .rb { max-width: 90%; }
+	.chatview-root .rb { font-size: 15px; }
+	.chatview-root .chatform { flex-wrap: nowrap; padding-inline-start: 14px; }
+	.chatview-root .chatform input { flex: 1 1 auto; min-width: 0; }
+	.chatview-root .cbtn { flex: 0 0 auto; padding: 8px 12px; }
+}
+
+@media (hover: none) {
+	.chatview-root .racts { opacity: 1; }
+}
 </style>

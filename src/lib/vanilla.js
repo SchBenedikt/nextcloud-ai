@@ -8,7 +8,6 @@ import { buildConfirmForm } from './confirmForms'
 import { mdToHtml, citedSources, formatToolName, copyText, installImageFallback, apiErrorMessage } from './chat-utils'
 import { createChatExport, createChatArchive } from './chat-export'
 import { createPromptHistory } from './prompt-history'
-import { createSpeechService } from './speech'
 
 /* EvaAi – Vanilla-Chat-Mount.
  * Wird von ChatView.vue aufgerufen und rendert den kompletten Chat
@@ -22,7 +21,6 @@ import { createSpeechService } from './speech'
 export function mountChat(root, opts = {}) {
 	if (!root || root.__evaAi) return
 	root.__evaAi = true
-	const speech = createSpeechService()
 
 	const { onRecent } = opts
 	let chatId = opts.chatId || null
@@ -299,84 +297,6 @@ export function mountChat(root, opts = {}) {
 			cb.textContent = '⧉'
 			cb.addEventListener('click', () => copyText(String(m.text || ''), cb))
 			actBar.appendChild(cb)
-			const speak = document.createElement('button')
-			speak.className = 'ract rspeak'
-			speak.type = 'button'
-			speak.textContent = '▶'
-			speak.setAttribute('aria-label', t('Read answer aloud'))
-			speak.title = speech.supported ? t('Read answer aloud') : t('Speech playback is not supported in this browser.')
-			speak.disabled = !speech.supported
-			const stopSpeech = document.createElement('button')
-			stopSpeech.className = 'ract rspeak-stop'
-			stopSpeech.type = 'button'
-			stopSpeech.textContent = '■'
-			stopSpeech.setAttribute('aria-label', t('Stop speech'))
-			stopSpeech.title = t('Stop speech')
-			stopSpeech.disabled = !speech.supported
-			const rate = document.createElement('select')
-			rate.className = 'rspeech-rate'
-			rate.setAttribute('aria-label', t('Playback speed'))
-			;[0.75, 1, 1.25, 1.5, 2].forEach((value) => {
-				const option = document.createElement('option')
-				option.value = String(value)
-				option.textContent = value + '×'
-				option.selected = value === 1
-				rate.appendChild(option)
-			})
-			const voice = document.createElement('select')
-			voice.className = 'rspeech-voice'
-			voice.setAttribute('aria-label', t('Voice'))
-			const setVoices = () => {
-				const selected = voice.value
-				voice.replaceChildren()
-				const defaultVoice = document.createElement('option')
-				defaultVoice.value = ''
-				defaultVoice.textContent = t('Default voice')
-				voice.appendChild(defaultVoice)
-				speech.getVoices().forEach((entry) => {
-					const option = document.createElement('option')
-					option.value = entry.voiceURI || entry.name
-					option.textContent = entry.name + (entry.lang ? ' (' + entry.lang + ')' : '')
-					voice.appendChild(option)
-				})
-				voice.value = selected
-			}
-			setVoices()
-			if (speech.supported && typeof window.speechSynthesis.addEventListener === 'function') {
-				window.speechSynthesis.addEventListener('voiceschanged', setVoices, { once: true })
-			}
-			let speechState = 'idle'
-			const setSpeechState = (state) => {
-				speechState = state
-				const paused = state === 'paused'
-				speak.textContent = state === 'speaking' ? 'Ⅱ' : '▶'
-				speak.setAttribute('aria-label', t(state === 'speaking' ? 'Pause speech' : paused ? 'Resume speech' : 'Read answer aloud'))
-				speak.title = t(state === 'speaking' ? 'Pause speech' : paused ? 'Resume speech' : 'Read answer aloud')
-			}
-			const renderedText = document.createElement('div')
-			renderedText.innerHTML = mdToHtml(String(m.text || ''))
-			const speechText = renderedText.textContent || ''
-			speak.disabled = !speech.supported || !speechText.trim()
-			stopSpeech.disabled = !speech.supported || !speechText.trim()
-			speak.addEventListener('click', () => {
-				if (speechState === 'speaking') {
-					speech.pause()
-					setSpeechState('paused')
-				} else if (speechState === 'paused') {
-					speech.resume()
-					setSpeechState('speaking')
-				} else {
-					setSpeechState('speaking')
-					speech.speak(speechText, {
-						rate: rate.value,
-						voice: voice.value,
-						lang: document.documentElement.lang || 'en',
-						onState: setSpeechState,
-					})
-				}
-			})
-			stopSpeech.addEventListener('click', () => speech.stop())
-			actBar.append(speak, stopSpeech, rate, voice)
 			const rb = document.createElement('button')
 			rb.className = 'ract'
 			rb.title = t('Regenerate')
@@ -2112,7 +2032,6 @@ export function mountChat(root, opts = {}) {
 		queueOnPageHide()
 		window.removeEventListener('pagehide', queueOnPageHide)
 		if (currentAbort) currentAbort.abort()
-		speech.stop()
 		messages.forEach((message) => (message.attachments || []).forEach((attachment) => URL.revokeObjectURL(attachment.url)))
 		if (pendingUpdateFrame !== null && typeof cancelAnimationFrame === 'function') cancelAnimationFrame(pendingUpdateFrame)
 		pendingUpdateFrame = null
