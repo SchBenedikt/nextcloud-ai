@@ -5,7 +5,9 @@ test('home shares the chat list and sends its first prompt without loading diagn
 	const { calls, errors } = await openWorkspace(page, { backgroundItems: [{ id: 'old-run', chatId: 'new-chat', status: 'completed' }] })
 	// Nextcloud core gives section and button elements an explicit display.
 	await page.addStyleTag({ content: 'section { display: block } button { display: inline-block }' })
-	await expect(page.getByRole('heading', { name: 'Overview' })).toBeVisible()
+	await expect(page.getByRole('textbox', { name: 'Message EVA' })).toBeVisible()
+	await expect(page.getByRole('heading', { name: 'Your workspace', exact: true })).toHaveCount(0)
+	await expect(page.locator('.home-view').getByRole('button', { name: 'New chat', exact: true })).toHaveCount(0)
 	await page.getByRole('textbox', { name: 'Message EVA' }).fill('Help me plan my week')
 	await page.getByRole('button', { name: 'Send', exact: true }).click()
 	await expect(page.locator('.rm.user')).toContainText('Help me plan my week')
@@ -44,7 +46,7 @@ test('settings load optional resources on demand and save a provider without JSO
 
 test('home and compact chat header fit a mobile screen', async ({ page }) => {
 	const { errors } = await openWorkspace(page, { width: 390 })
-	await expect(page.getByRole('heading', { name: 'Overview' })).toBeVisible()
+	await expect(page.getByRole('textbox', { name: 'Message EVA' })).toBeVisible()
 	expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true)
 	await page.getByRole('textbox', { name: 'Message EVA' }).fill('A mobile question')
 	await page.getByRole('button', { name: 'Send', exact: true }).click()

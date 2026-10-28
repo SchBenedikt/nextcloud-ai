@@ -38,8 +38,8 @@ See the [configuration reference](CONFIGURATION.md) for keys, defaults and limit
 
 ## Native navigation and layout
 
-The overview uses Nextcloud dashboard widgets for recent conversations and
-workspace shortcuts. It reuses the chat list without requesting diagnostics.
+The home screen contains a large message field and recent conversations.
+Recent conversations use native Nextcloud dashboard list items. It reuses the chat list without requesting diagnostics.
 Settings categories live in the app sidebar, replacing the secondary tab bar.
 `/settings?section=knowledge` links directly to Documents; browser history
 preserves section changes. Sections and provider rows use `NcSettingsSection`
