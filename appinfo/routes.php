@@ -15,6 +15,7 @@ return [
     ],
     'ocs' => [
         ['name' => 'system#status', 'url' => '/api/status', 'verb' => 'GET'],
+        ['name' => 'system#indexStatus', 'url' => '/api/index/status', 'verb' => 'GET'],
         ['name' => 'system#stats', 'url' => '/api/stats', 'verb' => 'GET'],
         ['name' => 'system#metrics', 'url' => '/api/metrics', 'verb' => 'GET'],
         ['name' => 'system#saveMetricsPricing', 'url' => '/api/metrics/pricing', 'verb' => 'PUT'],

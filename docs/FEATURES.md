@@ -19,14 +19,16 @@ print-ready HTML view. Responses are streamed; loading, empty, error, and retry
 states are reflected in the UI. Exports can include or omit per-message
 timestamps, model names, and the current user's display name. The document view lets you browse your personal
 index page by page. Settings expose Ollama, models, index, retrieval quality,
-and tool configuration.
+and tool configuration. See [Workspace settings](WORKSPACE.md) for the task-based
+layout and [Providers](PROVIDERS.md) for the profile form.
 
-Chat messages can include up to four PNG, JPEG, or WebP images (4 MB total).
-Image bytes go to the configured chat provider for that request and are not
-stored in chat history; filenames remain with the saved message.
-With Ollama, users can choose a different installed chat model for each
-message. Answers record the model that handled them, and model-specific usage
-is reflected in the metrics.
+The primary workspace uses the active provider and model configured in
+Settings. Answers record the model that handled them, and usage metrics keep
+that model context. The standalone compatibility chat additionally accepts up
+to four PNG, JPEG or WebP attachments (4 MB total), and can select an Ollama
+model per message. Those compatibility controls are not shown in the focused
+workspace header.
+
 The image generator accepts up to four outputs per prompt from the selected
 OpenAI-compatible provider, stores them in the user's `EVA` Files folder, and
 shows a gallery with in-place previews and downloads. Ollama and Groq do not

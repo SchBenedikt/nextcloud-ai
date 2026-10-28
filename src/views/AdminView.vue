@@ -3,7 +3,7 @@
 		<header class="page-header">
 			<div class="header-copy">
 				<p class="eyebrow">EVA AI</p>
-				<h2 class="settings-title">{{ $t('Admin dashboard') }}</h2>
+				<h1 class="settings-title">{{ $t('Admin dashboard') }}</h1>
 				<p class="page-intro">{{ $t('Overview of the RAG index per user with re-index, reset and enrollment management.') }}</p>
 			</div>
 			<div class="header-actions">

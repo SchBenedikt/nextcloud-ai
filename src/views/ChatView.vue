@@ -3,7 +3,7 @@
 </template>
 
 <script>
-import { ref, onMounted, watch } from 'vue'
+import { ref, onMounted, onBeforeUnmount, watch } from 'vue'
 import { mountChat } from '../lib/vanilla'
 
 export default {
@@ -20,9 +20,10 @@ export default {
 	setup(props, { emit }) {
 		const root = ref(null)
 		let mounted = false
+		let ready = false
 
 		const applyInitialPrompt = () => {
-			if (!mounted || !root.value || !props.initialPrompt) return
+			if (!mounted || !ready || !root.value || !props.initialPrompt) return
 			const input = root.value.querySelector('#chatinput')
 			const form = root.value.querySelector('form.chatform')
 			if (!input || !form) return
@@ -41,15 +42,25 @@ export default {
 			if (!root.value) return
 			if (root.value.__evaAi && typeof root.value.__evaAi.destroy === 'function') root.value.__evaAi.destroy()
 			root.value.innerHTML = ''
+			ready = false
 			delete root.value.__evaAi
 			mountChat(root.value, {
 				chatId: props.chatId || null,
 				onRecent: () => emit('chat-updated'),
 			})
 			mounted = true
-			applyInitialPrompt()
+			const renderer = root.value.__evaAi
+			renderer.ready.then(loaded => {
+				if (!mounted || root.value?.__evaAi !== renderer || !loaded) return
+				ready = true
+				applyInitialPrompt()
+			})
 		}
 
+		onBeforeUnmount(() => {
+			mounted = false
+			root.value?.__evaAi?.destroy()
+		})
 		onMounted(mount)
 		watch(() => props.initialPrompt, () => {
 			applyInitialPrompt()
@@ -86,7 +97,7 @@ export default {
 	width: min(100%, var(--eva-content-width, 1180px));
 	min-height: 52px;
 	margin: 0 auto;
-	padding: 8px 0 9px;
+	padding: 8px 0 9px 44px;
 	border-bottom: 1px solid var(--color-border, #ddd);
 	box-sizing: border-box;
 }
@@ -101,11 +112,13 @@ export default {
 	color: var(--color-main-text, #222);
 }
 
-.chatview-root .head-right {
-	display: flex;
-	align-items: center;
-	gap: 8px;
-}
+.chatview-root .chat-actions-host { flex: 0 0 auto; }
+.chatview-root .head h1 { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.chatview-root .chat-context { width: min(100%, 800px); margin: 8px auto 0; display: flex; gap: 8px; flex-wrap: wrap; }
+.chatview-root .chat-context:not(:has(.pill:not([hidden]))) { display: none; }
+.chatview-root .head > .pill { max-width: 40%; overflow-wrap: anywhere; }
+.chatview-root .chat-log, .chatview-root .chatform { max-width: 800px; }
+
 
 
 
@@ -180,48 +193,6 @@ export default {
 	color: var(--color-main-text, #222) !important;
 }
 
-.chatview-root .rt { white-space: normal; font-size: 14px; line-height: 1.6; color: inherit; text-align: left; }
-.chatview-root .rt p { margin: 0 0 9px; }
-.chatview-root .rt p:last-child { margin-bottom: 0; }
-.chatview-root .rt ul, .chatview-root .rt ol { margin: 0 0 9px 22px; padding: 0; }
-.chatview-root .rt ul { list-style: disc; }
-.chatview-root .rt ol { list-style: decimal; }
-.chatview-root .rt li { margin: 3px 0; }
-.chatview-root .rt h1, .chatview-root .rt h2, .chatview-root .rt h3,
-.chatview-root .rt h4, .chatview-root .rt h5, .chatview-root .rt h6 {
-	margin: 12px 0 6px;
-	font-weight: 650;
-	line-height: 1.3;
-}
-.chatview-root .rt h1 { font-size: 18px; }
-.chatview-root .rt h2 { font-size: 16px; }
-.chatview-root .rt h3 { font-size: 15px; }
-.chatview-root .rt h4, .chatview-root .rt h5, .chatview-root .rt h6 { font-size: 14px; }
-.chatview-root .rt p code, .chatview-root .rt li code {
-	font-family: var(--font-family-monospace, monospace);
-	font-size: 85%;
-	background: var(--color-background-hover, #eee);
-	padding: 1px 5px;
-	border-radius: 4px;
-}
-.chatview-root .rt pre {
-	margin: 0 0 9px;
-	padding: 11px 13px;
-	border: 1px solid var(--color-border, #ddd);
-	border-radius: 6px;
-	background: var(--color-background-hover, #f3f3f3);
-	overflow-x: auto;
-}
-.chatview-root .rt pre code {
-	font-family: var(--font-family-monospace, monospace);
-	font-size: 13px;
-	background: transparent;
-	padding: 0;
-	white-space: pre-wrap;
-}
-.chatview-root .rt blockquote { margin: 7px 0; padding: 4px 12px; border-left: 3px solid var(--color-border, #ccc); color: var(--color-text-maxcontrast, #555); }
-.chatview-root .rt a { color: var(--color-primary-element, #00679c); text-decoration: underline; }
-.chatview-root .rt hr { border: 0; border-top: 1px solid var(--color-border, #ddd); margin: 12px 0; }
 .chatview-root .rm.assistant { position: relative; }
 
 .chatview-root .rcopy {
@@ -396,11 +367,9 @@ export default {
 
 @media (max-width: 600px) {
 	.chatview-root { padding: 36px 12px 0; }
-	.chatview-root .head { min-height: 48px; flex-wrap: wrap; }
+	.chatview-root .head { min-height: 48px; flex-wrap: nowrap; }
 	.chatview-root .head h1 { font-size: 16px; }
-	.chatview-root .head h1 { flex: 1 0 100%; }
-	.chatview-root .prompt-history > summary { padding-inline: 7px; }
-	.chatview-root .head-right { gap: 4px; flex-wrap: wrap; }
+
 	.chatview-root .chat-log { padding-top: 18px; gap: 16px; }
 	.chatview-root .rb { max-width: 94%; }
 	.chatview-root .rm.assistant .rb { padding-right: 28px; }
@@ -411,37 +380,6 @@ export default {
 	.chatview-root .chatform input { flex: 1 0 100%; }
 	.chatview-root .chat-model-select { flex: 1 1 120px; }
 }
-.chatview-root .head .export { display: inline-flex; align-items: center; justify-content: center; gap: 6px; min-height: var(--default-clickable-area, 34px); padding: 6px 12px; border: 1px solid var(--color-border, #ccd0d4); border-radius: var(--border-radius-element, 8px); background: var(--color-main-background, #fff); color: var(--color-main-text, #222); cursor: pointer; font: inherit; font-size: 13px; font-weight: 500; line-height: 1.2; transition: background-color var(--animation-quick, .2s), border-color var(--animation-quick, .2s), color var(--animation-quick, .2s); }
-.chatview-root .head .export:hover:not(:disabled) { border-color: var(--color-border-dark, #b5b9bd); background: var(--color-background-hover, #f1f2f4); }
-.chatview-root .head .export:focus-visible { outline: 2px solid var(--color-main-text, #222); outline-offset: 2px; }
-.chatview-root .head .export:disabled { opacity: .5; cursor: default; }
-.chatview-root .head .export-icon { width: 16px; height: 16px; fill: currentColor; }
-.chatview-root .head .export-format { min-height: var(--default-clickable-area, 34px); max-width: 120px; padding: 5px 7px; border: 1px solid var(--color-border, #ccd0d4); border-radius: var(--border-radius-element, 8px); background: var(--color-main-background, #fff); color: var(--color-main-text, #222); font: inherit; font-size: 12px; }
-.chatview-root .export-selection-mode { display: inline-flex; align-items: center; gap: 5px; color: var(--color-text-maxcontrast, #555); font-size: 12px; white-space: nowrap; cursor: pointer; }
-.chatview-root .export-selection-mode input { margin: 0; }
-.chatview-root .message-export-select { display: flex; align-items: center; gap: 5px; margin-bottom: -12px; color: var(--color-text-maxcontrast, #555); font-size: 12px; cursor: pointer; }
-.chatview-root .message-export-select[hidden] { display: none; }
-.chatview-root .head .customize-btn { min-width: 0; }
-.chatview-root .prompt-history { position: relative; flex: 0 0 auto; font-size: 13px; }
-.chatview-root .prompt-history > summary { display: inline-flex; align-items: center; min-height: var(--default-clickable-area, 34px); padding: 6px 10px; border: 1px solid var(--color-border, #ccd0d4); border-radius: var(--border-radius-element, 8px); cursor: pointer; list-style: none; white-space: nowrap; }
-.chatview-root .prompt-history > summary::-webkit-details-marker { display: none; }
-.chatview-root .prompt-history[open] > summary { border-color: var(--color-primary-element, #0082c9); }
-.chatview-root .prompt-history-list { position: absolute; z-index: 30; top: calc(100% + 8px); right: 0; width: min(520px, calc(100vw - 32px)); max-height: min(60vh, 480px); overflow: auto; padding: 8px; border: 1px solid var(--color-border, #ccd0d4); border-radius: var(--border-radius-large, 12px); background: var(--color-main-background, #fff); box-shadow: 0 8px 28px rgba(0, 0, 0, .2); }
-.chatview-root .prompt-history > input { position: absolute; z-index: 31; top: calc(100% + 8px); right: 0; width: min(520px, calc(100vw - 32px)); box-sizing: border-box; padding: 8px 10px; border: 1px solid var(--color-border, #ccd0d4); border-radius: var(--border-radius-element, 8px); background: var(--color-main-background, #fff); color: var(--color-main-text, #222); }
-.chatview-root .prompt-history[open] .prompt-history-list { margin-top: 43px; }
-.chatview-root .prompt-history-row { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; gap: 4px 8px; align-items: center; padding: 7px 4px; border-bottom: 1px solid var(--color-border, #ddd); }
-.chatview-root .prompt-history-reuse { grid-column: 1 / -1; overflow: hidden; border: 0; background: transparent; color: var(--color-main-text, #222); text-align: left; text-overflow: ellipsis; white-space: nowrap; cursor: pointer; font: inherit; }
-.chatview-root .prompt-history-meta { overflow: hidden; color: var(--color-text-maxcontrast, #666); font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }
-.chatview-root .prompt-history-action { min-height: 30px; padding: 3px 8px; border: 1px solid var(--color-border, #ccd0d4); border-radius: var(--border-radius-element, 8px); background: var(--color-main-background, #fff); color: var(--color-main-text, #222); cursor: pointer; font: inherit; }
-.chatview-root .prompt-history-empty { margin: 8px 4px; color: var(--color-text-maxcontrast, #666); }
-.chatview-root .prompt-history > .cbtn { margin-top: 6px; }
-.chatview-root .prompt-history :focus-visible { outline: 2px solid var(--color-main-text, #222); outline-offset: 2px; }
-.chatview-root .prompt-templates { position: relative; margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--color-border, #ddd); }
-.chatview-root .prompt-templates > summary { padding: 6px 4px; cursor: pointer; font-weight: 600; }
-.chatview-root .prompt-templates > input { display: block; width: 100%; box-sizing: border-box; margin: 6px 0; padding: 8px 10px; border: 1px solid var(--color-border, #ccd0d4); border-radius: var(--border-radius-element, 8px); background: var(--color-main-background, #fff); color: var(--color-main-text, #222); }
-.chatview-root .prompt-template-list { max-height: 240px; overflow: auto; }
-.chatview-root .prompt-templates > .cbtn { margin: 5px 4px 0 0; }
-
 .chatview-root .image-generator { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; gap: 8px; width: min(100%, var(--eva-content-width, 1180px)); box-sizing: border-box; margin: 10px auto; padding: 12px; border: 1px solid var(--color-border, #ddd); border-radius: 12px; background: var(--color-background-dark, #f7f7f7); }
 .chatview-root .image-generator[hidden] { display: none; }
 .chatview-root .image-generator h2, .chatview-root .image-generator-privacy, .chatview-root .image-generator-status, .chatview-root .image-gallery { grid-column: 1 / -1; margin: 0; }
@@ -453,12 +391,10 @@ export default {
 .chatview-root .generated-image { display: grid; gap: 5px; min-width: 0; font-size: 12px; }
 .chatview-root .generated-image img { width: 100%; aspect-ratio: 1; object-fit: contain; border: 1px solid var(--color-border, #ddd); border-radius: 8px; background: var(--color-main-background, #fff); }
 .chatview-root .generated-image span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.chatview-root .head .image-mode-toggle { white-space: nowrap; }
-.chatview-root .export-options { position: relative; white-space: nowrap; }
-.chatview-root .export-options > summary { cursor: pointer; font-size: 12px; }
-.chatview-root .export-options > label { display: flex; align-items: center; gap: 6px; margin-top: 6px; font-size: 12px; }
 
-/* Per-chat custom instructions dialog (Issue #90). */
+.chatview-root [hidden] { display: none !important; }
+.chatview-root .message-export-select { display: flex; align-items: center; gap: 6px; margin-bottom: 8px; font-size: 12px; color: var(--color-text-maxcontrast); }
+
 .customize-overlay { position: fixed; inset: 0; z-index: 2000; display: flex; align-items: center; justify-content: center; padding: 24px; background: rgba(0, 0, 0, .45); }
 .customize-box { width: min(480px, 100%); max-height: 90vh; overflow: auto; padding: 22px 24px; border-radius: var(--border-radius-large, 12px); background: var(--color-main-background, #fff); box-shadow: 0 8px 32px rgba(0, 0, 0, .25); color: var(--color-main-text, #222); }
 .customize-box h3 { margin: 0 0 6px; font-size: 17px; font-weight: 650; }

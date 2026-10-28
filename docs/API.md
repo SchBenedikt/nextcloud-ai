@@ -7,6 +7,25 @@ The Vue client uses `@nextcloud/axios`, which supplies Nextcloud's request token
 and OCS headers. Admin routes live under `api/admin/` and require administrator
 privileges.
 
+## Lightweight index progress
+
+`GET /api/index/status` requires a signed-in user and returns:
+
+```json
+{"indexing": false, "indexStopping": false, "indexMode": "", "lastStarted": "", "lastFinished": "", "lastError": ""}
+```
+
+It checks abandoned-run recovery but does not query models, document totals,
+chat history or OCR. The full `GET /api/status` remains available for settings
+and diagnostics. Its `providerKeys` object maps configured profile IDs to
+credential-presence booleans, never actual keys.
+
+Provider profiles retain the existing settings contract. `PUT /api/settings`
+accepts `provider_profiles` and `chat_provider` together, plus a write-only
+`custom_provider_api_key`. Profiles can specify `auth: "none"` to omit bearer
+authentication; omitted `auth` means `api_key`. Built-in IDs `ollama` and `groq`
+are reserved. See [Providers](PROVIDERS.md).
+
 ## Error responses
 
 Non-streaming API and admin errors use one OCS data shape:

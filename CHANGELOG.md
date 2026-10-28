@@ -2,6 +2,18 @@
 
 ## [Unreleased]
 
+### Focused workspace
+
+- Replace the dashboard with a direct message input and shared recent chats.
+- Move chat exports and prompt history into native Nextcloud dialogs and actions.
+- Split settings into task-based sections with deferred integration loading.
+- Add a provider profile form with service templates and separate encrypted keys.
+- Support explicit no-key authentication for local compatible AI servers.
+- Add a lightweight index-progress endpoint and release chat resources on navigation.
+- Remove obsolete navigation handlers and restore metrics/background-run rendering.
+- Add user, provider, performance, migration and troubleshooting guides.
+
+
 ### Image generation
 
 - Generate up to four images from an OpenAI-compatible image model, then preview or download them from the user's EVA Files folder.
