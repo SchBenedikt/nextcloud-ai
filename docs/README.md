@@ -9,6 +9,7 @@ reference pages describe the complete configuration and API surface.
 - [User guide](USER-GUIDE.md): conversations, sources, exports and documents.
 - [AI providers](PROVIDERS.md): cloud services, local servers and credentials.
 - [Workspace settings](WORKSPACE.md): where to find each setting.
+- [Files and direct discovery](AGENTIC-FILE-DISCOVERY.md): indexed knowledge and live VFS access.
 - [Troubleshooting](TROUBLESHOOTING.md): connection, indexing and chat problems.
 - [Privacy](PRIVACY.md) and [security](SECURITY.md): data flows and permissions.
 
@@ -21,15 +22,14 @@ reference pages describe the complete configuration and API surface.
 - [API](API.md), [OpenAPI](openapi.yaml), [plugins](PLUGIN_API.md) and [connectors](CONNECTORS.md).
 - [Talk indexing](TALK-INDEXING.md), [terminal tools](TERMINAL_TOOLS.md) and [browser rendering](BROWSER-RENDERING.md).
 
-Historical reviews record decisions at their stated date. Use the guides and
-current source when they differ from an older review.
+## Quality and optional scaling
 
-- [Backend migration work ledger](BACKEND-ROADMAP.md) — PDF findings, dependent PR stages and rollout gates.
+- [Quality evaluation](QUALITY.md): synthetic chunking/retrieval regression method and thresholds.
+- [Retrieval benchmark](RETRIEVAL-BENCHMARK.md): frozen corpus, exact reference and ranking metrics.
+- [Backend migration ledger](BACKEND-ROADMAP.md): current implementation stages, native integration and rollout gates.
+- [Vector storage](VECTOR-STORAGE.md): generation identity, additive schema and operating boundaries.
+- [Qdrant](QDRANT.md): optional server configuration and deployment.
+- [Vector outbox](VECTOR-OUTBOX.md): durable intent, ownership fencing and delivery invariants.
 
-- [Retrieval benchmark](RETRIEVAL-BENCHMARK.md) — frozen corpus format, exact reference and ranking metrics.
-
-- [Optional vector storage](VECTOR-STORAGE.md) — generation identity, additive schema and operating boundaries.
-
-- [Optional Qdrant adapter](QDRANT.md) — server configuration, transport and deployment boundaries.
-
-- [Vector outbox](VECTOR-OUTBOX.md) — target identity, durable intent and remaining delivery invariants.
+The ledger is the current migration plan. Superseded review snapshots and the
+older 2.0 roadmap remain available in Git history; current guidance lives here.

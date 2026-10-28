@@ -1,9 +1,9 @@
 # RAG quality evaluation (Issue #146)
 
-The authoritative CI workflow and the real Nextcloud app lifecycle matrix are
-documented in [CI.md](CI.md). Quality claims in this document are backed by
-the same PHPUnit, compatibility, lint, and frontend checks used for pull
-requests.
+The CI workflow and real Nextcloud app lifecycle matrix are documented in
+[CI.md](CI.md). This guide describes the reproducible method and source-defined
+thresholds. Record measured results for the actual revision/corpus/configuration;
+old review counts do not establish the current tree's validation status.
 
 EVA ships a deterministic, offline quality evaluation that measures the
 extraction/chunking part of the RAG pipeline end to end. It exists so that
@@ -40,18 +40,19 @@ embeddings or an Ollama server. It never uploads data anywhere.
   stay rare (diversity floor) while intentional repeats are preserved
   (Issue #62).
 
-## Baseline report
+## Regression thresholds
 
-The suite prints a per-query baseline report. The last measured baseline is:
+The source fixture uses chunk size 150 and overlap 30. The suite prints a
+per-query report and aggregates German and English results. It fails below
+recall@5 0.60 or MRR 0.50 in either language. Update this guide and the test
+together when intentionally changing those thresholds.
 
-| Language | avg recall@5 | avg MRR | queries |
-|---|---|---|---|
-| de | 0.91 | 0.80 | 11 |
-| en | 1.00 | 0.83 | 3 |
-
-Only clear regressions fail the suite (recall@5 below 0.6 or MRR below 0.5 in
-either language). The report includes per-stage detail so a future run can be
-compared against this baseline before and after pipeline changes.
+Keep before/after reports with the source revision and fixture configuration.
+For the production SQL/Qdrant dense/hybrid comparison, use the separate
+[retrieval benchmark](RETRIEVAL-BENCHMARK.md), including its corpus provenance,
+latency, exact-reference, ownership and cutover requirements. A lexical fixture
+score alone provides no evidence for ANN recall, live inference or production
+latency. The [migration ledger](BACKEND-ROADMAP.md) tracks unverified rollout gates.
 
 ## Extending the fixtures
 
@@ -62,29 +63,10 @@ tables, nested headings, multilingual (German/English) text, mail-like
 threads and facts near the end of a file. Add a fixture together with the
 feature that changes extraction/chunking so the regression guard covers it.
 
-## Native workspace validation (2026-10-28)
+## UI and runtime evidence
 
-The native overview and settings refactor passes the production build, 48
-frontend tests and 30 browser tests. PHP runs 725 tests with 8 environment-based
-skips. ESLint reports no errors and 12 existing warnings. Browser coverage
-includes all six settings sections at a mobile viewport, provider dialogs,
-section history and direct chat submission. The controller regression test
-saves provider JSON and reloads it through the settings API; another verifies
-that an invalid later credential cannot overwrite an earlier one.
-
-Screenshots in `screenshots/` use synthetic conversations in a browser fixture
-with local Nextcloud styles. They are layout evidence, not authenticated
-production or real-provider inference evidence.
-
-Document-library follow-up adds browser regressions for retrying chunk loads,
-loading the next chunk page and sending native filter selections to the API.
-The mobile fixture includes Nextcloud's grid baseline variable so collapsed
-navigation behaves like the real themed application.
-
-After the follow-up, the combined tree passes 726 PHP tests (8 environment
-skips), 48 frontend tests and all 32 browser tests. The production build and
-ESLint also pass (12 existing advisory warnings, no errors).
-
-The subsequent home-screen simplification restores only a large message field
-and recent chats. Its production assets were rebuilt. Tests and PR/review checks
-were intentionally not rerun or reviewed for this final adjustment, as requested.
+Check native settings, provider forms, chat submission, document pagination and
+navigation at narrow/wide viewports and in light/dark themes. Screenshots using
+synthetic fixtures establish layout only. Authenticated chat, provider requests,
+cron, migrations, concurrent writers and restore/rollback need their own runtime
+evidence. Report skipped or unexecuted checks explicitly for each delivery.

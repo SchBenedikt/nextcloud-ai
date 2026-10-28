@@ -111,6 +111,14 @@ updated or validated. Existing services/listeners are starting points, not evide
 of completed integration. The PDF's migration, benchmark, ownership and rollback
 gates remain mandatory completion boundaries.
 
+## Operational follow-up
+
+Consolidated maintenance follow-up from the retired 2.0 roadmap remains in stage
+14: finish controller/executor domain boundaries, remaining request/response DTOs
+and Vue composable extraction, actual-core request-stack coverage, responsive
+audits and legacy code-comment cleanup. Existing typed ChatRequest and extracted
+composables are starting points; assess remaining paths from current source.
+
 ## Required generation and consistency semantics
 
 A generation is immutable after building begins. A provider/model change creates
