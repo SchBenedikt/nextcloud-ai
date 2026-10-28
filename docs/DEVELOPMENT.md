@@ -126,15 +126,17 @@ When changing the shared workspace layout, keep the responsive `--eva-content-wi
 Run `EVA_LOW_MEMORY_BUILD=1 NODE_OPTIONS=--max-old-space-size=640 nice -n 15 npm run build`
 to serialize module compilation and minification. Run the build separately from
 indexing and model inference. This limits V8 heap usage, not total process memory.
-See [the September review](REVIEW-2026-09-05.md) for verified checks and remaining integration gaps.
+Record validation for the actual revision and environment being shipped; use
+[CI](CI.md) and the [backend ledger](BACKEND-ROADMAP.md) for required coverage.
 
-### September 8 regression checks
+### Backend and frontend regression checks
 
 Run `npm test` for Files actions, Markdown/citation rendering and streaming decoder behavior.
 Run `composer test` for backend regressions, including regeneration, corrupt storage,
 ownership locking and release metadata. The app owns its streaming response class
 because Nextcloud's similarly named response was introduced in version 33.
-See [the September 8 review](REVIEW-2026-09-08.md) for scope and remaining gaps.
+Full authenticated integration, migration and provider checks require the real
+Nextcloud request stack and the corresponding services.
 
 ### Markdown regression checks
 

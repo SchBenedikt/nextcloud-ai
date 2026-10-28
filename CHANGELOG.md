@@ -2,7 +2,7 @@
 
 ## [Unreleased]
 
-### Backend migration foundations (1.18.0–1.18.1 schema)
+### Backend migration foundations (1.18.0–1.18.2 schema)
 
 - Add immutable, user-owned vector-generation metadata and an explicit OCC preparation command.
 - Keep SQL retrieval and legacy embeddings as the installation default; no external database is activated.
@@ -11,6 +11,14 @@
 - Add a durable vector-intent journal and encrypted target registry; retain original target identity for account-erasure work without enabling remote chunk replication.
 - Bound per-user chunk cleanup and fix reset ownership ordering.
 - Add an optional, disabled Qdrant dense adapter with encrypted instance credentials, bounded operations and generation/tenant filters; SQL indexing and reads remain active.
+- Fence generation creation/binding before account erasure, preserve the block across cleanup failures and expose ownership state in both native administration surfaces.
+- Add native optional-storage connection configuration and explicit checks through a dedicated administrator page; keep search cutover unavailable.
+- Require point revisions and terminal chunk tombstones in the optional adapter; point producers/consumers and rollout verification remain pending.
+
+### Reliability and documentation
+
+- Fix oversized chat request lock keys and release coordination before terminal stream events; distinguish genuine contention from coordination failures.
+- Remove superseded dated reviews, the old 2.0 roadmap and duplicate RAG baseline document; consolidate current guidance and remove stale passing-test counts.
 
 ### Dependency security
 
@@ -1098,8 +1106,8 @@ deep Nextcloud integration.
   streaming render + ordered persistence, the confirmation panel with its
   idempotency token, duplicate-approve rejection after a reload, and the stop
   button (abort + partial-answer persistence) (#133).
-- The RAG quality baseline is documented with current German/English numbers,
-  methodology and CI thresholds in `docs/RAG-QUALITY-BASELINE.md` (#146).
+- The RAG quality methodology and CI thresholds are documented in
+  `docs/QUALITY.md` (#146); historical measured reports remain in Git history.
 - Controlled-backend tests cover the Ollama streaming client: malformed lines,
   tool-call arguments split across chunks, UTF-8 split at read boundaries and
   connection errors, all deterministic without a live server (#134).
@@ -1189,7 +1197,7 @@ deep Nextcloud integration.
 - Serialize ownership-marker reads and updates with Nextcloud's shared locking provider (#176).
 - Use the longstanding callback response API for streaming on supported Nextcloud versions (#177).
 - Align frontend metadata with app version 1.4.7 and derive webpack's version from package metadata (#178).
-- Add frontend behavioral tests to npm test and CI. See docs/REVIEW-2026-09-08.md for validation and remaining limitations, including native confirmation concurrency (#179).
+- Add frontend behavioral tests to npm test and CI, including native confirmation concurrency (#179). Historical validation details remain in Git history; current coverage guidance is in docs/DEVELOPMENT.md.
 
 ### Added (1.4.7)
 
