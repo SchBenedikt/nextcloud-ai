@@ -117,7 +117,10 @@ replaced by a successful build or an adapter unit test.
 ## Progress
 
 - 01: implemented in this branch.
-- 02–14: pending; a stage is complete only when its code and matching operating
+- 02: embedding dependency boundary implemented; automated validation deferred.
+- 03: initial stage timings implemented; independent lexical/fusion spans and
+  a metrics exporter remain follow-up work.
+- 04–14: pending; a stage is complete only when its code and matching operating
   documentation exist. Validation and production rollout remain separately
   recorded. No Qdrant deployment or production data migration has occurred.
 
