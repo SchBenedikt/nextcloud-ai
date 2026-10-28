@@ -1,71 +1,16 @@
+import { createSettingsDefaults } from '../lib/settings-defaults'
+import { useKnowledgeSettings } from './useKnowledgeSettings'
+import { useIntegrationSettings } from './useIntegrationSettings'
+import { useBriefingSettings } from './useBriefingSettings'
 import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
 import { api, errMsg } from '../lib/api'
 import { translate as t } from '../lib/i18n'
 
 /** Shared settings state survives section switches; optional data loads on demand. */
-export function useEvaSettings() {
+export function useEvaSettings({ section = ref('general') } = {}) {
 	let disposed = false
-	const f = ref({
-		chat_provider: 'ollama',
-		groq_model: 'openai/gpt-oss-20b',
-		custom_provider_url: '',
-		custom_provider_model: '',
-		provider_profiles: '[]',
-		ollama_url: 'http://127.0.0.1:11434',
-		embedding_model: 'nomic-embed-text',
-		chat_model: 'gemma4:cloud',
-		chat_model_fallback: '',
-		embedding_model_fallback: '',
-		summary_model: '',
-		temperature: '0.1',
-		 actions_enabled: '1',
-		voice_input_enabled: '0',
-		learning_enabled: '1',
-		safe_commands_enabled: '0',
-		terminal_commands_enabled: '0',
-		terminal_command_any: '0',
-		terminal_command_allowlist: 'date,uptime,php,node,git,ls,find,grep,rg,cat,head,tail,df,du,free,uname',
-		background_actions_enabled: '0',
-		agent_max_tool_rounds: '16',
-		notify_on_complete: '1',
-		exec_write_types: '',
-		exec_write_max_chars: '100000',
-		exec_delete_mode: 'own',
-		top_k: '6',
-		context_size: '12288',
-		chunk_size: '900',
-		chunk_overlap: '120',
-		max_file_size: '20971520',
-		max_files_per_run: '40',
-		embed_batch_size: '24',
-		mail_index_max: '25',
-		mail_index_enabled: '1',
-		talk_index_enabled: '0',
-		talk_write_enabled: '0',
-		talk_index_max_rooms: '20',
-		talk_index_max_messages: '200',
-		index_enrolled: '0',
-		scope_path: '',
-		talk_history_size: '50',
-		talk_bot_trigger: 'Eva',
-		exclude_paths: '',
-		ocr_enabled: '0',
-		ocr_language: 'eng',
-		chat_retention_days: '0',
-		web_search_enabled: '0',
-		web_search_provider: 'duckduckgo',
-		web_search_max_results: '8',
-		web_search_timeout: '10',
-		web_search_safe_search: '1',
-		web_search_fetch_content: '1',
-		web_search_content_chars: '8000',
-		web_search_candidates: '12',
-		web_search_images: '1',
-		web_search_browser: '1',
-		web_search_browser_timeout: '30',
-		proactive_enabled: '0',
-		proactive_schedules: '[]',
-	})
+	const f = ref(createSettingsDefaults())
+
 	const providerProfiles = computed(() => {
 		try { const rows = JSON.parse(f.value.provider_profiles || '[]'); return Array.isArray(rows) ? rows.filter(p => p && p.id && p.name) : [] } catch (_) { return [] }
 	})
@@ -159,101 +104,7 @@ export function useEvaSettings() {
 		get: () => f.value.terminal_command_any === '1',
 		set: value => { f.value.terminal_command_any = value ? '1' : '0' },
 	})
-	const proactiveEnabled = computed({
-		get: () => f.value.proactive_enabled === '1',
-		set: value => { f.value.proactive_enabled = value ? '1' : '0' },
-	})
-	const weekdays = [
-		{ value: 1, label: t('Mon') }, { value: 2, label: t('Tue') }, { value: 3, label: t('Wed') },
-		{ value: 4, label: t('Thu') }, { value: 5, label: t('Fri') }, { value: 6, label: t('Sat') }, { value: 7, label: t('Sun') },
-	]
-	const briefingDraft = ref({ prompt: '', time: '08:00', days: [1, 2, 3, 4, 5], allow_actions: false, type: 'custom', channels: ['notification'], talk_room: '' })
-	const briefingFormError = ref('')
-	const editingBriefingId = ref(null)
-	const briefingHistory = ref([])
-	const briefingTypeOptions = [
-		{ value: 'morning', label: t('Morning briefing') },
-		{ value: 'document_digest', label: t('Document digest') },
-		{ value: 'custom', label: t('Custom report') },
-	]
-	const proactiveBriefings = computed(() => {
-		try { const rows = JSON.parse(f.value.proactive_schedules || '[]'); return Array.isArray(rows) ? rows : [] } catch (_) { return [] }
-	})
-	const dayName = day => (weekdays.find(item => item.value === Number(day)) || {}).label || String(day)
-	const briefingTypeName = type => briefingTypeOptions.find(item => item.value === type)?.label || t('Custom report')
-	const channelName = channel => ({ notification: t('Nextcloud notification'), email: t('Email'), talk: t('Nextcloud Talk') }[channel] || String(channel))
-	const formatDateTime = timestamp => new Date(Number(timestamp || 0) * 1000).toLocaleString()
-	const failureSummary = run => Object.values(run?.failures || {}).join('; ')
-	function writeBriefings(rows) { f.value.proactive_schedules = JSON.stringify(rows.slice(0, 20)) }
-	async function persistBriefings(rows, messageKey) {
-		writeBriefings(rows)
-		setMessage('info', t('Saving briefing changes…'))
-		if (await saveBriefingSchedule()) setMessage('success', t(messageKey))
-	}
-	async function saveBriefingSchedule() {
-		// Save the schedule explicitly.  The general settings watcher may be
-		// saving another field at the same time; relying on changedSettingKeys()
-		// here made the Add button appear to do nothing when that save raced.
-		const payload = {
-			proactive_enabled: f.value.proactive_enabled,
-			proactive_schedules: f.value.proactive_schedules,
-		}
-		try {
-			const settings = await api('PUT', 'settings', payload)
-			if (settings) fill(settings)
-			return true
-		} catch (error) {
-			setMessage('error', t('The briefing could not be saved: {error}', { error: errMsg(error) }))
-			return false
-		}
-	}
-	async function saveBriefing() {
-		const prompt = briefingDraft.value.prompt.trim()
-		const rawTime = String(briefingDraft.value.time || '').trim()
-		briefingFormError.value = ''
-		if (!prompt) { briefingFormError.value = t('Enter a question or instruction for this briefing.'); return }
-		// Native time inputs already constrain the value to HH:MM. Keep a
-		// safe default for browsers that expose an empty value during the
-		// first interaction instead of making Add appear to do nothing.
-		const time = rawTime || '08:00'
-		if (!briefingDraft.value.days.length) { briefingFormError.value = t('Choose at least one weekday.'); return }
-		if (!briefingDraft.value.channels.length) { briefingFormError.value = t('Choose at least one delivery channel.'); return }
-		if (briefingDraft.value.channels.includes('talk') && !briefingDraft.value.talk_room.trim()) { briefingFormError.value = t('Enter a Talk room name or token.'); return }
-		if (!editingBriefingId.value && proactiveBriefings.value.length >= 20) { briefingFormError.value = t('You can create up to 20 briefings.'); return }
-		const current = proactiveBriefings.value.find(item => item.id === editingBriefingId.value)
-		const item = { ...(current || {}), id: editingBriefingId.value || `briefing-${Date.now()}`, prompt, time, days: [...new Set(briefingDraft.value.days)].sort(), enabled: current?.enabled !== false, allow_actions: briefingDraft.value.allow_actions === true, type: briefingDraft.value.type, channels: [...new Set(briefingDraft.value.channels)], talk_room: briefingDraft.value.talk_room.trim() }
-		writeBriefings(editingBriefingId.value ? proactiveBriefings.value.map(entry => entry.id === editingBriefingId.value ? item : entry) : [...proactiveBriefings.value, item])
-		setMessage('info', t('Saving briefing changes…'))
-		if (await saveBriefingSchedule()) {
-			editingBriefingId.value = null
-			briefingDraft.value = { prompt: '', time: '08:00', days: [1, 2, 3, 4, 5], allow_actions: false, type: 'custom', channels: ['notification'], talk_room: '' }
-			setMessage('success', t('Briefing saved.'))
-		}
-	}
-	function editBriefing(item) {
-		editingBriefingId.value = item.id
-		briefingDraft.value = { prompt: item.prompt || '', time: item.time || '08:00', days: [...(item.days || [])], allow_actions: item.allow_actions === true, type: item.type || 'custom', channels: [...(item.channels || ['notification'])], talk_room: item.talk_room || '' }
-		briefingFormError.value = ''
-		document.querySelector('.briefing-form')?.scrollIntoView({ behavior: 'smooth', block: 'center' })
-	}
-	function cancelEditBriefing() {
-		editingBriefingId.value = null
-		briefingDraft.value = { prompt: '', time: '08:00', days: [1, 2, 3, 4, 5], allow_actions: false, type: 'custom', channels: ['notification'], talk_room: '' }
-		briefingFormError.value = ''
-	}
-	async function removeBriefing(id) { await persistBriefings(proactiveBriefings.value.filter(item => item.id !== id), 'Briefing changes saved.') }
-	async function toggleBriefing(id) { await persistBriefings(proactiveBriefings.value.map(item => item.id === id ? { ...item, enabled: item.enabled === false } : item), 'Briefing changes saved.') }
-	async function toggleBriefingActions(id) { await persistBriefings(proactiveBriefings.value.map(item => item.id === id ? { ...item, allow_actions: item.allow_actions !== true } : item), 'Briefing changes saved.') }
-	async function loadBriefingHistory() {
-		try { const result = await api('GET', 'briefings/history'); briefingHistory.value = Array.isArray(result?.items) ? result.items.reverse() : [] } catch (_) { briefingHistory.value = [] }
-	}
-	async function runBriefingNow(id) {
-		try {
-			await api('POST', `briefings/${encodeURIComponent(id)}/run`, {})
-			setMessage('success', t('Briefing queued. It will appear in the history when delivery finishes.'))
-			window.setTimeout(loadBriefingHistory, 5000)
-		} catch (error) { setMessage('error', t('The briefing could not be started: {error}', { error: errMsg(error) })) }
-	}
+	const { proactiveEnabled, weekdays, briefingDraft, briefingFormError, editingBriefingId, briefingHistory, briefingTypeOptions, proactiveBriefings, dayName, briefingTypeName, channelName, formatDateTime, failureSummary, saveBriefing, editBriefing, cancelEditBriefing, removeBriefing, toggleBriefing, toggleBriefingActions, loadBriefingHistory, runBriefingNow } = useBriefingSettings({ f, fill, setMessage })
 	const userWebSearchEnabled = computed({
 		get: () => f.value.web_search_enabled === '1',
 		set: value => { f.value.web_search_enabled = value ? '1' : '0' },
@@ -262,205 +113,18 @@ export function useEvaSettings() {
 	const userWebSearchBrowser = computed({ get: () => f.value.web_search_browser === '1', set: v => { f.value.web_search_browser = v ? '1' : '0' } })
 	const userWebSearchFetchContent = computed({ get: () => f.value.web_search_fetch_content === '1', set: v => { f.value.web_search_fetch_content = v ? '1' : '0' } })
 	const userWebSearchSafeSearch = computed({ get: () => f.value.web_search_safe_search === '1', set: v => { f.value.web_search_safe_search = v ? '1' : '0' } })
-	const connectors = ref([])
-	const connectorEndpointQuery = ref('')
-	const plugins = ref([])
-	const pluginsSaving = ref([])
-	const pluginsLoading = ref(false)
-	const pluginLoadError = ref('')
-	const connectorsLoading = ref(false)
-	const connectorLoadError = ref('')
-	const connectorsBusy = ref(false)
-	const connectorDiagnostics = ref({})
-	const apiKeys = ref([])
-	const apiKeysLoading = ref(false)
-	const apiKeysBusy = ref(false)
-	const apiKeyError = ref('')
-	const createdApiKey = ref('')
-	const apiKeyDraft = ref({ name: '', scope: 'read', expires: '', ips: '' })
-	const apiKeyScopeOptions = computed(() => [
-		{ value: 'read', label: t('Read only · 100 requests/min') },
-		{ value: 'write', label: t('Read and write · 30 requests/min') },
-	])
-	const apiDocsUrl = 'https://github.com/SchBenedikt/nextcloud-ai/blob/main/docs/API.md'
-	const connectorToRemove = ref(null)
-	const connectorRemovalError = ref('')
-	const connectorDraft = ref({ id: '', name: '', base_url: '', openapi_url: '', auth_type: 'bearer', token: '', username: '', password: '', api_key: '', api_key_header: 'X-API-Key' })
-	function applyConnectorExample(type) {
-		connectorDraft.value = type === 'immich'
-			? { id: 'immich', name: 'Immich', base_url: 'http://immich.local:2283', openapi_url: '', auth_type: 'api_key', token: '', username: '', password: '', api_key: '', api_key_header: 'x-api-key' }
-			: type === 'vaultwarden'
-				? { id: 'vaultwarden', name: 'Vaultwarden', base_url: 'https://vaultwarden.local', openapi_url: '', auth_type: 'bearer', token: '', username: '', password: '', api_key: '', api_key_header: 'X-API-Key' }
-				: type === 'truenas'
-			? { id: 'truenas', name: 'TrueNAS', base_url: 'https://truenas.local', openapi_url: '', auth_type: 'bearer', token: '', username: '', password: '', api_key: '', api_key_header: 'X-API-Key' }
-			: type === 'github'
-				? { id: 'github', name: 'GitHub', base_url: 'https://api.github.com', openapi_url: '', auth_type: 'bearer', token: '', username: '', password: '', api_key: '', api_key_header: 'X-API-Key' }
-				: { id: 'homeassistant', name: 'Home Assistant', base_url: 'http://homeassistant.local:8123', openapi_url: '', auth_type: 'bearer', token: '', username: '', password: '', api_key: '', api_key_header: 'X-API-Key' }
-	}
-	async function loadConnectors() {
-		connectorsLoading.value = true
-		connectorLoadError.value = ''
-		try {
-			const data = await api('GET', 'connectors')
-			if (!Array.isArray(data?.result?.connectors)) throw new Error(t('The connector list response was incomplete.'))
-			connectors.value = data.result.connectors
-			return true
-		} catch (error) {
-			connectorLoadError.value = errMsg(error)
-			return false
-		} finally { connectorsLoading.value = false }
-	}
-	async function loadApiKeys() {
-		apiKeysLoading.value = true
-		apiKeyError.value = ''
-		try {
-			const result = await api('GET', 'keys')
-			if (!Array.isArray(result?.keys)) throw new Error(t('The API key list response was incomplete.'))
-			apiKeys.value = result.keys
-		} catch (error) { apiKeyError.value = errMsg(error) } finally { apiKeysLoading.value = false }
-	}
-	async function createApiKey() {
-		apiKeysBusy.value = true
-		apiKeyError.value = ''
-		createdApiKey.value = ''
-		try {
-			const expiresAt = apiKeyDraft.value.expires ? Math.floor(new Date(apiKeyDraft.value.expires + 'T23:59:59').getTime() / 1000) : null
-			const created = await api('POST', 'keys', { name: apiKeyDraft.value.name, scope: apiKeyDraft.value.scope, expiresAt, ipWhitelist: apiKeyDraft.value.ips })
-			if (!created?.key || !created?.record?.id) throw new Error(t('The API key response was incomplete.'))
-			createdApiKey.value = created.key
-			apiKeyDraft.value = { name: '', scope: 'read', expires: '', ips: '' }
-			await loadApiKeys()
-		} catch (error) { apiKeyError.value = errMsg(error) } finally { apiKeysBusy.value = false }
-	}
-	async function revokeApiKey(key) {
-		if (!window.confirm(t('Revoke the API key “{name}”? Integrations using it will stop working.', { name: key.name }))) return
-		apiKeysBusy.value = true
-		apiKeyError.value = ''
-		try { await api('DELETE', 'keys/' + encodeURIComponent(key.id)); await loadApiKeys() } catch (error) { apiKeyError.value = errMsg(error) } finally { apiKeysBusy.value = false }
-	}
-	async function copyApiKey() {
-		try { await navigator.clipboard.writeText(createdApiKey.value); setMessage('success', t('API key copied to clipboard.')) } catch (_) { apiKeyError.value = t('Clipboard access failed. Select and copy the key manually.') }
-	}
-	async function loadPlugins() {
-		pluginsLoading.value = true
-		pluginLoadError.value = ''
-		try {
-			const data = await api('GET', 'plugins')
-			if (!Array.isArray(data?.plugins)) throw new Error(t('The extension list response was incomplete.'))
-			plugins.value = data.plugins
-		} catch (error) { pluginLoadError.value = errMsg(error) } finally { pluginsLoading.value = false }
-	}
-	async function setPluginEnabled(plugin, enabled) {
-		if (pluginsSaving.value.includes(plugin.name)) return
-		pluginsSaving.value = [...pluginsSaving.value, plugin.name]
-		try {
-			const result = await api('PUT', 'plugins', { name: plugin.name, enabled: Boolean(enabled) })
-			plugin.enabled = result?.enabled === true
-		} catch (error) {
-			setMessage('error', t('Could not update plugin setting: {error}', { error: errMsg(error) }))
-		} finally {
-			pluginsSaving.value = pluginsSaving.value.filter(name => name !== plugin.name)
-		}
-	}
-	async function saveConnector() {
-		connectorsBusy.value = true
-		try {
-			const draft = { ...connectorDraft.value }
-			if (!draft.id.trim()) { try { draft.id = new URL(draft.base_url).hostname.replace(/^www\./, '').split('.')[0].toLowerCase().replace(/[^a-z0-9_-]/g, '-') } catch (_) {} }
-			if (!draft.name.trim()) draft.name = draft.id
-			await api('PUT', 'connectors', draft)
-			connectorDraft.value = { id: '', name: '', base_url: '', openapi_url: '', auth_type: 'bearer', token: '', username: '', password: '', api_key: '', api_key_header: 'X-API-Key' }
-			await loadConnectors()
-			try {
-				const discovered = await api('POST', 'connectors/discover', { id: draft.id })
-				setMessage('success', t('External connector saved.') + ' (' + String(discovered?.result?.endpoints?.length || 0) + ' endpoints discovered.)')
-				await loadConnectors()
-			} catch (discoveryError) {
-				setMessage('error', t('API discovery failed: {error}', { error: errMsg(discoveryError) }))
-			}
-		} catch (error) { setMessage('error', t('Could not save connector: {error}', { error: errMsg(error) })) } finally { connectorsBusy.value = false }
-	}
-	function removeConnector(id) {
-		const connector = connectors.value.find(item => item.id === id)
-		if (!connector || connectorsBusy.value) return
-		connectorToRemove.value = connector
-		connectorRemovalError.value = ''
-	}
-	function closeConnectorRemoval() {
-		if (!connectorsBusy.value) connectorToRemove.value = null
-	}
-	async function confirmRemoveConnector() {
-		const connector = connectorToRemove.value
-		if (!connector || connectorsBusy.value) return
-		connectorsBusy.value = true
-		connectorRemovalError.value = ''
-		try {
-			await api('DELETE', 'connectors', { id: connector.id })
-			connectors.value = connectors.value.filter(item => item.id !== connector.id)
-			connectorToRemove.value = null
-			setMessage('success', t('External connector removed.'))
-			await loadConnectors()
-		} catch (error) {
-			connectorRemovalError.value = t('Could not remove connector: {error}', { error: errMsg(error) })
-		} finally { connectorsBusy.value = false }
-	}
-	function editConnector(connector) {
-		connectorDraft.value = { id: connector.id || '', name: connector.name || '', base_url: connector.base_url || '', openapi_url: connector.openapi_url || '', auth_type: connector.auth_type || 'bearer', token: '', username: '', password: '', api_key: '', api_key_header: connector.api_key_header || 'X-API-Key' }
-		setMessage('info', t('Connector loaded for editing. Leave secret fields empty to keep saved credentials.'))
-	}
-	function connectorCredentialLabel(connector) {
-		if (connector.auth_type === 'none') return t('No credentials required')
-		const configured = connector.auth_type === 'basic' ? connector.username_configured && connector.password_configured : connector.auth_type === 'api_key' ? connector.api_key_configured : connector.token_configured
-		return configured ? t('Credential saved') : t('Credential missing')
-	}
-	function connectorCredentialClass(connector) {
-		return connector.auth_type === 'none' || connectorCredentialLabel(connector) === t('Credential saved') || connectorCredentialLabel(connector) === t('No credentials required') ? 'connector-credential connector-credential-ok' : 'connector-credential connector-credential-warning'
-	}
-	function pluginRiskLabel(risk) {
-		return ({ readonly: t('Read-only'), mutating: t('Creates or updates data'), destructive: t('Deletes data') })[risk] || String(risk || t('Read-only'))
-	}
-	function pluginSurfacesLabel(surfaces) {
-		const labels = { web: t('Web chat'), talk: t('Nextcloud Talk'), rag: t('File and knowledge search'), taskprocessing: t('Nextcloud Assistant'), taskprocessing_confirmed: t('Confirmed Nextcloud Assistant actions') }
-		return (Array.isArray(surfaces) && surfaces.length ? surfaces : ['web']).map(surface => labels[surface] || String(surface)).join(' · ')
-	}
-	function filteredConnectorEndpoints(connector) {
-		const endpoints = Array.isArray(connector?.learned_endpoints) ? connector.learned_endpoints : []
-		const query = String(connectorEndpointQuery.value || '').trim().toLowerCase()
-		if (!query) return endpoints.slice(0, 200)
-		return endpoints.filter(endpoint => [endpoint?.method, endpoint?.path, endpoint?.operation_id].some(value => String(value || '').toLowerCase().includes(query))).slice(0, 200)
-	}
-	async function discoverConnector(id) {
-		connectorsBusy.value = true
-		setMessage('info', t('API discovery is running…'))
-		try { const result = await api('POST', 'connectors/discover', { id }); setMessage('success', t('Discovered {count} endpoints.', { count: result?.result?.endpoints?.length || 0 })); await loadConnectors() } catch (error) { setMessage('error', t('API discovery failed: {error}', { error: errMsg(error) })) } finally { connectorsBusy.value = false }
-	}
-	async function testConnector(id) {
-		connectorsBusy.value = true
-		setMessage('info', t('Connector test is running…'))
-		try {
-			const result = await api('POST', 'connectors/test', { id })
-			if (result?.result && typeof result.result === 'object') connectorDiagnostics.value = { ...connectorDiagnostics.value, [id]: result.result }
-			const status = Number(result?.result?.data?.status || result?.result?.status || 0)
-			const detail = status === 401
-				? 'Authentication is required. Configure the connector secret; for Immich, use an API key with the x-api-key header.'
-				: status === 403 ? 'The connector rejected the credentials or permission.' : ''
-			setMessage(result?.ok ? 'success' : 'error', t('Connector responded with HTTP {status}.', { status: status || t('unknown') }) + (detail ? ' ' + t(detail) : ''))
-		} catch (error) { setMessage('error', t('Connector test failed: {error}', { error: errMsg(error) })) } finally { connectorsBusy.value = false }
-	}
+	const { connectors, connectorEndpointQuery, plugins, pluginsSaving, pluginsLoading, pluginLoadError, connectorsLoading, connectorLoadError, connectorsBusy, connectorDiagnostics, apiKeys, apiKeysLoading, apiKeysBusy, apiKeyError, createdApiKey, apiKeyDraft, apiKeyScopeOptions, apiDocsUrl, connectorToRemove, connectorRemovalError, connectorDraft, applyConnectorExample, loadConnectors, loadApiKeys, createApiKey, revokeApiKey, copyApiKey, loadPlugins, setPluginEnabled, saveConnector, removeConnector, closeConnectorRemoval, confirmRemoveConnector, editConnector, connectorCredentialLabel, connectorCredentialClass, pluginRiskLabel, pluginSurfacesLabel, filteredConnectorEndpoints, discoverConnector, testConnector } = useIntegrationSettings({ setMessage })
 	const formReady = ref(false)
 	let autoSaveTimer = null
 	let autoSaveDirty = false
-	let ignoreNextFormChange = false
+	let applyingServerState = false
 	let statusRequestId = 0
 	function changedSettingKeys() {
 		return Object.keys(f.value).filter(key => String(f.value[key]) !== String(persistedSettings.value[key] ?? ''))
 	}
 
 	function queueAutoSave() {
-		if (ignoreNextFormChange) {
-			ignoreNextFormChange = false
-			return
-		}
+		if (disposed || applyingServerState) return
 		if (!formReady.value) return
 		autoSaveDirty = true
 		window.clearTimeout(autoSaveTimer)
@@ -625,15 +289,16 @@ export function useEvaSettings() {
 			}
 		}
 
-	function fill(settings = status.value?.settings) {
+	function fill(settings = status.value?.settings, snapshot = null) {
 		if (!settings) return
-		if (formReady.value) ignoreNextFormChange = true
+		applyingServerState = true
 		Object.keys(f.value).forEach(key => {
 			if (settings[key] !== undefined && settings[key] !== null) {
-				f.value[key] = String(settings[key])
+				if (!snapshot || String(f.value[key]) === String(snapshot[key])) f.value[key] = String(settings[key])
 				persistedSettings.value[key] = String(settings[key])
 			}
 		})
+		applyingServerState = false
 	}
 
 	async function loadStatus(syncForm = false) {
@@ -733,6 +398,7 @@ export function useEvaSettings() {
 		saving.value = true
 		saved.value = false
 		message.value = { type: '', text: '' }
+		const snapshot = { ...f.value }
 		try {
 		const values = changedOnly
 			? Object.fromEntries(keys.map(key => [key, f.value[key]]))
@@ -745,7 +411,11 @@ export function useEvaSettings() {
 			nextcloudApiToken.value = ''
 			removeNextcloudApiToken.value = false
 			validationErrors.value = []
-			if (settings) fill(settings)
+			if (settings) fill(settings, snapshot)
+			if (changedSettingKeys().length) {
+				applyingServerState = false
+				queueAutoSave()
+			}
 			saved.value = true
 			setMessage('success', t('Your settings were saved.'))
 			window.setTimeout(() => { saved.value = false }, 3000)
@@ -963,48 +633,7 @@ export function useEvaSettings() {
 	}
 
 	const exporting = ref(false)
-	const knowledgeContent = ref('')
-	const knowledgeOriginal = ref('')
-	const savingKnowledge = ref(false)
-	const knowledgeSaved = ref(false)
-	const knowledgeLoading = ref(false)
-	const knowledgeLoadError = ref(false)
-	const knowledgeReady = ref(false)
-
-	async function loadKnowledge() {
-		knowledgeLoading.value = true
-		knowledgeLoadError.value = false
-		try {
-			const data = await api('GET', 'knowledge')
-			if (!data || typeof data.content !== 'string') throw new Error('Invalid knowledge response')
-			knowledgeContent.value = data.content
-			knowledgeOriginal.value = knowledgeContent.value
-			knowledgeReady.value = true
-			return true
-		} catch (e) {
-			knowledgeLoadError.value = true
-			return false
-		} finally {
-			knowledgeLoading.value = false
-		}
-	}
-
-	async function saveKnowledgeContent() {
-		if (savingKnowledge.value) return
-		savingKnowledge.value = true
-		try {
-			await api('PUT', 'knowledge', { content: knowledgeContent.value })
-			knowledgeOriginal.value = knowledgeContent.value
-			knowledgeSaved.value = true
-			setMessage('success', t('Your personal knowledge was saved.'))
-			window.setTimeout(() => { knowledgeSaved.value = false }, 3000)
-		} catch (error) {
-			setMessage('error', t('Could not save knowledge: {error}', { error: errMsg(error) }))
-		} finally {
-			savingKnowledge.value = false
-		}
-	}
-
+	const { knowledgeContent, knowledgeOriginal, savingKnowledge, knowledgeSaved, knowledgeLoading, knowledgeLoadError, knowledgeReady, loadKnowledge, saveKnowledgeContent } = useKnowledgeSettings({ setMessage })
 	async function downloadExport() {
 		if (exporting.value) return
 		exporting.value = true
@@ -1033,22 +662,14 @@ export function useEvaSettings() {
 	// Watch the scalar settings values without Vue's recursive deep traversal.
 	// The form is flat, so a shallow value snapshot preserves autosave while
 	// avoiding a full object walk on every keystroke.
-	watch(() => Object.values(f.value), queueAutoSave)
+	watch(() => Object.values(f.value), queueAutoSave, { flush: 'sync' })
 	watch([nextcloudApiToken, removeNextcloudApiToken], queueCredentialAutoSave)
 	watch(() => f.value.ollama_url, (value) => {
 		window.clearTimeout(modelTimer)
 		modelTimer = window.setTimeout(() => discoverModels(value), 500)
 	})
 
-	const group = ref('general')
-	const groups = [
-		{ id: 'general', label: t('Models') },
-		{ id: 'knowledge', label: t('Documents') },
-		{ id: 'tools', label: t('Tools & permissions') },
-		{ id: 'automation', label: t('Automation') },
-		{ id: 'personal', label: t('Personal & data') },
-		{ id: 'advanced', label: t('Advanced') },
-	]
+	const group = section
 	const loadedGroups = new Set()
 	watch([group, formReady], async ([selected, ready]) => {
 		if (disposed || !ready || loadedGroups.has(selected)) return
@@ -1062,7 +683,6 @@ export function useEvaSettings() {
 	})
 	onMounted(async () => {
 		await loadStatus(true)
-		if (disposed) return
 		if (disposed) return
 		statusTimer = window.setInterval(() => {
 			if (!document.hidden && indexingActive.value) loadIndexStatus()
@@ -1078,7 +698,7 @@ export function useEvaSettings() {
 
 	const ocrEnabled = computed({ get: () => f.value.ocr_enabled === '1', set: value => { f.value.ocr_enabled = value ? '1' : '0' } })
 	return {
-		group, groups, formReady, chatRetentionOptions, nextcloudApiToken, removeNextcloudApiToken, ocrEnabled, f, providerProfiles, selectedChatProvider, embeddingModelOptions, chatModelOptions, summaryModelOptions, webSearchProviderOptions, status, health, healthLoading, statusTimer, limits, availableModels, embeddingModels, chatModels, embeddingInstalledHint, chatInstalledHint, modelLoading, modelError, checkOut, saving, checking, indexing, resetting, deletingChats, stopping, saved, loadError, statusRefreshError, message, validationErrors, resetConfirm, chatsDeleteConfirm,
+		group, formReady, chatRetentionOptions, nextcloudApiToken, removeNextcloudApiToken, ocrEnabled, f, providerProfiles, selectedChatProvider, embeddingModelOptions, chatModelOptions, summaryModelOptions, webSearchProviderOptions, status, health, healthLoading, statusTimer, limits, availableModels, embeddingModels, chatModels, embeddingInstalledHint, chatInstalledHint, modelLoading, modelError, checkOut, saving, checking, indexing, resetting, deletingChats, stopping, saved, loadError, statusRefreshError, message, validationErrors, resetConfirm, chatsDeleteConfirm,
 		newExcludePath, excludeError, excludeList, actionsEnabled, backgroundActionsEnabled, voiceInputEnabled, notificationsEnabled, learningEnabled, safeCommandsEnabled, terminalCommandsEnabled, terminalCommandAny, mailIndexEnabled, talkIndexEnabled, talkWriteEnabled, indexEnrolled, actionsDisabled, busy, indexingActive, settingsLocked, briefingsLocked, maxFileSizeMb,
 		userWebSearchEnabled, userWebSearchSafeSearch, userWebSearchImages, userWebSearchBrowser, userWebSearchFetchContent,
 		connectors, connectorsLoading, connectorsBusy, connectorDiagnostics, connectorDraft, connectorToRemove, connectorRemovalError, connectorEndpointQuery, filteredConnectorEndpoints, applyConnectorExample, saveConnector, editConnector, connectorCredentialLabel, connectorCredentialClass, removeConnector, closeConnectorRemoval, confirmRemoveConnector, discoverConnector, testConnector, loadConnectors, connectorLoadError, plugins, pluginsLoading, pluginsSaving, setPluginEnabled, loadPlugins, pluginLoadError, pluginRiskLabel, pluginSurfacesLabel,

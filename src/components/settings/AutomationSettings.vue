@@ -1,7 +1,7 @@
 <template>
 <div class="settings-group">
-<section id="settings-briefings" class="settings-section briefing-section">
-				<div class="section-heading"><div><h3>{{ $t('Scheduled briefings') }}</h3><p>{{ $t('EVA can prepare recurring answers and deliver them by notification, email or Talk. They are read-only unless you explicitly enable actions per briefing.') }}</p></div><span class="briefing-count">{{ proactiveBriefings.length }} / 20</span></div>
+<NcSettingsSection id="settings-briefings" class="settings-section briefing-section" :name="$t('Scheduled briefings')" :description="$t('EVA can prepare recurring answers and deliver them by notification, email or Talk. They are read-only unless you explicitly enable actions per briefing.')">
+
 					<NcCheckboxRadioSwitch v-model="proactiveEnabled" type="switch" class="native-toggle">{{ $t('Enable scheduled briefings') }}</NcCheckboxRadioSwitch>
 					<div v-if="proactiveEnabled" class="briefing-note"><strong>{{ $t('How this works') }}</strong><span>{{ $t('Briefings use your server cron and account timezone. Every briefing is read-only by default. If you enable actions on one briefing, EVA may perform the requested changes automatically and reports the result through the selected delivery channels.') }}</span></div>
 					<div v-if="proactiveEnabled" class="briefing-editor">
@@ -24,17 +24,17 @@
 						<div class="briefing-form-actions"><NcButton variant="primary" :disabled="saving || (!editingBriefingId && proactiveBriefings.length >= 20)" @click="saveBriefing">{{ editingBriefingId ? $t('Save changes') : $t('Add briefing') }}</NcButton><NcButton v-if="editingBriefingId" variant="tertiary" @click="cancelEditBriefing">{{ $t('Cancel') }}</NcButton><span>{{ $t('{count} slots remaining', { count: Math.max(0, 20 - proactiveBriefings.length) }) }}</span></div><p v-if="briefingFormError" class="field-help briefing-action-warning" role="alert">{{ briefingFormError }}</p></div>
 					</div>
 					<div v-if="briefingHistory.length" class="briefing-history"><h4>{{ $t('Recent briefing history') }}</h4><article v-for="(run, index) in briefingHistory.slice(0, 10)" :key="run.id + '-' + run.time + '-' + index" class="briefing-history-row"><div><strong>{{ briefingTypeName(run.type) }}</strong><small>{{ formatDateTime(run.time) }} · {{ run.manual ? $t('Run now') : $t('Scheduled') }} · {{ $t(run.status) }} · {{ (run.channels || []).map(channelName).join(', ') }}<span v-if="failureSummary(run)"> · {{ failureSummary(run) }}</span></small></div><p>{{ run.text || failureSummary(run) || $t('No response was delivered.') }}</p></article></div>
-			</section>
+			</NcSettingsSection>
 </div>
 </template>
 
 <script>
 import { inject } from 'vue'
-import { NcButton, NcCheckboxRadioSwitch, NcSelect, NcTextField } from '@nextcloud/vue'
+import { NcSettingsSection, NcButton, NcCheckboxRadioSwitch, NcSelect, NcTextField } from '@nextcloud/vue'
 
 export default {
  name: 'AutomationSettings',
- components: { NcButton, NcCheckboxRadioSwitch, NcSelect, NcTextField },
+ components: { NcSettingsSection, NcButton, NcCheckboxRadioSwitch, NcSelect, NcTextField },
  setup() { return inject('eva-settings') },
 }
 </script>

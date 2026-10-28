@@ -5,7 +5,7 @@ test('home shares the chat list and sends its first prompt without loading diagn
 	const { calls, errors } = await openWorkspace(page, { backgroundItems: [{ id: 'old-run', chatId: 'new-chat', status: 'completed' }] })
 	// Nextcloud core gives section and button elements an explicit display.
 	await page.addStyleTag({ content: 'section { display: block } button { display: inline-block }' })
-	await expect(page.getByRole('heading', { name: 'How can I help?' })).toBeVisible()
+	await expect(page.getByRole('heading', { name: 'Overview' })).toBeVisible()
 	await page.getByRole('textbox', { name: 'Message EVA' }).fill('Help me plan my week')
 	await page.getByRole('button', { name: 'Send', exact: true }).click()
 	await expect(page.locator('.rm.user')).toContainText('Help me plan my week')
@@ -31,7 +31,12 @@ test('settings load optional resources on demand and save a provider without JSO
 	expect(saved.body.chat_provider).toBe('openai')
 	expect(JSON.parse(saved.body.provider_profiles)[0]).toMatchObject({ name: 'My AI provider', model: 'test-model' })
 	expect(saved.body.custom_provider_api_key).toBe('synthetic-browser-key')
-	await page.getByRole('button', { name: 'Advanced', exact: true }).click()
+	await expect(page.getByRole('textbox', { name: 'Search chats', exact: true })).toHaveCount(0)
+	await page.getByRole('link', { name: 'Documents', exact: true }).click()
+	await expect(page).toHaveURL(/section=knowledge/)
+	await page.goBack()
+	await expect(page.getByRole('heading', { name: 'AI models', exact: true })).toBeVisible()
+	await page.getByRole('link', { name: 'Advanced', exact: true }).click()
 	await expect(page.getByRole('heading', { name: 'Diagnostics & activity' })).toBeVisible()
 	await expect.poll(() => calls.filter(call => call.endpoint === 'health').length).toBe(1)
 	expect(errors).toEqual([])
@@ -39,7 +44,7 @@ test('settings load optional resources on demand and save a provider without JSO
 
 test('home and compact chat header fit a mobile screen', async ({ page }) => {
 	const { errors } = await openWorkspace(page, { width: 390 })
-	await expect(page.getByRole('heading', { name: 'How can I help?' })).toBeVisible()
+	await expect(page.getByRole('heading', { name: 'Overview' })).toBeVisible()
 	expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true)
 	await page.getByRole('textbox', { name: 'Message EVA' }).fill('A mobile question')
 	await page.getByRole('button', { name: 'Send', exact: true }).click()
@@ -52,7 +57,7 @@ test('home and compact chat header fit a mobile screen', async ({ page }) => {
 
 test('document progress uses the lightweight endpoint and filters start collapsed', async ({ page }) => {
 	const { calls, errors } = await openWorkspace(page)
-	await page.getByRole('link', { name: 'Documents', exact: true }).click()
+	await page.locator('#app-navigation-vue').getByRole('link', { name: 'Documents', exact: true }).click()
 	await expect(page.getByText('No documents indexed yet', { exact: true })).toBeVisible()
 	await expect(page.locator('.docs-filters')).not.toHaveAttribute('open', '')
 	await page.getByText('Filters & sorting', { exact: true }).click()
@@ -93,7 +98,20 @@ test('bookmarked conversations can be filtered without breaking navigation', asy
 		{ id: 'regular', title: 'Regular conversation', updated: 1, bookmarkedCount: 0 },
 	] })
 	await page.getByRole('link', { name: 'Bookmarked answers (1)', exact: true }).click()
-	await expect(page.getByRole('link', { name: 'Saved source', exact: true })).toBeVisible()
-	await expect(page.getByRole('link', { name: 'Regular conversation', exact: true })).toHaveCount(0)
+	await expect(page.locator('#app-navigation-vue').getByRole('link', { name: 'Saved source', exact: true })).toBeVisible()
+	await expect(page.locator('#app-navigation-vue').getByRole('link', { name: 'Regular conversation', exact: true })).toHaveCount(0)
+	expect(errors).toEqual([])
+})
+
+test('all native settings sections render on mobile and retain browser navigation', async ({ page }) => {
+	const { errors } = await openWorkspace(page, { view: 'settings', width: 390 })
+	for (const [id, label] of [['knowledge', 'Documents'], ['tools', 'Tools & permissions'], ['automation', 'Automation'], ['personal', 'Personal & data'], ['advanced', 'Advanced']]) {
+		const openNavigation = page.getByRole('button', { name: 'Open navigation', exact: true })
+		if (await openNavigation.isVisible()) await openNavigation.click()
+		await page.locator('#app-navigation-vue').getByRole('link', { name: label, exact: true }).click()
+		await expect(page).toHaveURL(new RegExp('section=' + id))
+		await expect(page.getByRole('heading', { name: label, exact: true })).toBeVisible()
+		expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true)
+	}
 	expect(errors).toEqual([])
 })

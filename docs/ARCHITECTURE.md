@@ -194,3 +194,17 @@ under `.settings-view` in `src/styles/settings.scss`.
 full RAG status. Provider profiles use the existing settings route and encrypted
 `ProviderCredentials` storage; authentication defaults to `api_key` for legacy
 profiles. See [Performance](PERFORMANCE.md) and [Migration](WORKSPACE-MIGRATION.md).
+
+## Settings boundaries
+
+`SettingsUpdateRequest` decodes the wire format and restricts allowed fields.
+`SettingsCredentialsRequest` validates all secrets before credential writes.
+`ModelSelectionValidator` checks capabilities against the proposed endpoint
+without temporarily persisting it. `SettingsPersistence` normalizes the full
+update before writing values. Provider profile JSON is decoded once and stored
+as the validated list, preserving profiles across save/reload.
+
+Frontend settings coordinate independent briefing, integration and personal
+knowledge composables. Optional resources load only when their section opens.
+The shared form stays mounted across sections; save responses preserve edits
+made after a request began and queue outstanding changes.

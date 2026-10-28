@@ -31,6 +31,7 @@ export async function api(method, path, data, options = {}) {
 			res = await axios.request(cfg)
 			break
 		} catch (error) {
+			if (cfg.signal?.aborted || error?.code === 'ERR_CANCELED') throw error
 			lastError = error
 			const status = Number(error?.response?.status || 0)
 			const retryable = status === 408 || status === 429 || status >= 500 || !error?.response

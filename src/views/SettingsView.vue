@@ -1,32 +1,29 @@
 <template>
 	<div class="settings-view">
 		<header class="page-header">
-			<div><h1>{{ $t('Settings') }}</h1><p class="page-intro">{{ $t('Make EVA work for you. Start with a model, then choose the tools you need.') }}</p></div>
+			<div><h1>{{ currentSection.label }}</h1><p class="page-intro">{{ currentSection.description }}</p></div>
 			<span class="saved-label" role="status">{{ saving ? $t('Saving…') : saved ? $t('Saved') : $t('Core settings save automatically') }}</span>
 		</header>
-		<nav class="settings-sections" :aria-label="$t('Settings sections')">
-			<NcButton v-for="item in groups" :key="item.id" :variant="group === item.id ? 'primary' : 'tertiary'" :aria-pressed="group === item.id" @click="group = item.id">{{ item.label }}</NcButton>
-		</nav>
 
-		<div v-if="loadError" class="callout callout-error" role="alert">
+		<NcNoteCard v-if="loadError" type="error">
 			<strong>{{ $t('Settings could not be loaded.') }}</strong>
 			<span>{{ loadError }}</span>
 			<NcButton variant="tertiary-no-background" @click="loadStatus(true)">{{ $t('Try again') }}</NcButton>
-		</div>
-		<div v-if="statusRefreshError" class="callout callout-info" role="status">
+		</NcNoteCard>
+		<NcNoteCard v-if="statusRefreshError" type="info">
 			<span>{{ $t('The latest status could not be loaded. Showing the last successful status: {error}', { error: statusRefreshError }) }}</span>
 			<NcButton variant="tertiary-no-background" @click="loadStatus()">{{ $t('Try again') }}</NcButton>
-		</div>
+		</NcNoteCard>
 
 
-		<div v-if="message.text" class="callout" :class="'callout-' + message.type" :role="message.type === 'error' ? 'alert' : 'status'">
+		<NcNoteCard v-if="message.text" :type="message.type || 'info'">
 			<strong>{{ message.type === 'error' ? $t('Something went wrong') : message.type === 'success' ? $t('Done') : $t('Notice') }}</strong>
 			<span>{{ message.text }}</span>
-		</div>
-		<div v-if="validationErrors.length" class="callout callout-error validation-summary" role="alert">
+		</NcNoteCard>
+		<NcNoteCard v-if="validationErrors.length" type="error">
 			<strong>{{ $t('Check these values') }}</strong>
 			<ul><li v-for="error in validationErrors" :key="error">{{ error }}</li></ul>
-		</div>
+		</NcNoteCard>
 
 		<main class="settings-body">
 
@@ -46,11 +43,11 @@
 				<AdvancedSettings v-if="group === 'advanced'" />
 			</fieldset>
 			<template v-if="group === 'advanced'">
-				<section class="settings-section"><h2>{{ $t('Diagnostics & activity') }}</h2>
+				<NcSettingsSection :name="$t('Diagnostics & activity')">
 					<p v-if="health" role="status">{{ health.ok ? $t('System healthy') : $t('System needs attention') }}</p>
 					<p v-if="healthError" role="alert">{{ healthError }}</p>
 					<div class="button-group"><NcButton :disabled="healthLoading" @click="loadHealth">{{ $t('Refresh diagnosis') }}</NcButton><NcButton @click="$emit('navigate', 'metrics')">{{ $t('Usage metrics') }}</NcButton><NcButton @click="$emit('navigate', 'runs')">{{ $t('Background tasks') }}</NcButton></div>
-				</section>
+				</NcSettingsSection>
 			</template>
 		</main>
 
@@ -70,8 +67,9 @@
 </template>
 
 <script>
-import { defineAsyncComponent, provide } from 'vue'
-import { NcButton, NcModal } from '@nextcloud/vue'
+import { computed, defineAsyncComponent, provide, toRef } from 'vue'
+import { NcButton, NcModal, NcNoteCard, NcSettingsSection } from '@nextcloud/vue'
+import { settingsSections } from '../lib/settings-sections'
 import { useEvaSettings } from '../composables/useEvaSettings'
 const GeneralSettings = defineAsyncComponent(() => import('../components/settings/GeneralSettings.vue'))
 const KnowledgeSettings = defineAsyncComponent(() => import('../components/settings/KnowledgeSettings.vue'))
@@ -82,12 +80,14 @@ const AdvancedSettings = defineAsyncComponent(() => import('../components/settin
 
 export default {
 	name: 'SettingsView',
-	components: { NcButton, NcModal, GeneralSettings, KnowledgeSettings, ToolsSettings, AutomationSettings, PersonalSettings, AdvancedSettings },
+	components: { NcButton, NcModal, NcNoteCard, NcSettingsSection, GeneralSettings, KnowledgeSettings, ToolsSettings, AutomationSettings, PersonalSettings, AdvancedSettings },
+	props: { section: { type: String, default: 'general' } },
 	emits: ['navigate'],
-	setup() {
-		const state = useEvaSettings()
+	setup(props) {
+		const state = useEvaSettings({ section: toRef(props, 'section') })
+		const currentSection = computed(() => settingsSections.find(item => item.id === props.section) || settingsSections[0])
 		provide('eva-settings', state)
-		return state
+		return { ...state, currentSection }
 	},
 }
 </script>

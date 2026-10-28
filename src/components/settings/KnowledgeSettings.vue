@@ -1,12 +1,7 @@
 <template>
 <div class="settings-group">
-<section id="settings-search" class="settings-section">
-				<div class="section-heading">
-					<div>
-						<h3>{{ $t('Search & answer quality') }}</h3>
-						<p>{{ $t('These settings control how much indexed context EVA retrieves and how creative its answers are.') }}</p>
-					</div>
-				</div>
+<NcSettingsSection id="settings-search" class="settings-section" :name="$t('Search & answer quality')" :description="$t('These settings control how much indexed context EVA retrieves and how creative its answers are.')">
+
 				<div class="field-grid field-grid-three">
 					<div class="field">
 						<NcTextField id="top-k" :label="$t('Sources per answer')" v-model="f.top_k" type="number" />
@@ -21,14 +16,9 @@
 						<p class="field-help">{{ $t('0 is deterministic and factual; higher values are more varied. Default: 0.1.') }}</p>
 					</div>
 				</div>
-			</section>
-<section id="settings-indexing" class="settings-section">
-				<div class="section-heading">
-					<div>
-						<h3>{{ $t('Indexing & scope') }}</h3>
-						<p>{{ $t('Define which files become part of EVA’s private knowledge base and how they are split for search.') }}</p>
-					</div>
-				</div>
+			</NcSettingsSection>
+<NcSettingsSection id="settings-indexing" class="settings-section" :name="$t('Indexing & scope')" :description="$t('Define which files become part of EVA’s private knowledge base and how they are split for search.')">
+
 				<div class="field-grid field-grid-three">
 					<div class="field">
 						<NcTextField id="scope-path" :label="$t('Folder to index')" v-model="f.scope_path" :placeholder="$t('Everything in Files')" />
@@ -122,17 +112,17 @@
 						<NcButton variant="primary" class="danger-button" :loading="resetting" @click="resetIndex">{{ $t('Delete index') }}</NcButton>
 					</div>
 				</div>
-			</section>
+			</NcSettingsSection>
 </div>
 </template>
 
 <script>
 import { inject } from 'vue'
-import { NcButton, NcCheckboxRadioSwitch, NcTextField } from '@nextcloud/vue'
+import { NcSettingsSection, NcButton, NcCheckboxRadioSwitch, NcTextField } from '@nextcloud/vue'
 
 export default {
  name: 'KnowledgeSettings',
- components: { NcButton, NcCheckboxRadioSwitch, NcTextField },
+ components: { NcSettingsSection, NcButton, NcCheckboxRadioSwitch, NcTextField },
  setup() { return inject('eva-settings') },
 }
 </script>

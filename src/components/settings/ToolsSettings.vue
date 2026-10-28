@@ -1,12 +1,7 @@
 <template>
 <div class="settings-group">
-<section id="settings-safety" class="settings-section">
-				<div class="section-heading">
-					<div>
-						<h3>{{ $t('Safety & actions') }}</h3>
-						<p>{{ $t('Choose what EVA may do beyond answering questions. Recommended defaults are shown below.') }}</p>
-					</div>
-				</div>
+<NcSettingsSection id="settings-safety" class="settings-section" :name="$t('Safety & actions')" :description="$t('Choose what EVA may do beyond answering questions. Recommended defaults are shown below.')">
+
 				<NcCheckboxRadioSwitch v-model="actionsEnabled" type="switch" class="native-toggle" :description="$t('Let EVA create, read, rename and search files, plus work with supported contacts and notes.')">{{ $t('Allow file actions') }}
 				</NcCheckboxRadioSwitch>
 				<NcCheckboxRadioSwitch v-model="voiceInputEnabled" type="switch" class="native-toggle" :description="$t('Voice input uses your browser speech service to transcribe audio. Enable it only if you are comfortable with that service processing your audio.')">{{ $t('Enable voice input') }}
@@ -66,14 +61,9 @@
 					<NcTextField v-if="!terminalCommandAny" id="terminal-command-allowlist" v-model="f.terminal_command_allowlist" :label="$t('Allowed terminal executables')" placeholder="date, uptime, php, git, ls" />
 					<p class="field-help">{{ terminalCommandAny ? $t('Custom mode allows any executable path, but every exact command still requires confirmation and is limited to 30 seconds.') : $t('Comma-separated executable names or absolute paths. Every command still requires a confirmation dialog and is limited to 30 seconds.') }}</p>
 				</div>
-			</section>
-<section id="settings-integrations" class="settings-section">
-				<div class="section-heading">
-					<div>
-						<h3>{{ $t('Talk & notifications') }}</h3>
-						<p>{{ $t('Configure how EVA behaves when she is used from Nextcloud Talk.') }}</p>
-					</div>
-				</div>
+			</NcSettingsSection>
+<NcSettingsSection id="settings-integrations" class="settings-section" :name="$t('Talk & notifications')" :description="$t('Configure how EVA behaves when she is used from Nextcloud Talk.')">
+
 				<div class="field-grid">
 					<div class="field">
 						<NcTextField id="talk-history" :label="$t('Talk history size')" v-model="f.talk_history_size" type="number" />
@@ -84,14 +74,9 @@
 						<p class="field-help">{{ $t('The name people mention to address EVA in Talk. Example: {mention}.', { mention: '@Eva' }) }}</p>
 					</div>
 				</div>
-				</section>
-<section class="settings-section">
-				<div class="section-heading">
-					<div>
-						<h3>{{ $t('Web search') }}</h3>
-						<p>{{ $t('Let EVA search the web when your indexed files cannot answer a question. DuckDuckGo works out of the box with no API key.') }}</p>
-					</div>
-				</div>
+				</NcSettingsSection>
+<NcSettingsSection class="settings-section" :name="$t('Web search')" :description="$t('Let EVA search the web when your indexed files cannot answer a question. DuckDuckGo works out of the box with no API key.')">
+
 				<NcCheckboxRadioSwitch v-model="userWebSearchEnabled" type="switch" class="native-toggle" :description="$t('Web search sends your question to an external search engine. The model only uses it as a fallback when your indexed files cannot answer.')">
 					{{ $t('Enable web search') }}
 				</NcCheckboxRadioSwitch>
@@ -113,17 +98,17 @@
 					<NcCheckboxRadioSwitch v-model="userWebSearchSafeSearch" type="switch" class="native-toggle compact-switch">{{ $t('Safe search') }}</NcCheckboxRadioSwitch>
 					<NcCheckboxRadioSwitch v-model="userWebSearchBrowser" type="switch" class="native-toggle compact-switch">{{ $t('Use the full browser for JavaScript pages') }}</NcCheckboxRadioSwitch>
 				</div>
-			</section>
+			</NcSettingsSection>
 </div>
 </template>
 
 <script>
 import { inject } from 'vue'
-import { NcCheckboxRadioSwitch, NcSelect, NcTextField } from '@nextcloud/vue'
+import { NcSettingsSection, NcCheckboxRadioSwitch, NcSelect, NcTextField } from '@nextcloud/vue'
 
 export default {
  name: 'ToolsSettings',
- components: { NcCheckboxRadioSwitch, NcSelect, NcTextField },
+ components: { NcSettingsSection, NcCheckboxRadioSwitch, NcSelect, NcTextField },
  setup() { return inject('eva-settings') },
 }
 </script>

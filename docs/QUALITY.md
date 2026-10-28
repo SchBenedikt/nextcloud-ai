@@ -61,3 +61,17 @@ fixtures intentionally cover: long documents, repeated-passage documents,
 tables, nested headings, multilingual (German/English) text, mail-like
 threads and facts near the end of a file. Add a fixture together with the
 feature that changes extraction/chunking so the regression guard covers it.
+
+## Native workspace validation (2026-10-28)
+
+The native overview and settings refactor passes the production build, 48
+frontend tests and 30 browser tests. PHP runs 725 tests with 8 environment-based
+skips. ESLint reports no errors and 12 existing warnings. Browser coverage
+includes all six settings sections at a mobile viewport, provider dialogs,
+section history and direct chat submission. The controller regression test
+saves provider JSON and reloads it through the settings API; another verifies
+that an invalid later credential cannot overwrite an earlier one.
+
+Screenshots in `screenshots/` use synthetic conversations in a browser fixture
+with local Nextcloud styles. They are layout evidence, not authenticated
+production or real-provider inference evidence.
