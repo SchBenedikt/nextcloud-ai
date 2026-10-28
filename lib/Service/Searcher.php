@@ -15,7 +15,7 @@ class Searcher {
     private const DENSE_SCAN_PAGE = 2000;
 
     public function __construct(
-        private Ollama $ollama,
+        private EmbeddingProvider $ollama,
         private ChunkMapper $chunkMapper,
         private DocumentMapper $documentMapper,
         private AppConfig $config
