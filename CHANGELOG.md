@@ -2,7 +2,7 @@
 
 ## [Unreleased]
 
-### Backend migration foundations (1.18.0–1.18.2 schema)
+### Backend migration foundations (1.18.0–1.18.3 schema)
 
 - Add immutable, user-owned vector-generation metadata and an explicit OCC preparation command.
 - Keep SQL retrieval and legacy embeddings as the installation default; no external database is activated.
@@ -14,6 +14,7 @@
 - Fence generation creation/binding before account erasure, preserve the block across cleanup failures and expose ownership state in both native administration surfaces.
 - Add native optional-storage connection configuration and explicit checks through a dedicated administrator page; keep search cutover unavailable.
 - Require point revisions and terminal chunk tombstones in the optional adapter; point producers/consumers and rollout verification remain pending.
+- Add an isolated building-generation SQL writer with atomic upsert intent, current-source stamps and an indexed unique chunk slot; preserve legacy read/count isolation and show the offline preparation count in both admin surfaces. Backfill and automatic point delivery remain unavailable.
 
 ### Reliability and documentation
 

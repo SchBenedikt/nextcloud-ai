@@ -35,8 +35,14 @@ controls and retention policy.
 
 Folder filtering is exact ancestor-token matching, including full-path equality,
 so `Notes` does not match `NotesArchive`. It does not require a newer prefix-index
-feature. Every search forces tenant AND generation AND `deleted=false` filters;
-callers cannot provide arbitrary filter JSON. Returned payloads are checked again
+feature. Every search forces tenant AND generation AND `deleted=false` filters.
+
+Canonical relative Files paths produce those ancestor tokens. Mail/Talk points
+accept their corresponding bounded `mail://`/`talk://` URI, carry no Files folder
+tokens and cannot enter a Files-folder-scoped result through that field. Raw URIs
+are not sent to Qdrant. Remote source/scope isolation checks remain unexecuted.
+
+Callers cannot provide arbitrary filter JSON. Returned payloads are checked again
 for identity/source/scope/document violations. Any violation fails the entire
 request instead of silently hiding a violated invariant. Search returns IDs,
 revisions and scores; future readers must hydrate owned SQL rows at exactly the

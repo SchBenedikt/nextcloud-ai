@@ -8,7 +8,8 @@ use OCA\EvaAi\Db\VectorOutboxRepository;
 
 /** Offline, secret-free snapshot shared by both administration surfaces. */
 class VectorStorageStatus {
-    public function __construct(private QdrantConnection $connection, private VectorOutboxRepository $outbox) {}
+    public function __construct(private QdrantConnection $connection, private VectorOutboxRepository $outbox,
+        private \OCA\EvaAi\Db\GenerationChunkRepository $chunks) {}
 
     public function snapshot(): array {
         try {
@@ -20,7 +21,7 @@ class VectorStorageStatus {
             }
             return ['available' => true, 'retrieval_backend' => 'sql_legacy',
                 'connection' => $connection, 'erasure_worker_enabled' => $workerEnabled,
-                'chunk_sync_available' => false, 'queue' => $queue, 'observed_at' => time()];
+                'chunk_sync_available' => false, 'staged_chunks' => $this->chunks->countStaged(), 'queue' => $queue, 'observed_at' => time()];
         } catch (\Throwable) {
             // A missing migration/database failure is not an empty, healthy queue.
             return ['available' => false];

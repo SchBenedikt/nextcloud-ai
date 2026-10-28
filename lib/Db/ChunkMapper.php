@@ -19,6 +19,7 @@ class ChunkMapper extends QBMapper {
             ->where($qb->expr()->eq('d.user_id', $qb->createNamedParameter($userId)))
             ->andWhere($qb->expr()->gt('c.id', $qb->createNamedParameter(max(0, $afterId), IQueryBuilder::PARAM_INT)))
             ->orderBy('c.id', 'ASC')->setMaxResults(max(1, min(500, $limit)));
+        $qb->andWhere($qb->expr()->isNull('c.vector_generation_id'));
         $result = $qb->executeQuery();
         try { return $result->fetchAll(); }
         finally { $result->closeCursor(); }
@@ -110,6 +111,7 @@ class ChunkMapper extends QBMapper {
             ->where($qb->expr()->eq('d.user_id', $qb->createNamedParameter($userId)))
             ->orderBy('c.id', 'ASC')
             ->setMaxResults($limit);
+        $qb->andWhere($qb->expr()->isNull('c.vector_generation_id'));
         $result = $qb->executeQuery();
         $rows = $result->fetchAll();
         $result->closeCursor();
@@ -137,6 +139,7 @@ class ChunkMapper extends QBMapper {
             ->orderBy('c.id', 'ASC')
             ->setMaxResults($limit)
             ->setFirstResult($offset);
+        $qb->andWhere($qb->expr()->isNull('c.vector_generation_id'));
         $result = $qb->executeQuery();
         $rows = $result->fetchAll();
         $result->closeCursor();
@@ -170,6 +173,7 @@ class ChunkMapper extends QBMapper {
         $qb->andWhere($like);
         $qb->orderBy('c.document_id', 'ASC')
             ->setMaxResults($cap);
+        $qb->andWhere($qb->expr()->isNull('c.vector_generation_id'));
         $result = $qb->executeQuery();
         $rows = $result->fetchAll();
         $result->closeCursor();
@@ -196,6 +200,7 @@ class ChunkMapper extends QBMapper {
             $qb->select('c.id', 'c.document_id', 'c.chunk_index', 'c.content', 'c.embedding', 'c.provenance')
                 ->from('eva_ai_chunks', 'c')
                 ->where($qb->expr()->in('c.id', $qb->createNamedParameter($chunkIds, IQueryBuilder::PARAM_INT_ARRAY)));
+            $qb->andWhere($qb->expr()->isNull('c.vector_generation_id'));
             $result = $qb->executeQuery();
             $rows = $result->fetchAll();
             $result->closeCursor();
@@ -212,6 +217,7 @@ class ChunkMapper extends QBMapper {
             ->from('eva_ai_chunks', 'c')
             ->innerJoin('c', 'eva_ai_documents', 'd', $qb->expr()->eq('c.document_id', 'd.id'))
             ->where($qb->expr()->eq('d.user_id', $qb->createNamedParameter($userId)));
+        $qb->andWhere($qb->expr()->isNull('c.vector_generation_id'));
         $row = $qb->executeQuery()->fetch();
         return $row ? (int)$row['c'] : 0;
     }
@@ -221,6 +227,7 @@ class ChunkMapper extends QBMapper {
         $qb->selectAlias($qb->createFunction('COUNT(*)'), 'c')
             ->from('eva_ai_chunks', 'c')
             ->where($qb->expr()->eq('document_id', $qb->createNamedParameter($documentId, IQueryBuilder::PARAM_INT)));
+        $qb->andWhere($qb->expr()->isNull('c.vector_generation_id'));
         $row = $qb->executeQuery()->fetch();
         return $row ? (int)$row['c'] : 0;
     }
@@ -243,6 +250,7 @@ class ChunkMapper extends QBMapper {
         if ($offset !== null && $offset > 0) {
             $qb->setFirstResult($offset);
         }
+        $qb->andWhere($qb->expr()->isNull('vector_generation_id'));
         $result = $qb->executeQuery();
         $rows = $result->fetchAll();
         $result->closeCursor();
@@ -262,6 +270,7 @@ class ChunkMapper extends QBMapper {
                 ->from('eva_ai_chunks')
                 ->where($qb->expr()->in('document_id', $qb->createNamedParameter($batch, IQueryBuilder::PARAM_INT_ARRAY)))
                 ->orderBy('chunk_index', 'ASC');
+            $qb->andWhere($qb->expr()->isNull('vector_generation_id'));
             $result = $qb->executeQuery();
             $rows = $result->fetchAll();
             $result->closeCursor();

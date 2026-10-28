@@ -43,6 +43,12 @@ This development stack has not executed remote preparation or migration itself.
 
 ## Journal representation
 
+The internal `GenerationChunkRepository` can now commit a building-generation
+SQL chunk and its upsert revision in one transaction, after source/owner/identity
+checks. Legacy rows remain separate. No live indexing/backfill or point consumer
+calls it yet; deletion and invalidation paths still need integration before any
+point delivery is enabled. See [GENERATION-CHUNKS.md](GENERATION-CHUNKS.md).
+
 `eva_ai_vec_outbox` records operation, owner, generation and fixed target,
 immutable generation metadata, optional document/chunk IDs, state, attempt count,
 next availability, lease/token and sanitized error code. It stores no document
