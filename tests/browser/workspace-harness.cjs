@@ -5,7 +5,7 @@ const vm = require('node:vm')
 const root = path.resolve(__dirname, '../..')
 const cache = path.join(root, 'node_modules/.cache/eva-ai-browser')
 
-async function openWorkspace(page, { view = '', width = 1280, chats = [], fileIds = [] } = {}) {
+async function openWorkspace(page, { view = '', width = 1280, chats = [], fileIds = [], backgroundItems = [] } = {}) {
 	const calls = []
 	const errors = []
 	page.on('pageerror', error => errors.push(String(error)))
@@ -33,6 +33,7 @@ async function openWorkspace(page, { view = '', width = 1280, chats = [], fileId
 		if (endpoint === 'chats') { if (request.method() === 'POST') { data = { id: 'new-chat', title: 'New chat', updated: 123, count: 0 }; chats.push(data) } else data = chats }
 		else if (endpoint === 'status') data = status()
 		else if (endpoint === 'settings' && request.method() === 'PUT') { Object.assign(settings, body); delete settings.custom_provider_api_key; data = settings }
+		else if (endpoint === 'backgroundChat' && request.method() === 'GET') data = { items: backgroundItems }
 		else if (endpoint === 'models') data = { models: [] }
 		else if (endpoint === 'documents') data = { documents: [], total: 0, totalChunks: 0, totalSize: 0 }
 		else if (endpoint === 'index/status') data = { indexing: false, indexStopping: false, indexMode: '', lastError: '' }

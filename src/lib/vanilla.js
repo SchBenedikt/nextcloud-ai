@@ -1458,7 +1458,7 @@ export function mountChat(root, opts = {}) {
 		if (!chatId) { agentStatusPill.hidden = true; return }
 		api('GET', '/backgroundChat').then((payload) => {
 			const items = payload && Array.isArray(payload.items) ? payload.items : []
-			const item = items.find((entry) => entry && entry.chatId === chatId)
+			const item = items.find((entry) => entry && entry.chatId === chatId && ['pending', 'running', 'failed', 'paused'].includes(entry.status))
 			if (!item) { agentStatusPill.hidden = true; return }
 			const state = String(item.status || 'pending')
 			const progress = state === 'running' && item.phase === 'tool' && item.tool
