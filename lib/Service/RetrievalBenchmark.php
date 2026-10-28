@@ -21,6 +21,13 @@ final class RetrievalBenchmark {
         if (!is_string($manifest['corpus_sha256'] ?? null) || !hash_equals($manifest['corpus_sha256'], $hash)) {
             throw new \RuntimeException('Corpus hash does not match the frozen manifest.');
         }
+        $this->validateQueries($queries);
+        return ['manifest' => $manifest, 'queries' => $queries, 'corpus' => $corpus,
+            'corpus_sha256' => $hash, 'queries_sha256' => hash_file('sha256', $directory . '/queries.json')];
+    }
+
+    public function validateQueries(array $queries): void {
+        if (!array_is_list($queries) || count($queries) < 1 || count($queries) > 1000) throw new \RuntimeException('Invalid query list size.');
         $ids = [];
         foreach ($queries as $query) {
             if (!is_array($query) || !is_string($query['id'] ?? null) || $query['id'] === '' || isset($ids[$query['id']])
@@ -39,8 +46,6 @@ final class RetrievalBenchmark {
             }
             $ids[$query['id']] = true;
         }
-        return ['manifest' => $manifest, 'queries' => $queries, 'corpus' => $corpus,
-            'corpus_sha256' => $hash, 'queries_sha256' => hash_file('sha256', $directory . '/queries.json')];
     }
 
     /** Bounded-memory exact cosine oracle. Ties are broken by ascending chunk ID. */
