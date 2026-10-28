@@ -20,7 +20,7 @@ final class VectorGeneration extends Command {
     protected function configure(): void {
         $this->setName('eva_ai:vector:generation')
             ->setDescription('Inspect or prepare immutable vector-generation metadata; never activates external retrieval')
-            ->addArgument('action', InputArgument::REQUIRED, 'create, list or fail')
+            ->addArgument('action', InputArgument::REQUIRED, 'create, list, fail or owner-status')
             ->addArgument('user', InputArgument::REQUIRED, 'Existing generation owner');
         foreach (['provider', 'profile', 'model', 'endpoint', 'dimension', 'chunk-size', 'chunk-overlap', 'id', 'after'] as $name) {
             $this->addOption($name, null, InputOption::VALUE_REQUIRED, 'Explicit generation ' . $name);
@@ -31,12 +31,16 @@ final class VectorGeneration extends Command {
         $previous = $this->config->userId();
         try {
             $user = $input->getArgument('user');
+            if ($input->getArgument('action') === 'owner-status') {
+                $output->writeln(json_encode(['owner_state' => $this->generations->ownerStatus($user)], JSON_THROW_ON_ERROR), OutputInterface::OUTPUT_RAW);
+                return 0;
+            }
             if ($user === '' || !$this->users->userExists($user)) throw new \InvalidArgumentException('Select an existing Nextcloud user.');
             $this->config->setUserId($user);
             $action = $input->getArgument('action');
             if ($action === 'list') {
                 $rows = $this->generations->page($user, $input->getOption('after') ?? '');
-                $data = ['retrieval_changed' => false, 'generations' => $rows, 'next_after' => count($rows) === 50 ? $rows[49]['id'] : null];
+                $data = ['retrieval_changed' => false, 'owner_state' => $this->generations->ownerStatus($user), 'generations' => $rows, 'next_after' => count($rows) === 50 ? $rows[49]['id'] : null];
             } elseif ($action === 'fail') {
                 $id = $input->getOption('id');
                 if (!is_string($id) || preg_match('/^[a-f0-9]{32}$/D', $id) !== 1) throw new \InvalidArgumentException('Supply a generation ID.');
@@ -57,11 +61,13 @@ final class VectorGeneration extends Command {
                     $dimension, $chunkSize, $overlap);
                 $this->generations->create($generation);
                 $data = $generation->toRow() + ['status' => 'building', 'retrieval_changed' => false];
-            } else throw new \InvalidArgumentException('Use create, list or fail. Activation requires a verified backfill and is not available here.');
+            } else throw new \InvalidArgumentException('Use create, list, fail or owner-status. Activation requires a verified backfill and is not available here.');
             $output->writeln(json_encode($data, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR), OutputInterface::OUTPUT_RAW);
             return 0;
         } catch (\Throwable $e) {
-            $output->writeln('Generation operation failed: ' . $e->getMessage(), OutputInterface::OUTPUT_RAW);
+            $reason = $e instanceof \InvalidArgumentException || $e instanceof \OCA\EvaAi\Vector\VectorStoreException
+                ? $e->getMessage() : 'Storage metadata could not be updated. Check the database and app migrations.';
+            $output->writeln('Generation operation failed: ' . $reason, OutputInterface::OUTPUT_RAW);
             return 1;
         } finally { $this->config->setUserId($previous); }
     }

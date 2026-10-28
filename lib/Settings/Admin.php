@@ -30,6 +30,7 @@ class Admin implements ISettings {
         private WebSearchService $webSearch,
         private IURLGenerator $urlGenerator,
         private ?\OCA\EvaAi\Vector\VectorStorageStatus $vectorStorageStatus = null,
+        private ?\OCA\EvaAi\Db\VectorOwnerFenceRepository $vectorOwners = null,
     ) {
     }
 
@@ -69,6 +70,7 @@ class Admin implements ISettings {
         $totalFailed = 0;
         $users = [];
         foreach (array_keys($userIdSet) as $uid) {
+            $uid = (string)$uid;
             $agg = null;
             foreach ($aggregates as $row) {
                 if ($row['user_id'] === $uid) {
@@ -103,6 +105,10 @@ class Admin implements ISettings {
         }
         $this->config->setUserId(null);
         usort($users, static fn(array $a, array $b): int => strcmp($a['userId'], $b['userId']));
+        try { $ownerStates = $this->vectorOwners?->statesForUsers(array_column($users, 'userId')) ?? []; }
+        catch (\Throwable) { $ownerStates = []; }
+        foreach ($users as &$row) $row['vectorOwnerState'] = $ownerStates[$row['userId']] ?? 'unavailable';
+        unset($row);
 
         $schedulerOverview = $this->scheduler->overview();
 

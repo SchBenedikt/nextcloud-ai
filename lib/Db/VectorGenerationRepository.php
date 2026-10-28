@@ -10,9 +10,16 @@ use OCP\IDBConnection;
 
 /** Tenant-bound lifecycle metadata; activation awaits an actual verified backfill. */
 class VectorGenerationRepository {
-    public function __construct(private IDBConnection $db, private VectorOutboxRepository $outbox) {}
+    public function __construct(private IDBConnection $db, private VectorOutboxRepository $outbox, private VectorOwnerFenceRepository $owners) {}
 
     public function create(VectorGeneration $generation): void {
+        $this->outbox->transaction(function () use ($generation): void {
+            $this->owners->lockOpen($generation->userId);
+            $this->insertBuilding($generation);
+        });
+    }
+
+    private function insertBuilding(VectorGeneration $generation): void {
         $qb = $this->db->getQueryBuilder();
         $qb->insert('eva_ai_vec_generations');
         foreach ($generation->toRow() + ['status' => 'building', 'created_at' => time(), 'build_cursor' => 0] as $name => $value) {
@@ -71,6 +78,13 @@ class VectorGenerationRepository {
     }
 
     public function bindTarget(string $userId, string $id, string $target): void {
+        $this->outbox->transaction(function () use ($userId, $id, $target): void {
+            $this->owners->lockOpen($userId);
+            $this->bindTargetLocked($userId, $id, $target);
+        });
+    }
+
+    private function bindTargetLocked(string $userId, string $id, string $target): void {
         if (preg_match('/^[a-f0-9]{64}$/D', $target) !== 1) throw new \InvalidArgumentException('Invalid storage target.');
         $qb = $this->db->getQueryBuilder();
         $qb->update('eva_ai_vec_generations')->set('storage_endpoint_hash', $qb->createNamedParameter($target))
@@ -90,17 +104,22 @@ class VectorGenerationRepository {
 
     public function isBuildingBound(string $userId, string $id, string $target): bool {
         $qb = $this->db->getQueryBuilder();
-        $qb->select('id')->from('eva_ai_vec_generations')
-            ->where($qb->expr()->eq('user_id', $qb->createNamedParameter($userId)))
-            ->andWhere($qb->expr()->eq('id', $qb->createNamedParameter($id)))
-            ->andWhere($qb->expr()->eq('status', $qb->createNamedParameter('building')))
-            ->andWhere($qb->expr()->eq('storage_endpoint_hash', $qb->createNamedParameter($target)));
+        $qb->select('g.id')->from('eva_ai_vec_generations', 'g')
+            ->innerJoin('g', 'eva_ai_vec_owners', 'o', $qb->expr()->eq('o.owner_hash', $qb->createNamedParameter(VectorOwnerFenceRepository::ownerHash($userId))))
+            ->where($qb->expr()->eq('g.user_id', $qb->createNamedParameter($userId)))
+            ->andWhere($qb->expr()->eq('g.id', $qb->createNamedParameter($id)))
+            ->andWhere($qb->expr()->eq('g.status', $qb->createNamedParameter('building')))
+            ->andWhere($qb->expr()->eq('g.storage_endpoint_hash', $qb->createNamedParameter($target)))
+            ->andWhere($qb->expr()->eq('o.state', $qb->createNamedParameter('open')));
         $result = $qb->executeQuery();
         try { return $result->fetch() !== false; } finally { $result->closeCursor(); }
     }
 
     /** SQL erasure and durable remote intent commit or roll back together. */
     public function deleteUser(string $userId, ?callable $deleteIndex = null): void {
+        // This commits separately: a subsequent cleanup rollback must never
+        // permit an in-flight request to create/bind another generation.
+        $this->owners->beginErasure($userId);
         $this->outbox->transaction(function () use ($userId, $deleteIndex): void {
             // Serialize against a concurrent binding before reading destinations.
             $retire = $this->db->getQueryBuilder();
@@ -122,4 +141,7 @@ class VectorGenerationRepository {
             }
         });
     }
+
+    public function ownerStatus(string $userId): string { return $this->owners->status($userId); }
+    public function ownerMetadata(string $userId): ?array { return $this->owners->metadata($userId); }
 }

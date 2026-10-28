@@ -19,16 +19,35 @@ you can remove it.
 | First-run knowledge marker | Per-user Nextcloud user configuration | Until the app is reset/uninstalled or the user changes it |
 | Agent conversation state | Nextcloud database (`eva_ai_agent_store`) | Per conversation token; deleted on reset |
 | App configuration | Nextcloud database (`oc_appconfig`) | Persistent until manually changed |
+| Optional vector generation metadata and durable synchronization intent | Nextcloud database (`eva_ai_vec_generations`, `eva_ai_vec_outbox`) | Pending/failed erasure intent must survive until cleanup is confirmed; automatic journal pruning is not implemented yet |
+| Optional storage targets and encrypted credentials | Nextcloud database (`eva_ai_vec_targets`) | Instance infrastructure configuration; retained destinations can be needed for outstanding cleanup and are not removed with one user's account |
+| Vector ownership fence (purpose-separated owner hash, state, revision, timestamp) | Nextcloud database (`eva_ai_vec_owners`) | Open state while in use; blocked fingerprint intentionally retained after account erasure to prevent stale recreation; no automatic expiry/unblock exists yet |
 
 ## 2. Where is data processed?
 
 - **First app start**: EVA may add only the user's Nextcloud ID, display name and non-empty email to that user's own `KNOWLEDGE.md`. Existing content is preserved; address, phone, biography and groups are not imported automatically.
-- **All processing is local**: file indexing, text extraction, chunking, embedding
-  generation and LLM chat all happen on your own server.
-- **Ollama** is the only AI component — it runs locally on your machine. No file
-  contents, emails or personal data are ever sent to third-party services.
-- **Weather queries** use the free Open-Meteo API (no API key; only the requested
-  location is transmitted, no user data).
+- **Extraction and default storage**: EVA extracts/chunks files on the Nextcloud
+  server and stores the current index in Nextcloud SQL. An external vector server
+  is optional and disabled by default; the development stack does not yet enable
+  chunk synchronization or external primary search.
+- **Inference**: chat prompts, selected file excerpts and tool results go to the
+  configured model provider. Ollama can run local models or cloud models; the
+  default `gemma4:cloud` chat model is a cloud model even when the Ollama endpoint
+  is localhost. Groq and OpenAI-compatible providers can also process data remotely.
+  Embeddings currently use the configured Ollama embedding model/endpoint. Choose
+  and verify local models if inference must remain on your infrastructure.
+- **Integrations**: web search, connectors and other external tools contact their
+  configured services when used. Weather queries send the requested location to
+  Open-Meteo. Review provider and tool settings for your deployment rather than
+  assuming an endpoint on localhost means all subsequent processing stays local.
+
+The vector owner fingerprint is pseudonymous personal data, not an anonymous
+record. It contains no account name, document text, embedding or credential, but
+can still be linked by someone who knows the Nextcloud user ID. The personal data
+export includes that user's `vector_owner_fence` metadata. A cleanup failure does
+not reopen the blocked state; general cleanup retry/reconciliation and reviewed
+retention for completed operational records remain unfinished work. See
+[VECTOR-OUTBOX.md](VECTOR-OUTBOX.md) before enabling optional cleanup or storage.
 
 ## 3. What happens when a file is modified or deleted?
 
