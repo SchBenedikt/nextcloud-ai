@@ -74,7 +74,8 @@ test('sends image attachments for analysis, including an image-only prompt', asy
 
 test('generates images from the selected provider and shows the saved Files gallery', async ({ page }) => {
   await openChatView(page)
-  await page.getByRole('button', { name: 'Create images' }).click()
+  await page.getByRole('button', { name: 'Conversation actions' }).click()
+  await page.getByRole('menuitem', { name: 'Create images' }).click()
   await expect(page.locator('.image-generator')).toBeVisible()
   await expect(page.locator('.image-generator-privacy')).toContainText('sent to your configured image provider')
   await page.locator('.image-generator textarea').fill('A fox reading beneath an apple tree')
@@ -90,7 +91,8 @@ test('generates images from the selected provider and shows the saved Files gall
 test('image generation remains usable at a narrow mobile viewport', async ({ page }) => {
   await page.setViewportSize({ width: 375, height: 812 })
   await openChatView(page)
-  await page.getByRole('button', { name: 'Create images' }).click()
+  await page.getByRole('button', { name: 'Conversation actions' }).click()
+  await page.getByRole('menuitem', { name: 'Create images' }).click()
   await expect(page.locator('.image-generator')).toBeVisible()
   await expect(page.locator('.image-generator textarea')).toBeVisible()
   await expect(page.locator('.image-generator select')).toBeVisible()
@@ -110,6 +112,8 @@ test('chat exports can include or omit per-message timestamps and model details'
   await page.locator('.chatform button[type="submit"]').click()
   await expect(page.locator('.rb').last()).toContainText('A test answer')
 
+  await page.getByRole('button', { name: 'Conversation actions' }).click()
+  await page.getByRole('menuitem', { name: 'Export conversation' }).click()
   await expect(page.locator('#export-include-timestamps')).toBeChecked()
   await expect(page.locator('#export-include-model')).toBeChecked()
   const fullExportPromise = page.waitForEvent('download')
@@ -119,7 +123,6 @@ test('chat exports can include or omit per-message timestamps and model details'
   expect(fullText).toContain('Sent 20')
   expect(fullText).toContain('Model: gpt-test')
 
-  await page.getByText('Export options', { exact: true }).click()
   await page.uncheck('#export-include-timestamps')
   await page.uncheck('#export-include-model')
   const minimalExportPromise = page.waitForEvent('download')
@@ -145,7 +148,9 @@ test('chat exports can be limited to an inclusive date range', async ({ page }) 
   await page.fill('#chatinput', 'Date filtered export')
   await page.locator('.chatform button[type="submit"]').click()
   await expect(page.locator('.rb').last()).toContainText('A test answer')
-  await page.getByText('Export options', { exact: true }).click()
+
+  await page.getByRole('button', { name: 'Conversation actions' }).click()
+  await page.getByRole('menuitem', { name: 'Export conversation' }).click()
 
   const dates = await page.evaluate(() => {
     const format = (value) => [value.getFullYear(), String(value.getMonth() + 1).padStart(2, '0'), String(value.getDate()).padStart(2, '0')].join('-')
@@ -171,16 +176,14 @@ test('chat exports can be limited to an inclusive date range', async ({ page }) 
   expect(matchingText).toContain('A test answer')
 })
 
-test('selects a chat model per message and shows the model returned by the server', async ({ page }) => {
+test('uses the configured provider and shows the model returned by the server', async ({ page }) => {
   await openChatView(page)
   const model = page.locator('.chat-model-select')
-  await expect(model).toBeVisible()
-  await expect(model).toHaveValue('gemma4:cloud')
-  await model.selectOption('llama3.2:latest')
+  await expect(model).toHaveCount(0)
   await page.fill('#chatinput', 'Use the selected model')
   await page.locator('.chatform button[type="submit"]').click()
 
-  await expect.poll(() => page.evaluate(() => window.__calls.find((call) => call.url.endsWith('/streamChat'))?.body?.model)).toBe('llama3.2:latest')
+  await expect.poll(() => page.evaluate(() => window.__calls.some((call) => call.url.endsWith('/streamChat')))).toBe(true)
   await expect(page.locator('.rb').last()).toContainText('Model: gpt-test')
 })
 

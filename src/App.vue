@@ -5,7 +5,7 @@
 		</NcAppContent>
 	</NcContent>
 	<NcContent v-else class="eva-ai-app" :app-name="'eva_ai'">
-		<NcAppNavigation :title="$t('Eva · v') + buildVersion" @close-navigation="mobileOpen = false">
+		<NcAppNavigation :title="'EVA'">
 			<template #search>
 				<NcAppNavigationSearch v-model="chatFilter" :label="$t('Search chats')" :placeholder="$t('Search chats')" />
 				<div class="new-chat-container">
@@ -35,6 +35,7 @@
 					</template>
 				</NcAppNavigationItem>
 				<NcAppNavigationItem
+					v-if="bookmarkedCount > 0 || showBookmarked"
 					:name="$t('Bookmarked answers') + ' (' + bookmarkedCount + ')'"
 					:active="showBookmarked"
 					@click="showBookmarked = !showBookmarked">
@@ -43,32 +44,23 @@
 				<li class="chat-list-heading">
 					<span>{{ $t('Chats') }}</span>
 					<NcCounterBubble :count="activeChats.length" />
-					<NcButton variant="tertiary" :aria-label="$t('Manage folders')" @click.stop="manageFolders">{{ $t('Folders') }}</NcButton>
 				</li>
 				<template v-for="item in navItems" :key="item.key">
 					<li
 						v-if="item.type === 'heading'"
 						class="chat-list-heading"
-						:class="{ 'chat-list-heading--archived': item.archived, 'chat-list-heading--folder': item.folder, 'chat-list-heading--drop': item.folder && dragOverFolder === item.folderName }"
-						:style="item.folder && item.color ? { '--eva-folder-color': item.color } : undefined"
-						:title="item.folder ? (item.collapsed ? $t('Expand folder') : $t('Collapse folder')) : undefined"
-						@dragover.prevent="item.folder && (dragOverFolder = item.folderName)"
-						@dragleave="dragOverFolder = ''"
-						@drop.prevent="item.folder && dropChat(item.folderName)"
-						@click="item.folder ? toggleFolder(item.folderName) : (item.archived && (showArchived = !showArchived))">
+						:class="{ 'chat-list-heading--archived': item.archived }">
 						<svg v-if="item.icon" width="14" height="14" viewBox="0 0 24 24" class="chat-list-heading-icon"><path :d="item.icon" fill="currentColor" /></svg>
-						<span>{{ item.label }}</span>
+						<button v-if="item.archived" type="button" :aria-expanded="showArchived" @click="showArchived = !showArchived">{{ item.label }}</button>
+						<span v-else>{{ item.label }}</span>
 						<NcCounterBubble v-if="item.count !== undefined" :count="item.count" />
-						<svg v-if="item.archived || item.folder" width="16" height="16" viewBox="0 0 24 24" :class="{ rotated: item.archived && showArchived, 'chevron-collapsed': item.folder && item.collapsed }"><path :d="mdiChevronDown" fill="currentColor" /></svg>
+						<svg v-if="item.archived" width="16" height="16" viewBox="0 0 24 24" :class="{ rotated: showArchived }"><path :d="mdiChevronDown" fill="currentColor" /></svg>
 					</li>
 				<NcAppNavigationItem
 					v-else-if="!item.archivedChat || showArchived"
-						:class="{ 'chat-item--nested': item.nested }"
 						:name="itemName(item.chat)"
 						:active="view === 'chat' && item.chat.id === currentChat"
 						:force-menu="true"
-						:draggable="!item.chat.archived"
-						@dragstart="startChatDrag(item.chat, $event)"
 						:title="itemTip(item.chat)"
 						@click="selectChat(item.chat.id)">
 						<template #icon>
@@ -128,16 +120,18 @@
 			</template>
 		</NcAppNavigation>
 		<NcAppContent>
-			<HomeView v-if="view === 'home'" @new-chat="() => newChat()" @navigate="navigate" @open-chat="selectChat" />
+			<HomeView v-if="view === 'home'" :chats="chats" :loading="chatsLoading" :busy="busy" :error="apiError" @retry="loadChats" @new-chat="newChat" @navigate="navigate" @open-chat="selectChat" />
 			<ChatView v-else-if="view === 'chat'" :chat-id="currentChat" :initial-prompt="pendingPrompt" :auto-send="!!pendingPrompt" @chat-updated="loadChats" @prompt-consumed="pendingPrompt = ''" />
 			<FileContextChatView v-else-if="view === 'fileContext'" :file-ids="fileContextIds" />
 			<DocumentsView v-else-if="view === 'docs'" />
-			<SettingsView v-else />
+			<MetricsView v-else-if="view === 'metrics'" />
+			<AgentRunsView v-else-if="view === 'runs'" />
+			<SettingsView v-else @navigate="navigate" />
 		</NcAppContent>
 		<NcModal v-if="chatDialog" size="small" :name="chatDialog.mode === 'rename' ? $t('Rename chat') : $t('Delete chat')" @close="closeChatDialog">
 			<form class="chat-dialog" @submit.prevent="confirmChatDialog">
 				<p v-if="chatDialog.mode === 'delete'" class="chat-dialog__copy">{{ $t('Delete “{title}”? This permanently removes the conversation and its messages.', { title: chatDialog.title }) }}</p>
-				<NcTextField v-else v-model="chatDialog.draft" :label="$t('Chat title')" :label-outside="true" :disabled="chatDialog.busy" maxlength="120" autofocus />
+				<NcTextField v-else v-model="chatDialog.draft" :label="$t('Chat title')" :disabled="chatDialog.busy" maxlength="120" autofocus />
 				<p v-if="chatDialog.error" class="chat-dialog__error" role="alert">{{ chatDialog.error }}</p>
 				<div class="chat-dialog__actions">
 					<NcButton type="button" variant="tertiary" :disabled="chatDialog.busy" @click="closeChatDialog">{{ $t('Cancel') }}</NcButton>
@@ -160,8 +154,11 @@ const DocumentsView = defineAsyncComponent(() => import('./views/DocumentsView.v
 const SettingsView = defineAsyncComponent(() => import('./views/SettingsView.vue'))
 const FileContextChatView = defineAsyncComponent(() => import('./views/FileContextChatView.vue'))
 const AdminView = defineAsyncComponent(() => import('./views/AdminView.vue'))
-import { mdiChatProcessing, mdiFileDocumentOutline, mdiTune, mdiTrashCanOutline, mdiMessagePlus, mdiPencilOutline, mdiViewDashboardOutline, mdiPinOutline, mdiBookmarkOutline, mdiArchiveOutline, mdiArchiveArrowUpOutline } from '@mdi/js'
+const MetricsView = defineAsyncComponent(() => import('./views/MetricsView.vue'))
+const AgentRunsView = defineAsyncComponent(() => import('./views/AgentRunsView.vue'))
+import { mdiChatProcessing, mdiFileDocumentOutline, mdiTune, mdiTrashCanOutline, mdiMessagePlus, mdiPencilOutline, mdiViewDashboardOutline, mdiPinOutline, mdiBookmarkOutline, mdiArchiveOutline, mdiArchiveArrowUpOutline, mdiChevronDown, mdiPinOffOutline } from '@mdi/js'
 import { NcTextField } from '@nextcloud/vue'
+import NcCounterBubble from '@nextcloud/vue/components/NcCounterBubble'
 import NcAppNavigationSearch from '@nextcloud/vue/components/NcAppNavigationSearch'
 import NcActionButton from '@nextcloud/vue/components/NcActionButton'
 import NcActionSeparator from '@nextcloud/vue/components/NcActionSeparator'
@@ -172,7 +169,8 @@ import { useNavigation } from './composables/useNavigation'
 
 export default {
 	name: 'EvaAiApp',
-	components: { HomeView, ChatView, DocumentsView, SettingsView, FileContextChatView, AdminView, NcTextField, NcAppNavigationSearch, NcActionButton, NcActionSeparator, NcIconSvgWrapper },	setup() {
+	components: { MetricsView, AgentRunsView, NcCounterBubble, HomeView, ChatView, DocumentsView, SettingsView, FileContextChatView, AdminView, NcTextField, NcAppNavigationSearch, NcActionButton, NcActionSeparator, NcIconSvgWrapper },
+	setup() {
 			// Admin settings form (Issue #82): the template mounts the same app
 			// with data-admin="1" and renders the admin dashboard instead.
 			const rootEl = document.getElementById('eva_ai-root')
@@ -184,8 +182,6 @@ export default {
 		// params.get('chat') and preserves the existing deep-link contract.
 		// It also performs url.searchParams.set('chat', currentChat.value) when
 		// navigating to an open conversation.
-		const mobileOpen = ref(false)
-		const buildVersion = appVersion
 
 		const chats = ref([])
 		const currentChat = ref(null)
@@ -209,7 +205,7 @@ export default {
 			const query = chatFilter.value.trim()
 			if (showBookmarked.value) {
 				const base = query ? (searchResults.value || chats.value.filter((chat) => String(chat.title || '').toLowerCase().includes(query.toLowerCase()))) : bookmarkedChats.value
-				const matches = base.filter((chat) => Number(chat.bookmarkedCount || 0) > 0 && chat.value.some((facet) => facet.id === chat.id))
+				const matches = base.filter((chat) => Number(chat.bookmarkedCount || 0) > 0)
 				return [{ type: 'heading', key: 'h-bookmarks', label: t('Bookmarked answers'), icon: mdiBookmarkOutline, count: bookmarkedCount.value }, ...matches.map((chat) => ({ type: 'chat', key: 'chat-' + chat.id, chat }))]
 			}
 			if (query) {
@@ -441,13 +437,13 @@ export default {
 		})
 
 		return {
-			view, adminMode: isAdminMode, mobileOpen, buildVersion,
+			view, adminMode: isAdminMode,
 			chats, currentChat, busy, chatsLoading, chatFilter, apiError, chatDialog, showArchived,
 			navItems, listChats, activeChats, showBookmarked, bookmarkedChats, bookmarkedCount,
 			fileContextIds, itemName, itemTip,
 			newChat, selectChat, renameChat, deleteChat, closeChatDialog, confirmChatDialog, loadChats, navigate, updateChatMeta, pendingPrompt,
 			mdiChatProcessing, mdiFileDocumentOutline, mdiTune, mdiTrashCanOutline, mdiMessagePlus, mdiPencilOutline, mdiViewDashboardOutline,
-			mdiPinOutline, mdiBookmarkOutline, mdiArchiveOutline, mdiArchiveArrowUpOutline,
+			mdiPinOutline, mdiBookmarkOutline, mdiArchiveOutline, mdiArchiveArrowUpOutline, mdiChevronDown, mdiPinOffOutline,
 		}
 	},
 }
@@ -456,8 +452,11 @@ export default {
 <style scoped>
 .eva-ai-app {
 	width: 100%;
-	--eva-content-width: clamp(1180px, 78vw, 1680px);
+	--eva-content-width: 1120px;
 }
+
+.chat-list-heading > button { border: 0; background: transparent; color: inherit; font: inherit; cursor: pointer; text-align: start; flex: 1; min-height: 44px; }
+.chat-list-heading > button:focus-visible { outline: 2px solid var(--color-primary-element); }
 
 .new-chat-container {
 	background: transparent;
@@ -528,6 +527,11 @@ export default {
 </style>
 
 <style>
+/* NcAppContent places its navigation toggle over the first header row. */
+.eva-ai-app .page-header,
+.eva-ai-app .agent-runs__header,
+.eva-ai-app .file-context-root > .head { padding-inline-start: 44px; }
+
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after {
     scroll-behavior: auto !important;

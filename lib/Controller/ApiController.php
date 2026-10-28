@@ -359,7 +359,7 @@ class ApiController extends OCSController {
         if (!in_array($removeCustomKey, [true, false, 0, 1, '0', '1'], true)) return new ErrorDataResponse(['error' => 'Invalid custom provider credential input.'], 400);
         if ($providerId !== 'ollama' && $providerId !== 'groq') {
             $credentials = \OCP\Server::get(\OCA\EvaAi\Service\ProviderCredentials::class);
-            if (!$removeCustomKey && (!is_string($customKey) || $customKey === '') && !$credentials->customConfigured($user, $providerId)) {
+            if (($selectedProfile['auth'] ?? 'api_key') !== 'none' && !$removeCustomKey && (!is_string($customKey) || $customKey === '') && !$credentials->customConfigured($user, $providerId)) {
                 return new ErrorDataResponse(['error' => 'Save an API key for the selected custom provider first.'], 400);
             }
             if ($removeCustomKey) $credentials->saveCustom($user, $providerId, '');

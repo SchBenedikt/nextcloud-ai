@@ -148,3 +148,23 @@ they do not require a Nextcloud account and are not full authenticated chat E2E.
 Groq contract CI checks out Nextcloud's public interfaces and runs the seven
 provider tests with `--fail-on-skipped` on PHP 8.2, 8.3 and 8.4. The standalone
 PHP suite follows existing conventions and skips platform tests without OCP.
+## Focused workspace development
+
+Settings sections live in `src/components/settings/`; their shared state and
+deferred loaders live in `src/composables/useEvaSettings.js`. Keep data ownership
+in the composable so section switches cannot discard edits. Provider drafts
+belong to `ProviderSettings` and save explicitly through the settings API.
+
+`ChatView` must await the renderer's `ready` promise before sending an initial
+prompt. Otherwise an asynchronous history restore can overwrite the new
+message. Always destroy the renderer on replacement and unmount.
+
+The browser suite includes the full Vue workspace with mocked APIs, alongside
+standalone, chat and metrics tests. It covers direct first-message sending,
+deferred settings resources, provider forms, lightweight document progress and
+mobile layout. Mocked providers do not prove real account access or inference.
+
+Run `npm run test:browser` after changing these paths. Changes under `src/`
+also require `npm run build` and committing all changed or removed `js/` files.
+See [Performance](PERFORMANCE.md) for request ownership and
+[Workspace migration](WORKSPACE-MIGRATION.md) for deployment checks.
