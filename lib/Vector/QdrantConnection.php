@@ -40,6 +40,16 @@ class QdrantConnection {
             'key_configured' => $this->config->getAppValue(AppConfig::APP, 'qdrant_api_key_encrypted', '') !== ''];
     }
 
+    /** Administrator form only. Do not expose stored plaintext/encrypted keys. */
+    public function configuration(): array {
+        $url = $this->config->getAppValue(AppConfig::APP, 'qdrant_url', '');
+        // Do not reflect a manually corrupted URL containing embedded credentials.
+        if ($url !== '') $url = $this->validateBase($url);
+        $auth = $this->config->getAppValue(AppConfig::APP, 'qdrant_auth', 'api_key');
+        if (!in_array($auth, ['api_key', 'none'], true)) throw new VectorStoreException('invalid_auth');
+        return $this->status() + ['endpoint' => $url, 'auth' => $auth];
+    }
+
     public function targetFingerprint(): string {
         if ($this->config->getAppValue(AppConfig::APP, 'qdrant_enabled', '0') !== '1') throw new VectorStoreException('not_enabled');
         $base = $this->validateBase($this->config->getAppValue(AppConfig::APP, 'qdrant_url', ''));

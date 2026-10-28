@@ -32,6 +32,38 @@ are rejected by `AdminRequired`. No target URL, keys, owner identities, generati
 descriptors, file paths or content are returned. Both the EVA admin view and the
 server-rendered Nextcloud administration page use the same snapshot service.
 
+## Administrator vector connection operations
+
+These OCS endpoints require a signed-in Nextcloud administrator. Writes and the
+explicit probe require the normal request token; none has a CSRF exemption:
+
+| Method and path | Behavior |
+| --- | --- |
+| `GET /api/admin/vector-storage/connection` | Offline form state: `endpoint`, `auth` (`api_key`/`none`), `configured`, `enabled`, `key_configured`. No plaintext/encrypted key is returned. Unlike the compact snapshot, this admin-only form exposes the configured endpoint. |
+| `PUT /api/admin/vector-storage/connection` | Full replacement from a JSON body, at most 8 KiB. Requires `endpoint`, explicit `auth`, explicit boolean `enabled`, and a new `api_key` string for `auth=api_key` or null/omitted key for `auth=none`. No retained-key placeholder or query-string credentials. Returns the offline form state. |
+| `POST /api/admin/vector-storage/disable` | Disables all Qdrant transport without discarding targets or journal intent. Returns compact connection status. |
+| `POST /api/admin/vector-storage/check` | Explicit bounded root-API version/reachability probe using the saved enabled connection. Returns `{available, code}`; an unsuccessful probe is a successful operation with `available=false`, not proof of an empty/ready index. |
+
+Configuration validates before starting replacement, disables transport first,
+saves the encrypted target/configuration and enables it last only if explicitly
+requested. Replacement performs no HTTP request or collection preparation. It
+does not activate chunk synchronization or change retrieval. Enabling requests
+can resume already-enabled generation cleanup against current or retained
+destinations. A partial save failure can leave transport disabled; reload before
+retrying. Retargeting requires fresh credentials or explicit no-key mode.
+
+Validation errors return HTTP 400 with a bounded English message. Unexpected
+storage/configuration failures return 503 without raw exceptions or secrets.
+Private/loopback network approvals remain instance-owned, not accepted from this
+form; the egress policy applies to every explicit probe too. The live probe uses
+the adapter's three-second HTTP bound plus operating-system DNS resolution limits.
+
+`GET /apps/eva_ai/admin` is a separate AdminRequired page, linked from Nextcloud's
+EVA administration settings. It loads a dedicated frontend entry without mounting
+the personal chat shell. The page GET is CSRF-exempt like the app's other page
+routes; its OCS mutation endpoints remain protected. Access, CSRF, native rendering
+and actual remote transport have not been exercised while tests are deferred.
+
 ## Lightweight index progress
 
 `GET /api/index/status` requires a signed-in user and returns:

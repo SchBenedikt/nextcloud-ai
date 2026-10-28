@@ -88,6 +88,17 @@ multi-node concurrency checks remain unexecuted while tests are suspended.
 
 ## Configure explicitly
 
+Native administration is available at `/apps/eva_ai/admin`, linked from Nextcloud
+**Administration → Eva AI → Knowledge storage**. The form uses the same encrypted
+connection service as OCC, requires fresh credentials on replacement, and never
+activates retrieval or prepares a collection. It has separate explicit saved-
+connection checking and transport disable actions. Enabling requests also resumes
+any enabled generation cleanup jobs; inspect pending work before opting in. The
+network allowlist remains an instance setting managed with OCC. See API.md and
+CONFIGURATION.md for the request contract and visible states. The page has a
+dedicated frontend entry; it does not initialize personal chat history. Browser,
+permissions, CSRF and remote checks remain outstanding.
+
 Run as the web-server user from the Nextcloud directory:
 
 ```sh

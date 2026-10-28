@@ -8,6 +8,7 @@ use OCP\AppFramework\Controller;
 use OCP\AppFramework\Http\TemplateResponse;
 use OCP\AppFramework\Http\Attribute\NoAdminRequired;
 use OCP\AppFramework\Http\Attribute\NoCSRFRequired;
+use OCP\AppFramework\Http\Attribute\AdminRequired;
 
 use OCA\EvaAi\Service\RagService;
 use OCP\App\IAppManager;
@@ -64,6 +65,12 @@ class PageController extends Controller {
         return $this->appPage('index');
     }
 
+    #[AdminRequired]
+    #[NoCSRFRequired]
+    public function admin(): TemplateResponse {
+        return $this->appPage('admin-app', 'eva_ai-admin');
+    }
+
     /**
      * Fallback ohne App-Shell: reine Chat-Seite (Vanilla-HTML, eigenes Layout).
      */
@@ -84,9 +91,9 @@ class PageController extends Controller {
         return $this->noCache($response);
     }
 
-    private function appPage(string $template): TemplateResponse {
+    private function appPage(string $template, string $bundle = 'eva_ai-main'): TemplateResponse {
         Util::addTranslations('eva_ai');
-        $main = $this->findBundle('eva_ai-main');
+        $main = $this->findBundle($bundle);
         if ($main !== null) {
             \OCP\Util::addScript('eva_ai', $main);
             $this->addPageHeaders('shell-v2');

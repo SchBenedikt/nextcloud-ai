@@ -13,6 +13,7 @@ module.exports = (env, argv) => {
 			optimization: { minimizer: [new TerserPlugin({ parallel: false })] },
 		} : {}),
 		entry: {
+			'eva_ai-admin': path.resolve(__dirname, 'src', 'admin.js'),
 			'eva_ai-main': path.resolve(__dirname, 'src', 'main.js'),
 			eva_ai_filesaction: path.resolve(__dirname, 'src', 'lib', 'filesaction.js'),
 			eva_ai_standalone: path.resolve(__dirname, 'src', 'standalone-chat.js'),

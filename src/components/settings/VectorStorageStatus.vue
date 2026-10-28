@@ -21,6 +21,7 @@
 			<p class="storage-hint">{{ $t('Configuration status is not a connection test. Generation cleanup only removes retired search collections; it does not index files or switch search backends.') }}</p>
 		</template>
 		<NcButton variant="secondary" :disabled="loading" @click="refresh">{{ $t('Refresh storage status') }}</NcButton>
+		<VectorConnectionSettings :enabled="status?.connection?.enabled === true" @changed="refresh" />
 	</NcSettingsSection>
 </template>
 
@@ -28,10 +29,11 @@
 import { ref, onMounted, onBeforeUnmount } from 'vue'
 import { NcButton, NcLoadingIcon, NcNoteCard, NcSettingsSection } from '@nextcloud/vue'
 import { api } from '../../lib/api'
+import VectorConnectionSettings from './VectorConnectionSettings.vue'
 
 export default {
 	name: 'VectorStorageStatus',
-	components: { NcButton, NcLoadingIcon, NcNoteCard, NcSettingsSection },
+	components: { NcButton, NcLoadingIcon, NcNoteCard, NcSettingsSection, VectorConnectionSettings },
 	setup() {
 		const status = ref(null)
 		const loading = ref(false)

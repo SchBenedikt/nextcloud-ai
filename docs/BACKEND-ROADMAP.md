@@ -84,8 +84,12 @@ for infrastructure concerns.
 | 14 | Compact operational diagnostics and accessible loading/empty/error/disabled states across narrow screens and light/dark themes. Avoid raw backend errors, identifiers and secrets in personal settings. |
 
 The first interface slice provides read-only status in both admin surfaces through
-one backend snapshot. Configuration/migration controls remain pending until their
-backend operations are safe and available. No browser validation is claimed yet.
+one backend snapshot. Native connection configuration, explicit API check and
+transport disable are now exposed through an administrator-only page and dedicated
+controller. The prior dormant Vue admin branch is replaced by a separate entry
+without personal chat initialization. Migration/activation/progress controls
+remain pending until their backend operations exist. No browser, access-control,
+CSRF or remote-transport validation is claimed yet.
 
 ## Required generation and consistency semantics
 
