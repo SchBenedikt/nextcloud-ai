@@ -114,15 +114,18 @@ final class RetrievalBenchmarkSnapshot {
             $created = true;
             foreach ($dataset['queries'] as $query) {
                 // Reject a changed/nondeterministic query embedding space.
+                $preflightStart = hrtime(true);
                 $vector = $this->queryVector($query['text'], $user);
+                $preflightMs = (hrtime(true) - $preflightStart) / 1_000_000;
                 if ($vector !== array_map('floatval', $query['vector'])) throw new \RuntimeException('Query embedding differs from the frozen snapshot.');
                 $start = hrtime(true);
-                $results = $this->searcher->search($user, $query['text'], 20, $query['scope'] ?? null);
+                $results = $this->searcher->searchWithQueryVector($user, $query['text'], 20, $vector, $query['scope'] ?? null);
                 $elapsed = (hrtime(true) - $start) / 1_000_000;
                 $run = ['query_id' => $query['id'], 'corpus_sha256' => $dataset['corpus_sha256'],
                     'queries_sha256' => $dataset['queries_sha256'], 'ranking' => array_map(static fn(array $row): int => (int)$row['chunkId'], $results),
                     'duration_ms' => $elapsed, 'backend' => 'eva_sql_legacy',
-                    'embedding_preflight' => true, 'cache_state' => 'query_embedding_preflight_warmed'];
+                    'embedding_preflight' => true, 'embedding_preflight_ms' => $preflightMs,
+                    'query_vector_mode' => 'frozen', 'cache_state' => 'embedding_cache_not_required'];
                 $this->write($file, $this->encode($run) . "\n");
             }
             $this->assertSnapshot($user, $identity, $dataset['corpus_sha256'], $revision, $configurationHash);

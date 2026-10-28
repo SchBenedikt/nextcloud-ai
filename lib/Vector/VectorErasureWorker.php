@@ -25,12 +25,15 @@ class VectorErasureWorker {
             $id = (int)$row['id']; $token = (string)$row['lease_token'];
             try {
                 $generation = $this->decode($row);
-                $this->assertRetired($generation);
-                if ((int)$row['attempts'] === 1) {
-                    if ($this->outbox->deferErasure($id, $token, time())) $stats['deferred']++;
+                $now = time();
+                $readyAt = ($row['erasure_ready_at'] ?? null) === null ? null : (int)$row['erasure_ready_at'];
+                if ($readyAt !== null && $readyAt < 1) throw new VectorStoreException('invalid_event');
+                if ($readyAt === null || $now < $readyAt) {
+                    if ($this->outbox->deferErasure($id, $token, $now, $readyAt)) $stats['deferred']++;
                     else $stats['lost_leases']++;
                     continue;
                 }
+                $this->assertRetired($generation);
                 $guard = function () use ($id, $token, $generation): void {
                     if (!$this->outbox->workerEnabled()) throw new VectorStoreException('sync_disabled');
                     if (!$this->outbox->ownsLease($id, $token, time())) throw new VectorStoreException('stale_lease');

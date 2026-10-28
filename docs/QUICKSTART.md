@@ -31,6 +31,11 @@ into a checklist.” Check the answer before relying on it.
 Chat and indexing have separate model requirements. Indexing uses an Ollama
 embedding model even when another provider handles chat. In **Settings →
 Documents**, choose your indexing scope and limits. Start with a small folder.
+Install the selected embedding model on the Ollama server, for example
+`ollama pull nomic-embed-text`; see [model setup](FAQ.md) for details.
+Folder scope restricts Files only. Review or disable Mail and Talk indexing
+before a Files-only trial; enabled sources can send their extracted content to
+the configured embedding endpoint too.
 Open **Documents** and start indexing. Background processing needs working
 Nextcloud cron.
 

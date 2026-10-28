@@ -35,10 +35,11 @@ final class RetrievalBenchmark {
                 || !is_array($query['relevance'] ?? null) || $query['relevance'] === [] || count($query['relevance']) > 1000
                 || !is_string($query['category'] ?? null)
                 || !in_array($query['category'], ['semantic', 'exact', 'mixed', 'phrase', 'diversification', 'scope', 'tenant'], true)
-                || (isset($query['scope']) && (!is_string($query['scope']) || str_contains($query['scope'], '..')))) {
+                || (isset($query['scope']) && (!is_string($query['scope']) || preg_match('~(?:^|/)\.{1,2}(?:/|$)~', $query['scope'])))) {
                 throw new \RuntimeException('Invalid or duplicate benchmark query.');
             }
             $this->vector($query['vector'] ?? null);
+            new \OCA\EvaAi\Vector\SearchFilters($query['scope'] ?? null);
             foreach ($query['relevance'] as $id => $grade) {
                 if (!ctype_digit((string)$id) || (int)$id < 1 || !is_int($grade) || $grade < 1 || $grade > 3) {
                     throw new \RuntimeException('Relevance labels require positive chunk IDs and grades 1–3.');
@@ -199,9 +200,15 @@ final class RetrievalBenchmark {
         foreach ($this->lines($file) as $row) {
             if (!is_int($row['id'] ?? null) || $row['id'] <= $previous || !is_int($row['document_id'] ?? null) || $row['document_id'] < 1
                 || !is_string($row['user'] ?? null) || $row['user'] === '' || !is_string($row['path'] ?? null)
-                || $row['path'] === '' || str_contains($row['path'], '\\') || str_contains($row['path'], '//')
-                || trim($row['path'], '/') !== $row['path'] || preg_match('~(?:^|/)\.{1,2}(?:/|$)~', $row['path'])) {
+                || $row['path'] === '') {
                 throw new \RuntimeException('Corpus needs ascending unique IDs, document IDs, user IDs and paths.');
+            }
+            $source = $row['source'] ?? 'files';
+            if ($source === 'files') {
+                new \OCA\EvaAi\Vector\SearchFilters($row['path']);
+            } elseif (!in_array($source, ['mail', 'talk'], true) || !str_starts_with($row['path'], $source . '://')
+                || strlen($row['path']) > 4096 || preg_match('/[\x00-\x1f\x7f]/', $row['path'])) {
+                throw new \RuntimeException('Invalid corpus source/path.');
             }
             $this->vector($row['vector'] ?? null);
             $previous = $row['id'];
@@ -222,6 +229,7 @@ final class RetrievalBenchmark {
     private function eligible(array $chunk, array $query): bool {
         if ($chunk['user'] !== $query['user']) return false;
         $scope = trim($query['scope'] ?? '', '/');
+        if ($scope !== '' && ($chunk['source'] ?? 'files') !== 'files') return false;
         $path = trim($chunk['path'], '/');
         return $scope === '' || $path === $scope || str_starts_with($path, $scope . '/');
     }

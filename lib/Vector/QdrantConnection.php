@@ -56,7 +56,7 @@ class QdrantConnection {
         $id = hash('sha256', $base);
         if (!hash_equals($id, $this->config->getAppValue(AppConfig::APP, 'qdrant_key_target', ''))) throw new VectorStoreException('target_changed');
         if ($this->targets->find($id) === null) {
-            $this->targets->save($base, $this->config->getAppValue(AppConfig::APP, 'qdrant_auth', ''), $this->config->getAppValue(AppConfig::APP, 'qdrant_api_key_encrypted', ''));
+            $this->targets->registerIfAbsent($base, $this->config->getAppValue(AppConfig::APP, 'qdrant_auth', ''), $this->config->getAppValue(AppConfig::APP, 'qdrant_api_key_encrypted', ''));
         }
         return $id;
     }

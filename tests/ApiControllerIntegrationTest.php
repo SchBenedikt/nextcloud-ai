@@ -31,12 +31,59 @@ use OCP\IConfig;
 use OCP\IMemcache;
 use OCP\AppFramework\Utility\ITimeFactory;
 use OCP\IRequest;
+use OCP\AppFramework\Http\IOutput;
+use OCA\EvaAi\Http\StreamTraversableResponse;
 use OCP\Lock\ILockingProvider;
 use PHPUnit\Framework\TestCase;
 use Psr\Log\LoggerInterface;
 
 /** Exercises API controller request validation, responses and service wiring. */
 final class ApiControllerIntegrationTest extends TestCase {
+    public function testStreamReleasesProducerAndSlotBeforeEveryTerminalEvent(): void {
+        foreach (['done', 'confirmation', 'error'] as $type) {
+            $stored = []; $dependencies = [];
+            $controller = $this->controller('alice', [], $dependencies, $stored);
+            $held = true; $closed = false;
+            $dependencies['lockingProvider']->expects(self::once())->method('releaseLock')
+                ->willReturnCallback(static function () use (&$held): void { $held = false; });
+            $dependencies['rag']->method('askStream')->willReturnCallback(static function () use ($type, &$closed): \Generator {
+                try { yield json_encode(['type' => $type, 'answer' => 'Finished']) . "\n"; }
+                finally { $closed = true; }
+            });
+            $factory = new \ReflectionMethod(ApiController::class, 'streamEvents');
+            $events = [];
+            foreach ($factory->invoke($controller, 'alice', 'Hello', [], [], null, '', ['instructions' => '', 'persona' => ''], 'test-slot') as $line) {
+                self::assertFalse($held, 'The next request must be allowed before a terminal event reaches the browser.');
+                self::assertTrue($closed, 'Provider cleanup must finish before a terminal event.');
+                $events[] = json_decode($line, true)['type'];
+            }
+            self::assertSame([$type], $events);
+        }
+    }
+
+    public function testOutputFailureReleasesStreamSlotBeforeReportingFailure(): void {
+        $stored = []; $dependencies = [];
+        $controller = $this->controller('alice', [], $dependencies, $stored);
+        $held = true;
+        $dependencies['lockingProvider']->expects(self::once())->method('releaseLock')
+            ->willReturnCallback(static function () use (&$held): void { $held = false; });
+        $dependencies['rag']->method('askStream')->willReturnCallback(static function (): \Generator {
+            yield "{\"type\":\"content\",\"delta\":\"partial\"}\n";
+            yield "{\"type\":\"done\",\"answer\":\"Finished\"}\n";
+        });
+        $factory = new \ReflectionMethod(ApiController::class, 'streamEvents');
+        $response = new StreamTraversableResponse($factory->invoke($controller, 'alice', 'Hello', [], [], null, '', ['instructions' => '', 'persona' => ''], 'test-slot'));
+        $calls = 0;
+        $output = $this->createMock(IOutput::class);
+        $output->expects(self::exactly(2))->method('setOutput')->willReturnCallback(static function (string $line) use (&$calls, &$held): void {
+            if (++$calls === 1) throw new \RuntimeException('Simulated connection failure');
+            self::assertFalse($held);
+            self::assertSame('error', json_decode($line, true)['type']);
+        });
+        $response->callback($output);
+        self::assertFalse($held);
+    }
+
 	protected function setUp(): void {
 		parent::setUp();
 		if (!defined('EVA_AI_OCP_AVAILABLE') || !EVA_AI_OCP_AVAILABLE) {

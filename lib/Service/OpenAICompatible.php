@@ -10,7 +10,7 @@ use Psr\Log\LoggerInterface;
 class OpenAICompatible {
     public function __construct(private AppConfig $config, private IClientService $clients, private ProviderCredentials $credentials, private ?UsageMetrics $usage = null, private ?LoggerInterface $logger = null, private ?ProviderEndpointPolicy $endpointPolicy = null) {}
     private function client(): \OCP\Http\Client\IClient {
-        return $this->clients->newClient(($this->endpointPolicy ?? new ProviderEndpointPolicy())->handler());
+        return $this->clients->newClient(($this->endpointPolicy ?? $this->config->providerEndpointPolicy())->handler());
     }
     private function provider(): string { return (string)$this->config->get('chat_provider'); }
     private function profile(): array {

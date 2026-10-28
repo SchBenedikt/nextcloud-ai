@@ -3,7 +3,7 @@ declare(strict_types=1);
 
 namespace OCA\EvaAi\Tests;
 
-use OCA\EvaAi\BackgroundJob\{BackgroundChatJob, ChatCleanupJob, IndexJob, JobRegistry, ProactiveBriefingJob};
+use OCA\EvaAi\BackgroundJob\{BackgroundChatJob, ChatCleanupJob, IndexJob, JobRegistry, ProactiveBriefingJob, VectorErasureJob};
 use OCP\BackgroundJob\IJobList;
 use PHPUnit\Framework\TestCase;
 
@@ -17,10 +17,10 @@ final class JobRegistryTest extends TestCase {
     public function testEnsuresEveryRecurringJobWithoutReplacingExistingJobs(): void {
         $scheduled = [IndexJob::class => true];
         $jobs = $this->createMock(IJobList::class);
-        $jobs->expects(self::exactly(4))->method('has')->willReturnCallback(
+        $jobs->expects(self::exactly(5))->method('has')->willReturnCallback(
             static function (string $class, mixed $argument) use (&$scheduled): bool { return $scheduled[$class] ?? false; }
         );
-        $jobs->expects(self::exactly(3))->method('add')->willReturnCallback(
+        $jobs->expects(self::exactly(4))->method('add')->willReturnCallback(
             static function (string $class) use (&$scheduled): void { $scheduled[$class] = true; }
         );
 
@@ -31,7 +31,8 @@ final class JobRegistryTest extends TestCase {
             ChatCleanupJob::class => true,
             ProactiveBriefingJob::class => true,
             BackgroundChatJob::class => true,
+            VectorErasureJob::class => true,
         ], $scheduled);
-        self::assertSame(JobRegistry::JOBS, [IndexJob::class, ChatCleanupJob::class, ProactiveBriefingJob::class, BackgroundChatJob::class]);
+        self::assertSame(JobRegistry::JOBS, [IndexJob::class, ChatCleanupJob::class, ProactiveBriefingJob::class, BackgroundChatJob::class, VectorErasureJob::class]);
     }
 }

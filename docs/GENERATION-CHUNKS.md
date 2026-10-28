@@ -76,3 +76,8 @@ Unexecuted gates include database/index lifecycle, concurrent slot/erase/failure
 ordering, stale-source rejection, rollback after event allocation, idempotent
 repeat, revision exhaustion, legacy read isolation and native counter states.
 Tests remain deferred; syntax/build checks do not prove these runtime properties.
+
+Document source stamps accept the existing Indexer MD5 content hashes (and
+SHA-256 hashes for compatible future sources). The stamp itself remains SHA-256
+over canonical metadata. Chunk integrity hashes remain strictly SHA-256; the
+source hash is a change detector, not an authenticity assertion.

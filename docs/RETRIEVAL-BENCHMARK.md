@@ -146,14 +146,17 @@ changed corpus/configuration/revision aborts the operation. Unrelated user chang
 are not read; unrelated settings for the selected account can conservatively
 invalidate the snapshot.
 
-Record verifies that fresh query vectors equal the frozen vectors, then calls
-the actual Searcher, preserving its lexical, RRF, phrase and diversification rules.
-This preflight warms the query embedding cache and is marked in every run row;
-reported duration covers the Searcher call, excludes fingerprint/preflight time,
-and must not be labeled a cold-cache end-to-end measurement. A changing or
-nondeterministic embedding provider causes rejection instead of silently comparing
-different vector spaces. The full quality/latency evaluator validates the recorded
-file before success; isolation violations make recording fail.
+Record verifies that fresh query vectors equal the frozen vectors, then passes
+that exact vector to Searcher without a second embedding request. Lexical, RRF,
+phrase and diversification rules remain in place. This explicit benchmark mode
+forces the frozen dense query even when interactive cloud-chat policy would use
+lexical-only retrieval. Each row declares `query_vector_mode=frozen` and reports
+`embedding_preflight_ms` separately. The Searcher duration excludes fingerprint
+and preflight work and does not rely on embedding-cache availability; it must not
+be labeled a cold-cache end-to-end chat measurement. A changing or nondeterministic
+embedding provider causes rejection instead of comparing different vector spaces.
+The full quality/latency evaluator validates the recorded file before success;
+isolation violations make recording fail.
 
 Only the explicitly selected user's index is exported. A returned foreign chunk
 not present in this corpus is an unknown-ID isolation violation; it cannot be

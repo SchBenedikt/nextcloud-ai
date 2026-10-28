@@ -151,10 +151,12 @@ target and encrypted credentials address the original store. A missing collectio
 is idempotent success; an HTTP success must otherwise include Qdrant's affirmative
 collection deletion result. See the [official collection-deletion API](https://api.qdrant.tech/api-reference/collections/delete-collection).
 
-The first claim observes committed SQL state, then requeues erasure for at least
-60 seconds. If a process crashes on that claim, its 120-second lease expires before
-reclaim, also providing that grace. Requeuing a dead letter restarts this protocol.
-The grace claim counts toward the twelve-claim retry limit. Before transfer, after
+The first valid claim persists `erasure_ready_at` and requeues erasure for at
+least 60 seconds. This deadline is independent of claim attempts: a crash or SQL
+failure before persisting it causes a later claim to start a fresh grace, rather
+than skipping it. Legacy rows without a deadline also start a fresh grace.
+Requeuing a dead letter clears the deadline and restarts this protocol. The grace
+claim counts toward the twelve-claim retry limit. Before transfer, after
 DNS resolution/pinning, a callback rereads the two global flags, current lease token
 and deadline, and generation status. A reclaimed/superseded/disabled operation
 therefore does not start a new transfer. A stale worker cannot acknowledge the

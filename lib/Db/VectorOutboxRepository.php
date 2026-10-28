@@ -154,16 +154,18 @@ class VectorOutboxRepository {
     }
 
     /** First observation occurs after SQL commit, unlike enqueue timestamps. */
-    public function deferErasure(int $id, string $token, int $now): bool {
+    public function deferErasure(int $id, string $token, int $now, ?int $readyAt = null): bool {
+        $readyAt ??= $now + 60;
+        if ($readyAt <= $now) throw new \InvalidArgumentException('Erasure grace must be in the future.');
         $qb = $this->db->getQueryBuilder();
         $qb->update('eva_ai_vec_outbox')->set('state', $qb->createNamedParameter('pending'))
-            ->set('available_at', $qb->createNamedParameter($now + 60, IQueryBuilder::PARAM_INT))
+            ->set('available_at', $qb->createNamedParameter($readyAt, IQueryBuilder::PARAM_INT))
+            ->set('erasure_ready_at', $qb->createNamedParameter($readyAt, IQueryBuilder::PARAM_INT))
             ->set('last_error', $qb->createNamedParameter('erase_grace'))
             ->set('lease_token', $qb->createNamedParameter(null, IQueryBuilder::PARAM_NULL))->set('lease_until', $qb->createNamedParameter(null, IQueryBuilder::PARAM_NULL))
             ->where($qb->expr()->eq('id', $qb->createNamedParameter($id, IQueryBuilder::PARAM_INT)))
             ->andWhere($qb->expr()->eq('state', $qb->createNamedParameter('processing')))
             ->andWhere($qb->expr()->eq('operation', $qb->createNamedParameter('delete_generation')))
-            ->andWhere($qb->expr()->eq('attempts', $qb->createNamedParameter(1, IQueryBuilder::PARAM_INT)))
             ->andWhere($qb->expr()->eq('lease_token', $qb->createNamedParameter($token)))
             ->andWhere($qb->expr()->gt('lease_until', $qb->createNamedParameter($now, IQueryBuilder::PARAM_INT)));
         return $qb->executeStatement() === 1;
@@ -172,7 +174,7 @@ class VectorOutboxRepository {
     public function page(string $state, int $after = 0): array {
         if (!in_array($state, ['pending', 'processing', 'delivered', 'dead', 'superseded'], true) || $after < 0) throw new \InvalidArgumentException('Invalid outbox listing.');
         $qb = $this->db->getQueryBuilder();
-        $qb->select('id', 'generation_id', 'target_hash', 'operation', 'state', 'attempts', 'created_at', 'available_at', 'lease_until', 'last_error')
+        $qb->select('id', 'generation_id', 'target_hash', 'operation', 'state', 'attempts', 'created_at', 'available_at', 'lease_until', 'last_error', 'erasure_ready_at')
             ->from('eva_ai_vec_outbox')->where($qb->expr()->eq('state', $qb->createNamedParameter($state)))
             ->andWhere($qb->expr()->gt('id', $qb->createNamedParameter($after, IQueryBuilder::PARAM_INT)))
             ->orderBy('id', 'ASC')->setMaxResults(100);
@@ -185,6 +187,7 @@ class VectorOutboxRepository {
         $qb = $this->db->getQueryBuilder();
         $qb->update('eva_ai_vec_outbox')->set('state', $qb->createNamedParameter('pending'))
             ->set('attempts', $qb->createNamedParameter(0, IQueryBuilder::PARAM_INT))->set('available_at', $qb->createNamedParameter($now, IQueryBuilder::PARAM_INT))
+            ->set('erasure_ready_at', $qb->createNamedParameter(null, IQueryBuilder::PARAM_NULL))
             ->set('last_error', $qb->createNamedParameter(null, IQueryBuilder::PARAM_NULL))
             ->where($qb->expr()->eq('id', $qb->createNamedParameter($id, IQueryBuilder::PARAM_INT)))
             ->andWhere($qb->expr()->eq('state', $qb->createNamedParameter('dead')));

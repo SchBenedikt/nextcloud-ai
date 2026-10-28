@@ -31,8 +31,17 @@ export default {
 		const host = ref(null)
 		const title = computed(() => panel.value === 'exports' ? t('Export conversation') : t('Prompt library'))
 		watch([host, panel], ([element, selected]) => {
-			if (element && props.panels[selected]) element.replaceChildren(props.panels[selected])
+			if (element && props.panels[selected]) {
+				const content = props.panels[selected]
+				if (selected === 'prompts') content.open = true
+				element.replaceChildren(content)
+			}
 		}, { flush: 'post' })
+		watch(host, (element, previous) => {
+			previous?.removeEventListener('eva-prompt-chosen', closePrompts)
+			element?.addEventListener('eva-prompt-chosen', closePrompts)
+		}, { flush: 'post' })
+		function closePrompts() { panel.value = '' }
 		return { titleId, panel, host, title, t, mdiDownload, mdiImageOutline, mdiTextBoxOutline, mdiTune }
 	},
 }

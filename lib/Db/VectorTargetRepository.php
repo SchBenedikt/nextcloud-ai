@@ -12,21 +12,25 @@ class VectorTargetRepository {
     public function __construct(private IDBConnection $db) {}
 
     public function save(string $endpoint, string $auth, string $encryptedKey): string {
+        $id = $this->registerIfAbsent($endpoint, $auth, $encryptedKey);
+        // Endpoint identity is fixed; rotate auth and key in one SQL statement.
+        $qb = $this->db->getQueryBuilder();
+        $qb->update('eva_ai_vec_targets')->set('auth', $qb->createNamedParameter($auth))
+            ->set('encrypted_key', $qb->createNamedParameter($encryptedKey))->set('updated_at', $qb->createNamedParameter(time(), IQueryBuilder::PARAM_INT))
+            ->where($qb->expr()->eq('id', $qb->createNamedParameter($id)))
+            ->andWhere($qb->expr()->eq('endpoint', $qb->createNamedParameter($endpoint)));
+        $qb->executeStatement();
+        return $id;
+    }
+
+    /** Lazy registration must never overwrite credentials rotated by another request. */
+    public function registerIfAbsent(string $endpoint, string $auth, string $encryptedKey): string {
         if (!in_array($auth, ['none', 'api_key'], true) || ($auth === 'api_key' && $encryptedKey === '') || ($auth === 'none' && $encryptedKey !== '')) throw new \InvalidArgumentException('Invalid vector target authentication.');
         $id = hash('sha256', $endpoint);
+        $this->db->insertIgnoreConflict('eva_ai_vec_targets', ['id' => $id, 'endpoint' => $endpoint,
+            'auth' => $auth, 'encrypted_key' => $encryptedKey, 'updated_at' => time()]);
         $existing = $this->find($id);
-        if ($existing !== null && $existing['endpoint'] !== $endpoint) throw new \RuntimeException('Vector target identity conflict.');
-        $qb = $this->db->getQueryBuilder();
-        if ($existing === null) {
-            $qb->insert('eva_ai_vec_targets')->setValue('id', $qb->createNamedParameter($id))
-                ->setValue('endpoint', $qb->createNamedParameter($endpoint))->setValue('auth', $qb->createNamedParameter($auth))
-                ->setValue('encrypted_key', $qb->createNamedParameter($encryptedKey))->setValue('updated_at', $qb->createNamedParameter(time(), IQueryBuilder::PARAM_INT));
-        } else {
-            $qb->update('eva_ai_vec_targets')->set('auth', $qb->createNamedParameter($auth))
-                ->set('encrypted_key', $qb->createNamedParameter($encryptedKey))->set('updated_at', $qb->createNamedParameter(time(), IQueryBuilder::PARAM_INT))
-                ->where($qb->expr()->eq('id', $qb->createNamedParameter($id)));
-        }
-        $qb->executeStatement();
+        if ($existing === null || $existing['endpoint'] !== $endpoint) throw new \RuntimeException('Vector target identity conflict.');
         return $id;
     }
 

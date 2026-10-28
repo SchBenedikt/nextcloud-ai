@@ -330,7 +330,7 @@ export default {
 	opacity: 0.7;
 	margin-bottom: 4px;
 }
-.msg-body {
+.msg.user .msg-body {
 	white-space: pre-wrap;
 	word-wrap: break-word;
 }

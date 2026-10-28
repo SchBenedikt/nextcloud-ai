@@ -15,6 +15,7 @@
 			</div>
 		</header>
 
+		<div role="status" aria-live="polite" aria-atomic="true">
 		<NcNoteCard v-if="indexingActive" type="info">
 			<strong>{{ indexStatus?.indexStopping ? $t('Stopping indexing…') : indexStatus?.indexMode === 'mail' ? $t('Email indexing is running') : indexStatus?.indexMode === 'talk' ? $t('Chat indexing is running') : $t('Indexing is running') }}</strong>
 			<span>{{ $t('The job continues on the server even if you close this page.') }}</span>
@@ -22,6 +23,7 @@
 		<NcNoteCard v-if="!indexStatusKnown && indexStatusLoading" type="info">{{ $t('Checking indexing status…') }}</NcNoteCard>
 		<NcNoteCard v-if="indexStatusError" type="error"><span>{{ $t('Indexing status could not be loaded: {error}', { error: indexStatusError }) }}</span><NcButton variant="tertiary" :loading="indexStatusLoading" :disabled="indexStatusLoading" @click="loadStatus">{{ $t('Try again') }}</NcButton></NcNoteCard>
 		<NcNoteCard v-if="progress" type="info">{{ progress }}</NcNoteCard>
+		</div>
 
 		<p v-if="documentsLoaded" class="docs-summary">{{ $t('{count} documents', { count: total }) }} · {{ fmtSize(totalSize) }}</p>
 
@@ -173,6 +175,7 @@ export default {
 		let documentsRequestController = null
 		const expanded = ref(new Set())
 		const chunkCache = ref(new Map())
+		let chunkEpoch = 0
 
 
 		const loadStatus = async () => {
@@ -300,6 +303,7 @@ export default {
 				if (!append) {
 					documentsLoaded.value = true
 					expanded.value = new Set()
+					chunkEpoch++
 					chunkCache.value = new Map()
 				}
 			} catch (e) {
@@ -334,6 +338,7 @@ export default {
 			}
 
 			async function loadChunks(id, expectedChunks = 0, retry = false) {
+				const epoch = chunkEpoch
 				const cached = chunkCache.value.get(id)
 				if (!retry && cached && cached.status !== 'error') return
 				const fallbackExpected = Number(expectedChunks) || 0
@@ -341,6 +346,7 @@ export default {
 				let expected = fallbackExpected
 				try {
 					const data = await api('POST', 'documentChunks', { id, limit: 200, offset: 0 })
+					if (disposed || epoch !== chunkEpoch) return
 					const source = Array.isArray(data)
 						? data
 						: Array.isArray(data?.chunks)
@@ -369,17 +375,20 @@ export default {
 					setChunkState(id, { status: 'ready', chunks, expected, error: '', loadingMore: false })
 				} catch (e) {
 					const message = e instanceof Error ? e.message : String(e)
+					if (disposed || epoch !== chunkEpoch) return
 					setChunkState(id, { status: 'error', chunks: [], expected, error: message })
 					console.error('[eva-ai] chunks error', e)
 				}
 			}
 
 			async function loadMoreChunks(id) {
+				const epoch = chunkEpoch
 				const state = chunkCache.value.get(id)
 				if (!state || state.status !== 'ready' || state.loadingMore) return
 				setChunkState(id, { ...state, loadingMore: true, moreError: '' })
 				try {
 					const data = await api('POST', 'documentChunks', { id, limit: 200, offset: state.chunks.length })
+					if (disposed || epoch !== chunkEpoch) return
 					const source = Array.isArray(data)
 						? data
 						: Array.isArray(data?.chunks)
@@ -402,6 +411,7 @@ export default {
 					setChunkState(id, { status: 'ready', chunks: [...state.chunks, ...more], expected: state.expected, error: '', loadingMore: false })
 				} catch (e) {
 					const stateNow = chunkCache.value.get(id) || state
+					if (disposed || epoch !== chunkEpoch) return
 					setChunkState(id, { ...stateNow, loadingMore: false, moreError: errMsg(e) })
 					console.error('[eva-ai] chunks load-more error', e)
 				}
@@ -454,6 +464,7 @@ export default {
 		})
 		onUnmounted(() => {
 			disposed = true
+			chunkEpoch++
 			documentsRequestController?.abort()
 			if (statusTimer !== null) window.clearTimeout(statusTimer)
 		})
