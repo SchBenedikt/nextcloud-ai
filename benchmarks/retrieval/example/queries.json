@@ -1,0 +1,9 @@
+[
+  {"id":"semantic-1","category":"semantic","user":"alice","vector":[1,0,0],"relevance":{"1":3,"2":2}},
+  {"id":"exact-1","category":"exact","user":"alice","vector":[0,0,1],"relevance":{"5":3}},
+  {"id":"mixed-1","category":"mixed","user":"alice","vector":[0.7,0.7,0],"relevance":{"1":2,"3":3}},
+  {"id":"phrase-1","category":"phrase","user":"alice","vector":[1,0,0],"relevance":{"1":3}},
+  {"id":"diversification-1","category":"diversification","user":"alice","vector":[0.7,0.7,0],"relevance":{"1":3,"3":3}},
+  {"id":"scope-1","category":"scope","user":"alice","scope":"Notes","vector":[1,0,0],"relevance":{"1":3}},
+  {"id":"tenant-1","category":"tenant","user":"alice","vector":[1,0,0],"relevance":{"1":3,"2":2}}
+]

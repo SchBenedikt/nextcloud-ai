@@ -25,3 +25,5 @@ Historical reviews record decisions at their stated date. Use the guides and
 current source when they differ from an older review.
 
 - [Backend migration work ledger](BACKEND-ROADMAP.md) — PDF findings, dependent PR stages and rollout gates.
+
+- [Retrieval benchmark](RETRIEVAL-BENCHMARK.md) — frozen corpus format, exact reference and ranking metrics.
