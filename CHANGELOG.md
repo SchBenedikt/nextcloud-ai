@@ -31,6 +31,8 @@
 
 ### Reliability and documentation
 
+- Fix native account/index cleanup aborting on an unsupported SQL QueryBuilder method; leave deleted-home removal to Nextcloud core and add a real account-delete/retry drill.
+
 - Add opt-in prepared-vector point delivery with native admin consent, fresh source/owner/target/lease guards, terminal tombstones and revision-bound acknowledgement; keep backfill and search cutover unavailable.
 
 - Preserve successful nullable-error response bodies instead of turning them into failures; render structured file-context errors as readable messages.

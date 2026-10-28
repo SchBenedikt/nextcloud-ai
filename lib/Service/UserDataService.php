@@ -18,9 +18,8 @@ use Psr\Log\LoggerInterface;
  * - export(): one JSON payload with the user's chats, KNOWLEDGE.md content and
  *   a metadata list of their indexed documents (no chunk text, no file bytes).
  * - cleanupDeletedAccount(): removes every eva_ai row, AppData folder and
- *   per-user config value when the account is deleted. KNOWLEDGE.md and the
- *   ai-marks json live inside the user's own home folder / AppData, so those
- *   are also removed here where the account deletion leaves them behind.
+ *   per-user config value when the account is deleted. Nextcloud owns erasure
+ *   of the user's home, including KNOWLEDGE.md; EVA removes its AppData marks.
  *
  * Both paths are defensive: cleanup must never abort the account deletion.
  */
@@ -144,15 +143,8 @@ class UserDataService {
             $this->logger->warning('eva_ai: background queue cleanup failed on account deletion', ['user' => $userId]);
         }
         $this->deleteAiMarksFolder($userId);
-        // KNOWLEDGE.md inside the home folder (if the folder still exists).
-        try {
-            $home = $this->rootFolder->getUserFolder($userId);
-            if ($home->nodeExists('KNOWLEDGE.md')) {
-                $home->get('KNOWLEDGE.md')->delete();
-            }
-        } catch (\Throwable $e) {
-            // The home folder is often already gone at this point.
-        }
+        // Do not reopen the deleted account's home. getUserFolder() can set up
+        // storage or a lazy home; core account deletion owns its removal.
         // Per-user config values.
         try {
             $this->config->deleteUserValues($userId);

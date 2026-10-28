@@ -60,5 +60,25 @@ try {
  $assert(count(array_filter($ops,static fn($op)=>$op==='delete_chunk'))===2,'Missing durable tombstones');
  $assert($legacyCount($d->getId())===0,'Delete retained legacy fixture');
  echo "PASS: actual SQL staging, idempotence, rename invalidation, legacy preservation, fresh point IDs and atomic document/tombstone removal.\n";
+
+ // Exercise native QueryBuilder rather than a fluent mock: account cleanup
+ // previously called Doctrine's distinct(), absent from Nextcloud's wrapper.
+ $foreignUid=$uid.'-tenant-boundary';
+ $assert($docs->countForUser($foreignUid)===0,'Use a fresh tenant-boundary fixture namespace.');
+ $fixtureDocs=[];
+ foreach([$uid,$uid,$foreignUid] as $i=>$owner){
+  $fixture=new Document();$fixture->setUserId($owner);$fixture->setFileId(2000000001+$i);$fixture->setPath('__eva_runtime_audit__/erase-'.$i.'.txt');$fixture->setName('erase-'.$i.'.txt');$fixture->setSource('files');$fixture->setContentHash(md5('Erasure fixture'));$fixture->setFileMtime(1);$fixture->setSize(15);$fixture->setMime('text/plain');$fixture=$docs->insert($fixture);$fixtureDocs[]=$fixture;
+  foreach(range(0,$i===0?1:0) as $index){
+   $chunk=new Chunk();$chunk->setDocumentId($fixture->getId());$chunk->setChunkIndex($index);$chunk->setContent('Erasure fixture');$chunk->setEmbeddingArray([1,0,0]);$chunk->setTokenCount(4);$chunk->setProvenanceArray([]);$chunks->insert($chunk);
+  }
+ }
+ $assert($chunks->deleteForUser($uid)===3,'Per-user chunk erasure missed duplicate document IDs or crossed tenant ownership');
+ $assert($chunks->deleteForUser($uid)===0,'Repeated chunk erasure is not idempotent');
+ $assert($legacyCount($fixtureDocs[2]->getId())===1,'Another tenant lost a chunk');
+ $assert($docs->findById($fixtureDocs[0]->getId())!==null,'Chunk cleanup removed parent ownership prematurely');
+ $docs->deleteByUser($uid);
+ $assert($docs->countForUser($uid)===0,'Per-user document cleanup retained source rows');
+ $assert($docs->countForUser($foreignUid)===1,'Per-user document cleanup crossed tenant ownership');
+ echo "PASS: native per-user chunk/document erasure, distinct document IDs, repeat safety and tenant isolation.\n";
 } finally { $db->rollBack(); }
 echo "Fixture transaction rolled back; no remote request or retained generation data.\n";

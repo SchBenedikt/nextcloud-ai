@@ -440,3 +440,14 @@ preparation for the bounded document backfill, not a completed backfill worker o
 rollout gate. Durable cursors/leases/control, canonical source extraction and full
 remote verification remain pending. Details and protocol sources are recorded in
 [GENERATION-EMBEDDINGS.md](GENERATION-EMBEDDINGS.md).
+
+### Native account-cleanup correction (1.18.9)
+
+A real account-delete drill exposed an unsupported `distinct()` call in the
+bounded legacy chunk cleanup. It prevented SQL erasure while leaving source
+ownership available to the scheduler. The query uses native `selectDistinct()`
+now, and cleanup never reopens a deleted home. Actual MariaDB tenant isolation,
+chunk/document cleanup, native user deletion, AppData removal and repeat cleanup
+have passed locally; known disposable audit remnants were removed and checked.
+This advances the sequential delete drill in stage 14. Durable retry coordination,
+in-flight legacy-writer fencing and distributed/remote erasure remain pending.

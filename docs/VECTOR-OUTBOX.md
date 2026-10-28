@@ -94,6 +94,14 @@ back, retaining ownership for a retry. The remaining AppData/config cleanup
 retains its previous best-effort behavior; a persistent account-cleanup retry
 coordinator remains pending.
 
+The 1.18.9 native lifecycle correction uses Nextcloud's `selectDistinct()` for
+the bounded chunk query; Doctrine's `distinct()` is not part of the native API
+and previously aborted account cleanup. EVA no longer calls `getUserFolder()`
+after deletion; core owns removal of KNOWLEDGE.md with the account's home. A
+dedicated local account-delete/retry drill and actual MariaDB tenant-isolation
+checks are described in [QUALITY.md](QUALITY.md#native-account-erasure-regression-drill).
+They do not establish protection against every already-running legacy writer.
+
 The 1.18.2 owner fence below serializes creation/binding against account erasure.
 Protections and reconciliation for already in-flight remote preparation remain
 required before general remote writes.
