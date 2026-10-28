@@ -138,7 +138,7 @@ export default {
 	width: min(100%, var(--eva-content-width, 1180px));
 	min-height: 52px;
 	margin: 0 auto;
-	padding: 8px 0 9px 44px;
+	padding: 8px 0 9px;
 	border-bottom: 1px solid var(--color-border, #ddd);
 	box-sizing: border-box;
 }

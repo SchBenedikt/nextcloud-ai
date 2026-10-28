@@ -522,10 +522,13 @@ export default {
 </style>
 
 <style>
-/* NcAppContent places its navigation toggle over the first header row. */
+/* Keep page headers on the same content rail as their view. */
 .eva-ai-app .page-header,
 .eva-ai-app .agent-runs__header,
-.eva-ai-app .file-context-root > .head { padding-inline-start: 44px; }
+.eva-ai-app .file-context-root > .head {
+	width: 100%;
+	box-sizing: border-box;
+}
 
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after {
