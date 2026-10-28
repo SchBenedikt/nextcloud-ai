@@ -31,6 +31,10 @@
 
 ### Reliability and documentation
 
+- Share canonical Files/Mail/Talk text extraction between indexing and generation planning; require exact source hashes, bounded file-stream reads and immutable chunk settings before rebuilding.
+- Stream chunk construction, stop excessive overlap at an explicit generation budget and keep oversized headings/retained overlap within the model input size.
+- Skip optional PDF/Office converters cleanly when no executable is installed.
+
 - Fix native account/index cleanup aborting on an unsupported SQL QueryBuilder method; leave deleted-home removal to Nextcloud core and add a real account-delete/retry drill.
 
 - Add opt-in prepared-vector point delivery with native admin consent, fresh source/owner/target/lease guards, terminal tombstones and revision-bound acknowledgement; keep backfill and search cutover unavailable.

@@ -39,6 +39,38 @@ final class ChunkerRegressionTest extends TestCase {
         return new Chunker(new AppConfig($config));
     }
 
+    public function testPinnedSettingsDoNotReadMutableUserChunkPreferences(): void {
+        $config = $this->createMock(AppConfig::class);
+        $config->expects(self::never())->method('getInt');
+        $chunks = (new Chunker($config))->chunkWithSettings('One sentence. Another sentence. Last sentence.', 20, 0);
+        self::assertSame(['One sentence.', 'Another sentence.', 'Last sentence.'], array_column($chunks, 'content'));
+    }
+
+    public function testLongHeadingAndOverlapNeverExceedTheModelInputBudget(): void {
+        $text = '# ' . str_repeat('Überschrift ', 20) . "\n\n" . str_repeat('A fairly long sentence. ', 20);
+        foreach ([0, 19] as $overlap) {
+            $chunks = $this->chunker(20, $overlap)->chunkWithSettings($text, 20, $overlap);
+            self::assertNotEmpty($chunks);
+            foreach ($chunks as $chunk) {
+                self::assertNotSame('', $chunk['content']);
+                self::assertLessThanOrEqual(20, mb_strlen($chunk['content']));
+            }
+            self::assertStringContainsString('Überschrift', implode(' ', array_column($chunks, 'content')));
+            self::assertStringContainsString('sentence.', implode('', array_column($chunks, 'content')));
+        }
+    }
+
+    public function testRetainedOverlapShrinksWhenTheNextSentenceConsumesTheBudget(): void {
+        $chunks = $this->chunker(20, 15)->chunkWithSettings('First sentence. Another long phrase.', 20, 15);
+        foreach ($chunks as $chunk) self::assertLessThanOrEqual(20, mb_strlen($chunk['content']));
+        self::assertStringContainsString('Another long phrase.', implode(' ', array_column($chunks, 'content')));
+    }
+
+    public function testLargeOverlapStopsAtTheExplicitChunkBudget(): void {
+        $this->expectException(\LengthException::class);
+        $this->chunker(128, 127)->chunkWithSettings(str_repeat('x', 100000), 128, 127, 32);
+    }
+
     public function testRepeatedPassagesArePreservedWithSequentialContent(): void {
         // A 20-char budget fits exactly one sentence per chunk, so three
         // identical sentences produce three identical chunks. The previous

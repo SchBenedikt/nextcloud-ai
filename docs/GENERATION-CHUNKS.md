@@ -110,6 +110,43 @@ SHA-256 hashes for compatible future sources). The stamp itself remains SHA-256
 over canonical metadata. Chunk integrity hashes remain strictly SHA-256; the
 source hash is a change detector, not an authenticity assertion.
 
+## Canonical source preparation
+
+`IndexTextExtractor` now owns the file/blob parsers formerly embedded in Indexer.
+`IndexDocumentText` is shared by ordinary indexing and generation preparation,
+including Mail envelope formatting, attachments, normalization and the existing
+Mail/Talk content limits. Agent file excerpts keep their independent 100,000-
+character maximum; generation preparation does not reuse that truncated excerpt.
+
+`GenerationSourceReader` checks native source access before and after extraction
+and requires the reconstructed text to match the canonical SQL content hash. It
+reads exact owned Mail metadata by ID rather than searching a recent-message
+page. A changed transcript, different IMAP fallback, missing attachment, changed
+parser configuration or same-size file edit cannot silently become the old source.
+An ordinary reindex must reconcile a hash mismatch before it can be rebuilt.
+
+File preparation respects the smaller of the owner's file-size setting and
+20 MiB, including a bounded VFS stream read if the file grows after metadata was
+captured. Extracted text is limited to two million characters without silently
+truncating file content. Existing Mail/Talk canonical limits are part of their
+source representation and remain unchanged. External converter/OCR elapsed-time
+budgets still require hardening before a general bounded worker is enabled.
+
+`GenerationDocumentPreparer` uses the generation's immutable chunk size/overlap,
+never mutable personal chunk settings. It bounds a document to 4,096 chunks and
+returns an internal text plan with a SHA-256 identity over chunker version,
+generation identity, source stamp and every chunk/provenance record. Sections,
+sentences and hard splits are consumed incrementally; a large overlap stops at
+the budget instead of materializing an unbounded chunk list. Long headings and
+retained overlap no longer exceed the embedding input size. Text plans contain
+no inferred legacy embeddings and are not provider authorization or verification.
+
+This is the shared source-input slice of stage 09. It does not yet run the
+durable cursor/lease/cancel/resume worker or enable any administrative build action.
+The relevant native controls belong with that working control API; no dormant
+chat or settings control is added here. SQL retrieval and the current native
+interface remain active. Native runtime evidence is recorded in QUALITY.md.
+
 The optional consumer is documented in [VECTOR-OUTBOX.md](VECTOR-OUTBOX.md#prepared-point-worker-1187).
 It transfers only current, accessible prepared rows and marks the matching SQL
 revision delivered. Regular SQL indexing is unchanged; generation backfill,
