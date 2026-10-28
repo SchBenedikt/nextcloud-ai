@@ -98,6 +98,8 @@ export function mountChat(root, opts = {}) {
 			if (body) {
 				opts.headers['Content-Type'] = 'application/json'
 				opts.body = JSON.stringify(body)
+				// Bounded history writes may finish when the page closes.
+				if (path.endsWith('/messages') && new TextEncoder().encode(opts.body).length < 60000) opts.keepalive = true
 			}
 			fetch(API_BASE + path, opts)
 				.then(async (r) => {
@@ -1450,6 +1452,7 @@ export function mountChat(root, opts = {}) {
 	// few seconds, avoiding a race with a stream that is about to finish.
 	const queueOnPageHide = () => {
 		if (!sending || queuedOnUnload || !chatId) return
+		if (messages[messages.length - 1]?.done) return
 		const lastUser = [...messages].reverse().find((m) => m.role === 'user')
 		if (!lastUser || !lastUser.text) return
 		const history = messages.slice(0, Math.max(0, messages.length - 2))
@@ -1464,6 +1467,12 @@ export function mountChat(root, opts = {}) {
 			}).catch(() => {})
 		} catch (_) {}
 	}
+	const warnBeforeUnload = (event) => {
+		if (!sending) return
+		event.preventDefault()
+		event.returnValue = ''
+	}
+	if (typeof window !== 'undefined') window.addEventListener('beforeunload', warnBeforeUnload)
 	if (typeof window !== 'undefined') window.addEventListener('pagehide', queueOnPageHide)
 	const cancelBackgroundJob = () => {
 		if (!backgroundRequestId) return
@@ -1917,7 +1926,7 @@ export function mountChat(root, opts = {}) {
 					// Persist the pair in conversation order. Sending both requests at
 					// once lets the per-user file lock acquire them in either order,
 					// which can swap the question and answer after a reload.
-					saveUserMessage(msg)
+					last._pendingSave = saveUserMessage(msg)
 						.then((savedUser) => savedUser ? saveMessage('assistant', last.text, last.followups, null, null, last.tools, last.model) : false)
 						.then((saved) => {
 							if (saved && onRecent) onRecent()
@@ -1927,7 +1936,7 @@ export function mountChat(root, opts = {}) {
 					cancelBackgroundJob()
 					last.text = streamFailureMessage(ev.message)
 					last.done = true
-					saveUserMessage(msg).then((saved) => { if (!saved) showHistorySaveWarning() })
+					last._pendingSave = saveUserMessage(msg).then((saved) => { if (!saved) showHistorySaveWarning(); return saved })
 				}
 				// One coalesced update per frame instead of one DOM rebuild per
 				// NDJSON event; terminal states below still update immediately.
@@ -1943,7 +1952,7 @@ export function mountChat(root, opts = {}) {
 					// Persist the partial answer when the user stopped the stream so
 					// a reload keeps the conversation instead of dropping it.
 					if (stoppedByUser && last.text.trim() !== '') {
-						saveUserMessage(msg)
+						last._pendingSave = saveUserMessage(msg)
 							.then((ok) => ok ? saveMessage('assistant', last.text, null, null, null, last.tools) : false)
 							.then((saved) => { if (!saved) showHistorySaveWarning() })
 					}
@@ -1953,10 +1962,14 @@ export function mountChat(root, opts = {}) {
 					err.textContent = streamFailureMessage(e)
 					err.style.display = 'block'
 				}
-			}).finally(() => {
+			}).finally(async () => {
+				// Completion includes ordered history writes, so another turn
+				// cannot overtake them and completed chats survive reload.
+				try { await messages[assistantIdx]?._pendingSave } catch (_) { showHistorySaveWarning() }
 				stoppedByUser = false
 				currentAbort = null
 				sending = false
+				if (destroyed) return
 				setStreamingUI(false)
 				input.focus()
 				stickToBottom()
@@ -1995,6 +2008,7 @@ export function mountChat(root, opts = {}) {
 		// Preserve the durable background handoff before releasing the stream.
 		queueOnPageHide()
 		window.removeEventListener('pagehide', queueOnPageHide)
+		window.removeEventListener('beforeunload', warnBeforeUnload)
 		if (currentAbort) currentAbort.abort()
 		messages.forEach((message) => (message.attachments || []).forEach((attachment) => URL.revokeObjectURL(attachment.url)))
 		if (pendingUpdateFrame !== null && typeof cancelAnimationFrame === 'function') cancelAnimationFrame(pendingUpdateFrame)

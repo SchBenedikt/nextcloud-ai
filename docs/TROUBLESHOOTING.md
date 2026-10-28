@@ -91,3 +91,13 @@ and trusted domains intact.
 EVA emits webroot-relative API and streaming paths, so authenticated requests stay
 on the browser's origin even when the instance has a canonical host override.
 Subdirectory installations retain their configured webroot.
+
+## Answers disappear after an immediate reload
+
+A completed chat now keeps its composer busy until the ordered user/assistant
+history writes finish. The native unload confirmation protects unfinished
+requests or pending saves, and bounded message writes use fetch keepalive. A
+completed response awaiting storage is not handed off as a new background model
+request. If storage fails, EVA shows a history warning; visible response text alone
+does not prove durable storage. Test completion after the Send control returns,
+then reload and verify both turns remain in history.

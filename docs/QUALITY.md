@@ -74,8 +74,9 @@ evidence. Report skipped or unexecuted checks explicitly for each delivery.
 ## Authenticated local recovery checks
 
 The local recovery batch resumes verification after the earlier test pause. It
-includes 44 frontend unit tests, 33 fixture-browser tests and a PHP suite with
-722 tests (8 skipped). The source-generation staging/deletion probe also ran
+includes 44 frontend unit tests and a PHP suite with
+724 tests (8 skipped); the fixture-browser suite also covers delayed history
+persistence and structured file-context failures. The source-generation staging/deletion probe also ran
 against the installed MariaDB connection with its fixture transaction rolled back.
 It checked idempotent staging, metadata invalidation, preserved legacy rows,
 fresh point IDs and document deletion with durable tombstones. These are local
@@ -105,3 +106,17 @@ and is skipped if its environment variables are absent. A mock browser run does
 not substitute for it. Hosted image/audio providers, external app actions,
 Qdrant transport/cutover, distributed races, restoration and load/soak still need
 separate configured evidence; they are not established by these smoke checks.
+
+The authenticated reload check also exposed a completion race after the first
+recovery deployment: chat became ready before its history writes settled. The
+follow-up keeps the composer busy through storage completion, adds bounded fetch
+keepalive/unload protection and tests a deliberately delayed assistant save. The
+browser harness explicitly compiles in development mode instead of webpack's
+implicit production default, avoiding unnecessary minification during checks.
+
+The native Files smoke check created a disposable WebDAV text file, obtained its
+native file ID, waited for indexing, asked the real configured model through the
+file-context interface, verified the expected code, then deleted the test file.
+It exposed and verified the nullable-error correction: success responses with
+`error: null` must remain success responses. Failure envelopes still retain their
+stable code/message structure.

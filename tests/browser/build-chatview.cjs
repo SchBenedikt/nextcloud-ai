@@ -3,6 +3,8 @@ const webpack = require('webpack')
 
 const root = path.resolve(__dirname, '../..')
 const config = require(path.join(root, 'webpack.js'))({}, { mode: 'development' })
+// webpack otherwise defaults to production despite the development argv above.
+config.mode = 'development'
 config.entry = {
   chatview: path.join(__dirname, 'chatview-entry.js'),
   metricsview: path.join(__dirname, 'metricsview-entry.js'),
