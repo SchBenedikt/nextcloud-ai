@@ -8,8 +8,10 @@
 			</div>
 			<div class="header-actions">
 				<NcButton variant="primary" :loading="indexing" :disabled="indexControlsLocked" @click="startIndex">{{ $t('Index files & emails') }}</NcButton>
-				<NcButton variant="secondary" :disabled="indexControlsLocked" @click="startMailIndex">{{ $t('Only emails') }}</NcButton>
-				<NcButton variant="secondary" :disabled="indexControlsLocked" @click="startTalkIndex">{{ $t('Index Talk chats') }}</NcButton>
+				<NcActions :aria-label="$t('More indexing options')">
+					<NcActionButton :disabled="indexControlsLocked" @click="startMailIndex">{{ $t('Only emails') }}</NcActionButton>
+					<NcActionButton :disabled="indexControlsLocked" @click="startTalkIndex">{{ $t('Index Talk chats') }}</NcActionButton>
+				</NcActions>
 				<NcButton v-if="indexingActive" variant="tertiary-no-background" :loading="stopping" :disabled="indexStatus?.indexStopping" @click="stopIndex">{{ $t('Stop') }}</NcButton>
 			</div>
 		</header>
@@ -22,26 +24,11 @@
 		<div v-if="indexStatusError" class="callout index-status-error" role="alert"><span>{{ $t('Indexing status could not be loaded: {error}', { error: indexStatusError }) }}</span><NcButton variant="tertiary" :loading="indexStatusLoading" :disabled="indexStatusLoading" @click="loadStatus">{{ $t('Try again') }}</NcButton></div>
 		<div v-if="progress" class="callout" role="status">{{ progress }}</div>
 
-		<div v-if="documentsLoaded" class="summary-grid" :aria-label="$t('Index summary')">
-			<div class="summary-card">
-				<span class="summary-label">{{ $t('Documents') }}</span>
-				<strong>{{ total }}</strong>
-				<small>{{ $t('Indexed files in your knowledge base') }}</small>
-			</div>
-			<div class="summary-card">
-				<span class="summary-label">{{ $t('Text chunks') }}</span>
-				<strong>{{ totalChunks }}</strong>
-				<small>{{ $t('Searchable sections') }}</small>
-			</div>
-			<div class="summary-card">
-				<span class="summary-label">{{ $t('Indexed size') }}</span>
-				<strong>{{ fmtSize(totalSize) }}</strong>
-				<small>{{ $t('Content currently available to EVA') }}</small>
-			</div>
-		</div>
+		<p v-if="documentsLoaded" class="docs-summary">{{ $t('{count} documents', { count: total }) }} · {{ fmtSize(totalSize) }}</p>
 
 		<section class="docs-toolbar">
-			<NcTextField v-model="search" :label="$t('Search documents')" :label-outside="true" :placeholder="$t('File name or path')" :disabled="loading || loadingMore" @keydown.enter="load" />
+			<NcTextField v-model="search" :label="$t('Search documents')" :placeholder="$t('File name or path')" :disabled="loading || loadingMore" @keydown.enter="load" />
+			<details class="docs-filters"><summary>{{ $t('Filters & sorting') }}</summary><div class="docs-filter-fields">
 			<label class="docs-filter">
 				<span class="docs-filter-label">{{ $t('Type') }}</span>
 				<select v-model="filterType" :disabled="loading || loadingMore" @change="load">
@@ -79,6 +66,7 @@
 					<option value="chunks-desc">{{ $t('Most chunks first') }}</option>
 				</select>
 			</label>
+			</div></details>
 				<NcButton variant="secondary" :loading="loading" :disabled="loadingMore" @click="load">{{ $t('Refresh') }}</NcButton>
 		</section>
 
@@ -177,12 +165,13 @@
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { api, errMsg } from '../lib/api'
 import { translate as t } from '../lib/i18n'
+import { NcActions, NcActionButton } from '@nextcloud/vue'
 import NcIconSvgWrapper from '@nextcloud/vue/components/NcIconSvgWrapper'
 import { mdiChevronDown, mdiChevronRight, mdiFileDocumentOutline } from '@mdi/js'
 
 export default {
 	name: 'DocumentsView',
-	components: { NcIconSvgWrapper },
+	components: { NcIconSvgWrapper, NcActions, NcActionButton },
 	setup() {
 		const docs = ref([])
 		const total = ref(0)
@@ -221,7 +210,7 @@ export default {
 			statusRequestInFlight = true
 			indexStatusLoading.value = true
 			try {
-				const status = await api('GET', 'status')
+				const status = await api('GET', 'index/status')
 				if (!status || typeof status !== 'object') throw new Error(t('The indexing status response was invalid.'))
 				indexStatus.value = status
 				indexStatusKnown.value = true
@@ -472,13 +461,15 @@ export default {
 		}
 
 		let statusTimer = null
+		let disposed = false
 		const scheduleStatusPoll = () => {
+			if (disposed) return
 			if (statusTimer !== null) window.clearTimeout(statusTimer)
 			// Keep active indexing responsive, but let idle pages check only
 			// occasionally so an open Documents tab stays inexpensive.
 			const delay = indexingActive.value ? 3000 : 30000
 			statusTimer = window.setTimeout(async () => {
-				await loadStatus()
+				if (!document.hidden) await loadStatus()
 				scheduleStatusPoll()
 			}, delay)
 		}
@@ -487,6 +478,8 @@ export default {
 			scheduleStatusPoll()
 		})
 		onUnmounted(() => {
+			disposed = true
+			documentsRequestController?.abort()
 			if (statusTimer !== null) window.clearTimeout(statusTimer)
 		})
 
@@ -496,6 +489,13 @@ export default {
 </script>
 
 <style scoped lang="scss">
+.docs-summary { margin: 0 0 20px; color: var(--color-text-maxcontrast); }
+.docs-filters { position: relative; }
+.docs-filters > summary { cursor: pointer; min-height: 44px; padding: 12px; border-radius: var(--border-radius); white-space: nowrap; }
+.docs-filters > summary:hover { background: var(--color-background-hover); }
+.docs-filter-fields { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; position: absolute; z-index: 10; right: 0; top: 100%; width: min(480px, calc(100vw - 48px)); background: var(--color-main-background); border: 1px solid var(--color-border); border-radius: var(--border-radius-large); padding: 16px; box-shadow: 0 8px 24px #0002; }
+@media (max-width: 600px) { .docs-filter-fields { position: static; width: 100%; grid-template-columns: 1fr; } }
+
 .docs-view {
 	width: 100%;
 	max-width: var(--eva-content-width, 1180px);

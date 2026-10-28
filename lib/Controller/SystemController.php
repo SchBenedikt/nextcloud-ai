@@ -67,6 +67,14 @@ final class SystemController extends OCSController {
                 'keyConfigured' => !in_array($providerId, ['ollama', 'groq'], true)
                     && $credentials->customConfigured($user, $providerId),
             ];
+            // Only presence flags reach the browser, never decrypted keys.
+            $status['providerKeys'] = [];
+            $profiles = json_decode($this->config->get('provider_profiles'), true);
+            foreach (is_array($profiles) ? $profiles : [] as $profile) {
+                if (is_array($profile) && is_string($profile['id'] ?? null)) {
+                    $status['providerKeys'][$profile['id']] = $credentials->customConfigured($user, $profile['id']);
+                }
+            }
         } catch (\Throwable) {
             $status['genericApi'] = ['tokenConfigured' => false];
             $status['customProvider'] = ['providerId' => '', 'keyConfigured' => false];
@@ -75,6 +83,21 @@ final class SystemController extends OCSController {
         // count, limit and this user's queue position - cheap, no polling.
         $status['scheduler'] = $this->indexScheduler->snapshot($user);
         return new ErrorDataResponse($status);
+    }
+
+    /** Index progress without model discovery, document counts or OCR probes. */
+    #[NoAdminRequired]
+    public function indexStatus(): DataResponse {
+        if ($this->requireUser() === null) return new ErrorDataResponse(['error' => 'Not logged in'], 401);
+        $running = $this->config->get('index_running') === '1';
+        if ($running && $this->config->recoverAbandonedRun()) $running = false;
+        $cancelled = $this->config->get('index_cancel_requested') === '1';
+        $response = new \OCA\EvaAi\Dto\IndexStatusResponse(
+            $running, $running && $cancelled, $this->config->get('index_mode'),
+            $this->config->get('index_started'), $this->config->get('index_finished'),
+            $this->config->get('last_index_error'),
+        );
+        return new ErrorDataResponse($response->toArray());
     }
 
     /**

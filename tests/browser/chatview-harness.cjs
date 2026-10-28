@@ -57,7 +57,7 @@ async function openChatView(page) {
   })
   await page.goto('http://127.0.0.1:4173/harness')
   await page.addScriptTag({ url: 'http://127.0.0.1:4173/chatview.js' })
-  await page.waitForSelector('.head .image-mode-toggle')
+  await page.waitForSelector('.head .chat-actions')
 }
 
 module.exports = { openChatView }

@@ -176,3 +176,21 @@ The Stop indexing action sets a durable per-user cancellation flag but does not 
 ## Index conflict recovery
 
 A repeated start request for the same user is treated as an idempotent status response rather than a user-visible HTTP 409. A genuine worker-lock conflict remains a 409 with an actionable message. Request parameters use Nextcloud's native IRequest access first, with one non-recursive JSON-body fallback for POST payloads; the app does not use the old recursively named wrapper. Stale per-user index state is recovered after 15 minutes without a heartbeat; cancellation recovery remains faster. These responses are application concurrency handling, not Content Security Policy decisions.
+
+## Focused workspace
+
+`App.vue` owns the shared conversation list. `HomeView` receives it as props
+and emits the first prompt through the normal chat-creation path. It makes
+no independent stats or greeting requests. Answer typography is shared in
+`src/lib/markdown.css`; file-context replies use the same safe Markdown renderer. `ChatView` owns the lifetime of the
+shared renderer; `ChatActions` supplies native actions and modal dialogs.
+
+`SettingsView` is the shell for asynchronously loaded components under
+`src/components/settings/`. `useEvaSettings` owns shared form state and starts
+optional resource loaders when their section is selected. Styles are scoped
+under `.settings-view` in `src/styles/settings.scss`.
+
+`SystemController::indexStatus()` returns `IndexStatusResponse` without building
+full RAG status. Provider profiles use the existing settings route and encrypted
+`ProviderCredentials` storage; authentication defaults to `api_key` for legacy
+profiles. See [Performance](PERFORMANCE.md) and [Migration](WORKSPACE-MIGRATION.md).

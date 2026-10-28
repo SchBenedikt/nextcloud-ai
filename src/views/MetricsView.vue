@@ -2,9 +2,9 @@
 	<div class="metrics-view">
 		<header class="page-header">
 			<div><p class="eyebrow">EVA AI</p><h1>{{ $t('Usage metrics') }}</h1><p>{{ $t('See how many model tokens your requests used, grouped by model and day.') }}</p></div>
-			<div class="metrics-actions"><label v-if="canFilterUsers && adminUsers.length" class="metrics-user-filter"><span>{{ $t('User') }}</span><select v-model="selectedUser" :aria-label="$t('Filter metrics by user')" @change="load()"><option value="">{{ $t('My metrics') }}</option><option v-for="user in adminUsers" :key="user.userId" :value="user.userId">{{ user.displayName }} ({{ user.userId }})</option></select></label><div class="period-switcher" role="group" :aria-label="$t('Metrics period')"><button v-for="value in [7, 30, 90]" :key="value" type="button" :class="{ active: days === value }" :aria-pressed="days === value" @click="load(value)">{{ value }} {{ $t('days') }}</button></div><button type="button" class="metrics-download" :disabled="loading || !hasCurrentData" @click="downloadCsv">{{ $t('Download CSV') }}</button><button type="button" class="metrics-download" :disabled="loading || !hasCurrentData" @click="printReport">{{ $t('Print / Save as PDF') }}</button><span class="metrics-refresh-status" role="status" aria-live="polite">{{ $t('Refreshes automatically every minute') }}<template v-if="updatedLabel"> · {{ updatedLabel }}</template></span></div>
+			<div class="metrics-actions"><label v-if="canFilterUsers && adminUsers.length" class="metrics-user-filter"><span>{{ $t('User') }}</span><select v-model="selectedUser" :aria-label="$t('Filter metrics by user')" @change="load()"><option value="">{{ $t('My metrics') }}</option><option v-for="user in adminUsers" :key="user.userId" :value="user.userId">{{ user.displayName }} ({{ user.userId }})</option></select></label><div class="period-switcher" role="group" :aria-label="$t('Metrics period')"><button v-for="value in [7, 30, 90]" :key="value" type="button" :class="{ active: days === value }" :aria-pressed="days === value" @click="load(value)">{{ value }} {{ $t('days') }}</button></div><NcButton type="button" variant="secondary" class="metrics-download" :disabled="loading || !hasCurrentData" @click="downloadCsv">{{ $t('Download CSV') }}</NcButton><NcButton type="button" variant="secondary" class="metrics-download" :disabled="loading || !hasCurrentData" @click="printReport">{{ $t('Print / Save as PDF') }}</NcButton><span class="metrics-refresh-status" role="status" aria-live="polite">{{ $t('Refreshes automatically every minute') }}<template v-if="updatedLabel"> · {{ updatedLabel }}</template></span></div>
 		</header>
-		<div v-if="error" class="metrics-error" role="alert"><span>{{ error }}</span><button type="button" class="metrics-retry" @click="load()">{{ $t('Try again') }}</button></div>
+		<div v-if="error" class="metrics-error" role="alert"><span>{{ error }}</span><NcButton type="button" variant="secondary" class="metrics-retry" @click="load()">{{ $t('Try again') }}</NcButton></div>
 		<div v-if="loading" class="metrics-loading">{{ $t('Loading metrics…') }}</div>
 		<template v-else-if="hasCurrentData">
 			<section class="metrics-cards" :aria-label="$t('Usage totals')"><div v-for="card in cards" :key="card.label" class="metrics-card"><span>{{ card.label }}</span><strong>{{ card.money ? formatMoney(card.value) : format(card.value) }}</strong><small>{{ card.hint }}</small></div></section>
@@ -35,6 +35,7 @@
 
 <script>
 import { ref, computed, onMounted, onBeforeUnmount } from 'vue'
+import { NcButton } from '@nextcloud/vue'
 import { api, errMsg } from '../lib/api'
 import { translate as t } from '../lib/i18n'
 import { formatToolName } from '../lib/chat-utils'
@@ -42,6 +43,7 @@ import { buildMetricsCsv } from '../lib/metrics-export'
 
 export default {
 	name: 'MetricsView',
+	components: { NcButton },
 	setup() {
 		const days = ref(30); const loading = ref(true); const error = ref(''); const dataDays = ref(null); const data = ref({ totals: {}, by_model: [], daily: [], slow_tools: [] })
 		const feedbackStats = ref({ helpful: 0, notHelpful: 0, bookmarked: 0 })

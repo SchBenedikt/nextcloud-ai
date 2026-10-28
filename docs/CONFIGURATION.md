@@ -1,6 +1,6 @@
 # EVA — Configuration reference
 
-All settings are stored in `oc_appconfig` under the app ID `eva_ai`. Personal
+Instance settings are stored in `oc_appconfig` under the app ID `eva_ai`. Personal
 settings can be overridden per user (from the app's **Settings** tab), but when
 a user has no personal value they fall back to the admin-configured instance
 value, and only if that is empty to the built-in default (Issue #73).
@@ -23,6 +23,9 @@ Values are plain strings; booleans use `1`/`0`; sizes are stored in **bytes**
 (the settings UI shows MB). Invalid values are rejected by the Settings form;
 `occ` does not validate, so keep values inside the documented limits.
 
+For the task-based settings layout, see [Workspace settings](WORKSPACE.md).
+For provider forms and authentication, see [AI providers](PROVIDERS.md).
+
 ## Key reference
 
 Legend: **P** = personal setting (per-user override possible),
@@ -35,9 +38,9 @@ endpoint rejects them.
 
 | Key | Scope | Default | Range / values | Unit | Effect |
 |---|---|---|---|---|---|
-| `chat_provider` | P | `ollama` | `ollama`, `groq` | – | Chat provider; embeddings remain on Ollama. |
+| `chat_provider` | P | `ollama` | `ollama`, `groq`, configured profile ID | – | Chat provider; embeddings remain on Ollama. |
 | `groq_model` | P | `openai/gpt-oss-20b` | `openai/gpt-oss-20b`, `openai/gpt-oss-120b` | – | Groq Free Plan model selection; no fallback. |
-| `provider_profiles` | P | `[]` | JSON array, max. 20 profiles | – | OpenAI-compatible profiles with `id`, `name`, `url` and `model`; optional `image_model`, `audio_model`, `tts_model` and `tts_voice` select modality-specific endpoints; API keys are stored encrypted separately per profile. |
+| `provider_profiles` | P | `[]` | JSON array, max. 20 profiles | – | OpenAI-compatible profiles with `id`, `name`, `url` and `model`; optional `auth` (`api_key` or `none`), `image_model`, `audio_model`, `tts_model` and `tts_voice` select modality-specific endpoints; API keys are stored encrypted separately per profile. |
 | `model_pricing` | P | `[]` | JSON array, max. 50 entries | – | Personal USD rates per million input/output tokens for the Metrics cost estimate. Configure these in **Metrics**; they are estimates and are never fetched from or represented as official provider pricing. |
 | `ollama_url` | P | `http://127.0.0.1:11434` | plain `http(s)://host[:port]`, no path/credentials | – | Base URL of the Ollama HTTP API; trailing slashes are stripped. |
 | `chat_model` | P | `gemma4:cloud` | non-empty string | – | Model used for chat/generation. |

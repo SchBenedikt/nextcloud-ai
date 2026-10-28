@@ -48,10 +48,40 @@ final class SystemControllerIntegrationTest extends TestCase {
     public function testUnauthenticatedSystemEndpointsReturn401(): void {
         $controller = $this->controller($this->createMock(IRequest::class), null, $this->createMock(UsageMetrics::class));
 
-        foreach (['status', 'stats', 'metrics', 'saveMetricsPricing', 'health', 'greeting'] as $method) {
+        foreach (['status', 'indexStatus', 'stats', 'metrics', 'saveMetricsPricing', 'health', 'greeting'] as $method) {
             $response = $controller->{$method}();
             self::assertSame(401, $response->getStatus(), $method . ' must reject anonymous requests');
         }
+    }
+
+    public function testIndexProgressDoesNotProbeModelsOrReadDocumentsAndChats(): void {
+        $config = $this->createMock(AppConfig::class);
+        $config->method('get')->willReturnCallback(static fn(string $key): string => match ($key) {
+            'index_running', 'index_cancel_requested' => '1',
+            'index_mode' => 'mail',
+            default => '',
+        });
+        $config->expects(self::once())->method('recoverAbandonedRun')->willReturn(false);
+        $rag = $this->createMock(RagService::class);
+        $rag->expects(self::never())->method('buildStatus');
+        $ollama = $this->createMock(Ollama::class);
+        $ollama->expects(self::never())->method('status');
+        $documents = $this->createMock(DocumentMapper::class);
+        $documents->expects(self::never())->method('aggregateForUser');
+        $chats = $this->createMock(ChatStore::class);
+        $chats->expects(self::never())->method('list');
+        $initializer = $this->createMock(KnowledgeInitializer::class);
+        $initializer->expects(self::never())->method('ensureInitialized');
+        $controller = new SystemController(
+            'eva_ai', $this->createMock(IRequest::class), 'alice', $config, $rag, $documents,
+            $chats, $initializer, $this->createMock(IndexScheduler::class), $this->createMock(UsageMetrics::class),
+            $ollama, $this->createMock(ICacheFactory::class),
+            new BackgroundChatQueue($this->createMock(IConfig::class), $this->createMock(ILockingProvider::class), $this->createMock(LoggerInterface::class)),
+            $this->createMock(LoggerInterface::class),
+        );
+        $response = $controller->indexStatus();
+        self::assertSame(200, $response->getStatus());
+        self::assertSame(['indexing' => true, 'indexStopping' => true, 'indexMode' => 'mail', 'lastStarted' => '', 'lastFinished' => '', 'lastError' => ''], $response->getData());
     }
 
     public function testMetricsUsesTheRequestedDateRange(): void {

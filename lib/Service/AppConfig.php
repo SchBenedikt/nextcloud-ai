@@ -611,6 +611,8 @@ class AppConfig {
                     return 'each profile needs an id, name, http(s) URL and model';
                 }
                 $id = (string)$profile['id'];
+                if (in_array($id, ['ollama', 'groq'], true)) return 'profile ids must not shadow built-in providers';
+                if (isset($profile['auth']) && !in_array($profile['auth'], ['api_key', 'none'], true)) return 'profile authentication must be api_key or none';
                 if (isset($ids[$id])) return 'profile ids must be unique';
                 $ids[$id] = true;
                 $parts = parse_url((string)$profile['url']);

@@ -1,6 +1,8 @@
 import './markdown.css'
+import { createApp } from 'vue'
+import ChatActions from '../components/ChatActions.vue'
 import { readNdjson } from './ndjson'
-import { mdiDownload, mdiTune } from '@mdi/js'
+import { mdiDownload } from '@mdi/js'
 import { translate as t } from './i18n'
 import { buildConfirmForm } from './confirmForms'
 import { mdToHtml, citedSources, formatToolName, copyText, installImageFallback, apiErrorMessage } from './chat-utils'
@@ -46,6 +48,7 @@ export function mountChat(root, opts = {}) {
 	let selectionMode = false
 	let selectionChatId = null
 	let sending = false
+	let destroyed = false
 	let currentAbort = null
 	let stoppedByUser = false
 	let queuedOnUnload = false
@@ -1106,30 +1109,34 @@ export function mountChat(root, opts = {}) {
 
 	// Per-chat custom instructions (Issue #90): a small header action that
 	// opens a dialog to pick a preset persona and/or free-text instructions.
-	const customizeBtn = document.createElement('button')
-	customizeBtn.className = 'export customize-btn'
-	customizeBtn.type = 'button'
-	customizeBtn.setAttribute('aria-label', t('Customize EVA for this chat'))
-	customizeBtn.title = t('Customize EVA for this chat')
-	const customizeIcon = document.createElementNS('http://www.w3.org/2000/svg', 'svg')
-	customizeIcon.classList.add('export-icon')
-	customizeIcon.setAttribute('viewBox', '0 0 24 24')
-	customizeIcon.setAttribute('aria-hidden', 'true')
-	const customizePath = document.createElementNS('http://www.w3.org/2000/svg', 'path')
-	customizePath.setAttribute('d', mdiTune)
-	customizeIcon.append(customizePath)
-	const customizeLabel = document.createElement('span')
-	customizeLabel.textContent = t('Customize')
-	customizeBtn.append(customizeIcon, customizeLabel)
 	const customizePill = document.createElement('span')
 	customizePill.className = 'pill pill-ok'
 	customizePill.hidden = true
-	const agentStatusPill = document.createElement('span')
+	const agentStatusPill = document.createElement('button')
+	agentStatusPill.type = 'button'
 	agentStatusPill.className = 'pill pill-warn'
 	agentStatusPill.hidden = true
-	agentStatusPill.setAttribute('role', 'status')
-	customizeBtn.addEventListener('click', () => openCustomizeDialog())
-	head.append(h1, imageModeBtn, scopePill, customizePill, agentStatusPill, customizeBtn, promptPanel, exportSelectionLabel, exportOptions, exportFormat, exportBtn, exportAllBtn)
+	agentStatusPill.setAttribute('aria-live', 'polite')
+	const exportPanel = document.createElement('div')
+	exportPanel.className = 'chat-export-panel'
+	exportOptions.open = true
+	exportPanel.append(exportSelectionLabel, exportOptions, exportFormat, exportBtn, exportAllBtn)
+	promptPanel.open = true
+	const actionsHost = document.createElement('div')
+	actionsHost.className = 'chat-actions-host'
+	const actionsApp = createApp(ChatActions, {
+		panels: { exports: exportPanel, prompts: promptPanel },
+		onAction: (action) => {
+			if (action === 'images') imageModeBtn.click()
+			if (action === 'customize') openCustomizeDialog()
+		},
+	})
+	actionsApp.mount(actionsHost)
+	head.append(h1, agentStatusPill, actionsHost)
+	// Scope and custom instructions remain visible below the compact header.
+	const contextBar = document.createElement('div')
+	contextBar.className = 'chat-context'
+	contextBar.append(scopePill, customizePill)
 
 	const scroll = document.createElement('div')
 	scroll.className = 'chat-log'
@@ -1188,7 +1195,7 @@ export function mountChat(root, opts = {}) {
 		err.style.display = msg ? 'block' : 'none'
 	}
 
-	root.append(head, imagePanel, scroll, form, err)
+	root.append(head, contextBar, imagePanel, scroll, form, err)
 
 	const renderAll = (list) => {
 		if (selectionChatId !== chatId) {
@@ -1325,7 +1332,7 @@ export function mountChat(root, opts = {}) {
 		details.appendChild(summary)
 		const list = document.createElement('div')
 		list.className = 'rs-list'
-		m.sources.forEach((item, sourceIndex) => {
+		m.sources.forEach((item) => {
 			const src = item.src || item
 			const row = document.createElement('div')
 			row.className = 'rs-item' + (src.external ? ' rs-item-external' : '')
@@ -1447,16 +1454,17 @@ export function mountChat(root, opts = {}) {
 	// A queued request can outlive this tab. Surface its server-side state when
 	// the chat is open; the endpoint intentionally returns no conversation data.
 	const refreshBackgroundStatus = () => {
+		if (document.hidden) return
 		if (!chatId) { agentStatusPill.hidden = true; return }
 		api('GET', '/backgroundChat').then((payload) => {
 			const items = payload && Array.isArray(payload.items) ? payload.items : []
-			const item = items.find((entry) => entry && entry.chatId === chatId)
+			const item = items.find((entry) => entry && entry.chatId === chatId && ['pending', 'running', 'failed', 'paused'].includes(entry.status))
 			if (!item) { agentStatusPill.hidden = true; return }
 			const state = String(item.status || 'pending')
 			const progress = state === 'running' && item.phase === 'tool' && item.tool
 				? ` · ${String(item.tool)} · step ${Number(item.steps || 0)}`
 				: ''
-			agentStatusPill.textContent = state === 'running'
+			agentStatusPill.title = state === 'running'
 				? t('EVA is continuing this chat in the background') + progress
 				: state === 'failed'
 					? t('Background EVA run failed — click to retry')
@@ -1465,6 +1473,8 @@ export function mountChat(root, opts = {}) {
 						: state === 'pending'
 							? t('Background EVA run queued — click to pause')
 					: t('EVA will continue this chat in the background')
+			agentStatusPill.textContent = t('Background tasks') + ': ' + ({ running: t('Running'), failed: t('Failed'), paused: t('Paused'), pending: t('Queued') }[state] || t('Completed'))
+			agentStatusPill.disabled = !item.id || !['failed', 'paused', 'pending'].includes(state)
 			if (item.id && ['failed', 'paused', 'pending'].includes(state)) {
 				agentStatusPill.style.cursor = 'pointer'
 				agentStatusPill.onclick = () => {
@@ -1589,6 +1599,7 @@ export function mountChat(root, opts = {}) {
 
 	function restoreServerChat(id) {
 		return api('GET', '/chats/' + id).then((chat) => {
+			if (destroyed) return
 			// Per-chat folder scope (Issue #88): visible in the header so the
 			// user knows the answer only uses documents from that folder.
 			if (chat && chat.scopePath) {
@@ -1741,8 +1752,19 @@ export function mountChat(root, opts = {}) {
 		instrTa.focus()
 	}
 
+	let ready = Promise.resolve(true)
 	if (chatId) {
-		restoreServerChat(chatId).then(refreshBackgroundStatus).catch(() => { /* falls Chat nicht existiert: leer starten */ })
+		input.disabled = true
+		sendBtn.disabled = true
+		ready = restoreServerChat(chatId).then(() => {
+			if (destroyed) return false
+			input.disabled = false
+			sendBtn.disabled = false
+			return true
+		}).catch(() => {
+			if (!destroyed) showErr(t('Chat history could not be loaded. Reopen this conversation to try again.'))
+			return false
+		})
 	}
 
 	// Streams a server-side re-run (regenerate or edit) and persists the new
@@ -2083,7 +2105,13 @@ export function mountChat(root, opts = {}) {
 	refreshBackgroundStatus()
 	input.focus()
 	form.addEventListener('submit', (e) => { e.preventDefault(); send() })
-	root.__evaAi = { destroy: () => {
+	root.__evaAi = { ready, destroy: () => {
+		if (destroyed) return
+		destroyed = true
+		// Preserve the durable background handoff before releasing the stream.
+		queueOnPageHide()
+		window.removeEventListener('pagehide', queueOnPageHide)
+		if (currentAbort) currentAbort.abort()
 		speech.stop()
 		messages.forEach((message) => (message.attachments || []).forEach((attachment) => URL.revokeObjectURL(attachment.url)))
 		if (pendingUpdateFrame !== null && typeof cancelAnimationFrame === 'function') cancelAnimationFrame(pendingUpdateFrame)
@@ -2091,5 +2119,6 @@ export function mountChat(root, opts = {}) {
 		updateScheduled = false
 		pendingUpdateIdx = null
 		clearInterval(backgroundStatusTimer)
+		actionsApp.unmount()
 	} }
 }
