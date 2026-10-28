@@ -114,8 +114,9 @@ one backend snapshot. Native connection configuration, explicit API check and
 transport disable are now exposed through an administrator-only page and dedicated
 controller. The prior dormant Vue admin branch is replaced by a separate entry
 without personal chat initialization. Migration/activation/progress controls
-remain pending until their backend operations exist. No browser, access-control,
-CSRF or remote-transport validation is claimed yet.
+remain pending until their backend operations exist. Fixture browser checks,
+authenticated local consent and isolated remote-transport evidence are recorded
+in QUALITY.md; the full access-control/portability/rollout matrix remains open.
 
 ## Native Nextcloud integration direction
 
@@ -395,12 +396,14 @@ Chunk/document mapper deletion now allocates terminal point-delete intent and
 removes canonical rows in one source-locked transaction. Bounded keyset batches
 cover replacement, Files/Mail/Talk and folder deletion, reset and account cleanup;
 the deferred IndexJob reset no longer issues raw chunk/document DELETE statements.
-Both native admin surfaces explain that point cleanup remains queued until its
-consumer is implemented. SQL-only deletions never create vector events or make
+Both native admin surfaces explain that point cleanup remains queued while
+delivery is paused; the later 1.18.7 consumer requires explicit consent. SQL-only deletions never create vector events or make
 remote calls. Source-stamp field updates and tenant-filtered hash clearing also invalidate
 prepared entries transactionally, while preserving legacy chunks. Rebuilding
-those entries, point consumption, backfill and activation are still pending. No database concurrency/rollback execution is
-claimed by that implementation batch; the later local runtime checks are recorded in QUALITY.md.
+those entries, backfill and activation remain pending. Point consumption is
+delivered by the later 1.18.7 slice. Source lifecycle transaction/rollback checks
+and isolated point-transport evidence are recorded in QUALITY.md; distributed
+concurrency remains open.
 
 ### Prepared-point consumer and consent
 

@@ -539,6 +539,7 @@ test('chat submits one complete turn and stays busy until it is stored', async (
   await expect(page.getByRole('button', { name: 'Stop', exact: true })).toBeVisible()
   expect(await page.evaluate(() => window.__historyKeepalive)).toBe(true)
   expect(await page.evaluate(() => window.__turnBody)).toMatchObject({ question: 'Keep this answer', expectedRev: 1, answer: { text: 'A test answer', model: 'gpt-test' } })
+  expect(await page.evaluate(() => window.__turnBody.requestId)).toMatch(/^[A-Za-z0-9_-]{16,128}$/)
   await page.evaluate(() => window.__releaseHistory())
   await expect(page.getByRole('button', { name: 'Send message', exact: true })).toBeVisible()
 })

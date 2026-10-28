@@ -169,3 +169,11 @@ a finite dismissal quota, so oversized turns do not use it; the native unload
 warning remains. Confirming dismissal or killing the browser before a large
 save finishes is not a durability guarantee. Persisting completion server-side
 and normalized SQL chat storage remain separate migration work.
+
+The first installed 1.18.8 candidate exposed a native-only receipt bug: terminal
+background cancellation cleared the ID reused by the new turn request. Strict
+server validation rejected the save, and regeneration then found no stored user
+message. The correction gives the turn a separate stable receipt ID and makes
+the browser fixture reject malformed receipts too. This failure is not counted
+as a passing runtime validation; the corrected installation must pass the real
+consecutive-answer, regeneration and reload path before integration.

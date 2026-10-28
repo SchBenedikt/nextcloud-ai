@@ -1459,8 +1459,11 @@ export function mountChat(root, opts = {}) {
 	// The server's revision guard rejects a save overtaken by another tab/turn.
 	const saveTurn = (question, answer) => {
 		if (!chatId) return Promise.resolve(false)
+		// Background-job cancellation clears its own ID before persistence.
+		// Keep the turn receipt independent and stable for this exact payload.
+		answer._turnRequestId ||= (window.crypto && crypto.randomUUID) ? crypto.randomUUID() : ('turn_' + Date.now() + '_' + Math.random().toString(36).slice(2))
 		return api('POST', '/chats/' + encodeURIComponent(chatId) + '/turns', {
-			requestId: backgroundRequestId, expectedRev: chatRev ?? 0, question,
+			requestId: answer._turnRequestId, expectedRev: chatRev ?? 0, question,
 			answer: { text: answer.text, followups: answer.followups || [], confirmation: answer.confirmation || null, tools: answer.tools || [], model: answer.model || null },
 		}).then((resp) => {
 			if (resp?.ok !== true || !Number.isSafeInteger(resp.rev)) return false
