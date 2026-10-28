@@ -418,6 +418,34 @@ final class ChatStoreTest extends TestCase {
         self::assertSame('Actually, never mind', $chat['messages'][2]['text']);
     }
 
+    public function testCompletedTurnUsesOneWriteAndIsIdempotent(): void {
+        $written = null;
+        [$store, $file] = $this->chatFileHarness(json_encode([['id'=>'c1','title'=>'','rev'=>1,'messages'=>[]]]), $written);
+        $file->expects(self::once())->method('putContent');
+        $turn = \OCA\EvaAi\Dto\ChatTurnRequest::fromArray(['requestId'=>'turn_1234567890123456','expectedRev'=>1,'question'=>'Question','answer'=>['text'=>'Answer','model'=>'test-model']]);
+        self::assertSame(['ok'=>true,'rev'=>3], $store->appendTurn('alice','c1',$turn));
+        self::assertSame(['ok'=>true,'rev'=>3], $store->appendTurn('alice','c1',$turn));
+        $chat = $store->get('alice','c1');
+        self::assertSame(['user','assistant'], array_column($chat['messages'],'role'));
+        self::assertSame(['Question','Answer'], array_column($chat['messages'],'text'));
+        self::assertSame('test-model', $chat['messages'][1]['model']);
+        self::assertSame('Question', $chat['title']);
+    }
+
+    public function testLateOrConflictingTurnsNeverWriteOrReorderHistory(): void {
+        $written = null;
+        [$store] = $this->chatFileHarness(json_encode([['id'=>'c1','title'=>'','rev'=>1,'messages'=>[]]]), $written);
+        $input = ['requestId'=>'turn_1234567890123456','expectedRev'=>1,'question'=>'Question','answer'=>['text'=>'Answer']];
+        $store->appendTurn('alice','c1',\OCA\EvaAi\Dto\ChatTurnRequest::fromArray($input));
+        $saved = $written;
+        foreach ([['requestId'=>'turn_abcdefghijklmnop'], ['answer'=>['text'=>'Changed']]] as $change) {
+            self::assertSame(['error'=>'conflict'], $store->appendTurn('alice','c1',\OCA\EvaAi\Dto\ChatTurnRequest::fromArray(array_replace($input,$change))));
+            self::assertSame($saved,$written);
+        }
+        self::assertSame(['error'=>'not_found'], $store->appendTurn('alice','missing',\OCA\EvaAi\Dto\ChatTurnRequest::fromArray($input)));
+        self::assertSame($saved,$written);
+    }
+
     private function chatFileHarness(string $json, ?string &$written, string $foldersJson = '[]', ?string &$foldersWritten = null, string $templatesJson = '[]', ?string &$templatesWritten = null): array {
         $factory = $this->createMock(IAppDataFactory::class);
         $appData = $this->createMock(IAppData::class);
@@ -791,13 +819,14 @@ final class ChatStoreTest extends TestCase {
 		$store->append('alice', 'c1', 'user', 'q3');
 		self::assertCount(5, $store->get('alice', 'c1')['messages']);
 
-		// A late answer carrying the old token can no longer truncate the
-		// newer message; it is appended as a plain message.
-		$store->append('alice', 'c1', 'assistant', 'a1-late', [], $result['rev']);
+		// A late answer must neither truncate nor append out of order.
+		try {
+			$store->append('alice', 'c1', 'assistant', 'a1-late', [], $result['rev']);
+			self::fail('Expected a stale regeneration conflict.');
+		} catch (\OCA\EvaAi\Service\ChatStoreConflictException) {}
 		$chat = $store->get('alice', 'c1');
-		self::assertCount(6, $chat['messages']);
+		self::assertCount(5, $chat['messages']);
 		self::assertSame('q3', $chat['messages'][4]['text']);
-		self::assertSame('a1-late', $chat['messages'][5]['text']);
 	}
 
 	public function testRegenerateConflictsAndValidation(): void {

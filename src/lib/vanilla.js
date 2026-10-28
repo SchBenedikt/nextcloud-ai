@@ -86,6 +86,9 @@ export function mountChat(root, opts = {}) {
 
 	function api(method, path, body) {
 		return new Promise((resolve, reject) => {
+			const historyWrite = method === 'POST' && /\/(messages|turns)$/.test(path)
+			const controller = historyWrite ? new AbortController() : null
+			const timer = controller ? setTimeout(() => { controller.abort(); reject(new Error('Chat history save timed out')) }, 15000) : null
 			const opts = {
 				method,
 				credentials: 'same-origin',
@@ -95,11 +98,12 @@ export function mountChat(root, opts = {}) {
 					'requesttoken': REQUEST_TOKEN,
 				},
 			}
+			if (controller) opts.signal = controller.signal
 			if (body) {
 				opts.headers['Content-Type'] = 'application/json'
 				opts.body = JSON.stringify(body)
 				// Bounded history writes may finish when the page closes.
-				if (path.endsWith('/messages') && new TextEncoder().encode(opts.body).length < 60000) opts.keepalive = true
+				if (historyWrite && new TextEncoder().encode(opts.body).length < 60000) opts.keepalive = true
 			}
 			fetch(API_BASE + path, opts)
 				.then(async (r) => {
@@ -111,9 +115,11 @@ export function mountChat(root, opts = {}) {
 						throw new Error(('HTTP ' + r.status + ' ' + String(detail || '')).trim().slice(0, 260))
 					}
 					const data = json && json.ocs && typeof json.ocs.data !== 'undefined' ? json.ocs.data : json
+					if (path.endsWith('/meta') && Number.isSafeInteger(data?.rev)) chatRev = Math.max(chatRev ?? 0, data.rev)
 					resolve(data)
 				})
 				.catch(reject)
+				.finally(() => { if (timer) clearTimeout(timer) })
 		})
 	}
 
@@ -228,6 +234,24 @@ export function mountChat(root, opts = {}) {
 		}
 	}
 
+	function renderAnswerActions(m, idx) {
+		const actBar = document.createElement('div')
+		actBar.className = 'racts'
+		const cb = document.createElement('button')
+		cb.className = 'rcopy'
+		cb.title = t('Copy answer')
+		cb.textContent = '⧉'
+		cb.addEventListener('click', () => copyText(String(m.text || ''), cb))
+		actBar.appendChild(cb)
+		const rb = document.createElement('button')
+		rb.className = 'ract'
+		rb.title = t('Regenerate')
+		rb.textContent = '↻'
+		rb.addEventListener('click', () => regenerateMessage(idx))
+		actBar.appendChild(rb)
+		return actBar
+	}
+
 	function renderMsg(scroll, emptyEl, m, idx) {
 		const wrap = document.createElement('div')
 		wrap.className = 'rm ' + m.role
@@ -290,23 +314,7 @@ export function mountChat(root, opts = {}) {
 			modelLabel.textContent = t('Model: {name}', { name: m.model })
 			b.appendChild(modelLabel)
 		}
-		if (m.role === 'assistant' && m.done) {
-			const actBar = document.createElement('div')
-			actBar.className = 'racts'
-			const cb = document.createElement('button')
-			cb.className = 'rcopy'
-			cb.title = t('Copy answer')
-			cb.textContent = '⧉'
-			cb.addEventListener('click', () => copyText(String(m.text || ''), cb))
-			actBar.appendChild(cb)
-			const rb = document.createElement('button')
-			rb.className = 'ract'
-			rb.title = t('Regenerate')
-			rb.textContent = '↻'
-			rb.addEventListener('click', () => regenerateMessage(idx))
-			actBar.appendChild(rb)
-			b.appendChild(actBar)
-		}
+		if (m.role === 'assistant' && m.done) b.appendChild(renderAnswerActions(m, idx))
 		if (m.role === 'user' && m.done) {
 			const actBar = document.createElement('div')
 			actBar.className = 'racts'
@@ -1193,6 +1201,7 @@ export function mountChat(root, opts = {}) {
 		// chips: they only exist after the stream is done, and updateMessage
 		// runs incrementally while the DOM was built for an in-flight answer.
 		if (m.done) {
+			if (m.role === 'assistant' && !wrap.querySelector('.racts')) (wrap.querySelector('.rb') || wrap).appendChild(renderAnswerActions(m, i))
 			const oldSrc = wrap.querySelector('.rs')
 			if (oldSrc) oldSrc.remove()
 			const oldFu = wrap.querySelector('.rfu')
@@ -1424,7 +1433,7 @@ export function mountChat(root, opts = {}) {
 			.then((resp) => {
 				// Keep the client's revision in sync so the next regenerate/edit
 				// validates against the current stored state.
-				if (resp && resp.rev != null) chatRev = parseInt(resp.rev, 10) || null
+				if (Number.isSafeInteger(resp?.rev)) chatRev = Math.max(chatRev ?? 0, resp.rev)
 				return true
 			})
 			.catch(() => false)
@@ -1445,6 +1454,21 @@ export function mountChat(root, opts = {}) {
 		if (ok) refreshTitle()
 		return ok
 	})
+
+	// One request carries both messages, including during page dismissal.
+	// The server's revision guard rejects a save overtaken by another tab/turn.
+	const saveTurn = (question, answer) => {
+		if (!chatId) return Promise.resolve(false)
+		return api('POST', '/chats/' + encodeURIComponent(chatId) + '/turns', {
+			requestId: backgroundRequestId, expectedRev: chatRev ?? 0, question,
+			answer: { text: answer.text, followups: answer.followups || [], confirmation: answer.confirmation || null, tools: answer.tools || [], model: answer.model || null },
+		}).then((resp) => {
+			if (resp?.ok !== true || !Number.isSafeInteger(resp.rev)) return false
+			if (Number.isSafeInteger(resp?.rev)) chatRev = Math.max(chatRev ?? 0, resp.rev)
+			refreshTitle()
+			return true
+		}).catch(() => false)
+	}
 
 	// A page/tab can disappear while the streaming request is still running.
 	// keepalive lets the server persist a durable worker job without waiting for
@@ -1530,7 +1554,7 @@ export function mountChat(root, opts = {}) {
 	}
 
 	function showHistorySaveWarning() {
-		err.textContent = t('The response is visible, but could not be saved to chat history.')
+		err.textContent = t('The response is visible, but saving to chat history could not be confirmed. Reload before sending another message.')
 		err.style.display = 'block'
 	}
 
@@ -1756,7 +1780,7 @@ export function mountChat(root, opts = {}) {
 				// Persist with the regeneration token: the server truncates and
 				// applies the edit atomically with this message. Without the
 				// token (or after a failure) the stored history stays intact.
-				saveMessage('assistant', last.text, last.followups, pendingRegenerateRev, null, last.tools, last.model)
+				last._pendingSave = saveMessage('assistant', last.text, last.followups, pendingRegenerateRev, null, last.tools, last.model)
 					.then((saved) => {
 						if (saved && onRecent) onRecent()
 						else if (!saved) showHistorySaveWarning()
@@ -1780,7 +1804,7 @@ export function mountChat(root, opts = {}) {
 				// a reload keeps the conversation instead of dropping it. The
 				// token commits the truncation with the partial text.
 					if (stoppedByUser && last.text.trim() !== '') {
-						saveMessage('assistant', last.text, null, pendingRegenerateRev, null, last.tools).then((saved) => {
+						last._pendingSave = saveMessage('assistant', last.text, null, pendingRegenerateRev, null, last.tools).then((saved) => {
 							if (!saved) showHistorySaveWarning()
 						})
 				}
@@ -1790,7 +1814,8 @@ export function mountChat(root, opts = {}) {
 				err.textContent = streamFailureMessage(e)
 				err.style.display = 'block'
 			}
-		}).finally(() => {
+		}).finally(async () => {
+			try { await messages[messages.length - 1]?._pendingSave } catch (_) { showHistorySaveWarning() }
 			stoppedByUser = false
 			currentAbort = null
 			pendingRegenerateRev = null
@@ -1896,24 +1921,9 @@ export function mountChat(root, opts = {}) {
 						? t('Some required details are missing - please complete them below.')
 						: t('Please review this action and confirm it explicitly.')
 					last.done = true
-					// Persist the pending confirmation with the placeholder so a
-					// reload rebuilds the inline panel instead of leaving a dangling
-					// question (Issue #185). The idempotency token makes approve
-					// safe: the same action cannot run twice after a reload. The user
-					// message is saved first so the placeholder stays the last
-					// stored assistant message.
+					// Persist the question and confirmation placeholder together.
 					last.confirmation.token = (window.crypto && crypto.randomUUID) ? crypto.randomUUID() : String(Date.now()) + '-' + Math.random().toString(36).slice(2)
-					last._pendingSave = saveUserMessage(msg)
-						.then((savedUser) => savedUser ? saveMessage('assistant', last.text, null, null, {
-							name: last.confirmation.name,
-							arguments: last.confirmation.arguments,
-							risk: last.confirmation.risk,
-							missing,
-							preview: last.confirmation.preview,
-							token: last.confirmation.token,
-							resolved: false,
-						}) : false)
-						.catch(() => false)
+					last._pendingSave = saveTurn(msg, last).then((saved) => { if (!saved) showHistorySaveWarning(); return saved })
 					renderAll(messages)
 				} else if (ev.type === 'done') {
 					cancelBackgroundJob()
@@ -1923,11 +1933,7 @@ export function mountChat(root, opts = {}) {
 					last.sources = citedSources(last.text, ev.sources || [])
 					last.followups = ev.followups || []
 					last.done = true
-					// Persist the pair in conversation order. Sending both requests at
-					// once lets the per-user file lock acquire them in either order,
-					// which can swap the question and answer after a reload.
-					last._pendingSave = saveUserMessage(msg)
-						.then((savedUser) => savedUser ? saveMessage('assistant', last.text, last.followups, null, null, last.tools, last.model) : false)
+					last._pendingSave = saveTurn(msg, last)
 						.then((saved) => {
 							if (saved && onRecent) onRecent()
 							else if (!saved) showHistorySaveWarning()
@@ -1952,8 +1958,7 @@ export function mountChat(root, opts = {}) {
 					// Persist the partial answer when the user stopped the stream so
 					// a reload keeps the conversation instead of dropping it.
 					if (stoppedByUser && last.text.trim() !== '') {
-						last._pendingSave = saveUserMessage(msg)
-							.then((ok) => ok ? saveMessage('assistant', last.text, null, null, null, last.tools) : false)
+						last._pendingSave = saveTurn(msg, last)
 							.then((saved) => { if (!saved) showHistorySaveWarning() })
 					}
 				}

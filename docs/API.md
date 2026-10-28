@@ -162,6 +162,24 @@ message. Legacy form clients may send the array/object fields as JSON strings;
 malformed or wrongly typed data returns HTTP 400. A successful append returns
 `{ "ok": true, "rev": 1 }`, where `rev` is the updated chat revision.
 
+`POST /api/chats/{id}/turns` persists a completed question/answer pair in one
+protected write. Supply a safe 16–128-character `requestId`, integer
+`expectedRev` (the revision loaded/created by this client), string `question`
+and an `answer` object with the assistant fields described above. Both messages
+are validated before writing. A new turn cannot carry `regenerateRev`. The
+response is `{ "ok": true, "rev": <updated revision> }`; the revision advances
+for both messages. Repeating an identical request ID/payload is idempotent;
+reusing the ID for different content or submitting a stale revision returns
+HTTP 409 without writing. Receipts are bounded to 100 per chat; revision checks
+still reject evicted old requests. Missing/foreign chat IDs return HTTP 404.
+The native browser uses this endpoint for complete turns, confirmation
+placeholders and stopped partial answers. It does not rerun the model to save.
+
+Individual assistant appends carrying a stale or superseded `regenerateRev`
+now return HTTP 409 instead of appending an answer to a newer conversation.
+Successful metadata updates also return the current `rev` so personalization
+changes made by the open chat keep its revision guard current.
+
 `POST /api/streamChat` and `POST /api/chat` also accept an optional `images`
 list for the current user message. Each entry contains a `name`, a `mime`
 (`image/png`, `image/jpeg`, or `image/webp`), and base64 `data`. Up to four

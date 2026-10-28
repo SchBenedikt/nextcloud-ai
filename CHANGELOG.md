@@ -2,6 +2,13 @@
 
 ## [Unreleased]
 
+### Chat persistence corrections (1.18.8)
+
+- Save completed questions and answers in one revision-guarded, idempotent request and one protected encrypted-file write, including confirmation placeholders and stopped partial answers.
+- Bound history-write waits to 15 seconds and show an explicit warning when persistence cannot be confirmed; keep the composer busy until regeneration and stopped-answer saves settle.
+- Reject late regeneration tokens instead of appending their answers after newer messages.
+- Restore copy/regenerate actions immediately after streamed completion and prevent the copy button from intercepting regeneration clicks.
+
 ### Backend migration foundations (1.18.0–1.18.3 schema)
 
 - Add immutable, user-owned vector-generation metadata and an explicit OCC preparation command.
@@ -977,6 +984,13 @@ deep Nextcloud integration.
   deeper than five levels, are handled without recursion into the file.
 
 ## [Unreleased]
+
+### Chat persistence corrections (1.18.8)
+
+- Save completed questions and answers in one revision-guarded, idempotent request and one protected encrypted-file write, including confirmation placeholders and stopped partial answers.
+- Bound history-write waits to 15 seconds and show an explicit warning when persistence cannot be confirmed; keep the composer busy until regeneration and stopped-answer saves settle.
+- Reject late regeneration tokens instead of appending their answers after newer messages.
+- Restore copy/regenerate actions immediately after streamed completion and prevent the copy button from intercepting regeneration clicks.
 
 ### Added
 

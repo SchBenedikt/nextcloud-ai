@@ -143,3 +143,29 @@ generation query isolation and delayed older or higher-revision live writes afte
 a tombstone. This does not establish Mail/Talk deployment access, replica/network
 fault tolerance, bulk throughput or complete-generation verification. Ordinary
 PHP/frontend tests do not launch Qdrant.
+
+## Completed-turn persistence checks
+
+The native chat writes question/answer pairs through one `/turns` request,
+including confirmation placeholders and stopped partials. The store uses one
+user lock, revision check, bounded idempotency receipt and encrypted-file write.
+This reduces two full chat-file writes to one; it does not replace the planned
+normalized SQL message store or make SimpleFS writes atomic renames.
+
+History POSTs have a 15-second client deadline, including response-body reads.
+The timeout also settles when a transport ignores AbortSignal. It reports an
+unconfirmed save and restores the composer; it cannot cancel a write already
+executing on the server. Turn revisions and regeneration tokens reject writes
+overtaken by newer mutations. Reload is required after an unconfirmed save.
+
+Browser checks cover one complete request, delayed storage, an indefinitely
+stalled transport and regeneration readiness. Store/controller checks exercise
+idempotence, payload collisions, stale revisions, one-write ordering, owner
+binding, validation and stale regeneration rejection. The authenticated runtime
+suite additionally checks the actual endpoint's retry/conflict behavior.
+
+A bounded payload below 60,000 encoded bytes uses fetch keepalive. Browsers have
+a finite dismissal quota, so oversized turns do not use it; the native unload
+warning remains. Confirming dismissal or killing the browser before a large
+save finishes is not a durability guarantee. Persisting completion server-side
+and normalized SQL chat storage remain separate migration work.

@@ -27,6 +27,7 @@ function html() {
       else if (path.endsWith('/images') && method === 'GET') data = { images: window.__generatedImages }
       else if (path.endsWith('/images/generate') && method === 'POST') data = { images: window.__generatedImages }
       else if (path.endsWith('/chats') && method === 'POST') data = { id: 'generated-test-chat', rev: 1 }
+      else if (path.endsWith('/turns') && method === 'POST') data = { ok: true, rev: 1 + 2 * window.__calls.filter(call => call.url.endsWith('/turns')).length }
       else if (path.endsWith('/backgroundChat') && method === 'GET') data = { items: [] }
       else if (path.endsWith('/streamChat') && method === 'POST') {
         return new Response('{"type":"done","answer":"A test answer","model":"gpt-test","sources":[],"followups":[]}\\n', {

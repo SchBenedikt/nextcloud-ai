@@ -39,6 +39,31 @@ use Psr\Log\LoggerInterface;
 
 /** Exercises API controller request validation, responses and service wiring. */
 final class ApiControllerIntegrationTest extends TestCase {
+    public function testCompletedTurnsAreValidatedAndBoundToTheLoggedInOwner(): void {
+        $input = ['requestId'=>'turn_1234567890123456','expectedRev'=>1,'question'=>'Question','answer'=>['text'=>'Answer']];
+        $stored = []; $dependencies = [];
+        $controller = $this->controller('alice', $input, $dependencies, $stored);
+        $dependencies['chatStore']->expects(self::once())->method('appendTurn')
+            ->with('alice','c1',self::callback(static fn($turn) => $turn->question->text === 'Question' && $turn->answer->text === 'Answer'))
+            ->willReturn(['ok'=>true,'rev'=>3]);
+        self::assertSame(['ok'=>true,'rev'=>3], $controller->chatTurn('c1')->getData());
+        $controller = $this->controller(null, $input, $dependencies, $stored);
+        $dependencies['chatStore']->expects(self::never())->method('appendTurn');
+        self::assertSame(401, $controller->chatTurn('c1')->getStatus());
+        $controller = $this->controller('alice', array_replace($input,['answer'=>['text'=>'']]), $dependencies, $stored);
+        $dependencies['chatStore']->expects(self::never())->method('appendTurn');
+        self::assertSame(400, $controller->chatTurn('c1')->getStatus());
+    }
+
+    public function testCompletedTurnConflictsAreExplicitAndKeepCsrfProtection(): void {
+        $stored = []; $dependencies = [];
+        $controller = $this->controller('alice', ['requestId'=>'turn_1234567890123456','expectedRev'=>1,'question'=>'Question','answer'=>['text'=>'Answer']], $dependencies, $stored);
+        $dependencies['chatStore']->method('appendTurn')->willReturn(['error'=>'conflict']);
+        self::assertSame(409, $controller->chatTurn('c1')->getStatus());
+        $method = new \ReflectionMethod(ApiController::class,'chatTurn');
+        self::assertCount(0, $method->getAttributes(\OCP\AppFramework\Http\Attribute\NoCSRFRequired::class));
+    }
+
     public function testStreamReleasesProducerAndSlotBeforeEveryTerminalEvent(): void {
         foreach (['done', 'confirmation', 'error'] as $type) {
             $stored = []; $dependencies = [];

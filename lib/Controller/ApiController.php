@@ -174,6 +174,9 @@ class ApiController extends OCSController {
      * the user to the admin recovery command instead of a generic 500.
      */
     private function chatErrorResponse(\Throwable $e): DataResponse {
+        if ($e instanceof \OCA\EvaAi\Service\ChatStoreConflictException) {
+            return new ErrorDataResponse(['error' => 'conflict', 'message' => $e->getMessage()], 409);
+        }
         // A temporarily locked chat store is a busy condition, not an error:
         // the page load fires several chat reads in parallel and a crashed
         // request can hold the lock until the backend TTL expires. A 503 lets
@@ -1395,6 +1398,27 @@ class ApiController extends OCSController {
     }
 
     #[NoAdminRequired]
+    public function chatTurn(string $id): DataResponse {
+        $user = $this->requireUser();
+        if ($user === null) return new ErrorDataResponse(['error' => 'Not logged in'], 401);
+        try {
+            $turn = \OCA\EvaAi\Dto\ChatTurnRequest::fromArray([
+                'requestId' => $this->requestParam('requestId'),
+                'expectedRev' => $this->requestParam('expectedRev'),
+                'question' => $this->requestParam('question'),
+                'answer' => $this->requestParam('answer'),
+            ]);
+            $result = $this->chatStore->appendTurn($user, $id, $turn);
+            if (($result['error'] ?? '') === 'not_found') return new ErrorDataResponse(['error' => 'Requested resource was not found.'], 404);
+            if (($result['error'] ?? '') === 'conflict') return new ErrorDataResponse(['error' => 'conflict', 'message' => 'Chat history changed. Reload before saving another turn.'], 409);
+            $this->learnSavedChat($user, $id);
+            return new ErrorDataResponse($result);
+        } catch (\InvalidArgumentException $e) {
+            return new ErrorDataResponse(['error' => $e->getMessage()], 400);
+        } catch (\Throwable $e) { return $this->chatErrorResponse($e); }
+    }
+
+    #[NoAdminRequired]
     public function chatAppend(string $id): DataResponse {
         $user = $this->requireUser();
         if ($user === null) {
@@ -1426,22 +1450,23 @@ class ApiController extends OCSController {
             $rev = $appended !== null ? (int)($appended['rev'] ?? 0) : 0;
 
             // After an assistant message is saved, learn from the full chat.
-            if ($request->role === 'assistant') {
-                try {
-                    $fullChat = $this->chatStore->getChat($user, $id);
-                    if ($fullChat !== null && count($fullChat['messages']) >= 4 && $this->config->get('learning_enabled') === '1') {
-                        $this->chatLearner->learnFromChat($user, $fullChat['messages']);
-                    }
-                } catch (\Throwable $e) {
-                    // Learning failure must never break chat persistence.
-                }
-            }
+            if ($request->role === 'assistant') $this->learnSavedChat($user, $id);
 
             $response = ChatAppendResponse::fromArray(['ok' => true, 'rev' => $rev]);
             return new ErrorDataResponse($response->toArray());
         } catch (\Throwable $e) {
             return $this->chatErrorResponse($e);
         }
+    }
+
+    private function learnSavedChat(string $user, string $id): void {
+        try {
+            $this->config->setUserId($user);
+            $fullChat = $this->chatStore->getChat($user, $id);
+            if ($fullChat !== null && count($fullChat['messages']) >= 4 && $this->config->get('learning_enabled') === '1') {
+                $this->chatLearner->learnFromChat($user, $fullChat['messages']);
+            }
+        } catch (\Throwable) { /* Learning failure must never break persistence. */ }
     }
 
     #[NoAdminRequired]
@@ -1576,7 +1601,7 @@ class ApiController extends OCSController {
             if (!$this->chatStore->setMeta($user, $id, $meta)) {
                 return new ErrorDataResponse(['error' => 'Requested resource was not found.'], 404);
             }
-            return new ErrorDataResponse(['ok' => true]);
+            return new ErrorDataResponse(['ok' => true, 'rev' => (int)($this->chatStore->getChat($user, $id)['rev'] ?? 0)]);
         } catch (\Throwable $e) {
             return $this->chatErrorResponse($e);
         }

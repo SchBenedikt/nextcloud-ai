@@ -229,7 +229,7 @@ export default {
 }
 
 .chatview-root .rm.assistant .rb {
-	padding-right: 34px;
+	padding-right: 58px;
 	background: transparent !important;
 	color: var(--color-main-text, #222) !important;
 }
@@ -262,6 +262,7 @@ export default {
 .chatview-root .rm:focus-within .racts { opacity: 1; }
 .chatview-root .racts .rcopy,
 .chatview-root .racts .ract {
+	position: static; opacity: 1;
 	width: 24px; height: 24px; padding: 0; border: 0; border-radius: 5px;
 	background: transparent; color: var(--color-text-maxcontrast, #888);
 	font-size: 13px; line-height: 1; cursor: pointer;
