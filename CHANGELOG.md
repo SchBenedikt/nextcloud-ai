@@ -18,6 +18,8 @@
 
 ### Reliability and documentation
 
+- Keep browser API and streaming endpoints on the current origin, including trusted local aliases and subdirectory installations, and restore missing storage-settings translation keys.
+
 - Invalidate prepared vector entries atomically when source metadata changes, including folder renames and forced reindexing, without re-embedding or interrupting legacy SQL retrieval.
 
 - Journal optional vector-point deletions atomically with canonical chunk/document removal, including replacements and deferred index reset; preserve SQL-only installation and keep remote point cleanup queued until its consumer is available.

@@ -65,11 +65,12 @@ secrets, account isolation, tool policy and cancellation semantics must survive.
 Use `benedikt.schaechner@web.de` for author/committer and authenticated GitHub
 account `SchBenedikt` for pushes. Publish PRs, never push directly to main.
 
-The user has currently requested skipping tests and PR checks. Test and benchmark
-criteria below therefore remain **unverified gates**, not permission to claim a
-production cutover. Builds remain required after frontend changes. Branch
-protection and required checks are administrative follow-up; do not silently
-change repository policy while checks are deferred.
+The initial implementation batches deferred tests at the user's request. Runtime
+recovery now resumes local PHP, frontend and authenticated browser checks. Earlier
+stage entries below record their evidence at delivery time; see the current
+recovery evidence in [QUALITY.md](QUALITY.md). Passing local checks does not prove
+benchmark targets, cross-database portability or production cutover. Branch
+protection and required checks remain administrative follow-up.
 
 ## Ordered implementation stack
 
@@ -398,4 +399,4 @@ consumer is implemented. SQL-only deletions never create vector events or make
 remote calls. Source-stamp field updates and tenant-filtered hash clearing also invalidate
 prepared entries transactionally, while preserving legacy chunks. Rebuilding
 those entries, point consumption, backfill and activation are still pending. No database concurrency/rollback execution is
-claimed while tests remain deferred.
+claimed by that implementation batch; the later local runtime checks are recorded in QUALITY.md.

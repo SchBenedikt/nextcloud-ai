@@ -77,3 +77,17 @@ Include app and Nextcloud versions, the screen, expected and actual behavior,
 and relevant HTTP status or log entry. Use a synthetic prompt and sample file.
 Remove keys, app passwords, private document text and personal identifiers
 before sharing logs or screenshots.
+
+## Local aliases and login redirects
+
+Use the host configured for Nextcloud when signing in. A fixed `overwritehost`
+that differs from the browser address can redirect a login POST to another origin;
+the browser then blocks it with `form-action self` and the login remains pending.
+Check the canonical host and reverse-proxy settings rather than weakening CSP.
+For a development instance that also accepts localhost, constrain host overwrites
+with Nextcloud's `overwritecondaddr` when appropriate. Keep public/proxy behavior
+and trusted domains intact.
+
+EVA emits webroot-relative API and streaming paths, so authenticated requests stay
+on the browser's origin even when the instance has a canonical host override.
+Subdirectory installations retain their configured webroot.

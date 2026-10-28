@@ -141,7 +141,8 @@ final class AdminDashboardTest extends TestCase {
         self::assertSame(200, $response->getStatus());
         self::assertSame('alice', $response->getData()['user_id']);
         self::assertSame('Alice Example', $response->getData()['display_name']);
-        self::assertSame(1, $response->getData()['feedback']['helpful']);
+        self::assertArrayNotHasKey('feedback', $response->getData());
+        self::assertSame(2, $response->getData()['totals']['requests']);
         self::assertSame(['alice', 'admin'], $scopes);
     }
 
