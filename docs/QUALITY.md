@@ -143,3 +143,46 @@ generation query isolation and delayed older or higher-revision live writes afte
 a tombstone. This does not establish Mail/Talk deployment access, replica/network
 fault tolerance, bulk throughput or complete-generation verification. Ordinary
 PHP/frontend tests do not launch Qdrant.
+
+## Completed-turn persistence checks
+
+The native chat writes question/answer pairs through one `/turns` request,
+including confirmation placeholders and stopped partials. The store uses one
+user lock, revision check, bounded idempotency receipt and encrypted-file write.
+This reduces two full chat-file writes to one; it does not replace the planned
+normalized SQL message store or make SimpleFS writes atomic renames.
+
+History POSTs have a 15-second client deadline, including response-body reads.
+The timeout also settles when a transport ignores AbortSignal. It reports an
+unconfirmed save and restores the composer; it cannot cancel a write already
+executing on the server. Turn revisions and regeneration tokens reject writes
+overtaken by newer mutations. Reload is required after an unconfirmed save.
+
+Browser checks cover one complete request, delayed storage, an indefinitely
+stalled transport and regeneration readiness. Store/controller checks exercise
+idempotence, payload collisions, stale revisions, one-write ordering, owner
+binding, validation and stale regeneration rejection. The authenticated runtime
+suite additionally checks the actual endpoint's retry/conflict behavior.
+
+A bounded payload below 60,000 encoded bytes uses fetch keepalive. Browsers have
+a finite dismissal quota, so oversized turns do not use it; the native unload
+warning remains. Confirming dismissal or killing the browser before a large
+save finishes is not a durability guarantee. Persisting completion server-side
+and normalized SQL chat storage remain separate migration work.
+
+The first installed 1.18.8 candidate exposed a native-only receipt bug: terminal
+background cancellation cleared the ID reused by the new turn request. Strict
+server validation rejected the save, and regeneration then found no stored user
+message. The correction gives the turn a separate stable receipt ID and makes
+the browser fixture reject malformed receipts too. This failure is not counted
+as a passing runtime validation; the corrected installation must pass the real
+consecutive-answer, regeneration and reload path before integration.
+
+A later review identified the failed-regeneration revision gap introduced by the
+new turn guard. Error/empty-stop paths now refresh the server revision and
+restore the unchanged stored conversation before another send; pending retries
+accept the original base or the freshly read current revision. Failed answer
+writes keep their visible text instead of hiding an unconfirmed response. The
+refresh is bounded to ten seconds. Separate fixture cases cover model errors
+and abort before the first model event, while the live suite can replace a real
+regeneration response with an error after the native backend advances its marker.

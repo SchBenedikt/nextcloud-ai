@@ -693,84 +693,121 @@ class ChatStore {
             $all = $this->read($user);
             foreach ($all as &$chat) {
                 if (($chat['id'] ?? '') === $id) {
-                    $message = ['role' => $role, 'text' => $text, 'createdAt' => time()];
-                    if ($role === 'assistant' && is_string($model) && trim($model) !== '') {
-                        $message['model'] = mb_substr(trim($model), 0, 128);
-                    }
-                    // Follow-up suggestions belong to assistant messages and
-                    // must survive a reload so the chips stay usable.
-                    if ($role === 'assistant' && $followups !== []) {
-                        $message['followups'] = array_values(array_slice(array_filter($followups, 'is_string'), 0, 3));
-                    }
-                    if ($role === 'assistant' && is_array($confirmation)) {
-                        $message['confirmation'] = $this->normalizeConfirmation($confirmation);
-                    }
-                    if ($role === 'assistant' && $tools !== []) {
-                        $message['tools'] = $this->normalizeToolTrace($tools);
-                    }
-                    $pending = $chat['regenerate'] ?? null;
-                    if ($regenerateRev !== null && is_array($pending)
-                        && (int)($pending['rev'] ?? -1) === $regenerateRev) {
-                        // Regeneration succeeded: commit the deferred
-                        // truncation and the optional user-text edit atomically
-                        // with the new answer. A failed model call never
-                        // touched the stored history (Issue #182).
-                        $pendingIndex = (int)($pending['messageIndex'] ?? -1);
-                        if ($pendingIndex >= 0 && $pendingIndex < count($chat['messages'])) {
-                            if (($pending['newText'] ?? null) !== null) {
-                                $chat['messages'][$pendingIndex]['text'] = (string)$pending['newText'];
-                            }
-                            $chat['messages'] = array_slice($chat['messages'], 0, $pendingIndex + 1);
-                        }
-                        unset($chat['regenerate']);
-                    } elseif (is_array($pending)) {
-                        // A plain append supersedes a pending regeneration: the
-                        // stored messages were never truncated, so the marker is
-                        // dropped and a late regenerate answer can no longer
-                        // truncate this newer message.
-                        unset($chat['regenerate']);
-                    }
-                    // An unresolved pending confirmation placeholder is replaced
-                    // by the confirmed answer instead of being duplicated, so
-                    // approving after a reload persists exactly one answer
-                    // (Issue #185).
-                    $replaceIndex = -1;
-                    if ($role === 'assistant') {
-                        for ($i = count($chat['messages']) - 1; $i >= 0; $i--) {
-                            $stored = $chat['messages'][$i];
-                            if (($stored['role'] ?? '') === 'assistant'
-                                && isset($stored['confirmation'])
-                                && empty($stored['confirmation']['resolved'])) {
-                                $replaceIndex = $i;
-                                break;
-                            }
-                        }
-                    }
-                    if ($replaceIndex >= 0) {
-                        $chat['messages'][$replaceIndex] = $message;
-                    } else {
-                        $chat['messages'][] = $message;
-                    }
-                    $chat['updated'] = time();
-                    $chat['rev'] = (int)($chat['rev'] ?? 0) + 1;
-                    $messageCount = count($chat['messages']);
-                    if ($messageCount > self::MAX_MESSAGES) {
-                        $dropped = $messageCount - self::MAX_MESSAGES;
-                        $chat['messages'] = array_slice($chat['messages'], -self::MAX_MESSAGES);
-                        // Keep a durable counter so truncation is never silent.
-                        $chat['trimmed'] = (int)($chat['trimmed'] ?? 0) + $dropped;
-                    }
-                    $storedTitle = $chat['title'] ?? '';
-                    if (isset($chat['messages'][0]['text'])
-                        && ($storedTitle === '' || str_starts_with($storedTitle, 'Neuer Chat'))) {
-                        $chat['title'] = $this->clipTitle((string)$chat['messages'][0]['text']);
-                    }
+                    $this->appendToChat($chat, $role, $text, $followups, $regenerateRev, $confirmation, $tools, $model);
                     break;
                 }
             }
             unset($chat);
             $this->write($user, $all);
         });
+    }
+
+    /** Both messages and the receipt share one protected encrypted-file write. */
+    public function appendTurn(string $user, string $id, \OCA\EvaAi\Dto\ChatTurnRequest $turn): array {
+        return $this->withUserLock($user, function () use ($user, $id, $turn): array {
+            $all = $this->read($user);
+            foreach ($all as &$chat) {
+                if (($chat['id'] ?? '') !== $id) continue;
+                $fingerprint = $turn->fingerprint();
+                $receipt = $chat['turnReceipts'][$turn->requestId] ?? null;
+                if ($receipt !== null) {
+                    return is_string($receipt) && hash_equals($receipt, $fingerprint)
+                        ? ['ok' => true, 'rev' => (int)($chat['rev'] ?? 0)]
+                        : ['error' => 'conflict'];
+                }
+                if ((int)($chat['rev'] ?? 0) !== $turn->expectedRev) return ['error' => 'conflict'];
+                $this->appendToChat($chat, 'user', $turn->question->text);
+                $answer = $turn->answer;
+                $this->appendToChat($chat, 'assistant', $answer->text, $answer->followups, null, $answer->confirmation, $answer->tools, $answer->model);
+                $chat['turnReceipts'][$turn->requestId] = $fingerprint;
+                // The revision guard rejects old retries even after receipt eviction.
+                $chat['turnReceipts'] = array_slice($chat['turnReceipts'], -100, null, true);
+                $rev = (int)$chat['rev'];
+                unset($chat);
+                $this->write($user, $all);
+                return ['ok' => true, 'rev' => $rev];
+            }
+            return ['error' => 'not_found'];
+        });
+    }
+
+    /** Mutates only the in-memory chat; the caller owns the user lock and write. */
+    private function appendToChat(array &$chat, string $role, string $text, array $followups = [], ?int $regenerateRev = null, ?array $confirmation = null, array $tools = [], ?string $model = null): void {
+        $message = ['role' => $role, 'text' => $text, 'createdAt' => time()];
+        if ($role === 'assistant' && is_string($model) && trim($model) !== '') {
+            $message['model'] = mb_substr(trim($model), 0, 128);
+        }
+        // Follow-up suggestions belong to assistant messages and
+        // must survive a reload so the chips stay usable.
+        if ($role === 'assistant' && $followups !== []) {
+            $message['followups'] = array_values(array_slice(array_filter($followups, 'is_string'), 0, 3));
+        }
+        if ($role === 'assistant' && is_array($confirmation)) {
+            $message['confirmation'] = $this->normalizeConfirmation($confirmation);
+        }
+        if ($role === 'assistant' && $tools !== []) {
+            $message['tools'] = $this->normalizeToolTrace($tools);
+        }
+        $pending = $chat['regenerate'] ?? null;
+        if ($regenerateRev !== null && (!is_array($pending) || (int)($pending['rev'] ?? -1) !== $regenerateRev)) {
+            throw new ChatStoreConflictException('Chat history changed. Reload before saving another answer.');
+        }
+        if ($regenerateRev !== null && is_array($pending)
+            && (int)($pending['rev'] ?? -1) === $regenerateRev) {
+            // Regeneration succeeded: commit the deferred
+            // truncation and the optional user-text edit atomically
+            // with the new answer. A failed model call never
+            // touched the stored history (Issue #182).
+            $pendingIndex = (int)($pending['messageIndex'] ?? -1);
+            if ($pendingIndex >= 0 && $pendingIndex < count($chat['messages'])) {
+                if (($pending['newText'] ?? null) !== null) {
+                    $chat['messages'][$pendingIndex]['text'] = (string)$pending['newText'];
+                }
+                $chat['messages'] = array_slice($chat['messages'], 0, $pendingIndex + 1);
+            }
+            unset($chat['regenerate']);
+        } elseif (is_array($pending)) {
+            // A plain append supersedes a pending regeneration: the
+            // stored messages were never truncated, so the marker is
+            // dropped and a late regenerate answer can no longer
+            // truncate this newer message.
+            unset($chat['regenerate']);
+        }
+        // An unresolved pending confirmation placeholder is replaced
+        // by the confirmed answer instead of being duplicated, so
+        // approving after a reload persists exactly one answer
+        // (Issue #185).
+        $replaceIndex = -1;
+        if ($role === 'assistant') {
+            for ($i = count($chat['messages']) - 1; $i >= 0; $i--) {
+                $stored = $chat['messages'][$i];
+                if (($stored['role'] ?? '') === 'assistant'
+                    && isset($stored['confirmation'])
+                    && empty($stored['confirmation']['resolved'])) {
+                    $replaceIndex = $i;
+                    break;
+                }
+            }
+        }
+        if ($replaceIndex >= 0) {
+            $chat['messages'][$replaceIndex] = $message;
+        } else {
+            $chat['messages'][] = $message;
+        }
+        $chat['updated'] = time();
+        $chat['rev'] = (int)($chat['rev'] ?? 0) + 1;
+        $messageCount = count($chat['messages']);
+        if ($messageCount > self::MAX_MESSAGES) {
+            $dropped = $messageCount - self::MAX_MESSAGES;
+            $chat['messages'] = array_slice($chat['messages'], -self::MAX_MESSAGES);
+            // Keep a durable counter so truncation is never silent.
+            $chat['trimmed'] = (int)($chat['trimmed'] ?? 0) + $dropped;
+        }
+        $storedTitle = $chat['title'] ?? '';
+        if (isset($chat['messages'][0]['text'])
+            && ($storedTitle === '' || str_starts_with($storedTitle, 'Neuer Chat'))) {
+            $chat['title'] = $this->clipTitle((string)$chat['messages'][0]['text']);
+        }
     }
 
     /**
@@ -810,9 +847,9 @@ class ChatStore {
                 $pending = $chat['regenerate'] ?? null;
                 if (is_array($pending)) {
                     // A regeneration is already pending. The same client (same
-                    // base revision) may retry after a failed stream; anything
-                    // else means a concurrent edit and is rejected.
-                    if ($expectedRev === null || (int)($pending['baseRev'] ?? -1) !== $expectedRev) {
+                    // base revision, or its freshly read current revision) may retry
+                    // after a failed stream; other revisions are rejected.
+                    if ($expectedRev === null || ((int)($pending['baseRev'] ?? -1) !== $expectedRev && $currentRev !== $expectedRev)) {
                         return ['ok' => false, 'error' => 'conflict'];
                     }
                 } elseif ($expectedRev !== null && $currentRev !== $expectedRev) {

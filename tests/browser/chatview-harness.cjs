@@ -27,6 +27,12 @@ function html() {
       else if (path.endsWith('/images') && method === 'GET') data = { images: window.__generatedImages }
       else if (path.endsWith('/images/generate') && method === 'POST') data = { images: window.__generatedImages }
       else if (path.endsWith('/chats') && method === 'POST') data = { id: 'generated-test-chat', rev: 1 }
+      else if (path.endsWith('/turns') && method === 'POST') {
+        if (!body || typeof body.requestId !== 'string' || !/^[A-Za-z0-9_-]{16,128}$/.test(body.requestId) || !Number.isSafeInteger(body.expectedRev)) {
+          return new Response(JSON.stringify({ error: 'Invalid turn receipt' }), { status: 400, headers: { 'Content-Type': 'application/json' } })
+        }
+        data = { ok: true, rev: body.expectedRev + 2 }
+      }
       else if (path.endsWith('/backgroundChat') && method === 'GET') data = { items: [] }
       else if (path.endsWith('/streamChat') && method === 'POST') {
         return new Response('{"type":"done","answer":"A test answer","model":"gpt-test","sources":[],"followups":[]}\\n', {

@@ -62,6 +62,7 @@ return [
         ['name' => 'api#chatDetail', 'url' => '/api/chats/{id}', 'verb' => 'GET'],
         ['name' => 'api#chatDelete', 'url' => '/api/chats/{id}', 'verb' => 'DELETE'],
         ['name' => 'api#chatAppend', 'url' => '/api/chats/{id}/messages', 'verb' => 'POST'],
+        ['name' => 'api#chatTurn', 'url' => '/api/chats/{id}/turns', 'verb' => 'POST'],
         ['name' => 'api#briefingHistory', 'url' => '/api/briefings/history', 'verb' => 'GET'],
         ['name' => 'api#runBriefingNow', 'url' => '/api/briefings/{id}/run', 'verb' => 'POST'],
         ['name' => 'api#templates', 'url' => '/api/templates', 'verb' => 'GET'],

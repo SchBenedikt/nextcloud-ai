@@ -73,7 +73,33 @@ test.describe('authenticated Nextcloud runtime', () => {
 		}
 	})
 
-	test('two real chat requests finish and survive reload', async () => {
+	test('completed turns persist once and stale writes cannot reorder history', async () => {
+		await page.goto(app(''), { waitUntil: 'domcontentloaded' })
+		const token = await page.locator('meta[name="requesttoken"]').getAttribute('content')
+		const headers = { requesttoken: token, 'OCS-APIRequest': 'true' }
+		const created = await context.request.post(api('chats'), { data: { title: 'Atomic runtime audit' }, headers })
+		expect(created.ok()).toBe(true)
+		const chat = (await created.json()).ocs.data
+		const path = `chats/${encodeURIComponent(chat.id)}/turns`
+		const data = { requestId: `turn_${Date.now()}_runtime`, expectedRev: chat.rev, question: 'Atomic question', answer: { text: 'Atomic answer', model: 'audit-fixture' } }
+		try {
+			for (let attempt = 0; attempt < 2; attempt++) {
+				const response = await context.request.post(api(path), { data, headers })
+				expect(response.ok()).toBe(true)
+				expect((await response.json()).ocs.data.rev).toBe(chat.rev + 2)
+			}
+			const stale = await context.request.post(api(path), { data: { ...data, requestId: data.requestId + '_late' }, headers })
+			expect(stale.status()).toBe(409)
+			const response = await context.request.get(api(`chats/${encodeURIComponent(chat.id)}`), { headers })
+			const saved = (await response.json()).ocs.data
+			expect(saved.messages.map(message => [message.role, message.text])).toEqual([['user', 'Atomic question'], ['assistant', 'Atomic answer']])
+		} finally {
+			const response = await context.request.delete(api(`chats/${encodeURIComponent(chat.id)}`), { headers })
+			expect(response.ok()).toBe(true)
+		}
+	})
+
+	test('real chat, regeneration and interrupted-response recovery survive reload', async () => {
 		test.setTimeout(180000)
 		await page.goto(app(''), { waitUntil: 'domcontentloaded' })
 		await page.getByRole('textbox', { name: 'Message EVA', exact: true }).fill('Reply exactly: EVA runtime ready.')
@@ -83,9 +109,33 @@ test.describe('authenticated Nextcloud runtime', () => {
 		await page.getByRole('button', { name: 'Send message', exact: true }).click()
 		await expect(page.locator('.rm.assistant').last()).toContainText('second request ready', { timeout: 75000 })
 		await expect(page.getByRole('button', { name: 'Send message', exact: true })).toBeVisible()
+		await page.getByTitle('Regenerate', { exact: true }).last().click()
+		await expect(page.locator('.rm.assistant').last()).toContainText('second request ready', { timeout: 75000 })
+		await expect(page.getByRole('button', { name: 'Send message', exact: true })).toBeVisible()
+		// The real backend advances its regeneration marker. Simulate losing
+		// the model response after that mutation, without changing provider settings.
+		const regenerateRoute = '**/chats/*/regenerate*'
+		await page.route(regenerateRoute, async route => {
+			const response = await route.fetch()
+			expect(response.ok()).toBe(true)
+			const events = (await response.text()).trim().split('\n').map(line => JSON.parse(line))
+			const marker = events.find(event => event.type === 'regenerate')
+			expect(Number.isSafeInteger(marker?.rev)).toBe(true)
+			await route.fulfill({ status: 200, contentType: 'application/x-ndjson', body: JSON.stringify(marker) + '\n' + JSON.stringify({ type: 'error', message: 'Simulated interrupted response' }) + '\n' })
+		})
+		try {
+			await page.getByTitle('Regenerate', { exact: true }).last().click()
+			await expect(page.locator('.err')).toContainText('Simulated interrupted response', { timeout: 75000 })
+			await expect(page.getByRole('button', { name: 'Send message', exact: true })).toBeVisible()
+			await expect(page.locator('.rm.assistant').last()).toContainText('second request ready')
+		} finally { await page.unroute(regenerateRoute) }
+		await page.getByRole('textbox', { name: 'Message EVA', exact: true }).fill('Reply exactly: after failure ready.')
+		await page.getByRole('button', { name: 'Send message', exact: true }).click()
+		await expect(page.locator('.rm.assistant').last()).toContainText('after failure ready', { timeout: 75000 })
+		await expect(page.getByRole('button', { name: 'Send message', exact: true })).toBeVisible()
 		await page.reload({ waitUntil: 'domcontentloaded' })
-		await expect(page.locator('.rm.assistant')).toHaveCount(2)
-		await expect(page.locator('.rm.assistant').last()).toContainText('second request ready')
+		await expect(page.locator('.rm.assistant')).toHaveCount(3)
+		await expect(page.locator('.rm.assistant').last()).toContainText('after failure ready')
 		expect(errors).toEqual([])
 	})
 })
