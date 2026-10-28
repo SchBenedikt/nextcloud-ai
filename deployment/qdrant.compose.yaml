@@ -1,0 +1,13 @@
+# Optional, operator-started service. Never started by EVA installation or upgrade.
+services:
+  qdrant:
+    image: ${EVA_QDRANT_IMAGE:?Pin an approved official Qdrant image version or digest}
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:6333:6333"
+    environment:
+      QDRANT__SERVICE__API_KEY: ${EVA_QDRANT_API_KEY:?Set a strong private Qdrant API key}
+    volumes:
+      - eva_qdrant_data:/qdrant/storage
+volumes:
+  eva_qdrant_data:

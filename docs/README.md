@@ -29,3 +29,5 @@ current source when they differ from an older review.
 - [Retrieval benchmark](RETRIEVAL-BENCHMARK.md) — frozen corpus format, exact reference and ranking metrics.
 
 - [Optional vector storage](VECTOR-STORAGE.md) — generation identity, additive schema and operating boundaries.
+
+- [Optional Qdrant adapter](QDRANT.md) — server configuration, transport and deployment boundaries.

@@ -10,14 +10,18 @@ use Psr\Http\Message\RequestInterface;
 
 /** Transfer-time policy for user-selected compatible providers and media URLs. */
 class ProviderEndpointPolicy {
-    public function __construct(private ?IConfig $config = null) {}
+    public function __construct(private ?IConfig $config = null, private string $privateOriginsKey = 'provider_private_origins') {
+        if (!in_array($privateOriginsKey, ['provider_private_origins', 'vector_private_origins'], true)) {
+            throw new \InvalidArgumentException('Unknown administrator-owned origin policy.');
+        }
+    }
 
     public function handler(): callable {
         $transfer = new CurlHandler();
         return function (RequestInterface $request, array $options) use ($transfer) {
             // A proxy may resolve a different destination from the IP pinned here.
             // Reject configured proxies rather than silently weakening the boundary.
-            if (!empty($options['proxy'])) {
+            if (!empty($this->config?->getSystemValue('proxy', ''))) {
                 throw new ProviderException('Custom providers require direct egress; a configured proxy cannot enforce the provider address policy.');
             }
             $target = $this->validateTarget((string)$request->getUri());
@@ -73,7 +77,7 @@ class ProviderEndpointPolicy {
     }
 
     private function privateOriginAllowed(string $origin): bool {
-        $raw = $this->config?->getAppValue(AppConfig::APP, 'provider_private_origins', '[]') ?? '[]';
+        $raw = $this->config?->getAppValue(AppConfig::APP, $this->privateOriginsKey, '[]') ?? '[]';
         $origins = json_decode($raw, true);
         if (!is_array($origins) || count($origins) > 100) return false;
         // Explicit scheme/host/port strings; never read personal configuration.

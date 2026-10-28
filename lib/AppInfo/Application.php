@@ -53,6 +53,7 @@ class Application extends App implements IBootstrap {
     public function register(IRegistrationContext $context): void {
         $context->registerParameter('appId', self::APP_ID);
         $context->registerServiceAlias(\OCA\EvaAi\Service\EmbeddingProvider::class, \OCA\EvaAi\Service\Ollama::class);
+        $context->registerServiceAlias(\OCA\EvaAi\Vector\VectorStore::class, \OCA\EvaAi\Vector\QdrantVectorStore::class);
         $context->registerEventListener(AppEnableEvent::class, \OCA\EvaAi\Listener\AppLifecycleListener::class);
         $context->registerEventListener(AppUpdateEvent::class, \OCA\EvaAi\Listener\AppLifecycleListener::class);
         // Benachrichtigungs-Notifier: zeigt "EVA answer ready" in der Glocke an.

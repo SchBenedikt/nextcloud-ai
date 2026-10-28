@@ -134,7 +134,9 @@ replaced by a successful build or an adapter unit test.
   representative measurement runs and acceptance results remain pending.
 - 06: additive schema, immutable identity, metadata operations and contracts
   implemented; migration execution and activation verification remain pending.
-- 07–14: pending; a stage is complete only when its code and matching operating
+- 07: optional dense adapter and explicit connection/collection administration
+  implemented; live protocol, isolation and deployment verification pending.
+- 08–14: pending; a stage is complete only when its code and matching operating
   documentation exist. Validation and production rollout remain separately
   recorded. No Qdrant deployment or production data migration has occurred.
 
@@ -219,3 +221,18 @@ account cleanup; durable remote tombstones must precede any remote writes.
 VECTOR-STORAGE.md documents fields, invariants, compatibility and rollback limits.
 Schema execution, concurrency and database-portability validation remain pending;
 syntax checking is not proof of a successful upgrade or backfill verification.
+
+### Stage 07 optional dense adapter
+
+Qdrant transport and dense VectorStore operations, encrypted instance credentials,
+endpoint-bound secrets, TLS policy, transfer-time egress checks, collection/index
+preparation and explicit OCC administration are implemented. Scope tokens avoid
+copying raw paths. All operations are bounded; result payload identity is checked.
+An optional loopback-only Compose example requires explicit approved image/key
+configuration and is never run by installation. QDRANT.md records API references,
+behavior, restrictions and unverified integration boundaries.
+
+No SQL chunk synchronization or primary/shadow reads are enabled. The outbox must
+pin storage-target identity and handle deletion/revision ordering before any live
+SQL mutation is replicated. No remote write/load/isolation tests or container
+startup have been run under the user's instruction to defer testing.
