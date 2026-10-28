@@ -25,6 +25,8 @@ use OCP\AppFramework\Db\Entity;
  * @method void setVectorState(string $state)
  * @method ?string getContentHash()
  * @method void setContentHash(?string $hash)
+ * @method int getVectorRevision()
+ * @method void setVectorRevision(int $revision)
  */
 class Chunk extends Entity {
     protected ?int $documentId = null;
@@ -36,11 +38,13 @@ class Chunk extends Entity {
     protected ?string $vectorGenerationId = null;
     protected ?string $vectorState = 'legacy';
     protected ?string $contentHash = null;
+    protected ?int $vectorRevision = 0;
 
     public function __construct() {
         $this->addType('documentId', 'integer');
         $this->addType('chunkIndex', 'integer');
         $this->addType('tokenCount', 'integer');
+        $this->addType('vectorRevision', 'integer');
     }
 
     public function setProvenanceArray(array $metadata): void {

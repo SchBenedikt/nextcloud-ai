@@ -81,8 +81,10 @@ magnitude/dimension does not match that generation.
 No adapter or remote writes are introduced by this PR. Before writes are enabled,
 SQL chunk updates and durable outbox events must be one transaction; account and
 document erasure must generate tombstones before discarding the identity required
-for remote deletion. Current account cleanup removes the new local metadata only.
-It must be extended to remote tombstones before any remote state can exist.
+for remote deletion. The 1.18.1 journal now retains bound generation deletion
+intent transactionally with account SQL erasure, but has no consumer yet. General
+document mutation fencing and remote execution remain prerequisites before live
+SQL synchronization. See VECTOR-OUTBOX.md for the current boundaries.
 
 ## Rollback boundary
 

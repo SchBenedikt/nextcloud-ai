@@ -7,11 +7,16 @@ namespace OCA\EvaAi\Vector;
 /** Optional dense index. It is not selected by Searcher or indexing yet. */
 class QdrantVectorStore implements VectorStore {
     private const INDEXES = ['user_id' => 'keyword', 'generation_id' => 'keyword', 'document_id' => 'integer', 'source' => 'keyword', 'scope_paths' => 'keyword'];
-    public function __construct(private QdrantConnection $connection) {}
+    public function __construct(private QdrantConnection $connection, private ?string $targetHash = null) {}
+
+    public function forTarget(string $targetHash): self {
+        if (preg_match('/^[a-f0-9]{64}$/D', $targetHash) !== 1) throw new VectorStoreException('invalid_target');
+        return new self($this->connection, $targetHash);
+    }
 
     public function health(): array {
         try {
-            $data = $this->connection->request('get', '/', null, false, 3);
+            $data = $this->request('get', '/', null, false, 3);
             $version = $data['version'] ?? '';
             if (!is_string($version) || !preg_match('/^1\.\d+\.\d+(?:[-+].*)?$/D', $version) || version_compare($version, '1.16.0', '<')) {
                 return ['available' => false, 'code' => 'unsupported_version'];
@@ -26,14 +31,14 @@ class QdrantVectorStore implements VectorStore {
         $health = $this->health();
         if (!$health['available']) throw new VectorStoreException($health['code']);
         $path = $this->collection($generation);
-        $data = $this->connection->request('get', $path, null, true);
+        $data = $this->request('get', $path, null, true);
         if ($data === null) {
-            try { $this->ok($this->connection->request('put', $path, ['vectors' => ['dense' => ['size' => $generation->dimension, 'distance' => 'Cosine']]])); }
+            try { $this->ok($this->request('put', $path, ['vectors' => ['dense' => ['size' => $generation->dimension, 'distance' => 'Cosine']]])); }
             catch (VectorStoreException $e) {
                 // Another explicit preparer may have won collection creation.
                 if ($e->reason !== 'http_409') throw $e;
             }
-            $data = $this->connection->request('get', $path);
+            $data = $this->request('get', $path);
         }
         $this->ok($data);
         $dense = $data['result']['config']['params']['vectors']['dense'] ?? null;
@@ -47,7 +52,7 @@ class QdrantVectorStore implements VectorStore {
                 if (($schema[$field]['data_type'] ?? '') !== $type) throw new VectorStoreException('payload_index_mismatch');
                 continue;
             }
-            $this->completed($this->connection->request('put', $path . '/index?wait=true&ordering=strong', ['field_name' => $field, 'field_schema' => $type]));
+            $this->completed($this->request('put', $path . '/index?wait=true&ordering=strong', ['field_name' => $field, 'field_schema' => $type]));
         }
     }
 
@@ -74,20 +79,20 @@ class QdrantVectorStore implements VectorStore {
                     'source' => $point['source'], 'content_hash' => $point['content_hash'], 'scope_paths' => $this->scopes($point['path'])]];
         }
         // Validate the entire batch before the first network request.
-        $this->completed($this->connection->request('put', $this->collection($generation) . '/points?wait=true&ordering=strong', ['points' => $prepared]));
+        $this->completed($this->request('put', $this->collection($generation) . '/points?wait=true&ordering=strong', ['points' => $prepared]));
     }
 
     public function deleteDocument(VectorGeneration $generation, int $documentId): void {
         if ($documentId < 1) throw new VectorStoreException('invalid_document');
         $filter = $this->filter($generation, new SearchFilters(documentIds: [$documentId]));
-        $data = $this->connection->request('post', $this->collection($generation) . '/points/delete?wait=true&ordering=strong', ['filter' => $filter], true);
+        $data = $this->request('post', $this->collection($generation) . '/points/delete?wait=true&ordering=strong', ['filter' => $filter], true);
         if ($data !== null) $this->completed($data);
     }
 
     public function search(VectorGeneration $generation, array $queryVector, int $topK, SearchFilters $filters): array {
         $generation->validateVector($queryVector);
         if ($topK < 1 || $topK > 100) throw new VectorStoreException('invalid_limit');
-        $data = $this->connection->request('post', $this->collection($generation) . '/points/query?timeout=3',
+        $data = $this->request('post', $this->collection($generation) . '/points/query?timeout=3',
             ['query' => array_map('floatval', $queryVector), 'using' => 'dense', 'limit' => $topK,
                 'filter' => $this->filter($generation, $filters), 'with_vector' => false,
                 'with_payload' => ['user_id', 'generation_id', 'document_id', 'source', 'scope_paths']], false, 5);
@@ -130,6 +135,10 @@ class QdrantVectorStore implements VectorStore {
         foreach ($parts as $part) { $prefix .= ($prefix === '' ? '' : '/') . $part; $tokens[] = hash('sha256', $prefix); }
         return $tokens;
     }
+    private function request(string $method, string $path, ?array $payload = null, bool $allowMissing = false, int $timeout = 30): ?array {
+        return $this->connection->request($method, $path, $payload, $allowMissing, $timeout, $this->targetHash);
+    }
+
     private function collection(VectorGeneration $generation): string { return '/collections/' . $generation->collection(); }
     private function tenant(VectorGeneration $generation): string { return hash('sha256', $generation->userId); }
     private function ok(?array $data): void { if (($data['status'] ?? null) !== 'ok') throw new VectorStoreException('invalid_operation_response'); }

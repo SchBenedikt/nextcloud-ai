@@ -10,7 +10,7 @@ use OCP\IDBConnection;
 
 /** Tenant-bound lifecycle metadata; activation awaits an actual verified backfill. */
 class VectorGenerationRepository {
-    public function __construct(private IDBConnection $db) {}
+    public function __construct(private IDBConnection $db, private VectorOutboxRepository $outbox) {}
 
     public function create(VectorGeneration $generation): void {
         $qb = $this->db->getQueryBuilder();
@@ -70,11 +70,45 @@ class VectorGenerationRepository {
         return $row['status'];
     }
 
-    /** Currently metadata only. Remote erasure will require an outbox tombstone. */
-    public function deleteUser(string $userId): void {
-        foreach (['eva_ai_vec_state', 'eva_ai_vec_generations'] as $table) {
-            $qb = $this->db->getQueryBuilder();
-            $qb->delete($table)->where($qb->expr()->eq('user_id', $qb->createNamedParameter($userId)))->executeStatement();
-        }
+    public function bindTarget(string $userId, string $id, string $target): void {
+        if (preg_match('/^[a-f0-9]{64}$/D', $target) !== 1) throw new \InvalidArgumentException('Invalid storage target.');
+        $qb = $this->db->getQueryBuilder();
+        $qb->update('eva_ai_vec_generations')->set('storage_endpoint_hash', $qb->createNamedParameter($target))
+            ->where($qb->expr()->eq('user_id', $qb->createNamedParameter($userId)))
+            ->andWhere($qb->expr()->eq('id', $qb->createNamedParameter($id)))
+            ->andWhere($qb->expr()->eq('status', $qb->createNamedParameter('building')))
+            ->andWhere($qb->expr()->isNull('storage_endpoint_hash'));
+        if ($qb->executeStatement() === 1) return;
+        $read = $this->db->getQueryBuilder();
+        $read->select('storage_endpoint_hash', 'status')->from('eva_ai_vec_generations')
+            ->where($read->expr()->eq('user_id', $read->createNamedParameter($userId)))
+            ->andWhere($read->expr()->eq('id', $read->createNamedParameter($id)));
+        $result = $read->executeQuery();
+        try { $row = $result->fetch(); } finally { $result->closeCursor(); }
+        if (!$row || $row['status'] !== 'building' || $row['storage_endpoint_hash'] !== $target) throw new \RuntimeException('Generation target is already bound, retired or missing.');
+    }
+
+    /** SQL erasure and durable remote intent commit or roll back together. */
+    public function deleteUser(string $userId, ?callable $deleteIndex = null): void {
+        $this->outbox->transaction(function () use ($userId, $deleteIndex): void {
+            // Serialize against a concurrent binding before reading destinations.
+            $retire = $this->db->getQueryBuilder();
+            $retire->update('eva_ai_vec_generations')->set('status', $retire->createNamedParameter('retired'))
+                ->where($retire->expr()->eq('user_id', $retire->createNamedParameter($userId)))->executeStatement();
+            $cursor = '';
+            do {
+                $rows = $this->page($userId, $cursor);
+                foreach ($rows as $row) {
+                    $this->outbox->supersedeGeneration($userId, $row['id']);
+                    if ($row['storage_endpoint_hash'] !== null) $this->outbox->enqueue(VectorGeneration::fromRow($row), $row['storage_endpoint_hash'], 'delete_generation');
+                    $cursor = $row['id'];
+                }
+            } while (count($rows) === 50);
+            if ($deleteIndex !== null) $deleteIndex();
+            foreach (['eva_ai_vec_state', 'eva_ai_vec_generations'] as $table) {
+                $qb = $this->db->getQueryBuilder();
+                $qb->delete($table)->where($qb->expr()->eq('user_id', $qb->createNamedParameter($userId)))->executeStatement();
+            }
+        });
     }
 }

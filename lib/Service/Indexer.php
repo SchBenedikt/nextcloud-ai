@@ -2356,15 +2356,15 @@ class Indexer {
     public function reset(?string $userId = null): array {
         if ($userId !== null && $userId !== '') {
             $this->config->setUserId($userId);
-            $docs = $this->documentMapper->deleteByUser($userId);
             $chunks = $this->chunkMapper->deleteForUser($userId);
+            $docs = $this->documentMapper->deleteByUser($userId);
             $this->embeddingCache->clearUser($userId);
         } else {
             // A null reset is the explicit all-users/maintenance path. Clear
             // any stale request context before writing the global state.
             $this->config->setUserId(null);
-            $docs = $this->documentMapper->deleteAll();
             $chunks = $this->chunkMapper->deleteAll();
+            $docs = $this->documentMapper->deleteAll();
             $this->embeddingCache->clear();
         }
         $this->config->set('index_running', '0');

@@ -107,15 +107,14 @@ class UserDataService {
         // parent rows until chunk erasure succeeds, including on failure so
         // a retry can still identify every affected chunk.
         try {
-            $this->chunkMapper->deleteForUser($userId);
-            $this->documentMapper->deleteByUser($userId);
+            $deleteIndex = function () use ($userId): void {
+                $this->chunkMapper->deleteForUser($userId);
+                $this->documentMapper->deleteByUser($userId);
+            };
+            if ($this->vectorGenerations !== null) $this->vectorGenerations->deleteUser($userId, $deleteIndex);
+            else $deleteIndex();
         } catch (\Throwable $e) {
             $this->logger->warning('eva_ai: index cleanup failed on account deletion; document ownership retained for retry', ['user' => $userId]);
-        }
-        try {
-            $this->vectorGenerations?->deleteUser($userId);
-        } catch (\Throwable $e) {
-            $this->logger->warning('eva_ai: vector-generation metadata cleanup failed on account deletion', ['user' => $userId]);
         }
         try {
             $this->embeddingCache->clearUser($userId);

@@ -7,6 +7,7 @@ namespace OCA\EvaAi\Vector;
 use OCA\EvaAi\Service\AppConfig;
 use OCA\EvaAi\Service\ProviderEndpointPolicy;
 use OCA\EvaAi\Service\ProviderException;
+use OCA\EvaAi\Db\VectorTargetRepository;
 use OCP\Http\Client\IClientService;
 use OCP\IConfig;
 use OCP\Security\ICrypto;
@@ -14,7 +15,7 @@ use OCP\Security\ICrypto;
 /** Instance-only, explicitly enabled transport. Construction performs no I/O. */
 class QdrantConnection {
     private const MAX_BODY = 2097152;
-    public function __construct(private IConfig $config, private ICrypto $crypto, private IClientService $clients) {}
+    public function __construct(private IConfig $config, private ICrypto $crypto, private IClientService $clients, private VectorTargetRepository $targets) {}
 
     public function configure(string $url, ?string $key, bool $noKey, bool $enable): void {
         $url = $this->validateBase($url);
@@ -23,6 +24,7 @@ class QdrantConnection {
         $encrypted = $key !== null ? $this->crypto->encrypt($key) : '';
         // Disable first: incomplete updates must not enable an unintended target.
         $this->config->setAppValue(AppConfig::APP, 'qdrant_enabled', '0');
+        $this->targets->save($url, $noKey ? 'none' : 'api_key', $encrypted);
         $this->config->setAppValue(AppConfig::APP, 'qdrant_url', $url);
         $this->config->setAppValue(AppConfig::APP, 'qdrant_api_key_encrypted', $encrypted);
         $this->config->setAppValue(AppConfig::APP, 'qdrant_key_target', hash('sha256', $url));
@@ -38,15 +40,29 @@ class QdrantConnection {
             'key_configured' => $this->config->getAppValue(AppConfig::APP, 'qdrant_api_key_encrypted', '') !== ''];
     }
 
-    public function request(string $method, string $path, ?array $payload = null, bool $allowMissing = false, int $timeout = 30): ?array {
+    public function targetFingerprint(): string {
         if ($this->config->getAppValue(AppConfig::APP, 'qdrant_enabled', '0') !== '1') throw new VectorStoreException('not_enabled');
         $base = $this->validateBase($this->config->getAppValue(AppConfig::APP, 'qdrant_url', ''));
+        $id = hash('sha256', $base);
+        if (!hash_equals($id, $this->config->getAppValue(AppConfig::APP, 'qdrant_key_target', ''))) throw new VectorStoreException('target_changed');
+        if ($this->targets->find($id) === null) {
+            $this->targets->save($base, $this->config->getAppValue(AppConfig::APP, 'qdrant_auth', ''), $this->config->getAppValue(AppConfig::APP, 'qdrant_api_key_encrypted', ''));
+        }
+        return $id;
+    }
+
+    public function request(string $method, string $path, ?array $payload = null, bool $allowMissing = false, int $timeout = 30, ?string $expectedTarget = null): ?array {
+        if ($this->config->getAppValue(AppConfig::APP, 'qdrant_enabled', '0') !== '1') throw new VectorStoreException('not_enabled');
+        $targetId = $expectedTarget ?? $this->targetFingerprint();
+        $target = $this->targets->find($targetId);
+        if ($target === null) throw new VectorStoreException('target_missing');
+        $base = $this->validateBase($target['endpoint']);
         if (!str_starts_with($path, '/') || str_contains($path, '..') || !in_array($method, ['get', 'post', 'put', 'delete'], true)) throw new VectorStoreException('invalid_request');
         $headers = ['Accept' => 'application/json', 'Content-Type' => 'application/json'];
-        if (!hash_equals(hash('sha256', $base), $this->config->getAppValue(AppConfig::APP, 'qdrant_key_target', ''))) throw new VectorStoreException('target_changed');
-        $auth = $this->config->getAppValue(AppConfig::APP, 'qdrant_auth', '');
+        if (!hash_equals(hash('sha256', $base), $targetId)) throw new VectorStoreException('target_changed');
+        $auth = $target['auth'];
         if ($auth === 'api_key') {
-            try { $key = $this->crypto->decrypt($this->config->getAppValue(AppConfig::APP, 'qdrant_api_key_encrypted', '')); }
+            try { $key = $this->crypto->decrypt($target['encrypted_key']); }
             catch (\Throwable) { throw new VectorStoreException('key_unreadable'); }
             if ($key === '' || strlen($key) > 4096 || preg_match('/[\x00-\x20\x7f]/', $key)) throw new VectorStoreException('invalid_key');
             $headers['api-key'] = $key;

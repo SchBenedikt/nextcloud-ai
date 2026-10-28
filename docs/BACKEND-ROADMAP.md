@@ -136,7 +136,10 @@ replaced by a successful build or an adapter unit test.
   implemented; migration execution and activation verification remain pending.
 - 07: optional dense adapter and explicit connection/collection administration
   implemented; live protocol, isolation and deployment verification pending.
-- 08–14: pending; a stage is complete only when its code and matching operating
+- 08: target registry, durable journal, lease/retry primitives and transactional
+  account-erasure intent implemented; worker, revision/tombstone fencing and
+  general mutation integration remain pending.
+- 09–14: pending; a stage is complete only when its code and matching operating
   documentation exist. Validation and production rollout remain separately
   recorded. No Qdrant deployment or production data migration has occurred.
 
@@ -236,3 +239,17 @@ No SQL chunk synchronization or primary/shadow reads are enabled. The outbox mus
 pin storage-target identity and handle deletion/revision ordering before any live
 SQL mutation is replicated. No remote write/load/isolation tests or container
 startup have been run under the user's instruction to defer testing.
+
+### Stage 08 durable journal and target foundation
+
+The 1.18.1 schema, encrypted target registry, immutable storage binding, transaction-
+required enqueue, CAS leases/acknowledgements, bounded retry/dead-letter primitives
+and offline OCC inspection/requeue are implemented. Account SQL erasure and bound
+collection deletion intent commit together. Legacy per-user cleanup is keyset-
+bounded and reset now preserves chunk ownership until chunk deletion completes.
+
+There is no worker or general chunk-mutation replication yet. Remote revision/
+tombstone enforcement, account creation fencing, target retention/pruning, reset/
+rename/replacement integration and persistent account-cleanup retries remain
+pending. VECTOR-OUTBOX.md distinguishes these implementation gaps from the queue
+primitives. No delivery/crash/concurrency or live migration gate is verified.

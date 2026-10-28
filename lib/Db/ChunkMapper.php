@@ -50,26 +50,27 @@ class ChunkMapper extends QBMapper {
     }
 
     public function deleteForUser(string $userId): int {
-        $qb = $this->db->getQueryBuilder();
         // Do not concatenate a named parameter into a raw SQL function. Read
         // the document ids with a normal bound predicate, then delete chunks
         // in bounded batches; this is portable across the supported databases
         // and keeps the user id out of SQL fragments (Issue #384).
-        $qb->select('id')
-            ->from('eva_ai_documents')
-            ->where($qb->expr()->eq('user_id', $qb->createNamedParameter($userId)));
-        $result = $qb->executeQuery();
-        $documentIds = [];
-        while ($row = $result->fetch()) {
-            $documentIds[] = (int)$row['id'];
-        }
-        $result->closeCursor();
-        if ($documentIds === []) {
-            return 0;
-        }
-        $before = $this->countByDocumentIds($documentIds);
-        $this->deleteByDocumentIds($documentIds);
-        return $before;
+        $cursor = 0; $deleted = 0;
+        do {
+            $qb = $this->db->getQueryBuilder();
+            $qb->select('id')->from('eva_ai_documents')
+                ->where($qb->expr()->eq('user_id', $qb->createNamedParameter($userId)))
+                ->andWhere($qb->expr()->gt('id', $qb->createNamedParameter($cursor, IQueryBuilder::PARAM_INT)))
+                ->orderBy('id', 'ASC')->setMaxResults(500);
+            $result = $qb->executeQuery();
+            try { $rows = $result->fetchAll(); } finally { $result->closeCursor(); }
+            $ids = array_map(static fn(array $row): int => (int)$row['id'], $rows);
+            if ($ids !== []) {
+                $deleted += $this->countByDocumentIds($ids);
+                $this->deleteByDocumentIds($ids);
+                $cursor = $ids[count($ids) - 1];
+            }
+        } while (count($rows) === 500);
+        return $deleted;
     }
 
     /** @param int[] $documentIds */
