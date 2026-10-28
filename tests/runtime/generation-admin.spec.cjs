@@ -47,7 +47,7 @@ test.describe('installed generation administration', () => {
     await expect(page.locator('.generation-details')).toContainText('fixture-embed')
     expect(requests()).toBe(before)
     await page.getByRole('button', { name: 'Check embedding model', exact: true }).click()
-    await expect(page.getByText('The embedding destination is not allowed. Check the administrator origin policy.', { exact: true })).toBeVisible()
+    await expect(page.getByRole('alert').filter({ hasText: 'The embedding destination is not allowed. Check the administrator origin policy.' })).toBeVisible()
     await expect(page.getByRole('button', { name: 'Check embedding model', exact: true })).toBeEnabled()
     expect(requests()).toBe(before)
     expect(errors).toEqual([])
