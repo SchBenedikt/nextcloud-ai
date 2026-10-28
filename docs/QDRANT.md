@@ -132,3 +132,12 @@ Qdrant endpoint. Upsert retry idempotence alone is insufficient for concurrent
 update/delete correctness. Remote erasure, durable retry/dead-letter handling,
 backfill verification, shadow comparison and a tested rollback remain prerequisites
 for enabling real indexing or primary reads. API health does not satisfy them.
+
+## Retained destinations and generation binding (1.18.1)
+
+Explicit preparation now pins a generation's storage target before contacting the
+server. The target registry retains old encrypted connection records so future
+outbox deletion work will not follow a changed current URL. Requests on a
+`forTarget` adapter use the retained destination and its latest stored key, while
+still honoring the global disable switch and egress policy. See
+[VECTOR-OUTBOX.md](VECTOR-OUTBOX.md) for journal, rotation and upgrade boundaries.

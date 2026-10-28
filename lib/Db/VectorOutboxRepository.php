@@ -1,0 +1,149 @@
+<?php
+
+declare(strict_types=1);
+
+namespace OCA\EvaAi\Db;
+
+use OCA\EvaAi\Vector\VectorGeneration;
+use OCP\DB\QueryBuilder\IQueryBuilder;
+use OCP\IDBConnection;
+
+/** Durable intent only; never holds a database transaction during remote I/O. */
+class VectorOutboxRepository {
+    private const MAX_ATTEMPTS = 12;
+    public function __construct(private IDBConnection $db) {}
+
+    public function transaction(callable $mutation): mixed {
+        $this->db->beginTransaction();
+        try { $result = $mutation(); $this->db->commit(); return $result; }
+        catch (\Throwable $e) {
+            try { if ($this->db->inTransaction()) $this->db->rollBack(); } catch (\Throwable) {}
+            throw $e;
+        }
+    }
+
+    /** Must share the transaction and connection of the canonical SQL mutation. */
+    public function enqueue(VectorGeneration $generation, string $targetHash, string $operation, ?int $documentId = null, ?int $chunkId = null): int {
+        if (!$this->db->inTransaction()) throw new \LogicException('Vector intent requires the canonical mutation transaction.');
+        if (preg_match('/^[a-f0-9]{64}$/D', $targetHash) !== 1 || !in_array($operation, ['upsert', 'delete_chunk', 'delete_generation'], true)
+            || ($operation === 'delete_generation' && ($documentId !== null || $chunkId !== null))
+            || ($operation !== 'delete_generation' && ($documentId === null || $documentId < 1 || $chunkId === null || $chunkId < 1))) throw new \InvalidArgumentException('Invalid vector synchronization intent.');
+        $json = json_encode($generation->toRow(), JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+        if (strlen($json) > 8192) throw new \InvalidArgumentException('Generation metadata is oversized.');
+        $now = time();
+        $row = ['user_id' => $generation->userId, 'generation_id' => $generation->id, 'target_hash' => $targetHash,
+            'operation' => $operation, 'state' => 'pending', 'generation_json' => $json,
+            'document_id' => $documentId, 'chunk_id' => $chunkId, 'attempts' => 0, 'created_at' => $now, 'available_at' => $now];
+        $qb = $this->db->getQueryBuilder(); $qb->insert('eva_ai_vec_outbox');
+        foreach ($row as $key => $value) $qb->setValue($key, $qb->createNamedParameter($value, is_int($value) ? IQueryBuilder::PARAM_INT : ($value === null ? IQueryBuilder::PARAM_NULL : IQueryBuilder::PARAM_STR)));
+        $qb->executeStatement();
+        $id = $qb->getLastInsertId();
+        if ($id < 1) throw new \RuntimeException('Vector journal did not allocate a revision.');
+        return $id;
+    }
+
+    /** Bounded CAS claim. A stale worker cannot acknowledge a successor's lease. */
+    public function claim(int $now, int $leaseSeconds = 120): ?array {
+        if ($leaseSeconds < 60 || $leaseSeconds > 600) throw new \InvalidArgumentException('Invalid vector lease interval.');
+        for ($retry = 0; $retry < 8; $retry++) {
+            $qb = $this->db->getQueryBuilder();
+            $qb->select('*')->from('eva_ai_vec_outbox')->where($qb->expr()->orX(
+                $qb->expr()->andX($qb->expr()->eq('state', $qb->createNamedParameter('pending')), $qb->expr()->lte('available_at', $qb->createNamedParameter($now, IQueryBuilder::PARAM_INT))),
+                $qb->expr()->andX($qb->expr()->eq('state', $qb->createNamedParameter('processing')), $qb->expr()->lte('lease_until', $qb->createNamedParameter($now, IQueryBuilder::PARAM_INT)))
+            ))->orderBy('id', 'ASC')->setMaxResults(1);
+            $result = $qb->executeQuery();
+            try { $row = $result->fetch(); } finally { $result->closeCursor(); }
+            if (!$row) return null;
+            $token = bin2hex(random_bytes(16));
+            $dead = (int)$row['attempts'] >= self::MAX_ATTEMPTS;
+            $update = $this->db->getQueryBuilder();
+            $update->update('eva_ai_vec_outbox')->set('state', $update->createNamedParameter($dead ? 'dead' : 'processing'))
+                ->set('lease_token', $update->createNamedParameter($dead ? null : $token, $dead ? IQueryBuilder::PARAM_NULL : IQueryBuilder::PARAM_STR))
+                ->set('lease_until', $update->createNamedParameter($dead ? null : $now + $leaseSeconds, $dead ? IQueryBuilder::PARAM_NULL : IQueryBuilder::PARAM_INT))
+                ->set('attempts', $update->createNamedParameter((int)$row['attempts'] + ($dead ? 0 : 1), IQueryBuilder::PARAM_INT))
+                ->where($update->expr()->eq('id', $update->createNamedParameter((int)$row['id'], IQueryBuilder::PARAM_INT)))
+                ->andWhere($update->expr()->eq('state', $update->createNamedParameter($row['state'])))
+                ->andWhere($update->expr()->eq('attempts', $update->createNamedParameter((int)$row['attempts'], IQueryBuilder::PARAM_INT)));
+            if ($row['state'] === 'processing') {
+                $update->andWhere($update->expr()->eq('lease_token', $update->createNamedParameter($row['lease_token'])))
+                    ->andWhere($update->expr()->lte('lease_until', $update->createNamedParameter($now, IQueryBuilder::PARAM_INT)));
+            } else $update->andWhere($update->expr()->lte('available_at', $update->createNamedParameter($now, IQueryBuilder::PARAM_INT)));
+            if ($dead) $update->set('last_error', $update->createNamedParameter('lease_exhausted'));
+            if ($update->executeStatement() !== 1 || $dead) continue;
+            $row['state'] = 'processing'; $row['attempts'] = (int)$row['attempts'] + 1;
+            $row['lease_token'] = $token; $row['lease_until'] = $now + $leaseSeconds;
+            return $row;
+        }
+        return null;
+    }
+
+    public function complete(int $id, string $token, int $now): bool {
+        $qb = $this->db->getQueryBuilder();
+        $qb->update('eva_ai_vec_outbox')->set('state', $qb->createNamedParameter('delivered'))
+            ->set('delivered_at', $qb->createNamedParameter($now, IQueryBuilder::PARAM_INT))
+            ->set('lease_token', $qb->createNamedParameter(null, IQueryBuilder::PARAM_NULL))->set('lease_until', $qb->createNamedParameter(null, IQueryBuilder::PARAM_NULL))
+            ->where($qb->expr()->eq('id', $qb->createNamedParameter($id, IQueryBuilder::PARAM_INT)))
+            ->andWhere($qb->expr()->eq('lease_token', $qb->createNamedParameter($token)))
+            ->andWhere($qb->expr()->eq('state', $qb->createNamedParameter('processing')));
+        return $qb->executeStatement() === 1;
+    }
+
+    public function failed(int $id, string $token, string $code, int $now): bool {
+        if (preg_match('/^[a-z0-9_]{1,48}$/D', $code) !== 1) throw new \InvalidArgumentException('Use a sanitized vector error code.');
+        $qb = $this->db->getQueryBuilder();
+        $qb->select('attempts')->from('eva_ai_vec_outbox')->where($qb->expr()->eq('id', $qb->createNamedParameter($id, IQueryBuilder::PARAM_INT)))
+            ->andWhere($qb->expr()->eq('lease_token', $qb->createNamedParameter($token)))->andWhere($qb->expr()->eq('state', $qb->createNamedParameter('processing')));
+        $result = $qb->executeQuery();
+        try { $row = $result->fetch(); } finally { $result->closeCursor(); }
+        if (!$row) return false;
+        $attempts = (int)$row['attempts'];
+        $update = $this->db->getQueryBuilder();
+        $update->update('eva_ai_vec_outbox')->set('state', $update->createNamedParameter($attempts >= self::MAX_ATTEMPTS ? 'dead' : 'pending'))
+            ->set('last_error', $update->createNamedParameter($code))->set('available_at', $update->createNamedParameter($now + min(3600, 5 * (2 ** min(10, $attempts))) + random_int(0, 5), IQueryBuilder::PARAM_INT))
+            ->set('lease_token', $update->createNamedParameter(null, IQueryBuilder::PARAM_NULL))->set('lease_until', $update->createNamedParameter(null, IQueryBuilder::PARAM_NULL))
+            ->where($update->expr()->eq('id', $update->createNamedParameter($id, IQueryBuilder::PARAM_INT)))
+            ->andWhere($update->expr()->eq('lease_token', $update->createNamedParameter($token)))->andWhere($update->expr()->eq('state', $update->createNamedParameter('processing')));
+        return $update->executeStatement() === 1;
+    }
+
+    public function supersedeGeneration(string $userId, string $id): void {
+        if (!$this->db->inTransaction()) throw new \LogicException('Superseding intent requires a mutation transaction.');
+        $qb = $this->db->getQueryBuilder();
+        $qb->update('eva_ai_vec_outbox')->set('state', $qb->createNamedParameter('superseded'))
+            ->set('lease_token', $qb->createNamedParameter(null, IQueryBuilder::PARAM_NULL))->set('lease_until', $qb->createNamedParameter(null, IQueryBuilder::PARAM_NULL))
+            ->where($qb->expr()->eq('generation_id', $qb->createNamedParameter($id)))
+            ->andWhere($qb->expr()->eq('user_id', $qb->createNamedParameter($userId)))
+            ->andWhere($qb->expr()->in('state', $qb->createNamedParameter(['pending', 'processing', 'dead'], IQueryBuilder::PARAM_STR_ARRAY)));
+        $qb->executeStatement();
+    }
+
+    public function stats(): array {
+        $qb = $this->db->getQueryBuilder();
+        $qb->select('state')->selectAlias($qb->createFunction('COUNT(*)'), 'events')
+            ->selectAlias($qb->createFunction('MIN(created_at)'), 'oldest_created_at')->from('eva_ai_vec_outbox')->groupBy('state');
+        $result = $qb->executeQuery();
+        try { return $result->fetchAll(); } finally { $result->closeCursor(); }
+    }
+
+    public function page(string $state, int $after = 0): array {
+        if (!in_array($state, ['pending', 'processing', 'delivered', 'dead', 'superseded'], true) || $after < 0) throw new \InvalidArgumentException('Invalid outbox listing.');
+        $qb = $this->db->getQueryBuilder();
+        $qb->select('id', 'generation_id', 'target_hash', 'operation', 'state', 'attempts', 'created_at', 'available_at', 'lease_until', 'last_error')
+            ->from('eva_ai_vec_outbox')->where($qb->expr()->eq('state', $qb->createNamedParameter($state)))
+            ->andWhere($qb->expr()->gt('id', $qb->createNamedParameter($after, IQueryBuilder::PARAM_INT)))
+            ->orderBy('id', 'ASC')->setMaxResults(100);
+        $result = $qb->executeQuery();
+        try { return $result->fetchAll(); } finally { $result->closeCursor(); }
+    }
+
+    public function retryDead(int $id, int $now): void {
+        if ($id < 1) throw new \InvalidArgumentException('Invalid outbox ID.');
+        $qb = $this->db->getQueryBuilder();
+        $qb->update('eva_ai_vec_outbox')->set('state', $qb->createNamedParameter('pending'))
+            ->set('attempts', $qb->createNamedParameter(0, IQueryBuilder::PARAM_INT))->set('available_at', $qb->createNamedParameter($now, IQueryBuilder::PARAM_INT))
+            ->set('last_error', $qb->createNamedParameter(null, IQueryBuilder::PARAM_NULL))
+            ->where($qb->expr()->eq('id', $qb->createNamedParameter($id, IQueryBuilder::PARAM_INT)))
+            ->andWhere($qb->expr()->eq('state', $qb->createNamedParameter('dead')));
+        if ($qb->executeStatement() !== 1) throw new \RuntimeException('Only an existing dead-letter event can be retried.');
+    }
+}

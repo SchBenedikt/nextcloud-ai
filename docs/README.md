@@ -31,3 +31,5 @@ current source when they differ from an older review.
 - [Optional vector storage](VECTOR-STORAGE.md) — generation identity, additive schema and operating boundaries.
 
 - [Optional Qdrant adapter](QDRANT.md) — server configuration, transport and deployment boundaries.
+
+- [Vector outbox](VECTOR-OUTBOX.md) — target identity, durable intent and remaining delivery invariants.

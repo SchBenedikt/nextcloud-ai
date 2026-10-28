@@ -57,7 +57,9 @@ final class Qdrant extends Command {
                 if (!is_string($user) || !$this->users->userExists($user) || !is_string($id) || preg_match('/^[a-f0-9]{32}$/D', $id) !== 1) throw new \InvalidArgumentException('Select an existing user and a valid generation ID.');
                 $generation = $this->generations->find($user, $id);
                 if ($generation === null || $this->generations->status($user, $id) !== 'building') throw new \RuntimeException('Only an owned building generation can be prepared.');
-                $this->store->prepare($generation);
+                $target = $this->connection->targetFingerprint();
+                $this->generations->bindTarget($user, $id, $target);
+                $this->store->forTarget($target)->prepare($generation);
                 $data = ['prepared' => true, 'generation_id' => $id, 'retrieval_changed' => false];
             } else throw new \InvalidArgumentException('Use configure, status, health, disable or prepare.');
             $output->writeln(json_encode($data, JSON_PRETTY_PRINT | JSON_THROW_ON_ERROR), OutputInterface::OUTPUT_RAW);
