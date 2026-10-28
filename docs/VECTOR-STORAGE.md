@@ -70,20 +70,23 @@ or rollback preparation. The complete migration requirements are tracked in
 
 ## Vector-store boundary
 
-The `VectorStore` contract defines generation-bound upsert, document deletion,
-search and sanitized health results. Search returns IDs/scores; authoritative text
-and ownership must be hydrated from SQL. `SearchFilters` accepts canonical relative
+The `VectorStore` contract defines generation-bound revisioned upsert, exact chunk
+tombstones, search and sanitized health results. Search returns IDs/revisions/scores;
+authoritative text and ownership must be hydrated from SQL at the matching revision.
+`SearchFilters` accepts canonical relative
 folder scope, source and bounded document IDs; it has no tenant or generation
 override. Adapters must force tenant and generation from the server-owned
 `VectorGeneration` on every operation and reject vectors whose finite nonzero
 magnitude/dimension does not match that generation.
 
-No adapter or remote writes are introduced by this PR. Before writes are enabled,
+The optional adapter and erasure consumer are documented in QDRANT.md and
+VECTOR-OUTBOX.md. Before chunk writes are enabled,
 SQL chunk updates and durable outbox events must be one transaction; account and
 document erasure must generate tombstones before discarding the identity required
 for remote deletion. The 1.18.1 journal now retains bound generation deletion
-intent transactionally with account SQL erasure, but has no consumer yet. General
-document mutation fencing and remote execution remain prerequisites before live
+intent transactionally with account SQL erasure and has an explicitly enabled
+generation-erasure consumer. General document mutation fencing, point-event
+consumption and verification remain prerequisites before live
 SQL synchronization. See VECTOR-OUTBOX.md for the current boundaries.
 
 ## Rollback boundary

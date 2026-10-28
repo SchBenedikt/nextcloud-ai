@@ -71,7 +71,12 @@ and worker must enforce revisions and deletion tombstones at the remote write
 boundary. In particular, an old upsert must not recreate a physically deleted
 point. Account/generation erasure must prevent any later automatic collection
 recreation. Claims and strong request ordering by themselves do not solve either
-case. Those delivery semantics and mutation-path integration are the next stage.
+case. The adapter now enforces revision predicates, terminal exact-ID tombstones
+and deleted=false search filters (QDRANT.md). Chunk consumers and atomic mutation
+producers remain pending. A delivery acknowledgement does not prove a conditional
+point matched; verification must compare actual revisions and deletion state.
+Journal revisions used for point writes must not exceed 2^53-1, and chunk IDs must
+never be reused within a generation.
 
 ## Account cleanup integration in this stage
 
