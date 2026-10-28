@@ -84,3 +84,38 @@ an EVA-specific endpoint allowlist. Redirect rejection alone is not a complete
 SSRF policy or DNS-rebinding defense. The dedicated admin-owned endpoint policy,
 metadata/link-local restrictions and adversarial validation remain pending in the
 [backend migration ledger](BACKEND-ROADMAP.md).
+
+## EVA-owned destination policy
+
+Custom OpenAI-compatible requests now also pass `ProviderEndpointPolicy` at the
+actual HTTP transport boundary. The policy applies to model checks, chat, images,
+all audio operations and provider-returned image downloads. It resolves and
+classifies all addresses, rejects ambiguous CNAME responses and excessive DNS
+work, and replaces the cURL DNS mapping immediately before transfer with the
+validated addresses. Credentials in URLs, fragments, encoded/noncanonical hosts,
+link-local, metadata, multicast and reserved targets are rejected. Public
+connections require HTTPS. IPv4-mapped IPv6 addresses receive IPv4 classification.
+
+Private/loopback endpoints require an exact administrator-owned origin, including
+scheme and effective port, in the app configuration `provider_private_origins`:
+
+```sh
+php occ config:app:set eva_ai provider_private_origins --value='["http://127.0.0.1:1234","https://models.internal:443"]'
+```
+
+The setting is read directly from instance IConfig, never personal settings.
+Omitting the port in the allowlist does not grant access. HTTP also requires an
+approved origin. Link-local and metadata destinations remain blocked even when
+listed. Nextcloud's own local-address policy still applies, so an approval here
+alone does not override a stricter core policy. Existing private custom providers
+need this explicit approval when upgrading. Built-in Ollama is unchanged by this
+custom-provider policy, preserving the app's default installation behavior.
+
+Transport uses Nextcloud's HTTP client and certificate checks with a guarded
+cURL handler. Explicitly configured proxies are rejected: proxy-side DNS cannot
+be proven to use the locally checked destination. Implicit environment proxies
+are disabled for these requests. Deployments that require a proxy need a reviewed
+proxy-side egress policy and a future compatible transport mode; do not disable
+this guard to make a proxy work. DNS names defined only in `/etc/hosts` are not
+resolved by this policy; use a literal approved address or a DNS record. No
+connection or transfer to a hosted provider is performed during app installation.
