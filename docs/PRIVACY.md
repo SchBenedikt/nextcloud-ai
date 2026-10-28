@@ -126,3 +126,11 @@ readable and are transparently migrated the next time that user's chats are
 written. If Nextcloud's crypto service is unavailable, EVA keeps the existing
 data intact and refuses to open an encrypted payload rather than falling back
 to plaintext.
+
+Prepared vector points leave Nextcloud only after explicit administrator delivery
+consent plus the connection/cleanup gates. Upgrade and installation do not grant
+that consent. The worker checks current user/source access before each upload;
+it sends embeddings and bounded source metadata, not document text or raw paths.
+Embeddings remain private derived data. Pausing point delivery retains cleanup
+intent; disabling storage requests stops all Qdrant transfers. SQL remains usable
+without any vector service or transfer consent.

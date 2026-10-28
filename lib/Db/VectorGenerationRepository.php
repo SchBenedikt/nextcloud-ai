@@ -65,6 +65,22 @@ class VectorGenerationRepository {
         if ($qb->executeStatement() !== 1) throw new \RuntimeException('Generation is missing, belongs to another user or is no longer building.');
     }
 
+    /** Immutable event metadata must still match the current generation and retained target. */
+    public function deliveryState(VectorGeneration $generation, string $target): ?string {
+        $qb = $this->db->getQueryBuilder();
+        $qb->select('*')->from('eva_ai_vec_generations')
+            ->where($qb->expr()->eq('user_id', $qb->createNamedParameter($generation->userId)))
+            ->andWhere($qb->expr()->eq('id', $qb->createNamedParameter($generation->id)));
+        $result = $qb->executeQuery();
+        try { $row = $result->fetch(); } finally { $result->closeCursor(); }
+        if (!$row) return null;
+        if (VectorGeneration::fromRow($row)->toRow() !== $generation->toRow() || $row['storage_endpoint_hash'] !== $target
+            || !in_array($row['status'], ['building', 'active', 'retired', 'failed'], true)) {
+            throw new \OCA\EvaAi\Vector\VectorStoreException('generation_identity_mismatch');
+        }
+        return $row['status'];
+    }
+
     public function status(string $userId, string $id): ?string {
         $qb = $this->db->getQueryBuilder();
         $qb->select('status')->from('eva_ai_vec_generations')

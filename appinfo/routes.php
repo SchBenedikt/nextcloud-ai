@@ -107,6 +107,7 @@ return [
         ['name' => 'vector_admin#connection', 'url' => '/api/admin/vector-storage/connection', 'verb' => 'GET'],
         ['name' => 'vector_admin#configure', 'url' => '/api/admin/vector-storage/connection', 'verb' => 'PUT'],
         ['name' => 'vector_admin#disable', 'url' => '/api/admin/vector-storage/disable', 'verb' => 'POST'],
+        ['name' => 'vector_admin#pointDelivery', 'url' => '/api/admin/vector-storage/points', 'verb' => 'POST'],
         ['name' => 'vector_admin#check', 'url' => '/api/admin/vector-storage/check', 'verb' => 'POST'],
         ['name' => 'admin#metricsUsers', 'url' => '/api/admin/metrics/users', 'verb' => 'GET'],
         ['name' => 'admin#userMetrics', 'url' => '/api/admin/users/{userId}/metrics', 'verb' => 'GET'],

@@ -21,7 +21,8 @@ class VectorStorageStatus {
             }
             return ['available' => true, 'retrieval_backend' => 'sql_legacy',
                 'connection' => $connection, 'erasure_worker_enabled' => $workerEnabled,
-                'chunk_sync_available' => false, 'staged_chunks' => $this->chunks->countStaged(), 'queue' => $queue, 'observed_at' => time()];
+                'chunk_sync_available' => true, 'points_requested' => $this->outbox->pointDeliveryRequested(),
+                'point_worker_enabled' => $this->outbox->pointsEnabled(), 'staged_chunks' => $this->chunks->countStaged(), 'queue' => $queue, 'observed_at' => time()];
         } catch (\Throwable) {
             // A missing migration/database failure is not an empty, healthy queue.
             return ['available' => false];

@@ -120,3 +120,26 @@ file-context interface, verified the expected code, then deleted the test file.
 It exposed and verified the nullable-error correction: success responses with
 `error: null` must remain success responses. Failure envelopes still retain their
 stable code/message structure.
+
+## Optional point-transport probe
+
+Run against a disposable loopback Qdrant instance, never a production URL. The
+probe uses Nextcloud's native HTTP client and an isolated in-memory SQLite schema;
+its access-control double avoids touching a real account. It creates and removes
+only its randomly named generation collections. Production configuration and SQL
+are not changed. Native source guards have separate unit tests.
+
+```sh
+docker run --rm --name eva-qdrant-test -p 127.0.0.1:16334:6333 \
+  -e QDRANT__TELEMETRY_DISABLED=true qdrant/qdrant:v1.16.0
+# In another terminal, as the web-server user:
+NEXTCLOUD_ROOT=/var/www/html/nextcloud \
+EVA_VECTOR_TEST_URL=http://127.0.0.1:16334 \
+php tests/runtime/point-transport.php
+```
+
+The checked cases include actual delivery, SQL revision acknowledgement, tenant/
+generation query isolation and delayed older or higher-revision live writes after
+a tombstone. This does not establish Mail/Talk deployment access, replica/network
+fault tolerance, bulk throughput or complete-generation verification. Ordinary
+PHP/frontend tests do not launch Qdrant.

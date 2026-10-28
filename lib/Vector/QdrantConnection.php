@@ -32,6 +32,12 @@ class QdrantConnection {
         if ($enable) $this->config->setAppValue(AppConfig::APP, 'qdrant_enabled', '1');
     }
 
+    /** Explicit administrator consent; stopping points keeps generation erasure available. */
+    public function setPointDelivery(bool $enabled): void {
+        if ($enabled) $this->config->setAppValue(AppConfig::APP, 'vector_sync_enabled', '1');
+        $this->config->setAppValue(AppConfig::APP, 'vector_points_enabled', $enabled ? '1' : '0');
+    }
+
     public function disable(): void { $this->config->setAppValue(AppConfig::APP, 'qdrant_enabled', '0'); }
 
     public function status(): array {

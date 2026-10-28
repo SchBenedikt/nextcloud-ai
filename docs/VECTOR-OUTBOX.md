@@ -39,15 +39,15 @@ encrypted instance configuration during an explicit request/preparation. Old
 unbound generation metadata is not assigned a guessed storage destination. If an
 operator prepared a collection with an earlier unreleased stack version, prepare
 that generation against its original server explicitly before relying on erasure.
-This development stack has not executed remote preparation or migration itself.
+Only disposable loopback protocol fixtures have been prepared and populated; no production target or user corpus has been migrated.
 
 ## Journal representation
 
 The internal `GenerationChunkRepository` can now commit a building-generation
 SQL chunk and its upsert revision in one transaction, after source/owner/identity
-checks. Legacy rows remain separate. No live indexing/backfill or point consumer
-calls it yet; deletion and invalidation paths still need integration before any
-point delivery is enabled. See [GENERATION-CHUNKS.md](GENERATION-CHUNKS.md).
+checks. Legacy rows remain separate. The opt-in point worker can deliver these
+prepared rows; automatic backfill and ongoing generation production remain pending
+before a complete-index migration can be offered. See [GENERATION-CHUNKS.md](GENERATION-CHUNKS.md).
 
 `eva_ai_vec_outbox` records operation, owner, generation and fixed target,
 immutable generation metadata, optional document/chunk IDs, state, attempt count,
@@ -78,8 +78,8 @@ boundary. In particular, an old upsert must not recreate a physically deleted
 point. Account/generation erasure must prevent any later automatic collection
 recreation. Claims and strong request ordering by themselves do not solve either
 case. The adapter now enforces revision predicates, terminal exact-ID tombstones
-and deleted=false search filters (QDRANT.md). Chunk consumers and atomic mutation
-producers remain pending. A delivery acknowledgement does not prove a conditional
+and deleted=false search filters (QDRANT.md). Canonical deletion/invalidation
+producers and the opt-in prepared-point consumer are now integrated. A delivery acknowledgement does not prove a conditional
 point matched; verification must compare actual revisions and deletion state.
 Journal revisions used for point writes must not exceed 2^53-1, and chunk IDs must
 never be reused within a generation.
@@ -139,9 +139,9 @@ php occ config:app:set eva_ai vector_sync_enabled --value=0
 
 An enabled cron job also executes the worker. A manual run is not a dry run. It
 can delete the generation collections named by valid erasure events. It claims
-only `delete_generation` operations and leaves all upsert/delete_chunk events
-untouched until their revision/tombstone protocol is implemented. No current SQL
-ingestion path generates remote point writes.
+only `delete_generation` operations. Prepared-point transport uses the separate
+`run --points` path and its own consent flag; ordinary SQL ingestion still does
+not automatically backfill generation rows.
 
 Every event's immutable descriptor is checked against its owner/generation IDs.
 Only absent or retired SQL generations may be erased. Invalid envelopes or unsafe
@@ -260,12 +260,12 @@ includes a second guarded chunk cleanup so a concurrent staged writer cannot
 leave a new orphan between separate mapper calls. SQL-only deletions create no
 remote work. Per-user/all-user reset and deferred cron reset use the same path.
 
-Each bounded batch rolls back if intent cannot be retained. Point delivery remains
-unavailable: these tombstones are durable pending work, not completed remote
-erasure. The future consumer must discard upserts whose SQL source vanished,
-check flags/lease/lifecycle at transfer time, and supersede point events for
-retired/missing generations instead of recreating erased collections. Whole-account
-generation erasure continues independently through the existing worker.
+Each bounded batch rolls back if intent cannot be retained. The point worker
+consumes these tombstones only after explicit consent. Pending intent is not proof
+of remote erasure. It discards stale upserts, rechecks flags/lease/source/lifecycle
+at transfer time, and supersedes retired/missing-generation point events only
+when durable collection-erasure intent exists. Whole-account generation erasure
+continues through its separate worker.
 
 Metadata mutations through `DocumentMapper::update()` and per-user hash clearing
 are source-locked and compared against the stamp fields. A changed source queues
@@ -275,3 +275,58 @@ or contacts Qdrant in the metadata transaction. Identical values and publication
 only fields (`chunk_count`, `indexed_at`) do not invalidate prepared data. Moving
 a document to another owner is rejected. A later backfill must rebuild changed
 sources with fresh point IDs; current code does not claim automatic rebuilding.
+
+## Prepared-point worker (1.18.7)
+
+`VectorPointJob` invokes the bounded worker through Nextcloud cron. Default work
+is at most 100 claimed events and a 30-second loop budget; a final in-progress
+HTTP request may use its existing 30-second timeout. Each event has a 120-second
+lease. Current dispatch is one point per request; bulk throughput and representative
+load remain follow-up gates. The worker never embeds, scans files for content,
+creates collections or switches retrieval.
+
+Point traffic requires all three fresh instance flags: `qdrant_enabled`,
+`vector_sync_enabled` and `vector_points_enabled`. The new points flag is absent
+by default, including upgrades. Native administrator consent enables it and the
+generation-cleanup flag. Disabling points leaves generation cleanup available;
+"Disable storage requests" sets the transport flag off for all operations.
+Connection configuration alone does not enable points. Allowing a connection can
+resume already enabled workers, including cleanup on retained destinations.
+
+```sh
+# After explicit connection setup, collection preparation and point consent:
+php occ eva_ai:vector:outbox run --points --limit=100
+# Pause points while keeping separately enabled collection erasure available:
+php occ config:app:set eva_ai vector_points_enabled --value=0
+```
+
+Claims include only upsert/delete_chunk, never collection erasure. A revision-bound
+upsert rereads its owned SQL row, immutable descriptor/target and source stamp.
+Fresh Files readability/path/mtime/size, Mail mailbox/account ownership and Talk
+membership are checked through native services. Source checks do not extract
+content; external VFS metadata can still use its storage backend. The same guard
+runs after DNS pinning immediately before HTTP transfer. Uploads require the
+current Qdrant target; only cleanup may use retained old targets. Endpoint changes
+pause old uploads rather than sending fresh vectors to a previous server.
+
+Deleted-source tombstones need no live file but still require valid generation,
+owner and target state. A failed generation rejects new upserts but may receive
+cleanup. Retired/missing metadata without durable collection-erasure intent is
+an inspectable retry/dead-letter condition, not successful cleanup. Neither
+point operation recreates a missing collection. Missing collections retry until
+prepared or superseded by terminal generation erasure.
+
+Successful transfer and revision-matching SQL `vector_state=delivered` update in
+one short acknowledgement transaction with lease-token CAS. A stale event cannot
+mark a newer chunk revision delivered. "Delivered" means the conditional request
+completed, not that every filter matched or the generation is verified. Stage 09
+must compare remote IDs, revisions, deletion states and completeness before any
+activation. Native Mail/Talk ACL integration is unit-tested; real IMAP/Talk and
+distributed failover/load still require configured runtime evidence.
+
+`tests/runtime/point-transport.php` uses an isolated in-memory SQLite connection,
+additive vector migrations and a disposable loopback Qdrant 1.16.0 instance. It
+checks explicit consent, actual native HTTP transport, current revision filtering,
+terminal tombstones and query isolation; collections are removed afterward. Its
+source-access double isolates protocol tests from real user accounts. Live app
+configuration and SQL data are never enabled or written by that probe.

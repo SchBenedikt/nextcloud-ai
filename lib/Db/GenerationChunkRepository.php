@@ -125,6 +125,7 @@ class GenerationChunkRepository {
         $generation->validateVector($vector);
         return ['id' => (int)$row['id'], 'document_id' => (int)$row['document_id'], 'file_id' => (int)$row['file_id'],
             'chunk_index' => (int)$row['chunk_index'], 'source' => $row['source'], 'path' => $row['path'],
+            'source_mtime' => (int)$row['file_mtime'], 'source_size' => (int)$row['size'],
             'content_hash' => $row['content_hash'], 'vector' => $vector];
     }
 

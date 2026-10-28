@@ -59,6 +59,25 @@ class VectorAdminController extends OCSController {
         catch (\Throwable) { return $this->failure('configuration_failed', 'Storage requests could not be disabled. Reload the current state before retrying.', 503); }
     }
 
+    #[AdminRequired]
+    public function pointDelivery(): DataResponse {
+        try {
+            if (!preg_match('~^application/json(?:\s*;|$)~i', $this->request->getHeader('Content-Type'))) throw new \InvalidArgumentException();
+            $enabled = $this->request->getParam('enabled');
+            if ($enabled === null) {
+                $raw = file_get_contents('php://input', false, null, 0, 1025);
+                if (!is_string($raw) || strlen($raw) > 1024) throw new \InvalidArgumentException();
+                $body = json_decode($raw, true, 16, JSON_THROW_ON_ERROR);
+            } else $body = ['enabled' => $enabled];
+            if (!is_array($body)) throw new \InvalidArgumentException();
+            $dto = \OCA\EvaAi\Dto\VectorPointDeliveryRequest::fromArray($body);
+            $this->connection->setPointDelivery($dto->enabled);
+            return new ErrorDataResponse(['points_requested' => $dto->enabled]);
+        } catch (\InvalidArgumentException|\JsonException) {
+            return $this->failure('invalid_request', 'Supply enabled as a JSON boolean.', 400);
+        } catch (\Throwable) { return $this->failure('configuration_failed', 'Point delivery settings could not be saved. Refresh the storage status before retrying.', 503); }
+    }
+
     /** Explicit POST: root API probe only, no collection preparation or content. */
     #[AdminRequired]
     public function check(): DataResponse {

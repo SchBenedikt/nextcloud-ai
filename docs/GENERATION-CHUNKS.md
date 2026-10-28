@@ -1,9 +1,10 @@
 # Building-generation SQL chunks
 
 Version 1.18.3 adds an internal generation writer and an indexed generation/
-document/chunk slot. It makes no model or Qdrant requests and is not called by
-the live Indexer, a backfill command or a point worker yet. Chunk synchronization
-remains unavailable. Use this mutation boundary when connecting the later builder.
+document/chunk slot. The writer makes no model or Qdrant requests. Regular SQL
+indexing and automatic backfill do not produce these generation rows yet; the
+opt-in worker added in 1.18.7 can now deliver explicitly prepared rows. Use this
+mutation boundary when connecting the later builder.
 
 ## Preserve rollback data
 
@@ -50,7 +51,7 @@ must increase and fit 2^53-1. No remote request runs in this transaction.
 
 `pointForDelivery()` reads an owned generation/revision-bound row and its joined
 current document. It checks the source stamp, content hash and vector, returning
-metadata/vector without document text. A later worker must separately check its
+metadata/vector without document text. The point worker separately checks its
 lease, flags, generation lifecycle/target, core user and source state at the final
 transfer boundary. Reading a point does not authorize remote transmission.
 
@@ -91,8 +92,8 @@ timestamps avoid that boundary, and identical source metadata is a no-op for
 invalidation. Ownership reassignment is rejected and rolled back. Bulk hash
 clearing uses bounded tenant-filtered batches through this boundary too.
 
-Rebuilding invalidated entries and durable point consumption still need integration
-before enabling point consumers. Rebuilding must allocate fresh chunk IDs and
+Rebuilding invalidated entries remains pending. Prepared-point consumption is
+available through its separate administrator consent, without activating reads. Rebuilding must allocate fresh chunk IDs and
 capture the new source stamp; terminal tombstone IDs must never be reused. Resumable source/provider-pinned
 backfill, generation completeness checks, exact-ID/revision verification, quotas,
 retention, shadow/primary reads and rollback drills remain pending. Per-generation
@@ -108,3 +109,10 @@ Document source stamps accept the existing Indexer MD5 content hashes (and
 SHA-256 hashes for compatible future sources). The stamp itself remains SHA-256
 over canonical metadata. Chunk integrity hashes remain strictly SHA-256; the
 source hash is a change detector, not an authenticity assertion.
+
+The optional consumer is documented in [VECTOR-OUTBOX.md](VECTOR-OUTBOX.md#prepared-point-worker-1187).
+It transfers only current, accessible prepared rows and marks the matching SQL
+revision delivered. Regular SQL indexing is unchanged; generation backfill,
+reconciliation after invalidation and verification remain prerequisites to search
+cutover. The native storage panels expose the consent separately from connection
+setup and from the still-unavailable migration/activation controls.

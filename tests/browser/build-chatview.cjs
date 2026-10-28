@@ -7,6 +7,7 @@ const config = require(path.join(root, 'webpack.js'))({}, { mode: 'development' 
 config.mode = 'development'
 config.entry = {
   chatview: path.join(__dirname, 'chatview-entry.js'),
+  vectorstatus: path.join(__dirname, 'vectorstatus-entry.js'),
   metricsview: path.join(__dirname, 'metricsview-entry.js'),
   workspace: path.join(root, 'src/main.js'),
 }
