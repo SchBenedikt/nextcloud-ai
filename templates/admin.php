@@ -169,7 +169,7 @@ $providerLabels = [
 				<tr><th scope="row"><?php p($l->t('Search backend')); ?></th><td><?php p($l->t('Built-in database (SQL)')); ?></td></tr>
 				<tr><th scope="row"><?php p($l->t('Optional Qdrant connection')); ?></th><td><?php p(!$storage['connection']['configured'] ? $l->t('Not configured') : ($storage['connection']['enabled'] ? $l->t('Configured · requests allowed') : $l->t('Configured · requests disabled'))); ?></td></tr>
 				<tr><th scope="row"><?php p($l->t('Generation cleanup')); ?></th><td><?php p($storage['erasure_worker_enabled'] ? $l->t('Enabled') : $l->t('Paused')); ?></td></tr>
-				<tr><th scope="row"><?php p($l->t('Chunk synchronization')); ?></th><td><?php p($l->t('Not available yet')); ?></td></tr>
+				<tr><th scope="row"><?php p($l->t('Chunk synchronization')); ?></th><td><?php p($storage['point_worker_enabled'] ? $l->t('Enabled') : $l->t('Paused')); ?></td></tr>
 				<tr><th scope="row"><?php p($l->t('Generation chunks in SQL')); ?></th><td><?php p((string)$storage['staged_chunks']); ?></td></tr>
 				<tr><th scope="row"><?php p($l->t('Waiting operations')); ?></th><td><?php p((string)$storage['queue']['pending']); ?></td></tr>
 				<tr><th scope="row"><?php p($l->t('Claimed operations')); ?></th><td><?php p((string)$storage['queue']['processing']); ?></td></tr>
@@ -180,7 +180,7 @@ $providerLabels = [
 			<p role="alert"><?php p($l->t('Some background operations exhausted their retries. An administrator needs to inspect them before retrying.')); ?></p>
 		<?php endif; ?>
 		<p class="settings-hint"><?php p($l->t('Configuration status is not a connection test. Generation cleanup only removes retired search collections; it does not index files or switch search backends.')); ?></p>
-		<p class="settings-hint"><?php p($l->t('Removing a file clears its local index and queues cleanup for prepared vector points. Renaming or changing a source discards its prepared entries for rebuilding. Point cleanup remains queued until chunk synchronization is available.')); ?></p>
+		<p class="settings-hint"><?php p($l->t('Removing a file clears its local index and queues cleanup for prepared vector points. Renaming or changing a source discards its prepared entries for rebuilding. Prepared point updates and cleanup run only when their delivery switches allow them.')); ?></p>
 		<?php if ($storage['staged_chunks'] > 0): ?>
 			<p class="settings-hint"><?php p($l->t('Prepared generation chunks are separate from the SQL search index. Their presence does not mean migration is verified or active.')); ?></p>
 		<?php endif; ?>

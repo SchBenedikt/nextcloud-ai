@@ -11,7 +11,7 @@
 		<NcNoteCard v-if="notice.text" :type="notice.type" role="status">{{ notice.text }}</NcNoteCard>
 		<details @toggle="onToggle">
 			<summary>{{ $t('Configure optional storage') }}</summary>
-			<p>{{ $t('Saving changes the server configuration only. It does not upload files, create collections or change the SQL search backend.') }}</p>
+			<p>{{ $t('Saving changes the connection. Allowing requests can resume enabled workers; it does not backfill files, create collections or switch SQL search.') }}</p>
 			<NcButton v-if="!formReady" variant="tertiary" :disabled="!!busy" :loading="busy === 'load'" @click="loadConfiguration">
 				{{ $t('Load connection settings') }}
 			</NcButton>
@@ -22,7 +22,7 @@
 					<NcPasswordField v-if="!noKey" v-model="apiKey" :label="$t('New API key')" :maxlength="4096" autocomplete="new-password" :check-password-strength="false" required />
 					<p class="connection-help">{{ keyConfigured ? $t('An API key is stored. Enter it again to save changes; stored keys are never returned.') : $t('The API key is encrypted on the server and cleared from this form after saving.') }}</p>
 					<NcCheckboxRadioSwitch v-model:checked="allowRequests">{{ $t('Allow Qdrant requests') }}</NcCheckboxRadioSwitch>
-					<p class="connection-help">{{ $t('Allowing requests also resumes any enabled generation cleanup jobs, including cleanup on retained servers. Disabling requests pauses delivery; it does not discard pending operations.') }}</p>
+					<p class="connection-help">{{ $t('Allowing requests resumes enabled point delivery and generation cleanup jobs, including cleanup on retained servers. Disabling requests pauses delivery; it does not discard pending operations.') }}</p>
 					<p class="connection-help">{{ $t('Remote servers require HTTPS. Local and private servers also need the instance network allowlist; a successful save does not verify connectivity.') }}</p>
 					<NcButton type="submit" variant="primary" :loading="busy === 'save'">{{ $t('Save connection') }}</NcButton>
 				</fieldset>

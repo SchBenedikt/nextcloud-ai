@@ -1417,7 +1417,13 @@
     "Web search is opt-in and off by default. Each user turns it on and picks a provider in their personal Eva AI settings; the options below provide the instance-wide infrastructure for everyone.": "Web search is opt-in and off by default. Each user turns it on and picks a provider in their personal Eva AI settings; the options below provide the instance-wide infrastructure for everyone.",
     "not required": "not required",
     "passes running": "passes running",
-    "required": "required"
+    "required": "required",
+    "Allow prepared vector point delivery": "Allow prepared vector point delivery",
+    "Allowing requests resumes enabled point delivery and generation cleanup jobs, including cleanup on retained servers. Disabling requests pauses delivery; it does not discard pending operations.": "Allowing requests resumes enabled point delivery and generation cleanup jobs, including cleanup on retained servers. Disabling requests pauses delivery; it does not discard pending operations.",
+    "Enabling also resumes generation cleanup when storage requests are allowed. Disabling pauses point delivery; use Disable storage requests to stop all transfers. This does not backfill files or switch search.": "Enabling also resumes generation cleanup when storage requests are allowed. Disabling pauses point delivery; use Disable storage requests to stop all transfers. This does not backfill files or switch search.",
+    "Point delivery settings could not be saved. Refresh the storage status before retrying.": "Point delivery settings could not be saved. Refresh the storage status before retrying.",
+    "Removing a file clears its local index and queues cleanup for prepared vector points. Renaming or changing a source discards its prepared entries for rebuilding. Prepared point updates and cleanup run only when their delivery switches allow them.": "Removing a file clears its local index and queues cleanup for prepared vector points. Renaming or changing a source discards its prepared entries for rebuilding. Prepared point updates and cleanup run only when their delivery switches allow them.",
+    "Saving changes the connection. Allowing requests can resume enabled workers; it does not backfill files, create collections or switch SQL search.": "Saving changes the connection. Allowing requests can resume enabled workers; it does not backfill files, create collections or switch SQL search."
   },
   "pluralForm": "nplurals=2; plural=(n != 1);",
   "EVA – Chat": "EVA – Chat",

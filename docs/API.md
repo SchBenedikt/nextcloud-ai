@@ -21,7 +21,7 @@ configuration and actionable outbox counts, never contacting Qdrant or an
 embedding provider. The OCS data on success is:
 
 ```json
-{"available":true,"retrieval_backend":"sql_legacy","connection":{"enabled":false,"configured":false,"key_configured":false},"erasure_worker_enabled":false,"chunk_sync_available":false,"staged_chunks":0,"queue":{"pending":0,"processing":0,"dead":0},"observed_at":1793209009}
+{"available":true,"retrieval_backend":"sql_legacy","connection":{"enabled":false,"configured":false,"key_configured":false},"erasure_worker_enabled":false,"chunk_sync_available":true,"points_requested":false,"point_worker_enabled":false,"staged_chunks":0,"queue":{"pending":0,"processing":0,"dead":0},"observed_at":1793209009}
 ```
 
 `observed_at` is a Unix timestamp. Claimed operations can include expired leases;
@@ -29,13 +29,14 @@ they do not prove a worker is running. Counts cover pending/processing/dead even
 excluding delivered/superseded history from the aggregate query. This is an
 observational snapshot, not an atomic distributed health assessment. Configuration
 flags do not establish remote reachability or collection readiness. SQL remains
-the only selected retrieval backend in this stack; chunk synchronization is not
-available. The future rollout implementation must update this contract and UI
-together when those modes become real.
+the only selected retrieval backend in this stack. `chunk_sync_available=true`
+indicates the prepared-point consumer exists, not that backfill, verification or
+cutover is available. `points_requested` records explicit administrator consent;
+`point_worker_enabled` additionally requires the connection/cleanup gates.
 
 Pending operations can now include durable source-deletion tombstones. They stay
-queued until point synchronization is implemented; queue presence does not prove
-remote erasure. SQL-only source deletion does not create vector operations.
+queued until the relevant delivery gates allow processing; queue presence does
+not prove remote erasure. SQL-only source deletion does not create vector operations.
 
 `staged_chunks` counts generation-tagged SQL rows separately from the NULL-
 generation legacy index. It does not assert delivery, verification or readiness.
@@ -304,3 +305,14 @@ endpoint hash rather than a URL. Provider credentials are not included. Retrieva
 of this metadata is ownership-filtered and keyset-paged; a metadata read failure
 fails the export rather than falsely presenting it as complete. This addition
 creates no vector-management HTTP routes; generation preparation is OCC-only.
+
+## Prepared-point consent
+
+`POST /api/admin/vector-storage/points` requires an administrator, normal CSRF
+validation, `Content-Type: application/json` and `{ "enabled": true|false }`.
+String/numeric values are rejected with HTTP 400. Success returns
+`{ "points_requested": true|false }`. Enabling also allows the existing generation
+cleanup worker; disabling points does not disable cleanup. No provider/collection
+probe, backfill or retrieval switch runs in the request. Read the shared status
+snapshot after saving, including after HTTP 503, to observe authoritative gates.
+Existing connection disable stops all Qdrant transfers.

@@ -18,6 +18,8 @@
 
 ### Reliability and documentation
 
+- Add opt-in prepared-vector point delivery with native admin consent, fresh source/owner/target/lease guards, terminal tombstones and revision-bound acknowledgement; keep backfill and search cutover unavailable.
+
 - Preserve successful nullable-error response bodies instead of turning them into failures; render structured file-context errors as readable messages.
 
 - Keep chat busy until ordered history writes finish, preserve bounded writes across navigation and warn before leaving unfinished work; prevent a completed response from being queued again as background generation.

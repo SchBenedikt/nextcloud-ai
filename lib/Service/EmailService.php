@@ -136,6 +136,15 @@ class EmailService {
      *
      * @return array{ok:true,result:array}|array{ok:false,error:string}
      */
+    /** Ownership check only: no IMAP fetch, recipients or message body. */
+    public function messageAccessible(string $userId, int $messageId): bool {
+        if ($messageId < 1) return false;
+        return $this->q('SELECT m.`id` FROM *PREFIX*mail_messages m
+            INNER JOIN *PREFIX*mail_mailboxes b ON m.`mailbox_id` = b.`id`
+            INNER JOIN *PREFIX*mail_accounts a ON b.`account_id` = a.`id`
+            WHERE m.`id` = ? AND a.`user_id` = ?', [$messageId, $userId]) !== [];
+    }
+
     public function readMessage(string $userId, int $messageId): array {
         $mailboxIds = $this->mailboxIdsOf($userId);
         if ($mailboxIds === []) {

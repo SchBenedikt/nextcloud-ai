@@ -6,19 +6,21 @@ namespace OCA\EvaAi\Command;
 
 use OCA\EvaAi\Db\VectorOutboxRepository;
 use OCA\EvaAi\Vector\VectorErasureWorker;
+use OCA\EvaAi\Vector\VectorPointWorker;
 use Symfony\Component\Console\Command\Command;
 use Symfony\Component\Console\Input\InputArgument;
 use Symfony\Component\Console\Input\InputInterface;
 use Symfony\Component\Console\Input\InputOption;
 use Symfony\Component\Console\Output\OutputInterface;
 
-/** Inspection is offline; explicit run consumes enabled generation erasure only. */
+/** Inspection is offline; explicit run chooses generation erasure or prepared-point delivery. */
 final class VectorOutbox extends Command {
-    public function __construct(private VectorOutboxRepository $outbox, private VectorErasureWorker $worker) { parent::__construct(); }
+    public function __construct(private VectorOutboxRepository $outbox, private VectorErasureWorker $worker, private VectorPointWorker $points) { parent::__construct(); }
     protected function configure(): void {
         $this->setName('eva_ai:vector:outbox')->setDescription('Inspect synchronization intent or explicitly retry a dead letter')
             ->addArgument('action', InputArgument::REQUIRED, 'status, list, retry or run')
-            ->addOption('limit', null, InputOption::VALUE_REQUIRED, 'Maximum erasure events to claim (1–20)', '5')
+            ->addOption('points', null, InputOption::VALUE_NONE, 'Run explicitly enabled prepared-point delivery instead of generation erasure')
+            ->addOption('limit', null, InputOption::VALUE_REQUIRED, 'Maximum events to claim (erasure 1–20, points 1–100)', '5')
             ->addOption('state', null, InputOption::VALUE_REQUIRED, 'State to list', 'dead')
             ->addOption('after', null, InputOption::VALUE_REQUIRED, 'ID cursor', '0')
             ->addOption('id', null, InputOption::VALUE_REQUIRED, 'Dead-letter ID to retry');
@@ -28,8 +30,9 @@ final class VectorOutbox extends Command {
             $action = $input->getArgument('action');
             if ($action === 'run') {
                 $limit = $this->id($input->getOption('limit'));
-                if ($limit < 1 || $limit > 20) throw new \InvalidArgumentException('Limit must be between 1 and 20.');
-                $data = $this->worker->run($limit);
+                $maximum = $input->getOption('points') ? 100 : 20;
+                if ($limit < 1 || $limit > $maximum) throw new \InvalidArgumentException('Limit must be between 1 and ' . $maximum . '.');
+                $data = $input->getOption('points') ? $this->points->run($limit) : $this->worker->run($limit);
                 $output->writeln(json_encode($data, JSON_PRETTY_PRINT | JSON_THROW_ON_ERROR), OutputInterface::OUTPUT_RAW);
                 return $data['failed'] > 0 ? 1 : 0;
             }

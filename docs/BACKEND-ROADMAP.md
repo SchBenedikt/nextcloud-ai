@@ -218,8 +218,9 @@ replaced by a successful build or an adapter unit test.
   implemented; live protocol, isolation and deployment verification pending.
 - 08: target registry, durable journal, lease/retry primitives and transactional
   account-erasure intent and disabled-by-default generation-erasure consumer
-  implemented; chunk worker, revision/tombstone fencing and general mutation
-  integration remain pending.
+  implemented, now including the opt-in prepared-point worker and canonical source
+  mutation/deletion journal. Backfill, bulk throughput and continuous generation
+  reconciliation remain pending.
 - 09–14: pending; a stage is complete only when its code and matching operating
   documentation exist. Validation and production rollout remain separately
   recorded. No Qdrant deployment or production data migration has occurred.
@@ -400,3 +401,14 @@ remote calls. Source-stamp field updates and tenant-filtered hash clearing also 
 prepared entries transactionally, while preserving legacy chunks. Rebuilding
 those entries, point consumption, backfill and activation are still pending. No database concurrency/rollback execution is
 claimed by that implementation batch; the later local runtime checks are recorded in QUALITY.md.
+
+### Prepared-point consumer and consent
+
+The 1.18.7 slice adds bounded point delivery, distinct opt-in consent in native
+administration, fresh owner/source/target/lease guards and revision-bound SQL
+acknowledgement. SQL retrieval and ordinary indexing remain the default. Isolated
+SQLite vector migrations and real Qdrant 1.16 transport/reordered writes/tombstones
+have passed. Native source-access and disable/stale-lease guards have unit coverage.
+Representative scale, multi-version/HA, true concurrent interruption, cross-database
+matrix, backfill and search activation are still open gates; transport delivery
+is not completion of the report or verified migration.

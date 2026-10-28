@@ -9,8 +9,8 @@ Qdrant request. Configuring a connection does not select it for chat retrieval.
 
 The adapter targets Qdrant 1.x, minimum 1.16.0. Health explicitly checks the root
 API version; this is reachability/capability metadata, not proof of collection
-readiness, HA, backup health or successful indexing. Live version-matrix and
-transport tests have not yet been performed.
+readiness, HA, backup health or successful indexing. A disposable loopback 1.16.0 transport test has passed; a live multi-version/cluster
+matrix remains pending.
 
 Protocol references used during implementation:
 
@@ -86,9 +86,9 @@ compare exact IDs, revisions and deletion state, not just delivery acknowledgeme
 
 Unversioned points fail the update predicate and the read checks. An earlier
 experimental nonempty collection must be rebuilt in a new generation, never
-silently adopted. This stack has not populated collections. Mutation producers,
-current-SQL/lease guards and point-event consumers are still pending, so this
-adapter protocol alone does not enable synchronization. Request-shape, reordered
+silently adopted. Only disposable fixture collections have been populated. Mutation producers,
+current-SQL/lease guards and the opt-in prepared-point consumer are integrated.
+The adapter alone still does not enable synchronization. Request-shape, reordered
 upsert/delete, missing-point deletion, duplicate retry, metadata erasure and
 multi-node concurrency checks remain unexecuted while tests are suspended.
 
@@ -199,3 +199,18 @@ An explicitly enabled generation-erasure worker is now available through cron or
 post-DNS lease/status guard. Preparation likewise rechecks building ownership and
 target before transfer. Execution is disabled by default; see VECTOR-OUTBOX.md
 before enabling it. This consumer does not replicate chunk data or activate reads.
+
+## Prepared-point transport
+
+Version 1.18.7 adds an explicit administrator point-consent gate and a bounded
+background/CLI consumer. It uses only existing prepared collections and retains
+revision/terminal tombstone rules. Uploads require the current destination;
+cleanup can address a retained destination. Native source access and post-DNS
+lease/flag/source checks run before transfer. See [VECTOR-OUTBOX.md](VECTOR-OUTBOX.md#prepared-point-worker-1187).
+
+The disposable Qdrant 1.16.0 fixture verified conditional old/new revisions and
+terminal tombstones against the actual server through the native HTTP transport,
+including SQL acknowledgement on an isolated SQLite fixture. This is not a
+production-corpus migration, ANN benchmark, distributed consistency proof or
+claim about all newer Qdrant versions. The optional deployment stays off on
+installation and upgrade.
