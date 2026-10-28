@@ -192,3 +192,13 @@ operator prerequisite; the fingerprint protocol is not a serializable transactio
 Live executions, representative datasets and acceptance measurements remain pending
 under the instruction to defer tests. Neither successful syntax checking nor the
 synthetic dataset satisfies the production quality/performance gates.
+
+### Account-erasure prerequisite discovered during schema work
+
+The legacy cleanup removed document rows before deleting chunks, but
+ChunkMapper::deleteForUser identifies chunks through those document rows. Cleanup
+now deletes chunks first and only deletes parent documents if that succeeds.
+A chunk-deletion failure retains the ownership mapping for a retry while the
+remaining best-effort account cleanup continues. This prevents newly orphaning
+chunks in this path; it does not retroactively identify owners of historical
+orphans or implement a durable retry queue. Those remain storage-erasure work.

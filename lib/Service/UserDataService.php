@@ -91,16 +91,14 @@ class UserDataService {
         if ($userId === '') {
             return;
         }
-        // DB rows and cached vectors.
-        try {
-            $this->documentMapper->deleteByUser($userId);
-        } catch (\Throwable $e) {
-            $this->logger->warning('eva_ai: document cleanup failed on account deletion', ['user' => $userId]);
-        }
+        // Chunk ownership is derived through the document join. Keep those
+        // parent rows until chunk erasure succeeds, including on failure so
+        // a retry can still identify every affected chunk.
         try {
             $this->chunkMapper->deleteForUser($userId);
+            $this->documentMapper->deleteByUser($userId);
         } catch (\Throwable $e) {
-            $this->logger->warning('eva_ai: chunk cleanup failed on account deletion', ['user' => $userId]);
+            $this->logger->warning('eva_ai: index cleanup failed on account deletion; document ownership retained for retry', ['user' => $userId]);
         }
         try {
             $this->embeddingCache->clearUser($userId);
