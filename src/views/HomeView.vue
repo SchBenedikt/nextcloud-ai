@@ -69,14 +69,14 @@ export default {
 </script>
 
 <style scoped>
-.home-view { width: min(100%, 1040px); height: 100%; min-height: 0; margin: 0 auto; padding: clamp(12px, 3vh, 28px) clamp(16px, 3vw, 32px) max(8px, env(safe-area-inset-bottom)); box-sizing: border-box; display: flex; flex-direction: column; gap: clamp(8px, 2vh, 20px); overflow: hidden; }
-.home-main { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; justify-content: center; align-items: center; }
-.home-greeting { width: min(100%, 720px); margin: 0 0 16px; color: var(--color-main-text); text-align: center; font-size: clamp(19px, 2.4vh, 24px); font-weight: 600; line-height: 1.25; }
-.home-compose { width: min(100%, 720px); flex: 0 0 auto; margin: 0 auto; }
+.home-view { --home-column-width: 640px; width: min(100%, 1040px); height: 100%; min-height: 0; margin: 0 auto; padding: clamp(12px, 3vh, 28px) clamp(16px, 3vw, 32px) max(8px, env(safe-area-inset-bottom)); box-sizing: border-box; display: flex; flex-direction: column; gap: clamp(8px, 2vh, 20px); overflow: hidden; }
+.home-main { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; justify-content: center; align-items: center; transform: translateY(clamp(0px, 6vh, 48px)); }
+.home-greeting { width: min(100%, var(--home-column-width)); margin: 0 0 16px; color: var(--color-main-text); text-align: center; font-size: clamp(19px, 2.4vh, 24px); font-weight: 600; line-height: 1.25; }
+.home-compose { width: min(100%, var(--home-column-width)); flex: 0 0 auto; margin: 0 auto; }
 .home-compose :deep(textarea) { min-height: 96px; max-height: 20vh; }
 .compose-actions { display: flex; justify-content: flex-end; margin-top: 8px; }
-.recent-chats { width: min(100%, 720px); flex: 0 0 auto; align-self: center; min-height: 0; overflow: hidden; }
+.recent-chats { width: min(100%, var(--home-column-width)); flex: 0 0 auto; align-self: center; min-height: 0; overflow: hidden; }
 h2 { font-size: 16px; font-weight: 600; margin: 0 0 12px; }
 .chat-icon { flex: none; margin-inline-end: 16px; color: var(--color-text-maxcontrast); }
-@media (max-width: 600px) { .home-view { padding-inline: 16px; } .home-greeting { margin-bottom: 12px; } .home-compose :deep(textarea) { min-height: 88px; } }
+@media (max-width: 600px) { .home-view { padding-inline: 16px; } .home-main { transform: translateY(clamp(0px, 3vh, 20px)); } .home-greeting { margin-bottom: 12px; } .home-compose :deep(textarea) { min-height: 88px; } }
 </style>
