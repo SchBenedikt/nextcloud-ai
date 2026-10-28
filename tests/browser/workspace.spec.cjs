@@ -174,6 +174,7 @@ test('a delayed provider refresh preserves newer edits and autosaves them', asyn
 	release()
 	await expect(sources).toHaveValue('7')
 	await expect.poll(() => calls.some(call => call.method === 'PUT' && call.body?.top_k === '7')).toBe(true)
+	expect(errors).toEqual([])
 })
 
 test('documents can retry a failed chunk request and load the remaining text', async ({ page }) => {

@@ -84,3 +84,7 @@ navigation behaves like the real themed application.
 After the follow-up, the combined tree passes 726 PHP tests (8 environment
 skips), 48 frontend tests and all 32 browser tests. The production build and
 ESLint also pass (12 existing advisory warnings, no errors).
+
+The subsequent home-screen simplification restores only a large message field
+and recent chats. Its production assets were rebuilt. Tests and PR/review checks
+were intentionally not rerun or reviewed for this final adjustment, as requested.
