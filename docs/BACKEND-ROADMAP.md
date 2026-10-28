@@ -5,6 +5,14 @@ Source: *Technische Backend-Analyse von EVA AI*, 23 pages, dated 28 October
 accounts for the workspace stack #698–#699. Vendor pricing, product lifecycle
 claims and estimated latency in the report are not measured EVA results.
 
+Installation requirement confirmed by the user: installing EVA must remain
+sufficient to use its existing storage path. SQL retrieval is the zero-additional-
+service default. Qdrant is an explicitly configured optional scale backend;
+missing Qdrant configuration must not block app installation, upgrades, chat or
+SQL indexing. Never start an external service or transmit existing documents to
+one merely because the app was installed. Deployment automation and operating
+instructions must support both standalone-app and optional-vector-store modes.
+
 ## Verified starting point
 
 - `Searcher::loadCandidates()` visits the complete tenant index in 2,000-row
