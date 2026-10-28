@@ -117,7 +117,10 @@ replaced by a successful build or an adapter unit test.
 ## Progress
 
 - 01: implemented in this branch.
-- 02–14: pending; a stage is complete only when its code and matching operating
+- 02: embedding dependency boundary implemented; automated validation deferred.
+- 03: initial stage timings implemented; independent lexical/fusion spans and
+  a metrics exporter remain follow-up work.
+- 04–14: pending; a stage is complete only when its code and matching operating
   documentation exist. Validation and production rollout remain separately
   recorded. No Qdrant deployment or production data migration has occurred.
 
@@ -128,3 +131,10 @@ it to the existing Ollama instance. Ollama implements the contract directly, so
 existing constructors and test doubles remain valid. No additional provider is
 activated. Automated tests remain deferred at user request; only syntax/patch
 checks are recorded for this stage.
+
+### Stage 03 implementation
+
+Searcher now emits optional privacy-preserving debug stage measurements using a
+monotonic clock. Logging failures cannot fail retrieval. Candidate selection and
+ranking remain unchanged. These events are not yet a metrics exporter, benchmark
+corpus, latency claim or completed shadow/soak gate. Automated tests remain deferred.
