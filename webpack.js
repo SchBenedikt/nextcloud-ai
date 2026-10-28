@@ -6,8 +6,9 @@ const { VueLoaderPlugin } = require('vue-loader')
 module.exports = (env, argv) => {
 	const isProd = argv?.mode === 'production' || process.env.NODE_ENV === 'production'
 	return {
-		// Opt-in bounded build for small Nextcloud hosts.
-		...(process.env.EVA_LOW_MEMORY_BUILD === '1' ? {
+		// Serialize production loaders/minification for reproducible Vue source maps
+		// and bounded memory on Nextcloud hosts. Development stays parallel.
+		...(isProd || process.env.EVA_LOW_MEMORY_BUILD === '1' ? {
 			parallelism: 1,
 			optimization: { minimizer: [new TerserPlugin({ parallel: false })] },
 		} : {}),

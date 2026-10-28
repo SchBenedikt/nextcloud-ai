@@ -1,12 +1,12 @@
 # Workspace settings
 
 Only the selected section is rendered. Shared form state survives section
-switches. Opening Models does not fetch connector lists, extensions, API keys,
+switches. Opening AI models does not fetch connector lists, extensions, API keys,
 briefing history or personal knowledge.
 
 | Section | Contents |
 | --- | --- |
-| Models | Chat profiles and the Ollama connection |
+| AI models | Chat profiles and the Ollama connection |
 | Documents | Retrieval quality, indexing scope, limits and exclusions |
 | Tools & permissions | Actions, terminal permissions, Talk, notifications and web search |
 | Automation | Briefing schedules, channels and history |
@@ -35,3 +35,12 @@ URLs continue to work. Diagnostics load when Advanced opens or when you request
 a refresh, rather than on every settings visit.
 
 See the [configuration reference](CONFIGURATION.md) for keys, defaults and limits.
+
+## Native navigation and layout
+
+The home screen contains a large message field and recent conversations.
+Recent conversations use native Nextcloud dashboard list items. It reuses the chat list without requesting diagnostics.
+Settings categories live in the app sidebar, replacing the secondary tab bar.
+`/settings?section=knowledge` links directly to Documents; browser history
+preserves section changes. Sections and provider rows use `NcSettingsSection`
+and `NcListItem`, with theme colors and controls supplied by Nextcloud.

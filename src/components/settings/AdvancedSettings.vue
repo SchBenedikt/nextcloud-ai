@@ -1,6 +1,6 @@
 <template>
 <div class="settings-group">
-<section class="settings-section"><h3>{{ $t('Background API access') }}</h3>
+<NcSettingsSection class="settings-section" :name="$t('Background API access')">
 				<div class="field-grid generic-api-settings">
 					<div class="field field-wide">
 						<NcTextField id="nextcloud-api-token" v-model="nextcloudApiToken" type="password" autocomplete="new-password" :label="$t('Nextcloud app token for background API actions')" />
@@ -9,9 +9,9 @@
 					</div>
 				</div>
 
-</section>
-<section class="settings-section">
-				<div class="section-heading"><div><h3>{{ $t('External connectors') }}</h3><p>{{ $t('Connect an external service that EVA can inspect and use only after confirmation. Credentials are encrypted and never shown again.') }}</p></div></div>
+</NcSettingsSection>
+<NcSettingsSection class="settings-section" :name="$t('External connectors')" :description="$t('Connect an external service that EVA can inspect and use only after confirmation. Credentials are encrypted and never shown again.')">
+
 				<div v-if="connectorsLoading" class="field-help">{{ $t('Loading connectors…') }}</div>
 				<div v-else-if="connectorLoadError" class="load-error" role="alert"><span>{{ $t('Could not load connectors: {error}', { error: connectorLoadError }) }}</span><NcButton variant="tertiary" @click="loadConnectors">{{ $t('Try again') }}</NcButton></div>
 				<div v-else-if="!connectors.length" class="empty-state">{{ $t('No external connectors are configured yet.') }}</div>
@@ -23,9 +23,9 @@
 			<div class="connector-examples"><span class="native-label">{{ $t('Quick setup examples') }}</span><NcButton variant="tertiary-no-background" @click="applyConnectorExample('immich')">{{ $t('Immich') }}</NcButton><NcButton variant="tertiary-no-background" @click="applyConnectorExample('vaultwarden')">{{ $t('Vaultwarden') }}</NcButton><NcButton variant="tertiary-no-background" @click="applyConnectorExample('truenas')">{{ $t('TrueNAS') }}</NcButton><NcButton variant="tertiary-no-background" @click="applyConnectorExample('homeassistant')">{{ $t('Home Assistant') }}</NcButton><NcButton variant="tertiary-no-background" @click="applyConnectorExample('github')">{{ $t('GitHub') }}</NcButton></div>
 			<div class="connector-form"><NcTextField v-model="connectorDraft.id" :label="$t('Connector ID')" :placeholder="$t('Generated from service URL if left blank')" /><NcTextField v-model="connectorDraft.name" :label="$t('Display name')" :placeholder="$t('Uses connector ID if left blank')" /><NcTextField v-model="connectorDraft.base_url" type="url" :label="$t('Service base URL')" placeholder="https://api.example.com" /><NcTextField v-model="connectorDraft.openapi_url" type="url" :label="$t('OpenAPI / Swagger URL (optional)')" placeholder="https://api.example.com/custom/openapi.json" /><div class="auth-choice"><span class="native-label">{{ $t('Authentication') }}</span><NcCheckboxRadioSwitch v-model="connectorDraft.auth_type" type="radio" name="eva-connector-auth" value="none">{{ $t('None') }}</NcCheckboxRadioSwitch><NcCheckboxRadioSwitch v-model="connectorDraft.auth_type" type="radio" name="eva-connector-auth" value="bearer">{{ $t('Bearer token') }}</NcCheckboxRadioSwitch><NcCheckboxRadioSwitch v-model="connectorDraft.auth_type" type="radio" name="eva-connector-auth" value="basic">{{ $t('Username and password') }}</NcCheckboxRadioSwitch><NcCheckboxRadioSwitch v-model="connectorDraft.auth_type" type="radio" name="eva-connector-auth" value="api_key">{{ $t('API key') }}</NcCheckboxRadioSwitch></div><NcTextField v-if="connectorDraft.auth_type === 'bearer'" v-model="connectorDraft.token" type="password" autocomplete="new-password" :label="$t('Bearer / service token (optional)')" :placeholder="$t('Leave empty to keep the saved secret')" /><template v-if="connectorDraft.auth_type === 'basic'"><NcTextField v-model="connectorDraft.username" autocomplete="username" :label="$t('Username (optional)')" /><NcTextField v-model="connectorDraft.password" type="password" autocomplete="new-password" :label="$t('Password (optional)')" :placeholder="$t('Leave empty to keep the saved secret')" /></template><template v-if="connectorDraft.auth_type === 'api_key'"><NcTextField v-model="connectorDraft.api_key" type="password" autocomplete="new-password" :label="$t('API key (optional)')" :placeholder="$t('Leave empty to keep the saved secret')" /><NcTextField v-model="connectorDraft.api_key_header" :label="$t('API key header')" placeholder="X-API-Key" /></template><NcButton variant="primary" :disabled="connectorsBusy || !connectorDraft.base_url" @click="saveConnector">{{ $t('Save connector') }}</NcButton></div>
 			<p class="field-help">{{ $t('The connector adapter sends the selected authentication scheme (Bearer, Basic or API key). Secrets are encrypted at rest and never returned. Public HTTPS hosts and explicitly local HTTP(S) services are supported; every external action requires confirmation.') }}</p>
-			</section>
-<section id="settings-plugins" class="settings-section">
-				<div class="section-heading"><div><h3>{{ $t('EVA extensions') }}</h3><p>{{ $t('Installed Nextcloud apps can add namespaced tools to EVA. Their schemas are visible here; actions still follow EVA confirmation and surface rules.') }}</p></div></div>
+			</NcSettingsSection>
+<NcSettingsSection id="settings-plugins" class="settings-section" :name="$t('EVA extensions')" :description="$t('Installed Nextcloud apps can add namespaced tools to EVA. Their schemas are visible here; actions still follow EVA confirmation and surface rules.')">
+
 				<div v-if="pluginsLoading" class="field-help">{{ $t('Loading extensions…') }}</div>
 				<div v-else-if="pluginLoadError" class="load-error" role="alert"><span>{{ $t('Could not load extensions: {error}', { error: pluginLoadError }) }}</span><NcButton variant="tertiary" @click="loadPlugins">{{ $t('Try again') }}</NcButton></div>
 				<div v-else-if="!plugins.length" class="empty-state">{{ $t('No third-party EVA tools are installed yet.') }}</div>
@@ -33,10 +33,10 @@
 					<div><strong>{{ plugin.name }}</strong><p>{{ plugin.description }}</p><div class="plugin-meta"><span>{{ pluginRiskLabel(plugin.risk) }}</span><span>{{ pluginSurfacesLabel(plugin.surfaces) }}</span><span v-if="plugin.requiresConfirmation">{{ $t('Confirmation required') }}</span><span v-else>{{ $t('No confirmation for read-only use') }}</span></div><NcCheckboxRadioSwitch :model-value="plugin.enabled" :disabled="pluginsSaving.includes(plugin.name)" @update:model-value="enabled => setPluginEnabled(plugin, enabled)">{{ $t('Enable this tool in EVA chat') }}</NcCheckboxRadioSwitch></div>
 					<code>{{ Object.keys(plugin.parameters?.properties || {}).join(', ') || $t('no arguments') }}</code>
 				</div>
-			</section>
+			</NcSettingsSection>
 
-<section id="settings-api-keys" class="settings-section">
-				<div class="section-heading"><div><h3>{{ $t('Programmatic API keys') }}</h3><p>{{ $t('Create credentials for scripts and integrations. Keys inherit your Nextcloud account access.') }}</p></div><NcButton variant="tertiary" :disabled="apiKeysLoading" @click="loadApiKeys">{{ $t('Refresh') }}</NcButton></div>
+<NcSettingsSection id="settings-api-keys" class="settings-section" :name="$t('Programmatic API keys')" :description="$t('Create credentials for scripts and integrations. Keys inherit your Nextcloud account access.')">
+
 				<form class="api-key-form" @submit.prevent="createApiKey">
 					<input v-model="apiKeyDraft.name" class="native-input" maxlength="80" :placeholder="$t('Key name, for example Home automation')" required />
 					<NcSelect v-model="apiKeyDraft.scope" :options="apiKeyScopeOptions" label="label" :reduce="option => option.value" :input-label="$t('API key scope')" :label-outside="true" />
@@ -50,17 +50,17 @@
 				<p v-else-if="!apiKeys.length" class="field-help">{{ $t('No API keys have been created.') }}</p>
 				<div v-for="key in apiKeys" :key="key.id" class="api-key-row"><div><strong>{{ key.name }}</strong><small><code>{{ key.key_prefix }}…</code> · {{ key.scope }} · {{ $t('{count} calls', { count: key.call_count }) }} · {{ key.last_used_at ? $t('Last used {time}', { time: new Date(key.last_used_at * 1000).toLocaleString() }) : $t('Never used') }}<span v-if="key.expires_at"> · {{ $t('Expires {time}', { time: new Date(key.expires_at * 1000).toLocaleDateString() }) }}</span><span v-if="key.ip_whitelist.length"> · {{ $t('IP restricted') }}: {{ key.ip_whitelist.join(', ') }}</span></small></div><NcButton variant="error" :disabled="apiKeysBusy" @click="revokeApiKey(key)">{{ $t('Revoke') }}</NcButton></div>
 				<p class="field-help">{{ $t('Use a key with the Authorization: Bearer header. External chat requires write scope and does not execute tools.') }} <a :href="apiDocsUrl" target="_blank" rel="noopener noreferrer">{{ $t('API documentation') }}</a></p>
-			</section>
+			</NcSettingsSection>
 </div>
 </template>
 
 <script>
 import { inject } from 'vue'
-import { NcButton, NcCheckboxRadioSwitch, NcSelect, NcTextField } from '@nextcloud/vue'
+import { NcSettingsSection, NcButton, NcCheckboxRadioSwitch, NcSelect, NcTextField } from '@nextcloud/vue'
 
 export default {
  name: 'AdvancedSettings',
- components: { NcButton, NcCheckboxRadioSwitch, NcSelect, NcTextField },
+ components: { NcSettingsSection, NcButton, NcCheckboxRadioSwitch, NcSelect, NcTextField },
  setup() { return inject('eva-settings') },
 }
 </script>

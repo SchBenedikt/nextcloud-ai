@@ -239,49 +239,20 @@ class ApiController extends OCSController {
         $this->config->setUserId($user);
         $this->recoverStaleIndex();
         $indexRunning = $this->config->get('index_running') === '1';
-        $allowed = [
-            'chat_provider', 'groq_model', 'custom_provider_url', 'custom_provider_model', 'provider_profiles', 'ollama_url', 'embedding_model', 'chat_model', 'chat_model_fallback',
-            'embedding_model_fallback', 'summary_model', 'top_k', 'chunk_size',
-            'chunk_overlap', 'max_file_size', 'max_files_per_run', 'index_storage_quota', 'scope_path', 'context_size', 'temperature',
-            'actions_enabled', 'background_actions_enabled', 'learning_enabled', 'safe_commands_enabled', 'terminal_commands_enabled', 'terminal_command_any', 'terminal_command_allowlist', 'agent_max_tool_rounds',
-            'exec_write_types', 'exec_write_max_chars', 'exec_delete_mode',
-            'notify_on_complete',
-            'voice_input_enabled',
-            'proactive_enabled', 'proactive_schedules',
-            'mail_index_enabled',
-            'mail_index_max',
-            'embed_batch_size', 'ocr_enabled', 'ocr_language',
-            'ollama_keep_alive', 'followups_mode',
-            // Shared provider infrastructure stays on the admin endpoint;
-            // tool permissions and web search behavior are user settings.
-            'talk_history_size',
-            'talk_bot_trigger',
-            'talk_classify_all',
-            // Posting into Talk as the signed-in user (off by default).
-            'talk_write_enabled',
-            'exclude_paths',
-            'index_enrolled',
-            'chat_retention_days',
-            // Per-user web search settings (Issue #187): each user may
-            // individually enable web search and choose their provider.
-            'web_search_enabled',
-            'web_search_provider',
-            'web_search_max_results', 'web_search_timeout', 'web_search_safe_search',
-            'web_search_fetch_content', 'web_search_content_chars', 'web_search_candidates',
-            'web_search_images', 'web_search_browser', 'web_search_browser_timeout',
-        ];
+        try {
+            $input = [];
+            foreach (array_merge(\OCA\EvaAi\Dto\SettingsUpdateRequest::FIELDS, \OCA\EvaAi\Dto\SettingsCredentialsRequest::FIELDS) as $key) {
+                $input[$key] = $this->requestParam($key);
+            }
+            $update = \OCA\EvaAi\Dto\SettingsUpdateRequest::fromArray($input);
+            $secrets = \OCA\EvaAi\Dto\SettingsCredentialsRequest::fromArray($input);
+        } catch (\InvalidArgumentException $error) {
+            return new ErrorDataResponse(['error' => $error->getMessage()], 400);
+        }
+        $pending = $update->values;
         $validationErrors = [];
-        $pending = [];
-        foreach ($allowed as $key) {
-            $value = $this->requestParam($key);
-            if ($value === null) {
-                continue;
-            }
-            $pending[$key] = $value;
+        foreach ($pending as $key => $value) {
             $validationValue = $value;
-            if ($key === 'provider_profiles' && is_string($value)) {
-                $validationValue = json_decode($value, true);
-            }
             $limitError = $this->config->validateValue($key, $validationValue);
             if ($limitError !== null) {
                 $validationErrors[$key] = $key . ' ' . $limitError . '.';
@@ -337,12 +308,12 @@ class ApiController extends OCSController {
                 return new ErrorDataResponse(['error' => 'Custom provider endpoint must be a plain URL without credentials, query or fragment.'], 400);
             }
         }
-        $groqKey = $this->requestParam('groq_api_key');
-        $removeGroqKey = $this->requestParam('remove_groq_api_key', false);
-        if (($groqKey !== null && (!is_string($groqKey) || ($groqKey !== '' && !preg_match('/^gsk_[A-Za-z0-9_-]{16,256}$/D', $groqKey))))
-            || !in_array($removeGroqKey, [true, false, 0, 1, '0', '1'], true)) {
-            return new ErrorDataResponse(['error' => 'Invalid Groq credential input.'], 400);
-        }
+        $groqKey = $secrets->groqKey;
+        $removeGroqKey = $secrets->removeGroqKey;
+        $customKey = $secrets->customKey;
+        $removeCustomKey = $secrets->removeCustomKey;
+        $nextcloudToken = $secrets->nextcloudToken;
+        $removeNextcloudToken = $secrets->removeNextcloudToken;
         $roleErrors = $this->validateModelRoles($pending);
         if ($roleErrors !== []) {
             return new ErrorDataResponse([
@@ -350,28 +321,19 @@ class ApiController extends OCSController {
                 'validationErrors' => array_values($roleErrors),
             ], 400);
         }
-        if ($removeGroqKey) $this->ollama->saveGroqKey('');
-        elseif (is_string($groqKey) && $groqKey !== '') $this->ollama->saveGroqKey($groqKey);
-        $customKey = $this->requestParam('custom_provider_api_key');
-        $removeCustomKey = $this->requestParam('remove_custom_provider_api_key', false);
-        $providerId = (string)($pending['chat_provider'] ?? $this->config->get('chat_provider'));
-        if ($customKey !== null && (!is_string($customKey) || strlen($customKey) > 512)) return new ErrorDataResponse(['error' => 'Invalid custom provider credential input.'], 400);
-        if (!in_array($removeCustomKey, [true, false, 0, 1, '0', '1'], true)) return new ErrorDataResponse(['error' => 'Invalid custom provider credential input.'], 400);
+        $providerId = $selectedProvider;
         if ($providerId !== 'ollama' && $providerId !== 'groq') {
             $credentials = \OCP\Server::get(\OCA\EvaAi\Service\ProviderCredentials::class);
             if (($selectedProfile['auth'] ?? 'api_key') !== 'none' && !$removeCustomKey && (!is_string($customKey) || $customKey === '') && !$credentials->customConfigured($user, $providerId)) {
                 return new ErrorDataResponse(['error' => 'Save an API key for the selected custom provider first.'], 400);
             }
+        }
+        // All values, model roles and credential requirements are valid now.
+        if ($removeGroqKey) $this->ollama->saveGroqKey('');
+        elseif ($groqKey !== null && $groqKey !== '') $this->ollama->saveGroqKey($groqKey);
+        if ($providerId !== 'ollama' && $providerId !== 'groq') {
             if ($removeCustomKey) $credentials->saveCustom($user, $providerId, '');
-            elseif (is_string($customKey) && $customKey !== '') $credentials->saveCustom($user, $providerId, $customKey);
-        }
-        $nextcloudToken = $this->requestParam('nextcloud_api_token');
-        $removeNextcloudToken = $this->requestParam('remove_nextcloud_api_token', false);
-        if ($nextcloudToken !== null && (!is_string($nextcloudToken) || strlen($nextcloudToken) > 512 || preg_match('/\s/', $nextcloudToken))) {
-            return new ErrorDataResponse(['error' => 'Invalid Nextcloud app token input.'], 400);
-        }
-        if (!in_array($removeNextcloudToken, [true, false, 0, 1, '0', '1'], true)) {
-            return new ErrorDataResponse(['error' => 'Invalid Nextcloud app token input.'], 400);
+            elseif ($customKey !== null && $customKey !== '') $credentials->saveCustom($user, $providerId, $customKey);
         }
         if ($removeNextcloudToken || (is_string($nextcloudToken) && $nextcloudToken !== '')) {
             \OCP\Server::get(\OCA\EvaAi\Service\ProviderCredentials::class)->saveNextcloudToken(
@@ -379,52 +341,7 @@ class ApiController extends OCSController {
                 $removeNextcloudToken ? '' : $nextcloudToken
             );
         }
-        foreach ($pending as $key => $value) {
-                if (in_array($key, ['top_k', 'chunk_size', 'chunk_overlap', 'max_file_size', 'max_files_per_run', 'index_storage_quota', 'context_size', 'exec_write_max_chars', 'mail_index_max', 'talk_history_size', 'talk_index_max_rooms', 'talk_index_max_messages', 'chat_retention_days', 'embed_batch_size', 'agent_max_tool_rounds', 'web_search_max_results', 'web_search_timeout', 'web_search_content_chars', 'web_search_candidates', 'web_search_browser_timeout'], true)) {
-                    $value = (string)$value;
-                }
-                if ($key === 'exec_delete_mode') {
-                    $value = in_array($value, ['off', 'own', 'all'], true) ? $value : 'own';
-                }
-                if ($key === 'exec_write_types') {
-                    $value = $this->config->normalizeValue($key, $value);
-                }
-                if ($key === 'provider_profiles') {
-                    $value = json_encode(is_array($value) ? $value : [], JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE) ?: '[]';
-                }
-                if (in_array($key, AppConfig::BOOLEAN_SETTINGS, true)) {
-                    $value = in_array((string)$value, ['1', 'true', 'on'], true) ? '1' : '0';
-                }
-                if ($key === 'temperature') {
-                    $value = (string)max(0.0, min(2.0, (float)$value));
-                }
-                if ($key === 'web_search_provider') {
-                    $value = trim((string)$value);
-                    if (!in_array($value, ['duckduckgo', 'bing', 'searxng', 'brave', 'tavily'], true)) {
-                        $value = 'duckduckgo';
-                    }
-                }
-                if ($key === 'ollama_keep_alive' || $key === 'followups_mode') {
-                    $value = trim((string)$value);
-                    if ($key === 'ollama_keep_alive' && $value === '') {
-                        $value = '5m'; // Ollama server default
-                    }
-                    if ($key === 'followups_mode' && !in_array($value, ['fast', 'llm'], true)) {
-                        $value = 'fast';
-                    }
-                }
-                if ($key === 'talk_bot_trigger') {
-                    $value = trim((string)$value);
-                    if ($value === '') {
-                        $value = 'EVA'; // Default falls leer
-                    }
-                }
-                // Keep the final storage coercion available to every settings
-                // client through AppConfig (Issue #319).
-                $value = $this->config->normalizeSetting($key, $value);
-                $this->config->set($key, (string)$value);
-        }
-        return new ErrorDataResponse($this->config->all());
+        return new ErrorDataResponse((new \OCA\EvaAi\Service\SettingsPersistence($this->config))->save($update));
     }
 
     /** Validate the small, deliberately data-only scheduler format. */
@@ -478,63 +395,7 @@ class ApiController extends OCSController {
      * pending, and indexing/chat will surface the real error.
      */
     private function validateModelRoles(array $pending): array {
-        $modelKeys = ['embedding_model', 'chat_model', 'summary_model'];
-        if (!array_intersect(array_keys($pending), [...$modelKeys, 'ollama_url'])) {
-            return [];
-        }
-        $errors = [];
-        $previousUrl = null;
-        $urlPending = isset($pending['ollama_url']) && is_scalar($pending['ollama_url']);
-        if ($urlPending) {
-            // Capability checks must run against the endpoint the user is
-            // about to save, not the previously stored one.
-            $previousUrl = $this->config->get('ollama_url');
-            $this->config->set('ollama_url', trim((string)$pending['ollama_url']));
-        }
-        try {
-            $caps = $this->ollama->capabilities();
-            if (!$caps['available'] || $caps['models'] === []) {
-                // Cannot verify capabilities (offline or still starting): do
-                // not block saving, the connection check explains the state.
-                return [];
-            }
-            $byLower = [];
-            foreach ($caps['models'] as $name => $info) {
-                $lower = strtolower($name);
-                $byLower[$lower] = $info['roles'] ?? [];
-                if (str_ends_with($lower, ':latest')) {
-                    $byLower[substr($lower, 0, -7)] = $info['roles'] ?? [];
-                }
-            }
-            $expect = [
-                'embedding_model' => 'embedding',
-                'chat_model' => 'chat',
-                'summary_model' => 'chat',
-            ];
-            foreach ($expect as $key => $role) {
-                if (($pending['chat_provider'] ?? $this->config->get('chat_provider')) === 'groq' && $role === 'chat') continue;
-                if (!isset($pending[$key]) || !is_scalar($pending[$key])) {
-                    continue;
-                }
-                $model = trim((string)$pending[$key]);
-                if ($model === '') {
-                    continue;
-                }
-                $roles = $byLower[strtolower($model)] ?? null;
-                if ($roles === null) {
-                    continue; // Not installed yet: allow, pull may be pending.
-                }
-                if (!in_array($role, $roles, true)) {
-                    $errors[] = $key . ' model "' . $model . '" does not support ' . $role
-                        . ' (provider reports: ' . implode(', ', $roles) . ').';
-                }
-            }
-        } finally {
-            if ($urlPending && $previousUrl !== null) {
-                $this->config->set('ollama_url', $previousUrl);
-            }
-        }
-        return $errors;
+        return (new \OCA\EvaAi\Service\ModelSelectionValidator($this->config, $this->ollama))->validate($pending);
     }
 
     private function validateOllamaUrl(string $url): ?string {

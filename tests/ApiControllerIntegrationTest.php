@@ -105,7 +105,7 @@ final class ApiControllerIntegrationTest extends TestCase {
 			$cacheFactory, $backgroundChatQueue, $logger,
 		);
 
-		$dependencies = compact('config', 'rag', 'executor', 'indexer', 'jobList', 'lockingProvider', 'chatStore', 'knowledgeInitializer', 'lockGuard', 'cacheFactory', 'logger');
+		$dependencies = compact('ollama', 'config', 'rag', 'executor', 'indexer', 'jobList', 'lockingProvider', 'chatStore', 'knowledgeInitializer', 'lockGuard', 'cacheFactory', 'logger');
 		return new ApiController(
 			'eva_ai', $request, $userId, $config, $rag, $executor, $indexer, $ollama,
 			$documentMapper, $chunkMapper, $jobList, $lockingProvider, $chatStore,
@@ -230,6 +230,21 @@ final class ApiControllerIntegrationTest extends TestCase {
 		self::assertSame(200, $reloaded->getStatus());
 		self::assertSame('0.7', $dependencies['config']->get('temperature'));
 		self::assertSame('0.7', $reloaded->getData()['temperature']);
+	}
+
+	public function testInvalidLaterCredentialDoesNotOverwriteAnEarlierCredential(): void {
+		$stored = []; $dependencies = [];
+		$controller = $this->controller('alice', ['groq_api_key' => 'gsk_abcdefghijklmnop', 'nextcloud_api_token' => "invalid token"], $dependencies, $stored);
+		$dependencies['ollama']->expects(self::never())->method('saveGroqKey');
+		self::assertSame(400, $controller->saveSettings()->getStatus());
+	}
+
+	public function testProviderProfilesSentAsJsonSurviveASaveAndReload(): void {
+		$stored = []; $dependencies = [];
+		$profiles = [['id' => 'local-model', 'name' => 'Local model', 'url' => 'http://127.0.0.1:1234/v1', 'model' => 'local-chat', 'auth' => 'none']];
+		$controller = $this->controller('alice', ['provider_profiles' => json_encode($profiles)], $dependencies, $stored);
+		self::assertSame(200, $controller->saveSettings()->getStatus());
+		self::assertSame($profiles, json_decode($controller->settings()->getData()['provider_profiles'], true));
 	}
 
 	public function testIndexRequestQueuesTheExpectedBackgroundJob(): void {

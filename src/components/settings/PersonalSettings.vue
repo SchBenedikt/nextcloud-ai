@@ -1,12 +1,7 @@
 <template>
 <div class="settings-group">
-<section class="settings-section">
-				<div class="section-heading">
-					<div>
-						<h3>{{ $t('Chat history') }}</h3>
-						<p>{{ $t('Manage the conversations stored for your Nextcloud account. This does not affect indexed files.') }}</p>
-					</div>
-				</div>
+<NcSettingsSection class="settings-section" :name="$t('Chat history')" :description="$t('Manage the conversations stored for your Nextcloud account. This does not affect indexed files.')">
+
 				<div class="field">
 					<label class="native-label" for="chat-retention">{{ $t('Automatically delete old chats') }}</label>
 					<NcSelect input-id="chat-retention" v-model="f.chat_retention_days" :options="chatRetentionOptions" label="label" :reduce="option => option.value" :input-label="$t('Automatically delete old chats')" :label-outside="true" />
@@ -27,14 +22,9 @@
 						<NcButton variant="primary" class="danger-button" :loading="deletingChats" @click="deleteAllChats">{{ $t('Delete all chats') }}</NcButton>
 					</div>
 				</div>
-			</section>
-<section class="settings-section">
-				<div class="section-heading">
-					<div>
-						<h3>{{ $t('Personal knowledge') }}</h3>
-						<p>{{ $t('Edit the facts EVA remembers about you. This file is read before every answer to personalise responses.') }}</p>
-					</div>
-				</div>
+			</NcSettingsSection>
+<NcSettingsSection class="settings-section" :name="$t('Personal knowledge')" :description="$t('Edit the facts EVA remembers about you. This file is read before every answer to personalise responses.')">
+
 				<p v-if="knowledgeLoading" class="field-help" role="status">{{ $t('Loading personal knowledge…') }}</p>
 				<div v-else-if="knowledgeLoadError" class="load-error" role="alert"><span>{{ $t('Personal knowledge could not be loaded. Check the file in Nextcloud Files and try again.') }}</span><NcButton variant="tertiary" @click="loadKnowledge">{{ $t('Try again') }}</NcButton></div>
 				<div v-if="knowledgeReady" class="field field-wide">
@@ -58,14 +48,9 @@
 					</NcButton>
 					<span v-if="knowledgeSaved" class="action-hint" style="color: var(--color-success);">{{ $t('Saved') }}</span>
 				</div>
-			</section>
-<section id="settings-privacy" class="settings-section">
-				<div class="section-heading">
-					<div>
-						<h3>{{ $t('Privacy & data') }}</h3>
-						<p>{{ $t('Review where EVA stores information and which services receive it.') }}</p>
-					</div>
-				</div>
+			</NcSettingsSection>
+<NcSettingsSection id="settings-privacy" class="settings-section" :name="$t('Privacy & data')" :description="$t('Review where EVA stores information and which services receive it.')">
+
 				<div class="privacy-flow">
 					<strong>{{ $t('How your data is processed') }}</strong>
 					<p>{{ $t('Your file index is stored on the Nextcloud server. During indexing, extracted text is sent to the configured Ollama endpoint to create embeddings. During chat, your question, selected excerpts and relevant personal knowledge are sent to {provider}.', { provider: selectedChatProvider }) }}</p>
@@ -79,17 +64,17 @@
 					</div>
 					<NcButton variant="secondary" :disabled="exporting" :loading="exporting" @click="downloadExport">{{ $t('Download') }}</NcButton>
 				</div>
-			</section>
+			</NcSettingsSection>
 </div>
 </template>
 
 <script>
 import { inject } from 'vue'
-import { NcButton, NcSelect, NcTextArea } from '@nextcloud/vue'
+import { NcSettingsSection, NcButton, NcSelect, NcTextArea } from '@nextcloud/vue'
 
 export default {
  name: 'PersonalSettings',
- components: { NcButton, NcSelect, NcTextArea },
+ components: { NcSettingsSection, NcButton, NcSelect, NcTextArea },
  setup() { return inject('eva-settings') },
 }
 </script>

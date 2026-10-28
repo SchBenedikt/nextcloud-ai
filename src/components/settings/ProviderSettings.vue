@@ -1,12 +1,11 @@
 <template>
 	<div class="provider-settings">
-		<p class="field-help">{{ t('Choose where chat requests are sent. Each provider keeps its own encrypted API key. File indexing uses Ollama separately.') }}</p>
 		<ul class="provider-list">
-			<li v-for="provider in providers" :key="provider.id" class="provider-row">
-				<div class="provider-description"><strong>{{ provider.name }}</strong><small>{{ provider.model || t('Configure a model below') }}</small></div>
-				<span v-if="active === provider.id" class="provider-active">{{ t('Active') }}</span>
-				<NcButton variant="tertiary" :disabled="locked || saving" :aria-label="t('Configure {provider}', { provider: provider.name })" @click="edit(provider)">{{ t('Configure') }}</NcButton>
-			</li>
+			<NcListItem v-for="provider in providers" :key="provider.id" :name="provider.name" :details="active === provider.id ? t('Active') : ''" :force-actions="true" :actions-aria-label="t('Configure {provider}', { provider: provider.name })" @click="edit(provider)">
+				<template #icon><NcIconSvgWrapper :path="provider.id === 'ollama' ? mdiServerOutline : mdiRobotOutline" :size="32" /></template>
+				<template #subname>{{ provider.model || t('Configure a model below') }}</template>
+				<template #actions><NcActionButton :close-after-click="true" :disabled="locked || saving" @click="edit(provider)">{{ t('Configure') }}</NcActionButton></template>
+			</NcListItem>
 		</ul>
 		<NcButton variant="secondary" :disabled="locked || profiles.length >= 20" @click="add">{{ t('Add AI provider') }}</NcButton>
 		<p v-if="notice" class="field-help" role="status">{{ notice }}</p>
@@ -38,7 +37,8 @@
 
 <script>
 import { computed, ref, useId } from 'vue'
-import { NcButton, NcCheckboxRadioSwitch, NcModal, NcNoteCard, NcSelect, NcTextField } from '@nextcloud/vue'
+import { NcActionButton, NcButton, NcCheckboxRadioSwitch, NcIconSvgWrapper, NcListItem, NcModal, NcNoteCard, NcSelect, NcTextField } from '@nextcloud/vue'
+import { mdiRobotOutline, mdiServerOutline } from '@mdi/js'
 import { api, errMsg } from '../../lib/api'
 import { translate as t } from '../../lib/i18n'
 
@@ -58,7 +58,7 @@ const presets = [
 
 export default {
 	name: 'ProviderSettings',
-	components: { NcButton, NcCheckboxRadioSwitch, NcModal, NcNoteCard, NcSelect, NcTextField },
+	components: { NcActionButton, NcButton, NcCheckboxRadioSwitch, NcIconSvgWrapper, NcListItem, NcModal, NcNoteCard, NcSelect, NcTextField },
 	props: { status: { type: Object, default: null }, locked: { type: Boolean, default: false } },
 	emits: ['saved'],
 	setup(props, { emit }) {
@@ -93,6 +93,7 @@ export default {
 			{ key: 'tts_model', label: t('Speech model') }, { key: 'tts_voice', label: t('Speech voice') },
 		]
 		const edit = provider => {
+			if (props.locked || saving.value) return
 			draft.value = { ...provider }
 			editing.value = true
 			key.value = ''; error.value = ''; notice.value = ''
@@ -130,18 +131,13 @@ export default {
 			} catch (failure) { error.value = errMsg(failure) }
 			finally { saving.value = false }
 		}
-		return { titleId, t, profiles, providers, active, presets, presetId, draft, editing, builtin, needsKey, key, keySaved, saving, error, notice, mediaFields, add, edit, applyPreset, close, save }
+		return { mdiRobotOutline, mdiServerOutline, titleId, t, profiles, providers, active, presets, presetId, draft, editing, builtin, needsKey, key, keySaved, saving, error, notice, mediaFields, add, edit, applyPreset, close, save }
 	},
 }
 </script>
 
 <style scoped>
 .provider-list { list-style: none; padding: 0; margin: 16px 0; }
-.provider-row { display: flex; align-items: center; gap: 12px; min-height: 64px; border-bottom: 1px solid var(--color-border); }
-.provider-description { flex: 1; min-width: 0; }
-.provider-description strong, .provider-description small { display: block; overflow-wrap: anywhere; }
-.provider-description small { color: var(--color-text-maxcontrast); margin-top: 4px; }
-.provider-active { color: var(--color-primary-element); font-size: 12px; }
 .provider-editor { display: grid; gap: 16px; padding: 24px; }
 .provider-editor h2 { font-size: 22px; font-weight: 600; }
 .provider-editor__actions { display: flex; justify-content: flex-end; gap: 8px; }

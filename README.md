@@ -122,3 +122,10 @@ pull requests. The standalone chat remains a compatibility and test surface;
 the Nextcloud workspace is the primary interface.
 
 Licensed under [AGPL-3.0-or-later](LICENSE).
+
+### A native Nextcloud workspace
+
+The home screen stays focused on a large message field and recent chats using
+Nextcloud's own list components. Settings use native sections and sidebar navigation, with
+AI providers, document search and advanced integrations kept in separate areas.
+See [Workspace settings](docs/WORKSPACE.md) for navigation and saving behavior.

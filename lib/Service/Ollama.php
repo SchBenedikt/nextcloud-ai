@@ -174,8 +174,8 @@ class Ollama {
      *
      * @return array{available:bool,online:bool,error:?string,models:array<string,array{roles:list<string>,declared:list<string>,heuristic:bool}>}
      */
-    public function capabilities(): array {
-        $status = $this->status();
+    public function capabilities(?string $baseUrl = null): array {
+        $status = $this->status($baseUrl);
         $ping = $status['ping'];
         if (!($ping['ok'] ?? false)) {
             return [
@@ -386,8 +386,8 @@ class Ollama {
      *
      * @return array{ping:array,models:array<int,array<string,mixed>>,meta:array{version:int,checkedAt:int,latencyMs:?int,fromCache:bool}}
      */
-    public function status(): array {
-        $base = $this->base();
+    public function status(?string $baseUrl = null): array {
+        $base = $baseUrl !== null ? rtrim($baseUrl, '/') : $this->base();
         $now = time();
         $key = 'tags_' . hash('sha256', $base);
         $cached = $this->readStatusCache($key, $base, $now);
