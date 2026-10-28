@@ -206,3 +206,13 @@ test('native document filters send the chosen type and sort to the API', async (
 	expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true)
 	expect(errors).toEqual([])
 })
+
+
+test('file-context structured failures display their message rather than a placeholder', async ({ page }) => {
+  await openWorkspace(page, { view: 'fileContext', fileIds: [11] })
+  await page.route('**/fileContextChat**', route => route.fulfill({ contentType: 'application/json', body: JSON.stringify({ ocs: { data: { error: { code: 'provider_failed', message: 'Test provider unavailable.' } } } }) }))
+  await page.getByRole('textbox', { name: 'Ask about these files…' }).fill('Read the file')
+  await page.getByRole('button', { name: 'Send', exact: true }).click()
+  await expect(page.locator('.msg.assistant')).toContainText('Test provider unavailable.')
+  await expect(page.locator('.msg.assistant')).not.toContainText('{error}')
+})

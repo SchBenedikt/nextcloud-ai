@@ -517,3 +517,26 @@ test('the stop button aborts the stream and persists the partial answer', async 
   // The send button returns to Send for the next question.
   await expect(sendBtn).toHaveText('Send')
 })
+
+
+test('chat stays busy until the ordered history writes complete', async ({ page }) => {
+  await openChatView(page)
+  await page.evaluate(() => {
+    const fetch = window.fetch
+    window.fetch = async (url, options) => {
+      if (String(url).endsWith('/messages') && JSON.parse(options.body).role === 'assistant') {
+        window.__historyKeepalive = options.keepalive
+        await new Promise(resolve => { window.__releaseHistory = resolve })
+      }
+      return fetch(url, options)
+    }
+  })
+  await page.fill('#chatinput', 'Keep this answer')
+  await page.getByRole('button', { name: 'Send message', exact: true }).click()
+  await expect(page.locator('.rm.assistant')).toContainText('A test answer')
+  await expect.poll(() => page.evaluate(() => typeof window.__releaseHistory)).toBe('function')
+  await expect(page.getByRole('button', { name: 'Stop', exact: true })).toBeVisible()
+  expect(await page.evaluate(() => window.__historyKeepalive)).toBe(true)
+  await page.evaluate(() => window.__releaseHistory())
+  await expect(page.getByRole('button', { name: 'Send message', exact: true })).toBeVisible()
+})

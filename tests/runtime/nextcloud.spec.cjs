@@ -82,6 +82,7 @@ test.describe('authenticated Nextcloud runtime', () => {
 		await page.getByRole('textbox', { name: 'Message EVA', exact: true }).fill('Reply exactly: second request ready.')
 		await page.getByRole('button', { name: 'Send message', exact: true }).click()
 		await expect(page.locator('.rm.assistant').last()).toContainText('second request ready', { timeout: 75000 })
+		await expect(page.getByRole('button', { name: 'Send message', exact: true })).toBeVisible()
 		await page.reload({ waitUntil: 'domcontentloaded' })
 		await expect(page.locator('.rm.assistant')).toHaveCount(2)
 		await expect(page.locator('.rm.assistant').last()).toContainText('second request ready')

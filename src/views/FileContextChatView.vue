@@ -159,7 +159,8 @@ export default {
 					history,
 				})
 				if (r && r.error) {
-					messages.value.push({ role: 'assistant', content: t('Error: {error}', { error: r.error }), sources: [] })
+					const detail = typeof r.error === 'string' ? r.error : r.error.message
+					messages.value.push({ role: 'assistant', content: t('Error: {error}', { error: typeof detail === 'string' ? detail : t('Check your connection and try again.') }), sources: [] })
 				} else if (!r || typeof r.answer !== 'string' || r.answer.trim() === '') {
 					messages.value.push({ role: 'assistant', content: t('The model returned an empty response. Try asking a more specific question.'), sources: [] })
 				} else {

@@ -8,7 +8,7 @@ namespace OCA\EvaAi\Http;
 final class ErrorPayload {
 	/** @param array<string, mixed> $payload @return array{error: array{code:string,message:string}}|array<string,mixed> */
 	public static function normalize(array $payload, int $statusCode): array {
-		if (!array_key_exists('error', $payload)) {
+		if (!array_key_exists('error', $payload) || ($payload['error'] === null && $statusCode < 400)) {
 			return $payload;
 		}
 

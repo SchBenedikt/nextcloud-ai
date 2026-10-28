@@ -18,6 +18,10 @@
 
 ### Reliability and documentation
 
+- Preserve successful nullable-error response bodies instead of turning them into failures; render structured file-context errors as readable messages.
+
+- Keep chat busy until ordered history writes finish, preserve bounded writes across navigation and warn before leaving unfinished work; prevent a completed response from being queued again as background generation.
+
 - Keep browser API and streaming endpoints on the current origin, including trusted local aliases and subdirectory installations, and restore missing storage-settings translation keys.
 
 - Invalidate prepared vector entries atomically when source metadata changes, including folder renames and forced reindexing, without re-embedding or interrupting legacy SQL retrieval.

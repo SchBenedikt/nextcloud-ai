@@ -27,6 +27,15 @@ final class ErrorPayloadTest extends TestCase {
 		self::assertSame($payload, ErrorPayload::normalize($payload, 409));
 	}
 
+    public function testSuccessfulNullableErrorPreservesTheAnswer(): void {
+        $payload = ['answer' => 'A verified answer', 'sources' => [], 'error' => null];
+        self::assertSame($payload, ErrorPayload::normalize($payload, 200));
+    }
+
+    public function testFailedStatusWithNullErrorStillGetsAnErrorEnvelope(): void {
+        self::assertSame(['error' => ['code' => 'server_error', 'message' => 'The request could not be completed.']], ErrorPayload::normalize(['error' => null], 503));
+    }
+
 	public function testSuccessPayloadsAreUnchanged(): void {
 		$payload = ['ok' => true, 'items' => [1, 2]];
 		self::assertSame($payload, ErrorPayload::normalize($payload, 200));
