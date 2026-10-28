@@ -128,7 +128,13 @@ replaced by a successful build or an adapter unit test.
 - 02: embedding dependency boundary implemented; automated validation deferred.
 - 03: initial stage timings implemented; independent lexical/fusion spans and
   a metrics exporter remain follow-up work.
-- 04–14: pending; a stage is complete only when its code and matching operating
+- 04: custom-provider destination policy implemented; adversarial transport checks
+  remain unverified and proxy support is explicitly restricted.
+- 05: offline evaluator and live SQL snapshot/recording commands implemented;
+  representative measurement runs and acceptance results remain pending.
+- 06: additive schema, immutable identity, metadata operations and contracts
+  implemented; migration execution and activation verification remain pending.
+- 07–14: pending; a stage is complete only when its code and matching operating
   documentation exist. Validation and production rollout remain separately
   recorded. No Qdrant deployment or production data migration has occurred.
 
