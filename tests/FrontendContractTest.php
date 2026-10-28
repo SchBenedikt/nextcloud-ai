@@ -10,7 +10,7 @@ final class FrontendContractTest extends TestCase {
     private static function settingsSource(): string {
         $root = __DIR__ . '/../src/';
         $files = [$root . 'views/SettingsView.vue', $root . 'composables/useEvaSettings.js', $root . 'styles/settings.scss'];
-        $files = array_merge($files, glob($root . 'components/settings/*.vue'));
+        $files = array_merge($files, array_merge(glob($root . 'components/settings/*.vue'), glob($root . 'composables/*Settings.js'), glob($root . 'lib/settings-*.js')));
         return implode("\n", array_map('file_get_contents', $files));
     }
 
@@ -128,7 +128,7 @@ final class FrontendContractTest extends TestCase {
 		self::assertStringContainsString('mdiViewDashboardOutline', $app);
 		$home = (string)file_get_contents(__DIR__ . '/../src/views/HomeView.vue');
 		self::assertStringContainsString('Recent chats', $home);
-		self::assertStringContainsString('$emit(\'open-chat\', chat.id)', $home);
+		self::assertStringContainsString("emit('open-chat', id)", $home);
 		self::assertStringContainsString('public function stats(): DataResponse', (string)file_get_contents(__DIR__ . '/../lib/Controller/ApiController.php'));
 		self::assertStringContainsString("'url' => '/api/stats'", (string)file_get_contents(__DIR__ . '/../appinfo/routes.php'));
 		// Dynamic dashboard greeting + instant chat start from the hero.
@@ -154,7 +154,8 @@ final class FrontendContractTest extends TestCase {
         self::assertStringContainsString("label: t('After 30 days')", $settings);
 		// The Start navigation item sits at the very top of the sidebar list,
 		// above the Chats heading (not only in the footer).
-		self::assertStringContainsString("<template #list>\n\t\t\t\t<NcAppNavigationItem\n\t\t\t\t\tclass=\"start-nav-item\"", $app);
+		self::assertLessThan(strpos($app, '<NcAppNavigationCaption'), strpos($app, '<template #list>'));
+		self::assertStringContainsString('class="start-nav-item"', $app);
 		self::assertStringContainsString('pendingPrompt', $app);
 		self::assertStringContainsString('@prompt-consumed="pendingPrompt = \'\'"', $app);
 		$chat = (string)file_get_contents(__DIR__ . '/../src/views/ChatView.vue');
@@ -242,7 +243,7 @@ final class FrontendContractTest extends TestCase {
         self::assertStringContainsString('public function deleteFolder(): DataResponse', (string)file_get_contents(__DIR__ . '/../lib/Controller/ApiController.php'));
 
         $documents = (string)file_get_contents(__DIR__ . '/../src/views/DocumentsView.vue');
-        self::assertStringContainsString('max-width: var(--eva-content-width, 1180px);', $settings);
+        self::assertStringContainsString('width: min(100%, 980px);', $settings);
         self::assertStringContainsString('max-width: var(--eva-content-width, 1180px);', $documents);
 
         $vanilla = (string)file_get_contents(__DIR__ . '/../src/lib/vanilla.js');

@@ -1,4 +1,5 @@
 import { onBeforeUnmount, onMounted, ref } from 'vue'
+import { resolveSettingsSection } from '../lib/settings-sections'
 
 const parseFileIds = (value) => [...new Set(String(value || '').split(',').map((part) => Number.parseInt(part, 10)).filter((id) => Number.isSafeInteger(id) && id > 0))]
 
@@ -19,21 +20,27 @@ const resolveRoute = (location) => {
 }
 
 /** Centralizes browser URL state and navigation for the main EVA shell. */
-export function useNavigation({ chats, currentChat, view, fileContextIds, onChatsCleared, onFileContext }) {
+export function useNavigation({ chats, currentChat, view, fileContextIds, onChatsCleared, onFileContext, settingsSection = ref('general') }) {
 	const initialRoute = resolveRoute(window.location)
 	const initialChatParam = new URLSearchParams(window.location.search).get('chat')
 	view.value = initialRoute.view
 	fileContextIds.value = initialRoute.fileIds
+	settingsSection.value = resolveSettingsSection(new URL(window.location.href).searchParams.get('section'))
 
 	const appRootPath = () => {
 		const current = window.location.pathname.replace(/\/+$/, '')
 		return current.replace(/\/(settings|documents|metrics|runs|app|standalone)$/, '') || current
 	}
-	const navigate = (nextView) => {
+	const navigate = (nextView, section = settingsSection.value) => {
 		view.value = nextView
 		const url = new URL(window.location.href)
 		url.searchParams.delete('view')
 		url.searchParams.delete('fileIds')
+		url.searchParams.delete('section')
+		if (nextView === 'settings') {
+			settingsSection.value = resolveSettingsSection(section)
+			url.searchParams.set('section', settingsSection.value)
+		}
 		if (nextView === 'chat' && currentChat.value) url.searchParams.set('chat', currentChat.value)
 		else url.searchParams.delete('chat')
 		url.pathname = nextView === 'chat' || nextView === 'home' ? appRootPath() : appRootPath() + '/' + (nextView === 'docs' ? 'documents' : nextView)
@@ -51,6 +58,7 @@ export function useNavigation({ chats, currentChat, view, fileContextIds, onChat
 			}
 		} else view.value = route.view
 		fileContextIds.value = route.fileIds
+		settingsSection.value = resolveSettingsSection(new URL(window.location.href).searchParams.get('section'))
 	}
 	const handleFileContext = (event) => {
 		const ids = event && event.detail && Array.isArray(event.detail.fileIds) ? parseFileIds(event.detail.fileIds) : []

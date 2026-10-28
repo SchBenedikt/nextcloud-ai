@@ -10,8 +10,8 @@ async function openWorkspace(page, { view = '', width = 1280, chats = [], fileId
 	const errors = []
 	page.on('pageerror', error => errors.push(String(error)))
 	page.on('console', message => { if (message.type() === 'warning' && message.text().includes('not defined')) errors.push(message.text()) })
-	const source = await fs.readFile(path.join(root, 'src/composables/useEvaSettings.js'), 'utf8')
-	const settings = vm.runInNewContext('(' + source.match(/const f = ref\((\{[\s\S]*?\n\t\})\)/)[1] + ')')
+	const source = await fs.readFile(path.join(root, 'src/lib/settings-defaults.js'), 'utf8')
+	const settings = vm.runInNewContext('(' + source.slice(source.indexOf('return ') + 7, source.lastIndexOf('}')).trim() + ')')
 	const status = () => ({ settings, models: ['test-chat', 'test-embedding'], provider: { roles: {} }, ollamaOnline: true, indexing: false, documents: 0, chunks: 0, groq: { keyConfigured: false }, providerKeys: {}, limits: {} })
 	await page.setViewportSize({ width, height: 900 })
 	await page.route('http://127.0.0.1:4173/**', async route => {

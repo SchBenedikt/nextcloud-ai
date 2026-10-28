@@ -49,3 +49,10 @@ latency separately. Mocked browser tests prove routing and behavior, not real
 inference speed. Workspace tests verify absent home diagnostics and deferred
 advanced settings. Controller tests assert that progress does not call expensive
 services.
+
+## Settings requests
+
+Capability validation can read a proposed Ollama endpoint directly. It no longer
+writes and restores the user configuration just to test model roles. Cancelled
+HTTP requests are not retried. Independent settings resources are split into
+focused composables and loaded on demand.
