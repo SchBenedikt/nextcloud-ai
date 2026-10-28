@@ -1,7 +1,7 @@
 <template>
 	<NcSettingsSection :name="$t('Embedding generations')"
 		:description="$t('Inspect the fixed model and vector space of a prepared generation. Search continues to use SQL.')">
-		<NcSelect v-model="owner" :options="users" label="displayName" track-by="userId"
+		<NcSelect v-model="owner" :options="ownerOptions" label="label" track-by="userId"
 			input-id="generation-owner" :input-label="$t('Generation owner')" />
 		<NcLoadingIcon v-if="loading" :name="$t('Loading generations')" />
 		<template v-else-if="owner">
@@ -39,11 +39,13 @@ export default {
 	name: 'GenerationEmbeddingSettings',
 	components: { NcButton, NcLoadingIcon, NcNoteCard, NcSelect, NcSettingsSection },
 	props: { users: { type: Array, default: () => [] } },
-	setup() {
+	setup(props) {
 		const owner = ref(null), selected = ref(null), items = ref([]), loading = ref(false), checking = ref(false)
 		const cursor = ref(''), next = ref(null), error = ref(''), notice = ref(null)
 		let epoch = 0, controller
 		const options = computed(() => items.value.map(row => ({ ...row, label: `${row.embedding_model} · ${row.dimension} · ${row.id.slice(0, 8)}` })))
+		const userLabel = user => user.displayName && user.displayName !== user.userId ? `${user.displayName} (${user.userId})` : user.userId
+		const ownerOptions = computed(() => props.users.map(user => ({ ...user, label: userLabel(user) })))
 		const stateLabel = state => ({ building: t('Not verified'), active: t('Active'), retired: t('Retired'), failed: t('Failed') })[state] || t('Unknown')
 		async function load(after = '') {
 			const current = ++epoch
@@ -83,7 +85,7 @@ export default {
 			notice.value = null
 		})
 		onBeforeUnmount(() => { epoch++; controller?.abort() })
-		return { owner, selected, items, options, loading, checking, cursor, next, error, notice, load, check, stateLabel }
+		return { owner, ownerOptions, selected, items, options, loading, checking, cursor, next, error, notice, load, check, stateLabel }
 	},
 }
 </script>

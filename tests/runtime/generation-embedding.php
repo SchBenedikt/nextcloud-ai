@@ -88,6 +88,8 @@ try {
         $policy->hook=null;$put('appconfig',['appid'=>'eva_ai','configkey'=>'provider_profiles'],$profiles);
         $put('preferences',['userid'=>'fixture-alice','appid'=>'eva_ai','configkey'=>'provider_local_api_key'],$crypto->encrypt('fixture-secret'));
     }
+    $q=$db->getQueryBuilder();$q->delete('appconfig')->where($q->expr()->eq('appid',$q->createNamedParameter('eva_ai')))->andWhere($q->expr()->eq('configkey',$q->createNamedParameter('ollama_url')))->executeStatement();
+    $assert($configuration->capture($g)['url']===AppConfig::DEFAULT_OLLAMA_URL,'Missing instance setting did not preserve the native default.');
     echo "PASS: native HTTP Ollama/compatible contracts, owned encrypted-key isolation, fresh SQL post-DNS profile/key fencing, ordered/coalesced inputs and cross-generation/user-isolated cache.\n";
     echo "Isolated in-memory configuration only; no native user, global flag or real provider credential was modified.\n";
 } finally {$inner->close();}

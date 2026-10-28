@@ -27,7 +27,7 @@ test('native generation selection only probes after explicit consent', async ({ 
   expect(calls).toEqual([])
   await expect(page.getByLabel('Generation owner', { exact: true })).toBeVisible()
   await page.getByRole('combobox').first().click()
-  await page.getByRole('option', { name: 'Alice', exact: true }).click()
+  await page.getByRole('option').filter({ has: page.getByTitle('Alice (alice)', { exact: true }) }).click()
   await expect(page.getByRole('combobox')).toHaveCount(2)
   await page.getByRole('combobox').nth(1).click()
   await page.getByRole('option').first().click()
@@ -42,7 +42,7 @@ test('native generation selection only probes after explicit consent', async ({ 
 test('a failed provider check stays actionable without automatic retries', async ({ page }) => {
   const { calls, errors } = await openGenerations(page, true)
   await page.getByRole('combobox').first().click()
-  await page.getByRole('option', { name: 'Alice', exact: true }).click()
+  await page.getByRole('option').filter({ has: page.getByTitle('Alice (alice)', { exact: true }) }).click()
   await expect(page.getByRole('combobox')).toHaveCount(2)
   await page.getByRole('combobox').nth(1).click()
   await page.getByRole('option').first().click()
