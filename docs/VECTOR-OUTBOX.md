@@ -1,8 +1,9 @@
 # Durable vector intent and target registry
 
 Version 1.18.1 adds an SQL journal and a target registry. SQL retrieval remains the
-installation default; no remote worker is registered by this foundation stage and
-no chunk write is replicated automatically. A later worker/writer integration must
+installation default. A generation-erasure job is registered but disabled unless
+both instance flags explicitly enable it; no chunk write is replicated. Later
+worker/writer integration must
 satisfy the ordering requirements below before remote indexing is enabled.
 
 ## Storage-target identity
@@ -59,7 +60,7 @@ Claims use a bounded compare-and-swap loop with a random 128-bit token and a
 60–600 second lease (default 120). Expired processing rows can be reclaimed.
 Acknowledgement/failure must match the current token and processing state, so a
 stale claimant cannot acknowledge its successor's work. Retry uses exponential
-backoff plus small jitter; after twelve failed/expired attempts the event remains
+backoff plus small jitter; after twelve claims the event remains
 as a dead letter. Dead letters are not discarded or silently expired. Administrative
 requeue is explicit. These are durable queue primitives, not evidence of a tested
 crash-recovery or distributed-write protocol.
@@ -85,10 +86,10 @@ coordinator remains pending.
 Retirement serializes against a concurrent binding of existing generation rows.
 Full account tombstones/creation fencing and protections against already in-flight
 remote collection preparation are still required before general remote writes.
-The journal is durable, but this stage has no consumer, so collection deletions
-remain pending until the worker is implemented and explicitly enabled. The prior
-adapter exposes only explicit empty-collection preparation in CLI; SQL ingestion
-is still not connected to remote writes.
+The generation-erasure consumer processes collection deletion only when explicitly
+enabled. Preparation rechecks owned building status and fixed target after DNS,
+immediately before every HTTP transfer. SQL ingestion is still not connected to
+remote writes, and the chunk operations in the journal stay unclaimed.
 
 The legacy per-user chunk cleanup now reads document IDs with bounded 500-row
 keyset pages instead of materializing every document ID. Index reset also removes
@@ -96,7 +97,7 @@ chunks before documents, fixing the same ownership-join ordering bug as account
 erasure. Reset does not yet journal all generation changes; it must be integrated
 with the worker/writer stage before remote synchronization can be enabled.
 
-## Inspect, do not execute
+## Inspection and explicit erasure execution
 
 ```sh
 php occ eva_ai:vector:outbox status
@@ -107,10 +108,67 @@ php occ eva_ai:vector:outbox retry --id=EVENT_ID
 
 Listings use bounded 100-row keyset pages and omit owner names, generation JSON,
 raw URLs and credentials. Retrying changes only a dead letter back to pending;
-it causes no network request. No consumer, background cron job, retention purge
-or automatic retry execution is enabled by this command. Operators must retain
+it causes no network request. Inspection does not enable a consumer or retention
+purge. Operators must retain
 pending/dead deletion intent until remote cleanup is confirmed; silent expiration
 would lose the purpose of the journal.
+
+## Generation-erasure worker
+
+The registered `VectorErasureJob` runs every minute, but first reads
+`vector_sync_enabled` and `qdrant_enabled` directly from instance SQL configuration
+instead of using a process-local cache. Both must equal `1`; missing flags mean
+disabled and no HTTP request. To opt in explicitly:
+
+```sh
+php occ config:app:set eva_ai vector_sync_enabled --value=1
+php occ eva_ai:vector:outbox run --limit=5
+php occ config:app:set eva_ai vector_sync_enabled --value=0
+```
+
+An enabled cron job also executes the worker. A manual run is not a dry run. It
+can delete the generation collections named by valid erasure events. It claims
+only `delete_generation` operations and leaves all upsert/delete_chunk events
+untouched until their revision/tombstone protocol is implemented. No current SQL
+ingestion path generates remote point writes.
+
+Every event's immutable descriptor is checked against its owner/generation IDs.
+Only absent or retired SQL generations may be erased. Invalid envelopes or unsafe
+generation status become dead letters; transient connection errors follow normal
+backoff. The worker does not require a deleted account to still exist. Its retained
+target and encrypted credentials address the original store. A missing collection
+is idempotent success; an HTTP success must otherwise include Qdrant's affirmative
+collection deletion result. See the [official collection-deletion API](https://api.qdrant.tech/api-reference/collections/delete-collection).
+
+The first claim observes committed SQL state, then requeues erasure for at least
+60 seconds. If a process crashes on that claim, its 120-second lease expires before
+reclaim, also providing that grace. Requeuing a dead letter restarts this protocol.
+The grace claim counts toward the twelve-claim retry limit. Before transfer, after
+DNS resolution/pinning, a callback rereads the two global flags, current lease token
+and deadline, and generation status. A reclaimed/superseded/disabled operation
+therefore does not start a new transfer. A stale worker cannot acknowledge the
+successor's event. Preparation has its own fresh building/target callback.
+
+The grace exceeds current 30-second preparation HTTP timeouts and reduces races
+with already-running requests. This is not a remote transactional collection
+fence: arbitrary process suspension between the final check and sending, older
+unfenced app versions or manual administration can exceed that model. Quiesce
+explicit preparation during account erasure. Full account/creation fencing and
+reconciliation remain prerequisites for enabling general remote writes; no claim
+of a complete distributed-consistency guarantee is made here.
+
+Each invocation claims at most 5 events by default (explicit limit 1–20) and checks
+a 40-second soft budget before each claim. Collection deletion uses a 10-second
+server/HTTP timeout. DNS resolution uses operating-system resolver limits, so this
+is not a hard wall-clock watchdog. Metrics returned to CLI count claimed, deferred,
+delivered, failed and lost-lease events. Logs contain only event IDs and sanitized
+reason codes. Retention purge is still not enabled; delivered/dead/superseded
+records require the later explicit retention/erasure policy.
+
+Required verification remains outstanding: disabled flags cause no HTTP, first
+observation grace, crash/reclaim, post-DNS disable/lease checks, active-generation
+refusal, malformed-envelope dead letters, original-target rotation and 404 retries.
+No real collection has been deleted by adding or syntax-checking this worker.
 
 ## Validation still required
 

@@ -13,6 +13,7 @@ final class JobRegistry {
         ChatCleanupJob::class,
         ProactiveBriefingJob::class,
         BackgroundChatJob::class,
+        VectorErasureJob::class,
     ];
 
     public static function ensureScheduled(IJobList $jobs): void {

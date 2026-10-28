@@ -43,14 +43,16 @@ class VectorOutboxRepository {
     }
 
     /** Bounded CAS claim. A stale worker cannot acknowledge a successor's lease. */
-    public function claim(int $now, int $leaseSeconds = 120): ?array {
+    public function claim(int $now, int $leaseSeconds = 120, ?string $operation = null): ?array {
         if ($leaseSeconds < 60 || $leaseSeconds > 600) throw new \InvalidArgumentException('Invalid vector lease interval.');
+        if ($operation !== null && !in_array($operation, ['upsert', 'delete_chunk', 'delete_generation'], true)) throw new \InvalidArgumentException('Invalid claim operation.');
         for ($retry = 0; $retry < 8; $retry++) {
             $qb = $this->db->getQueryBuilder();
             $qb->select('*')->from('eva_ai_vec_outbox')->where($qb->expr()->orX(
                 $qb->expr()->andX($qb->expr()->eq('state', $qb->createNamedParameter('pending')), $qb->expr()->lte('available_at', $qb->createNamedParameter($now, IQueryBuilder::PARAM_INT))),
                 $qb->expr()->andX($qb->expr()->eq('state', $qb->createNamedParameter('processing')), $qb->expr()->lte('lease_until', $qb->createNamedParameter($now, IQueryBuilder::PARAM_INT)))
             ))->orderBy('id', 'ASC')->setMaxResults(1);
+            if ($operation !== null) $qb->andWhere($qb->expr()->eq('operation', $qb->createNamedParameter($operation)));
             $result = $qb->executeQuery();
             try { $row = $result->fetch(); } finally { $result->closeCursor(); }
             if (!$row) return null;
@@ -80,6 +82,7 @@ class VectorOutboxRepository {
     public function complete(int $id, string $token, int $now): bool {
         $qb = $this->db->getQueryBuilder();
         $qb->update('eva_ai_vec_outbox')->set('state', $qb->createNamedParameter('delivered'))
+            ->set('last_error', $qb->createNamedParameter(null, IQueryBuilder::PARAM_NULL))
             ->set('delivered_at', $qb->createNamedParameter($now, IQueryBuilder::PARAM_INT))
             ->set('lease_token', $qb->createNamedParameter(null, IQueryBuilder::PARAM_NULL))->set('lease_until', $qb->createNamedParameter(null, IQueryBuilder::PARAM_NULL))
             ->where($qb->expr()->eq('id', $qb->createNamedParameter($id, IQueryBuilder::PARAM_INT)))
@@ -88,7 +91,7 @@ class VectorOutboxRepository {
         return $qb->executeStatement() === 1;
     }
 
-    public function failed(int $id, string $token, string $code, int $now): bool {
+    public function failed(int $id, string $token, string $code, int $now, bool $permanent = false): bool {
         if (preg_match('/^[a-z0-9_]{1,48}$/D', $code) !== 1) throw new \InvalidArgumentException('Use a sanitized vector error code.');
         $qb = $this->db->getQueryBuilder();
         $qb->select('attempts')->from('eva_ai_vec_outbox')->where($qb->expr()->eq('id', $qb->createNamedParameter($id, IQueryBuilder::PARAM_INT)))
@@ -98,7 +101,7 @@ class VectorOutboxRepository {
         if (!$row) return false;
         $attempts = (int)$row['attempts'];
         $update = $this->db->getQueryBuilder();
-        $update->update('eva_ai_vec_outbox')->set('state', $update->createNamedParameter($attempts >= self::MAX_ATTEMPTS ? 'dead' : 'pending'))
+        $update->update('eva_ai_vec_outbox')->set('state', $update->createNamedParameter($permanent || $attempts >= self::MAX_ATTEMPTS ? 'dead' : 'pending'))
             ->set('last_error', $update->createNamedParameter($code))->set('available_at', $update->createNamedParameter($now + min(3600, 5 * (2 ** min(10, $attempts))) + random_int(0, 5), IQueryBuilder::PARAM_INT))
             ->set('lease_token', $update->createNamedParameter(null, IQueryBuilder::PARAM_NULL))->set('lease_until', $update->createNamedParameter(null, IQueryBuilder::PARAM_NULL))
             ->where($update->expr()->eq('id', $update->createNamedParameter($id, IQueryBuilder::PARAM_INT)))
@@ -123,6 +126,46 @@ class VectorOutboxRepository {
             ->selectAlias($qb->createFunction('MIN(created_at)'), 'oldest_created_at')->from('eva_ai_vec_outbox')->groupBy('state');
         $result = $qb->executeQuery();
         try { return $result->fetchAll(); } finally { $result->closeCursor(); }
+    }
+
+    /** Read control flags without IConfig's process-local cache. */
+    public function workerEnabled(): bool {
+        $qb = $this->db->getQueryBuilder();
+        $qb->select('configkey', 'configvalue')->from('appconfig')
+            ->where($qb->expr()->eq('appid', $qb->createNamedParameter('eva_ai')))
+            ->andWhere($qb->expr()->in('configkey', $qb->createNamedParameter(['vector_sync_enabled', 'qdrant_enabled'], IQueryBuilder::PARAM_STR_ARRAY)));
+        $result = $qb->executeQuery();
+        try { $rows = $result->fetchAll(); } finally { $result->closeCursor(); }
+        if (count($rows) !== 2) return false;
+        foreach ($rows as $row) if ($row['configvalue'] !== '1') return false;
+        return true;
+    }
+
+    public function ownsLease(int $id, string $token, int $now): bool {
+        $qb = $this->db->getQueryBuilder();
+        $qb->select('id')->from('eva_ai_vec_outbox')
+            ->where($qb->expr()->eq('id', $qb->createNamedParameter($id, IQueryBuilder::PARAM_INT)))
+            ->andWhere($qb->expr()->eq('state', $qb->createNamedParameter('processing')))
+            ->andWhere($qb->expr()->eq('lease_token', $qb->createNamedParameter($token)))
+            ->andWhere($qb->expr()->gt('lease_until', $qb->createNamedParameter($now, IQueryBuilder::PARAM_INT)));
+        $result = $qb->executeQuery();
+        try { return $result->fetch() !== false; } finally { $result->closeCursor(); }
+    }
+
+    /** First observation occurs after SQL commit, unlike enqueue timestamps. */
+    public function deferErasure(int $id, string $token, int $now): bool {
+        $qb = $this->db->getQueryBuilder();
+        $qb->update('eva_ai_vec_outbox')->set('state', $qb->createNamedParameter('pending'))
+            ->set('available_at', $qb->createNamedParameter($now + 60, IQueryBuilder::PARAM_INT))
+            ->set('last_error', $qb->createNamedParameter('erase_grace'))
+            ->set('lease_token', $qb->createNamedParameter(null, IQueryBuilder::PARAM_NULL))->set('lease_until', $qb->createNamedParameter(null, IQueryBuilder::PARAM_NULL))
+            ->where($qb->expr()->eq('id', $qb->createNamedParameter($id, IQueryBuilder::PARAM_INT)))
+            ->andWhere($qb->expr()->eq('state', $qb->createNamedParameter('processing')))
+            ->andWhere($qb->expr()->eq('operation', $qb->createNamedParameter('delete_generation')))
+            ->andWhere($qb->expr()->eq('attempts', $qb->createNamedParameter(1, IQueryBuilder::PARAM_INT)))
+            ->andWhere($qb->expr()->eq('lease_token', $qb->createNamedParameter($token)))
+            ->andWhere($qb->expr()->gt('lease_until', $qb->createNamedParameter($now, IQueryBuilder::PARAM_INT)));
+        return $qb->executeStatement() === 1;
     }
 
     public function page(string $state, int $after = 0): array {

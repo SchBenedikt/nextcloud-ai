@@ -141,3 +141,9 @@ outbox deletion work will not follow a changed current URL. Requests on a
 `forTarget` adapter use the retained destination and its latest stored key, while
 still honoring the global disable switch and egress policy. See
 [VECTOR-OUTBOX.md](VECTOR-OUTBOX.md) for journal, rotation and upgrade boundaries.
+
+An explicitly enabled generation-erasure worker is now available through cron or
+`eva_ai:vector:outbox run`. It uses the retained target, committed metadata and a
+post-DNS lease/status guard. Preparation likewise rechecks building ownership and
+target before transfer. Execution is disabled by default; see VECTOR-OUTBOX.md
+before enabling it. This consumer does not replicate chunk data or activate reads.

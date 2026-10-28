@@ -59,7 +59,10 @@ final class Qdrant extends Command {
                 if ($generation === null || $this->generations->status($user, $id) !== 'building') throw new \RuntimeException('Only an owned building generation can be prepared.');
                 $target = $this->connection->targetFingerprint();
                 $this->generations->bindTarget($user, $id, $target);
-                $this->store->forTarget($target)->prepare($generation);
+                $guard = function () use ($user, $id, $target): void {
+                    if (!$this->generations->isBuildingBound($user, $id, $target)) throw new \OCA\EvaAi\Vector\VectorStoreException('generation_not_building');
+                };
+                $this->store->forTarget($target, $guard)->prepare($generation);
                 $data = ['prepared' => true, 'generation_id' => $id, 'retrieval_changed' => false];
             } else throw new \InvalidArgumentException('Use configure, status, health, disable or prepare.');
             $output->writeln(json_encode($data, JSON_PRETTY_PRINT | JSON_THROW_ON_ERROR), OutputInterface::OUTPUT_RAW);
