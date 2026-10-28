@@ -6,12 +6,15 @@ namespace OCA\EvaAi\Vector;
 
 /** Optional dense index. It is not selected by Searcher or indexing yet. */
 class QdrantVectorStore implements VectorStore {
+    private ?\Closure $beforeTransfer = null;
     private const INDEXES = ['user_id' => 'keyword', 'generation_id' => 'keyword', 'document_id' => 'integer', 'source' => 'keyword', 'scope_paths' => 'keyword'];
     public function __construct(private QdrantConnection $connection, private ?string $targetHash = null) {}
 
-    public function forTarget(string $targetHash): self {
+    public function forTarget(string $targetHash, ?\Closure $beforeTransfer = null): self {
         if (preg_match('/^[a-f0-9]{64}$/D', $targetHash) !== 1) throw new VectorStoreException('invalid_target');
-        return new self($this->connection, $targetHash);
+        $store = new self($this->connection, $targetHash);
+        $store->beforeTransfer = $beforeTransfer;
+        return $store;
     }
 
     public function health(): array {
@@ -89,6 +92,15 @@ class QdrantVectorStore implements VectorStore {
         if ($data !== null) $this->completed($data);
     }
 
+    /** A missing collection already satisfies terminal generation erasure. */
+    public function deleteGeneration(VectorGeneration $generation): void {
+        $data = $this->request('delete', $this->collection($generation) . '?timeout=10', null, true, 10);
+        if ($data !== null) {
+            $this->ok($data);
+            if (($data['result'] ?? null) !== true) throw new VectorStoreException('operation_not_completed');
+        }
+    }
+
     public function search(VectorGeneration $generation, array $queryVector, int $topK, SearchFilters $filters): array {
         $generation->validateVector($queryVector);
         if ($topK < 1 || $topK > 100) throw new VectorStoreException('invalid_limit');
@@ -136,7 +148,7 @@ class QdrantVectorStore implements VectorStore {
         return $tokens;
     }
     private function request(string $method, string $path, ?array $payload = null, bool $allowMissing = false, int $timeout = 30): ?array {
-        return $this->connection->request($method, $path, $payload, $allowMissing, $timeout, $this->targetHash);
+        return $this->connection->request($method, $path, $payload, $allowMissing, $timeout, $this->targetHash, $this->beforeTransfer);
     }
 
     private function collection(VectorGeneration $generation): string { return '/collections/' . $generation->collection(); }

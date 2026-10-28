@@ -88,6 +88,17 @@ class VectorGenerationRepository {
         if (!$row || $row['status'] !== 'building' || $row['storage_endpoint_hash'] !== $target) throw new \RuntimeException('Generation target is already bound, retired or missing.');
     }
 
+    public function isBuildingBound(string $userId, string $id, string $target): bool {
+        $qb = $this->db->getQueryBuilder();
+        $qb->select('id')->from('eva_ai_vec_generations')
+            ->where($qb->expr()->eq('user_id', $qb->createNamedParameter($userId)))
+            ->andWhere($qb->expr()->eq('id', $qb->createNamedParameter($id)))
+            ->andWhere($qb->expr()->eq('status', $qb->createNamedParameter('building')))
+            ->andWhere($qb->expr()->eq('storage_endpoint_hash', $qb->createNamedParameter($target)));
+        $result = $qb->executeQuery();
+        try { return $result->fetch() !== false; } finally { $result->closeCursor(); }
+    }
+
     /** SQL erasure and durable remote intent commit or roll back together. */
     public function deleteUser(string $userId, ?callable $deleteIndex = null): void {
         $this->outbox->transaction(function () use ($userId, $deleteIndex): void {

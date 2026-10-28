@@ -51,7 +51,7 @@ class QdrantConnection {
         return $id;
     }
 
-    public function request(string $method, string $path, ?array $payload = null, bool $allowMissing = false, int $timeout = 30, ?string $expectedTarget = null): ?array {
+    public function request(string $method, string $path, ?array $payload = null, bool $allowMissing = false, int $timeout = 30, ?string $expectedTarget = null, ?\Closure $beforeTransfer = null): ?array {
         if ($this->config->getAppValue(AppConfig::APP, 'qdrant_enabled', '0') !== '1') throw new VectorStoreException('not_enabled');
         $targetId = $expectedTarget ?? $this->targetFingerprint();
         $target = $this->targets->find($targetId);
@@ -78,7 +78,7 @@ class QdrantConnection {
         }
         $stream = null;
         try {
-            $client = $this->clients->newClient((new ProviderEndpointPolicy($this->config, 'vector_private_origins'))->handler());
+            $client = $this->clients->newClient((new ProviderEndpointPolicy($this->config, 'vector_private_origins'))->handler($beforeTransfer));
             $response = $client->$method($base . $path, $options);
             $status = $response->getStatusCode();
             $stream = $response->getBody();

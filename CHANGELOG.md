@@ -7,6 +7,7 @@
 - Add immutable, user-owned vector-generation metadata and an explicit OCC preparation command.
 - Keep SQL retrieval and legacy embeddings as the installation default; no external database is activated.
 - Add optional vector-store/filter contracts and account cleanup for local generation metadata.
+- Add an opt-in generation-erasure consumer with fresh instance flags, grace deferral and transfer-time lease/status checks; leave chunk writes disabled.
 - Add a durable vector-intent journal and encrypted target registry; retain original target identity for account-erasure work without enabling remote chunk replication.
 - Bound per-user chunk cleanup and fix reset ownership ordering.
 - Add an optional, disabled Qdrant dense adapter with encrypted instance credentials, bounded operations and generation/tenant filters; SQL indexing and reads remain active.

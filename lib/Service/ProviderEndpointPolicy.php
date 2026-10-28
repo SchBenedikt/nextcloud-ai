@@ -16,9 +16,9 @@ class ProviderEndpointPolicy {
         }
     }
 
-    public function handler(): callable {
+    public function handler(?\Closure $beforeTransfer = null): callable {
         $transfer = new CurlHandler();
-        return function (RequestInterface $request, array $options) use ($transfer) {
+        return function (RequestInterface $request, array $options) use ($transfer, $beforeTransfer) {
             // A proxy may resolve a different destination from the IP pinned here.
             // Reject configured proxies rather than silently weakening the boundary.
             if (!empty($this->config?->getSystemValue('proxy', ''))) {
@@ -32,6 +32,8 @@ class ProviderEndpointPolicy {
                 static fn(string $ip): string => str_contains($ip, ':') ? '[' . $ip . ']' : $ip,
                 $target['addresses']
             ))];
+            // Run after DNS resolution/pinning, immediately before transfer.
+            if ($beforeTransfer !== null) $beforeTransfer();
             return $transfer($request, $options);
         };
     }

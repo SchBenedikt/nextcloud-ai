@@ -137,8 +137,9 @@ replaced by a successful build or an adapter unit test.
 - 07: optional dense adapter and explicit connection/collection administration
   implemented; live protocol, isolation and deployment verification pending.
 - 08: target registry, durable journal, lease/retry primitives and transactional
-  account-erasure intent implemented; worker, revision/tombstone fencing and
-  general mutation integration remain pending.
+  account-erasure intent and disabled-by-default generation-erasure consumer
+  implemented; chunk worker, revision/tombstone fencing and general mutation
+  integration remain pending.
 - 09–14: pending; a stage is complete only when its code and matching operating
   documentation exist. Validation and production rollout remain separately
   recorded. No Qdrant deployment or production data migration has occurred.
@@ -253,3 +254,14 @@ tombstone enforcement, account creation fencing, target retention/pruning, reset
 rename/replacement integration and persistent account-cleanup retries remain
 pending. VECTOR-OUTBOX.md distinguishes these implementation gaps from the queue
 primitives. No delivery/crash/concurrency or live migration gate is verified.
+
+### Stage 08 generation-erasure consumer
+
+VectorErasureWorker and its minute job now consume only delete_generation intent
+when both server-owned flags explicitly enable execution. First observation adds
+a grace period; post-DNS guards recheck flags, lease and retired/missing metadata
+before transfer. Explicit collection preparation now also rechecks its building/
+target identity at that boundary. CLI `outbox run` reports execution counts.
+Chunk operations remain unclaimed; there are no automatic point writes or primary
+reads. VECTOR-OUTBOX.md states the soft-budget, process-suspension, account fencing
+and retention limits. Runtime crash/race/remote validation remains outstanding.
