@@ -44,3 +44,13 @@ Settings categories live in the app sidebar, replacing the secondary tab bar.
 `/settings?section=knowledge` links directly to Documents; browser history
 preserves section changes. Sections and provider rows use `NcSettingsSection`
 and `NcListItem`, with theme colors and controls supplied by Nextcloud.
+
+## Document library
+
+Document filters use native Nextcloud controls. Search and pagination remain
+bounded to 100 documents per page. Text previews load in pages of 200 chunks;
+failed requests can be retried without discarding already loaded text. Refresh
+clears expanded previews, so reindexed text is read again. The list revalidates
+cached responses with its ETag rather than hiding updates for five minutes.
+On mobile, secondary MIME/date columns are hidden while file names, sizes and
+chunk counts stay visible.

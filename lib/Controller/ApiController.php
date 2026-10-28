@@ -638,7 +638,7 @@ class ApiController extends OCSController {
             'totalSize' => $aggregates['size'],
         ];
         $etag = '"' . hash('sha256', (string)json_encode($payload, JSON_UNESCAPED_SLASHES)) . '"';
-        $headers = ['Cache-Control' => 'private, max-age=300', 'ETag' => $etag];
+        $headers = ['Cache-Control' => 'private, no-cache', 'ETag' => $etag];
         $ifNoneMatch = trim((string)$this->request->getHeader('If-None-Match'));
         if ($ifNoneMatch !== '' && hash_equals($etag, $ifNoneMatch)) {
             return new ErrorDataResponse([], 304, $headers);

@@ -75,3 +75,12 @@ that an invalid later credential cannot overwrite an earlier one.
 Screenshots in `screenshots/` use synthetic conversations in a browser fixture
 with local Nextcloud styles. They are layout evidence, not authenticated
 production or real-provider inference evidence.
+
+Document-library follow-up adds browser regressions for retrying chunk loads,
+loading the next chunk page and sending native filter selections to the API.
+The mobile fixture includes Nextcloud's grid baseline variable so collapsed
+navigation behaves like the real themed application.
+
+After the follow-up, the combined tree passes 726 PHP tests (8 environment
+skips), 48 frontend tests and all 32 browser tests. The production build and
+ESLint also pass (12 existing advisory warnings, no errors).

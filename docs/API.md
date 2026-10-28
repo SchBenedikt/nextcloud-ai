@@ -218,3 +218,10 @@ recorded in history.
 
 The legacy `/api/mailIndex`, `/api/talkIndex`, `/api/indexStop`,
 `/api/indexReset`, and `POST /api/folders/delete` paths remain supported.
+
+### Document list freshness
+
+`GET /api/documents` returns `Cache-Control: private, no-cache` with its ETag.
+Clients may retain a private copy but must revalidate before reusing it; an
+explicit refresh therefore sees new indexing results. Chunk previews retain
+the existing 200-row bounded pagination contract.

@@ -105,7 +105,7 @@ final class ApiControllerIntegrationTest extends TestCase {
 			$cacheFactory, $backgroundChatQueue, $logger,
 		);
 
-		$dependencies = compact('ollama', 'config', 'rag', 'executor', 'indexer', 'jobList', 'lockingProvider', 'chatStore', 'knowledgeInitializer', 'lockGuard', 'cacheFactory', 'logger');
+		$dependencies = compact('documentMapper', 'ollama', 'config', 'rag', 'executor', 'indexer', 'jobList', 'lockingProvider', 'chatStore', 'knowledgeInitializer', 'lockGuard', 'cacheFactory', 'logger');
 		return new ApiController(
 			'eva_ai', $request, $userId, $config, $rag, $executor, $indexer, $ollama,
 			$documentMapper, $chunkMapper, $jobList, $lockingProvider, $chatStore,
@@ -245,6 +245,19 @@ final class ApiControllerIntegrationTest extends TestCase {
 		$controller = $this->controller('alice', ['provider_profiles' => json_encode($profiles)], $dependencies, $stored);
 		self::assertSame(200, $controller->saveSettings()->getStatus());
 		self::assertSame($profiles, json_decode($controller->settings()->getData()['provider_profiles'], true));
+	}
+
+	public function testDocumentListRevalidatesRatherThanServingStaleIndexData(): void {
+		$stored = []; $dependencies = [];
+		$controller = $this->controller('alice', [], $dependencies, $stored);
+		$dependencies['documentMapper']->method('findByUser')->willReturn([]);
+		$dependencies['documentMapper']->method('aggregateForUser')->willReturn(['count' => 0, 'chunks' => 0, 'size' => 0]);
+		$response = $controller->documents();
+		self::assertSame(200, $response->getStatus());
+		// Read explicit headers without bootstrapping Nextcloud's CSP services.
+		$headers = (new \ReflectionProperty(\OCP\AppFramework\Http\Response::class, 'headers'))->getValue($response);
+		self::assertSame('private, no-cache', $headers['Cache-Control']);
+		self::assertArrayHasKey('ETag', $headers);
 	}
 
 	public function testIndexRequestQueuesTheExpectedBackgroundJob(): void {
