@@ -44,6 +44,7 @@ class AdminController extends OCSController {
         private IUserManager $userManager,
         private WebSearchService $webSearch,
         private UsageMetrics $usageMetrics,
+        private ?\OCA\EvaAi\Vector\VectorStorageStatus $vectorStorageStatus = null,
     ) {
         parent::__construct($appName, $request);
     }
@@ -59,6 +60,13 @@ class AdminController extends OCSController {
     public function getSettings(): DataResponse {
         $this->config->setUserId(null);
         return new ErrorDataResponse($this->adminSettingsPayload());
+    }
+
+    /** Local metadata only; viewing administration must never contact Qdrant. */
+    #[AdminRequired]
+    public function vectorStorage(): DataResponse {
+        $status = $this->vectorStorageStatus?->snapshot() ?? ['available' => false];
+        return new ErrorDataResponse($status, $status['available'] ? 200 : 503);
     }
 
     /**

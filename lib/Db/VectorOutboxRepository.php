@@ -120,10 +120,11 @@ class VectorOutboxRepository {
         $qb->executeStatement();
     }
 
-    public function stats(): array {
+    public function stats(bool $actionableOnly = false): array {
         $qb = $this->db->getQueryBuilder();
         $qb->select('state')->selectAlias($qb->createFunction('COUNT(*)'), 'events')
             ->selectAlias($qb->createFunction('MIN(created_at)'), 'oldest_created_at')->from('eva_ai_vec_outbox')->groupBy('state');
+        if ($actionableOnly) $qb->where($qb->expr()->in('state', $qb->createNamedParameter(['pending', 'processing', 'dead'], IQueryBuilder::PARAM_STR_ARRAY)));
         $result = $qb->executeQuery();
         try { return $result->fetchAll(); } finally { $result->closeCursor(); }
     }

@@ -7,6 +7,31 @@ The Vue client uses `@nextcloud/axios`, which supplies Nextcloud's request token
 and OCS headers. Admin routes live under `api/admin/` and require administrator
 privileges.
 
+## Administrator storage snapshot
+
+`GET /api/admin/vector-storage` is admin-only and read-only. It reads local
+configuration and actionable outbox counts, never contacting Qdrant or an
+embedding provider. The OCS data on success is:
+
+```json
+{"available":true,"retrieval_backend":"sql_legacy","connection":{"enabled":false,"configured":false,"key_configured":false},"erasure_worker_enabled":false,"chunk_sync_available":false,"queue":{"pending":0,"processing":0,"dead":0},"observed_at":1793209009}
+```
+
+`observed_at` is a Unix timestamp. Claimed operations can include expired leases;
+they do not prove a worker is running. Counts cover pending/processing/dead events,
+excluding delivered/superseded history from the aggregate query. This is an
+observational snapshot, not an atomic distributed health assessment. Configuration
+flags do not establish remote reachability or collection readiness. SQL remains
+the only selected retrieval backend in this stack; chunk synchronization is not
+available. The future rollout implementation must update this contract and UI
+together when those modes become real.
+
+Metadata/database failures return HTTP 503 with `available=false` (plus the common
+error envelope), never zeroed healthy counters or raw database errors. Non-admins
+are rejected by `AdminRequired`. No target URL, keys, owner identities, generation
+descriptors, file paths or content are returned. Both the EVA admin view and the
+server-rendered Nextcloud administration page use the same snapshot service.
+
 ## Lightweight index progress
 
 `GET /api/index/status` requires a signed-in user and returns:

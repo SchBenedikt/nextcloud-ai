@@ -157,6 +157,29 @@ $providerLabels = [
 		</tbody>
 	</table>
 
+	<h3><?php p($l->t('Knowledge storage')); ?></h3>
+	<p class="settings-hint"><?php p($l->t('Search uses the built-in database. Optional vector storage is being prepared for larger knowledge bases.')); ?></p>
+	<?php $storage = $_['vectorStorage'] ?? ['available' => false]; ?>
+	<?php if (!$storage['available']): ?>
+		<p role="alert"><?php p($l->t('Storage status could not be loaded. Retry or check the database migrations. This does not indicate an empty queue.')); ?></p>
+	<?php else: ?>
+		<table class="grid">
+			<tbody>
+				<tr><th scope="row"><?php p($l->t('Search backend')); ?></th><td><?php p($l->t('Built-in database (SQL)')); ?></td></tr>
+				<tr><th scope="row"><?php p($l->t('Optional Qdrant connection')); ?></th><td><?php p(!$storage['connection']['configured'] ? $l->t('Not configured') : ($storage['connection']['enabled'] ? $l->t('Configured · requests allowed') : $l->t('Configured · requests disabled'))); ?></td></tr>
+				<tr><th scope="row"><?php p($l->t('Generation cleanup')); ?></th><td><?php p($storage['erasure_worker_enabled'] ? $l->t('Enabled') : $l->t('Paused')); ?></td></tr>
+				<tr><th scope="row"><?php p($l->t('Chunk synchronization')); ?></th><td><?php p($l->t('Not available yet')); ?></td></tr>
+				<tr><th scope="row"><?php p($l->t('Waiting operations')); ?></th><td><?php p((string)$storage['queue']['pending']); ?></td></tr>
+				<tr><th scope="row"><?php p($l->t('Claimed operations')); ?></th><td><?php p((string)$storage['queue']['processing']); ?></td></tr>
+				<tr><th scope="row"><?php p($l->t('Operations needing attention')); ?></th><td><?php p((string)$storage['queue']['dead']); ?></td></tr>
+			</tbody>
+		</table>
+		<?php if ($storage['queue']['dead'] > 0): ?>
+			<p role="alert"><?php p($l->t('Some background operations exhausted their retries. An administrator needs to inspect them before retrying.')); ?></p>
+		<?php endif; ?>
+		<p class="settings-hint"><?php p($l->t('Configuration status is not a connection test. Generation cleanup only removes retired search collections; it does not index files or switch search backends.')); ?></p>
+	<?php endif; ?>
+
 	<h3><?php p($l->t('Indexing performance')); ?></h3>
 	<p class="settings-hint">
 		<?php p($l->t('The background indexer runs on Nextcloud cron. These values bound how much work one cron run may do, so a large library is indexed steadily without slowing the instance down.')); ?>

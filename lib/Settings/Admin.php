@@ -29,6 +29,7 @@ class Admin implements ISettings {
         private IUserManager $userManager,
         private WebSearchService $webSearch,
         private IURLGenerator $urlGenerator,
+        private ?\OCA\EvaAi\Vector\VectorStorageStatus $vectorStorageStatus = null,
     ) {
     }
 
@@ -112,6 +113,7 @@ class Admin implements ISettings {
             // Skipped-file counts are per-user runtime state, so they are summed
             // here instead of being read from adminAll().
             'adminSettings' => $adminSettings + ['last_index_failed' => (string)$totalFailed],
+            'vectorStorage' => $this->vectorStorageStatus?->snapshot() ?? ['available' => false],
             'ollamaOnline' => $ollamaOnline,
             'ollamaError' => $ollamaError,
             // The effective instance value, not a hardcoded default: the admin

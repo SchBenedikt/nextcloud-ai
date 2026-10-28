@@ -54,6 +54,8 @@
 			</div>
 		</div>
 
+		<VectorStorageStatus />
+
 		<main class="admin-body">
 			<div v-if="!data && loading" class="admin-loading" role="status">{{ $t('Loading admin overview…') }}</div>
 			<div v-else-if="!data && loadError" class="admin-empty">{{ $t('User indexing details are unavailable.') }}</div>
@@ -125,6 +127,7 @@
 import { ref, onMounted } from 'vue'
 import { api as requestApi, errMsg } from '../lib/api'
 import { translate as t } from '../lib/i18n'
+import VectorStorageStatus from '../components/settings/VectorStorageStatus.vue'
 
 // The api() helper signature is (method, path, data).
 const apiGet = (path) => requestApi('GET', path)
@@ -132,6 +135,7 @@ const apiPost = (path, data) => requestApi('POST', path, data)
 
 export default {
 	name: 'AdminView',
+	components: { VectorStorageStatus },
 	setup() {
 		const data = ref(null)
 		const loading = ref(true)
