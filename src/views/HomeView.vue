@@ -75,7 +75,7 @@ export default {
 .home-compose { width: min(100%, 720px); flex: 0 0 auto; margin: 0 auto; }
 .home-compose :deep(textarea) { min-height: 96px; max-height: 20vh; }
 .compose-actions { display: flex; justify-content: flex-end; margin-top: 8px; }
-.recent-chats { width: min(100%, 860px); flex: 0 0 auto; align-self: center; min-height: 0; overflow: hidden; }
+.recent-chats { width: min(100%, 720px); flex: 0 0 auto; align-self: center; min-height: 0; overflow: hidden; }
 h2 { font-size: 16px; font-weight: 600; margin: 0 0 12px; }
 .chat-icon { flex: none; margin-inline-end: 16px; color: var(--color-text-maxcontrast); }
 @media (max-width: 600px) { .home-view { padding-inline: 16px; } .home-greeting { margin-bottom: 12px; } .home-compose :deep(textarea) { min-height: 88px; } }
