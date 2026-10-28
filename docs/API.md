@@ -33,6 +33,10 @@ the only selected retrieval backend in this stack; chunk synchronization is not
 available. The future rollout implementation must update this contract and UI
 together when those modes become real.
 
+Pending operations can now include durable source-deletion tombstones. They stay
+queued until point synchronization is implemented; queue presence does not prove
+remote erasure. SQL-only source deletion does not create vector operations.
+
 `staged_chunks` counts generation-tagged SQL rows separately from the NULL-
 generation legacy index. It does not assert delivery, verification or readiness.
 Both native admin surfaces display it; count failures make the snapshot unavailable.

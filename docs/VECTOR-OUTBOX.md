@@ -249,3 +249,20 @@ claim contention, lease expiry, target/key rotation, crash recovery or erasure
 correctness. These tests remain outstanding while the user-directed test pause
 is in effect. The full goal cannot be considered complete until those invariants
 and the rollout/restore gates in BACKEND-ROADMAP.md are verified.
+
+## Source deletion journal
+
+`VectorSourceDeletion` is the canonical chunk/document deletion boundary used by
+both mappers. It locks the source rows and writes one terminal `delete_chunk`
+intent per generation-tagged SQL chunk before removing data, with monotonically
+newer revisions and the generation's retained storage target. Document deletion
+includes a second guarded chunk cleanup so a concurrent staged writer cannot
+leave a new orphan between separate mapper calls. SQL-only deletions create no
+remote work. Per-user/all-user reset and deferred cron reset use the same path.
+
+Each bounded batch rolls back if intent cannot be retained. Point delivery remains
+unavailable: these tombstones are durable pending work, not completed remote
+erasure. The future consumer must discard upserts whose SQL source vanished,
+check flags/lease/lifecycle at transfer time, and supersede point events for
+retired/missing generations instead of recreating erased collections. Whole-account
+generation erasure continues independently through the existing worker.
