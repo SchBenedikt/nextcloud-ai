@@ -129,7 +129,7 @@
 			</template>
 		</NcAppNavigation>
 		<NcAppContent>
-			<HomeView v-if="view === 'home'" :chats="chats" :loading="chatsLoading" :busy="busy" :error="apiError" @retry="loadChats" @new-chat="newChat" @navigate="navigate" @open-chat="selectChat" />
+			<HomeView v-if="view === 'home'" :chats="chats" :loading="chatsLoading" :busy="busy" :error="apiError" @retry="loadChats" @new-chat="newChat" @open-chat="selectChat" />
 			<ChatView v-else-if="view === 'chat'" :chat-id="currentChat" :initial-prompt="pendingPrompt" :auto-send="!!pendingPrompt" @chat-updated="loadChats" @prompt-consumed="pendingPrompt = ''" />
 			<FileContextChatView v-else-if="view === 'fileContext'" :file-ids="fileContextIds" />
 			<DocumentsView v-else-if="view === 'docs'" />
