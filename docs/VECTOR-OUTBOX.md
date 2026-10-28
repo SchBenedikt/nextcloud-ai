@@ -266,3 +266,12 @@ erasure. The future consumer must discard upserts whose SQL source vanished,
 check flags/lease/lifecycle at transfer time, and supersede point events for
 retired/missing generations instead of recreating erased collections. Whole-account
 generation erasure continues independently through the existing worker.
+
+Metadata mutations through `DocumentMapper::update()` and per-user hash clearing
+are source-locked and compared against the stamp fields. A changed source queues
+terminal delete events and removes its prepared generation rows in the same
+transaction as the metadata update. It preserves legacy chunks and never embeds
+or contacts Qdrant in the metadata transaction. Identical values and publication-
+only fields (`chunk_count`, `indexed_at`) do not invalidate prepared data. Moving
+a document to another owner is rejected. A later backfill must rebuild changed
+sources with fresh point IDs; current code does not claim automatic rebuilding.

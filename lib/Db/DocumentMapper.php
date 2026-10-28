@@ -22,6 +22,13 @@ class DocumentMapper extends QBMapper {
         return $entity;
     }
 
+    public function update(Entity $entity): Entity {
+        $sourceFields = ['userId', 'fileId', 'path', 'name', 'source', 'contentHash', 'fileMtime', 'size', 'mime'];
+        if (array_intersect(array_keys($entity->getUpdatedFields()), $sourceFields) === []) return parent::update($entity);
+        if ($entity->getId() === null) throw new \InvalidArgumentException('Entity which should be updated has no id');
+        return $this->sourceDeletion->mutateDocuments([(int)$entity->getId()], fn(): Entity => parent::update($entity));
+    }
+
     public function findByUserAndFile(string $userId, int $fileId): ?Document {
         $qb = $this->db->getQueryBuilder();
         $qb->select('*')
@@ -469,10 +476,26 @@ class DocumentMapper extends QBMapper {
      * Used when configuration changes that affect embeddings/chunking
      */
     public function clearHashesForUser(string $userId): void {
-        $qb = $this->db->getQueryBuilder();
-        $qb->update('eva_ai_documents')
-            ->set('content_hash', $qb->createNamedParameter(''))
-            ->where($qb->expr()->eq('user_id', $qb->createNamedParameter($userId)));
-        $qb->executeStatement();
+        $cursor = 0;
+        do {
+            $qb = $this->db->getQueryBuilder();
+            $qb->select('id')->from('eva_ai_documents')
+                ->where($qb->expr()->eq('user_id', $qb->createNamedParameter($userId)))
+                ->andWhere($qb->expr()->neq('content_hash', $qb->createNamedParameter('')))
+                ->andWhere($qb->expr()->gt('id', $qb->createNamedParameter($cursor, IQueryBuilder::PARAM_INT)))
+                ->orderBy('id', 'ASC')->setMaxResults(500);
+            $result = $qb->executeQuery();
+            try { $rows = $result->fetchAll(); } finally { $result->closeCursor(); }
+            $ids = array_map(static fn(array $row): int => (int)$row['id'], $rows);
+            if ($ids !== []) {
+                $this->sourceDeletion->mutateDocuments($ids, function () use ($ids, $userId): void {
+                    $update = $this->db->getQueryBuilder();
+                    $update->update('eva_ai_documents')->set('content_hash', $update->createNamedParameter(''))
+                        ->where($update->expr()->in('id', $update->createNamedParameter($ids, IQueryBuilder::PARAM_INT_ARRAY)))
+                        ->andWhere($update->expr()->eq('user_id', $update->createNamedParameter($userId)))->executeStatement();
+                });
+                $cursor = $ids[count($ids) - 1];
+            }
+        } while (count($rows) === 500);
     }
 }

@@ -395,6 +395,7 @@ cover replacement, Files/Mail/Talk and folder deletion, reset and account cleanu
 the deferred IndexJob reset no longer issues raw chunk/document DELETE statements.
 Both native admin surfaces explain that point cleanup remains queued until its
 consumer is implemented. SQL-only deletions never create vector events or make
-remote calls. Metadata rename invalidation, point consumption, backfill and
-activation are still pending. No database concurrency/rollback execution is
+remote calls. Source-stamp field updates and tenant-filtered hash clearing also invalidate
+prepared entries transactionally, while preserving legacy chunks. Rebuilding
+those entries, point consumption, backfill and activation are still pending. No database concurrency/rollback execution is
 claimed while tests remain deferred.

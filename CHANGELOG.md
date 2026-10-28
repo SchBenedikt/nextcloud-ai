@@ -18,6 +18,8 @@
 
 ### Reliability and documentation
 
+- Invalidate prepared vector entries atomically when source metadata changes, including folder renames and forced reindexing, without re-embedding or interrupting legacy SQL retrieval.
+
 - Journal optional vector-point deletions atomically with canonical chunk/document removal, including replacements and deferred index reset; preserve SQL-only installation and keep remote point cleanup queued until its consumer is available.
 
 - Keep prompt-library dialogs reusable, retain unsaved provider model edits, announce indexing progress and ignore stale chunk responses after document refreshes.

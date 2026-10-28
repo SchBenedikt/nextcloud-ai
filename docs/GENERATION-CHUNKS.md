@@ -83,8 +83,17 @@ or vector request runs during these transactions. Point events for retired or
 missing generations must be superseded by the future point worker, which must
 not recreate a collection after generation erasure.
 
-Metadata-only rename invalidation/rebuild and durable point consumption still
-need integration before enabling point consumers. Resumable source/provider-pinned
+Source updates now use the same source-row transaction boundary. Changes to the
+fields used by `VectorDocumentSnapshot` (including path, source, content hash and
+mtime) queue terminal tombstones and remove only the affected generation chunks.
+Legacy chunks remain searchable. Updates limited to chunk counts or indexing
+timestamps avoid that boundary, and identical source metadata is a no-op for
+invalidation. Ownership reassignment is rejected and rolled back. Bulk hash
+clearing uses bounded tenant-filtered batches through this boundary too.
+
+Rebuilding invalidated entries and durable point consumption still need integration
+before enabling point consumers. Rebuilding must allocate fresh chunk IDs and
+capture the new source stamp; terminal tombstone IDs must never be reused. Resumable source/provider-pinned
 backfill, generation completeness checks, exact-ID/revision verification, quotas,
 retention, shadow/primary reads and rollback drills remain pending. Per-generation
 text/vector copies temporarily require extra SQL space. No speed improvement or

@@ -20,7 +20,7 @@
 				{{ $t('Some background operations exhausted their retries. An administrator needs to inspect them before retrying.') }}
 			</NcNoteCard>
 			<p class="storage-hint">{{ $t('Configuration status is not a connection test. Generation cleanup only removes retired search collections; it does not index files or switch search backends.') }}</p>
-			<p class="storage-hint">{{ $t('Removing a file clears its local index and queues cleanup for any prepared vector points. Point cleanup remains queued until chunk synchronization is available.') }}</p>
+			<p class="storage-hint">{{ $t('Removing a file clears its local index and queues cleanup for prepared vector points. Renaming or changing a source discards its prepared entries for rebuilding. Point cleanup remains queued until chunk synchronization is available.') }}</p>
 			<p v-if="status.staged_chunks > 0" class="storage-hint">{{ $t('Prepared generation chunks are separate from the SQL search index. Their presence does not mean migration is verified or active.') }}</p>
 		</template>
 		<NcButton variant="secondary" :disabled="loading" @click="refresh">{{ $t('Refresh storage status') }}</NcButton>
