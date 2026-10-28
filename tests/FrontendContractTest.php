@@ -243,7 +243,7 @@ final class FrontendContractTest extends TestCase {
         self::assertStringContainsString('public function deleteFolder(): DataResponse', (string)file_get_contents(__DIR__ . '/../lib/Controller/ApiController.php'));
 
         $documents = (string)file_get_contents(__DIR__ . '/../src/views/DocumentsView.vue');
-        self::assertStringContainsString('width: min(100%, 980px);', $settings);
+        self::assertStringContainsString('width: min(100%, 1080px);', (string)file_get_contents(__DIR__ . '/../src/styles/settings.scss'));
         self::assertStringContainsString('max-width: var(--eva-content-width, 1180px);', $documents);
 
         $vanilla = (string)file_get_contents(__DIR__ . '/../src/lib/vanilla.js');

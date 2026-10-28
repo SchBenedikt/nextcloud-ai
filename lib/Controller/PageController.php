@@ -105,10 +105,15 @@ class PageController extends Controller {
             $this->addPageHeaders('shell-v2');
         }
         $response = new TemplateResponse('eva_ai', $template, [
-            'apiBase' => $this->urlGenerator->getAbsoluteURL('/ocs/v2.php/apps/eva_ai/api/'),
+            'apiBase' => $this->apiPath(),
         ]);
         $this->allowWebImages($response);
         return $this->noCache($response);
+    }
+
+    /** Keep authenticated browser requests on their current origin, including aliases. */
+    private function apiPath(string $suffix = ''): string {
+        return rtrim($this->urlGenerator->getWebroot(), '/') . '/ocs/v2.php/apps/eva_ai/api/' . $suffix;
     }
 
     private function findBundle(string $prefix): ?string {
@@ -141,11 +146,11 @@ class PageController extends Controller {
         ]);
         \OCP\Util::addHeader('meta', [
             'name' => 'eva-ai-api',
-            'content' => $this->urlGenerator->getAbsoluteURL('/ocs/v2.php/apps/eva_ai/api/'),
+            'content' => $this->apiPath(),
         ]);
         \OCP\Util::addHeader('meta', [
             'name' => 'eva-ai-stream',
-            'content' => $this->urlGenerator->getAbsoluteURL('/ocs/v2.php/apps/eva_ai/api/streamChat?format=json'),
+            'content' => $this->apiPath('streamChat?format=json'),
         ]);
         \OCP\Util::addHeader('meta', [
             'name' => 'eva-ai-version',

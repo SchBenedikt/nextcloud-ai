@@ -109,7 +109,7 @@ test('image generation remains usable at a narrow mobile viewport', async ({ pag
 test('chat exports can include or omit per-message timestamps and model details', async ({ page }) => {
   await openChatView(page)
   await page.fill('#chatinput', 'Export metadata')
-  await page.locator('.chatform button[type="submit"]').click()
+  await page.getByRole('button', { name: 'Send message', exact: true }).click()
   await expect(page.locator('.rb').last()).toContainText('A test answer')
 
   await page.getByRole('button', { name: 'Conversation actions' }).click()
@@ -146,7 +146,7 @@ test('chat exports can include or omit per-message timestamps and model details'
 test('chat exports can be limited to an inclusive date range', async ({ page }) => {
   await openChatView(page)
   await page.fill('#chatinput', 'Date filtered export')
-  await page.locator('.chatform button[type="submit"]').click()
+  await page.getByRole('button', { name: 'Send message', exact: true }).click()
   await expect(page.locator('.rb').last()).toContainText('A test answer')
 
   await page.getByRole('button', { name: 'Conversation actions' }).click()
@@ -181,7 +181,7 @@ test('uses the configured provider and shows the model returned by the server', 
   const model = page.locator('.chat-model-select')
   await expect(model).toHaveCount(0)
   await page.fill('#chatinput', 'Use the selected model')
-  await page.locator('.chatform button[type="submit"]').click()
+  await page.getByRole('button', { name: 'Send message', exact: true }).click()
 
   await expect.poll(() => page.evaluate(() => window.__calls.some((call) => call.url.endsWith('/streamChat')))).toBe(true)
   await expect(page.locator('.rb').last()).toContainText('Model: gpt-test')

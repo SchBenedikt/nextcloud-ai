@@ -70,3 +70,38 @@ navigation at narrow/wide viewports and in light/dark themes. Screenshots using
 synthetic fixtures establish layout only. Authenticated chat, provider requests,
 cron, migrations, concurrent writers and restore/rollback need their own runtime
 evidence. Report skipped or unexecuted checks explicitly for each delivery.
+
+## Authenticated local recovery checks
+
+The local recovery batch resumes verification after the earlier test pause. It
+includes 44 frontend unit tests, 33 fixture-browser tests and a PHP suite with
+722 tests (8 skipped). The source-generation staging/deletion probe also ran
+against the installed MariaDB connection with its fixture transaction rolled back.
+It checked idempotent staging, metadata invalidation, preserved legacy rows,
+fresh point IDs and document deletion with durable tombstones. These are local
+results, not PostgreSQL/SQLite or representative ANN/load evidence.
+
+An opt-in browser suite covers real login, native pages, settings autosave/reload
+and two real model answers followed by history reload. Use a disposable administrator
+account named `eva-runtime-audit-*`, with English UI, the first-run wizard completed,
+and an available configured chat model. It makes real model requests and creates
+conversations only in that account. Never use a personal account. Keep credentials
+in a private JSON file (`user` and `password`, mode 0600), outside the repository:
+
+```sh
+EVA_TEST_BASE_URL=http://localhost \
+EVA_TEST_CREDENTIALS_FILE=/private/eva-audit.json \
+npx playwright test tests/runtime --workers=1 --reporter=line
+
+NEXTCLOUD_ROOT=/var/www/html/nextcloud \
+EVA_TEST_USER=eva-runtime-audit-example \
+php tests/runtime/source-lifecycle.php
+```
+
+Run the SQL probe as the web-server user; it bootstraps Nextcloud and rolls back
+its fixture transaction, without contacting a vector/embedding service. Remove the
+disposable account after verification. The browser suite requires configuration
+and is skipped if its environment variables are absent. A mock browser run does
+not substitute for it. Hosted image/audio providers, external app actions,
+Qdrant transport/cutover, distributed races, restoration and load/soak still need
+separate configured evidence; they are not established by these smoke checks.
