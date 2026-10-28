@@ -68,7 +68,12 @@ final class GdprDataRemovalTest extends TestCase {
         $store->deleteUserData('alice');
     }
 
-    public function testAccountDeletionErasesEveryUserScopedStore(): void {
+    public static function indexCleanupCases(): array {
+        return ['successful index erasure' => [false], 'failed chunk erasure retains ownership for retry' => [true]];
+    }
+
+    #[\PHPUnit\Framework\Attributes\DataProvider('indexCleanupCases')]
+    public function testAccountDeletionErasesEveryUserScopedStore(bool $failChunks): void {
         $config = $this->createMock(AppConfig::class);
         $config->expects(self::once())->method('deleteUserValues')->with('alice');
         $chats = $this->createMock(ChatStore::class);
@@ -92,13 +97,14 @@ final class GdprDataRemovalTest extends TestCase {
         $queueLocks->expects(self::exactly(2))->method('releaseLock');
         $queue = new BackgroundChatQueue($queueConfig, $queueLocks, $this->createMock(LoggerInterface::class));
         $documents = $this->createMock(DocumentMapper::class);
-        $documents->expects(self::once())->method('deleteByUser')->with('alice');
+        $documents->expects($failChunks ? self::never() : self::once())->method('deleteByUser')->with('alice');
         $chunks = $this->createMock(ChunkMapper::class);
-        $chunks->expects(self::once())->method('deleteForUser')->with('alice');
+        $eraseChunks = $chunks->expects(self::once())->method('deleteForUser')->with('alice');
+        if ($failChunks) $eraseChunks->willThrowException(new \RuntimeException('Temporary database failure'));
         $embeddings = $this->createMock(EmbeddingCache::class);
         $embeddings->expects(self::once())->method('clearUser')->with('alice');
         $root = $this->createMock(IRootFolder::class);
-        $root->method('getUserFolder')->willThrowException(new \RuntimeException('account home is gone'));
+        $root->expects(self::never())->method('getUserFolder');
         $factory = $this->createMock(IAppDataFactory::class);
         $appData = $this->createMock(IAppData::class);
         $factory->method('get')->with('eva_ai')->willReturn($appData);

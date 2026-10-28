@@ -54,7 +54,7 @@ class ChunkMapper extends QBMapper {
         $cursor = 0; $deleted = 0;
         do {
             $qb = $this->db->getQueryBuilder();
-            $qb->select('c.document_id')->distinct()->from('eva_ai_chunks', 'c')
+            $qb->selectDistinct('c.document_id')->from('eva_ai_chunks', 'c')
                 ->where($qb->expr()->gt('c.document_id', $qb->createNamedParameter($cursor, IQueryBuilder::PARAM_INT)))
                 ->orderBy('c.document_id', 'ASC')->setMaxResults(500);
             if ($userId !== null) {

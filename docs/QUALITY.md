@@ -208,3 +208,40 @@ checked path includes actual profile/key SQL mutations after DNS resolution,
 zero transfer after that mutation, per-owner key/cache isolation, native response
 parsing and compatible index ordering. It does not establish a hosted provider's
 availability, generation backfill, complete verification or retrieval cutover.
+
+## Native account-erasure regression drill
+
+The 1.18.9 local lifecycle drill exposed an actual Nextcloud API mismatch:
+`ChunkMapper::deleteForUser()` used Doctrine's `distinct()`, which is absent from
+Nextcloud's QueryBuilder. Native deletion consequently retained document/chunk
+ownership rows. Later scheduler passes could rediscover those stale owners.
+The query now uses Nextcloud's `selectDistinct()`; cleanup also leaves home
+erasure to core instead of reopening the deleted account's storage.
+
+Run the source-lifecycle probe above against MariaDB to exercise actual per-user
+chunk/document cleanup, repeated calls and another tenant's preserved rows. The
+fixture transaction rolls back. To check the installed listener and AppData too,
+create a **disposable** audit account and, as the web-server user, run:
+
+```sh
+NEXTCLOUD_ROOT=/var/www/html/nextcloud \
+EVA_TEST_USER=eva-runtime-audit-example \
+EVA_TEST_DELETE_ACCOUNT=1 \
+php tests/runtime/account-erasure.php
+```
+
+This command creates public fixtures and **deletes the account**, including any
+of its existing data. It checks document, chunk, agent, generation and preference
+removal, chat/dirty/mark AppData removal, the retained erasure fence and a cleanup
+retry after core has forgotten the account. Never substitute a personal account.
+Run fixture setup as the same web-server user; root-created dirty-queue files can
+otherwise prevent the fixture from being written and invalidate the setup.
+
+Local results: both native SQL lifecycle checks and the installed account-delete
+plus retry drill passed; six focused PHP tests passed with 76 assertions. Five
+previously deleted, dedicated audit accounts were repaired through the same
+cleanup service, with zero retained EVA source/config/agent/generation rows and
+zero chunks for their former document IDs. No frontend source changed, so no
+frontend compilation was needed. These are sequential local checks, not proof of
+in-flight legacy-writer fencing, a durable cleanup retry coordinator, distributed
+races or external vector erasure; those acceptance gates remain open.
