@@ -58,6 +58,18 @@ class VectorGenerationRepository {
         if ($qb->executeStatement() !== 1) throw new \RuntimeException('Generation is missing, belongs to another user or is no longer building.');
     }
 
+    public function status(string $userId, string $id): ?string {
+        $qb = $this->db->getQueryBuilder();
+        $qb->select('status')->from('eva_ai_vec_generations')
+            ->where($qb->expr()->eq('user_id', $qb->createNamedParameter($userId)))
+            ->andWhere($qb->expr()->eq('id', $qb->createNamedParameter($id)));
+        $result = $qb->executeQuery();
+        try { $row = $result->fetch(); } finally { $result->closeCursor(); }
+        if (!$row) return null;
+        if (!in_array($row['status'], ['building', 'active', 'retired', 'failed'], true)) throw new \RuntimeException('Invalid stored generation status.');
+        return $row['status'];
+    }
+
     /** Currently metadata only. Remote erasure will require an outbox tombstone. */
     public function deleteUser(string $userId): void {
         foreach (['eva_ai_vec_state', 'eva_ai_vec_generations'] as $table) {
