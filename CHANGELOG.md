@@ -18,6 +18,8 @@
 
 ### Reliability and documentation
 
+- Journal optional vector-point deletions atomically with canonical chunk/document removal, including replacements and deferred index reset; preserve SQL-only installation and keep remote point cleanup queued until its consumer is available.
+
 - Keep prompt-library dialogs reusable, retain unsaved provider model edits, announce indexing progress and ignore stale chunk responses after document refreshes.
 - Persist generation-erasure grace independently of retries and register optional-storage targets safely under concurrent requests.
 - Record benchmarks with the exact checked query vector, accept source-aware Mail/Talk paths and preserve timings for failed retrieval stages.

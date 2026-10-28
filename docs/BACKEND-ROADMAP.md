@@ -386,3 +386,15 @@ deletion/metadata invalidation/reset integration, point consumers, actual source
 provider-pinned backfill and verification remain pending. GENERATION-CHUNKS.md
 records those boundaries and storage overhead. Syntax/build checks do not verify
 SQL lifecycle, concurrency, isolation or rollout readiness.
+
+### Canonical source-deletion journal
+
+Chunk/document mapper deletion now allocates terminal point-delete intent and
+removes canonical rows in one source-locked transaction. Bounded keyset batches
+cover replacement, Files/Mail/Talk and folder deletion, reset and account cleanup;
+the deferred IndexJob reset no longer issues raw chunk/document DELETE statements.
+Both native admin surfaces explain that point cleanup remains queued until its
+consumer is implemented. SQL-only deletions never create vector events or make
+remote calls. Metadata rename invalidation, point consumption, backfill and
+activation are still pending. No database concurrency/rollback execution is
+claimed while tests remain deferred.

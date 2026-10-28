@@ -5,12 +5,21 @@ declare(strict_types=1);
 namespace OCA\EvaAi\Db;
 
 use OCP\AppFramework\Db\QBMapper;
+use OCP\AppFramework\Db\Entity;
 use OCP\DB\QueryBuilder\IQueryBuilder;
 use OCP\IDBConnection;
 
 class DocumentMapper extends QBMapper {
-    public function __construct(IDBConnection $db) {
+    private VectorSourceDeletion $sourceDeletion;
+
+    public function __construct(IDBConnection $db, ?VectorSourceDeletion $sourceDeletion = null) {
         parent::__construct($db, 'eva_ai_documents');
+        $this->sourceDeletion = $sourceDeletion ?? new VectorSourceDeletion($db, new VectorOutboxRepository($db));
+    }
+
+    public function delete(Entity $entity): Entity {
+        $this->deleteByIds([(int)$entity->getId()]);
+        return $entity;
     }
 
     public function findByUserAndFile(string $userId, int $fileId): ?Document {
@@ -183,11 +192,7 @@ class DocumentMapper extends QBMapper {
     }
 
     public function deleteByUserAndFile(string $userId, int $fileId): void {
-        $qb = $this->db->getQueryBuilder();
-        $qb->delete('eva_ai_documents')
-            ->where($qb->expr()->eq('user_id', $qb->createNamedParameter($userId)))
-            ->andWhere($qb->expr()->eq('file_id', $qb->createNamedParameter($fileId, IQueryBuilder::PARAM_INT)));
-        $qb->executeStatement();
+        $this->deleteMatching($userId, $fileId);
     }
 
     public function countForUser(string $userId, ?string $search = null): int {
@@ -427,29 +432,36 @@ class DocumentMapper extends QBMapper {
 
     /** @param int[] $ids */
     public function deleteByIds(array $ids): void {
-        if (empty($ids)) {
-            return;
-        }
         $ids = array_values(array_unique(array_filter(array_map('intval', $ids), static fn(int $id): bool => $id > 0)));
-        foreach (array_chunk($ids, 500) as $batch) {
-            $qb = $this->db->getQueryBuilder();
-            $qb->delete('eva_ai_documents')
-                ->where($qb->expr()->in('id', $qb->createNamedParameter($batch, IQueryBuilder::PARAM_INT_ARRAY)));
-            $qb->executeStatement();
-        }
+        foreach (array_chunk($ids, 500) as $batch) $this->sourceDeletion->deleteDocuments($batch, true);
     }
 
     public function deleteByUser(string $userId): int {
-        $qb = $this->db->getQueryBuilder();
-        $qb->delete('eva_ai_documents')
-            ->where($qb->expr()->eq('user_id', $qb->createNamedParameter($userId)));
-        return $qb->executeStatement();
+        return $this->deleteMatching($userId);
     }
 
     public function deleteAll(): int {
-        $qb = $this->db->getQueryBuilder();
-        $qb->delete('eva_ai_documents');
-        return $qb->executeStatement();
+        return $this->deleteMatching(null);
+    }
+
+    private function deleteMatching(?string $userId, ?int $fileId = null): int {
+        $cursor = 0; $deleted = 0;
+        do {
+            $qb = $this->db->getQueryBuilder();
+            $qb->select('id')->from('eva_ai_documents')
+                ->where($qb->expr()->gt('id', $qb->createNamedParameter($cursor, IQueryBuilder::PARAM_INT)))
+                ->orderBy('id', 'ASC')->setMaxResults(500);
+            if ($userId !== null) $qb->andWhere($qb->expr()->eq('user_id', $qb->createNamedParameter($userId)));
+            if ($fileId !== null) $qb->andWhere($qb->expr()->eq('file_id', $qb->createNamedParameter($fileId, IQueryBuilder::PARAM_INT)));
+            $result = $qb->executeQuery();
+            try { $rows = $result->fetchAll(); } finally { $result->closeCursor(); }
+            $ids = array_map(static fn(array $row): int => (int)$row['id'], $rows);
+            if ($ids !== []) {
+                $deleted += $this->sourceDeletion->deleteDocuments($ids, true)['documents'];
+                $cursor = $ids[count($ids) - 1];
+            }
+        } while (count($rows) === 500);
+        return $deleted;
     }
 
     /**

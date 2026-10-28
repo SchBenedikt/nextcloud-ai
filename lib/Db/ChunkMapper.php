@@ -25,73 +25,51 @@ class ChunkMapper extends QBMapper {
         finally { $result->closeCursor(); }
     }
 
-    public function __construct(IDBConnection $db) {
+    private VectorSourceDeletion $sourceDeletion;
+
+    public function __construct(IDBConnection $db, ?VectorSourceDeletion $sourceDeletion = null) {
         parent::__construct($db, 'eva_ai_chunks');
+        $this->sourceDeletion = $sourceDeletion ?? new VectorSourceDeletion($db, new VectorOutboxRepository($db));
     }
 
     public function deleteByDocument(int $documentId): void {
-        $qb = $this->db->getQueryBuilder();
-        $qb->delete('eva_ai_chunks')
-            ->where($qb->expr()->eq('document_id', $qb->createNamedParameter($documentId, IQueryBuilder::PARAM_INT)));
-        $qb->executeStatement();
+        $this->sourceDeletion->deleteDocuments([$documentId]);
     }
 
     /** @param int[] $documentIds */
     public function deleteByDocumentIds(array $documentIds): void {
-        if ($documentIds === []) {
-            return;
-        }
         $documentIds = array_values(array_unique(array_filter(array_map('intval', $documentIds), static fn(int $id): bool => $id > 0)));
-        foreach (array_chunk($documentIds, 500) as $batch) {
-            $qb = $this->db->getQueryBuilder();
-            $qb->delete('eva_ai_chunks')
-                ->where($qb->expr()->in('document_id', $qb->createNamedParameter($batch, IQueryBuilder::PARAM_INT_ARRAY)));
-            $qb->executeStatement();
-        }
+        foreach (array_chunk($documentIds, 500) as $batch) $this->sourceDeletion->deleteDocuments($batch);
     }
 
     public function deleteForUser(string $userId): int {
-        // Do not concatenate a named parameter into a raw SQL function. Read
-        // the document ids with a normal bound predicate, then delete chunks
-        // in bounded batches; this is portable across the supported databases
-        // and keeps the user id out of SQL fragments (Issue #384).
+        return $this->deleteOwnedChunks($userId);
+    }
+
+    public function deleteAll(): int {
+        return $this->deleteOwnedChunks(null);
+    }
+
+    private function deleteOwnedChunks(?string $userId): int {
         $cursor = 0; $deleted = 0;
         do {
             $qb = $this->db->getQueryBuilder();
-            $qb->select('id')->from('eva_ai_documents')
-                ->where($qb->expr()->eq('user_id', $qb->createNamedParameter($userId)))
-                ->andWhere($qb->expr()->gt('id', $qb->createNamedParameter($cursor, IQueryBuilder::PARAM_INT)))
-                ->orderBy('id', 'ASC')->setMaxResults(500);
+            $qb->select('c.document_id')->distinct()->from('eva_ai_chunks', 'c')
+                ->where($qb->expr()->gt('c.document_id', $qb->createNamedParameter($cursor, IQueryBuilder::PARAM_INT)))
+                ->orderBy('c.document_id', 'ASC')->setMaxResults(500);
+            if ($userId !== null) {
+                $qb->innerJoin('c', 'eva_ai_documents', 'd', $qb->expr()->eq('c.document_id', 'd.id'))
+                    ->andWhere($qb->expr()->eq('d.user_id', $qb->createNamedParameter($userId)));
+            }
             $result = $qb->executeQuery();
             try { $rows = $result->fetchAll(); } finally { $result->closeCursor(); }
-            $ids = array_map(static fn(array $row): int => (int)$row['id'], $rows);
+            $ids = array_map(static fn(array $row): int => (int)$row['document_id'], $rows);
             if ($ids !== []) {
-                $deleted += $this->countByDocumentIds($ids);
-                $this->deleteByDocumentIds($ids);
+                $deleted += $this->sourceDeletion->deleteDocuments($ids)['chunks'];
                 $cursor = $ids[count($ids) - 1];
             }
         } while (count($rows) === 500);
         return $deleted;
-    }
-
-    /** @param int[] $documentIds */
-    private function countByDocumentIds(array $documentIds): int {
-        $total = 0;
-        foreach (array_chunk($documentIds, 500) as $batch) {
-            $qb = $this->db->getQueryBuilder();
-            $qb->selectAlias($qb->createFunction('COUNT(*)'), 'c')
-                ->from('eva_ai_chunks')
-                ->where($qb->expr()->in('document_id', $qb->createNamedParameter($batch, IQueryBuilder::PARAM_INT_ARRAY)));
-            $row = $qb->executeQuery()->fetch();
-            $total += (int)($row['c'] ?? 0);
-        }
-        return $total;
-    }
-
-    public function deleteAll(): int {
-        $qb = $this->db->getQueryBuilder();
-        $qb->delete('eva_ai_chunks');
-        return $qb->executeStatement();
     }
 
     /**

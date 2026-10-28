@@ -64,9 +64,27 @@ Both native admin surfaces show the generation-tagged SQL row count separately
 from legacy search. A count does not imply delivery, verified migration or an
 active index. Count failure makes the shared snapshot unavailable.
 
-General deletion paths still physically remove rows by document; durable point
-tombstones, metadata invalidation/rebuild and the raw deferred-reset bypass must
-be integrated before enabling point consumers. Resumable source/provider-pinned
+Canonical chunk and document deletion now share `VectorSourceDeletion`: it locks
+source rows, pages generation chunks in batches of 250, retains immutable target
+and generation metadata in `delete_chunk` events, and commits events with physical
+SQL removal. The mapper entry points cover document replacement, Files/Mail/Talk
+purges, folder deletion, per-user/all-user reset and account cleanup. Document
+removal repeats the guarded chunk cleanup in the same transaction, closing the
+window between a caller's earlier chunk deletion and its parent-row deletion.
+Global chunk reset also scans orphan document IDs; generation-tagged orphans need
+valid retained generation/target metadata or deletion fails closed. SQL-only rows
+produce no vector events. Deferred cron reset uses this canonical reset path.
+
+A failed enqueue rolls back its batch's SQL deletion. Large resets commit bounded
+batches and can be retried; they are not one atomic whole-index operation unless
+the caller already supplies an outer transaction. The SQL source-row lock also
+makes concurrent staged writers recheck their source after deletion. No provider
+or vector request runs during these transactions. Point events for retired or
+missing generations must be superseded by the future point worker, which must
+not recreate a collection after generation erasure.
+
+Metadata-only rename invalidation/rebuild and durable point consumption still
+need integration before enabling point consumers. Resumable source/provider-pinned
 backfill, generation completeness checks, exact-ID/revision verification, quotas,
 retention, shadow/primary reads and rollback drills remain pending. Per-generation
 text/vector copies temporarily require extra SQL space. No speed improvement or

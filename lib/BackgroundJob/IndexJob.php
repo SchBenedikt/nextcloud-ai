@@ -63,8 +63,7 @@ class IndexJob extends TimedJob {
         if ($this->config->get('index_reset_requested') === '1') {
             // Run the destructive reset in cron, never in app enable/update.
             try {
-                $this->db?->executeStatement('DELETE FROM *PREFIX*eva_ai_chunks');
-                $this->db?->executeStatement('DELETE FROM *PREFIX*eva_ai_documents');
+                $this->indexer->reset();
                 $this->db?->executeStatement('DELETE FROM *PREFIX*eva_ai_agent_state');
             } catch (\Throwable $e) {
                 $this->logger->warning('eva_ai deferred index reset failed', ['exception' => $e->getMessage()]);
