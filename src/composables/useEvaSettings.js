@@ -291,19 +291,22 @@ export function useEvaSettings({ section = ref('general') } = {}) {
 
 	function fill(settings = status.value?.settings, snapshot = null) {
 		if (!settings) return
+		const baseline = snapshot || (formReady.value ? { ...persistedSettings.value } : null)
 		applyingServerState = true
 		Object.keys(f.value).forEach(key => {
 			if (settings[key] !== undefined && settings[key] !== null) {
-				if (!snapshot || String(f.value[key]) === String(snapshot[key])) f.value[key] = String(settings[key])
+				if (!baseline || String(f.value[key]) === String(baseline[key])) f.value[key] = String(settings[key])
 				persistedSettings.value[key] = String(settings[key])
 			}
 		})
 		applyingServerState = false
+		if (formReady.value && changedSettingKeys().length) queueAutoSave()
 	}
 
 	async function loadStatus(syncForm = false) {
 		if (!syncForm && !formReady.value) return false
 		const currentRequest = ++statusRequestId
+		const snapshot = formReady.value ? { ...persistedSettings.value } : null
 		if (syncForm) loadError.value = ''
 		try {
 			const response = await api('GET', 'status')
@@ -316,7 +319,7 @@ export function useEvaSettings({ section = ref('general') } = {}) {
 			statusRefreshError.value = ''
 			limits.value = response.limits || {}
 			if (syncForm) {
-				fill(response.settings)
+				fill(response.settings, snapshot)
 				formReady.value = true
 			}
 			if (Array.isArray(response.models)) {
@@ -412,10 +415,6 @@ export function useEvaSettings({ section = ref('general') } = {}) {
 			removeNextcloudApiToken.value = false
 			validationErrors.value = []
 			if (settings) fill(settings, snapshot)
-			if (changedSettingKeys().length) {
-				applyingServerState = false
-				queueAutoSave()
-			}
 			saved.value = true
 			setMessage('success', t('Your settings were saved.'))
 			window.setTimeout(() => { saved.value = false }, 3000)
