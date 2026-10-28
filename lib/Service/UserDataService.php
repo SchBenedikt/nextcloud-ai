@@ -95,6 +95,7 @@ class UserDataService {
             'knowledge' => $knowledge,
             'index_meta' => $indexMeta,
             'vector_generations' => $generationMeta,
+            'vector_owner_fence' => $this->vectorGenerations?->ownerMetadata($userId),
         ];
     }
 

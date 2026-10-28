@@ -68,6 +68,16 @@ backfill verification, tenant checks, outbox delivery, measured shadow compariso
 or rollback preparation. The complete migration requirements are tracked in
 [BACKEND-ROADMAP.md](BACKEND-ROADMAP.md).
 
+Version 1.18.2 adds a lazy owner fence. Creation and binding serialize against
+account erasure; a blocked owner cannot be silently reinitialized by a later
+request or by recreating the same Nextcloud user ID. Inspect it without remote
+requests using `php occ eva_ai:vector:generation owner-status USER`, including
+after the core user record has been deleted. The fence is committed before the
+erasure transaction, so cleanup rollback retains the block. It is minimal
+pseudonymous lifecycle metadata, not an anonymous log. Personal export includes
+the stored row in `vector_owner_fence`. No unblock or retention purge is available
+in this stage; see VECTOR-OUTBOX.md for the concurrency and recovery boundaries.
+
 ## Vector-store boundary
 
 The `VectorStore` contract defines generation-bound revisioned upsert, exact chunk

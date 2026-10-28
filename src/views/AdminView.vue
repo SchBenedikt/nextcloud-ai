@@ -80,6 +80,8 @@
 								<strong class="user-name">{{ user.displayName }}</strong>
 								<small class="user-id">{{ user.userId }}</small>
 								<div v-if="user.error" class="user-error" :title="user.error">{{ user.error }}</div>
+								<small v-if="user.vectorOwnerState === 'blocked'" class="user-error">{{ $t('Vector ownership blocked after account erasure. Inspect cleanup before creating a new generation.') }}</small>
+								<small v-else-if="user.vectorOwnerState === 'unavailable'" class="user-error">{{ $t('Vector ownership status unavailable.') }}</small>
 							</td>
 							<td class="num">{{ user.documents }}</td>
 							<td class="num">{{ user.chunks }}</td>

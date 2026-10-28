@@ -407,6 +407,11 @@ $providerLabels = [
 						}
 						?>
 						<span class="eva-status <?php p($stateClass); ?>"><?php p($stateLabel); ?></span>
+						<?php if (($user['vectorOwnerState'] ?? '') === 'blocked'): ?>
+							<small class="eva-error eva-block"><?php p($l->t('Vector ownership blocked after account erasure. Inspect cleanup before creating a new generation.')); ?></small>
+						<?php elseif (($user['vectorOwnerState'] ?? '') === 'unavailable'): ?>
+							<small class="eva-error eva-block"><?php p($l->t('Vector ownership status unavailable.')); ?></small>
+						<?php endif; ?>
 						<?php if ($user['error'] !== ''): ?>
 							<span class="eva-error eva-block"><?php p($user['error']); ?></span>
 						<?php endif; ?>

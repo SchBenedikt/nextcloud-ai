@@ -34,6 +34,12 @@ server-rendered Nextcloud administration page use the same snapshot service.
 
 ## Administrator vector connection operations
 
+The admin overview user rows additionally expose `vectorOwnerState`: open,
+blocked, uninitialized or unavailable. Both native administration surfaces show a
+blocked-after-erasure notice or unavailable state; neither offers an unsafe
+unblock action. Lookups use bounded 100-owner SQL batches and no network calls.
+An empty owner table means uninitialized, while a read failure means unavailable.
+
 These OCS endpoints require a signed-in Nextcloud administrator. Writes and the
 explicit probe require the normal request token; none has a CSRF exemption:
 

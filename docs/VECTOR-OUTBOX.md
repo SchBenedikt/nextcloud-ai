@@ -88,9 +88,9 @@ back, retaining ownership for a retry. The remaining AppData/config cleanup
 retains its previous best-effort behavior; a persistent account-cleanup retry
 coordinator remains pending.
 
-Retirement serializes against a concurrent binding of existing generation rows.
-Full account tombstones/creation fencing and protections against already in-flight
-remote collection preparation are still required before general remote writes.
+The 1.18.2 owner fence below serializes creation/binding against account erasure.
+Protections and reconciliation for already in-flight remote preparation remain
+required before general remote writes.
 The generation-erasure consumer processes collection deletion only when explicitly
 enabled. Preparation rechecks owned building status and fixed target after DNS,
 immediately before every HTTP transfer. SQL ingestion is still not connected to
@@ -158,8 +158,9 @@ The grace exceeds current 30-second preparation HTTP timeouts and reduces races
 with already-running requests. This is not a remote transactional collection
 fence: arbitrary process suspension between the final check and sending, older
 unfenced app versions or manual administration can exceed that model. Quiesce
-explicit preparation during account erasure. Full account/creation fencing and
-reconciliation remain prerequisites for enabling general remote writes; no claim
+explicit preparation during account erasure. The SQL account/creation fence does
+not remove this remote suspension window. Reconciliation remains a prerequisite
+for enabling general remote writes; no claim
 of a complete distributed-consistency guarantee is made here.
 
 Each invocation claims at most 5 events by default (explicit limit 1–20) and checks
@@ -173,6 +174,64 @@ records require the later explicit retention/erasure policy.
 Required verification remains outstanding: disabled flags cause no HTTP, first
 observation grace, crash/reclaim, post-DNS disable/lease checks, active-generation
 refusal, malformed-envelope dead letters, original-target rotation and 404 retries.
+
+## Durable account fence (1.18.2)
+
+`eva_ai_vec_owners` lazily records a purpose-separated SHA-256 owner fingerprint,
+open/blocked state, a row-lock revision and last-change timestamp. Installing the
+app creates the table only; it does not enumerate users or prepare collections.
+Generation creation and target binding hold the same owner's row lock until their
+SQL transaction commits. Updates increment the revision to avoid backend-specific
+zero-affected-row behavior from no-op updates, without relying on the row-locking
+API added in Nextcloud 33. Nextcloud's portable insert-ignore handles concurrent
+first initialization without replacing an existing blocked row.
+
+Account cleanup first commits a blocked fence in its own short transaction, then
+runs the existing retirement/journal/index erasure transaction. Failure in that
+second phase retains ownership/deletion data for retry but does not reopen the
+fence. Erasure must therefore start outside another SQL transaction; an outer
+transaction would make the supposedly durable first commit just a savepoint.
+Concurrent creators/binders either commit before the fence and are covered by the
+subsequent cleanup scan, or observe the blocked state and fail with `owner_erased`.
+The final post-DNS preparation guard reads owner-open, generation-building and
+fixed-target state in one SQL query. Missing owner state denies preparation;
+explicit rebinding/preparing initializes an existing legitimate building owner's
+state. Reading status never creates or reopens a fence.
+
+Inspect without network I/O, including after the core user record is gone:
+
+```sh
+php occ eva_ai:vector:generation owner-status alice
+```
+
+The command reports open, blocked or uninitialized, not an account name/hash.
+Normal generation listings also show owner state. The personal export adds
+`vector_owner_fence` with that user's stored fence metadata, or null if absent.
+Fingerprints are pseudonymous personal data, not encryption or anonymous records.
+
+The EVA admin view and native Nextcloud administration table show a blocked-owner
+notice for accounts represented in their index/enrollment overview, including
+retained document ownership after failed cleanup. Missing status is visibly
+unavailable, not open. Bulk reads use at most 100 fingerprints per SQL query and
+perform no network probe. Fully erased users need not appear in those overviews;
+the read-only owner-status command can still inspect their fence. Neither view
+offers an unblock control.
+
+Blocked rows deliberately survive account erasure and cannot be reset by create,
+configure, prepare, retry or app disable/enable. Recreating the same Nextcloud user
+ID does not silently inherit/reopen its previous vector lifecycle. SQL chat/search
+can still operate, but optional vector generation creation remains blocked until
+a separately reviewed fresh-owner/cleanup-verification workflow is implemented.
+There is no unblock/prune command in this stage. Historical erasures before this
+migration are not retroactively inferred; reconcile old destinations before any
+live cutover. A durable account-cleanup retry coordinator and remote preparation
+reconciliation remain pending. No in-flight request can be recalled by a SQL row
+check alone; the earlier grace and suspension limits still apply.
+
+Required unexecuted checks include concurrent first initialization, creator-before-
+eraser and eraser-before-creator orderings, bind/erase races, cleanup rollback with
+a still-blocked fence, direct transfer checks, UID recreation, personal export and
+PostgreSQL/MariaDB/SQLite lifecycle behavior. No remote indexing is enabled here.
 No real collection has been deleted by adding or syntax-checking this worker.
 
 ## Validation still required

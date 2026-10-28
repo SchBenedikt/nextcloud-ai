@@ -91,6 +91,26 @@ without personal chat initialization. Migration/activation/progress controls
 remain pending until their backend operations exist. No browser, access-control,
 CSRF or remote-transport validation is claimed yet.
 
+## Native Nextcloud integration direction
+
+The user additionally requested a faster, more capable EVA with deeper integration
+into Nextcloud and native apps. Preserve the standalone installation default and
+native UI while advancing these concrete integration paths alongside the PDF:
+
+| Surface | Required direction |
+| --- | --- |
+| Files and VFS | Native file actions/pickers, permission-checked source links and selected-file chat. File-change listeners enqueue bounded background work; embedding/reindexing must not run on the interactive upload/rename or answer path. |
+| Unified search | Route the existing `EvaSearchProvider` through the same owned/scoped retrieval contract, with bounded query work and explicit backend/fallback state. No separate diverging search index or guessed model identity. |
+| Talk | Reuse native bot/event and background-job integration. Preserve participant ownership, conversation context, confirmation policy and cancellation without exposing another user's Files index. |
+| Task processing | Preserve native OCP provider registration and supported-core compatibility; share provider selection and observability instead of duplicating transport logic in every task type. |
+| Chat and administration | Native composer, Files context and source affordances with the existing compact content width. Infrastructure/configuration/progress belongs in native settings and admin flows, not extra chat-header controls. |
+| Account and app lifecycle | Native user-deletion/lifecycle listeners must coordinate durable erasure and retry. App installation must not start another service or silently transmit documents. |
+
+These are development/acceptance requirements, not claims that every path has been
+updated or validated. Existing services/listeners are starting points, not evidence
+of completed integration. The PDF's migration, benchmark, ownership and rollback
+gates remain mandatory completion boundaries.
+
 ## Required generation and consistency semantics
 
 A generation is immutable after building begins. A provider/model change creates
@@ -302,3 +322,17 @@ the interface. Search forces deleted=false and returns checked revisions for lat
 SQL hydration. QDRANT.md records the missing-point insertion trap and safe-integer
 bound. No point-event consumer or mutation producer is enabled by this change;
 remote concurrency and deletion semantics remain unverified acceptance gates.
+
+### Stage 08 durable owner creation fence
+
+The 1.18.2 owner table serializes generation creation/target binding against
+account deletion using portable insert-ignore and row updates. Account erasure
+commits a blocked fingerprint before SQL index cleanup, so rollback cannot reopen
+ownership. Preparation reads owner/building/target state in one post-DNS query.
+OCC owner-status works for deleted IDs; personal export includes fence metadata.
+Both native administration surfaces show blocked/unavailable owner state using
+bounded bulk lookups, without presenting an unblock control.
+No unblock/prune or general cleanup retry coordinator exists yet. SQL writes and
+chunk consumers are still pending; no remote activation, migration lifecycle or
+concurrency gate is verified. Privacy documentation now distinguishes local
+extraction/storage from provider-dependent inference and retained deletion state.

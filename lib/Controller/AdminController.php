@@ -45,6 +45,7 @@ class AdminController extends OCSController {
         private WebSearchService $webSearch,
         private UsageMetrics $usageMetrics,
         private ?\OCA\EvaAi\Vector\VectorStorageStatus $vectorStorageStatus = null,
+        private ?\OCA\EvaAi\Db\VectorOwnerFenceRepository $vectorOwners = null,
     ) {
         parent::__construct($appName, $request);
     }
@@ -248,6 +249,7 @@ class AdminController extends OCSController {
 
         $users = [];
         foreach (array_keys($userIdSet) as $uid) {
+            $uid = (string)$uid;
             $agg = null;
             foreach ($aggregates as $row) {
                 if ($row['user_id'] === $uid) {
@@ -258,6 +260,10 @@ class AdminController extends OCSController {
             $users[] = $this->userRow($uid, $agg);
         }
         usort($users, static fn(array $a, array $b): int => strcmp((string)$a['userId'], (string)$b['userId']));
+        try { $ownerStates = $this->vectorOwners?->statesForUsers(array_column($users, 'userId')) ?? []; }
+        catch (\Throwable) { $ownerStates = []; }
+        foreach ($users as &$row) $row['vectorOwnerState'] = $ownerStates[$row['userId']] ?? 'unavailable';
+        unset($row);
 
         return new ErrorDataResponse([
             'users' => $users,
