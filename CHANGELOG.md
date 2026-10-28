@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Dependency security
+
+- Update DOMPurify, Markdown-it, follow-redirects and fast-uri to patched versions, and raise the direct Markdown-it and DOMPurify minimums.
+
 ### Focused workspace
 
 - Replace the dashboard with a direct message input and shared recent chats.

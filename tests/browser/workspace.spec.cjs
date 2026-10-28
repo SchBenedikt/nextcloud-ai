@@ -2,7 +2,7 @@ const { test, expect } = require('@playwright/test')
 const { openWorkspace } = require('./workspace-harness.cjs')
 
 test('home shares the chat list and sends its first prompt without loading diagnostics', async ({ page }) => {
-	const { calls, errors } = await openWorkspace(page)
+	const { calls, errors } = await openWorkspace(page, { backgroundItems: [{ id: 'old-run', chatId: 'new-chat', status: 'completed' }] })
 	// Nextcloud core gives section and button elements an explicit display.
 	await page.addStyleTag({ content: 'section { display: block } button { display: inline-block }' })
 	await expect(page.getByRole('heading', { name: 'How can I help?' })).toBeVisible()
