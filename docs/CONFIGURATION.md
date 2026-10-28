@@ -1,5 +1,25 @@
 # EVA — Configuration reference
 
+## Knowledge storage status
+
+The EVA **Admin dashboard** and Nextcloud **Administration → Eva AI** show a
+shared, read-only knowledge storage overview. It distinguishes the built-in SQL
+search backend, optional Qdrant configuration, generation cleanup and queued or
+failed background operations. Configured/request-enabled does not mean connected,
+verified or selected for search. Viewing or refreshing this overview makes no
+external storage request. Failed status reads stay unavailable instead of showing
+an empty healthy queue.
+
+SQL remains the installation default and needs no external service. Chunk
+synchronization and read cutover are not available yet; only generation cleanup
+can be explicitly enabled using the administrator commands documented in
+[VECTOR-OUTBOX.md](VECTOR-OUTBOX.md). Optional connection setup and the protocol
+limits are in [QDRANT.md](QDRANT.md). No dormant activation or migration toggle is
+presented as a working feature. Native configuration/progress controls will
+accompany the corresponding guarded backend operations in subsequent stack PRs.
+
+## Settings reference
+
 Instance settings are stored in `oc_appconfig` under the app ID `eva_ai`. Personal
 settings can be overridden per user (from the app's **Settings** tab), but when
 a user has no personal value they fall back to the admin-configured instance

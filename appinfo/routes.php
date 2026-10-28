@@ -101,6 +101,7 @@ return [
         ['name' => 'admin#getSettings', 'url' => '/api/admin/settings', 'verb' => 'GET'],
         ['name' => 'admin#saveSettings', 'url' => '/api/admin/settings', 'verb' => 'PUT'],
         ['name' => 'admin#overview', 'url' => '/api/admin/overview', 'verb' => 'GET'],
+        ['name' => 'admin#vectorStorage', 'url' => '/api/admin/vector-storage', 'verb' => 'GET'],
         ['name' => 'admin#metricsUsers', 'url' => '/api/admin/metrics/users', 'verb' => 'GET'],
         ['name' => 'admin#userMetrics', 'url' => '/api/admin/users/{userId}/metrics', 'verb' => 'GET'],
         ['name' => 'admin#reindex', 'url' => '/api/admin/users/{userId}/reindex', 'verb' => 'POST'],

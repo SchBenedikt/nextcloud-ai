@@ -65,6 +65,28 @@ change repository policy while checks are deferred.
 | 13 | Normalized encrypted chat/message SQL storage | 12 | Additive tables, per-message writes, indexed metadata pagination/retention, transactional migration with checkpoint, mixed-version recovery and account erasure. Preserve encryption; do not add plaintext search indexes for encrypted messages. Separate feature flag and backup/restore runbook. |
 | 14 | Operational hardening and portability | 13 | PostgreSQL/MariaDB lifecycle coverage; metrics exporter/trace correlation; restore and delete drills; sustained soak; cache outage/rate-limit semantics; domain-controller extraction; dependency/SAST/SBOM policy. Administrative main protection requires its own explicit rollout. |
 
+## Frontend integration required throughout the stack
+
+The user explicitly requested frontend changes alongside the backend. Every
+remaining stage must include the relevant visible administration/personal flow,
+using native Nextcloud components and the existing compact page widths. Do not
+expose dormant backend flags as working user features or add chat-header controls
+for infrastructure concerns.
+
+| Backend stage | Matching interface deliverable |
+| --- | --- |
+| 07–08 | Shared offline storage status in EVA administration and Nextcloud administration settings: actual search mode, connection configuration, cleanup state and actionable queue counts. Errors remain unknown, never a healthy zero. No automatic external probes. |
+| 08–09 | Native administrator configuration with write-only credentials, explicit connection test, bounded operation inspection/retry, build progress and cancel/resume once the corresponding guarded backend APIs exist. Separate connection setup from migration and activation. |
+| 02, 09 | Embedding provider/model selection separate from chat provider, immutable generation summary and clear rebuild requirement. Expose only implemented adapters. |
+| 10–11 | Readable SQL/shadow/canary/primary status and rollback control, verification blockers and last comparison. Advanced migration details belong in disclosure panels, not the chat composer. |
+| 12 | Consistent search/source states and understandable partial failure/fallback messages. Preserve the focused ChatGPT/Talk-like chat layout and native controls. |
+| 13 | Paginated conversation history, preserved encryption and visible migration/recovery state only when necessary. Preserve the centered home composer/recent-chat width and no-scroll home behavior. |
+| 14 | Compact operational diagnostics and accessible loading/empty/error/disabled states across narrow screens and light/dark themes. Avoid raw backend errors, identifiers and secrets in personal settings. |
+
+The first interface slice provides read-only status in both admin surfaces through
+one backend snapshot. Configuration/migration controls remain pending until their
+backend operations are safe and available. No browser validation is claimed yet.
+
 ## Required generation and consistency semantics
 
 A generation is immutable after building begins. A provider/model change creates
