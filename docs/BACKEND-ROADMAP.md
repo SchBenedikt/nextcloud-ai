@@ -120,3 +120,11 @@ replaced by a successful build or an adapter unit test.
 - 02–14: pending; a stage is complete only when its code and matching operating
   documentation exist. Validation and production rollout remain separately
   recorded. No Qdrant deployment or production data migration has occurred.
+
+### Stage 02 implementation
+
+Indexer and Searcher now consume the EmbeddingProvider contract; bootstrap binds
+it to the existing Ollama instance. Ollama implements the contract directly, so
+existing constructors and test doubles remain valid. No additional provider is
+activated. Automated tests remain deferred at user request; only syntax/patch
+checks are recorded for this stage.

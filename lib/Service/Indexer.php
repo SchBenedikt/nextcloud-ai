@@ -62,7 +62,7 @@ class Indexer {
         private DocumentMapper $documentMapper,
         private ChunkMapper $chunkMapper,
         private Chunker $chunker,
-        private Ollama $ollama,
+        private EmbeddingProvider $ollama,
         private EmbeddingCache $embeddingCache,
         private EmailService $email,
         private TalkTranscriptService $talkTranscripts,

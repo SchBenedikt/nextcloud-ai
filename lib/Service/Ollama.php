@@ -9,7 +9,7 @@ use OCP\ICache;
 use OCP\ICacheFactory;
 use Psr\Log\LoggerInterface;
 
-class Ollama {
+class Ollama implements EmbeddingProvider {
     /** Maximum default lifetime of a streamed chat request. A caller may pass
      * a stricter budget, but an omitted timeout must never pin a PHP worker for
      * ten minutes while an upstream model is stalled. */

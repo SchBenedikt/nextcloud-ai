@@ -208,3 +208,18 @@ Frontend settings coordinate independent briefing, integration and personal
 knowledge composables. Optional resources load only when their section opens.
 The shared form stays mounted across sections; save responses preserve edits
 made after a request began and queue outstanding changes.
+
+## Embedding dependency boundary
+
+`Indexer` and `Searcher` depend on `EmbeddingProvider`, bound by Nextcloud's
+bootstrap service alias to the existing shared `Ollama` service. Chat orchestration
+continues to use its existing provider path. The contract preserves ordered batch
+results, rejected-input null slots, error tuples, query embedding and per-batch
+cache counters. This stage changes no endpoint, model, cache identity or retrieval
+ranking. Constructor parameter names remain compatible with existing callers.
+
+A new embedding adapter must pin the same embedding space for ingestion and query
+vectors. Provider selection and vector-generation metadata are subsequent migration
+stages; this interface alone does not safely enable switching embedding models on
+an existing index. The historical `ollama_requests` status counter remains Ollama
+specific and must not be incremented by a future hosted-provider adapter.
