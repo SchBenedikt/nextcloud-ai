@@ -2,6 +2,16 @@
 
 ## [Unreleased]
 
+### Save only the settings needed by each action (1.18.95)
+
+- Make connection checks and indexing actions save only fields the user actually changed, so unrelated invalid or stale values do not block them.
+- Save folder exclusions as a focused update instead of resubmitting the full settings form.
+
+### Scope SQL chat locks to each conversation (1.18.95)
+
+- Let SQL-backed reads, appends and deletes coordinate per conversation while sharing a user-level fence against whole-store and migration operations.
+- Keep AppData mutations user-wide and fail SQL operations closed when either coordination lock is unavailable.
+
 ### Report SQL dense scan volume (1.18.94)
 
 - Count SQL vector rows loaded for exact dense scoring and expose bounded p50/p95/p99 values in account metrics and OpenMetrics.

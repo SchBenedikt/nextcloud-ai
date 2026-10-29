@@ -466,7 +466,7 @@ export function useEvaSettings({ section = ref('general'), active = ref(true) } 
 		if (checking.value) return
 		checking.value = true
 		checkOut.value = null
-		const savedSuccessfully = await save()
+		const savedSuccessfully = await save({ changedOnly: true })
 		if (!savedSuccessfully) {
 			checkOut.value = { type: 'error', lines: [{ label: t('Connection test'), ok: false, detail: t('Correct the settings above before testing the connection.') }] }
 			checking.value = false
@@ -503,7 +503,7 @@ export function useEvaSettings({ section = ref('general'), active = ref(true) } 
 
 	async function persistExcludeList(list, previous) {
 		f.value.exclude_paths = list.join(', ')
-		const savedSuccessfully = await save()
+		const savedSuccessfully = await save({ onlyKeys: ['exclude_paths'] })
 		if (!savedSuccessfully) {
 			f.value.exclude_paths = previous
 			excludeError.value = t('The folder exclusion could not be saved. Your previous exclusions were restored.')
@@ -558,7 +558,7 @@ export function useEvaSettings({ section = ref('general'), active = ref(true) } 
 
 	async function startIndex() {
 		if (settingsLocked.value) return
-		const savedSuccessfully = await save()
+		const savedSuccessfully = await save({ changedOnly: true })
 		if (!savedSuccessfully) {
 			setMessage('error', t('Indexing was not started because the settings could not be saved.'))
 			return
@@ -578,7 +578,7 @@ export function useEvaSettings({ section = ref('general'), active = ref(true) } 
 
 	async function startMailIndex() {
 		if (settingsLocked.value) return
-		const savedSuccessfully = await save()
+		const savedSuccessfully = await save({ changedOnly: true })
 		if (!savedSuccessfully) {
 			setMessage('error', t('Email indexing was not started because the settings could not be saved.'))
 			return
@@ -598,7 +598,7 @@ export function useEvaSettings({ section = ref('general'), active = ref(true) } 
 
 	async function startTalkIndex() {
 		if (settingsLocked.value) return
-		const savedSuccessfully = await save()
+		const savedSuccessfully = await save({ changedOnly: true })
 		if (!savedSuccessfully) {
 			setMessage('error', t('Chat indexing was not started because the settings could not be saved.'))
 			return

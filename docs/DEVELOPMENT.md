@@ -158,6 +158,9 @@ in the composable so section switches cannot discard edits. Provider drafts
 belong to `ProviderSettings` and save through the shared serialized settings
 writer. Removing a custom provider also removes its saved credential; keep the
 profile selected for file indexing until another embedding provider is chosen.
+Actions that depend on settings should save only dirty fields (or the specific
+field they own), so an unrelated invalid setting cannot block a connection
+check or background indexing request.
 
 `ChatView` must await the renderer's `ready` promise before sending an initial
 prompt. Otherwise an asynchronous history restore can overwrite the new

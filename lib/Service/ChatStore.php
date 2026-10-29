@@ -180,7 +180,7 @@ class ChatStore {
 
     /** @return array|null */
     public function get(string $user, string $id): ?array {
-        return $this->withUserLock($user, function () use ($user, $id): ?array {
+        return $this->withChatAwareLock($user, $id, function () use ($user, $id): ?array {
             if ($this->sqlReadsEnabled($user)) {
                 try {
                     $chat = $this->sqlChats->chat($user, $id);
@@ -285,7 +285,7 @@ class ChatStore {
     }
 
     public function delete(string $user, string $id): bool {
-        return $this->withUserLock($user, function () use ($user, $id): bool {
+        return $this->withChatAwareLock($user, $id, function () use ($user, $id): bool {
             if ($this->sqlReadsEnabled($user)) return $this->sqlChats->deleteChat($user, $id);
             $all = $this->read($user);
             $kept = array_values(array_filter($all, static fn($c) => ($c['id'] ?? '') !== $id));
@@ -864,7 +864,7 @@ class ChatStore {
         if ($role !== 'user' && $role !== 'assistant') {
             return;
         }
-        $this->withUserLock($user, function () use ($user, $id, $role, $text, $followups, $regenerateRev, $confirmation, $tools, $model): void {
+        $this->withChatAwareLock($user, $id, function () use ($user, $id, $role, $text, $followups, $regenerateRev, $confirmation, $tools, $model): void {
             if ($this->sqlReadsEnabled($user)) {
                 $chat = $this->sqlChats->chat($user, $id);
                 if ($chat === null) return;
@@ -888,7 +888,7 @@ class ChatStore {
 
     /** Both messages and the receipt share one protected encrypted-file write. */
     public function appendTurn(string $user, string $id, \OCA\EvaAi\Dto\ChatTurnRequest $turn): array {
-        return $this->withUserLock($user, function () use ($user, $id, $turn): array {
+        return $this->withChatAwareLock($user, $id, function () use ($user, $id, $turn): array {
             if ($this->sqlReadsEnabled($user)) {
                 $chat = $this->sqlChats->chat($user, $id);
                 if ($chat === null) return ['error' => 'not_found'];
@@ -1398,7 +1398,7 @@ class ChatStore {
         });
     }
 
-    // How often and how long to wait for the per-user lock before giving up.
+    // How often and how long to wait for user or conversation locks before giving up.
     // Page loads fire several chat reads in parallel; Nextcloud's lock
     // acquisition is non-blocking, so without retries a short write would make
     // every read fail instantly. Reads retry briefly and then degrade to a
@@ -1418,12 +1418,91 @@ class ChatStore {
     private const LOCK_CONTENTION_WARN_MS = 2500;
 
     /**
-     * Serialize all chat reads and mutations for one user across the whole
-     * cluster. A node-local flock() in the temp directory let two app servers
-     * race on the same chats.json, silently losing updates on clustered
+     * Use per-conversation coordination after SQL becomes authoritative.
+     * AppData operations keep the original per-user lock because they rewrite
+     * one aggregate JSON file. SQL conversations are independent rows, so they
+     * share the user lock only in reader mode (fencing whole-user migration or
+     * maintenance) and take a second lock scoped to their own conversation.
+     */
+    private function withChatAwareLock(string $user, string $chatId, callable $operation, int $mode = ILockingProvider::LOCK_EXCLUSIVE): mixed {
+        if (!$this->sqlReadsEnabled($user)) return $this->withUserLock($user, $operation, $mode);
+        return $this->withChatLock($user, $chatId, $operation, $mode);
+    }
+
+    /** Different SQL-backed conversations may be read or written concurrently. */
+    private function withChatLock(string $user, string $chatId, callable $operation, int $mode): mixed {
+        $userLockPath = 'eva_ai/chat/' . $this->namespaceFor($user);
+        $conversationLockPath = 'eva_ai/chat-entry/' . $this->namespaceFor($user) . '/' . hash('sha256', $chatId);
+        $userAcquired = false;
+        $conversationAcquired = false;
+        try {
+            // Whole-user AppData and migration operations take an exclusive
+            // lock on this path, so this shared lock fences their snapshots.
+            $this->acquireRequiredChatLock($user, $userLockPath, ILockingProvider::LOCK_SHARED);
+            $userAcquired = true;
+            $this->acquireRequiredChatLock($user, $conversationLockPath, $mode);
+            $conversationAcquired = true;
+            return $operation();
+        } finally {
+            if ($conversationAcquired) {
+                try { $this->lockingProvider->releaseLock($conversationLockPath, $mode); }
+                catch (\Throwable) { /* Expired locks must not mask the operation result. */ }
+            }
+            if ($userAcquired) {
+                try { $this->lockingProvider->releaseLock($userLockPath, ILockingProvider::LOCK_SHARED); }
+                catch (\Throwable) { /* Expired locks must not mask the operation result. */ }
+            }
+        }
+    }
+
+    /** Unlike AppData reads, SQL-backed chat reads and writes never continue without coordination. */
+    private function acquireRequiredChatLock(string $user, string $lockPath, int $mode): void {
+        $attempts = $mode === ILockingProvider::LOCK_SHARED
+            ? self::LOCK_RETRY_ATTEMPTS_SHARED
+            : self::LOCK_RETRY_ATTEMPTS_EXCLUSIVE;
+        $started = hrtime(true);
+        $acquired = false;
+        for ($attempt = 0; $attempt < $attempts; $attempt++) {
+            try {
+                $this->lockingProvider->acquireLock($lockPath, $mode);
+                $acquired = true;
+                break;
+            } catch (\Throwable $error) {
+                if ($attempt < $attempts - 1) {
+                    usleep(self::LOCK_RETRY_BASE_USLEEP * ($attempt + 1));
+                } else {
+                    $this->logger->warning('eva_ai: SQL chat lock could not be acquired', [
+                        'user' => $user,
+                        'mode' => $mode === ILockingProvider::LOCK_SHARED ? 'shared' : 'exclusive',
+                        'exception' => $error->getMessage(),
+                    ]);
+                }
+            }
+        }
+        if (!$acquired) {
+            $this->logContention($user, $lockPath, $mode, $attempts, $started);
+            throw new ChatStoreBusyException('Chat storage is busy (another request is writing it). Please try again.');
+        }
+        if ($attempt > 0) {
+            $waitedMs = max(1, (int)ceil((hrtime(true) - $started) / 1_000_000));
+            $this->usageMetrics?->recordChatStoreLockWait(
+                $user,
+                $mode === ILockingProvider::LOCK_SHARED ? 'shared' : 'exclusive',
+                'acquired',
+                $waitedMs,
+            );
+        }
+    }
+
+    /**
+     * Serialize aggregate AppData reads and mutations for one user across the
+     * whole cluster. A node-local flock() in the temp directory let two app
+     * servers race on the same chats.json, silently losing updates on clustered
      * deployments (Issue #78). Nextcloud's locking provider coordinates via a
      * shared backend (database or distributed cache), so the read-modify-write
-     * of one user's chat file is atomic on every node.
+     * of one user's legacy chat file is atomic on every node. SQL-authoritative
+     * single-chat operations use withChatLock() and share this user lock only
+     * in reader mode, allowing independent conversations to proceed together.
      *
      * $mode distinguishes reads (LOCK_SHARED) from mutations (LOCK_EXCLUSIVE):
      * several parallel reads may run at the same time, so the chat list,
