@@ -263,7 +263,7 @@ class AdminController extends OCSController {
         ]);
     }
 
-    /** Lightweight instance totals for the admin landing page. */
+    /** Backwards-compatible aggregate totals for existing admin API clients. */
     #[AdminRequired]
     public function summary(): DataResponse {
         return new ErrorDataResponse([

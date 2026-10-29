@@ -16,15 +16,13 @@ The administrator workspace remains at `/admin` and requires an administrator.
 
 ## Administrator storage snapshot
 
-`GET /api/admin/summary` is the compact admin landing-page endpoint. It returns
-aggregate counts without enumerating users or calling an external service:
-
-```json
-{"index":{"accounts":3,"documents":120,"chunks":460},"scheduler":{"running":0,"queued":0,"limit":2}}
-```
-
-The older `GET /api/admin/overview` remains available for existing clients and
-returns per-account management rows. The EVA admin landing page does not call it.
+The `/admin` page starts with the built-in SQL default and does not load account
+or scheduler totals. The documented `GET /api/admin/summary` remains available
+to existing admin API clients, but the page no longer calls it. Opening
+**Optional scale and migration tools** loads the admin-only
+`GET /api/admin/overview` account list and the read-only
+`GET /api/admin/vector-storage` snapshot. These endpoints do not contact Qdrant
+or an embedding provider.
 
 `GET /api/admin/vector-storage` is admin-only and read-only. It reads local
 configuration and actionable outbox counts, never contacting Qdrant or an

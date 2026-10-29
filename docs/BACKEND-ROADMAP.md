@@ -145,13 +145,18 @@ chat responses.
 
 ## Stage 14 interface slice: compact administration
 
-The admin landing view now presents the built-in Nextcloud SQL default and a concise account/index queue summary. Per-user index actions, generation setup, and optional external vector storage are grouped under a collapsed native HTML disclosure, so standalone installations do not lead with infrastructure configuration. Advanced administration remains available. This is a presentation change; it does not alter indexing consent, background jobs, or storage selection.
+The admin landing view presents the built-in Nextcloud SQL default through a
+native Nextcloud settings section. It does not query instance-wide counts or
+scheduler totals on open. Per-user generation controls and optional external
+vector storage load only inside a collapsed disclosure. This keeps the default
+installation free of infrastructure setup while preserving explicit scale
+controls when needed.
 
-Version 1.18.46 wires the already-implemented generation preparation and
-verification interface into that disclosure. It requests the admin-only account
-list only after the disclosure opens; the default view continues to load only
-aggregate counts. This removes an unreachable admin component without moving
-optional vector controls into ordinary chat or personal settings.
+Version 1.18.46 wired generation preparation and verification into that
+disclosure. Version 1.18.54 removes the unnecessary aggregate dashboard query
+from page load while retaining its documented API for compatibility; opening
+the disclosure still requests the admin-only account list and storage snapshot.
+Optional vector controls remain outside ordinary chat and personal settings.
 
 ## Frontend integration required throughout the stack
 
