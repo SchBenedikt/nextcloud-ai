@@ -30,6 +30,7 @@ reference pages describe the complete configuration and API surface.
 - [Vector storage](VECTOR-STORAGE.md): generation identity, additive schema and operating boundaries.
 - [Generation embeddings](GENERATION-EMBEDDINGS.md): pinned provider/model contracts, proven cache reuse and explicit native checks.
 - [Generation chunks](GENERATION-CHUNKS.md): separate SQL rows, source stamps and atomic upsert intent.
+- [Generation builds](GENERATION-BUILDS.md): explicit background processing, durable checkpoints, personal opt-out and native pause/resume controls.
 - [Qdrant](QDRANT.md): optional server configuration and deployment.
 - [Vector outbox](VECTOR-OUTBOX.md): durable intent, ownership fencing and delivery invariants.
 

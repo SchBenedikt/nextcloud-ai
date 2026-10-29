@@ -36,7 +36,8 @@ class UserDataService {
         private IRootFolder $rootFolder,
         private IAppDataFactory $appDataFactory,
         private LoggerInterface $logger,
-        private ?\OCA\EvaAi\Db\VectorGenerationRepository $vectorGenerations = null
+        private ?\OCA\EvaAi\Db\VectorGenerationRepository $vectorGenerations = null,
+        private ?\OCA\EvaAi\Db\GenerationBuildRepository $generationBuilds = null
     ) {
     }
 
@@ -95,6 +96,7 @@ class UserDataService {
             'index_meta' => $indexMeta,
             'vector_generations' => $generationMeta,
             'vector_owner_fence' => $this->vectorGenerations?->ownerMetadata($userId),
+            'vector_builds' => $this->generationBuilds?->exportMetadata($userId) ?? ['builds'=>[],'documents'=>[]],
         ];
     }
 

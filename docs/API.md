@@ -359,3 +359,26 @@ model-space or transport failures return 503 with a sanitized error message.
 Both routes require an administrator; the POST retains native CSRF protection.
 A successful probe does not activate a generation or verify its complete index.
 See [generation embeddings](GENERATION-EMBEDDINGS.md).
+
+## Background generation builds
+
+`GET /api/admin/vector-generations/{userId}/{id}/build` returns `status`,
+`documents_done`, `total_documents`, `staged_chunks`, `heartbeat_at`, `error_code`,
+`can_start`, `retrieval_changed: false` and `verified: false`. Counts describe SQL
+preparation. Missing state is `not_started`; a completed pass is `staged`, never
+an activated or verified index. No lease token, destination, content or vectors
+are returned, and this read performs no provider request.
+
+`POST /api/admin/vector-generations/{userId}/{id}/build/{operation}` accepts
+`start`, `pause`, `resume` or `cancel`. Start requires JSON
+`{"confirm_document_transfer":true}`. Other operations accept an empty JSON
+object. The path parameter is named `operation` because Nextcloud reserves and
+removes `action` before controller dispatch. All routes require native admin
+authorization; mutation retains native CSRF protection. Invalid requests return
+400, unavailable/disabled build controls 409, and database failures sanitized 503.
+
+Mutations return the same authoritative status shape. Start is idempotent and
+does not reset an existing build. It schedules background work instead of running
+model requests synchronously. See [generation builds](GENERATION-BUILDS.md) for
+consent, source-enrollment/destination gates, lease semantics and remaining
+verification requirements.

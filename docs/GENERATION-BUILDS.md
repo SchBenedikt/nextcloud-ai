@@ -1,0 +1,103 @@
+# Resumable background generation builds
+
+EVA 1.18.10 can build an explicitly prepared, owned **building** generation from
+the owner's canonical indexed sources. SQL remains the search backend. Installing
+or upgrading EVA starts no build and requires no external database.
+
+## Start and control
+
+Configure optional storage and prepare the generation using the existing
+[Qdrant administration procedure](QDRANT.md). Its immutable model, dimension,
+endpoint and chunk settings must match the intended embedding space. Prefer
+versioned model identifiers: an API's echoed model name does not prove that an
+operator has kept mutable model weights unchanged.
+
+In EVA administration, select the owner and generation under **Embedding
+generations**. **Background build** explains the transfer and requires a separate
+document-processing checkbox. The owner's source index must be enrolled, the
+generation bound to the current destination, and storage/point delivery enabled.
+Nextcloud's native EVA administration page links to these same controls through
+**Manage storage and background builds**. No controls are added to chat.
+
+Start only schedules SQL work. Native Nextcloud cron processes the job in the
+background. Progress reads inspect SQL metadata and never probe a provider.
+Pause invalidates the current lease; explicit resume retains its checkpoints.
+An already-started request may finish, but a paused process cannot publish a
+new checkpoint. Cancel also stops admission and retains prepared data; explicit
+resume is possible. It does not purge a collection or erase the legacy index.
+Previously committed vector operations remain governed by the separate point
+delivery permission. Disable storage requests to stop all Qdrant transfers.
+
+The same control service is available to local administrators:
+
+```sh
+php occ eva_ai:vector:build status USER GENERATION_ID
+php occ eva_ai:vector:build start USER GENERATION_ID --confirm-document-transfer
+php occ eva_ai:vector:build pause USER GENERATION_ID
+php occ eva_ai:vector:build resume USER GENERATION_ID
+php occ eva_ai:vector:build cancel USER GENERATION_ID
+# One bounded global tick, processing only previously authorized eligible work:
+php occ eva_ai:vector:build run
+```
+
+The minute job is registered automatically; actual execution follows the
+instance's configured Nextcloud background-job mode. Configure working cron for
+reliable progress. Clicking Start does not run inference in the browser request.
+
+## Durable progress and isolation
+
+`eva_ai_vec_builds` stores the initial document high-water mark/count, completed
+document cursor, current document/chunk cursor, plan identity, state, lease,
+heartbeat and a sanitized failure code. `eva_ai_vec_build_docs` records each
+completed canonical source stamp, plan hash and expected chunk count.
+
+Sources use a tenant-filtered document-ID keyset, without OFFSET scans. One tick
+claims one generation for 180 seconds and admits at most 256 chunks/16 sources
+subject to a 90-second admission budget checked between operations. Embeddings
+use batches of at most eight, with
+request deadlines capped at 30 seconds and shortened near the tick budget.
+Source extraction is reused across batches within the tick. Resume reconstructs
+the current canonical source and requires the same plan; if it changed, only
+that document's rows in this generation are tombstoned and rebuilt with new IDs.
+Plans are limited to 4,096 chunks and 16 MiB of generated chunk text, so very
+large overlap cannot multiply a small source into an excessive in-memory plan.
+Repeated source-budget exhaustion without progress stops for attention instead
+of consuming every later background tick indefinitely.
+
+Provider/native-source I/O runs outside SQL transactions. Each batch atomically
+commits prepared rows, vector journal intent and the build checkpoint. Lock order
+is owner, generation, build, then source. A reclaimed process has a different
+token; a late process cannot acknowledge its successor or overwrite a pause.
+Transfer guards recheck lease, flags, target, generation identity, source metadata
+and native access. Fresh SQL preferences also honor an explicit personal indexing
+opt-out, including one made after the tick started.
+
+PDF/Office commands run through an argv-based subprocess helper with a 20-second
+command deadline and eight-MiB captured-output limit. GNU timeout additionally
+terminates descendants where available; the PHP deadline is the fallback. OCR
+keeps its existing bounded page/pixel/output and 60-second operation limits.
+Mail stops processing once its canonical 30,000-character prefix is filled.
+Native storage/IMAP calls retain their transport behavior; admission budgets and
+lease checks do not prove a hard wall-clock deadline for every remote operation
+or zero contention with interactive model requests. Load/soak evidence is still
+required before rollout.
+
+Metadata endpoints and personal export omit runtime tokens and storage targets.
+Personal export includes owned progress/manifests. Native account erasure fences
+the owner, removes build metadata with generation/index cleanup and prevents a
+late worker from recreating it. Legacy NULL-generation vectors remain intact.
+
+## Prepared is not verified
+
+`staged` means the bounded source pass finished. It does not mean every remote
+point is present, current or correctly ranked. Source additions beyond the
+initial high-water mark, changes behind the cursor, deleted documents, queued
+tombstones and failed remote delivery still need reconciliation and verification.
+The UI/API always report `verified: false` and `retrieval_changed: false` here.
+
+Exact current SQL/remote ID and revision comparison, dimensions, sampled cosine
+scores, tenant/adversarial checks and persisted verification evidence remain
+stage 09 gates. Activation is unavailable. Continuous update ingestion,
+shadow/canary/primary rollout and normalized encrypted SQL chat storage are later
+stages in [the full ledger](BACKEND-ROADMAP.md). See [QUALITY.md](QUALITY.md) for
+what was actually checked; a staged count is not a verified migration.

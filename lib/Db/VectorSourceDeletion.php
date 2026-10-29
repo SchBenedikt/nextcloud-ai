@@ -14,13 +14,14 @@ class VectorSourceDeletion {
     public function __construct(private IDBConnection $db, private VectorOutboxRepository $outbox) {}
 
     /** @return array{chunks:int,documents:int} */
-    public function deleteDocuments(array $ids, bool $removeDocuments = false, bool $generationOnly = false): array {
+    public function deleteDocuments(array $ids, bool $removeDocuments = false, bool $generationOnly = false, ?string $generationId = null): array {
         if ($removeDocuments && $generationOnly) throw new \InvalidArgumentException('Document removal must include legacy chunks.');
+        if ($generationId !== null && (!$generationOnly || preg_match('/^[a-f0-9]{32}$/D',$generationId)!==1)) throw new \InvalidArgumentException('A generation filter requires generation-only removal.');
         $ids = array_values(array_unique(array_filter(array_map('intval', $ids), static fn(int $id): bool => $id > 0)));
         if (count($ids) > 500) throw new \InvalidArgumentException('Source deletion requires bounded document batches.');
         if ($ids === []) return ['chunks' => 0, 'documents' => 0];
         sort($ids, SORT_NUMERIC);
-        return $this->outbox->transaction(function () use ($ids, $removeDocuments, $generationOnly): array {
+        return $this->outbox->transaction(function () use ($ids, $removeDocuments, $generationOnly, $generationId): array {
             // Same source-row boundary as putBuildingChunk. A concurrent writer
             // must recheck the source after this transaction releases the lock.
             $this->lockDocuments($ids);
@@ -33,6 +34,7 @@ class VectorSourceDeletion {
                     ->andWhere($qb->expr()->isNotNull('c.vector_generation_id'))
                     ->andWhere($qb->expr()->gt('c.id', $qb->createNamedParameter($cursor, IQueryBuilder::PARAM_INT)))
                     ->orderBy('c.id', 'ASC')->setMaxResults(250);
+                if ($generationId!==null) $qb->andWhere($qb->expr()->eq('c.vector_generation_id',$qb->createNamedParameter($generationId)));
                 $result = $qb->executeQuery();
                 try { $rows = $result->fetchAll(); } finally { $result->closeCursor(); }
                 $generations = [];
@@ -49,6 +51,7 @@ class VectorSourceDeletion {
             $delete = $this->db->getQueryBuilder();
             $delete->delete('eva_ai_chunks')->where($delete->expr()->in('document_id', $delete->createNamedParameter($ids, IQueryBuilder::PARAM_INT_ARRAY)));
             if ($generationOnly) $delete->andWhere($delete->expr()->isNotNull('vector_generation_id'));
+            if ($generationId!==null) $delete->andWhere($delete->expr()->eq('vector_generation_id',$delete->createNamedParameter($generationId)));
             $chunks = $delete->executeStatement();
             $documents = 0;
             if ($removeDocuments) {

@@ -275,3 +275,55 @@ contacted, no migration worker was enabled and no frontend compilation was neede
 Mail/Talk preparation has contract coverage; live IMAP/room reconstruction,
 converter/OCR time budgets, durable backfill control and complete remote
 verification remain separately required evidence.
+
+## Resumable background builds (1.18.10)
+
+The installed migration added build and per-source manifest tables without
+starting work or enabling external storage. Local Nextcloud 35 RC3 upgraded to
+1.18.10 successfully. Existing non-build schema discrepancies remain separately
+reported; upgrade success is not a globally clean schema claim.
+
+The isolated build probe uses native SQLite migrations/repositories and checks
+owned keyset processing, pause after inference, partial resume, changed-plan
+restart, exclusive claims, lease expiry/reclaim, stale-token rejection, atomic
+chunk/journal/checkpoint rollback, cancellation, target rotation, personal opt-out,
+no-progress source-budget failure, account erasure, export and legacy/tenant
+isolation. It does not run external provider calls unless explicitly configured:
+
+```sh
+NEXTCLOUD_ROOT=/var/www/html/nextcloud EVA_BUILD_SQL_FIXTURE=1 \
+php tests/runtime/generation-build.php
+```
+
+With the loopback embedding fixture running, optional
+`EVA_BUILD_HTTP_FIXTURE_URL=http://127.0.0.1:16435` and a fresh
+`EVA_BUILD_NATIVE_TEST_USER=eva-runtime-audit-build-example` exercise actual
+native VFS/access/extraction plus real HTTP embedding and isolated SQL
+checkpoints/journal. The script creates/deletes that disposable account; no
+live transport flag or vector collection changes. This combined path passed.
+
+The separate native database probe uses the installed MariaDB connection and an
+existing dedicated audit owner/document. All its SQL mutations are enclosed in
+an outer fixture transaction and rolled back; only admission-switch methods are
+test doubles. It passed native claim, chunk/outbox/checkpoint rollback and commit,
+pause/resume and stale-token checks without provider/native-source I/O inside
+the transaction:
+
+```sh
+NEXTCLOUD_ROOT=/var/www/html/nextcloud EVA_TEST_USER=eva-runtime-audit-example \
+php tests/runtime/generation-build-sql.php
+```
+
+Run these developer probes as the web-server user with development dependencies.
+The native probe refuses a nonempty build queue instead of touching unrelated
+work. They establish sequential local behavior, not multi-process/distributed
+failure ordering or a full database portability matrix.
+
+Native browser checks cover generation metadata, an explicit origin-policy
+refusal, the disabled-storage build gate, real boolean-consent handling, the
+Nextcloud administration link and ordinary-user HTTP 403. An actual runtime
+failure exposed Nextcloud removing the reserved `action` route parameter; the
+corrected controller uses `operation`. A fixture-only success did not count as
+native API validation. Native component browser checks additionally cover start,
+pause/resume, staged-but-unverified presentation and uncertain writes without
+automatic POST retries. No search activation or live Qdrant rollout is claimed.

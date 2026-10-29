@@ -258,7 +258,7 @@ class IndexTextExtractor {
             // -layout keeps column/table structure instead of one
             // undifferentiated text run, which measurably improves
             // retrieval on tabular PDFs.
-            $output = shell_exec(escapeshellarg($bin) . ' -layout -enc UTF-8 ' . escapeshellarg($tmpIn) . ' - 2>/dev/null');
+            $output = (new LocalTextProcess())->run([$bin,'-layout','-enc','UTF-8',$tmpIn,'-']);
             return (is_string($output) && trim($output) !== '') ? $output : null;
         } finally {
             @unlink($tmpIn);
@@ -624,17 +624,14 @@ class IndexTextExtractor {
             return null;
         }
         $tmpIn = tempnam(sys_get_temp_dir(), 'rag_');
-        $tmpOut = tempnam(sys_get_temp_dir(), 'rag_');
-        if ($tmpIn === false || $tmpOut === false) {
+        if ($tmpIn === false) {
             return null;
         }
         try {
             file_put_contents($tmpIn, $this->readFile($file));
             // -layout preserves the physical layout (columns, tables) so
             // tabular PDFs stay structured instead of flowing into one run.
-            shell_exec(escapeshellarg($bin) . ' -layout -enc UTF-8 ' . escapeshellarg($tmpIn) . ' ' . escapeshellarg($tmpOut) . ' 2>/dev/null');
-            $txt = file_exists($tmpOut) ? (string)file_get_contents($tmpOut) : '';
-            @unlink($tmpOut);
+            $txt = (new LocalTextProcess())->run([$bin,'-layout','-enc','UTF-8',$tmpIn,'-']);
             if ($txt === '') return null;
             $pages = explode("\f", $txt);
             if (trim(end($pages)) === '') array_pop($pages);
@@ -668,13 +665,14 @@ class IndexTextExtractor {
             $profile = $tmpDir . '/profile';
             @mkdir($outDir, 0700, true);
             file_put_contents($in, $this->readFile($file));
-            $cmd = escapeshellarg($bin) . ' --headless -env:UserInstallation=file://' . escapeshellarg($profile)
-                . ' --convert-to "txt:Text (encoded):UTF8" --outdir ' . escapeshellarg($outDir)
-                . ' ' . escapeshellarg($in) . ' 2>/dev/null';
-            shell_exec($cmd);
+            (new LocalTextProcess())->run([$bin,'--headless','-env:UserInstallation=file://'.$profile,
+                '--convert-to','txt:Text (encoded):UTF8','--outdir',$outDir,$in]);
             $txt = '';
             foreach ((array)glob($outDir . '/*.txt') as $f) {
-                $txt .= (string)file_get_contents($f);
+                $part=file_get_contents($f,false,null,0,max(1,8388609-strlen($txt)));
+                if($part===false)throw new \RuntimeException('Converted text could not be read.');
+                $txt.=$part;
+                if(strlen($txt)>8388608)throw new \LengthException('Converted text exceeds its budget.');
             }
             return $txt;
         } finally {

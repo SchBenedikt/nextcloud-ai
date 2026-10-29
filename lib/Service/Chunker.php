@@ -30,12 +30,13 @@ class Chunker {
     }
 
     /** Explicit immutable generation settings; bounded before materializing chunks. */
-    public function chunkWithSettings(string $text, int $chunkSize, int $overlap, int $maxChunks = 4096): array {
+    public function chunkWithSettings(string $text, int $chunkSize, int $overlap, int $maxChunks = 4096, int $maxBytes = 16777216): array {
         if ($chunkSize < 1 || $chunkSize > 10000 || $overlap < 0 || $overlap >= $chunkSize
-            || $maxChunks < 1 || $maxChunks > 10000) throw new \InvalidArgumentException('Invalid bounded chunk settings.');
-        $chunks = [];
+            || $maxChunks < 1 || $maxChunks > 10000 || $maxBytes<1 || $maxBytes>16777216) throw new \InvalidArgumentException('Invalid bounded chunk settings.');
+        $chunks = []; $bytes=0;
         foreach ($this->chunks($text, $chunkSize, $overlap) as $chunk) {
-            if (count($chunks) === $maxChunks) throw new \LengthException('Source exceeds the generation chunk budget.');
+            $bytes+=strlen($chunk['content']);
+            if (count($chunks) === $maxChunks || $bytes>$maxBytes) throw new \LengthException('Source exceeds the generation chunk budget.');
             $chunks[] = $chunk;
         }
         return $chunks;
@@ -49,10 +50,11 @@ class Chunker {
 
         foreach ($this->sectionsWithHeadings($text) as $section) {
             foreach ($this->chunkSection($section['heading'], $section['body'], $chunkSize, $overlap) as $c) {
-                $c['provenance'] = ['version' => 1, 'section' => mb_substr($section['heading'], 0, 200), 'section_offset' => $section['offset'], 'heading_path' => $section['headings']];
+                $c['provenance'] = ['version' => 1, 'section' => mb_strcut($section['heading'], 0, 200, 'UTF-8'), 'section_offset' => $section['offset'],
+                    'heading_path' => array_map(static fn(string $heading):string=>mb_strcut($heading,0,64,'UTF-8'),$section['headings'])];
                 if (preg_match('/^\[Page (\d+)\]$/', $section['heading'], $match)) $c['provenance']['page'] = (int)$match[1];
                 if (preg_match('/^\[Slide (\d+)\]$/', $section['heading'], $match)) $c['provenance']['slide'] = (int)$match[1];
-                if (preg_match('/^\[Sheet: (.+)\]$/u', $section['heading'], $match)) $c['provenance']['sheet'] = mb_substr($match[1], 0, 100);
+                if (preg_match('/^\[Sheet: (.+)\]$/u', $section['heading'], $match)) $c['provenance']['sheet'] = mb_strcut($match[1], 0, 100, 'UTF-8');
                 yield $c;
             }
         }

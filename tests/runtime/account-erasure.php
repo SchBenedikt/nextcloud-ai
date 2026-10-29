@@ -56,6 +56,11 @@ $document->setFileMtime($file->getMTime());
 $document->setContentHash(md5('Public erasure fixture.'));
 $document->setChunkCount(2);
 $document = $documents->insert($document);
+$buildId = bin2hex(random_bytes(16));
+$db->insertIgnoreConflict('eva_ai_vec_builds', ['generation_id'=>$buildId, 'user_id'=>$uid,
+    'owner_hash'=>\OCA\EvaAi\Db\VectorOwnerFenceRepository::ownerHash($uid), 'target_hash'=>hash('sha256','public-erasure-fixture'), 'status'=>'paused']);
+$db->insertIgnoreConflict('eva_ai_vec_build_docs', ['generation_id'=>$buildId, 'user_id'=>$uid, 'document_id'=>(int)$document->getId(),
+    'source_stamp'=>hash('sha256','public-source'), 'plan_hash'=>hash('sha256','public-plan'), 'chunk_count'=>2]);
 foreach ([0, 1] as $index) {
     $chunk = new Chunk();
     $chunk->setDocumentId($document->getId());
@@ -90,7 +95,7 @@ $count = static function (string $table, string $column) use ($db, $uid): int {
 };
 $check = static function () use ($assert, $count, $uid, $db, $appData, $namespace, $generations, $config): void {
     $assert(!OC::$server->get(OCP\IUserManager::class)->userExists($uid), 'Audit account still exists.');
-    foreach (['eva_ai_documents', 'eva_ai_agent_state', 'eva_ai_vec_generations', 'eva_ai_vec_state'] as $table) {
+    foreach (['eva_ai_documents', 'eva_ai_agent_state', 'eva_ai_vec_build_docs', 'eva_ai_vec_builds', 'eva_ai_vec_generations', 'eva_ai_vec_state'] as $table) {
         $assert($count($table, 'user_id') === 0, 'Account erasure retained rows in ' . $table);
     }
     $assert($count('preferences', 'userid') === 0, 'Account erasure retained EVA preferences.');

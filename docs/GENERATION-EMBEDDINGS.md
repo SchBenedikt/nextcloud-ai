@@ -68,8 +68,8 @@ SQL path is unchanged. HTTP connections to an approved private origin are an
 administrator choice; other origins require TLS. The adapter uses a 30-second
 request/read deadline, five-second connect deadline, eight inputs and 131,072
 vector elements per request, with a four-MiB response ceiling. There are no
-implicit retries or unbounded recursive batch splitting on this path. A future
-backfill worker supplies the fresh source/lease/cancel guard; the probe supplies
+implicit retries or unbounded recursive batch splitting on this path. The explicit
+background builder supplies the fresh source/lease/cancel guard; the probe supplies
 fresh native owner/generation guards. No external I/O belongs inside a SQL
 transaction.
 
@@ -102,3 +102,6 @@ Durable document/chunk cursors, claim leases, heartbeat, pause/resume/cancel,
 canonical native source extraction, reconciliation and complete remote ID/revision/
 dimension/sample verification are the next stage-09 slices. The check introduced
 here deliberately does not advertise any of those as completed functionality.
+
+
+The explicit build/control workflow is described in [GENERATION-BUILDS.md](GENERATION-BUILDS.md). A successful model probe and a staged pass still do not establish complete generation verification or search activation.

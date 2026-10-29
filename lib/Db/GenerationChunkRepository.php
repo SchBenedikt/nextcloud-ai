@@ -26,6 +26,17 @@ class GenerationChunkRepository {
         return $row ? VectorDocumentSnapshot::fromRow($row) : null;
     }
 
+    /** Source-row lock shared by chunk writes and zero-chunk build checkpoints. */
+    public function lockSnapshot(VectorDocumentSnapshot $snapshot): void {
+        if (!$this->db->inTransaction()) throw new \LogicException('Source locking requires the mutation transaction.');
+        $lock=$this->db->getQueryBuilder();
+        $lock->update('eva_ai_documents')->set('file_mtime',$lock->func()->add('file_mtime',$lock->createNamedParameter(0,IQueryBuilder::PARAM_INT)))
+            ->where($lock->expr()->eq('id',$lock->createNamedParameter($snapshot->id,IQueryBuilder::PARAM_INT)))
+            ->andWhere($lock->expr()->eq('user_id',$lock->createNamedParameter($snapshot->userId)))->executeStatement();
+        $current=$this->snapshot($snapshot->userId,$snapshot->id);
+        if ($current===null || !hash_equals($snapshot->stamp,$current->stamp)) throw new VectorStoreException('source_changed');
+    }
+
     /**
      * Embedding must finish before calling this short SQL transaction. Recheck
      * immutable generation and source metadata, preserving the entire legacy row.
@@ -47,12 +58,7 @@ class GenerationChunkRepository {
             $this->lockBuilding($generation, $target);
             // Lock source before checking the stamp. Normal metadata updates and
             // deletes serialize on this document row, including older cores.
-            $lock = $this->db->getQueryBuilder();
-            $lock->update('eva_ai_documents')->set('file_mtime', $lock->func()->add('file_mtime', $lock->createNamedParameter(0, IQueryBuilder::PARAM_INT)))
-                ->where($lock->expr()->eq('id', $lock->createNamedParameter($snapshot->id, IQueryBuilder::PARAM_INT)))
-                ->andWhere($lock->expr()->eq('user_id', $lock->createNamedParameter($generation->userId)))->executeStatement();
-            $current = $this->snapshot($generation->userId, $snapshot->id);
-            if ($current === null || !hash_equals($snapshot->stamp, $current->stamp)) throw new VectorStoreException('source_changed');
+            $this->lockSnapshot($snapshot);
 
             $read = $this->db->getQueryBuilder();
             $read->select('*')->from('eva_ai_chunks')
