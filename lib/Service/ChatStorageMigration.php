@@ -17,6 +17,9 @@ final class ChatStorageMigration {
 	public function migrate(string $userId): array {
 		if ($userId === '') throw new \InvalidArgumentException('A user ID is required.');
 		if (!$this->users->userExists($userId)) throw new \InvalidArgumentException('The Nextcloud user does not exist.');
+		if ($this->target->sqlReadsEnabled($userId)) {
+			return ['status' => 'already-enabled', 'chats' => count($this->target->allChats($userId)), 'sourceHash' => ''];
+		}
 		$snapshot = $this->source->migrationSnapshot($userId);
 		$chats = $snapshot['chats'];
 		$sourceHash = $snapshot['sourceHash'];
@@ -84,6 +87,39 @@ final class ChatStorageMigration {
 		});
 		if (!$this->users->userExists($userId)) return ['status' => 'account-removed', 'chats' => $done, 'sourceHash' => $sourceHash];
 		return ['status' => 'complete', 'chats' => $done, 'sourceHash' => $sourceHash];
+	}
+
+	public function enableSqlReads(string $userId): void {
+		if (!$this->users->userExists($userId)) throw new \InvalidArgumentException('The Nextcloud user does not exist.');
+		$snapshot = $this->source->migrationSnapshot($userId);
+		$state = $this->target->migrationState($userId);
+		if (($state['state'] ?? '') !== 'complete' || !hash_equals((string)($state['source_hash'] ?? ''), $snapshot['sourceHash'])) {
+			throw new \RuntimeException('The SQL chat import is stale or incomplete. Rerun the import before enabling SQL reads.');
+		}
+		if ($this->target->chatCount($userId) !== count($snapshot['chats'])) {
+			throw new \RuntimeException('The SQL chat import does not contain the expected chat count. Rerun the import before enabling SQL reads.');
+		}
+		foreach ($snapshot['chats'] as $sourceChat) {
+			$stored = $this->target->chat($userId, (string)$sourceChat['id']);
+			if ($stored === null || !hash_equals($this->digest($sourceChat), $this->digest($stored))) {
+				throw new \RuntimeException('The SQL chat import does not match AppData. Rerun the import before enabling SQL reads.');
+			}
+		}
+		$this->source->withMigrationSourceLock($userId, function (string $currentHash) use ($userId, $snapshot): void {
+			if (!$this->users->userExists($userId) || !hash_equals($snapshot['sourceHash'], $currentHash)) {
+				throw new \RuntimeException('AppData changed during SQL read activation. Rerun the import and activation.');
+			}
+			$latestState = $this->target->migrationState($userId);
+			if (($latestState['state'] ?? '') !== 'complete' || !hash_equals((string)($latestState['source_hash'] ?? ''), $currentHash)) {
+				throw new \RuntimeException('The SQL migration checkpoint changed during activation. Rerun the import and activation.');
+			}
+			$this->target->setSqlReadsEnabled($userId, true);
+		});
+	}
+
+	public function disableSqlReads(string $userId): int {
+		if (!$this->users->userExists($userId)) throw new \InvalidArgumentException('The Nextcloud user does not exist.');
+		return $this->source->restoreAppDataAndDisableSql($userId);
 	}
 
 	private function digest(array $value): string {

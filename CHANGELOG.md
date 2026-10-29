@@ -2,6 +2,12 @@
 
 ## [Unreleased]
 
+### Per-user encrypted SQL chat read pilot (1.18.28)
+
+- Add a separate per-user SQL read flag. The migration command can enable SQL reads only after import and source verification, or restore AppData from SQL before disabling the flag.
+- Route enabled chat reads through owner-scoped SQL; metadata lists use indexed keyset pages and chat content is decrypted only for the requested conversation or explicit content search. SQL remains encrypted and AppData can be restored for rollback.
+- Add a paginated chat-list endpoint and native Nextcloud sidebar “Load more chats” action while preserving the existing full-list API for older clients.
+
 ### Encrypted SQL chat storage foundation (1.18.27)
 
 - Add additive, owner-scoped tables for encrypted chat metadata, encrypted messages, and per-user migration checkpoints. The `occ eva_ai:migrate-chat-storage <user>` command imports in resumable batches and verifies SQL against the source snapshot without deleting or switching from AppData.

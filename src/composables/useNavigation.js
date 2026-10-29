@@ -20,7 +20,7 @@ const resolveRoute = (location) => {
 }
 
 /** Centralizes browser URL state and navigation for the main EVA shell. */
-export function useNavigation({ chats, currentChat, view, fileContextIds, onChatsCleared, onFileContext, settingsSection = ref('general') }) {
+export function useNavigation({ currentChat, view, fileContextIds, onChatsCleared, onFileContext, settingsSection = ref('general') }) {
 	const initialRoute = resolveRoute(window.location)
 	const initialChatParam = new URLSearchParams(window.location.search).get('chat')
 	view.value = initialRoute.view
@@ -49,7 +49,7 @@ export function useNavigation({ chats, currentChat, view, fileContextIds, onChat
 	const onPopState = () => {
 		const route = resolveRoute(window.location)
 		if (route.view === 'chat') {
-			if (route.chatId && route.chatId !== 'new' && chats.value.some((chat) => chat.id === route.chatId)) {
+			if (route.chatId && route.chatId !== 'new') {
 				currentChat.value = route.chatId
 				view.value = 'chat'
 			} else {

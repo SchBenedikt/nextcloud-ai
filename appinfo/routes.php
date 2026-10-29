@@ -57,6 +57,7 @@ return [
         ['name' => 'api#resumeBackgroundChat', 'url' => '/api/backgroundChat/resume', 'verb' => 'POST'],
         ['name' => 'api#retryBackgroundChat', 'url' => '/api/backgroundChat/retry', 'verb' => 'POST'],
         ['name' => 'api#chats', 'url' => '/api/chats', 'verb' => 'GET'],
+        ['name' => 'api#chatPage', 'url' => '/api/chats/page', 'verb' => 'GET'],
         ['name' => 'api#createChat', 'url' => '/api/chats', 'verb' => 'POST'],
         ['name' => 'api#deleteAllChats', 'url' => '/api/chats', 'verb' => 'DELETE'],
         ['name' => 'api#chatDetail', 'url' => '/api/chats/{id}', 'verb' => 'GET'],

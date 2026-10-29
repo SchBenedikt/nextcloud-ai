@@ -677,6 +677,7 @@ OC.L10N.register("eva_ai", {
   "The chat could not be updated: {error}": "Der Chat konnte nicht aktualisiert werden: {error}",
   "The chat history could not be deleted: {error}": "Der Chatverlauf konnte nicht gelöscht werden: {error}",
   "The chat list response was invalid.": "Die Antwort der Chatliste war ungültig.",
+  "Load more chats": "Weitere Chats laden",
   "The data export could not be created: {error}": "Der Datenexport konnte nicht erstellt werden: {error}",
   "The fields below are inactive until you enable file actions.": "Die folgenden Felder sind inaktiv, bis du Dateiaktionen aktivierst.",
   "The file-context request failed: {error}": "Die Dateikontext-Anfrage ist fehlgeschlagen: {error}",

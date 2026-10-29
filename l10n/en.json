@@ -678,6 +678,7 @@
     "The chat could not be updated: {error}": "The chat could not be updated: {error}",
     "The chat history could not be deleted: {error}": "The chat history could not be deleted: {error}",
     "The chat list response was invalid.": "The chat list response was invalid.",
+    "Load more chats": "Load more chats",
     "The data export could not be created: {error}": "The data export could not be created: {error}",
     "The fields below are inactive until you enable file actions.": "The fields below are inactive until you enable file actions.",
     "The file-context request failed: {error}": "The file-context request failed: {error}",
