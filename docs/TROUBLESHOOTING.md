@@ -1,5 +1,21 @@
 # Troubleshooting EVA
 
+## Image search returns no pictures
+
+The per-user **Web search** setting is an explicit privacy gate for external
+queries and must be enabled in EVA settings. The separate
+**Images in web results** setting controls pictures attached to ordinary page
+results; it does not turn the dedicated `search_images` tool off. When a user
+explicitly asks to see pictures, EVA now runs image search directly instead of
+depending on the language model to choose that tool. A provider failure or a
+disabled privacy gate is reported in the answer, and pictures already found
+remain visible if the model fails afterwards.
+
+The keyless search first reads Bing Images and falls back to Openverse when
+Bing returns an anti-bot page. If the privacy gate is enabled but EVA reports
+that no pictures were found, check outbound HTTPS access from the Nextcloud
+server to `www.bing.com` and `api.openverse.org`.
+
 ## A section does not load
 
 Look for missing JavaScript chunks in the browser Network panel. Deploy all

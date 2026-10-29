@@ -1866,7 +1866,10 @@ export function mountChat(root, opts = {}) {
 					})
 				pendingRegenerateRev = null
 			} else if (ev.type === 'error') {
-				last.text = streamFailureMessage(ev.message)
+				last.text = [last.text, ev.partialAnswer, streamFailureMessage(ev.message)]
+					.map(part => typeof part === 'string' ? part.trim() : '')
+					.filter(Boolean)
+					.join('\n\n')
 				last.done = true
 				err.textContent = last.text
 				err.style.display = 'block'

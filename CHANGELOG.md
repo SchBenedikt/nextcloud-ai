@@ -2,6 +2,13 @@
 
 ## [Unreleased]
 
+### Make requested image search independent and deterministic (1.20.35)
+
+- Run a server-side image search when a user explicitly asks to see pictures instead of relying on the model to choose a tool call.
+- Keep dedicated image search available when article-image enrichment is turned off; the per-user web-search privacy switch still controls external requests.
+- Render reliable provider thumbnails instead of hotlink-prone original image URLs, while keeping the source page in citations.
+- Preserve successful image results if the chat model fails after search, and show a clear reason when the user has disabled web search.
+
 ### Recover expired chat request locks (1.20.34)
 
 - Reclaim only an EVA chat-request lock whose Nextcloud lock TTL has expired, so a crashed request cannot leave the account stuck behind a permanent busy response.

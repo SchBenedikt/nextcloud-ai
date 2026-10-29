@@ -1193,7 +1193,10 @@ function buildCalendarForm(args, tr) {
 						.then(renderChatListAgain)
 						.catch(function () {})
 				} else if (ev.type === 'error') {
-					last.text = tr('Error: {error}', { error: String(ev.message || '') })
+					last.text = [last.text, ev.partialAnswer, tr('Error: {error}', { error: String(ev.message || '') })]
+						.map(function (part) { return typeof part === 'string' ? part.trim() : '' })
+						.filter(Boolean)
+						.join('\n\n')
 					last.done = true
 					saveUserMessage(savedUserText)
 				}
