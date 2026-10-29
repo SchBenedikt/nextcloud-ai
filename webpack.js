@@ -20,6 +20,10 @@ module.exports = (env, argv) => {
 		},
 		output: {
 			path: path.resolve(__dirname, 'js'),
+			// Async views must not reuse a previous app version's chunk from the
+			// browser or a caching proxy. Nextcloud cache-busts the entry bundles,
+			// but webpack-loaded chunks bypass its script combiner.
+			chunkFilename: '[id].[contenthash:8].js',
 			filename: (chunkData) => {
 				// Statische Namen ohne Hash: NC rendert das Skript nur dann,
 				// wenn es exakt unter apps/{app}/js/{name}.js liegt. Gehashte
