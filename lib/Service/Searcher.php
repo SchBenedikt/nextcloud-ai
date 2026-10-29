@@ -391,8 +391,11 @@ class Searcher {
                 // the best $denseCap cosine scores across the whole index.
                 $best = [];
                 $keep = $denseCap + self::DENSE_SCAN_PAGE;
-                for ($offset = 0; $offset < $n; $offset += self::DENSE_SCAN_PAGE) {
-                    $page = $this->chunkMapper->chunksForUserPage($userId, self::DENSE_SCAN_PAGE, $offset, $generationId);
+                $afterId = 0;
+                for ($scanned = 0; $scanned < $n; $scanned += self::DENSE_SCAN_PAGE) {
+                    $page = $this->chunkMapper->chunksForUserAfter($userId, $afterId, self::DENSE_SCAN_PAGE, $generationId);
+                    if ($page === []) break;
+                    $afterId = (int)$page[count($page) - 1]['id'];
                     foreach ($page as $row) {
                         $vec = json_decode($row['embedding'], true);
                         if (!is_array($vec)) {

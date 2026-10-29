@@ -87,7 +87,9 @@ not delay the index response or send content to Qdrant. Specifically:
   enrolled users. The old generation is retired atomically while its rows
   remain available for recovery.
 - SQL generation reads still deserialize JSON vectors and perform PHP cosine
-  ranking, including full-index scans on large indexes. No representative
+  ranking, including full-index scans on large indexes. Those scans now use
+  stable keyset pages instead of database offsets; the full vector scan still
+  costs CPU proportional to index size. No representative
   load/quality, cross-database activation, shadow soak or rollback drill has
   established production readiness.
 
