@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Correlated chat timings (1.18.32)
+
+- Generate a short-lived trace ID for each normal, streamed, and queued chat request and attach it to privacy-preserving chat, retrieval, provider, and slow-tool timing events. No prompts, file paths, account identifiers, or trace IDs are stored in long-lived history.
+
 ### Compact administration overview (1.18.31)
 
 - Keep the default admin view focused on the Nextcloud SQL default and a short indexing summary. Move per-user reindex/reset controls, generation configuration, and optional external vector storage into a native disclosure.

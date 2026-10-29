@@ -21,6 +21,7 @@ final class ChatRequest {
         ?callable $onProgress = null,
         public readonly array $images = [],
         public readonly ?string $model = null,
+        public readonly ?string $traceId = null,
     ) {
         $this->shouldStop = $shouldStop !== null ? \Closure::fromCallable($shouldStop) : null;
         $this->onProgress = $onProgress !== null ? \Closure::fromCallable($onProgress) : null;

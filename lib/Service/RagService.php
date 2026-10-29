@@ -39,6 +39,7 @@ class RagService {
     private array $toolSources = [];
     /** @var list<array{url:string,title:string}> */
     private array $toolImages = [];
+    private TraceContext $traceContext;
 
     public function __construct(
         private AppConfig $config,
@@ -51,8 +52,10 @@ class RagService {
         private IRootFolder $rootFolder,
         private IFactory $l10nFactory,
         private TalkTranscriptService $talkTranscripts,
-        private LoggerInterface $logger
+        private LoggerInterface $logger,
+        ?TraceContext $traceContext = null
     ) {
+        $this->traceContext = $traceContext ?? new TraceContext();
     }
 
     /**
@@ -89,6 +92,29 @@ class RagService {
 	 *        like the file context, so it can never act as instructions.
 	 */
 	public function ask(ChatRequest $request): array {
+		return $this->traceContext->run(function () use ($request): array {
+            $started = hrtime(true);
+            $failed = true;
+            try {
+                $result = $this->askInTrace($request);
+                $failed = ($result['error'] ?? null) !== null;
+                return $result;
+            } finally {
+                try {
+                    $this->logger->debug('eva_ai: chat request timings', [
+                        'trace_id' => $this->traceContext->id(),
+                        'total_ms' => (hrtime(true) - $started) / 1_000_000,
+                        'failed' => $failed,
+                    ]);
+                } catch (\Throwable) {
+                    // Diagnostics must not affect a successful chat response.
+                }
+            }
+		}, $request->traceId);
+    }
+
+    /** @return array{answer:string,sources:array,model:string,error:?string,followups:string[]} */
+    private function askInTrace(ChatRequest $request): array {
         $userId = $request->userId;
         $message = $request->message;
         $history = $request->history;
@@ -105,7 +131,7 @@ class RagService {
         $this->toolImages = [];
         $requestDeadline = microtime(true) + self::MAX_REQUEST_SECONDS;
 		$topK = min($this->config->getInt('top_k', 6), (int)AppConfig::LIMITS['top_k'][1]);
-		$results = $this->searcher->search($userId, $this->searchQuery($message, $history), $topK, $scopePath);
+		$results = $this->searcher->search($userId, $this->searchQuery($message, $history), $topK, $scopePath, $this->traceContext->id());
 
 		// Revalidate per-document file access: the index is a cache of
 		// authorized data, not an independent authorization source (Issue #14).
@@ -129,7 +155,7 @@ class RagService {
             if (microtime(true) >= $requestDeadline) return ['answer' => '', 'sources' => $this->answerSources($citationSources), 'model' => $this->config->get('chat_model'), 'error' => 'timeout', 'followups' => []];
             if ($onProgress !== null) $onProgress('model', null);
             $modelTimeout = max(1, min(120, (int)ceil($requestDeadline - microtime(true))));
-			$chat = $this->ollama->chat($messages, $tools, $modelTimeout, null, $preferredModel);
+			$chat = $this->chatWithTiming($messages, $tools, $modelTimeout, $preferredModel);
 			if (isset($chat['error'])) {
 				return ['answer' => '', 'sources' => $this->answerSources($citationSources), 'model' => $this->config->get('chat_model'), 'error' => $chat['error'], 'followups' => []];
 			}
@@ -155,12 +181,13 @@ class RagService {
                     ? $this->completeCalendarArguments($userId, $message, $tc['arguments'])
                     : $tc['arguments'];
                 if ($onProgress !== null) $onProgress('tool', (string)($tc['name'] ?? ''), is_array($toolArgs) ? $toolArgs : []);
-				$toolStartedAt = microtime(true);
+				$toolStartedAt = hrtime(true);
 				$res = $seenToolCalls[$fingerprint] > self::MAX_IDENTICAL_TOOL_CALLS
 					? ['ok' => false, 'error' => 'The same tool call was already attempted twice; choose a different next step.']
 						: ($autonomousActions
 							? $this->executor->runConfirmed($userId, $tc['name'], $toolArgs)
 							: $this->executor->run($userId, $tc['name'], $toolArgs));
+				$this->logToolTiming((string)($tc['name'] ?? ''), $toolStartedAt, !empty($res['ok']));
 				if ($onProgress !== null) $onProgress('tool_result', (string)($tc['name'] ?? ''), [
 					'ok' => !empty($res['ok']),
 					'error' => mb_substr((string)($res['error'] ?? ''), 0, 300),
@@ -168,7 +195,7 @@ class RagService {
 					// stream, so terminal output and connector status are visible
 					// without persisting credentials or unbounded payloads.
 					'result' => $this->safeToolResult($res['result'] ?? null),
-					'elapsed_ms' => max(0, (int)round((microtime(true) - $toolStartedAt) * 1000)),
+					'elapsed_ms' => max(0, (int)round((hrtime(true) - $toolStartedAt) / 1_000_000)),
 				]);
 				$this->collectToolSources($tc['name'], $res);
 				if (!empty($res['confirmation_required'])) {
@@ -202,7 +229,7 @@ class RagService {
         // the model already gathered everything it needs, and this forces it to
         // answer with that instead of returning nothing. Turning a completed
         // tool chain into an empty reply was the worst possible outcome.
-		$final = $this->ollama->chat($messages, [], null, null, $preferredModel);
+		$final = $this->chatWithTiming($messages, [], null, $preferredModel);
         $answer = trim((string)($final['answer'] ?? ''));
         $answer = $this->appendImageMarkdown($answer);
         if ($answer !== '') {
@@ -230,7 +257,26 @@ class RagService {
      * @return \Generator<string,string,void,void>
      */
 	/** @return \Generator<string,string,void,void> */
-    public function askStream(ChatRequest|string $request, ?string $legacyMessage = null, ?array $legacyHistory = null, ?string $legacyScopePath = null, ?string $legacyInstructions = null, ?string $legacyPersona = null): \Generator {
+	public function askStream(ChatRequest|string $request, ?string $legacyMessage = null, ?array $legacyHistory = null, ?string $legacyScopePath = null, ?string $legacyInstructions = null, ?string $legacyPersona = null): \Generator {
+		return $this->traceContext->runGenerator(function () use ($request, $legacyMessage, $legacyHistory, $legacyScopePath, $legacyInstructions, $legacyPersona): \Generator {
+            $started = hrtime(true);
+            try {
+                yield from $this->askStreamInTrace($request, $legacyMessage, $legacyHistory, $legacyScopePath, $legacyInstructions, $legacyPersona);
+            } finally {
+                try {
+                    $this->logger->debug('eva_ai: streamed chat request timings', [
+                        'trace_id' => $this->traceContext->id(),
+                        'total_ms' => (hrtime(true) - $started) / 1_000_000,
+                    ]);
+                } catch (\Throwable) {
+                    // Diagnostics must not affect a streamed chat response.
+                }
+            }
+		}, $request instanceof ChatRequest ? $request->traceId : null);
+    }
+
+    /** @return \Generator<string,string,void,void> */
+    private function askStreamInTrace(ChatRequest|string $request, ?string $legacyMessage = null, ?array $legacyHistory = null, ?string $legacyScopePath = null, ?string $legacyInstructions = null, ?string $legacyPersona = null): \Generator {
 		if (is_string($request)) {
 			$request = new ChatRequest($request, $legacyMessage ?? '', $legacyHistory ?? [], $legacyScopePath, $legacyInstructions, $legacyPersona);
 		}
@@ -254,7 +300,7 @@ class RagService {
                 return;
             }
             $topK = min($this->config->getInt('top_k', 6), (int)AppConfig::LIMITS['top_k'][1]);
-            $results = $this->searcher->search($userId, $this->searchQuery($message, $history), $topK, $scopePath);
+            $results = $this->searcher->search($userId, $this->searchQuery($message, $history), $topK, $scopePath, $this->traceContext->id());
             // Revalidate per-document file access before returning content (Issue #14).
             $results = $this->compactContextResults($this->filterAccessible($userId, $results));
             [$context, $byDoc, $citationSources] = $this->buildContext($userId, $results);
@@ -279,7 +325,7 @@ $this->executor->setUserId($userId);
                 $toolCalls = [];
                 $rawToolCalls = [];
 				$modelTimeout = max(1, min(120, (int)ceil($requestDeadline - microtime(true))));
-				foreach ($this->ollama->chatStream($messages, $tools, $modelTimeout, $preferredModel) as $ev) {
+                foreach ($this->chatStreamWithTiming($messages, $tools, $modelTimeout, $preferredModel) as $ev) {
                     if ($this->clientDisconnected()) {
                         return;
                     }
@@ -318,12 +364,13 @@ $this->executor->setUserId($userId);
                         ? $this->completeCalendarArguments($userId, $message, $tc['arguments'] ?? [])
                         : ($tc['arguments'] ?? []);
                     yield json_encode(['type' => 'tool', 'name' => $toolName ?: '?', 'arguments' => $this->safeToolArguments($toolArgs)], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) . "\n";
-                    $toolStartedAt = microtime(true);
+                    $toolStartedAt = hrtime(true);
                     $fingerprint = hash('sha256', $toolName . ':' . json_encode($toolArgs, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES));
                     $seenToolCalls[$fingerprint] = ($seenToolCalls[$fingerprint] ?? 0) + 1;
                     $res = $seenToolCalls[$fingerprint] > self::MAX_IDENTICAL_TOOL_CALLS
                         ? ['ok' => false, 'error' => 'The same tool call was already attempted twice; choose a different next step.']
                         : $this->executor->run($userId, $toolName, $toolArgs);
+                    $this->logToolTiming((string)$toolName, $toolStartedAt, !empty($res['ok']));
                     $this->collectToolSources($toolName, $res);
                     $toolFailure = $toolFailure || empty($res['ok']);
 					if (!empty($res['confirmation_required'])) {
@@ -350,7 +397,7 @@ $this->executor->setUserId($userId);
                         // below; the browser only needs enough output to show
                         // what a terminal/API/file tool actually did.
                         'result' => $this->safeToolResult($res['result'] ?? null),
-                        'elapsed_ms' => max(0, (int)round((microtime(true) - $toolStartedAt) * 1000)),
+                        'elapsed_ms' => max(0, (int)round((hrtime(true) - $toolStartedAt) / 1_000_000)),
                     ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) . "\n";
                     $messages[] = ['role' => 'tool', 'content' => json_encode($res, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES)];
 					if ($this->isAuthenticationFailure($res) || $seenToolCalls[$fingerprint] > self::MAX_IDENTICAL_TOOL_CALLS) {
@@ -386,6 +433,64 @@ $this->executor->setUserId($userId);
             if (!$this->clientDisconnected()) {
                 yield json_encode(['type' => 'error', 'message' => 'Ollama error: ' . $e->getMessage()]) . "\n";
             }
+        }
+    }
+    /** @param array<int,array<string,mixed>> $messages */
+    private function chatWithTiming(array $messages, array $tools, ?int $timeout, ?string $preferredModel): array {
+        $started = hrtime(true);
+        $failed = true;
+        try {
+            $result = $this->ollama->chat($messages, $tools, $timeout, null, $preferredModel);
+            $failed = isset($result['error']);
+            return $result;
+        } finally {
+            $this->logProviderTiming($started, $preferredModel, $failed);
+        }
+    }
+
+    /** @param array<int,array<string,mixed>> $messages @return \Generator<string,array<string,mixed>,void,void> */
+    private function chatStreamWithTiming(array $messages, array $tools, int $timeout, ?string $preferredModel): \Generator {
+        $started = hrtime(true);
+        $failed = false;
+        $completed = false;
+        try {
+            foreach ($this->ollama->chatStream($messages, $tools, $timeout, $preferredModel) as $event) {
+                if (($event['type'] ?? '') === 'error') $failed = true;
+                yield $event;
+            }
+            $completed = true;
+        } finally {
+            $this->logProviderTiming($started, $preferredModel, $failed || !$completed);
+        }
+    }
+
+    private function logProviderTiming(int $started, ?string $model, bool $failed): void {
+        $provider = strtolower(trim($this->config->get('chat_provider')));
+        if ($provider === '') $provider = 'ollama';
+        $modelLabel = trim((string)($model ?? $this->config->get('chat_model')));
+        if (preg_match('/^[A-Za-z0-9._:\/-]{1,128}$/D', $modelLabel) !== 1) $modelLabel = 'custom';
+        $this->logTraceEvent('provider.call', [
+            'provider' => preg_match('/^[a-z0-9_-]{1,32}$/D', $provider) === 1 ? $provider : 'custom',
+            'model' => $modelLabel,
+            'duration_ms' => (hrtime(true) - $started) / 1_000_000,
+            'failed' => $failed,
+        ]);
+    }
+
+    private function logToolTiming(string $tool, int $started, bool $ok): void {
+        $durationMs = (int)round((hrtime(true) - $started) / 1_000_000);
+        if ($durationMs < 100) return;
+        $label = preg_match('/^[A-Za-z0-9_.:-]{1,80}$/D', $tool) === 1 ? $tool : 'custom';
+        $this->logTraceEvent('tool.call.slow', ['tool' => $label, 'duration_ms' => $durationMs, 'ok' => $ok]);
+    }
+
+    private function logTraceEvent(string $event, array $context): void {
+        $traceId = $this->traceContext->id();
+        if ($traceId !== null) $context['trace_id'] = $traceId;
+        try {
+            $this->logger->debug('eva_ai: ' . $event, $context);
+        } catch (\Throwable) {
+            // Diagnostics must not change chat availability or stream delivery.
         }
     }
 

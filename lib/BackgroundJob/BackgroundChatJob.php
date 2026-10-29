@@ -38,6 +38,7 @@ final class BackgroundChatJob extends TimedJob {
             $item = $this->queue->claim($user);
             if (!is_array($item)) continue;
             $id = (string)($item['id'] ?? '');
+            $traceId = is_string($item['traceId'] ?? null) && preg_match('/^[a-f0-9]{32}$/D', $item['traceId']) === 1 ? $item['traceId'] : null;
             try {
                 $chatId = (string)($item['chatId'] ?? '');
                 $chat = $this->chats->get($user, $chatId);
@@ -62,7 +63,8 @@ final class BackgroundChatJob extends TimedJob {
                     shouldStop: fn(): bool => $this->queue->isCancellationRequested($user, $id) || ($deadline > 0 && time() >= $deadline),
                     onProgress: function (string $phase, ?string $tool, ?array $arguments = null) use ($user, $id): void {
                     $this->queue->updateProgress($user, $id, $phase, $tool, $arguments);
-                    }));
+                    },
+                    traceId: $traceId));
                 if (($result['error'] ?? null) === 'timeout') {
                     $this->queue->markTimedOut($user, $id);
                     $notification = $this->notifications->createNotification();
@@ -90,7 +92,7 @@ final class BackgroundChatJob extends TimedJob {
                 $this->notifications->notify($notification);
                 $this->queue->complete($user, $id, $answer);
             } catch (\Throwable $e) {
-                $this->logger->warning('eva_ai: background chat failed', ['user' => $user, 'job' => $id, 'exception' => $e]);
+                $this->logger->warning('eva_ai: background chat failed', ['user' => $user, 'job' => $id, 'trace_id' => $traceId, 'exception' => $e]);
                 if ($this->queue->retry($user, $id, $e->getMessage())) {
                     $notification = $this->notifications->createNotification();
                     $notification->setApp(AppConfig::APP)->setUser($user)->setObject('chat', (string)($item['chatId'] ?? ''))->setSubject('background_failed', ['text' => mb_strimwidth($e->getMessage(), 0, 400, '…')])->setLink($this->urls->linkToRouteAbsolute('eva_ai.page.app') . '?chat=' . rawurlencode((string)($item['chatId'] ?? '')))->setDateTime(new \DateTime());
