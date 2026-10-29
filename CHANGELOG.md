@@ -2,10 +2,15 @@
 
 ## [Unreleased]
 
+### Off-path lexical index backfill (1.18.44)
+
+- Keep file and generation indexing free of synchronous term-posting expansion. Chunk writes mark derived lexical state pending; a bounded, batched Nextcloud background job builds postings after the source write commits. Search retains its complete LIKE path until the user's generation is fully indexed.
+
+
 ### Portable SQL lexical postings (1.18.43)
 
-- Add an indexed, exact-token posting table for SQL lexical candidates and BM25 term frequencies; update postings in the same transaction as normal and generation chunk writes and remove them with source deletion.
-- Gradually backfill existing chunks in bounded Nextcloud background work. Each user/generation keeps the complete prior SQL `LIKE` query until all of its rows are indexed, preserving candidate behavior during rollout.
+- Add an indexed, exact-token posting table for SQL lexical candidates and BM25 term frequencies. A bounded Nextcloud job builds postings off the file-index write path; source deletion removes derived rows.
+- Gradually backfill existing chunks. Each user/generation keeps the complete prior SQL `LIKE` query until all of its rows are indexed, preserving candidate behavior during rollout.
 - Frozen-corpus quality, cross-database migration, and representative latency evidence remain pending.
 
 
