@@ -706,6 +706,8 @@ class ChatStore {
      */
     public function renameFolder(string $user, string $from, string $to): bool {
         return $this->withUserLock($user, function () use ($user, $from, $to): bool {
+            unset($this->sqlReadModes[$user]);
+            $sqlBacked = $this->sqlReadsEnabled($user);
             $folders = $this->foldersLocked($user);
             $clean = $this->clipFolderName($to);
             $found = false;
@@ -723,7 +725,21 @@ class ChatStore {
             if (!$found) {
                 return false;
             }
+            $previousFolders = $this->foldersLocked($user);
             $this->writeFoldersLocked($user, $folders);
+            if ($sqlBacked) {
+                try {
+                    $this->sqlChats->reassignFolder($user, $from, $clean);
+                } catch (\Throwable $e) {
+                    try { $this->writeFoldersLocked($user, $previousFolders); }
+                    catch (\Throwable $rollbackError) {
+                        $this->logger->error('eva_ai: folder rename rollback failed', ['user' => $user]);
+                    }
+                    throw $e;
+                }
+                unset($this->chatSnapshots[$user]);
+                return true;
+            }
             // Re-point chats that were assigned to the old folder name.
             $all = $this->read($user);
             foreach ($all as &$chat) {
@@ -743,12 +759,28 @@ class ChatStore {
      */
     public function deleteFolder(string $user, string $name): bool {
         return $this->withUserLock($user, function () use ($user, $name): bool {
+            unset($this->sqlReadModes[$user]);
+            $sqlBacked = $this->sqlReadsEnabled($user);
             $folders = $this->foldersLocked($user);
             $kept = array_values(array_filter($folders, static fn($f) => ($f['name'] ?? '') !== $name));
             if (count($kept) === count($folders)) {
                 return false;
             }
+            $previousFolders = $folders;
             $this->writeFoldersLocked($user, $kept);
+            if ($sqlBacked) {
+                try {
+                    $this->sqlChats->reassignFolder($user, $name, '');
+                } catch (\Throwable $e) {
+                    try { $this->writeFoldersLocked($user, $previousFolders); }
+                    catch (\Throwable $rollbackError) {
+                        $this->logger->error('eva_ai: folder deletion rollback failed', ['user' => $user]);
+                    }
+                    throw $e;
+                }
+                unset($this->chatSnapshots[$user]);
+                return true;
+            }
             $all = $this->read($user);
             foreach ($all as &$chat) {
                 if (($chat['folder'] ?? '') === $name) {

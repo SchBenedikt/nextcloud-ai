@@ -2,6 +2,11 @@
 
 ## [Unreleased]
 
+### Update SQL chat folders without loading messages (1.18.101)
+
+- Rename and delete folder assignments through bounded encrypted metadata pages and one SQL transaction.
+- Restore the AppData folder registry if the SQL reassignment fails.
+
 ### Update SQL chat settings per conversation (1.18.100)
 
 - Persist pinned/archive/folder/tag/scope/instruction/persona changes in the affected encrypted SQL conversation without materializing the user's chat history.
