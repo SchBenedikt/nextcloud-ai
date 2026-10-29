@@ -1446,8 +1446,36 @@ class ChatStore {
      * maintenance) and take a second lock scoped to their own conversation.
      */
     private function withChatAwareLock(string $user, string $chatId, callable $operation, int $mode = ILockingProvider::LOCK_EXCLUSIVE): mixed {
-        if (!$this->sqlReadsEnabled($user)) return $this->withUserLock($user, $operation, $mode);
-        return $this->withChatLock($user, $chatId, $operation, $mode);
+        if (!$this->sqlReadsEnabled($user)) {
+            return $this->withUserLock($user, function () use ($user, $operation): mixed {
+                // A migration can switch the backend between the initial
+                // check and acquisition of the user fence. Re-read only after
+                // acquiring that fence so the operation uses its current mode.
+                unset($this->sqlReadModes[$user]);
+                return $operation();
+            }, $mode);
+        }
+
+        $modeChanged = false;
+        $result = $this->withChatLock($user, $chatId, function () use ($user, $operation, &$modeChanged): mixed {
+            // Shared user fencing prevents a cutover while this fresh check
+            // and the per-chat operation are in progress.
+            unset($this->sqlReadModes[$user]);
+            if (!$this->sqlReadsEnabled($user)) {
+                $modeChanged = true;
+                return null;
+            }
+            return $operation();
+        }, $mode);
+        if (!$modeChanged) return $result;
+
+        // SQL was disabled while this request waited for the shared fence.
+        // Release it before falling back to the AppData-wide lock; lock modes
+        // are never upgraded in place.
+        return $this->withUserLock($user, function () use ($user, $operation): mixed {
+            unset($this->sqlReadModes[$user]);
+            return $operation();
+        }, $mode);
     }
 
     /** Different SQL-backed conversations may be read or written concurrently. */
