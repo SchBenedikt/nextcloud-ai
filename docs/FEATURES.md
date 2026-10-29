@@ -144,6 +144,9 @@ described to the model only once it is on.
 direct tool diagnostics, and Talk bot registration. A background job processes
 enrolled user accounts incrementally. Large collections are continued across
 multiple bounded runs instead of launching a single unbounded process.
+File-change events are debounced and processed off the user's upload path.
+Transient failures are retried with backoff; newer events supersede stale retries,
+and the periodic index remains the recovery path after the bounded retry budget.
 
 ## 2. Local Knowledge Search (RAG)
 

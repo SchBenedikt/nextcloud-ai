@@ -24,7 +24,7 @@ class DirtyIndexStore {
     public function __construct(private IAppDataFactory $appDataFactory, private ?ILockingProvider $locks = null) {
     }
 
-    /** @return list<array{kind:string,fileId:int,path:string,oldPath:string}> */
+    /** @return list<array{kind:string,fileId:int,path:string,oldPath:string,attempts?:int}> */
     public function entries(string $userId): array {
         $file = $this->fileFor($userId);
         try {
@@ -37,15 +37,51 @@ class DirtyIndexStore {
     }
 
     public function markFile(string $userId, int $fileId): void {
-        $this->mark($userId, 'f' . $fileId, ['kind' => 'file', 'fileId' => $fileId, 'path' => '', 'oldPath' => '']);
+        $this->mark($userId, 'f' . $fileId, ['kind' => 'file', 'fileId' => $fileId, 'path' => '', 'oldPath' => '', 'attempts' => 0]);
     }
 
     public function markFolderDeleted(string $userId, string $path): void {
-        $this->mark($userId, 'd' . $path, ['kind' => 'folder-delete', 'fileId' => 0, 'path' => $path, 'oldPath' => '']);
+        $this->mark($userId, 'd' . $path, ['kind' => 'folder-delete', 'fileId' => 0, 'path' => $path, 'oldPath' => '', 'attempts' => 0]);
     }
 
     public function markFolderRenamed(string $userId, string $oldPath, string $newPath): void {
-        $this->mark($userId, 'r' . $oldPath, ['kind' => 'folder-rename', 'fileId' => 0, 'path' => $newPath, 'oldPath' => $oldPath]);
+        $this->mark($userId, 'r' . $oldPath, ['kind' => 'folder-rename', 'fileId' => 0, 'path' => $newPath, 'oldPath' => $oldPath, 'attempts' => 0]);
+    }
+
+    /**
+     * Restore failed work after a bounded drain. Newer events already queued
+     * while the worker ran take precedence and reset the retry counter.
+     *
+     * @param list<array<string,mixed>> $failed
+     * @return int Number of failed entries retained for another attempt.
+     */
+    public function requeueFailed(string $userId, array $failed, int $maxAttempts = 5): int {
+        if ($failed === []) return 0;
+        return $this->withUserLock($userId, function () use ($userId, $failed, $maxAttempts): int {
+            $file = $this->fileFor($userId);
+            $entries = [];
+            foreach ($failed as $entry) {
+                if (!is_array($entry)) continue;
+                $key = $this->keyFor($entry);
+                if ($key === null) continue;
+                $attempts = max(0, (int)($entry['attempts'] ?? 0)) + 1;
+                if ($attempts >= max(1, $maxAttempts)) continue;
+                $entry['attempts'] = $attempts;
+                $entries[$key] = $entry;
+            }
+            $retained = count($entries);
+
+            // Existing queue entries were written after this drain began.
+            // They represent a newer filesystem state, so let them replace a
+            // failed retry (and start with a fresh attempt budget).
+            foreach ($this->entries($userId) as $entry) {
+                if (!is_array($entry)) continue;
+                $key = $this->keyFor($entry);
+                if ($key !== null) $entries[$key] = $entry;
+            }
+            $this->write($file, array_values($entries));
+            return $retained;
+        });
     }
 
     /**
@@ -53,7 +89,7 @@ class DirtyIndexStore {
      * caller processes only a bounded slice, so a huge backlog makes progress
      * across several job runs instead of timing out a single worker.
      *
-     * @return list<array{kind:string,fileId:int,path:string,oldPath:string}>
+     * @return list<array{kind:string,fileId:int,path:string,oldPath:string,attempts?:int}>
      */
     public function drain(string $userId, int $limit = 300): array {
         return $this->withUserLock($userId, function () use ($userId, $limit): array {
@@ -107,18 +143,21 @@ class DirtyIndexStore {
         });
     }
 
-    private function keyFor(array $entry): string {
+    private function keyFor(array $entry): ?string {
         $kind = (string)($entry['kind'] ?? '');
         $fileId = (int)($entry['fileId'] ?? 0);
         $path = (string)($entry['path'] ?? '');
         $oldPath = (string)($entry['oldPath'] ?? '');
-        if ($kind === 'file') {
+        if ($kind === 'file' && $fileId > 0) {
             return 'f' . $fileId;
         }
-        if ($kind === 'folder-delete') {
+        if ($kind === 'folder-delete' && $path !== '') {
             return 'd' . $path;
         }
-        return 'r' . $oldPath;
+        if ($kind === 'folder-rename' && $oldPath !== '' && $path !== '') {
+            return 'r' . $oldPath;
+        }
+        return null;
     }
 
     private function write(ISimpleFile $file, array $entries): void {

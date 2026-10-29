@@ -490,6 +490,17 @@ separate outbox. VECTOR-OUTBOX.md distinguishes these implementation gaps from
 the queue primitives. No delivery/crash/concurrency or live migration gate is
 verified.
 
+### Incremental file-index retry recovery (1.18.64)
+
+The AppData-backed per-user file-change queue now restores failed entries after
+each bounded drain, with a five-attempt limit and five-minute retry delay. Queue
+merge gives events that arrived during the worker run priority over the failed
+snapshot, so stale retries cannot overwrite newer file state. Exhausted entries
+are logged and left to the recurring full index for recovery. This closes the
+worker's previous drain-then-drop behavior for transient extraction/provider
+failures; it does not make the AppData queue transactional or prove crash,
+concurrency, or provider-outage recovery under execution.
+
 ### Stage 08 generation-erasure consumer
 
 VectorErasureWorker and its minute job now consume only delete_generation intent
