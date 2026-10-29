@@ -4,11 +4,15 @@
 			<NcListItem v-for="provider in providers" :key="provider.id" :name="provider.name" :details="providerDetails(provider)" :force-actions="true" :actions-aria-label="t('Configure {provider}', { provider: provider.name })" @click="edit(provider)">
 				<template #icon><NcIconSvgWrapper :path="provider.id === 'ollama' ? mdiServerOutline : mdiRobotOutline" :size="32" /></template>
 				<template #subname>{{ provider.model || t('Configure a model below') }}</template>
-				<template #actions><NcActionButton :close-after-click="true" :disabled="locked || saving" @click="edit(provider)">{{ t('Configure') }}</NcActionButton></template>
+				<template #actions>
+					<NcActionButton :close-after-click="true" :disabled="locked || saving || selectingProvider !== '' || active === provider.id" @click.stop="selectProvider(provider)">{{ selectingProvider === provider.id ? t('Switching provider…') : active === provider.id ? t('In use for chats') : t('Use for chats') }}</NcActionButton>
+					<NcActionButton :close-after-click="true" :disabled="locked || saving || selectingProvider !== ''" @click.stop="edit(provider)">{{ t('Configure') }}</NcActionButton>
+				</template>
 			</NcListItem>
 		</ul>
 		<NcButton variant="secondary" :disabled="locked || profiles.length >= 20" @click="add">{{ t('Add AI provider') }}</NcButton>
 		<p v-if="notice" class="field-help" role="status">{{ notice }}</p>
+		<p v-if="error && !draft" class="field-help provider-error" role="alert">{{ error }}</p>
 		<NcModal v-if="draft" size="normal" :label-id="titleId" @close="close">
 			<form class="provider-editor" @submit.prevent="save">
 				<h2 :id="titleId">{{ editing ? t('Configure provider') : t('Add AI provider') }}</h2>
@@ -98,6 +102,7 @@ export default {
 		const needsKey = ref(true)
 		const useForGeneration = ref(false)
 		const saving = ref(false)
+		const selectingProvider = ref('')
 		const error = ref('')
 		const notice = ref('')
 		const builtin = computed(() => ['ollama', 'groq'].includes(draft.value?.id))
@@ -129,6 +134,22 @@ export default {
 		}
 		const add = () => { editing.value = false; presetId.value = 'openai'; applyPreset('openai') }
 		const close = () => { if (!saving.value) { draft.value = null; key.value = '' } }
+		const selectProvider = async provider => {
+			if (props.locked || saving.value || selectingProvider.value || active.value === provider.id) return
+			selectingProvider.value = provider.id
+			error.value = ''
+			notice.value = ''
+			try {
+				const result = await api('PUT', 'settings', { chat_provider: provider.id })
+				if (result?.chat_provider !== provider.id) throw new Error(t('The server did not confirm the selected provider.'))
+				notice.value = t('{provider} is now used for chats.', { provider: provider.name })
+				emit('saved')
+			} catch (failure) {
+				error.value = errMsg(failure)
+			} finally {
+				selectingProvider.value = ''
+			}
+		}
 		const save = async () => {
 			if (saving.value || props.locked || !draft.value) return
 			const row = { ...draft.value, model: draft.value.model.trim() }
@@ -169,7 +190,7 @@ export default {
 			} catch (failure) { error.value = errMsg(failure) }
 			finally { saving.value = false }
 		}
-		return { mdiRobotOutline, mdiServerOutline, titleId, t, profiles, providers, providerDetails, active, presets, presetId, draft, editing, builtin, selectForChat, submitLabel, needsKey, useForGeneration, key, keySaved, saving, error, notice, mediaFields, add, edit, applyPreset, close, save }
+		return { mdiRobotOutline, mdiServerOutline, titleId, t, profiles, providers, providerDetails, active, presets, presetId, draft, editing, builtin, selectForChat, submitLabel, needsKey, useForGeneration, key, keySaved, saving, selectingProvider, error, notice, mediaFields, add, edit, selectProvider, applyPreset, close, save }
 	},
 }
 </script>
@@ -181,4 +202,5 @@ export default {
 .provider-editor__actions { display: flex; justify-content: flex-end; gap: 8px; }
 .provider-extra { display: grid; gap: 12px; }
 .provider-extra summary { cursor: pointer; padding: 8px 0; }
+.provider-error { color: var(--color-error); }
 </style>
