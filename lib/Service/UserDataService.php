@@ -38,7 +38,8 @@ class UserDataService {
         private LoggerInterface $logger,
         private ?\OCA\EvaAi\Db\VectorGenerationRepository $vectorGenerations = null,
         private ?\OCA\EvaAi\Db\GenerationBuildRepository $generationBuilds = null,
-        private ?\OCA\EvaAi\Db\GenerationVerificationRepository $generationVerifications = null
+        private ?\OCA\EvaAi\Db\GenerationVerificationRepository $generationVerifications = null,
+        private ?\OCA\EvaAi\Db\AccountCleanupRepository $accountCleanup = null
     ) {
     }
 
@@ -104,78 +105,104 @@ class UserDataService {
 
     /** Remove every eva_ai trace of a deleted account (Issue #83). */
     public function cleanupDeletedAccount(string $userId): void {
-        if ($userId === '') {
+        if ($userId === '') return;
+        if ($this->accountCleanup === null) {
+            $this->runCleanupSteps($userId);
             return;
         }
-        // Chunk ownership is derived through the document join. Keep those
-        // parent rows until chunk erasure succeeds, including on failure so
-        // a retry can still identify every affected chunk.
         try {
-            $deleteIndex = function () use ($userId): void {
-                $this->chunkMapper->deleteForUser($userId);
-                $this->documentMapper->deleteByUser($userId);
-            };
-            if ($this->vectorGenerations !== null) $this->vectorGenerations->deleteUser($userId, $deleteIndex);
-            else $deleteIndex();
-        } catch (\Throwable $e) {
-            $this->logger->warning('eva_ai: index cleanup failed on account deletion; document ownership retained for retry', ['user' => $userId]);
+            $owner = $this->accountCleanup->enqueue($userId, time());
+            $claim = $this->accountCleanup->claimForUser($userId, time());
+            if ($claim !== null) $this->processCleanupClaim($claim);
+            else $this->logger->debug('eva_ai: account erasure queued for retry', ['owner_hash' => $owner]);
+        } catch (\Throwable) {
+            // Core account deletion must continue. Fall back to immediate
+            // best-effort cleanup if the durable queue itself is unavailable.
+            $this->logger->warning('eva_ai: durable account erasure could not be queued');
+            $this->runCleanupSteps($userId);
         }
+    }
+
+    /** Process one durable erasure request; called by the immediate listener and cron worker. */
+    public function retryPendingAccountCleanup(): bool {
+        if ($this->accountCleanup === null) return false;
+        $claim = $this->accountCleanup->claimNext(time());
+        if ($claim === null) return false;
+        $this->processCleanupClaim($claim);
+        return true;
+    }
+
+    private function processCleanupClaim(array $claim): void {
         try {
-            $this->embeddingCache->clearUser($userId);
-        } catch (\Throwable $e) {
-            // Non-fatal.
+            $userId = $this->accountCleanup?->decryptOwner($claim);
+            if (!is_string($userId) || $userId === '') throw new \UnexpectedValueException('Invalid cleanup owner.');
+            $failedStep = null;
+            foreach ($this->cleanupSteps($userId) as $name => $step) {
+                if (!$this->accountCleanup?->renew($claim, time())) throw new \RuntimeException('Cleanup lease was lost.');
+                try { $step(); }
+                catch (\Throwable $e) {
+                    $failedStep ??= $name;
+                }
+            }
+            if ($failedStep !== null) {
+                $this->accountCleanup?->retry($claim, 'step_' . $failedStep, time());
+                $this->logger->warning('eva_ai: account erasure steps will retry', [
+                    'owner_hash' => $claim['owner_hash'] ?? '', 'step' => $failedStep,
+                ]);
+                return;
+            }
+            if (!$this->accountCleanup?->complete($claim)) throw new \RuntimeException('Cleanup lease was lost before completion.');
+        } catch (\Throwable) {
+            try { $this->accountCleanup?->retry($claim, 'cleanup_record_unavailable', time()); } catch (\Throwable) {}
+            $this->logger->warning('eva_ai: account erasure remains queued for retry', ['owner_hash' => $claim['owner_hash'] ?? '']);
         }
-        // AppData folders.
-        try {
-            $this->chatStore->deleteUserData($userId);
-        } catch (\Throwable $e) {
-            $this->logger->warning('eva_ai: chat cleanup failed on account deletion', ['user' => $userId]);
-        }
-        try {
-            $this->dirtyIndexStore->deleteUserData($userId);
-        } catch (\Throwable $e) {
-            $this->logger->warning('eva_ai: dirty index cleanup failed on account deletion', ['user' => $userId]);
-        }
-        try {
-            $this->agentStore->deleteUserData($userId);
-        } catch (\Throwable $e) {
-            $this->logger->warning('eva_ai: agent state cleanup failed on account deletion', ['user' => $userId]);
-        }
-        try {
-            $this->backgroundChatQueue->deleteUserData($userId);
-        } catch (\Throwable $e) {
-            $this->logger->warning('eva_ai: background queue cleanup failed on account deletion', ['user' => $userId]);
-        }
-        $this->deleteAiMarksFolder($userId);
-        // Do not reopen the deleted account's home. getUserFolder() can set up
-        // storage or a lazy home; core account deletion owns its removal.
-        // Per-user config values.
-        try {
-            $this->config->deleteUserValues($userId);
-        } catch (\Throwable $e) {
-            $this->logger->warning('eva_ai: config cleanup failed on account deletion', ['user' => $userId]);
+    }
+
+    /** @return array<string,callable():void> Every operation is idempotent and safe to replay. */
+    private function cleanupSteps(string $userId): array {
+        return [
+            'index' => function () use ($userId): void {
+                $deleteIndex = function () use ($userId): void {
+                    $this->chunkMapper->deleteForUser($userId);
+                    $this->documentMapper->deleteByUser($userId);
+                };
+                if ($this->vectorGenerations !== null) $this->vectorGenerations->deleteUser($userId, $deleteIndex);
+                else $deleteIndex();
+            },
+            'embedding_cache' => fn() => $this->embeddingCache->clearUserForErasure($userId),
+            'chats' => fn() => $this->chatStore->deleteUserData($userId),
+            'dirty_index' => fn() => $this->dirtyIndexStore->deleteUserData($userId),
+            'agent_state' => fn() => $this->agentStore->deleteUserData($userId),
+            'background_chat' => fn() => $this->backgroundChatQueue->deleteUserData($userId),
+            'ai_marks' => fn() => $this->deleteAiMarksFolder($userId),
+            'user_config' => fn() => $this->config->deleteUserValues($userId),
+        ];
+    }
+
+    /** Run every idempotent step even if one fails; the durable worker replays the full list. */
+    private function runCleanupSteps(string $userId): void {
+        foreach ($this->cleanupSteps($userId) as $name => $step) {
+            try { $step(); }
+            catch (\Throwable) { $this->logger->warning('eva_ai: account erasure step failed', ['step' => $name]); }
         }
     }
 
     private function deleteAiMarksFolder(string $userId): void {
         $ns = substr(hash('sha256', $userId), 0, 40);
         $legacy = preg_replace('/[^a-zA-Z0-9_-]/', '_', $userId) ?: 'user';
+        try { $appdata = $this->appDataFactory->get('eva_ai'); }
+        catch (NotFoundException) { return; }
         try {
-            $appdata = $this->appDataFactory->get('eva_ai');
+            $dir = $appdata->getFolder('ai-marks');
+        } catch (NotFoundException) {
+            return;
+        }
+        foreach ([$ns, $legacy] as $candidate) {
             try {
-                $dir = $appdata->getFolder('ai-marks');
-            } catch (NotFoundException $e) {
-                return;
+                $dir->getFolder($candidate)->delete();
+            } catch (NotFoundException) {
+                // No marker folder for this candidate - fine.
             }
-            foreach ([$ns, $legacy] as $candidate) {
-                try {
-                    $dir->getFolder($candidate)->delete();
-                } catch (NotFoundException $e) {
-                    // No marker folder for this candidate - fine.
-                }
-            }
-        } catch (\Throwable $e) {
-            $this->logger->warning('eva_ai: ai-marks cleanup failed on account deletion', ['user' => $userId]);
         }
     }
 }

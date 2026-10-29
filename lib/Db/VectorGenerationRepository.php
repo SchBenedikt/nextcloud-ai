@@ -257,7 +257,7 @@ class VectorGenerationRepository {
     public function deleteUser(string $userId, ?callable $deleteIndex = null): void {
         // This commits separately: a subsequent cleanup rollback must never
         // permit an in-flight request to create/bind another generation.
-        $this->owners->beginErasure($userId);
+        $this->blockOwnerForErasure($userId);
         $this->outbox->transaction(function () use ($userId, $deleteIndex): void {
             // Serialize against a concurrent binding before reading destinations.
             $retire = $this->db->getQueryBuilder();
@@ -278,6 +278,11 @@ class VectorGenerationRepository {
                 $qb->delete($table)->where($qb->expr()->eq('user_id', $qb->createNamedParameter($userId)))->executeStatement();
             }
         });
+    }
+
+    /** Block new generation/index writes immediately when account deletion starts. */
+    public function blockOwnerForErasure(string $userId): void {
+        $this->owners->beginErasure($userId);
     }
 
     public function ownerStatus(string $userId): string { return $this->owners->status($userId); }

@@ -457,19 +457,22 @@ class ChatStore {
      */
     public function deleteUserData(string $user): void {
         $this->withUserLock($user, function () use ($user): void {
+			$failed = false;
             try {
-                $appdata = $this->appDataFactory->get('eva_ai');
-                $chats = $appdata->getFolder('chats');
-                $ns = $this->namespaceFor($user);
-                foreach ([$ns, $this->legacySlug($user)] as $candidate) {
-                    try {
-                        $chats->getFolder($candidate)->delete();
-                    } catch (NotFoundException $e) {
-                        // No folder for this candidate - fine.
+                try { $appdata = $this->appDataFactory->get('eva_ai'); }
+                catch (NotFoundException) { $appdata = null; }
+                try { $chats = $appdata?->getFolder('chats'); }
+                catch (NotFoundException) { $chats = null; }
+                if ($chats !== null) {
+                    $ns = $this->namespaceFor($user);
+                    foreach ([$ns, $this->legacySlug($user)] as $candidate) {
+                        try { $chats->getFolder($candidate)->delete(); }
+                        catch (NotFoundException) { /* No account folder remains. */ }
                     }
                 }
             } catch (\Throwable $e) {
                 $this->logger->warning('eva_ai: chat cleanup failed for deleted account', ['user' => $user]);
+				$failed = true;
             }
             // This uses the same per-user lock as every bounded SQL import
             // batch, so an in-flight migration cannot recreate erased rows.
@@ -477,8 +480,10 @@ class ChatStore {
                 $this->sqlChats?->deleteUserData($user);
             } catch (\Throwable $e) {
                 $this->logger->warning('eva_ai: SQL chat cleanup failed for deleted account', ['user' => $user]);
+				$failed = true;
             }
             unset($this->chatSnapshots[$user], $this->rawSnapshots[$user], $this->sqlReadModes[$user]);
+			if ($failed) throw new \RuntimeException('Chat data cleanup was incomplete.');
         });
     }
 

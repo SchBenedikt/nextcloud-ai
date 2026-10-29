@@ -2,6 +2,11 @@
 
 ## [Unreleased]
 
+### Durable account-erasure retries (1.18.39)
+
+- Persist an encrypted cleanup identity and retry incomplete local erasure steps through a bounded Nextcloud background job. The owner write fence is established before index cleanup; retries continue to cover SQL, cache, AppData and per-user configuration failures.
+- Report the aggregate retry backlog through Nextcloud OpenMetrics; successful local cleanup removes the retry record while remote generation deletion remains on its existing outbox.
+
 ### Reuse query-vector norm during SQL ranking (1.18.38)
 
 - Validate and normalize the query-vector magnitude once per retrieval, then reuse it for each SQL cosine comparison. Dense rankings remain exact; this removes repeated query-side norm work from large-index scans.

@@ -543,13 +543,15 @@ class AppConfig {
      * per-user runtime state) when their account is deleted (Issue #83).
      */
     public function deleteUserValues(string $userId): void {
+		$failed = false;
         foreach ([...self::USER_SCOPED_KEYS, ProviderCredentials::KEY] as $key) {
             try {
                 $this->config->deleteUserValue($userId, self::APP, $key);
             } catch (\Throwable $e) {
-                // Best effort per key; a failing deletion must not abort the rest.
+				$failed = true;
             }
         }
+		if ($failed) throw new \RuntimeException('Some account-scoped EVA settings could not be erased.');
     }
 
     /** @return array<string,array{0:int|float,1:int|float}> */
