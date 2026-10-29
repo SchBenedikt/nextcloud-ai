@@ -2,6 +2,11 @@
 
 ## [Unreleased]
 
+### Show when personal settings are saved (1.18.68)
+
+- Make loading, unsaved edits, queued saves, completed saves and unavailable settings visible in the page header.
+- Include pending credential changes in the unsaved state.
+
 ### Serialize overlapping settings saves (1.18.67)
 
 - Queue settings writes so autosave and explicit actions cannot silently discard a save while another request is still in flight.
