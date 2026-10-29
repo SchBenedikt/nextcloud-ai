@@ -2,6 +2,11 @@
 
 ## [Unreleased]
 
+### Isolate background indexing lifecycle (1.20.14)
+
+- Move index start, stop, reset and queue admission into a focused user-scoped controller while preserving the existing OCS paths, bounded worker lifecycle and lock ownership.
+- Keep the new generation-based SQL indexing path as the default; this refactor does not introduce an external database requirement.
+
 ### Separate selected-file chat and clarify optional Qdrant setup (1.20.13)
 
 - Move selected-file chat and its live-access status endpoint into a focused controller while keeping the existing API URLs and shared per-user chat admission.
