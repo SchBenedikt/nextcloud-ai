@@ -2,12 +2,17 @@
 
 ## [Unreleased]
 
-### Save only the settings needed by each action (1.18.95)
+### Update SQL chat conversations without loading account history (1.18.96)
+
+- Persist chat titles, message edits and message truncation directly against the affected encrypted SQL conversation.
+- Keep message-count and revision metadata consistent in the same database transaction as message mutations.
+
+### Save only the settings needed by each action (1.18.96)
 
 - Make connection checks and indexing actions save only fields the user actually changed, so unrelated invalid or stale values do not block them.
 - Save folder exclusions as a focused update instead of resubmitting the full settings form.
 
-### Scope SQL chat locks to each conversation (1.18.95)
+### Scope SQL chat locks to each conversation (1.18.96)
 
 - Let SQL-backed reads, appends and deletes coordinate per conversation while sharing a user-level fence against whole-store and migration operations.
 - Keep AppData mutations user-wide and fail SQL operations closed when either coordination lock is unavailable.
