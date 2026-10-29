@@ -178,6 +178,10 @@ VFS permission checks while depending only on document/chunk mappers and the
 file-access service. This keeps document inspection out of the cross-domain
 `ApiController`.
 
+`IntegrationController` owns external-connector discovery, configuration,
+diagnostics and plugin toggles. Those operations retain their authenticated
+per-user routes and run through the same `ActionExecutor` policy as chat tools.
+
 - `GET  /`  `/app`  `/standalone` — page routes
 - `GET  /api/status` — app + Ollama status
 - `GET/PUT /api/settings` — read/update settings
