@@ -15,19 +15,6 @@ declare(strict_types=1);
 /** @var \OCP\IL10N $l */
 
 $admin = $_['adminSettings'];
-$totals = $_['totals'];
-$storage = $_['vectorStorage'] ?? ['available' => false];
-$sqlAccounts = (int)($storage['active_sql_accounts'] ?? 0);
-$qdrantAccounts = (int)($storage['active_qdrant_accounts'] ?? 0);
-$storageBackend = !$storage['available'] ? $l->t('Status unavailable')
-	: ($qdrantAccounts > 0 && $sqlAccounts > 0
-		? $l->t('SQL generations serve {sql} accounts; Qdrant canaries serve {qdrant} accounts', ['sql' => $sqlAccounts, 'qdrant' => $qdrantAccounts])
-		: ($qdrantAccounts > 0
-			? $l->t('Optional Qdrant canary active for {count} accounts', ['count' => $qdrantAccounts])
-			: ($sqlAccounts > 0
-				? $l->t('SQL generations active for {count} accounts', ['count' => $sqlAccounts])
-				: $l->t('Built-in Nextcloud SQL'))));
-$scheduler = $_['scheduler'];
 $apiBase = $_['apiBase'];
 $providers = $_['webSearchProviders'] ?? [];
 
@@ -51,10 +38,6 @@ $rateLimitChat = $admin['rate_limit_chat_per_minute'] ?? '30';
 $rateLimitStream = $admin['rate_limit_stream_per_minute'] ?? '10';
 $rateLimitBackground = $admin['rate_limit_background_per_minute'] ?? '5';
 
-$schedulerRunning = (int)($scheduler['running'] ?? 0);
-$schedulerQueued = (int)($scheduler['queued'] ?? 0);
-$schedulerLimit = (int)($scheduler['limit'] ?? 2);
-
 /** Providers that work without an API key supply their own description. */
 $providerKeyRequired = [
 	'duckduckgo' => false,
@@ -76,94 +59,12 @@ $providerLabels = [
 
 	<h2><?php p($l->t('Eva AI')); ?></h2>
 	<p class="settings-hint">
-		<?php p($l->t('Eva AI answers questions from the files and mail of this instance. Configure the language models, the background indexer and the optional external tools here.')); ?>
+		<?php p($l->t('EVA uses the built-in Nextcloud database for search. Users choose their models and indexing scope in personal settings. Configure shared services and server-wide limits here only when needed.')); ?>
 	</p>
-
-	<p class="eva-chip-row">
-		<span class="eva-chip <?php p($schedulerRunning > 0 ? 'eva-chip--busy' : 'eva-chip--idle'); ?>">
-			<?php p($schedulerRunning > 0
-				? $l->n('%n index pass running', '%n index passes running', $schedulerRunning)
-				: $l->t('Indexer idle')); ?>
-		</span>
-		<span class="eva-chip eva-chip--idle">
-			<?php p($l->n('%n indexed account', '%n indexed accounts', (int)$totals['accounts'])); ?>
-		</span>
-	</p>
-
-	<h3><?php p($l->t('Instance status')); ?></h3>
-	<p class="settings-hint">
-		<?php p($l->t('Indexing totals, the active search path and optional service configuration. Opening this page does not contact model or vector services.')); ?>
-	</p>
-
-	<table class="grid">
-		<thead>
-			<tr>
-				<th scope="col"><?php p($l->t('Service')); ?></th>
-				<th scope="col"><?php p($l->t('Status')); ?></th>
-				<th scope="col"><?php p($l->t('Detail')); ?></th>
-			</tr>
-		</thead>
-		<tbody>
-			<tr>
-				<td><strong><?php p($l->t('Web search')); ?></strong></td>
-				<td>
-					<span class="eva-status <?php p(!empty($_['webSearchConfigured']) ? 'eva-status--ok' : 'eva-status--idle'); ?>">
-						<?php p(!empty($_['webSearchConfigured']) ? $l->t('Ready') : $l->t('Not configured')); ?>
-					</span>
-				</td>
-				<td>
-					<?php if ($webSearchApiKeyConfigured): ?>
-						<?php p($l->t('An API key is stored for the hosted providers.')); ?>
-					<?php else: ?>
-						<?php p($l->t('No API key stored. DuckDuckGo and SearxNG work without one.')); ?>
-					<?php endif; ?>
-				</td>
-			</tr>
-			<tr>
-				<td><strong><?php p($l->t('Knowledge base')); ?></strong></td>
-				<td><?php p($l->t('%s documents', [(string)$totals['documents']])); ?></td>
-				<td><?php p($l->t('%s text chunks', [(string)$totals['chunks']])); ?></td>
-			</tr>
-			<tr>
-				<td><strong><?php p($l->t('Background indexing')); ?></strong></td>
-				<td><?php p($schedulerRunning . ' / ' . $schedulerLimit); ?></td>
-				<td>
-					<?php p($l->t('passes running')); ?>
-					<?php if ($schedulerQueued > 0): ?>
-						— <?php p($l->n('%n waiting in the queue', '%n waiting in the queue', $schedulerQueued)); ?>
-					<?php endif; ?>
-				</td>
-			</tr>
-		</tbody>
-	</table>
 
 	<h3><?php p($l->t('Knowledge storage')); ?></h3>
-	<p><a class="button" href="<?php p($_['storageAdminUrl']); ?>"><?php p($l->t('Manage storage and background builds')); ?></a></p>
 	<p class="settings-hint"><?php p($l->t('EVA uses Nextcloud SQL automatically. Optional Qdrant is available for explicitly configured larger installations.')); ?></p>
-	<?php if (!$storage['available']): ?>
-		<p role="alert"><?php p($l->t('Storage status could not be loaded. Retry or check the database migrations. This does not indicate an empty queue.')); ?></p>
-	<?php else: ?>
-		<table class="grid">
-			<tbody>
-				<tr><th scope="row"><?php p($l->t('Search backend')); ?></th><td><?php p($storageBackend); ?></td></tr>
-				<tr><th scope="row"><?php p($l->t('Optional Qdrant connection')); ?></th><td><?php p(!$storage['connection']['configured'] ? $l->t('Not configured') : ($storage['connection']['enabled'] ? $l->t('Configured · requests allowed') : $l->t('Configured · requests disabled'))); ?></td></tr>
-				<tr><th scope="row"><?php p($l->t('Generation cleanup')); ?></th><td><?php p($storage['erasure_worker_enabled'] ? $l->t('Enabled') : $l->t('Paused')); ?></td></tr>
-				<tr><th scope="row"><?php p($l->t('Chunk synchronization')); ?></th><td><?php p($storage['point_worker_enabled'] ? $l->t('Enabled') : $l->t('Paused')); ?></td></tr>
-				<tr><th scope="row"><?php p($l->t('Generation chunks in SQL')); ?></th><td><?php p((string)$storage['staged_chunks']); ?></td></tr>
-				<tr><th scope="row"><?php p($l->t('Waiting operations')); ?></th><td><?php p((string)$storage['queue']['pending']); ?></td></tr>
-				<tr><th scope="row"><?php p($l->t('Claimed operations')); ?></th><td><?php p((string)$storage['queue']['processing']); ?></td></tr>
-				<tr><th scope="row"><?php p($l->t('Operations needing attention')); ?></th><td><?php p((string)$storage['queue']['dead']); ?></td></tr>
-			</tbody>
-		</table>
-		<?php if ($storage['queue']['dead'] > 0): ?>
-			<p role="alert"><?php p($l->t('Some background operations exhausted their retries. An administrator needs to inspect them before retrying.')); ?></p>
-		<?php endif; ?>
-		<p class="settings-hint"><?php p($l->t('Configuration status is not a connection test. Generation cleanup only removes retired search collections; it does not index files or switch search backends.')); ?></p>
-		<p class="settings-hint"><?php p($l->t('Removing a file clears its local index and queues cleanup for prepared vector points. Renaming or changing a source discards its prepared entries for rebuilding. Prepared point updates and cleanup run only when their delivery switches allow them.')); ?></p>
-		<?php if ($storage['staged_chunks'] > 0): ?>
-			<p class="settings-hint"><?php p($l->t('Prepared generation chunks are separate from the SQL search index. Their presence does not mean migration is verified or active.')); ?></p>
-		<?php endif; ?>
-	<?php endif; ?>
+	<p><a class="button" href="<?php p($_['storageAdminUrl']); ?>"><?php p($l->t('Optional storage and migration controls')); ?></a></p>
 
 	<h3><?php p($l->t('Indexing performance')); ?></h3>
 	<p class="settings-hint">
@@ -315,19 +216,9 @@ $providerLabels = [
 
 	<div id="eva-test-results" class="eva-test-results" hidden></div>
 
-	<h3><?php p($l->t('Tools')); ?></h3>
+	<h3><?php p($l->t('Background indexing')); ?></h3>
 	<p class="settings-hint">
-		<?php p($l->t('Instance-wide switches for tools that contact services outside this server.')); ?>
-	</p>
-
-	<p class="settings-hint">
-		<?php p($l->t('Tool permissions, including weather forecasts and file actions, are configured by each user in personal Eva AI settings.')); ?>
-	</p>
-
-
-	<h3><?php p($l->t('Accounts and indexing')); ?></h3>
-	<p class="settings-hint">
-		<?php p($l->t('Indexing is managed by each account from personal EVA settings. This page shows instance totals and the active search backend without exposing individual account activity.')); ?>
+		<?php p($l->t('Users manage recurring indexing in personal EVA settings. This action requests that the current background pass stop at its next safe boundary.')); ?>
 	</p>
 
 	<p class="eva-actions">

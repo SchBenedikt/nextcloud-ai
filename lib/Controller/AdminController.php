@@ -164,6 +164,11 @@ class AdminController extends OCSController {
         $removeApiKey = $this->boolParam('remove_web_search_api_key', false);
         if ($apiKey !== null && !is_scalar($apiKey)) {
             $validationErrors['web_search_api_key'] = 'web_search_api_key must be a string.';
+        } elseif (is_scalar($apiKey) && trim((string)$apiKey) !== '') {
+            $apiKeyError = $this->webSearch->validateApiKey((string)$apiKey);
+            if ($apiKeyError !== null) {
+                $validationErrors['web_search_api_key'] = $apiKeyError;
+            }
         }
 
         if ($validationErrors !== []) {
@@ -180,17 +185,10 @@ class AdminController extends OCSController {
             $this->config->set($key, $value);
         }
 
-        try {
-            if ($removeApiKey) {
-                $this->webSearch->saveApiKey('');
-            } elseif (is_scalar($apiKey) && trim((string)$apiKey) !== '') {
-                $this->webSearch->saveApiKey((string)$apiKey);
-            }
-        } catch (\InvalidArgumentException $e) {
-            return new ErrorDataResponse([
-                'error' => 'Invalid settings.',
-                'validationErrors' => ['web_search_api_key must be 8-256 characters: letters, digits, dot, underscore or dash.'],
-            ], 400);
+        if ($removeApiKey) {
+            $this->webSearch->saveApiKey('');
+        } elseif (is_scalar($apiKey) && trim((string)$apiKey) !== '') {
+            $this->webSearch->saveApiKey((string)$apiKey);
         }
 
         return new ErrorDataResponse($this->adminSettingsPayload());

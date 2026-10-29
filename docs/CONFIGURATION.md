@@ -2,9 +2,9 @@
 
 ## Knowledge storage status
 
-The EVA **Admin dashboard** opens with a native Nextcloud section that explains
-the built-in SQL default. It does not load account totals, scheduler counts, or
-external services. **Optional scale and migration tools** is collapsed by
+The EVA **Admin dashboard** opens with a compact native Nextcloud section that
+explains the built-in SQL default. It does not load account totals, scheduler
+counts, vector status or external services. **Optional scale and migration tools** is collapsed by
 default; opening it loads the account list and storage snapshot. The snapshot
 distinguishes built-in SQL, optional Qdrant configuration, generation cleanup,
 and queued or failed operations. Configured/request-enabled does not mean
@@ -12,7 +12,7 @@ connected, verified or selected for search. Status reads never contact Qdrant
 or an embedding provider. Failed reads stay unavailable instead of showing an
 empty healthy queue.
 
-The **Open storage settings and connection check** link opens an administrator-
+The **Optional storage and migration controls** link opens an administrator-
 only EVA page. Expand **Configure optional storage** to edit the server URL,
 choose API-key or explicit no-key authentication, and allow/disable requests.
 Saving requires re-entering the API key; stored keys are never returned and the

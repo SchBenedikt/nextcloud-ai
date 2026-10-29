@@ -2,6 +2,12 @@
 
 ## [Unreleased]
 
+### Simplify the native admin overview (1.18.77)
+
+- Remove duplicate instance, scheduler and vector status tables from the native admin landing page; the optional storage page remains available on demand.
+- Drop the empty Tools section and its unused status styling, and avoid the aggregate account and scheduler queries on admin page load.
+- Validate a replacement web search API key before persisting any other admin fields, so an invalid key cannot produce a failed save with partially updated settings.
+
 ### Export bounded provider completion quantiles (1.18.76)
 
 - Export successful chat-completion p50/p95/p99 latency by fixed provider type from up to 5,000 recent rows per type; custom profile IDs and model names are not exposed.
