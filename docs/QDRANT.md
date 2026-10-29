@@ -6,6 +6,36 @@ chat retrieval; only an explicitly verified and activated generation can serve
 as a Qdrant canary. Installation, upgrade, page rendering and generation
 metadata creation make no Qdrant request.
 
+## Optional local deployment
+
+For a single-host installation, `deploy/qdrant/compose.yaml` runs Qdrant 1.20.0
+with persistent storage, telemetry disabled, and its HTTP port bound only to
+loopback. Start and check it from the repository root:
+
+```sh
+docker compose -f deploy/qdrant/compose.yaml up -d
+curl --fail http://127.0.0.1:6333/
+```
+
+This setup is intentionally local and unauthenticated. Do not change the port
+binding to `0.0.0.0`; a remote Qdrant server must use HTTPS and API-key
+authentication. The compose file pins a version so an image update is an
+operator-controlled change. Take and verify a backup before upgrading an
+existing Qdrant data volume.
+
+Allow the exact local origin in Nextcloud, then use the native EVA
+administration settings to save and check the connection:
+
+```sh
+php occ config:app:set eva_ai vector_private_origins --value='["http://127.0.0.1:6333"]'
+```
+
+Choose no-key authentication only for this loopback endpoint. Connecting or
+enabling Qdrant transport does not create a collection, send indexed vectors,
+copy document text or change the search backend. The separate generation
+workflow still requires verification and explicit canary activation; sending
+chunk text for native BM25 needs its additional consent.
+
 Administrators configure the endpoint, encrypted API key, exact private-origin
 allowlist, and request/point-delivery switches in **Administration settings →
 EVA AI → Knowledge storage → Configure Qdrant and manage search migrations**.
@@ -20,8 +50,11 @@ Dense retrieval targets Qdrant 1.x, minimum 1.16.0. Native hybrid retrieval
 requires Qdrant 1.20.0 or newer for BM25 scoring on a full-text payload index.
 Health explicitly checks the root
 API version; this is reachability/capability metadata, not proof of collection
-readiness, HA, backup health or successful indexing. A disposable loopback 1.16.0 transport test has passed; a live multi-version/cluster
-matrix remains pending.
+readiness, HA, backup health or successful indexing. On 29 October 2026, the
+local Nextcloud 35 installation reached a loopback Qdrant 1.20.0 instance via
+`occ eva_ai:vector:qdrant health`. This checked only the application transport;
+no generation, point delivery or search cutover was performed. The live
+multi-version/cluster matrix remains pending.
 
 Protocol references used during implementation:
 

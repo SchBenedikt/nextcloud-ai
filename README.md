@@ -100,6 +100,8 @@ Built-in SQL is the default search index. Optional Qdrant dense search keeps
 chunk text in SQL; native Qdrant BM25 is a separate per-generation opt-in that
 stores chunk text remotely and sends search queries to that Qdrant service. See
 the [Qdrant privacy and setup notes](docs/QDRANT.md) before enabling it.
+An optional, loopback-only Docker Compose deployment is included for
+self-hosted Qdrant; installing EVA alone still uses SQL.
 
 API keys are encrypted separately per user and are never returned by the
 profile form. Answers can contain mistakes; check sources and review actions.
