@@ -2,6 +2,11 @@
 
 ## [Unreleased]
 
+### Correct chat lock contention labels (1.18.91)
+
+- Preserve shared versus exclusive mode when a lock acquisition ultimately fails, so the new lock-wait metrics classify read contention correctly.
+- Document the bounded account and OpenMetrics quantiles and their fixed labels.
+
 ### Show provider connection results in settings (1.18.90)
 
 - Add a direct connection check for the active chat provider and show its result in the provider settings section.

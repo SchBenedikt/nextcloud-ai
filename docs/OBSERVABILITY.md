@@ -21,6 +21,7 @@ create a separate public metrics endpoint or background poller.
 | `nextcloud_eva_ai_rag_request_duration_ms` | `outcome`, `quantile` | Approximate end-to-end EVA request duration quantiles for completed, failed and interrupted requests. |
 | `nextcloud_eva_ai_index_run_duration_ms` | `mode`, `outcome`, `quantile` | Approximate seven-day duration quantiles for bounded background indexing runs. |
 | `nextcloud_eva_ai_index_run_file_chunks_per_second` | `mode`, `outcome`, `quantile` | Approximate file chunk throughput quantiles measured over the file-indexing phase. |
+| `nextcloud_eva_ai_chat_store_lock_wait_ms` | `mode`, `outcome`, `quantile` | Approximate wait quantiles for chat-store lock operations that encountered contention. |
 | `nextcloud_eva_ai_embedding_batch_duration_ms` | `provider`, `result`, `quantile` | Approximate indexing/generation embedding batch latency; chat query embedding is already measured in retrieval stages. |
 | `nextcloud_eva_ai_embedding_batch_samples` | `provider`, `result` | Success/error counts in the bounded embedding sample. |
 | `nextcloud_eva_ai_embedding_cache_hit_ratio` | `provider` | Cache hits divided by hits plus misses in the bounded sample. |
@@ -50,7 +51,17 @@ histograms or full-traffic Prometheus distributions. Embedding batch metrics
 cover only background indexing and generation builds; query embedding remains
 part of retrieval-stage telemetry and adds no second usage write. Retrieval
 stages do not separate SQL dense scanning from lexical selection within the
-candidate phase; queue-age and lock-wait durations remain separate work.
+candidate phase. Queue age and contended chat-store lock waits use separate
+fixed-label metrics.
+
+Chat-store lock waits are recorded only when lock acquisition collides, when a
+shared read must degrade to a lock-free read, or when acquisition ultimately
+fails. Uncontended operations add no telemetry write. The fixed `mode` labels
+are `shared` and `exclusive`; `outcome` is `acquired`, `degraded_read`, `busy`
+or `read_failed`. The account metrics view and CSV report p50/p95/p99 for the
+requesting account. OpenMetrics uses the newest 5,000 positive samples per
+mode/outcome in the preceding seven days. No account or chat labels are
+exported.
 
 Queue age metrics use five fixed, disjoint buckets: under 1 minute, 1–5 minutes,
 5 minutes–1 hour, 1–24 hours and over 24 hours. The index scheduler metric
