@@ -9,12 +9,12 @@
 				<NcProgressBar :value="progress" :aria-label="$t('Documents staged')" />
 				<p>{{ $t('Documents staged: {done} of {total}', { done: state.documents_done, total: state.total_documents }) }} · {{ $t('Chunks staged: {count}', { count: state.staged_chunks }) }}</p>
 			</template>
-			<NcNoteCard v-if="state.status === 'staged' && !state.verified" type="info">{{ $t('Source processing finished. Verify all current SQL and remote points before search can change.') }}</NcNoteCard>
+			<NcNoteCard v-if="state.status === 'staged' && !state.verified" type="info">{{ state.backend === 'sql' ? $t('Source processing finished. Verify SQL generation vectors and current source manifests before search can change.') : $t('Source processing finished. Verify all current SQL and remote points before search can change.') }}</NcNoteCard>
 			<NcNoteCard v-if="state.status === 'staged' && state.verified" type="success">{{ $t('The staged generation is verified. Search still uses SQL until a later rollout step.') }}</NcNoteCard>
-			<NcNoteCard v-if="state.status !== 'staged' && !state.can_start" type="info">{{ $t('Enable the owner’s source index, prepare the generation on the current storage destination and allow point delivery. Search continues to use SQL.') }}</NcNoteCard>
+			<NcNoteCard v-if="state.status !== 'staged' && !state.can_start" type="info">{{ $t('Enable the owner’s source index and confirm the selected generation backend is ready. Search continues to use SQL.') }}</NcNoteCard>
 			<NcNoteCard v-if="state.error_code" type="warning">{{ failure }}</NcNoteCard>
 			<template v-if="state.status === 'not_started'">
-				<p>{{ $t('The build reads the owner’s indexed sources and sends text to the generation’s fixed embedding provider. It runs in the background and does not change search.') }}</p>
+				<p>{{ $t('The build reads the owner’s indexed sources and sends text to the generation’s fixed embedding provider. Remote providers may receive document text. Qdrant builds also send vectors to the configured vector store. It runs in the background and does not change search.') }}</p>
 				<NcCheckboxRadioSwitch v-model="confirmed" :disabled="!state.can_start || busy">{{ $t('Allow document processing for this generation') }}</NcCheckboxRadioSwitch>
 			</template>
 			<div class="generation-build-actions">
@@ -52,10 +52,10 @@ export default {
 			if (code === 'source_extraction_failed') return t('A source could not be extracted. Check source access, local conversion tools and transport timeouts, then resume.')
 			if (['source_changed', 'source_unavailable'].includes(code)) return t('A source changed or is no longer accessible. Reconcile the owner’s ordinary index, then resume the build.')
 			if (['source_too_large', 'source_chunk_limit'].includes(code)) return t('A source exceeds the build budget. Review its size and the generation’s chunk settings before retrying.')
-			return t('The build stopped safely. Check the fixed embedding model, provider policy and storage connection, then resume.')
+			return t('The build stopped safely. Check the fixed embedding model and provider configuration, then resume.')
 		})
 		function accept(result) {
-			if (!result || !states.includes(result.status) || typeof result.can_start !== 'boolean' || result.retrieval_changed !== false || typeof result.verified !== 'boolean'
+			if (!result || !states.includes(result.status) || !['sql', 'qdrant'].includes(result.backend) || typeof result.can_start !== 'boolean' || result.retrieval_changed !== false || typeof result.verified !== 'boolean'
 				|| !['documents_done', 'total_documents', 'staged_chunks', 'heartbeat_at'].every(key => Number.isSafeInteger(result[key]) && result[key] >= 0)
 				|| !(result.error_code === null || typeof result.error_code === 'string')) throw new Error(t('Build progress could not be confirmed.'))
 			state.value = result

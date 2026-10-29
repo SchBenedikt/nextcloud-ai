@@ -27,16 +27,22 @@ class GenerationVerificationWorker {
                 $current=$this->generations->find($generation->userId,$generation->id);
                 if($current===null||$current->toRow()!==$generation->toRow())throw new VectorStoreException('generation_identity_mismatch');
             };
-            $store=$this->store->forTarget($claim['target_hash'],$guard);
+            $store=$generation->backend==='qdrant'?$this->store->forTarget($claim['target_hash'],$guard):null;
             for($batchNo=0;$batchNo<self::MAX_BATCHES&&microtime(true)<$deadline;$batchNo++){
                 $guard();$state=$this->verifications->find($claim['user_id'],$claim['generation_id']);
                 if($state===null||$state['status']!=='running'||$state['lease_token']!==$claim['lease_token'])throw new VectorStoreException('stale_verification_lease');
                 if($state['phase']==='complete'){
                     if($this->verifications->documentsBeyondSnapshot($claim['user_id'],$state['upper_document_id'])>0
                         ||$this->verifications->expectedCount($claim['user_id'],$claim['generation_id'])!==$state['expected_count'])throw new VectorStoreException('sql_inventory_changed');
-                    $remoteCount=$store->countLive($generation);$guard();
-                    if($remoteCount!==$state['expected_count'])throw new VectorStoreException('remote_count_mismatch');
-                    $this->verifications->markVerified($claim,$remoteCount);
+                    if($generation->backend==='qdrant'){
+                        $count=$store?->countLive($generation);$guard();
+                        if(!is_int($count))throw new VectorStoreException('remote_count_unavailable');
+                        if($count!==$state['expected_count'])throw new VectorStoreException('remote_count_mismatch');
+                    }else{
+                        $count=$this->verifications->expectedCount($claim['user_id'],$claim['generation_id']);
+                        if($count!==$state['expected_count']||$state['checked_count']!==$state['expected_count'])throw new VectorStoreException('sql_inventory_changed');
+                    }
+                    $this->verifications->markVerified($claim,$count);
                     $stats['verified']=true;return $stats;
                 }
                 if($state['phase']==='points'){
@@ -48,23 +54,31 @@ class GenerationVerificationWorker {
                         $this->verifications->withLease($claim,fn()=> $this->verifications->checkpoint($claim,['phase'=>'sources']));
                         continue;
                     }
-                    $points=$store->retrieve($generation,array_column($rows,'id'));
+                    $points=$generation->backend==='qdrant'?$store?->retrieve($generation,array_column($rows,'id')):null;
                     $hash=$state['verification_hash'];$sampled=0;
                     foreach($rows as$row){
-                        $point=$points[$row['id']]??null;
-                        if($point===null)throw new VectorStoreException('remote_point_missing');
-                        $payload=$point['payload'];
-                        if($payload['deleted']!==false||($payload['document_id']??null)!==$row['document_id']
-                            ||($payload['revision']??null)!==$row['vector_revision']||($payload['source']??null)!==$row['source']
-                            ||($payload['content_hash']??null)!==$row['content_hash'])throw new VectorStoreException('remote_payload_mismatch');
                         $expected=json_decode($row['embedding'],true,32,JSON_THROW_ON_ERROR);
                         if(!is_array($expected))throw new VectorStoreException('invalid_sql_vector');
-                        $generation->validateVector($expected);
-                        if($state['checked_count']===0&&$stats['checked']===0||((int)$row['id']%64)===0){
-                            if(self::cosine($expected,$point['vector'])<self::COSINE_MIN)throw new VectorStoreException('remote_vector_mismatch');
+                        try{$generation->validateVector($expected);}catch(\Throwable){throw new VectorStoreException('invalid_sql_vector');}
+                        if($generation->backend==='qdrant'){
+                            $point=$points[$row['id']]??null;
+                            if($point===null)throw new VectorStoreException('remote_point_missing');
+                            $payload=$point['payload'];
+                            if($payload['deleted']!==false||($payload['document_id']??null)!==$row['document_id']
+                                ||($payload['revision']??null)!==$row['vector_revision']||($payload['source']??null)!==$row['source']
+                                ||($payload['content_hash']??null)!==$row['content_hash'])throw new VectorStoreException('remote_payload_mismatch');
+                            if($state['checked_count']===0&&$stats['checked']===0||((int)$row['id']%64)===0){
+                                if(self::cosine($expected,$point['vector'])<self::COSINE_MIN)throw new VectorStoreException('remote_vector_mismatch');
+                                $sampled++;
+                            }
+                        }else{
+                            if((int)$row['vector_revision']<1)throw new VectorStoreException('invalid_sql_revision');
+                            if($row['vector_state']!=='ready')throw new VectorStoreException('sql_point_not_ready');
+                            if(strlen((string)$row['content'])>40000||!hash_equals((string)$row['content_hash'],hash('sha256',(string)$row['content'])))
+                                throw new VectorStoreException('invalid_sql_chunk');
                             $sampled++;
                         }
-                        $hash=hash('sha256',$hash.':'.$row['id'].':'.$row['document_id'].':'.$row['vector_revision'].':'.$row['content_hash']);
+                        $hash=hash('sha256',$hash.':'.$row['id'].':'.$row['document_id'].':'.$row['vector_revision'].':'.$row['content_hash'].':'.hash('sha256',json_encode($expected,JSON_THROW_ON_ERROR)));
                     }
                     $last=$rows[count($rows)-1]['id'];$checked=count($rows);
                     $this->verifications->withLease($claim,function(array$current)use($claim,$last,$checked,$sampled,$hash):void{

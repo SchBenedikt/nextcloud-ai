@@ -75,8 +75,10 @@ class VectorSourceDeletion {
                     if (!isset($generations[$key])) $generations[$key] = $this->generation($key, $row['user_id']);
                     [$generation, $target] = $generations[$key];
                     if ($row['user_id'] !== null && $generation->userId !== $row['user_id']) throw new VectorStoreException('source_identity_mismatch');
-                    $revision = $this->outbox->enqueue($generation, $target, 'delete_chunk', (int)$row['document_id'], (int)$row['id']);
-                    if ($revision > 9007199254740991 || $revision <= (int)$row['vector_revision']) throw new VectorStoreException('invalid_revision');
+                    if ($generation->backend === 'qdrant') {
+                        $revision = $this->outbox->enqueue($generation, $target, 'delete_chunk', (int)$row['document_id'], (int)$row['id']);
+                        if ($revision > 9007199254740991 || $revision <= (int)$row['vector_revision']) throw new VectorStoreException('invalid_revision');
+                    }
                     $cursor = (int)$row['id'];
                 }
             } while (count($rows) === 250);
@@ -176,7 +178,8 @@ class VectorSourceDeletion {
         $result = $qb->executeQuery();
         try { $row = $result->fetch(); } finally { $result->closeCursor(); }
         if (!$row || !is_string($row['storage_endpoint_hash'] ?? null)
-            || preg_match('/^[a-f0-9]{64}$/D', $row['storage_endpoint_hash']) !== 1) throw new VectorStoreException('invalid_source_generation');
+            || preg_match('/^[a-f0-9]{64}$/D', $row['storage_endpoint_hash']) !== 1
+            || ($row['backend'] === 'sql' && !hash_equals(VectorGenerationRepository::sqlTargetHash(), $row['storage_endpoint_hash']))) throw new VectorStoreException('invalid_source_generation');
         return [VectorGeneration::fromRow($row), $row['storage_endpoint_hash']];
     }
 }

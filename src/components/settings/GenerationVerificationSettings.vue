@@ -6,10 +6,10 @@
 		<template v-if="state">
 			<p>{{ label }}</p>
 			<NcProgressBar v-if="state.status !== 'not_started'" :value="progress" :aria-label="$t('Points verified')" />
-			<p v-if="state.status !== 'not_started'">{{ $t('Points verified: {done} of {total}', { done: state.checked_count, total: state.expected_count }) }} · {{ $t('Vectors sampled: {count}', { count: state.sample_count }) }}</p>
-			<NcNoteCard v-if="state.verified" type="success">{{ $t('SQL and remote point identities, revisions, source manifests, dimensions and sampled vectors match. Search still uses SQL.') }}</NcNoteCard>
-			<GenerationShadowSettings v-if="state.verified" :key="`${user}:${generation}:shadow`" :user="user" :generation="generation" />
-			<NcNoteCard v-else type="info">{{ $t('This read-only background check compares SQL chunks with the configured vector store. It never changes retrieval or sends source text to an embedding provider.') }}</NcNoteCard>
+			<p v-if="state.status !== 'not_started'">{{ state.backend === 'sql' ? $t('SQL chunks checked: {done} of {total}', { done: state.checked_count, total: state.expected_count }) : $t('Points verified: {done} of {total}', { done: state.checked_count, total: state.expected_count }) }} · {{ state.backend === 'sql' ? $t('SQL vectors validated: {count}', { count: state.sample_count }) : $t('Vectors sampled: {count}', { count: state.sample_count }) }}</p>
+			<NcNoteCard v-if="state.verified" type="success">{{ state.backend === 'sql' ? $t('SQL generation vectors, chunk hashes and source manifests are valid. Search still uses SQL.') : $t('SQL and remote point identities, revisions, source manifests, dimensions and sampled vectors match. Search still uses SQL.') }}</NcNoteCard>
+			<GenerationShadowSettings v-if="state.verified && state.backend === 'qdrant'" :key="`${user}:${generation}:shadow`" :user="user" :generation="generation" />
+			<NcNoteCard v-else-if="!state.verified">{{ state.backend === 'sql' ? $t('This read-only check validates local SQL vectors, chunk hashes, revisions and current source manifests. It does not change retrieval.') : $t('This read-only background check compares SQL chunks with the configured vector store. It never changes retrieval or sends source text to an embedding provider.') }}</NcNoteCard>
 			<NcNoteCard v-if="state.error_code" type="warning">{{ failure }}</NcNoteCard>
 			<div class="verification-actions">
 				<NcButton v-if="['not_started', 'failed', 'stale', 'cancelled'].includes(state.status)" :disabled="!state.can_start || busy" :loading="busy" @click="control(state.status === 'not_started' ? 'start' : 'retry')">{{ state.status === 'not_started' ? $t('Start verification') : $t('Retry verification') }}</NcButton>
@@ -37,18 +37,19 @@ export default {
 		let controller, epoch = 0, timer
 		const path = `admin/vector-generations/${encodeURIComponent(props.user)}/${props.generation}/verification`
 		const states = ['not_started', 'queued', 'running', 'paused', 'cancelled', 'failed', 'stale', 'verified']
-		const label = computed(() => ({ not_started: t('Not started'), queued: t('Waiting for the next verification tick'), running: t('Comparing stored points'), paused: t('Verification paused'), cancelled: t('Verification stopped'), failed: t('Verification needs attention'), stale: t('Verification invalidated by source changes'), verified: t('Verified; search unchanged') })[state.value?.status])
+		const label = computed(() => ({ not_started: t('Not started'), queued: t('Waiting for the next verification tick'), running: state.value?.backend === 'sql' ? t('Checking local SQL vectors') : t('Comparing stored points'), paused: t('Verification paused'), cancelled: t('Verification stopped'), failed: t('Verification needs attention'), stale: t('Verification invalidated by source changes'), verified: t('Verified; search unchanged') })[state.value?.status])
 		const progress = computed(() => state.value?.expected_count > 0 ? Math.min(100, 100 * state.value.checked_count / state.value.expected_count) : 0)
 		const failure = computed(() => {
 			const code = state.value?.error_code
+			if (state.value?.backend === 'sql' && ['sql_point_not_ready', 'invalid_sql_revision', 'invalid_sql_chunk', 'invalid_sql_vector'].includes(code)) return t('SQL generation data changed or is invalid. Rebuild this generation before retrying.')
 			if (code === 'remote_point_missing') return t('Some SQL points are not present in the vector store. Allow the point-delivery queue to finish, then retry.')
 			if (code === 'remote_payload_mismatch' || code === 'remote_vector_mismatch') return t('The stored point payload or sampled vector differs from SQL. The generation remains unavailable for search.')
 			if (code === 'remote_count_mismatch') return t('The exact live-point count differs from SQL. Resolve pending or stale points, then retry.')
 			if (code === 'new_sources_after_snapshot' || code === 'source_reconciliation_required' || code === 'sql_inventory_changed') return t('The indexed sources changed during the build. Reconcile the source index and prepare a fresh generation.')
-			return t('Verification stopped safely. Check the storage connection and owner index, then retry.')
+			return state.value?.backend === 'sql' ? t('Verification stopped safely. Check the source index and generation data, then retry.') : t('Verification stopped safely. Check the storage connection and owner index, then retry.')
 		})
 		function accept(result) {
-			if (!result || !states.includes(result.status) || typeof result.can_start !== 'boolean' || result.retrieval_changed !== false || typeof result.verified !== 'boolean'
+			if (!result || !states.includes(result.status) || !['sql', 'qdrant'].includes(result.backend) || typeof result.can_start !== 'boolean' || result.retrieval_changed !== false || typeof result.verified !== 'boolean'
 				|| !['expected_count', 'checked_count', 'sample_count', 'heartbeat_at'].every(key => Number.isSafeInteger(result[key]) && result[key] >= 0)
 				|| !(result.error_code === null || typeof result.error_code === 'string')) throw new Error(t('Verification progress could not be confirmed.'))
 			state.value = result

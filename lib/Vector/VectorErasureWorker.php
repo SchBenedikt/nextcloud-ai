@@ -61,7 +61,7 @@ class VectorErasureWorker {
             $data = json_decode($row['generation_json'], true, 64, JSON_THROW_ON_ERROR);
             if (!is_array($data)) throw new \RuntimeException();
             $generation = VectorGeneration::fromRow($data);
-            if ($generation->id !== $row['generation_id'] || $generation->userId !== $row['user_id']) throw new \RuntimeException();
+            if ($generation->backend !== 'qdrant' || $generation->id !== $row['generation_id'] || $generation->userId !== $row['user_id']) throw new \RuntimeException();
             return $generation;
         } catch (\Throwable) { throw new VectorStoreException('invalid_event'); }
     }

@@ -22,7 +22,7 @@ final class VectorGeneration extends Command {
             ->setDescription('Inspect or prepare immutable vector-generation metadata; never activates external retrieval')
             ->addArgument('action', InputArgument::REQUIRED, 'create, list, fail or owner-status')
             ->addArgument('user', InputArgument::REQUIRED, 'Existing generation owner');
-        foreach (['provider', 'profile', 'model', 'endpoint', 'dimension', 'chunk-size', 'chunk-overlap', 'id', 'after'] as $name) {
+        foreach (['backend', 'provider', 'profile', 'model', 'endpoint', 'dimension', 'chunk-size', 'chunk-overlap', 'id', 'after'] as $name) {
             $this->addOption($name, null, InputOption::VALUE_REQUIRED, 'Explicit generation ' . $name);
         }
     }
@@ -56,7 +56,9 @@ final class VectorGeneration extends Command {
                 $dimension = $this->integer($input->getOption('dimension'));
                 $chunkSize = $this->integer($input->getOption('chunk-size') ?? $this->config->get('chunk_size'));
                 $overlap = $this->integer($input->getOption('chunk-overlap') ?? $this->config->get('chunk_overlap'));
-                $generation = new Generation(bin2hex(random_bytes(16)), $user, 'qdrant', $input->getOption('provider') ?? 'ollama',
+                $backend = $input->getOption('backend') ?? 'sql';
+                if (!in_array($backend, ['sql', 'qdrant'], true)) throw new \InvalidArgumentException('Select sql or qdrant as the storage backend.');
+                $generation = new Generation(bin2hex(random_bytes(16)), $user, $backend, $input->getOption('provider') ?? 'ollama',
                     $input->getOption('profile'), $input->getOption('model') ?? '', hash('sha256', rtrim($endpoint, '/')),
                     $dimension, $chunkSize, $overlap);
                 $this->generations->create($generation);

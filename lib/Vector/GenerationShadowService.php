@@ -22,6 +22,7 @@ final class GenerationShadowService {
         $filters=new SearchFilters($scopePath);
         $this->access->assertOwner($user);
         $generation=$this->generations->find($user,$id)??throw new VectorStoreException('generation_missing');
+        if($generation->backend!=='qdrant')throw new VectorStoreException('shadow_backend_unsupported');
         if(mb_strlen($query)>$generation->chunkSize)throw new VectorStoreException('shadow_query_too_long');
         $target=$this->generations->target($user,$id);
         if($target===null||!$this->outbox->pointsEnabled()||!$this->builds->available($user,$id,$target)

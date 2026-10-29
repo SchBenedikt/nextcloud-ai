@@ -52,10 +52,15 @@ portability path; optional ANN storage is the scale path.
 ## Current implementation gap
 
 The current tree has durable generation metadata, a bounded manual build,
-verification and an explicit shadow probe. However:
+verification and an explicit shadow probe. The SQL-generation build and
+verification foundation is now implemented, but normal indexing has not yet
+been switched. Specifically:
 
-- `VectorGeneration` currently accepts only `qdrant` as its backend.
-- The build flow requires an explicitly configured remote target and consent.
+- `VectorGeneration` accepts `sql` and `qdrant`; SQL generations bind to a
+  deterministic local target and write directly to Nextcloud SQL.
+- SQL builds do not create Qdrant point-delivery events. Their verifier checks
+  local vector shape, revisions, content hashes and source manifests. Qdrant
+  generations retain remote reconciliation and explicit transfer consent.
 - Normal indexing writes only legacy chunks; chat search reads only those rows.
 - There is no guarded generation activation path or production shadow sampling.
 - `VectorStorageStatus` reports `sql_legacy`; the interface must stay truthful
@@ -67,10 +72,10 @@ current runtime behavior.
 ## Delivery sequence
 
 See [BACKEND-ROADMAP.md](BACKEND-ROADMAP.md), stages 06–12. The dependency
-order is: SQL-capable generation identity and storage; default background
-indexing and mutation journal; resumable migration and verification; safe
-activation and shadow evidence; then optional Qdrant acceleration and hybrid
-retrieval. Each cutover slice must include its matching native settings/status
+order is: SQL-capable generation identity, storage, build and verification;
+default background indexing and mutation journal; resumable migration and
+verification; safe activation and shadow evidence; then optional Qdrant
+acceleration and hybrid retrieval. Each cutover slice must include its matching native settings/status
 surface, focused validation, recovery notes and a stacked reviewable PR.
 
 ## Acceptance gates before making generations the only default
