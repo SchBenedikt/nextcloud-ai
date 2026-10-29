@@ -626,17 +626,22 @@ $this->executor->setUserId($userId);
     /** Add returned images when a model forgot to repeat the tool's Markdown. */
     private function appendImageMarkdown(string $answer): string
     {
-        if ($this->toolImages === [] || str_contains($answer, '![')) {
-            return $answer;
-        }
+        if ($this->toolImages === []) return $answer;
         $lines = [];
         $seen = [];
-        foreach (array_slice($this->toolImages, 0, 4) as $image) {
+        // Keep images the model already chose, then add distinct results the
+        // image-search tool returned. A single Markdown image must not suppress
+        // every other useful result from the tool call.
+        if (preg_match_all('~!\[[^\]]*\]\((https?://[^)\s]+)(?:\s+["\'][^)]*["\'])?\)~i', $answer, $matches)) {
+            foreach ($matches[1] as $url) $seen[$url] = true;
+        }
+        foreach ($this->toolImages as $image) {
+            if (count($seen) >= 4) break;
             if (isset($seen[$image['url']])) {
                 continue;
             }
             $seen[$image['url']] = true;
-            $title = str_replace(['[', ']'], '', trim($image['title'])) ?: 'Web image';
+            $title = str_replace(['[', ']', '(', ')', "\\"], '', trim($image['title'])) ?: 'Web image';
             $lines[] = '![' . $title . '](' . $image['url'] . ')';
         }
         return $lines === [] ? $answer : rtrim($answer) . "\n\n" . implode("\n", $lines);

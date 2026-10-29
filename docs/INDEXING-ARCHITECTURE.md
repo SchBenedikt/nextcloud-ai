@@ -117,6 +117,10 @@ the optional remote build requires separate administrator consent. Specifically:
   provenance from cache-only batches or sends indexed content for discovery.
   Provider failures are retried after a six-hour per-user cooldown. Qdrant
   selection is left untouched, and SQL is the only backend selected here.
+- The file-index provenance version is bumped when canonical extraction
+  semantics change. The next recurring pass clears old content hashes and
+  refreshes those files even when VFS size and modification time are unchanged;
+  this keeps generation source stamps aligned with the current extractor.
 - SQL verification is queued for users with recurring indexing enabled after a staged build. Failed
   or cancelled verification remains explicit. A current successful
   verification can activate the SQL generation automatically. A fully

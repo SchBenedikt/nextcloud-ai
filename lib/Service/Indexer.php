@@ -1514,7 +1514,10 @@ class Indexer {
 
     private function calculateConfigHash(): string {
         $configKey = implode('|', [
-            'provenance-v1',
+            // Reindex once when canonical extraction semantics change so the
+            // SQL source hashes used by immutable generations match the
+            // current parser output, even when file size/mtime is unchanged.
+            'provenance-v2',
             $this->config->get('embedding_model', 'default'),
             $this->config->get('ocr_enabled', '0'),
             $this->config->get('ocr_language', 'eng'),

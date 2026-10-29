@@ -5,8 +5,14 @@ $root=getenv('NEXTCLOUD_ROOT');
 if(PHP_SAPI!=='cli'||getenv('EVA_BUILD_SQL_FIXTURE')!=='1'||!$root||!is_file($root.'/occ'))throw new RuntimeException('Set NEXTCLOUD_ROOT and EVA_BUILD_SQL_FIXTURE=1.');
 define('OC_CONSOLE',1); $_SERVER['SCRIPT_FILENAME']=$root.'/occ'; $_SERVER['SCRIPT_NAME']='/occ'; chdir($root);
 require $root.'/lib/base.php';
-$loader=require dirname(__DIR__,2).'/vendor/autoload.php';
-$loader->addPsr4('OCA\\EvaAi\\',dirname(__DIR__,2).'/lib/',true); $loader->register(true);
+// In a real Nextcloud installation the app's Composer loader is already
+// registered by base.php. Requiring a second generated Composer loader would
+// redeclare its global initializer class; isolated install fixtures still need
+// the repository loader when the app is not installed in NEXTCLOUD_ROOT.
+if (!class_exists(\OCA\EvaAi\Db\GenerationBuildRepository::class)) {
+    $loader=require dirname(__DIR__,2).'/vendor/autoload.php';
+    $loader->addPsr4('OCA\\EvaAi\\',dirname(__DIR__,2).'/lib/',true); $loader->register(true);
+}
 set_exception_handler(static function(Throwable $e):void{fwrite(STDERR,get_class($e).': '.$e->getMessage().PHP_EOL);exit(1);});
 
 use OCA\EvaAi\Db\{Document,DocumentMapper,VectorOutboxRepository,VectorOwnerFenceRepository,VectorGenerationRepository,GenerationChunkRepository,VectorTargetRepository,VectorSourceDeletion};
@@ -43,13 +49,17 @@ $table->addColumn('id',Types::BIGINT,['autoincrement'=>true,'notnull'=>true]);$t
 foreach(['document_id','chunk_index','token_count'] as $c)$table->addColumn($c,Types::BIGINT,['notnull'=>true,'default'=>0]);
 foreach(['content','embedding','provenance'] as $c)$table->addColumn($c,Types::TEXT,['notnull'=>true]);
 $output=$doubles->stub(OCP\Migration\IOutput::class);
-foreach(['Version118000Date20261028000000','Version118001Date20261028000001','Version118002Date20261028000002','Version118003Date20261028000003','Version118004Date20261028000004','Version118010Date20261028000010'] as $class){
+foreach(['Version118000Date20261028000000','Version118001Date20261028000001','Version118002Date20261028000002','Version118003Date20261028000003','Version118004Date20261028000004','Version118010Date20261028000010','Version118011Date20261029000000','Version118012Date20261029000001','Version118026Date20261029000003','Version118040Date20261029000007','Version118041Date20261029000008'] as $class){
     $class='OCA\\EvaAi\\Migration\\'.$class;(new $class())->changeSchema($output,static fn()=>$schema,[]);
 }
 foreach($schema->getWrappedSchema()->toSql($db->getDatabasePlatform()) as $sql)$db->executeStatement($sql);
 $inner=$db;
 if (!$db instanceof OCP\IDBConnection) $db=new OC\DB\ConnectionAdapter($db);
-$assert(realpath((new ReflectionClass(GenerationBuildRepository::class))->getFileName())===realpath(dirname(__DIR__,2).'/lib/Db/GenerationBuildRepository.php'),'Wrong candidate build repository loaded.');
+$loadedRepository=realpath((new ReflectionClass(GenerationBuildRepository::class))->getFileName());
+$candidateRepository=realpath(dirname(__DIR__,2).'/lib/Db/GenerationBuildRepository.php');
+$installedRepository=realpath($root.'/apps/eva_ai/lib/Db/GenerationBuildRepository.php');
+$assert($loadedRepository===$candidateRepository||($installedRepository!==false&&$loadedRepository===$installedRepository),
+    'Wrong candidate or installed build repository loaded.');
 $put=static function(string $key,string $value)use($db):void{
     $db->insertIgnoreConflict('appconfig',['appid'=>'eva_ai','configkey'=>$key,'configvalue'=>$value]);
     $q=$db->getQueryBuilder();$q->update('appconfig')->set('configvalue',$q->createNamedParameter($value))
@@ -77,7 +87,7 @@ $g=$makeGen('alice',$target);$other=$makeGen('alice',$target);
 $chunks->putBuildingChunk($other,$target,$chunks->snapshot('alice',(int)$a->getId()),new PreparedVectorChunk(0,'Other generation',[1,0,0],4));
 $legacy=new OCA\EvaAi\Db\Chunk();$legacy->setDocumentId($a->getId());$legacy->setChunkIndex(0);$legacy->setContent('Legacy source');$legacy->setEmbeddingArray([1,0,0]);$legacy->setTokenCount(4);$legacy->setProvenanceArray([]);(new OCA\EvaAi\Db\ChunkMapper($db,$deletion))->insert($legacy);
 $sources=$doubles->stub(OCA\EvaAi\Vector\GenerationSourceReader::class);
-$sources->method('read')->willReturnCallback(static function($source)use(&$texts,&$mode,$db,$assert):string{$assert(!$db->inTransaction(),'Extraction ran under a SQL transaction');if($mode==='source-budget')throw new OCA\EvaAi\Vector\VectorStoreException('build_budget');return $texts[$source->id];});
+$sources->method('read')->willReturnCallback(static function($source)use(&$texts,&$mode,$db,$assert):string{$assert(!$db->inTransaction(),'Extraction ran under a SQL transaction');if($mode==='source-budget')throw new OCA\EvaAi\Vector\VectorStoreException('build_budget');if($mode==='source-changed-once'){$mode='success';throw new OCA\EvaAi\Vector\VectorStoreException('invalid_source_snapshot');}return $texts[$source->id];});
 $preparer=new GenerationDocumentPreparer($sources,new OCA\EvaAi\Service\Chunker($config));
 $access=$doubles->stub(VectorSourceAccess::class);$access->method('assertOwner')->willReturn($doubles->stub(OCP\IUser::class));
 $access->method('assertAccessible')->willReturnCallback(static function()use($db,$assert):void{$assert(!$db->inTransaction(),'Native source I/O ran under a SQL transaction');});
@@ -119,6 +129,19 @@ try {
     $assert($ids===[(int)$a->getId(),(int)$a2->getId()],'Build manifest is incomplete or crossed tenant ownership');
     $export=$builds->exportMetadata('alice');$assert(count($export['builds'])===1&&count($export['documents'])===2,'Personal build export lost owned metadata');
     $assert(!str_contains(json_encode($export),'lease_token')&&!str_contains(json_encode($export),'target_hash'),'Personal export exposed runtime lease/target data');
+    $changedSource=$makeGen('alice',$target);$builds->start('alice',$changedSource->id,$target);$mode='source-changed-once';
+    $deferred=$worker->run();$deferredState=$builds->find('alice',$changedSource->id);
+    $assert($deferred['deferred_for_source_refresh']&&$deferred['error']===null&&$deferredState['status']==='queued'&&$deferredState['error_code']==='source_changed',
+        'A stale source was not deferred for the ordinary indexer refresh');
+    $tooSoon=$worker->run();$assert(!$tooSoon['claimed'],'A stale source was retried before the indexer refresh window');
+    $refreshed='Current source snapshot after the ordinary index pass.';$texts[$a->getId()]=$refreshed;
+    $a->setSize(strlen($refreshed));$a->setContentHash(md5($refreshed));$documents->update($a);
+    $refreshedState=$builds->find('alice',$changedSource->id);
+    $assert($refreshedState['status']==='queued'&&$refreshedState['error_code']===null,'Canonical source refresh did not release the deferred build');
+    $mode='success';$recovered=$worker->run();
+    for($i=0;$i<4&&$recovered['claimed'];$i++)$recovered=$worker->run();
+    $assert($builds->find('alice',$changedSource->id)['status']==='staged'&&$builds->find('alice',$g->id)['status']==='staged',
+        'The refreshed source did not let all affected staged builds recover: '.json_encode($recovered));
     $gb=$makeGen('bob',$target);$builds->start('bob',$gb->id,$target);$mode='erase';$erased=$worker->run();
     $assert($builds->find('bob',$gb->id)===null&&$builds->stagedCount($gb->id)===0&&$documents->countForUser('bob')===0,'In-flight erasure resurrected a build/source');
     $retry=$makeGen('alice',$target);$builds->start('alice',$retry->id,$target);$mode='fail';$worker->run();

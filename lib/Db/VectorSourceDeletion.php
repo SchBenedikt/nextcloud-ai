@@ -221,6 +221,7 @@ class VectorSourceDeletion {
             $update=$this->db->getQueryBuilder();
             $update->update('eva_ai_vec_builds')
                 ->set('documents_done',$update->createNamedParameter(max(0,(int)$row['documents_done']-$completed),IQueryBuilder::PARAM_INT))
+                ->set('error_code',$update->createNamedParameter(null,IQueryBuilder::PARAM_NULL))
                 ->set('revision',$update->func()->add('revision',$update->createNamedParameter(1,IQueryBuilder::PARAM_INT)))
                 ->set('updated_at',$update->createNamedParameter(time(),IQueryBuilder::PARAM_INT))
                 ->set('status',$update->createNamedParameter($status))
