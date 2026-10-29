@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Normalize the usage estimate column (1.18.61)
+
+- Align existing usage tables with the integer 0/1 type used by portable aggregate queries.
+
 ### Use portable SQL in Activity and Mail integrations (1.18.60)
 
 - Replace MySQL-specific identifier quoting in the optional Nextcloud Activity and Mail reads; Activity feed pagination now uses Nextcloud's QueryBuilder.
