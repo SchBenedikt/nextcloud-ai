@@ -1559,7 +1559,8 @@ class ChatStore {
      */
     private function logContention(string $user, string $lockPath, int $mode, int $attempts, int $started): void {
         $waitedMs = max(1, (int)ceil((hrtime(true) - $started) / 1_000_000));
-        $this->usageMetrics?->recordChatStoreLockWait($user, 'exclusive', 'busy', $waitedMs);
+        $modeName = $mode === ILockingProvider::LOCK_SHARED ? 'shared' : 'exclusive';
+        $this->usageMetrics?->recordChatStoreLockWait($user, $modeName, 'busy', $waitedMs);
         $stillLocked = false;
         try {
             $stillLocked = $this->lockingProvider->isLocked($lockPath, $mode);
@@ -1570,7 +1571,7 @@ class ChatStore {
         }
         $context = [
             'user' => $user,
-            'mode' => $mode === ILockingProvider::LOCK_SHARED ? 'shared' : 'exclusive',
+            'mode' => $modeName,
             'attempts' => $attempts,
             'waited_ms' => $waitedMs,
             'still_locked' => $stillLocked,
