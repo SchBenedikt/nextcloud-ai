@@ -27,7 +27,7 @@ The implementation entries further below record the actual delivered slices.
 | --- | --- | --- |
 | 1, 4–5, 7 | PHP dense full scan, JSON vectors and SQL LIKE bottlenecks | 03, 05–12: measure the baseline, use bounded keyset scans for SQL pages, then continue toward indexed/hybrid retrieval; Qdrant remains optional. |
 | 2, 9–10, 20–21 | Engine comparison, cost estimates and deployment choices | 07, 14: Qdrant is the selected optional adapter; document single-node/managed/HA operations. Alternative engines and estimated prices are decision inputs, not a requirement to ship five adapters or measured savings. |
-| 3, 16 | P0 main protection, database matrix and security checks | 04, 14: endpoint boundary implemented in the stack; administrative branch protection and executed portability/security gates remain pending. Targeted tests resumed for the local recovery; the full portability/security matrix remains open. |
+| 3, 16 | P0 main protection, database matrix and security checks | 04, 14: provider endpoint boundary implemented; `main` now requires PRs and blocks force-push/deletion, while required CI checks and reviews remain disabled per current direction. Executed portability/security gates remain pending. |
 | 6, 8, 18 | Provider contracts, encrypted secrets, SSRF/DNS/TLS and local-service approvals | 02, 04, 07, 14: use native HTTP guards and explicit admin policy on every transfer. Hosted-provider contract tests remain opt-in; no account credentials are needed for installation. |
 | 7–8, 11–12 | Immutable embedding generations, tenant filters, SQL hydration and transactional outbox | 06–09: additive schema, isolated chunk journal, point delivery, persisted verification, guarded enrolled-user SQL activation and generation-aware search exist; portability, adversarial and soak evidence remain open. |
 | 9 | Major dependency upgrades require compatibility evidence | 14: assess PHPUnit/Symfony upgrades separately; do not merge them merely to clear Dependabot notifications. |
@@ -113,8 +113,10 @@ The initial implementation batches deferred tests at the user's request. Runtime
 recovery now resumes local PHP, frontend and authenticated browser checks. Earlier
 stage entries below record their evidence at delivery time; see the current
 recovery evidence in [QUALITY.md](QUALITY.md). Passing local checks does not prove
-benchmark targets, cross-database portability or production cutover. Branch
-protection and required checks remain administrative follow-up.
+benchmark targets, cross-database portability or production cutover. GitHub
+protects `main` against direct pushes, force-pushes and deletion. Required CI
+checks and approving reviews remain disabled; the database/security matrix is
+still open.
 
 ## Ordered implementation stack
 
@@ -134,7 +136,7 @@ protection and required checks remain administrative follow-up.
 | 11 | Canary and primary generation-based reads | 10 | Verified SQL-generation retrieval is automatic for enrolled users; an administrator can explicitly activate a verified Qdrant canary and roll back to built-in SQL. Queries apply tenant/generation/scope filters, hydrate exact revisions from SQL, and fall back on remote errors or pending mutations. Keep legacy rows; production soak and release-cycle rollback evidence remain pending. |
 | 12 | Native hybrid retrieval | 11 | Implemented the explicit generation text-payload opt-in, separate build/resume consent, Qdrant 1.20+ BM25 index preparation, native dense+BM25 RRF, exact SQL hydration and SQL fallback. Existing generations remain dense-only. Verification checks text-field coverage and compares sampled text with SQL. Remaining: run representative quality/latency comparison, verify live Qdrant 1.20+ index schema and text erasure, then enable only for evaluated canaries. SQL/dense-only rollback remains available. |
 | 13 | Normalized encrypted chat/message SQL storage | 12 | **In progress (1.18.27–1.18.29, 1.18.57).** Additive encrypted tables, small resumable imports, per-message SQL mirroring, automatic new-account SQL, scheduled verified migration for existing users, owner-scoped erasure, indexed metadata pages, per-user SQL reads with AppData export rollback, and keyset-paginated native SQL sidebar loading are implemented. Mixed-version deployment/rollback rehearsal, performance/load evidence, and restore drills remain. Preserve encryption and add no plaintext search indexes. |
-| 14 | Operational hardening and portability | 13 | PostgreSQL/MariaDB lifecycle coverage; metrics exporter (chat, provider, retrieval and slow-tool events now share short-lived trace IDs, but aggregation/export is open); restore and delete drills; sustained soak; cache outage/rate-limit semantics (embedding-cache 15-second process-local cooldown now avoids repeated failing cache calls while preserving uncached operation); domain-controller extraction; dependency/SAST/SBOM policy. Administrative main protection requires its own explicit rollout. |
+| 14 | Operational hardening and portability | 13 | PostgreSQL/MariaDB lifecycle coverage; metrics exporter (chat, provider, retrieval and slow-tool events now share short-lived trace IDs, but aggregation/export is open); restore and delete drills; sustained soak; cache outage/rate-limit semantics (embedding-cache 15-second process-local cooldown now avoids repeated failing cache calls while preserving uncached operation); domain-controller extraction; dependency/SAST/SBOM policy. PR-only main protection is active; required checks and reviews remain intentionally disabled for now. |
 
 ## Stage 14 interface slice: correlated chat timings
 
@@ -276,8 +278,10 @@ replaced by a successful build or an adapter unit test.
   major upgrades are not automatically safe because a bot opened the PR.
 - Controller splitting and cache/rate-limit resilience are separate bounded
   refactors; preserve request/response DTOs and public API behavior.
-- Branch protection, reviews/CODEOWNERS, required checks, secret scanning,
-  static analysis and release SBOM are policy work, not silently enabled code.
+- PR-only main protection is active, with force-push and deletion disabled.
+  Required status checks, reviews/CODEOWNERS, secret scanning, static analysis
+  and release SBOM remain separate policy work; required checks/reviews are
+  intentionally not enforced while the user has deferred CI gates.
 
 ## Progress
 
