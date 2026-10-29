@@ -59,8 +59,8 @@ is checked again after evaluation to detect modification during the run.
 The runner producing the file must establish that it queried the same immutable
 index snapshot and embedding space. Hash fields identify the asserted snapshot;
 this evaluator cannot independently prove a remote backend actually indexed it.
-Recording live EVA/Qdrant runs and verifying their snapshot is a subsequent
-integration step. No live baseline has been measured by adding this tool.
+The explicit OCC integration below can record live SQL and Qdrant runs and
+verifies their snapshot. No live baseline has been measured by adding this tool.
 
 ## Results and failure behavior
 
@@ -170,3 +170,37 @@ therefore set `embedding_provenance=legacy_unverified` and
 runtime, not the model that produced every old chunk. Successful snapshot recording
 does not authorize adopting these vectors into a verified production generation.
 No live snapshot or performance measurement is claimed by committing this command.
+
+## Explicit live Qdrant generation snapshot and run
+
+For a verified, active Qdrant generation, export and record the exact generation
+through the same explicit OCC command. Stop indexing first. The selected user's
+generation must be active with no pending source changes; exports fail closed if
+the active generation, target, account configuration, search revision, or SQL
+generation rows change during fingerprinting or recording.
+
+```sh
+php occ eva_ai:retrieval:benchmark export-qdrant alice /private/eva-qdrant \
+  --queries=/private/query-seeds.json
+php occ eva_ai:retrieval:benchmark record-qdrant alice /private/eva-qdrant \
+  --output=/private/eva-qdrant-runs.jsonl
+php tools/retrieval-benchmark.php exact /private/eva-qdrant > /private/eva-qdrant-exact.json
+php tools/retrieval-benchmark.php evaluate /private/eva-qdrant /private/eva-qdrant-runs.jsonl eva-qdrant-dense \
+  > /private/eva-qdrant-report.json
+```
+
+The generation export includes only delivered chunks owned by the selected user,
+their pinned SQL vectors, source metadata and hashes. Use relevant chunk IDs from
+the exported `chunks.jsonl` in the query seed file's `relevance` mapping. Query
+text is embedded through that generation's pinned provider configuration.
+Dense retrieval sends the vector to Qdrant; native hybrid retrieval also sends
+query text only when text payload was explicitly enabled for that generation.
+The recorded duration includes Qdrant search and SQL hydration/validation;
+query embedding preflight time is reported separately. It does not represent
+full chat latency or establish percentile performance from a single run.
+
+Files and directories must be new and are created with private permissions.
+Real generation exports include user identifiers, paths, names and vectors;
+keep them private and retain them only as long as needed. These commands remain
+explicit administrator operations and add no automatic indexing, chat-path, or
+provider calls.

@@ -66,6 +66,25 @@ class GenerationChunkRepository {
         return $ordered;
     }
 
+    /** Bounded export of one active Qdrant generation for an explicit benchmark snapshot. */
+    public function benchmarkRowsAfter(string $userId, VectorGeneration $generation, int $afterId, int $limit = 250): array {
+        if ($generation->userId !== $userId || $generation->backend !== 'qdrant' || $afterId < 0) {
+            throw new VectorStoreException('invalid_benchmark_generation');
+        }
+        $q = $this->db->getQueryBuilder();
+        $q->select('c.id', 'c.document_id', 'c.chunk_index', 'c.content', 'c.embedding', 'c.provenance',
+            'c.content_hash', 'c.vector_revision', 'd.user_id', 'd.file_id', 'd.path', 'd.name', 'd.source')
+            ->from('eva_ai_chunks', 'c')
+            ->innerJoin('c', 'eva_ai_documents', 'd', $q->expr()->eq('d.id', 'c.document_id'))
+            ->where($q->expr()->eq('d.user_id', $q->createNamedParameter($userId)))
+            ->andWhere($q->expr()->eq('c.vector_generation_id', $q->createNamedParameter($generation->id)))
+            ->andWhere($q->expr()->eq('c.vector_state', $q->createNamedParameter('delivered')))
+            ->andWhere($q->expr()->gt('c.id', $q->createNamedParameter($afterId, IQueryBuilder::PARAM_INT)))
+            ->orderBy('c.id', 'ASC')->setMaxResults(max(1, min(500, $limit)));
+        $result = $q->executeQuery();
+        try { return $result->fetchAll(); } finally { $result->closeCursor(); }
+    }
+
     /** Source-row lock shared by chunk writes and zero-chunk build checkpoints. */
     public function lockSnapshot(VectorDocumentSnapshot $snapshot): void {
         if (!$this->db->inTransaction()) throw new \LogicException('Source locking requires the mutation transaction.');
