@@ -72,6 +72,14 @@ instead of full system status too.
 
 ## Chat resources
 
+The native sidebar uses updated-time/chat-ID keyset pages after normalized SQL
+chat storage is active. Each page decrypts only the requested conversation
+metadata and never reads message payloads; it does not materialize every chat
+before slicing the response. AppData accounts and older clients retain the
+existing offset-compatible path until SQL reads are enabled. Chat content search
+remains a separate, explicit full-text walk because message bodies stay
+encrypted and are not indexed in plaintext.
+
 The wrapper destroys its renderer when replaced or unmounted. Destruction
 hands an active request to the existing durable background flow, removes the
 page-hide listener, aborts the browser stream, stops speech, clears its timer,

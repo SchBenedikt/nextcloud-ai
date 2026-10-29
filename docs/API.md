@@ -160,9 +160,13 @@ input_per_million, output_per_million}` prices. Rates must be non-negative USD
 amounts no greater than 10,000 per million tokens; at most 50 unique model
 entries are accepted. Sending an empty `prices` array clears the estimates.
 
-`GET /api/chats/page?offset=0&limit=50` returns `{chats, nextOffset, total, activeTotal}`.
-`limit` is 1–100 and `offset` is non-negative. `nextOffset` is `null` at the end.
-The EVA sidebar loads the first page and requests additional pages as needed.
+`GET /api/chats/page?offset=0&limit=50` retains the offset-compatible response
+`{chats, nextOffset, total, activeTotal}` for existing clients. The EVA sidebar
+adds `keyset=1`; when normalized SQL chat storage is active it receives
+`{chats, nextCursor}` and follows `beforeUpdated` plus `beforeChatId` for
+the next page. This keyset path decrypts only the requested page's metadata and
+does not load message payloads. AppData-backed accounts continue using offsets
+until SQL reads are enabled. `limit` is 1–100; `nextCursor` is `null` at the end.
 The original `GET /api/chats` response remains an array for existing clients.
 
 `POST /api/chats/{id}/messages` accepts a `role` (`user` or `assistant`) and

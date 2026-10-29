@@ -39,7 +39,6 @@
 				</NcAppNavigationItem>
 				<li class="chat-list-heading">
 					<span>{{ $t('Chats') }}</span>
-					<NcCounterBubble :count="activeChatCount" />
 				</li>
 				<template v-for="item in navItems" :key="item.key">
 					<li
@@ -92,7 +91,7 @@
 				<li v-if="chatsLoading" class="chat-list-empty" role="status">{{ $t('Loading chats…') }}</li>
 				<li v-else-if="!apiError && !chats.length" class="chat-list-empty">{{ $t('No chats yet — start a new one.') }}</li>
 				<li v-else-if="!apiError && chatFilter.trim() && !listChats.length" class="chat-list-empty">{{ $t('No chats match your search.') }}</li>
-				<li v-if="!chatFilter.trim() && chatsNextOffset !== null && !chatsLoading" class="chat-list-more">
+				<li v-if="!chatFilter.trim() && (chatsNextOffset !== null || chatsNextCursor !== null) && !chatsLoading" class="chat-list-more">
 					<NcButton variant="tertiary" :wide="true" :loading="loadingMoreChats" :disabled="loadingMoreChats" @click="loadMoreChats">{{ $t('Load more chats') }}</NcButton>
 				</li>
 				</template>
@@ -187,7 +186,7 @@ export default {
 		const chatsLoading = ref(true)
 		const loadingMoreChats = ref(false)
 		const chatsNextOffset = ref(null)
-		const activeChatCount = ref(0)
+		const chatsNextCursor = ref(null)
 		// First message typed on the dashboard hero: passed to the chat view
 		// and sent automatically as soon as the conversation is open.
 		const pendingPrompt = ref('')
@@ -269,13 +268,14 @@ export default {
 		const loadChats = () => {
 			chatsLoading.value = true
 			chatsNextOffset.value = null
+			chatsNextCursor.value = null
 			apiError.value = ''
-			return requestApi('GET', '/chats/page', { offset: 0, limit: 50 }).then((page) => {
+			return requestApi('GET', '/chats/page', { keyset: 1, offset: 0, limit: 50 }).then((page) => {
 				apiError.value = ''
 				if (!page || !Array.isArray(page.chats)) throw new Error(t('The chat list response was invalid.'))
 				chats.value = page.chats
-				chatsNextOffset.value = page.nextOffset
-				activeChatCount.value = Number(page.activeTotal) || 0
+				chatsNextCursor.value = page.nextCursor || null
+				chatsNextOffset.value = chatsNextCursor.value ? null : page.nextOffset
 				if (!currentChat.value && !initialChatParam) {
 					// Prefer a chat the user can actually see (archived chats
 					// are collapsed by default).
@@ -291,14 +291,19 @@ export default {
 		}
 
 		const loadMoreChats = async () => {
-			if (loadingMoreChats.value || chatsNextOffset.value === null) return
+			if (loadingMoreChats.value || (chatsNextOffset.value === null && chatsNextCursor.value === null)) return
 			loadingMoreChats.value = true
 			try {
-				const page = await requestApi('GET', '/chats/page', { offset: chatsNextOffset.value, limit: 50 })
+				const cursor = chatsNextCursor.value
+				const params = cursor
+					? { keyset: 1, beforeUpdated: cursor.beforeUpdated, beforeChatId: cursor.beforeChatId, limit: 50 }
+					: { offset: chatsNextOffset.value, limit: 50 }
+				const page = await requestApi('GET', '/chats/page', params)
 				if (!page || !Array.isArray(page.chats)) throw new Error(t('The chat list response was invalid.'))
 				const known = new Set(chats.value.map(chat => chat.id))
 				chats.value = chats.value.concat(page.chats.filter(chat => !known.has(chat.id)))
-				chatsNextOffset.value = page.nextOffset
+				chatsNextCursor.value = page.nextCursor || null
+				chatsNextOffset.value = chatsNextCursor.value ? null : page.nextOffset
 			} catch (error) {
 				apiError.value = t('Chat list unavailable: {error}', { error: errMsg(error) })
 			} finally {
@@ -448,7 +453,7 @@ export default {
 
 		return {
 			view, settingsSection, settingsSections, mdiArrowLeft,
-			chats, currentChat, busy, chatsLoading, loadingMoreChats, chatsNextOffset, activeChatCount, chatFilter, apiError, chatDialog, showArchived,
+			chats, currentChat, busy, chatsLoading, loadingMoreChats, chatsNextOffset, chatsNextCursor, chatFilter, apiError, chatDialog, showArchived,
 			navItems, listChats,
 			fileContextIds, itemName, itemTip,
 			newChat, selectChat, renameChat, deleteChat, closeChatDialog, confirmChatDialog, loadChats, loadMoreChats, navigate, updateChatMeta, pendingPrompt,

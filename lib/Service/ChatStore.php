@@ -138,6 +138,45 @@ class ChatStore {
             'total' => count($all), 'activeTotal' => count(array_filter($all, static fn(array $chat): bool => empty($chat['archived'])))];
     }
 
+    /** Direct keyset page for normalized SQL storage; null keeps legacy clients on AppData pagination. */
+    public function listSqlCursorPage(string $user, ?int $beforeUpdated, ?string $beforeChatId, int $limit = 50): ?array {
+        $limit = min(100, max(1, $limit));
+        if (($beforeUpdated === null) !== ($beforeChatId === null)
+            || ($beforeChatId !== null && ($beforeChatId === '' || strlen($beforeChatId) > 128))) {
+            throw new \InvalidArgumentException('Invalid chat page cursor.');
+        }
+        if (!$this->sqlReadsEnabled($user)) return null;
+
+        return $this->withUserLock($user, function () use ($user, $beforeUpdated, $beforeChatId, $limit): array {
+            $records = $this->sqlChats->metadataPage($user, $limit + 1, $beforeUpdated, $beforeChatId);
+            $hasMore = count($records) > $limit;
+            if ($hasMore) array_pop($records);
+            $chats = [];
+            foreach ($records as $record) {
+                $chat = $record['metadata'];
+                $chat['id'] = $record['id'];
+                $chat['created'] = $record['created'];
+                $chat['updated'] = $record['updated'];
+                $chats[] = [
+                    'id' => $record['id'], 'title' => $this->displayTitle($chat),
+                    'created' => $record['created'], 'updated' => $record['updated'],
+                    'count' => $record['count'], 'trimmed' => (int)($chat['trimmed'] ?? 0),
+                    'pinned' => !empty($chat['pinned']), 'folder' => (string)($chat['folder'] ?? ''),
+                    'tags' => $this->normalizeTags($chat['tags'] ?? []), 'archived' => !empty($chat['archived']),
+                    'scopePath' => (string)($chat['scopePath'] ?? ''),
+                    'instructions' => (string)($chat['instructions'] ?? ''), 'persona' => (string)($chat['persona'] ?? ''),
+                ];
+            }
+            $last = $records === [] ? null : $records[count($records) - 1];
+            return [
+                'chats' => $chats,
+                'nextCursor' => $hasMore && $last !== null
+                    ? ['beforeUpdated' => $last['updated'], 'beforeChatId' => $last['id']]
+                    : null,
+            ];
+        }, ILockingProvider::LOCK_SHARED);
+    }
+
     /** @return array|null */
     public function get(string $user, string $id): ?array {
         return $this->withUserLock($user, function () use ($user, $id): ?array {
