@@ -11,6 +11,8 @@ create a separate public metrics endpoint or background poller.
 | `nextcloud_eva_ai_vector_generations` | `backend`, `status` | SQL/Qdrant generations by lifecycle state. |
 | `nextcloud_eva_ai_vector_outbox_events` | `operation`, `state` | Actionable vector delivery/deletion queue depth. |
 | `nextcloud_eva_ai_vector_outbox_oldest_age_seconds` | `state` | Age of the oldest pending, processing, or dead event. |
+| `nextcloud_eva_ai_vector_outbox_age_events` | `operation`, `state`, `age_bucket` | Vector outbox event counts in fixed, disjoint age buckets. |
+| `nextcloud_eva_ai_index_queue_age_events` | `age_bucket` | Instance-wide index requests waiting for a scheduler slot, by wait age. |
 | `nextcloud_eva_ai_account_cleanup_pending` | none | Durable local account-erasure requests. |
 | `nextcloud_eva_ai_account_cleanup_oldest_age_seconds` | none | Age of the oldest durable local account-erasure request. |
 | `nextcloud_eva_ai_operation_duration_ms` | `operation`, `quantile` | Approximate recent provider chat-completion and slow-tool duration quantiles. |
@@ -47,6 +49,15 @@ part of retrieval-stage telemetry and adds no second usage write. Retrieval
 stages do not separate SQL dense scanning from lexical selection within the
 candidate phase; queue-age and lock-wait durations remain separate work.
 
+Queue age metrics use five fixed, disjoint buckets: under 1 minute, 1–5 minutes,
+5 minutes–1 hour, 1–24 hours and over 24 hours. The index scheduler metric
+aggregates unique queued users without exporting their IDs. Vector outbox
+metrics aggregate by its fixed operation and state allowlists. Nextcloud's
+`IMetricFamily` API represents each metric as a scalar sample, and the core
+renderer does not emit histogram `_bucket`, `_sum` or `_count` series. These
+families therefore expose bucket counts as gauges rather than claiming to be
+native Prometheus histograms.
+
 ## Privacy and availability
 
 EVA does not label metrics with account IDs, file names or paths, query text,
@@ -71,7 +82,6 @@ durations, never prompt or answer content.
 
 ## Remaining observability work
 
-The PDF's full target still needs queue-age histograms, distributed trace
-propagation beyond one chat request, and
-representative quality, sampling and load evidence. Keep request logging
-content-free and validate performance claims on frozen corpora.
+The PDF's full target still needs distributed trace propagation beyond one
+chat request, plus representative quality, sampling and load evidence. Keep
+request logging content-free and validate performance claims on frozen corpora.
