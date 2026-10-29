@@ -57,6 +57,65 @@ class Searcher {
         return $this->runSearch($userId, $query, $topK, $scopePath, array_map('floatval', $vector), null);
     }
 
+    /**
+     * Bounded, provider-free file search for Nextcloud Unified Search.
+     *
+     * It reads the same active generation and falls back to legacy SQL while a
+     * generation is absent, incomplete or being changed. It deliberately does
+     * not embed the interactive search term or contact an external vector
+     * service; Nextcloud's global search remains a fast local SQL operation.
+     *
+     * @return list<array<string,mixed>>
+     */
+    public function searchFileCandidates(string $userId, string $query, int $limit = 200): array {
+        $tokens = $this->tokens($query);
+        if ($tokens === []) return [];
+
+        $limit = max(1, min(200, $limit));
+        $generation = null;
+        try { $generation = $this->generations?->activeGenerationForUser($userId); }
+        catch (\Throwable) { /* A metadata outage keeps local legacy search available. */ }
+        $generationId = $generation?->id;
+        $generationState = $generation?->backend === 'qdrant' ? 'delivered' : 'ready';
+        if ($generationId !== null && $this->chunkMapper->countForUser($userId, $generationId, $generationState) === 0
+            && $this->chunkMapper->countForUser($userId) > 0) {
+            $generationId = null;
+            $generationState = 'ready';
+        }
+
+        $rows = $this->chunkMapper->filterChunksByTokens(
+            $userId,
+            $tokens,
+            $limit,
+            \OCA\EvaAi\Db\Document::SOURCE_FILES,
+            $generationId,
+            $generationState,
+        );
+        if ($rows === []) return [];
+
+        $documentIds = [];
+        foreach ($rows as $row) $documentIds[(int)$row['document_id']] = true;
+        $docFields = [];
+        foreach ($this->documentMapper->findByIds(array_keys($documentIds)) as $document) {
+            $docFields[(int)$document->getId()] = [
+                'name' => mb_strtolower((string)$document->getName()),
+                'path' => mb_strtolower((string)$document->getPath()),
+            ];
+        }
+        $scores = $this->lexicalBm25($rows, $tokens, $docFields);
+        $indexes = array_keys($rows);
+        usort($indexes, static fn(int $left, int $right): int =>
+            (($scores[$right] ?? 0.0) <=> ($scores[$left] ?? 0.0))
+            ?: ((int)$rows[$left]['id'] <=> (int)$rows[$right]['id'])
+        );
+        $results = [];
+        foreach ($indexes as $index) {
+            $rows[$index]['_eva_search_score'] = (float)($scores[$index] ?? 0.0);
+            $results[] = $rows[$index];
+        }
+        return $results;
+    }
+
     /** Resolve the current retrieval route without contacting an embedding or vector provider. */
     public function effectiveBackendForUser(string $userId): string {
         try {
