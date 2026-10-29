@@ -474,7 +474,7 @@ class Searcher {
                 $keep = $denseCap + self::DENSE_SCAN_PAGE;
                 $afterId = 0;
                 for ($scanned = 0; $scanned < $n; $scanned += self::DENSE_SCAN_PAGE) {
-                    $page = $this->chunkMapper->chunksForUserAfter($userId, $afterId, self::DENSE_SCAN_PAGE, $generationId,$generationState);
+                    $page = $this->chunkMapper->vectorsForUserAfter($userId, $afterId, self::DENSE_SCAN_PAGE, $generationId,$generationState);
                     if ($page === []) break;
                     $afterId = (int)$page[count($page) - 1]['id'];
                     foreach ($page as $row) {

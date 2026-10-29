@@ -45,6 +45,10 @@ The implementation entries further below record the actual delivered slices.
 - `Searcher::loadCandidates()` visits the complete tenant index in 2,000-row
   pages for dense candidates above 8,000 chunks. Ranking remains PHP cosine,
   BM25, quoted-phrase boost, reciprocal rank fusion and document diversification.
+- Large-index SQL dense scans now fetch only chunk IDs and embedding JSON; full
+  content/provenance rows are loaded only for the bounded cosine top set. This
+  reduces database result transfer and PHP row materialization, but does not
+  change the O(N) cosine scan or establish a latency result.
 - `Chunk` stores embeddings as JSON text. `ChunkMapper` supplies lexical
   candidates through SQL LIKE, not an inverted index.
 - `Indexer` already bounds file traversal, extraction and embedding batches and
