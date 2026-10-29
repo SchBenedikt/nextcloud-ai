@@ -36,6 +36,14 @@ final class DefaultSqlGenerationProvisioner {
             // match; otherwise this is a genuine model/configuration rebuild.
             $activeId = $this->generations->activeGenerationId($userId);
             $active = $activeId === null ? null : $this->generations->find($userId, $activeId);
+            // This automatic provisioner is deliberately Ollama-backed. A
+            // separately configured SQL generation may use an OpenAI-compatible
+            // embedding profile; never replace that active choice with Ollama
+            // just because the legacy indexer completed another batch.
+            if ($active?->backend === 'sql' && $active->embeddingProvider !== 'ollama'
+                && $retrievalBackend === 'sql_generation') {
+                return;
+            }
             if ($this->matches($active, $model, $endpointHash, $dimension, $chunkSize, $chunkOverlap)
                 && $retrievalBackend === 'sql_generation') {
                 $this->cacheProvenVectors($active, $provenVectors);
