@@ -206,7 +206,7 @@ class EmailService {
 
         // Use a dedicated escape character instead of database-specific
         // backslash rules, so literal '%' and '_' behave consistently.
-        $like = '%' . str_replace(['!', '%', '_'], ['!!', '!%', '!_'], $needle) . '%';
+        $like = '%' . str_replace(['!', '%', '_'], ['!!', '!%', '!_'], mb_strtolower($needle, 'UTF-8')) . '%';
         $mboxSql = implode(',', $mailboxIds);
 
         // Search subject + preview_text + recipients (sender name/email)
@@ -216,10 +216,10 @@ class EmailService {
                 LEFT JOIN *PREFIX*mail_recipients r
                     ON r.message_id = m.id AND r.type = " . self::RCV_FROM . "
                 WHERE m.mailbox_id IN ({$mboxSql})
-                  AND (m.subject LIKE ? ESCAPE '!'
-                       OR m.preview_text LIKE ? ESCAPE '!'
-                       OR r.email LIKE ? ESCAPE '!'
-                       OR r.label LIKE ? ESCAPE '!')
+                  AND (LOWER(m.subject) LIKE ? ESCAPE '!'
+                       OR LOWER(m.preview_text) LIKE ? ESCAPE '!'
+                       OR LOWER(r.email) LIKE ? ESCAPE '!'
+                       OR LOWER(r.label) LIKE ? ESCAPE '!')
                 ORDER BY m.sent_at DESC
                 LIMIT " . (int)$limit;
 
