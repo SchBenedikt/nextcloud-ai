@@ -318,9 +318,19 @@ sudo -u www-data php occ config:list apps --app=eva_ai
   sudo -u www-data php occ eva_ai:clear-chat-lock <user> --force
   ```
 
+  For a stuck SQL-backed conversation lock, include its ID from the chat URL:
+
+  ```bash
+  sudo -u www-data php occ eva_ai:clear-chat-lock <user> --chat-id <chat-id> --force
+  ```
+
   Prefer waiting, and prefer checking the log first: releasing a lock a live
   request is holding can let two writers touch the same file. Never delete lock
   rows by hand — the locking backend is shared with other apps.
+
+  When the error log names a `chat-entry` lock, use the affected conversation
+  ID shown in the chat URL with `--chat-id`. The command first reports the lock;
+  use `--force` only after confirming that no request is still running.
 
 ### Optional local OCR
 

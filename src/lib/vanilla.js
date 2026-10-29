@@ -1698,9 +1698,10 @@ export function mountChat(root, opts = {}) {
 			input.disabled = false
 			sendBtn.disabled = false
 			return true
-		}).catch(() => {
+		}).catch((loadError) => {
 			if (!destroyed) {
-				showErr(t('Chat history could not be loaded. Reopen this conversation to try again.'))
+				const detail = String(loadError && loadError.message ? loadError.message : '').trim()
+				showErr(t('Chat history could not be loaded. Reopen this conversation to try again.') + (detail ? ' ' + detail : ''))
 				// Keep the composer disabled: sending without the restored revision
 				// could overwrite newer history. A retry stays in this conversation.
 				const retry = document.createElement('button')

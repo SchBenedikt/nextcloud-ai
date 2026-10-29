@@ -37,6 +37,7 @@ class ClearChatLock extends Command {
         $this->setName('eva_ai:clear-chat-lock')
             ->setDescription('Release a stuck EVA chat lock for one user (recovery after a request died holding it)')
             ->addArgument('user', InputArgument::REQUIRED, 'User whose chat lock should be released')
+            ->addOption('chat-id', null, InputOption::VALUE_REQUIRED, 'Release only this conversation lock (use its ID from the chat URL)')
             ->addOption('force', 'f', InputOption::VALUE_NONE, 'Release the lock even though a running request cannot be ruled out');
     }
 
@@ -47,14 +48,20 @@ class ClearChatLock extends Command {
             return 1;
         }
         $force = (bool)$input->getOption('force');
+        $chatId = $input->getOption('chat-id');
+        if ($chatId !== null && (!is_string($chatId) || $chatId === '' || strlen($chatId) > 128)) {
+            $output->writeln('<error>A valid --chat-id is required.</error>');
+            return 1;
+        }
+        $target = $chatId === null ? 'user chat storage' : 'conversation ' . $chatId;
 
         if (!$force) {
-            $output->writeln('Check first that nothing is writing for "' . $user . '":');
+            $output->writeln('Check first that nothing is writing for "' . $user . '" (' . $target . '):');
             $output->writeln('  - look for "eva_ai: chat lock contention" in nextcloud.log');
             $output->writeln('  - re-run this command to see whether the lock is still held');
             $output->writeln('Re-run with --force once you are sure no request is running.');
             // Still report the current state, which is the useful part.
-            $report = $this->chatStore->clearLock($user);
+            $report = $this->chatStore->clearLock($user, false, $chatId);
             $output->writeln('Lock path: ' . $report['path']);
             $output->writeln($report['was_locked']
                 ? '<comment>Lock is currently held.</comment>'
@@ -62,7 +69,7 @@ class ClearChatLock extends Command {
             return 0;
         }
 
-        $report = $this->chatStore->clearLock($user, $force);
+        $report = $this->chatStore->clearLock($user, $force, $chatId);
         $output->writeln('Lock path: ' . $report['path']);
         if (!$report['was_locked']) {
             $output->writeln('Lock was not held; nothing to release.');
@@ -72,7 +79,7 @@ class ClearChatLock extends Command {
             $output->writeln('<error>The lock could not be released. See nextcloud.log for the provider error.</error>');
             return 1;
         }
-        $output->writeln('<info>Lock released.</info> The next chat write for "' . $user . '" should succeed.');
+        $output->writeln('<info>Lock released.</info> The next chat operation for "' . $user . '" should succeed.');
         return 0;
     }
 }

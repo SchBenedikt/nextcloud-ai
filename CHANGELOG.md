@@ -2,6 +2,12 @@
 
 ## [Unreleased]
 
+### Recover SQL chats and restore the rate-limit fallback (1.20.18)
+
+- Use the correct Nextcloud query-builder interface so the SQL rate-limit fallback works when the configured cache is unavailable.
+- Allow administrators to inspect and clear an individual SQL-backed conversation lock after confirming no request is still running.
+- Show the underlying history request error alongside the in-place retry control.
+
 ### Index text embedded in Office images (1.20.17)
 
 - When local OCR is enabled, extract text from up to four embedded images in DOCX, PPTX and OpenDocument files.
