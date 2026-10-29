@@ -377,7 +377,9 @@ replaced by a successful build or an adapter unit test.
   remain separately recorded. Version 1.20.9 starts the controller split by
   moving user-scoped document inspection to a focused OCS controller with the
   same URLs and permission checks; the remaining API controller domains still
-  need incremental extraction.
+  need incremental extraction. Version 1.20.10 moves connector and plugin API
+  operations into `IntegrationController`; chat and file-context domains still
+  remain in the large API controller.
 
 ### Stage 14 portability slice: Activity and Mail SQL (1.18.60)
 

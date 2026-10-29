@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Separate connector and plugin API endpoints (1.20.10)
+
+- Move connector configuration, discovery, diagnostics and plugin toggles into a focused authenticated OCS controller while preserving endpoint URLs and the shared tool-policy executor.
+
 ### Separate SQL index inspection endpoints (1.20.9)
 
 - Move document and chunk inspection into a focused user-scoped OCS controller while preserving endpoint URLs, ETags, pagination, and live file-access checks.
