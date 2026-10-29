@@ -1,7 +1,7 @@
 <template>
 	<div class="provider-settings">
 		<ul class="provider-list">
-			<NcListItem v-for="provider in providers" :key="provider.id" :name="provider.name" :details="active === provider.id ? t('Active') : ''" :force-actions="true" :actions-aria-label="t('Configure {provider}', { provider: provider.name })" @click="edit(provider)">
+			<NcListItem v-for="provider in providers" :key="provider.id" :name="provider.name" :details="providerDetails(provider)" :force-actions="true" :actions-aria-label="t('Configure {provider}', { provider: provider.name })" @click="edit(provider)">
 				<template #icon><NcIconSvgWrapper :path="provider.id === 'ollama' ? mdiServerOutline : mdiRobotOutline" :size="32" /></template>
 				<template #subname>{{ provider.model || t('Configure a model below') }}</template>
 				<template #actions><NcActionButton :close-after-click="true" :disabled="locked || saving" @click="edit(provider)">{{ t('Configure') }}</NcActionButton></template>
@@ -33,7 +33,7 @@
 				<NcNoteCard v-if="error" type="error">{{ error }}</NcNoteCard>
 				<div class="provider-editor__actions">
 					<NcButton type="button" variant="tertiary" :disabled="saving" @click="close">{{ t('Cancel') }}</NcButton>
-					<NcButton type="submit" variant="primary" :loading="saving" :disabled="saving || locked">{{ t('Save & use provider') }}</NcButton>
+					<NcButton type="submit" variant="primary" :loading="saving" :disabled="saving || locked">{{ submitLabel }}</NcButton>
 				</div>
 			</form>
 		</NcModal>
@@ -83,6 +83,13 @@ export default {
 			if (!rows.some(item => item.id === active.value)) rows.push({ id: active.value, name: active.value, url: settings.custom_provider_url, model: settings.custom_provider_model })
 			return rows
 		})
+		const providerDetails = provider => {
+			const settings = props.settings || props.status?.settings || {}
+			const roles = []
+			if (active.value === provider.id) roles.push(t('Chat'))
+			if (settings.generation_embedding_profile_id === provider.id) roles.push(t('File indexing'))
+			return roles.join(' · ')
+		}
 		const draft = ref(null)
 		const editing = ref(false)
 		const presetId = ref('openai')
@@ -93,6 +100,8 @@ export default {
 		const error = ref('')
 		const notice = ref('')
 		const builtin = computed(() => ['ollama', 'groq'].includes(draft.value?.id))
+		const selectForChat = computed(() => !editing.value || active.value === draft.value?.id)
+		const submitLabel = computed(() => selectForChat.value ? t('Save & use provider') : t('Save provider'))
 		const keySaved = computed(() => draft.value?.id === 'groq' ? props.status?.groq?.keyConfigured : props.status?.providerKeys?.[draft.value?.id] || (props.status?.customProvider?.providerId === draft.value?.id && props.status?.customProvider?.keyConfigured))
 		const mediaFields = [
 			{ key: 'image_model', label: t('Image model') }, { key: 'audio_model', label: t('Transcription model') },
@@ -129,7 +138,8 @@ export default {
 			if (embeddingDimension !== '' && (!/^\d+$/.test(embeddingDimension) || Number(embeddingDimension) < 1 || Number(embeddingDimension) > 16384)) { error.value = t('Vector dimensions must be between 1 and 16384.'); return }
 			saving.value = true; error.value = ''; notice.value = ''
 			try {
-				const payload = { chat_provider: row.id }
+				const payload = {}
+				if (selectForChat.value) payload.chat_provider = row.id
 				const selectedEmbeddingProfile = (props.settings || props.status?.settings)?.generation_embedding_profile_id || ''
 				if (useForGeneration.value) {
 					if (!embeddingModel || !embeddingDimension) { error.value = t('Set an embedding model and vector dimensions before selecting this profile.'); saving.value = false; return }
@@ -147,12 +157,12 @@ export default {
 				}
 				await api('PUT', 'settings', payload)
 				key.value = ''; draft.value = null
-				notice.value = t('Provider saved and selected.')
+				notice.value = selectForChat.value ? t('Provider saved and selected.') : t('Provider settings saved.')
 				emit('saved')
 			} catch (failure) { error.value = errMsg(failure) }
 			finally { saving.value = false }
 		}
-		return { mdiRobotOutline, mdiServerOutline, titleId, t, profiles, providers, active, presets, presetId, draft, editing, builtin, needsKey, useForGeneration, key, keySaved, saving, error, notice, mediaFields, add, edit, applyPreset, close, save }
+		return { mdiRobotOutline, mdiServerOutline, titleId, t, profiles, providers, providerDetails, active, presets, presetId, draft, editing, builtin, selectForChat, submitLabel, needsKey, useForGeneration, key, keySaved, saving, error, notice, mediaFields, add, edit, applyPreset, close, save }
 	},
 }
 </script>

@@ -12,9 +12,20 @@ provider does not migrate or rebuild the document index.
    accepts unauthenticated requests.
 5. Choose **Save & use provider**, then send a short chat to verify inference.
 
+Editing an existing inactive profile saves its configuration without changing
+the active chat provider. This lets you configure a dedicated embedding profile
+without redirecting chat. A newly added profile is still selected for chat when
+it is saved; you can switch chat back independently afterward.
+
 Store up to 20 compatible profiles, including multiple profiles for one service.
 Each has an independent encrypted key. Ollama and Groq are built-in providers;
 their IDs cannot be reused by custom profiles.
+
+An OpenAI-compatible profile may also define an exact `embedding_model` and
+`embedding_dimension`. In its **Document embeddings** section, opt it into
+automatic file indexing to send indexed file text to that endpoint. This choice
+is separate from the active chat provider; changing a chat model does not change
+the embedding destination.
 
 ## Templates and protocol
 
