@@ -14,8 +14,9 @@ provider does not migrate or rebuild the document index.
 
 Editing an existing inactive profile saves its configuration without changing
 the active chat provider. This lets you configure a dedicated embedding profile
-without redirecting chat. A newly added profile is still selected for chat when
-it is saved; you can switch chat back independently afterward.
+without redirecting chat. Its API key is stored against that exact profile ID,
+even while another provider remains active. A newly added profile is still
+selected for chat when it is saved; you can switch chat back independently afterward.
 
 Store up to 20 compatible profiles, including multiple profiles for one service.
 Each has an independent encrypted key. Ollama and Groq are built-in providers;

@@ -153,7 +153,10 @@ export default {
 					else { delete row.embedding_model; delete row.embedding_dimension }
 					const rows = profiles.value.filter(item => item.id !== row.id)
 					payload.provider_profiles = JSON.stringify([...rows, row])
-					if (key.value && needsKey.value) payload.custom_provider_api_key = key.value
+					if (key.value && needsKey.value) {
+						payload.custom_provider_id = row.id
+						payload.custom_provider_api_key = key.value
+					}
 				}
 				await api('PUT', 'settings', payload)
 				key.value = ''; draft.value = null
