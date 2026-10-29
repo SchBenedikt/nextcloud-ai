@@ -18,6 +18,14 @@
 				</div>
 			</NcSettingsSection>
 <NcSettingsSection id="settings-indexing" class="settings-section" :name="$t('Indexing & scope')" :description="$t('Define which files become part of EVA’s private knowledge base and how they are split for search.')">
+				<NcNoteCard v-if="status?.retrievalBackend" :type="status.retrievalBackend === 'sql_generation' ? 'success' : 'info'" class="retrieval-status">
+					<strong>{{ $t('Search status') }}</strong>
+					<p v-if="status.retrievalBackend === 'sql_generation'">{{ $t('EVA is searching the verified Nextcloud SQL generation. Indexing continues in the background; no external database is required.') }}</p>
+					<p v-else-if="status.retrievalBackend === 'qdrant_generation'">{{ $t('EVA is using the configured external vector service. Search automatically falls back to the built-in Nextcloud SQL index if the service or generation is unavailable.') }}</p>
+					<p v-else-if="status.retrievalBackend === 'unknown'">{{ $t('EVA could not confirm the active search path. Refresh the status before relying on it.') }}</p>
+					<p v-else>{{ $t('EVA is searching the built-in Nextcloud SQL index. The new generation becomes active after its background build is verified; the current index remains available as fallback.') }}</p>
+					<NcButton variant="tertiary-no-background" @click="loadIndexStatus">{{ $t('Refresh search status') }}</NcButton>
+				</NcNoteCard>
 
 				<div class="field-grid field-grid-three">
 					<div class="field">
@@ -118,11 +126,11 @@
 
 <script>
 import { inject } from 'vue'
-import { NcSettingsSection, NcButton, NcCheckboxRadioSwitch, NcTextField } from '@nextcloud/vue'
+import { NcSettingsSection, NcButton, NcCheckboxRadioSwitch, NcNoteCard, NcTextField } from '@nextcloud/vue'
 
 export default {
  name: 'KnowledgeSettings',
- components: { NcSettingsSection, NcButton, NcCheckboxRadioSwitch, NcTextField },
+ components: { NcSettingsSection, NcButton, NcCheckboxRadioSwitch, NcNoteCard, NcTextField },
  setup() { return inject('eva-settings') },
 }
 </script>

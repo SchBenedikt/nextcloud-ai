@@ -67,10 +67,13 @@ those checks.
 
 ## Index progress
 
-`GET /api/index/status` reads the user's indexing flags and timestamps. It keeps
-abandoned-worker recovery but does not initialize knowledge, count documents,
+`GET /api/index/status` reads the user's indexing flags, timestamps and effective
+retrieval route. Resolving the route uses bounded SQL generation metadata and
+indexed chunk counts only; it does not initialize knowledge, count documents,
 read chats, discover models or run OCR diagnostics. Documents uses this route
-instead of full system status too.
+instead of full system status too. Personal indexing settings show whether
+verified SQL-generation search, optional Qdrant search or the SQL fallback is
+currently selected, with an explicit refresh action.
 
 ## Chat resources
 

@@ -13,6 +13,7 @@ final class IndexStatusResponse {
         public readonly string $lastStarted,
         public readonly string $lastFinished,
         public readonly string $lastError,
+        public readonly string $retrievalBackend,
     ) {}
 
     public function toArray(): array {

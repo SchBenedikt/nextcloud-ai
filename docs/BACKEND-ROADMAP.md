@@ -207,6 +207,12 @@ for infrastructure concerns.
 | 13 | Paginated conversation history, preserved encryption and visible migration/recovery state only when necessary. Preserve the centered home composer/recent-chat width and no-scroll home behavior. |
 | 14 | Compact operational diagnostics and accessible loading/empty/error/disabled states across narrow screens and light/dark themes. Avoid raw backend errors, identifiers and secrets in personal settings. |
 
+Version 1.18.102 adds the effective retrieval route to the personal Files
+indexing settings and lightweight index-status response. It reports SQL
+generation, optional Qdrant generation, SQL fallback, or unknown when the
+metadata lookup fails; it never turns a failed lookup into a healthy status.
+This is route status, not a latency, quality, or live-provider health claim.
+
 The native admin landing page shows the SQL default and links to optional storage
 controls without repeating account totals, scheduler counts or vector status.
 The administrator-only storage page loads its status and account list only when

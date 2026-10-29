@@ -2,6 +2,11 @@
 
 ## [Unreleased]
 
+### Show the effective search path in personal indexing settings (1.18.102)
+
+- Report whether EVA currently searches the verified SQL generation, optional Qdrant generation or built-in SQL fallback.
+- Add a lightweight refresh action that does not contact an embedding or vector provider.
+
 ### Update SQL chat folders without loading messages (1.18.101)
 
 - Rename and delete folder assignments through bounded encrypted metadata pages and one SQL transaction.
