@@ -17,7 +17,7 @@ final class AccountCleanupRepository {
 
 	public function enqueue(string $userId, int $now): string {
 		if ($userId === '' || strlen($userId) > 4096) throw new \InvalidArgumentException('Invalid account cleanup owner.');
-		$owner = VectorOwnerFenceRepository::ownerHash($userId);
+		$owner = self::ownerHash($userId);
 		$encrypted = self::PREFIX . $this->crypto->encrypt($userId);
 		if (strlen($encrypted) > 8192) throw new \InvalidArgumentException('Encrypted account cleanup owner is oversized.');
 		$this->db->insertIgnoreConflict('eva_ai_account_cleanup', [
@@ -29,7 +29,7 @@ final class AccountCleanupRepository {
 	}
 
 	public function claimForUser(string $userId, int $now): ?array {
-		return $this->claim(VectorOwnerFenceRepository::ownerHash($userId), $now);
+		return $this->claim(self::ownerHash($userId), $now);
 	}
 
 	public function claimNext(int $now): ?array {
@@ -48,7 +48,7 @@ final class AccountCleanupRepository {
 			|| !is_string($claim['encrypted_user'] ?? null) || !str_starts_with($claim['encrypted_user'], self::PREFIX)
 			|| strlen($claim['encrypted_user']) > 8192) throw new \UnexpectedValueException('Invalid account cleanup record.');
 		$userId = $this->crypto->decrypt(substr($claim['encrypted_user'], strlen(self::PREFIX)));
-		if ($userId === '' || !hash_equals($claim['owner_hash'], VectorOwnerFenceRepository::ownerHash($userId))) {
+		if ($userId === '' || !hash_equals($claim['owner_hash'], self::ownerHash($userId))) {
 			throw new \UnexpectedValueException('Account cleanup owner authentication failed.');
 		}
 		return $userId;
@@ -119,5 +119,10 @@ final class AccountCleanupRepository {
 		$r = $q->executeQuery();
 		try { $row = $r->fetch(); } finally { $r->closeCursor(); }
 		return $row ?: null;
+	}
+
+	/** Keep erasure queue identifiers unlinkable from vector-owner fence hashes. */
+	private static function ownerHash(string $userId): string {
+		return hash('sha256', "eva_ai:account-cleanup:\0" . $userId);
 	}
 }
