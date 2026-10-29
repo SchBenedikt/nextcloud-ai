@@ -2,6 +2,12 @@
 
 ## [Unreleased]
 
+### Source metadata mutation recovery (1.18.18)
+
+- Serialize indexed-source metadata updates through the owner fence before locking source rows, preserving the build worker lock order.
+- Rewind eligible generation builds and revoke stale leases when an already indexed source changes; remove its prior generation chunks and manifest so verification only accepts the rebuilt source stamp.
+- Preserve explicit pause/cancel/failure states while keeping completed-document progress accurate.
+
 ### Late source ordering during generation builds (1.18.17)
 
 - Rewind a generation build when a late-committing source ID falls before its current in-flight document, even when it is still ahead of the last completed cursor.

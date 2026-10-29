@@ -146,9 +146,14 @@ class VectorSourceDeletion {
         if (count($ids) > 500) throw new \InvalidArgumentException('Source mutation requires bounded document batches.');
         sort($ids, SORT_NUMERIC);
         if ($ids === []) return $mutation();
-        return $this->outbox->transaction(function () use ($ids, $mutation): mixed {
+        $knownOwners=$this->documentOwners($ids);
+        sort($knownOwners,SORT_STRING);
+        return $this->outbox->transaction(function () use ($ids, $mutation, $knownOwners): mixed {
+            // Match build-worker lock order: owner fence before build state and source rows.
+            foreach($knownOwners as$user)$this->owners->lockOpen($user);
             $this->lockDocuments($ids);
             $before = $this->sourceMetadata($ids);
+            foreach($before as$metadata)if(!in_array($metadata['user_id'],$knownOwners,true))throw new VectorStoreException('source_identity_mismatch');
             $result = $mutation();
             $after = $this->sourceMetadata($ids);
             $changed = [];
@@ -160,11 +165,64 @@ class VectorSourceDeletion {
             // Old point IDs become terminal tombstones. A later backfill uses
             // fresh IDs and a new source stamp; legacy search stays available.
             if ($changed !== []) {
-                foreach(array_keys($owners)as$user)$this->invalidateOwnerVerification((string)$user);
+                foreach(array_keys($owners)as$user){
+                    $user=(string)$user;
+                    $this->invalidateOwnerVerification($user);
+                    $ownedIds=array_values(array_map('intval',array_filter($changed,static fn(int$id):bool=>($before[$id]['user_id']??null)===$user)));
+                    $this->rewindBuildsForChangedDocuments($user,$ownedIds);
+                }
                 $this->deleteDocuments($changed, false, true);
             }
             return $result;
         });
+    }
+
+    /** Revisit changed source stamps in every prepared build without resuming a user-paused build. */
+    private function rewindBuildsForChangedDocuments(string $userId,array $documentIds): void {
+        if($documentIds===[])return;
+        sort($documentIds,SORT_NUMERIC);$firstId=$documentIds[0];
+        $q=$this->db->getQueryBuilder();
+        $q->select('b.generation_id','b.status','b.after_document_id','b.document_id','b.documents_done')
+            ->from('eva_ai_vec_builds','b')
+            ->innerJoin('b','eva_ai_vec_generations','g',$q->expr()->eq('g.id','b.generation_id'))
+            ->where($q->expr()->eq('b.user_id',$q->createNamedParameter($userId)))
+            ->andWhere($q->expr()->eq('g.user_id',$q->createNamedParameter($userId)))
+            ->andWhere($q->expr()->eq('g.status',$q->createNamedParameter('building')))
+            ->andWhere($q->expr()->in('b.status',$q->createNamedParameter(['queued','running','paused','staged'],IQueryBuilder::PARAM_STR_ARRAY)));
+        $r=$q->executeQuery();try{$rows=$r->fetchAll();}finally{$r->closeCursor();}
+        foreach($rows as$row){
+            $currentDocument=(int)$row['document_id'];
+            $rewind=$firstId<=(int)$row['after_document_id']||($currentDocument>0&&$firstId<=$currentDocument);
+            $manifest=$this->db->getQueryBuilder();
+            $manifest->selectAlias($manifest->createFunction('COUNT(*)'),'total')->from('eva_ai_vec_build_docs')
+                ->where($manifest->expr()->eq('generation_id',$manifest->createNamedParameter($row['generation_id'])))
+                ->andWhere($manifest->expr()->eq('user_id',$manifest->createNamedParameter($userId)))
+                ->andWhere($manifest->expr()->in('document_id',$manifest->createNamedParameter($documentIds,IQueryBuilder::PARAM_INT_ARRAY)));
+            $mr=$manifest->executeQuery();try{$completed=(int)$mr->fetchOne();}finally{$mr->closeCursor();}
+            $remove=$this->db->getQueryBuilder();
+            $remove->delete('eva_ai_vec_build_docs')->where($remove->expr()->eq('generation_id',$remove->createNamedParameter($row['generation_id'])))
+                ->andWhere($remove->expr()->eq('user_id',$remove->createNamedParameter($userId)))
+                ->andWhere($remove->expr()->in('document_id',$remove->createNamedParameter($documentIds,IQueryBuilder::PARAM_INT_ARRAY)))->executeStatement();
+            if(!$rewind&&$completed===0)continue;
+            $status=in_array($row['status'],['running','staged'],true)?'queued':$row['status'];
+            $update=$this->db->getQueryBuilder();
+            $update->update('eva_ai_vec_builds')
+                ->set('documents_done',$update->createNamedParameter(max(0,(int)$row['documents_done']-$completed),IQueryBuilder::PARAM_INT))
+                ->set('revision',$update->func()->add('revision',$update->createNamedParameter(1,IQueryBuilder::PARAM_INT)))
+                ->set('updated_at',$update->createNamedParameter(time(),IQueryBuilder::PARAM_INT))
+                ->set('status',$update->createNamedParameter($status))
+                ->where($update->expr()->eq('user_id',$update->createNamedParameter($userId)))
+                ->andWhere($update->expr()->eq('generation_id',$update->createNamedParameter($row['generation_id'])));
+            if($rewind){
+                $update->set('after_document_id',$update->createNamedParameter(min((int)$row['after_document_id'],max(0,$firstId-1)),IQueryBuilder::PARAM_INT))
+                    ->set('document_id',$update->createNamedParameter(0,IQueryBuilder::PARAM_INT))
+                    ->set('chunk_cursor',$update->createNamedParameter(0,IQueryBuilder::PARAM_INT))
+                    ->set('plan_hash',$update->createNamedParameter(null,IQueryBuilder::PARAM_NULL))
+                    ->set('lease_token',$update->createNamedParameter(null,IQueryBuilder::PARAM_NULL))
+                    ->set('lease_until',$update->createNamedParameter(0,IQueryBuilder::PARAM_INT));
+            }
+            $update->executeStatement();
+        }
     }
 
     private function invalidateOwnerVerification(string $userId): void {

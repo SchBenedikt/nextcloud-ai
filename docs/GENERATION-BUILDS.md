@@ -117,8 +117,10 @@ late worker from recreating it. Legacy NULL-generation vectors remain intact.
 check local vectors, revisions, content hashes and source manifests. Qdrant
 verification additionally checks every remote point. New documents committed
 while a build is queued, running, paused or staged are added to its work range.
-In-place metadata changes behind the cursor, deleted-document manifest cleanup,
-and changes after a build is cancelled or failed still need reconciliation. The UI/API report
+Canonical in-place metadata mutations rewind eligible builds, discard the old
+manifest and generation chunks, and rebuild from the new source stamp. Deleted-
+document manifest cleanup and mutations after a build is cancelled or failed
+still need reconciliation. The UI/API report
 `retrieval_changed: false` until a later cutover.
 
 The read-only persisted verifier now consumes the tenant-scoped exact live-count
