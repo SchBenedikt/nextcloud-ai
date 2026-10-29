@@ -107,8 +107,28 @@ final class EncryptedChatRepository {
 		$chat['created'] = $record['created'];
 		$chat['updated'] = $record['updated'];
 		$chat['messages'] = $this->messages($userId, $chatId, 0, 1000);
-		if (count($chat['messages']) !== $record['count']) return null;
+		// Message rows are the source of truth. A stale cached count used to turn
+		// an otherwise readable conversation into a false 404, which also left a
+		// newly opened chat permanently disabled in the UI. Repair the metadata
+		// count in place and return every message we could decrypt. The app-level
+		// chat lock serializes this read against normal writes.
+		$actualCount = count($chat['messages']);
+		if ($actualCount !== $record['count']) {
+			$this->repairMessageCount($userId, $chatId, $actualCount);
+			$chat['messageCountRepaired'] = true;
+		}
 		return $chat;
+	}
+
+	private function repairMessageCount(string $userId, string $chatId, int $count): void {
+		$owner = hash('sha256', $userId);
+		$qb = $this->db->getQueryBuilder();
+		$qb->update('eva_ai_chats')
+			->set('message_count', $qb->createNamedParameter($count, IQueryBuilder::PARAM_INT))
+			->where($qb->expr()->eq('user_id', $qb->createNamedParameter($owner)))
+			->andWhere($qb->expr()->eq('chat_id', $qb->createNamedParameter($chatId)))
+			->andWhere($qb->expr()->neq('message_count', $qb->createNamedParameter($count, IQueryBuilder::PARAM_INT)))
+			->executeStatement();
 	}
 
 	/** Update encrypted conversation metadata without loading its messages. */

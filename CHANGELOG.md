@@ -2,6 +2,19 @@
 
 ## [Unreleased]
 
+### Recover chat reads and preserve image search results (1.20.33)
+
+- Repair stale SQL chat message counts from the encrypted message rows so readable chats do not become false 404s or leave the composer disabled.
+- Keep distinct images returned by image search even when the model already includes an image in its Markdown answer.
+- Report when chat history metadata was repaired during load.
+
+### Recover generation builds after source changes (1.20.31)
+
+- Defer a bounded generation build for five minutes when its canonical source hash is stale or temporarily blank during the regular reindex, allowing the ordinary indexer to refresh the SQL snapshot instead of repeatedly extracting the same file.
+- Resume the build immediately when the canonical source mutation commits, and rebuild only the affected document under the generation fence.
+- Bump the file-index provenance version so existing users reindex once with the current canonical extractor, even when file size and modification time are unchanged.
+- Preserve terminal failure states for provider, access, and destination errors that require administrator or user action.
+
 ### Preserve spreadsheet structure during indexing (1.20.30)
 
 - Treat only extractor-generated page, slide, sheet and speaker-note markers as structural boundaries; bracketed spreadsheet cell values stay together in their surrounding table text instead of producing thousands of tiny chunks.

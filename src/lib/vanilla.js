@@ -1578,6 +1578,9 @@ export function mountChat(root, opts = {}) {
 			confirmation: m.confirmation || null,
 			done: true,
 		}))
+		if (chat?.messageCountRepaired) {
+			showErr(t('The chat history was recovered and its message index repaired.'))
+		}
 		renderAll(messages)
 		return true
 	}

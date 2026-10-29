@@ -9,6 +9,7 @@ use OCP\IDBConnection;
 /** Owner -> generation -> build -> source lock order; never performs external I/O. */
 class GenerationBuildRepository {
     public const LEASE_SECONDS = 180;
+    private const SOURCE_REFRESH_RETRY_SECONDS = 300;
 
     public function __construct(private IDBConnection $db, private VectorOutboxRepository $outbox,
         private VectorOwnerFenceRepository $owners, private VectorGenerationRepository $generations) {}
@@ -92,7 +93,11 @@ class GenerationBuildRepository {
                 ->where($q->expr()->eq('g.status',$q->createNamedParameter('building')))
                 ->andWhere($q->expr()->eq('g.user_id','b.user_id'))
                 ->andWhere($q->expr()->eq('o.state',$q->createNamedParameter('open')))
-                ->andWhere($q->expr()->orX($q->expr()->eq('b.status',$q->createNamedParameter('queued')),
+                ->andWhere($q->expr()->orX(
+                    $q->expr()->andX($q->expr()->eq('b.status',$q->createNamedParameter('queued')),
+                        $q->expr()->orX($q->expr()->isNull('b.error_code'),
+                            $q->expr()->neq('b.error_code',$q->createNamedParameter('source_changed')),
+                            $q->expr()->lte('b.updated_at',$q->createNamedParameter($now-self::SOURCE_REFRESH_RETRY_SECONDS,IQueryBuilder::PARAM_INT)))),
                     $q->expr()->andX($q->expr()->eq('b.status',$q->createNamedParameter('running')),
                         $q->expr()->lte('b.lease_until',$q->createNamedParameter($now,IQueryBuilder::PARAM_INT)))))
                 ->orderBy('b.updated_at','ASC')->addOrderBy('b.generation_id','ASC')->setMaxResults(1);
@@ -168,6 +173,23 @@ class GenerationBuildRepository {
             ->andWhere($q->expr()->eq('status',$q->createNamedParameter('running')))
             ->andWhere($q->expr()->eq('lease_token',$q->createNamedParameter($claim['lease_token'])))
             ->andWhere($q->expr()->gt('lease_until',$q->createNamedParameter(time(),IQueryBuilder::PARAM_INT)))->executeStatement();
+    }
+
+    /** Defer a stale source until the normal indexer refreshes its SQL snapshot. */
+    public function deferChangedSource(array $claim): void {
+        $now=time();$q=$this->db->getQueryBuilder();
+        $q->update('eva_ai_vec_builds')->set('status',$q->createNamedParameter('queued'))
+            ->set('error_code',$q->createNamedParameter('source_changed'))
+            ->set('lease_token',$q->createNamedParameter(null,IQueryBuilder::PARAM_NULL))
+            ->set('lease_until',$q->createNamedParameter(0,IQueryBuilder::PARAM_INT))
+            ->set('updated_at',$q->createNamedParameter($now,IQueryBuilder::PARAM_INT))
+            ->set('revision',$q->func()->add('revision',$q->createNamedParameter(1,IQueryBuilder::PARAM_INT)))
+            ->where($q->expr()->eq('user_id',$q->createNamedParameter($claim['user_id'])))
+            ->andWhere($q->expr()->eq('generation_id',$q->createNamedParameter($claim['generation_id'])))
+            ->andWhere($q->expr()->eq('status',$q->createNamedParameter('running')))
+            ->andWhere($q->expr()->eq('lease_token',$q->createNamedParameter($claim['lease_token'])))
+            ->andWhere($q->expr()->gt('lease_until',$q->createNamedParameter($now,IQueryBuilder::PARAM_INT)))
+            ->executeStatement();
     }
 
     public function nextDocument(array $claim): ?int {

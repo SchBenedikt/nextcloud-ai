@@ -104,6 +104,16 @@ that it is idle, the worker returns its lease to the queue and resumes on a
 later cron tick. This keeps generation embeddings and OCR behind interactive
 chat requests without discarding completed chunks.
 
+If a canonical source hash is stale or temporarily blank during extraction,
+embedding, or publication, the worker releases its lease and defers that source
+for five minutes rather than repeatedly extracting the same stale snapshot. The normal
+indexer refreshes the authoritative SQL source metadata; its mutation clears
+the delay and the plan hash replaces only that document's obsolete partial
+chunks. The file-index provenance version changes with canonical extraction
+semantics, so existing users receive one bounded reindex even when VFS size and
+mtime did not change. Provider, access, and destination failures retain their
+actionable failed state.
+
 Chunk boundaries recognize only extractor-owned page, slide, sheet and speaker
 note markers plus Markdown headings. Arbitrary bracketed text remains document
 content; this matters for spreadsheets whose cells often contain values like

@@ -17,7 +17,8 @@ class GenerationBuildWorker {
     /** One lease, at most 256 chunks / 16 sources and a 90-second work budget. */
     public function run(): array {
         $claim=$this->builds->claim(time());
-        $stats=['claimed'=>$claim!==null,'chunks'=>0,'documents'=>0,'staged'=>false,'deferred_for_chat'=>false,'error'=>null];
+        $stats=['claimed'=>$claim!==null,'chunks'=>0,'documents'=>0,'staged'=>false,'deferred_for_chat'=>false,
+            'deferred_for_source_refresh'=>false,'error'=>null];
         if ($claim===null) return $stats;
         $previous=$this->config->userId();$deadline=microtime(true)+90;
         try {
@@ -108,8 +109,17 @@ class GenerationBuildWorker {
             // Repeating a source that consumes every tick without progress
             // would waste background capacity indefinitely. Require attention.
             if ($reason==='build_budget' && $stats['chunks']===0 && $stats['documents']===0) $reason='source_extraction_failed';
-            $stats['error']=$reason;
-            $this->builds->release($claim,in_array($reason,['build_budget','build_disabled','stale_build_lease'],true)?null:$reason);
+            if (in_array($reason,['source_changed','invalid_source_snapshot'],true)) {
+                // The canonical file or its SQL snapshot changed. Wait for the
+                // ordinary indexer to refresh its SQL stamp instead of spinning
+                // on the same stale source. A canonical source mutation clears
+                // this delay; otherwise a five-minute retry remains available.
+                $this->builds->deferChangedSource($claim);
+                $stats['deferred_for_source_refresh']=true;
+            } else {
+                $stats['error']=$reason;
+                $this->builds->release($claim,in_array($reason,['build_budget','build_disabled','stale_build_lease'],true)?null:$reason);
+            }
         } finally { $this->config->setUserId($previous); }
         return $stats;
     }
