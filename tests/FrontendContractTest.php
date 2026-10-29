@@ -31,6 +31,17 @@ final class FrontendContractTest extends TestCase {
         self::assertStringNotContainsString('class="briefing-toggle"', $settings);
     }
 
+    public function testPersonalSettingsKeepTheirRoutesInTheFocusedController(): void {
+        $routes = (string)file_get_contents(__DIR__ . '/../appinfo/routes.php');
+        $apiController = (string)file_get_contents(__DIR__ . '/../lib/Controller/ApiController.php');
+        $settingsController = (string)file_get_contents(__DIR__ . '/../lib/Controller/SettingsController.php');
+        self::assertStringContainsString("settings#settings', 'url' => '/api/settings', 'verb' => 'GET'", $routes);
+        self::assertStringContainsString("settings#saveSettings', 'url' => '/api/settings', 'verb' => 'PUT'", $routes);
+        self::assertStringContainsString('public function settings(): DataResponse', $settingsController);
+        self::assertStringContainsString('public function saveSettings(): DataResponse', $settingsController);
+        self::assertStringNotContainsString('public function saveSettings(): DataResponse', $apiController);
+    }
+
     public function testDocumentChunkViewKeepsLoadingErrorsAndRetriesVisible(): void {
         $source = (string)file_get_contents(__DIR__ . '/../src/views/DocumentsView.vue');
         self::assertStringContainsString('data?.data?.chunks', $source);
