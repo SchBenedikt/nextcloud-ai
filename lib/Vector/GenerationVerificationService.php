@@ -14,11 +14,12 @@ class GenerationVerificationService {
         $generation=$this->generations->find($user,$id)??throw new VectorStoreException('generation_missing');
         $build=$this->builds->find($user,$id);$target=$this->generations->target($user,$id);$row=$this->verifications->find($user,$id);
         $verified=$row!==null&&$row['status']==='verified'&&$this->verifications->certificateCurrent($user,$id);
+        $serving=$this->generations->activeGenerationId($user)===$id&&$this->generations->activeSqlForUser($user)?->id===$id;
         $state=$row===null?['status'=>'not_started','phase'=>'points','expected_count'=>0,'checked_count'=>0,'sample_count'=>0,
             'remote_count'=>null,'heartbeat_at'=>0,'error_code'=>null]:array_intersect_key($row,array_flip(['status','phase','expected_count','checked_count','sample_count','remote_count','heartbeat_at','error_code']));
         if($row!==null&&$row['status']==='verified'&&!$verified)$state['status']='stale';
         return $state+['backend'=>$generation->backend,'can_start'=>$build!==null&&$build['status']==='staged'&&$target!==null&&$this->builds->available($user,$id,$target),
-            'verified'=>$verified,'retrieval_changed'=>false];
+            'verified'=>$verified,'retrieval_changed'=>false,'active'=>$serving,'retrieval_backend'=>$serving?'sql_generation':'sql_legacy'];
     }
 
     public function control(string $user,string $id,string $operation): array {

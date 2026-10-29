@@ -7,6 +7,8 @@ namespace OCA\EvaAi\Service;
 use OCA\EvaAi\Db\ChunkMapper;
 use OCA\EvaAi\Db\DocumentMapper;
 use OCA\EvaAi\Db\Chunk;
+use OCA\EvaAi\Db\VectorGenerationRepository;
+use OCA\EvaAi\Vector\{GenerationEmbeddingProvider,VectorGeneration,VectorStoreException};
 use Psr\Log\LoggerInterface;
 
 class Searcher {
@@ -20,7 +22,9 @@ class Searcher {
         private ChunkMapper $chunkMapper,
         private DocumentMapper $documentMapper,
         private AppConfig $config,
-        private ?LoggerInterface $logger = null
+        private ?LoggerInterface $logger = null,
+        private ?VectorGenerationRepository $generations = null,
+        private ?GenerationEmbeddingProvider $generationEmbeddings = null
     ) {
     }
 
@@ -85,11 +89,24 @@ class Searcher {
         if (trim($query) === '') {
             return [];
         }
+        $generation = null;
+        if ($fixedVector === null && $this->generations !== null && $this->generationEmbeddings !== null) {
+            try { $generation = $this->generations->activeSqlForUser($userId); }
+            catch (\Throwable) { /* Missing or unavailable generation metadata keeps legacy retrieval available. */ }
+        }
+        $generationId = $generation?->id;
         // Single count check: skip the embedding call entirely when the user
         // has no indexed documents. This avoids a blocking 2-30 second
         // HTTP round-trip to Ollama for a query that can never return results.
         $phase = $this->startStage($measurements, 'count_ms');
-        $chunkCount = $this->chunkMapper->countForUser($userId);
+        $chunkCount = $this->chunkMapper->countForUser($userId,$generationId);
+        if ($generationId !== null && $chunkCount === 0 && $this->chunkMapper->countForUser($userId) > 0) {
+            // A malformed or incomplete active snapshot must not hide the still-current legacy index.
+            $generation = null;
+            $generationId = null;
+            $chunkCount = $this->chunkMapper->countForUser($userId);
+        }
+        $measurements['backend'] = $generationId === null ? 'sql_legacy' : 'sql_generation';
         $measurements['count_ms'] = (hrtime(true) - $phase) / 1_000_000;
         $measurements['index_chunks'] = $chunkCount;
         if ($chunkCount === 0) return [];
@@ -102,20 +119,39 @@ class Searcher {
         // explicitly selected a cloud embedding model as well.
         $phase = $this->startStage($measurements, 'embedding_ms');
         $chatModel = strtolower(trim($this->config->get('chat_model')));
-        $embeddingModel = strtolower(trim($this->config->get('embedding_model')));
+        $embeddingModel = strtolower(trim($generation?->embeddingModel ?? $this->config->get('embedding_model')));
         $cloudChatWithLocalEmbedding = $this->config->userId() !== null
             && $this->config->get('chat_provider') === 'ollama'
             && str_ends_with($chatModel, ':cloud')
             && !str_ends_with($embeddingModel, ':cloud');
         $queryVector = $fixedVector;
-        if ($queryVector === null && !$cloudChatWithLocalEmbedding) {
+        if ($queryVector === null && $generation !== null && !$cloudChatWithLocalEmbedding) {
+            try {
+                $guard = function () use ($userId,$generation): void {
+                    if (!$this->isActiveGenerationCurrent($userId,$generation->id)) throw new VectorStoreException('generation_not_active');
+                };
+                $queryVector = $this->generationEmbeddings?->embed($generation,[$query],$guard,true,30)[0] ?? null;
+            } catch (\Throwable) { $queryVector = null; }
+        }
+        if ($generation !== null && !$this->isActiveGenerationCurrent($userId,$generation->id)) {
+            $generation = null;
+            $generationId = null;
+            $measurements['backend'] = 'sql_legacy';
+            $chunkCount = $this->chunkMapper->countForUser($userId);
+            $queryVector = $fixedVector;
+            $embeddingModel = strtolower(trim($this->config->get('embedding_model')));
+            $cloudChatWithLocalEmbedding = $this->config->userId() !== null
+                && $this->config->get('chat_provider') === 'ollama' && str_ends_with($chatModel, ':cloud')
+                && !str_ends_with($embeddingModel, ':cloud');
+        }
+        if ($queryVector === null && $generation === null && !$cloudChatWithLocalEmbedding) {
             [$queryVec, $err] = $this->ollama->embedQuery([$query], $userId);
             $queryVector = $err === null && is_array($queryVec) && isset($queryVec[0]) ? $queryVec[0] : null;
         }
         $measurements['embedding_ms'] = (hrtime(true) - $phase) / 1_000_000;
         $measurements['dense_enabled'] = $queryVector !== null;
         $phase = $this->startStage($measurements, 'candidates_ms');
-        $rows = $this->loadCandidates($userId, $query, $queryVector);
+        $rows = $this->loadCandidates($userId, $query, $queryVector, $generationId);
         $measurements['candidates_ms'] = (hrtime(true) - $phase) / 1_000_000;
         $measurements['candidates'] = count($rows);
 
@@ -334,17 +370,17 @@ class Searcher {
      *        embedding request failed (dense ranking is then skipped).
      * @return array<int,array<string,mixed>>
      */
-    private function loadCandidates(string $userId, string $query, ?array $queryVector): array {
-        $n = $this->chunkMapper->countForUser($userId);
+    private function loadCandidates(string $userId, string $query, ?array $queryVector, ?string $generationId = null): array {
+        $n = $this->chunkMapper->countForUser($userId,$generationId);
         if ($n <= self::POOL) {
-            return $this->chunkMapper->chunksForUser($userId);
+            return $this->chunkMapper->chunksForUser($userId,self::POOL,$generationId);
         }
 
         $tokens = $this->tokens($query);
 
         // Lexical set: bounded prefilter (up to half the pool).
         $lexCap = (int)ceil(self::POOL / 2);
-        $lexical = $tokens === [] ? [] : $this->chunkMapper->filterChunksByTokens($userId, $tokens, $lexCap);
+        $lexical = $tokens === [] ? [] : $this->chunkMapper->filterChunksByTokens($userId, $tokens, $lexCap, null, $generationId);
 
         $denseCap = min(self::POOL - count($lexical), $n);
         $denseCap = max(1, $denseCap);
@@ -356,7 +392,7 @@ class Searcher {
                 $best = [];
                 $keep = $denseCap + self::DENSE_SCAN_PAGE;
                 for ($offset = 0; $offset < $n; $offset += self::DENSE_SCAN_PAGE) {
-                    $page = $this->chunkMapper->chunksForUserPage($userId, self::DENSE_SCAN_PAGE, $offset);
+                    $page = $this->chunkMapper->chunksForUserPage($userId, self::DENSE_SCAN_PAGE, $offset, $generationId);
                     foreach ($page as $row) {
                         $vec = json_decode($row['embedding'], true);
                         if (!is_array($vec)) {
@@ -376,18 +412,18 @@ class Searcher {
                     arsort($best);
                     $bestIds = array_keys(array_slice($best, 0, $denseCap, true));
                     foreach (array_chunk($bestIds, 1000) as $idBatch) {
-                        foreach ($this->chunkMapper->findChunksByIds($idBatch) as $row) {
+                        foreach ($this->chunkMapper->findChunksByIds($idBatch,$generationId) as $row) {
                             $denseRows[] = $row;
                         }
                     }
                 }
             } else {
-                $denseRows = $this->chunkMapper->chunksForUser($userId);
+                $denseRows = $this->chunkMapper->chunksForUser($userId,self::POOL,$generationId);
             }
         } elseif ($denseCap > 0) {
             // Embedding request failed: keep a deterministic bounded page so
             // retrieval still returns candidates instead of an empty result.
-            $denseRows = $this->chunkMapper->chunksForUserPage($userId, $denseCap, 0);
+            $denseRows = $this->chunkMapper->chunksForUserPage($userId, $denseCap, 0, $generationId);
         }
 
         // Merge + dedupe by chunk id.
@@ -401,6 +437,11 @@ class Searcher {
             }
         }
         return array_values(array_slice($byId, 0, self::POOL));
+    }
+
+    private function isActiveGenerationCurrent(string $userId,string $generationId): bool {
+        try { return $this->generations?->activeSqlForUser($userId)?->id === $generationId; }
+        catch (\Throwable) { return false; }
     }
 
     /** @return string[] */

@@ -1,6 +1,6 @@
 # EVA indexing architecture decision
 
-**Status:** accepted product direction; implementation and cutover are pending.
+**Status:** accepted product direction; first guarded SQL generation cutover implemented, scale and release gates remain open.
 **Decision date:** 29 October 2026.
 **Source:** user direction following review of `reports/eva-backend-analysis.pdf`.
 
@@ -52,49 +52,55 @@ portability path; optional ANN storage is the scale path.
 ## Current implementation gap
 
 The current tree has durable generation metadata, a bounded build,
-verification and an explicit shadow probe. Normal indexing still writes the
-legacy chunks and search still reads them. When a user has explicitly enrolled
-in indexing, a successful embedding batch now schedules a matching internal
-SQL generation build in the background. Once staged, the recurring worker
-queues its bounded local verification automatically and recovers a missed
-handoff. It does not delay the index response or send content to Qdrant.
-Specifically:
+verification, an explicit shadow probe and a guarded SQL retrieval path for
+enrolled users. Normal indexing continues writing legacy chunks while the new
+generation backfill and source mutations run in the background. These jobs do
+not delay the index response or send content to Qdrant. Specifically:
 
 - `VectorGeneration` accepts `sql` and `qdrant`; SQL generations bind to a
   deterministic local target and write directly to Nextcloud SQL.
 - SQL builds do not create Qdrant point-delivery events. Their verifier checks
   local vector shape, revisions, content hashes and source manifests. Qdrant
   generations retain remote reconciliation and explicit transfer consent.
-- Normal indexing still writes legacy chunks; chat search still reads only
-  those rows. The automatic SQL build is a separate, asynchronous backfill and
-  does not yet change retrieval or activate a generation.
+- Normal indexing continues writing legacy chunks while an enrolled user's
+  generation is built and maintained asynchronously. After complete
+  verification, a recurring worker activates a current SQL generation under
+  the owner fence. Search reads that generation using its pinned embedding
+  model. Missing metadata, an empty generation with legacy content, or pending
+  source mutations makes search fall back to legacy SQL. Legacy data remains
+  available for recovery.
 - Automatic bootstrap requires explicit personal indexing enrollment and an
   exact model reported by a successful uncached embedding request. Cache-only
   batches do not guess model provenance. SQL is the only backend selected by
   this bootstrap path.
 - SQL verification is queued for enrolled users after a staged build. Failed
-  or cancelled verification remains explicit; successful verification still
-  does not activate the generation or alter retrieval.
+  or cancelled verification remains explicit. A current successful
+  verification can activate the SQL generation automatically; this path does
+  not activate Qdrant generations.
 - Canonical creates and metadata changes now write coalesced mutation intent
   for an active generation in the same SQL transaction. Deletes cancel pending
   upserts. A bounded background worker re-embeds with the generation's pinned
   model, checkpoints long sources, and retries transient failures. It leaves a
-  changed document pending until all its chunks are written, so a future
-  generation reader can omit partial content. Primary reads still need a
-  guarded activation and fallback path.
-- There is no guarded generation activation path or production shadow sampling.
-- `VectorStorageStatus` reports `sql_legacy`; the interface must stay truthful
-  until SQL generation writes and search are actually wired into normal use.
+  changed document pending until all its chunks are written. Generation reads
+  omit incomplete content and switch to legacy SQL until the mutation completes.
+- Guarded activation and generation-aware SQL reads now serve explicitly
+  enrolled users. The old generation is retired atomically while its rows
+  remain available for recovery.
+- SQL generation reads still deserialize JSON vectors and perform PHP cosine
+  ranking, including full-index scans on large indexes. No representative
+  load/quality, cross-database activation, shadow soak or rollback drill has
+  established production readiness.
 
-Therefore, the new path is the accepted target architecture, not a claim about
-current runtime behavior.
+Therefore, this is the current enrolled-user cutover path, not evidence that
+scale, cross-database portability or production release gates have passed.
 
 ## Delivery sequence
 
 See [BACKEND-ROADMAP.md](BACKEND-ROADMAP.md), stages 06–12. The dependency
 order is: SQL-capable generation identity, storage, build and verification;
 default background indexing and mutation journal; resumable migration and
-verification; safe activation and shadow evidence; then optional Qdrant
+verification; guarded SQL activation and retrieval (implemented for enrolled
+users); then performance improvements, shadow evidence, optional Qdrant
 acceleration and hybrid retrieval. Each cutover slice must include its matching native settings/status
 surface, focused validation, recovery notes and a stacked reviewable PR.
 

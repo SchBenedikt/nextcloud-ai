@@ -9,7 +9,8 @@ use OCA\EvaAi\Db\VectorOutboxRepository;
 /** Offline, secret-free snapshot shared by both administration surfaces. */
 class VectorStorageStatus {
     public function __construct(private QdrantConnection $connection, private VectorOutboxRepository $outbox,
-        private \OCA\EvaAi\Db\GenerationChunkRepository $chunks) {}
+        private \OCA\EvaAi\Db\GenerationChunkRepository $chunks,
+        private \OCA\EvaAi\Db\VectorGenerationRepository $generations) {}
 
     public function snapshot(): array {
         try {
@@ -19,7 +20,9 @@ class VectorStorageStatus {
             foreach ($this->outbox->stats(true) as $row) {
                 if (array_key_exists($row['state'], $queue)) $queue[$row['state']] = max(0, (int)$row['events']);
             }
-            return ['available' => true, 'retrieval_backend' => 'sql_legacy',
+            $activeSqlGenerations=$this->generations->activeSqlCount();
+            return ['available' => true, 'retrieval_backend' => $activeSqlGenerations > 0 ? 'sql_generation' : 'sql_legacy',
+                'active_sql_accounts' => $activeSqlGenerations,
                 'connection' => $connection, 'erasure_worker_enabled' => $workerEnabled,
                 'chunk_sync_available' => true, 'points_requested' => $this->outbox->pointDeliveryRequested(),
                 'point_worker_enabled' => $this->outbox->pointsEnabled(), 'staged_chunks' => $this->chunks->countStaged(), 'queue' => $queue, 'observed_at' => time()];
