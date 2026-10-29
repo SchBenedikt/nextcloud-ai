@@ -2,6 +2,11 @@
 
 ## [Unreleased]
 
+### Prepare chat regeneration from one SQL conversation (1.18.99)
+
+- Validate the selected user message and revision, then persist its regeneration marker without loading other conversations or message bodies.
+- Keep the marker encrypted and atomically update the conversation revision under its per-chat lock.
+
 ### Keep optional server settings out of the normal admin view (1.18.98)
 
 - Present built-in Nextcloud SQL and the optional vector-storage link first.

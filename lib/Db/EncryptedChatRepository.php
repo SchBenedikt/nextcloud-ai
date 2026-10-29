@@ -199,6 +199,63 @@ final class EncryptedChatRepository {
 		}
 	}
 
+	/** Mark one encrypted conversation for regeneration without loading account history. */
+	public function beginRegenerate(string $userId, string $chatId, int $messageIndex, ?string $newText, ?int $expectedRev): array {
+		$owner = hash('sha256', $userId);
+		$this->db->beginTransaction();
+		try {
+			$record = $this->metadata($userId, $chatId);
+			if ($record === null) {
+				$this->db->commit();
+				return ['ok' => false, 'error' => 'not_found'];
+			}
+			$qb = $this->db->getQueryBuilder();
+			$qb->select('encrypted_message')->from('eva_ai_chat_messages')
+				->where($qb->expr()->eq('user_id', $qb->createNamedParameter($owner)))
+				->andWhere($qb->expr()->eq('chat_id', $qb->createNamedParameter($chatId)))
+				->andWhere($qb->expr()->eq('message_index', $qb->createNamedParameter($messageIndex, IQueryBuilder::PARAM_INT)));
+			$result = $qb->executeQuery();
+			try { $raw = $result->fetchOne(); } finally { $result->closeCursor(); }
+			$message = is_string($raw) ? $this->open($raw) : [];
+			$currentRev = (int)($record['metadata']['rev'] ?? 0);
+			$validTarget = $messageIndex >= 0 && $messageIndex < $record['count']
+				&& ($message['role'] ?? '') === 'user'
+				&& ($newText === null || trim($newText) !== '')
+				&& ($newText !== null || trim((string)($message['text'] ?? '')) !== '');
+			if (!$validTarget) {
+				$this->db->commit();
+				return ['ok' => false, 'error' => 'invalid'];
+			}
+			$pending = $record['metadata']['regenerate'] ?? null;
+			if (is_array($pending)) {
+				if ($expectedRev === null || ((int)($pending['baseRev'] ?? -1) !== $expectedRev && $currentRev !== $expectedRev)) {
+					$this->db->commit();
+					return ['ok' => false, 'error' => 'conflict'];
+				}
+			} elseif ($expectedRev !== null && $currentRev !== $expectedRev) {
+				$this->db->commit();
+				return ['ok' => false, 'error' => 'conflict'];
+			}
+			$rev = $currentRev + 1;
+			$baseRev = is_array($pending) ? (int)($pending['baseRev'] ?? $currentRev) : $currentRev;
+			$metadata = $record['metadata'];
+			$metadata['regenerate'] = ['messageIndex' => $messageIndex, 'newText' => $newText, 'rev' => $rev, 'baseRev' => $baseRev];
+			$metadata['rev'] = $rev;
+			$metadata['updated'] = time();
+			$update = $this->db->getQueryBuilder();
+			$update->update('eva_ai_chats')->set('updated_at', $update->createNamedParameter($metadata['updated'], IQueryBuilder::PARAM_INT))
+				->set('encrypted_metadata', $update->createNamedParameter($this->seal($metadata)))
+				->where($update->expr()->eq('user_id', $update->createNamedParameter($owner)))
+				->andWhere($update->expr()->eq('chat_id', $update->createNamedParameter($chatId)))->executeStatement();
+			$this->db->commit();
+			return ['ok' => true, 'rev' => $rev, 'messageIndex' => $messageIndex,
+				'targetText' => $newText ?? (string)($message['text'] ?? '')];
+		} catch (\Throwable $e) {
+			$this->db->rollBack();
+			throw $e;
+		}
+	}
+
 	/** @return list<array{id:string,created:int,updated:int,count:int,metadata:array}> */
 	public function metadataPage(string $userId, int $limit = 50, ?int $beforeUpdated = null, ?string $beforeChatId = null, bool $emptyOnly = false): array {
 		$limit = min(101, max(1, $limit));
