@@ -7,6 +7,7 @@ namespace OCA\EvaAi\Db;
 use OCA\EvaAi\Dto\PreparedVectorChunk;
 use OCA\EvaAi\Vector\VectorDocumentSnapshot;
 use OCA\EvaAi\Vector\VectorGeneration;
+use OCA\EvaAi\Vector\VectorEmbeddingCodec;
 use OCA\EvaAi\Vector\VectorStoreException;
 use OCA\EvaAi\Vector\SearchFilters;
 use OCA\EvaAi\Vector\VectorNorm;
@@ -116,8 +117,11 @@ class GenerationChunkRepository {
         VectorDocumentSnapshot $snapshot, PreparedVectorChunk $chunk, string $expectedStatus): array {
         if ($snapshot->userId !== $generation->userId || preg_match('/^[a-f0-9]{64}$/D', $target) !== 1) throw new VectorStoreException('source_identity_mismatch');
         $chunk->validate($generation);
-        $embedding = json_encode(array_map('floatval', $chunk->vector), JSON_THROW_ON_ERROR);
-        $vectorNorm = VectorNorm::fromJson($embedding);
+        $isSql = $generation->backend === 'sql';
+        $embedding = $isSql
+            ? VectorEmbeddingCodec::encode($chunk->vector)
+            : json_encode(array_map('floatval', $chunk->vector), JSON_THROW_ON_ERROR);
+        $vectorNorm = VectorNorm::of($chunk->vector);
         if ($vectorNorm === null) throw new VectorStoreException('invalid_sql_vector');
         $hash = hash('sha256', $chunk->content);
         $provenance = json_encode($chunk->provenance + ['_eva_vector' => ['version' => 1,
@@ -125,7 +129,7 @@ class GenerationChunkRepository {
             'chunk_overlap' => $generation->chunkOverlap]], JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE);
         if (strlen($embedding) > 524288 || strlen($provenance) > 4096) throw new VectorStoreException('chunk_too_large');
 
-        return $this->outbox->transaction(function () use ($generation, $target, $snapshot, $chunk, $embedding, $vectorNorm, $hash, $provenance, $expectedStatus): array {
+        return $this->outbox->transaction(function () use ($generation, $target, $snapshot, $chunk, $embedding, $vectorNorm, $hash, $provenance, $expectedStatus, $isSql): array {
             $this->owners->lockOpen($generation->userId);
             $this->lockGenerationStatus($generation, $target, $expectedStatus);
             // Lock source before checking the stamp. Normal metadata updates and
@@ -148,7 +152,6 @@ class GenerationChunkRepository {
                 if ($revision < 1 || $revision > 9007199254740991) throw new VectorStoreException('invalid_revision');
                 return ['id' => (int)$row['id'], 'revision' => $revision, 'changed' => false];
             }
-            $isSql = $generation->backend === 'sql';
             $revision = null;
             if ($isSql) {
                 $previousRevision = (int)($row['vector_revision'] ?? 0);
@@ -187,7 +190,7 @@ class GenerationChunkRepository {
 
     /** Owned and source-current payload for a later point worker; no HTTP here. */
     public function pointForDelivery(VectorGeneration $generation, int $id, int $revision): ?array {
-        if ($id < 1 || $revision < 1 || $revision > 9007199254740991) throw new VectorStoreException('invalid_revision');
+        if ($generation->backend !== 'qdrant' || $id < 1 || $revision < 1 || $revision > 9007199254740991) throw new VectorStoreException('invalid_revision');
         $qb = $this->db->getQueryBuilder();
         $qb->select('c.id', 'c.document_id', 'c.chunk_index', 'c.content', 'c.embedding', 'c.provenance', 'c.content_hash',
             'd.user_id', 'd.file_id', 'd.path', 'd.name', 'd.source', 'd.file_mtime', 'd.size', 'd.mime')
@@ -231,6 +234,7 @@ class GenerationChunkRepository {
     /** Bounded exact SQL dense ranking used only by the explicit shadow probe. */
     public function shadowDenseRanking(VectorGeneration $generation,array $vector,SearchFilters $filters,int $topK,
         int $maxRows=20000,float $budgetSeconds=3.0): array {
+        if($generation->backend!=='qdrant')throw new VectorStoreException('invalid_shadow_generation');
         $generation->validateVector($vector);
         if($topK<1||$topK>20||$maxRows<1||$maxRows>20000||$budgetSeconds<=0||$budgetSeconds>5)throw new VectorStoreException('invalid_shadow_budget');
         $queryNorm=VectorNorm::of($vector);

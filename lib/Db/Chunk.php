@@ -58,7 +58,7 @@ class Chunk extends Entity {
     }
 
     public function getEmbeddingArray(): array {
-        return json_decode((string)$this->embedding, true) ?? [];
+        return \OCA\EvaAi\Vector\VectorEmbeddingCodec::decode((string)$this->embedding) ?? [];
     }
 
     public function setEmbeddingArray(array $vector): void {
