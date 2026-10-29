@@ -213,6 +213,12 @@ generation, optional Qdrant generation, SQL fallback, or unknown when the
 metadata lookup fails; it never turns a failed lookup into a healthy status.
 This is route status, not a latency, quality, or live-provider health claim.
 
+Version 1.18.103 makes provider setting patches reconcile against the server's
+returned values before the provider editor reports success. Confirmed values
+update the shared Settings form without discarding unrelated unsaved edits. This
+improves save-state accuracy; it is not a substitute for an authenticated UI
+save/switch check on an installed Nextcloud instance.
+
 The native admin landing page shows the SQL default and links to optional storage
 controls without repeating account totals, scheduler counts or vector status.
 The administrator-only storage page loads its status and account list only when

@@ -2,6 +2,11 @@
 
 ## [Unreleased]
 
+### Confirm provider settings against the server (1.18.103)
+
+- Confirm provider actions against the saved settings response before showing success.
+- Update the shared settings form from confirmed values without discarding unrelated edits.
+
 ### Show the effective search path in personal indexing settings (1.18.102)
 
 - Report whether EVA currently searches the verified SQL generation, optional Qdrant generation or built-in SQL fallback.
