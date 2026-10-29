@@ -79,10 +79,14 @@ indexing pass.
 
 ### Which formats are indexed?
 
-Text, Markdown, code, CSV/TSV, HTML, JSON, XML, YAML, TOML, RTF, SQL, PDF,
-Office (docx/xlsx/pptx incl. macro/template variants), OpenDocument
-(odt/ods/odp), EPUB and more. Full-content extraction of all Office formats is
-tracked in issues #60 and #66.
+Text, Markdown, source code, CSV/TSV, HTML, JSON, XML, YAML, TOML, RTF, SQL,
+mailboxes and Jupyter notebooks are read directly. PDF text is extracted with
+Poppler when available; sparse or scanned pages can use local OCR. DOCX/XLSX/
+PPTX, macro-enabled Office variants, OpenDocument files and EPUB are parsed
+without executing embedded content. Legacy DOC/XLS/PPT need LibreOffice for
+conversion. Image OCR supports common raster formats when local OCR is enabled;
+HEIC/HEIF/AVIF additionally need a matching ImageMagick codec. Unsupported
+formats are skipped rather than sent to an external conversion service.
 
 ---
 

@@ -20,12 +20,12 @@ class RagService {
     /**
      * How many model/tool rounds one question may use.
      *
-     * A single answer often needs more than one step: a search, a refined
-     * search, reading a page, then a lookup in the user's files. Four rounds was
-     * low enough that a question needing a second search ran out of budget and
-     * returned nothing at all.
+     * A single answer can need several steps, but a high ceiling lets a model
+     * spend most of the request in repeated tool calls before writing anything.
+     * Six default rounds leave room for research while keeping simple chats
+     * responsive; the configured cap is enforced below as well.
      */
-    private const MAX_TOOL_ROUNDS = 16;
+    private const MAX_TOOL_ROUNDS = 6;
     private const MAX_IDENTICAL_TOOL_CALLS = 2;
 
     /**

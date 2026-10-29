@@ -22,7 +22,7 @@ export function createSettingsDefaults() {
 		terminal_command_any: '0',
 		terminal_command_allowlist: 'date,uptime,php,node,git,ls,find,grep,rg,cat,head,tail,df,du,free,uname',
 		background_actions_enabled: '0',
-		agent_max_tool_rounds: '16',
+		agent_max_tool_rounds: '6',
 		notify_on_complete: '1',
 		exec_write_types: '',
 		exec_write_max_chars: '100000',

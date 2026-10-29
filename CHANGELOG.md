@@ -2,6 +2,12 @@
 
 ## [Unreleased]
 
+### Make new chat startup reliable and bound agent tool loops (1.20.26)
+
+- Accept numeric-string revisions and revisionless empty-chat snapshots from the create response, avoiding a failing detail read before the first message.
+- Reduce default model/tool rounds from 16 to 6 and cap the supported range at 8 to keep responses from spending excessive time in tool loops.
+- Clarify current file extraction support and optional local OCR/conversion requirements.
+
 ### Add a privacy-focused local Qdrant deployment profile (1.20.25)
 
 - Provide a persistent Docker Compose setup bound to loopback with Qdrant telemetry disabled.
