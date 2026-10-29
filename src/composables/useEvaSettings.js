@@ -7,7 +7,7 @@ import { api, errMsg } from '../lib/api'
 import { translate as t } from '../lib/i18n'
 
 /** Shared settings state survives section switches; optional data loads on demand. */
-export function useEvaSettings({ section = ref('general') } = {}) {
+export function useEvaSettings({ section = ref('general'), active = ref(true) } = {}) {
 	let disposed = false
 	const f = ref(createSettingsDefaults())
 
@@ -701,7 +701,7 @@ export function useEvaSettings({ section = ref('general') } = {}) {
 		await loadStatus(true)
 		if (disposed) return
 		statusTimer = window.setInterval(() => {
-			if (!document.hidden && indexingActive.value) loadIndexStatus()
+			if (active.value && !document.hidden && indexingActive.value) loadIndexStatus()
 		}, 10000)
 	})
 	onUnmounted(() => {

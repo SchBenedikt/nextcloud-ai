@@ -23,7 +23,7 @@
 				<template v-if="view === 'settings'">
 					<NcAppNavigationItem :name="$t('Back to EVA')" @click.prevent="navigate('home')"><template #icon><NcIconSvgWrapper :path="mdiArrowLeft" :size="20" /></template></NcAppNavigationItem>
 					<NcAppNavigationCaption :name="$t('Settings')" />
-					<NcAppNavigationItem v-for="section in settingsSections" :key="section.id" :name="section.label" :title="section.description" :active="settingsSection === section.id" @click.prevent="navigate('settings', section.id)">
+					<NcAppNavigationItem v-for="section in settingsSections" :key="section.id" :name="section.label" :title="section.description" :active="settingsSection === section.id" @click.prevent="openSettings(section.id)">
 						<template #icon><NcIconSvgWrapper :path="section.icon" :size="20" /></template>
 					</NcAppNavigationItem>
 				</template>
@@ -109,7 +109,7 @@
 					<NcAppNavigationItem
 						:name="$t('Settings')"
 						:active="view === 'settings'"
-						@click.prevent="navigate('settings')">
+						@click.prevent="openSettings()">
 						<template #icon>
 							<svg width="16" height="16" viewBox="0 0 24 24"><path :d="mdiTune" fill="currentColor" /></svg>
 						</template>
@@ -124,7 +124,7 @@
 			<DocumentsView v-else-if="view === 'docs'" />
 			<MetricsView v-else-if="view === 'metrics'" />
 			<AgentRunsView v-else-if="view === 'runs'" />
-			<SettingsView v-else :section="settingsSection" @navigate="navigate" />
+			<SettingsView v-if="settingsMounted" v-show="view === 'settings'" :active="view === 'settings'" :section="settingsSection" @navigate="navigate" />
 		</NcAppContent>
 		<NcModal v-if="chatDialog" size="small" :name="chatDialog.mode === 'rename' ? $t('Rename chat') : $t('Delete chat')" @close="closeChatDialog">
 			<form class="chat-dialog" @submit.prevent="confirmChatDialog">
@@ -182,6 +182,11 @@ export default {
 		const chats = ref([])
 		const currentChat = ref(null)
 		const { initialChatParam, navigate } = useNavigation({ currentChat, view, fileContextIds, settingsSection })
+		const settingsMounted = ref(view.value === 'settings')
+		function openSettings(section = 'general') {
+			settingsMounted.value = true
+			navigate('settings', section)
+		}
 		const busy = ref(false)
 		const chatsLoading = ref(true)
 		const loadingMoreChats = ref(false)
@@ -452,7 +457,7 @@ export default {
 		})
 
 		return {
-			view, settingsSection, settingsSections, mdiArrowLeft,
+			view, settingsSection, settingsSections, settingsMounted, openSettings, mdiArrowLeft,
 			chats, currentChat, busy, chatsLoading, loadingMoreChats, chatsNextOffset, chatsNextCursor, chatFilter, apiError, chatDialog, showArchived,
 			navItems, listChats,
 			fileContextIds, itemName, itemTip,

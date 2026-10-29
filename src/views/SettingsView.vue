@@ -39,7 +39,7 @@
 				</div>
 				<NcButton variant="secondary" :loading="stopping" :disabled="status?.indexStopping" @click="stopIndex">{{ $t('Stop indexing') }}</NcButton>
 			</div>
-			<fieldset class="settings-fieldset" :disabled="(group === 'automation' ? briefingsLocked : settingsLocked) || !formReady">
+			<fieldset v-if="active" class="settings-fieldset" :disabled="(group === 'automation' ? briefingsLocked : settingsLocked) || !formReady">
 				<GeneralSettings v-if="group === 'general'" />
 				<KnowledgeSettings v-if="group === 'knowledge'" />
 				<ToolsSettings v-if="group === 'tools'" />
@@ -47,7 +47,7 @@
 				<PersonalSettings v-if="group === 'personal'" />
 				<AdvancedSettings v-if="group === 'advanced'" />
 			</fieldset>
-			<SettingsDiagnostics v-if="group === 'advanced'" :health="health" :health-error="healthError" :health-loading="healthLoading" @refresh="loadHealth" @navigate="$emit('navigate', $event)" />
+			<SettingsDiagnostics v-if="active && group === 'advanced'" :health="health" :health-error="healthError" :health-loading="healthLoading" @refresh="loadHealth" @navigate="$emit('navigate', $event)" />
 		</main>
 
 		<NcModal v-if="connectorToRemove" size="small" :name="$t('Remove connector')" @close="closeConnectorRemoval">
@@ -66,7 +66,7 @@
 </template>
 
 <script>
-import { computed, defineAsyncComponent, provide, toRef } from 'vue'
+import { computed, defineAsyncComponent, onBeforeUnmount, provide, toRef, watch } from 'vue'
 import { NcButton, NcModal, NcNoteCard } from '@nextcloud/vue'
 import SettingsDiagnostics from '../components/settings/SettingsDiagnostics.vue'
 import { settingsSections } from '../lib/settings-sections'
@@ -81,12 +81,34 @@ const AdvancedSettings = defineAsyncComponent(() => import('../components/settin
 export default {
 	name: 'SettingsView',
 	components: { SettingsDiagnostics, NcButton, NcModal, NcNoteCard, GeneralSettings, KnowledgeSettings, ToolsSettings, AutomationSettings, PersonalSettings, AdvancedSettings },
-	props: { section: { type: String, default: 'general' } },
+	props: { section: { type: String, default: 'general' }, active: { type: Boolean, default: true } },
 	emits: ['navigate'],
 	setup(props) {
-		const state = useEvaSettings({ section: toRef(props, 'section') })
+		const state = useEvaSettings({ section: toRef(props, 'section'), active: toRef(props, 'active') })
 		const currentSection = computed(() => settingsSections.find(item => item.id === props.section) || settingsSections[0])
 		provide('eva-settings', state)
+		let unloadGuardInstalled = false
+		const warnBeforeUnload = event => {
+			if (!state.hasUnsavedSettings.value) return
+			event.preventDefault()
+			event.returnValue = ''
+		}
+		watch(state.hasUnsavedSettings, dirty => {
+			if (dirty && !unloadGuardInstalled) {
+				window.addEventListener('beforeunload', warnBeforeUnload)
+				unloadGuardInstalled = true
+			} else if (!dirty && unloadGuardInstalled) {
+				window.removeEventListener('beforeunload', warnBeforeUnload)
+				unloadGuardInstalled = false
+			}
+		}, { immediate: true })
+		watch(() => props.active, active => {
+			if (active && state.formReady.value) state.loadStatus()
+			if (!active) state.closeConnectorRemoval()
+		})
+		onBeforeUnmount(() => {
+			if (unloadGuardInstalled) window.removeEventListener('beforeunload', warnBeforeUnload)
+		})
 		return { ...state, currentSection }
 	},
 }

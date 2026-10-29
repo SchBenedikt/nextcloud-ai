@@ -2,6 +2,11 @@
 
 ## [Unreleased]
 
+### Preserve unsaved settings while navigating (1.18.88)
+
+- Keep settings mounted after the first visit so changing to another EVA view does not discard pending edits.
+- Warn before leaving or reloading Nextcloud while settings are still unsaved, and stop hidden-page indexing polls.
+
 ### Measure background indexing performance (1.18.87)
 
 - Record bounded per-run duration, outcome, processed item count and successfully written file chunks without storing file paths or content.
