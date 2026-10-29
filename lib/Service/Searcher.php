@@ -534,8 +534,7 @@ class Searcher {
 
     /** @return string[] */
     private function tokens(string $text): array {
-        $text = mb_strtolower($text);
-        preg_match_all('/\p{L}\p{M}*+[\p{L}\p{M}\p{N}_]*+|\p{N}+/u', $text, $m);
+        $words = $this->wordTokens($text);
         $stop = [
             'der','die','das','den','dem','des','ein','eine','einer','eines','einem','einen',
             'und','oder','aber','auch','im','in','am','an','auf','mit','von','für',
@@ -544,14 +543,19 @@ class Searcher {
             'more','and','the','of','to','in','is','are','was','for','on','at','with','that','this',
         ];
         $out = [];
-        foreach ($m[0] as $tok) {
-            $tok = (string)$tok;
+        foreach ($words as $tok) {
             if (mb_strlen($tok) < 3 || in_array($tok, $stop, true)) {
                 continue;
             }
             $out[] = $tok;
         }
         return array_values(array_unique($out));
+    }
+
+    /** @return list<string> Lowercase Unicode word tokens, preserving repeats. */
+    private function wordTokens(string $text): array {
+        preg_match_all('/\p{L}\p{M}*+[\p{L}\p{M}\p{N}_]*+|\p{N}+/u', mb_strtolower($text), $matches);
+        return array_map('strval', $matches[0] ?? []);
     }
 
     /**
@@ -567,17 +571,22 @@ class Searcher {
         $lengths = [];
         $scores = [];
         $total = 0;
-        // Lowercase every chunk once up front: document frequency and term
-        // frequency then come from a single substr_count pass per term instead
-        // of an extra mb_stripos pre-pass plus a repeated mb_strtolower per
-        // (term, row) pair. Same scores, roughly half the scanning work on
-        // large candidate pools.
-        $lowered = [];
+        // One Unicode regex finds all exact query tokens per body. This avoids
+        // rescanning each candidate for every term and excludes partial words.
+        $bodyTerms = array_values(array_filter(array_slice($queryTokens, 0, 64), static fn(string $term): bool => mb_strlen($term) <= 128));
+        $alternatives = array_map(static fn(string $term): string => preg_quote($term, '~'), $bodyTerms);
+        usort($alternatives, static fn(string $a, string $b): int => strlen($b) <=> strlen($a));
+        $pattern = $alternatives === [] ? null : '~(?<![\\p{L}\\p{M}\\p{N}_])(?:' . implode('|', $alternatives) . ')(?![\\p{L}\\p{M}\\p{N}_])~u';
+        $frequencies = [];
         foreach ($rows as $i => $row) {
             $len = $this->tokenCount(strlen($row['content']));
             $lengths[$i] = $len;
             $total += $len;
-            $lowered[$i] = mb_strtolower($row['content']);
+            if ($pattern === null || preg_match_all($pattern, mb_strtolower((string)$row['content']), $matches) === false) {
+                $frequencies[$i] = [];
+            } else {
+                $frequencies[$i] = array_count_values($matches[0]);
+            }
         }
         $N = count($rows);
         $avgdl = $N > 0 ? max(1.0, $total / $N) : 1.0;
@@ -586,12 +595,12 @@ class Searcher {
             $docRows[(int)$row['document_id']][] = $i;
         }
 
-        foreach ($queryTokens as $term) {
+        foreach ($bodyTerms as $term) {
             $df = 0;
             $tfs = [];
-            foreach ($lowered as $i => $lower) {
-                $tf = substr_count($lower, $term);
-                if ($tf !== 0) {
+            foreach ($frequencies as $i => $counts) {
+                $tf = $counts[$term] ?? 0;
+                if ($tf > 0) {
                     $tfs[$i] = $tf;
                     $df++;
                 }
