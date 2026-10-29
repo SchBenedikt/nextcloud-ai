@@ -335,11 +335,15 @@ and offline OCC inspection/requeue are implemented. Account SQL erasure and boun
 collection deletion intent commit together. Legacy per-user cleanup is keyset-
 bounded and reset now preserves chunk ownership until chunk deletion completes.
 
-There is no worker or general chunk-mutation replication yet. Remote revision/
-tombstone enforcement, account creation fencing, target retention/pruning, reset/
-rename/replacement integration and persistent account-cleanup retries remain
-pending. VECTOR-OUTBOX.md distinguishes these implementation gaps from the queue
-primitives. No delivery/crash/concurrency or live migration gate is verified.
+The normal indexer now routes stale-file, excluded-file, folder-prefix and
+successful replacement deletion through the canonical source-deletion
+transaction. SQL generation rows are removed with their source; Qdrant tombstones
+are durably enqueued without remote calls on the index/chat path. Generation
+upserts from normal indexing, reset/rename integration, remote revision/lease
+hardening, target retention/pruning and persistent account-cleanup retries
+remain pending. VECTOR-OUTBOX.md distinguishes these implementation gaps from
+the queue primitives. No delivery/crash/concurrency or live migration gate is
+verified.
 
 ### Stage 08 generation-erasure consumer
 

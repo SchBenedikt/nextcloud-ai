@@ -2,6 +2,12 @@
 
 ## [Unreleased]
 
+### Canonical indexing deletions (1.18.15)
+
+- Route normal stale-file, excluded-file, folder-prefix and successful replacement cleanup through the vector source deletion service.
+- Commit Qdrant generation tombstones with canonical SQL deletion and remove SQL generation chunks with their source, while retaining the legacy-only fallback for isolated Indexer fixtures.
+- Keep reset behavior and generation activation unchanged; indexing and chat do not make remote calls during cleanup.
+
 ### SQL generation builds (1.18.14)
 
 - Add an app-local SQL backend for generation builds, with stable local target fencing, ready chunk revisions, SQL-only source cleanup and no Qdrant outbox writes.
