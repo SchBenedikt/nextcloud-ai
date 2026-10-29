@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Prevent stale async Vue chunks after app updates (1.20.2)
+
+- Add content hashes to webpack's lazy-loaded chunks so updated main bundles cannot load a cached chunk from an earlier app version.
+
 ### Use active generations in Nextcloud Unified Search (1.20.1)
 
 - Route native global file search through the same active verified generation as EVA chat, with bounded local SQL lexical retrieval and safe fallback during source changes.
