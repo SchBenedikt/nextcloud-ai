@@ -85,17 +85,18 @@ final class SystemController extends OCSController {
         return new ErrorDataResponse($status);
     }
 
-    /** Index progress without model discovery, document counts or OCR probes. */
+    /** Index progress and effective retrieval route without model or OCR probes. */
     #[NoAdminRequired]
     public function indexStatus(): DataResponse {
-        if ($this->requireUser() === null) return new ErrorDataResponse(['error' => 'Not logged in'], 401);
+        $user = $this->requireUser();
+        if ($user === null) return new ErrorDataResponse(['error' => 'Not logged in'], 401);
         $running = $this->config->get('index_running') === '1';
         if ($running && $this->config->recoverAbandonedRun()) $running = false;
         $cancelled = $this->config->get('index_cancel_requested') === '1';
         $response = new \OCA\EvaAi\Dto\IndexStatusResponse(
             $running, $running && $cancelled, $this->config->get('index_mode'),
             $this->config->get('index_started'), $this->config->get('index_finished'),
-            $this->config->get('last_index_error'),
+            $this->config->get('last_index_error'), $this->ragService->retrievalBackendForUser($user),
         );
         return new ErrorDataResponse($response->toArray());
     }

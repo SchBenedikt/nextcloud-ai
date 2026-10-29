@@ -57,6 +57,21 @@ class Searcher {
         return $this->runSearch($userId, $query, $topK, $scopePath, array_map('floatval', $vector), null);
     }
 
+    /** Resolve the current retrieval route without contacting an embedding or vector provider. */
+    public function effectiveBackendForUser(string $userId): string {
+        try {
+            $generation = $this->generations?->activeGenerationForUser($userId);
+            if ($generation === null) return 'sql_legacy';
+            $state = $generation->backend === 'qdrant' ? 'delivered' : 'ready';
+            $generationChunks = $this->chunkMapper->countForUser($userId, $generation->id, $state);
+            if ($generationChunks === 0 && $this->chunkMapper->countForUser($userId) > 0) return 'sql_legacy';
+            return $generation->backend === 'qdrant' ? 'qdrant_generation' : 'sql_generation';
+        } catch (\Throwable) {
+            // Keep diagnostics from interfering with status; never claim a healthy fallback on a failed lookup.
+            return 'unknown';
+        }
+    }
+
     private function runSearch(string $userId, string $query, int $topK, ?string $scopePath, ?array $fixedVector, ?string $traceId): array {
         $started = hrtime(true);
         $measurements = ['backend' => 'sql_legacy', 'query_vector_mode' => $fixedVector === null ? 'automatic' : 'frozen'];

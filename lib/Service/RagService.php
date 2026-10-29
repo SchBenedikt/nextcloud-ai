@@ -70,6 +70,11 @@ class RagService {
         $this->executor->setSurface($surface);
     }
 
+    /** Current generation route for the user's status view; performs no provider requests. */
+    public function retrievalBackendForUser(string $userId): string {
+        return $this->searcher->effectiveBackendForUser($userId);
+    }
+
     /** Whether this user explicitly opted into actions for queued chat jobs. */
     public function backgroundActionsEnabled(string $userId): bool {
         $this->config->setUserId($userId);
@@ -1621,6 +1626,7 @@ $this->executor->setUserId($userId);
             ],
             'documents' => $docCount,
             'chunks' => $chunkCount,
+            'retrievalBackend' => $this->retrievalBackendForUser($userId),
             'indexing' => $running,
             'indexMode' => $this->config->get('index_mode'),
             'indexCancelRequested' => $cancelRequested,

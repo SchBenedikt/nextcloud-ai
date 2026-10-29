@@ -65,6 +65,13 @@ baseline and portability path; optional ANN storage is the scale path.
    not label the current `sql_legacy` implementation as the target SQL
    generation path.
 
+The personal indexing settings show the resolved route: verified SQL
+generation, explicitly configured Qdrant generation, or built-in SQL fallback.
+The status endpoint resolves the generation and indexed-chunk availability
+without contacting an embedding or vector provider. A failed lookup is shown
+as unknown. Qdrant outages during an individual request still fall back to SQL
+and are described as a fallback capability, not proof of Qdrant health.
+
 ## Current implementation gap
 
 The current tree has durable generation metadata, a bounded build,
