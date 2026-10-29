@@ -2,6 +2,11 @@
 
 ## [Unreleased]
 
+### Keep chat and embedding provider choices independent (1.18.53)
+
+- Editing an existing inactive provider now saves its profile without switching the active chat provider.
+- Document the separate, explicit embedding-profile selection and file-text transfer.
+
 ### Configurable automatic SQL generation embeddings (1.18.52)
 
 - Keep Ollama as the default automatic file-search embedding provider.
