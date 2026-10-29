@@ -2,6 +2,11 @@
 
 ## [Unreleased]
 
+### Remove saved provider credentials when authentication is disabled (1.18.70)
+
+- Clear a profile's encrypted API key when its API-key authentication switch is turned off.
+- Explain the credential removal before the user saves the provider.
+
 ### Save API keys to the selected provider profile (1.18.69)
 
 - Include the profile ID with custom provider credentials so editing an inactive profile stores its encrypted key on that profile instead of the active chat provider.
