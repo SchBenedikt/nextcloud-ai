@@ -1527,7 +1527,9 @@
     "EVA uses the Nextcloud database by default. External vector storage is optional for larger installations.": "EVA uses the Nextcloud database by default. External vector storage is optional for larger installations.",
     "Advanced index administration": "Advanced index administration",
     "The index overview is unavailable. Use Refresh to try again.": "The index overview is unavailable. Use Refresh to try again.",
-    "{count} accounts tracked by EVA": "{count} accounts tracked by EVA"
+    "{count} accounts tracked by EVA": "{count} accounts tracked by EVA",
+    "Waiting for your chat to finish": "Waiting for your chat to finish",
+    "Indexing is paused between embedding batches to keep chat responses responsive. It will continue automatically.": "Indexing is paused between embedding batches to keep chat responses responsive. It will continue automatically."
   },
   "pluralForm": "nplurals=2; plural=(n != 1);",
   "EVA – Chat": "EVA – Chat",

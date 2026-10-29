@@ -1523,4 +1523,6 @@ OC.L10N.register("eva_ai", {
   "Verification stopped safely. Check the source index and generation data, then retry.": "Verification stopped safely. Check the source index and generation data, then retry.",
   "yes": "yes",
   "no": "no",
+  "Waiting for your chat to finish": "Waiting for your chat to finish",
+  "Indexing is paused between embedding batches to keep chat responses responsive. It will continue automatically.": "Indexing is paused between embedding batches to keep chat responses responsive. It will continue automatically.",
 }, "nplurals=2; plural=(n != 1);");

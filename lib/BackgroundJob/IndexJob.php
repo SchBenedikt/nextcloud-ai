@@ -184,6 +184,7 @@ class IndexJob extends TimedJob {
                         if (($pass['error'] ?? null) !== null
                             || (int)($pass['processed'] ?? 0) === 0
                             || !empty($pass['queued'])
+                            || !empty($pass['deferred_for_chat'])
                             || $this->config->get('index_job_stop_requested') === '1') {
                             break;
                         }

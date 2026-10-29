@@ -143,10 +143,9 @@ class ApiController extends OCSController {
     }
 
     private function acquireChatSlot(string $user): ?string {
-        // file_locks.key is VARCHAR(64). The old prefix + full SHA-256 was
-        // 76 bytes: permissive SQL could truncate insertion, so release by the
-        // original key never matched. Keep this separate from ChatStore's lock.
-        $path = 'eva_ai/chat-request/' . substr(hash('sha256', $user), 0, 40);
+        // Keep this separate from ChatStore's lock. LockGuard owns the bounded
+        // path so indexing can yield to the same active per-user chat claim.
+        $path = LockGuard::chatRequestLockPath($user);
         try {
             $this->lockingProvider->acquireLock($path, ILockingProvider::LOCK_EXCLUSIVE, 'EVA chat request');
             return $path;

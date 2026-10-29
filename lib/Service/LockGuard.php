@@ -44,6 +44,11 @@ class LockGuard {
         return 'eva_ai/index/' . substr(hash('sha256', $userId), 0, 40);
     }
 
+    /** The per-user chat claim shared by interactive and background requests. */
+    public static function chatRequestLockPath(string $userId): string {
+        return 'eva_ai/chat-request/' . substr(hash('sha256', $userId), 0, 40);
+    }
+
     public function __construct(
         private AppConfig $config,
         private ILockingProvider $lockingProvider,
