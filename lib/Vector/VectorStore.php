@@ -18,6 +18,10 @@ interface VectorStore {
     public function tombstoneChunks(VectorGeneration $generation, array $chunkIds, int $revision): void;
     /** @return list<array{chunkId:int,revision:int,score:float}> Hydrate owned SQL rows only at the returned revision. */
     public function search(VectorGeneration $generation, array $queryVector, int $topK, SearchFilters $filters): array;
+    /** Exact live-point count for the tenant and immutable generation. */
+    public function countLive(VectorGeneration $generation): int;
+    /** @return array<int,array{id:int,payload:array,vector:array}> Exact point lookup keyed by ID. */
+    public function retrieve(VectorGeneration $generation, array $ids): array;
     /** @return array{available:bool,code:string} No endpoint secrets or raw remote errors. */
     public function health(): array;
 }

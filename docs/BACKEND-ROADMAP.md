@@ -490,3 +490,8 @@ behind/beyond the snapshot and persisted verification certificates remain gates.
 No activation is available. Representative load/soak, hard remote-storage/IMAP
 budgets, in-flight legacy-writer fencing, durable erasure retries and stages
 10–14 remain pending. See [GENERATION-BUILDS.md](GENERATION-BUILDS.md).
+
+The 1.18.11 storage contract adds exact tenant/generation-filtered live counts
+and bounded exact-ID point reads with vectors for that verifier. These are not
+verification results: no persisted verifier, reconciliation, activation, or
+retrieval change has been implemented by this slice.

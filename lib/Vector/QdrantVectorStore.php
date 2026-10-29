@@ -114,6 +114,50 @@ class QdrantVectorStore implements VectorStore {
         $this->writeRevision($generation, $points, $revision, true);
     }
 
+    /** Exact count is used only by the offline generation verification workflow. */
+    public function countLive(VectorGeneration $generation): int {
+        $data=$this->request('post',$this->collection($generation).'/points/count?timeout=10',[
+            'filter'=>['must'=>[
+                ['key'=>'user_id','match'=>['value'=>$this->tenant($generation)]],
+                ['key'=>'generation_id','match'=>['value'=>$generation->id]],
+                ['key'=>'deleted','match'=>['value'=>false]],
+            ]],
+            'exact'=>true,
+        ],false,12);
+        $this->ok($data);
+        $count=$data['result']['count']??null;
+        if(!is_int($count)||$count<0)throw new VectorStoreException('invalid_count_response');
+        return $count;
+    }
+
+    /** Retrieve at most 100 exact IDs; callers compare SQL identity and vectors. */
+    public function retrieve(VectorGeneration $generation,array $ids): array {
+        if(!array_is_list($ids)||count($ids)>100)throw new VectorStoreException('invalid_batch');
+        if($ids===[])return [];
+        $seen=[];
+        foreach($ids as$id){if(!is_int($id)||$id<1||isset($seen[$id]))throw new VectorStoreException('invalid_point');$seen[$id]=true;}
+        $data=$this->request('post',$this->collection($generation).'/points?timeout=10',[
+            'ids'=>$ids,'with_payload'=>['user_id','generation_id','revision','deleted','document_id','source','content_hash'],
+            'with_vector'=>true,
+        ],false,12);
+        $this->ok($data);
+        $points=$data['result']??null;
+        if(!is_array($points)||!array_is_list($points)||count($points)>count($ids))throw new VectorStoreException('invalid_retrieve_response');
+        $result=[];
+        foreach($points as$point){
+            $id=$point['id']??null;$payload=$point['payload']??null;$rawVector=$point['vector']['dense']??null;
+            if(!is_int($id)||!isset($seen[$id])||isset($result[$id])||!is_array($payload)
+                ||($payload['user_id']??null)!==$this->tenant($generation)||($payload['generation_id']??null)!==$generation->id
+                ||!is_int($payload['revision']??null)||$payload['revision']<1||$payload['revision']>self::MAX_REVISION
+                ||!is_bool($payload['deleted']??null))throw new VectorStoreException('point_identity_mismatch');
+            if(!is_array($rawVector)||!array_is_list($rawVector)||count($rawVector)!==$generation->dimension)throw new VectorStoreException('point_dimension_mismatch');
+            $vector=[];foreach($rawVector as$value){if(!is_int($value)&&!is_float($value))throw new VectorStoreException('invalid_point_vector');$vector[]=(float)$value;}
+            try{$generation->validateVector($vector);}catch(\Throwable){throw new VectorStoreException('invalid_point_vector');}
+            $result[$id]=['id'=>$id,'payload'=>$payload,'vector'=>$vector];
+        }
+        return $result;
+    }
+
     private function writeRevision(VectorGeneration $generation, array $points, int $revision, bool $deleted): void {
         $must = [['key' => 'user_id', 'match' => ['value' => $this->tenant($generation)]],
             ['key' => 'generation_id', 'match' => ['value' => $generation->id]],
