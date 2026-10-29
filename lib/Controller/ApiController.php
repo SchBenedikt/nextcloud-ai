@@ -17,7 +17,6 @@ use OCA\EvaAi\BackgroundJob\IndexRequestJob;
 use OCA\EvaAi\Service\Ollama;
 use OCA\EvaAi\Service\OllamaUrlValidator;
 use OCA\EvaAi\Service\RagService;
-use OCA\EvaAi\Service\KnowledgeInitializer;
 use OCA\EvaAi\Dto\ChatMetadataRequest;
 use OCA\EvaAi\Dto\ChatImportRequest;
 use OCA\EvaAi\Dto\ChatFolderRequest;
@@ -25,9 +24,6 @@ use OCA\EvaAi\Dto\ChatTitleRequest;
 use OCA\EvaAi\Dto\ChatRegenerateRequest;
 use OCA\EvaAi\Dto\ChatCompletionRequest;
 use OCA\EvaAi\Dto\FileContextChatRequest;
-use OCA\EvaAi\Dto\KnowledgeContentRequest;
-use OCA\EvaAi\Dto\KnowledgeContentResponse;
-use OCA\EvaAi\Dto\KnowledgeContentSaveResponse;
 use OCA\EvaAi\Dto\FileContextStatusResponse;
 use OCA\EvaAi\Dto\ConfirmToolRequest;
 use OCA\EvaAi\Dto\ChatTemplateImportRequest;
@@ -67,7 +63,6 @@ class ApiController extends OCSController {
         private ChatStore $chatStore,
         private FileContextChatService $fileContextChat,
         private IAppManager $appManager,
-        private KnowledgeInitializer $knowledgeInitializer,
         private LockGuard $lockGuard,
         private \OCA\EvaAi\Service\UserDataService $userDataService,
         private \OCA\EvaAi\Service\ChatLearner $chatLearner,
@@ -724,61 +719,6 @@ class ApiController extends OCSController {
             return new ErrorDataResponse($this->fileContextChat->chat($user, $request->fileIds, $request->message, $request->history));
         } finally {
             $this->releaseChatSlot($chatSlot);
-        }
-    }
-
-    /**
-     * Liefert die indexierten Dokument-IDs zu einer Liste von File-IDs
-     * (fuer die UI, damit vor dem Chat geprueft werden kann, ob die
-     * Auswahl bereits indexiert ist).
-     */
-    #[NoAdminRequired]
-    public function knowledge(): DataResponse {
-        $user = $this->requireUser();
-        if ($user === null) {
-            return new ErrorDataResponse(['error' => 'Not logged in'], 401);
-        }
-        $this->knowledgeInitializer->ensureInitialized($user);
-        try {
-            $rootFolder = \OCP\Server::get(\OCP\Files\IRootFolder::class);
-            $home = $rootFolder->getUserFolder($user);
-            $content = '';
-            if ($home->nodeExists('KNOWLEDGE.md')) {
-                $node = $home->get('KNOWLEDGE.md');
-                if ($node instanceof \OCP\Files\File) {
-                    $content = (string)$node->getContent();
-                }
-            }
-            return new ErrorDataResponse(KnowledgeContentResponse::fromContent($content)->toArray());
-        } catch (\Throwable $e) {
-            return new ErrorDataResponse(['error' => 'Could not read personal knowledge file.'], 500);
-        }
-    }
-
-    #[NoAdminRequired]
-    public function saveKnowledge(): DataResponse {
-        $user = $this->requireUser();
-        if ($user === null) {
-            return new ErrorDataResponse(['error' => 'Not logged in'], 401);
-        }
-        try {
-            $request = KnowledgeContentRequest::fromArray(['content' => $this->requestParam('content', '')]);
-        } catch (\InvalidArgumentException $e) {
-            return new ErrorDataResponse(['error' => $e->getMessage()], 400);
-        }
-        $content = $request->content;
-        try {
-            $rootFolder = \OCP\Server::get(\OCP\Files\IRootFolder::class);
-            $home = $rootFolder->getUserFolder($user);
-            $path = 'KNOWLEDGE.md';
-            if ($home->nodeExists($path)) {
-                $home->get($path)->putContent($content);
-            } else {
-                $home->newFile($path, $content);
-            }
-            return new ErrorDataResponse(KnowledgeContentSaveResponse::saved($content)->toArray());
-        } catch (\Throwable $e) {
-            return new ErrorDataResponse(['error' => 'Could not save knowledge file: ' . $e->getMessage()], 500);
         }
     }
 

@@ -381,7 +381,9 @@ replaced by a successful build or an adapter unit test.
   operations into `IntegrationController`; chat and file-context domains still
   remain in the large API controller. Version 1.20.11 moves queued-chat
   admission and lifecycle endpoints behind `BackgroundChatController`, sharing
-  the same rate-limit policy and worker queue.
+  the same rate-limit policy and worker queue. Version 1.20.12 moves personal
+  knowledge-file operations to a focused VFS-backed controller with injected
+  Nextcloud filesystem services.
 
 ### Stage 14 portability slice: Activity and Mail SQL (1.18.60)
 
