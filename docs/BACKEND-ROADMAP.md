@@ -390,6 +390,15 @@ strict corpus/query hashes. Quality, isolation, duplicate and nearest-rank laten
 metrics are documented in RETRIEVAL-BENCHMARK.md. The synthetic example is not a
 real retrieval-quality benchmark.
 
+On 2026-10-29 the documented exact and evaluate CLI paths were run on that
+six-chunk, seven-query fixture. This exposed and fixed a missing explicit load of
+the shared `SearchFilters` validator. The follow-up run completed with zero
+isolation violations; exact-oracle p50/p95/p99 were 0.011875/0.032125/0.032125 ms
+on PHP 8.5.9. The run ranks the tiny fixture with the exact oracle itself, so these
+numbers verify CLI/evaluator operation only. They do not measure SQL/Qdrant,
+representative quality, concurrency, or production latency; all PDF acceptance
+gates remain open.
+
 ### Stage 05 live SQL baseline integration
 
 `eva_ai:retrieval:benchmark export|record` now exports an explicit user's private
