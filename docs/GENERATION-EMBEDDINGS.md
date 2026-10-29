@@ -97,6 +97,13 @@ identical chunk text without repeating provider work. A matching active SQL
 generation is extended through the transactional mutation journal; it does not
 start a redundant full rebuild. Qdrant primary selection is left unchanged.
 
+The automatic local SQL provisioner creates Ollama generations from the regular
+indexing settings. If an administrator explicitly activates an SQL generation
+using an OpenAI-compatible embedding profile, later legacy-index batches preserve
+that selected generation; they do not silently replace it with an Ollama build.
+Changing the immutable provider/model requires preparing and verifying a new
+generation through the generation controls.
+
 ## Validation and remaining backfill work
 
 The optional `tests/runtime/generation-embedding.php` probe uses native Nextcloud

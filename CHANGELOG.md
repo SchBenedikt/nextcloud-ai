@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Preserve configured SQL embedding provider (1.18.50)
+
+- Prevent automatic Ollama SQL-generation provisioning from replacing an explicitly active SQL generation that uses an OpenAI-compatible embedding profile.
+
 ### Default local generation maintenance (1.18.49)
 
 - Make recurring local indexing and SQL-generation maintenance the personal default after the user starts indexing, while preserving explicit per-user pause and the install-without-scan behavior. Qdrant remains separately configured and consented.
