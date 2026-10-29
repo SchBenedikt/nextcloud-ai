@@ -2,6 +2,11 @@
 
 ## [Unreleased]
 
+### Lazy advanced generation controls (1.18.46)
+
+- Keep the standard admin landing page focused on aggregate indexing status. Load account identities and expose generation preparation, verification and optional vector migration controls only when an administrator opens the advanced section.
+- Restore access to the existing generation-management interface without adding startup account enumeration or optional service probes.
+
 ### Mixed-state lexical retrieval (1.18.45)
 
 - Use indexed token postings immediately while lexical backfill is running; query the prior `LIKE` path only for chunks whose postings are pending or unsupported, then merge and bound the tenant-scoped candidates.
