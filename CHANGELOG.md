@@ -2,6 +2,12 @@
 
 ## [Unreleased]
 
+### Configurable automatic SQL generation embeddings (1.18.52)
+
+- Keep Ollama as the default automatic file-search embedding provider.
+- Allow compatible provider profiles to define and explicitly opt into a separate embedding model and vector dimension for automatic SQL generations.
+- Pin provider, endpoint, model and dimensions to each generation and prevent legacy Ollama vectors from seeding another provider's generation.
+
 ### Complete native search pagination (1.18.51)
 
 - Return a complete Nextcloud Unified Search result when the last accessible page has been reached, instead of advertising an endless empty next page.

@@ -24,6 +24,12 @@
 					<p class="field-help">{{ t('Only configure these when your provider supports the matching image or audio endpoint.') }}</p>
 					<NcTextField v-for="field in mediaFields" :key="field.key" v-model="draft[field.key]" :label="field.label" :disabled="saving" maxlength="128" />
 				</details>
+				<details v-if="!builtin" class="provider-extra"><summary>{{ t('Document embeddings (optional)') }}</summary>
+					<p class="field-help">{{ t('This profile can build a separate file-search generation. Choosing it sends indexed file text to this provider.') }}</p>
+					<NcTextField v-model="draft.embedding_model" :label="t('Embedding model ID')" :disabled="saving" maxlength="128" :placeholder="t('Exact embedding model ID')" />
+					<NcTextField v-model="draft.embedding_dimension" type="number" :label="t('Vector dimensions')" :disabled="saving" min="1" max="16384" />
+					<NcCheckboxRadioSwitch v-model="useForGeneration" type="switch" :disabled="saving">{{ t('Use this profile for automatic file indexing') }}</NcCheckboxRadioSwitch>
+				</details>
 				<NcNoteCard v-if="error" type="error">{{ error }}</NcNoteCard>
 				<div class="provider-editor__actions">
 					<NcButton type="button" variant="tertiary" :disabled="saving" @click="close">{{ t('Cancel') }}</NcButton>
@@ -82,6 +88,7 @@ export default {
 		const presetId = ref('openai')
 		const key = ref('')
 		const needsKey = ref(true)
+		const useForGeneration = ref(false)
 		const saving = ref(false)
 		const error = ref('')
 		const notice = ref('')
@@ -97,12 +104,16 @@ export default {
 			editing.value = true
 			key.value = ''; error.value = ''; notice.value = ''
 			needsKey.value = provider.id !== 'ollama' && provider.auth !== 'none'
+			useForGeneration.value = (props.settings || props.status?.settings)?.generation_embedding_profile_id === provider.id
 		}
 		const applyPreset = id => {
 			const preset = presets.find(item => item.id === id) || presets[0]
 			let candidate = preset.id
 			for (let number = 2; providers.value.some(item => item.id === candidate); number++) candidate = preset.id + '-' + number
 			draft.value = { id: candidate, name: preset.name, url: preset.url, model: '', auth: preset.auth || 'api_key' }
+			draft.value.embedding_model = ''
+			draft.value.embedding_dimension = ''
+			useForGeneration.value = false
 			needsKey.value = preset.auth !== 'none'
 			key.value = ''; error.value = ''
 		}
@@ -112,13 +123,24 @@ export default {
 			if (saving.value || props.locked || !draft.value) return
 			const row = { ...draft.value, model: draft.value.model.trim() }
 			if (needsKey.value && !key.value && !keySaved.value) { error.value = t('Enter an API key for this provider.'); return }
+			const embeddingModel = String(row.embedding_model || '').trim()
+			const embeddingDimension = String(row.embedding_dimension || '').trim()
+			if ((embeddingModel === '') !== (embeddingDimension === '')) { error.value = t('Set both the embedding model and vector dimensions, or leave both empty.'); return }
+			if (embeddingDimension !== '' && (!/^\d+$/.test(embeddingDimension) || Number(embeddingDimension) < 1 || Number(embeddingDimension) > 16384)) { error.value = t('Vector dimensions must be between 1 and 16384.'); return }
 			saving.value = true; error.value = ''; notice.value = ''
 			try {
 				const payload = { chat_provider: row.id }
+				const selectedEmbeddingProfile = (props.settings || props.status?.settings)?.generation_embedding_profile_id || ''
+				if (useForGeneration.value) {
+					if (!embeddingModel || !embeddingDimension) { error.value = t('Set an embedding model and vector dimensions before selecting this profile.'); saving.value = false; return }
+					payload.generation_embedding_profile_id = row.id
+				} else if (selectedEmbeddingProfile === row.id) payload.generation_embedding_profile_id = ''
 				if (row.id === 'ollama') payload.chat_model = row.model
 				else if (row.id === 'groq') { payload.groq_model = row.model; if (key.value) payload.groq_api_key = key.value }
 				else {
 					row.name = row.name.trim(); row.url = row.url.trim(); row.auth = needsKey.value ? 'api_key' : 'none'
+					if (embeddingModel && embeddingDimension) { row.embedding_model = embeddingModel; row.embedding_dimension = Number(embeddingDimension) }
+					else { delete row.embedding_model; delete row.embedding_dimension }
 					const rows = profiles.value.filter(item => item.id !== row.id)
 					payload.provider_profiles = JSON.stringify([...rows, row])
 					if (key.value && needsKey.value) payload.custom_provider_api_key = key.value
@@ -130,7 +152,7 @@ export default {
 			} catch (failure) { error.value = errMsg(failure) }
 			finally { saving.value = false }
 		}
-		return { mdiRobotOutline, mdiServerOutline, titleId, t, profiles, providers, active, presets, presetId, draft, editing, builtin, needsKey, key, keySaved, saving, error, notice, mediaFields, add, edit, applyPreset, close, save }
+		return { mdiRobotOutline, mdiServerOutline, titleId, t, profiles, providers, active, presets, presetId, draft, editing, builtin, needsKey, useForGeneration, key, keySaved, saving, error, notice, mediaFields, add, edit, applyPreset, close, save }
 	},
 }
 </script>

@@ -28,7 +28,7 @@ class AppConfig {
      * default (Issue #73).
      */
     private const USER_SETTINGS = [
-        'chat_provider', 'groq_model', 'custom_provider_url', 'custom_provider_model', 'provider_profiles', 'model_pricing', 'plugin_tools_enabled', 'ollama_url', 'embedding_model', 'chat_model', 'chat_model_fallback',
+        'chat_provider', 'groq_model', 'custom_provider_url', 'custom_provider_model', 'provider_profiles', 'generation_embedding_profile_id', 'model_pricing', 'plugin_tools_enabled', 'ollama_url', 'embedding_model', 'chat_model', 'chat_model_fallback',
         'embedding_model_fallback', 'summary_model', 'top_k', 'chunk_size',
         'chunk_overlap', 'max_file_size', 'max_files_per_run', 'index_storage_quota', 'scope_path',
         'context_size', 'temperature', 'actions_enabled', 'background_actions_enabled', 'learning_enabled', 'safe_commands_enabled', 'terminal_commands_enabled', 'terminal_command_any', 'terminal_command_allowlist', 'agent_max_tool_rounds', 'exec_write_types',
@@ -122,6 +122,9 @@ class AppConfig {
         'custom_provider_url' => '',
         'custom_provider_model' => '',
         'provider_profiles' => '[]',
+        // Empty keeps built-in Ollama embeddings. A selected profile is an
+        // explicit choice to send indexed content to that endpoint.
+        'generation_embedding_profile_id' => '',
         'model_pricing' => '[]',
         'plugin_tools_enabled' => '{}',
         'ollama_url' => self::DEFAULT_OLLAMA_URL,
@@ -608,6 +611,11 @@ class AppConfig {
      * malformed, non-numeric, or out-of-range values.
      */
     public function validateValue(string $key, mixed $value): ?string {
+        if ($key === 'generation_embedding_profile_id') {
+            $profileId = trim((string)$value);
+            return $profileId === '' || preg_match('/^[a-z][a-z0-9_-]{1,31}$/D', $profileId) === 1
+                ? null : 'must be empty or a valid provider profile ID';
+        }
         if ($key === 'provider_profiles') {
             if (!is_array($value) || count($value) > 20) return 'must contain at most 20 provider profiles';
             $ids = [];
@@ -622,6 +630,11 @@ class AppConfig {
                 $id = (string)$profile['id'];
                 if (in_array($id, ['ollama', 'groq'], true)) return 'profile ids must not shadow built-in providers';
                 if (isset($profile['auth']) && !in_array($profile['auth'], ['api_key', 'none'], true)) return 'profile authentication must be api_key or none';
+                if (isset($profile['embedding_model']) && (!is_string($profile['embedding_model'])
+                    || trim($profile['embedding_model']) === '' || mb_strlen($profile['embedding_model']) > 128)) return 'embedding models must be non-empty strings of at most 128 characters';
+                if (isset($profile['embedding_dimension']) && (!is_int($profile['embedding_dimension']) && !(is_string($profile['embedding_dimension']) && ctype_digit($profile['embedding_dimension']))
+                    || (int)$profile['embedding_dimension'] < 1 || (int)$profile['embedding_dimension'] > 16384)) return 'embedding dimensions must be integers from 1 to 16384';
+                if (isset($profile['embedding_model']) !== isset($profile['embedding_dimension'])) return 'embedding model and dimension must be configured together';
                 if (isset($ids[$id])) return 'profile ids must be unique';
                 $ids[$id] = true;
                 $parts = parse_url((string)$profile['url']);

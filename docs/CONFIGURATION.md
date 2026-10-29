@@ -72,7 +72,8 @@ endpoint rejects them.
 |---|---|---|---|---|---|
 | `chat_provider` | P | `ollama` | `ollama`, `groq`, configured profile ID | – | Chat provider; embeddings remain on Ollama. |
 | `groq_model` | P | `openai/gpt-oss-20b` | `openai/gpt-oss-20b`, `openai/gpt-oss-120b` | – | Groq Free Plan model selection; no fallback. |
-| `provider_profiles` | P | `[]` | JSON array, max. 20 profiles | – | OpenAI-compatible profiles with `id`, `name`, `url` and `model`; optional `auth` (`api_key` or `none`), `image_model`, `audio_model`, `tts_model` and `tts_voice` select modality-specific endpoints; API keys are stored encrypted separately per profile. |
+| `provider_profiles` | P | `[]` | JSON array, max. 20 profiles | – | OpenAI-compatible profiles with `id`, `name`, `url` and `model`; optional `embedding_model` plus `embedding_dimension` can enable a separate SQL file-search generation; optional modality models and encrypted per-profile API keys are also supported. |
+| `generation_embedding_profile_id` | P | empty | Existing compatible provider profile ID, or empty | – | Empty keeps automatic SQL generations on Ollama. Selecting a profile explicitly sends indexed file text to that endpoint; its generation pins profile, endpoint, model and dimension. |
 | `model_pricing` | P | `[]` | JSON array, max. 50 entries | – | Personal USD rates per million input/output tokens for the Metrics cost estimate. Configure these in **Metrics**; they are estimates and are never fetched from or represented as official provider pricing. |
 | `ollama_url` | P | `http://127.0.0.1:11434` | plain `http(s)://host[:port]`, no path/credentials | – | Base URL of the Ollama HTTP API; trailing slashes are stripped. |
 | `chat_model` | P | `gemma4:cloud` | non-empty string | – | Model used for chat/generation. |
