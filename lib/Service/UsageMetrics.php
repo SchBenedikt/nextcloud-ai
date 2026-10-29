@@ -105,6 +105,7 @@ class UsageMetrics {
 					'estimated' => $qb->createNamedParameter($estimated ? 1 : 0, IQueryBuilder::PARAM_INT),
 					'duration_ms' => $qb->createNamedParameter(max(0, $durationMs), IQueryBuilder::PARAM_INT),
 					'retrieval_backend' => $qb->createNamedParameter($retrieval['backend'] ?? 'none'),
+					'retrieval_embedding_provider' => $qb->createNamedParameter($retrieval['embedding_provider'] ?? 'none'),
 					'retrieval_stage_mask' => $qb->createNamedParameter($retrieval['stage_mask'] ?? 0, IQueryBuilder::PARAM_INT),
 					'retrieval_count_ms' => $qb->createNamedParameter($retrieval['count_ms'] ?? 0, IQueryBuilder::PARAM_INT),
 					'retrieval_embedding_ms' => $qb->createNamedParameter($retrieval['embedding_ms'] ?? 0, IQueryBuilder::PARAM_INT),
@@ -260,6 +261,7 @@ class UsageMetrics {
 		$daily = [];
 		$slowTools = [];
 		$ragRequestDuration = ['samples' => 0, 'outcomes' => []];
+		$embeddingQueryDuration = ['samples' => 0, 'providers' => []];
 		$indexRuns = ['samples' => 0, 'modes' => []];
 		$chatStoreLockWait = ['samples' => 0, 'modes' => []];
 		try {
@@ -365,6 +367,39 @@ class UsageMetrics {
 		$ragRequestDuration['outcomes'] = (object)$ragRequestDuration['outcomes'];
 		try {
 			$qb = $this->db->getQueryBuilder();
+			$qb->select('retrieval_embedding_provider', 'retrieval_stage_mask', 'retrieval_embedding_ms')->from('eva_ai_usage')
+				->where($qb->expr()->eq('user_id', $qb->createNamedParameter($userId)))
+				->andWhere($qb->expr()->eq('operation', $qb->createNamedParameter('chat')))
+				->andWhere($qb->expr()->gte('created_at', $qb->createNamedParameter($since, IQueryBuilder::PARAM_INT)))
+				->orderBy('created_at', 'DESC')->setMaxResults(5000);
+			$result = $qb->executeQuery();
+			$samples = ['ollama' => [], 'openai_compatible' => []];
+			try {
+				while (($row = $result->fetch()) !== false) {
+					$provider = (string)$row['retrieval_embedding_provider'];
+					if (isset($samples[$provider]) && (((int)$row['retrieval_stage_mask'] & (1 << 1)) !== 0)) {
+						$samples[$provider][] = max(0, (int)$row['retrieval_embedding_ms']);
+					}
+				}
+			} finally { $result->closeCursor(); }
+			foreach ($samples as $provider => $values) {
+				if ($values === []) continue;
+				sort($values, SORT_NUMERIC);
+				$count = count($values);
+				$quantiles = [];
+				foreach (['p50' => 0.5, 'p95' => 0.95, 'p99' => 0.99] as $name => $quantile) {
+					$quantiles[$name . '_ms'] = $values[max(0, (int)ceil($quantile * $count) - 1)];
+				}
+				$embeddingQueryDuration['samples'] += $count;
+				$embeddingQueryDuration['providers'][$provider] = ['count' => $count] + $quantiles;
+			}
+		} catch (\Throwable $e) {
+			try { $this->logger->debug('eva_ai query embedding metrics unavailable', ['exception' => $e->getMessage()]); }
+			catch (\Throwable) { /* Optional metrics must not fail the dashboard. */ }
+		}
+		$embeddingQueryDuration['providers'] = (object)$embeddingQueryDuration['providers'];
+		try {
+			$qb = $this->db->getQueryBuilder();
 			$qb->select('index_run_mode', 'model', 'duration_ms', 'index_run_items', 'index_run_chunks', 'index_run_file_duration_ms')->from('eva_ai_usage')
 				->where($qb->expr()->eq('user_id', $qb->createNamedParameter($userId)))
 				->andWhere($qb->expr()->eq('operation', $qb->createNamedParameter('index_run')))
@@ -449,7 +484,7 @@ class UsageMetrics {
 		}
 		foreach ($chatStoreLockWait['modes'] as $mode => $outcomes) $chatStoreLockWait['modes'][$mode] = (object)$outcomes;
 		$chatStoreLockWait['modes'] = (object)$chatStoreLockWait['modes'];
-		return ['days' => $days, 'totals' => $totals, 'by_model' => $byModel, 'daily' => $daily, 'slow_tools' => $slowTools, 'rag_request_duration' => $ragRequestDuration, 'index_runs' => $indexRuns, 'chat_store_lock_wait' => $chatStoreLockWait];
+		return ['days' => $days, 'totals' => $totals, 'by_model' => $byModel, 'daily' => $daily, 'slow_tools' => $slowTools, 'rag_request_duration' => $ragRequestDuration, 'embedding_query_duration' => $embeddingQueryDuration, 'index_runs' => $indexRuns, 'chat_store_lock_wait' => $chatStoreLockWait];
 	}
 
 	/** @return array<string,int> */

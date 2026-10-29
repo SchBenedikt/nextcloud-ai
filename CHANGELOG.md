@@ -2,6 +2,11 @@
 
 ## [Unreleased]
 
+### Measure query embedding latency by provider (1.18.93)
+
+- Store the fixed embedding provider type alongside existing retrieval timings and expose bounded p50/p95/p99 query-embedding stage durations in account metrics and OpenMetrics.
+- Exclude frozen benchmark vectors, lexical-only requests and mixed Qdrant fallback time from provider comparisons; no prompts, endpoints, profile IDs, models or credentials are added to labels.
+
 ### Show server validation details in settings (1.18.92)
 
 - Surface field-level validation errors returned by Nextcloud when settings are rejected, instead of showing only a generic invalid-settings message.

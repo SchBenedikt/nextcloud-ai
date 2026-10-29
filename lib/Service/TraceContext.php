@@ -8,7 +8,7 @@ namespace OCA\EvaAi\Service;
 final class TraceContext {
     private ?string $traceId = null;
     private ?string $spanId = null;
-    /** @var array{backend:string,stage_mask:int,count_ms:int,embedding_ms:int,candidates_ms:int,hydrate_ms:int,scope_ms:int,ranking_ms:int,total_ms:int}|null */
+    /** @var array{backend:string,embedding_provider:string,stage_mask:int,count_ms:int,embedding_ms:int,candidates_ms:int,hydrate_ms:int,scope_ms:int,ranking_ms:int,total_ms:int}|null */
     private ?array $retrievalMeasurements = null;
 
     public function id(): ?string {
@@ -30,6 +30,8 @@ final class TraceContext {
         if ($this->traceId === null || !hash_equals($this->traceId, $traceId)) return;
         $backend = $measurements['backend'] ?? null;
         if (!in_array($backend, ['sql_legacy', 'sql_generation', 'qdrant_generation'], true)) return;
+        $embeddingProvider = $measurements['embedding_provider'] ?? 'none';
+        if (!in_array($embeddingProvider, ['none', 'frozen', 'mixed', 'ollama', 'openai_compatible'], true)) $embeddingProvider = 'none';
         $stages = [];
         $stageNames = ['count_ms', 'embedding_ms', 'candidates_ms', 'hydrate_ms', 'scope_ms', 'ranking_ms', 'total_ms'];
         $stageMask = 0;
@@ -41,7 +43,7 @@ final class TraceContext {
         }
         if ($stages === []) return;
         $this->retrievalMeasurements = array_merge(
-            ['backend' => $backend, 'stage_mask' => $stageMask],
+            ['backend' => $backend, 'embedding_provider' => $embeddingProvider, 'stage_mask' => $stageMask],
             array_fill_keys($stageNames, 0),
             $stages,
         );

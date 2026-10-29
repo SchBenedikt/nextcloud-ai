@@ -25,6 +25,7 @@ create a separate public metrics endpoint or background poller.
 | `nextcloud_eva_ai_embedding_batch_duration_ms` | `provider`, `result`, `quantile` | Approximate indexing/generation embedding batch latency; chat query embedding is already measured in retrieval stages. |
 | `nextcloud_eva_ai_embedding_batch_samples` | `provider`, `result` | Success/error counts in the bounded embedding sample. |
 | `nextcloud_eva_ai_embedding_cache_hit_ratio` | `provider` | Cache hits divided by hits plus misses in the bounded sample. |
+| `nextcloud_eva_ai_embedding_query_duration_ms` | `provider`, `quantile` | Approximate query-embedding stage duration by fixed provider type. |
 
 ## Duration quantiles
 
@@ -48,11 +49,14 @@ completed provider chat records with observed stages enter these quantiles.
 Duration families use nearest rank over bounded samples from the preceding
 seven days. These are bounded approximate gauges, not complete
 histograms or full-traffic Prometheus distributions. Embedding batch metrics
-cover only background indexing and generation builds; query embedding remains
-part of retrieval-stage telemetry and adds no second usage write. Retrieval
-stages do not separate SQL dense scanning from lexical selection within the
-candidate phase. Queue age and contended chat-store lock waits use separate
-fixed-label metrics.
+cover only background indexing and generation builds; query embedding is
+reported separately by its fixed provider type from the existing retrieval
+stage sample, adding no second usage write. Frozen benchmark vectors,
+lexical-only requests and mixed Qdrant fallback stages are excluded from that
+provider comparison. Its duration includes cache and request setup around the
+query embedding call, not only provider network time. Retrieval stages do not
+separate SQL dense scanning from lexical selection within the candidate phase.
+Queue age and contended chat-store lock waits use separate fixed-label metrics.
 
 Chat-store lock waits are recorded only when lock acquisition collides, when a
 shared read must degrade to a lock-free read, or when acquisition ultimately

@@ -139,6 +139,7 @@ class Searcher {
             && $this->config->get('chat_provider') === 'ollama'
             && str_ends_with($chatModel, ':cloud')
             && !str_ends_with($embeddingModel, ':cloud');
+        $embeddingProvider = $fixedVector !== null ? 'frozen' : ($cloudChatWithLocalEmbedding ? 'none' : ($generation?->embeddingProvider ?? 'ollama'));
         $queryVector = $fixedVector;
         if ($queryVector === null && $generation !== null && !$cloudChatWithLocalEmbedding) {
             try {
@@ -158,6 +159,7 @@ class Searcher {
             $cloudChatWithLocalEmbedding = $this->config->userId() !== null
                 && $this->config->get('chat_provider') === 'ollama' && str_ends_with($chatModel, ':cloud')
                 && !str_ends_with($embeddingModel, ':cloud');
+            $embeddingProvider = $fixedVector !== null ? 'frozen' : ($cloudChatWithLocalEmbedding ? 'none' : 'ollama');
         }
         if ($queryVector === null && $generation === null && !$cloudChatWithLocalEmbedding) {
             [$queryVec, $err] = $this->ollama->embedQuery([$query], $userId);
@@ -166,6 +168,7 @@ class Searcher {
         $queryMagnitude = $queryVector === null ? null : $this->vectorMagnitude($queryVector);
         if ($queryMagnitude === null) $queryVector = null;
         $measurements['embedding_ms'] = (hrtime(true) - $phase) / 1_000_000;
+        $measurements['embedding_provider'] = $embeddingProvider;
         $measurements['dense_enabled'] = $queryMagnitude !== null;
         $phase = $this->startStage($measurements, 'candidates_ms');
         try {
@@ -179,6 +182,10 @@ class Searcher {
             $chunkCount=$this->chunkMapper->countForUser($userId);
             $fallbackEmbeddingStarted=hrtime(true);
             $queryVector=$fixedVector;
+            // A Qdrant failure can include both the generation provider's
+            // initial query embedding and an Ollama fallback embedding.
+            // Keep mixed time out of provider-specific latency aggregates.
+            $embeddingProvider=$fixedVector!==null?'frozen':($cloudChatWithLocalEmbedding?'none':'mixed');
             if($queryVector===null&&!$cloudChatWithLocalEmbedding){
                 [$fallbackVector,$fallbackError]=$this->ollama->embedQuery([$query],$userId);
                 $queryVector=$fallbackError===null&&is_array($fallbackVector)&&isset($fallbackVector[0])?$fallbackVector[0]:null;
@@ -186,6 +193,7 @@ class Searcher {
             $queryMagnitude=$queryVector===null?null:$this->vectorMagnitude($queryVector);
             if($queryMagnitude===null)$queryVector=null;
             $measurements['embedding_ms']+=(hrtime(true)-$fallbackEmbeddingStarted)/1_000_000;
+            $measurements['embedding_provider']=$embeddingProvider;
             $measurements['dense_enabled']=$queryMagnitude!==null;
             $rows=$this->loadCandidates($userId,$query,$queryVector,$queryMagnitude,null,$scopePath,$topK);
         }
