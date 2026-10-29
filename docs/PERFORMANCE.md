@@ -82,6 +82,10 @@ existing offset-compatible path until SQL reads are enabled. Chat content search
 remains a separate, explicit full-text walk because message bodies stay
 encrypted and are not indexed in plaintext.
 
+On normalized SQL storage, title changes, single-message edits and truncation
+update only the affected conversation. They do not decrypt, diff or rewrite the
+account's other chat histories.
+
 The wrapper destroys its renderer when replaced or unmounted. Destruction
 hands an active request to the existing durable background flow, removes the
 page-hide listener, aborts the browser stream, stops speech, clears its timer,

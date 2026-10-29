@@ -570,7 +570,18 @@ class ChatStore {
     }
 
     public function setTitle(string $user, string $id, string $title): void {
-        $this->withUserLock($user, function () use ($user, $id, $title): void {
+        $this->withChatAwareLock($user, $id, function () use ($user, $id, $title): void {
+            if ($this->sqlReadsEnabled($user)) {
+                $record = $this->sqlChats->metadata($user, $id);
+                if ($record === null) return;
+                $metadata = $record['metadata'];
+                $metadata['title'] = $this->clipTitle($title);
+                $metadata['updated'] = time();
+                $metadata['rev'] = (int)($metadata['rev'] ?? 0) + 1;
+                $this->sqlChats->updateMetadata($user, $id, $metadata);
+                unset($this->chatSnapshots[$user]);
+                return;
+            }
             $all = $this->read($user);
             foreach ($all as &$chat) {
                 if (($chat['id'] ?? '') === $id) {
@@ -1087,7 +1098,12 @@ class ChatStore {
     }
 
     public function truncateAfter(string $user, string $id, int $fromIndex): void {
-        $this->withUserLock($user, function () use ($user, $id, $fromIndex): void {
+        $this->withChatAwareLock($user, $id, function () use ($user, $id, $fromIndex): void {
+            if ($this->sqlReadsEnabled($user)) {
+                $this->sqlChats->truncateAfter($user, $id, $fromIndex);
+                unset($this->chatSnapshots[$user]);
+                return;
+            }
             $all = $this->read($user);
             foreach ($all as &$chat) {
                 if (($chat['id'] ?? '') === $id) {
@@ -1108,7 +1124,12 @@ class ChatStore {
      * Replace the text of a message at the given 0-based index.
      */
     public function replaceMessage(string $user, string $id, int $index, string $newText): void {
-        $this->withUserLock($user, function () use ($user, $id, $index, $newText): void {
+        $this->withChatAwareLock($user, $id, function () use ($user, $id, $index, $newText): void {
+            if ($this->sqlReadsEnabled($user)) {
+                $this->sqlChats->replaceMessage($user, $id, $index, $newText);
+                unset($this->chatSnapshots[$user]);
+                return;
+            }
             $all = $this->read($user);
             foreach ($all as &$chat) {
                 if (($chat['id'] ?? '') === $id) {

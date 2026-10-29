@@ -111,6 +111,94 @@ final class EncryptedChatRepository {
 		return $chat;
 	}
 
+	/** Update encrypted conversation metadata without loading its messages. */
+	public function updateMetadata(string $userId, string $chatId, array $metadata): bool {
+		$owner = hash('sha256', $userId);
+		unset($metadata['messages']);
+		$record = $this->metadata($userId, $chatId);
+		if ($record === null) return false;
+		$created = $record['created'];
+		$updated = (int)($metadata['updated'] ?? time());
+		$qb = $this->db->getQueryBuilder();
+		$qb->update('eva_ai_chats')->set('created_at', $qb->createNamedParameter($created, IQueryBuilder::PARAM_INT))
+			->set('updated_at', $qb->createNamedParameter($updated, IQueryBuilder::PARAM_INT))
+			->set('message_count', $qb->createNamedParameter($record['count'], IQueryBuilder::PARAM_INT))
+			->set('encrypted_metadata', $qb->createNamedParameter($this->seal($metadata)))
+			->where($qb->expr()->eq('user_id', $qb->createNamedParameter($owner)))
+			->andWhere($qb->expr()->eq('chat_id', $qb->createNamedParameter($chatId)));
+		$qb->executeStatement();
+		return true;
+	}
+
+	/** Replace one encrypted message and update its conversation metadata atomically. */
+	public function replaceMessage(string $userId, string $chatId, int $index, string $text): bool {
+		$owner = hash('sha256', $userId);
+		$this->db->beginTransaction();
+		try {
+			$record = $this->metadata($userId, $chatId);
+			if ($record === null || $index < 0 || $index >= $record['count']) {
+				$this->db->commit();
+				return false;
+			}
+			$qb = $this->db->getQueryBuilder();
+			$qb->select('encrypted_message')->from('eva_ai_chat_messages')
+				->where($qb->expr()->eq('user_id', $qb->createNamedParameter($owner)))
+				->andWhere($qb->expr()->eq('chat_id', $qb->createNamedParameter($chatId)))
+				->andWhere($qb->expr()->eq('message_index', $qb->createNamedParameter($index, IQueryBuilder::PARAM_INT)));
+			$result = $qb->executeQuery();
+			try { $raw = $result->fetchOne(); } finally { $result->closeCursor(); }
+			if (!is_string($raw)) {
+				$this->db->commit();
+				return false;
+			}
+			$message = $this->open($raw);
+			$message['text'] = $text;
+			$update = $this->db->getQueryBuilder();
+			$update->update('eva_ai_chat_messages')->set('encrypted_message', $update->createNamedParameter($this->seal($message)))
+				->where($update->expr()->eq('user_id', $update->createNamedParameter($owner)))
+				->andWhere($update->expr()->eq('chat_id', $update->createNamedParameter($chatId)))
+				->andWhere($update->expr()->eq('message_index', $update->createNamedParameter($index, IQueryBuilder::PARAM_INT)))
+				->executeStatement();
+			$metadata = $record['metadata'];
+			$metadata['updated'] = time();
+			$metadata['rev'] = (int)($metadata['rev'] ?? 0) + 1;
+			$this->updateMetadata($userId, $chatId, $metadata);
+			$this->db->commit();
+			return true;
+		} catch (\Throwable $e) {
+			$this->db->rollBack();
+			throw $e;
+		}
+	}
+
+	/** Remove a message tail while preserving the encrypted per-chat model. */
+	public function truncateAfter(string $userId, string $chatId, int $fromIndex): bool {
+		$owner = hash('sha256', $userId);
+		$this->db->beginTransaction();
+		try {
+			$record = $this->metadata($userId, $chatId);
+			if ($record === null || $fromIndex < 0 || $fromIndex >= $record['count']) {
+				$this->db->commit();
+				return false;
+			}
+			$this->deleteMessagesFrom($owner, $chatId, $fromIndex);
+			$metadata = $record['metadata'];
+			$metadata['updated'] = time();
+			$metadata['rev'] = (int)($metadata['rev'] ?? 0) + 1;
+			$qb = $this->db->getQueryBuilder();
+			$qb->update('eva_ai_chats')->set('updated_at', $qb->createNamedParameter($metadata['updated'], IQueryBuilder::PARAM_INT))
+				->set('message_count', $qb->createNamedParameter($fromIndex, IQueryBuilder::PARAM_INT))
+				->set('encrypted_metadata', $qb->createNamedParameter($this->seal($metadata)))
+				->where($qb->expr()->eq('user_id', $qb->createNamedParameter($owner)))
+				->andWhere($qb->expr()->eq('chat_id', $qb->createNamedParameter($chatId)))->executeStatement();
+			$this->db->commit();
+			return true;
+		} catch (\Throwable $e) {
+			$this->db->rollBack();
+			throw $e;
+		}
+	}
+
 	/** @return list<array{id:string,created:int,updated:int,count:int,metadata:array}> */
 	public function metadataPage(string $userId, int $limit = 50, ?int $beforeUpdated = null, ?string $beforeChatId = null, bool $emptyOnly = false): array {
 		$limit = min(101, max(1, $limit));
