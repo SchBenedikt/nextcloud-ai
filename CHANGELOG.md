@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Normalize Mail search case across database collations (1.18.63)
+
+- Lowercase the search term and Mail text fields for consistent case-insensitive matches across Nextcloud database backends.
+
 ### Use the DBAL type object in the usage migration (1.18.62)
 
 - Pass the integer DBAL type object to Nextcloud's schema wrapper when normalizing existing usage tables.
