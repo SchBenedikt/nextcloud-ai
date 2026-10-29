@@ -10,6 +10,7 @@ use OCP\Files\NotPermittedException;
 use OCP\Files\SimpleFS\ISimpleFolder;
 use OCP\Lock\ILockingProvider;
 use OCP\Security\ICrypto;
+use OCA\EvaAi\Db\EncryptedChatRepository;
 use Psr\Log\LoggerInterface;
 
 /**
@@ -30,12 +31,15 @@ class ChatStore {
     private const SNIPPET_RADIUS = 60;
     /** @var array<string,string> raw chat payloads read under the user lock */
     private array $rawSnapshots = [];
+    /** @var array<string,list<array<string,mixed>>> decoded snapshots for SQL diff writes */
+    private array $chatSnapshots = [];
 
     public function __construct(
         private IAppDataFactory $appDataFactory,
         private LoggerInterface $logger,
         private ILockingProvider $lockingProvider,
-        private ?ICrypto $crypto = null
+        private ?ICrypto $crypto = null,
+        private ?EncryptedChatRepository $sqlChats = null
     ) {
     }
 
@@ -230,6 +234,19 @@ class ChatStore {
         }, ILockingProvider::LOCK_SHARED);
     }
 
+    /** Export a migration snapshot and fingerprint only the stored ciphertext. */
+    public function migrationSnapshot(string $user): array {
+        return $this->withUserLock($user, function () use ($user): array {
+            $chats = $this->read($user);
+            return ['chats' => $chats, 'sourceHash' => hash('sha256', $this->rawSnapshots[$user] ?? '')];
+        }, ILockingProvider::LOCK_SHARED);
+    }
+
+    /** Serialize a bounded SQL import batch with chat writes and account erasure. */
+    public function withMigrationLock(string $user, callable $operation): mixed {
+        return $this->withUserLock($user, $operation, ILockingProvider::LOCK_EXCLUSIVE);
+    }
+
     /** Import validated chat history as new chats, never overwriting existing IDs. */
     public function importAll(string $user, array $chats): int {
         return $this->withUserLock($user, function () use ($user, $chats): int {
@@ -391,6 +408,14 @@ class ChatStore {
             } catch (\Throwable $e) {
                 $this->logger->warning('eva_ai: chat cleanup failed for deleted account', ['user' => $user]);
             }
+            // This uses the same per-user lock as every bounded SQL import
+            // batch, so an in-flight migration cannot recreate erased rows.
+            try {
+                $this->sqlChats?->deleteUserData($user);
+            } catch (\Throwable $e) {
+                $this->logger->warning('eva_ai: SQL chat cleanup failed for deleted account', ['user' => $user]);
+            }
+            unset($this->chatSnapshots[$user], $this->rawSnapshots[$user]);
         });
     }
 
@@ -934,6 +959,7 @@ class ChatStore {
         try {
             $raw = $this->rootFor($user)->getContent();
         } catch (NotFoundException $e) {
+            $this->chatSnapshots[$user] = [];
             return [];
         } catch (NotPermittedException $e) {
             $this->logger->warning('eva_ai: chat folder not readable (permissions?)', ['user' => $user]);
@@ -941,7 +967,9 @@ class ChatStore {
         }
         $this->rawSnapshots[$user] = $raw;
         try {
-            return $this->decodeStoredList($raw, 'chat data');
+            $chats = $this->decodeStoredList($raw, 'chat data');
+            $this->chatSnapshots[$user] = $chats;
+            return $chats;
         } catch (\RuntimeException $error) {
             // Recover the last complete payload when a worker was killed
             // while replacing chats.json. The corrupt live file remains in
@@ -949,6 +977,7 @@ class ChatStore {
             try {
                 $backup = $this->userFolderFor($user)->getFile('chats.json.backup')->getContent();
                 $recovered = $this->decodeStoredList($backup, 'chat backup');
+                $this->chatSnapshots[$user] = $recovered;
                 $this->logger->warning('eva_ai: recovered chats from backup after corrupt write', ['user' => $user]);
                 return $recovered;
             } catch (\Throwable) {
@@ -1014,7 +1043,25 @@ class ChatStore {
                 $this->logger->debug('eva_ai: chat backup could not be updated', ['exception' => $backupError->getMessage()]);
             }
             $root->putContent($json);
-            unset($this->rawSnapshots[$user]);
+            $previous = $this->chatSnapshots[$user] ?? [];
+            if ($this->sqlChats !== null) {
+                try {
+                    $this->sqlChats->syncChats($user, $previous, $data);
+                    $state = $this->sqlChats->migrationState($user);
+                    if (($state['state'] ?? '') === 'complete') {
+                        $this->sqlChats->saveMigrationState($user, 'complete', is_string($state['cursor'] ?? null) ? $state['cursor'] : null, hash('sha256', $json));
+                    }
+                } catch (\Throwable $mirrorError) {
+                    try {
+                        $this->sqlChats->saveMigrationState($user, 'failed', null, hash('sha256', $json), 'sql_mirror_failed');
+                    } catch (\Throwable) {
+                        // The AppData source remains valid even if SQL is unavailable.
+                    }
+                    $this->logger->warning('eva_ai: SQL chat mirror failed; AppData remains authoritative', ['user' => $user]);
+                }
+            }
+            $this->chatSnapshots[$user] = $data;
+            $this->rawSnapshots[$user] = $json;
         } catch (\Throwable $e) {
             $this->logger->error('eva_ai: chat save failed - chats may disappear after reload', [
                 'user' => $user,

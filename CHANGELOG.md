@@ -4,7 +4,8 @@
 
 ### Encrypted SQL chat storage foundation (1.18.27)
 
-- Add additive, owner-scoped tables for encrypted chat metadata, encrypted messages, and per-user migration checkpoints. Existing AppData chat files remain untouched until a later migration/cutover step is ready.
+- Add additive, owner-scoped tables for encrypted chat metadata, encrypted messages, and per-user migration checkpoints. The `occ eva_ai:migrate-chat-storage <user>` command imports in resumable batches and verifies SQL against the source snapshot without deleting or switching from AppData.
+- Mirror current ChatStore changes transactionally into SQL at message granularity after AppData is saved; failed mirror writes leave AppData authoritative and invalidate the migration checkpoint.
 - Add encrypted repository primitives for atomic chat snapshots, individual message writes, metadata pagination, and owner-scoped account erasure. No plaintext title, role, or message search indexes are introduced.
 
 ### Native Qdrant BM25 opt-in (1.18.26)

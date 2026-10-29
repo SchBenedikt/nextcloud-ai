@@ -90,6 +90,7 @@ Licensed under AGPL-3.0-or-later.
         <step>OCA\EvaAi\Migration\ResetEvaJobsOnUpgradeRepairStep</step>
     </repair-steps>
     <commands>
+        <command>OCA\EvaAi\Command\MigrateChatStorage</command>
         <command>OCA\EvaAi\Command\VectorOutbox</command>
         <command>OCA\EvaAi\Command\Qdrant</command>
         <command>OCA\EvaAi\Command\VectorGeneration</command>

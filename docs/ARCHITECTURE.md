@@ -18,6 +18,12 @@ checkpointed import, dual-version recovery path, and ChatStore cutover are
 implemented and documented. Keep the encrypted source snapshots through the
 rollback window.
 
+Current ChatStore mutations mirror their changed chat metadata and message
+rows in one SQL transaction after the AppData write succeeds. A mirror failure
+does not fail the chat operation; it marks the checkpoint failed so an
+administrator can rebuild SQL from AppData. This is a migration bridge, not a
+mixed-version SQL-read guarantee: older application nodes do not write SQL.
+
 
 ## Directory layout
 

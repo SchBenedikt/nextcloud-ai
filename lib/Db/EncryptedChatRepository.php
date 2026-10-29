@@ -45,6 +45,46 @@ final class EncryptedChatRepository {
 		}
 	}
 
+	/** Mirror a ChatStore change using message-level inserts/replacements/deletes. */
+	public function syncChats(string $userId, array $previous, array $current): void {
+		$owner = hash('sha256', $userId);
+		$before = [];
+		$after = [];
+		foreach ($previous as $chat) if (is_array($chat) && is_string($chat['id'] ?? null)) $before[$chat['id']] = $chat;
+		foreach ($current as $chat) if (is_array($chat) && is_string($chat['id'] ?? null)) $after[$chat['id']] = $chat;
+		$this->db->beginTransaction();
+		try {
+			foreach (array_diff_key($before, $after) as $id => $_) {
+				$this->deleteMessagesFrom($owner, $id, 0);
+				$qb = $this->db->getQueryBuilder();
+				$qb->delete('eva_ai_chats')->where($qb->expr()->eq('user_id', $qb->createNamedParameter($owner)))
+					->andWhere($qb->expr()->eq('chat_id', $qb->createNamedParameter($id)))->executeStatement();
+			}
+			foreach ($after as $id => $chat) {
+				$old = $before[$id] ?? [];
+				$messages = is_array($chat['messages'] ?? null) ? $chat['messages'] : [];
+				$oldMessages = is_array($old['messages'] ?? null) ? $old['messages'] : [];
+				$metadata = $chat;
+				unset($metadata['messages']);
+				$oldMetadata = $old;
+				unset($oldMetadata['messages']);
+				if (!isset($before[$id]) || $this->digest($metadata) !== $this->digest($oldMetadata)
+					|| count($messages) !== count($oldMessages)) {
+					$this->upsertMetadata($owner, $id, (int)($chat['created'] ?? time()), (int)($chat['updated'] ?? time()), count($messages), $this->seal($metadata));
+				}
+				$firstChanged = count($messages);
+				for ($i = 0; $i < min(count($messages), count($oldMessages)); $i++) {
+					if ($this->digest($messages[$i]) !== $this->digest($oldMessages[$i])) { $firstChanged = $i; break; }
+				}
+				if ($firstChanged < count($oldMessages)) $this->deleteMessagesFrom($owner, $id, $firstChanged);
+				for ($i = $firstChanged; $i < count($messages); $i++) {
+					$this->insertMessage($owner, $id, $i, (int)($messages[$i]['created'] ?? time()), $this->seal($messages[$i]));
+				}
+			}
+			$this->db->commit();
+		} catch (\Throwable $e) { $this->db->rollBack(); throw $e; }
+	}
+
 	/** Append a single encrypted message without rewriting prior message rows. */
 	public function appendMessage(string $userId, string $chatId, int $index, array $message): void {
 		if ($index < 0 || $chatId === '' || strlen($chatId) > 128) {
@@ -66,6 +106,17 @@ final class EncryptedChatRepository {
 			'count' => (int)$row['message_count'],
 			'metadata' => $this->open((string)$row['encrypted_metadata']),
 		];
+	}
+
+	public function chat(string $userId, string $chatId): ?array {
+		$record = $this->metadata($userId, $chatId);
+		if ($record === null) return null;
+		$chat = $record['metadata'];
+		$chat['created'] = $record['created'];
+		$chat['updated'] = $record['updated'];
+		$chat['messages'] = $this->messages($userId, $chatId, 0, 1000);
+		if (count($chat['messages']) !== $record['count']) return null;
+		return $chat;
 	}
 
 	/** @return list<array{created:int,updated:int,count:int,metadata:array}> */
@@ -109,13 +160,30 @@ final class EncryptedChatRepository {
 		} catch (\Throwable $e) { $this->db->rollBack(); throw $e; }
 	}
 
+	/** Clear only imported chat rows, retaining the resumable migration marker. */
+	public function resetImportedChats(string $userId): void {
+		$owner = hash('sha256', $userId);
+		$this->db->beginTransaction();
+		try {
+			foreach (['eva_ai_chat_messages', 'eva_ai_chats'] as $table) {
+				$qb = $this->db->getQueryBuilder();
+				$qb->delete($table)->where($qb->expr()->eq('user_id', $qb->createNamedParameter($owner)))->executeStatement();
+			}
+			$this->db->commit();
+		} catch (\Throwable $e) { $this->db->rollBack(); throw $e; }
+	}
+
 	/** Account erasure is owner-scoped and also removes an interrupted migration checkpoint. */
 	public function deleteUserData(string $userId): void {
 		$owner = hash('sha256', $userId);
-		foreach (['eva_ai_chat_messages', 'eva_ai_chats', 'eva_ai_chat_migrations'] as $table) {
-			$qb = $this->db->getQueryBuilder();
-			$qb->delete($table)->where($qb->expr()->eq('user_id', $qb->createNamedParameter($owner)))->executeStatement();
-		}
+		$this->db->beginTransaction();
+		try {
+			foreach (['eva_ai_chat_messages', 'eva_ai_chats', 'eva_ai_chat_migrations'] as $table) {
+				$qb = $this->db->getQueryBuilder();
+				$qb->delete($table)->where($qb->expr()->eq('user_id', $qb->createNamedParameter($owner)))->executeStatement();
+			}
+			$this->db->commit();
+		} catch (\Throwable $e) { $this->db->rollBack(); throw $e; }
 	}
 
 	public function migrationState(string $userId): ?array {
@@ -199,6 +267,16 @@ final class EncryptedChatRepository {
 	private function seal(array $value): string {
 		$json = json_encode($value, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR);
 		return self::PREFIX . $this->crypto->encrypt($json);
+	}
+
+	private function digest(array $value): string {
+		$normalize = static function (mixed $item) use (&$normalize): mixed {
+			if (!is_array($item)) return $item;
+			if (!array_is_list($item)) ksort($item, SORT_STRING);
+			foreach ($item as $key => $child) $item[$key] = $normalize($child);
+			return $item;
+		};
+		return hash('sha256', json_encode($normalize($value), JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR));
 	}
 
 	private function open(string $value): array {
