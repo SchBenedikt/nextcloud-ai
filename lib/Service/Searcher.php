@@ -214,7 +214,8 @@ class Searcher {
             ];
         }
 
-        $lexical = $this->lexicalBm25($rows, $queryTokens, $docFields);
+        $nativeHybrid = isset($rows[0]['_native_rrf']);
+        $lexical = $nativeHybrid ? $this->lexicalFileContext($rows, $queryTokens, $docFields) : $this->lexicalBm25($rows, $queryTokens, $docFields);
         // Quoted phrases are an explicit exact-match signal. Give them a
         // deterministic boost after BM25/RRF preparation so an exact result
         // wins over a merely semantically related chunk.
@@ -231,7 +232,7 @@ class Searcher {
         // On a large index this was pure CPU work: all scores were zero and
         // the dense rank could not affect the result anyway.
         $dense = [];
-        if ($queryVector !== null) {
+        if ($queryVector !== null && !$nativeHybrid) {
             foreach ($rows as $i => $row) {
                 $vec = json_decode($row['embedding'], true);
                 if (!is_array($vec)) {
@@ -256,13 +257,9 @@ class Searcher {
         foreach ($rows as $i => $row) {
             $lexScore = $lexical[$i] ?? 0.0;
             $denseScore = $dense[$i] ?? 0.0;
-            $rrf = 0.0;
-            if (array_key_exists($i, $lexPos)) {
-                $rrf += 1 / (60 + $lexPos[$i]);
-            }
-            if (array_key_exists($i, $densePos)) {
-                $rrf += 1 / (60 + $densePos[$i]);
-            }
+            $rrf = $nativeHybrid ? (float)$row['_native_rrf'] : 0.0;
+            if (array_key_exists($i, $lexPos)) $rrf += 1 / (60 + $lexPos[$i]);
+            if (!$nativeHybrid && array_key_exists($i, $densePos)) $rrf += 1 / (60 + $densePos[$i]);
             $docId = (int)$row['document_id'];
             $doc = $docMeta[$docId] ?? null;
             $results[] = [
@@ -397,6 +394,38 @@ class Searcher {
         $generationState=$generation?->backend==='qdrant'?'delivered':'ready';
         if($generation?->backend==='qdrant'){
             if($this->qdrant===null||$this->generationChunks===null||$this->generations===null)throw new VectorStoreException('qdrant_search_unavailable');
+            if ($generation->includeTextPayload) {
+                $target=$this->generations->target($userId,$generation->id);
+                if($target===null)throw new VectorStoreException('generation_target_missing');
+                $guard=function()use($userId,$generation):void{if(!$this->isActiveGenerationCurrent($userId,$generation->id))throw new VectorStoreException('generation_not_active');};
+                $store=$this->qdrant->forTarget($target,$guard);
+                $limit=min(100,max(20,$topK*4));
+                $hits=$store->searchHybrid($generation,$query,$queryVector,$limit,new SearchFilters($scopePath));
+                $guard();
+                $rows=$this->generationChunks->searchRows($userId,$generation,$hits);
+                $byId=[];
+                foreach($rows as$row)$byId[(int)$row['id']]=$row;
+                $phrases=$this->quotedPhrases($query);
+                if($phrases!==[]){
+                    $phraseCandidates=$this->chunkMapper->filterChunksByPhrases($userId,$phrases,100,$generation->id,'delivered');
+                    $phraseHits=[];
+                    foreach($phraseCandidates as$candidate){
+                        $text=mb_strtolower((string)$candidate['content']);
+                        foreach($phrases as$phrase){
+                            if(str_contains($text,mb_strtolower($phrase))){
+                                $phraseHits[]=['chunkId'=>(int)$candidate['id'],'revision'=>(int)$candidate['vector_revision']];
+                                break;
+                            }
+                        }
+                    }
+                    foreach($this->generationChunks->searchRows($userId,$generation,$phraseHits)as$row)$byId[(int)$row['id']]??=$row;
+                }
+                $rrf=[];
+                foreach($hits as$rank=>$hit)$rrf[$hit['chunkId']]=$queryVector===null?1/(60+$rank):(float)$hit['score'];
+                foreach($byId as&$row)$row['_native_rrf']=$rrf[(int)$row['id']]??0.0;
+                unset($row);
+                return array_values($byId);
+            }
             $lexical=$this->chunkMapper->filterChunksByTokens($userId,$this->tokens($query),(int)ceil(self::POOL/2),null,$generationId,'delivered');
             $dense=[];
             if($queryVector!==null){
@@ -592,6 +621,30 @@ class Searcher {
                 foreach ($docRows[$docId] ?? [] as $i) {
                     $scores[$i] = ($scores[$i] ?? 0.0) + $weight * $idf;
                 }
+            }
+        }
+        return $scores;
+    }
+
+    /** Cheap filename/path signal layered over Qdrant's native full-text BM25. */
+    private function lexicalFileContext(array $rows, array $queryTokens, array $docFields): array {
+        $scores = [];
+        $documentRows = [];
+        foreach ($rows as $index => $row) $documentRows[(int)$row['document_id']][] = $index;
+        $count = max(1, count($documentRows));
+        foreach ($queryTokens as $term) {
+            $matches = [];
+            foreach ($docFields as $documentId => $fields) {
+                $weight = 0.0;
+                if (str_contains($fields['name'], $term)) $weight = 0.5;
+                if (str_contains($fields['path'], $term)) $weight = max($weight, 0.3);
+                if ($weight > 0.0) $matches[$documentId] = $weight;
+            }
+            $df = count($matches);
+            if ($df === 0) continue;
+            $idf = log(1 + (($count - $df + 0.5) / ($df + 0.5)));
+            foreach ($matches as $documentId => $weight) {
+                foreach ($documentRows[$documentId] ?? [] as $index) $scores[$index] = ($scores[$index] ?? 0.0) + $weight * $idf;
             }
         }
         return $scores;

@@ -1,13 +1,16 @@
-# Optional Qdrant dense adapter
+# Optional Qdrant dense and hybrid adapter
 
-EVA's normal installation still uses SQL retrieval. The Qdrant adapter is opt-in,
-disabled by default and not invoked by Searcher or Indexer in this stage. App
-installation, upgrade, page rendering and generation metadata creation make no
-Qdrant request. Configuring a connection does not select it for chat retrieval.
+EVA's normal installation still uses built-in SQL retrieval. Qdrant remains
+optional and disabled by default. A configured connection does not select it for
+chat retrieval; only an explicitly verified and activated generation can serve
+as a Qdrant canary. Installation, upgrade, page rendering and generation
+metadata creation make no Qdrant request.
 
 ## Protocol and identity
 
-The adapter targets Qdrant 1.x, minimum 1.16.0. Health explicitly checks the root
+Dense retrieval targets Qdrant 1.x, minimum 1.16.0. Native hybrid retrieval
+requires Qdrant 1.20.0 or newer for BM25 scoring on a full-text payload index.
+Health explicitly checks the root
 API version; this is reachability/capability metadata, not proof of collection
 readiness, HA, backup health or successful indexing. A disposable loopback 1.16.0 transport test has passed; a live multi-version/cluster
 matrix remains pending.
@@ -19,6 +22,8 @@ Protocol references used during implementation:
 - [Upsert points](https://api.qdrant.tech/api-reference/points/upsert-points)
 - [Conditional point updates](https://qdrant.tech/documentation/manage-data/points/#conditional-updates)
 - [Query points](https://api.qdrant.tech/api-reference/search/query-points)
+- [Hybrid dense/BM25 queries and RRF](https://qdrant.tech/documentation/search/hybrid-queries/)
+- [Full-text indexes and BM25 scoring](https://qdrant.tech/documentation/manage-data/indexing/)
 
 Each server-owned generation uses its own randomly named collection and a named
 `dense` vector with pinned dimension and Cosine distance. Preparation checks the
@@ -29,9 +34,21 @@ reusing a differently shaped collection.
 Points use stable positive SQL chunk IDs within that collection. Payloads contain
 SHA-256 tenant tokens, generation IDs, document/file/chunk identifiers, source,
 content hash, monotonic revision, deletion state and hashed path ancestors. Raw account names, file paths and document
-text are not copied. These unsalted tokens are pseudonyms, not encryption or proof
+text are not copied for dense-only generations. These unsalted tokens are pseudonyms, not encryption or proof
 against guessing; vectors and identifiers remain personal data requiring access
 controls and retention policy.
+
+Native hybrid retrieval is an explicit per-generation option, off by default.
+Creating a Qdrant generation with `--include-text-payload` records that choice;
+starting or resuming its build separately requires `--confirm-text-transfer`.
+Those controls are distinct from consent to send text to the embedding provider.
+Only opted-in generations add chunk text to the Qdrant `content` payload and
+build the BM25/phrase index. Qdrant can contain plaintext document chunks; remote
+operators must configure their own storage access, encryption-at-rest, backup
+retention and deletion controls. Full-generation erasure removes the collection;
+chunk tombstones overwrite the payload and do not retain text. Existing
+dense-only collections are never silently promoted to hybrid and must be rebuilt
+as a new opted-in generation.
 
 Folder filtering is exact ancestor-token matching, including full-path equality,
 so `Notes` does not match `NotesArchive`. It does not require a newer prefix-index
@@ -42,11 +59,17 @@ accept their corresponding bounded `mail://`/`talk://` URI, carry no Files folde
 tokens and cannot enter a Files-folder-scoped result through that field. Raw URIs
 are not sent to Qdrant. Remote source/scope isolation checks remain unexecuted.
 
+Native hybrid queries run dense and BM25 prefetches with server-generated tenant,
+generation, deletion and scope filters, then fuse them with Qdrant RRF. The
+application retains SQL hydration at exact chunk revisions, filename/path
+context, quoted-phrase boosts and document diversification. If remote hybrid
+search fails, retrieval falls back to the built-in SQL path.
+
 Callers cannot provide arbitrary filter JSON. Returned payloads are checked again
 for identity/source/scope/document violations. Any violation fails the entire
 request instead of silently hiding a violated invariant. Search returns IDs,
-revisions and scores; future readers must hydrate owned SQL rows at exactly the
-returned revision and reject stale metadata.
+revisions and scores only. EVA hydrates owner-controlled SQL rows at exactly the
+returned revision and rejects stale metadata before using any text.
 
 Upsert validates the complete batch before its first request, enforces generation
 dimension and finite nonzero vectors, and caps batches at 200 points / 250,000

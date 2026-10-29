@@ -27,10 +27,11 @@ class GenerationBuildAdminController extends OCSController {
         try {
             GenerationAdminRequest::fromArray(['userId'=>$userId,'id'=>$id]);
             if (!preg_match('~^application/json(?:\s*;|$)~i',$this->request->getHeader('Content-Type'))) throw new \InvalidArgumentException();
-            $input=['confirm_document_transfer'=>$this->request->getParam('confirm_document_transfer',false)];
+            $input=['confirm_document_transfer'=>$this->request->getParam('confirm_document_transfer',false),
+                'confirm_text_transfer'=>$this->request->getParam('confirm_text_transfer',false)];
             $dto=GenerationBuildRequest::fromArray($operation,$input);
-            return new ErrorDataResponse($this->builds->control($userId,$id,$dto->action,$dto->confirmed));
-        } catch(\InvalidArgumentException) {return $this->failure('invalid_request','Confirm document transfer and select a valid build action.',400);}
+            return new ErrorDataResponse($this->builds->control($userId,$id,$dto->action,$dto->confirmed,$dto->confirmedText));
+        } catch(\InvalidArgumentException) {return $this->failure('invalid_request','Confirm document transfer and, when configured, Qdrant text transfer before starting or resuming.',400);}
         catch(VectorStoreException $error) {
             $message=match($error->reason) {
                 'build_disabled','build_target_changed'=>'Enable source indexing and ensure the selected generation backend is available before starting or resuming.',

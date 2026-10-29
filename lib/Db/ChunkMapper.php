@@ -196,6 +196,27 @@ class ChunkMapper extends QBMapper {
         return $rows;
     }
 
+    /** Bounded exact-phrase candidate recovery for native remote hybrid search. */
+    public function filterChunksByPhrases(string $userId, array $phrases, int $cap, ?string $generationId, string $generationState = 'delivered'): array {
+        $phrases = array_slice(array_values(array_unique(array_filter($phrases, static fn($phrase): bool => is_string($phrase)
+            && trim($phrase) !== '' && strlen($phrase) <= 800))), 0, 5);
+        if ($phrases === []) return [];
+        $qb = $this->db->getQueryBuilder();
+        $qb->select('c.id', 'c.document_id', 'c.chunk_index', 'c.content', 'c.embedding', 'c.provenance', 'c.vector_revision')
+            ->from('eva_ai_chunks', 'c')->innerJoin('c', 'eva_ai_documents', 'd', $qb->expr()->eq('c.document_id', 'd.id'))
+            ->where($qb->expr()->eq('d.user_id', $qb->createNamedParameter($userId)));
+        $matches = $qb->expr()->orX();
+        foreach ($phrases as $phrase) {
+            $matches->add($qb->expr()->like($qb->func()->lower('c.content'),
+                $qb->createNamedParameter('%' . $this->escapeLike(mb_strtolower(trim($phrase))) . '%')));
+        }
+        $qb->andWhere($matches)->orderBy('c.id', 'ASC')->setMaxResults(max(1, min(100, $cap)));
+        $this->filterGeneration($qb, $generationId, $generationState);
+        $result = $qb->executeQuery();
+        try { return $result->fetchAll(); }
+        finally { $result->closeCursor(); }
+    }
+
     private function escapeLike(string $value): string {
         return addcslashes($value, '%_\\');
     }

@@ -15,7 +15,8 @@ final class VectorBuild extends Command {
             ->addArgument('action',InputArgument::REQUIRED,'status, start, pause, resume, cancel or run')
             ->addArgument('user',InputArgument::OPTIONAL,'Generation owner, required except for run')
             ->addArgument('generation',InputArgument::OPTIONAL,'Generation ID, required except for run')
-            ->addOption('confirm-document-transfer',null,InputOption::VALUE_NONE,'Explicit consent to read indexed sources and send text to the fixed embedding provider');
+            ->addOption('confirm-document-transfer',null,InputOption::VALUE_NONE,'Explicit consent to read indexed sources and send text to the fixed embedding provider')
+            ->addOption('confirm-text-transfer',null,InputOption::VALUE_NONE,'Separate explicit consent to copy chunk text into the configured Qdrant index');
     }
     protected function execute(InputInterface $input,OutputInterface $output): int {
         try {
@@ -27,8 +28,9 @@ final class VectorBuild extends Command {
                 if ($id===null) throw new \InvalidArgumentException();
                 if ($action==='status') $data=$this->builds->status($user,$id);
                 else {
-                    $dto=GenerationBuildRequest::fromArray($action,['confirm_document_transfer'=>(bool)$input->getOption('confirm-document-transfer')]);
-                    $data=$this->builds->control($user,$id,$action,$dto->confirmed);
+                    $dto=GenerationBuildRequest::fromArray($action,['confirm_document_transfer'=>(bool)$input->getOption('confirm-document-transfer'),
+                        'confirm_text_transfer'=>(bool)$input->getOption('confirm-text-transfer')]);
+                    $data=$this->builds->control($user,$id,$action,$dto->confirmed,$dto->confirmedText);
                 }
             }
             $output->writeln(json_encode($data,JSON_PRETTY_PRINT|JSON_THROW_ON_ERROR),OutputInterface::OUTPUT_RAW);

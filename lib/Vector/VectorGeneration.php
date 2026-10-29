@@ -18,9 +18,10 @@ final readonly class VectorGeneration {
         public int $chunkSize,
         public int $chunkOverlap,
         public int $schemaVersion = 1,
+        public bool $includeTextPayload = false,
     ) {
         if (preg_match('/^[a-f0-9]{32}$/D', $id) !== 1 || $userId === '' || mb_strlen($userId) > 64 || preg_match('/[\x00-\x1f\x7f]/', $userId)
-            || !in_array($backend, ['sql', 'qdrant'], true) || !in_array($embeddingProvider, ['ollama', 'openai_compatible'], true)
+            || !in_array($backend, ['sql', 'qdrant'], true) || ($includeTextPayload && $backend !== 'qdrant') || !in_array($embeddingProvider, ['ollama', 'openai_compatible'], true)
             || trim($embeddingModel) === '' || mb_strlen($embeddingModel) > 128 || preg_match('/[\x00-\x1f\x7f]/', $embeddingModel)
             || preg_match('/^[a-f0-9]{64}$/D', $endpointHash) !== 1 || $dimension < 1 || $dimension > 16384
             || $chunkSize < 128 || $chunkSize > 10000 || $chunkOverlap < 0 || $chunkOverlap >= $chunkSize || $chunkOverlap > 5000 || $schemaVersion !== 1) {
@@ -50,12 +51,14 @@ final readonly class VectorGeneration {
             'collection_name' => $this->collection(), 'embedding_provider' => $this->embeddingProvider,
             'profile_id' => $this->profileId, 'embedding_model' => $this->embeddingModel, 'endpoint_hash' => $this->endpointHash,
             'dimension' => $this->dimension, 'distance_metric' => $this->distance(), 'chunk_size' => $this->chunkSize,
-            'chunk_overlap' => $this->chunkOverlap, 'schema_version' => $this->schemaVersion];
+            'chunk_overlap' => $this->chunkOverlap, 'schema_version' => $this->schemaVersion,
+            'include_text_payload' => $this->includeTextPayload ? 1 : 0];
     }
 
     public static function fromRow(array $row): self {
         $generation = new self($row['id'], $row['user_id'], $row['backend'], $row['embedding_provider'], $row['profile_id'],
-            $row['embedding_model'], $row['endpoint_hash'], (int)$row['dimension'], (int)$row['chunk_size'], (int)$row['chunk_overlap'], (int)$row['schema_version']);
+            $row['embedding_model'], $row['endpoint_hash'], (int)$row['dimension'], (int)$row['chunk_size'], (int)$row['chunk_overlap'], (int)$row['schema_version'],
+            (int)($row['include_text_payload'] ?? 0) === 1);
         if ($generation->collection() !== $row['collection_name'] || $generation->distance() !== $row['distance_metric']) throw new \RuntimeException('Stored generation identity is inconsistent.');
         return $generation;
     }

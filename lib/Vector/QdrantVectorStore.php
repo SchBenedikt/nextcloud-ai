@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace OCA\EvaAi\Vector;
 
-/** Optional dense index. It is not selected by Searcher or indexing yet. */
+/** Optional vector index; native text retrieval requires an explicit generation opt-in. */
 class QdrantVectorStore implements VectorStore {
     private ?\Closure $beforeTransfer = null;
     // Qdrant numeric range comparisons use doubles; retain exact revision ordering.
@@ -26,7 +26,7 @@ class QdrantVectorStore implements VectorStore {
             if (!is_string($version) || !preg_match('/^1\.\d+\.\d+(?:[-+].*)?$/D', $version) || version_compare($version, '1.16.0', '<')) {
                 return ['available' => false, 'code' => 'unsupported_version'];
             }
-            return ['available' => true, 'code' => 'api_reachable'];
+            return ['available' => true, 'code' => 'api_reachable', 'version' => $version];
         } catch (VectorStoreException $e) { return ['available' => false, 'code' => $e->reason]; }
         catch (\Throwable) { return ['available' => false, 'code' => 'unavailable']; }
     }
@@ -36,6 +36,14 @@ class QdrantVectorStore implements VectorStore {
         $this->assertQdrant($generation);
         $health = $this->health();
         if (!$health['available']) throw new VectorStoreException($health['code']);
+        if ($generation->includeTextPayload && version_compare((string)($health['version'] ?? '0'), '1.20.0', '<')) {
+            throw new VectorStoreException('native_bm25_requires_qdrant_1_20');
+        }
+        $indexes = self::INDEXES;
+        if ($generation->includeTextPayload) {
+            $indexes['content'] = ['type' => 'text', 'tokenizer' => 'word', 'lowercase' => true,
+                'phrase_matching' => true, 'scoring' => ['type' => 'bm25']];
+        }
         $path = $this->collection($generation);
         $data = $this->request('get', $path, null, true);
         if ($data === null) {
@@ -53,12 +61,15 @@ class QdrantVectorStore implements VectorStore {
         }
         $schema = $data['result']['payload_schema'] ?? [];
         if (!is_array($schema)) throw new VectorStoreException('invalid_payload_schema');
-        foreach (self::INDEXES as $field => $type) {
+        foreach ($indexes as $field => $fieldSchema) {
+            $type = is_array($fieldSchema) ? 'text' : $fieldSchema;
             if (isset($schema[$field])) {
                 if (($schema[$field]['data_type'] ?? '') !== $type) throw new VectorStoreException('payload_index_mismatch');
+                if (is_array($fieldSchema) && (($schema[$field]['params']['scoring']['type'] ?? '') !== 'bm25'
+                    || ($schema[$field]['params']['phrase_matching'] ?? false) !== true)) throw new VectorStoreException('payload_index_mismatch');
                 continue;
             }
-            $this->completed($this->request('put', $path . '/index?wait=true&ordering=strong', ['field_name' => $field, 'field_schema' => $type]));
+            $this->completed($this->request('put', $path . '/index?wait=true&ordering=strong', ['field_name' => $field, 'field_schema' => $fieldSchema]));
         }
     }
 
@@ -76,6 +87,10 @@ class QdrantVectorStore implements VectorStore {
                 || !is_string($point['path'] ?? null) || $point['path'] === ''
                 || !is_string($point['content_hash'] ?? null) || preg_match('/^[a-f0-9]{64}$/D', $point['content_hash']) !== 1
                 || !is_array($point['vector'] ?? null)) throw new VectorStoreException('invalid_point');
+            if ($generation->includeTextPayload && (!is_string($point['content'] ?? null) || $point['content'] === ''
+                || strlen($point['content']) > 40000 || !hash_equals($point['content_hash'], hash('sha256', $point['content'])))) {
+                throw new VectorStoreException('invalid_point');
+            }
             if ($point['source'] === 'files') {
                 new SearchFilters($point['path']);
                 $scopes = $this->scopes($point['path']);
@@ -88,10 +103,11 @@ class QdrantVectorStore implements VectorStore {
             $elements += count($point['vector']);
             if ($elements > 250000) throw new VectorStoreException('batch_too_large');
             $ids[$point['id']] = true;
-            $prepared[] = ['id' => $point['id'], 'vector' => ['dense' => array_map('floatval', $point['vector'])],
-                'payload' => ['user_id' => $this->tenant($generation), 'generation_id' => $generation->id, 'revision' => $revision, 'deleted' => false,
-                    'document_id' => $point['document_id'], 'file_id' => $point['file_id'], 'chunk_index' => $point['chunk_index'],
-                    'source' => $point['source'], 'content_hash' => $point['content_hash'], 'scope_paths' => $scopes]];
+            $payload = ['user_id' => $this->tenant($generation), 'generation_id' => $generation->id, 'revision' => $revision, 'deleted' => false,
+                'document_id' => $point['document_id'], 'file_id' => $point['file_id'], 'chunk_index' => $point['chunk_index'],
+                'source' => $point['source'], 'content_hash' => $point['content_hash'], 'scope_paths' => $scopes];
+            if ($generation->includeTextPayload) $payload['content'] = $point['content'];
+            $prepared[] = ['id' => $point['id'], 'vector' => ['dense' => array_map('floatval', $point['vector'])], 'payload' => $payload];
         }
         // Validate the entire batch before the first network request.
         $this->writeRevision($generation, $prepared, $revision, false);
@@ -134,16 +150,37 @@ class QdrantVectorStore implements VectorStore {
         return $count;
     }
 
+    /** Exact count of live opted-in points whose content payload is missing or empty. */
+    public function countMissingTextPayload(VectorGeneration $generation): int {
+        $this->assertQdrant($generation);
+        if (!$generation->includeTextPayload) throw new VectorStoreException('native_hybrid_unavailable');
+        $data=$this->request('post',$this->collection($generation).'/points/count?timeout=10',[
+            'filter'=>['must'=>[
+                ['key'=>'user_id','match'=>['value'=>$this->tenant($generation)]],
+                ['key'=>'generation_id','match'=>['value'=>$generation->id]],
+                ['key'=>'deleted','match'=>['value'=>false]],
+                ['is_empty'=>['key'=>'content']],
+            ]],
+            'exact'=>true,
+        ],false,12);
+        $this->ok($data);
+        $count=$data['result']['count']??null;
+        if(!is_int($count)||$count<0)throw new VectorStoreException('invalid_count_response');
+        return $count;
+    }
+
     /** Retrieve at most 100 exact IDs; callers compare SQL identity and vectors. */
-    public function retrieve(VectorGeneration $generation,array $ids): array {
+    public function retrieve(VectorGeneration $generation,array $ids,bool $withVector=true,bool $withText=true): array {
         $this->assertQdrant($generation);
         if(!array_is_list($ids)||count($ids)>100)throw new VectorStoreException('invalid_batch');
         if($ids===[])return [];
         $seen=[];
         foreach($ids as$id){if(!is_int($id)||$id<1||isset($seen[$id]))throw new VectorStoreException('invalid_point');$seen[$id]=true;}
+        $payloadFields=['user_id','generation_id','revision','deleted','document_id','source','content_hash'];
+        if($generation->includeTextPayload&&$withText)$payloadFields[]='content';
         $data=$this->request('post',$this->collection($generation).'/points?timeout=10',[
-            'ids'=>$ids,'with_payload'=>['user_id','generation_id','revision','deleted','document_id','source','content_hash'],
-            'with_vector'=>true,
+            'ids'=>$ids,'with_payload'=>$payloadFields,
+            'with_vector'=>$withVector,
         ],false,12);
         $this->ok($data);
         $points=$data['result']??null;
@@ -155,10 +192,17 @@ class QdrantVectorStore implements VectorStore {
                 ||($payload['user_id']??null)!==$this->tenant($generation)||($payload['generation_id']??null)!==$generation->id
                 ||!is_int($payload['revision']??null)||$payload['revision']<1||$payload['revision']>self::MAX_REVISION
                 ||!is_bool($payload['deleted']??null))throw new VectorStoreException('point_identity_mismatch');
-            if(!is_array($rawVector)||!array_is_list($rawVector)||count($rawVector)!==$generation->dimension)throw new VectorStoreException('point_dimension_mismatch');
-            $vector=[];foreach($rawVector as$value){if(!is_int($value)&&!is_float($value))throw new VectorStoreException('invalid_point_vector');$vector[]=(float)$value;}
-            try{$generation->validateVector($vector);}catch(\Throwable){throw new VectorStoreException('invalid_point_vector');}
-            $result[$id]=['id'=>$id,'payload'=>$payload,'vector'=>$vector];
+            if($generation->includeTextPayload&&$withText&&(!is_string($payload['content']??null)||strlen($payload['content'])>40000
+                ||!is_string($payload['content_hash']??null)||!hash_equals($payload['content_hash'],hash('sha256',$payload['content']))))
+                throw new VectorStoreException('point_text_payload_mismatch');
+            $item=['id'=>$id,'payload'=>$payload];
+            if($withVector){
+                if(!is_array($rawVector)||!array_is_list($rawVector)||count($rawVector)!==$generation->dimension)throw new VectorStoreException('point_dimension_mismatch');
+                $vector=[];foreach($rawVector as$value){if(!is_int($value)&&!is_float($value))throw new VectorStoreException('invalid_point_vector');$vector[]=(float)$value;}
+                try{$generation->validateVector($vector);}catch(\Throwable){throw new VectorStoreException('invalid_point_vector');}
+                $item['vector']=$vector;
+            }
+            $result[$id]=$item;
         }
         return $result;
     }
@@ -215,6 +259,51 @@ class QdrantVectorStore implements VectorStore {
                 || ($filters->documentIds !== [] && !in_array($payload['document_id'], $filters->documentIds, true))
                 || ($filters->scopePath !== null && $filters->scopePath !== '' && (!is_array($payload['scope_paths'] ?? null) || !in_array(hash('sha256', $filters->scopePath), $payload['scope_paths'], true)))) {
                 // Do not quietly drop a cross-tenant response and conceal a violated invariant.
+                throw new VectorStoreException('search_isolation_violation');
+            }
+            $seen[$id] = true;
+            $results[] = ['chunkId' => $id, 'revision' => $payload['revision'], 'score' => (float)$score];
+        }
+        return $results;
+    }
+
+    /** Native Qdrant BM25 plus dense RRF for a generation with explicit text-transfer consent. */
+    public function searchHybrid(VectorGeneration $generation, string $query, ?array $queryVector, int $topK, SearchFilters $filters, int $timeoutSeconds = 5): array {
+        $this->assertQdrant($generation);
+        if (!$generation->includeTextPayload || trim($query) === '' || strlen($query) > 8000
+            || preg_match('/[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]/', $query)
+            || $topK < 1 || $topK > 100 || $timeoutSeconds < 1 || $timeoutSeconds > 5) {
+            throw new VectorStoreException('native_hybrid_unavailable');
+        }
+        if ($queryVector !== null) $generation->validateVector($queryVector);
+        $filter = $this->filter($generation, $filters);
+        $textPrefetch = ['query' => ['text' => $query], 'using' => 'content', 'limit' => $topK, 'filter' => $filter];
+        if ($queryVector === null) {
+            $request = ['query' => ['text' => $query], 'using' => 'content', 'limit' => $topK, 'filter' => $filter];
+        } else {
+            $densePrefetch = ['query' => array_map('floatval', $queryVector), 'using' => 'dense', 'limit' => $topK, 'filter' => $filter];
+            $request = ['prefetch' => [$textPrefetch, $densePrefetch], 'query' => ['fusion' => 'rrf'],
+                'limit' => $topK, 'filter' => $filter];
+        }
+        $request += ['with_vector' => false,
+            'with_payload' => ['user_id', 'generation_id', 'document_id', 'source', 'scope_paths', 'revision', 'deleted']];
+        $data = $this->request('post', $this->collection($generation) . '/points/query?timeout=' . $timeoutSeconds,
+            $request, false, $timeoutSeconds);
+        $this->ok($data);
+        $points = $data['result']['points'] ?? null;
+        if (!is_array($points) || !array_is_list($points) || count($points) > $topK) throw new VectorStoreException('invalid_search_response');
+        $results = []; $seen = [];
+        foreach ($points as $point) {
+            $id = $point['id'] ?? null; $payload = $point['payload'] ?? null; $score = $point['score'] ?? null;
+            if (!is_int($id) || $id < 1 || isset($seen[$id]) || (!is_int($score) && !is_float($score)) || !is_finite((float)$score)
+                || !is_array($payload) || ($payload['user_id'] ?? '') !== $this->tenant($generation) || ($payload['generation_id'] ?? '') !== $generation->id
+                || ($payload['deleted'] ?? null) !== false || !is_int($payload['revision'] ?? null) || $payload['revision'] < 1 || $payload['revision'] > self::MAX_REVISION
+                || !is_int($payload['document_id'] ?? null) || $payload['document_id'] < 1
+                || !in_array($payload['source'] ?? null, ['files', 'mail', 'talk'], true)
+                || ($filters->source !== null && $payload['source'] !== $filters->source)
+                || ($filters->documentIds !== [] && !in_array($payload['document_id'], $filters->documentIds, true))
+                || ($filters->scopePath !== null && $filters->scopePath !== '' && (!is_array($payload['scope_paths'] ?? null)
+                    || !in_array(hash('sha256', $filters->scopePath), $payload['scope_paths'], true)))) {
                 throw new VectorStoreException('search_isolation_violation');
             }
             $seen[$id] = true;

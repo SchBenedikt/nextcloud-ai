@@ -38,6 +38,10 @@ class GenerationVerificationWorker {
                         $count=$store?->countLive($generation);$guard();
                         if(!is_int($count))throw new VectorStoreException('remote_count_unavailable');
                         if($count!==$state['expected_count'])throw new VectorStoreException('remote_count_mismatch');
+                        if($generation->includeTextPayload){
+                            $missingText=$store?->countMissingTextPayload($generation);$guard();
+                            if(!is_int($missingText)||$missingText!==0)throw new VectorStoreException('remote_text_payload_missing');
+                        }
                     }else{
                         $count=$this->verifications->expectedCount($claim['user_id'],$claim['generation_id']);
                         if($count!==$state['expected_count']||$state['checked_count']!==$state['expected_count'])throw new VectorStoreException('sql_inventory_changed');
@@ -54,7 +58,8 @@ class GenerationVerificationWorker {
                         $this->verifications->withLease($claim,fn()=> $this->verifications->checkpoint($claim,['phase'=>'sources']));
                         continue;
                     }
-                    $points=$generation->backend==='qdrant'?$store?->retrieve($generation,array_column($rows,'id')):null;
+                    $points=$generation->backend==='qdrant'?$store?->retrieve($generation,array_column($rows,'id'),
+                        !$generation->includeTextPayload,!$generation->includeTextPayload):null;
                     $hash=$state['verification_hash'];$sampled=0;
                     foreach($rows as$row){
                         $expected=json_decode($row['embedding'],true,32,JSON_THROW_ON_ERROR);
@@ -68,7 +73,14 @@ class GenerationVerificationWorker {
                                 ||($payload['revision']??null)!==$row['vector_revision']||($payload['source']??null)!==$row['source']
                                 ||($payload['content_hash']??null)!==$row['content_hash'])throw new VectorStoreException('remote_payload_mismatch');
                             if($state['checked_count']===0&&$stats['checked']===0||((int)$row['id']%64)===0){
-                                if(self::cosine($expected,$point['vector'])<self::COSINE_MIN)throw new VectorStoreException('remote_vector_mismatch');
+                                $samplePoint=$generation->includeTextPayload
+                                    ?($store?->retrieve($generation,[(int)$row['id']])[$row['id']]??null):$point;
+                                if($samplePoint===null)throw new VectorStoreException('remote_point_missing');
+                                if($generation->includeTextPayload&&(!is_string($samplePoint['payload']['content']??null)
+                                    ||!hash_equals((string)$row['content'],$samplePoint['payload']['content'])
+                                    ||!hash_equals((string)$row['content_hash'],hash('sha256',$samplePoint['payload']['content']))))
+                                    throw new VectorStoreException('remote_text_payload_mismatch');
+                                if(self::cosine($expected,$samplePoint['vector'])<self::COSINE_MIN)throw new VectorStoreException('remote_vector_mismatch');
                                 $sampled++;
                             }
                         }else{
