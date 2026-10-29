@@ -10,6 +10,8 @@ use OCA\EvaAi\Dto\ChatRequest;
 use OCP\Files\IRootFolder;
 use OCP\IURLGenerator;
 use OCP\L10N\IFactory;
+use OCP\Lock\ILockingProvider;
+use OCP\Lock\LockedException;
 use Psr\Log\LoggerInterface;
 
 class RagService {
@@ -55,7 +57,8 @@ class RagService {
         private TalkTranscriptService $talkTranscripts,
         private LoggerInterface $logger,
         ?TraceContext $traceContext = null,
-        ?UsageMetrics $usageMetrics = null
+        ?UsageMetrics $usageMetrics = null,
+        private ?ILockingProvider $lockingProvider = null
     ) {
         $this->traceContext = $traceContext ?? new TraceContext();
         $this->usageMetrics = $usageMetrics;
@@ -103,11 +106,13 @@ class RagService {
 		return $this->traceContext->run(function () use ($request): array {
             $started = hrtime(true);
             $outcome = 'error';
+            $activityHeld = $this->acquireChatActivity();
             try {
                 $result = $this->askInTrace($request);
                 $outcome = ($result['error'] ?? null) === null ? 'complete' : 'error';
                 return $result;
             } finally {
+                $this->releaseChatActivity($activityHeld);
                 $this->usageMetrics?->recordRagRequest($request->userId, (int)round((hrtime(true) - $started) / 1_000_000), $outcome);
                 try {
                     $this->logger->debug('eva_ai: chat request timings', [
@@ -272,6 +277,7 @@ class RagService {
             $started = hrtime(true);
             $outcome = 'incomplete';
             $userId = $request instanceof ChatRequest ? $request->userId : $request;
+            $activityHeld = $this->acquireChatActivity();
             try {
                 foreach ($this->askStreamInTrace($request, $legacyMessage, $legacyHistory, $legacyScopePath, $legacyInstructions, $legacyPersona) as $line) {
                     $event = json_decode($line, true);
@@ -282,6 +288,7 @@ class RagService {
                     yield $line;
                 }
             } finally {
+                $this->releaseChatActivity($activityHeld);
                 $this->usageMetrics?->recordRagRequest($userId, (int)round((hrtime(true) - $started) / 1_000_000), $outcome);
                 try {
                     $this->logger->debug('eva_ai: streamed chat request timings', [
@@ -295,6 +302,43 @@ class RagService {
                 }
             }
 		}, $request instanceof ChatRequest ? $request->traceId : null);
+    }
+
+    /**
+     * Mark RAG conversations across accounts so indexing yields when they
+     * share a model service. A short exclusive indexer probe may delay this
+     * shared lock briefly; chat retries and continues if coordination fails.
+     */
+    private function acquireChatActivity(): bool {
+        try {
+            $lockingProvider = $this->lockingProvider ?? \OCP\Server::get(ILockingProvider::class);
+            $path = LockGuard::chatActivityLockPath();
+            for ($attempt = 0; $attempt < 10; $attempt++) {
+                try {
+                    $lockingProvider->acquireLock($path, ILockingProvider::LOCK_SHARED, 'EVA conversation activity');
+                    return true;
+                } catch (LockedException) {
+                    usleep(5000);
+                }
+            }
+            $this->logger->debug('eva_ai: chat activity marker busy after bounded retries');
+        } catch (\Throwable $e) {
+            // Coordination must not reject a chat when a locking backend fails.
+            $this->logger->warning('eva_ai: chat activity coordination unavailable', ['exception_class' => get_class($e)]);
+        }
+        return false;
+    }
+
+    private function releaseChatActivity(bool $held): void {
+        if (!$held) return;
+        try {
+            ($this->lockingProvider ?? \OCP\Server::get(ILockingProvider::class))->releaseLock(
+                LockGuard::chatActivityLockPath(),
+                ILockingProvider::LOCK_SHARED,
+            );
+        } catch (\Throwable $e) {
+            $this->logger->warning('eva_ai: chat activity marker release failed', ['exception_class' => get_class($e)]);
+        }
     }
 
     /** @return \Generator<string,string,void,void> */

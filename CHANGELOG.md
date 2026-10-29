@@ -2,6 +2,12 @@
 
 ## [Unreleased]
 
+### Coordinate chat priority across accounts (1.19.1)
+
+- Mark RAG conversations with a shared Nextcloud lock so indexing yields across accounts using the same Ollama service.
+- Keep chat concurrent and retry briefly around the indexer's short priority probe; coordination outages do not reject chat.
+- Preserve the per-user chat claim for duplicate-request protection and as a fallback.
+
 ### Yield indexing to active chat requests (1.19.0)
 
 - Defer new embedding batches while this account has an active chat request, and resume queued indexing on a later background tick.

@@ -895,9 +895,9 @@ class Indexer {
             $batch = [];
             return;
         }
-        // Do not compete with this account's active chat for the configured
-        // embedding endpoint. A batch already sent cannot be preempted, but
-        // every later batch boundary yields without holding up chat requests.
+        // Do not compete with an active RAG chat for a shared model endpoint.
+        // An embedding request that has already started cannot be preempted,
+        // but every later batch boundary yields without holding up chats.
         if ($userId !== null && $this->chatRequestIsActive($userId)) {
             $stagedDocuments = [];
             foreach ($batch as $entry) {
@@ -1062,23 +1062,26 @@ class Indexer {
         }
     }
 
-    /** Check a chat claim without waiting or interfering with an incoming chat. */
+    /** Check shared-service chat activity and the legacy per-user claim. */
     private function chatRequestIsActive(string $userId): bool {
-        $path = LockGuard::chatRequestLockPath($userId);
-        try {
-            $this->lockingProvider->acquireLock($path, ILockingProvider::LOCK_EXCLUSIVE, 'EVA index chat-priority check');
-        } catch (\OCP\Lock\LockedException) {
-            return true;
-        } catch (\Throwable $e) {
-            // A coordination outage must not turn an indexing pass into an
-            // error or block chat; continue with the bounded batch instead.
-            $this->logger->debug('eva_ai chat-priority check unavailable', ['exception_class' => get_class($e)]);
-            return false;
-        }
-        try {
-            $this->lockingProvider->releaseLock($path, ILockingProvider::LOCK_EXCLUSIVE);
-        } catch (\Throwable $e) {
-            $this->logger->warning('eva_ai chat-priority check release failed', ['exception_class' => get_class($e)]);
+        foreach ([LockGuard::chatActivityLockPath(), LockGuard::chatRequestLockPath($userId)] as $path) {
+            try {
+                $this->lockingProvider->acquireLock($path, ILockingProvider::LOCK_EXCLUSIVE, 'EVA index chat-priority check');
+            } catch (\OCP\Lock\LockedException) {
+                return true;
+            } catch (\Throwable $e) {
+                // A coordination outage must not turn an indexing pass into
+                // an error or block chat; continue with the bounded batch.
+                $this->logger->debug('eva_ai chat-priority check unavailable', ['exception_class' => get_class($e)]);
+                continue;
+            }
+            try {
+                $this->lockingProvider->releaseLock($path, ILockingProvider::LOCK_EXCLUSIVE);
+            } catch (\Throwable $e) {
+                $this->logger->warning('eva_ai chat-priority check release failed', ['exception_class' => get_class($e)]);
+                // We cannot prove the probe lock is gone, so skip this batch.
+                return true;
+            }
         }
         return false;
     }
