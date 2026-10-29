@@ -186,6 +186,10 @@ per-user routes and run through the same `ActionExecutor` policy as chat tools.
 It shares the same per-user limiter, SQL-backed fallback, encrypted `ChatStore`
 and bounded worker queue used by the prior routes.
 
+`KnowledgeController` reads and saves each user's `KNOWLEDGE.md` through the
+injected Nextcloud VFS root and initializes the file before reading. It does not
+depend on static server lookup or expose another user's file.
+
 - `GET  /`  `/app`  `/standalone` — page routes
 - `GET  /api/status` — app + Ollama status
 - `GET/PUT /api/settings` — read/update settings

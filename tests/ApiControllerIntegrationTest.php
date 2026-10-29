@@ -179,7 +179,7 @@ final class ApiControllerIntegrationTest extends TestCase {
 		return new ApiController(
 			'eva_ai', $request, $userId, $config, $rag, $executor, $indexer, $ollama,
 			$documentMapper, $jobList, $lockingProvider, $chatStore,
-			$fileContextChat, $appManager, $knowledgeInitializer, $lockGuard,
+			$fileContextChat, $appManager, $lockGuard,
 			$userDataService, $chatLearner, $cacheFactory, $indexScheduler, $usageMetrics,
 			$logger, $systemController,
 		);

@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Use Nextcloud VFS for personal EVA knowledge (1.20.12)
+
+- Move personal knowledge-file reads and writes into a focused controller with injected Nextcloud VFS and initialization services, preserving the existing endpoint URLs and response contracts.
+
 ### Isolate queued-chat request lifecycle (1.20.11)
 
 - Move queued chat admission, status, cancellation, pause, resume and retry into a focused controller while retaining the existing URLs and shared rate-limit fallback.
