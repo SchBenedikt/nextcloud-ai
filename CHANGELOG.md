@@ -2,6 +2,11 @@
 
 ## [Unreleased]
 
+### Show server validation details in settings (1.18.92)
+
+- Surface field-level validation errors returned by Nextcloud when settings are rejected, instead of showing only a generic invalid-settings message.
+- Keep provider dialog errors consistent with the same detailed API error text.
+
 ### Correct chat lock contention labels (1.18.91)
 
 - Preserve shared versus exclusive mode when a lock acquisition ultimately fails, so the new lock-wait metrics classify read contention correctly.
