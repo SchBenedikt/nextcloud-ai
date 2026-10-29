@@ -528,9 +528,9 @@ class WebSearchService {
         if (!$this->isEnabled()) {
             return $empty + ['ok' => false, 'error' => 'Web search is disabled by the administrator.'];
         }
-        if (!$this->imagesEnabled()) {
-            return $empty + ['ok' => false, 'error' => 'Image search is disabled by the administrator.'];
-        }
+        // `web_search_images` controls whether article images are attached to
+        // ordinary web-search hits. Dedicated image search is a separate tool
+        // and only follows the instance-wide web_search_enabled privacy gate.
         $count = max(1, min(self::ABSOLUTE_MAX_IMAGES, $limit ?? self::DEFAULT_IMAGES));
 
         $endpoint = self::BING_IMAGE_ENDPOINT . '?' . http_build_query([

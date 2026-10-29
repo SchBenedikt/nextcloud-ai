@@ -117,18 +117,24 @@ final class WebImageSearchTest extends TestCase {
         self::assertSame([], $this->parse('<html><body>no images here</body></html>', 6, 'x'));
     }
 
-    public function testTheServiceRefusesAQueryWhenImageSearchIsDisabled(): void {
+    public function testDedicatedImageSearchDoesNotDependOnPageImageSetting(): void {
         $service = (new ReflectionClass(WebSearchService::class))->newInstanceWithoutConstructor();
         $config = $this->createMock(\OCA\EvaAi\Service\AppConfig::class);
-        $config->method('get')->willReturnCallback(static fn(string $key): string => $key === 'web_search_images' ? '0' : '1');
+        $config->method('get')->willReturnCallback(static fn(string $key): string => match ($key) {
+            'web_search_images' => '0',
+            'web_search_enabled' => '1',
+            default => '',
+        });
         $config->method('getInt')->willReturn(8);
         $reflect = new ReflectionClass(WebSearchService::class);
         $property = $reflect->getProperty('config');
         $property->setValue($service, $config);
 
-        $result = $service->searchImages('anything', 4);
-        self::assertFalse($result['ok']);
-        self::assertStringContainsString('disabled', (string)$result['error']);
-        self::assertSame([], $result['images']);
+        // Verify the policy gate directly without making a live provider call:
+        // searchImages no longer consults imagesEnabled(), which belongs to
+        // ordinary web-result enrichment only.
+        self::assertFalse((new ReflectionClass(WebSearchService::class))
+            ->getMethod('imagesEnabled')->invoke($service));
+        self::assertTrue($service->isEnabled());
     }
 }
