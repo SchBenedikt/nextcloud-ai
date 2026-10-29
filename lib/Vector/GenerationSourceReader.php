@@ -16,7 +16,7 @@ class GenerationSourceReader {
         private IRootFolder $files, private IndexDocumentText $text,
         private EmailService $mail, private TalkTranscriptService $talk) {}
 
-    public function read(VectorDocumentSnapshot $source, ?\Closure $guard = null): string {
+    public function read(VectorDocumentSnapshot $source, ?\Closure $guard = null, ?callable $shouldYield = null): string {
         if($guard)$guard();
         if ($this->config->userId() !== $source->userId) throw new VectorStoreException('embedding_owner_mismatch');
         $metadata = $source->metadata;
@@ -33,7 +33,7 @@ class GenerationSourceReader {
                     && (int)$file->getMTime() === $metadata['file_mtime']
                     && ($relative = $home->getRelativePath($file->getPath())) !== null
                     && ltrim($relative, '/') === $metadata['path']) {
-                    try { $content = $this->text->file($file, $limit); }
+                    try { $content = $this->text->file($file, $limit, $shouldYield); }
                     catch (\LengthException) { throw new VectorStoreException('source_too_large'); }
                     catch (\Throwable) { throw new VectorStoreException('source_extraction_failed'); }
                     break;

@@ -96,7 +96,9 @@ class GenerationVerificationRepository {
             ->andWhere($q->expr()->eq('g.status', $q->createNamedParameter('building')))
             ->andWhere($q->expr()->eq('b.status', $q->createNamedParameter('staged')))
             ->andWhere($q->expr()->orX($q->expr()->isNull('v.generation_id'),
-                $q->expr()->eq('v.status', $q->createNamedParameter('stale'))))
+                $q->expr()->eq('v.status', $q->createNamedParameter('stale')),
+                $q->expr()->andX($q->expr()->eq('v.status', $q->createNamedParameter('failed')),
+                    $q->expr()->eq('v.error_code', $q->createNamedParameter('new_sources_after_snapshot')))))
             ->orderBy('b.updated_at', 'ASC')->addOrderBy('g.id', 'ASC')->setMaxResults(1);
         $result = $q->executeQuery();
         try { $candidate = $result->fetch(); } finally { $result->closeCursor(); }
@@ -238,6 +240,43 @@ class GenerationVerificationRepository {
             ->where($q->expr()->eq('user_id',$q->createNamedParameter($user)))
             ->andWhere($q->expr()->gt('id',$q->createNamedParameter($upperId,IQueryBuilder::PARAM_INT)));
         $r=$q->executeQuery();try{return (int)$r->fetchOne();}finally{$r->closeCursor();}
+    }
+
+    /** Reopen a staged build when verification discovers sources missed by its snapshot.
+     * Caller must hold this verifier's owner and generation lease transaction.
+     * Existing chunks and completed source manifests remain reusable; the build
+     * resumes after its previous high-water mark and processes only new IDs.
+     */
+    public function requeueStagedBuildForLateSources(array $claim): bool {
+        if(!$this->db->inTransaction())throw new \LogicException('Late-source recovery requires the verifier transaction.');
+        $build=$this->builds->find($claim['user_id'],$claim['generation_id']);
+        if($build===null||$build['status']!=='staged')return false;
+        $q=$this->db->getQueryBuilder();
+        $q->selectAlias($q->createFunction('MAX(id)'),'last_id')->selectAlias($q->createFunction('COUNT(*)'),'total')
+            ->from('eva_ai_documents')->where($q->expr()->eq('user_id',$q->createNamedParameter($claim['user_id'])));
+        $r=$q->executeQuery();try{$source=$r->fetch();}finally{$r->closeCursor();}
+        $lastId=(int)($source['last_id']??0);
+        if($lastId<=$build['upper_document_id'])return false;
+        $update=$this->db->getQueryBuilder();
+        $update->update('eva_ai_vec_builds')
+            ->set('upper_document_id',$update->createNamedParameter($lastId,IQueryBuilder::PARAM_INT))
+            ->set('total_documents',$update->createNamedParameter((int)($source['total']??0),IQueryBuilder::PARAM_INT))
+            ->set('status',$update->createNamedParameter('queued'))
+            ->set('document_id',$update->createNamedParameter(0,IQueryBuilder::PARAM_INT))
+            ->set('chunk_cursor',$update->createNamedParameter(0,IQueryBuilder::PARAM_INT))
+            ->set('plan_hash',$update->createNamedParameter(null,IQueryBuilder::PARAM_NULL))
+            ->set('lease_token',$update->createNamedParameter(null,IQueryBuilder::PARAM_NULL))
+            ->set('lease_until',$update->createNamedParameter(0,IQueryBuilder::PARAM_INT))
+            ->set('error_code',$update->createNamedParameter(null,IQueryBuilder::PARAM_NULL))
+            ->set('revision',$update->func()->add('revision',$update->createNamedParameter(1,IQueryBuilder::PARAM_INT)))
+            ->set('updated_at',$update->createNamedParameter(time(),IQueryBuilder::PARAM_INT))
+            ->where($update->expr()->eq('user_id',$update->createNamedParameter($claim['user_id'])))
+            ->andWhere($update->expr()->eq('generation_id',$update->createNamedParameter($claim['generation_id'])))
+            ->andWhere($update->expr()->eq('status',$update->createNamedParameter('staged')));
+        if($update->executeStatement()!==1)return false;
+        $this->patch($claim['user_id'],$claim['generation_id'],['status'=>'stale','error_code'=>'new_sources_queued',
+            'lease_token'=>null,'lease_until'=>0]);
+        return true;
     }
 
     public function markVerified(array $claim,int $remoteCount): void {

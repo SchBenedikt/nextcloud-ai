@@ -14,7 +14,7 @@
 			<div class="verification-actions">
 				<NcButton v-if="state.can_activate" :disabled="busy || loading" :loading="busy" @click="control('activate')">{{ $t('Use Qdrant as search canary') }}</NcButton>
 				<NcButton v-if="state.can_rollback" variant="secondary" :disabled="busy || loading" :loading="busy" @click="control('rollback')">{{ $t('Roll back to built-in SQL') }}</NcButton>
-				<NcButton v-if="['not_started', 'failed', 'stale', 'cancelled'].includes(state.status)" :disabled="!state.can_start || busy" :loading="busy" @click="control(state.status === 'not_started' ? 'start' : 'retry')">{{ state.status === 'not_started' ? $t('Start verification') : $t('Retry verification') }}</NcButton>
+				<NcButton v-if="['not_started', 'failed', 'stale', 'cancelled'].includes(state.status) && state.error_code !== 'new_sources_queued'" :disabled="!state.can_start || busy" :loading="busy" @click="control(state.status === 'not_started' ? 'start' : 'retry')">{{ state.status === 'not_started' ? $t('Start verification') : $t('Retry verification') }}</NcButton>
 				<NcButton v-else-if="['queued', 'running'].includes(state.status)" :disabled="busy" :loading="busy" @click="control('pause')">{{ $t('Pause verification') }}</NcButton>
 				<NcButton v-else-if="state.status === 'paused'" :disabled="!state.can_start || busy" :loading="busy" @click="control('resume')">{{ $t('Resume verification') }}</NcButton>
 				<NcButton :disabled="busy || loading" variant="tertiary" @click="load">{{ $t('Refresh verification progress') }}</NcButton>
@@ -39,7 +39,9 @@ export default {
 		let controller, epoch = 0, timer
 		const path = `admin/vector-generations/${encodeURIComponent(props.user)}/${props.generation}/verification`
 		const states = ['not_started', 'queued', 'running', 'paused', 'cancelled', 'failed', 'stale', 'verified']
-		const label = computed(() => ({ not_started: t('Not started'), queued: t('Waiting for the next verification tick'), running: state.value?.backend === 'sql' ? t('Checking local SQL vectors') : t('Comparing stored points'), paused: t('Verification paused'), cancelled: t('Verification stopped'), failed: t('Verification needs attention'), stale: t('Verification invalidated by source changes'), verified: state.value?.active ? t('Verified and active') : t('Verified; activation pending') })[state.value?.status])
+		const label = computed(() => state.value?.error_code === 'new_sources_queued'
+			? t('New sources found; the background build has been queued again')
+			: ({ not_started: t('Not started'), queued: t('Waiting for the next verification tick'), running: state.value?.backend === 'sql' ? t('Checking local SQL vectors') : t('Comparing stored points'), paused: t('Verification paused'), cancelled: t('Verification stopped'), failed: t('Verification needs attention'), stale: t('Verification invalidated by source changes'), verified: state.value?.active ? t('Verified and active') : t('Verified; activation pending') })[state.value?.status])
 		const progress = computed(() => state.value?.expected_count > 0 ? Math.min(100, 100 * state.value.checked_count / state.value.expected_count) : 0)
 		const failure = computed(() => {
 			const code = state.value?.error_code
@@ -49,6 +51,7 @@ export default {
 			if (code === 'remote_text_payload_mismatch') return t('The Qdrant text payload differs from its SQL source. The generation remains unavailable for search.')
 			if (code === 'remote_text_payload_missing') return t('Some live Qdrant points have no text payload. The generation remains unavailable for native hybrid search.')
 			if (code === 'remote_count_mismatch') return t('The exact live-point count differs from SQL. Resolve pending or stale points, then retry.')
+			if (code === 'new_sources_queued') return t('Newly indexed sources were found after the snapshot. EVA has queued the missing files for indexing and will verify the generation again automatically.')
 			if (code === 'new_sources_after_snapshot' || code === 'source_reconciliation_required' || code === 'sql_inventory_changed') return t('The indexed sources changed during the build. Reconcile the source index and prepare a fresh generation.')
 			return state.value?.backend === 'sql' ? t('Verification stopped safely. Check the source index and generation data, then retry.') : t('Verification stopped safely. Check the storage connection and owner index, then retry.')
 		})

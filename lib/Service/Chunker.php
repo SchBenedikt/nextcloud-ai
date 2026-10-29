@@ -79,7 +79,10 @@ class Chunker {
             if ($end === false) $end = $length;
             $line = substr($text, $start, $end - $start);
             $trimmed = trim($line);
-            if (preg_match('/^#{1,6}\s+\S/u', $trimmed) || preg_match('/^\[[^\]\r\n]{1,100}\]$/u', $trimmed)) {
+            // Only extractor-owned markers are structural. Arbitrary bracketed
+            // cell values (common in spreadsheets) must remain body text.
+            $isDocumentMarker = preg_match('/^\[(?:Page\s+\d+|Slide\s+\d+|Sheet(?:\s+\d+|:\s*[^\]\r\n]*)?|Speaker notes \(slide \d+\))\]$/u', $trimmed) === 1;
+            if (preg_match('/^#{1,6}\s+\S/u', $trimmed) || $isDocumentMarker) {
                 // Start a new section: flush the previous one.
                 yield ['heading' => $currentHeading, 'body' => $currentBody, 'offset' => $sectionOffset, 'headings' => array_values($headings)];
                 $currentHeading = $trimmed;

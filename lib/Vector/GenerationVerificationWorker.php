@@ -16,7 +16,7 @@ class GenerationVerificationWorker {
     /** One fenced lease, bounded SQL keyset pages and remote reads; never writes or activates points. */
     public function run(): array {
         $claim=$this->verifications->claim(time());
-        $stats=['claimed'=>$claim!==null,'checked'=>0,'sampled'=>0,'verified'=>false,'error'=>null];
+        $stats=['claimed'=>$claim!==null,'checked'=>0,'sampled'=>0,'verified'=>false,'requeued'=>false,'error'=>null];
         if($claim===null)return $stats;
         $deadline=microtime(true)+self::TICK_SECONDS;
         try {
@@ -104,8 +104,15 @@ class GenerationVerificationWorker {
                 if($state['phase']==='sources'){
                     $rows=$this->verifications->sourcePage($state,100);
                     if($rows===[]){
-                        if($this->verifications->documentsBeyondSnapshot($claim['user_id'],$state['upper_document_id'])>0)
-                            throw new VectorStoreException('new_sources_after_snapshot');
+                        if($this->verifications->documentsBeyondSnapshot($claim['user_id'],$state['upper_document_id'])>0){
+                            $requeued=$this->verifications->withLease($claim,function()use($claim,$state):bool{
+                                if($this->verifications->documentsBeyondSnapshot($claim['user_id'],$state['upper_document_id'])===0)return false;
+                                if(!$this->verifications->requeueStagedBuildForLateSources($claim))
+                                    throw new VectorStoreException('new_sources_after_snapshot');
+                                return true;
+                            });
+                            if($requeued){$stats['requeued']=true;return $stats;}
+                        }
                         $this->verifications->withLease($claim,fn()=> $this->verifications->checkpoint($claim,['phase'=>'complete']));
                         $state=$this->verifications->find($claim['user_id'],$claim['generation_id']);
                         continue;

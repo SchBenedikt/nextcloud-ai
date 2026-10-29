@@ -2,6 +2,17 @@
 
 ## [Unreleased]
 
+### Preserve spreadsheet structure during indexing (1.20.30)
+
+- Treat only extractor-generated page, slide, sheet and speaker-note markers as structural boundaries; bracketed spreadsheet cell values stay together in their surrounding table text instead of producing thousands of tiny chunks.
+- Version the generation chunk plan so an in-progress build rebuilds documents with the corrected boundaries.
+
+### Recover late sources during generation verification (1.20.30)
+
+- Reopen a staged SQL generation automatically when verification finds indexed files beyond its original snapshot; keep completed work and resume from the existing cursor.
+- Show the automatic recovery state in native admin settings and continue build plus verification handoff without manual retry.
+- Give interactive chats priority over background generation embeddings and OCR; SQL remains the active fallback until the new generation passes verification.
+
 ### Fix SQL chat history locks and normalize OCS paths (1.20.29)
 
 - Keep per-conversation lock keys within Nextcloud's 64-character lock-table limit, so history reads and chat requests do not fail on oversized keys.

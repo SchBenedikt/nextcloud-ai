@@ -14,13 +14,14 @@ class GenerationDocumentPreparer {
 
     public function __construct(private GenerationSourceReader $sources, private Chunker $chunker) {}
 
-    public function prepare(VectorGeneration $generation, VectorDocumentSnapshot $source, ?\Closure $guard = null): PreparedGenerationDocument {
+    public function prepare(VectorGeneration $generation, VectorDocumentSnapshot $source, ?\Closure $guard = null,
+        ?callable $shouldYield = null): PreparedGenerationDocument {
         if ($generation->userId !== $source->userId) throw new VectorStoreException('source_identity_mismatch');
-        $text = $this->sources->read($source, $guard);
+        $text = $this->sources->read($source, $guard, $shouldYield);
         try { $chunks = $this->chunker->chunkWithSettings($text, $generation->chunkSize, $generation->chunkOverlap, self::MAX_CHUNKS); }
         catch (\LengthException) { throw new VectorStoreException('source_chunk_limit'); }
         $digest = hash_init('sha256');
-        hash_update($digest, json_encode(['chunker' => 2, 'generation' => $generation->toRow(), 'source_stamp' => $source->stamp], JSON_THROW_ON_ERROR));
+        hash_update($digest, json_encode(['chunker' => 3, 'generation' => $generation->toRow(), 'source_stamp' => $source->stamp], JSON_THROW_ON_ERROR));
         foreach ($chunks as $chunk) {
             // Hash each bounded record with an unambiguous separator; no second
             // whole-document JSON allocation alongside the chunk array.

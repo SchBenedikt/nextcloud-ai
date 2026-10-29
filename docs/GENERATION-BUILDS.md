@@ -88,6 +88,28 @@ insert racing with finalization is either consumed by that tick or reopens the
 build after it commits. These hooks transfer no source text and do not add work
 to chat requests.
 
+Verification checks the inventory again after validating the staged sources.
+If it finds a late source despite the normal insertion watermark, it takes the
+owner fence, reopens the staged build at its existing high-water mark, advances
+the snapshot to the current inventory and marks verification stale with
+`new_sources_queued`. Completed chunks and manifests remain reusable; the build
+processes the newly allocated document IDs, then SQL verification runs again
+automatically. The admin status reports this recovery without asking for a
+manual retry.
+
+Build workers also probe EVA's shared Nextcloud chat-activity locks before
+source work and each embedding batch. File OCR receives the same yield callback
+as ordinary indexing. If a chat is active, or the lock service cannot confirm
+that it is idle, the worker returns its lease to the queue and resumes on a
+later cron tick. This keeps generation embeddings and OCR behind interactive
+chat requests without discarding completed chunks.
+
+Chunk boundaries recognize only extractor-owned page, slide, sheet and speaker
+note markers plus Markdown headings. Arbitrary bracketed text remains document
+content; this matters for spreadsheets whose cells often contain values like
+`[status]`. The chunker plan version changes with this rule so a partially built
+generation recalculates affected documents instead of mixing chunking rules.
+
 Sources use a tenant-filtered document-ID keyset, without OFFSET scans. One tick
 claims one generation for 180 seconds and admits at most 256 chunks/16 sources
 subject to a 90-second admission budget checked between operations. Embeddings

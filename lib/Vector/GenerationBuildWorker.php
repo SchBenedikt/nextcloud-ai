@@ -4,18 +4,20 @@ namespace OCA\EvaAi\Vector;
 
 use OCA\EvaAi\Db\{GenerationBuildRepository, GenerationChunkRepository, VectorGenerationRepository, VectorSourceDeletion};
 use OCA\EvaAi\Dto\PreparedVectorChunk;
-use OCA\EvaAi\Service\AppConfig;
+use OCA\EvaAi\Service\{AppConfig,ChatPriorityYieldException,LockGuard};
+use OCP\Lock\{ILockingProvider,LockedException};
 
 /** Bounded background work only. SQL retrieval and interactive chat never call it. */
 class GenerationBuildWorker {
     public function __construct(private GenerationBuildRepository $builds, private VectorGenerationRepository $generations,
         private GenerationChunkRepository $chunks, private VectorSourceDeletion $deletion, private GenerationDocumentPreparer $preparer,
-        private GenerationEmbeddingProvider $embeddings, private VectorSourceAccess $access, private AppConfig $config) {}
+        private GenerationEmbeddingProvider $embeddings, private VectorSourceAccess $access, private AppConfig $config,
+        private ?ILockingProvider $lockingProvider=null) {}
 
     /** One lease, at most 256 chunks / 16 sources and a 90-second work budget. */
     public function run(): array {
         $claim=$this->builds->claim(time());
-        $stats=['claimed'=>$claim!==null,'chunks'=>0,'documents'=>0,'staged'=>false,'error'=>null];
+        $stats=['claimed'=>$claim!==null,'chunks'=>0,'documents'=>0,'staged'=>false,'deferred_for_chat'=>false,'error'=>null];
         if ($claim===null) return $stats;
         $previous=$this->config->userId();$deadline=microtime(true)+90;
         try {
@@ -23,6 +25,9 @@ class GenerationBuildWorker {
             $generation=$this->generations->find($claim['user_id'],$claim['generation_id']) ?? throw new VectorStoreException('generation_missing');
             while ($stats['chunks']<256 && $stats['documents']<16 && microtime(true)<$deadline) {
                 $row=$this->builds->assertLease($claim,time());
+                if($this->chatRequestIsActive($claim['user_id'])){
+                    $this->builds->release($claim);$stats['deferred_for_chat']=true;return $stats;
+                }
                 $this->access->assertOwner($generation->userId);
                 $documentId=$this->builds->nextDocument($row);
                 if ($documentId===null) {
@@ -52,7 +57,8 @@ class GenerationBuildWorker {
                         $this->builds->checkpoint($claim,['document_id'=>$source->id,'chunk_cursor'=>0,'plan_hash'=>null]);
                     });
                 }
-                $plan=$this->preparer->prepare($generation,$source,fn()=> $this->guard($claim,$generation,$source,$deadline));
+                $plan=$this->preparer->prepare($generation,$source,fn()=> $this->guard($claim,$generation,$source,$deadline),
+                    fn():bool=>$this->chatRequestIsActive($claim['user_id']));
                 $this->guard($claim,$generation,$source,$deadline);
                 $this->builds->withLease($claim,function(array $current)use($claim,$source,$plan,$documentId,$generation):void {
                     $this->chunks->lockSnapshot($source);
@@ -71,6 +77,9 @@ class GenerationBuildWorker {
                     $batch=array_slice($plan->chunks,$offset,min(8,256-$stats['chunks']));
                     foreach ($batch as $index=>$chunk) new PreparedVectorChunk($offset+$index,$chunk['content'],[],$chunk['tokens'],$chunk['provenance']);
                     $guard=fn()=> $this->guard($claim,$generation,$source,$deadline);
+                    if($this->chatRequestIsActive($claim['user_id'])){
+                        $this->builds->release($claim);$stats['deferred_for_chat']=true;return $stats;
+                    }
                     $vectors=$batch===[]?[]:$this->embeddings->embed($generation,array_column($batch,'content'),$guard,true,
                         min(30,max(1,(int)ceil($deadline-microtime(true)))));
                     $guard();
@@ -91,6 +100,8 @@ class GenerationBuildWorker {
                 } while ($stats['chunks']<256 && microtime(true)<$deadline);
             }
             $this->builds->release($claim);
+        } catch (ChatPriorityYieldException) {
+            $this->builds->release($claim);$stats['deferred_for_chat']=true;
         } catch (\Throwable $error) {
             $reason=$error instanceof VectorStoreException && preg_match('/^[a-z0-9_]{1,48}$/D',$error->reason) ? $error->reason : 'build_failed';
             if ($reason==='embedding_connection_failed' && microtime(true)>=$deadline) $reason='build_budget';
@@ -112,5 +123,18 @@ class GenerationBuildWorker {
         if ($snapshot===null || $snapshot->stamp!==$source->stamp) throw new VectorStoreException('source_changed');
         $this->access->assertAccessible($generation->userId,['source'=>$source->metadata['source'],'file_id'=>$source->metadata['file_id'],
             'path'=>$source->metadata['path'],'source_mtime'=>$source->metadata['file_mtime'],'source_size'=>$source->metadata['size']]);
+    }
+
+    /** Yield shared model capacity to active chats; fail closed if lock state is unavailable. */
+    private function chatRequestIsActive(string $userId): bool {
+        if($this->lockingProvider===null)return false;
+        foreach([LockGuard::chatActivityLockPath(),LockGuard::chatRequestLockPath($userId)] as $path){
+            try{$this->lockingProvider->acquireLock($path,ILockingProvider::LOCK_EXCLUSIVE,'EVA generation build chat-priority check');}
+            catch(LockedException){return true;}
+            catch(\Throwable){return true;}
+            try{$this->lockingProvider->releaseLock($path,ILockingProvider::LOCK_EXCLUSIVE);}
+            catch(\Throwable){return true;}
+        }
+        return false;
     }
 }
