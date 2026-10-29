@@ -19,6 +19,7 @@ reference pages describe the complete configuration and API surface.
 - [Performance](PERFORMANCE.md): request costs, polling and resource ownership.
 - [Observability](OBSERVABILITY.md): native aggregate OpenMetrics exported by EVA.
 - [Account erasure](ACCOUNT-ERASURE.md): durable retry behavior and retained deletion fences.
+- [Backup and restore](RECOVERY.md): recovery boundaries for SQL, AppData, encrypted state and optional Qdrant.
 - [Migration notes](WORKSPACE-MIGRATION.md): what changed in the focused workspace.
 - [Architecture](ARCHITECTURE.md), [development](DEVELOPMENT.md) and [CI](CI.md).
 - [API](API.md), [OpenAPI](openapi.yaml), [plugins](PLUGIN_API.md) and [connectors](CONNECTORS.md).
