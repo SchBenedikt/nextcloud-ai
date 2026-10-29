@@ -23,4 +23,23 @@ final class IndexDocumentTextTest extends TestCase {
         $this->expectExceptionMessage('Cancelled fixture');
         (new IndexDocumentText($extractor,$mail))->mail('alice',$this->message(),static function()use(&$calls):void{if(++$calls===2)throw new \RuntimeException('Cancelled fixture');});
     }
+
+    public function testUnreadableAttachmentDoesNotHideLaterReadableAttachments(): void {
+        $mail=$this->createMock(EmailService::class);
+        $mail->method('bodyText')->willReturn('Public body');
+        $mail->method('fetchAttachments')->willReturn([
+            ['name'=>'broken.pdf','mime'=>'application/pdf','content'=>'broken'],
+            ['name'=>'notes.txt','mime'=>'text/plain','content'=>'later readable text'],
+        ]);
+        $extractor=$this->createMock(IndexTextExtractor::class);
+        $extractor->method('normalize')->willReturnCallback(static fn(string $text):string=>$text);
+        $extractor->expects(self::exactly(2))->method('extractTextFromBlob')->willReturnCallback(static function(string $content):string {
+            if($content==='broken')throw new \RuntimeException('converter failed');
+            return 'later readable text';
+        });
+
+        $result=(new IndexDocumentText($extractor,$mail))->mail('alice',$this->message());
+        self::assertStringContainsString("ATTACHMENT notes.txt\nlater readable text",$result);
+        self::assertStringNotContainsString('broken.pdf',$result);
+    }
 }

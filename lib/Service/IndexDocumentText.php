@@ -41,7 +41,8 @@ class IndexDocumentText {
             } catch (\Throwable) {
                 // Preserve ordinary indexing's best-effort attachment semantics.
                 // A generation reader additionally requires the complete stored hash.
-                break;
+                // One unreadable attachment must not hide later readable ones.
+                continue;
             }
             if($guard)$guard();
             $text=$this->extractor->normalize($text);
