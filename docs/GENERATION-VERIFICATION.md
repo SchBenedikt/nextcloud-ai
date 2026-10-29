@@ -1,9 +1,10 @@
 # Staged vector generation verification
 
-Verification is an explicit, read-only reconciliation for an administrator to
-run after a generation build reaches `staged`. It is not a search migration:
-SQL remains authoritative and active, no generation activation is exposed, and
-the worker never requests embeddings or sends source text to a provider.
+Verification is a bounded reconciliation for an administrator after a
+generation build reaches `staged`. The verifier itself is read-only and never
+requests embeddings or sends source text to a provider. A current SQL
+certificate allows automatic SQL-generation activation; a current Qdrant
+certificate allows an explicit administrator canary with direct SQL rollback.
 Verification follows the generation backend: SQL verifies local chunks and
 source manifests; Qdrant additionally reconciles remote points.
 
@@ -48,8 +49,8 @@ occ eva_ai:vector:verify run
 The scheduled job is inert until a staged generation has a queued verification.
 SQL verification requires the owner index to remain enabled. Qdrant verification
 also requires the optional vector backend and point delivery. A Qdrant outage is
-reported as a failed/retryable run; it does not delay chat requests or change SQL
-retrieval. Source changes require preparing a fresh generation rather than
+reported as a failed/retryable run; it does not delay chat requests. Source
+changes require preparing a fresh generation rather than
 certifying an obsolete snapshot.
 
 ## Evidence boundary
@@ -57,4 +58,4 @@ certifying an obsolete snapshot.
 The focused worker tests cover a matching point/source certificate and a missing
 remote point failing closed. Cross-database and adversarial testing, long-run
 throughput, remote outage recovery under load, complete source-writer coverage,
-shadow-read quality and search activation remain backend roadmap gates.
+shadow-read quality and rollback soak remain backend roadmap gates.

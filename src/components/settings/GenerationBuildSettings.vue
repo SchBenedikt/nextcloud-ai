@@ -11,8 +11,9 @@
 			</template>
 			<NcNoteCard v-if="state.status === 'staged' && !state.verified" type="info">{{ state.backend === 'sql' ? $t('Source processing finished. SQL generation vectors and current source manifests are checked automatically before activation.') : $t('Source processing finished. Verify all current SQL and remote points before this remote generation can be considered ready.') }}</NcNoteCard>
 			<NcNoteCard v-if="state.active && state.retrieval_backend === 'sql_generation'" type="success">{{ $t('This verified SQL generation is serving search.') }}</NcNoteCard>
+			<NcNoteCard v-else-if="state.active && state.retrieval_backend === 'qdrant_generation'" type="info">{{ $t('This verified Qdrant generation is serving search as an explicit canary. Roll back from verification status at any time.') }}</NcNoteCard>
 			<NcNoteCard v-else-if="state.status === 'staged' && state.verified" type="success">{{ $t('The staged SQL generation is verified and will become active automatically when its source snapshot is current.') }}</NcNoteCard>
-			<NcNoteCard v-if="state.status !== 'staged' && !state.can_start" type="info">{{ $t('Enable the owner’s source index and confirm the selected generation backend is ready. Current search remains available while this generation is prepared.') }}</NcNoteCard>
+			<NcNoteCard v-if="state.status !== 'staged' && !state.can_start && !state.active" type="info">{{ $t('Enable the owner’s source index and confirm the selected generation backend is ready. Current search remains available while this generation is prepared.') }}</NcNoteCard>
 			<NcNoteCard v-if="state.error_code" type="warning">{{ failure }}</NcNoteCard>
 			<template v-if="state.status === 'not_started'">
 				<p>{{ $t('The build reads the owner’s indexed sources and sends text to the generation’s fixed embedding provider. Remote providers may receive document text. Qdrant builds also send vectors to the configured vector store. Once a local SQL generation is verified and current, it becomes the search index automatically.') }}</p>
@@ -45,7 +46,7 @@ export default {
 		let controller, epoch = 0, timer
 		const path = `admin/vector-generations/${encodeURIComponent(props.user)}/${props.generation}/build`
 		const states = ['not_started', 'queued', 'running', 'paused', 'cancelled', 'failed', 'staged']
-		const label = computed(() => ({ not_started: t('Not started'), queued: t('Waiting for the next background tick'), running: t('Processing sources'), paused: t('Build paused'), cancelled: t('Build stopped'), failed: t('Build needs attention'), staged: state.value?.active ? t('Active SQL generation') : state.value?.verified ? t('Verified; activation pending') : t('Staged; not verified') })[state.value?.status])
+		const label = computed(() => ({ not_started: t('Not started'), queued: t('Waiting for the next background tick'), running: t('Processing sources'), paused: t('Build paused'), cancelled: t('Build stopped'), failed: t('Build needs attention'), staged: state.value?.active ? (state.value?.retrieval_backend === 'qdrant_generation' ? t('Active Qdrant canary') : t('Active SQL generation')) : state.value?.verified ? t('Verified; activation pending') : t('Staged; not verified') })[state.value?.status])
 		const progress = computed(() => state.value?.total_documents > 0 ? Math.min(100, 100 * state.value.documents_done / state.value.total_documents) : 0)
 		const failure = computed(() => {
 			const code = state.value?.error_code
@@ -56,7 +57,7 @@ export default {
 			return t('The build stopped safely. Check the fixed embedding model and provider configuration, then resume.')
 		})
 		function accept(result) {
-			if (!result || !states.includes(result.status) || !['sql', 'qdrant'].includes(result.backend) || typeof result.can_start !== 'boolean' || result.retrieval_changed !== false || typeof result.verified !== 'boolean' || typeof result.active !== 'boolean' || !['sql_legacy', 'sql_generation'].includes(result.retrieval_backend)
+			if (!result || !states.includes(result.status) || !['sql', 'qdrant'].includes(result.backend) || typeof result.can_start !== 'boolean' || result.retrieval_changed !== false || typeof result.verified !== 'boolean' || typeof result.active !== 'boolean' || !['sql_legacy', 'sql_generation', 'qdrant_generation'].includes(result.retrieval_backend)
 				|| !['documents_done', 'total_documents', 'staged_chunks', 'heartbeat_at'].every(key => Number.isSafeInteger(result[key]) && result[key] >= 0)
 				|| !(result.error_code === null || typeof result.error_code === 'string')) throw new Error(t('Build progress could not be confirmed.'))
 			state.value = result

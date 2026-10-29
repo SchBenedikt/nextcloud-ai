@@ -21,8 +21,11 @@ class VectorStorageStatus {
                 if (array_key_exists($row['state'], $queue)) $queue[$row['state']] = max(0, (int)$row['events']);
             }
             $activeSqlGenerations=$this->generations->activeSqlCount();
-            return ['available' => true, 'retrieval_backend' => $activeSqlGenerations > 0 ? 'sql_generation' : 'sql_legacy',
+            $activeQdrantGenerations=$this->generations->activeQdrantCount();
+            $retrievalBackend=$activeQdrantGenerations>0?'qdrant_generation':($activeSqlGenerations>0?'sql_generation':'sql_legacy');
+            return ['available' => true, 'retrieval_backend' => $retrievalBackend,
                 'active_sql_accounts' => $activeSqlGenerations,
+                'active_qdrant_accounts' => $activeQdrantGenerations,
                 'connection' => $connection, 'erasure_worker_enabled' => $workerEnabled,
                 'chunk_sync_available' => true, 'points_requested' => $this->outbox->pointDeliveryRequested(),
                 'point_worker_enabled' => $this->outbox->pointsEnabled(), 'staged_chunks' => $this->chunks->countStaged(), 'queue' => $queue, 'observed_at' => time()];

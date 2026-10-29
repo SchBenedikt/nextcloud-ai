@@ -31,7 +31,7 @@ The implementation entries further below record the actual delivered slices.
 | 6, 8, 18 | Provider contracts, encrypted secrets, SSRF/DNS/TLS and local-service approvals | 02, 04, 07, 14: use native HTTP guards and explicit admin policy on every transfer. Hosted-provider contract tests remain opt-in; no account credentials are needed for installation. |
 | 7–8, 11–12 | Immutable embedding generations, tenant filters, SQL hydration and transactional outbox | 06–09: additive schema, isolated chunk journal, point delivery, persisted verification, guarded enrolled-user SQL activation and generation-aware search exist; portability, adversarial and soak evidence remain open. |
 | 9 | Major dependency upgrades require compatibility evidence | 14: assess PHPUnit/Symfony upgrades separately; do not merge them merely to clear Dependabot notifications. |
-| 13–14 | Resumable backfill, immutable model rebuild, activation pointer, shadow/canary rollout and rollback | 09–11: bounded build, verification and guarded SQL activation/search for explicitly enrolled users exist; production shadow/soak and rollback evidence remain pending. SQL runs without Qdrant; performance and release gates remain open. |
+| 13–14 | Resumable backfill, immutable model rebuild, activation pointer, shadow/canary rollout and rollback | 09–11: bounded build, verification and guarded SQL activation/search exist; explicit Qdrant account canary and SQL rollback are available. Production shadow/soak and rollback drills remain pending. SQL runs without Qdrant; performance and release gates remain open. |
 | 15 | Native hybrid BM25/RRF, phrases, scope and diversification | 12: preserve current relevance behavior before enabling backend hybrid retrieval; compare quality against both exact and current hybrid baselines. |
 | 7, 15, 22 | ChatStore hot-file writes, normalized encrypted SQL messages and distributed chat coordination | 13–14: independent additive chat migration, recovery and erasure; lock lifecycle fix is only the immediate consecutive-request repair. |
 | 15–18 | OTel correlation, provider/tool/DB/lock metrics, cache outages, restore/delete drills and domain extraction | 03, 14: retrieval stage timing is available; exporter, cross-service traces, drills and controller decomposition remain pending. |
@@ -89,8 +89,8 @@ protection and required checks remain administrative follow-up.
 | 08 | Transactional mutation journal and worker lifecycle | 07 | Active source creates and metadata changes enqueue coalesced per-generation intent transactionally; a recurring worker consumes it in bounded, resumable slices with leases and retry backoff. Source deletion cancels pending work and erasure removes journal rows. Pending mutations make search use legacy SQL until the generation catches up. |
 | 09 | Resumable backfill and generation verification | 08 | Bounded keyset build and verification; enrolled SQL generations queue verification automatically after staging, with missed handoff recovery. Explicit model provenance and local count/source checks are enforced. Activation rejects unverified or incomplete generations; current SQL certificates can activate automatically. |
 | 09a | Optional Qdrant adapter and explicit transfer setup | 06, 08 | Server-only encrypted credentials, TLS for remote service, bounded timeouts/batches, stable point IDs, indexed tenant/generation/document/source payload. Every query forces server-side tenant AND generation filters. Hydrate text from owned SQL rows. SQL remains independently usable when Qdrant is absent or unavailable. |
-| 10 | Shadow reads and comparison telemetry | 09 | SQL serves answers. The current slice is an explicit admin probe with bounded query/provider/vector/SQL work; production shadow sampling and soak remain pending. Compare recall, ranking, scope, tenant isolation and errors. No answer-content logs. |
-| 11 | Canary and primary generation-based reads | 10 | Make verified SQL-generation retrieval the default first; allow an explicit Qdrant canary only where configured. Bounded errors, privacy-safe SQL hydration and observable fallback. Keep legacy rows and a one-flag rollback for at least a release cycle; no destructive migration. |
+| 10 | Shadow reads and comparison telemetry | 09 | SQL serves enrolled accounts by default; Qdrant canary is explicit and opt-in. The current comparison slice is an admin probe with bounded query/provider/vector/SQL work; production shadow sampling and soak remain pending. Compare recall, ranking, scope, tenant isolation and errors. No answer-content logs. |
+| 11 | Canary and primary generation-based reads | 10 | Verified SQL-generation retrieval is automatic for enrolled users; an administrator can explicitly activate a verified Qdrant canary and roll back to built-in SQL. Queries apply tenant/generation/scope filters, hydrate exact revisions from SQL, and fall back on remote errors or pending mutations. Keep legacy rows; production soak and release-cycle rollback evidence remain pending. |
 | 12 | Native hybrid retrieval | 11 | Port BM25/RRF while preserving filename/path context, quoted phrases, scope and document diversification. Version-pin backend capabilities and compare against current hybrid baseline before activation. Dense-only rollback available. |
 | 13 | Normalized encrypted chat/message SQL storage | 12 | Additive tables, per-message writes, indexed metadata pagination/retention, transactional migration with checkpoint, mixed-version recovery and account erasure. Preserve encryption; do not add plaintext search indexes for encrypted messages. Separate feature flag and backup/restore runbook. |
 | 14 | Operational hardening and portability | 13 | PostgreSQL/MariaDB lifecycle coverage; metrics exporter/trace correlation; restore and delete drills; sustained soak; cache outage/rate-limit semantics; domain-controller extraction; dependency/SAST/SBOM policy. Administrative main protection requires its own explicit rollout. |
@@ -306,8 +306,9 @@ orphans or implement a durable retry queue. Those remain storage-erasure work.
 The 1.18.0 additive migration, immutable VectorGeneration, tenant-bound repository,
 VectorStore/SearchFilters contracts and explicit prepare/list/fail OCC operations
 are implemented. Old chunks remain legacy/unassigned and SQL retrieval remains
-default. There is no unverified activation path. Local generation metadata joins
-account cleanup; durable remote tombstones must precede any remote writes.
+the default. SQL activation requires current verification; Qdrant canary
+activation is explicit and has a SQL rollback. Local generation metadata joins
+account cleanup; durable remote tombstones precede any remote writes.
 VECTOR-STORAGE.md documents fields, invariants, compatibility and rollback limits.
 Schema execution, concurrency and database-portability validation remain pending;
 syntax checking is not proof of a successful upgrade or backfill verification.
@@ -501,11 +502,12 @@ and authenticated native administration are recorded in QUALITY.md.
 Stage 09 now has a first persisted verification slice: exact SQL/remote point IDs,
 tenant/generation identity, revisions, dimensions, source manifests, deterministic
 sampled cosine scores, snapshot reconciliation, exact live counts and invalidatable
-certificates. Search remains on SQL and no activation is available. Cross-database
-and adversarial evidence, representative load/soak, hard remote-storage/IMAP
-budgets, full legacy-writer coverage and durable erasure retries remain pending.
-Stage 10 has only an explicit admin probe; production shadow/soak and stages
-11–14 remain pending. See [GENERATION-BUILDS.md](GENERATION-BUILDS.md).
+certificates. SQL activation and explicit Qdrant canary activation now consume
+these certificates. Cross-database and adversarial evidence, representative
+load/soak, hard remote-storage/IMAP budgets, full legacy-writer coverage and
+durable erasure retries remain pending. Stage 10 has only an explicit admin
+probe; production shadow/soak and remaining stages 11–14 evidence remain open.
+See [GENERATION-BUILDS.md](GENERATION-BUILDS.md).
 
 The 1.18.11 storage contract adds exact tenant/generation-filtered live counts
 and bounded exact-ID point reads with vectors. Version 1.18.12 uses them in the

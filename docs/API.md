@@ -392,15 +392,18 @@ verification requirements.
 
 `GET /api/admin/vector-generations/{userId}/{id}/verification` returns the
 verification `status`, `phase`, backend, point counts, sample count, heartbeat,
-sanitized error code, `can_start`, `verified` and `retrieval_changed: false`. The matching
-POST route accepts `start`, `pause`, `resume`, `cancel` or `retry` with an empty
-JSON object. These administrator-only controls schedule or manage bounded
-background work; they never perform provider or vector-store I/O in the request.
+sanitized error code, `can_start`, `verified`, `can_activate`, `can_rollback`,
+effective `retrieval_backend` and `active`. The matching POST route accepts
+`start`, `pause`, `resume`, `cancel`, `retry`, `activate` or `rollback` with an
+empty JSON object. These administrator-only controls schedule or manage bounded
+background work; verification never performs provider or vector-store I/O in
+the request. Activation only updates local SQL state and performs no remote I/O.
 SQL verification checks local vector shape, revisions, content hashes and source
 manifests; Qdrant verification additionally reconciles the configured remote
 store. Neither path sends source text to an embedding model. A verified certificate
-is invalidated atomically when canonical source data changes. Search remains on
-SQL and no activation route is provided. See
+is invalidated atomically when canonical source data changes. SQL activates
+automatically after current verification; Qdrant requires explicit canary
+activation and can be rolled back to SQL. See
 [generation verification](GENERATION-VERIFICATION.md).
 
 `POST /api/admin/vector-generations/{userId}/{id}/shadow` accepts a short

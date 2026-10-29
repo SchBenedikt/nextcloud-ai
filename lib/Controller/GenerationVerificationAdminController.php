@@ -25,7 +25,7 @@ class GenerationVerificationAdminController extends OCSController {
         try{
             GenerationAdminRequest::fromArray(['userId'=>$userId,'id'=>$id]);
             if(!preg_match('~^application/json(?:\s*;|$)~i',$this->request->getHeader('Content-Type')))throw new \InvalidArgumentException();
-            if(!in_array($operation,['start','pause','resume','cancel','retry'],true))throw new \InvalidArgumentException();
+            if(!in_array($operation,['start','pause','resume','cancel','retry','activate','rollback'],true))throw new \InvalidArgumentException();
             return new ErrorDataResponse($this->verification->control($userId,$id,$operation));
         }catch(\InvalidArgumentException){return $this->failure('invalid_request','Select a valid verification action.',400);}
         catch(VectorStoreException$error){
@@ -33,6 +33,8 @@ class GenerationVerificationAdminController extends OCSController {
                 'build_not_staged'=>'Complete source preparation before verifying the generation.',
                 'build_disabled'=>'Enable source indexing and ensure the selected generation backend is available before starting or resuming verification.',
                 'verification_missing'=>'Start verification before changing its state.',
+                'generation_not_activatable'=>'This Qdrant generation is not fully built, current and verified. Refresh its progress before activation.',
+                'generation_not_active'=>'This Qdrant generation is no longer active. Refresh its state before retrying.',
                 default=>'This generation or its owner is unavailable. Refresh the current state before retrying.',
             };
             return $this->failure('verification_control_failed',$message,409);
