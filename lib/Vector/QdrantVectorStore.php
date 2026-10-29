@@ -183,13 +183,13 @@ class QdrantVectorStore implements VectorStore {
         }
     }
 
-    public function search(VectorGeneration $generation, array $queryVector, int $topK, SearchFilters $filters): array {
+    public function search(VectorGeneration $generation, array $queryVector, int $topK, SearchFilters $filters,int $timeoutSeconds=5): array {
         $generation->validateVector($queryVector);
-        if ($topK < 1 || $topK > 100) throw new VectorStoreException('invalid_limit');
-        $data = $this->request('post', $this->collection($generation) . '/points/query?timeout=3',
+        if ($topK < 1 || $topK > 100||$timeoutSeconds<1||$timeoutSeconds>5) throw new VectorStoreException('invalid_limit');
+        $data = $this->request('post', $this->collection($generation) . '/points/query?timeout=' . $timeoutSeconds,
             ['query' => array_map('floatval', $queryVector), 'using' => 'dense', 'limit' => $topK,
                 'filter' => $this->filter($generation, $filters), 'with_vector' => false,
-                'with_payload' => ['user_id', 'generation_id', 'document_id', 'source', 'scope_paths', 'revision', 'deleted']], false, 5);
+                'with_payload' => ['user_id', 'generation_id', 'document_id', 'source', 'scope_paths', 'revision', 'deleted']], false, $timeoutSeconds);
         $this->ok($data);
         $points = $data['result']['points'] ?? null;
         if (!is_array($points) || !array_is_list($points) || count($points) > $topK) throw new VectorStoreException('invalid_search_response');

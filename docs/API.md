@@ -394,3 +394,14 @@ store and does not send source text to an embedding model. A verified certificat
 is invalidated atomically when canonical source data changes. Search remains on
 SQL and no activation route is provided. See
 [generation verification](GENERATION-VERIFICATION.md).
+
+`POST /api/admin/vector-generations/{userId}/{id}/shadow` accepts a short
+administrator-supplied `query`, `top_k` from 1 to 20 and an optional Files
+`scope_path`. It is available only after a current verification certificate and
+requires active point delivery. The explicit probe sends the sample to the
+generation-pinned embedding provider and configured vector store, compares the
+exact SQL dense ranking with Qdrant and returns overlap and timing aggregates.
+It does not return point IDs, save the sample/vector, answer a chat or change the
+retrieval backend. Query/embedding, remote vector, SQL row and total wall-time
+budgets are enforced. The native admin UI requires a deliberate button press.
+See [generation shadow comparison](GENERATION-SHADOW.md).

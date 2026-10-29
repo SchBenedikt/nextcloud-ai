@@ -341,3 +341,19 @@ authenticated frontend session was checked. The platform still reports the
 previous unrelated Social/Mail schema drift and `oc_eva_ai_usage.estimated` type
 discrepancy. Cross-database migration, native OCS/admin browser flow, concurrency,
 source-writer coverage under load and real Qdrant reconciliation remain open.
+
+## Bounded shadow comparison (1.18.13)
+
+Three focused shadow-service tests passed (15 assertions), including verified-only
+admission, aggregate-only output and stale-revision rejection. The Qdrant
+inventory/search contract tests passed (4 tests / 38 assertions), including the
+short shadow timeout and enforced owner/generation/scope filter. Combined with
+the verification worker and bounded-indexer tests, the focused batch passed 14
+tests / 86 assertions. PHP syntax, translation JSON and the production webpack
+build passed. Local Nextcloud 35 RC3 upgraded EVA to 1.18.13, returned from
+maintenance mode and reports `needsDbUpgrade=false`; the installed tree matches
+the built source. The new OCS route returns the expected unauthenticated 401.
+The admin-triggered comparison is not yet evidence of a live Qdrant ranking run,
+a chat-path shadow sample or a multi-day soak; those remain open, as do
+authenticated browser coverage and cross-database checks. Existing unrelated
+Social/Mail and `oc_eva_ai_usage.estimated` schema discrepancies remain.
