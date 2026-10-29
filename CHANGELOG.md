@@ -2,6 +2,11 @@
 
 ## [Unreleased]
 
+### Rank native Nextcloud file search results by relevance (1.20.5)
+
+- Combine bounded lexical content scores with filename and path matches, prioritizing exact and leading filename matches.
+- Preserve a matching content excerpt when the same file also appears through its name or path.
+
 ### Configure and prepare optional Qdrant from native admin settings (1.20.4)
 
 - Add exact private-origin approvals to the encrypted Qdrant connection form and let administrators create a Qdrant generation from the account's active SQL generation.
