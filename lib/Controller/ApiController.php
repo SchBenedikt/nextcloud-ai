@@ -79,7 +79,8 @@ class ApiController extends OCSController {
         private \OCA\EvaAi\Service\UsageMetrics $usageMetrics,
         private \OCA\EvaAi\Service\BackgroundChatQueue $backgroundChatQueue,
         private LoggerInterface $logger,
-        private SystemController $systemController
+        private SystemController $systemController,
+        private ?\OCA\EvaAi\Service\RequestRateLimiter $requestRateLimiter = null
     ) {
         parent::__construct($appName, $request);
         $this->config->setUserId($this->userId);
@@ -124,8 +125,16 @@ class ApiController extends OCSController {
         return mb_strlen($message) > self::MAX_MESSAGE_LENGTH;
     }
 
-    /** Enforce a bounded per-user request budget in a shared cache window. */
+    /** Enforce a bounded per-user budget with a SQL fallback if shared cache is down. */
     private function rateLimitResponse(string $user, string $bucket, int $max): ?DataResponse {
+        if ($this->requestRateLimiter !== null) {
+            $count = $this->requestRateLimiter->consume($user, $bucket, 60, 'eva_ai_rate');
+            if ($count === null) return null;
+            if ($count > $max) {
+                return new ErrorDataResponse(['error' => 'rate_limited', 'message' => 'Too many requests. Please retry shortly.'], 429, ['Retry-After' => '60']);
+            }
+            return null;
+        }
         try {
             $cache = $this->cacheFactory->createLocking('eva_ai_rate');
             $window = intdiv(time(), 60);

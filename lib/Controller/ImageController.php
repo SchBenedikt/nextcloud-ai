@@ -26,6 +26,7 @@ final class ImageController extends OCSController {
 		private ImageGenerationService $images,
 		private ICacheFactory $cacheFactory,
 		private LoggerInterface $logger,
+		private ?\OCA\EvaAi\Service\RequestRateLimiter $requestRateLimiter = null,
 	) {
 		parent::__construct($appName, $request);
 	}
@@ -96,6 +97,10 @@ final class ImageController extends OCSController {
 	}
 
 	private function rateLimited(string $userId): bool {
+		if ($this->requestRateLimiter !== null) {
+			$count = $this->requestRateLimiter->consume($userId, 'image', 900, 'eva_ai_rate');
+			return $count !== null && $count > 5;
+		}
 		try {
 			$cache = $this->cacheFactory->createLocking('eva_ai_rate');
 			$window = intdiv(time(), 900);
