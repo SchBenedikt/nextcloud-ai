@@ -2,6 +2,12 @@
 
 ## [Unreleased]
 
+### Automatic SQL generation bootstrap (1.18.19)
+
+- Queue a bounded local SQL generation backfill after a successfully embedded batch for users explicitly enrolled in indexing.
+- Record only the exact model used by a successful uncached embedding request; cache-only runs never infer generation identity.
+- Keep legacy indexing and search active while the additive generation backfill runs asynchronously.
+
 ### Source metadata mutation recovery (1.18.18)
 
 - Serialize indexed-source metadata updates through the owner fence before locking source rows, preserving the build worker lock order.

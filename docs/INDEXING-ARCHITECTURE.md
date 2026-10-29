@@ -51,17 +51,25 @@ portability path; optional ANN storage is the scale path.
 
 ## Current implementation gap
 
-The current tree has durable generation metadata, a bounded manual build,
-verification and an explicit shadow probe. The SQL-generation build and
-verification foundation is now implemented, but normal indexing has not yet
-been switched. Specifically:
+The current tree has durable generation metadata, a bounded build,
+verification and an explicit shadow probe. Normal indexing still writes the
+legacy chunks and search still reads them. When a user has explicitly enrolled
+in indexing, a successful embedding batch now schedules a matching internal
+SQL generation build in the background. It reuses the existing bounded worker;
+it does not delay the index response or send content to Qdrant. Specifically:
 
 - `VectorGeneration` accepts `sql` and `qdrant`; SQL generations bind to a
   deterministic local target and write directly to Nextcloud SQL.
 - SQL builds do not create Qdrant point-delivery events. Their verifier checks
   local vector shape, revisions, content hashes and source manifests. Qdrant
   generations retain remote reconciliation and explicit transfer consent.
-- Normal indexing writes only legacy chunks; chat search reads only those rows.
+- Normal indexing still writes legacy chunks; chat search still reads only
+  those rows. The automatic SQL build is a separate, asynchronous backfill and
+  does not yet change retrieval or activate a generation.
+- Automatic bootstrap requires explicit personal indexing enrollment and an
+  exact model reported by a successful uncached embedding request. Cache-only
+  batches do not guess model provenance. SQL is the only backend selected by
+  this bootstrap path.
 - There is no guarded generation activation path or production shadow sampling.
 - `VectorStorageStatus` reports `sql_legacy`; the interface must stay truthful
   until SQL generation writes and search are actually wired into normal use.

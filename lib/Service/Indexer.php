@@ -9,6 +9,7 @@ use OCA\EvaAi\Db\ChunkMapper;
 use OCA\EvaAi\Db\Document;
 use OCA\EvaAi\Db\DocumentMapper;
 use OCA\EvaAi\Db\VectorSourceDeletion;
+use OCA\EvaAi\Vector\DefaultSqlGenerationProvisioner;
 use OCP\Files\File;
 use OCP\Files\Folder;
 use OCP\Files\IRootFolder;
@@ -45,6 +46,7 @@ class Indexer {
 
     /** Wall-clock timestamp of the last heartbeat write for this pass. */
     private int $lastHeartbeatAt = 0;
+    private bool $sqlGenerationProvisioned = false;
 
     public function __construct(
         private AppConfig $config,
@@ -60,7 +62,8 @@ class Indexer {
         private ILockingProvider $lockingProvider,
         private LockGuard $lockGuard,
         private IndexScheduler $scheduler,
-        private ?VectorSourceDeletion $vectorSourceDeletion = null
+        private ?VectorSourceDeletion $vectorSourceDeletion = null,
+        private ?DefaultSqlGenerationProvisioner $sqlGenerationProvisioner = null
     ) {
     }
 
@@ -70,6 +73,7 @@ class Indexer {
      */
     public function run(string $userId, ?int $maxFiles = null, string $mode = 'all', bool $keepRunning = false, ?string $runId = null): array {
         $this->config->setUserId($userId);
+        $this->sqlGenerationProvisioned = false;
         $mode = in_array($mode, ['all', 'files', 'mail', 'talk'], true) ? $mode : 'all';
         $maxFiles = $maxFiles ?? min(10000, max(1, $this->config->getInt('max_files_per_run', 40)));
         $result = [
@@ -950,6 +954,16 @@ class Indexer {
                     }
                 } catch (\Throwable $e) {
                     $this->logger->warning('eva_ai: Failed to remove old document after re-index', ['error' => $e->getMessage(), 'oldDocId' => $oldDocId]);
+                }
+            }
+        }
+        if (!$this->sqlGenerationProvisioned && $this->sqlGenerationProvisioner !== null && $userId !== null) {
+            $model = $this->ollama->lastEmbeddingModel();
+            foreach ($vecs as $vector) {
+                if ($model !== null && is_array($vector) && $vector !== []) {
+                    $this->sqlGenerationProvisioner->ensure($userId, $model, count($vector));
+                    $this->sqlGenerationProvisioned = true;
+                    break;
                 }
             }
         }

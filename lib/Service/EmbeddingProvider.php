@@ -30,4 +30,7 @@ interface EmbeddingProvider {
      * @return array{cache_hits:int, cache_misses:int, ollama_requests:int}
      */
     public function lastEmbeddingStats(): array;
+
+    /** Exact model used for the most recent successful uncached embedding batch, when known. */
+    public function lastEmbeddingModel(): ?string;
 }
