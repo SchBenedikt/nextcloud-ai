@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Resilient embedding cache (1.18.30)
+
+- Temporarily bypass the distributed embedding cache for 15 seconds after a cache failure, avoiding repeated slow cache calls during an outage. Indexing and retrieval continue through uncached embeddings; cached values are retried automatically after the cooldown.
+
 ### Automatic encrypted chat SQL rollout (1.18.29)
 
 - New and empty accounts enter the verified SQL chat path automatically. A scheduled Nextcloud background job migrates existing accounts in checkpointed batches, verifies each encrypted history, then enables SQL reads per account without requiring administrator setup.
