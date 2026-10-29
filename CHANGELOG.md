@@ -2,6 +2,11 @@
 
 ## [Unreleased]
 
+### Retry failed incremental file indexing (1.18.64)
+
+- Restore failed file and folder-change entries instead of losing them when a bounded worker batch encounters a transient error.
+- Back off incremental retries, let newer filesystem events replace older queued work, and cap each entry at five attempts while retaining the periodic full index as recovery.
+
 ### Normalize Mail search case across database collations (1.18.63)
 
 - Lowercase the search term and Mail text fields for consistent case-insensitive matches across Nextcloud database backends.

@@ -41,6 +41,10 @@ baseline and portability path; optional ANN storage is the scale path.
 1. New and changed files are processed by a resumable, bounded background
    pipeline. Upload, rename, chat response, and interactive UI requests do not
    wait for extraction or embedding.
+   Incremental file-change work is debounced; failed entries are restored to the
+   per-user queue with bounded backoff, while newer queued changes supersede
+   retries for the same source. The periodic index remains the recovery path
+   after five failed attempts.
 2. Every generation pins the embedding provider identity, endpoint fingerprint,
    model, dimensions, chunk settings, metric and schema version. Legacy rows do
    not receive guessed provenance.
