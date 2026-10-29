@@ -2,6 +2,11 @@
 
 ## [Unreleased]
 
+### Index more Office and OpenDocument variants (1.20.20)
+
+- Include macro-enabled Word, Excel and PowerPoint templates/slideshows in the supported ZIP/XML extraction path.
+- Extract text from OpenDocument graphics and formula files using their `content.xml` text.
+
 ### Yield OCR indexing to interactive chats (1.20.19)
 
 - Check for active chat requests before changed-file extraction and while local OCR subprocesses run.
