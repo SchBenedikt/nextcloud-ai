@@ -70,7 +70,7 @@ endpoint rejects them.
 
 | Key | Scope | Default | Range / values | Unit | Effect |
 |---|---|---|---|---|---|
-| `chat_provider` | P | `ollama` | `ollama`, `groq`, configured profile ID | – | Chat provider; embeddings remain on Ollama. |
+| `chat_provider` | P | `ollama` | `ollama`, `groq`, configured profile ID | – | Chat provider only. It does not select the embedding provider for automatic SQL generations. |
 | `groq_model` | P | `openai/gpt-oss-20b` | `openai/gpt-oss-20b`, `openai/gpt-oss-120b` | – | Groq Free Plan model selection; no fallback. |
 | `provider_profiles` | P | `[]` | JSON array, max. 20 profiles | – | OpenAI-compatible profiles with `id`, `name`, `url` and `model`; optional `embedding_model` plus `embedding_dimension` can enable a separate SQL file-search generation; optional modality models and encrypted per-profile API keys are also supported. |
 | `generation_embedding_profile_id` | P | empty | Existing compatible provider profile ID, or empty | – | Empty keeps automatic SQL generations on Ollama. Selecting a profile explicitly sends indexed file text to that endpoint; its generation pins profile, endpoint, model and dimension. |
@@ -78,7 +78,7 @@ endpoint rejects them.
 | `ollama_url` | P | `http://127.0.0.1:11434` | plain `http(s)://host[:port]`, no path/credentials | – | Base URL of the Ollama HTTP API; trailing slashes are stripped. |
 | `chat_model` | P | `gemma4:cloud` | non-empty string | – | Model used for chat/generation. |
 | `chat_model_fallback` | P | `''` | comma-separated model names | – | Models tried in order when the primary chat model is unavailable (Issue #86). |
-| `embedding_model` | P | `nomic-embed-text` | non-empty string | – | Model used to embed chunks and queries. |
+| `embedding_model` | P | `nomic-embed-text` | non-empty string | – | Ollama model used by regular indexing and as the default automatic SQL-generation embedding model. A selected compatible generation profile uses its separately configured `embedding_model` instead. |
 | `embedding_model_fallback` | P | `''` | comma-separated model names | – | Models tried in order when the primary embedding model is unavailable (Issue #86). |
 | `summary_model` | P | `''` | model name or empty | – | Optional dedicated model for heavy text tasks (summarize, translate, proofread, …). Empty = the chat model chain is used (Issue #86). |
 | `temperature` | P | `0.1` | `0`–`2` | – | Sampling temperature passed to Ollama (`options.temperature`). Lower = more deterministic. |

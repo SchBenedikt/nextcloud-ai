@@ -87,8 +87,10 @@ The implementation entries further below record the actual delivered slices.
   supports cancellation, heartbeats and reuse of compatible cached embeddings.
 - `ChatStore` aggregates a user's encrypted conversations in AppData. It is a
   separate persistence migration, not a vector database use case.
-- Indexer and Searcher currently depend on the concrete Ollama service for
-  embeddings. Chat-provider selection does not select an embedding provider.
+- Regular legacy indexing still depends on Ollama for embeddings. Automatic SQL
+  generations can use a separately selected OpenAI-compatible profile with an
+  immutable provider/model/dimension identity; chat-provider selection does not
+  select the generation embedding provider.
 - Custom provider requests use Nextcloud's HTTP client. An endpoint policy must
   preserve its DNS/SSRF protections, including on streaming and media paths;
   syntactic URL validation alone does not establish a network trust boundary.

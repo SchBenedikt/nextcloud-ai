@@ -13,6 +13,12 @@ store for documents, access metadata and chunk text. The legacy index remains
 readable as a rollback source until generation cutover has passed the release
 and recovery gates.
 
+Ollama is the default embedding destination. A user may explicitly select an
+OpenAI-compatible profile for automatic SQL generations; this separately
+configured choice sends indexed file text to that profile and does not follow
+the chat-provider setting. Regular legacy indexing remains on Ollama so its
+vectors are never mistaken for vectors in a different generation space.
+
 Qdrant is an optional scale adapter. It can accelerate retrieval for an
 administrator who configures it, but it is not required to install, upgrade,
 index files, chat, or search. EVA must not start a remote service or send
