@@ -63,7 +63,9 @@ The implementation entries further below record the actual delivered slices.
   change the O(N) cosine scan or establish a latency result.
 - Nextcloud OpenMetrics now exposes instance-wide indexed item totals, vector
   generation counts by backend/state, and outbox queue depth and oldest age by
-  operation/state.
+  operation/state. Version 1.18.47 also exports aggregate chunk counts by
+  lexical posting state so operators can see bounded backfill progress without
+  account or source labels.
   Exported labels contain no tenant, file, prompt, endpoint, or credential data;
   request percentiles, provider timings, and queue-age histograms remain open.
 - SQL cosine ranking validates and computes the query-vector magnitude once per
