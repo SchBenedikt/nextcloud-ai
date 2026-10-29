@@ -322,10 +322,14 @@ An optional loopback-only Compose example requires explicit approved image/key
 configuration and is never run by installation. QDRANT.md records API references,
 behavior, restrictions and unverified integration boundaries.
 
-No SQL chunk synchronization or primary/shadow reads are enabled. The outbox must
-pin storage-target identity and handle deletion/revision ordering before any live
-SQL mutation is replicated. No remote write/load/isolation tests or container
-startup have been run under the user's instruction to defer testing.
+Normal document insertion now extends any queued, running, paused or staged
+generation build in the same owner-fenced transaction. Late-committing rows
+rewind a cursor and reclaim a stale lease, while safe tail appends preserve the
+current document and provider request. Final staging rechecks under the owner
+fence. This closes additions during a build but does not yet synchronize
+in-place metadata mutations, automatic generation provisioning, or retrieval.
+No SQL primary/shadow reads are enabled. No remote write/load/isolation tests or
+container startup have been run under the user's instruction to defer testing.
 
 ### Stage 08 durable journal and target foundation
 

@@ -21,9 +21,51 @@ class VectorSourceDeletion {
         return $this->outbox->transaction(function()use($userId,$insert):mixed{
             $this->owners->lockOpen($userId);
             $entity=$insert();
+            if (is_object($entity) && method_exists($entity, 'getId')) {
+                $documentId=(int)$entity->getId();
+                if ($documentId>0) $this->extendBuildWatermarks($userId,$documentId);
+            }
             $this->invalidateOwnerVerification($userId);
             return $entity;
         });
+    }
+
+    /** Keep active generation builds current with normal indexed document inserts. */
+    private function extendBuildWatermarks(string $userId,int $documentId): void {
+        $q=$this->db->getQueryBuilder();
+        $q->select('b.generation_id','b.status','b.upper_document_id','b.after_document_id')
+            ->from('eva_ai_vec_builds','b')
+            ->innerJoin('b','eva_ai_vec_generations','g',$q->expr()->eq('g.id','b.generation_id'))
+            ->where($q->expr()->eq('b.user_id',$q->createNamedParameter($userId)))
+            ->andWhere($q->expr()->eq('g.user_id',$q->createNamedParameter($userId)))
+            ->andWhere($q->expr()->eq('g.status',$q->createNamedParameter('building')))
+            ->andWhere($q->expr()->in('b.status',$q->createNamedParameter(['queued','running','paused','staged'],IQueryBuilder::PARAM_STR_ARRAY)));
+        $r=$q->executeQuery();try{$rows=$r->fetchAll();}finally{$r->closeCursor();}
+        foreach($rows as$row){
+            $rewind=$documentId<=(int)$row['after_document_id'];
+            $invalidate=$rewind||$row['status']==='staged';
+            $after=$rewind?max(0,$documentId-1):(int)$row['after_document_id'];
+            $upper=max((int)$row['upper_document_id'],$documentId);
+            $status=$invalidate&&in_array($row['status'],['running','staged'],true)?'queued':$row['status'];
+            $update=$this->db->getQueryBuilder();
+            $update->update('eva_ai_vec_builds')
+                ->set('upper_document_id',$update->createNamedParameter($upper,IQueryBuilder::PARAM_INT))
+                ->set('after_document_id',$update->createNamedParameter($after,IQueryBuilder::PARAM_INT))
+                ->set('total_documents',$update->func()->add('total_documents',$update->createNamedParameter(1,IQueryBuilder::PARAM_INT)))
+                ->set('status',$update->createNamedParameter($status))
+                ->set('revision',$update->func()->add('revision',$update->createNamedParameter(1,IQueryBuilder::PARAM_INT)))
+                ->set('updated_at',$update->createNamedParameter(time(),IQueryBuilder::PARAM_INT))
+                ->where($update->expr()->eq('user_id',$update->createNamedParameter($userId)))
+                ->andWhere($update->expr()->eq('generation_id',$update->createNamedParameter($row['generation_id'])));
+            if($invalidate){
+                $update->set('document_id',$update->createNamedParameter(0,IQueryBuilder::PARAM_INT))
+                    ->set('chunk_cursor',$update->createNamedParameter(0,IQueryBuilder::PARAM_INT))
+                    ->set('plan_hash',$update->createNamedParameter(null,IQueryBuilder::PARAM_NULL))
+                    ->set('lease_token',$update->createNamedParameter(null,IQueryBuilder::PARAM_NULL))
+                    ->set('lease_until',$update->createNamedParameter(0,IQueryBuilder::PARAM_INT));
+            }
+            $update->executeStatement();
+        }
     }
 
     /** Serialize each legacy chunk insert against the persistent owner erase fence. */

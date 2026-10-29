@@ -2,6 +2,13 @@
 
 ## [Unreleased]
 
+### Live generation build watermarks (1.18.16)
+
+- Extend owned generation build snapshots when normal Nextcloud indexing creates a document during backfill; preserve an in-flight document and embedding lease when the new row is beyond the current cursor.
+- Rewind and reclaim a build when a late-committing row falls behind its cursor, and re-open a staged build when new indexed content arrives.
+- Recheck for work under the owner fence before marking a build staged, closing the race between finalization and concurrent document creation.
+- Keep document contents out of the mutation metadata and perform no additional embedding work on chat requests.
+
 ### Canonical indexing deletions (1.18.15)
 
 - Route normal stale-file, excluded-file, folder-prefix and successful replacement cleanup through the vector source deletion service.
