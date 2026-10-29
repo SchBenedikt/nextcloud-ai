@@ -216,6 +216,7 @@ class Searcher {
 
         $nativeHybrid = isset($rows[0]['_native_rrf']);
         $lexical = $nativeHybrid ? $this->lexicalFileContext($rows, $queryTokens, $docFields) : $this->lexicalBm25($rows, $queryTokens, $docFields);
+        $phraseExact = [];
         // Quoted phrases are an explicit exact-match signal. Give them a
         // deterministic boost after BM25/RRF preparation so an exact result
         // wins over a merely semantically related chunk.
@@ -223,6 +224,7 @@ class Searcher {
             foreach ($rows as $i => $row) {
                 if (str_contains(mb_strtolower((string)$row['content']), mb_strtolower($phrase))) {
                     $lexical[$i] = ($lexical[$i] ?? 0.0) + 5.0;
+                    $phraseExact[$i] = true;
                 }
             }
         }
@@ -252,12 +254,16 @@ class Searcher {
         $denseRank = array_keys($dense);
         $lexPos = array_flip($lexRank);
         $densePos = array_flip($denseRank);
+        $maxNativeRrf = $nativeHybrid ? max(array_column($rows, '_native_rrf')) : 0.0;
 
         $results = [];
         foreach ($rows as $i => $row) {
             $lexScore = $lexical[$i] ?? 0.0;
             $denseScore = $dense[$i] ?? 0.0;
             $rrf = $nativeHybrid ? (float)$row['_native_rrf'] : 0.0;
+            if ($nativeHybrid && isset($phraseExact[$i])) {
+                $rrf += max((float)$maxNativeRrf, 1 / 60) + (1 / 60);
+            }
             if (array_key_exists($i, $lexPos)) $rrf += 1 / (60 + $lexPos[$i]);
             if (!$nativeHybrid && array_key_exists($i, $densePos)) $rrf += 1 / (60 + $densePos[$i]);
             $docId = (int)$row['document_id'];
