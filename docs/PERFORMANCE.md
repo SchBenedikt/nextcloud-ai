@@ -66,10 +66,14 @@ count, `count_ms`, `index_chunks`, `embedding_ms`, `dense_enabled`,
 `ranking_ms`. Durations use the monotonic clock and are in milliseconds.
 
 These are per-request measurements, not aggregated percentiles or a Prometheus
-exporter. Debug events follow the Nextcloud logging level and retention policy;
-no special log level is enabled by the app. Query text, user identifiers, paths,
-chunk contents, vectors and exception text are deliberately excluded. Logging
-failure is ignored so it cannot mask a successful result or the original error.
+exporter. Normal, streamed, and queued chat work receives a random, short-lived
+`trace_id` that is attached to the chat total, retrieval stages, provider duration,
+and slow-tool duration events. The ID is held only in the request context; queued
+work keeps it only until completion or expiry. No prompts, account identifiers,
+paths, chunk contents, vectors, or provider response bodies are part of these
+telemetry events. Debug events follow the Nextcloud logging level and retention
+policy; no special log level is enabled by the app. Logging failure is ignored so
+it cannot mask a successful result or the original error.
 
 Early empty-query/empty-index returns and failures emit only the stages reached.
 `dense_enabled=false` also covers an unavailable query embedding. Candidate time

@@ -93,7 +93,17 @@ protection and required checks remain administrative follow-up.
 | 11 | Canary and primary generation-based reads | 10 | Verified SQL-generation retrieval is automatic for enrolled users; an administrator can explicitly activate a verified Qdrant canary and roll back to built-in SQL. Queries apply tenant/generation/scope filters, hydrate exact revisions from SQL, and fall back on remote errors or pending mutations. Keep legacy rows; production soak and release-cycle rollback evidence remain pending. |
 | 12 | Native hybrid retrieval | 11 | Implemented the explicit generation text-payload opt-in, separate build/resume consent, Qdrant 1.20+ BM25 index preparation, native dense+BM25 RRF, exact SQL hydration and SQL fallback. Existing generations remain dense-only. Verification checks text-field coverage and compares sampled text with SQL. Remaining: run representative quality/latency comparison, verify live Qdrant 1.20+ index schema and text erasure, then enable only for evaluated canaries. SQL/dense-only rollback remains available. |
 | 13 | Normalized encrypted chat/message SQL storage | 12 | **In progress (1.18.27–1.18.29 stack).** Additive encrypted tables, small resumable imports, per-message SQL mirroring, automatic new-account SQL, scheduled verified migration for existing users, owner-scoped erasure, indexed metadata pages, per-user SQL reads with AppData export rollback, and paginated native sidebar loading are implemented. Mixed-version deployment/rollback rehearsal, performance/load evidence, and restore drills remain. Preserve encryption and add no plaintext search indexes. |
-| 14 | Operational hardening and portability | 13 | PostgreSQL/MariaDB lifecycle coverage; metrics exporter/trace correlation; restore and delete drills; sustained soak; cache outage/rate-limit semantics (embedding-cache 15-second process-local cooldown now avoids repeated failing cache calls while preserving uncached operation); domain-controller extraction; dependency/SAST/SBOM policy. Administrative main protection requires its own explicit rollout. |
+| 14 | Operational hardening and portability | 13 | PostgreSQL/MariaDB lifecycle coverage; metrics exporter (chat, provider, retrieval and slow-tool events now share short-lived trace IDs, but aggregation/export is open); restore and delete drills; sustained soak; cache outage/rate-limit semantics (embedding-cache 15-second process-local cooldown now avoids repeated failing cache calls while preserving uncached operation); domain-controller extraction; dependency/SAST/SBOM policy. Administrative main protection requires its own explicit rollout. |
+
+## Stage 14 interface slice: correlated chat timings
+
+Normal, streamed and queued chat work now gets a random 128-bit trace ID held in
+request context. The same ID appears in chat totals, retrieval stage timings,
+provider completion timings and slow-tool timings. Queued jobs retain it only in
+the temporary queue record and omit it from completed history. These are
+privacy-preserving debug logs, not OpenTelemetry spans, percentiles, or an
+exporter; those remain open. The trace ID does not change provider payloads or
+chat responses.
 
 ## Stage 14 interface slice: compact administration
 

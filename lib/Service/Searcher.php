@@ -27,7 +27,8 @@ class Searcher {
         private ?VectorGenerationRepository $generations = null,
         private ?GenerationEmbeddingProvider $generationEmbeddings = null,
         private ?QdrantVectorStore $qdrant = null,
-        private ?GenerationChunkRepository $generationChunks = null
+        private ?GenerationChunkRepository $generationChunks = null,
+        private ?TraceContext $traceContext = null
     ) {
     }
 
@@ -39,8 +40,8 @@ class Searcher {
      *
      * @return array<int,array{chunk:array,doc:?array,cosine:float,lexical:float,score:float}>
      */
-    public function search(string $userId, string $query, int $topK, ?string $scopePath = null): array {
-        return $this->runSearch($userId, $query, $topK, $scopePath, null);
+    public function search(string $userId, string $query, int $topK, ?string $scopePath = null, ?string $traceId = null): array {
+        return $this->runSearch($userId, $query, $topK, $scopePath, null, $traceId);
     }
 
     /** Explicit benchmark mode: rank with the checked frozen vector, without another provider call. */
@@ -52,10 +53,10 @@ class Searcher {
             $norm += $value * $value;
         }
         if (!is_finite($norm) || $norm <= 0) throw new \InvalidArgumentException('Invalid frozen query vector.');
-        return $this->runSearch($userId, $query, $topK, $scopePath, array_map('floatval', $vector));
+        return $this->runSearch($userId, $query, $topK, $scopePath, array_map('floatval', $vector), null);
     }
 
-    private function runSearch(string $userId, string $query, int $topK, ?string $scopePath, ?array $fixedVector): array {
+    private function runSearch(string $userId, string $query, int $topK, ?string $scopePath, ?array $fixedVector, ?string $traceId): array {
         $started = hrtime(true);
         $measurements = ['backend' => 'sql_legacy', 'query_vector_mode' => $fixedVector === null ? 'automatic' : 'frozen'];
         $failed = true;
@@ -72,6 +73,8 @@ class Searcher {
             }
             $measurements['total_ms'] = (hrtime(true) - $started) / 1_000_000;
             $measurements['failed'] = $failed;
+            $traceId ??= $this->traceContext?->id();
+            if ($traceId !== null && preg_match('/^[a-f0-9]{32}$/D', $traceId) === 1) $measurements['trace_id'] = $traceId;
             try {
                 // No query, account ID, path, content or exception payload.
                 $this->logger?->debug('eva_ai: retrieval timings', $measurements);
