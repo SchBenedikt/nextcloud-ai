@@ -34,7 +34,7 @@ The implementation entries further below record the actual delivered slices.
 | 13–14 | Resumable backfill, immutable model rebuild, activation pointer, shadow/canary rollout and rollback | 09–11: bounded build, verification and guarded SQL activation/search exist; explicit Qdrant account canary and SQL rollback are available. Production shadow/soak and rollback drills remain pending. SQL runs without Qdrant; performance and release gates remain open. |
 | 15 | Native hybrid BM25/RRF, phrases, scope and diversification | 12: preserve current relevance behavior before enabling backend hybrid retrieval; compare quality against both exact and current hybrid baselines. |
 | 7, 15, 22 | ChatStore hot-file writes, normalized encrypted SQL messages and distributed chat coordination | 13–14: independent additive chat migration, recovery and erasure; lock lifecycle fix is only the immediate consecutive-request repair. |
-| 15–18 | OTel correlation, provider/tool/DB/lock metrics, cache outages, restore/delete drills and domain extraction | 03, 14: native aggregate OpenMetrics and durable account-erasure retries are implemented; request percentiles, cross-service traces, restore/delete drills and controller decomposition remain pending. |
+| 15–18 | OTel correlation, provider/tool/DB/lock metrics, cache outages, restore/delete drills and domain extraction | 03, 14: native aggregate OpenMetrics and durable account-erasure retries are implemented; approximate seven-day chat/slow-tool p50/p95/p99 is now exported from bounded usage samples. Stage-level percentiles, cross-service traces, restore/delete drills and controller decomposition remain pending. |
 | 16, 18 | PHPStan/Psalm, SAST, secrets, SBOM, dependency and pinned-action policy | 14: define supported versions and executed evidence before enabling enforced checks; no claim of completed CI hardening. |
 | 18–19 | Frozen corpus, adversarial tenants, quality thresholds and cold/warm load at concurrency 1/5/20/50 | 05, 09–12, 14: offline evaluator and explicit SQL/Qdrant generation snapshot runners exist; representative real datasets, ANN comparisons, load/soak and resource measurements remain pending. |
 | 20–22 | Optional deployments, authoritative Nextcloud SQL/VFS and reconstructible vector index | 07, 09, 14: standalone default preserved; backup/restore and reconstruction drills remain pending. |
@@ -65,9 +65,12 @@ The implementation entries further below record the actual delivered slices.
   generation counts by backend/state, and outbox queue depth and oldest age by
   operation/state. Version 1.18.47 also exports aggregate chunk counts by
   lexical posting state so operators can see bounded backfill progress without
-  account or source labels.
+  account or source labels. Version 1.18.58 adds approximate p50/p95/p99
+  chat and slow-tool durations from the newest 5,000 records in a seven-day
+  window, with only fixed operation and quantile labels. Retrieval stages,
+  standalone provider timing and queue-age histograms remain unaggregated.
   Exported labels contain no tenant, file, prompt, endpoint, or credential data;
-  request percentiles, provider timings, and queue-age histograms remain open.
+  stage-level percentiles and queue-age histograms remain open.
 - SQL cosine ranking validates and computes the query-vector magnitude once per
   request instead of repeating that query-side work for every candidate. This is
   an algorithm-preserving CPU reduction; no latency improvement is claimed
