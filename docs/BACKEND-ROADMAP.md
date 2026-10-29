@@ -338,7 +338,9 @@ integration runs, which remain required evidence.
 
 The usage `estimated` flag is normalized to an integer column, matching the
 portable `SUM()` aggregations. This addresses a schema drift found during the
-local MariaDB upgrade; PostgreSQL and SQLite migration execution remain open.
+local MariaDB upgrade. Follow-up 1.18.62 passes the DBAL integer type object
+required by Nextcloud's schema wrapper. PostgreSQL and SQLite migration
+execution remain open.
 
 ### Stage 02 implementation
 
