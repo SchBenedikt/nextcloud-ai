@@ -15,6 +15,13 @@
 					<tr v-for="row in ragRequestOutcomes" :key="row.outcome"><td>{{ row.label }}</td><td>{{ format(row.count) }}</td><td>{{ format(row.p50_ms) }} ms</td><td>{{ format(row.p95_ms) }} ms</td><td>{{ format(row.p99_ms) }} ms</td></tr>
 				</tbody></table></div>
 			</section>
+			<section v-if="embeddingQueryDuration.samples > 0" class="metrics-panel">
+				<h2>{{ $t('Query embedding time by provider') }}</h2>
+				<p class="metrics-note">{{ $t('Time spent preparing the search vector for a chat query. This stage includes cache and request setup; lexical-only and mixed fallback requests are excluded.') }}</p>
+				<div class="metrics-table-scroll"><table><thead><tr><th>{{ $t('Provider') }}</th><th>{{ $t('Requests') }}</th><th>p50</th><th>p95</th><th>p99</th></tr></thead><tbody>
+					<tr v-for="row in embeddingQueryRows" :key="row.provider"><td>{{ row.label }}</td><td>{{ format(row.count) }}</td><td>{{ format(row.p50_ms) }} ms</td><td>{{ format(row.p95_ms) }} ms</td><td>{{ format(row.p99_ms) }} ms</td></tr>
+				</tbody></table></div>
+			</section>
 			<section v-if="indexRuns.samples > 0" class="metrics-panel">
 				<h2>{{ $t('Indexing performance') }}</h2>
 				<p class="metrics-note">{{ $t('Background run duration and successfully written file chunks. Chunk throughput covers file traversal through SQL writes, including extraction and embedding.') }}</p>
@@ -76,6 +83,12 @@ export default {
 		const hasCurrentData = computed(() => dataDays.value === days.value)
 		const totals = computed(() => data.value.totals || {}); const byModel = computed(() => data.value.by_model || []); const daily = computed(() => data.value.daily || []); const slowTools = computed(() => data.value.slow_tools || [])
 		const ragRequestDuration = computed(() => data.value.rag_request_duration || { samples: 0, outcomes: {} })
+		const embeddingQueryDuration = computed(() => data.value.embedding_query_duration || { samples: 0, providers: {} })
+		const embeddingQueryRows = computed(() => Object.entries(embeddingQueryDuration.value.providers || {}).map(([provider, row]) => ({
+			provider,
+			label: ({ ollama: t('Ollama'), openai_compatible: t('OpenAI-compatible') })[provider] || t('Other'),
+			...row,
+		})))
 		const ragRequestOutcomes = computed(() => Object.entries(ragRequestDuration.value.outcomes || {}).map(([outcome, row]) => ({
 			outcome,
 			label: ({ complete: t('Completed'), error: t('Error'), incomplete: t('Interrupted') })[outcome] || t('Other'),
@@ -176,7 +189,7 @@ export default {
 		}
 		const downloadCsv = () => {
 			if (!hasCurrentData.value) return
-			const content = buildMetricsCsv({ days: days.value, totals: totals.value, byModel: byModel.value, daily: daily.value, slowTools: slowTools.value, ragRequestDuration: ragRequestDuration.value, indexRuns: indexRuns.value, chatStoreLockWait: chatStoreLockWait.value })
+			const content = buildMetricsCsv({ days: days.value, totals: totals.value, byModel: byModel.value, daily: daily.value, slowTools: slowTools.value, ragRequestDuration: ragRequestDuration.value, embeddingQueryDuration: embeddingQueryDuration.value, indexRuns: indexRuns.value, chatStoreLockWait: chatStoreLockWait.value })
 			const url = URL.createObjectURL(new Blob([content], { type: 'text/csv;charset=utf-8' }))
 			const link = document.createElement('a')
 			link.href = url
@@ -200,7 +213,7 @@ export default {
 			document.removeEventListener('visibilitychange', refreshWhenVisible)
 			requestId++
 		})
-		return { days, loading, error, hasCurrentData, totals, byModel, daily, slowTools, ragRequestDuration, ragRequestOutcomes, indexRuns, indexRunRows, chatStoreLockWait, chatStoreLockWaitRows, adminUsers, selectedUser, canFilterUsers, maxDaily, maxModel, inputShare, cards, format, formatMoney, priceKey, ensurePrice, savingPricing, pricingStatus, savePricing, load, downloadCsv, printReport, updatedLabel }
+		return { days, loading, error, hasCurrentData, totals, byModel, daily, slowTools, ragRequestDuration, ragRequestOutcomes, embeddingQueryDuration, embeddingQueryRows, indexRuns, indexRunRows, chatStoreLockWait, chatStoreLockWaitRows, adminUsers, selectedUser, canFilterUsers, maxDaily, maxModel, inputShare, cards, format, formatMoney, priceKey, ensurePrice, savingPricing, pricingStatus, savePricing, load, downloadCsv, printReport, updatedLabel }
 	},
 }
 </script>
