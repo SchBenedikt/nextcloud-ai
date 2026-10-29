@@ -2,6 +2,11 @@
 
 ## [Unreleased]
 
+### Automatic encrypted chat SQL rollout (1.18.29)
+
+- New and empty accounts enter the verified SQL chat path automatically. A scheduled Nextcloud background job migrates existing accounts in checkpointed batches, verifies each encrypted history, then enables SQL reads per account without requiring administrator setup.
+- Keep the per-user AppData restore command as rollback. Existing encrypted sources remain in place; Qdrant remains optional and is not part of chat storage.
+
 ### Per-user encrypted SQL chat read pilot (1.18.28)
 
 - Add a separate per-user SQL read flag. The migration command can enable SQL reads only after import and source verification, or restore AppData from SQL before disabling the flag.

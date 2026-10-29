@@ -42,6 +42,10 @@ final class MigrateChatStorage extends Command {
 				$output->writeln('<comment>The AppData source changed during import. Rerun this command to resume from a fresh snapshot.</comment>');
 				return 1;
 			}
+			if ($result['status'] === 'in-progress') {
+				$output->writeln('<comment>The encrypted copy is checkpointed. Rerun this command to continue from the last completed chat.</comment>');
+				return 0;
+			}
 			if ($result['status'] === 'verification-failed') {
 				$output->writeln('<error>SQL verification did not match the encrypted AppData snapshot. Source data was preserved.</error>');
 				return 1;
@@ -51,7 +55,7 @@ final class MigrateChatStorage extends Command {
 				return 1;
 			}
 			if ((bool)$input->getOption('activate-sql') && in_array($result['status'], ['complete', 'already-current'], true)) {
-				$this->migration->enableSqlReads($user);
+				$this->migration->enableSqlReads($user, $result['status'] === 'complete');
 				$output->writeln('SQL reads enabled for this user.');
 			} elseif ((bool)$input->getOption('activate-sql') && $result['status'] === 'already-enabled') {
 				$output->writeln('SQL reads are already enabled for this user.');

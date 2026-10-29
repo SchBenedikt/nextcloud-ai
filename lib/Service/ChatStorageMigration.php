@@ -9,13 +9,14 @@ use OCP\IUserManager;
 
 /** Resumable, non-destructive copy from encrypted AppData into encrypted SQL. */
 final class ChatStorageMigration {
-	private const BATCH_SIZE = 25;
+	private const BATCH_SIZE = 5;
 
 	public function __construct(private ChatStore $source, private EncryptedChatRepository $target, private IUserManager $users) {}
 
 	/** @return array{status:string,chats:int,sourceHash:string} */
-	public function migrate(string $userId): array {
+	public function migrate(string $userId, int $maxBatches = 10): array {
 		if ($userId === '') throw new \InvalidArgumentException('A user ID is required.');
+		if ($maxBatches < 1 || $maxBatches > 100) throw new \InvalidArgumentException('The migration batch limit is invalid.');
 		if (!$this->users->userExists($userId)) throw new \InvalidArgumentException('The Nextcloud user does not exist.');
 		if ($this->target->sqlReadsEnabled($userId)) {
 			return ['status' => 'already-enabled', 'chats' => count($this->target->allChats($userId)), 'sourceHash' => ''];
@@ -49,6 +50,7 @@ final class ChatStorageMigration {
 		$pending = array_values(array_filter($chats, static fn(array $chat): bool =>
 			!is_string($cursor) || strcmp((string)($chat['id'] ?? ''), $cursor) > 0));
 		$done = $cursor === null ? 0 : count($chats) - count($pending);
+		$batchNumber = 0;
 		foreach (array_chunk($pending, self::BATCH_SIZE) as $batch) {
 			$this->source->withMigrationLock($userId, function () use ($userId, $batch, &$cursor, &$done, $sourceHash): void {
 				if (!$this->users->userExists($userId)) return;
@@ -60,6 +62,10 @@ final class ChatStorageMigration {
 				$this->target->saveMigrationState($userId, 'running', $cursor, $sourceHash);
 			});
 			if (!$this->users->userExists($userId)) return ['status' => 'account-removed', 'chats' => $done, 'sourceHash' => $sourceHash];
+			$batchNumber++;
+			if ($batchNumber >= $maxBatches && $done < count($chats)) {
+				return ['status' => 'in-progress', 'chats' => $done, 'sourceHash' => $sourceHash];
+			}
 		}
 
 		// If a chat changed while the copy was running, never mark the old
@@ -89,20 +95,22 @@ final class ChatStorageMigration {
 		return ['status' => 'complete', 'chats' => $done, 'sourceHash' => $sourceHash];
 	}
 
-	public function enableSqlReads(string $userId): void {
+	public function enableSqlReads(string $userId, bool $sourceAlreadyVerified = false): void {
 		if (!$this->users->userExists($userId)) throw new \InvalidArgumentException('The Nextcloud user does not exist.');
 		$snapshot = $this->source->migrationSnapshot($userId);
 		$state = $this->target->migrationState($userId);
 		if (($state['state'] ?? '') !== 'complete' || !hash_equals((string)($state['source_hash'] ?? ''), $snapshot['sourceHash'])) {
 			throw new \RuntimeException('The SQL chat import is stale or incomplete. Rerun the import before enabling SQL reads.');
 		}
-		if ($this->target->chatCount($userId) !== count($snapshot['chats'])) {
-			throw new \RuntimeException('The SQL chat import does not contain the expected chat count. Rerun the import before enabling SQL reads.');
-		}
-		foreach ($snapshot['chats'] as $sourceChat) {
-			$stored = $this->target->chat($userId, (string)$sourceChat['id']);
-			if ($stored === null || !hash_equals($this->digest($sourceChat), $this->digest($stored))) {
-				throw new \RuntimeException('The SQL chat import does not match AppData. Rerun the import before enabling SQL reads.');
+		if (!$sourceAlreadyVerified) {
+			if ($this->target->chatCount($userId) !== count($snapshot['chats'])) {
+				throw new \RuntimeException('The SQL chat import does not contain the expected chat count. Rerun the import before enabling SQL reads.');
+			}
+			foreach ($snapshot['chats'] as $sourceChat) {
+				$stored = $this->target->chat($userId, (string)$sourceChat['id']);
+				if ($stored === null || !hash_equals($this->digest($sourceChat), $this->digest($stored))) {
+					throw new \RuntimeException('The SQL chat import does not match AppData. Rerun the import before enabling SQL reads.');
+				}
 			}
 		}
 		$this->source->withMigrationSourceLock($userId, function (string $currentHash) use ($userId, $snapshot): void {
