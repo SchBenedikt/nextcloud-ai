@@ -8,6 +8,7 @@ use OCA\EvaAi\Dto\PreparedVectorChunk;
 use OCA\EvaAi\Vector\VectorDocumentSnapshot;
 use OCA\EvaAi\Vector\VectorGeneration;
 use OCA\EvaAi\Vector\VectorStoreException;
+use OCA\EvaAi\Vector\SearchFilters;
 use OCP\DB\QueryBuilder\IQueryBuilder;
 use OCP\IDBConnection;
 
@@ -142,6 +143,57 @@ class GenerationChunkRepository {
         $result = $qb->executeQuery();
         try { $row = $result->fetch(); } finally { $result->closeCursor(); }
         return (int)($row['total'] ?? 0);
+    }
+
+    /** Bounded exact SQL dense ranking used only by the explicit shadow probe. */
+    public function shadowDenseRanking(VectorGeneration $generation,array $vector,SearchFilters $filters,int $topK,
+        int $maxRows=20000,float $budgetSeconds=3.0): array {
+        $generation->validateVector($vector);
+        if($topK<1||$topK>20||$maxRows<1||$maxRows>20000||$budgetSeconds<=0||$budgetSeconds>5)throw new VectorStoreException('invalid_shadow_budget');
+        $started=microtime(true);$cursor=0;$scanned=0;$best=[];
+        do{
+            if(microtime(true)-$started>=$budgetSeconds)throw new VectorStoreException('sql_shadow_budget_exceeded');
+            $q=$this->db->getQueryBuilder();$q->select('c.id','c.document_id','c.vector_revision','c.embedding','d.path','d.source')
+                ->from('eva_ai_chunks','c')->innerJoin('c','eva_ai_documents','d',$q->expr()->eq('d.id','c.document_id'))
+                ->where($q->expr()->eq('c.vector_generation_id',$q->createNamedParameter($generation->id)))
+                ->andWhere($q->expr()->eq('d.user_id',$q->createNamedParameter($generation->userId)))
+                ->andWhere($q->expr()->gt('c.id',$q->createNamedParameter($cursor,IQueryBuilder::PARAM_INT)))
+                ->orderBy('c.id','ASC')->setMaxResults(500);
+            $r=$q->executeQuery();try{$rows=$r->fetchAll();}finally{$r->closeCursor();}
+            foreach($rows as$row){
+                $cursor=(int)$row['id'];$scanned++;
+                if($scanned>$maxRows)throw new VectorStoreException('sql_shadow_rows_exceeded');
+                if((int)$row['vector_revision']<1)throw new VectorStoreException('invalid_sql_revision');
+                if($filters->source!==null&&$row['source']!==$filters->source)continue;
+                if($filters->scopePath!==null&&$filters->scopePath!==''){
+                    $path=(string)$row['path'];$prefix=rtrim($filters->scopePath,'/');
+                    if($row['source']!=='files'||($path!==$prefix&&!str_starts_with($path,$prefix.'/')))continue;
+                }
+                $embedding=json_decode($row['embedding'],true,32,JSON_THROW_ON_ERROR);
+                if(!is_array($embedding))throw new VectorStoreException('invalid_sql_vector');
+                try{$generation->validateVector($embedding);}catch(\Throwable){throw new VectorStoreException('invalid_sql_vector');}
+                $dot=0.0;$aa=0.0;$bb=0.0;
+                foreach($vector as$i=>$value){$other=(float)$embedding[$i];$dot+=$value*$other;$aa+=$value*$value;$bb+=$other*$other;}
+                if($aa<=0||$bb<=0)continue;
+                $best[]=['id'=>$cursor,'revision'=>(int)$row['vector_revision'],'score'=>$dot/sqrt($aa*$bb)];
+            }
+            if(count($best)>$topK*4){usort($best,static fn(array$a,array$b):int=>($b['score']<=>$a['score'])?:($a['id']<=>$b['id']));$best=array_slice($best,0,$topK);}
+        }while($rows!==[]);
+        usort($best,static fn(array$a,array$b):int=>($b['score']<=>$a['score'])?:($a['id']<=>$b['id']));
+        return ['points'=>array_slice($best,0,$topK),'scanned'=>$scanned,'duration_ms'=>(int)round((microtime(true)-$started)*1000)];
+    }
+
+    /** Revisions for returned shadow IDs; no content is hydrated or logged. */
+    public function shadowRevisions(VectorGeneration $generation,array $ids): array {
+        if(!array_is_list($ids)||count($ids)>20)throw new VectorStoreException('invalid_shadow_results');
+        if($ids===[])return [];
+        $q=$this->db->getQueryBuilder();$q->select('c.id','c.vector_revision')->from('eva_ai_chunks','c')
+            ->innerJoin('c','eva_ai_documents','d',$q->expr()->eq('d.id','c.document_id'))
+            ->where($q->expr()->eq('c.vector_generation_id',$q->createNamedParameter($generation->id)))
+            ->andWhere($q->expr()->eq('d.user_id',$q->createNamedParameter($generation->userId)))
+            ->andWhere($q->expr()->in('c.id',$q->createNamedParameter($ids,IQueryBuilder::PARAM_INT_ARRAY)));
+        $r=$q->executeQuery();try{$rows=$r->fetchAll();}finally{$r->closeCursor();}
+        $revisions=[];foreach($rows as$row)$revisions[(int)$row['id']]=(int)$row['vector_revision'];return $revisions;
     }
 
     private function lockBuilding(VectorGeneration $generation, string $target): void {

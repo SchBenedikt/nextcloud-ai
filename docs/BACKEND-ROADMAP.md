@@ -27,9 +27,9 @@ The implementation entries further below record the actual delivered slices.
 | 2, 9–10, 20–21 | Engine comparison, cost estimates and deployment choices | 07, 14: Qdrant is the selected optional adapter; document single-node/managed/HA operations. Alternative engines and estimated prices are decision inputs, not a requirement to ship five adapters or measured savings. |
 | 3, 16 | P0 main protection, database matrix and security checks | 04, 14: endpoint boundary implemented in the stack; administrative branch protection and executed portability/security gates remain pending. Targeted tests resumed for the local recovery; the full portability/security matrix remains open. |
 | 6, 8, 18 | Provider contracts, encrypted secrets, SSRF/DNS/TLS and local-service approvals | 02, 04, 07, 14: use native HTTP guards and explicit admin policy on every transfer. Hosted-provider contract tests remain opt-in; no account credentials are needed for installation. |
-| 7–8, 11–12 | Immutable embedding generations, tenant filters, SQL hydration and transactional outbox | 06–09: additive schema, isolated chunk journal and deletion worker exist; mutation coverage, point delivery and generation verification remain in progress. |
+| 7–8, 11–12 | Immutable embedding generations, tenant filters, SQL hydration and transactional outbox | 06–09: additive schema, isolated chunk journal, point delivery, persisted verification and a manual shadow probe exist; portability, adversarial and soak evidence remain open. |
 | 9 | Major dependency upgrades require compatibility evidence | 14: assess PHPUnit/Symfony upgrades separately; do not merge them merely to clear Dependabot notifications. |
-| 13–14 | Resumable backfill, immutable model rebuild, activation pointer, shadow/canary rollout and rollback | 09–11: cursor/heartbeat, full verification and guarded activation remain pending; retain legacy SQL data for at least one release. |
+| 13–14 | Resumable backfill, immutable model rebuild, activation pointer, shadow/canary rollout and rollback | 09–11: bounded build, verification and manual shadow comparison exist; production shadow/soak, guarded activation and rollback evidence remain pending. |
 | 15 | Native hybrid BM25/RRF, phrases, scope and diversification | 12: preserve current relevance behavior before enabling backend hybrid retrieval; compare quality against both exact and current hybrid baselines. |
 | 7, 15, 22 | ChatStore hot-file writes, normalized encrypted SQL messages and distributed chat coordination | 13–14: independent additive chat migration, recovery and erasure; lock lifecycle fix is only the immediate consecutive-request repair. |
 | 15–18 | OTel correlation, provider/tool/DB/lock metrics, cache outages, restore/delete drills and domain extraction | 03, 14: retrieval stage timing is available; exporter, cross-service traces, drills and controller decomposition remain pending. |
@@ -85,7 +85,7 @@ protection and required checks remain administrative follow-up.
 | 07 | Qdrant adapter and deployment configuration | 06 | Server-only encrypted credentials, TLS for remote service, bounded timeouts/batches, stable point IDs, indexed tenant/generation/document/source payload. Every query forces server-side tenant AND generation filters. Return IDs/scores, hydrate text from owned SQL rows. Fail closed on dimension/tenant mismatch. |
 | 08 | Transactional vector outbox and worker | 07 | Chunk mutation and event in the same SQL transaction, including document replace, reset, source deletion and account erasure. Claims/leases, retries/backoff, dead letters and idempotent versions prevent stale resurrection. Legacy reads remain default. |
 | 09 | Resumable backfill and generation verification | 08 | Bounded keyset batches, durable cursor/heartbeat, cancel/resume, explicit model provenance, cache reuse. Compare expected SQL IDs and point IDs, dimensions and sampled scores. Activation must reject unverified or incomplete generations. |
-| 10 | Shadow reads and comparison telemetry | 09 | SQL serves answers. Shadow execution has a bounded resource budget and cannot prolong interactive answers unboundedly. Compare recall, ranking, scope, tenant isolation and errors. No answer-content logs. Disable shadow via flag. |
+| 10 | Shadow reads and comparison telemetry | 09 | SQL serves answers. The current slice is an explicit admin probe with bounded query/provider/vector/SQL work; production shadow sampling and soak remain pending. Compare recall, ranking, scope, tenant isolation and errors. No answer-content logs. |
 | 11 | Canary and primary dense vector reads | 10 | Explicit per-instance/per-user rollout. Bounded error behavior, privacy-safe SQL hydration and observable fallback. Keep SQL embeddings and SQL writes for at least a release cycle. One-flag rollback, no destructive migration. |
 | 12 | Native hybrid retrieval | 11 | Port BM25/RRF while preserving filename/path context, quoted phrases, scope and document diversification. Version-pin backend capabilities and compare against current hybrid baseline before activation. Dense-only rollback available. |
 | 13 | Normalized encrypted chat/message SQL storage | 12 | Additive tables, per-message writes, indexed metadata pagination/retention, transactional migration with checkpoint, mixed-version recovery and account erasure. Preserve encryption; do not add plaintext search indexes for encrypted messages. Separate feature flag and backup/restore runbook. |
@@ -489,10 +489,23 @@ tenant/generation identity, revisions, dimensions, source manifests, determinist
 sampled cosine scores, snapshot reconciliation, exact live counts and invalidatable
 certificates. Search remains on SQL and no activation is available. Cross-database
 and adversarial evidence, representative load/soak, hard remote-storage/IMAP
-budgets, in-flight legacy-writer fencing, durable erasure retries and stages
-10–14 remain pending. See [GENERATION-BUILDS.md](GENERATION-BUILDS.md).
+budgets, full legacy-writer coverage and durable erasure retries remain pending.
+Stage 10 has only an explicit admin probe; production shadow/soak and stages
+11–14 remain pending. See [GENERATION-BUILDS.md](GENERATION-BUILDS.md).
 
 The 1.18.11 storage contract adds exact tenant/generation-filtered live counts
 and bounded exact-ID point reads with vectors. Version 1.18.12 uses them in the
 read-only persisted verifier described in
 [GENERATION-VERIFICATION.md](GENERATION-VERIFICATION.md).
+
+### Stage 10 first slice: explicit bounded shadow probe (1.18.13)
+
+The native administrator generation panel now offers a manual comparison only
+after current verification. It sends a short sample through the pinned model,
+compares top-k SQL dense ranks with filtered Qdrant results, validates returned
+SQL revisions and reports aggregate overlap/latency. Chat and answer retrieval
+never invoke it; samples, vectors and result IDs are not persisted or logged.
+Per-generation concurrency, provider/vector deadlines, SQL scan limits and a
+wall-clock guard bound work. This measures one explicit probe; it is not a
+production shadow/soak period, hybrid-ranking comparison, canary or cutover.
+See [GENERATION-SHADOW.md](GENERATION-SHADOW.md).

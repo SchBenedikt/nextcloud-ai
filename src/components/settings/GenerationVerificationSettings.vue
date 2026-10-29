@@ -8,6 +8,7 @@
 			<NcProgressBar v-if="state.status !== 'not_started'" :value="progress" :aria-label="$t('Points verified')" />
 			<p v-if="state.status !== 'not_started'">{{ $t('Points verified: {done} of {total}', { done: state.checked_count, total: state.expected_count }) }} · {{ $t('Vectors sampled: {count}', { count: state.sample_count }) }}</p>
 			<NcNoteCard v-if="state.verified" type="success">{{ $t('SQL and remote point identities, revisions, source manifests, dimensions and sampled vectors match. Search still uses SQL.') }}</NcNoteCard>
+			<GenerationShadowSettings v-if="state.verified" :key="`${user}:${generation}:shadow`" :user="user" :generation="generation" />
 			<NcNoteCard v-else type="info">{{ $t('This read-only background check compares SQL chunks with the configured vector store. It never changes retrieval or sends source text to an embedding provider.') }}</NcNoteCard>
 			<NcNoteCard v-if="state.error_code" type="warning">{{ failure }}</NcNoteCard>
 			<div class="verification-actions">
@@ -25,10 +26,11 @@ import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { NcButton, NcLoadingIcon, NcNoteCard, NcProgressBar } from '@nextcloud/vue'
 import { api, errMsg } from '../../lib/api'
 import { translate as t } from '../../lib/i18n'
+import GenerationShadowSettings from './GenerationShadowSettings.vue'
 
 export default {
 	name: 'GenerationVerificationSettings',
-	components: { NcButton, NcLoadingIcon, NcNoteCard, NcProgressBar },
+	components: { NcButton, NcLoadingIcon, NcNoteCard, NcProgressBar, GenerationShadowSettings },
 	props: { user: { type: String, required: true }, generation: { type: String, required: true } },
 	setup(props) {
 		const state = ref(null), error = ref(''), loading = ref(false), busy = ref(false)

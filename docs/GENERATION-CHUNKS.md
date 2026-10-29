@@ -97,8 +97,8 @@ if the plan changed. Changes behind its completed cursor still require later
 reconciliation and full verification. Prepared-point consumption is
 available through its separate administrator consent, without activating reads. Rebuilding must allocate fresh chunk IDs and
 capture the new source stamp; terminal tombstone IDs must never be reused. Resumable source/provider-pinned building is available through explicit consent.
-Generation completeness checks, exact-ID/revision verification, quotas,
-retention, shadow/primary reads and rollback drills remain pending. Per-generation
+Generation completeness checks and exact-ID/revision verification are available;
+quotas, retention, production shadow/primary reads and rollback drills remain pending. Per-generation
 text/vector copies temporarily require extra SQL space. No speed improvement or
 completed migration is claimed by this internal writer alone.
 

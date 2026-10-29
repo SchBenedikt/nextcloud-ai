@@ -2,6 +2,12 @@
 
 ## [Unreleased]
 
+### Bounded shadow comparison (1.18.13)
+
+- Add an administrator-started, read-only comparison for already verified generations; SQL dense ranking remains the baseline and chat/search never call the shadow path.
+- Reuse the generation-pinned embedding identity, enforce tenant/generation/scope filters, compare only IDs and revisions, and return aggregate overlap/latency metrics without persisting sample text or vectors.
+- Bound query size, embedding/vector timeouts, concurrent probes, SQL rows and wall time; log aggregate metrics only and keep all retrieval/activation settings unchanged.
+
 ### Persisted generation verification (1.18.12)
 
 - Add a resumable, owner-scoped background reconciliation for staged SQL chunks and exact Qdrant point identities, revisions, dimensions, source manifests, sampled vectors and live counts.
