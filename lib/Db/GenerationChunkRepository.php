@@ -138,7 +138,8 @@ class GenerationChunkRepository {
             }
             $values = ['document_id' => $snapshot->id, 'chunk_index' => $chunk->index, 'content' => $chunk->content,
                 'embedding' => $embedding, 'vector_norm' => (string)$vectorNorm, 'provenance' => $provenance, 'token_count' => $chunk->tokens,
-                'vector_generation_id' => $generation->id, 'vector_state' => $isSql ? 'ready' : 'pending', 'content_hash' => $hash];
+                'vector_generation_id' => $generation->id, 'vector_state' => $isSql ? 'ready' : 'pending', 'content_hash' => $hash,
+                'lexical_indexed' => 0];
             if ($isSql) $values['vector_revision'] = $revision;
             $write = $this->db->getQueryBuilder();
             if ($row === null) {
@@ -161,7 +162,6 @@ class GenerationChunkRepository {
                 $version->update('eva_ai_chunks')->set('vector_revision', $version->createNamedParameter($revision, IQueryBuilder::PARAM_INT))
                     ->where($version->expr()->eq('id', $version->createNamedParameter($id, IQueryBuilder::PARAM_INT)))->executeStatement();
             }
-            (new LexicalTermRepository($this->db))->indexChunk($id, $snapshot->id, $chunk->content);
             return ['id' => $id, 'revision' => $revision, 'changed' => true];
         });
     }

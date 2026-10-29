@@ -48,8 +48,9 @@ The implementation entries further below record the actual delivered slices.
 - BM25 candidate-body frequency now tokenizes each candidate once and uses
   exact Unicode word frequencies for all query terms. It avoids rescanning each
   chunk body for every term. Exact-token SQL postings now select indexed
-  candidates and provide term frequencies; a bounded background job backfills
-  existing chunks. A user/generation keeps the complete old LIKE path until all
+  candidates and provide term frequencies; a bounded background job builds them
+  after source indexing commits and backfills existing chunks. A user/generation
+  keeps the complete old LIKE path until all
   its rows have postings, then switches to the indexed candidates.
   The full dense scan remains. This changes substring matches inside larger
   words to exact word matches, so
@@ -75,8 +76,9 @@ The implementation entries further below record the actual delivered slices.
   removes the repeated candidate norm pass but leaves the full dot-product scan
   and needs representative measurement.
 - `Chunk` still stores embeddings as JSON text. SQL lexical retrieval now uses
-  a portable SHA-256-keyed term-postings index, transactionally updated for new
-  and changed chunks. Existing rows migrate in bounded background batches; only
+  a portable SHA-256-keyed term-postings index. Normal/generation writes enqueue
+  rows for bounded asynchronous indexing; source deletion clears derived rows.
+  Existing rows migrate in background batches; only
   rows not yet indexed use the legacy LIKE fallback. This does not replace
   Qdrant's optional native BM25 or the SQL dense scan.
 - `Indexer` already bounds file traversal, extraction and embedding batches and
@@ -637,3 +639,15 @@ so mixed migration state does not shrink its candidate set. This removes LIKE fr
 the completed lexical path, but does not change or accelerate the SQL dense scan.
 Portability migration execution, frozen-corpus quality, and representative latency
 measurements remain open; no speedup is claimed yet.
+
+
+### Off-path lexical maintenance (1.18.44)
+
+Chunk and generation writes now mark lexical postings pending instead of expanding
+all tokens inside the source-index transaction. A recurring Nextcloud worker claims
+a bounded set, reads current content after acquiring row claims, and inserts its
+postings in one batch transaction. Generation writes reset the marker when content
+changes; source deletion clears postings. Search uses the old complete LIKE path
+while any eligible row is pending. This trades a temporary period of legacy search
+for shorter indexing transactions; the backfill's database load and catch-up rate
+remain to be measured on representative installations.

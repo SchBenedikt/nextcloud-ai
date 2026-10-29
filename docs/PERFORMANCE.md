@@ -24,8 +24,10 @@ with several terms revisited the same text repeatedly and could match partial
 words. This lowers repeated text work and makes body term frequency match the
 query tokenizer. A portable SQL term-postings table now selects exact-token
 candidates by indexed SHA-256 term keys and supplies stored frequencies directly
-to BM25. Normal and generation chunk writes maintain the postings transactionally;
-a bounded background job backfills existing rows. A user/generation stays on the
+to BM25. Normal and generation chunk writes mark their lexical state pending;
+a bounded background job builds postings after those writes commit and backfills
+existing rows. This keeps token expansion off the file-index write transaction.
+A user/generation stays on the
 complete legacy `LIKE` query until all its chunks are indexed, preserving its
 candidate behavior during migration. This does not remove the dense SQL scan;
 quality, migration portability and retrieval latency still need

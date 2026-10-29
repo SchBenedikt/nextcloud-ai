@@ -26,12 +26,10 @@ class ChunkMapper extends QBMapper {
     }
 
     private VectorSourceDeletion $sourceDeletion;
-    private LexicalTermRepository $lexicalTerms;
 
     public function __construct(IDBConnection $db, ?VectorSourceDeletion $sourceDeletion = null) {
         parent::__construct($db, 'eva_ai_chunks');
         $this->sourceDeletion = $sourceDeletion ?? new VectorSourceDeletion($db, new VectorOutboxRepository($db));
-        $this->lexicalTerms = new LexicalTermRepository($db);
     }
 
     public function insert(\OCP\AppFramework\Db\Entity $entity): \OCP\AppFramework\Db\Entity {
@@ -50,14 +48,8 @@ class ChunkMapper extends QBMapper {
         }
         $inserted=[];
         foreach(array_chunk($entities,500)as$batch){
-            array_push($inserted,...$this->sourceDeletion->insertChunks($documentId,
-				function() use ($batch): array {
-					$rows = array_map(fn(Chunk $chunk): \OCP\AppFramework\Db\Entity => parent::insert($chunk), $batch);
-					$this->lexicalTerms->indexChunks(array_map(static fn(Chunk $chunk): array => [
-						'id' => (int)$chunk->getId(), 'documentId' => (int)$chunk->getDocumentId(), 'content' => (string)$chunk->getContent(),
-					], $batch));
-					return $rows;
-				}));
+            array_push($inserted, ...$this->sourceDeletion->insertChunks($documentId,
+                fn(): array => array_map(fn(Chunk $chunk): \OCP\AppFramework\Db\Entity => parent::insert($chunk), $batch)));
         }
         return $inserted;
     }

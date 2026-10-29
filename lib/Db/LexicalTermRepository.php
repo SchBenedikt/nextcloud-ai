@@ -12,7 +12,7 @@ final class LexicalTermRepository {
 	public function __construct(private IDBConnection $db) {}
 
 	/** @param list<array{id:int,documentId:int,content:string}> $chunks */
-	public function indexChunks(array $chunks): int {
+	private function indexChunks(array $chunks): int {
 		if ($chunks === []) return 0;
 		foreach (array_chunk($chunks, 500) as $batch) {
 			$ids = [];
@@ -24,35 +24,35 @@ final class LexicalTermRepository {
 
 			$delete = $this->db->getQueryBuilder();
 			$delete->delete('eva_ai_chunk_terms')->where($delete->expr()->in('chunk_id', $delete->createNamedParameter($ids, IQueryBuilder::PARAM_INT_ARRAY)))->executeStatement();
-			$mark = $this->db->getQueryBuilder();
-			$mark->update('eva_ai_chunks')->set('lexical_indexed', $mark->createNamedParameter(2, IQueryBuilder::PARAM_INT))
-				->where($mark->expr()->in('id', $mark->createNamedParameter($ids, IQueryBuilder::PARAM_INT_ARRAY)))->executeStatement();
-
-			$states = [];
+			$indexedIds = [];
+			$unsupportedIds = [];
 			$values = [];
 			foreach ($batch as $chunk) {
 				if ($chunk['id'] < 1 || $chunk['documentId'] < 1) continue;
 				$frequencies = self::frequencies($chunk['content']);
 				if ($frequencies === null) {
-					$states[$chunk['id']] = -1;
+					$unsupportedIds[] = (int)$chunk['id'];
 					continue;
 				}
-				$states[$chunk['id']] = 1;
+				$indexedIds[] = (int)$chunk['id'];
 				foreach ($frequencies as $term => $frequency) {
 					$values[] = [(int)$chunk['id'], (int)$chunk['documentId'], hash('sha256', $term), (int)$frequency];
 				}
 			}
 			$this->insertPostings($values);
-			foreach ($states as $id => $state) {
-				$update = $this->db->getQueryBuilder();
-				$update->update('eva_ai_chunks')->set('lexical_indexed', $update->createNamedParameter($state, IQueryBuilder::PARAM_INT))
-					->where($update->expr()->eq('id', $update->createNamedParameter((int)$id, IQueryBuilder::PARAM_INT)))->executeStatement();
+			foreach ([1 => $indexedIds, -1 => $unsupportedIds] as $state => $stateIds) {
+				foreach (array_chunk($stateIds, 500) as $idBatch) {
+					if ($idBatch === []) continue;
+					$update = $this->db->getQueryBuilder();
+					$update->update('eva_ai_chunks')->set('lexical_indexed', $update->createNamedParameter($state, IQueryBuilder::PARAM_INT))
+						->where($update->expr()->in('id', $update->createNamedParameter($idBatch, IQueryBuilder::PARAM_INT_ARRAY)))->executeStatement();
+				}
 			}
 		}
 		return count($chunks);
 	}
 
-	/** Index at most 200 existing chunks; concurrent content changes are rejected by the CAS. */
+	/** Index at most 200 existing chunks in one bounded transaction. */
 	public function backfill(int $limit = 200): int {
 		$limit = max(1, min(200, $limit));
 		$q = $this->db->getQueryBuilder();
@@ -61,43 +61,36 @@ final class LexicalTermRepository {
 			->orderBy('id', 'ASC')->setMaxResults($limit);
 		$r = $q->executeQuery();
 		try { $rows = $r->fetchAll(); } finally { $r->closeCursor(); }
+		if ($rows === []) return 0;
+		$ids = array_map(static fn(array $row): int => (int)$row['id'], $rows);
 
-		$processed = 0;
-		foreach ($rows as $row) {
-			$this->db->beginTransaction();
-			try {
-				$claim = $this->db->getQueryBuilder();
-				$claimed = $claim->update('eva_ai_chunks')->set('lexical_indexed', $claim->createNamedParameter(2, IQueryBuilder::PARAM_INT))
-					->where($claim->expr()->eq('id', $claim->createNamedParameter((int)$row['id'], IQueryBuilder::PARAM_INT)))
-					->andWhere($claim->expr()->eq('document_id', $claim->createNamedParameter((int)$row['document_id'], IQueryBuilder::PARAM_INT)))
-					->andWhere($claim->expr()->eq('lexical_indexed', $claim->createNamedParameter(0, IQueryBuilder::PARAM_INT)))
-					->executeStatement();
-				if ($claimed === 1) {
-					// Read after the claim update locks the row, avoiding a stale snapshot during replacement.
-					$current = $this->db->getQueryBuilder();
-					$current->select('document_id', 'content')->from('eva_ai_chunks')
-						->where($current->expr()->eq('id', $current->createNamedParameter((int)$row['id'], IQueryBuilder::PARAM_INT)));
-					$read = $current->executeQuery();
-					try { $currentRow = $read->fetch(); } finally { $read->closeCursor(); }
-					$documentId = (int)($currentRow['document_id'] ?? 0);
-					$frequencies = is_array($currentRow) ? self::frequencies((string)$currentRow['content']) : null;
-					if ($frequencies !== null && $documentId > 0) {
-						$values = [];
-						foreach ($frequencies as $term => $frequency) $values[] = [(int)$row['id'], $documentId, hash('sha256', $term), $frequency];
-						$this->insertPostings($values);
-					}
-					$finish = $this->db->getQueryBuilder();
-					$finish->update('eva_ai_chunks')->set('lexical_indexed', $finish->createNamedParameter($frequencies === null || $documentId < 1 ? -1 : 1, IQueryBuilder::PARAM_INT))
-						->where($finish->expr()->eq('id', $finish->createNamedParameter((int)$row['id'], IQueryBuilder::PARAM_INT)))->executeStatement();
-					$processed++;
-				}
-				$this->db->commit();
-			} catch (\Throwable $e) {
-				$this->db->rollBack();
-				throw $e;
-			}
+		$this->db->beginTransaction();
+		try {
+			$claim = $this->db->getQueryBuilder();
+			$claim->update('eva_ai_chunks')->set('lexical_indexed', $claim->createNamedParameter(2, IQueryBuilder::PARAM_INT))
+				->where($claim->expr()->in('id', $claim->createNamedParameter($ids, IQueryBuilder::PARAM_INT_ARRAY)))
+				->andWhere($claim->expr()->eq('lexical_indexed', $claim->createNamedParameter(0, IQueryBuilder::PARAM_INT)))
+				->executeStatement();
+
+			// Read after the claim locks each row, so a concurrent replacement is either
+			// observed here or runs after commit and resets its row for a later tick.
+			$current = $this->db->getQueryBuilder();
+			$current->select('id', 'document_id', 'content')->from('eva_ai_chunks')
+				->where($current->expr()->in('id', $current->createNamedParameter($ids, IQueryBuilder::PARAM_INT_ARRAY)))
+				->andWhere($current->expr()->eq('lexical_indexed', $current->createNamedParameter(2, IQueryBuilder::PARAM_INT)))
+				->orderBy('id', 'ASC');
+			$read = $current->executeQuery();
+			try { $currentRows = $read->fetchAll(); } finally { $read->closeCursor(); }
+			$chunks = array_map(static fn(array $row): array => [
+				'id' => (int)$row['id'], 'documentId' => (int)$row['document_id'], 'content' => (string)$row['content'],
+			], $currentRows);
+			$processed = $this->indexChunks($chunks);
+			$this->db->commit();
+			return $processed;
+		} catch (\Throwable $e) {
+			$this->db->rollBack();
+			throw $e;
 		}
-		return $processed;
 	}
 
 	/** Remove derived terms before their source chunks/documents are deleted. */
@@ -133,10 +126,6 @@ final class LexicalTermRepository {
 				}
 			} while (count($rows) === 500);
 		}
-	}
-
-	public function indexChunk(int $chunkId, int $documentId, string $content): void {
-		$this->indexChunks([['id' => $chunkId, 'documentId' => $documentId, 'content' => $content]]);
 	}
 
 	/** @return array<string,int>|null */
