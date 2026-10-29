@@ -220,11 +220,13 @@ improves save-state accuracy; it is not a substitute for an authenticated UI
 save/switch check on an installed Nextcloud instance.
 
 Version 1.19.0 makes the legacy Indexer yield between embedding batches when
-the same account owns an active chat claim. Unembedded staging rows are removed,
+the same account owns an active chat claim. Version 1.19.1 adds a shared
+Nextcloud chat-activity marker around RAG conversations, so accounts sharing
+one Ollama endpoint also receive chat priority. Unembedded staging rows are removed,
 previous indexed documents remain searchable, and explicit background indexing
 requeues the same run ID. Personal settings and the document library report the
-waiting state. This does not preempt an already-running embedding request, or
-coordinate different accounts sharing one Ollama endpoint.
+waiting state. This does not preempt an already-running embedding request or
+coordinate unrelated apps and external clients using the same model endpoint.
 
 The native admin landing page shows the SQL default and links to optional storage
 controls without repeating account totals, scheduler counts or vector status.

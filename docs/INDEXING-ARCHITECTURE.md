@@ -41,15 +41,18 @@ baseline and portability path; optional ANN storage is the scale path.
 1. New and changed files are processed by a resumable, bounded background
    pipeline. Upload, rename, chat response, and interactive UI requests do not
    wait for extraction or embedding.
-   Before each legacy embedding batch, the indexer checks the same account's
-   active chat claim. If a chat is running, it removes only the unembedded
-   staged replacements, preserves the previous searchable documents, and
+   Before each legacy embedding batch, the indexer checks a shared Nextcloud
+   chat-activity marker and the same account's legacy chat claim. RAG
+   conversations acquire the shared marker across accounts, so indexing yields
+   when users share one Ollama service. If a chat is running, it removes only
+   the unembedded staged replacements, preserves the previous searchable documents, and
    defers the background run. Explicit queued indexing resumes on a later
    Nextcloud job tick; recurring indexing resumes on its next scheduled tick.
    The check never waits for or rejects a chat request. A provider call already
-   in flight when a chat starts cannot be preempted, and this per-account gate
-   does not arbitrate indexing performed by a different account against a
-   shared Ollama server.
+   in flight when a chat starts cannot be preempted. The shared marker covers
+   RAG conversations, including EVA chat, queued chat and TaskProcessing RAG;
+   it does not coordinate unrelated Nextcloud apps or external clients using
+   the same model server.
    Incremental file-change work is debounced into a coalesced Nextcloud SQL
    queue. Workers claim entries with expiring leases and acknowledge only the
    revision they processed; a newer event therefore survives an older worker.

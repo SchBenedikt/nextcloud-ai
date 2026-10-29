@@ -49,6 +49,11 @@ class LockGuard {
         return 'eva_ai/chat-request/' . substr(hash('sha256', $userId), 0, 40);
     }
 
+    /** Shared activity marker for conversations using a shared model service. */
+    public static function chatActivityLockPath(): string {
+        return 'eva_ai/chat-active';
+    }
+
     public function __construct(
         private AppConfig $config,
         private ILockingProvider $lockingProvider,
