@@ -22,9 +22,9 @@ use OCP\IUserManager;
 
 /**
  * Admin-only surface (Issue #82). Every endpoint is #[AdminRequired], so
- * non-admins receive a 403 before any data is read. The overview exposes
- * only metadata (counts, timestamps, state) - never file paths, contents or
- * personal data beyond the user id and display name.
+ * non-admins receive a 403 before any data is read. The compact summary exposes
+ * aggregate metadata only; the retained legacy overview also includes account
+ * rows for existing clients.
  */
 class AdminController extends OCSController {
     public function __construct(
@@ -259,6 +259,15 @@ class AdminController extends OCSController {
 
         return new ErrorDataResponse([
             'users' => $users,
+            'scheduler' => $this->scheduler->summary(),
+        ]);
+    }
+
+    /** Lightweight instance totals for the admin landing page. */
+    #[AdminRequired]
+    public function summary(): DataResponse {
+        return new ErrorDataResponse([
+            'index' => $this->documentMapper->aggregateInstance(),
             'scheduler' => $this->scheduler->summary(),
         ]);
     }

@@ -2,13 +2,15 @@
 
 ## Knowledge storage status
 
-The EVA **Admin dashboard** and Nextcloud **Administration → Eva AI** show a
-shared, read-only knowledge storage overview. It distinguishes the built-in SQL
-search backend, optional Qdrant configuration, generation cleanup and queued or
-failed background operations. Configured/request-enabled does not mean connected,
-verified or selected for search. Viewing or refreshing this overview makes no
-external storage request. Failed status reads stay unavailable instead of showing
-an empty healthy queue.
+The EVA **Admin dashboard** starts with aggregate account, document, chunk, and
+index-scheduler counts. These values come from one aggregate SQL query and do
+not enumerate accounts or expose user rows. Advanced storage settings are
+collapsed by default; opening them loads the shared storage snapshot, which
+distinguishes built-in SQL, optional Qdrant configuration, generation cleanup,
+and queued or failed operations. Configured/request-enabled does not mean
+connected, verified or selected for search. Viewing or refreshing the overview
+makes no external storage request. Failed status reads stay unavailable instead
+of showing an empty healthy queue.
 
 The **Open storage settings and connection check** link opens an administrator-
 only EVA page. Expand **Configure optional storage** to edit the server URL,

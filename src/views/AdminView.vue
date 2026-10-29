@@ -1,385 +1,145 @@
 <template>
 	<div class="admin-view">
 		<header class="page-header">
-			<div class="header-copy">
+			<div>
 				<p class="eyebrow">EVA AI</p>
-				<h1 class="settings-title">{{ $t('Admin dashboard') }}</h1>
-				<p class="page-intro">{{ $t('EVA uses the Nextcloud database by default. External vector storage is optional for larger installations.') }}</p>
+				<h1>{{ $t('Admin dashboard') }}</h1>
+				<p class="page-intro">{{ $t('EVA uses the Nextcloud database by default. Optional vector storage is available for larger installations.') }}</p>
 			</div>
-			<div class="header-actions">
-				<NcButton v-if="(data?.scheduler?.running ?? 0) > 0" variant="tertiary" :loading="stopping" @click="stopBackground">
-					{{ $t('Stop background indexing') }}
-				</NcButton>
-				<NcButton variant="secondary" :loading="loading" @click="load">
-					{{ $t('Refresh') }}
-				</NcButton>
-			</div>
+			<NcButton variant="secondary" :loading="loading" @click="load">{{ $t('Refresh') }}</NcButton>
 		</header>
 
-		<div v-if="loadError" class="callout callout-error" role="alert">
-			<strong>{{ $t('Overview could not be loaded.') }}</strong>
-			<span>{{ loadError }}</span>
-			<NcButton variant="tertiary-no-background" @click="load">{{ $t('Try again') }}</NcButton>
-		</div>
+		<NcNoteCard v-if="loadError" type="error">
+			<p>{{ $t('The admin overview could not be loaded.') }}</p>
+			<p>{{ loadError }}</p>
+		</NcNoteCard>
 
-		<div v-if="message.text" class="callout" :class="'callout-' + message.type" :role="message.type === 'error' ? 'alert' : 'status'">
-			<strong>{{ message.type === 'error' ? $t('Something went wrong') : $t('Done') }}</strong>
-			<span>{{ message.text }}</span>
-		</div>
+		<NcLoadingIcon v-else-if="loading && !data" :name="$t('Loading admin overview')" />
 
-		<div v-if="data" class="admin-overview-status" :aria-label="$t('Instance status')">
-			<strong>{{ $t('{count} accounts tracked by EVA', { count: data.users.length }) }}</strong>
-			<span>{{ data.scheduler?.running ?? 0 }} / {{ data.scheduler?.limit ?? 0 }} {{ $t('Concurrent index passes') }}</span>
-			<span>{{ $t('{count} waiting', { count: data.scheduler?.queued ?? 0 }) }}</span>
-		</div>
-		<p v-else-if="loading" class="admin-overview-status" role="status">{{ $t('Loading admin overview…') }}</p>
-		<p v-else class="admin-overview-status">{{ $t('The index overview is unavailable. Use Refresh to try again.') }}</p>
-
-		<details class="admin-advanced">
-			<summary>{{ $t('Advanced index administration') }}</summary>
-			<VectorStorageStatus />
-			<GenerationEmbeddingSettings :users="data?.users || []" />
-
-			<main class="admin-body">
-				<div v-if="!data && loading" class="admin-loading" role="status">{{ $t('Loading admin overview…') }}</div>
-				<div v-else-if="!data && loadError" class="admin-empty">{{ $t('User indexing details are unavailable.') }}</div>
-				<div v-else-if="data && !data.users.length" class="admin-empty">{{ $t('No users have an index yet.') }}</div>
-				<div v-else class="admin-table-wrap">
-					<table class="admin-table">
-						<thead>
-							<tr>
-								<th>{{ $t('User') }}</th>
-								<th class="num">{{ $t('Docs') }}</th>
-								<th class="num">{{ $t('Chunks') }}</th>
-								<th>{{ $t('Last indexed') }}</th>
-								<th>{{ $t('Progress') }}</th>
-								<th>{{ $t('Enrollment') }}</th>
-								<th>{{ $t('State') }}</th>
-								<th>{{ $t('Actions') }}</th>
-							</tr>
-						</thead>
-						<tbody>
-							<tr v-for="user in data.users" :key="user.userId" :class="{ 'row-error': !!user.error }">
-								<td>
-									<strong class="user-name">{{ user.displayName }}</strong>
-									<small class="user-id">{{ user.userId }}</small>
-									<div v-if="user.error" class="user-error" :title="user.error">{{ user.error }}</div>
-									<small v-if="user.vectorOwnerState === 'blocked'" class="user-error">{{ $t('Vector ownership blocked after account erasure. Inspect cleanup before creating a new generation.') }}</small>
-									<small v-else-if="user.vectorOwnerState === 'unavailable'" class="user-error">{{ $t('Vector ownership status unavailable.') }}</small>
-								</td>
-								<td class="num">{{ user.documents }}</td>
-								<td class="num">{{ user.chunks }}</td>
-								<td>{{ user.lastIndexedAt ? formatTime(user.lastIndexedAt) : '—' }}</td>
-								<td>{{ user.indexing && user.lastTotal ? `${user.lastProcessed} / ${user.lastTotal}` : (user.indexFinishedAt ? formatTime(user.indexFinishedAt) : '—') }}</td>
-								<td>
-									<NcCheckboxRadioSwitch :checked="user.enrolled" :disabled="busyFor(user.userId)"
-										@update:checked="toggleEnrollment(user)">
-										{{ user.enrolled ? $t('Enrolled') : $t('Off') }}
-									</NcCheckboxRadioSwitch>
-								</td>
-								<td>
-									<span v-if="user.indexing" class="state-pill state-running">{{ $t('Indexing') }}</span>
-									<span v-else-if="user.mode && user.mode !== 'idle'" class="state-pill">{{ user.mode }}</span>
-									<span v-else class="state-pill state-idle">{{ $t('Idle') }}</span>
-								</td>
-								<td class="admin-actions">
-									<NcButton variant="tertiary" :loading="busyFor(user.userId) === 'reindex'" :disabled="!!busyFor(user.userId)" @click="reindex(user)">
-										{{ $t('Re-index') }}
-									</NcButton>
-									<NcButton variant="tertiary" :loading="busyFor(user.userId) === 'reset'" :disabled="!!busyFor(user.userId) || user.indexing" @click="resetUser(user)">
-										{{ $t('Reset') }}
-									</NcButton>
-								</td>
-							</tr>
-						</tbody>
-					</table>
+		<template v-else-if="data">
+			<section class="overview" :aria-label="$t('Index overview')">
+				<div class="overview-heading">
+					<h2>{{ $t('Index overview') }}</h2>
+					<p>{{ $t('{count} accounts have indexed content', { count: data.index.accounts }) }}</p>
 				</div>
-			</main>
-		</details>
-		<NcModal v-if="resetTarget" size="small" :name="$t('Reset user index')" @close="closeResetDialog">
-			<div class="admin-reset-dialog">
-				<p>{{ $t('The index for {name} will be permanently deleted. This removes indexed content and search chunks; files in Nextcloud will not be changed.', { name: resetTarget.displayName }) }}</p>
-				<p class="admin-reset-dialog__identity">{{ resetTarget.userId }} · {{ resetTarget.documents }} {{ $t('Docs') }} · {{ resetTarget.chunks }} {{ $t('Chunks') }}</p>
-				<p v-if="resetError" class="admin-reset-dialog__error" role="alert">{{ resetError }}</p>
-				<div class="admin-reset-dialog__actions">
-					<NcButton type="button" variant="tertiary" :disabled="resetting" @click="closeResetDialog">{{ $t('Cancel') }}</NcButton>
-					<NcButton type="button" variant="error" :loading="resetting" :disabled="resetting" @click="confirmReset">{{ $t('Reset index') }}</NcButton>
-				</div>
+				<dl class="metrics">
+					<div><dt>{{ $t('Documents') }}</dt><dd>{{ data.index.documents }}</dd></div>
+					<div><dt>{{ $t('Search chunks') }}</dt><dd>{{ data.index.chunks }}</dd></div>
+					<div><dt>{{ $t('Index tasks running') }}</dt><dd>{{ data.scheduler.running }} / {{ data.scheduler.limit }}</dd></div>
+					<div><dt>{{ $t('Tasks waiting') }}</dt><dd>{{ data.scheduler.queued }}</dd></div>
+				</dl>
+			</section>
+		</template>
+
+		<p v-else class="empty-state">{{ $t('The index overview is unavailable. Use Refresh to try again.') }}</p>
+
+		<details class="advanced" @toggle="onAdvancedToggle">
+			<summary>{{ $t('Advanced storage settings') }}</summary>
+			<div v-if="advancedOpen" class="advanced-content">
+				<p>{{ $t('The built-in database remains the default. Configure optional vector storage only when you need it.') }}</p>
+				<VectorStorageStatus />
 			</div>
-		</NcModal>
+		</details>
 	</div>
 </template>
 
 <script>
 import { ref, onMounted } from 'vue'
+import { NcButton, NcLoadingIcon, NcNoteCard } from '@nextcloud/vue'
 import { api as requestApi, errMsg } from '../lib/api'
-import { translate as t } from '../lib/i18n'
 import VectorStorageStatus from '../components/settings/VectorStorageStatus.vue'
-import GenerationEmbeddingSettings from '../components/settings/GenerationEmbeddingSettings.vue'
 
-// The api() helper signature is (method, path, data).
 const apiGet = (path) => requestApi('GET', path)
-const apiPost = (path, data) => requestApi('POST', path, data)
 
 export default {
 	name: 'AdminView',
-	components: { VectorStorageStatus, GenerationEmbeddingSettings },
+	components: { NcButton, NcLoadingIcon, NcNoteCard, VectorStorageStatus },
 	setup() {
 		const data = ref(null)
-		const loading = ref(true)
+		const loading = ref(false)
 		const loadError = ref('')
-		const message = ref({ type: '', text: '' })
-		const busy = ref({}) // userId -> 'reindex' | 'reset' | 'enroll'
-		const stopping = ref(false)
-		const resetTarget = ref(null)
-		const resetting = ref(false)
-		const resetError = ref('')
-
-		const busyFor = (userId) => busy.value[userId] || ''
-
-		async function stopBackground() {
-			if (stopping.value) return
-			stopping.value = true
-			try {
-				const res = await apiPost('admin/stop', {})
-				flash('success', res?.requestedCount > 0
-					? t('Stop requested for {count} running pass(es).', { count: res.requestedCount })
-					: t('Background indexing stop requested.'))
-				await load()
-			} catch (e) {
-				flash('error', errMsg(e))
-			} finally {
-				stopping.value = false
-			}
-		}
+		const advancedOpen = ref(false)
 
 		async function load() {
 			loading.value = true
 			loadError.value = ''
 			try {
-				const res = await apiGet('admin/overview')
-				if (!res || typeof res !== 'object' || !Array.isArray(res.users)
-					|| !res.scheduler || typeof res.scheduler !== 'object') {
-					throw new Error(t('The admin overview response was incomplete.'))
+				const result = await apiGet('admin/summary')
+				if (!result?.index || !result?.scheduler
+					|| !['accounts', 'documents', 'chunks'].every((key) => Number.isSafeInteger(result.index[key]) && result.index[key] >= 0)
+					|| !['running', 'queued', 'limit'].every((key) => Number.isSafeInteger(result.scheduler[key]) && result.scheduler[key] >= 0)) {
+					throw new Error('The admin summary response was incomplete.')
 				}
-				data.value = res
-			} catch (e) {
-				loadError.value = errMsg(e)
+				data.value = result
+			} catch (error) {
+				loadError.value = errMsg(error)
 			} finally {
 				loading.value = false
 			}
 		}
 
-		function flash(type, text) {
-			message.value = { type, text }
-			window.setTimeout(() => { message.value = { type: '', text: '' } }, 6000)
-		}
-
-		async function reindex(user) {
-			busy.value[user.userId] = 'reindex'
-			try {
-				const res = await apiPost(`admin/users/${encodeURIComponent(user.userId)}/reindex`, {})
-				if (res && res.queued) {
-					flash('success', t('Indexing queued for {name}.', { name: user.displayName }))
-				} else if (res && res.error) {
-					flash('error', res.error)
-				}
-				await load()
-			} catch (e) {
-				flash('error', errMsg(e))
-			} finally {
-				delete busy.value[user.userId]
-			}
-		}
-
-		function resetUser(user) {
-			if (!user || user.indexing || busy.value[user.userId]) return
-			resetTarget.value = { ...user }
-			resetError.value = ''
-		}
-
-		function closeResetDialog() {
-			if (!resetting.value) resetTarget.value = null
-		}
-
-		async function confirmReset() {
-			const user = resetTarget.value
-			if (!user || resetting.value) return
-			resetting.value = true
-			busy.value[user.userId] = 'reset'
-			try {
-				await apiPost(`admin/users/${encodeURIComponent(user.userId)}/reset`, {})
-				flash('success', t('Index of {name} was reset.', { name: user.displayName }))
-				resetTarget.value = null
-				await load()
-			} catch (e) {
-				resetError.value = t('Index reset failed: {error}', { error: errMsg(e) })
-			} finally {
-				delete busy.value[user.userId]
-				resetting.value = false
-			}
-		}
-
-		async function toggleEnrollment(user) {
-			busy.value[user.userId] = 'enroll'
-			try {
-				await apiPost(`admin/users/${encodeURIComponent(user.userId)}/enrollment`, { enabled: !user.enrolled })
-				await load()
-			} catch (e) {
-				flash('error', errMsg(e))
-			} finally {
-				delete busy.value[user.userId]
-			}
-		}
-
-		function formatTime(ts) {
-			try {
-				return new Date(ts * 1000).toLocaleString()
-			} catch (e) {
-				return String(ts)
-			}
+		function onAdvancedToggle(event) {
+			advancedOpen.value = event.target.open
 		}
 
 		onMounted(load)
-
-		return { data, loading, loadError, message, busyFor, stopping, resetTarget, resetting, resetError, load, stopBackground, reindex, resetUser, closeResetDialog, confirmReset, toggleEnrollment, formatTime }
+		return { data, loading, loadError, advancedOpen, load, onAdvancedToggle }
 	},
 }
 </script>
 
 <style scoped>
 .admin-view {
-	width: 100%;
 	box-sizing: border-box;
+	width: min(100%, 960px);
 	margin: 0 auto;
-	max-width: 1080px;
-	padding: 24px 16px 48px;
+	padding: 24px 20px 48px;
 }
 .page-header {
 	display: flex;
 	align-items: flex-start;
 	justify-content: space-between;
 	gap: 16px;
-	margin-bottom: 20px;
-	flex-wrap: wrap;
+	margin-bottom: 28px;
 }
 .eyebrow {
-	font-size: 11px;
-	letter-spacing: .12em;
-	text-transform: uppercase;
-	opacity: .6;
 	margin: 0 0 4px;
-}
-.settings-title {
-	margin: 0;
-	font-size: 20px;
-}
-.page-intro {
-	margin: 6px 0 0;
-	opacity: .75;
-	max-width: 560px;
-}
-.admin-overview-status {
-	display: flex;
-	align-items: center;
-	flex-wrap: wrap;
-	gap: 8px 16px;
-	margin: 8px 0 24px;
+	font-size: 12px;
+	letter-spacing: .08em;
+	text-transform: uppercase;
 	color: var(--color-text-maxcontrast);
 }
-.admin-overview-status strong { color: var(--color-main-text); }
-.admin-advanced {
-	border-top: 1px solid var(--color-border);
-	padding-top: 16px;
-}
-.admin-advanced > summary {
-	width: fit-content;
-	cursor: pointer;
-	font-weight: 600;
-	color: var(--color-main-text);
-}
-.admin-advanced[open] > summary { margin-bottom: 16px; }
-
-.admin-table-wrap {
-	overflow-x: auto;
+h1 { margin: 0; font-size: 24px; }
+.page-intro { max-width: 620px; margin: 8px 0 0; color: var(--color-text-maxcontrast); }
+.overview {
+	padding: 20px;
 	border: 1px solid var(--color-border);
-	border-radius: 12px;
+	border-radius: var(--border-radius-large, 12px);
 	background: var(--color-main-background);
 }
-.admin-table {
-	width: 100%;
-	border-collapse: collapse;
-	font-size: 13px;
-	min-width: 760px;
-}
-.admin-table th,
-.admin-table td {
-	text-align: left;
-	padding: 10px 12px;
-	border-bottom: 1px solid var(--color-border);
-	vertical-align: top;
-}
-.admin-table thead th {
-	font-size: 11px;
-	text-transform: uppercase;
-	letter-spacing: .06em;
-	opacity: .65;
-	background: var(--color-background-dark);
-}
-.admin-table th.num,
-.admin-table td.num {
-	text-align: right;
-	font-variant-numeric: tabular-nums;
-}
-.admin-table tr:last-child td { border-bottom: 0; }
-.admin-table tr.row-error td { background: color-mix(in srgb, var(--color-error, #e9322d) 6%, transparent); }
-.user-name { display: block; }
-.user-id { opacity: .55; }
-.user-error {
-	margin-top: 4px;
-	font-size: 12px;
-	color: var(--color-error, #e9322d);
-	max-width: 320px;
-	overflow: hidden;
-	text-overflow: ellipsis;
-	white-space: nowrap;
-}
-.state-pill {
-	display: inline-block;
-	padding: 2px 8px;
-	border-radius: 999px;
-	font-size: 12px;
-	background: var(--color-background-dark);
-}
-.state-pill.state-running { color: var(--color-primary-text, #fff); background: var(--color-primary); }
-.linklike {
-	padding: 0;
-	border: 0;
-	background: transparent;
-	color: var(--color-primary, #00679c);
-	cursor: pointer;
-	font: inherit;
-	text-decoration: underline;
-}
-.state-pill.state-idle { opacity: .7; }
-.admin-actions {
-	display: flex;
-	gap: 6px;
-	flex-wrap: wrap;
-}
-.admin-reset-dialog {
+.overview-heading h2 { margin: 0; font-size: 18px; }
+.overview-heading p { margin: 6px 0 0; color: var(--color-text-maxcontrast); }
+.metrics {
 	display: grid;
+	grid-template-columns: repeat(4, minmax(0, 1fr));
 	gap: 12px;
-	padding: 4px 20px 20px;
+	margin: 20px 0 0;
 }
-.admin-reset-dialog p { margin: 0; line-height: 1.5; }
-.admin-reset-dialog__identity { color: var(--color-text-maxcontrast); font-size: 13px; }
-.admin-reset-dialog__error { color: var(--color-error); }
-.admin-reset-dialog__actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 4px; }
-.admin-loading,
-.admin-empty {
-	padding: 40px 16px;
-	text-align: center;
-	opacity: .7;
+.metrics > div { min-width: 0; padding: 14px; border-radius: var(--border-radius, 8px); background: var(--color-background-dark); }
+.metrics dt { color: var(--color-text-maxcontrast); font-size: 13px; }
+.metrics dd { margin: 8px 0 0; font-size: 24px; font-weight: 600; font-variant-numeric: tabular-nums; }
+.advanced { margin-top: 24px; border-top: 1px solid var(--color-border); padding-top: 18px; }
+.advanced summary { width: fit-content; cursor: pointer; font-weight: 600; }
+.advanced-content { margin-top: 16px; }
+.advanced-content > p { color: var(--color-text-maxcontrast); }
+.empty-state { padding: 24px; text-align: center; color: var(--color-text-maxcontrast); }
+@media (max-width: 760px) {
+	.metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (max-width: 520px) {
+	.admin-view { padding: 20px 12px 36px; }
+	.page-header { align-items: center; }
+	.metrics > div { padding: 12px; }
+	.metrics dd { font-size: 20px; }
 }
 </style>

@@ -16,6 +16,16 @@ The administrator workspace remains at `/admin` and requires an administrator.
 
 ## Administrator storage snapshot
 
+`GET /api/admin/summary` is the compact admin landing-page endpoint. It returns
+aggregate counts without enumerating users or calling an external service:
+
+```json
+{"index":{"accounts":3,"documents":120,"chunks":460},"scheduler":{"running":0,"queued":0,"limit":2}}
+```
+
+The older `GET /api/admin/overview` remains available for existing clients and
+returns per-account management rows. The EVA admin landing page does not call it.
+
 `GET /api/admin/vector-storage` is admin-only and read-only. It reads local
 configuration and actionable outbox counts, never contacting Qdrant or an
 embedding provider. The OCS data on success is:
@@ -50,11 +60,10 @@ server-rendered Nextcloud administration page use the same snapshot service.
 
 ## Administrator vector connection operations
 
-The admin overview user rows additionally expose `vectorOwnerState`: open,
-blocked, uninitialized or unavailable. Both native administration surfaces show a
-blocked-after-erasure notice or unavailable state; neither offers an unsafe
-unblock action. Lookups use bounded 100-owner SQL batches and no network calls.
-An empty owner table means uninitialized, while a read failure means unavailable.
+The legacy admin overview user rows additionally expose `vectorOwnerState`: open,
+blocked, uninitialized or unavailable. Lookups use bounded 100-owner SQL batches
+and no network calls. An empty owner table means uninitialized, while a read
+failure means unavailable.
 
 These OCS endpoints require a signed-in Nextcloud administrator. Writes and the
 explicit probe require the normal request token; none has a CSRF exemption:

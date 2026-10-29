@@ -2,6 +2,12 @@
 
 ## [Unreleased]
 
+### Compact native admin dashboard (1.18.42)
+
+- Replace the account-by-account admin landing page with aggregate SQL index and scheduler counts; preserve the legacy overview endpoint for existing clients.
+- Load optional vector-storage administration only after the native disclosure is opened, avoiding account enumeration and storage-status work on initial page load.
+
+
 ### One-pass lexical BM25 scoring (1.18.41)
 
 - Tokenize each bounded candidate once and reuse exact Unicode term frequencies across query terms, avoiding repeated substring scans and partial-word matches.
