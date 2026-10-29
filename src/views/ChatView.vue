@@ -1,7 +1,20 @@
 <template>
 	<div class="chatview-shell">
 		<div ref="root" class="chatview-root"></div>
+		<div v-if="pendingImages.length" class="chat-composer__attachments" :aria-label="$t('Attached images')">
+			<div v-for="image in pendingImages" :key="image.id" class="chat-composer__attachment">
+				<img :src="image.url" :alt="image.file.name">
+				<span>{{ image.file.name }}</span>
+				<NcButton type="button" variant="tertiary-no-background" :aria-label="$t('Remove image {name}', { name: image.file.name })" @click="removeImage(image.id)">×</NcButton>
+			</div>
+			<p class="chat-composer__privacy">{{ $t('Attached images are sent to the configured chat provider with your message.') }}</p>
+		</div>
+		<p v-if="imageError" class="chat-composer__error" role="alert">{{ imageError }}</p>
 		<form ref="composerForm" class="chat-composer">
+			<input ref="imageInput" class="chat-composer__file" type="file" accept="image/png,image/jpeg,image/webp" multiple @change="onImagesSelected">
+			<NcButton class="chat-composer__attach" type="button" variant="tertiary" :aria-label="$t('Attach images')" :title="$t('Attach images')" :disabled="!ready || sending" @click="imageInput?.click()">
+				<template #icon><NcIconSvgWrapper :path="mdiImageOutline" :size="20" /></template>
+			</NcButton>
 			<NcTextField
 				ref="composerField"
 				v-model="draft"
@@ -29,7 +42,8 @@
 <script>
 import { ref, onMounted, onBeforeUnmount, watch } from 'vue'
 import { NcButton, NcIconSvgWrapper, NcTextField } from '@nextcloud/vue'
-import { mdiSendOutline, mdiStopCircleOutline } from '@mdi/js'
+import { mdiImageOutline, mdiSendOutline, mdiStopCircleOutline } from '@mdi/js'
+import { translate as t } from '../lib/i18n'
 import { mountChat } from '../lib/vanilla'
 
 export default {
@@ -49,10 +63,32 @@ export default {
 		const composerForm = ref(null)
 		const composerField = ref(null)
 		const sendButton = ref(null)
+		const imageInput = ref(null)
 		const draft = ref('')
+		const pendingImages = ref([])
+		const imageError = ref('')
 		const ready = ref(false)
 		const sending = ref(false)
 		let mounted = false
+
+		const removeImage = id => {
+			const image = pendingImages.value.find(item => item.id === id)
+			if (image) URL.revokeObjectURL(image.url)
+			pendingImages.value = pendingImages.value.filter(item => item.id !== id)
+			imageError.value = ''
+		}
+
+		const onImagesSelected = event => {
+			const files = Array.from(event.target?.files || [])
+			if (event.target) event.target.value = ''
+			const totalCount = pendingImages.value.length + files.length
+			const totalBytes = pendingImages.value.reduce((sum, image) => sum + image.file.size, 0) + files.reduce((sum, file) => sum + file.size, 0)
+			if (totalCount > 4) { imageError.value = t('Attach up to four supported images at a time.'); return }
+			if (files.some(file => !['image/png', 'image/jpeg', 'image/webp'].includes(file.type))) { imageError.value = t('Choose PNG, JPEG, or WebP images.'); return }
+			if (totalBytes > 4 * 1024 * 1024) { imageError.value = t('Attached images must total no more than 4 MB.'); return }
+			pendingImages.value = pendingImages.value.concat(files.map(file => ({ id: `${Date.now()}-${Math.random()}`, file, url: URL.createObjectURL(file) })))
+			imageError.value = ''
+		}
 
 		const applyInitialPrompt = () => {
 			if (!mounted || !ready.value || !composerField.value || !props.initialPrompt) return
@@ -84,6 +120,8 @@ export default {
 				form: composerForm.value,
 				input: composerField.value?.$el?.querySelector('input'),
 				sendBtn: sendButton.value?.$el,
+				getPendingImages: () => pendingImages.value.map(image => ({ file: image.file, name: image.file.name, url: image.url })),
+				consumePendingImages: () => { pendingImages.value = []; imageError.value = '' },
 				onInputValueChange: value => { draft.value = value },
 				onStreamingChange: value => { sending.value = value },
 				onRecent: () => emit('chat-updated'),
@@ -100,16 +138,21 @@ export default {
 		onBeforeUnmount(() => {
 			mounted = false
 			root.value?.__evaAi?.destroy()
+			pendingImages.value.forEach(image => URL.revokeObjectURL(image.url))
+			pendingImages.value = []
 		})
 		onMounted(mount)
 		watch(() => props.initialPrompt, () => {
 			applyInitialPrompt()
 		})
 		watch(() => props.chatId, () => {
+			pendingImages.value.forEach(image => URL.revokeObjectURL(image.url))
+			pendingImages.value = []
+			imageError.value = ''
 			if (mounted) mount()
 		})
 
-		return { root, composerForm, composerField, sendButton, draft, ready, sending, mdiSendOutline, mdiStopCircleOutline }
+		return { root, composerForm, composerField, sendButton, imageInput, pendingImages, imageError, removeImage, onImagesSelected, draft, ready, sending, mdiImageOutline, mdiSendOutline, mdiStopCircleOutline }
 	},
 }
 </script>
@@ -495,6 +538,32 @@ export default {
 	padding: 4px 0 max(8px, env(safe-area-inset-bottom));
 	box-sizing: border-box;
 }
+
+.chat-composer__file { display: none; }
+.chat-composer__attach { flex: 0 0 auto; }
+.chat-composer__attachments {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 8px;
+	width: min(100%, var(--eva-chat-column-width, 900px));
+	margin: 0 auto 8px;
+}
+.chat-composer__privacy { flex: 1 0 100%; margin: 0; color: var(--color-text-maxcontrast, #666); font-size: 12px; }
+.chat-composer__attachment {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	max-width: 260px;
+	padding: 4px 8px 4px 4px;
+	border: 1px solid var(--color-border, #ddd);
+	border-radius: var(--border-radius-pill, 24px);
+	background: var(--color-main-background, #fff);
+	color: var(--color-main-text, #222);
+	font-size: 12px;
+}
+.chat-composer__attachment img { width: 32px; height: 32px; object-fit: cover; border-radius: 50%; }
+.chat-composer__attachment span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.chat-composer__error { width: min(100%, var(--eva-chat-column-width, 900px)); margin: 0 auto 6px; color: var(--color-error, #e9322d); font-size: 12px; }
 
 .chat-composer__field {
 	flex: 1 1 auto;

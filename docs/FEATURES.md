@@ -24,10 +24,10 @@ layout and [Providers](PROVIDERS.md) for the profile form.
 
 The primary workspace uses the active provider and model configured in
 Settings. Answers record the model that handled them, and usage metrics keep
-that model context. The standalone compatibility chat additionally accepts up
-to four PNG, JPEG or WebP attachments (4 MB total), and can select an Ollama
-model per message. Those compatibility controls are not shown in the focused
-workspace header.
+that model context. Its native composer accepts up to four PNG, JPEG or WebP
+attachments (4 MB total); vision-capable configured providers can analyze them.
+The standalone compatibility chat retains the same attachment limits and can
+select an Ollama model per message.
 
 The image generator accepts up to four outputs per prompt from the selected
 OpenAI-compatible provider, stores them in the user's `EVA` Files folder, and

@@ -1916,10 +1916,25 @@ export function mountChat(root, opts = {}) {
 		streamRegenerateAnswer({ messageIndex: userIdx, message: newText.trim() })
 	}
 
+	const encodeImage = (attachment) => new Promise((resolve, reject) => {
+		const reader = new FileReader()
+		reader.onerror = () => reject(new Error(t('An attached image could not be read.')))
+		reader.onload = () => {
+			const match = String(reader.result || '').match(/^data:(image\/(?:jpeg|png|webp));base64,([A-Za-z0-9+/=]+)$/)
+			if (!match) { reject(new Error(t('An attached image could not be read.'))); return }
+			resolve({ name: attachment.name, mime: match[1], data: match[2] })
+		}
+		reader.readAsDataURL(attachment.file)
+	})
+
 	const send = () => {
 		const typedMessage = input.value.trim()
-		if (!typedMessage || sending) return
-		const msg = typedMessage
+		const outgoingAttachments = typeof opts.getPendingImages === 'function' ? opts.getPendingImages() : []
+		if ((!typedMessage && !outgoingAttachments.length) || sending) return
+		const msg = typedMessage || t('Describe these images.')
+		const savedQuestion = outgoingAttachments.length
+			? msg + '\n\n[' + t('Attached images') + ': ' + outgoingAttachments.map(image => image.name).join(', ') + ']'
+			: msg
 		promptHistory.record(msg)
 		renderPromptHistory()
 		sending = true
@@ -1930,7 +1945,7 @@ export function mountChat(root, opts = {}) {
 		err.style.display = 'none'
 		if (emptyEl.parentNode) scroll.removeChild(emptyEl)
 
-		messages.push({ role: 'user', text: msg, createdAt: Math.floor(Date.now() / 1000) })
+		messages.push({ role: 'user', text: savedQuestion, attachments: outgoingAttachments.map(({ name, url }) => ({ name, url })), createdAt: Math.floor(Date.now() / 1000) })
 		messages.push({ role: 'assistant', text: '', thinking: '', done: false, tools: [] })
 		renderAll(messages)
 		const assistantIdx = messages.length - 1
@@ -1942,8 +1957,11 @@ export function mountChat(root, opts = {}) {
 			history.push({ role: m.role, content: m.text })
 		}
 
-		ensureChat().then(async () => {
-			return apiStream(STREAM_URL, { message: msg, history, chatId }, (ev) => {
+		ensureChat().then(async (chatReady) => {
+			if (!chatReady) throw new Error(t('Chat could not be created.'))
+			const images = await Promise.all(outgoingAttachments.map(encodeImage))
+			if (outgoingAttachments.length && typeof opts.consumePendingImages === 'function') opts.consumePendingImages()
+			return apiStream(STREAM_URL, { message: msg, history, chatId, images }, (ev) => {
 				const last = messages[assistantIdx]
 				if (!last || last.role !== 'assistant' || last.done) return
 				if (ev.type === 'thinking') {
@@ -1988,7 +2006,7 @@ export function mountChat(root, opts = {}) {
 					last.done = true
 					// Persist the question and confirmation placeholder together.
 					last.confirmation.token = (window.crypto && crypto.randomUUID) ? crypto.randomUUID() : String(Date.now()) + '-' + Math.random().toString(36).slice(2)
-					last._pendingSave = saveTurn(msg, last).then((saved) => { if (!saved) showHistorySaveWarning(); return saved })
+					last._pendingSave = saveTurn(savedQuestion, last).then((saved) => { if (!saved) showHistorySaveWarning(); return saved })
 					renderAll(messages)
 				} else if (ev.type === 'done') {
 					cancelBackgroundJob()
@@ -1998,7 +2016,7 @@ export function mountChat(root, opts = {}) {
 					last.sources = citedSources(last.text, ev.sources || [])
 					last.followups = ev.followups || []
 					last.done = true
-					last._pendingSave = saveTurn(msg, last)
+					last._pendingSave = saveTurn(savedQuestion, last)
 						.then((saved) => {
 							if (saved && onRecent) onRecent()
 							else if (!saved) showHistorySaveWarning()
@@ -2007,7 +2025,7 @@ export function mountChat(root, opts = {}) {
 					cancelBackgroundJob()
 					last.text = streamFailureMessage(ev.message)
 					last.done = true
-					last._pendingSave = saveUserMessage(msg).then((saved) => { if (!saved) showHistorySaveWarning(); return saved })
+					last._pendingSave = saveUserMessage(savedQuestion).then((saved) => { if (!saved) showHistorySaveWarning(); return saved })
 				}
 				// One coalesced update per frame instead of one DOM rebuild per
 				// NDJSON event; terminal states below still update immediately.
@@ -2023,7 +2041,7 @@ export function mountChat(root, opts = {}) {
 					// Persist the partial answer when the user stopped the stream so
 					// a reload keeps the conversation instead of dropping it.
 					if (stoppedByUser && last.text.trim() !== '') {
-						last._pendingSave = saveTurn(msg, last)
+						last._pendingSave = saveTurn(savedQuestion, last)
 							.then((saved) => { if (!saved) showHistorySaveWarning() })
 					}
 				}
@@ -2044,12 +2062,17 @@ export function mountChat(root, opts = {}) {
 				input.focus()
 				stickToBottom()
 			})
-		}).catch(() => {
+		}).catch((error) => {
+			// The image remains in the composer if chat creation or encoding fails.
+			// Remove optimistic bubbles so the user can retry without duplicate text.
+			messages.splice(Math.max(0, assistantIdx - 1), 2)
+			renderAll(messages)
+			setInputValue(typedMessage)
 			stoppedByUser = false
 			currentAbort = null
 			sending = false
 			setStreamingUI(false)
-			err.textContent = t('Chat could not be created.')
+			err.textContent = String(error?.message || t('Chat could not be created.'))
 			err.style.display = 'block'
 		})
 	}

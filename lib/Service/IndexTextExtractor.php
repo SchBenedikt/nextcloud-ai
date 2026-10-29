@@ -41,7 +41,7 @@ class IndexTextExtractor {
         if ($mime === null) {
             return false;
         }
-        if (in_array($mime, ['image/png', 'image/jpeg', 'image/tiff', 'image/webp'], true) && $this->config->get('ocr_enabled') === '1') return true;
+        if (in_array($mime, ['image/png', 'image/jpeg', 'image/tiff', 'image/webp', 'image/bmp', 'image/x-ms-bmp', 'image/gif'], true) && $this->config->get('ocr_enabled') === '1') return true;
         if (str_starts_with($mime, 'text/')) {
             return true;
         }
@@ -139,7 +139,7 @@ class IndexTextExtractor {
             return '';
         }
 
-        if (in_array($mime, ['image/png', 'image/jpeg', 'image/tiff', 'image/webp'], true) && $this->config->get('ocr_enabled') === '1') {
+        if (in_array($mime, ['image/png', 'image/jpeg', 'image/tiff', 'image/webp', 'image/bmp', 'image/x-ms-bmp', 'image/gif'], true) && $this->config->get('ocr_enabled') === '1') {
             return (new OcrService())->extract($this->readFile($file), $mime, $this->config->get('ocr_language'));
         }
         // DOCX + Varianten (DOTX/DOCM) / ODT / EPUB / ODS / ODP: Zip-Container.
