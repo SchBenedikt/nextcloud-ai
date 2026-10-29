@@ -72,7 +72,11 @@ final class EvaSearchProvider implements IProvider {
         if ($pathTerm !== '') {
             foreach ($this->documentMapper->findByUser($uid, $pathTerm, self::MAX_CANDIDATES, 0, ['source' => Document::SOURCE_FILES]) as $document) {
                 if ($this->isSearchableFile($document)) {
-                    $documents[$document->getId()] = ['document' => $document, 'excerpt' => ''];
+                    $documents[$document->getId()] = [
+                        'document' => $document,
+                        'excerpt' => '',
+                        'rank' => $this->metadataRank($document, $term),
+                    ];
                 }
             }
         }
@@ -89,17 +93,18 @@ final class EvaSearchProvider implements IProvider {
                 }
             }
             foreach ($this->documentMapper->findByIds(array_keys($documentIds)) as $document) {
-                if (!$this->isSearchableFile($document) || isset($documents[$document->getId()])) {
-                    continue;
-                }
-                $documents[$document->getId()] = ['document' => $document, 'excerpt' => ''];
+                if (!$this->isSearchableFile($document)) continue;
+                $id = $document->getId();
+                $documents[$id] ??= ['document' => $document, 'excerpt' => '', 'rank' => 0.0];
             }
             foreach ($chunks as $chunk) {
                 $id = (int)($chunk['document_id'] ?? 0);
-                if ($id <= 0 || !isset($documents[$id]) || $documents[$id]['excerpt'] !== '') {
-                    continue;
+                if ($id <= 0 || !isset($documents[$id])) continue;
+                $contentRank = $this->contentRank($chunk['_eva_search_score'] ?? 0);
+                $documents[$id]['rank'] = max($documents[$id]['rank'], $contentRank);
+                if ($documents[$id]['excerpt'] === '') {
+                    $documents[$id]['excerpt'] = $this->excerpt((string)($chunk['content'] ?? ''), $term);
                 }
-                $documents[$id]['excerpt'] = $this->excerpt((string)($chunk['content'] ?? ''), $term);
             }
         }
 
@@ -110,11 +115,15 @@ final class EvaSearchProvider implements IProvider {
             if ($fileId <= 0 || !$this->isCurrentlyAccessible($uid, $fileId)) {
                 continue;
             }
-            $accessible[] = $row;
+            $accessible[] = ['row' => $row, 'rank' => $row['rank'], 'id' => (int)$document->getId()];
         }
+        usort($accessible, static fn(array $left, array $right): int =>
+            ($right['rank'] <=> $left['rank']) ?: ($right['id'] <=> $left['id'])
+        );
 
         $entries = [];
-        foreach (array_slice($accessible, $offset, $limit) as $row) {
+        foreach (array_slice($accessible, $offset, $limit) as $candidate) {
+            $row = $candidate['row'];
             $document = $row['document'];
             $fileId = (int)$document->getFileId();
             $link = $this->urlGenerator->linkToRouteAbsolute('files.View.showFile', ['fileid' => $fileId]);
@@ -141,6 +150,26 @@ final class EvaSearchProvider implements IProvider {
             return SearchResult::paginated($name, $entries, $offset + count($entries));
         }
         return SearchResult::complete($name, $entries);
+    }
+
+    /** Prefer exact and leading filename matches over a generic path match. */
+    private function metadataRank(Document $document, string $term): float {
+        $needle = mb_strtolower(trim($term));
+        if ($needle === '') return 0.0;
+        $name = mb_strtolower((string)$document->getName());
+        $path = mb_strtolower((string)$document->getPath());
+        if ($name === $needle) return 100.0;
+        if (str_starts_with($name, $needle)) return 80.0;
+        if (str_contains($name, $needle)) return 60.0;
+        if (str_contains($path, $needle)) return 40.0;
+        return 10.0;
+    }
+
+    /** Bound database-derived scores before combining them with metadata matches. */
+    private function contentRank(mixed $score): float {
+        if (!is_int($score) && !is_float($score)) return 0.0;
+        if (!is_finite((float)$score) || $score <= 0) return 0.0;
+        return 20.0 + min(30.0, log1p((float)$score) * 10.0);
     }
 
     private function excerpt(string $content, string $term): string {
