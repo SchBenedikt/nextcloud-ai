@@ -56,6 +56,12 @@ Overlap must be smaller than chunk size.
 embedding adapter. This prepares identity only; it does not implement that adapter
 or enable profile-based embedding selection. Ollama generations have no profile.
 The supported external storage backend in this identity version is Qdrant.
+The default Qdrant generation contains vectors and metadata only. An explicit
+`--include-text-payload` generation additionally copies chunk text for native
+BM25/RRF, requires Qdrant 1.20+, and asks for a separate text-transfer consent
+when its build starts or resumes. This is opt-in per immutable generation;
+existing generations and built-in SQL continue to keep text local. See
+[Qdrant data handling](QDRANT.md) for indexing, verification and erasure.
 
 IDs are 128-bit server-generated random values. Collection names derive from those
 IDs, never user input or account names. Repository lookup, list, failure transition

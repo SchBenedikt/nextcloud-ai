@@ -94,6 +94,10 @@ The index is stored on the Nextcloud server. Indexing sends extracted content
 to the configured embedding endpoint. Chat sends prompts, relevant excerpts,
 conversation context and tool results to the selected provider. Cloud services,
 web search and connectors can send information outside your server.
+Built-in SQL is the default search index. Optional Qdrant dense search keeps
+chunk text in SQL; native Qdrant BM25 is a separate per-generation opt-in that
+stores chunk text remotely and sends search queries to that Qdrant service. See
+the [Qdrant privacy and setup notes](docs/QDRANT.md) before enabling it.
 
 API keys are encrypted separately per user and are never returned by the
 profile form. Answers can contain mistakes; check sources and review actions.

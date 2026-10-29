@@ -32,7 +32,7 @@ lib/
 | `GenerationBuildService` | Shared native administrator/OCC control and secret-free progress reads; explicit start schedules work instead of calling a provider |
 | `LocalTextProcess` | Argv-based PDF/Office conversion with runtime/output limits; no raw converter stderr reaches the user |
 | `Ollama` | Thin HTTP client for the Ollama API (embedding + chat) |
-| `Searcher` | Hybrid retrieval: vector search + BM25, fused with RRF |
+| `Searcher` | SQL-first hybrid retrieval; explicitly opted-in Qdrant generations can run native BM25 + dense RRF, retain file/path and phrase signals, hydrate exact revisions from SQL, then diversify results |
 | `RagService` | Orchestrates retrieval + prompt building + answer generation |
 | `ActionExecutor` | **Single chokepoint** for all tools — enforces `ToolPolicy` before executing; bounded name/content file search and protected knowledge trimming |
 | `ToolPolicy` | Central tool registry: risk class, allowed surfaces, confirmation flags |

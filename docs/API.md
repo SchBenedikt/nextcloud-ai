@@ -369,7 +369,7 @@ See [generation embeddings](GENERATION-EMBEDDINGS.md).
 ## Background generation builds
 
 `GET /api/admin/vector-generations/{userId}/{id}/build` returns `status`,
-`backend`, `documents_done`, `total_documents`, `staged_chunks`, `heartbeat_at`, `error_code`,
+`backend`, `include_text_payload`, `documents_done`, `total_documents`, `staged_chunks`, `heartbeat_at`, `error_code`,
 `can_start`, `retrieval_changed: false` and whether a current verification
 certificate exists. Counts describe SQL
 preparation. Missing state is `not_started`; a completed pass is `staged`, never
@@ -378,7 +378,10 @@ are returned, and this read performs no provider request.
 
 `POST /api/admin/vector-generations/{userId}/{id}/build/{operation}` accepts
 `start`, `pause`, `resume` or `cancel`. Start requires JSON
-`{"confirm_document_transfer":true}`. Other operations accept an empty JSON
+`{"confirm_document_transfer":true}`. For a generation created with the optional
+Qdrant text-payload capability, start and resume additionally require
+`{"confirm_text_transfer":true}`. This is separate consent to copy chunk text
+into Qdrant. Other operations accept an empty JSON
 object. The path parameter is named `operation` because Nextcloud reserves and
 removes `action` before controller dispatch. All routes require native admin
 authorization; mutation retains native CSRF protection. Invalid requests return
@@ -393,14 +396,17 @@ verification requirements.
 `GET /api/admin/vector-generations/{userId}/{id}/verification` returns the
 verification `status`, `phase`, backend, point counts, sample count, heartbeat,
 sanitized error code, `can_start`, `verified`, `can_activate`, `can_rollback`,
-effective `retrieval_backend` and `active`. The matching POST route accepts
+effective `retrieval_backend`, `include_text_payload` and `active`. The matching POST route accepts
 `start`, `pause`, `resume`, `cancel`, `retry`, `activate` or `rollback` with an
 empty JSON object. These administrator-only controls schedule or manage bounded
 background work; verification never performs provider or vector-store I/O in
 the request. Activation only updates local SQL state and performs no remote I/O.
 SQL verification checks local vector shape, revisions, content hashes and source
 manifests; Qdrant verification additionally reconciles the configured remote
-store. Neither path sends source text to an embedding model. A verified certificate
+store. Opted-in text-payload generations also require zero live points with a
+missing text field and compare sampled remote text with the exact SQL source;
+dense-only generations never send or retrieve chunk text.
+Neither path sends source text to an embedding model. A verified certificate
 is invalidated atomically when canonical source data changes. SQL activates
 automatically after current verification; Qdrant requires explicit canary
 activation and can be rolled back to SQL. See

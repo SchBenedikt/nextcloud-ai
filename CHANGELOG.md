@@ -2,6 +2,14 @@
 
 ## [Unreleased]
 
+### Native Qdrant BM25 opt-in (1.18.26)
+
+- Add per-generation native BM25 full-text indexing and dense+BM25 RRF for Qdrant 1.20+, while keeping the built-in SQL index and dense-only generations text-free by default.
+- Require a generation-level text-payload opt-in plus a separate confirmation for every build start/resume; show that search queries are sent to Qdrant.
+- Verify opted-in remote text against the exact SQL chunk before activation; chunk tombstones and generation erasure remove the remote text.
+- Preserve filename/path context, quoted-phrase boosts, source/scope filters, exact SQL hydration, document diversification and SQL fallback.
+- Update native settings, built bundles and privacy/operations/API docs. PHP tests and CI remain skipped per user instruction; frontend production build and PHP syntax checks passed.
+
 ### Optional Qdrant retrieval canary (1.18.25)
 
 - Allow an administrator to explicitly activate a fully verified Qdrant generation for an enrolled account, with a one-action rollback to built-in SQL.

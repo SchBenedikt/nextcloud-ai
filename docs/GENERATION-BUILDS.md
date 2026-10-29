@@ -21,6 +21,8 @@ The OCC generation command defaults to SQL; select Qdrant only when needed:
 ```sh
 php occ eva_ai:vector:generation create USER --provider=ollama --model=MODEL --endpoint=http://localhost:11434 --dimension=DIMENSION
 php occ eva_ai:vector:generation create USER --backend=qdrant --provider=ollama --model=MODEL --endpoint=http://localhost:11434 --dimension=DIMENSION
+# Only when native Qdrant BM25 is deliberately enabled; copies chunk text into Qdrant:
+php occ eva_ai:vector:generation create USER --backend=qdrant --include-text-payload --provider=ollama --model=MODEL --endpoint=http://localhost:11434 --dimension=DIMENSION
 ```
 
 In EVA administration, select the owner and generation under **Embedding
@@ -28,6 +30,11 @@ generations**. **Background build** explains the transfer and requires a separat
 document-processing checkbox. The owner's source index must be enrolled and the
 generation bound to its backend. SQL builds need only Nextcloud SQL and the
 pinned embedding provider; Qdrant builds also require storage and point delivery.
+The optional `--include-text-payload` generation choice is immutable and defaults
+to off. It requires Qdrant 1.20 or newer and creates an indexed text payload for
+native BM25/RRF. The generation's start/resume controls require a second,
+separate confirmation before any chunk text is copied to Qdrant. Existing
+dense-only generations remain text-free and continue using SQL lexical retrieval.
 Nextcloud's native EVA administration page links to these same controls through
 **Manage storage and background builds**. No controls are added to chat.
 
@@ -46,8 +53,12 @@ The same control service is available to local administrators:
 ```sh
 php occ eva_ai:vector:build status USER GENERATION_ID
 php occ eva_ai:vector:build start USER GENERATION_ID --confirm-document-transfer
+# Only for a generation created with --include-text-payload:
+php occ eva_ai:vector:build start USER GENERATION_ID --confirm-document-transfer --confirm-text-transfer
 php occ eva_ai:vector:build pause USER GENERATION_ID
 php occ eva_ai:vector:build resume USER GENERATION_ID
+# For a text-payload generation, repeat explicit consent on resume:
+php occ eva_ai:vector:build resume USER GENERATION_ID --confirm-text-transfer
 php occ eva_ai:vector:build cancel USER GENERATION_ID
 # One bounded global tick, processing only previously authorized eligible work:
 php occ eva_ai:vector:build run
