@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Lighter SQL dense candidate scans (1.18.36)
+
+- Fetch only chunk IDs and embeddings while scanning large SQL indexes for dense candidates. Hydrate content, document IDs and provenance only for the bounded top set; ranking behavior and the full-coverage scan remain unchanged.
+
 ### Native admin overview simplification (1.18.35)
 
 - Replace the instance-wide per-account indexing table with aggregate Nextcloud SQL totals and active search-path status. Per-account indexing controls remain in personal EVA settings; optional storage administration stays in its separate advanced page. Opening native administration no longer pings Ollama, materializes account names, or includes scheduler account identifiers.
