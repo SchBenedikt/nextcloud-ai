@@ -79,6 +79,32 @@ class GenerationVerificationRepository {
         });
     }
 
+    /** Queue one eligible enrolled SQL generation, recovering a missed build-to-verification handoff. */
+    public function startNextEnrolledSql(): bool {
+        $q = $this->db->getQueryBuilder();
+        $q->select('g.user_id', 'g.id')->from('eva_ai_vec_generations', 'g')
+            ->innerJoin('g', 'eva_ai_vec_builds', 'b', $q->expr()->andX(
+                $q->expr()->eq('b.user_id', 'g.user_id'), $q->expr()->eq('b.generation_id', 'g.id')))
+            ->innerJoin('g', 'preferences', 'p', $q->expr()->andX(
+                $q->expr()->eq('p.userid', 'g.user_id'),
+                $q->expr()->eq('p.appid', $q->createNamedParameter('eva_ai')),
+                $q->expr()->eq('p.configkey', $q->createNamedParameter('index_enrolled')),
+                $q->expr()->eq('p.configvalue', $q->createNamedParameter('1'))))
+            ->leftJoin('g', 'eva_ai_vec_verifications', 'v', $q->expr()->andX(
+                $q->expr()->eq('v.user_id', 'g.user_id'), $q->expr()->eq('v.generation_id', 'g.id')))
+            ->where($q->expr()->eq('g.backend', $q->createNamedParameter('sql')))
+            ->andWhere($q->expr()->eq('g.status', $q->createNamedParameter('building')))
+            ->andWhere($q->expr()->eq('b.status', $q->createNamedParameter('staged')))
+            ->andWhere($q->expr()->orX($q->expr()->isNull('v.generation_id'),
+                $q->expr()->eq('v.status', $q->createNamedParameter('stale'))))
+            ->orderBy('b.updated_at', 'ASC')->addOrderBy('g.id', 'ASC')->setMaxResults(1);
+        $result = $q->executeQuery();
+        try { $candidate = $result->fetch(); } finally { $result->closeCursor(); }
+        if (!$candidate) return false;
+        $this->start((string)$candidate['user_id'], (string)$candidate['id']);
+        return true;
+    }
+
     public function control(string $user,string $id,string $operation): array {
         if(!in_array($operation,['pause','resume','cancel','retry'],true))throw new \InvalidArgumentException('Invalid verification control.');
         return $this->outbox->transaction(function()use($user,$id,$operation):array{
