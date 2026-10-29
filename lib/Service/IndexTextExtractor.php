@@ -15,6 +15,8 @@ class IndexTextExtractor {
     private const MAX_EMBEDDED_OCR_IMAGES = 4;
     private const MAX_EMBEDDED_OCR_IMAGE_BYTES = 5242880;
     private const MAX_EMBEDDED_OCR_TOTAL_BYTES = 10485760;
+    private const MAX_SPARSE_PDF_OCR_PAGES = 8;
+    private const SPARSE_PDF_TEXT_CHARS = 160;
 
     public function __construct(private AppConfig $config, private LoggerInterface $logger) {}
 
@@ -208,8 +210,29 @@ class IndexTextExtractor {
         // PDF via pdftotext, wenn Poppler verfügbar ist.
         if ($ext === 'pdf' || $mime === 'application/pdf') {
             $txt = $this->pdfToText($file);
-            if (trim((string)$txt) === '' && $this->config->get('ocr_enabled') === '1') {
+            if ($this->config->get('ocr_enabled') === '1' && trim((string)$txt) === '') {
                 $txt = (new OcrService())->extract($this->readFile($file), 'application/pdf', $this->config->get('ocr_language'), 60, $this->shouldYield);
+            } elseif ($this->config->get('ocr_enabled') === '1' && $txt !== null) {
+                $sparsePages = $this->sparsePdfPages($txt);
+                if ($sparsePages !== []) {
+                    try {
+                        $ocrText = (new OcrService())->extract(
+                            $this->readFile($file), 'application/pdf', $this->config->get('ocr_language'),
+                            60, $this->shouldYield, $sparsePages,
+                        );
+                        if (trim($ocrText) !== '') $txt .= "\n\n" . $ocrText;
+                    } catch (ChatPriorityYieldException $error) {
+                        throw $error;
+                    } catch (\Throwable $error) {
+                        // Keep searchable PDF text even when optional image OCR
+                        // is unavailable or one sparse page cannot be rendered.
+                        $this->logWarning('eva_ai: sparse PDF page OCR skipped', [
+                            'file' => $file->getPath(),
+                            'pages' => count($sparsePages),
+                            'exception' => $error::class,
+                        ]);
+                    }
+                }
             }
             return $this->normalize((string)$txt);
         }
@@ -705,6 +728,23 @@ class IndexTextExtractor {
                 @unlink($tmpIn);
             }
         }
+    }
+
+    /** OCR a small number of PDF pages where Poppler found little or no text. */
+    private function sparsePdfPages(string $text): array {
+        if (!preg_match_all('/(?:^|\\n)\\[Page\\s+(\\d+)\\]\\s*\\n(.*?)(?=(?:\\n\\[Page\\s+\\d+\\]\\s*\\n)|\\z)/s', $text, $matches, PREG_SET_ORDER)) {
+            return [];
+        }
+        $pages = [];
+        foreach ($matches as $match) {
+            $page = (int)$match[1];
+            $content = preg_replace('/\\s+/u', '', $match[2]) ?? $match[2];
+            if ($page > 0 && mb_strlen($content) < self::SPARSE_PDF_TEXT_CHARS) {
+                $pages[] = $page;
+                if (count($pages) >= self::MAX_SPARSE_PDF_OCR_PAGES) break;
+            }
+        }
+        return $pages;
     }
 
     /**

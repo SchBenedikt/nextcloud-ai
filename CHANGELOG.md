@@ -2,6 +2,11 @@
 
 ## [Unreleased]
 
+### OCR sparse pages in mixed PDFs (1.20.21)
+
+- Keep normal PDF text extraction and add local OCR for up to eight pages with little or no extractable text.
+- Preserve the extracted PDF text if optional sparse-page OCR is unavailable; interactive chat still interrupts OCR promptly.
+
 ### Index more Office and OpenDocument variants (1.20.20)
 
 - Include macro-enabled Word, Excel and PowerPoint templates/slideshows in the supported ZIP/XML extraction path.

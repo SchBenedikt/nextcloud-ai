@@ -338,8 +338,10 @@ sudo -u www-data php occ config:list apps --app=eva_ai
 `ocr_language` defaults to `eng`; use installed Tesseract language codes such as
 `deu+eng` (at most four identifiers). Settings report missing Tesseract/Poppler.
 PNG, JPEG, TIFF, WebP, BMP and GIF images plus textless PDFs are processed
-locally. When OCR is enabled, DOCX, PPTX and OpenDocument files can also extract
-text from up to four embedded images (5 MiB and 10 seconds per image). Hard
+locally. Mixed PDFs also OCR up to eight pages where text extraction found
+fewer than 160 characters. When OCR is enabled, DOCX, PPTX and OpenDocument
+files can also extract text from up to four embedded images (5 MiB and 10
+seconds per image). Hard
 limits: 20 MiB input,
 30 PDF pages, 25 megapixels per input image, 2 MiB extracted text and 60 seconds
 per file. PDFs are rendered one page at a time at no more than 2000 pixels per
