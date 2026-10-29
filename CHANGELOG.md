@@ -2,6 +2,11 @@
 
 ## [Unreleased]
 
+### Update SQL chat settings per conversation (1.18.100)
+
+- Persist pinned/archive/folder/tag/scope/instruction/persona changes in the affected encrypted SQL conversation without materializing the user's chat history.
+- Preserve atomic folder creation and correctly recheck the SQL/AppData mode after taking the user fence.
+
 ### Prepare chat regeneration from one SQL conversation (1.18.99)
 
 - Validate the selected user message and revision, then persist its regeneration marker without loading other conversations or message bodies.
