@@ -2,6 +2,12 @@
 
 ## [Unreleased]
 
+### Expose end-to-end EVA request latency (1.18.85)
+
+- Record bounded, content-free durations for completed, failed and interrupted EVA requests, including retrieval, model and tool work.
+- Show per-outcome p50/p95/p99 values in the existing usage metrics view and CSV, and export seven-day aggregate quantiles through Nextcloud OpenMetrics.
+- Keep samples bounded to 5,000 and retain them under the existing 365-day usage-metrics cleanup and account-erasure path.
+
 ### Propagate chat correlation to configured services (1.18.84)
 
 - Send W3C `traceparent` headers with model inference, embeddings and optional Qdrant operations, and include request span IDs in EVA debug events.

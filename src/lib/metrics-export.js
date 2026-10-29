@@ -1,5 +1,5 @@
 /** Build a privacy-preserving CSV from the signed-in user's metrics response. */
-export function buildMetricsCsv({ days, totals = {}, byModel = [], daily = [], slowTools = [], generatedAt = new Date() } = {}) {
+export function buildMetricsCsv({ days, totals = {}, byModel = [], daily = [], slowTools = [], ragRequestDuration = {}, generatedAt = new Date() } = {}) {
 	const rows = [
 		['report', 'EVA AI usage metrics'],
 		['period_days', days ?? ''],
@@ -24,6 +24,10 @@ export function buildMetricsCsv({ days, totals = {}, byModel = [], daily = [], s
 		['slow_tool_calls_over_100ms'],
 		['tool', 'calls', 'average_duration_ms', 'maximum_duration_ms', 'errors'],
 		...slowTools.map(row => [row.tool, row.calls, row.avg_duration_ms, row.max_duration_ms, row.errors]),
+		[],
+		['end_to_end_eva_request_duration'],
+		['outcome', 'requests', 'p50_ms', 'p95_ms', 'p99_ms'],
+		...Object.entries(ragRequestDuration.outcomes || {}).map(([outcome, row]) => [outcome, row.count, row.p50_ms, row.p95_ms, row.p99_ms]),
 	]
 
 	const cell = value => {

@@ -40,6 +40,7 @@ class RagService {
     /** @var list<array{url:string,title:string}> */
     private array $toolImages = [];
     private TraceContext $traceContext;
+    private ?UsageMetrics $usageMetrics;
 
     public function __construct(
         private AppConfig $config,
@@ -53,9 +54,11 @@ class RagService {
         private IFactory $l10nFactory,
         private TalkTranscriptService $talkTranscripts,
         private LoggerInterface $logger,
-        ?TraceContext $traceContext = null
+        ?TraceContext $traceContext = null,
+        ?UsageMetrics $usageMetrics = null
     ) {
         $this->traceContext = $traceContext ?? new TraceContext();
+        $this->usageMetrics = $usageMetrics;
     }
 
     /**
@@ -94,18 +97,19 @@ class RagService {
 	public function ask(ChatRequest $request): array {
 		return $this->traceContext->run(function () use ($request): array {
             $started = hrtime(true);
-            $failed = true;
+            $outcome = 'error';
             try {
                 $result = $this->askInTrace($request);
-                $failed = ($result['error'] ?? null) !== null;
+                $outcome = ($result['error'] ?? null) === null ? 'complete' : 'error';
                 return $result;
             } finally {
+                $this->usageMetrics?->recordRagRequest($request->userId, (int)round((hrtime(true) - $started) / 1_000_000), $outcome);
                 try {
                     $this->logger->debug('eva_ai: chat request timings', [
                         'trace_id' => $this->traceContext->id(),
                         'span_id' => $this->traceContext->spanId(),
                         'total_ms' => (hrtime(true) - $started) / 1_000_000,
-                        'failed' => $failed,
+                        'failed' => $outcome !== 'complete',
                     ]);
                 } catch (\Throwable) {
                     // Diagnostics must not affect a successful chat response.
@@ -261,14 +265,25 @@ class RagService {
 	public function askStream(ChatRequest|string $request, ?string $legacyMessage = null, ?array $legacyHistory = null, ?string $legacyScopePath = null, ?string $legacyInstructions = null, ?string $legacyPersona = null): \Generator {
 		return $this->traceContext->runGenerator(function () use ($request, $legacyMessage, $legacyHistory, $legacyScopePath, $legacyInstructions, $legacyPersona): \Generator {
             $started = hrtime(true);
+            $outcome = 'incomplete';
+            $userId = $request instanceof ChatRequest ? $request->userId : $request;
             try {
-                yield from $this->askStreamInTrace($request, $legacyMessage, $legacyHistory, $legacyScopePath, $legacyInstructions, $legacyPersona);
+                foreach ($this->askStreamInTrace($request, $legacyMessage, $legacyHistory, $legacyScopePath, $legacyInstructions, $legacyPersona) as $line) {
+                    $event = json_decode($line, true);
+                    if (is_array($event)) {
+                        if (in_array($event['type'] ?? '', ['done', 'confirmation'], true)) $outcome = 'complete';
+                        elseif (($event['type'] ?? '') === 'error') $outcome = 'error';
+                    }
+                    yield $line;
+                }
             } finally {
+                $this->usageMetrics?->recordRagRequest($userId, (int)round((hrtime(true) - $started) / 1_000_000), $outcome);
                 try {
                     $this->logger->debug('eva_ai: streamed chat request timings', [
                         'trace_id' => $this->traceContext->id(),
                         'span_id' => $this->traceContext->spanId(),
                         'total_ms' => (hrtime(true) - $started) / 1_000_000,
+                        'outcome' => $outcome,
                     ]);
                 } catch (\Throwable) {
                     // Diagnostics must not affect a streamed chat response.

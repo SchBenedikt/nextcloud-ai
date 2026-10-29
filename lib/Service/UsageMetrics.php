@@ -122,6 +122,29 @@ class UsageMetrics {
 		}
 	}
 
+	/** Record one whole EVA request without retaining its prompt or response. */
+	public function recordRagRequest(string $userId, int $durationMs, string $outcome): void {
+		if ($userId === '' || !in_array($outcome, ['complete', 'error', 'incomplete'], true)) return;
+		try {
+			$qb = $this->db->getQueryBuilder();
+			$qb->insert('eva_ai_usage')->values([
+				'user_id' => $qb->createNamedParameter($userId),
+				'created_at' => $qb->createNamedParameter(time(), IQueryBuilder::PARAM_INT),
+				'provider' => $qb->createNamedParameter('internal'),
+				'model' => $qb->createNamedParameter($outcome),
+				'operation' => $qb->createNamedParameter('rag_request'),
+				'input_tokens' => $qb->createNamedParameter(0, IQueryBuilder::PARAM_INT),
+				'output_tokens' => $qb->createNamedParameter(0, IQueryBuilder::PARAM_INT),
+				'total_tokens' => $qb->createNamedParameter(0, IQueryBuilder::PARAM_INT),
+				'estimated' => $qb->createNamedParameter(0, IQueryBuilder::PARAM_INT),
+				'duration_ms' => $qb->createNamedParameter(max(0, $durationMs), IQueryBuilder::PARAM_INT),
+			])->executeStatement();
+		} catch (\Throwable $e) {
+			// Optional telemetry must never turn an answer or stream into an error.
+			$this->logger->debug('eva_ai request duration could not be stored', ['exception' => $e->getMessage()]);
+		}
+	}
+
 	/** Record only slow tool calls; never persist arguments or returned data. */
 	public function recordTool(?string $userId, string $tool, int $durationMs, bool $ok): void {
 		if ($userId === null || $userId === '' || $durationMs < 100) return;
@@ -182,6 +205,7 @@ class UsageMetrics {
 		$byModel = [];
 		$daily = [];
 		$slowTools = [];
+		$ragRequestDuration = ['samples' => 0, 'outcomes' => []];
 		try {
 			$qb = $this->db->getQueryBuilder();
 			$qb->select('provider', 'model')
@@ -252,7 +276,38 @@ class UsageMetrics {
 		} catch (\Throwable $e) {
 			$this->logger->debug('eva_ai usage metrics unavailable', ['exception' => $e->getMessage()]);
 		}
-		return ['days' => $days, 'totals' => $totals, 'by_model' => $byModel, 'daily' => $daily, 'slow_tools' => $slowTools];
+		try {
+			$qb = $this->db->getQueryBuilder();
+			$qb->select('model', 'duration_ms')->from('eva_ai_usage')
+				->where($qb->expr()->eq('user_id', $qb->createNamedParameter($userId)))
+				->andWhere($qb->expr()->eq('operation', $qb->createNamedParameter('rag_request')))
+				->andWhere($qb->expr()->gte('created_at', $qb->createNamedParameter($since, IQueryBuilder::PARAM_INT)))
+				->andWhere($qb->expr()->gt('duration_ms', $qb->createNamedParameter(0, IQueryBuilder::PARAM_INT)))
+				->orderBy('created_at', 'DESC')->setMaxResults(5000);
+			$result = $qb->executeQuery();
+			$samples = ['complete' => [], 'error' => [], 'incomplete' => []];
+			try {
+				while (($row = $result->fetch()) !== false) {
+					$outcome = (string)$row['model'];
+					if (isset($samples[$outcome])) $samples[$outcome][] = max(0, (int)$row['duration_ms']);
+				}
+			} finally { $result->closeCursor(); }
+			foreach ($samples as $outcome => $values) {
+				if ($values === []) continue;
+				sort($values, SORT_NUMERIC);
+				$count = count($values);
+				$quantiles = [];
+				foreach (['p50' => 0.5, 'p95' => 0.95, 'p99' => 0.99] as $name => $quantile) {
+					$quantiles[$name . '_ms'] = $values[max(0, (int)ceil($quantile * $count) - 1)];
+				}
+				$ragRequestDuration['samples'] += $count;
+				$ragRequestDuration['outcomes'][$outcome] = ['count' => $count] + $quantiles;
+			}
+		} catch (\Throwable $e) {
+			$this->logger->debug('eva_ai request duration metrics unavailable', ['exception' => $e->getMessage()]);
+		}
+		$ragRequestDuration['outcomes'] = (object)$ragRequestDuration['outcomes'];
+		return ['days' => $days, 'totals' => $totals, 'by_model' => $byModel, 'daily' => $daily, 'slow_tools' => $slowTools, 'rag_request_duration' => $ragRequestDuration];
 	}
 
 	/** @return array<string,int> */

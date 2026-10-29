@@ -104,6 +104,18 @@ writes and restores the user configuration just to test model roles. Cancelled
 HTTP requests are not retried. Independent settings resources are split into
 focused composables and loaded on demand.
 
+## End-to-end request latency
+
+Whole EVA request latency is recorded separately from provider and retrieval
+durations. Normal requests and streamed requests measure from the start of
+`RagService` through final answer, confirmation, error or interrupted stream;
+the sample includes EVA retrieval, model and tool work, but not browser/network
+time before the request reaches EVA. Values are exposed as per-outcome p50/p95/p99
+in the existing usage metrics view and CSV, and as seven-day OpenMetrics gauges
+from a bounded 5,000-sample query. Only a fixed outcome, user ownership, time
+and duration are stored. This is operational latency telemetry, not a frozen
+corpus benchmark or a Prometheus histogram.
+
 ## Backend retrieval timing baseline
 
 Searcher writes an optional debug-level `eva_ai: retrieval timings` event through
