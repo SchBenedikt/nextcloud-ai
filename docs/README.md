@@ -27,6 +27,7 @@ reference pages describe the complete configuration and API surface.
 - [Quality evaluation](QUALITY.md): synthetic chunking/retrieval regression method and thresholds.
 - [Retrieval benchmark](RETRIEVAL-BENCHMARK.md): frozen corpus, exact reference and ranking metrics.
 - [Backend migration ledger](BACKEND-ROADMAP.md): current implementation stages, native integration and rollout gates.
+- [Indexing architecture decision](INDEXING-ARCHITECTURE.md): SQL-first generation indexing by default, with Qdrant as an optional scale adapter.
 - [Vector storage](VECTOR-STORAGE.md): generation identity, additive schema and operating boundaries.
 - [Generation embeddings](GENERATION-EMBEDDINGS.md): pinned provider/model contracts, proven cache reuse and explicit native checks.
 - [Generation chunks](GENERATION-CHUNKS.md): separate SQL rows, source stamps and atomic upsert intent.

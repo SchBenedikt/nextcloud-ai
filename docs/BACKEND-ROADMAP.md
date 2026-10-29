@@ -5,13 +5,15 @@ Source: [*Technische Backend-Analyse von EVA AI*](reports/eva-backend-analysis.p
 accounts for the workspace stack #698–#699. Vendor pricing, product lifecycle
 claims and estimated latency in the report are not measured EVA results.
 
-Installation requirement confirmed by the user: installing EVA must remain
-sufficient to use its existing storage path. SQL retrieval is the zero-additional-
-service default. Qdrant is an explicitly configured optional scale backend;
-missing Qdrant configuration must not block app installation, upgrades, chat or
-SQL indexing. Never start an external service or transmit existing documents to
-one merely because the app was installed. Deployment automation and operating
-instructions must support both standalone-app and optional-vector-store modes.
+Installation decision confirmed by the user (29 October 2026): the new,
+generation-based indexing path is EVA's standard path. It must run with
+Nextcloud's configured SQL database and supported embedding provider, without
+requiring another service. The old legacy SQL path remains available during
+migration and as rollback until the new path passes its cutover gates. Qdrant
+remains an explicitly configured optional scale adapter, never a prerequisite.
+Installing or upgrading EVA must not start an external service or transmit
+existing documents to one. Remote transfer requires a separate administrator
+action and explicit consent. See [the indexing architecture decision](INDEXING-ARCHITECTURE.md).
 
 ## Report coverage and evidence
 
@@ -23,13 +25,13 @@ The implementation entries further below record the actual delivered slices.
 
 | PDF pages | Finding or recommendation | Implementation stage and remaining evidence |
 | --- | --- | --- |
-| 1, 4–5, 7 | PHP dense full scan, JSON vectors and SQL LIKE bottlenecks | 03, 05–12: measure the baseline, then replace candidates through a verified optional backend. SQL remains the installation default. |
+| 1, 4–5, 7 | PHP dense full scan, JSON vectors and SQL LIKE bottlenecks | 03, 05–12: measure the baseline, then make generation-based indexing and bounded SQL retrieval the standard path; Qdrant remains optional. |
 | 2, 9–10, 20–21 | Engine comparison, cost estimates and deployment choices | 07, 14: Qdrant is the selected optional adapter; document single-node/managed/HA operations. Alternative engines and estimated prices are decision inputs, not a requirement to ship five adapters or measured savings. |
 | 3, 16 | P0 main protection, database matrix and security checks | 04, 14: endpoint boundary implemented in the stack; administrative branch protection and executed portability/security gates remain pending. Targeted tests resumed for the local recovery; the full portability/security matrix remains open. |
 | 6, 8, 18 | Provider contracts, encrypted secrets, SSRF/DNS/TLS and local-service approvals | 02, 04, 07, 14: use native HTTP guards and explicit admin policy on every transfer. Hosted-provider contract tests remain opt-in; no account credentials are needed for installation. |
-| 7–8, 11–12 | Immutable embedding generations, tenant filters, SQL hydration and transactional outbox | 06–09: additive schema, isolated chunk journal, point delivery, persisted verification and a manual shadow probe exist; portability, adversarial and soak evidence remain open. |
+| 7–8, 11–12 | Immutable embedding generations, tenant filters, SQL hydration and transactional outbox | 06–09: additive schema, isolated chunk journal, point delivery, persisted verification and a manual shadow probe exist; default SQL generation writes/search, portability, adversarial and soak evidence remain open. |
 | 9 | Major dependency upgrades require compatibility evidence | 14: assess PHPUnit/Symfony upgrades separately; do not merge them merely to clear Dependabot notifications. |
-| 13–14 | Resumable backfill, immutable model rebuild, activation pointer, shadow/canary rollout and rollback | 09–11: bounded build, verification and manual shadow comparison exist; production shadow/soak, guarded activation and rollback evidence remain pending. |
+| 13–14 | Resumable backfill, immutable model rebuild, activation pointer, shadow/canary rollout and rollback | 09–11: bounded build, verification and manual shadow comparison exist; production shadow/soak, guarded activation and rollback evidence remain pending. The new SQL generation path is intended to become the default after those gates; Qdrant is not required for cutover. |
 | 15 | Native hybrid BM25/RRF, phrases, scope and diversification | 12: preserve current relevance behavior before enabling backend hybrid retrieval; compare quality against both exact and current hybrid baselines. |
 | 7, 15, 22 | ChatStore hot-file writes, normalized encrypted SQL messages and distributed chat coordination | 13–14: independent additive chat migration, recovery and erasure; lock lifecycle fix is only the immediate consecutive-request repair. |
 | 15–18 | OTel correlation, provider/tool/DB/lock metrics, cache outages, restore/delete drills and domain extraction | 03, 14: retrieval stage timing is available; exporter, cross-service traces, drills and controller decomposition remain pending. |
@@ -58,9 +60,10 @@ The implementation entries further below record the actual delivered slices.
 ## Rules for every dependent PR
 
 Each row below is a separate reviewable change based on the preceding completed
-branch. PR descriptions name the parent and prerequisites. SQL and Nextcloud VFS
-remain authoritative. No vector service is enabled implicitly. Existing encrypted
-secrets, account isolation, tool policy and cancellation semantics must survive.
+branch. PR descriptions name the parent and prerequisites. Nextcloud SQL and VFS
+remain authoritative. The generation-based SQL implementation is the default;
+no vector service is enabled implicitly. Existing encrypted secrets, account
+isolation, tool policy and cancellation semantics must survive.
 
 Use `benedikt.schaechner@web.de` for author/committer and authenticated GitHub
 account `SchBenedikt` for pushes. Publish PRs, never push directly to main.
@@ -81,12 +84,13 @@ protection and required checks remain administrative follow-up.
 | 03 | Retrieval stage timings without prompt or content logging | 02 | Separate embedding, candidates, hydration, scope, ranking and total time; expose candidate count and backend. Logging optional. No ranking changes. |
 | 04 | Provider egress policy | 03 | Admin-owned policy for private/loopback services; deny metadata/link-local targets; reject URL credentials, query and fragment; validate all chat, model, image and audio paths. Preserve Nextcloud DNS validation; no blanket allow-local bypass. Opt-in rollout with migration notes for local servers. |
 | 05 | Reproducible retrieval benchmark | 04 | Frozen corpus and qrels; semantic-only, exact IDs/names, mixed, phrase, diversification, scope and tenant-adversarial queries. Exact baseline and current EVA baseline. Report quality and latency separately. |
-| 06 | VectorStore contract, generation entities and additive schema | 05 | Generation pins user, provider identity, endpoint fingerprint, model, dimension, metric, chunk settings and schema. States building/active/retired/failed. SQL legacy remains default. No inferred model identity for old chunks. |
-| 07 | Qdrant adapter and deployment configuration | 06 | Server-only encrypted credentials, TLS for remote service, bounded timeouts/batches, stable point IDs, indexed tenant/generation/document/source payload. Every query forces server-side tenant AND generation filters. Return IDs/scores, hydrate text from owned SQL rows. Fail closed on dimension/tenant mismatch. |
-| 08 | Transactional vector outbox and worker | 07 | Chunk mutation and event in the same SQL transaction, including document replace, reset, source deletion and account erasure. Claims/leases, retries/backoff, dead letters and idempotent versions prevent stale resurrection. Legacy reads remain default. |
+| 06 | VectorStore contract, generation entities and additive schema | 05 | Generation pins user, provider identity, endpoint fingerprint, model, dimension, metric, chunk settings and schema. States building/active/retired/failed. Define SQL generation storage as first-class; old rows retain unknown provenance. |
+| 07 | SQL generation store and transactional indexing pipeline | 06 | New and changed files enter durable generation-aware SQL writes through bounded background jobs. SQL remains canonical and supports every Nextcloud database. Cache, tenant/source fences, cancellation and erasure remain enforced. No external transfer. |
+| 08 | Transactional mutation journal and worker lifecycle | 07 | Chunk mutation and durable work intent commit together for document replace, reset, source deletion and account erasure. Claims/leases, retries/backoff and idempotent versions prevent stale resurrection. Keep legacy reads for rollback while shadowing. |
 | 09 | Resumable backfill and generation verification | 08 | Bounded keyset batches, durable cursor/heartbeat, cancel/resume, explicit model provenance, cache reuse. Compare expected SQL IDs and point IDs, dimensions and sampled scores. Activation must reject unverified or incomplete generations. |
+| 09a | Optional Qdrant adapter and explicit transfer setup | 06, 08 | Server-only encrypted credentials, TLS for remote service, bounded timeouts/batches, stable point IDs, indexed tenant/generation/document/source payload. Every query forces server-side tenant AND generation filters. Hydrate text from owned SQL rows. SQL remains independently usable when Qdrant is absent or unavailable. |
 | 10 | Shadow reads and comparison telemetry | 09 | SQL serves answers. The current slice is an explicit admin probe with bounded query/provider/vector/SQL work; production shadow sampling and soak remain pending. Compare recall, ranking, scope, tenant isolation and errors. No answer-content logs. |
-| 11 | Canary and primary dense vector reads | 10 | Explicit per-instance/per-user rollout. Bounded error behavior, privacy-safe SQL hydration and observable fallback. Keep SQL embeddings and SQL writes for at least a release cycle. One-flag rollback, no destructive migration. |
+| 11 | Canary and primary generation-based reads | 10 | Make verified SQL-generation retrieval the default first; allow an explicit Qdrant canary only where configured. Bounded errors, privacy-safe SQL hydration and observable fallback. Keep legacy rows and a one-flag rollback for at least a release cycle; no destructive migration. |
 | 12 | Native hybrid retrieval | 11 | Port BM25/RRF while preserving filename/path context, quoted phrases, scope and document diversification. Version-pin backend capabilities and compare against current hybrid baseline before activation. Dense-only rollback available. |
 | 13 | Normalized encrypted chat/message SQL storage | 12 | Additive tables, per-message writes, indexed metadata pagination/retention, transactional migration with checkpoint, mixed-version recovery and account erasure. Preserve encryption; do not add plaintext search indexes for encrypted messages. Separate feature flag and backup/restore runbook. |
 | 14 | Operational hardening and portability | 13 | PostgreSQL/MariaDB lifecycle coverage; metrics exporter/trace correlation; restore and delete drills; sustained soak; cache outage/rate-limit semantics; domain-controller extraction; dependency/SAST/SBOM policy. Administrative main protection requires its own explicit rollout. |
@@ -102,7 +106,7 @@ for infrastructure concerns.
 | Backend stage | Matching interface deliverable |
 | --- | --- |
 | 07–08 | Shared offline storage status in EVA administration and Nextcloud administration settings: actual search mode, connection configuration, cleanup state and actionable queue counts. Errors remain unknown, never a healthy zero. No automatic external probes. |
-| 08–09 | Native administrator configuration with write-only credentials, explicit connection test, bounded operation inspection/retry, build progress and cancel/resume once the corresponding guarded backend APIs exist. Separate connection setup from migration and activation. |
+| 08–09 | Native administrator configuration with write-only credentials for optional remote storage, explicit connection test, bounded operation inspection/retry, build progress and cancel/resume once the corresponding guarded backend APIs exist. Keep default setup simple; separate optional connection setup from migration and activation. |
 | 02, 09 | Embedding provider/model selection separate from chat provider, immutable generation summary and clear rebuild requirement. Expose only implemented adapters. |
 | 10–11 | Readable SQL/shadow/canary/primary status and rollback control, verification blockers and last comparison. Advanced migration details belong in disclosure panels, not the chat composer. |
 | 12 | Consistent search/source states and understandable partial failure/fallback messages. Preserve the focused ChatGPT/Talk-like chat layout and native controls. |
