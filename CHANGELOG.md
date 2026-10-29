@@ -2,6 +2,11 @@
 
 ## [Unreleased]
 
+### One-pass lexical BM25 scoring (1.18.41)
+
+- Tokenize each bounded candidate once and reuse exact Unicode term frequencies across query terms, avoiding repeated substring scans and partial-word matches.
+- Frozen-corpus quality and latency comparison remain pending.
+
 ### Cached per-chunk vector magnitudes (1.18.40)
 
 - Persist exact vector magnitudes beside chunks and reuse them during SQL cosine ranking; backfill existing rows gradually in bounded background work.

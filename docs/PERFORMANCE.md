@@ -15,6 +15,23 @@ but does not remove the O(N × dimension) dot-product scan or establish a latenc
 improvement. A portable ANN backend and representative benchmarks remain needed
 for large indexes.
 
+## One-pass lexical scoring
+
+Within the bounded retrieval candidate pool, EVA now tokenizes each chunk body
+once and counts only the query's exact Unicode word tokens. Previously each
+query term rescanned every candidate body with substring counting, so a query
+with several terms revisited the same text repeatedly and could match partial
+words. This lowers repeated text work and makes body term frequency match the
+query tokenizer. It does not remove the SQL `LIKE` candidate prefilter or the
+dense SQL scan; quality and latency still need measurement against a frozen
+corpus.
+
+A local microbenchmark over 8,000 synthetic 896-byte chunks and 12 query terms
+reported a 30.3 ms median for exact-token extraction versus 40.0 ms for repeated
+substring counting (7 runs, same PHP process). This isolates term-frequency
+extraction; it does not include SQL, fusion, hydration, embeddings, or a real
+corpus and is not a full-search latency claim.
+
 ## Home
 
 Home receives the navigation's chat list as props. It makes no separate `stats`

@@ -45,6 +45,13 @@ The implementation entries further below record the actual delivered slices.
 - `Searcher::loadCandidates()` visits the complete tenant index in 2,000-row
   pages for dense candidates above 8,000 chunks. Ranking remains PHP cosine,
   BM25, quoted-phrase boost, reciprocal rank fusion and document diversification.
+- BM25 candidate-body frequency now tokenizes each candidate once and uses
+  exact Unicode word frequencies for all query terms. It avoids rescanning each
+  chunk body for every term; the SQL LIKE prefilter and full dense scan remain.
+  This changes substring matches inside larger words to exact word matches, so
+  ranking quality needs frozen-corpus comparison. A local synthetic term-count
+  microbenchmark measured 30.3 ms versus 40.0 ms for 8,000 896-byte chunks and
+  12 terms (median of 7); this is not a full retrieval or SQL latency result.
 - Large-index SQL dense scans now fetch only chunk IDs and embedding JSON; full
   content/provenance rows are loaded only for the bounded cosine top set. This
   reduces database result transfer and PHP row materialization, but does not
