@@ -153,7 +153,7 @@ rows; that action never touches the original files.
 | `talk_classify_all` | P | `0` | `1`/`0` | – | `0` = heuristic pre-filter decides before any LLM call (Issue #77, default); `1` = classify every room message via the LLM (legacy, higher cost/privacy exposure). |
 | `weather_tool_enabled` | I | `1` | `1`/`0` | – | **Admin only.** `0` disables the weather tool (external Open-Meteo requests) everywhere (Issue #69). Read and written through the admin settings API only, so a regular user cannot flip it. |
 | `voice_input_available` | I | `0` | `1`/`0` | – | **Admin only.** Master switch for browser speech recognition. Users must also enable their personal `voice_input_enabled` setting; turning this off disables dictation for everyone. |
-| `index_enrolled` | P/S | `0` | `1`/`0` | – | Per-user opt-in for recurring background indexing. |
+| `index_enrolled` | P/S | `1` | `1`/`0` | – | Recurring background indexing is enabled by default after the user starts indexing; set `0` to pause it. Installation alone does not start a file scan. |
 | `chat_retention_days` | P | `0` | `0`–`3650` | days | Automatically delete chats not used for this many days (`0` = keep everything). The daily `ChatCleanupJob` applies it per user. |
 
 ### Web search
@@ -236,7 +236,7 @@ from an instance-wide value.
 | `index_mode` | `idle`/`running`/`stopping` display state. |
 | `index_cancel_requested` | `1` when the user asked to stop a running pass. |
 | `index_run_id` | Unique id of the current/last pass. |
-| `index_enrolled` | Opt-in for recurring background indexing (see above). |
+| `index_enrolled` | Whether recurring background indexing is active; defaults to enabled and can be explicitly paused (see above). |
 | `knowledge_initialized` | `1` once the per-user `KNOWLEDGE.md` has been created. |
 
 ### Global scheduler state (G)

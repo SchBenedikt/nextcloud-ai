@@ -71,13 +71,14 @@ the optional remote build requires separate administrator consent. Specifically:
   model. Missing metadata, an empty generation with legacy content, or pending
   source mutations makes search fall back to legacy SQL. Legacy data remains
   available for recovery.
-- Automatic bootstrap requires explicit personal indexing enrollment. The
-  recurring index pass also checks settled legacy indexes, using one uncached
+- Recurring local indexing is enabled by default after a user starts indexing;
+  the user can explicitly pause it. The recurring index pass also checks
+  settled legacy indexes, using one uncached
   public-text probe when no SQL generation exists; it never guesses model
   provenance from cache-only batches or sends indexed content for discovery.
   Provider failures are retried after a six-hour per-user cooldown. Qdrant
   selection is left untouched, and SQL is the only backend selected here.
-- SQL verification is queued for enrolled users after a staged build. Failed
+- SQL verification is queued for users with recurring indexing enabled after a staged build. Failed
   or cancelled verification remains explicit. A current successful
   verification can activate the SQL generation automatically. A fully
   verified Qdrant generation can be activated only by an explicit administrator

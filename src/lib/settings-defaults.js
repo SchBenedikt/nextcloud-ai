@@ -39,7 +39,7 @@ export function createSettingsDefaults() {
 		talk_write_enabled: '0',
 		talk_index_max_rooms: '20',
 		talk_index_max_messages: '200',
-		index_enrolled: '0',
+		index_enrolled: '1',
 		scope_path: '',
 		talk_history_size: '50',
 		talk_bot_trigger: 'Eva',
