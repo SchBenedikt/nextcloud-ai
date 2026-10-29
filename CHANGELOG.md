@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Extract chat history endpoints from the main API controller (1.20.38)
+
+- Move owner-scoped chat listing, paging, creation, deletion and detail reads into a focused controller while preserving route URLs, request validation, storage error responses and legacy connector-confirmation normalization.
+
 ### Use reliable thumbnails in image-search tool output (1.20.37)
 
 - Generate the shared image-search Markdown from provider previews, with the original picture URL only as a fallback, so Talk and other tool consumers can display results reliably too.

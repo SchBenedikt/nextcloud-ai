@@ -183,6 +183,11 @@ live VFS access check are served by `FileContextController`, keeping the
 Nextcloud Files flow isolated while sharing the same per-user chat lock and
 rate-limit policy. The existing OCS URLs remain stable.
 
+`ChatHistoryController` owns chat listing, keyset/offset paging, creation,
+detail reads, and deletion. It keeps chat history owner-scoped and preserves
+the existing OCS routes and storage error mapping. The main `ApiController`
+continues to own chat generation, streaming, and turn mutations for now.
+
 `IndexController` owns user-scoped full, Mail, Talk and reset indexing requests.
 It claims the bounded run before scheduling `IndexRequestJob`, retains the
 worker-owned cancellation transition, and enrolls users on a successful
