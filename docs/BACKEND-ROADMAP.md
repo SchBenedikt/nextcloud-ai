@@ -586,3 +586,11 @@ PHP syntax, app XML, and diff checks passed locally; tests, installed retry
 drills, cross-database runs, concurrency/restore drills, production evidence,
 and remote-vector confirmation remain pending. See
 [ACCOUNT-ERASURE.md](ACCOUNT-ERASURE.md).
+
+### Backup and restore operating guidance
+
+Added [RECOVERY.md](RECOVERY.md) with a consistent SQL/AppData/Nextcloud
+configuration backup boundary, isolated restore sequence, encrypted chat and
+cleanup retry checks, and optional Qdrant recovery handling. This makes the
+rehearsal steps reviewable; no full restore, deletion, cluster, or cross-database
+rehearsal has been run, so all corresponding release gates remain open.
