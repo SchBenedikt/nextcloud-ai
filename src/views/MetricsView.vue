@@ -8,6 +8,13 @@
 		<div v-if="loading" class="metrics-loading">{{ $t('Loading metrics…') }}</div>
 		<template v-else-if="hasCurrentData">
 			<section class="metrics-cards" :aria-label="$t('Usage totals')"><div v-for="card in cards" :key="card.label" class="metrics-card"><span>{{ card.label }}</span><strong>{{ card.money ? formatMoney(card.value) : format(card.value) }}</strong><small>{{ card.hint }}</small></div></section>
+			<section v-if="ragRequestDuration.samples > 0" class="metrics-panel">
+				<h2>{{ $t('End-to-end EVA request time') }}</h2>
+				<p class="metrics-note">{{ $t('Time inside EVA from request processing through a final answer, confirmation or error. Includes retrieval, model and tool work.') }}</p>
+				<div class="metrics-table-scroll"><table><thead><tr><th>{{ $t('Outcome') }}</th><th>{{ $t('Requests') }}</th><th>p50</th><th>p95</th><th>p99</th></tr></thead><tbody>
+					<tr v-for="row in ragRequestOutcomes" :key="row.outcome"><td>{{ row.label }}</td><td>{{ format(row.count) }}</td><td>{{ format(row.p50_ms) }} ms</td><td>{{ format(row.p95_ms) }} ms</td><td>{{ format(row.p99_ms) }} ms</td></tr>
+				</tbody></table></div>
+			</section>
 			<section v-if="totals.total_tokens" class="metrics-insights" :aria-label="$t('Usage breakdown')">
 				<div class="metrics-panel token-split"><h2>{{ $t('Total tokens') }}</h2><div class="split-chart" :style="{ '--input': inputShare + '%' }" aria-hidden="true"><span>{{ format(totals.total_tokens) }}</span></div><div class="chart-legend"><span><i class="input-dot"></i>{{ $t('Input tokens') }} · {{ inputShare }}%</span><span><i class="output-dot"></i>{{ $t('Output tokens') }} · {{ 100 - inputShare }}%</span></div></div>
 				<div class="metrics-panel"><h2>{{ $t('Top models by token use') }}</h2><div class="model-bars"><div v-for="row in byModel.slice(0, 5)" :key="row.provider + row.model" class="model-bar"><span :title="row.provider + ' / ' + row.model">{{ row.provider }} / {{ row.model }}</span><div><i :style="{ width: (Number(row.total_tokens || 0) / maxModel * 100) + '%' }"></i></div><strong>{{ format(row.total_tokens) }}</strong></div></div></div>
@@ -54,6 +61,12 @@ export default {
 		let requestId = 0; let refreshTimer = null; let adminUsersChecked = false
 		const hasCurrentData = computed(() => dataDays.value === days.value)
 		const totals = computed(() => data.value.totals || {}); const byModel = computed(() => data.value.by_model || []); const daily = computed(() => data.value.daily || []); const slowTools = computed(() => data.value.slow_tools || [])
+		const ragRequestDuration = computed(() => data.value.rag_request_duration || { samples: 0, outcomes: {} })
+		const ragRequestOutcomes = computed(() => Object.entries(ragRequestDuration.value.outcomes || {}).map(([outcome, row]) => ({
+			outcome,
+			label: ({ complete: t('Completed'), error: t('Error'), incomplete: t('Interrupted') })[outcome] || t('Other'),
+			...row,
+		})))
 		const maxDaily = computed(() => Math.max(1, ...daily.value.map(row => Number(row.total_tokens) || 0))); const maxModel = computed(() => Math.max(1, ...byModel.value.map(row => Number(row.total_tokens) || 0))); const inputShare = computed(() => Math.round((Number(totals.value.input_tokens || 0) / Math.max(1, Number(totals.value.total_tokens || 0))) * 100)); const format = value => Number(value || 0).toLocaleString()
 		const estimatedCost = computed(() => byModel.value.reduce((sum, row) => sum + (Number(row.estimated_cost_usd) || 0), 0))
 		const priceKey = row => JSON.stringify([row.provider, row.model])
@@ -133,7 +146,7 @@ export default {
 		}
 		const downloadCsv = () => {
 			if (!hasCurrentData.value) return
-			const content = buildMetricsCsv({ days: days.value, totals: totals.value, byModel: byModel.value, daily: daily.value, slowTools: slowTools.value })
+			const content = buildMetricsCsv({ days: days.value, totals: totals.value, byModel: byModel.value, daily: daily.value, slowTools: slowTools.value, ragRequestDuration: ragRequestDuration.value })
 			const url = URL.createObjectURL(new Blob([content], { type: 'text/csv;charset=utf-8' }))
 			const link = document.createElement('a')
 			link.href = url
@@ -157,7 +170,7 @@ export default {
 			document.removeEventListener('visibilitychange', refreshWhenVisible)
 			requestId++
 		})
-		return { days, loading, error, hasCurrentData, totals, byModel, daily, slowTools, adminUsers, selectedUser, canFilterUsers, maxDaily, maxModel, inputShare, cards, format, formatMoney, priceKey, ensurePrice, savingPricing, pricingStatus, savePricing, load, downloadCsv, printReport, updatedLabel }
+		return { days, loading, error, hasCurrentData, totals, byModel, daily, slowTools, ragRequestDuration, ragRequestOutcomes, adminUsers, selectedUser, canFilterUsers, maxDaily, maxModel, inputShare, cards, format, formatMoney, priceKey, ensurePrice, savingPricing, pricingStatus, savePricing, load, downloadCsv, printReport, updatedLabel }
 	},
 }
 </script>

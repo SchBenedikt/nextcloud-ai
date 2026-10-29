@@ -18,6 +18,7 @@ create a separate public metrics endpoint or background poller.
 | `nextcloud_eva_ai_operation_duration_ms` | `operation`, `quantile` | Approximate recent provider chat-completion and slow-tool duration quantiles. |
 | `nextcloud_eva_ai_provider_completion_duration_ms` | `provider`, `quantile` | Approximate successful provider completion latency by fixed provider type. |
 | `nextcloud_eva_ai_retrieval_stage_duration_ms` | `backend`, `stage`, `quantile` | Approximate retrieval-stage duration quantiles on successful chat requests. |
+| `nextcloud_eva_ai_rag_request_duration_ms` | `outcome`, `quantile` | Approximate end-to-end EVA request duration quantiles for completed, failed and interrupted requests. |
 | `nextcloud_eva_ai_embedding_batch_duration_ms` | `provider`, `result`, `quantile` | Approximate indexing/generation embedding batch latency; chat query embedding is already measured in retrieval stages. |
 | `nextcloud_eva_ai_embedding_batch_samples` | `provider`, `result` | Success/error counts in the bounded embedding sample. |
 | `nextcloud_eva_ai_embedding_cache_hit_ratio` | `provider` | Cache hits divided by hits plus misses in the bounded sample. |
@@ -57,6 +58,17 @@ metrics aggregate by its fixed operation and state allowlists. Nextcloud's
 renderer does not emit histogram `_bucket`, `_sum` or `_count` series. These
 families therefore expose bucket counts as gauges rather than claiming to be
 native Prometheus histograms.
+
+Whole-request duration starts when `RagService` begins processing a normal or
+streamed chat request and ends when it returns a final response, confirmation,
+error or interrupted stream. It includes retrieval, model calls and tool work;
+it excludes browser/network time before EVA receives the request. Each sample
+stores only the owning user ID, a fixed outcome, a timestamp and integer
+duration in the existing usage table. The user dashboard reads at most 5,000
+recent requests total; OpenMetrics reads at most 5,000 rows per outcome from
+the preceding seven days. No user or chat labels are exported.
+The dashboard shows the requesting account's values and never mixes in other
+accounts when an administrator selects a user.
 
 ## Privacy and availability
 
