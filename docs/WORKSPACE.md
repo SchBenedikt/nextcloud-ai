@@ -17,6 +17,8 @@ briefing history or personal knowledge.
 
 Core fields and account tokens stay as unsaved edits until you select **Save
 changes**. The header shows whether changes are pending, saving, or confirmed.
+Pending values survive navigation between EVA views. Leaving or reloading the
+Nextcloud page prompts before discarding them.
 Validation errors appear above the selected section. Provider profiles are
 saved explicitly with their keys in the same request. Cancelling their dialog
 does not activate the draft.
