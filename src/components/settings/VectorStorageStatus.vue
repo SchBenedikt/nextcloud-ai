@@ -5,27 +5,31 @@
 			{{ $t('Storage status could not be loaded. Retry or check the database migrations. This does not indicate an empty queue.') }}
 		</NcNoteCard>
 		<template v-else-if="status">
-			<dl class="storage-status">
-				<div><dt>{{ $t('Search backend') }}</dt><dd>{{ status.active_qdrant_accounts > 0 ? $t('Optional Qdrant canary for {count} enrolled accounts', { count: status.active_qdrant_accounts }) : status.active_sql_accounts > 0 ? $t('Built-in SQL generations for {count} enrolled accounts', { count: status.active_sql_accounts }) : $t('Built-in database (SQL)') }}</dd></div>
-				<div><dt>{{ $t('Optional Qdrant connection') }}</dt><dd>{{ !status.connection.configured ? $t('Not configured') : status.connection.enabled ? $t('Configured · requests allowed') : $t('Configured · requests disabled') }}</dd></div>
-				<div><dt>{{ $t('Generation cleanup') }}</dt><dd>{{ status.erasure_worker_enabled ? $t('Enabled') : $t('Paused') }}</dd></div>
-				<div><dt>{{ $t('Chunk synchronization') }}</dt><dd>{{ status.point_worker_enabled ? $t('Enabled') : $t('Paused') }}</dd></div>
-				<div><dt>{{ $t('Generation chunks in SQL') }}</dt><dd>{{ status.staged_chunks }}</dd></div>
-				<div><dt>{{ $t('Waiting operations') }}</dt><dd>{{ status.queue.pending }}</dd></div>
-				<div><dt>{{ $t('Claimed operations') }}</dt><dd>{{ status.queue.processing }}</dd></div>
-				<div><dt>{{ $t('Operations needing attention') }}</dt><dd>{{ status.queue.dead }}</dd></div>
-			</dl>
-			<NcCheckboxRadioSwitch :model-value="status.points_requested" :disabled="pointSaving || loading" @update:model-value="setPointDelivery">{{ $t('Allow prepared vector point delivery') }}</NcCheckboxRadioSwitch>
-			<p class="storage-hint">{{ $t('Enabling also resumes generation cleanup when storage requests are allowed. Disabling pauses point delivery; use Disable storage requests to stop all transfers. This does not backfill files or switch search.') }}</p>
-			<NcNoteCard v-if="pointError" type="error">{{ pointError }}</NcNoteCard>
-			<NcNoteCard v-if="status.queue.dead > 0" type="warning">
-				{{ $t('Some background operations exhausted their retries. An administrator needs to inspect them before retrying.') }}
-			</NcNoteCard>
-			<p class="storage-hint">{{ $t('Configuration status is not a connection test. Generation cleanup only removes retired search collections; it does not index files or switch search backends.') }}</p>
-			<p class="storage-hint">{{ $t('Removing a file clears its local index and queues cleanup for prepared vector points. Renaming or changing a source discards its prepared entries for rebuilding. Prepared point updates and cleanup run only when their delivery switches allow them.') }}</p>
-			<p v-if="status.staged_chunks > 0" class="storage-hint">{{ $t('Prepared generation chunks are separate from the SQL search index. Their presence does not mean migration is verified or active.') }}</p>
+			<details>
+				<summary>{{ $t('Queue and synchronization details') }}</summary>
+				<NcButton variant="tertiary" :disabled="loading" @click="refresh">{{ $t('Refresh storage status') }}</NcButton>
+				<dl class="storage-status">
+					<div><dt>{{ $t('Search backend') }}</dt><dd>{{ status.active_qdrant_accounts > 0 ? $t('Optional Qdrant canary for {count} enrolled accounts', { count: status.active_qdrant_accounts }) : status.active_sql_accounts > 0 ? $t('Built-in SQL generations for {count} enrolled accounts', { count: status.active_sql_accounts }) : $t('Built-in database (SQL)') }}</dd></div>
+					<div><dt>{{ $t('Optional Qdrant connection') }}</dt><dd>{{ !status.connection.configured ? $t('Not configured') : status.connection.enabled ? $t('Configured · requests allowed') : $t('Configured · requests disabled') }}</dd></div>
+					<div><dt>{{ $t('Generation cleanup') }}</dt><dd>{{ status.erasure_worker_enabled ? $t('Enabled') : $t('Paused') }}</dd></div>
+					<div><dt>{{ $t('Chunk synchronization') }}</dt><dd>{{ status.point_worker_enabled ? $t('Enabled') : $t('Paused') }}</dd></div>
+					<div><dt>{{ $t('Generation chunks in SQL') }}</dt><dd>{{ status.staged_chunks }}</dd></div>
+					<div><dt>{{ $t('Waiting operations') }}</dt><dd>{{ status.queue.pending }}</dd></div>
+					<div><dt>{{ $t('Claimed operations') }}</dt><dd>{{ status.queue.processing }}</dd></div>
+					<div><dt>{{ $t('Operations needing attention') }}</dt><dd>{{ status.queue.dead }}</dd></div>
+				</dl>
+				<NcCheckboxRadioSwitch :model-value="status.points_requested" :disabled="pointSaving || loading" @update:model-value="setPointDelivery">{{ $t('Allow prepared vector point delivery') }}</NcCheckboxRadioSwitch>
+				<p class="storage-hint">{{ $t('Enabling also resumes generation cleanup when storage requests are allowed. Disabling pauses point delivery; use Disable storage requests to stop all transfers. This does not backfill files or switch search.') }}</p>
+				<NcNoteCard v-if="pointError" type="error">{{ pointError }}</NcNoteCard>
+				<NcNoteCard v-if="status.queue.dead > 0" type="warning">
+					{{ $t('Some background operations exhausted their retries. An administrator needs to inspect them before retrying.') }}
+				</NcNoteCard>
+				<p class="storage-hint">{{ $t('Configuration status is not a connection test. Generation cleanup only removes retired search collections; it does not index files or switch search backends.') }}</p>
+				<p class="storage-hint">{{ $t('Removing a file clears its local index and queues cleanup for prepared vector points. Renaming or changing a source discards its prepared entries for rebuilding. Prepared point updates and cleanup run only when their delivery switches allow them.') }}</p>
+				<p v-if="status.staged_chunks > 0" class="storage-hint">{{ $t('Prepared generation chunks are separate from the SQL search index. Their presence does not mean migration is verified or active.') }}</p>
+			</details>
 		</template>
-		<NcButton variant="secondary" :disabled="loading" @click="refresh">{{ $t('Refresh storage status') }}</NcButton>
+		<NcButton v-if="error" variant="secondary" :disabled="loading" @click="refresh">{{ $t('Refresh storage status') }}</NcButton>
 		<VectorConnectionSettings :enabled="status?.connection?.enabled === true" @changed="refresh" />
 	</div>
 </template>
@@ -98,4 +102,6 @@ export default {
 .storage-status dt { flex: 1 1 220px; font-weight: 600; }
 .storage-status dd { flex: 1 1 220px; margin: 0; }
 .storage-hint { color: var(--color-text-maxcontrast); margin: 12px 0; }
+details { margin-top: 16px; }
+summary { cursor: pointer; font-weight: 600; }
 </style>

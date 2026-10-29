@@ -2,6 +2,11 @@
 
 ## [Unreleased]
 
+### Simplify optional storage administration (1.20.6)
+
+- Keep the built-in SQL path visible while moving queue and synchronization detail behind a native disclosure.
+- Load generation-account controls only after an administrator opens the advanced section.
+
 ### Rank native Nextcloud file search results by relevance (1.20.5)
 
 - Combine bounded lexical content scores with filename and path matches, prioritizing exact and leading filename matches.
