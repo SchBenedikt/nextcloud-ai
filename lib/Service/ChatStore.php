@@ -1537,7 +1537,7 @@ class ChatStore {
     /** Different SQL-backed conversations may be read or written concurrently. */
     private function withChatLock(string $user, string $chatId, callable $operation, int $mode): mixed {
         $userLockPath = 'eva_ai/chat/' . $this->namespaceFor($user);
-        $conversationLockPath = 'eva_ai/chat-entry/' . $this->namespaceFor($user) . '/' . hash('sha256', $chatId);
+        $conversationLockPath = $this->conversationLockPath($user, $chatId);
         $userAcquired = false;
         $conversationAcquired = false;
         try {
@@ -1706,7 +1706,7 @@ class ChatStore {
         }
         $lockPath = $chatId === null
             ? 'eva_ai/chat/' . $this->namespaceFor($user)
-            : 'eva_ai/chat-entry/' . $this->namespaceFor($user) . '/' . hash('sha256', $chatId);
+            : $this->conversationLockPath($user, $chatId);
         // Conversation reads hold shared locks; mutations hold exclusive locks.
         // The earlier recovery command only checked the user-wide lock and
         // could not release the per-conversation lock used by SQL storage.
@@ -1747,6 +1747,18 @@ class ChatStore {
             }
         }
         return ['path' => $lockPath, 'was_locked' => $lockedModes !== [], 'released' => $released];
+    }
+
+    /**
+     * Return a privacy-preserving conversation lock key within Nextcloud's
+     * 64-character `file_locks.key` limit. The old full user and chat hashes
+     * produced a 123-character key; database-backed locking providers either
+     * rejected it or truncated distinct conversations to the same key.
+     */
+    private function conversationLockPath(string $user, string $chatId): string {
+        return 'eva_ai/chat-entry/'
+            . substr(hash('sha256', $user), 0, 24)
+            . '/' . substr(hash('sha256', $chatId), 0, 20);
     }
 
     /**

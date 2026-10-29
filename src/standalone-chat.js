@@ -50,7 +50,7 @@ function buildCalendarForm(args, tr) {
 	calendar.appendChild(select)
 	form.appendChild(calendar)
 	fields.calendar = select
-	fetch((meta('eva-ai-api') || '') + '/calendars', { credentials: 'same-origin', headers: { 'OCS-APIRequest': 'true', 'Accept': 'application/json', 'requesttoken': REQUEST_TOKEN } })
+	fetch((meta('eva-ai-api') || '').replace(/\/+$/, '') + '/calendars', { credentials: 'same-origin', headers: { 'OCS-APIRequest': 'true', 'Accept': 'application/json', 'requesttoken': REQUEST_TOKEN } })
 		.then(function (r) { return r.json() })
 		.then(function (payload) {
 			var calendars = payload && payload.ocs && payload.ocs.data && payload.ocs.data.calendars || payload && payload.calendars || []
@@ -91,7 +91,7 @@ function buildCalendarForm(args, tr) {
 		return el ? el.getAttribute('content') : ''
 	}
 
-	var API_BASE = meta('eva-ai-api') || ''
+	var API_BASE = (meta('eva-ai-api') || '').replace(/\/+$/, '')
 	var REQUEST_TOKEN = meta('requesttoken') || ''
 	var STREAM_URL = meta('eva-ai-stream') || ''
 

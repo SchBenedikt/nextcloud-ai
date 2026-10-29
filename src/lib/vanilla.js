@@ -33,7 +33,9 @@ export function mountChat(root, opts = {}) {
 		const el = document.head.querySelector('meta[name="' + name + '"]')
 		return el ? el.getAttribute('content') : ''
 	}
-	const API_BASE = meta('eva-ai-api')
+	// The OCS route metadata ends in `/`; normalize once so endpoint paths do
+	// not produce `/api//chats` (some reverse proxies treat that as a new path).
+	const API_BASE = meta('eva-ai-api').replace(/\/+$/, '')
 	const REQUEST_TOKEN = meta('requesttoken')
 	const STREAM_URL = meta('eva-ai-stream') || ''
 	let promptStorage
