@@ -8,7 +8,10 @@ use Psr\Log\LoggerInterface;
 
 /** Adapter for any provider exposing the OpenAI chat-completions contract. */
 class OpenAICompatible {
-    public function __construct(private AppConfig $config, private IClientService $clients, private ProviderCredentials $credentials, private ?UsageMetrics $usage = null, private ?LoggerInterface $logger = null) {}
+    public function __construct(private AppConfig $config, private IClientService $clients, private ProviderCredentials $credentials, private ?UsageMetrics $usage = null, private ?LoggerInterface $logger = null, private ?ProviderEndpointPolicy $endpointPolicy = null, private ?TraceContext $traceContext = null) {}
+    private function client(): \OCP\Http\Client\IClient {
+        return $this->clients->newClient(($this->endpointPolicy ?? $this->config->providerEndpointPolicy())->handler());
+    }
     private function provider(): string { return (string)$this->config->get('chat_provider'); }
     private function profile(): array {
         $profile = $this->config->providerProfile($this->provider());
@@ -16,17 +19,28 @@ class OpenAICompatible {
     }
     private function baseUrl(): string {
         $profile = $this->profile();
-        return rtrim((string)($profile['url'] ?? $this->config->get('custom_provider_url')), '/');
+        $url = rtrim((string)($profile['url'] ?? $this->config->get('custom_provider_url')), '/');
+        $parts = parse_url($url);
+        if ($parts === false || isset($parts['user']) || isset($parts['pass']) || isset($parts['query']) || isset($parts['fragment'])) {
+            throw new ProviderException('Provider base URL must not contain credentials, query parameters or fragments.');
+        }
+        return $url;
     }
     private function model(): string {
         $profile = $this->profile();
         return trim((string)($profile['model'] ?? $this->config->get('custom_provider_model')));
     }
     private function endpoint(): string { return $this->baseUrl() . '/chat/completions'; }
+    /** Local compatible servers can explicitly disable bearer authentication. */
+    private function headers(): array {
+        if (($this->profile()['auth'] ?? 'api_key') === 'none') return [];
+        return ['Authorization' => 'Bearer ' . $this->credentials->getCustom($this->config->userId() ?? '', $this->provider())];
+    }
+    private function traceHeaders(): array { return $this->traceContext?->outboundHeaders() ?? []; }
     public function check(): array {
         try {
             $base = $this->baseUrl();
-            $response = $this->clients->newClient()->get($base . '/models', ['headers' => ['Authorization' => 'Bearer ' . $this->credentials->getCustom($this->config->userId() ?? '', $this->provider())], 'timeout' => 15, 'http_errors' => false]);
+            $response = $this->client()->get($base . '/models', ['headers' => $this->headers(), 'timeout' => 15, 'allow_redirects' => false, 'http_errors' => false]);
             $status = $response->getStatusCode();
             if ($status < 200 || $status >= 300) return ['ok' => false, 'error' => 'Provider returned HTTP ' . $status . '.'];
             $data = json_decode((string)$response->getBody(), true);
@@ -36,10 +50,11 @@ class OpenAICompatible {
     }
     public function chat(array $messages, array $tools = [], int $timeout = 120): array {
         $id = $this->provider();
+        $startedAt = hrtime(true);
         try {
             $payload = ['model' => $this->model(), 'messages' => $this->normalizeMessages($messages), 'temperature' => max(0.0, min(2.0, (float)$this->config->get('temperature'))), 'stream' => false];
             if ($tools !== []) $payload['tools'] = $tools;
-            $response = $this->clients->newClient()->post($this->endpoint(), ['headers' => ['Authorization' => 'Bearer ' . $this->credentials->getCustom($this->config->userId() ?? '', $id), 'Content-Type' => 'application/json'], 'json' => $payload, 'timeout' => max(1, min(300, $timeout)), 'http_errors' => false]);
+            $response = $this->client()->post($this->endpoint(), ['headers' => $this->headers() + ['Content-Type' => 'application/json'] + $this->traceHeaders(), 'json' => $payload, 'timeout' => max(1, min(300, $timeout)), 'allow_redirects' => false, 'http_errors' => false]);
             $status = $response->getStatusCode();
             if ($status < 200 || $status >= 300) return ['error' => 'Provider request failed (HTTP ' . $status . ').'];
             $data = json_decode((string)$response->getBody(), true, 512, JSON_THROW_ON_ERROR);
@@ -47,7 +62,8 @@ class OpenAICompatible {
             $calls = [];
             foreach (($message['tool_calls'] ?? []) as $call) { $args = json_decode((string)($call['function']['arguments'] ?? '{}'), true); if (is_array($args)) $calls[] = ['name' => (string)($call['function']['name'] ?? ''), 'arguments' => $args]; }
             $answer = (string)($message['content'] ?? '');
-            $this->usage?->recordChat($this->config->userId(), $id, $this->model(), $messages, $answer, null, null, 0);
+            $durationMs = (int)round((hrtime(true) - $startedAt) / 1_000_000);
+            $this->usage?->recordChat($this->config->userId(), $id, $this->model(), $messages, $answer, null, null, $durationMs);
             return ['answer' => $answer, 'model' => $this->model(), 'tool_calls' => $calls, 'raw_tool_calls' => $message['tool_calls'] ?? []];
         } catch (JsonException $e) {
             return ['error' => 'Provider returned invalid JSON: ' . $e->getMessage()];
@@ -69,10 +85,10 @@ class OpenAICompatible {
         $model = trim((string)($profile['image_model'] ?? $this->model()));
         if ($model === '') throw new ProviderException('No image model configured for the selected provider.');
         try {
-            $response = $this->clients->newClient()->post($this->baseUrl() . '/images/generations', [
-                'headers' => ['Authorization' => 'Bearer ' . $this->credentials->getCustom($this->config->userId() ?? '', $provider), 'Content-Type' => 'application/json'],
+            $response = $this->client()->post($this->baseUrl() . '/images/generations', [
+                'headers' => $this->headers() + ['Content-Type' => 'application/json'] + $this->traceHeaders(),
                 'json' => ['model' => $model, 'prompt' => $prompt, 'n' => max(1, min(4, $count)), 'size' => (string)($profile['image_size'] ?? '1024x1024'), 'response_format' => 'b64_json'],
-                'timeout' => max(1, min(300, $timeout)), 'http_errors' => false,
+                'timeout' => max(1, min(300, $timeout)), 'allow_redirects' => false, 'http_errors' => false,
             ]);
             $status = $response->getStatusCode();
             if ($status < 200 || $status >= 300) throw new ProviderException('Image provider returned HTTP ' . $status . '. Check the configured model and API key.');
@@ -87,7 +103,7 @@ class OpenAICompatible {
                 } elseif (is_string($item['url'] ?? null)) {
                     $url = $item['url'];
                     if (!preg_match('~^https://~i', $url)) throw new ProviderException('Image provider returned an unsafe image URL.');
-                    $download = $this->clients->newClient()->get($url, ['timeout' => 60, 'http_errors' => false, 'allow_redirects' => false]);
+                    $download = $this->client()->get($url, ['timeout' => 60, 'http_errors' => false, 'allow_redirects' => false]);
                     if ($download->getStatusCode() < 200 || $download->getStatusCode() >= 300) throw new ProviderException('Generated image could not be downloaded from the provider.');
                     $bytes = (string)$download->getBody();
                     $mime = (string)($download->getHeader('content-type') ?: 'image/png');
@@ -116,15 +132,15 @@ class OpenAICompatible {
         if ($model === '') throw new ProviderException('No audio model configured for the selected provider.');
         try {
             $responseFormat = $subtitles ? 'vtt' : 'json';
-            $response = $this->clients->newClient()->post($this->baseUrl() . '/audio/' . ($translate ? 'translations' : 'transcriptions'), [
-                'headers' => ['Authorization' => 'Bearer ' . $this->credentials->getCustom($this->config->userId() ?? '', $provider)],
+            $response = $this->client()->post($this->baseUrl() . '/audio/' . ($translate ? 'translations' : 'transcriptions'), [
+                'headers' => $this->headers() + $this->traceHeaders(),
                 'multipart' => [
                     ['name' => 'file', 'contents' => $bytes, 'filename' => $filename],
                     ['name' => 'model', 'contents' => $model],
                     ['name' => 'response_format', 'contents' => $responseFormat],
                     ['name' => 'prompt', 'contents' => 'Transcribe faithfully in the same language as the audio. Preserve names and timestamps where available.'],
                 ],
-                'timeout' => max(1, min(300, $timeout)), 'http_errors' => false,
+                'timeout' => max(1, min(300, $timeout)), 'allow_redirects' => false, 'http_errors' => false,
             ]);
             $status = $response->getStatusCode();
             if ($status < 200 || $status >= 300) throw new ProviderException('Audio provider returned HTTP ' . $status . '. Check the configured model and API key.');
@@ -151,10 +167,10 @@ class OpenAICompatible {
         $voice = trim((string)($profile['tts_voice'] ?? 'alloy'));
         if ($model === '') throw new ProviderException('No speech model configured for the selected provider.');
         try {
-            $response = $this->clients->newClient()->post($this->baseUrl() . '/audio/speech', [
-                'headers' => ['Authorization' => 'Bearer ' . $this->credentials->getCustom($this->config->userId() ?? '', $provider), 'Content-Type' => 'application/json'],
+            $response = $this->client()->post($this->baseUrl() . '/audio/speech', [
+                'headers' => $this->headers() + ['Content-Type' => 'application/json'] + $this->traceHeaders(),
                 'json' => ['model' => $model, 'input' => mb_substr($text, 0, 12000), 'voice' => $voice, 'response_format' => 'mp3'],
-                'timeout' => max(1, min(300, $timeout)), 'http_errors' => false,
+                'timeout' => max(1, min(300, $timeout)), 'allow_redirects' => false, 'http_errors' => false,
             ]);
             if ($response->getStatusCode() < 200 || $response->getStatusCode() >= 300) throw new ProviderException('Speech provider returned HTTP ' . $response->getStatusCode() . '. Check the configured model and API key.');
             $bytes = (string)$response->getBody();

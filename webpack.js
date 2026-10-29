@@ -6,18 +6,24 @@ const { VueLoaderPlugin } = require('vue-loader')
 module.exports = (env, argv) => {
 	const isProd = argv?.mode === 'production' || process.env.NODE_ENV === 'production'
 	return {
-		// Opt-in bounded build for small Nextcloud hosts.
-		...(process.env.EVA_LOW_MEMORY_BUILD === '1' ? {
+		// Serialize production loaders/minification for reproducible Vue source maps
+		// and bounded memory on Nextcloud hosts. Development stays parallel.
+		...(isProd || process.env.EVA_LOW_MEMORY_BUILD === '1' ? {
 			parallelism: 1,
 			optimization: { minimizer: [new TerserPlugin({ parallel: false })] },
 		} : {}),
 		entry: {
+			'eva_ai-admin': path.resolve(__dirname, 'src', 'admin.js'),
 			'eva_ai-main': path.resolve(__dirname, 'src', 'main.js'),
 			eva_ai_filesaction: path.resolve(__dirname, 'src', 'lib', 'filesaction.js'),
 			eva_ai_standalone: path.resolve(__dirname, 'src', 'standalone-chat.js'),
 		},
 		output: {
 			path: path.resolve(__dirname, 'js'),
+			// Async views must not reuse a previous app version's chunk from the
+			// browser or a caching proxy. Nextcloud cache-busts the entry bundles,
+			// but webpack-loaded chunks bypass its script combiner.
+			chunkFilename: '[id].[contenthash:8].js',
 			filename: (chunkData) => {
 				// Statische Namen ohne Hash: NC rendert das Skript nur dann,
 				// wenn es exakt unter apps/{app}/js/{name}.js liegt. Gehashte

@@ -33,7 +33,7 @@ final class BackgroundChatQueue {
             if (!in_array($role, ['user', 'assistant'], true) || trim($content) === '') continue;
             $cleanHistory[] = ['role' => $role, 'content' => mb_substr($content, 0, 20000)];
         }
-        return $this->withLock($user, function () use ($user, $chatId, $message, $cleanHistory): ?string {
+        return $this->withLock($user, function () use ($user, $chatId, $message, $cleanHistory, $requestedId): ?string {
             $items = $this->read($user);
             // Keep terminal failures long enough for the UI/API to show them,
             // but garbage-collect old records so they cannot fill the queue.
@@ -48,7 +48,7 @@ final class BackgroundChatQueue {
             if ($active >= self::MAX_ITEMS) return null;
             $id = is_string($requestedId) && preg_match('/^[A-Za-z0-9_-]{8,80}$/D', $requestedId) === 1
                 ? $requestedId : 'bg_' . date('YmdHis') . '_' . bin2hex(random_bytes(5));
-            $items[] = ['id' => $id, 'chatId' => $chatId, 'message' => $message, 'history' => $cleanHistory, 'status' => 'pending', 'attempts' => 0, 'steps' => 0, 'created' => time(), 'deadline' => time() + self::MAX_RUNTIME_SECONDS, 'availableAt' => time() + 15];
+            $items[] = ['id' => $id, 'traceId' => bin2hex(random_bytes(16)), 'chatId' => $chatId, 'message' => $message, 'history' => $cleanHistory, 'status' => 'pending', 'attempts' => 0, 'steps' => 0, 'created' => time(), 'deadline' => time() + self::MAX_RUNTIME_SECONDS, 'availableAt' => time() + 15];
             $this->write($user, $items);
             $this->rememberUser($user);
             return $id;
@@ -319,6 +319,7 @@ final class BackgroundChatQueue {
     /** Erase both per-user queue records and the global discovery index. */
     public function deleteUserData(string $user): void {
         if ($user === '') return;
+		$failed = false;
         try {
             $this->withLock($user, function () use ($user): void {
                 $this->config->deleteUserValue($user, AppConfig::APP, self::KEY);
@@ -326,6 +327,7 @@ final class BackgroundChatQueue {
             });
         } catch (\Throwable $e) {
             $this->logger->warning('eva_ai: background queue cleanup failed on account deletion', ['user' => $user]);
+			$failed = true;
         }
         try {
             $this->withUsersLock(function () use ($user): void {
@@ -337,7 +339,9 @@ final class BackgroundChatQueue {
             });
         } catch (\Throwable $e) {
             $this->logger->warning('eva_ai: background queue user index cleanup failed', ['user' => $user]);
+			$failed = true;
         }
+		if ($failed) throw new \RuntimeException('Background chat queue cleanup was incomplete.');
     }
 
     private function rememberUser(string $user): void {

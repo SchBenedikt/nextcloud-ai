@@ -74,7 +74,8 @@ test('sends image attachments for analysis, including an image-only prompt', asy
 
 test('generates images from the selected provider and shows the saved Files gallery', async ({ page }) => {
   await openChatView(page)
-  await page.getByRole('button', { name: 'Create images' }).click()
+  await page.getByRole('button', { name: 'Conversation actions' }).click()
+  await page.getByRole('menuitem', { name: 'Create images' }).click()
   await expect(page.locator('.image-generator')).toBeVisible()
   await expect(page.locator('.image-generator-privacy')).toContainText('sent to your configured image provider')
   await page.locator('.image-generator textarea').fill('A fox reading beneath an apple tree')
@@ -90,7 +91,8 @@ test('generates images from the selected provider and shows the saved Files gall
 test('image generation remains usable at a narrow mobile viewport', async ({ page }) => {
   await page.setViewportSize({ width: 375, height: 812 })
   await openChatView(page)
-  await page.getByRole('button', { name: 'Create images' }).click()
+  await page.getByRole('button', { name: 'Conversation actions' }).click()
+  await page.getByRole('menuitem', { name: 'Create images' }).click()
   await expect(page.locator('.image-generator')).toBeVisible()
   await expect(page.locator('.image-generator textarea')).toBeVisible()
   await expect(page.locator('.image-generator select')).toBeVisible()
@@ -107,9 +109,11 @@ test('image generation remains usable at a narrow mobile viewport', async ({ pag
 test('chat exports can include or omit per-message timestamps and model details', async ({ page }) => {
   await openChatView(page)
   await page.fill('#chatinput', 'Export metadata')
-  await page.locator('.chatform button[type="submit"]').click()
+  await page.getByRole('button', { name: 'Send message', exact: true }).click()
   await expect(page.locator('.rb').last()).toContainText('A test answer')
 
+  await page.getByRole('button', { name: 'Conversation actions' }).click()
+  await page.getByRole('menuitem', { name: 'Export conversation' }).click()
   await expect(page.locator('#export-include-timestamps')).toBeChecked()
   await expect(page.locator('#export-include-model')).toBeChecked()
   const fullExportPromise = page.waitForEvent('download')
@@ -119,7 +123,6 @@ test('chat exports can include or omit per-message timestamps and model details'
   expect(fullText).toContain('Sent 20')
   expect(fullText).toContain('Model: gpt-test')
 
-  await page.getByText('Export options', { exact: true }).click()
   await page.uncheck('#export-include-timestamps')
   await page.uncheck('#export-include-model')
   const minimalExportPromise = page.waitForEvent('download')
@@ -143,9 +146,11 @@ test('chat exports can include or omit per-message timestamps and model details'
 test('chat exports can be limited to an inclusive date range', async ({ page }) => {
   await openChatView(page)
   await page.fill('#chatinput', 'Date filtered export')
-  await page.locator('.chatform button[type="submit"]').click()
+  await page.getByRole('button', { name: 'Send message', exact: true }).click()
   await expect(page.locator('.rb').last()).toContainText('A test answer')
-  await page.getByText('Export options', { exact: true }).click()
+
+  await page.getByRole('button', { name: 'Conversation actions' }).click()
+  await page.getByRole('menuitem', { name: 'Export conversation' }).click()
 
   const dates = await page.evaluate(() => {
     const format = (value) => [value.getFullYear(), String(value.getMonth() + 1).padStart(2, '0'), String(value.getDate()).padStart(2, '0')].join('-')
@@ -171,16 +176,14 @@ test('chat exports can be limited to an inclusive date range', async ({ page }) 
   expect(matchingText).toContain('A test answer')
 })
 
-test('selects a chat model per message and shows the model returned by the server', async ({ page }) => {
+test('uses the configured provider and shows the model returned by the server', async ({ page }) => {
   await openChatView(page)
   const model = page.locator('.chat-model-select')
-  await expect(model).toBeVisible()
-  await expect(model).toHaveValue('gemma4:cloud')
-  await model.selectOption('llama3.2:latest')
+  await expect(model).toHaveCount(0)
   await page.fill('#chatinput', 'Use the selected model')
-  await page.locator('.chatform button[type="submit"]').click()
+  await page.getByRole('button', { name: 'Send message', exact: true }).click()
 
-  await expect.poll(() => page.evaluate(() => window.__calls.find((call) => call.url.endsWith('/streamChat'))?.body?.model)).toBe('llama3.2:latest')
+  await expect.poll(() => page.evaluate(() => window.__calls.some((call) => call.url.endsWith('/streamChat')))).toBe(true)
   await expect(page.locator('.rb').last()).toContainText('Model: gpt-test')
 })
 
@@ -514,3 +517,122 @@ test('the stop button aborts the stream and persists the partial answer', async 
   // The send button returns to Send for the next question.
   await expect(sendBtn).toHaveText('Send')
 })
+
+
+test('chat submits one complete turn and stays busy until it is stored', async ({ page }) => {
+  await openChatView(page)
+  await page.evaluate(() => {
+    const fetch = window.fetch
+    window.fetch = async (url, options) => {
+      if (String(url).endsWith('/turns')) {
+        window.__historyKeepalive = options.keepalive
+        window.__turnBody = JSON.parse(options.body)
+        await new Promise(resolve => { window.__releaseHistory = resolve })
+      }
+      return fetch(url, options)
+    }
+  })
+  await page.fill('#chatinput', 'Keep this answer')
+  await page.getByRole('button', { name: 'Send message', exact: true }).click()
+  await expect(page.locator('.rm.assistant')).toContainText('A test answer')
+  await expect.poll(() => page.evaluate(() => typeof window.__releaseHistory)).toBe('function')
+  await expect(page.getByRole('button', { name: 'Stop', exact: true })).toBeVisible()
+  expect(await page.evaluate(() => window.__historyKeepalive)).toBe(true)
+  expect(await page.evaluate(() => window.__turnBody)).toMatchObject({ question: 'Keep this answer', expectedRev: 1, answer: { text: 'A test answer', model: 'gpt-test' } })
+  expect(await page.evaluate(() => window.__turnBody.requestId)).toMatch(/^[A-Za-z0-9_-]{16,128}$/)
+  await page.evaluate(() => window.__releaseHistory())
+  await expect(page.getByRole('button', { name: 'Send message', exact: true })).toBeVisible()
+})
+
+
+test('a stalled history save times out and releases the composer with a warning', async ({ page }) => {
+  await openChatView(page)
+  await page.clock.install()
+  await page.evaluate(() => {
+    const fetch = window.fetch
+    window.fetch = (url, options) => {
+      if (String(url).endsWith('/turns')) {
+        window.__historySignal = options.signal
+        return new Promise(() => {})
+      }
+      return fetch(url, options)
+    }
+  })
+  await page.fill('#chatinput', 'Do not lock the composer')
+  await page.getByRole('button', { name: 'Send message', exact: true }).click()
+  await expect(page.locator('.rm.assistant')).toContainText('A test answer')
+  await expect.poll(() => page.evaluate(() => !!window.__historySignal)).toBe(true)
+  await page.clock.runFor(15010)
+  await expect(page.getByRole('button', { name: 'Send message', exact: true })).toBeVisible()
+  await expect(page.locator('.err')).toContainText('chat history')
+  expect(await page.evaluate(() => window.__historySignal.aborted)).toBe(true)
+})
+
+test('regeneration waits for its revision-bound answer save', async ({ page }) => {
+  await openChatView(page)
+  await page.evaluate(() => { Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText: async text => { window.__copiedAnswer = text } } }) })
+  await page.fill('#chatinput', 'First question')
+  await page.getByRole('button', { name: 'Send message', exact: true }).click()
+  await expect(page.locator('.rm.assistant')).toContainText('A test answer')
+  await expect(page.getByRole('button', { name: 'Send message', exact: true })).toBeVisible()
+  await page.evaluate(() => {
+    const fetch = window.fetch
+    window.fetch = async (url, options) => {
+      if (String(url).endsWith('/regenerate')) return new Response(
+        JSON.stringify({type:'regenerate',rev:3})+'\n'+JSON.stringify({type:'done',answer:'Regenerated answer'})+'\n',
+        {headers:{'Content-Type':'application/x-ndjson'}})
+      if (String(url).endsWith('/messages')) {
+        window.__regenerationSave = JSON.parse(options.body)
+        await new Promise(resolve => { window.__releaseRegeneration = resolve })
+      }
+      return fetch(url, options)
+    }
+  })
+  await page.getByTitle('Copy answer', { exact: true }).click()
+  expect(await page.evaluate(() => window.__copiedAnswer)).toBe('A test answer')
+  await page.getByTitle('Regenerate', { exact: true }).click()
+  await expect(page.locator('.rm.assistant')).toContainText('Regenerated answer')
+  await expect.poll(() => page.evaluate(() => typeof window.__releaseRegeneration)).toBe('function')
+  await expect(page.getByRole('button', { name: 'Stop', exact: true })).toBeVisible()
+  expect(await page.evaluate(() => window.__regenerationSave)).toMatchObject({text:'Regenerated answer',regenerateRev:3})
+  await page.evaluate(() => window.__releaseRegeneration())
+  await expect(page.getByRole('button', { name: 'Send message', exact: true })).toBeVisible()
+})
+
+for (const mode of ['error', 'stop']) {
+  test(`a ${mode === 'error' ? 'failed' : 'stopped empty'} regeneration refreshes the revision before the next send`, async ({ page }) => {
+    await openChatView(page)
+    await page.fill('#chatinput', 'Initial question')
+    await page.getByRole('button', { name: 'Send message', exact: true }).click()
+    await expect(page.locator('.rm.assistant')).toContainText('A test answer')
+    await expect(page.getByRole('button', { name: 'Send message', exact: true })).toBeVisible()
+    await page.evaluate(mode => {
+      const fetch = window.fetch
+      window.fetch = (url, options) => {
+        if (String(url).endsWith('/regenerate')) {
+          window.__regenerationStarted = true
+          if (mode === 'stop') return new Promise((resolve, reject) => options.signal.addEventListener('abort', () => reject(new DOMException('Stopped', 'AbortError')), { once: true }))
+          return Promise.resolve(new Response(JSON.stringify({type:'regenerate',rev:4})+'\n'+JSON.stringify({type:'error',message:'Model failed'})+'\n', {headers:{'Content-Type':'application/x-ndjson'}}))
+        }
+        if (String(url).endsWith('/chats/generated-test-chat') && (!options?.method || options.method === 'GET')) {
+          window.__revisionRefreshed = true
+          return Promise.resolve(new Response(JSON.stringify({rev:4,messages:[{role:'user',text:'Initial question'},{role:'assistant',text:'A test answer'}]}), {headers:{'Content-Type':'application/json'}}))
+        }
+        return fetch(url, options)
+      }
+    }, mode)
+    await page.getByTitle('Regenerate', { exact: true }).click()
+    if (mode === 'stop') {
+      await expect.poll(() => page.evaluate(() => window.__regenerationStarted)).toBe(true)
+      await page.getByRole('button', { name: 'Stop', exact: true }).click()
+    }
+    await expect.poll(() => page.evaluate(() => window.__revisionRefreshed)).toBe(true)
+    await expect(page.getByRole('button', { name: 'Send message', exact: true })).toBeVisible()
+    await expect(page.locator('.rm.assistant')).toContainText('A test answer')
+    await page.fill('#chatinput', 'Next question')
+    await page.getByRole('button', { name: 'Send message', exact: true }).click()
+    await expect(page.getByRole('button', { name: 'Send message', exact: true })).toBeVisible()
+    const turn = await page.evaluate(() => window.__calls.filter(call => call.url.endsWith('/turns')).at(-1).body)
+    expect(turn).toMatchObject({question:'Next question',expectedRev:4})
+  })
+}

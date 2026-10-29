@@ -60,7 +60,7 @@ The default chat model is hosted by Ollama Cloud, so prompts and retrieved file 
 
 Licensed under AGPL-3.0-or-later.
     </description>
-    <version>1.17.12</version>
+    <version>1.20.39</version>
     <licence>agpl</licence>
     <author>Benedikt Schächner</author>
     <namespace>EvaAi</namespace>
@@ -74,11 +74,42 @@ Licensed under AGPL-3.0-or-later.
     <optional-apps>
         <app>spreed</app>
     </optional-apps>
+    <openmetrics>
+        <exporter>OCA\EvaAi\OpenMetrics\IndexedItems</exporter>
+        <exporter>OCA\EvaAi\OpenMetrics\LexicalIndexState</exporter>
+        <exporter>OCA\EvaAi\OpenMetrics\VectorGenerations</exporter>
+        <exporter>OCA\EvaAi\OpenMetrics\VectorOutbox</exporter>
+        <exporter>OCA\EvaAi\OpenMetrics\VectorOutboxAge</exporter>
+        <exporter>OCA\EvaAi\OpenMetrics\VectorOutboxAgeDistribution</exporter>
+        <exporter>OCA\EvaAi\OpenMetrics\IndexQueueAge</exporter>
+        <exporter>OCA\EvaAi\OpenMetrics\AccountCleanupPending</exporter>
+        <exporter>OCA\EvaAi\OpenMetrics\AccountCleanupOldestAge</exporter>
+        <exporter>OCA\EvaAi\OpenMetrics\OperationDuration</exporter>
+        <exporter>OCA\EvaAi\OpenMetrics\ProviderCompletionDuration</exporter>
+        <exporter>OCA\EvaAi\OpenMetrics\RetrievalStageDuration</exporter>
+        <exporter>OCA\EvaAi\OpenMetrics\RagRequestDuration</exporter>
+        <exporter>OCA\EvaAi\OpenMetrics\IndexRunDuration</exporter>
+        <exporter>OCA\EvaAi\OpenMetrics\IndexRunThroughput</exporter>
+        <exporter>OCA\EvaAi\OpenMetrics\ChatStoreLockWait</exporter>
+        <exporter>OCA\EvaAi\OpenMetrics\EmbeddingBatchDuration</exporter>
+        <exporter>OCA\EvaAi\OpenMetrics\EmbeddingCacheHitRatio</exporter>
+        <exporter>OCA\EvaAi\OpenMetrics\EmbeddingBatchSamples</exporter>
+        <exporter>OCA\EvaAi\OpenMetrics\EmbeddingQueryDuration</exporter>
+        <exporter>OCA\EvaAi\OpenMetrics\SqlDenseScanRows</exporter>
+    </openmetrics>
     <background-jobs>
         <job>OCA\EvaAi\BackgroundJob\IndexJob</job>
+        <job>OCA\EvaAi\BackgroundJob\AccountCleanupJob</job>
+        <job>OCA\EvaAi\BackgroundJob\VectorNormBackfillJob</job>
+        <job>OCA\EvaAi\BackgroundJob\LexicalIndexBackfillJob</job>
         <job>OCA\EvaAi\BackgroundJob\ChatCleanupJob</job>
         <job>OCA\EvaAi\BackgroundJob\ProactiveBriefingJob</job>
         <job>OCA\EvaAi\BackgroundJob\BackgroundChatJob</job>
+        <job>OCA\EvaAi\BackgroundJob\VectorErasureJob</job>
+        <job>OCA\EvaAi\BackgroundJob\VectorPointJob</job>
+        <job>OCA\EvaAi\BackgroundJob\GenerationBuildJob</job>
+        <job>OCA\EvaAi\BackgroundJob\GenerationVerificationJob</job>
+        <job>OCA\EvaAi\BackgroundJob\RateLimitCleanupJob</job>
     </background-jobs>
     <repair-steps>
         <step>OCA\EvaAi\Migration\MigrateLegacyAppIdRepairStep</step>
@@ -86,6 +117,14 @@ Licensed under AGPL-3.0-or-later.
         <step>OCA\EvaAi\Migration\ResetEvaJobsOnUpgradeRepairStep</step>
     </repair-steps>
     <commands>
+        <command>OCA\EvaAi\Command\MigrateChatStorage</command>
+        <command>OCA\EvaAi\Command\VectorOutbox</command>
+        <command>OCA\EvaAi\Command\Qdrant</command>
+        <command>OCA\EvaAi\Command\VectorGeneration</command>
+        <command>OCA\EvaAi\Command\VectorEmbedding</command>
+        <command>OCA\EvaAi\Command\VectorBuild</command>
+        <command>OCA\EvaAi\Command\VectorVerify</command>
+        <command>OCA\EvaAi\Command\RetrievalBenchmark</command>
         <command>OCA\EvaAi\Command\Index</command>
         <command>OCA\EvaAi\Command\Reset</command>
         <command>OCA\EvaAi\Command\Mounts</command>

@@ -265,7 +265,7 @@ final class OpenIssuesPendingContractTest extends TestCase {
         self::assertStringContainsString("'risk' => (string)(\$definition['risk']", $executor);
         self::assertStringContainsString("'surfaces' => array_values", $executor);
         self::assertStringContainsString("'requiresConfirmation' => (bool)", $executor);
-        self::assertStringContainsString('Confirmation required', (string)file_get_contents(__DIR__ . '/../src/views/SettingsView.vue'));
+        self::assertStringContainsString('Confirmation required', (string)file_get_contents(__DIR__ . '/../src/components/settings/AdvancedSettings.vue'));
     }
 
     public function testGraphqlConnectorDiscoveryLearnsValidatedPostBody(): void {

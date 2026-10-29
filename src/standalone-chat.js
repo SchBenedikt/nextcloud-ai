@@ -50,7 +50,7 @@ function buildCalendarForm(args, tr) {
 	calendar.appendChild(select)
 	form.appendChild(calendar)
 	fields.calendar = select
-	fetch((meta('eva-ai-api') || '') + '/calendars', { credentials: 'same-origin', headers: { 'OCS-APIRequest': 'true', 'Accept': 'application/json', 'requesttoken': REQUEST_TOKEN } })
+	fetch((meta('eva-ai-api') || '').replace(/\/+$/, '') + '/calendars', { credentials: 'same-origin', headers: { 'OCS-APIRequest': 'true', 'Accept': 'application/json', 'requesttoken': REQUEST_TOKEN } })
 		.then(function (r) { return r.json() })
 		.then(function (payload) {
 			var calendars = payload && payload.ocs && payload.ocs.data && payload.ocs.data.calendars || payload && payload.calendars || []
@@ -91,7 +91,7 @@ function buildCalendarForm(args, tr) {
 		return el ? el.getAttribute('content') : ''
 	}
 
-	var API_BASE = meta('eva-ai-api') || ''
+	var API_BASE = (meta('eva-ai-api') || '').replace(/\/+$/, '')
 	var REQUEST_TOKEN = meta('requesttoken') || ''
 	var STREAM_URL = meta('eva-ai-stream') || ''
 
@@ -256,8 +256,8 @@ function buildCalendarForm(args, tr) {
 			language: document.documentElement.lang || 'en',
 			includeTimestamps: document.getElementById('export-include-timestamps').checked,
 			includeModelInfo: document.getElementById('export-include-model').checked,
-			labels: {
-				you: tr('You'), eva: 'EVA', helpful: tr('Marked helpful'), notHelpful: tr('Marked not helpful'), bookmarked: tr('Bookmarked'),
+				labels: {
+					you: tr('You'), eva: 'EVA',
 				exportedAt: function (date) { return tr('Exported {date}', { date: date }) },
 				timestamp: function (date) { return tr('Sent {date}', { date: date }) },
 				model: function (name) { return tr('Model: {name}', { name: name }) },
@@ -533,44 +533,6 @@ function buildCalendarForm(args, tr) {
 			cb.textContent = '⧉'
 			cb.addEventListener('click', function () { copyText(String(m.text || ''), cb) })
 			b.appendChild(cb)
-			if (m.done) {
-				var feedback = document.createElement('div')
-				feedback.className = 'rfeedback'
-				var status = document.createElement('span')
-				status.className = 'rfeedback-status'
-				status.setAttribute('role', 'status')
-				var reactionButtons = []
-				function addReaction(type, value, label, symbol) {
-					var button = document.createElement('button')
-					button.type = 'button'
-					button.className = 'rfeedback-button'
-					button.textContent = symbol
-					button.title = tr(label)
-					button.setAttribute('aria-label', tr(label))
-					button.setAttribute('aria-pressed', String(type === 'helpful' ? m.reactions && m.reactions.helpful === value : !!(m.reactions && m.reactions.bookmarked)))
-					button.disabled = !chatId
-					button.addEventListener('click', function () {
-						button.disabled = true
-						var next = type === 'bookmarked' ? !(m.reactions && m.reactions.bookmarked) : (m.reactions && m.reactions.helpful === value ? null : value)
-						saveReaction(idx, type, next).then(function (result) {
-							m.reactions = result && result.reactions && Object.keys(result.reactions).length ? result.reactions : undefined
-							reactionButtons.forEach(function (entry) {
-								entry.button.setAttribute('aria-pressed', String(entry.type === 'helpful' ? m.reactions && m.reactions.helpful === entry.value : !!(m.reactions && m.reactions.bookmarked)))
-								entry.button.classList.toggle('is-active', entry.button.getAttribute('aria-pressed') === 'true')
-							})
-							status.textContent = tr('Feedback saved')
-						}).catch(function () { status.textContent = tr('Feedback could not be saved.') }).finally(function () { button.disabled = !chatId })
-					})
-					button.classList.toggle('is-active', button.getAttribute('aria-pressed') === 'true')
-					reactionButtons.push({ button: button, type: type, value: value })
-					feedback.appendChild(button)
-				}
-				addReaction('helpful', true, 'Helpful', '👍')
-				addReaction('helpful', false, 'Not helpful', '👎')
-				addReaction('bookmarked', true, 'Bookmark answer', '🔖')
-				feedback.appendChild(status)
-				b.appendChild(feedback)
-			}
 		}
 		if (m.role === 'user' && m.done) {
 			var cb2 = document.createElement('button')
@@ -964,11 +926,6 @@ function buildCalendarForm(args, tr) {
 			.catch(function () { return false })
 	}
 
-	function saveReaction(index, type, value) {
-		if (!chatId) return Promise.reject(new Error(tr('Chat is not ready yet.')))
-		return api('POST', '/chats/' + encodeURIComponent(chatId) + '/reaction', { index: index, type: type, value: value })
-	}
-
 	// Only follow the stream down while the user is already near the bottom:
 	// scrolling up to read earlier context must not be yanked back on every
 	// streamed delta.
@@ -1017,7 +974,6 @@ function buildCalendarForm(args, tr) {
 					model: typeof m.model === 'string' ? m.model : null,
 					thinking: '',
 					followups: Array.isArray(m.followups) ? m.followups : [],
-					reactions: m.reactions && typeof m.reactions === 'object' ? m.reactions : undefined,
 					tools: Array.isArray(m.tools) ? m.tools : [],
 					// A persisted pending confirmation re-renders the inline panel so
 					// approving after a reload still works (Issue #185).
@@ -1237,7 +1193,10 @@ function buildCalendarForm(args, tr) {
 						.then(renderChatListAgain)
 						.catch(function () {})
 				} else if (ev.type === 'error') {
-					last.text = tr('Error: {error}', { error: String(ev.message || '') })
+					last.text = [last.text, ev.partialAnswer, tr('Error: {error}', { error: String(ev.message || '') })]
+						.map(function (part) { return typeof part === 'string' ? part.trim() : '' })
+						.filter(Boolean)
+						.join('\n\n')
 					last.done = true
 					saveUserMessage(savedUserText)
 				}

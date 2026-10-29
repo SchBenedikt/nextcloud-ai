@@ -7,6 +7,11 @@ namespace OCA\EvaAi\Service;
 use OCA\EvaAi\Db\ChunkMapper;
 use OCA\EvaAi\Db\DocumentMapper;
 use OCA\EvaAi\Db\Chunk;
+use OCA\EvaAi\Db\VectorGenerationRepository;
+use OCA\EvaAi\Db\GenerationChunkRepository;
+use OCA\EvaAi\Vector\{GenerationEmbeddingProvider,QdrantVectorStore,SearchFilters,VectorGeneration,VectorStoreException};
+use OCA\EvaAi\Vector\VectorEmbeddingCodec;
+use Psr\Log\LoggerInterface;
 
 class Searcher {
     private const POOL = 8000;
@@ -15,10 +20,16 @@ class Searcher {
     private const DENSE_SCAN_PAGE = 2000;
 
     public function __construct(
-        private Ollama $ollama,
+        private EmbeddingProvider $ollama,
         private ChunkMapper $chunkMapper,
         private DocumentMapper $documentMapper,
-        private AppConfig $config
+        private AppConfig $config,
+        private ?LoggerInterface $logger = null,
+        private ?VectorGenerationRepository $generations = null,
+        private ?GenerationEmbeddingProvider $generationEmbeddings = null,
+        private ?QdrantVectorStore $qdrant = null,
+        private ?GenerationChunkRepository $generationChunks = null,
+        private ?TraceContext $traceContext = null
     ) {
     }
 
@@ -30,15 +41,163 @@ class Searcher {
      *
      * @return array<int,array{chunk:array,doc:?array,cosine:float,lexical:float,score:float}>
      */
-    public function search(string $userId, string $query, int $topK, ?string $scopePath = null): array {
+    public function search(string $userId, string $query, int $topK, ?string $scopePath = null, ?string $traceId = null): array {
+        return $this->runSearch($userId, $query, $topK, $scopePath, null, $traceId);
+    }
+
+    /** Explicit benchmark mode: rank with the checked frozen vector, without another provider call. */
+    public function searchWithQueryVector(string $userId, string $query, int $topK, array $vector, ?string $scopePath = null): array {
+        if (!array_is_list($vector) || $vector === [] || count($vector) > 16384) throw new \InvalidArgumentException('Invalid frozen query vector.');
+        $norm = 0.0;
+        foreach ($vector as $value) {
+            if ((!is_int($value) && !is_float($value)) || !is_finite((float)$value)) throw new \InvalidArgumentException('Invalid frozen query vector.');
+            $norm += $value * $value;
+        }
+        if (!is_finite($norm) || $norm <= 0) throw new \InvalidArgumentException('Invalid frozen query vector.');
+        return $this->runSearch($userId, $query, $topK, $scopePath, array_map('floatval', $vector), null);
+    }
+
+    /**
+     * Bounded, provider-free file search for Nextcloud Unified Search.
+     *
+     * It reads the same active generation and falls back to legacy SQL while a
+     * generation is absent, incomplete or being changed. It deliberately does
+     * not embed the interactive search term or contact an external vector
+     * service; Nextcloud's global search remains a fast local SQL operation.
+     *
+     * @return list<array<string,mixed>>
+     */
+    public function searchFileCandidates(string $userId, string $query, int $limit = 200): array {
+        $tokens = $this->tokens($query);
+        if ($tokens === []) return [];
+
+        $limit = max(1, min(200, $limit));
+        $generation = null;
+        try { $generation = $this->generations?->activeGenerationForUser($userId); }
+        catch (\Throwable) { /* A metadata outage keeps local legacy search available. */ }
+        $generationId = $generation?->id;
+        $generationState = $generation?->backend === 'qdrant' ? 'delivered' : 'ready';
+        if ($generationId !== null && $this->chunkMapper->countForUser($userId, $generationId, $generationState) === 0
+            && $this->chunkMapper->countForUser($userId) > 0) {
+            $generationId = null;
+            $generationState = 'ready';
+        }
+
+        $rows = $this->chunkMapper->filterChunksByTokens(
+            $userId,
+            $tokens,
+            $limit,
+            \OCA\EvaAi\Db\Document::SOURCE_FILES,
+            $generationId,
+            $generationState,
+        );
+        if ($rows === []) return [];
+
+        $documentIds = [];
+        foreach ($rows as $row) $documentIds[(int)$row['document_id']] = true;
+        $docFields = [];
+        foreach ($this->documentMapper->findByIds(array_keys($documentIds)) as $document) {
+            $docFields[(int)$document->getId()] = [
+                'name' => mb_strtolower((string)$document->getName()),
+                'path' => mb_strtolower((string)$document->getPath()),
+            ];
+        }
+        $scores = $this->lexicalBm25($rows, $tokens, $docFields);
+        $indexes = array_keys($rows);
+        usort($indexes, static fn(int $left, int $right): int =>
+            (($scores[$right] ?? 0.0) <=> ($scores[$left] ?? 0.0))
+            ?: ((int)$rows[$left]['id'] <=> (int)$rows[$right]['id'])
+        );
+        $results = [];
+        foreach ($indexes as $index) {
+            $rows[$index]['_eva_search_score'] = (float)($scores[$index] ?? 0.0);
+            $results[] = $rows[$index];
+        }
+        return $results;
+    }
+
+    /** Resolve the current retrieval route without contacting an embedding or vector provider. */
+    public function effectiveBackendForUser(string $userId): string {
+        try {
+            $generation = $this->generations?->activeGenerationForUser($userId);
+            if ($generation === null) return 'sql_legacy';
+            $state = $generation->backend === 'qdrant' ? 'delivered' : 'ready';
+            $generationChunks = $this->chunkMapper->countForUser($userId, $generation->id, $state);
+            if ($generationChunks === 0 && $this->chunkMapper->countForUser($userId) > 0) return 'sql_legacy';
+            return $generation->backend === 'qdrant' ? 'qdrant_generation' : 'sql_generation';
+        } catch (\Throwable) {
+            // Keep diagnostics from interfering with status; never claim a healthy fallback on a failed lookup.
+            return 'unknown';
+        }
+    }
+
+    private function runSearch(string $userId, string $query, int $topK, ?string $scopePath, ?array $fixedVector, ?string $traceId): array {
+        $started = hrtime(true);
+        $measurements = ['backend' => 'sql_legacy', 'query_vector_mode' => $fixedVector === null ? 'automatic' : 'frozen'];
+        $failed = true;
+        try {
+            $results = $this->searchMeasured($userId, $query, $topK, $scopePath, $measurements, $fixedVector);
+            $measurements['results'] = count($results);
+            $failed = false;
+            return $results;
+        } finally {
+            $active = $measurements['_active_stage'] ?? null;
+            unset($measurements['_active_stage']);
+            if ($active !== null && !array_key_exists($active['name'], $measurements)) {
+                $measurements[$active['name']] = (hrtime(true) - $active['started']) / 1_000_000;
+            }
+            $measurements['total_ms'] = (hrtime(true) - $started) / 1_000_000;
+            $measurements['failed'] = $failed;
+            $traceId ??= $this->traceContext?->id();
+            if ($traceId !== null && preg_match('/^[a-f0-9]{32}$/D', $traceId) === 1) {
+                $measurements['trace_id'] = $traceId;
+                $spanId = $this->traceContext?->spanId();
+                if ($spanId !== null) $measurements['span_id'] = $spanId;
+            }
+            if ($traceId !== null && preg_match('/^[a-f0-9]{32}$/D', $traceId) === 1) {
+                $this->traceContext?->recordRetrievalMeasurements($traceId, $measurements);
+            }
+            try {
+                // No query, account ID, path, content or exception payload.
+                $this->logger?->debug('eva_ai: retrieval timings', $measurements);
+            } catch (\Throwable) {
+                // Telemetry must not change retrieval availability.
+            }
+        }
+    }
+
+    private function startStage(array &$measurements, string $name): int {
+        $started = hrtime(true);
+        $measurements['_active_stage'] = ['name' => $name, 'started' => $started];
+        return $started;
+    }
+
+    private function searchMeasured(string $userId, string $query, int $topK, ?string $scopePath, array &$measurements, ?array $fixedVector): array {
         $topK = max(1, min($topK, (int)AppConfig::LIMITS['top_k'][1]));
         if (trim($query) === '') {
             return [];
         }
+        $generation = null;
+        if ($fixedVector === null && $this->generations !== null && $this->generationEmbeddings !== null) {
+            try { $generation = $this->generations->activeGenerationForUser($userId); }
+            catch (\Throwable) { /* Missing or unavailable generation metadata keeps legacy retrieval available. */ }
+        }
+        $generationId = $generation?->id;
         // Single count check: skip the embedding call entirely when the user
         // has no indexed documents. This avoids a blocking 2-30 second
         // HTTP round-trip to Ollama for a query that can never return results.
-        $chunkCount = $this->chunkMapper->countForUser($userId);
+        $phase = $this->startStage($measurements, 'count_ms');
+        $generationState=$generation?->backend==='qdrant'?'delivered':'ready';
+        $chunkCount = $this->chunkMapper->countForUser($userId,$generationId,$generationState);
+        if ($generationId !== null && $chunkCount === 0 && $this->chunkMapper->countForUser($userId) > 0) {
+            // A malformed or incomplete active snapshot must not hide the still-current legacy index.
+            $generation = null;
+            $generationId = null;
+            $chunkCount = $this->chunkMapper->countForUser($userId);
+        }
+        $measurements['backend'] = $generationId === null ? 'sql_legacy' : ($generation->backend==='qdrant'?'qdrant_generation':'sql_generation');
+        $measurements['count_ms'] = (hrtime(true) - $phase) / 1_000_000;
+        $measurements['index_chunks'] = $chunkCount;
         if ($chunkCount === 0) return [];
         if ($this->config->get('chat_provider') === 'groq' && $chunkCount === 0) return [];
         // A model named `*:cloud` is served remotely through Ollama, but the
@@ -47,20 +206,76 @@ class Searcher {
         // host's CPU while the actual answer is generated in the cloud. Keep
         // retrieval responsive by using the lexical index unless the user
         // explicitly selected a cloud embedding model as well.
+        $phase = $this->startStage($measurements, 'embedding_ms');
         $chatModel = strtolower(trim($this->config->get('chat_model')));
-        $embeddingModel = strtolower(trim($this->config->get('embedding_model')));
+        $embeddingModel = strtolower(trim($generation?->embeddingModel ?? $this->config->get('embedding_model')));
         $cloudChatWithLocalEmbedding = $this->config->userId() !== null
             && $this->config->get('chat_provider') === 'ollama'
             && str_ends_with($chatModel, ':cloud')
             && !str_ends_with($embeddingModel, ':cloud');
-        $queryVector = null;
-        if (!$cloudChatWithLocalEmbedding) {
+        $embeddingProvider = $fixedVector !== null ? 'frozen' : ($cloudChatWithLocalEmbedding ? 'none' : ($generation?->embeddingProvider ?? 'ollama'));
+        $queryVector = $fixedVector;
+        if ($queryVector === null && $generation !== null && !$cloudChatWithLocalEmbedding) {
+            try {
+                $guard = function () use ($userId,$generation): void {
+                    if (!$this->isActiveGenerationCurrent($userId,$generation->id)) throw new VectorStoreException('generation_not_active');
+                };
+                $queryVector = $this->generationEmbeddings?->embed($generation,[$query],$guard,true,30)[0] ?? null;
+            } catch (\Throwable) { $queryVector = null; }
+        }
+        if ($generation !== null && !$this->isActiveGenerationCurrent($userId,$generation->id)) {
+            $generation = null;
+            $generationId = null;
+            $measurements['backend'] = 'sql_legacy';
+            $chunkCount = $this->chunkMapper->countForUser($userId);
+            $queryVector = $fixedVector;
+            $embeddingModel = strtolower(trim($this->config->get('embedding_model')));
+            $cloudChatWithLocalEmbedding = $this->config->userId() !== null
+                && $this->config->get('chat_provider') === 'ollama' && str_ends_with($chatModel, ':cloud')
+                && !str_ends_with($embeddingModel, ':cloud');
+            $embeddingProvider = $fixedVector !== null ? 'frozen' : ($cloudChatWithLocalEmbedding ? 'none' : 'ollama');
+        }
+        if ($queryVector === null && $generation === null && !$cloudChatWithLocalEmbedding) {
             [$queryVec, $err] = $this->ollama->embedQuery([$query], $userId);
             $queryVector = $err === null && is_array($queryVec) && isset($queryVec[0]) ? $queryVec[0] : null;
         }
-        $rows = $this->loadCandidates($userId, $query, $queryVector);
+        $queryMagnitude = $queryVector === null ? null : $this->vectorMagnitude($queryVector);
+        if ($queryMagnitude === null) $queryVector = null;
+        $measurements['embedding_ms'] = (hrtime(true) - $phase) / 1_000_000;
+        $measurements['embedding_provider'] = $embeddingProvider;
+        $measurements['dense_enabled'] = $queryMagnitude !== null;
+        $phase = $this->startStage($measurements, 'candidates_ms');
+        try {
+            $rows = $this->loadCandidates($userId, $query, $queryVector, $queryMagnitude, $generation, $scopePath, $topK, $measurements);
+        } catch (\Throwable $error) {
+            if ($generation?->backend !== 'qdrant') throw $error;
+            // Remote search failure is observable and degrades to the built-in index.
+            try{$this->logger?->warning('eva_ai: optional Qdrant retrieval failed; using SQL fallback', ['reason'=>$error instanceof VectorStoreException?$error->reason:'search_failed']);}catch(\Throwable){}
+            $generation=null;$generationId=null;$generationState='ready';
+            $measurements['backend']='sql_legacy';
+            $chunkCount=$this->chunkMapper->countForUser($userId);
+            $fallbackEmbeddingStarted=hrtime(true);
+            $queryVector=$fixedVector;
+            // A Qdrant failure can include both the generation provider's
+            // initial query embedding and an Ollama fallback embedding.
+            // Keep mixed time out of provider-specific latency aggregates.
+            $embeddingProvider=$fixedVector!==null?'frozen':($cloudChatWithLocalEmbedding?'none':'mixed');
+            if($queryVector===null&&!$cloudChatWithLocalEmbedding){
+                [$fallbackVector,$fallbackError]=$this->ollama->embedQuery([$query],$userId);
+                $queryVector=$fallbackError===null&&is_array($fallbackVector)&&isset($fallbackVector[0])?$fallbackVector[0]:null;
+            }
+            $queryMagnitude=$queryVector===null?null:$this->vectorMagnitude($queryVector);
+            if($queryMagnitude===null)$queryVector=null;
+            $measurements['embedding_ms']+=(hrtime(true)-$fallbackEmbeddingStarted)/1_000_000;
+            $measurements['embedding_provider']=$embeddingProvider;
+            $measurements['dense_enabled']=$queryMagnitude!==null;
+            $rows=$this->loadCandidates($userId,$query,$queryVector,$queryMagnitude,null,$scopePath,$topK,$measurements);
+        }
+        $measurements['candidates_ms'] = (hrtime(true) - $phase) / 1_000_000;
+        $measurements['candidates'] = count($rows);
 
         // Load document metadata ONCE for both scope filtering and lexical scoring.
+        $phase = $this->startStage($measurements, 'hydrate_ms');
         $docIds = [];
         foreach ($rows as $row) {
             $docIds[(int)$row['document_id']] = true;
@@ -73,11 +288,16 @@ class Searcher {
             }
         }
 
+        $measurements['hydrate_ms'] = (hrtime(true) - $phase) / 1_000_000;
+        $phase = $this->startStage($measurements, 'scope_ms');
         // Apply scope filter using already-loaded metadata (no duplicate query).
         if ($scopePath !== null && trim($scopePath) !== '') {
             $rows = $this->filterByScopePath($rows, $scopePath, $docMeta);
         }
 
+        $measurements['scope_ms'] = (hrtime(true) - $phase) / 1_000_000;
+        $measurements['scoped_candidates'] = count($rows);
+        $phase = $this->startStage($measurements, 'ranking_ms');
         $queryTokens = $this->tokens($query);
 
         // Filename/path context for lexical scoring: a query that names a file
@@ -91,7 +311,9 @@ class Searcher {
             ];
         }
 
-        $lexical = $this->lexicalBm25($rows, $queryTokens, $docFields);
+        $nativeHybrid = isset($rows[0]['_native_rrf']);
+        $lexical = $nativeHybrid ? $this->lexicalFileContext($rows, $queryTokens, $docFields) : $this->lexicalBm25($rows, $queryTokens, $docFields);
+        $phraseExact = [];
         // Quoted phrases are an explicit exact-match signal. Give them a
         // deterministic boost after BM25/RRF preparation so an exact result
         // wins over a merely semantically related chunk.
@@ -99,6 +321,7 @@ class Searcher {
             foreach ($rows as $i => $row) {
                 if (str_contains(mb_strtolower((string)$row['content']), mb_strtolower($phrase))) {
                     $lexical[$i] = ($lexical[$i] ?? 0.0) + 5.0;
+                    $phraseExact[$i] = true;
                 }
             }
         }
@@ -108,13 +331,13 @@ class Searcher {
         // On a large index this was pure CPU work: all scores were zero and
         // the dense rank could not affect the result anyway.
         $dense = [];
-        if ($queryVector !== null) {
+        if ($queryVector !== null && !$nativeHybrid) {
             foreach ($rows as $i => $row) {
-                $vec = json_decode($row['embedding'], true);
+                $vec = VectorEmbeddingCodec::decode((string)$row['embedding'], count($queryVector));
                 if (!is_array($vec)) {
                     continue;
                 }
-                $similarity = $this->cosine($queryVector, $vec);
+                $similarity = $this->cosine($queryVector, $vec, $queryMagnitude, $row['vector_norm'] ?? null);
                 if ($similarity !== null) {
                     $dense[$i] = $similarity;
                 }
@@ -128,18 +351,18 @@ class Searcher {
         $denseRank = array_keys($dense);
         $lexPos = array_flip($lexRank);
         $densePos = array_flip($denseRank);
+        $maxNativeRrf = $nativeHybrid ? max(array_column($rows, '_native_rrf')) : 0.0;
 
         $results = [];
         foreach ($rows as $i => $row) {
             $lexScore = $lexical[$i] ?? 0.0;
             $denseScore = $dense[$i] ?? 0.0;
-            $rrf = 0.0;
-            if (array_key_exists($i, $lexPos)) {
-                $rrf += 1 / (60 + $lexPos[$i]);
+            $rrf = $nativeHybrid ? (float)$row['_native_rrf'] : 0.0;
+            if ($nativeHybrid && isset($phraseExact[$i])) {
+                $rrf += max((float)$maxNativeRrf, 1 / 60) + (1 / 60);
             }
-            if (array_key_exists($i, $densePos)) {
-                $rrf += 1 / (60 + $densePos[$i]);
-            }
+            if (array_key_exists($i, $lexPos)) $rrf += 1 / (60 + $lexPos[$i]);
+            if (!$nativeHybrid && array_key_exists($i, $densePos)) $rrf += 1 / (60 + $densePos[$i]);
             $docId = (int)$row['document_id'];
             $doc = $docMeta[$docId] ?? null;
             $results[] = [
@@ -164,7 +387,9 @@ class Searcher {
             return $byScore !== 0 ? $byScore : ($a['chunkId'] <=> $b['chunkId']);
         });
 
-        return $this->diversify($results, $topK);
+        $results = $this->diversify($results, $topK);
+        $measurements['ranking_ms'] = (hrtime(true) - $phase) / 1_000_000;
+        return $results;
     }
 
     /**
@@ -187,6 +412,7 @@ class Searcher {
             if ($doc === null) {
                 continue;
             }
+            if ($doc->getSource() !== \OCA\EvaAi\Db\Document::SOURCE_FILES) continue;
             $path = (string)$doc->getPath();
             if ($path === '') {
                 continue;
@@ -266,17 +492,73 @@ class Searcher {
      *        embedding request failed (dense ranking is then skipped).
      * @return array<int,array<string,mixed>>
      */
-    private function loadCandidates(string $userId, string $query, ?array $queryVector): array {
-        $n = $this->chunkMapper->countForUser($userId);
+    private function loadCandidates(string $userId, string $query, ?array $queryVector, ?float $queryMagnitude, ?VectorGeneration $generation, ?string $scopePath, int $topK, array &$measurements): array {
+        $measurements['dense_sql_rows_scanned'] = 0;
+        $generationId=$generation?->id;
+        $generationState=$generation?->backend==='qdrant'?'delivered':'ready';
+        if($generation?->backend==='qdrant'){
+            if($this->qdrant===null||$this->generationChunks===null||$this->generations===null)throw new VectorStoreException('qdrant_search_unavailable');
+            if ($generation->includeTextPayload) {
+                $target=$this->generations->target($userId,$generation->id);
+                if($target===null)throw new VectorStoreException('generation_target_missing');
+                $guard=function()use($userId,$generation):void{if(!$this->isActiveGenerationCurrent($userId,$generation->id))throw new VectorStoreException('generation_not_active');};
+                $store=$this->qdrant->forTarget($target,$guard);
+                $limit=min(100,max(20,$topK*4));
+                $hits=$store->searchHybrid($generation,$query,$queryVector,$limit,new SearchFilters($scopePath));
+                $guard();
+                $rows=$this->generationChunks->searchRows($userId,$generation,$hits);
+                $byId=[];
+                foreach($rows as$row)$byId[(int)$row['id']]=$row;
+                $phrases=$this->quotedPhrases($query);
+                if($phrases!==[]){
+                    $phraseCandidates=$this->chunkMapper->filterChunksByPhrases($userId,$phrases,100,$generation->id,'delivered');
+                    $phraseHits=[];
+                    foreach($phraseCandidates as$candidate){
+                        $text=mb_strtolower((string)$candidate['content']);
+                        foreach($phrases as$phrase){
+                            if(str_contains($text,mb_strtolower($phrase))){
+                                $phraseHits[]=['chunkId'=>(int)$candidate['id'],'revision'=>(int)$candidate['vector_revision']];
+                                break;
+                            }
+                        }
+                    }
+                    foreach($this->generationChunks->searchRows($userId,$generation,$phraseHits)as$row)$byId[(int)$row['id']]??=$row;
+                }
+                $rrf=[];
+                foreach($hits as$rank=>$hit)$rrf[$hit['chunkId']]=$queryVector===null?1/(60+$rank):(float)$hit['score'];
+                foreach($byId as&$row)$row['_native_rrf']=$rrf[(int)$row['id']]??0.0;
+                unset($row);
+                return array_values($byId);
+            }
+            $lexical=$this->chunkMapper->filterChunksByTokens($userId,$this->tokens($query),(int)ceil(self::POOL/2),null,$generationId,'delivered');
+            $dense=[];
+            if($queryVector!==null){
+                $target=$this->generations->target($userId,$generation->id);
+                if($target===null)throw new VectorStoreException('generation_target_missing');
+                $guard=function()use($userId,$generation):void{if(!$this->isActiveGenerationCurrent($userId,$generation->id))throw new VectorStoreException('generation_not_active');};
+                $store=$this->qdrant->forTarget($target,$guard);
+                $limit=min(100,max(20,$topK*4));
+                $hits=$store->search($generation,$queryVector,$limit,new SearchFilters($scopePath));
+                $guard();
+                $dense=$this->generationChunks->searchRows($userId,$generation,$hits);
+            }
+            $byId=[];
+            foreach($lexical as$row)$byId[(int)$row['id']]=$row;
+            foreach($dense as$row)$byId[(int)$row['id']]=$row;
+            return array_values(array_slice($byId,0,self::POOL));
+        }
+        $n = $this->chunkMapper->countForUser($userId,$generationId,$generationState);
         if ($n <= self::POOL) {
-            return $this->chunkMapper->chunksForUser($userId);
+            $rows = $this->chunkMapper->chunksForUser($userId,self::POOL,$generationId,$generationState);
+            if ($queryVector !== null) $measurements['dense_sql_rows_scanned'] = count($rows);
+            return $rows;
         }
 
         $tokens = $this->tokens($query);
 
         // Lexical set: bounded prefilter (up to half the pool).
         $lexCap = (int)ceil(self::POOL / 2);
-        $lexical = $tokens === [] ? [] : $this->chunkMapper->filterChunksByTokens($userId, $tokens, $lexCap);
+        $lexical = $tokens === [] ? [] : $this->chunkMapper->filterChunksByTokens($userId, $tokens, $lexCap, null, $generationId,$generationState);
 
         $denseCap = min(self::POOL - count($lexical), $n);
         $denseCap = max(1, $denseCap);
@@ -287,14 +569,18 @@ class Searcher {
                 // the best $denseCap cosine scores across the whole index.
                 $best = [];
                 $keep = $denseCap + self::DENSE_SCAN_PAGE;
-                for ($offset = 0; $offset < $n; $offset += self::DENSE_SCAN_PAGE) {
-                    $page = $this->chunkMapper->chunksForUserPage($userId, self::DENSE_SCAN_PAGE, $offset);
+                $afterId = 0;
+                for ($scanned = 0; $scanned < $n; $scanned += self::DENSE_SCAN_PAGE) {
+                    $page = $this->chunkMapper->vectorsForUserAfter($userId, $afterId, self::DENSE_SCAN_PAGE, $generationId,$generationState);
+                    if ($page === []) break;
+                    $measurements['dense_sql_rows_scanned'] += count($page);
+                    $afterId = (int)$page[count($page) - 1]['id'];
                     foreach ($page as $row) {
-                        $vec = json_decode($row['embedding'], true);
+                        $vec = VectorEmbeddingCodec::decode((string)$row['embedding'], count($queryVector));
                         if (!is_array($vec)) {
                             continue;
                         }
-                        $similarity = $this->cosine($queryVector, $vec);
+                        $similarity = $this->cosine($queryVector, $vec, $queryMagnitude, $row['vector_norm'] ?? null);
                         if ($similarity !== null) {
                             $best[(int)$row['id']] = $similarity;
                         }
@@ -308,18 +594,18 @@ class Searcher {
                     arsort($best);
                     $bestIds = array_keys(array_slice($best, 0, $denseCap, true));
                     foreach (array_chunk($bestIds, 1000) as $idBatch) {
-                        foreach ($this->chunkMapper->findChunksByIds($idBatch) as $row) {
+                        foreach ($this->chunkMapper->findChunksByIds($idBatch,$generationId,$generationState) as $row) {
                             $denseRows[] = $row;
                         }
                     }
                 }
             } else {
-                $denseRows = $this->chunkMapper->chunksForUser($userId);
+                $denseRows = $this->chunkMapper->chunksForUser($userId,self::POOL,$generationId,$generationState);
             }
         } elseif ($denseCap > 0) {
             // Embedding request failed: keep a deterministic bounded page so
             // retrieval still returns candidates instead of an empty result.
-            $denseRows = $this->chunkMapper->chunksForUserPage($userId, $denseCap, 0);
+            $denseRows = $this->chunkMapper->chunksForUserPage($userId, $denseCap, 0, $generationId,$generationState);
         }
 
         // Merge + dedupe by chunk id.
@@ -335,10 +621,14 @@ class Searcher {
         return array_values(array_slice($byId, 0, self::POOL));
     }
 
+    private function isActiveGenerationCurrent(string $userId,string $generationId): bool {
+        try { return $this->generations?->activeGenerationForUser($userId)?->id === $generationId; }
+        catch (\Throwable) { return false; }
+    }
+
     /** @return string[] */
     private function tokens(string $text): array {
-        $text = mb_strtolower($text);
-        preg_match_all('/\p{L}\p{M}*+[\p{L}\p{M}\p{N}_]*+|\p{N}+/u', $text, $m);
+        $words = $this->wordTokens($text);
         $stop = [
             'der','die','das','den','dem','des','ein','eine','einer','eines','einem','einen',
             'und','oder','aber','auch','im','in','am','an','auf','mit','von','für',
@@ -347,14 +637,19 @@ class Searcher {
             'more','and','the','of','to','in','is','are','was','for','on','at','with','that','this',
         ];
         $out = [];
-        foreach ($m[0] as $tok) {
-            $tok = (string)$tok;
+        foreach ($words as $tok) {
             if (mb_strlen($tok) < 3 || in_array($tok, $stop, true)) {
                 continue;
             }
             $out[] = $tok;
         }
         return array_values(array_unique($out));
+    }
+
+    /** @return list<string> Lowercase Unicode word tokens, preserving repeats. */
+    private function wordTokens(string $text): array {
+        preg_match_all('/\p{L}\p{M}*+[\p{L}\p{M}\p{N}_]*+|\p{N}+/u', mb_strtolower($text), $matches);
+        return array_map('strval', $matches[0] ?? []);
     }
 
     /**
@@ -370,17 +665,30 @@ class Searcher {
         $lengths = [];
         $scores = [];
         $total = 0;
-        // Lowercase every chunk once up front: document frequency and term
-        // frequency then come from a single substr_count pass per term instead
-        // of an extra mb_stripos pre-pass plus a repeated mb_strtolower per
-        // (term, row) pair. Same scores, roughly half the scanning work on
-        // large candidate pools.
-        $lowered = [];
+        // One Unicode regex finds all exact query tokens per body. This avoids
+        // rescanning each candidate for every term and excludes partial words.
+        $bodyTerms = array_values(array_filter(array_slice($queryTokens, 0, 64), static fn(string $term): bool => mb_strlen($term) <= 128));
+        $alternatives = array_map(static fn(string $term): string => preg_quote($term, '~'), $bodyTerms);
+        usort($alternatives, static fn(string $a, string $b): int => strlen($b) <=> strlen($a));
+        $pattern = $alternatives === [] ? null : '~(?<![\\p{L}\\p{M}\\p{N}_])(?:' . implode('|', $alternatives) . ')(?![\\p{L}\\p{M}\\p{N}_])~u';
+        $frequencies = [];
         foreach ($rows as $i => $row) {
             $len = $this->tokenCount(strlen($row['content']));
             $lengths[$i] = $len;
             $total += $len;
-            $lowered[$i] = mb_strtolower($row['content']);
+            $indexedTerms = $row['_eva_lexical_frequencies'] ?? null;
+            if (is_array($indexedTerms)) {
+                $counts = [];
+                foreach ($bodyTerms as $term) {
+                    $frequency = (int)($indexedTerms[hash('sha256', $term)] ?? 0);
+                    if ($frequency > 0) $counts[$term] = $frequency;
+                }
+                $frequencies[$i] = $counts;
+            } elseif ($pattern === null || preg_match_all($pattern, mb_strtolower((string)$row['content']), $matches) === false) {
+                $frequencies[$i] = [];
+            } else {
+                $frequencies[$i] = array_count_values($matches[0]);
+            }
         }
         $N = count($rows);
         $avgdl = $N > 0 ? max(1.0, $total / $N) : 1.0;
@@ -389,12 +697,12 @@ class Searcher {
             $docRows[(int)$row['document_id']][] = $i;
         }
 
-        foreach ($queryTokens as $term) {
+        foreach ($bodyTerms as $term) {
             $df = 0;
             $tfs = [];
-            foreach ($lowered as $i => $lower) {
-                $tf = substr_count($lower, $term);
-                if ($tf !== 0) {
+            foreach ($frequencies as $i => $counts) {
+                $tf = $counts[$term] ?? 0;
+                if ($tf > 0) {
                     $tfs[$i] = $tf;
                     $df++;
                 }
@@ -442,6 +750,30 @@ class Searcher {
         return $scores;
     }
 
+    /** Cheap filename/path signal layered over Qdrant's native full-text BM25. */
+    private function lexicalFileContext(array $rows, array $queryTokens, array $docFields): array {
+        $scores = [];
+        $documentRows = [];
+        foreach ($rows as $index => $row) $documentRows[(int)$row['document_id']][] = $index;
+        $count = max(1, count($documentRows));
+        foreach ($queryTokens as $term) {
+            $matches = [];
+            foreach ($docFields as $documentId => $fields) {
+                $weight = 0.0;
+                if (str_contains($fields['name'], $term)) $weight = 0.5;
+                if (str_contains($fields['path'], $term)) $weight = max($weight, 0.3);
+                if ($weight > 0.0) $matches[$documentId] = $weight;
+            }
+            $df = count($matches);
+            if ($df === 0) continue;
+            $idf = log(1 + (($count - $df + 0.5) / ($df + 0.5)));
+            foreach ($matches as $documentId => $weight) {
+                foreach ($documentRows[$documentId] ?? [] as $index) $scores[$index] = ($scores[$index] ?? 0.0) + $weight * $idf;
+            }
+        }
+        return $scores;
+    }
+
     private function tokenCount(int $chars): int {
         return max(1, (int)ceil($chars / 4));
     }
@@ -452,27 +784,39 @@ class Searcher {
         return array_values(array_unique(array_filter(array_map('trim', $matches[1] ?? []))));
     }
 
-    private function cosine(array $a, array $b): ?float {
-        if ($a === [] || count($a) !== count($b)) {
+    private function vectorMagnitude(array $vector): ?float {
+        if ($vector === []) return null;
+        $norm = 0.0;
+        foreach ($vector as $value) {
+            if (!is_numeric($value) || !is_finite((float)$value)) return null;
+            $value = (float)$value;
+            $norm += $value * $value;
+        }
+        if (!is_finite($norm) || $norm <= 0.0) return null;
+        return sqrt($norm);
+    }
+
+    private function cosine(array $a, array $b, ?float $magnitudeA, mixed $magnitudeB = null): ?float {
+        if ($a === [] || count($a) !== count($b) || $magnitudeA === null || $magnitudeA <= 0.0) {
             return null;
         }
         $dot = 0.0;
-        $na = 0.0;
+        $knownMagnitudeB = is_numeric($magnitudeB) && is_finite((float)$magnitudeB) && (float)$magnitudeB > 0.0
+            ? (float)$magnitudeB : null;
         $nb = 0.0;
         foreach ($a as $i => $value) {
-            if (!is_numeric($value) || !is_finite((float)$value)
-                || !array_key_exists($i, $b) || !is_numeric($b[$i]) || !is_finite((float)$b[$i])) {
+            if (!array_key_exists($i, $b) || !is_numeric($b[$i]) || !is_finite((float)$b[$i])) {
                 return null;
             }
             $va = (float)$value;
             $vb = (float)$b[$i];
             $dot += $va * $vb;
-            $na += $va * $va;
-            $nb += $vb * $vb;
+            if ($knownMagnitudeB === null) $nb += $vb * $vb;
         }
-        if ($na <= 0 || $nb <= 0) {
+        $magnitude = $knownMagnitudeB ?? (is_finite($nb) && $nb > 0.0 ? sqrt($nb) : null);
+        if ($magnitude === null || !is_finite($magnitude) || $magnitude <= 0.0) {
             return null;
         }
-        return $dot / (sqrt($na) * sqrt($nb));
+        return $dot / ($magnitudeA * $magnitude);
     }
 }

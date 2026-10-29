@@ -2,7 +2,7 @@
 	<section class="agent-runs">
 		<header class="agent-runs__header">
 			<div>
-				<h1>{{ $t('Agent runs') }}</h1>
+				<h1>{{ $t('Background tasks') }}</h1>
 				<p>{{ $t('Background work continues even when this page is closed. You can inspect and control each run here.') }}</p>
 			</div>
 			<NcButton class="agent-runs__refresh" type="button" variant="secondary" :disabled="loading" @click="load">{{ loading ? $t('Loading…') : $t('Refresh') }}</NcButton>
@@ -61,8 +61,13 @@ const error = ref('')
 const busyItems = ref(new Set())
 let timer = null
 let requestId = 0
+let inFlight = false
+let lastRefresh = 0
 
 const load = async () => {
+	if (inFlight) return
+	inFlight = true
+	lastRefresh = Date.now()
 	const currentRequest = ++requestId
 	loading.value = true
 	try {
@@ -81,6 +86,7 @@ const load = async () => {
 		if (currentRequest === requestId) error.value = t('Could not load agent runs: {error}', { error: errMsg(e) })
 	} finally {
 		if (currentRequest === requestId) loading.value = false
+	inFlight = false
 	}
 }
 const act = async (operation, id) => {
@@ -119,16 +125,22 @@ const phaseLabel = (step) => {
 	if (step.phase === 'tool_result') return step.ok === false ? t('Failed result') : t('Result')
 	return ({ queued: t('Queued'), tool_start: t('Tool started'), thinking: t('Thinking'), completed: t('Completed'), failed: t('Failed') }[step.phase] || step.phase || t('Event'))
 }
-onMounted(() => { load(); timer = window.setInterval(load, 10000) })
-onBeforeUnmount(() => { if (timer) window.clearInterval(timer) })
+onMounted(() => {
+	load()
+	timer = window.setInterval(() => {
+		if (document.hidden || inFlight) return
+		if (items.value.some(item => ['pending', 'running'].includes(item.status)) || Date.now() - lastRefresh >= 60000) load()
+	}, 10000)
+})
+onBeforeUnmount(() => { requestId++; if (timer) window.clearInterval(timer) })
 </script>
 
 <style scoped>
 .agent-runs { max-width: 1100px; margin: 0 auto; padding: 32px 40px 64px; color: var(--color-main-text); }
 .agent-runs__header { display:flex; justify-content:space-between; align-items:flex-start; gap:24px; margin-bottom:24px; }
-h1 { margin:0 0 8px; font-size:28px; } .agent-runs__header p { margin:0; color:var(--color-text-maxcontrast); }
+h1 { margin:0 0 8px; font-size:24px; font-weight:600; } .agent-runs__header p { margin:0; color:var(--color-text-maxcontrast); }
 .agent-runs__refresh { flex:none; } .agent-runs__error { color:var(--color-error); } .agent-runs__empty { padding:32px; text-align:center; color:var(--color-text-maxcontrast); }
-.agent-runs__list { display:grid; gap:14px; } .agent-run { border:1px solid var(--color-border); border-radius:var(--border-radius-large); padding:18px; background:var(--color-main-background); box-shadow:0 2px 8px rgba(0,0,0,.06); }
+.agent-runs__list { display:grid; gap:14px; } .agent-run { border:1px solid var(--color-border); border-radius:var(--border-radius-large); padding:18px; background:var(--color-main-background);  }
 .agent-run__top { display:flex; justify-content:space-between; gap:16px; } .agent-run__top strong { display:block; font-size:15px; } .agent-run__top small { display:block; margin-top:4px; color:var(--color-text-maxcontrast); font-family:monospace; }
 .agent-run__status { text-transform:capitalize; font-weight:600; color:var(--color-primary-element); } .agent-run--failed .agent-run__status { color:var(--color-error); }
 .agent-run__meta { display:flex; flex-wrap:wrap; gap:8px 18px; color:var(--color-text-maxcontrast); font-size:13px; } .agent-run__error { margin:12px 0 0; color:var(--color-error); white-space:pre-wrap; }

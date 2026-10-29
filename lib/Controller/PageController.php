@@ -6,8 +6,10 @@ namespace OCA\EvaAi\Controller;
 
 use OCP\AppFramework\Controller;
 use OCP\AppFramework\Http\TemplateResponse;
+use OCP\AppFramework\Http\RedirectResponse;
 use OCP\AppFramework\Http\Attribute\NoAdminRequired;
 use OCP\AppFramework\Http\Attribute\NoCSRFRequired;
+use OCP\AppFramework\Http\Attribute\AdminRequired;
 
 use OCA\EvaAi\Service\RagService;
 use OCP\App\IAppManager;
@@ -60,8 +62,23 @@ class PageController extends Controller {
 
     #[NoAdminRequired]
     #[NoCSRFRequired]
+    public function runs(): TemplateResponse {
+        return $this->appPage('index');
+    }
+
+    #[NoAdminRequired]
+    #[NoCSRFRequired]
     public function metrics(): TemplateResponse {
         return $this->appPage('index');
+    }
+
+    #[AdminRequired]
+    #[NoCSRFRequired]
+    public function admin(): RedirectResponse {
+        return new RedirectResponse($this->urlGenerator->linkToRoute(
+            'settings.AdminSettings.index',
+            ['section' => 'eva_ai'],
+        ));
     }
 
     /**
@@ -84,18 +101,23 @@ class PageController extends Controller {
         return $this->noCache($response);
     }
 
-    private function appPage(string $template): TemplateResponse {
+    private function appPage(string $template, string $bundle = 'eva_ai-main'): TemplateResponse {
         Util::addTranslations('eva_ai');
-        $main = $this->findBundle('eva_ai-main');
+        $main = $this->findBundle($bundle);
         if ($main !== null) {
             \OCP\Util::addScript('eva_ai', $main);
             $this->addPageHeaders('shell-v2');
         }
         $response = new TemplateResponse('eva_ai', $template, [
-            'apiBase' => $this->urlGenerator->getAbsoluteURL('/ocs/v2.php/apps/eva_ai/api/'),
+            'apiBase' => $this->apiPath(),
         ]);
         $this->allowWebImages($response);
         return $this->noCache($response);
+    }
+
+    /** Keep authenticated browser requests on their current origin, including aliases. */
+    private function apiPath(string $suffix = ''): string {
+        return rtrim($this->urlGenerator->getWebroot(), '/') . '/ocs/v2.php/apps/eva_ai/api/' . $suffix;
     }
 
     private function findBundle(string $prefix): ?string {
@@ -128,11 +150,11 @@ class PageController extends Controller {
         ]);
         \OCP\Util::addHeader('meta', [
             'name' => 'eva-ai-api',
-            'content' => $this->urlGenerator->getAbsoluteURL('/ocs/v2.php/apps/eva_ai/api/'),
+            'content' => $this->apiPath(),
         ]);
         \OCP\Util::addHeader('meta', [
             'name' => 'eva-ai-stream',
-            'content' => $this->urlGenerator->getAbsoluteURL('/ocs/v2.php/apps/eva_ai/api/streamChat?format=json'),
+            'content' => $this->apiPath('streamChat?format=json'),
         ]);
         \OCP\Util::addHeader('meta', [
             'name' => 'eva-ai-version',

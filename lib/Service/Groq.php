@@ -13,7 +13,7 @@ class Groq {
     // General-purpose production chat models on the published Free Plan, 2026-09-09.
     // No Compound built-in tools, enterprise models or automatic paid fallback.
     public const MODELS = ['openai/gpt-oss-20b', 'openai/gpt-oss-120b'];
-    public function __construct(private AppConfig $config, private IClientService $clients, private ProviderCredentials $credentials, private ?UsageMetrics $usageMetrics = null, private ?LoggerInterface $logger = null) {}
+    public function __construct(private AppConfig $config, private IClientService $clients, private ProviderCredentials $credentials, private ?UsageMetrics $usageMetrics = null, private ?LoggerInterface $logger = null, private ?TraceContext $traceContext = null) {}
     public function info(): array {
         return ['name' => 'groq', 'models' => self::MODELS, 'keyConfigured' => $this->credentials->configured($this->config->userId() ?? ''), 'model' => $this->config->get('groq_model')];
     }
@@ -157,6 +157,7 @@ class Groq {
         $startedAt = microtime(true);
         try {
             $options = $this->options(false, $timeout);
+            $options['headers'] += $this->traceContext?->outboundHeaders() ?? [];
             $options['json'] = $this->payload($messages, $tools, false);
             $response = $this->clients->newClient()->post(self::BASE . '/chat/completions', $options);
             $this->checkResponse($response);
@@ -178,6 +179,7 @@ class Groq {
         $usage = [];
         try {
             $options = $this->options(true, $timeout);
+            $options['headers'] += $this->traceContext?->outboundHeaders() ?? [];
             $options['json'] = $this->payload($messages, $tools, true);
             $response = $this->clients->newClient()->post(self::BASE . '/chat/completions', $options);
             $this->checkResponse($response);

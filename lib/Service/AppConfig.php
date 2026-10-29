@@ -9,6 +9,7 @@ use OCP\Lock\ILockingProvider;
 
 class AppConfig {
     public const APP = 'eva_ai';
+    public const DEFAULT_OLLAMA_URL = 'http://127.0.0.1:11434';
 
     /** Canonical boolean setting keys used by validation and persistence. */
     public const BOOLEAN_SETTINGS = [
@@ -27,7 +28,7 @@ class AppConfig {
      * default (Issue #73).
      */
     private const USER_SETTINGS = [
-        'chat_provider', 'groq_model', 'custom_provider_url', 'custom_provider_model', 'provider_profiles', 'model_pricing', 'plugin_tools_enabled', 'ollama_url', 'embedding_model', 'chat_model', 'chat_model_fallback',
+        'chat_provider', 'groq_model', 'custom_provider_url', 'custom_provider_model', 'provider_profiles', 'generation_embedding_profile_id', 'model_pricing', 'plugin_tools_enabled', 'ollama_url', 'embedding_model', 'chat_model', 'chat_model_fallback',
         'embedding_model_fallback', 'summary_model', 'top_k', 'chunk_size',
         'chunk_overlap', 'max_file_size', 'max_files_per_run', 'index_storage_quota', 'scope_path',
         'context_size', 'temperature', 'actions_enabled', 'background_actions_enabled', 'learning_enabled', 'safe_commands_enabled', 'terminal_commands_enabled', 'terminal_command_any', 'terminal_command_allowlist', 'agent_max_tool_rounds', 'exec_write_types',
@@ -62,7 +63,7 @@ class AppConfig {
      * back to the hardcoded defaults - never to an instance value.
      */
     private const USER_STATE_KEYS = [
-        'index_running', 'index_started', 'index_heartbeat', 'index_finished', 'last_index_processed',
+        'index_running', 'index_waiting_for_chat', 'index_started', 'index_heartbeat', 'index_finished', 'last_index_processed',
         'last_index_total', 'last_index_error', 'last_index_cache_hits', 'last_index_cache_misses',
         'last_index_ollama_requests', 'last_index_failed', 'index_config_hash', 'index_mode',
         'index_cancel_requested', 'index_run_id', 'index_enrolled', 'knowledge_initialized',
@@ -121,9 +122,12 @@ class AppConfig {
         'custom_provider_url' => '',
         'custom_provider_model' => '',
         'provider_profiles' => '[]',
+        // Empty keeps built-in Ollama embeddings. A selected profile is an
+        // explicit choice to send indexed content to that endpoint.
+        'generation_embedding_profile_id' => '',
         'model_pricing' => '[]',
         'plugin_tools_enabled' => '{}',
-        'ollama_url' => 'http://127.0.0.1:11434',
+        'ollama_url' => self::DEFAULT_OLLAMA_URL,
         'embedding_model' => 'nomic-embed-text',
         'chat_model' => 'gemma4:cloud',
         // Optional comma-separated fallback chains (Issue #86): when the
@@ -172,7 +176,7 @@ class AppConfig {
         // no-shell parser and confirmation gate still apply to every command.
         'terminal_command_any' => '0',
         'terminal_command_allowlist' => 'date,uptime,php,node,git,ls,find,grep,rg,cat,head,tail,df,du,free,uname',
-        'agent_max_tool_rounds' => '16',
+        'agent_max_tool_rounds' => '6',
         'exec_write_types' => '',
         'exec_write_max_chars' => '100000',
         'exec_delete_mode' => 'own',
@@ -228,6 +232,7 @@ class AppConfig {
         'web_search_browser_browsers_path' => '',
         'web_search_browser_timeout' => '20',
         'index_running' => '0',
+        'index_waiting_for_chat' => '0',
         'index_started' => '',
         'index_heartbeat' => '',
         'index_finished' => '0',
@@ -242,7 +247,9 @@ class AppConfig {
         'index_mode' => 'idle',
         'index_cancel_requested' => '0',
         'index_run_id' => '',
-        'index_enrolled' => '0',
+        // Recurring local indexing is the standard once indexing has begun;
+        // users can explicitly pause it from their personal settings.
+        'index_enrolled' => '1',
         'knowledge_initialized' => '0',
         // Only the scheduler lock is global; it is not exposed as a user setting.
         'index_job_running' => '0',
@@ -284,7 +291,7 @@ class AppConfig {
         'index_storage_quota' => [0, 1099511627776],
         'context_size' => [256, 131072],
         'temperature' => [0.0, 2.0],
-        'agent_max_tool_rounds' => [4, 32],
+        'agent_max_tool_rounds' => [2, 8],
         'exec_write_max_chars' => [1, 10000000],
         'mail_index_max' => [1, 500],
         'talk_index_max_rooms' => [1, 200],
@@ -313,8 +320,12 @@ class AppConfig {
     /** @var array<string,string> Request-level cache: avoids repeated DB round-trips. */
     private array $cache = [];
 
-    public function __construct(private IConfig $config, private ?ILockingProvider $locks = null) {
+    public function __construct(private IConfig $config, private ?ILockingProvider $locks = null,
+        private ?\OCA\EvaAi\Db\VectorOwnerFenceRepository $owners = null) {
     }
+
+    /** Instance-owned network policy for every compatible-provider construction path. */
+    public function providerEndpointPolicy(): ProviderEndpointPolicy { return new ProviderEndpointPolicy($this->config); }
 
     /** Set the user whose personal settings should override instance defaults. */
     public function setUserId(?string $userId): void {
@@ -384,7 +395,8 @@ class AppConfig {
 
     public function set(string $key, string $value): void {
         if ($this->userId !== null && $this->isUserSetting($key)) {
-            $this->config->setUserValue($this->userId, self::APP, $key, $value);
+            $write=fn()=> $this->config->setUserValue($this->userId, self::APP, $key, $value);
+            if($this->owners!==null)$this->owners->mutateOpen($this->userId,$write);else $write();
         } else {
             $this->config->setAppValue(self::APP, $key, $value);
         }
@@ -506,6 +518,7 @@ class AppConfig {
             return false;
         }
         $this->set('index_running', '0');
+        $this->set('index_waiting_for_chat', '0');
         $this->set('index_mode', 'idle');
         $this->set('index_cancel_requested', '0');
         $this->set('index_run_id', '');
@@ -517,14 +530,13 @@ class AppConfig {
         $previous = $this->userId;
         $this->setUserId($userId);
         try {
-            $sentinel = "\0eva_ai_missing\0";
-            $current = $this->config->getUserValue($userId, self::APP, 'index_running', $sentinel);
-            if ($current === $sentinel) {
-                // The first claim has no competing stored value yet. Persist a
-                // default before using the conditional update on later runs.
-                $this->config->setUserValue($userId, self::APP, 'index_running', '0');
-            }
-            $this->config->setUserValue($userId, self::APP, 'index_running', '1', '0');
+            $claim=function()use($userId):void{
+                $sentinel="\0eva_ai_missing\0";
+                $current=$this->config->getUserValue($userId,self::APP,'index_running',$sentinel);
+                if($current===$sentinel)$this->config->setUserValue($userId,self::APP,'index_running','0');
+                $this->config->setUserValue($userId,self::APP,'index_running','1','0');
+            };
+            if($this->owners!==null)$this->owners->mutateOpen($userId,$claim);else $claim();
             return true;
         } catch (\Throwable $e) {
             return false;
@@ -538,13 +550,15 @@ class AppConfig {
      * per-user runtime state) when their account is deleted (Issue #83).
      */
     public function deleteUserValues(string $userId): void {
+		$failed = false;
         foreach ([...self::USER_SCOPED_KEYS, ProviderCredentials::KEY] as $key) {
             try {
                 $this->config->deleteUserValue($userId, self::APP, $key);
             } catch (\Throwable $e) {
-                // Best effort per key; a failing deletion must not abort the rest.
+				$failed = true;
             }
         }
+		if ($failed) throw new \RuntimeException('Some account-scoped EVA settings could not be erased.');
     }
 
     /** @return array<string,array{0:int|float,1:int|float}> */
@@ -599,6 +613,11 @@ class AppConfig {
      * malformed, non-numeric, or out-of-range values.
      */
     public function validateValue(string $key, mixed $value): ?string {
+        if ($key === 'generation_embedding_profile_id') {
+            $profileId = trim((string)$value);
+            return $profileId === '' || preg_match('/^[a-z][a-z0-9_-]{1,31}$/D', $profileId) === 1
+                ? null : 'must be empty or a valid provider profile ID';
+        }
         if ($key === 'provider_profiles') {
             if (!is_array($value) || count($value) > 20) return 'must contain at most 20 provider profiles';
             $ids = [];
@@ -611,6 +630,13 @@ class AppConfig {
                     return 'each profile needs an id, name, http(s) URL and model';
                 }
                 $id = (string)$profile['id'];
+                if (in_array($id, ['ollama', 'groq'], true)) return 'profile ids must not shadow built-in providers';
+                if (isset($profile['auth']) && !in_array($profile['auth'], ['api_key', 'none'], true)) return 'profile authentication must be api_key or none';
+                if (isset($profile['embedding_model']) && (!is_string($profile['embedding_model'])
+                    || trim($profile['embedding_model']) === '' || mb_strlen($profile['embedding_model']) > 128)) return 'embedding models must be non-empty strings of at most 128 characters';
+                if (isset($profile['embedding_dimension']) && (!is_int($profile['embedding_dimension']) && !(is_string($profile['embedding_dimension']) && ctype_digit($profile['embedding_dimension']))
+                    || (int)$profile['embedding_dimension'] < 1 || (int)$profile['embedding_dimension'] > 16384)) return 'embedding dimensions must be integers from 1 to 16384';
+                if (isset($profile['embedding_model']) !== isset($profile['embedding_dimension'])) return 'embedding model and dimension must be configured together';
                 if (isset($ids[$id])) return 'profile ids must be unique';
                 $ids[$id] = true;
                 $parts = parse_url((string)$profile['url']);

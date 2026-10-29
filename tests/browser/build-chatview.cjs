@@ -3,9 +3,14 @@ const webpack = require('webpack')
 
 const root = path.resolve(__dirname, '../..')
 const config = require(path.join(root, 'webpack.js'))({}, { mode: 'development' })
+// webpack otherwise defaults to production despite the development argv above.
+config.mode = 'development'
 config.entry = {
   chatview: path.join(__dirname, 'chatview-entry.js'),
+  vectorstatus: path.join(__dirname, 'vectorstatus-entry.js'),
+  generations: path.join(__dirname, 'generation-entry.js'),
   metricsview: path.join(__dirname, 'metricsview-entry.js'),
+  workspace: path.join(root, 'src/main.js'),
 }
 config.output.path = path.join(root, 'node_modules', '.cache', 'eva-ai-browser')
 config.output.filename = '[name].js'

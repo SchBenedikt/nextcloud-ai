@@ -99,10 +99,15 @@ final class EnvironmentToolExecutor implements DomainToolExecutor {
                     'title' => $image['title'],
                     'page' => $image['page'],
                 ], $result['images']),
-                'markdown' => implode("\n", array_map(static fn(array $image): string =>
-                    '![' . str_replace([']', '['], '', (string)$image['title']) . '](' . (string)$image['url'] . ')',
-                    array_slice($result['images'], 0, 4)
-                )),
+                'markdown' => implode("\n", array_map(static function (array $image): string {
+                    $preview = trim((string)($image['preview'] ?? ''));
+                    $url = trim((string)($image['url'] ?? ''));
+                    // Image-index previews are served by a stable thumbnail
+                    // host; original picture hosts often reject hotlinking.
+                    $renderUrl = preg_match('~^https?://~i', $preview) ? $preview : $url;
+                    $title = str_replace([']', '['], '', (string)($image['title'] ?? ''));
+                    return '![' . $title . '](' . $renderUrl . ')';
+                }, array_slice($result['images'], 0, 4))),
             ],
         ];
     }

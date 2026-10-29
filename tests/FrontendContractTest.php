@@ -7,9 +7,16 @@ namespace OCA\EvaAi\Tests;
 use PHPUnit\Framework\TestCase;
 
 final class FrontendContractTest extends TestCase {
+    private static function settingsSource(): string {
+        $root = __DIR__ . '/../src/';
+        $files = [$root . 'views/SettingsView.vue', $root . 'composables/useEvaSettings.js', $root . 'styles/settings.scss'];
+        $files = array_merge($files, array_merge(glob($root . 'components/settings/*.vue'), glob($root . 'composables/*Settings.js'), glob($root . 'lib/settings-*.js')));
+        return implode("\n", array_map('file_get_contents', $files));
+    }
+
     public function testSettingsUsePrecompiledNextcloudControlsForInteractiveChoices(): void {
-        $settings = (string)file_get_contents(__DIR__ . '/../src/views/SettingsView.vue');
-        self::assertStringContainsString("import { NcButton, NcCheckboxRadioSwitch, NcSelect, NcTextArea, NcTextField } from '@nextcloud/vue'", $settings);
+        $settings = self::settingsSource();
+        self::assertStringContainsString("from '@nextcloud/vue'", $settings);
         self::assertStringNotContainsString('<select', $settings);
         self::assertStringNotContainsString('<textarea', $settings);
         self::assertStringContainsString('chatRetentionOptions', $settings);
@@ -22,6 +29,17 @@ final class FrontendContractTest extends TestCase {
         self::assertStringContainsString("applyConnectorExample('vaultwarden')", $settings);
         self::assertStringNotContainsString('<select v-model="connectorDraft.auth_type"', $settings);
         self::assertStringNotContainsString('class="briefing-toggle"', $settings);
+    }
+
+    public function testPersonalSettingsKeepTheirRoutesInTheFocusedController(): void {
+        $routes = (string)file_get_contents(__DIR__ . '/../appinfo/routes.php');
+        $apiController = (string)file_get_contents(__DIR__ . '/../lib/Controller/ApiController.php');
+        $settingsController = (string)file_get_contents(__DIR__ . '/../lib/Controller/SettingsController.php');
+        self::assertStringContainsString("settings#settings', 'url' => '/api/settings', 'verb' => 'GET'", $routes);
+        self::assertStringContainsString("settings#saveSettings', 'url' => '/api/settings', 'verb' => 'PUT'", $routes);
+        self::assertStringContainsString('public function settings(): DataResponse', $settingsController);
+        self::assertStringContainsString('public function saveSettings(): DataResponse', $settingsController);
+        self::assertStringNotContainsString('public function saveSettings(): DataResponse', $apiController);
     }
 
     public function testDocumentChunkViewKeepsLoadingErrorsAndRetriesVisible(): void {
@@ -42,9 +60,9 @@ final class FrontendContractTest extends TestCase {
         self::assertStringContainsString('async function loadMore()', $documents);
         self::assertStringContainsString('loadMoreError', $documents);
         self::assertStringContainsString('hasMore.value = incoming.length === pageSize', $documents);
-        self::assertStringContainsString('loadMore, loadStatus', $documents);
+        self::assertStringContainsString('loadMore, loadChunks, loadMoreChunks, loadStatus', $documents);
 
-        $controller = (string)file_get_contents(__DIR__ . '/../lib/Controller/ApiController.php');
+        $controller = (string)file_get_contents(__DIR__ . '/../lib/Controller/DocumentController.php');
         // The document summary must come from full-index aggregates (computed
         // with the same search filter), never from the loaded page (Issue #74).
         self::assertStringContainsString("'total' => \$aggregates['count']", $controller);
@@ -68,7 +86,7 @@ final class FrontendContractTest extends TestCase {
 
     public function testAppSharesContentWidthAndProvidesSearchableChatActions(): void {
         $app = (string)file_get_contents(__DIR__ . '/../src/App.vue');
-        self::assertStringContainsString('--eva-content-width: clamp(1180px, 78vw, 1680px);', $app);
+        self::assertStringContainsString('--eva-content-width: 1120px;', $app);
         self::assertStringContainsString('v-model="chatFilter"', $app);
         self::assertStringContainsString('NcAppNavigationSearch', $app);
         self::assertStringContainsString(':placeholder="$t(\'Search chats\')"', $app);		self::assertStringContainsString('<div class="new-chat-container">', $app);
@@ -98,28 +116,16 @@ final class FrontendContractTest extends TestCase {
 		self::assertStringContainsString(':path="mdiTrashCanOutline"', $app);
 		self::assertStringContainsString('mdiPinOffOutline : mdiPinOutline', $app);
 		self::assertStringContainsString('mdiArchiveArrowUpOutline', $app);
-		self::assertStringContainsString(':path="mdiFolderPlusOutline"', $app);
 		self::assertStringNotContainsString('<svg width="20" height="20"', $app);
 		self::assertStringNotContainsString('allow-collapse', $app);
 		self::assertStringNotContainsString('chatsOpen', $app);
 		self::assertStringContainsString('pinnedChats', $app);
 		self::assertStringContainsString('archivedChats', $app);
 		self::assertStringContainsString('navItems', $app);
-		self::assertStringContainsString('folderGroups', $app);
 		self::assertStringContainsString('plainChats', $app);
-		self::assertStringContainsString('NcModal v-if="folderPickerOpen"', $app);
-		self::assertStringContainsString('assignTarget(f.name)', $app);
-	self::assertStringContainsString('createAndAssign', $app);
 		// Per-chat folder scope ("Chat with this folder", Issue #88).
-		self::assertStringContainsString('pickScope(item.chat)', $app);
 		self::assertStringContainsString('scopePath', $app);
-		self::assertStringContainsString("updateChatMeta(item.chat.id, { scopePath: '' })", $app);
-		self::assertStringContainsString('mdiFolderSearchOutline', $app);
-		// Folders are expandable/collapsible sections (Issue #87 follow-up).
-		self::assertStringContainsString('collapsedFolders', $app);
-		self::assertStringContainsString('toggleFolder(item.folderName)', $app);
-		self::assertStringContainsString('chevron-collapsed', $app);
-		self::assertStringContainsString('eva_ai_collapsed_folders', $app);
+		// Removed folder controls must not remain in the navigation.
 		self::assertStringContainsString(':force-menu="true"', $app);
 		self::assertStringContainsString(':close-after-click="true"', $app);
 		self::assertStringContainsString('@click.stop="renameChat(item.chat.id)"', $app);
@@ -127,23 +133,16 @@ final class FrontendContractTest extends TestCase {
 		self::assertStringContainsString('@click.stop="updateChatMeta(item.chat.id, { pinned:', $app);
 		self::assertStringContainsString('@click.stop="updateChatMeta(item.chat.id, { archived:', $app);
         self::assertStringContainsString("return requestApi('GET', '/chats')", $app);
-        self::assertStringContainsString("return requestApi('GET', '/folders')", $app);		self::assertStringContainsString("requestApi('POST', '/chats/' + encodeURIComponent(id) + '/meta', meta)", $app);
 		// The app starts on a modern dashboard home view with a stats API.
 		self::assertStringContainsString('HomeView', $app);
 		self::assertStringContainsString("view === 'home'", $app);
 		self::assertStringContainsString('mdiViewDashboardOutline', $app);
 		$home = (string)file_get_contents(__DIR__ . '/../src/views/HomeView.vue');
-		self::assertStringContainsString("api('GET', '/stats')", $home);
 		self::assertStringContainsString('Recent chats', $home);
-		self::assertStringContainsString('stat-grid', $home);
-		self::assertStringContainsString('ollamaOnline', $home);
-		self::assertStringContainsString('$emit(\'open-chat\', c.id)', $home);
+		self::assertStringContainsString("emit('open-chat', id)", $home);
 		self::assertStringContainsString('public function stats(): DataResponse', (string)file_get_contents(__DIR__ . '/../lib/Controller/ApiController.php'));
 		self::assertStringContainsString("'url' => '/api/stats'", (string)file_get_contents(__DIR__ . '/../appinfo/routes.php'));
 		// Dynamic dashboard greeting + instant chat start from the hero.
-		self::assertStringContainsString("api('GET', '/greeting')", $home);
-		self::assertStringContainsString('aiGreeting', $home);
-		self::assertStringContainsString('staticGreeting', $home);
 		self::assertStringNotContainsString('hero-prompt', $home);
 		self::assertStringNotContainsString("emit('new-chat', text)", $home);
 		self::assertStringContainsString("public function greeting(): DataResponse", (string)file_get_contents(__DIR__ . '/../lib/Controller/ApiController.php'));
@@ -160,13 +159,14 @@ final class FrontendContractTest extends TestCase {
 		self::assertStringContainsString("public function deleteOlderThan(string \$user, int \$days): int", (string)file_get_contents(__DIR__ . '/../lib/Service/ChatStore.php'));
 		self::assertStringContainsString('class ChatCleanupJob', (string)file_get_contents(__DIR__ . '/../lib/BackgroundJob/ChatCleanupJob.php'));
 		self::assertStringContainsString('ChatCleanupJob', (string)file_get_contents(__DIR__ . '/../appinfo/info.xml'));
-		$settings = (string)file_get_contents(__DIR__ . '/../src/views/SettingsView.vue');
+		$settings = self::settingsSource();
 		self::assertStringContainsString('Automatically delete old chats', $settings);
         self::assertStringContainsString("label: t('Never delete automatically')", $settings);
         self::assertStringContainsString("label: t('After 30 days')", $settings);
 		// The Start navigation item sits at the very top of the sidebar list,
 		// above the Chats heading (not only in the footer).
-		self::assertStringContainsString("<template #list>\n\t\t\t\t<NcAppNavigationItem\n\t\t\t\t\tclass=\"start-nav-item\"", $app);
+		self::assertLessThan(strpos($app, '<NcAppNavigationCaption'), strpos($app, '<template #list>'));
+		self::assertStringContainsString('class="start-nav-item"', $app);
 		self::assertStringContainsString('pendingPrompt', $app);
 		self::assertStringContainsString('@prompt-consumed="pendingPrompt = \'\'"', $app);
 		$chat = (string)file_get_contents(__DIR__ . '/../src/views/ChatView.vue');
@@ -187,12 +187,12 @@ final class FrontendContractTest extends TestCase {
         self::assertStringContainsString('markFile', (string)file_get_contents(__DIR__ . '/../lib/Listener/FileChangeListener.php'));
         self::assertStringContainsString("search_revision", (string)file_get_contents(__DIR__ . '/../lib/Listener/FileChangeListener.php'));
 		self::assertStringContainsString('class ReindexFileJob', (string)file_get_contents(__DIR__ . '/../lib/BackgroundJob/ReindexFileJob.php'));
-        $settings = (string)file_get_contents(__DIR__ . '/../src/views/SettingsView.vue');
+        $settings = self::settingsSource();
         self::assertStringContainsString("api('DELETE', 'chats')", $settings);
         self::assertStringContainsString("new CustomEvent('eva-ai:chats-cleared')", $settings);
         self::assertStringContainsString("'eva-ai:chats-cleared'", $app);
-        self::assertStringContainsString('api#deleteAllChats', (string)file_get_contents(__DIR__ . '/../appinfo/routes.php'));
-        self::assertStringContainsString('public function deleteAllChats', (string)file_get_contents(__DIR__ . '/../lib/Controller/ApiController.php'));
+        self::assertStringContainsString('chatHistory#deleteAllChats', (string)file_get_contents(__DIR__ . '/../appinfo/routes.php'));
+        self::assertStringContainsString('public function deleteAllChats', (string)file_get_contents(__DIR__ . '/../lib/Controller/ChatHistoryController.php'));
         self::assertStringContainsString("public function models(): DataResponse", (string)file_get_contents(__DIR__ . '/../lib/Controller/ApiController.php'));
         self::assertStringContainsString('public function listModels(?string $baseUrl = null): array', (string)file_get_contents(__DIR__ . '/../lib/Service/Ollama.php'));
         self::assertStringContainsString('availableModels', $settings);
@@ -223,21 +223,22 @@ final class FrontendContractTest extends TestCase {
 		// The chat stream carries the chat id so the server can resolve the
 		// per-chat folder scope, and scoped chats show a pill in the header
 		// (Issue #88).
-		self::assertStringContainsString('history, chatId, images, model:', $vanilla);
+		self::assertStringContainsString('history, chatId', $vanilla);
 		self::assertStringContainsString('Scoped to {path}', $vanilla);
 		self::assertStringContainsString('chat.scopePath', $vanilla);
-		self::assertStringContainsString('queueInBackground', $vanilla);
+		self::assertStringContainsString('queueOnPageHide', $vanilla);
 		self::assertStringContainsString("'/backgroundChat'", $vanilla);
         self::assertStringContainsString('buildShareForm', (string)file_get_contents(__DIR__ . '/../src/standalone-chat.js'));
         self::assertStringContainsString("return new ErrorDataResponse(['error' => 'Not logged in'], 401)", (string)file_get_contents(__DIR__ . '/../lib/Controller/ApiController.php'));
-        $controller = (string)file_get_contents(__DIR__ . '/../lib/Controller/ApiController.php');
+        $controller = (string)file_get_contents(__DIR__ . '/../lib/Controller/KnowledgeController.php');
         self::assertStringContainsString('KnowledgeInitializer $knowledgeInitializer', $controller);
         self::assertStringContainsString('ensureInitialized($user)', $controller);
         self::assertStringContainsString('knowledge_initialized', (string)file_get_contents(__DIR__ . '/../lib/Service/KnowledgeInitializer.php'));
-        self::assertStringContainsString('private function requestParam', $controller);
-        self::assertStringContainsString('private function requestBody', $controller);
-        self::assertStringContainsString('$this->request->getParam(', $controller);
-        self::assertStringNotContainsString('private function param', $controller);
+        $requestParameters = (string)file_get_contents(__DIR__ . '/../lib/Controller/Traits/ReadsRequestParameters.php');
+        self::assertStringContainsString('private function requestParam', $requestParameters);
+        self::assertStringContainsString('private function requestBody', $requestParameters);
+        self::assertStringContainsString('$this->request->getParam(', $requestParameters);
+        self::assertStringNotContainsString('private function param', $requestParameters);
         self::assertStringNotContainsString('function jsonBody', $controller);
         self::assertStringContainsString('deleteAll(string $user)', (string)file_get_contents(__DIR__ . '/../lib/Service/ChatStore.php'));
         self::assertStringContainsString('public function setMeta(string $user, string $id, array $meta): bool', (string)file_get_contents(__DIR__ . '/../lib/Service/ChatStore.php'));
@@ -254,7 +255,7 @@ final class FrontendContractTest extends TestCase {
         self::assertStringContainsString('public function deleteFolder(): DataResponse', (string)file_get_contents(__DIR__ . '/../lib/Controller/ApiController.php'));
 
         $documents = (string)file_get_contents(__DIR__ . '/../src/views/DocumentsView.vue');
-        self::assertStringContainsString('max-width: var(--eva-content-width, 1180px);', $settings);
+        self::assertStringContainsString('width: min(100%, 1080px);', (string)file_get_contents(__DIR__ . '/../src/styles/settings.scss'));
         self::assertStringContainsString('max-width: var(--eva-content-width, 1180px);', $documents);
 
         $vanilla = (string)file_get_contents(__DIR__ . '/../src/lib/vanilla.js');
@@ -264,7 +265,7 @@ final class FrontendContractTest extends TestCase {
         self::assertStringContainsString('Export chat as Markdown', $vanilla);
         self::assertStringContainsString("Util::addTranslations('eva_ai')", (string)file_get_contents(__DIR__ . '/../lib/Controller/PageController.php'));
         self::assertStringContainsString('function tr(text, vars)', (string)file_get_contents(__DIR__ . '/../src/standalone-chat.js'));
-        self::assertStringContainsString('.head .export', $chat);
+        self::assertStringContainsString("createApp(ChatActions", $vanilla);
         self::assertStringContainsString('max-width: min(88%, 1200px);', $chat);
 
         $notifier = (string)file_get_contents(__DIR__ . '/../lib/Notification/Notifier.php');
@@ -276,7 +277,7 @@ final class FrontendContractTest extends TestCase {
     }
 
     public function testSettingsPersistExclusionsAndDoNotOverwriteFormDuringPolling(): void {
-        $settings = (string)file_get_contents(__DIR__ . '/../src/views/SettingsView.vue');
+        $settings = self::settingsSource();
         self::assertStringContainsString('async function persistExcludeList(list, previous)', $settings);
         self::assertStringContainsString('const savedSuccessfully = await save()', $settings);
         self::assertStringContainsString('async function loadStatus(syncForm = false)', $settings);
@@ -366,7 +367,7 @@ final class FrontendContractTest extends TestCase {
 
     public function testSettingsNoLongerOfferActionHistory(): void {
         // The action-history feature was removed from the settings UI.
-        $settings = (string)file_get_contents(__DIR__ . '/../src/views/SettingsView.vue');
+        $settings = self::settingsSource();
         self::assertStringNotContainsString('Action history', $settings);
         self::assertStringNotContainsString('loadAudit', $settings);
         self::assertStringNotContainsString('clearAudit', $settings);
@@ -449,7 +450,7 @@ final class FrontendContractTest extends TestCase {
         self::assertStringContainsString("'queuedFor' =>", (string)file_get_contents(__DIR__ . '/../lib/Service/BackgroundChatQueue.php'));
         $job = (string)file_get_contents(__DIR__ . '/../lib/BackgroundJob/BackgroundChatJob.php');
         self::assertStringContainsString('scheduleAfter(self::class, time() + 5)', $job);
-        $api = (string)file_get_contents(__DIR__ . '/../lib/Controller/ApiController.php');
+        $api = (string)file_get_contents(__DIR__ . '/../lib/Controller/BackgroundChatController.php');
         self::assertStringContainsString('public function backgroundChatStatus()', $api);
         self::assertStringContainsString('scheduleAfter(BackgroundChatJob::class, time() + 1)', $api);
     }

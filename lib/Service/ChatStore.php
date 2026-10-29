@@ -10,6 +10,7 @@ use OCP\Files\NotPermittedException;
 use OCP\Files\SimpleFS\ISimpleFolder;
 use OCP\Lock\ILockingProvider;
 use OCP\Security\ICrypto;
+use OCA\EvaAi\Db\EncryptedChatRepository;
 use Psr\Log\LoggerInterface;
 
 /**
@@ -30,12 +31,18 @@ class ChatStore {
     private const SNIPPET_RADIUS = 60;
     /** @var array<string,string> raw chat payloads read under the user lock */
     private array $rawSnapshots = [];
+    /** @var array<string,list<array<string,mixed>>> decoded snapshots for SQL diff writes */
+    private array $chatSnapshots = [];
+    /** @var array<string,bool> per-request cache for the SQL canary flag */
+    private array $sqlReadModes = [];
 
     public function __construct(
         private IAppDataFactory $appDataFactory,
         private LoggerInterface $logger,
         private ILockingProvider $lockingProvider,
-        private ?ICrypto $crypto = null
+        private ?ICrypto $crypto = null,
+        private ?EncryptedChatRepository $sqlChats = null,
+        private ?UsageMetrics $usageMetrics = null
     ) {
     }
 
@@ -48,10 +55,18 @@ class ChatStore {
      * around the first match and a count of matching messages, so the chat list
      * can find content, not only titles (Issue #152).
      *
-     * @return list<array{id:string,title:string,created:int,updated:int,count:int,pinned:bool,folder:string,tags:list<string>,bookmarkedCount:int,archived:bool,snippet?:string,matchCount?:int,trimmed?:int}>
+     * @return list<array{id:string,title:string,created:int,updated:int,count:int,pinned:bool,folder:string,tags:list<string>,archived:bool,snippet?:string,matchCount?:int,trimmed?:int}>
      */
     public function list(string $user, ?string $search = null, bool $includeArchived = false): array {
         return $this->withUserLock($user, function () use ($user, $search, $includeArchived): array {
+            if ($this->sqlReadsEnabled($user)) {
+                try {
+                    return $this->listFromSql($user, $search, $includeArchived);
+                } catch (\Throwable $e) {
+                    $this->logger->error('eva_ai: SQL chat list failed', ['user' => $user]);
+                    throw $e;
+                }
+            }
             $all = $this->read($user);
             $needle = $search !== null ? mb_strtolower(trim($search)) : '';
             $out = [];
@@ -69,7 +84,6 @@ class ChatStore {
                     'created' => $chat['created'] ?? 0,
                     'updated' => $chat['updated'] ?? 0,
                     'count' => count($messages),
-                    'bookmarkedCount' => count(array_filter($messages, static fn($message) => !empty($message['reactions']['bookmarked']))),
                     'trimmed' => (int)($chat['trimmed'] ?? 0),
                     // Organisational metadata (Issue #87); missing on legacy
                     // chats and defaulted so old data keeps working unchanged.
@@ -114,9 +128,73 @@ class ChatStore {
         }, ILockingProvider::LOCK_SHARED);
     }
 
+    /** @return array{chats:list<array<string,mixed>>,nextOffset:?int,total:int,activeTotal:int} */
+    public function listPage(string $user, int $offset = 0, int $limit = 50, bool $includeArchived = true): array {
+        $offset = max(0, $offset);
+        $limit = min(100, max(1, $limit));
+        $all = $this->list($user, null, $includeArchived);
+        $page = array_slice($all, $offset, $limit);
+        $next = $offset + count($page);
+        return ['chats' => $page, 'nextOffset' => $next < count($all) ? $next : null,
+            'total' => count($all), 'activeTotal' => count(array_filter($all, static fn(array $chat): bool => empty($chat['archived'])))];
+    }
+
+    /** Direct keyset page for normalized SQL storage; null keeps legacy clients on AppData pagination. */
+    public function listSqlCursorPage(string $user, ?int $beforeUpdated, ?string $beforeChatId, int $limit = 50): ?array {
+        $limit = min(100, max(1, $limit));
+        if (($beforeUpdated === null) !== ($beforeChatId === null)
+            || ($beforeChatId !== null && ($beforeChatId === '' || strlen($beforeChatId) > 128))) {
+            throw new \InvalidArgumentException('Invalid chat page cursor.');
+        }
+        if (!$this->sqlReadsEnabled($user)) return null;
+
+        return $this->withUserLock($user, function () use ($user, $beforeUpdated, $beforeChatId, $limit): array {
+            $records = $this->sqlChats->metadataPage($user, $limit + 1, $beforeUpdated, $beforeChatId);
+            $hasMore = count($records) > $limit;
+            if ($hasMore) array_pop($records);
+            $chats = [];
+            foreach ($records as $record) {
+                $chat = $record['metadata'];
+                $chat['id'] = $record['id'];
+                $chat['created'] = $record['created'];
+                $chat['updated'] = $record['updated'];
+                $chats[] = [
+                    'id' => $record['id'], 'title' => $this->displayTitle($chat),
+                    'created' => $record['created'], 'updated' => $record['updated'],
+                    'count' => $record['count'], 'trimmed' => (int)($chat['trimmed'] ?? 0),
+                    'pinned' => !empty($chat['pinned']), 'folder' => (string)($chat['folder'] ?? ''),
+                    'tags' => $this->normalizeTags($chat['tags'] ?? []), 'archived' => !empty($chat['archived']),
+                    'scopePath' => (string)($chat['scopePath'] ?? ''),
+                    'instructions' => (string)($chat['instructions'] ?? ''), 'persona' => (string)($chat['persona'] ?? ''),
+                ];
+            }
+            $last = $records === [] ? null : $records[count($records) - 1];
+            return [
+                'chats' => $chats,
+                'nextCursor' => $hasMore && $last !== null
+                    ? ['beforeUpdated' => $last['updated'], 'beforeChatId' => $last['id']]
+                    : null,
+            ];
+        }, ILockingProvider::LOCK_SHARED);
+    }
+
     /** @return array|null */
     public function get(string $user, string $id): ?array {
-        return $this->withUserLock($user, function () use ($user, $id): ?array {
+        return $this->withChatAwareLock($user, $id, function () use ($user, $id): ?array {
+            if ($this->sqlReadsEnabled($user)) {
+                try {
+                    $chat = $this->sqlChats->chat($user, $id);
+                    if ($chat !== null) {
+                        $chat['title'] = $this->displayTitle($chat);
+                        unset($chat['regenerate']);
+                        return $chat;
+                    }
+                    return null;
+                } catch (\Throwable $e) {
+                    $this->logger->error('eva_ai: SQL chat read failed', ['user' => $user]);
+                    throw $e;
+                }
+            }
             foreach ($this->read($user) as $chat) {
                 if (($chat['id'] ?? '') === $id) {
                     // Same normalization as list(): the stored German default
@@ -134,38 +212,81 @@ class ChatStore {
 
     public function create(string $user, ?string $title = null): array {
         return $this->withUserLock($user, function () use ($user, $title): array {
+            if ($this->sqlReadsEnabled($user)) {
+                $beforeUpdated = null;
+                $beforeChatId = null;
+                do {
+                    // Reuse checks need only encrypted metadata for empty rows;
+                    // loading every message in every conversation here turns a
+                    // simple new-chat action into work proportional to history.
+                    $records = $this->sqlChats->metadataPage($user, 101, $beforeUpdated, $beforeChatId, true);
+                    $hasMore = count($records) > 100;
+                    if ($hasMore) array_pop($records);
+                    foreach ($records as $record) {
+                        $existing = $record['metadata'];
+                        $existing['id'] = $record['id'];
+                        $existing['created'] = $record['created'];
+                        $existing['updated'] = $record['updated'];
+                        $existing['messages'] = [];
+                        if ($this->isReusableEmptyChat($existing, $title)) {
+                            $existing['reused'] = true;
+                            $existing['title'] = $this->displayTitle($existing);
+                            return $existing;
+                        }
+                    }
+                    if (!$hasMore || $records === []) break;
+                    $last = $records[count($records) - 1];
+                    $beforeUpdated = $last['updated'];
+                    $beforeChatId = $last['id'];
+                } while (true);
+
+                $chat = $this->newChat($title);
+                $this->sqlChats->writeChat($user, $chat);
+                if (isset($this->chatSnapshots[$user])) $this->chatSnapshots[$user][] = $chat;
+                return $chat;
+            }
+
             // Keine doppelten leeren Chats: ein noch leerer Chat wird wiederverwendet.
             $all = $this->read($user);
             foreach ($all as $existing) {
-                if (count($existing['messages'] ?? []) === 0
-                    && empty($existing['archived']) && empty($existing['instructions'])
-                    && empty($existing['scopePath']) && empty($existing['folder'])
-                    && in_array($existing['persona'] ?? '', ['', 'default'], true)
-                    && ($title === null || $title === '' || ($existing['title'] ?? '') === $this->clipTitle($title))) {
+                if ($this->isReusableEmptyChat($existing, $title)) {
                     $existing['reused'] = true;
                     $existing['title'] = $this->displayTitle($existing);
                     return $existing;
                 }
             }
-            $chat = [
-                'id' => 'c' . date('YmdHis') . '-' . bin2hex(random_bytes(4)),
-                'title' => $title !== null && $title !== '' ? $this->clipTitle($title) : '',
-                'created' => time(),
-                'updated' => time(),
-                'messages' => [],
-                // Monotonic per-chat revision: every mutation bumps it, and
-                // regenerate/edit requests validate against it so concurrent
-                // edits cannot silently overwrite each other (Issue #182).
-                'rev' => 1,
-            ];
+            $chat = $this->newChat($title);
             $all[] = $chat;
             $this->write($user, $all);
             return $chat;
         });
     }
 
+    private function isReusableEmptyChat(array $chat, ?string $title): bool {
+        return count($chat['messages'] ?? []) === 0
+            && empty($chat['archived']) && empty($chat['instructions'])
+            && empty($chat['scopePath']) && empty($chat['folder'])
+            && in_array($chat['persona'] ?? '', ['', 'default'], true)
+            && ($title === null || $title === '' || ($chat['title'] ?? '') === $this->clipTitle($title));
+    }
+
+    private function newChat(?string $title): array {
+        return [
+            'id' => 'c' . date('YmdHis') . '-' . bin2hex(random_bytes(4)),
+            'title' => $title !== null && $title !== '' ? $this->clipTitle($title) : '',
+            'created' => time(),
+            'updated' => time(),
+            'messages' => [],
+            // Monotonic per-chat revision: every mutation bumps it, and
+            // regenerate/edit requests validate against it so concurrent
+            // edits cannot silently overwrite each other (Issue #182).
+            'rev' => 1,
+        ];
+    }
+
     public function delete(string $user, string $id): bool {
-        return $this->withUserLock($user, function () use ($user, $id): bool {
+        return $this->withChatAwareLock($user, $id, function () use ($user, $id): bool {
+            if ($this->sqlReadsEnabled($user)) return $this->sqlChats->deleteChat($user, $id);
             $all = $this->read($user);
             $kept = array_values(array_filter($all, static fn($c) => ($c['id'] ?? '') !== $id));
             if (count($kept) === count($all)) {
@@ -182,6 +303,12 @@ class ChatStore {
      */
     public function deleteAll(string $user): int {
         return $this->withUserLock($user, function () use ($user): int {
+            if ($this->sqlReadsEnabled($user)) {
+                $count = $this->sqlChats->chatCount($user);
+                $this->sqlChats->resetImportedChats($user);
+                $this->chatSnapshots[$user] = [];
+                return $count;
+            }
             $all = $this->read($user);
             $deleted = count($all);
             if ($deleted > 0) {
@@ -204,6 +331,7 @@ class ChatStore {
         }
         $cutoff = time() - $days * 86400;
         return $this->withUserLock($user, function () use ($user, $cutoff): int {
+            if ($this->sqlReadsEnabled($user)) return $this->sqlChats->deleteOlderThan($user, $cutoff);
             $all = $this->read($user);
             if ($all === []) {
                 return 0;
@@ -231,6 +359,39 @@ class ChatStore {
         }, ILockingProvider::LOCK_SHARED);
     }
 
+    /** Export a migration snapshot and fingerprint only the stored ciphertext. */
+    public function migrationSnapshot(string $user): array {
+        return $this->withUserLock($user, function () use ($user): array {
+            $chats = $this->read($user);
+            return ['chats' => $chats, 'sourceHash' => hash('sha256', $this->rawSnapshots[$user] ?? '')];
+        }, ILockingProvider::LOCK_SHARED);
+    }
+
+    /** Serialize a bounded SQL import batch with chat writes and account erasure. */
+    public function withMigrationLock(string $user, callable $operation): mixed {
+        return $this->withUserLock($user, $operation, ILockingProvider::LOCK_EXCLUSIVE);
+    }
+
+    /** Hold the same lock as chat mutations while validating the source fingerprint. */
+    public function withMigrationSourceLock(string $user, callable $operation): mixed {
+        return $this->withUserLock($user, function () use ($user, $operation): mixed {
+            return $operation(hash('sha256', $this->rootFor($user)->getContent()));
+        }, ILockingProvider::LOCK_EXCLUSIVE);
+    }
+
+    /** Restore a full AppData snapshot before disabling an active SQL read path. */
+    public function restoreAppDataAndDisableSql(string $user): int {
+        return $this->withUserLock($user, function () use ($user): int {
+            if (!$this->sqlReadsEnabled($user)) return 0;
+            $chats = $this->sqlChats->allChats($user);
+            $this->chatSnapshots[$user] = $chats;
+            $this->write($user, $chats, true);
+            $this->sqlChats->setSqlReadsEnabled($user, false);
+            $this->sqlReadModes[$user] = false;
+            return count($chats);
+        });
+    }
+
     /** Import validated chat history as new chats, never overwriting existing IDs. */
     public function importAll(string $user, array $chats): int {
         return $this->withUserLock($user, function () use ($user, $chats): int {
@@ -244,12 +405,6 @@ class ChatStore {
                     $text = trim((string)($message['text'] ?? ''));
                     if ($text === '' || mb_strlen($text) > 50000) continue;
                     $entry = ['role' => $message['role'], 'text' => $text];
-                    if ($entry['role'] === 'assistant' && is_array($message['reactions'] ?? null)) {
-                        $reactions = [];
-                        if (is_bool($message['reactions']['helpful'] ?? null)) $reactions['helpful'] = $message['reactions']['helpful'];
-                        if (is_bool($message['reactions']['bookmarked'] ?? null)) $reactions['bookmarked'] = $message['reactions']['bookmarked'];
-                        if ($reactions !== []) $entry['reactions'] = $reactions;
-                    }
                     $messages[] = $entry;
                 }
                 if ($messages === []) continue;
@@ -384,25 +539,49 @@ class ChatStore {
      */
     public function deleteUserData(string $user): void {
         $this->withUserLock($user, function () use ($user): void {
+			$failed = false;
             try {
-                $appdata = $this->appDataFactory->get('eva_ai');
-                $chats = $appdata->getFolder('chats');
-                $ns = $this->namespaceFor($user);
-                foreach ([$ns, $this->legacySlug($user)] as $candidate) {
-                    try {
-                        $chats->getFolder($candidate)->delete();
-                    } catch (NotFoundException $e) {
-                        // No folder for this candidate - fine.
+                try { $appdata = $this->appDataFactory->get('eva_ai'); }
+                catch (NotFoundException) { $appdata = null; }
+                try { $chats = $appdata?->getFolder('chats'); }
+                catch (NotFoundException) { $chats = null; }
+                if ($chats !== null) {
+                    $ns = $this->namespaceFor($user);
+                    foreach ([$ns, $this->legacySlug($user)] as $candidate) {
+                        try { $chats->getFolder($candidate)->delete(); }
+                        catch (NotFoundException) { /* No account folder remains. */ }
                     }
                 }
             } catch (\Throwable $e) {
                 $this->logger->warning('eva_ai: chat cleanup failed for deleted account', ['user' => $user]);
+				$failed = true;
             }
+            // This uses the same per-user lock as every bounded SQL import
+            // batch, so an in-flight migration cannot recreate erased rows.
+            try {
+                $this->sqlChats?->deleteUserData($user);
+            } catch (\Throwable $e) {
+                $this->logger->warning('eva_ai: SQL chat cleanup failed for deleted account', ['user' => $user]);
+				$failed = true;
+            }
+            unset($this->chatSnapshots[$user], $this->rawSnapshots[$user], $this->sqlReadModes[$user]);
+			if ($failed) throw new \RuntimeException('Chat data cleanup was incomplete.');
         });
     }
 
     public function setTitle(string $user, string $id, string $title): void {
-        $this->withUserLock($user, function () use ($user, $id, $title): void {
+        $this->withChatAwareLock($user, $id, function () use ($user, $id, $title): void {
+            if ($this->sqlReadsEnabled($user)) {
+                $record = $this->sqlChats->metadata($user, $id);
+                if ($record === null) return;
+                $metadata = $record['metadata'];
+                $metadata['title'] = $this->clipTitle($title);
+                $metadata['updated'] = time();
+                $metadata['rev'] = (int)($metadata['rev'] ?? 0) + 1;
+                $this->sqlChats->updateMetadata($user, $id, $metadata);
+                unset($this->chatSnapshots[$user]);
+                return;
+            }
             $all = $this->read($user);
             foreach ($all as &$chat) {
                 if (($chat['id'] ?? '') === $id) {
@@ -426,99 +605,70 @@ class ChatStore {
      * only when the chat itself does not exist.
      */
     public function setMeta(string $user, string $id, array $meta): bool {
-        return $this->withUserLock($user, function () use ($user, $id, $meta): bool {
-            $all = $this->read($user);
-            foreach ($all as &$chat) {
-                if (($chat['id'] ?? '') !== $id) {
-                    continue;
-                }
-                if (array_key_exists('pinned', $meta)) {
-                    $chat['pinned'] = !empty($meta['pinned']);
-                }
-                if (array_key_exists('archived', $meta)) {
-                    $chat['archived'] = !empty($meta['archived']);
-                }
-                if (array_key_exists('folder', $meta)) {
-                    $folder = trim((string)$meta['folder']);
-                    if ($folder !== '') {
-                        // Unknown names create the folder (Issue #87) so the
-                        // sidebar's "new folder" flow needs no extra API call.
-                        $this->createFolderLocked($user, $folder);
-                    }
-                    $chat['folder'] = $folder;
-                }
-                if (array_key_exists('tags', $meta)) {
-                    $chat['tags'] = $this->normalizeTags($meta['tags']);
-                }
-                if (array_key_exists('scopePath', $meta)) {
-                    // Per-chat retrieval scope (Issue #88): restricts RAG to
-                    // documents at/under this folder path. Empty clears it.
-                    $chat['scopePath'] = trim((string)$meta['scopePath']);
-                }
-                if (array_key_exists('instructions', $meta)) {
-                    // Per-chat custom instructions (Issue #90). Capped to the
-                    // same limit RagService enforces when building prompts.
-                    $chat['instructions'] = mb_substr(trim((string)$meta['instructions']), 0, 2000);
-                }
-                if (array_key_exists('persona', $meta)) {
-                    // Preset persona slug (Issue #90); validated against the
-                    // known set in RagService, stored verbatim here.
-                    $chat['persona'] = trim((string)$meta['persona']);
-                }
-                $chat['updated'] = time();
-                $chat['rev'] = (int)($chat['rev'] ?? 0) + 1;
-                unset($chat);
-                $this->write($user, $all);
-                return true;
-            }
-            unset($chat);
-            return false;
+        // Folder definitions remain a small AppData collection. When changing
+        // a folder, hold the user fence while checking the chat, creating the
+        // folder and updating metadata so a concurrent delete cannot leave a
+        // newly created orphan folder. No conversation history is loaded.
+        if (array_key_exists('folder', $meta)) {
+            return $this->withUserLock($user, function () use ($user, $id, $meta): bool {
+                unset($this->sqlReadModes[$user]);
+                if (!$this->sqlReadsEnabled($user)) return $this->updateAppDataChatMetaLocked($user, $id, $meta);
+                if ($this->sqlChats->metadata($user, $id) === null) return false;
+                $folder = trim((string)$meta['folder']);
+                if ($folder !== '') $this->createFolderLocked($user, $folder);
+                return $this->updateSqlChatMeta($user, $id, $meta);
+            });
+        }
+
+        return $this->withChatAwareLock($user, $id, function () use ($user, $id, $meta): bool {
+            if ($this->sqlReadsEnabled($user)) return $this->updateSqlChatMeta($user, $id, $meta);
+            return $this->updateAppDataChatMetaLocked($user, $id, $meta);
         });
     }
 
-    /** @return array{reactions:array<string,mixed>,rev:int}|null Set, change, or clear feedback on one assistant message. */
-    public function setMessageReaction(string $user, string $id, int $index, string $type, ?bool $value): ?array {
-        if (!in_array($type, ['helpful', 'bookmarked'], true)) return null;
-        return $this->withUserLock($user, function () use ($user, $id, $index, $type, $value): ?array {
-            $all = $this->read($user);
-            foreach ($all as &$chat) {
-                if (($chat['id'] ?? '') !== $id) continue;
-                if (!isset($chat['messages'][$index]) || ($chat['messages'][$index]['role'] ?? '') !== 'assistant') {
-                    return null;
-                }
-                $reactions = is_array($chat['messages'][$index]['reactions'] ?? null) ? $chat['messages'][$index]['reactions'] : [];
-                if ($value === null) unset($reactions[$type]);
-                else $reactions[$type] = $value;
-                if ($reactions === []) unset($chat['messages'][$index]['reactions']);
-                else {
-                    $reactions['updated'] = time();
-                    $chat['messages'][$index]['reactions'] = $reactions;
-                }
-                $chat['updated'] = time();
-                $chat['rev'] = (int)($chat['rev'] ?? 0) + 1;
-                $this->write($user, $all);
-                return ['reactions' => $reactions, 'rev' => $chat['rev']];
+    /** Update one legacy AppData chat while its user-wide lock is held. */
+    private function updateAppDataChatMetaLocked(string $user, string $id, array $meta): bool {
+        $all = $this->read($user);
+        foreach ($all as &$chat) {
+            if (($chat['id'] ?? '') !== $id) continue;
+            if (array_key_exists('pinned', $meta)) $chat['pinned'] = !empty($meta['pinned']);
+            if (array_key_exists('archived', $meta)) $chat['archived'] = !empty($meta['archived']);
+            if (array_key_exists('folder', $meta)) {
+                $folder = trim((string)$meta['folder']);
+                if ($folder !== '') $this->createFolderLocked($user, $folder);
+                $chat['folder'] = $folder;
             }
+            if (array_key_exists('tags', $meta)) $chat['tags'] = $this->normalizeTags($meta['tags']);
+            if (array_key_exists('scopePath', $meta)) $chat['scopePath'] = trim((string)$meta['scopePath']);
+            if (array_key_exists('instructions', $meta)) $chat['instructions'] = mb_substr(trim((string)$meta['instructions']), 0, 2000);
+            if (array_key_exists('persona', $meta)) $chat['persona'] = trim((string)$meta['persona']);
+            $chat['updated'] = time();
+            $chat['rev'] = (int)($chat['rev'] ?? 0) + 1;
             unset($chat);
-            return null;
-        });
+            $this->write($user, $all);
+            return true;
+        }
+        unset($chat);
+        return false;
     }
 
-    /** @return array{helpful:int,notHelpful:int,bookmarked:int} */
-    public function feedbackStats(string $user): array {
-        return $this->withUserLock($user, function () use ($user): array {
-            $stats = ['helpful' => 0, 'notHelpful' => 0, 'bookmarked' => 0];
-            foreach ($this->read($user) as $chat) {
-                foreach ($chat['messages'] ?? [] as $message) {
-                    if (($message['role'] ?? '') !== 'assistant') continue;
-                    $reactions = $message['reactions'] ?? [];
-                    if (($reactions['helpful'] ?? null) === true) $stats['helpful']++;
-                    if (($reactions['helpful'] ?? null) === false) $stats['notHelpful']++;
-                    if (!empty($reactions['bookmarked'])) $stats['bookmarked']++;
-                }
-            }
-            return $stats;
-        }, ILockingProvider::LOCK_SHARED);
+    /** Update one normalized SQL chat while its user or conversation fence is held. */
+    private function updateSqlChatMeta(string $user, string $id, array $meta): bool {
+        $record = $this->sqlChats->metadata($user, $id);
+        if ($record === null) return false;
+        $metadata = $record['metadata'];
+        if (array_key_exists('pinned', $meta)) $metadata['pinned'] = !empty($meta['pinned']);
+        if (array_key_exists('archived', $meta)) $metadata['archived'] = !empty($meta['archived']);
+        if (array_key_exists('folder', $meta)) $metadata['folder'] = trim((string)$meta['folder']);
+        if (array_key_exists('tags', $meta)) $metadata['tags'] = $this->normalizeTags($meta['tags']);
+        if (array_key_exists('scopePath', $meta)) $metadata['scopePath'] = trim((string)$meta['scopePath']);
+        if (array_key_exists('instructions', $meta)) $metadata['instructions'] = mb_substr(trim((string)$meta['instructions']), 0, 2000);
+        if (array_key_exists('persona', $meta)) $metadata['persona'] = trim((string)$meta['persona']);
+        $metadata['updated'] = time();
+        $metadata['rev'] = (int)($metadata['rev'] ?? 0) + 1;
+        $this->sqlChats->updateMetadata($user, $id, $metadata);
+        unset($this->chatSnapshots[$user]);
+        return true;
     }
 
     /**
@@ -556,6 +706,8 @@ class ChatStore {
      */
     public function renameFolder(string $user, string $from, string $to): bool {
         return $this->withUserLock($user, function () use ($user, $from, $to): bool {
+            unset($this->sqlReadModes[$user]);
+            $sqlBacked = $this->sqlReadsEnabled($user);
             $folders = $this->foldersLocked($user);
             $clean = $this->clipFolderName($to);
             $found = false;
@@ -573,7 +725,21 @@ class ChatStore {
             if (!$found) {
                 return false;
             }
+            $previousFolders = $this->foldersLocked($user);
             $this->writeFoldersLocked($user, $folders);
+            if ($sqlBacked) {
+                try {
+                    $this->sqlChats->reassignFolder($user, $from, $clean);
+                } catch (\Throwable $e) {
+                    try { $this->writeFoldersLocked($user, $previousFolders); }
+                    catch (\Throwable $rollbackError) {
+                        $this->logger->error('eva_ai: folder rename rollback failed', ['user' => $user]);
+                    }
+                    throw $e;
+                }
+                unset($this->chatSnapshots[$user]);
+                return true;
+            }
             // Re-point chats that were assigned to the old folder name.
             $all = $this->read($user);
             foreach ($all as &$chat) {
@@ -593,12 +759,28 @@ class ChatStore {
      */
     public function deleteFolder(string $user, string $name): bool {
         return $this->withUserLock($user, function () use ($user, $name): bool {
+            unset($this->sqlReadModes[$user]);
+            $sqlBacked = $this->sqlReadsEnabled($user);
             $folders = $this->foldersLocked($user);
             $kept = array_values(array_filter($folders, static fn($f) => ($f['name'] ?? '') !== $name));
             if (count($kept) === count($folders)) {
                 return false;
             }
+            $previousFolders = $folders;
             $this->writeFoldersLocked($user, $kept);
+            if ($sqlBacked) {
+                try {
+                    $this->sqlChats->reassignFolder($user, $name, '');
+                } catch (\Throwable $e) {
+                    try { $this->writeFoldersLocked($user, $previousFolders); }
+                    catch (\Throwable $rollbackError) {
+                        $this->logger->error('eva_ai: folder deletion rollback failed', ['user' => $user]);
+                    }
+                    throw $e;
+                }
+                unset($this->chatSnapshots[$user]);
+                return true;
+            }
             $all = $this->read($user);
             foreach ($all as &$chat) {
                 if (($chat['folder'] ?? '') === $name) {
@@ -741,88 +923,155 @@ class ChatStore {
         if ($role !== 'user' && $role !== 'assistant') {
             return;
         }
-        $this->withUserLock($user, function () use ($user, $id, $role, $text, $followups, $regenerateRev, $confirmation, $tools, $model): void {
+        $this->withChatAwareLock($user, $id, function () use ($user, $id, $role, $text, $followups, $regenerateRev, $confirmation, $tools, $model): void {
+            if ($this->sqlReadsEnabled($user)) {
+                $chat = $this->sqlChats->chat($user, $id);
+                if ($chat === null) return;
+                $previous = $chat;
+                $this->appendToChat($chat, $role, $text, $followups, $regenerateRev, $confirmation, $tools, $model);
+                $this->sqlChats->syncChats($user, [$previous], [$chat]);
+                $this->replaceCachedChat($user, $chat);
+                return;
+            }
             $all = $this->read($user);
             foreach ($all as &$chat) {
                 if (($chat['id'] ?? '') === $id) {
-                    $message = ['role' => $role, 'text' => $text, 'createdAt' => time()];
-                    if ($role === 'assistant' && is_string($model) && trim($model) !== '') {
-                        $message['model'] = mb_substr(trim($model), 0, 128);
-                    }
-                    // Follow-up suggestions belong to assistant messages and
-                    // must survive a reload so the chips stay usable.
-                    if ($role === 'assistant' && $followups !== []) {
-                        $message['followups'] = array_values(array_slice(array_filter($followups, 'is_string'), 0, 3));
-                    }
-                    if ($role === 'assistant' && is_array($confirmation)) {
-                        $message['confirmation'] = $this->normalizeConfirmation($confirmation);
-                    }
-                    if ($role === 'assistant' && $tools !== []) {
-                        $message['tools'] = $this->normalizeToolTrace($tools);
-                    }
-                    $pending = $chat['regenerate'] ?? null;
-                    if ($regenerateRev !== null && is_array($pending)
-                        && (int)($pending['rev'] ?? -1) === $regenerateRev) {
-                        // Regeneration succeeded: commit the deferred
-                        // truncation and the optional user-text edit atomically
-                        // with the new answer. A failed model call never
-                        // touched the stored history (Issue #182).
-                        $pendingIndex = (int)($pending['messageIndex'] ?? -1);
-                        if ($pendingIndex >= 0 && $pendingIndex < count($chat['messages'])) {
-                            if (($pending['newText'] ?? null) !== null) {
-                                $chat['messages'][$pendingIndex]['text'] = (string)$pending['newText'];
-                            }
-                            $chat['messages'] = array_slice($chat['messages'], 0, $pendingIndex + 1);
-                        }
-                        unset($chat['regenerate']);
-                    } elseif (is_array($pending)) {
-                        // A plain append supersedes a pending regeneration: the
-                        // stored messages were never truncated, so the marker is
-                        // dropped and a late regenerate answer can no longer
-                        // truncate this newer message.
-                        unset($chat['regenerate']);
-                    }
-                    // An unresolved pending confirmation placeholder is replaced
-                    // by the confirmed answer instead of being duplicated, so
-                    // approving after a reload persists exactly one answer
-                    // (Issue #185).
-                    $replaceIndex = -1;
-                    if ($role === 'assistant') {
-                        for ($i = count($chat['messages']) - 1; $i >= 0; $i--) {
-                            $stored = $chat['messages'][$i];
-                            if (($stored['role'] ?? '') === 'assistant'
-                                && isset($stored['confirmation'])
-                                && empty($stored['confirmation']['resolved'])) {
-                                $replaceIndex = $i;
-                                break;
-                            }
-                        }
-                    }
-                    if ($replaceIndex >= 0) {
-                        $chat['messages'][$replaceIndex] = $message;
-                    } else {
-                        $chat['messages'][] = $message;
-                    }
-                    $chat['updated'] = time();
-                    $chat['rev'] = (int)($chat['rev'] ?? 0) + 1;
-                    $messageCount = count($chat['messages']);
-                    if ($messageCount > self::MAX_MESSAGES) {
-                        $dropped = $messageCount - self::MAX_MESSAGES;
-                        $chat['messages'] = array_slice($chat['messages'], -self::MAX_MESSAGES);
-                        // Keep a durable counter so truncation is never silent.
-                        $chat['trimmed'] = (int)($chat['trimmed'] ?? 0) + $dropped;
-                    }
-                    $storedTitle = $chat['title'] ?? '';
-                    if (isset($chat['messages'][0]['text'])
-                        && ($storedTitle === '' || str_starts_with($storedTitle, 'Neuer Chat'))) {
-                        $chat['title'] = $this->clipTitle((string)$chat['messages'][0]['text']);
-                    }
+                    $this->appendToChat($chat, $role, $text, $followups, $regenerateRev, $confirmation, $tools, $model);
                     break;
                 }
             }
             unset($chat);
             $this->write($user, $all);
         });
+    }
+
+    /** Both messages and the receipt share one protected encrypted-file write. */
+    public function appendTurn(string $user, string $id, \OCA\EvaAi\Dto\ChatTurnRequest $turn): array {
+        return $this->withChatAwareLock($user, $id, function () use ($user, $id, $turn): array {
+            if ($this->sqlReadsEnabled($user)) {
+                $chat = $this->sqlChats->chat($user, $id);
+                if ($chat === null) return ['error' => 'not_found'];
+                $fingerprint = $turn->fingerprint();
+                $receipt = $chat['turnReceipts'][$turn->requestId] ?? null;
+                if ($receipt !== null) {
+                    return is_string($receipt) && hash_equals($receipt, $fingerprint)
+                        ? ['ok' => true, 'rev' => (int)($chat['rev'] ?? 0)]
+                        : ['error' => 'conflict'];
+                }
+                if ((int)($chat['rev'] ?? 0) !== $turn->expectedRev) return ['error' => 'conflict'];
+                $previous = $chat;
+                $this->appendToChat($chat, 'user', $turn->question->text);
+                $answer = $turn->answer;
+                $this->appendToChat($chat, 'assistant', $answer->text, $answer->followups, null, $answer->confirmation, $answer->tools, $answer->model);
+                $chat['turnReceipts'][$turn->requestId] = $fingerprint;
+                $chat['turnReceipts'] = array_slice($chat['turnReceipts'], -100, null, true);
+                $this->sqlChats->syncChats($user, [$previous], [$chat]);
+                $this->replaceCachedChat($user, $chat);
+                return ['ok' => true, 'rev' => (int)$chat['rev']];
+            }
+            $all = $this->read($user);
+            foreach ($all as &$chat) {
+                if (($chat['id'] ?? '') !== $id) continue;
+                $fingerprint = $turn->fingerprint();
+                $receipt = $chat['turnReceipts'][$turn->requestId] ?? null;
+                if ($receipt !== null) {
+                    return is_string($receipt) && hash_equals($receipt, $fingerprint)
+                        ? ['ok' => true, 'rev' => (int)($chat['rev'] ?? 0)]
+                        : ['error' => 'conflict'];
+                }
+                if ((int)($chat['rev'] ?? 0) !== $turn->expectedRev) return ['error' => 'conflict'];
+                $this->appendToChat($chat, 'user', $turn->question->text);
+                $answer = $turn->answer;
+                $this->appendToChat($chat, 'assistant', $answer->text, $answer->followups, null, $answer->confirmation, $answer->tools, $answer->model);
+                $chat['turnReceipts'][$turn->requestId] = $fingerprint;
+                // The revision guard rejects old retries even after receipt eviction.
+                $chat['turnReceipts'] = array_slice($chat['turnReceipts'], -100, null, true);
+                $rev = (int)$chat['rev'];
+                unset($chat);
+                $this->write($user, $all);
+                return ['ok' => true, 'rev' => $rev];
+            }
+            return ['error' => 'not_found'];
+        });
+    }
+
+    /** Mutates only the in-memory chat; the caller owns the user lock and write. */
+    private function appendToChat(array &$chat, string $role, string $text, array $followups = [], ?int $regenerateRev = null, ?array $confirmation = null, array $tools = [], ?string $model = null): void {
+        $message = ['role' => $role, 'text' => $text, 'createdAt' => time()];
+        if ($role === 'assistant' && is_string($model) && trim($model) !== '') {
+            $message['model'] = mb_substr(trim($model), 0, 128);
+        }
+        // Follow-up suggestions belong to assistant messages and
+        // must survive a reload so the chips stay usable.
+        if ($role === 'assistant' && $followups !== []) {
+            $message['followups'] = array_values(array_slice(array_filter($followups, 'is_string'), 0, 3));
+        }
+        if ($role === 'assistant' && is_array($confirmation)) {
+            $message['confirmation'] = $this->normalizeConfirmation($confirmation);
+        }
+        if ($role === 'assistant' && $tools !== []) {
+            $message['tools'] = $this->normalizeToolTrace($tools);
+        }
+        $pending = $chat['regenerate'] ?? null;
+        if ($regenerateRev !== null && (!is_array($pending) || (int)($pending['rev'] ?? -1) !== $regenerateRev)) {
+            throw new ChatStoreConflictException('Chat history changed. Reload before saving another answer.');
+        }
+        if ($regenerateRev !== null && is_array($pending)
+            && (int)($pending['rev'] ?? -1) === $regenerateRev) {
+            // Regeneration succeeded: commit the deferred
+            // truncation and the optional user-text edit atomically
+            // with the new answer. A failed model call never
+            // touched the stored history (Issue #182).
+            $pendingIndex = (int)($pending['messageIndex'] ?? -1);
+            if ($pendingIndex >= 0 && $pendingIndex < count($chat['messages'])) {
+                if (($pending['newText'] ?? null) !== null) {
+                    $chat['messages'][$pendingIndex]['text'] = (string)$pending['newText'];
+                }
+                $chat['messages'] = array_slice($chat['messages'], 0, $pendingIndex + 1);
+            }
+            unset($chat['regenerate']);
+        } elseif (is_array($pending)) {
+            // A plain append supersedes a pending regeneration: the
+            // stored messages were never truncated, so the marker is
+            // dropped and a late regenerate answer can no longer
+            // truncate this newer message.
+            unset($chat['regenerate']);
+        }
+        // An unresolved pending confirmation placeholder is replaced
+        // by the confirmed answer instead of being duplicated, so
+        // approving after a reload persists exactly one answer
+        // (Issue #185).
+        $replaceIndex = -1;
+        if ($role === 'assistant') {
+            for ($i = count($chat['messages']) - 1; $i >= 0; $i--) {
+                $stored = $chat['messages'][$i];
+                if (($stored['role'] ?? '') === 'assistant'
+                    && isset($stored['confirmation'])
+                    && empty($stored['confirmation']['resolved'])) {
+                    $replaceIndex = $i;
+                    break;
+                }
+            }
+        }
+        if ($replaceIndex >= 0) {
+            $chat['messages'][$replaceIndex] = $message;
+        } else {
+            $chat['messages'][] = $message;
+        }
+        $chat['updated'] = time();
+        $chat['rev'] = (int)($chat['rev'] ?? 0) + 1;
+        $messageCount = count($chat['messages']);
+        if ($messageCount > self::MAX_MESSAGES) {
+            $dropped = $messageCount - self::MAX_MESSAGES;
+            $chat['messages'] = array_slice($chat['messages'], -self::MAX_MESSAGES);
+            // Keep a durable counter so truncation is never silent.
+            $chat['trimmed'] = (int)($chat['trimmed'] ?? 0) + $dropped;
+        }
+        $storedTitle = $chat['title'] ?? '';
+        if (isset($chat['messages'][0]['text'])
+            && ($storedTitle === '' || str_starts_with($storedTitle, 'Neuer Chat'))) {
+            $chat['title'] = $this->clipTitle((string)$chat['messages'][0]['text']);
+        }
     }
 
     /**
@@ -844,7 +1093,12 @@ class ChatStore {
      * @return array{ok:true,rev:int,messageIndex:int,targetText:string}|array{ok:false,error:string}
      */
     public function beginRegenerate(string $user, string $id, int $messageIndex, ?string $newText, ?int $expectedRev): array {
-        return $this->withUserLock($user, function () use ($user, $id, $messageIndex, $newText, $expectedRev): array {
+        return $this->withChatAwareLock($user, $id, function () use ($user, $id, $messageIndex, $newText, $expectedRev): array {
+            if ($this->sqlReadsEnabled($user)) {
+                $result = $this->sqlChats->beginRegenerate($user, $id, $messageIndex, $newText, $expectedRev);
+                unset($this->chatSnapshots[$user]);
+                return $result;
+            }
             $all = $this->read($user);
             foreach ($all as &$chat) {
                 if (($chat['id'] ?? '') !== $id) {
@@ -862,9 +1116,9 @@ class ChatStore {
                 $pending = $chat['regenerate'] ?? null;
                 if (is_array($pending)) {
                     // A regeneration is already pending. The same client (same
-                    // base revision) may retry after a failed stream; anything
-                    // else means a concurrent edit and is rejected.
-                    if ($expectedRev === null || (int)($pending['baseRev'] ?? -1) !== $expectedRev) {
+                    // base revision, or its freshly read current revision) may retry
+                    // after a failed stream; other revisions are rejected.
+                    if ($expectedRev === null || ((int)($pending['baseRev'] ?? -1) !== $expectedRev && $currentRev !== $expectedRev)) {
                         return ['ok' => false, 'error' => 'conflict'];
                     }
                 } elseif ($expectedRev !== null && $currentRev !== $expectedRev) {
@@ -897,7 +1151,12 @@ class ChatStore {
     }
 
     public function truncateAfter(string $user, string $id, int $fromIndex): void {
-        $this->withUserLock($user, function () use ($user, $id, $fromIndex): void {
+        $this->withChatAwareLock($user, $id, function () use ($user, $id, $fromIndex): void {
+            if ($this->sqlReadsEnabled($user)) {
+                $this->sqlChats->truncateAfter($user, $id, $fromIndex);
+                unset($this->chatSnapshots[$user]);
+                return;
+            }
             $all = $this->read($user);
             foreach ($all as &$chat) {
                 if (($chat['id'] ?? '') === $id) {
@@ -918,7 +1177,12 @@ class ChatStore {
      * Replace the text of a message at the given 0-based index.
      */
     public function replaceMessage(string $user, string $id, int $index, string $newText): void {
-        $this->withUserLock($user, function () use ($user, $id, $index, $newText): void {
+        $this->withChatAwareLock($user, $id, function () use ($user, $id, $index, $newText): void {
+            if ($this->sqlReadsEnabled($user)) {
+                $this->sqlChats->replaceMessage($user, $id, $index, $newText);
+                unset($this->chatSnapshots[$user]);
+                return;
+            }
             $all = $this->read($user);
             foreach ($all as &$chat) {
                 if (($chat['id'] ?? '') === $id) {
@@ -946,9 +1210,20 @@ class ChatStore {
 
     /** @return list<array{id:string,title:string,created:int,updated:int,messages:list<array{role:string,text:string}>}> */
     private function read(string $user): array {
+        if ($this->sqlReadsEnabled($user)) {
+            try {
+                $chats = $this->sqlChats->allChats($user);
+                $this->chatSnapshots[$user] = $chats;
+                return $chats;
+            } catch (\Throwable $e) {
+                $this->logger->error('eva_ai: SQL chat store failed', ['user' => $user]);
+                throw $e;
+            }
+        }
         try {
             $raw = $this->rootFor($user)->getContent();
         } catch (NotFoundException $e) {
+            $this->chatSnapshots[$user] = [];
             return [];
         } catch (NotPermittedException $e) {
             $this->logger->warning('eva_ai: chat folder not readable (permissions?)', ['user' => $user]);
@@ -956,7 +1231,21 @@ class ChatStore {
         }
         $this->rawSnapshots[$user] = $raw;
         try {
-            return $this->decodeStoredList($raw, 'chat data');
+            $chats = $this->decodeStoredList($raw, 'chat data');
+            $this->chatSnapshots[$user] = $chats;
+            if ($chats === [] && $this->sqlChats !== null) {
+                try {
+                    $state = $this->sqlChats->migrationState($user);
+                    if ($state === null && $this->sqlChats->chatCount($user) === 0) {
+                        $this->sqlChats->saveMigrationState($user, 'complete', null, hash('sha256', $raw));
+                        $this->sqlChats->setSqlReadsEnabled($user, true);
+                        $this->sqlReadModes[$user] = true;
+                    }
+                } catch (\Throwable) {
+                    // A fresh account can still use AppData if SQL setup is unavailable.
+                }
+            }
+            return $chats;
         } catch (\RuntimeException $error) {
             // Recover the last complete payload when a worker was killed
             // while replacing chats.json. The corrupt live file remains in
@@ -964,12 +1253,74 @@ class ChatStore {
             try {
                 $backup = $this->userFolderFor($user)->getFile('chats.json.backup')->getContent();
                 $recovered = $this->decodeStoredList($backup, 'chat backup');
+                $this->chatSnapshots[$user] = $recovered;
                 $this->logger->warning('eva_ai: recovered chats from backup after corrupt write', ['user' => $user]);
                 return $recovered;
             } catch (\Throwable) {
                 throw $error;
             }
         }
+    }
+
+    /** @return list<array<string,mixed>> */
+    private function listFromSql(string $user, ?string $search, bool $includeArchived): array {
+        $needle = $search !== null ? mb_strtolower(trim($search)) : '';
+        $out = [];
+        $beforeUpdated = null;
+        $beforeChatId = null;
+        do {
+            $page = $this->sqlChats->metadataPage($user, 100, $beforeUpdated, $beforeChatId);
+            foreach ($page as $record) {
+                $chat = $record['metadata'];
+                $chat['id'] = $record['id'];
+                $chat['created'] = $record['created'];
+                $chat['updated'] = $record['updated'];
+                if (!$includeArchived && !empty($chat['archived'])) continue;
+                $entry = [
+                    'id' => $record['id'], 'title' => $this->displayTitle($chat),
+                    'created' => $record['created'], 'updated' => $record['updated'],
+                    'count' => $record['count'], 'trimmed' => (int)($chat['trimmed'] ?? 0),
+                    'pinned' => !empty($chat['pinned']), 'folder' => (string)($chat['folder'] ?? ''),
+                    'tags' => $this->normalizeTags($chat['tags'] ?? []), 'archived' => !empty($chat['archived']),
+                    'scopePath' => (string)($chat['scopePath'] ?? ''),
+                    'instructions' => (string)($chat['instructions'] ?? ''), 'persona' => (string)($chat['persona'] ?? ''),
+                ];
+                if ($needle !== '') {
+                    $snippet = null;
+                    $matchCount = 0;
+                    foreach ($this->sqlChats->messages($user, $record['id']) as $message) {
+                        $text = (string)($message['text'] ?? '');
+                        if ($text === '' || mb_stripos($text, $needle) === false) continue;
+                        $matchCount++;
+                        if ($snippet === null) $snippet = $this->snippetAround($text, $needle);
+                    }
+                    if (mb_strpos(mb_strtolower($entry['title']), $needle) === false && $matchCount === 0) continue;
+                    if ($matchCount > 0) { $entry['snippet'] = $snippet ?? ''; $entry['matchCount'] = $matchCount; }
+                }
+                $out[] = $entry;
+            }
+            if ($page !== []) {
+                $last = $page[count($page) - 1];
+                $beforeUpdated = $last['updated'];
+                $beforeChatId = $last['id'];
+            }
+        } while (count($page) === 100);
+
+        usort($out, static fn($a, $b) => ($b['pinned'] <=> $a['pinned']) ?: ($b['updated'] <=> $a['updated']));
+        return $out;
+    }
+
+    private function sqlReadsEnabled(string $user): bool {
+        if (array_key_exists($user, $this->sqlReadModes)) return $this->sqlReadModes[$user];
+        return $this->sqlReadModes[$user] = $this->sqlChats?->sqlReadsEnabled($user) ?? false;
+    }
+
+    private function replaceCachedChat(string $user, array $updated): void {
+        if (!isset($this->chatSnapshots[$user])) return;
+        foreach ($this->chatSnapshots[$user] as &$chat) {
+            if (($chat['id'] ?? null) === ($updated['id'] ?? null)) { $chat = $updated; break; }
+        }
+        unset($chat);
     }
 
     private function decodeStoredList(string $raw, string $label): array {
@@ -992,11 +1343,30 @@ class ChatStore {
             || count(array_filter($data, 'is_array')) !== count($data)) {
             throw new \RuntimeException('Invalid EVA ' . $label . '; stored data was preserved.');
         }
+        foreach ($data as &$chat) {
+            if (!isset($chat['messages']) || !is_array($chat['messages'])) continue;
+            foreach ($chat['messages'] as &$message) {
+                if (is_array($message)) unset($message['reactions']);
+            }
+            unset($message);
+        }
+        unset($chat);
         return $data;
     }
 
-    private function write(string $user, array $data): void {
+    private function write(string $user, array $data, bool $forceAppData = false): void {
         try {
+            $previous = $this->chatSnapshots[$user] ?? [];
+            if (!$forceAppData && $this->sqlReadsEnabled($user)) {
+                try {
+                    $this->sqlChats->syncChats($user, $previous, $data);
+                    $this->chatSnapshots[$user] = $data;
+                    return;
+                } catch (\Throwable $mirrorError) {
+                    $this->logger->error('eva_ai: primary SQL chat write failed', ['user' => $user]);
+                    throw $mirrorError;
+                }
+            }
             $json = json_encode($data, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR);
             if ($this->crypto !== null) {
                 $json = "EVA-CHAT-1\n" . $this->crypto->encrypt($json);
@@ -1007,21 +1377,41 @@ class ChatStore {
             // worker kill during putContent() cannot permanently destroy the
             // conversation (Issue #389).
             try {
-                $previous = $this->rawSnapshots[$user] ?? '';
-                if ($previous !== '') {
+                $previousRaw = $this->rawSnapshots[$user] ?? '';
+                if ($previousRaw === '') {
+                    try { $previousRaw = $root->getContent(); } catch (NotFoundException) {}
+                }
+                if ($previousRaw !== '') {
                     $folder = $this->userFolderFor($user);
                     $backupName = 'chats.json.backup';
                     if ($folder->fileExists($backupName)) {
-                        $folder->getFile($backupName)->putContent($previous);
+                        $folder->getFile($backupName)->putContent($previousRaw);
                     } else {
-                        $folder->newFile($backupName, $previous);
+                        $folder->newFile($backupName, $previousRaw);
                     }
                 }
             } catch (\Throwable $backupError) {
                 $this->logger->debug('eva_ai: chat backup could not be updated', ['exception' => $backupError->getMessage()]);
             }
             $root->putContent($json);
-            unset($this->rawSnapshots[$user]);
+            if ($this->sqlChats !== null) {
+                try {
+                    $this->sqlChats->syncChats($user, $previous, $data);
+                    $state = $this->sqlChats->migrationState($user);
+                    if (($state['state'] ?? '') === 'complete') {
+                        $this->sqlChats->saveMigrationState($user, 'complete', is_string($state['cursor'] ?? null) ? $state['cursor'] : null, hash('sha256', $json));
+                    }
+                } catch (\Throwable $mirrorError) {
+                    try {
+                        $this->sqlChats->saveMigrationState($user, 'failed', null, hash('sha256', $json), 'sql_mirror_failed');
+                    } catch (\Throwable) {
+                        // The AppData source remains valid even if SQL is unavailable.
+                    }
+                    $this->logger->warning('eva_ai: SQL chat mirror failed; AppData remains authoritative', ['user' => $user]);
+                }
+            }
+            $this->chatSnapshots[$user] = $data;
+            $this->rawSnapshots[$user] = $json;
         } catch (\Throwable $e) {
             $this->logger->error('eva_ai: chat save failed - chats may disappear after reload', [
                 'user' => $user,
@@ -1082,14 +1472,17 @@ class ChatStore {
         });
     }
 
-    // How often and how long to wait for the per-user lock before giving up.
+    // How often and how long to wait for user or conversation locks before giving up.
     // Page loads fire several chat reads in parallel; Nextcloud's lock
     // acquisition is non-blocking, so without retries a short write would make
-    // every read fail instantly. Reads retry briefly and then degrade to a
-    // lock-free read (a page must never stall or 500); writes retry longer
-    // because serializing them is a correctness requirement.
+    // every read fail instantly. Legacy AppData reads can fall back to a valid
+    // lock-free snapshot; SQL chat reads require per-conversation coordination.
+    // Writes retry longer because serializing them is a correctness requirement.
     private const LOCK_RETRY_ATTEMPTS_EXCLUSIVE = 6;
-    private const LOCK_RETRY_ATTEMPTS_SHARED = 3;
+    // Chat history reads frequently overlap the final turn receipt write. Give
+    // short Nextcloud lock collisions enough time to clear before returning a
+    // transient 503 to the browser.
+    private const LOCK_RETRY_ATTEMPTS_SHARED = 6;
     private const LOCK_RETRY_BASE_USLEEP = 100000; // 100 ms, growing per attempt
     /**
      * How long contention may take before a mutation is reported as busy.
@@ -1102,12 +1495,119 @@ class ChatStore {
     private const LOCK_CONTENTION_WARN_MS = 2500;
 
     /**
-     * Serialize all chat reads and mutations for one user across the whole
-     * cluster. A node-local flock() in the temp directory let two app servers
-     * race on the same chats.json, silently losing updates on clustered
+     * Use per-conversation coordination after SQL becomes authoritative.
+     * AppData operations keep the original per-user lock because they rewrite
+     * one aggregate JSON file. SQL conversations are independent rows, so they
+     * share the user lock only in reader mode (fencing whole-user migration or
+     * maintenance) and take a second lock scoped to their own conversation.
+     */
+    private function withChatAwareLock(string $user, string $chatId, callable $operation, int $mode = ILockingProvider::LOCK_EXCLUSIVE): mixed {
+        if (!$this->sqlReadsEnabled($user)) {
+            return $this->withUserLock($user, function () use ($user, $operation): mixed {
+                // A migration can switch the backend between the initial
+                // check and acquisition of the user fence. Re-read only after
+                // acquiring that fence so the operation uses its current mode.
+                unset($this->sqlReadModes[$user]);
+                return $operation();
+            }, $mode);
+        }
+
+        $modeChanged = false;
+        $result = $this->withChatLock($user, $chatId, function () use ($user, $operation, &$modeChanged): mixed {
+            // Shared user fencing prevents a cutover while this fresh check
+            // and the per-chat operation are in progress.
+            unset($this->sqlReadModes[$user]);
+            if (!$this->sqlReadsEnabled($user)) {
+                $modeChanged = true;
+                return null;
+            }
+            return $operation();
+        }, $mode);
+        if (!$modeChanged) return $result;
+
+        // SQL was disabled while this request waited for the shared fence.
+        // Release it before falling back to the AppData-wide lock; lock modes
+        // are never upgraded in place.
+        return $this->withUserLock($user, function () use ($user, $operation): mixed {
+            unset($this->sqlReadModes[$user]);
+            return $operation();
+        }, $mode);
+    }
+
+    /** Different SQL-backed conversations may be read or written concurrently. */
+    private function withChatLock(string $user, string $chatId, callable $operation, int $mode): mixed {
+        $userLockPath = 'eva_ai/chat/' . $this->namespaceFor($user);
+        $conversationLockPath = $this->conversationLockPath($user, $chatId);
+        $userAcquired = false;
+        $conversationAcquired = false;
+        try {
+            // Whole-user AppData and migration operations take an exclusive
+            // lock on this path, so this shared lock fences their snapshots.
+            $this->acquireRequiredChatLock($user, $userLockPath, ILockingProvider::LOCK_SHARED);
+            $userAcquired = true;
+            $this->acquireRequiredChatLock($user, $conversationLockPath, $mode);
+            $conversationAcquired = true;
+            return $operation();
+        } finally {
+            if ($conversationAcquired) {
+                try { $this->lockingProvider->releaseLock($conversationLockPath, $mode); }
+                catch (\Throwable) { /* Expired locks must not mask the operation result. */ }
+            }
+            if ($userAcquired) {
+                try { $this->lockingProvider->releaseLock($userLockPath, ILockingProvider::LOCK_SHARED); }
+                catch (\Throwable) { /* Expired locks must not mask the operation result. */ }
+            }
+        }
+    }
+
+    /** Unlike AppData reads, SQL-backed chat reads and writes never continue without coordination. */
+    private function acquireRequiredChatLock(string $user, string $lockPath, int $mode): void {
+        $attempts = $mode === ILockingProvider::LOCK_SHARED
+            ? self::LOCK_RETRY_ATTEMPTS_SHARED
+            : self::LOCK_RETRY_ATTEMPTS_EXCLUSIVE;
+        $started = hrtime(true);
+        $acquired = false;
+        for ($attempt = 0; $attempt < $attempts; $attempt++) {
+            try {
+                $this->lockingProvider->acquireLock($lockPath, $mode);
+                $acquired = true;
+                break;
+            } catch (\Throwable $error) {
+                if ($attempt < $attempts - 1) {
+                    usleep(self::LOCK_RETRY_BASE_USLEEP * ($attempt + 1));
+                } else {
+                    $this->logger->warning('eva_ai: SQL chat lock could not be acquired', [
+                        'user' => $user,
+                        'mode' => $mode === ILockingProvider::LOCK_SHARED ? 'shared' : 'exclusive',
+                        'exception' => $error->getMessage(),
+                    ]);
+                }
+            }
+        }
+        if (!$acquired) {
+            $this->logContention($user, $lockPath, $mode, $attempts, $started);
+            throw new ChatStoreBusyException('Chat storage is busy (another request is writing it). Please try again.');
+        }
+        if ($attempt > 0) {
+            $waitedMs = max(1, (int)ceil((hrtime(true) - $started) / 1_000_000));
+            $this->usageMetrics?->recordChatStoreLockWait(
+                $user,
+                $mode === ILockingProvider::LOCK_SHARED ? 'shared' : 'exclusive',
+                'acquired',
+                $waitedMs,
+            );
+        }
+    }
+
+    /**
+     * Serialize aggregate AppData reads and mutations for one user across the
+     * whole cluster. A node-local flock() in the temp directory let two app
+     * servers race on the same chats.json, silently losing updates on clustered
      * deployments (Issue #78). Nextcloud's locking provider coordinates via a
      * shared backend (database or distributed cache), so the read-modify-write
-     * of one user's chat file is atomic on every node.
+     * of one user's legacy chat file is atomic on every node. SQL-authoritative
+     * single-chat operations use withChatLock() and share this user lock only
+     * in reader mode, allowing independent conversations to proceed together.
      *
      * $mode distinguishes reads (LOCK_SHARED) from mutations (LOCK_EXCLUSIVE):
      * several parallel reads may run at the same time, so the chat list,
@@ -1124,7 +1624,7 @@ class ChatStore {
             ? self::LOCK_RETRY_ATTEMPTS_SHARED
             : self::LOCK_RETRY_ATTEMPTS_EXCLUSIVE;
         $acquired = false;
-        $started = microtime(true);
+        $started = hrtime(true);
         for ($attempt = 0; $attempt < $attempts; $attempt++) {
             try {
                 $this->lockingProvider->acquireLock($lockPath, $mode);
@@ -1145,6 +1645,7 @@ class ChatStore {
             }
         }
         if ($acquired) {
+            $waitedMs = max(0, (int)ceil((hrtime(true) - $started) / 1_000_000));
             try {
                 return $operation();
             } finally {
@@ -1154,15 +1655,27 @@ class ChatStore {
                     // A lock that was already released (e.g. expired TTL on a
                     // crashed node) must not mask the operation's own result.
                 }
+				if ($attempt > 0) {
+					$this->usageMetrics?->recordChatStoreLockWait(
+						$user,
+						$mode === ILockingProvider::LOCK_SHARED ? 'shared' : 'exclusive',
+						'acquired',
+						$waitedMs,
+					);
+				}
             }
         }
         if ($mode === ILockingProvider::LOCK_SHARED) {
             // Reads never mutate the store: serve the current file whenever it
             // is intact. A read racing an active write can only fail JSON
             // decoding, which is reported as busy - never as a hard error.
+			$waitedMs = max(1, (int)ceil((hrtime(true) - $started) / 1_000_000));
             try {
-                return $operation();
+                $value = $operation();
+				$this->usageMetrics?->recordChatStoreLockWait($user, 'shared', 'degraded_read', $waitedMs);
+				return $value;
             } catch (\Throwable $e) {
+				$this->usageMetrics?->recordChatStoreLockWait($user, 'shared', 'read_failed', $waitedMs);
                 $this->logger->warning('eva_ai: chat lock busy, degraded read failed', [
                     'user' => $user,
                     'exception' => $e->getMessage(),
@@ -1187,36 +1700,65 @@ class ChatStore {
      *
      * @return array{path:string,was_locked:bool,released:bool}
      */
-    public function clearLock(string $user, bool $force = false): array {
-        $lockPath = 'eva_ai/chat/' . $this->namespaceFor($user);
-        $mode = ILockingProvider::LOCK_EXCLUSIVE;
-        $wasLocked = false;
-        try {
-            $wasLocked = $this->lockingProvider->isLocked($lockPath, $mode);
-        } catch (\Throwable $e) {
-            // A provider that cannot answer is reported as "not locked": the
-            // command then does nothing instead of failing on a healthy store.
-            $wasLocked = false;
+    public function clearLock(string $user, bool $force = false, ?string $chatId = null): array {
+        if ($chatId !== null && ($chatId === '' || strlen($chatId) > 128)) {
+            throw new \InvalidArgumentException('Invalid chat identifier.');
         }
-        $released = false;
-        // Some DB locking-provider versions can report an expired/stale row as
-        // unlocked even though releaseLock() is still able to remove it.  The
-        // explicit recovery command passes $force after the administrator has
-        // verified that no writer is running, so attempt the release once in
-        // that mode instead of leaving the user blocked for the provider's
-        // full (often one-hour) TTL.
-        if ($wasLocked || $force) {
+        $lockPath = $chatId === null
+            ? 'eva_ai/chat/' . $this->namespaceFor($user)
+            : $this->conversationLockPath($user, $chatId);
+        // Conversation reads hold shared locks; mutations hold exclusive locks.
+        // The earlier recovery command only checked the user-wide lock and
+        // could not release the per-conversation lock used by SQL storage.
+        $modes = $chatId === null
+            ? [ILockingProvider::LOCK_EXCLUSIVE]
+            : [ILockingProvider::LOCK_EXCLUSIVE, ILockingProvider::LOCK_SHARED];
+        $lockedModes = [];
+        foreach ($modes as $mode) {
             try {
-                $this->lockingProvider->releaseLock($lockPath, $mode);
-                $released = true;
-            } catch (\Throwable $e) {
-                $this->logger->warning('eva_ai: chat lock could not be released', [
-                    'user' => $user,
-                    'exception' => $e->getMessage(),
-                ]);
+                if ($this->lockingProvider->isLocked($lockPath, $mode)) $lockedModes[] = $mode;
+            } catch (\Throwable) {
+                // A provider that cannot answer is reported as unlocked; never
+                // clear a lock blindly unless the administrator passed force.
             }
         }
-        return ['path' => $lockPath, 'was_locked' => $wasLocked, 'released' => $released];
+        $released = false;
+        if ($force) {
+            foreach ($lockedModes as $mode) {
+                try {
+                    if ($mode === ILockingProvider::LOCK_SHARED) {
+                        // DBLockingProvider caches shared locks in-process, so a
+                        // release from this recovery command would only mutate
+                        // its local counter. Convert the single stale shared
+                        // lock to exclusive first; conversion fails safely when
+                        // another shared reader still holds the path.
+                        $this->lockingProvider->changeLock($lockPath, ILockingProvider::LOCK_EXCLUSIVE);
+                        $this->lockingProvider->releaseLock($lockPath, ILockingProvider::LOCK_EXCLUSIVE);
+                    } else {
+                        $this->lockingProvider->releaseLock($lockPath, $mode);
+                    }
+                    $released = true;
+                } catch (\Throwable $e) {
+                    $this->logger->warning('eva_ai: chat lock could not be released', [
+                        'user' => $user,
+                        'exception' => $e->getMessage(),
+                    ]);
+                }
+            }
+        }
+        return ['path' => $lockPath, 'was_locked' => $lockedModes !== [], 'released' => $released];
+    }
+
+    /**
+     * Return a privacy-preserving conversation lock key within Nextcloud's
+     * 64-character `file_locks.key` limit. The old full user and chat hashes
+     * produced a 123-character key; database-backed locking providers either
+     * rejected it or truncated distinct conversations to the same key.
+     */
+    private function conversationLockPath(string $user, string $chatId): string {
+        return 'eva_ai/chat-entry/'
+            . substr(hash('sha256', $user), 0, 24)
+            . '/' . substr(hash('sha256', $chatId), 0, 20);
     }
 
     /**
@@ -1228,8 +1770,10 @@ class ChatStore {
      * of the block and the lock's current state are logged instead of only the
      * fact that the operation failed (issue #193).
      */
-    private function logContention(string $user, string $lockPath, int $mode, int $attempts, float $started): void {
-        $waitedMs = (int)round((microtime(true) - $started) * 1000);
+    private function logContention(string $user, string $lockPath, int $mode, int $attempts, int $started): void {
+        $waitedMs = max(1, (int)ceil((hrtime(true) - $started) / 1_000_000));
+        $modeName = $mode === ILockingProvider::LOCK_SHARED ? 'shared' : 'exclusive';
+        $this->usageMetrics?->recordChatStoreLockWait($user, $modeName, 'busy', $waitedMs);
         $stillLocked = false;
         try {
             $stillLocked = $this->lockingProvider->isLocked($lockPath, $mode);
@@ -1240,7 +1784,7 @@ class ChatStore {
         }
         $context = [
             'user' => $user,
-            'mode' => $mode === ILockingProvider::LOCK_SHARED ? 'shared' : 'exclusive',
+            'mode' => $modeName,
             'attempts' => $attempts,
             'waited_ms' => $waitedMs,
             'still_locked' => $stillLocked,

@@ -1,102 +1,10 @@
 /**
  * Eva AI admin settings — layout helpers on top of Nextcloud's native design
  * system. Sections, headings, grid tables, inputs and buttons are styled by
- * core; this file only adds the layout and status helpers the admin page needs.
+ * core; this file only adds the form layout and status helpers the admin page needs.
  * Everything is expressed with Nextcloud CSS variables, so the page follows
  * the user's theme (including dark mode) automatically.
  */
-
-/* ── Status chips in the page header ─────────────────────────────────── */
-
-.eva-chip-row {
-	display: flex;
-	flex-wrap: wrap;
-	gap: 8px;
-	margin: 4px 0 16px;
-}
-
-.eva-chip {
-	display: inline-flex;
-	align-items: center;
-	gap: 6px;
-	padding: 4px 10px;
-	border-radius: var(--border-radius-pill, 100px);
-	border: 1px solid var(--color-border);
-	background-color: var(--color-background-dark);
-	color: var(--color-text-maxcontrast);
-	font-size: 13px;
-	font-weight: 600;
-	line-height: 1.6;
-}
-
-/*
- * Colour tokens: --color-success / --color-error are *fill* colours whose own
- * text colour is --color-success-text / --color-error-text. Using the fill as a
- * text colour made the status pills dark-on-dark in the dark theme (roughly
- * 1.4:1 contrast), so text uses the -text token and borders/dots use the vivid
- * element token.
- */
-.eva-chip--ok {
-	color: var(--color-success-text);
-	border-color: var(--color-element-success, var(--color-success));
-}
-
-.eva-chip--error {
-	color: var(--color-error-text);
-	border-color: var(--color-element-error, var(--color-error));
-}
-
-.eva-chip--busy {
-	color: var(--color-primary-element);
-	border-color: var(--color-primary-element);
-}
-
-.eva-chip--idle {
-	color: var(--color-text-maxcontrast);
-}
-
-/* ── Inline status pills inside tables ───────────────────────────────── */
-
-.eva-status {
-	display: inline-flex;
-	align-items: center;
-	gap: 6px;
-	font-weight: 600;
-}
-
-.eva-status::before {
-	content: '';
-	display: inline-block;
-	width: 8px;
-	height: 8px;
-	border-radius: 50%;
-	background-color: currentColor;
-	flex: 0 0 auto;
-}
-
-.eva-status--ok {
-	color: var(--color-success-text);
-}
-
-.eva-status--ok::before {
-	background-color: var(--color-element-success, var(--color-success));
-}
-
-.eva-status--error {
-	color: var(--color-error-text);
-}
-
-.eva-status--error::before {
-	background-color: var(--color-element-error, var(--color-error));
-}
-
-.eva-status--busy {
-	color: var(--color-primary-element);
-}
-
-.eva-status--idle {
-	color: var(--color-text-maxcontrast);
-}
 
 /* ── Form layout: two columns of fields that collapse on narrow screens ── */
 
@@ -177,11 +85,6 @@ table.grid th {
 	max-width: 760px;
 }
 
-.eva-user-table td,
-.eva-user-table th {
-	vertical-align: top;
-}
-
 .eva-actions {
 	display: flex;
 	align-items: center;
@@ -257,6 +160,39 @@ table.grid th {
 	vertical-align: top;
 }
 
+.eva-image-results {
+	display: grid;
+	grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+	gap: 12px;
+	max-width: 760px;
+}
+
+.eva-image-result {
+	min-width: 0;
+}
+
+.eva-image-result img {
+	display: block;
+	width: 100%;
+	height: 132px;
+	object-fit: cover;
+	border-radius: var(--border-radius, 6px);
+	background: var(--color-background-dark, #f5f5f5);
+}
+
+.eva-image-result p {
+	margin: 6px 0 0;
+	font-size: 13px;
+	overflow-wrap: anywhere;
+}
+
+.eva-image-preview-unavailable {
+	display: block;
+	padding: 12px;
+	color: var(--color-text-maxcontrast);
+	font-size: 13px;
+}
+
 /* A long description must not stretch the table past the viewport. */
 .eva-search-snippet {
 	margin-top: 4px;
@@ -299,4 +235,37 @@ table.grid th {
 
 .eva-browser-state.is-missing {
 	color: var(--color-warning-text, #a35d00);
+}
+
+/* Keep the normal admin view focused; optional controls follow Nextcloud's
+   native disclosure pattern and inherit the current light/dark theme. */
+.eva-admin-details {
+	max-width: 760px;
+	margin: 20px 0;
+	border-top: 1px solid var(--color-border);
+}
+
+.eva-admin-details > summary {
+	width: fit-content;
+	padding: 14px 0;
+	cursor: pointer;
+	font-weight: 600;
+	color: var(--color-main-text);
+}
+
+.eva-admin-details[open] > summary {
+	margin-bottom: 8px;
+}
+
+.eva-admin-details__content {
+	padding-bottom: 12px;
+}
+
+.eva-admin-details--nested {
+	margin: 12px 0;
+	border-bottom: 1px solid var(--color-border);
+}
+
+.eva-admin-details--nested > summary {
+	padding: 10px 0;
 }

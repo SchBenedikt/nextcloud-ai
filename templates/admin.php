@@ -15,14 +15,6 @@ declare(strict_types=1);
 /** @var \OCP\IL10N $l */
 
 $admin = $_['adminSettings'];
-$ollamaOnline = $_['ollamaOnline'];
-$ollamaError = $_['ollamaError'] ?? '';
-$ollamaUrl = $_['ollamaUrl'];
-$users = $_['users'];
-$userCount = $_['userCount'];
-$totalDocuments = $_['totalDocuments'];
-$totalChunks = $_['totalChunks'];
-$scheduler = $_['scheduler'];
 $apiBase = $_['apiBase'];
 $providers = $_['webSearchProviders'] ?? [];
 
@@ -45,11 +37,6 @@ $indexJobInterval = $admin['index_job_interval_minutes'] ?? '5';
 $rateLimitChat = $admin['rate_limit_chat_per_minute'] ?? '30';
 $rateLimitStream = $admin['rate_limit_stream_per_minute'] ?? '10';
 $rateLimitBackground = $admin['rate_limit_background_per_minute'] ?? '5';
-$lastIndexFailed = (int)($admin['last_index_failed'] ?? 0);
-
-$schedulerRunning = (int)($scheduler['running'] ?? 0);
-$schedulerQueued = (int)($scheduler['queued'] ?? 0);
-$schedulerLimit = (int)($scheduler['limit'] ?? 2);
 
 /** Providers that work without an API key supply their own description. */
 $providerKeyRequired = [
@@ -71,92 +58,20 @@ $providerLabels = [
 <div id="eva-ai-admin" class="section" data-api-base="<?php p($apiBase); ?>">
 
 	<h2><?php p($l->t('Eva AI')); ?></h2>
-	<p class="settings-hint">
-		<?php p($l->t('Eva AI answers questions from the files and mail of this instance. Configure the language models, the background indexer and the optional external tools here.')); ?>
-	</p>
 
-	<p class="eva-chip-row">
-		<span class="eva-chip <?php p($ollamaOnline ? 'eva-chip--ok' : 'eva-chip--error'); ?>">
-			<?php p($ollamaOnline ? $l->t('Language model connected') : $l->t('Language model unavailable')); ?>
-		</span>
-		<span class="eva-chip <?php p($schedulerRunning > 0 ? 'eva-chip--busy' : 'eva-chip--idle'); ?>">
-			<?php p($schedulerRunning > 0
-				? $l->n('%n index pass running', '%n index passes running', $schedulerRunning)
-				: $l->t('Indexer idle')); ?>
-		</span>
-		<span class="eva-chip eva-chip--idle">
-			<?php p($l->n('%n indexed account', '%n indexed accounts', (int)$userCount)); ?>
-		</span>
-	</p>
+	<h3><?php p($l->t('Knowledge storage')); ?></h3>
+	<p class="settings-hint"><?php p($l->t('EVA uses the Nextcloud database by default. External vector storage is optional for larger installations.')); ?></p>
+	<details id="eva-ai-storage-tools" class="eva-admin-details">
+		<summary><?php p($l->t('Optional storage and migration tools')); ?></summary>
+		<div class="eva-admin-details__content">
+			<p id="eva-ai-storage-load-status" class="settings-hint" role="status" aria-live="polite"><?php p($l->t('Open this section to load optional controls.')); ?></p>
+			<div id="eva_ai-admin-app"></div>
+		</div>
+	</details>
 
-	<h3><?php p($l->t('Instance status')); ?></h3>
-	<p class="settings-hint">
-		<?php p($l->t('Live information about the services Eva AI depends on. Nothing here changes a setting.')); ?>
-	</p>
-
-	<table class="grid">
-		<thead>
-			<tr>
-				<th scope="col"><?php p($l->t('Service')); ?></th>
-				<th scope="col"><?php p($l->t('Status')); ?></th>
-				<th scope="col"><?php p($l->t('Detail')); ?></th>
-			</tr>
-		</thead>
-		<tbody>
-			<tr>
-				<td><strong><?php p($l->t('Language model server')); ?></strong></td>
-				<td>
-					<span class="eva-status <?php p($ollamaOnline ? 'eva-status--ok' : 'eva-status--error'); ?>">
-						<?php p($ollamaOnline ? $l->t('Connected') : $l->t('Not connected')); ?>
-					</span>
-				</td>
-				<td>
-					<span class="eva-mono"><?php p($ollamaUrl); ?></span>
-					<?php if (!$ollamaOnline && $ollamaError !== ''): ?>
-						<span class="eva-error eva-block"><?php p($ollamaError); ?></span>
-					<?php endif; ?>
-				</td>
-			</tr>
-			<tr>
-				<td><strong><?php p($l->t('Web search')); ?></strong></td>
-				<td>
-					<span class="eva-status <?php p(!empty($_['webSearchConfigured']) ? 'eva-status--ok' : 'eva-status--idle'); ?>">
-						<?php p(!empty($_['webSearchConfigured']) ? $l->t('Ready') : $l->t('Not configured')); ?>
-					</span>
-				</td>
-				<td>
-					<?php if ($webSearchApiKeyConfigured): ?>
-						<?php p($l->t('An API key is stored for the hosted providers.')); ?>
-					<?php else: ?>
-						<?php p($l->t('No API key stored. DuckDuckGo and SearxNG work without one.')); ?>
-					<?php endif; ?>
-				</td>
-			</tr>
-			<tr>
-				<td><strong><?php p($l->t('Knowledge base')); ?></strong></td>
-				<td><?php p($l->t('%s documents', [(string)$totalDocuments])); ?></td>
-				<td>
-					<?php p($l->t('%s text chunks', [(string)$totalChunks])); ?>
-					<?php if ($lastIndexFailed > 0): ?>
-						<span class="eva-block eva-muted">
-							<?php p($l->t('%s files were skipped and are retried on the next run', [(string)$lastIndexFailed])); ?>
-						</span>
-					<?php endif; ?>
-				</td>
-			</tr>
-			<tr>
-				<td><strong><?php p($l->t('Background indexing')); ?></strong></td>
-				<td><?php p($schedulerRunning . ' / ' . $schedulerLimit); ?></td>
-				<td>
-					<?php p($l->t('passes running')); ?>
-					<?php if ($schedulerQueued > 0): ?>
-						— <?php p($l->n('%n waiting in the queue', '%n waiting in the queue', $schedulerQueued)); ?>
-					<?php endif; ?>
-				</td>
-			</tr>
-		</tbody>
-	</table>
-
+	<details class="eva-admin-details">
+		<summary><?php p($l->t('Advanced indexing and request limits')); ?></summary>
+		<div class="eva-admin-details__content">
 	<h3><?php p($l->t('Indexing performance')); ?></h3>
 	<p class="settings-hint">
 		<?php p($l->t('The background indexer runs on Nextcloud cron. These values bound how much work one cron run may do, so a large library is indexed steadily without slowing the instance down.')); ?>
@@ -186,7 +101,7 @@ $providerLabels = [
 			<input type="number" id="eva-job-interval" name="index_job_interval_minutes"
 				min="1" max="60" step="1" value="<?php p($indexJobInterval); ?>">
 			<p class="eva-field-hint">
-				<?php p($l->t('Minutes between runs, 1–60, default 5. Together with the time budget this is how fast a large library is caught up. Takes effect after the next app update.')); ?>
+				<?php p($l->t('Minutes between runs, 1–60, default 5. Together with the time budget this is how fast a large library is caught up. The new interval takes effect as soon as you save.')); ?>
 			</p>
 		</div>
 	</div>
@@ -203,7 +118,20 @@ $providerLabels = [
 		<button type="button" id="eva-index-save" class="primary"><?php p($l->t('Save indexing settings')); ?></button>
 		<span id="eva-index-status" class="eva-status-text" role="status" aria-live="polite"></span>
 	</p>
+	<h3><?php p($l->t('Background indexing')); ?></h3>
+	<p class="settings-hint">
+		<?php p($l->t('Users manage recurring indexing in personal EVA settings. This action requests that the current background pass stop at its next safe boundary.')); ?>
+	</p>
+	<p class="eva-actions">
+		<button type="button" id="eva-stop-background" class="secondary"><?php p($l->t('Stop background indexing')); ?></button>
+		<span id="eva-background-status" class="eva-status-text" role="status" aria-live="polite"></span>
+	</p>
+		</div>
+	</details>
 
+	<details class="eva-admin-details">
+		<summary><?php p($l->t('Shared web search services')); ?></summary>
+		<div class="eva-admin-details__content">
 	<h3><?php p($l->t('Web search')); ?></h3>
 	<p class="settings-hint">
 		<?php p($l->t('Web search is opt-in and off by default. Each user turns it on and picks a provider in their personal Eva AI settings; the options below provide the instance-wide infrastructure for everyone.')); ?>
@@ -264,6 +192,9 @@ $providerLabels = [
 		<?php p($l->t('Search limits, page reading, images, safe search and browser rendering are configured by each user in personal Eva AI settings. This page only stores shared provider credentials and browser infrastructure.')); ?>
 	</p>
 
+	<details class="eva-admin-details eva-admin-details--nested">
+		<summary><?php p($l->t('Browser rendering (optional)')); ?></summary>
+		<div class="eva-admin-details__content">
 	<div class="eva-field">
 		<label for="eva-browser-node"><?php p($l->t('Node.js path')); ?></label>
 		<input type="text" id="eva-browser-node" name="web_search_browser_node"
@@ -281,6 +212,8 @@ $providerLabels = [
 			<?php p($l->t('Leave empty to use Playwright\'s own location for the user the web server runs as. Set it when the browser build lives elsewhere - for example in a shared directory, or when the app runs as a user whose home directory the browser installer did not use. The placeholder shows the path that is used right now.')); ?>
 		</p>
 	</div>
+		</div>
+	</details>
 
 	<p class="eva-actions">
 		<button type="button" id="eva-websearch-save" class="primary"><?php p($l->t('Save web search settings')); ?></button>
@@ -300,6 +233,7 @@ $providerLabels = [
 			<option value="web"><?php p($l->t('Web')); ?></option>
 			<option value="news"><?php p($l->t('News')); ?></option>
 			<option value="all"><?php p($l->t('Web and news')); ?></option>
+			<option value="images"><?php p($l->t('Images')); ?></option>
 		</select>
 		<button type="button" id="eva-test-run" class="secondary eva-test-button"><?php p($l->t('Run search')); ?></button>
 		<span id="eva-test-status" class="eva-status-text" role="status" aria-live="polite"></span>
@@ -307,111 +241,6 @@ $providerLabels = [
 
 	<div id="eva-test-results" class="eva-test-results" hidden></div>
 
-	<h3><?php p($l->t('Tools')); ?></h3>
-	<p class="settings-hint">
-		<?php p($l->t('Instance-wide switches for tools that contact services outside this server.')); ?>
-	</p>
-
-	<p class="settings-hint">
-		<?php p($l->t('Tool permissions, including weather forecasts and file actions, are configured by each user in personal Eva AI settings.')); ?>
-	</p>
-
-
-	<h3><?php p($l->t('Accounts and indexing')); ?></h3>
-	<p class="settings-hint">
-		<?php p($l->t('Manage which accounts build a knowledge base, re-index one account now or delete its index. Original Nextcloud files are never modified.')); ?>
-	</p>
-
-	<?php if (empty($users)): ?>
-		<p class="eva-empty"><?php p($l->t('No account has enrolled in indexing yet.')); ?></p>
-	<?php else: ?>
-		<table class="grid eva-user-table">
-			<thead>
-				<tr>
-					<th scope="col"><?php p($l->t('Account')); ?></th>
-					<th scope="col"><?php p($l->t('Background indexing')); ?></th>
-					<th scope="col"><?php p($l->t('Documents')); ?></th>
-					<th scope="col"><?php p($l->t('Chunks')); ?></th>
-					<th scope="col"><?php p($l->t('Last indexed')); ?></th>
-					<th scope="col"><?php p($l->t('Actions')); ?></th>
-				</tr>
-			</thead>
-			<tbody>
-			<?php foreach ($users as $user): ?>
-				<tr data-user-id="<?php p($user['userId']); ?>">
-					<td>
-						<strong><?php p($user['displayName']); ?></strong>
-						<?php if ($user['displayName'] !== $user['userId']): ?>
-							<span class="eva-muted eva-block"><?php p($user['userId']); ?></span>
-						<?php endif; ?>
-					</td>
-					<td>
-						<label class="eva-checkbox">
-							<input type="checkbox" class="eva-enroll-toggle"
-								data-user="<?php p($user['userId']); ?>"
-								value="1" <?php p($user['enrolled'] ? 'checked' : ''); ?>
-								<?php if ($user['indexing']) p('disabled'); ?>>
-							<span><?php p($l->t('Enabled')); ?></span>
-						</label>
-					</td>
-					<td><?php p((string)$user['documents']); ?></td>
-					<td><?php p((string)$user['chunks']); ?></td>
-					<td>
-						<?php if ($user['lastIndexedAt'] !== null): ?>
-							<span class="eva-mono"><?php p(gmdate('Y-m-d H:i', (int)$user['lastIndexedAt'])); ?></span>
-						<?php else: ?>
-							<span class="eva-muted">—</span>
-						<?php endif; ?>
-					</td>
-					<td>
-						<?php
-						// An account with an index but no recurring enrollment is not
-						// "inactive": it holds documents. Only a truly empty, unenrolled
-						// account is inactive.
-						if ($user['indexing']) {
-							$stateClass = 'eva-status--busy';
-							$stateLabel = $l->t('Indexing');
-						} elseif ($user['enrolled']) {
-							$stateClass = 'eva-status--ok';
-							$stateLabel = $l->t('Enrolled');
-						} elseif ((int)$user['documents'] > 0) {
-							$stateClass = 'eva-status--ok';
-							$stateLabel = $l->t('Indexed');
-						} else {
-							$stateClass = 'eva-status--idle';
-							$stateLabel = $l->t('Inactive');
-						}
-						?>
-						<span class="eva-status <?php p($stateClass); ?>"><?php p($stateLabel); ?></span>
-						<?php if ($user['error'] !== ''): ?>
-							<span class="eva-error eva-block"><?php p($user['error']); ?></span>
-						<?php endif; ?>
-						<?php if ((int)($user['failed'] ?? 0) > 0): ?>
-							<span class="eva-block eva-muted">
-								<?php p($l->t('%s files skipped', [(string)(int)$user['failed']])); ?>
-							</span>
-						<?php endif; ?>
-						<span class="eva-actions eva-actions--inline">
-							<button type="button" class="secondary eva-btn-reindex"
-								data-user="<?php p($user['userId']); ?>"
-								<?php if ($user['indexing']) p('disabled'); ?>>
-								<?php p($l->t('Re-index now')); ?>
-							</button>
-							<button type="button" class="secondary eva-btn-reset"
-								data-user="<?php p($user['userId']); ?>"
-								<?php if ($user['indexing']) p('disabled'); ?>>
-								<?php p($l->t('Delete index')); ?>
-							</button>
-						</span>
-					</td>
-				</tr>
-			<?php endforeach; ?>
-			</tbody>
-		</table>
-	<?php endif; ?>
-
-	<p class="eva-actions">
-		<button type="button" id="eva-stop-background" class="secondary"><?php p($l->t('Stop background indexing')); ?></button>
-		<span id="eva-background-status" class="eva-status-text" role="status" aria-live="polite"></span>
-	</p>
+		</div>
+	</details>
 </div>

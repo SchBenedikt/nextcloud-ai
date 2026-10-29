@@ -126,15 +126,17 @@ When changing the shared workspace layout, keep the responsive `--eva-content-wi
 Run `EVA_LOW_MEMORY_BUILD=1 NODE_OPTIONS=--max-old-space-size=640 nice -n 15 npm run build`
 to serialize module compilation and minification. Run the build separately from
 indexing and model inference. This limits V8 heap usage, not total process memory.
-See [the September review](REVIEW-2026-09-05.md) for verified checks and remaining integration gaps.
+Record validation for the actual revision and environment being shipped; use
+[CI](CI.md) and the [backend ledger](BACKEND-ROADMAP.md) for required coverage.
 
-### September 8 regression checks
+### Backend and frontend regression checks
 
 Run `npm test` for Files actions, Markdown/citation rendering and streaming decoder behavior.
 Run `composer test` for backend regressions, including regeneration, corrupt storage,
 ownership locking and release metadata. The app owns its streaming response class
 because Nextcloud's similarly named response was introduced in version 33.
-See [the September 8 review](REVIEW-2026-09-08.md) for scope and remaining gaps.
+Full authenticated integration, migration and provider checks require the real
+Nextcloud request stack and the corresponding services.
 
 ### Markdown regression checks
 
@@ -148,3 +150,36 @@ they do not require a Nextcloud account and are not full authenticated chat E2E.
 Groq contract CI checks out Nextcloud's public interfaces and runs the seven
 provider tests with `--fail-on-skipped` on PHP 8.2, 8.3 and 8.4. The standalone
 PHP suite follows existing conventions and skips platform tests without OCP.
+## Focused workspace development
+
+Settings sections live in `src/components/settings/`; their shared state and
+deferred loaders live in `src/composables/useEvaSettings.js`. Keep data ownership
+in the composable so section switches cannot discard edits. Provider drafts
+belong to `ProviderSettings` and save through the shared serialized settings
+writer. Removing a custom provider also removes its saved credential; keep the
+profile selected for file indexing until another embedding provider is chosen.
+Actions that depend on settings should save only dirty fields (or the specific
+field they own), so an unrelated invalid setting cannot block a connection
+check or background indexing request.
+
+`ChatView` must await the renderer's `ready` promise before sending an initial
+prompt. Otherwise an asynchronous history restore can overwrite the new
+message. Always destroy the renderer on replacement and unmount.
+
+The browser suite includes the full Vue workspace with mocked APIs, alongside
+standalone, chat and metrics tests. It covers direct first-message sending,
+deferred settings resources, provider forms, lightweight document progress and
+mobile layout. Mocked providers do not prove real account access or inference.
+
+Run `npm run test:browser` after changing these paths. Changes under `src/`
+also require `npm run build` and committing all changed or removed `js/` files.
+See [Performance](PERFORMANCE.md) for request ownership and
+[Workspace migration](WORKSPACE-MIGRATION.md) for deployment checks.
+
+### Reproducible production builds
+
+Production builds run loaders and minification serially. Parallel production
+compilation produced identical JavaScript but inconsistent Vue source-map
+positions across fresh builds. Serial compilation keeps committed bundles and
+maps reproducible while bounding memory on smaller Nextcloud hosts. Development
+builds remain parallel; `EVA_LOW_MEMORY_BUILD=1` also bounds development builds.

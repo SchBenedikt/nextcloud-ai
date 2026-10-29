@@ -6,11 +6,9 @@ namespace OCA\EvaAi\Controller;
 
 use OCA\EvaAi\Db\DocumentMapper;
 use OCA\EvaAi\Service\AppConfig;
-use OCA\EvaAi\Service\ChatStore;
 use OCA\EvaAi\Service\Indexer;
 use OCA\EvaAi\Service\IndexScheduler;
 use OCA\EvaAi\Service\ModelPricing;
-use OCA\EvaAi\Service\Ollama;
 use OCA\EvaAi\Service\RagService;
 use OCA\EvaAi\Service\UsageMetrics;
 use OCA\EvaAi\Service\WebSearchService;
@@ -24,9 +22,9 @@ use OCP\IUserManager;
 
 /**
  * Admin-only surface (Issue #82). Every endpoint is #[AdminRequired], so
- * non-admins receive a 403 before any data is read. The overview exposes
- * only metadata (counts, timestamps, state) - never file paths, contents or
- * personal data beyond the user id and display name.
+ * non-admins receive a 403 before any data is read. The compact summary exposes
+ * aggregate metadata only; the retained legacy overview also includes account
+ * rows for existing clients.
  */
 class AdminController extends OCSController {
     public function __construct(
@@ -39,13 +37,13 @@ class AdminController extends OCSController {
         private DocumentMapper $documentMapper,
         private Indexer $indexer,
         private RagService $ragService,
-        private Ollama $ollama,
         private IndexScheduler $scheduler,
         private IJobList $jobList,
         private IUserManager $userManager,
         private WebSearchService $webSearch,
         private UsageMetrics $usageMetrics,
-        private ChatStore $chatStore,
+        private ?\OCA\EvaAi\Vector\VectorStorageStatus $vectorStorageStatus = null,
+        private ?\OCA\EvaAi\Db\VectorOwnerFenceRepository $vectorOwners = null,
     ) {
         parent::__construct($appName, $request);
     }
@@ -61,6 +59,14 @@ class AdminController extends OCSController {
     public function getSettings(): DataResponse {
         $this->config->setUserId(null);
         return new ErrorDataResponse($this->adminSettingsPayload());
+    }
+
+    /** Local metadata only; viewing administration must never contact Qdrant. */
+    #[AdminRequired]
+    public function vectorStorage(): DataResponse {
+        $status = $this->vectorStorageStatus?->snapshot() ?? ['available' => false];
+        if (!$status['available']) $status['error'] = ['code' => 'storage_status_unavailable', 'message' => 'Storage status could not be loaded.'];
+        return new ErrorDataResponse($status, $status['available'] ? 200 : 503);
     }
 
     /**
@@ -79,11 +85,40 @@ class AdminController extends OCSController {
         $this->webSearch->setUserId($this->userId);
         $query = trim((string)$this->request->getParam('query', ''));
         $mode = trim((string)$this->request->getParam('mode', 'web'));
-        if (!in_array($mode, WebSearchService::MODES, true)) {
+        if (!in_array($mode, [...WebSearchService::MODES, 'images'], true)) {
             $mode = 'web';
         }
         if ($query === '') {
             return new ErrorDataResponse(['ok' => false, 'error' => 'Enter a search query first.'], 400);
+        }
+
+        if ($mode === 'images') {
+            $result = $this->webSearch->searchImages($query, 5);
+            if (!$result['ok']) {
+                return new ErrorDataResponse([
+                    'ok' => false,
+                    'provider' => (string)($result['provider'] ?? 'image search'),
+                    'mode' => 'images',
+                    'enabled' => $this->webSearch->isEnabled(),
+                    'error' => (string)($result['error'] ?? 'The image search failed.'),
+                ]);
+            }
+            $images = [];
+            foreach ($result['images'] as $image) {
+                $images[] = [
+                    'url' => (string)$image['url'],
+                    'preview' => (string)$image['preview'],
+                    'title' => (string)$image['title'],
+                    'page' => (string)$image['page'],
+                ];
+            }
+            return new ErrorDataResponse([
+                'ok' => true,
+                'provider' => (string)$result['provider'],
+                'mode' => 'images',
+                'enabled' => $this->webSearch->isEnabled(),
+                'images' => $images,
+            ]);
         }
 
         $provider = $this->webSearch->provider();
@@ -158,6 +193,11 @@ class AdminController extends OCSController {
         $removeApiKey = $this->boolParam('remove_web_search_api_key', false);
         if ($apiKey !== null && !is_scalar($apiKey)) {
             $validationErrors['web_search_api_key'] = 'web_search_api_key must be a string.';
+        } elseif (is_scalar($apiKey) && trim((string)$apiKey) !== '') {
+            $apiKeyError = $this->webSearch->validateApiKey((string)$apiKey);
+            if ($apiKeyError !== null) {
+                $validationErrors['web_search_api_key'] = $apiKeyError;
+            }
         }
 
         if ($validationErrors !== []) {
@@ -167,6 +207,8 @@ class AdminController extends OCSController {
             ], 400);
         }
 
+        $refreshIndexJob = isset($pending['index_job_interval_minutes'])
+            && $pending['index_job_interval_minutes'] !== $this->config->get('index_job_interval_minutes');
         foreach ($pending as $key => $value) {
             if (in_array($key, ['weather_tool_enabled', 'web_search_enabled', 'web_search_safe_search'], true)) {
                 $value = in_array(strtolower($value), ['1', 'true', 'on'], true) ? '1' : '0';
@@ -174,17 +216,18 @@ class AdminController extends OCSController {
             $this->config->set($key, $value);
         }
 
-        try {
-            if ($removeApiKey) {
-                $this->webSearch->saveApiKey('');
-            } elseif (is_scalar($apiKey) && trim((string)$apiKey) !== '') {
-                $this->webSearch->saveApiKey((string)$apiKey);
-            }
-        } catch (\InvalidArgumentException $e) {
-            return new ErrorDataResponse([
-                'error' => 'Invalid settings.',
-                'validationErrors' => ['web_search_api_key must be 8-256 characters: letters, digits, dot, underscore or dash.'],
-            ], 400);
+        // TimedJob stores its interval on the registered Nextcloud job row.
+        // Recreate that row after changing the setting so the new interval is
+        // active immediately instead of waiting for the next app upgrade.
+        if ($refreshIndexJob) {
+            $this->jobList->remove(\OCA\EvaAi\BackgroundJob\IndexJob::class);
+            $this->jobList->add(\OCA\EvaAi\BackgroundJob\IndexJob::class);
+        }
+
+        if ($removeApiKey) {
+            $this->webSearch->saveApiKey('');
+        } elseif (is_scalar($apiKey) && trim((string)$apiKey) !== '') {
+            $this->webSearch->saveApiKey((string)$apiKey);
         }
 
         return new ErrorDataResponse($this->adminSettingsPayload());
@@ -229,10 +272,11 @@ class AdminController extends OCSController {
         // …plus users explicitly enrolled in background indexing (their
         // index may legitimately still be empty, e.g. before the first pass).
         $enrolled = $this->config->enrolledUserIds();
-        $userIdSet = [];
+        $aggregateByUser = [];
         foreach ($aggregates as $row) {
-            $userIdSet[$row['user_id']] = true;
+            $aggregateByUser[$row['user_id']] = $row;
         }
+        $userIdSet = array_fill_keys(array_keys($aggregateByUser), true);
         foreach ($enrolled as $uid) {
             if ($uid !== '') {
                 $userIdSet[$uid] = true;
@@ -241,24 +285,27 @@ class AdminController extends OCSController {
 
         $users = [];
         foreach (array_keys($userIdSet) as $uid) {
-            $agg = null;
-            foreach ($aggregates as $row) {
-                if ($row['user_id'] === $uid) {
-                    $agg = $row;
-                    break;
-                }
-            }
-            $users[] = $this->userRow($uid, $agg);
+            $uid = (string)$uid;
+            $users[] = $this->userRow($uid, $aggregateByUser[$uid] ?? null);
         }
         usort($users, static fn(array $a, array $b): int => strcmp((string)$a['userId'], (string)$b['userId']));
+        try { $ownerStates = $this->vectorOwners?->statesForUsers(array_column($users, 'userId')) ?? []; }
+        catch (\Throwable) { $ownerStates = []; }
+        foreach ($users as &$row) $row['vectorOwnerState'] = $ownerStates[$row['userId']] ?? 'unavailable';
+        unset($row);
 
         return new ErrorDataResponse([
             'users' => $users,
-            'scheduler' => $this->scheduler->overview(),
-            'ollama' => [
-                // ping is a detail array; the boolean lives in its 'ok' key.
-                'online' => (bool)($this->ollama->status()['ping']['ok'] ?? false),
-            ],
+            'scheduler' => $this->scheduler->summary(),
+        ]);
+    }
+
+    /** Backwards-compatible aggregate totals for existing admin API clients. */
+    #[AdminRequired]
+    public function summary(): DataResponse {
+        return new ErrorDataResponse([
+            'index' => $this->documentMapper->aggregateInstance(),
+            'scheduler' => $this->scheduler->summary(),
         ]);
     }
 
@@ -290,7 +337,6 @@ class AdminController extends OCSController {
         try {
             $pricing = json_decode($this->config->get('model_pricing'), true);
             $data = $this->usageMetrics->summaryForUser($target, $days, ModelPricing::normalize($pricing) ?? []);
-            $feedback = $this->chatStore->feedbackStats($target);
         } finally {
             // AppConfig is shared within the request. Restore the authenticated
             // admin scope so a subsequent controller call cannot inherit the
@@ -302,7 +348,6 @@ class AdminController extends OCSController {
         return new ErrorDataResponse($data + [
             'user_id' => $target,
             'display_name' => $name !== '' ? $name : $target,
-            'feedback' => $feedback,
         ]);
     }
 
@@ -327,8 +372,8 @@ class AdminController extends OCSController {
         $this->config->setUserId(null);
         return new ErrorDataResponse([
             'stopped' => true,
-            'requestedFor' => $activeUsers,
-            'scheduler' => $this->scheduler->overview(),
+            'requestedCount' => count($activeUsers),
+            'scheduler' => $this->scheduler->summary(),
         ]);
     }
 

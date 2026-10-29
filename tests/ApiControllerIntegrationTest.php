@@ -6,23 +6,26 @@ namespace OCA\EvaAi\Tests;
 
 use OCA\EvaAi\BackgroundJob\IndexRequestJob;
 use OCA\EvaAi\Controller\ApiController;
+use OCA\EvaAi\Controller\BackgroundChatController;
+use OCA\EvaAi\Controller\IndexController;
+use OCA\EvaAi\Controller\SettingsController;
 use OCA\EvaAi\Controller\SystemController;
-use OCA\EvaAi\Db\ChunkMapper;
 use OCA\EvaAi\Db\DocumentMapper;
 use OCA\EvaAi\Dto\ChatRequest;
-use OCA\EvaAi\Dto\FeedbackStatsResponse;
 use OCA\EvaAi\Service\ActionExecutor;
 use OCA\EvaAi\Service\AppConfig;
 use OCA\EvaAi\Service\BackgroundChatQueue;
 use OCA\EvaAi\Service\ChatLearner;
 use OCA\EvaAi\Service\ChatStore;
-use OCA\EvaAi\Service\FileContextChatService;
 use OCA\EvaAi\Service\IndexScheduler;
 use OCA\EvaAi\Service\Indexer;
 use OCA\EvaAi\Service\KnowledgeInitializer;
 use OCA\EvaAi\Service\LockGuard;
+use OCA\EvaAi\Service\ModelSelectionValidator;
 use OCA\EvaAi\Service\Ollama;
+use OCA\EvaAi\Service\ProviderCredentials;
 use OCA\EvaAi\Service\RagService;
+use OCA\EvaAi\Service\SettingsPersistence;
 use OCA\EvaAi\Service\UsageMetrics;
 use OCA\EvaAi\Service\UserDataService;
 use OCP\App\IAppManager;
@@ -32,12 +35,84 @@ use OCP\IConfig;
 use OCP\IMemcache;
 use OCP\AppFramework\Utility\ITimeFactory;
 use OCP\IRequest;
+use OCP\AppFramework\Http\IOutput;
+use OCA\EvaAi\Http\StreamTraversableResponse;
 use OCP\Lock\ILockingProvider;
 use PHPUnit\Framework\TestCase;
 use Psr\Log\LoggerInterface;
 
 /** Exercises API controller request validation, responses and service wiring. */
 final class ApiControllerIntegrationTest extends TestCase {
+    public function testCompletedTurnsAreValidatedAndBoundToTheLoggedInOwner(): void {
+        $input = ['requestId'=>'turn_1234567890123456','expectedRev'=>1,'question'=>'Question','answer'=>['text'=>'Answer']];
+        $stored = []; $dependencies = [];
+        $controller = $this->controller('alice', $input, $dependencies, $stored);
+        $dependencies['chatStore']->expects(self::once())->method('appendTurn')
+            ->with('alice','c1',self::callback(static fn($turn) => $turn->question->text === 'Question' && $turn->answer->text === 'Answer'))
+            ->willReturn(['ok'=>true,'rev'=>3]);
+        self::assertSame(['ok'=>true,'rev'=>3], $controller->chatTurn('c1')->getData());
+        $controller = $this->controller(null, $input, $dependencies, $stored);
+        $dependencies['chatStore']->expects(self::never())->method('appendTurn');
+        self::assertSame(401, $controller->chatTurn('c1')->getStatus());
+        $controller = $this->controller('alice', array_replace($input,['answer'=>['text'=>'']]), $dependencies, $stored);
+        $dependencies['chatStore']->expects(self::never())->method('appendTurn');
+        self::assertSame(400, $controller->chatTurn('c1')->getStatus());
+    }
+
+    public function testCompletedTurnConflictsAreExplicitAndKeepCsrfProtection(): void {
+        $stored = []; $dependencies = [];
+        $controller = $this->controller('alice', ['requestId'=>'turn_1234567890123456','expectedRev'=>1,'question'=>'Question','answer'=>['text'=>'Answer']], $dependencies, $stored);
+        $dependencies['chatStore']->method('appendTurn')->willReturn(['error'=>'conflict']);
+        self::assertSame(409, $controller->chatTurn('c1')->getStatus());
+        $method = new \ReflectionMethod(ApiController::class,'chatTurn');
+        self::assertCount(0, $method->getAttributes(\OCP\AppFramework\Http\Attribute\NoCSRFRequired::class));
+    }
+
+    public function testStreamReleasesProducerAndSlotBeforeEveryTerminalEvent(): void {
+        foreach (['done', 'confirmation', 'error'] as $type) {
+            $stored = []; $dependencies = [];
+            $controller = $this->controller('alice', [], $dependencies, $stored);
+            $held = true; $closed = false;
+            $dependencies['lockingProvider']->expects(self::once())->method('releaseLock')
+                ->willReturnCallback(static function () use (&$held): void { $held = false; });
+            $dependencies['rag']->method('askStream')->willReturnCallback(static function () use ($type, &$closed): \Generator {
+                try { yield json_encode(['type' => $type, 'answer' => 'Finished']) . "\n"; }
+                finally { $closed = true; }
+            });
+            $factory = new \ReflectionMethod(ApiController::class, 'streamEvents');
+            $events = [];
+            foreach ($factory->invoke($controller, 'alice', 'Hello', [], [], null, '', ['instructions' => '', 'persona' => ''], 'test-slot') as $line) {
+                self::assertFalse($held, 'The next request must be allowed before a terminal event reaches the browser.');
+                self::assertTrue($closed, 'Provider cleanup must finish before a terminal event.');
+                $events[] = json_decode($line, true)['type'];
+            }
+            self::assertSame([$type], $events);
+        }
+    }
+
+    public function testOutputFailureReleasesStreamSlotBeforeReportingFailure(): void {
+        $stored = []; $dependencies = [];
+        $controller = $this->controller('alice', [], $dependencies, $stored);
+        $held = true;
+        $dependencies['lockingProvider']->expects(self::once())->method('releaseLock')
+            ->willReturnCallback(static function () use (&$held): void { $held = false; });
+        $dependencies['rag']->method('askStream')->willReturnCallback(static function (): \Generator {
+            yield "{\"type\":\"content\",\"delta\":\"partial\"}\n";
+            yield "{\"type\":\"done\",\"answer\":\"Finished\"}\n";
+        });
+        $factory = new \ReflectionMethod(ApiController::class, 'streamEvents');
+        $response = new StreamTraversableResponse($factory->invoke($controller, 'alice', 'Hello', [], [], null, '', ['instructions' => '', 'persona' => ''], 'test-slot'));
+        $calls = 0;
+        $output = $this->createMock(IOutput::class);
+        $output->expects(self::exactly(2))->method('setOutput')->willReturnCallback(static function (string $line) use (&$calls, &$held): void {
+            if (++$calls === 1) throw new \RuntimeException('Simulated connection failure');
+            self::assertFalse($held);
+            self::assertSame('error', json_decode($line, true)['type']);
+        });
+        $response->callback($output);
+        self::assertFalse($held);
+    }
+
 	protected function setUp(): void {
 		parent::setUp();
 		if (!defined('EVA_AI_OCP_AVAILABLE') || !EVA_AI_OCP_AVAILABLE) {
@@ -84,13 +159,14 @@ final class ApiControllerIntegrationTest extends TestCase {
 		$indexer = $this->createMock(Indexer::class);
 		$ollama = $this->createMock(Ollama::class);
 		$documentMapper = $this->createMock(DocumentMapper::class);
-		$chunkMapper = $this->createMock(ChunkMapper::class);
 		$jobList = $this->createMock(IJobList::class);
 		$lockingProvider = $this->createMock(ILockingProvider::class);
 		$chatStore = $this->createMock(ChatStore::class);
-		$fileContextChat = $this->createMock(FileContextChatService::class);
 		$appManager = $this->createMock(IAppManager::class);
 		$knowledgeInitializer = $this->createMock(KnowledgeInitializer::class);
+		$providerCredentials = $this->createMock(ProviderCredentials::class);
+		$settingsPersistence = new SettingsPersistence($config);
+		$modelSelectionValidator = new ModelSelectionValidator($config, $ollama);
 		$lockGuard = $this->createMock(LockGuard::class);
 		$userDataService = $this->createMock(UserDataService::class);
 		$chatLearner = $this->createMock(ChatLearner::class);
@@ -105,13 +181,41 @@ final class ApiControllerIntegrationTest extends TestCase {
 			$cacheFactory, $backgroundChatQueue, $logger,
 		);
 
-		$dependencies = compact('config', 'rag', 'executor', 'indexer', 'jobList', 'lockingProvider', 'chatStore', 'knowledgeInitializer', 'lockGuard', 'cacheFactory', 'logger');
+		$dependencies = compact('request', 'documentMapper', 'ollama', 'config', 'rag', 'executor', 'indexer', 'jobList', 'lockingProvider', 'chatStore', 'knowledgeInitializer', 'providerCredentials', 'settingsPersistence', 'modelSelectionValidator', 'lockGuard', 'cacheFactory', 'logger', 'backgroundChatQueue');
 		return new ApiController(
-			'eva_ai', $request, $userId, $config, $rag, $executor, $indexer, $ollama,
-			$documentMapper, $chunkMapper, $jobList, $lockingProvider, $chatStore,
-			$fileContextChat, $appManager, $knowledgeInitializer, $lockGuard,
+			'eva_ai', $request, $userId, $config, $rag, $executor, $ollama,
+			$jobList, $lockingProvider, $chatStore, $appManager,
 			$userDataService, $chatLearner, $cacheFactory, $indexScheduler, $usageMetrics,
-			$backgroundChatQueue, $logger, $systemController,
+			$logger, $systemController,
+		);
+	}
+
+	/** @param array<string,mixed> $params @param array<string,mixed> $dependencies @param array<string,mixed> $storedValues */
+	private function settingsController(?string $userId, array $params, array &$dependencies, array &$storedValues): SettingsController {
+		$this->controller($userId, $params, $dependencies, $storedValues);
+		return new SettingsController(
+			'eva_ai', $dependencies['request'], $userId, $dependencies['config'],
+			$dependencies['ollama'], $dependencies['knowledgeInitializer'],
+			$dependencies['providerCredentials'], $dependencies['settingsPersistence'], $dependencies['modelSelectionValidator'],
+		);
+	}
+
+	/** @param array<string,mixed> $params @param array<string,mixed> $dependencies @param array<string,mixed> $storedValues */
+	private function indexController(?string $userId, array $params, array &$dependencies, array &$storedValues): IndexController {
+		$this->controller($userId, $params, $dependencies, $storedValues);
+		return new IndexController(
+			'eva_ai', $dependencies['request'], $userId, $dependencies['config'], $dependencies['indexer'],
+			$dependencies['rag'], $dependencies['jobList'], $dependencies['lockingProvider'], $dependencies['lockGuard'],
+		);
+	}
+
+	/** @param array<string,mixed> $params @param array<string,mixed> $dependencies @param array<string,mixed> $storedValues */
+	private function backgroundChatController(?string $userId, array $params, array &$dependencies, array &$storedValues): BackgroundChatController {
+		$this->controller($userId, $params, $dependencies, $storedValues);
+		return new BackgroundChatController(
+			'eva_ai', $dependencies['request'], $userId, $dependencies['config'],
+			$dependencies['backgroundChatQueue'], $dependencies['chatStore'], $dependencies['jobList'],
+			$dependencies['cacheFactory'], $dependencies['logger'],
 		);
 	}
 
@@ -149,50 +253,12 @@ final class ApiControllerIntegrationTest extends TestCase {
 		foreach (['cancelBackgroundChat', 'pauseBackgroundChat', 'resumeBackgroundChat', 'retryBackgroundChat'] as $method) {
 			$stored = [];
 			$dependencies = [];
-			$controller = $this->controller('alice', ['id' => []], $dependencies, $stored);
+			$controller = $this->backgroundChatController('alice', ['id' => []], $dependencies, $stored);
 
 			$response = $controller->{$method}();
 
 			self::assertSame(400, $response->getStatus(), $method . ' should reject a non-string queue id');
 		}
-	}
-
-	public function testFeedbackStatsReturnsItsTypedResponseShape(): void {
-		$stored = [];
-		$dependencies = [];
-		$controller = $this->controller('alice', [], $dependencies, $stored);
-		$dependencies['chatStore']->expects(self::once())->method('feedbackStats')->with('alice')->willReturn([
-			'helpful' => 4, 'notHelpful' => 2, 'bookmarked' => 3,
-		]);
-
-		$response = $controller->feedbackStats();
-
-		self::assertSame(200, $response->getStatus());
-		self::assertSame(['helpful' => 4, 'notHelpful' => 2, 'bookmarked' => 3], $response->getData());
-	}
-
-	public function testChatReactionValidatesInputAndReturnsTypedResult(): void {
-		$stored = [];
-		$dependencies = [];
-		$controller = $this->controller('alice', ['index' => '2', 'type' => 'helpful', 'value' => 'true'], $dependencies, $stored);
-		$dependencies['chatStore']->expects(self::once())->method('setMessageReaction')->with('alice', 'chat-1', 2, 'helpful', true)
-			->willReturn(['reactions' => ['helpful' => true, 'updated' => 123], 'rev' => 9]);
-
-		$response = $controller->chatReaction('chat-1');
-
-		self::assertSame(200, $response->getStatus());
-		self::assertSame(['ok' => true, 'reactions' => ['helpful' => true, 'updated' => 123], 'rev' => 9], $response->getData());
-	}
-
-	public function testInvalidChatReactionDoesNotCallTheStore(): void {
-		$stored = [];
-		$dependencies = [];
-		$controller = $this->controller('alice', ['index' => [], 'type' => 'unknown', 'value' => 'maybe'], $dependencies, $stored);
-		$dependencies['chatStore']->expects(self::never())->method('setMessageReaction');
-
-		$response = $controller->chatReaction('chat-1');
-
-		self::assertSame(400, $response->getStatus());
 	}
 
 	public function testValidChatRequestCallsRagAndReturnsItsResponse(): void {
@@ -203,10 +269,10 @@ final class ApiControllerIntegrationTest extends TestCase {
 		$cache->method('inc')->willReturn(1);
 		$dependencies['cacheFactory']->method('createLocking')->with('eva_ai_rate')->willReturn($cache);
 		$dependencies['lockingProvider']->expects(self::once())->method('acquireLock')->with(
-			'eva_ai/chat/' . hash('sha256', 'alice'), ILockingProvider::LOCK_EXCLUSIVE, 'EVA chat request'
+            'eva_ai/chat-request/' . substr(hash('sha256', 'alice'), 0, 40), ILockingProvider::LOCK_EXCLUSIVE, 'EVA chat request'
 		);
 		$dependencies['lockingProvider']->expects(self::once())->method('releaseLock')->with(
-			'eva_ai/chat/' . hash('sha256', 'alice'), ILockingProvider::LOCK_EXCLUSIVE
+            'eva_ai/chat-request/' . substr(hash('sha256', 'alice'), 0, 40), ILockingProvider::LOCK_EXCLUSIVE
 		);
 		$dependencies['rag']->expects(self::once())->method('ask')
 			->with(self::callback(static fn(ChatRequest $request): bool => $request->userId === 'alice' && $request->message === 'Summarize my notes' && $request->model === 'gemma4:cloud'))
@@ -221,7 +287,7 @@ final class ApiControllerIntegrationTest extends TestCase {
 	public function testSettingsSaveIsVisibleOnTheNextRead(): void {
 		$stored = [];
 		$dependencies = [];
-		$controller = $this->controller('alice', ['temperature' => '0.7'], $dependencies, $stored);
+		$controller = $this->settingsController('alice', ['temperature' => '0.7'], $dependencies, $stored);
 
 		$saved = $controller->saveSettings();
 		$reloaded = $controller->settings();
@@ -232,10 +298,38 @@ final class ApiControllerIntegrationTest extends TestCase {
 		self::assertSame('0.7', $reloaded->getData()['temperature']);
 	}
 
+	public function testInvalidLaterCredentialDoesNotOverwriteAnEarlierCredential(): void {
+		$stored = []; $dependencies = [];
+		$controller = $this->settingsController('alice', ['groq_api_key' => 'gsk_abcdefghijklmnop', 'nextcloud_api_token' => "invalid token"], $dependencies, $stored);
+		$dependencies['ollama']->expects(self::never())->method('saveGroqKey');
+		self::assertSame(400, $controller->saveSettings()->getStatus());
+	}
+
+	public function testProviderProfilesSentAsJsonSurviveASaveAndReload(): void {
+		$stored = []; $dependencies = [];
+		$profiles = [['id' => 'local-model', 'name' => 'Local model', 'url' => 'http://127.0.0.1:1234/v1', 'model' => 'local-chat', 'auth' => 'none']];
+		$controller = $this->settingsController('alice', ['provider_profiles' => json_encode($profiles)], $dependencies, $stored);
+		self::assertSame(200, $controller->saveSettings()->getStatus());
+		self::assertSame($profiles, json_decode($controller->settings()->getData()['provider_profiles'], true));
+	}
+
+	public function testDocumentListRevalidatesRatherThanServingStaleIndexData(): void {
+		$stored = []; $dependencies = [];
+		$controller = $this->controller('alice', [], $dependencies, $stored);
+		$dependencies['documentMapper']->method('findByUser')->willReturn([]);
+		$dependencies['documentMapper']->method('aggregateForUser')->willReturn(['count' => 0, 'chunks' => 0, 'size' => 0]);
+		$response = $controller->documents();
+		self::assertSame(200, $response->getStatus());
+		// Read explicit headers without bootstrapping Nextcloud's CSP services.
+		$headers = (new \ReflectionProperty(\OCP\AppFramework\Http\Response::class, 'headers'))->getValue($response);
+		self::assertSame('private, no-cache', $headers['Cache-Control']);
+		self::assertArrayHasKey('ETag', $headers);
+	}
+
 	public function testIndexRequestQueuesTheExpectedBackgroundJob(): void {
 		$stored = [];
 		$dependencies = [];
-		$controller = $this->controller('alice', [], $dependencies, $stored);
+		$controller = $this->indexController('alice', [], $dependencies, $stored);
 		$jobArguments = null;
 		$dependencies['lockGuard']->expects(self::once())->method('acquireIndexLock')->with('alice', LockGuard::indexLockPath('alice'));
 		$dependencies['lockingProvider']->expects(self::once())->method('releaseLock')->with(LockGuard::indexLockPath('alice'), ILockingProvider::LOCK_EXCLUSIVE);

@@ -1,6 +1,47 @@
 # EVA — Configuration reference
 
-All settings are stored in `oc_appconfig` under the app ID `eva_ai`. Personal
+## Knowledge storage status
+
+The native Nextcloud **Administration → Eva AI** section explains the built-in
+SQL default and keeps shared server settings in one place. It does not load
+account totals, scheduler counts or vector status initially. **Optional storage
+and migration tools** is collapsed by default; opening it loads the account list
+and storage snapshot. The snapshot
+distinguishes built-in SQL, optional Qdrant configuration, generation cleanup,
+and queued or failed operations. Configured/request-enabled does not mean
+connected, verified or selected for search. Status reads never contact Qdrant
+or an embedding provider. Failed reads stay unavailable instead of showing an
+empty healthy queue.
+
+Opening the disclosure loads the optional controls on demand. **Configure
+optional storage** edits the server URL, API-key or explicit no-key
+authentication, and request allowance. Saving requires re-entering the API key;
+stored keys are never returned and the form clears the key after the attempt. A
+save neither uploads documents nor creates collections. **Check saved
+connection** is a separate explicit probe available when transport is enabled;
+success does not prove migration readiness. **Disable storage requests**
+preserves pending cleanup work. Allowing requests can resume previously enabled
+cleanup jobs, including retained destinations. The old `/apps/eva_ai/admin`
+route redirects to this native settings section.
+
+SQL remains the installation default and needs no external service. Chunk
+synchronization and read cutover are not available yet; only generation cleanup
+can be explicitly enabled using the administrator commands documented in
+[VECTOR-OUTBOX.md](VECTOR-OUTBOX.md). Optional connection setup and the protocol
+limits are in [QDRANT.md](QDRANT.md). No dormant activation or migration toggle is
+presented as a working feature. Native migration/progress controls will accompany
+the corresponding guarded backend operations in subsequent stack PRs.
+
+## Settings reference
+
+Personal settings stay pending until you select **Save changes**. If an
+explicit action (such as starting an index) saves while another settings request
+is still running, EVA serializes the writes and rechecks the changed fields when
+each request starts. The page header reports loading, unsaved changes, saving,
+saved, or unavailable state; a delayed server response cannot silently discard
+a newer setting.
+
+Instance settings are stored in `oc_appconfig` under the app ID `eva_ai`. Personal
 settings can be overridden per user (from the app's **Settings** tab), but when
 a user has no personal value they fall back to the admin-configured instance
 value, and only if that is empty to the built-in default (Issue #73).
@@ -23,6 +64,9 @@ Values are plain strings; booleans use `1`/`0`; sizes are stored in **bytes**
 (the settings UI shows MB). Invalid values are rejected by the Settings form;
 `occ` does not validate, so keep values inside the documented limits.
 
+For the task-based settings layout, see [Workspace settings](WORKSPACE.md).
+For provider forms and authentication, see [AI providers](PROVIDERS.md).
+
 ## Key reference
 
 Legend: **P** = personal setting (per-user override possible),
@@ -35,14 +79,15 @@ endpoint rejects them.
 
 | Key | Scope | Default | Range / values | Unit | Effect |
 |---|---|---|---|---|---|
-| `chat_provider` | P | `ollama` | `ollama`, `groq` | – | Chat provider; embeddings remain on Ollama. |
+| `chat_provider` | P | `ollama` | `ollama`, `groq`, configured profile ID | – | Chat provider only. It does not select the embedding provider for automatic SQL generations. |
 | `groq_model` | P | `openai/gpt-oss-20b` | `openai/gpt-oss-20b`, `openai/gpt-oss-120b` | – | Groq Free Plan model selection; no fallback. |
-| `provider_profiles` | P | `[]` | JSON array, max. 20 profiles | – | OpenAI-compatible profiles with `id`, `name`, `url` and `model`; optional `image_model`, `audio_model`, `tts_model` and `tts_voice` select modality-specific endpoints; API keys are stored encrypted separately per profile. |
+| `provider_profiles` | P | `[]` | JSON array, max. 20 profiles | – | OpenAI-compatible profiles with `id`, `name`, `url` and `model`; optional `embedding_model` plus `embedding_dimension` can enable a separate SQL file-search generation; optional modality models and encrypted per-profile API keys are also supported. Removing a profile also deletes its saved API key; an active chat provider switches to Ollama. |
+| `generation_embedding_profile_id` | P | empty | Existing compatible provider profile ID, or empty | – | Empty keeps automatic SQL generations on Ollama. Selecting a profile explicitly sends indexed file text to that endpoint; its generation pins profile, endpoint, model and dimension. |
 | `model_pricing` | P | `[]` | JSON array, max. 50 entries | – | Personal USD rates per million input/output tokens for the Metrics cost estimate. Configure these in **Metrics**; they are estimates and are never fetched from or represented as official provider pricing. |
 | `ollama_url` | P | `http://127.0.0.1:11434` | plain `http(s)://host[:port]`, no path/credentials | – | Base URL of the Ollama HTTP API; trailing slashes are stripped. |
 | `chat_model` | P | `gemma4:cloud` | non-empty string | – | Model used for chat/generation. |
 | `chat_model_fallback` | P | `''` | comma-separated model names | – | Models tried in order when the primary chat model is unavailable (Issue #86). |
-| `embedding_model` | P | `nomic-embed-text` | non-empty string | – | Model used to embed chunks and queries. |
+| `embedding_model` | P | `nomic-embed-text` | non-empty string | – | Ollama model used by regular indexing and as the default automatic SQL-generation embedding model. A selected compatible generation profile uses its separately configured `embedding_model` instead. |
 | `embedding_model_fallback` | P | `''` | comma-separated model names | – | Models tried in order when the primary embedding model is unavailable (Issue #86). |
 | `summary_model` | P | `''` | model name or empty | – | Optional dedicated model for heavy text tasks (summarize, translate, proofread, …). Empty = the chat model chain is used (Issue #86). |
 | `temperature` | P | `0.1` | `0`–`2` | – | Sampling temperature passed to Ollama (`options.temperature`). Lower = more deterministic. |
@@ -73,6 +118,7 @@ endpoint rejects them.
 Embedding vectors are cached in Nextcloud's distributed cache for up to 30 days
 (user-isolated, content-derived keys; document text is never stored in the key).
 Resetting a user's index clears that user's cached vectors.
+A temporary cache outage does not stop indexing or retrieval. EVA bypasses the distributed cache for 15 seconds after an error, then retries it automatically. Cache contents are an optimization and are recomputed from the configured embedding provider when unavailable.
 
 #### What an EVA app upgrade does to indexing
 
@@ -99,7 +145,7 @@ rows; that action never touches the original files.
 | `terminal_command_any` | P | `0` | `1`/`0` | – | Optional custom-executable mode. When enabled, any executable path may be requested, but shell syntax is still rejected and every exact command requires explicit confirmation. |
 | `plugin_tools_enabled` | P | `{}` | JSON object of disabled plugin tool names | – | Per-user plugin switches. Tools are enabled by default; only entries set to `false` are disabled. Plugin code runs inside the Nextcloud PHP process and is trusted code, not sandboxed. |
 | `terminal_command_allowlist` | P | `date,uptime,php,node,git,ls,find,grep,rg,cat,head,tail,df,du,free,uname` | comma-separated names/absolute paths, max. 32 | – | Executables that the confirmed terminal tool may start; bare names resolve through `PATH`, while absolute entries require an exact path match; pipes, redirects, substitutions and newlines are rejected. |
-| `agent_max_tool_rounds` | P | `16` | `4`–`32` | steps | Maximum model/tool rounds in one request. Higher values allow longer multi-tool workflows; duplicate-call protection still applies. |
+| `agent_max_tool_rounds` | P | `6` | `2`–`8` | steps | Maximum model/tool rounds in one request. The bounded default keeps tool use responsive; duplicate-call protection still applies. |
 | `exec_write_types` | P | `''` (all) | `*`, empty, or ≤32 extensions `md,txt,…` | – | Allowed extensions for AI-created files. |
 | `exec_write_max_chars` | P | `100000` | `1`–`10000000` | characters | Maximum size of AI-created file contents. |
 | `exec_delete_mode` | P | `own` | `off`/`own`/`all` | – | `own` = delete only EVA-created files; `all` = also user files (with confirmation); `off` = deletion disabled. |
@@ -117,7 +163,7 @@ rows; that action never touches the original files.
 | `talk_classify_all` | P | `0` | `1`/`0` | – | `0` = heuristic pre-filter decides before any LLM call (Issue #77, default); `1` = classify every room message via the LLM (legacy, higher cost/privacy exposure). |
 | `weather_tool_enabled` | I | `1` | `1`/`0` | – | **Admin only.** `0` disables the weather tool (external Open-Meteo requests) everywhere (Issue #69). Read and written through the admin settings API only, so a regular user cannot flip it. |
 | `voice_input_available` | I | `0` | `1`/`0` | – | **Admin only.** Master switch for browser speech recognition. Users must also enable their personal `voice_input_enabled` setting; turning this off disables dictation for everyone. |
-| `index_enrolled` | P/S | `0` | `1`/`0` | – | Per-user opt-in for recurring background indexing. |
+| `index_enrolled` | P/S | `1` | `1`/`0` | – | Recurring background indexing is enabled by default after the user starts indexing; set `0` to pause it. Installation alone does not start a file scan. |
 | `chat_retention_days` | P | `0` | `0`–`3650` | days | Automatically delete chats not used for this many days (`0` = keep everything). The daily `ChatCleanupJob` applies it per user. |
 
 ### Web search
@@ -179,7 +225,7 @@ is grounded in the source rather than in a search-engine teaser.
 
 **Pages that need JavaScript.** A plain HTTP GET reads the bytes a server sends; it cannot run the page's scripts. For a growing share of the web those bytes contain no article at all - the text arrives later from an API call - so an answer built from them is a guess presented as a quotation. With `web_search_browser` on, such a page is loaded in Chromium through `bin/render-page.mjs` and the resulting DOM is run through the same extraction as any other page. Two rules keep it honest and safe: only pages whose statically fetched text is shorter than 400 characters are rendered (a page that already yields prose is never rendered), and at most four per search, in one browser process. The URL policy is applied on the way in *and* to the address the browser finally settled on, because a redirect is a fresh request that the browser makes on its own. Playwright installs its browser separately from the npm package, so the settings page checks for all three pieces (Node.js, the package, a Chromium build) and names the one that is missing; [BROWSER-RENDERING.md](BROWSER-RENDERING.md) has the install and verification commands.
 
-**Pictures.** The `search_images` tool finds pictures of a subject in the keyless public image index and returns them ready to embed (the picture, a caption, a thumbnail that always loads and the page it was found on). It exists because a text search answers a picture request with pages, which is why the model used to reply that it cannot display images. It uses the same `web_search_enabled` switch and is individual-result independent of `web_search_images` (which attaches page images to *search results*); a query that itself asks for a logo or an icon keeps those pictures instead of having them filtered as chrome. The page a shown picture came from is added to the answer's Sources list.
+**Pictures.** The `search_images` tool finds pictures of a subject in the keyless public image index and returns them ready to embed (the picture, a caption, a thumbnail that always loads and the page it was found on). Tool Markdown uses the provider thumbnail when available, including in Nextcloud integrations outside the EVA chat. It exists because a text search answers a picture request with pages, which is why the model used to reply that it cannot display images. It uses the same `web_search_enabled` switch and is independent of `web_search_images` (which attaches page images to *search results*); a query that itself asks for a logo or an icon keeps those pictures instead of having them filtered as chrome. The page a shown picture came from is added to the answer's Sources list.
 | `web_search_api_key` | I | – | 8–256 chars | – | **Admin only, write-only.** Encrypted API key for `brave`/`tavily`. Send it as `web_search_api_key`; clear it with `remove_web_search_api_key`. It is never read back. |
 
 ### Internal per-user runtime state (S)
@@ -200,7 +246,7 @@ from an instance-wide value.
 | `index_mode` | `idle`/`running`/`stopping` display state. |
 | `index_cancel_requested` | `1` when the user asked to stop a running pass. |
 | `index_run_id` | Unique id of the current/last pass. |
-| `index_enrolled` | Opt-in for recurring background indexing (see above). |
+| `index_enrolled` | Whether recurring background indexing is active; defaults to enabled and can be explicitly paused (see above). |
 | `knowledge_initialized` | `1` once the per-user `KNOWLEDGE.md` has been created. |
 
 ### Global scheduler state (G)
@@ -216,16 +262,22 @@ from an instance-wide value.
 | `index_job_running` | `1` while a periodic `IndexJob` run is active. |
 | `index_job_started` | Unix timestamp when the current run claimed the scheduler lock. |
 | `index_job_max_seconds` | Wall-clock budget (seconds, default `50`, range `10`–`600`) one periodic run may spend before the next cron tick continues (Issue #112). Shared fairly across all selected accounts within a run. Editable on the admin page (Indexing performance) or via `occ config:app:set eva_ai index_job_max_seconds …`. |
-| `index_job_interval_minutes` | How often the periodic `IndexJob` runs (minutes, default `5`, range `1`–`60`). Lower values index a large library sooner at the cost of more frequent background work; each tick is still bounded by `index_job_max_seconds`. |
+| `index_job_interval_minutes` | How often the periodic `IndexJob` runs (minutes, default `5`, range `1`–`60`). Lower values index a large library sooner at the cost of more frequent background work; each tick is still bounded by `index_job_max_seconds`. Saving a changed value re-registers the Nextcloud job immediately. |
 | `index_job_last_user` | Last user finished by a periodic run; the next run rotates past it for fairness (Issue #112). |
 | `index_max_concurrent` | I | `2` | `1`–`16` | passes | Maximum index passes running concurrently across all users (Issue #142). Editable on the admin page (Indexing performance) or via `occ config:app:set eva_ai index_max_concurrent …`. |
 | `index_storage_quota` | U | `0` | `0`–`1099511627776` | bytes | Maximum total source-file size indexed for one user; `0` disables the quota. |
 | `rate_limit_chat_per_minute` | I | `30` | `1`–`120` | requests | Per-user normal chat requests allowed per minute. |
 | `rate_limit_stream_per_minute` | I | `10` | `1`–`60` | requests | Per-user streaming chat requests allowed per minute. |
 | `rate_limit_background_per_minute` | I | `5` | `1`–`30` | requests | Per-user background chat requests allowed per minute. |
+
+Request counters use Nextcloud's shared locking cache during normal operation.
+If it is unavailable, EVA uses short-lived instance-keyed counters in the
+configured SQL database and removes expired fallback rows through Nextcloud cron. Internal chat
+and image requests remain available if both counter stores fail; public API-key
+requests fail closed with HTTP 503 until rate limiting is available again.
 | `index_scheduler_active` | JSON map `user → heartbeat` of currently running index slots (default `{}`, Issue #142); stale slots are reclaimed after 15 minutes. |
 | `index_scheduler_queue` | JSON FIFO list of users waiting behind the concurrency limit (default `[]`, Issue #142). |
-| `index_job_stop_requested` | Durable stop request (default `0`) for the periodic background run: the running tick aborts at the next user boundary and the following tick acknowledges (clears) the flag without starting. Set via the admin dashboard “Stop background indexing” action. |
+| `index_job_stop_requested` | Durable stop request (default `0`) for the periodic background run: the running tick aborts at the next user boundary and the following tick acknowledges (clears) the flag without starting. Set via the native EVA admin settings “Stop background indexing” action. |
 
 ## Settings page
 
@@ -253,37 +305,51 @@ sudo -u www-data php occ config:list apps --app=eva_ai
 - **Talk bot does not appear** → run `occ eva_ai:talk:setup`, then activate the
   bot per conversation. If the bot stays silent on ordinary messages, check
   `talk_classify_all` (default `0` keeps human smalltalk away from the LLM).
-- **"Chat storage is busy" keeps coming back** → a request is writing the chat
-  file, or a request died while holding its lock. The app logs this as
-  `eva_ai: chat lock contention` with the user, the wait in milliseconds and
-  whether the lock is still held; when the lock is still held after the retries
-  it logs at error level instead. Reads never block (they fall back to a
-  lock-free read of the intact file), and the lock is not owner-bound, so a lock
-  left behind by a crashed request clears itself when the locking provider
-  reaches its own timeout — 3600 s for the database provider, which is a
-  constructor setting of that provider and cannot be lowered per request. If a
-  single user is stuck for that long and you do not want to wait, clear the lock
-  for that user with `occ` after confirming no request is running:
+- **Chat history could not be loaded / chat storage is busy** → EVA retries
+  brief SQL chat-lock contention for history reads and offers an in-place retry.
+  If it persists, inspect `eva_ai: SQL chat lock could not be acquired` log
+  entries and the configured Nextcloud locking backend. SQL-backed chat reads
+  never continue without their per-conversation lock. Legacy AppData reads can
+  still use an intact lock-free snapshot during contention. Never clear a lock
+  while a request may still be using it:
 
   ```bash
   # Reports whether the lock is held and, with --force, releases it
   sudo -u www-data php occ eva_ai:clear-chat-lock <user> --force
   ```
 
+  For a stuck SQL-backed conversation lock, include its ID from the chat URL:
+
+  ```bash
+  sudo -u www-data php occ eva_ai:clear-chat-lock <user> --chat-id <chat-id> --force
+  ```
+
   Prefer waiting, and prefer checking the log first: releasing a lock a live
   request is holding can let two writers touch the same file. Never delete lock
   rows by hand — the locking backend is shared with other apps.
+
+  When the error log names a `chat-entry` lock, use the affected conversation
+  ID shown in the chat URL with `--chat-id`. The command first reports the lock;
+  use `--force` only after confirming that no request is still running.
 
 ### Optional local OCR
 
 `ocr_enabled` is a per-user boolean (`0` by default, `1` to enable).
 `ocr_language` defaults to `eng`; use installed Tesseract language codes such as
 `deu+eng` (at most four identifiers). Settings report missing Tesseract/Poppler.
-Images and textless PDFs are processed locally. Hard limits: 20 MiB input,
-30 PDF pages, 25 megapixels per input image, 2 MiB extracted text and 60 seconds
-per file. PDFs are rendered one page at a time at no more than 2000 pixels per
-side. OCR errors preserve the last-good index. Install language packages on the
-server; the app never downloads documents or language data to a remote service.
+PNG, JPEG, TIFF, WebP, BMP and GIF images plus textless PDFs are processed
+locally. HEIC, HEIF and AVIF photos are also supported when the server's
+ImageMagick installation includes their codecs; Settings reports which
+converters are available. Mixed PDFs also OCR up to eight pages where text extraction found
+fewer than 160 characters. When OCR is enabled, DOCX, PPTX and OpenDocument
+files can also extract text from up to four embedded images (5 MiB and 10
+seconds per image). Hard
+limits: 20 MiB input,
+30 PDF pages, 25 megapixels per input image, 4 megapixels and 32 MiB per
+converted image, 2 MiB extracted text and 60 seconds per file. PDFs are rendered
+one page at a time at no more than 2000 pixels per side. OCR errors preserve the
+last-good index. Install language packages on the server; the app never downloads
+documents or language data to a remote service.
 
 ## Groq API credentials and free usage
 

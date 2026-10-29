@@ -2,6 +2,776 @@
 
 ## [Unreleased]
 
+### Extract settings API from the main chat controller (1.20.39)
+
+- Move personal settings reads, validation and credential persistence into `SettingsController` while preserving the `/api/settings` contract.
+- Inject the knowledge initializer explicitly and recover stale index state through `AppConfig`, fixing missing dependencies in the settings route.
+
+### Extract chat history endpoints from the main API controller (1.20.38)
+
+- Move owner-scoped chat listing, paging, creation, deletion and detail reads into a focused controller while preserving route URLs, request validation, storage error responses and legacy connector-confirmation normalization.
+
+### Use reliable thumbnails in image-search tool output (1.20.37)
+
+- Generate the shared image-search Markdown from provider previews, with the original picture URL only as a fallback, so Talk and other tool consumers can display results reliably too.
+
+### Diagnose image search from Nextcloud administration (1.20.36)
+
+- Add an image-search mode to the existing live provider check so administrators can verify that the image index returns usable previews and source pages.
+- Show preview cards with a no-referrer policy and a clear disabled/no-results state, without changing personal web-search settings or chat retrieval.
+
+### Make requested image search independent and deterministic (1.20.35)
+
+- Run a server-side image search when a user explicitly asks to see pictures instead of relying on the model to choose a tool call.
+- Keep dedicated image search available when article-image enrichment is turned off; the per-user web-search privacy switch still controls external requests.
+- Render reliable provider thumbnails instead of hotlink-prone original image URLs, while keeping the source page in citations.
+- Preserve successful image results if the chat model fails after search, and show a clear reason when the user has disabled web search.
+
+### Recover expired chat request locks (1.20.34)
+
+- Reclaim only an EVA chat-request lock whose Nextcloud lock TTL has expired, so a crashed request cannot leave the account stuck behind a permanent busy response.
+- Keep unexpired locks exclusive; genuinely concurrent requests still receive the existing retryable busy response.
+
+### Recover chat reads and preserve image search results (1.20.33)
+
+- Repair stale SQL chat message counts from the encrypted message rows so readable chats do not become false 404s or leave the composer disabled.
+- Keep distinct images returned by image search even when the model already includes an image in its Markdown answer.
+- Report when chat history metadata was repaired during load.
+
+### Recover generation builds after source changes (1.20.31)
+
+- Defer a bounded generation build for five minutes when its canonical source hash is stale or temporarily blank during the regular reindex, allowing the ordinary indexer to refresh the SQL snapshot instead of repeatedly extracting the same file.
+- Resume the build immediately when the canonical source mutation commits, and rebuild only the affected document under the generation fence.
+- Bump the file-index provenance version so existing users reindex once with the current canonical extractor, even when file size and modification time are unchanged.
+- Preserve terminal failure states for provider, access, and destination errors that require administrator or user action.
+
+### Preserve spreadsheet structure during indexing (1.20.30)
+
+- Treat only extractor-generated page, slide, sheet and speaker-note markers as structural boundaries; bracketed spreadsheet cell values stay together in their surrounding table text instead of producing thousands of tiny chunks.
+- Version the generation chunk plan so an in-progress build rebuilds documents with the corrected boundaries.
+
+### Recover late sources during generation verification (1.20.30)
+
+- Reopen a staged SQL generation automatically when verification finds indexed files beyond its original snapshot; keep completed work and resume from the existing cursor.
+- Show the automatic recovery state in native admin settings and continue build plus verification handoff without manual retry.
+- Give interactive chats priority over background generation embeddings and OCR; SQL remains the active fallback until the new generation passes verification.
+
+### Fix SQL chat history locks and normalize OCS paths (1.20.29)
+
+- Keep per-conversation lock keys within Nextcloud's 64-character lock-table limit, so history reads and chat requests do not fail on oversized keys.
+- Strip the trailing slash from the OCS API base in both chat frontends, preventing malformed double-slash request paths.
+
+### Fix lexical indexing of numeric-only tokens (1.20.28)
+
+- Cast numeric-looking token keys back to strings before hashing their SQL posting keys; otherwise PHP raises a type error and aborts the entire backfill batch.
+- Preserve the original exception and stack trace when a bounded lexical-index backfill tick fails, so future database or migration faults are diagnosable.
+
+### Make new chat startup reliable and bound agent tool loops (1.20.26)
+
+- Accept numeric-string revisions and revisionless empty-chat snapshots from the create response, avoiding a failing detail read before the first message.
+- Reduce default model/tool rounds from 16 to 6 and cap the supported range at 8 to keep responses from spending excessive time in tool loops.
+- Clarify current file extraction support and optional local OCR/conversion requirements.
+
+### Add a privacy-focused local Qdrant deployment profile (1.20.25)
+
+- Provide a persistent Docker Compose setup bound to loopback with Qdrant telemetry disabled.
+- Document native Nextcloud connection setup and preserve SQL as the standalone default.
+- Record the local adapter health result without claiming generation migration or search cutover.
+
+### Refresh new chat history from the server when requested (1.20.24)
+
+- Use the create response only for the first render of a new chat; explicit refreshes and conflict recovery read the canonical server state.
+
+### Start new chats without a redundant history read (1.20.23)
+
+- Initialize a new conversation from the successful create response so the composer is immediately ready.
+- Refresh the sidebar in the background; existing conversation loads retain their normal retry flow.
+
+### OCR modern phone photo formats (1.20.22)
+
+- Index HEIC, HEIF and AVIF photos when local OCR is enabled and ImageMagick provides the codec.
+- Convert a single image to a bounded PNG locally; cap source/converted pixels, bytes, ImageMagick resources and runtime.
+- Show available image conversion codecs in native Knowledge settings.
+
+### OCR sparse pages in mixed PDFs (1.20.21)
+
+- Keep normal PDF text extraction and add local OCR for up to eight pages with little or no extractable text.
+- Preserve the extracted PDF text if optional sparse-page OCR is unavailable; interactive chat still interrupts OCR promptly.
+
+### Index more Office and OpenDocument variants (1.20.20)
+
+- Include macro-enabled Word, Excel and PowerPoint templates/slideshows in the supported ZIP/XML extraction path.
+- Extract text from OpenDocument graphics and formula files using their `content.xml` text.
+
+### Yield OCR indexing to interactive chats (1.20.19)
+
+- Check for active chat requests before changed-file extraction and while local OCR subprocesses run.
+- Terminate OCR promptly when a chat starts, keep the previous indexed version and retry later.
+- Defer incremental file claims without spending their transient-failure retry budget.
+
+### Recover SQL chats and restore the rate-limit fallback (1.20.18)
+
+- Use the correct Nextcloud query-builder interface so the SQL rate-limit fallback works when the configured cache is unavailable.
+- Allow administrators to inspect and clear an individual SQL-backed conversation lock after confirming no request is still running.
+- Show the underlying history request error alongside the in-place retry control.
+
+### Index text embedded in Office images (1.20.17)
+
+- When local OCR is enabled, extract text from up to four embedded images in DOCX, PPTX and OpenDocument files.
+- Bound embedded image OCR to 5 MiB and 10 seconds per image, four images and 10 MiB total per document; continue indexing document text if an image cannot be recognized.
+- Keep OCR local and expose its scope and limits in native knowledge settings and configuration docs.
+
+### Restore image attachments in the native chat composer (1.20.16)
+
+- Add bounded PNG, JPEG and WebP attachments to the main Nextcloud chat composer, including local previews, removal controls and a provider privacy note.
+- Send images through the existing validated multimodal chat request and preserve attachment names in chat history.
+- Allow image-only prompts and stop cleanly when creating a server chat fails.
+- Include BMP and GIF files in optional local OCR indexing, matching the formats already supported by the OCR service.
+
+### Recover chat history during brief storage contention (1.20.15)
+
+- Retry idempotent chat reads briefly when Nextcloud reports lock contention, rate limiting, or a transient network failure; model requests and writes are never replayed.
+- Allow a user to retry loading a conversation in place after repeated history failures, while keeping sending disabled until its revision is restored.
+- Extend shared chat-lock retries so short overlapping history writes are less likely to surface as a failed conversation load.
+
+### Isolate background indexing lifecycle (1.20.14)
+
+- Move index start, stop, reset and queue admission into a focused user-scoped controller while preserving the existing OCS paths, bounded worker lifecycle and lock ownership.
+- Keep the new generation-based SQL indexing path as the default; this refactor does not introduce an external database requirement.
+
+### Separate selected-file chat and clarify optional Qdrant setup (1.20.13)
+
+- Move selected-file chat and its live-access status endpoint into a focused controller while keeping the existing API URLs and shared per-user chat admission.
+- Make the administrator UI state clearly that built-in Nextcloud SQL works without Qdrant and that configuring Qdrant does not switch search.
+
+### Use Nextcloud VFS for personal EVA knowledge (1.20.12)
+
+- Move personal knowledge-file reads and writes into a focused controller with injected Nextcloud VFS and initialization services, preserving the existing endpoint URLs and response contracts.
+
+### Isolate queued-chat request lifecycle (1.20.11)
+
+- Move queued chat admission, status, cancellation, pause, resume and retry into a focused controller while retaining the existing URLs and shared rate-limit fallback.
+
+### Separate connector and plugin API endpoints (1.20.10)
+
+- Move connector configuration, discovery, diagnostics and plugin toggles into a focused authenticated OCS controller while preserving endpoint URLs and the shared tool-policy executor.
+
+### Separate SQL index inspection endpoints (1.20.9)
+
+- Move document and chunk inspection into a focused user-scoped OCS controller while preserving endpoint URLs, ETags, pagination, and live file-access checks.
+
+### Keep optional Qdrant settings reactive (1.20.8)
+
+- Expose the approved private-origin field to the settings template so administrators can edit and save private Qdrant endpoints without a broken Vue binding.
+
+### Keep request limits available during cache outages (1.20.7)
+
+- Fall back to instance-keyed HMAC fixed-window counters in Nextcloud SQL when the shared locking cache is unavailable.
+- Keep chat and image availability behavior when both counter backends fail; return a controlled 503 for external API keys instead of an internal server error.
+- Expire SQL fallback counters through Nextcloud's scheduled cleanup job.
+
+### Simplify optional storage administration (1.20.6)
+
+- Keep the built-in SQL path visible while moving queue and synchronization detail behind a native disclosure.
+- Load generation-account controls only after an administrator opens the advanced section.
+
+### Rank native Nextcloud file search results by relevance (1.20.5)
+
+- Combine bounded lexical content scores with filename and path matches, prioritizing exact and leading filename matches.
+- Preserve a matching content excerpt when the same file also appears through its name or path.
+
+### Configure and prepare optional Qdrant from native admin settings (1.20.4)
+
+- Add exact private-origin approvals to the encrypted Qdrant connection form and let administrators create a Qdrant generation from the account's active SQL generation.
+- Add explicit empty-collection preparation and keep backfill consent, SQL default, verification, canary activation and SQL rollback as separate steps.
+
+### Allow larger extracted documents in SQL generation builds (1.20.3)
+
+- Raise the bounded per-document chunk ceiling to 10,000 while retaining the 16 MiB text limit and 256-chunk worker batches.
+
+### Prevent stale async Vue chunks after app updates (1.20.2)
+
+- Add content hashes to webpack's lazy-loaded chunks so updated main bundles cannot load a cached chunk from an earlier app version.
+
+### Use active generations in Nextcloud Unified Search (1.20.1)
+
+- Route native global file search through the same active verified generation as EVA chat, with bounded local SQL lexical retrieval and safe fallback during source changes.
+- Keep global search provider-free and recheck file access against the live Nextcloud VFS before returning results.
+
+### Move storage administration into native settings (1.20.0)
+
+- Put optional vector-storage and generation controls behind a disclosure in Nextcloud's native Eva AI administration settings.
+- Load the administration bundle only when the optional tools are opened; the default SQL settings stay lightweight.
+- Redirect the legacy `/apps/eva_ai/admin` page route to the native settings section.
+- Apply a changed background-indexing cron interval immediately when the administrator saves it.
+
+### Coordinate chat priority across accounts (1.19.1)
+
+- Mark RAG conversations with a shared Nextcloud lock so indexing yields across accounts using the same Ollama service.
+- Keep chat concurrent and retry briefly around the indexer's short priority probe; coordination outages do not reject chat.
+- Preserve the per-user chat claim for duplicate-request protection and as a fallback.
+
+### Yield indexing to active chat requests (1.19.0)
+
+- Defer new embedding batches while this account has an active chat request, and resume queued indexing on a later background tick.
+- Show the waiting state in personal indexing settings and the document library.
+- Discard unembedded replacement rows so the previous indexed document remains available.
+
+### Confirm provider settings against the server (1.18.103)
+
+- Confirm provider actions against the saved settings response before showing success.
+- Update the shared settings form from confirmed values without discarding unrelated edits.
+
+### Show the effective search path in personal indexing settings (1.18.102)
+
+- Report whether EVA currently searches the verified SQL generation, optional Qdrant generation or built-in SQL fallback.
+- Add a lightweight refresh action that does not contact an embedding or vector provider.
+
+### Update SQL chat folders without loading messages (1.18.101)
+
+- Rename and delete folder assignments through bounded encrypted metadata pages and one SQL transaction.
+- Restore the AppData folder registry if the SQL reassignment fails.
+
+### Update SQL chat settings per conversation (1.18.100)
+
+- Persist pinned/archive/folder/tag/scope/instruction/persona changes in the affected encrypted SQL conversation without materializing the user's chat history.
+- Preserve atomic folder creation and correctly recheck the SQL/AppData mode after taking the user fence.
+
+### Prepare chat regeneration from one SQL conversation (1.18.99)
+
+- Validate the selected user message and revision, then persist its regeneration marker without loading other conversations or message bodies.
+- Keep the marker encrypted and atomically update the conversation revision under its per-chat lock.
+
+### Keep optional server settings out of the normal admin view (1.18.98)
+
+- Present built-in Nextcloud SQL and the optional vector-storage link first.
+- Move server-wide indexing limits and shared web-search configuration into native Nextcloud disclosures; keep browser-rendering paths nested under their optional setup.
+
+### Recheck chat storage mode after acquiring its lock (1.18.97)
+
+- Refresh the SQL/AppData read mode under the user fence so a concurrent migration cutover cannot send one operation down a stale storage path.
+- Release a SQL shared fence before retrying an AppData operation under its required user-wide lock.
+
+### Update SQL chat conversations without loading account history (1.18.96)
+
+- Persist chat titles, message edits and message truncation directly against the affected encrypted SQL conversation.
+- Keep message-count and revision metadata consistent in the same database transaction as message mutations.
+
+### Save only the settings needed by each action (1.18.96)
+
+- Make connection checks and indexing actions save only fields the user actually changed, so unrelated invalid or stale values do not block them.
+- Save folder exclusions as a focused update instead of resubmitting the full settings form.
+
+### Scope SQL chat locks to each conversation (1.18.96)
+
+- Let SQL-backed reads, appends and deletes coordinate per conversation while sharing a user-level fence against whole-store and migration operations.
+- Keep AppData mutations user-wide and fail SQL operations closed when either coordination lock is unavailable.
+
+### Report SQL dense scan volume (1.18.94)
+
+- Count SQL vector rows loaded for exact dense scoring and expose bounded p50/p95/p99 values in account metrics and OpenMetrics.
+- Keep the measurement separate from physical database I/O and exclude Qdrant retrievals.
+
+### Measure query embedding latency by provider (1.18.93)
+
+- Store the fixed embedding provider type alongside existing retrieval timings and expose bounded p50/p95/p99 query-embedding stage durations in account metrics and OpenMetrics.
+- Exclude frozen benchmark vectors, lexical-only requests and mixed Qdrant fallback time from provider comparisons; no prompts, endpoints, profile IDs, models or credentials are added to labels.
+
+### Show server validation details in settings (1.18.92)
+
+- Surface field-level validation errors returned by Nextcloud when settings are rejected, instead of showing only a generic invalid-settings message.
+- Keep provider dialog errors consistent with the same detailed API error text.
+
+### Correct chat lock contention labels (1.18.91)
+
+- Preserve shared versus exclusive mode when a lock acquisition ultimately fails, so the new lock-wait metrics classify read contention correctly.
+- Document the bounded account and OpenMetrics quantiles and their fixed labels.
+
+### Show provider connection results in settings (1.18.90)
+
+- Add a direct connection check for the active chat provider and show its result in the provider settings section.
+
+### Measure contended chat-store lock waits (1.18.89)
+
+- Record wait duration and outcome only when a shared or exclusive chat lock collides; uncontended chat operations add no telemetry write.
+- Show bounded p50/p95/p99 lock-wait quantiles in personal metrics, CSV and Nextcloud OpenMetrics using fixed mode/outcome labels.
+
+### Preserve unsaved settings while navigating (1.18.88)
+
+- Keep settings mounted after the first visit so changing to another EVA view does not discard pending edits.
+- Warn before leaving or reloading Nextcloud while settings are still unsaved, and stop hidden-page indexing polls.
+
+### Measure background indexing performance (1.18.87)
+
+- Record bounded per-run duration, outcome, processed item count and successfully written file chunks without storing file paths or content.
+- Show run percentiles and file-phase chunk throughput in the existing usage metrics view and CSV export.
+- Export seven-day run-duration and file-chunk throughput quantiles through Nextcloud OpenMetrics.
+
+### Make pending settings changes explicit (1.18.86)
+
+- Keep core settings and account tokens pending until the user selects the native Save changes action.
+- Show dirty, saving and confirmed states accurately; keep provider profiles on their own explicit Save action.
+
+### Expose end-to-end EVA request latency (1.18.85)
+
+- Record bounded, content-free durations for completed, failed and interrupted EVA requests, including retrieval, model and tool work.
+- Show per-outcome p50/p95/p99 values in the existing usage metrics view and CSV, and export seven-day aggregate quantiles through Nextcloud OpenMetrics.
+- Keep samples bounded to 5,000 and retain them under the existing 365-day usage-metrics cleanup and account-erasure path.
+
+### Propagate chat correlation to configured services (1.18.84)
+
+- Send W3C `traceparent` headers with model inference, embeddings and optional Qdrant operations, and include request span IDs in EVA debug events.
+- Keep the header unsampled and baggage-free; this adds correlation context without claiming OpenTelemetry spans or an exporter.
+
+### Ship the serialized provider settings fix (1.18.83)
+
+- Regenerate the committed frontend bundles so provider selection uses the serialized settings writer in installed Nextcloud deployments.
+
+### Expose bounded indexing queue-age distributions (1.18.82)
+
+- Export fixed, privacy-safe wait-age buckets for queued indexing requests and vector outbox events, alongside existing queue depth and oldest-age metrics.
+- Use gauge bucket distributions because Nextcloud's OpenMetrics family interface exposes scalar samples and its renderer does not serialize histogram buckets.
+
+### Serialize chat provider selection with settings saves (1.18.81)
+
+- Route provider switches through the same serialized settings queue as autosaves and provider profile changes, preventing overlapping writes from restoring an older selection.
+
+### Avoid loading chat history when creating a SQL conversation (1.18.80)
+
+- Reuse empty SQL chats through bounded, keyset-paginated metadata reads and create new chats directly in SQL without decrypting existing messages.
+- Add a matching owner/count/time index for the empty-chat lookup; AppData chat behavior is unchanged.
+
+### Complete provider profile removal (1.18.79)
+
+- Add a confirmation flow to remove custom AI providers and their encrypted API keys; switching an active chat provider falls back to Ollama.
+- Prevent removing a provider while it is selected for file indexing, and serialize provider changes with automatic settings saves.
+- Keep native provider actions visible in the list so they are discoverable on touch and desktop layouts.
+
+### Measure embedding batches and cache reuse (1.18.78)
+
+- Record successful and failed indexing/generation embedding batches with provider type, bounded duration and cache hit/miss counts; do not add a write to chat query embedding.
+- Export approximate seven-day latency quantiles, sampled outcomes and cache hit ratio through Nextcloud OpenMetrics with fixed provider labels.
+
+### Simplify the native admin overview (1.18.77)
+
+- Remove duplicate instance, scheduler and vector status tables from the native admin landing page; the optional storage page remains available on demand.
+- Drop the empty Tools section and its unused status styling, and avoid the aggregate account and scheduler queries on admin page load.
+- Validate a replacement web search API key before persisting any other admin fields, so an invalid key cannot produce a failed save with partially updated settings.
+
+### Export bounded provider completion quantiles (1.18.76)
+
+- Export successful chat-completion p50/p95/p99 latency by fixed provider type from up to 5,000 recent rows per type; custom profile IDs and model names are not exposed.
+
+### Make saved AI providers selectable for chats (1.18.75)
+
+- Add an explicit action to switch chats to an existing provider profile and show a result only after the server confirms the change.
+- Keep provider-switch errors visible in the settings section and document the action.
+
+### Bound retrieval metric reads to the latest chat sample (1.18.74)
+
+- Read at most 5,000 recent chat rows before filtering for retrieval backends, so OpenMetrics scrapes stay bounded when most chats have no retrieved documents.
+
+### Use a valid default for retrieval metric backend (1.18.73)
+
+- Use a non-empty `none` sentinel for chat usage rows without retrieval measurements so the additive schema migration is accepted by Nextcloud.
+
+### Export retrieval stage latency (1.18.72)
+
+- Store bounded retrieval stage durations on the existing chat usage row, without saving query text, identifiers or document data.
+- Export approximate seven-day p50/p95/p99 values by fixed backend and stage labels from at most 5,000 recent requests.
+
+### Load shared scope validation in the offline retrieval benchmark (1.18.71)
+
+- Make the documented exact and evaluation commands self-contained without Nextcloud's runtime autoloader.
+- Reuse EVA's production search-scope validator for benchmark input validation.
+
+### Remove saved provider credentials when authentication is disabled (1.18.70)
+
+- Clear a profile's encrypted API key when its API-key authentication switch is turned off.
+- Explain the credential removal before the user saves the provider.
+
+### Save API keys to the selected provider profile (1.18.69)
+
+- Include the profile ID with custom provider credentials so editing an inactive profile stores its encrypted key on that profile instead of the active chat provider.
+- Validate explicit credential targets against the saved or same-request provider profile list.
+
+### Show when personal settings are saved (1.18.68)
+
+- Make loading, unsaved edits, queued saves, completed saves and unavailable settings visible in the page header.
+- Include pending credential changes in the unsaved state.
+
+### Serialize overlapping settings saves (1.18.67)
+
+- Queue settings writes so autosave and explicit actions cannot silently discard a save while another request is still in flight.
+- Keep the form in its saving state until all queued writes finish, and calculate changed fields when each write starts so it includes the latest values.
+
+### Move incremental file changes to a recoverable SQL queue (1.18.66)
+
+- Coalesce file and folder changes in an indexed Nextcloud SQL queue, claim work with expiring leases, and acknowledge only the source revision actually processed.
+- Retry failures in bounded batches, recover claims after worker crashes, and import legacy AppData queue files incrementally without losing progress if a migration write is interrupted.
+- Add separate per-user processing indexes and cross-user lease-recovery indexes so both hot-path claims and scheduled recovery stay bounded.
+
+### Retry failed incremental file indexing (1.18.64)
+
+- Restore failed file and folder-change entries instead of losing them when a bounded worker batch encounters a transient error.
+- Back off incremental retries, let newer filesystem events replace older queued work, and cap each entry at five attempts while retaining the periodic full index as recovery.
+
+### Normalize Mail search case across database collations (1.18.63)
+
+- Lowercase the search term and Mail text fields for consistent case-insensitive matches across Nextcloud database backends.
+
+### Use the DBAL type object in the usage migration (1.18.62)
+
+- Pass the integer DBAL type object to Nextcloud's schema wrapper when normalizing existing usage tables.
+
+### Normalize the usage estimate column (1.18.61)
+
+- Align existing usage tables with the integer 0/1 type used by portable aggregate queries.
+
+### Use portable SQL in Activity and Mail integrations (1.18.60)
+
+- Replace MySQL-specific identifier quoting in the optional Nextcloud Activity and Mail reads; Activity feed pagination now uses Nextcloud's QueryBuilder.
+- Keep Mail values bound or integer-constrained and preserve its user/mailbox ownership checks.
+
+### Retain usage metrics for one year (1.18.59)
+
+- Delete a user's usage rows as part of account erasure and purge records older than the longest supported 365-day report window once per day in bounded batches.
+- Add an index for portable, ordered expiration scans.
+
+### Export recent operation duration quantiles (1.18.58)
+
+- Expose approximate p50/p95/p99 chat and slow-tool durations from the existing usage records through Nextcloud OpenMetrics.
+- Bound the sample to 5,000 recent records in a seven-day window, use only fixed operation/quantile labels, and add a matching SQL index.
+
+### Keyset-paginated SQL chat history (1.18.57)
+
+- Load normalized SQL chat metadata a page at a time using the existing updated-time/chat-ID keyset, instead of decrypting every conversation before slicing the sidebar page.
+- Keep offset pagination for AppData and older clients; remove the sidebar count badge that required a full-history scan to report an accurate active-only total.
+
+### Compact existing local generation vectors (1.18.56)
+
+- Add a recurring, keyset-paged Nextcloud job that rewrites historical SQL-generation JSON vectors into the compact format when it is smaller.
+- Keep the rewrite bounded and guarded by the original embedding and generation ID so concurrent indexing wins; no embedding calls or vector semantic changes are involved.
+
+### Compact local SQL generation vectors (1.18.55)
+
+- Store new built-in SQL-generation vectors as versioned, network-order float64 data when it is smaller than JSON, reducing bytes transferred and JSON decoding during exact dense scans.
+- Keep legacy and Qdrant JSON vectors readable; no schema migration or external service is required.
+
+### Simplify the administrator landing page (1.18.54)
+
+- Replace the metric dashboard with a native Nextcloud SQL-default summary and an optional collapsed section for external storage and generation tools.
+- Remove the redundant dashboard summary request so admin page load does not query instance-wide index and scheduler totals.
+
+### Keep chat and embedding provider choices independent (1.18.53)
+
+- Editing an existing inactive provider now saves its profile without switching the active chat provider.
+- Document the separate, explicit embedding-profile selection and file-text transfer.
+
+### Configurable automatic SQL generation embeddings (1.18.52)
+
+- Keep Ollama as the default automatic file-search embedding provider.
+- Allow compatible provider profiles to define and explicitly opt into a separate embedding model and vector dimension for automatic SQL generations.
+- Pin provider, endpoint, model and dimensions to each generation and prevent legacy Ollama vectors from seeding another provider's generation.
+
+### Complete native search pagination (1.18.51)
+
+- Return a complete Nextcloud Unified Search result when the last accessible page has been reached, instead of advertising an endless empty next page.
+
+### Preserve configured SQL embedding provider (1.18.50)
+
+- Prevent automatic Ollama SQL-generation provisioning from replacing an explicitly active SQL generation that uses an OpenAI-compatible embedding profile.
+
+### Default local generation maintenance (1.18.49)
+
+- Make recurring local indexing and SQL-generation maintenance the personal default after the user starts indexing, while preserving explicit per-user pause and the install-without-scan behavior. Qdrant remains separately configured and consented.
+
+### Live Qdrant generation benchmark (1.18.48)
+
+- Add explicit OCC export and recording for one active, verified Qdrant generation. Snapshots pin generation/target identity and tenant-owned SQL rows; runs use generation-pinned embeddings, dense or opted-in hybrid Qdrant search, and revision-validated SQL hydration. No automatic chat or indexing traffic is added.
+- Document the timing boundary and operational requirements. Representative live quality, latency and load evidence remains pending.
+
+### Lexical indexing OpenMetrics (1.18.47)
+
+- Export aggregate chunk counts by lexical posting state through Nextcloud OpenMetrics. Labels contain only the fixed state vocabulary; no account, file, path or content identifiers are exposed. The metric performs one grouped read at scrape time and adds no writes to chat or indexing requests.
+
+### Lazy advanced generation controls (1.18.46)
+
+- Keep the standard admin landing page focused on aggregate indexing status. Load account identities and expose generation preparation, verification and optional vector migration controls only when an administrator opens the advanced section.
+- Restore access to the existing generation-management interface without adding startup account enumeration or optional service probes.
+
+### Mixed-state lexical retrieval (1.18.45)
+
+- Use indexed token postings immediately while lexical backfill is running; query the prior `LIKE` path only for chunks whose postings are pending or unsupported, then merge and bound the tenant-scoped candidates.
+- This makes catch-up progress useful to search before the final chunk is indexed. Exact-token semantics apply as individual chunks become indexed; representative quality and latency comparisons remain open.
+
+### Off-path lexical index backfill (1.18.44)
+
+- Keep file and generation indexing free of synchronous term-posting expansion. Chunk writes mark derived lexical state pending; a bounded, batched Nextcloud background job builds postings after the source write commits.
+
+
+### Portable SQL lexical postings (1.18.43)
+
+- Add an indexed, exact-token posting table for SQL lexical candidates and BM25 term frequencies. A bounded Nextcloud job builds postings off the file-index write path; source deletion removes derived rows.
+- Gradually backfill existing chunks. Search combines indexed exact-token candidates with the prior SQL `LIKE` query for rows not yet indexed.
+- Frozen-corpus quality, cross-database migration, and representative latency evidence remain pending.
+
+
+### Compact native admin dashboard (1.18.42)
+
+- Replace the account-by-account admin landing page with aggregate SQL index and scheduler counts; preserve the legacy overview endpoint for existing clients.
+- Load optional vector-storage administration only after the native disclosure is opened, avoiding account enumeration and storage-status work on initial page load.
+
+
+### One-pass lexical BM25 scoring (1.18.41)
+
+- Tokenize each bounded candidate once and reuse exact Unicode term frequencies across query terms, avoiding repeated substring scans and partial-word matches.
+- Frozen-corpus quality and latency comparison remain pending.
+
+### Cached per-chunk vector magnitudes (1.18.40)
+
+- Persist exact vector magnitudes beside chunks and reuse them during SQL cosine ranking; backfill existing rows gradually in bounded background work.
+- Preserve exact ranking and the prior calculation for rows without valid cached metadata. Full-index dot-product cost and measured latency remain open.
+
+### Durable account-erasure retries (1.18.39)
+
+- Persist an encrypted cleanup identity and retry incomplete local erasure steps through a bounded Nextcloud background job. The owner write fence is established before index cleanup; retries continue to cover SQL, cache, AppData and per-user configuration failures.
+- Report the aggregate retry backlog through Nextcloud OpenMetrics; successful local cleanup removes the retry record while remote generation deletion remains on its existing outbox.
+
+### Reuse query-vector norm during SQL ranking (1.18.38)
+
+- Validate and normalize the query-vector magnitude once per retrieval, then reuse it for each SQL cosine comparison. Dense rankings remain exact; this removes repeated query-side norm work from large-index scans.
+
+### Native OpenMetrics backend gauges (1.18.37)
+
+- Export aggregate index totals, vector generation counts, and durable vector outbox depth/age through Nextcloud's OpenMetrics exporter. Labels exclude account IDs, file metadata, prompts, provider URLs, and credentials.
+
+### Lighter SQL dense candidate scans (1.18.36)
+
+- Fetch only chunk IDs and embeddings while scanning large SQL indexes for dense candidates. Hydrate content, document IDs and provenance only for the bounded top set; ranking behavior and the full-coverage scan remain unchanged.
+
+### Native admin overview simplification (1.18.35)
+
+- Replace the instance-wide per-account indexing table with aggregate Nextcloud SQL totals and active search-path status. Per-account indexing controls remain in personal EVA settings; optional storage administration stays in its separate advanced page. Opening native administration no longer pings Ollama, materializes account names, or includes scheduler account identifiers.
+
+### Generation-aware indexing reuse (1.18.34)
+
+- Reuse a matching active SQL generation for normal file changes instead of provisioning a redundant full rebuild. Keep a deliberately selected Qdrant generation untouched. Seed generation-scoped embedding cache entries only from vectors just validated by the configured provider and only under the exact pinned model, endpoint, dimension and chunk identity, so bounded build and mutation workers can skip duplicate embedding requests.
+
+### Legacy index SQL generation bootstrap (1.18.33)
+
+- Automatically bootstrap the default SQL generation for enrolled accounts with an existing legacy index, even when no files changed during the current pass. A public-text probe pins the real embedding model and dimensions; existing file content is processed only by the bounded SQL background builder. Respect explicit opt-outs and Qdrant selection, and retry provider failures after a six-hour cooldown.
+
+### Correlated chat timings (1.18.32)
+
+- Generate a short-lived trace ID for each normal, streamed, and queued chat request and attach it to privacy-preserving chat, retrieval, provider, and slow-tool timing events. No prompts, file paths, account identifiers, or trace IDs are stored in long-lived history.
+
+### Compact administration overview (1.18.31)
+
+- Keep the default admin view focused on the Nextcloud SQL default and a short indexing summary. Move per-user reindex/reset controls, generation configuration, and optional external vector storage into a native disclosure.
+
+### Resilient embedding cache (1.18.30)
+
+- Temporarily bypass the distributed embedding cache for 15 seconds after a cache failure, avoiding repeated slow cache calls during an outage. Indexing and retrieval continue through uncached embeddings; cached values are retried automatically after the cooldown.
+
+### Automatic encrypted chat SQL rollout (1.18.29)
+
+- New and empty accounts enter the verified SQL chat path automatically. A scheduled Nextcloud background job migrates existing accounts in checkpointed batches, verifies each encrypted history, then enables SQL reads per account without requiring administrator setup.
+- Keep the per-user AppData restore command as rollback. Existing encrypted sources remain in place; Qdrant remains optional and is not part of chat storage.
+
+### Per-user encrypted SQL chat read pilot (1.18.28)
+
+- Add a separate per-user SQL read flag. The migration command can enable SQL reads only after import and source verification, or restore AppData from SQL before disabling the flag.
+- Route enabled chat reads through owner-scoped SQL; metadata lists use indexed keyset pages and chat content is decrypted only for the requested conversation or explicit content search. SQL remains encrypted and AppData can be restored for rollback.
+- Add a paginated chat-list endpoint and native Nextcloud sidebar “Load more chats” action while preserving the existing full-list API for older clients.
+
+### Encrypted SQL chat storage foundation (1.18.27)
+
+- Add additive, owner-scoped tables for encrypted chat metadata, encrypted messages, and per-user migration checkpoints. The `occ eva_ai:migrate-chat-storage <user>` command imports in resumable batches and verifies SQL against the source snapshot without deleting or switching from AppData.
+- Mirror current ChatStore changes transactionally into SQL at message granularity after AppData is saved; failed mirror writes leave AppData authoritative and invalidate the migration checkpoint.
+- Add encrypted repository primitives for atomic chat snapshots, individual message writes, metadata pagination, and owner-scoped account erasure. No plaintext title, role, or message search indexes are introduced.
+
+### Native Qdrant BM25 opt-in (1.18.26)
+
+- Add per-generation native BM25 full-text indexing and dense+BM25 RRF for Qdrant 1.20+, while keeping the built-in SQL index and dense-only generations text-free by default.
+- Require a generation-level text-payload opt-in plus a separate confirmation for every build start/resume; show that search queries are sent to Qdrant.
+- Verify opted-in remote text against the exact SQL chunk before activation; chunk tombstones and generation erasure remove the remote text.
+- Preserve filename/path context, quoted-phrase boosts, source/scope filters, exact SQL hydration, document diversification and SQL fallback.
+- Update native settings, built bundles and privacy/operations/API docs. PHP tests and CI remain skipped per user instruction; frontend production build and PHP syntax checks passed.
+
+### Optional Qdrant retrieval canary (1.18.25)
+
+- Allow an administrator to explicitly activate a fully verified Qdrant generation for an enrolled account, with a one-action rollback to built-in SQL.
+- Widen the persisted retrieval-mode column so the Qdrant canary survives Nextcloud upgrades on existing installations.
+- Query Qdrant with tenant, generation and folder-scope filters; hydrate only current, exact-revision chunks owned by that account from Nextcloud SQL.
+- Keep active source mutations on the legacy SQL fallback until their generation points are synchronized; remote search failures also fall back to SQL.
+- Keep Qdrant optional and opt-in. SQL generation retrieval remains the automatic default; full performance, shadow/soak and database-matrix evidence remain open.
+
+### Keyset dense retrieval scans (1.18.24)
+
+- Replace large-index cosine scan offsets with stable chunk-ID keyset pages for both legacy SQL and active SQL generations.
+- Keep scan work bounded to the snapshot's initial row count and stop when a page is empty, avoiding offset shifts when rows are concurrently deleted.
+- Preserve exact full-coverage cosine ranking and candidate limits; this reduces database paging cost but does not remove PHP vector scoring or the full scan.
+
+### SQL generation search cutover (1.18.23)
+
+- Automatically activate a fully built, currently verified SQL generation for explicitly enrolled users.
+- Route retrieval to ready generation chunks with the generation-pinned embedding model; use the legacy index whenever generation metadata is unavailable or source mutations are pending.
+- Keep the previous generation and legacy chunks available for fallback; optional Qdrant generations are not activated by this SQL cutover.
+- Show the effective SQL search path and active enrolled-account count in Nextcloud administration.
+- Full-database performance, quality, cross-database, shadow/soak and rollback drills remain open.
+
+### Active generation mutation worker (1.18.22)
+
+- Consume active-generation source changes in bounded, resumable background slices with expiring leases and retry backoff.
+- Reuse the generation-pinned embedding configuration and existing SQL/Qdrant chunk delivery safeguards.
+- Keep changed documents hidden from a future generation read until their coalesced mutation completes; account erasure removes journal rows.
+
+### Active generation mutation journal (1.18.21)
+
+- Add a transactional, coalesced SQL journal for source creates and metadata changes affecting an active vector generation.
+- Cancel queued generation upserts when their canonical source is deleted.
+- Keep embedding and vector delivery out of the source mutation transaction; the bounded consumer is the next stack step.
+
+### Automatic SQL generation verification (1.18.20)
+
+- Automatically queue local verification when an enrolled SQL generation build is staged.
+- Recover a missed build-to-verification handoff without retrying failed or cancelled verification.
+- Keep verification bounded and SQL-only; this does not activate the generation or change search results.
+
+### Automatic SQL generation bootstrap (1.18.19)
+
+- Queue a bounded local SQL generation backfill after a successfully embedded batch for users explicitly enrolled in indexing.
+- Record only the exact model used by a successful uncached embedding request; cache-only runs never infer generation identity.
+- Keep legacy indexing and search active while the additive generation backfill runs asynchronously.
+
+### Source metadata mutation recovery (1.18.18)
+
+- Serialize indexed-source metadata updates through the owner fence before locking source rows, preserving the build worker lock order.
+- Rewind eligible generation builds and revoke stale leases when an already indexed source changes; remove its prior generation chunks and manifest so verification only accepts the rebuilt source stamp.
+- Preserve explicit pause/cancel/failure states while keeping completed-document progress accurate.
+
+### Late source ordering during generation builds (1.18.17)
+
+- Rewind a generation build when a late-committing source ID falls before its current in-flight document, even when it is still ahead of the last completed cursor.
+- Revoke the active lease before the worker can advance past that source.
+
+### Live generation build watermarks (1.18.16)
+
+- Extend owned generation build snapshots when normal Nextcloud indexing creates a document during backfill; preserve an in-flight document and embedding lease when the new row is beyond the current cursor.
+- Rewind and reclaim a build when a late-committing row falls behind its cursor, and re-open a staged build when new indexed content arrives.
+- Recheck for work under the owner fence before marking a build staged, closing the race between finalization and concurrent document creation.
+- Keep document contents out of the mutation metadata and perform no additional embedding work on chat requests.
+
+### Canonical indexing deletions (1.18.15)
+
+- Route normal stale-file, excluded-file, folder-prefix and successful replacement cleanup through the vector source deletion service.
+- Commit Qdrant generation tombstones with canonical SQL deletion and remove SQL generation chunks with their source, while retaining the legacy-only fallback for isolated Indexer fixtures.
+- Keep reset behavior and generation activation unchanged; indexing and chat do not make remote calls during cleanup.
+
+### SQL generation builds (1.18.14)
+
+- Add an app-local SQL backend for generation builds, with stable local target fencing, ready chunk revisions, SQL-only source cleanup and no Qdrant outbox writes.
+- Verify SQL generations from their stored vectors, content hashes and source manifests without requiring a vector service; retain remote reconciliation for Qdrant generations.
+- Default new OCC generation metadata to SQL and keep Qdrant explicit and optional. Normal indexing/search cutover remains a later stack stage.
+
+### Bounded shadow comparison (1.18.13)
+
+- Add an administrator-started, read-only comparison for already verified generations; SQL dense ranking remains the baseline and chat/search never call the shadow path.
+- Reuse the generation-pinned embedding identity, enforce tenant/generation/scope filters, compare only IDs and revisions, and return aggregate overlap/latency metrics without persisting sample text or vectors.
+- Bound query size, embedding/vector timeouts, concurrent probes, SQL rows and wall time; log aggregate metrics only and keep all retrieval/activation settings unchanged.
+
+### Persisted generation verification (1.18.12)
+
+- Add a resumable, owner-scoped background reconciliation for staged SQL chunks and exact Qdrant point identities, revisions, dimensions, source manifests, sampled vectors and live counts.
+- Keep every network request outside SQL transactions, bound each tick and batch, and issue a persisted certificate only after the complete snapshot matches.
+- Invalidate certificates atomically on source insertion, mutation or deletion; fence source writes against account erasure and expose native administrator progress plus an OCC command.
+- Keep verification read-only: SQL remains the search path, no embedding request is made, and verification never activates a generation.
+
+### Vector inventory contract (1.18.11)
+
+- Add exact tenant/generation-scoped live counts and bounded point retrieval for the upcoming generation verification worker.
+- Validate returned point ownership, revision, dense-vector dimension and finite vector values before a verifier can consume them.
+- These APIs do not enable point delivery, search or generation activation.
+
+### Background generation builds (1.18.10)
+
+- Add explicit native administrator/OCC start, progress, pause/resume and cancel controls with durable document/chunk checkpoints and exclusive SQL leases.
+- Keep source extraction and eight-input embedding batches outside SQL transactions; atomically commit chunks, journal intent and progress, preserving the legacy SQL index.
+- Recheck native source access, generation/target/lease identity and personal index enrollment; reject stale processes and erase/export owned build metadata with the account lifecycle.
+- Bound local PDF/Office conversions and stop Mail attachment work once the canonical index prefix is full. A staged pass does not activate search or replace full generation verification.
+
+### Generation embedding identity (1.18.9)
+
+- Add exact, bounded Ollama/OpenAI-compatible generation embedding requests with fresh SQL endpoint/key snapshots, transfer-time guards and strict model/vector validation.
+- Reuse proven vectors across matching owned generations through a versioned cache family; never infer provenance from legacy/fallback entries.
+- Add native administrator generation selection and an explicit public-text model/dimension check, plus an OCC equivalent. Metadata reads do not probe providers; backfill and retrieval activation remain unavailable.
+
+### Chat persistence corrections (1.18.8)
+
+- Save completed questions and answers in one revision-guarded, idempotent request and one protected encrypted-file write, including confirmation placeholders and stopped partial answers.
+- Bound history-write waits to 15 seconds and show an explicit warning when persistence cannot be confirmed; keep the composer busy until regeneration and stopped-answer saves settle.
+- Reject late regeneration tokens instead of appending their answers after newer messages.
+- Restore copy/regenerate actions immediately after streamed completion and prevent the copy button from intercepting regeneration clicks.
+
+### Backend migration foundations (1.18.0–1.18.3 schema)
+
+- Add immutable, user-owned vector-generation metadata and an explicit OCC preparation command.
+- Keep SQL retrieval and legacy embeddings as the installation default; no external database is activated.
+- Add optional vector-store/filter contracts and account cleanup for local generation metadata.
+- Add an opt-in generation-erasure consumer with fresh instance flags, grace deferral and transfer-time lease/status checks; leave chunk writes disabled.
+- Add a durable vector-intent journal and encrypted target registry; retain original target identity for account-erasure work without enabling remote chunk replication.
+- Bound per-user chunk cleanup and fix reset ownership ordering.
+- Add an optional, disabled Qdrant dense adapter with encrypted instance credentials, bounded operations and generation/tenant filters; SQL indexing and reads remain active.
+- Fence generation creation/binding before account erasure, preserve the block across cleanup failures and expose ownership state in both native administration surfaces.
+- Add native optional-storage connection configuration and explicit checks through a dedicated administrator page; keep search cutover unavailable.
+- Require point revisions and terminal chunk tombstones in the optional adapter; point producers/consumers and rollout verification remain pending.
+- Add an isolated building-generation SQL writer with atomic upsert intent, current-source stamps and an indexed unique chunk slot; preserve legacy read/count isolation and show the offline preparation count in both admin surfaces. Backfill and automatic point delivery remain unavailable.
+
+### Reliability and documentation
+
+- Share canonical Files/Mail/Talk text extraction between indexing and generation planning; require exact source hashes, bounded file-stream reads and immutable chunk settings before rebuilding.
+- Stream chunk construction, stop excessive overlap at an explicit generation budget and keep oversized headings/retained overlap within the model input size.
+- Skip optional PDF/Office converters cleanly when no executable is installed.
+
+- Fix native account/index cleanup aborting on an unsupported SQL QueryBuilder method; leave deleted-home removal to Nextcloud core and add a real account-delete/retry drill.
+
+- Add opt-in prepared-vector point delivery with native admin consent, fresh source/owner/target/lease guards, terminal tombstones and revision-bound acknowledgement; keep backfill and search cutover unavailable.
+
+- Preserve successful nullable-error response bodies instead of turning them into failures; render structured file-context errors as readable messages.
+
+- Keep chat busy until ordered history writes finish, preserve bounded writes across navigation and warn before leaving unfinished work; prevent a completed response from being queued again as background generation.
+
+- Keep browser API and streaming endpoints on the current origin, including trusted local aliases and subdirectory installations, and restore missing storage-settings translation keys.
+
+- Invalidate prepared vector entries atomically when source metadata changes, including folder renames and forced reindexing, without re-embedding or interrupting legacy SQL retrieval.
+
+- Journal optional vector-point deletions atomically with canonical chunk/document removal, including replacements and deferred index reset; preserve SQL-only installation and keep remote point cleanup queued until its consumer is available.
+
+- Keep prompt-library dialogs reusable, retain unsaved provider model edits, announce indexing progress and ignore stale chunk responses after document refreshes.
+- Persist generation-erasure grace independently of retries and register optional-storage targets safely under concurrent requests.
+- Record benchmarks with the exact checked query vector, accept source-aware Mail/Talk paths and preserve timings for failed retrieval stages.
+- Restore the background-runs page route and retain the backend analysis with a page-by-page implementation map.
+
+- Fix oversized chat request lock keys and release coordination before terminal stream events; distinguish genuine contention from coordination failures.
+- Remove superseded dated reviews, the old 2.0 roadmap and duplicate RAG baseline document; consolidate current guidance and remove stale passing-test counts.
+
+### Dependency security
+
+- Update DOMPurify, Markdown-it, follow-redirects and fast-uri to patched versions, and raise the direct Markdown-it and DOMPurify minimums.
+
+### Focused workspace
+
+- Replace the dashboard with a direct message input and shared recent chats.
+- Move chat exports and prompt history into native Nextcloud dialogs and actions.
+- Split settings into task-based sections with deferred integration loading.
+- Add a provider profile form with service templates and separate encrypted keys.
+- Support explicit no-key authentication for local compatible AI servers.
+- Add a lightweight index-progress endpoint and release chat resources on navigation.
+- Remove obsolete navigation handlers and restore metrics/background-run rendering.
+- Add user, provider, performance, migration and troubleshooting guides.
+
+
 ### Image generation
 
 - Generate up to four images from an OpenAI-compatible image model, then preview or download them from the user's EVA Files folder.
@@ -926,6 +1696,19 @@ deep Nextcloud integration.
 
 ## [Unreleased]
 
+### Generation embedding identity (1.18.9)
+
+- Add exact, bounded Ollama/OpenAI-compatible generation embedding requests with fresh SQL endpoint/key snapshots, transfer-time guards and strict model/vector validation.
+- Reuse proven vectors across matching owned generations through a versioned cache family; never infer provenance from legacy/fallback entries.
+- Add native administrator generation selection and an explicit public-text model/dimension check, plus an OCC equivalent. Metadata reads do not probe providers; backfill and retrieval activation remain unavailable.
+
+### Chat persistence corrections (1.18.8)
+
+- Save completed questions and answers in one revision-guarded, idempotent request and one protected encrypted-file write, including confirmation placeholders and stopped partial answers.
+- Bound history-write waits to 15 seconds and show an explicit warning when persistence cannot be confirmed; keep the composer busy until regeneration and stopped-answer saves settle.
+- Reject late regeneration tokens instead of appending their answers after newer messages.
+- Restore copy/regenerate actions immediately after streamed completion and prevent the copy button from intercepting regeneration clicks.
+
 ### Added
 
 - Web search can search the **news** as well as the web. The `web_search` tool
@@ -1072,8 +1855,8 @@ deep Nextcloud integration.
   streaming render + ordered persistence, the confirmation panel with its
   idempotency token, duplicate-approve rejection after a reload, and the stop
   button (abort + partial-answer persistence) (#133).
-- The RAG quality baseline is documented with current German/English numbers,
-  methodology and CI thresholds in `docs/RAG-QUALITY-BASELINE.md` (#146).
+- The RAG quality methodology and CI thresholds are documented in
+  `docs/QUALITY.md` (#146); historical measured reports remain in Git history.
 - Controlled-backend tests cover the Ollama streaming client: malformed lines,
   tool-call arguments split across chunks, UTF-8 split at read boundaries and
   connection errors, all deterministic without a live server (#134).
@@ -1163,7 +1946,7 @@ deep Nextcloud integration.
 - Serialize ownership-marker reads and updates with Nextcloud's shared locking provider (#176).
 - Use the longstanding callback response API for streaming on supported Nextcloud versions (#177).
 - Align frontend metadata with app version 1.4.7 and derive webpack's version from package metadata (#178).
-- Add frontend behavioral tests to npm test and CI. See docs/REVIEW-2026-09-08.md for validation and remaining limitations, including native confirmation concurrency (#179).
+- Add frontend behavioral tests to npm test and CI, including native confirmation concurrency (#179). Historical validation details remain in Git history; current coverage guidance is in docs/DEVELOPMENT.md.
 
 ### Added (1.4.7)
 

@@ -1,0 +1,6 @@
+{"id":1,"document_id":1,"user":"alice","path":"Notes/plan.md","vector":[1,0,0]}
+{"id":2,"document_id":1,"user":"alice","path":"Notes/plan.md","vector":[0.9,0.1,0]}
+{"id":3,"document_id":2,"user":"alice","path":"Notes/budget.md","vector":[0,1,0]}
+{"id":4,"document_id":3,"user":"alice","path":"NotesArchive/old.md","vector":[1,0,0]}
+{"id":5,"document_id":4,"user":"alice","path":"Files/receipt.txt","vector":[0,0,1]}
+{"id":6,"document_id":5,"user":"bob","path":"Notes/secret.md","vector":[1,0,0]}

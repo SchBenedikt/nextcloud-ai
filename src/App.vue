@@ -1,12 +1,7 @@
 <template>
-	<NcContent v-if="adminMode" class="eva-ai-admin" :app-name="'eva_ai'">
-		<NcAppContent>
-			<AdminView />
-		</NcAppContent>
-	</NcContent>
-	<NcContent v-else class="eva-ai-app" :app-name="'eva_ai'">
-		<NcAppNavigation :title="$t('Eva · v') + buildVersion" @close-navigation="mobileOpen = false">
-			<template #search>
+	<NcContent class="eva-ai-app" :app-name="'eva_ai'">
+		<NcAppNavigation :key="view === 'settings' ? 'settings' : 'workspace'" :title="'EVA'">
+			<template v-if="view !== 'settings'" #search>
 				<NcAppNavigationSearch v-model="chatFilter" :label="$t('Search chats')" :placeholder="$t('Search chats')" />
 				<div class="new-chat-container">
 					<NcButton
@@ -25,52 +20,44 @@
 				</div>
 			</template>
 			<template #list>
+				<template v-if="view === 'settings'">
+					<NcAppNavigationItem :name="$t('Back to EVA')" @click.prevent="navigate('home')"><template #icon><NcIconSvgWrapper :path="mdiArrowLeft" :size="20" /></template></NcAppNavigationItem>
+					<NcAppNavigationCaption :name="$t('Settings')" />
+					<NcAppNavigationItem v-for="section in settingsSections" :key="section.id" :name="section.label" :title="section.description" :active="settingsSection === section.id" @click.prevent="openSettings(section.id)">
+						<template #icon><NcIconSvgWrapper :path="section.icon" :size="20" /></template>
+					</NcAppNavigationItem>
+				</template>
+				<template v-else>
 				<NcAppNavigationItem
 					class="start-nav-item"
 					:name="$t('Home')"
 					:active="view === 'home'"
-					@click="navigate('home')">
+					@click.prevent="navigate('home')">
 					<template #icon>
 						<svg width="16" height="16" viewBox="0 0 24 24"><path :d="mdiViewDashboardOutline" fill="currentColor" /></svg>
 					</template>
 				</NcAppNavigationItem>
-				<NcAppNavigationItem
-					:name="$t('Bookmarked answers') + ' (' + bookmarkedCount + ')'"
-					:active="showBookmarked"
-					@click="showBookmarked = !showBookmarked">
-					<template #icon><svg width="16" height="16" viewBox="0 0 24 24"><path :d="mdiBookmarkOutline" fill="currentColor" /></svg></template>
-				</NcAppNavigationItem>
 				<li class="chat-list-heading">
 					<span>{{ $t('Chats') }}</span>
-					<NcCounterBubble :count="activeChats.length" />
-					<NcButton variant="tertiary" :aria-label="$t('Manage folders')" @click.stop="manageFolders">{{ $t('Folders') }}</NcButton>
 				</li>
 				<template v-for="item in navItems" :key="item.key">
 					<li
 						v-if="item.type === 'heading'"
 						class="chat-list-heading"
-						:class="{ 'chat-list-heading--archived': item.archived, 'chat-list-heading--folder': item.folder, 'chat-list-heading--drop': item.folder && dragOverFolder === item.folderName }"
-						:style="item.folder && item.color ? { '--eva-folder-color': item.color } : undefined"
-						:title="item.folder ? (item.collapsed ? $t('Expand folder') : $t('Collapse folder')) : undefined"
-						@dragover.prevent="item.folder && (dragOverFolder = item.folderName)"
-						@dragleave="dragOverFolder = ''"
-						@drop.prevent="item.folder && dropChat(item.folderName)"
-						@click="item.folder ? toggleFolder(item.folderName) : (item.archived && (showArchived = !showArchived))">
+						:class="{ 'chat-list-heading--archived': item.archived }">
 						<svg v-if="item.icon" width="14" height="14" viewBox="0 0 24 24" class="chat-list-heading-icon"><path :d="item.icon" fill="currentColor" /></svg>
-						<span>{{ item.label }}</span>
+						<button v-if="item.archived" type="button" :aria-expanded="showArchived" @click="showArchived = !showArchived">{{ item.label }}</button>
+						<span v-else>{{ item.label }}</span>
 						<NcCounterBubble v-if="item.count !== undefined" :count="item.count" />
-						<svg v-if="item.archived || item.folder" width="16" height="16" viewBox="0 0 24 24" :class="{ rotated: item.archived && showArchived, 'chevron-collapsed': item.folder && item.collapsed }"><path :d="mdiChevronDown" fill="currentColor" /></svg>
+						<svg v-if="item.archived" width="16" height="16" viewBox="0 0 24 24" :class="{ rotated: showArchived }"><path :d="mdiChevronDown" fill="currentColor" /></svg>
 					</li>
 				<NcAppNavigationItem
 					v-else-if="!item.archivedChat || showArchived"
-						:class="{ 'chat-item--nested': item.nested }"
 						:name="itemName(item.chat)"
 						:active="view === 'chat' && item.chat.id === currentChat"
 						:force-menu="true"
-						:draggable="!item.chat.archived"
-						@dragstart="startChatDrag(item.chat, $event)"
 						:title="itemTip(item.chat)"
-						@click="selectChat(item.chat.id)">
+						@click.prevent="selectChat(item.chat.id)">
 						<template #icon>
 							<svg v-if="item.chat.archived" width="16" height="16" viewBox="0 0 24 24"><path :d="mdiArchiveOutline" fill="currentColor" /></svg>
 							<svg v-else width="16" height="16" viewBox="0 0 24 24"><path :d="mdiChatProcessing" fill="currentColor" /></svg>
@@ -103,15 +90,18 @@
 				<li v-if="apiError" class="chat-list-error" role="alert">{{ apiError }}</li>
 				<li v-if="chatsLoading" class="chat-list-empty" role="status">{{ $t('Loading chats…') }}</li>
 				<li v-else-if="!apiError && !chats.length" class="chat-list-empty">{{ $t('No chats yet — start a new one.') }}</li>
-				<li v-else-if="showBookmarked && !chatFilter.trim() && !bookmarkedChats.length" class="chat-list-empty">{{ $t('No bookmarked answers yet.') }}</li>
 				<li v-else-if="!apiError && chatFilter.trim() && !listChats.length" class="chat-list-empty">{{ $t('No chats match your search.') }}</li>
+				<li v-if="!chatFilter.trim() && (chatsNextOffset !== null || chatsNextCursor !== null) && !chatsLoading" class="chat-list-more">
+					<NcButton variant="tertiary" :wide="true" :loading="loadingMoreChats" :disabled="loadingMoreChats" @click="loadMoreChats">{{ $t('Load more chats') }}</NcButton>
+				</li>
+				</template>
 			</template>
-			<template #footer>
+			<template v-if="view !== 'settings'" #footer>
 				<ul class="nav-footer">
 					<NcAppNavigationItem
 						:name="$t('Documents')"
 						:active="view === 'docs'"
-						@click="navigate('docs')">
+						@click.prevent="navigate('docs')">
 						<template #icon>
 							<svg width="16" height="16" viewBox="0 0 24 24"><path :d="mdiFileDocumentOutline" fill="currentColor" /></svg>
 						</template>
@@ -119,7 +109,7 @@
 					<NcAppNavigationItem
 						:name="$t('Settings')"
 						:active="view === 'settings'"
-						@click="navigate('settings')">
+						@click.prevent="openSettings()">
 						<template #icon>
 							<svg width="16" height="16" viewBox="0 0 24 24"><path :d="mdiTune" fill="currentColor" /></svg>
 						</template>
@@ -128,16 +118,18 @@
 			</template>
 		</NcAppNavigation>
 		<NcAppContent>
-			<HomeView v-if="view === 'home'" @new-chat="() => newChat()" @navigate="navigate" @open-chat="selectChat" />
-			<ChatView v-else-if="view === 'chat'" :chat-id="currentChat" :initial-prompt="pendingPrompt" :auto-send="!!pendingPrompt" @chat-updated="loadChats" @prompt-consumed="pendingPrompt = ''" />
+			<HomeView v-if="view === 'home'" :chats="chats" :loading="chatsLoading" :busy="busy" :error="apiError" @retry="loadChats" @new-chat="newChat" @open-chat="selectChat" />
+			<ChatView v-else-if="view === 'chat'" :key="currentChat" :chat-id="currentChat" :initial-chat="currentChatData?.id === currentChat ? currentChatData : null" :initial-prompt="pendingPrompt" :auto-send="!!pendingPrompt" @chat-updated="loadChats" @prompt-consumed="pendingPrompt = ''" />
 			<FileContextChatView v-else-if="view === 'fileContext'" :file-ids="fileContextIds" />
 			<DocumentsView v-else-if="view === 'docs'" />
-			<SettingsView v-else />
+			<MetricsView v-else-if="view === 'metrics'" />
+			<AgentRunsView v-else-if="view === 'runs'" />
+			<SettingsView v-if="settingsMounted" v-show="view === 'settings'" :active="view === 'settings'" :section="settingsSection" @navigate="navigate" />
 		</NcAppContent>
 		<NcModal v-if="chatDialog" size="small" :name="chatDialog.mode === 'rename' ? $t('Rename chat') : $t('Delete chat')" @close="closeChatDialog">
 			<form class="chat-dialog" @submit.prevent="confirmChatDialog">
 				<p v-if="chatDialog.mode === 'delete'" class="chat-dialog__copy">{{ $t('Delete “{title}”? This permanently removes the conversation and its messages.', { title: chatDialog.title }) }}</p>
-				<NcTextField v-else v-model="chatDialog.draft" :label="$t('Chat title')" :label-outside="true" :disabled="chatDialog.busy" maxlength="120" autofocus />
+				<NcTextField v-else v-model="chatDialog.draft" :label="$t('Chat title')" :disabled="chatDialog.busy" maxlength="120" autofocus />
 				<p v-if="chatDialog.error" class="chat-dialog__error" role="alert">{{ chatDialog.error }}</p>
 				<div class="chat-dialog__actions">
 					<NcButton type="button" variant="tertiary" :disabled="chatDialog.busy" @click="closeChatDialog">{{ $t('Cancel') }}</NcButton>
@@ -159,9 +151,13 @@ import ChatView from './views/ChatView.vue'
 const DocumentsView = defineAsyncComponent(() => import('./views/DocumentsView.vue'))
 const SettingsView = defineAsyncComponent(() => import('./views/SettingsView.vue'))
 const FileContextChatView = defineAsyncComponent(() => import('./views/FileContextChatView.vue'))
-const AdminView = defineAsyncComponent(() => import('./views/AdminView.vue'))
-import { mdiChatProcessing, mdiFileDocumentOutline, mdiTune, mdiTrashCanOutline, mdiMessagePlus, mdiPencilOutline, mdiViewDashboardOutline, mdiPinOutline, mdiBookmarkOutline, mdiArchiveOutline, mdiArchiveArrowUpOutline } from '@mdi/js'
+const MetricsView = defineAsyncComponent(() => import('./views/MetricsView.vue'))
+const AgentRunsView = defineAsyncComponent(() => import('./views/AgentRunsView.vue'))
+import { mdiChatProcessing, mdiFileDocumentOutline, mdiTune, mdiTrashCanOutline, mdiMessagePlus, mdiPencilOutline, mdiViewDashboardOutline, mdiPinOutline, mdiArchiveOutline, mdiArchiveArrowUpOutline, mdiChevronDown, mdiPinOffOutline, mdiArrowLeft } from '@mdi/js'
 import { NcTextField } from '@nextcloud/vue'
+import { settingsSections } from './lib/settings-sections'
+import NcAppNavigationCaption from '@nextcloud/vue/components/NcAppNavigationCaption'
+import NcCounterBubble from '@nextcloud/vue/components/NcCounterBubble'
 import NcAppNavigationSearch from '@nextcloud/vue/components/NcAppNavigationSearch'
 import NcActionButton from '@nextcloud/vue/components/NcActionButton'
 import NcActionSeparator from '@nextcloud/vue/components/NcActionSeparator'
@@ -172,31 +168,35 @@ import { useNavigation } from './composables/useNavigation'
 
 export default {
 	name: 'EvaAiApp',
-	components: { HomeView, ChatView, DocumentsView, SettingsView, FileContextChatView, AdminView, NcTextField, NcAppNavigationSearch, NcActionButton, NcActionSeparator, NcIconSvgWrapper },	setup() {
-			// Admin settings form (Issue #82): the template mounts the same app
-			// with data-admin="1" and renders the admin dashboard instead.
-			const rootEl = document.getElementById('eva_ai-root')
-			const isAdminMode = !!(rootEl && rootEl.dataset && rootEl.dataset.admin === '1')
+	components: { NcAppNavigationCaption, MetricsView, AgentRunsView, NcCounterBubble, HomeView, ChatView, DocumentsView, SettingsView, FileContextChatView, NcTextField, NcAppNavigationSearch, NcActionButton, NcActionSeparator, NcIconSvgWrapper },
+	setup() {
 
 		const view = ref('home')
+		const settingsSection = ref('general')
 		const fileContextIds = ref([])
 		// The navigation composable reads the dashboard query parameter via
 		// params.get('chat') and preserves the existing deep-link contract.
 		// It also performs url.searchParams.set('chat', currentChat.value) when
 		// navigating to an open conversation.
-		const mobileOpen = ref(false)
-		const buildVersion = appVersion
 
 		const chats = ref([])
 		const currentChat = ref(null)
-		const { initialChatParam, navigate } = useNavigation({ chats, currentChat, view, fileContextIds })
+		const currentChatData = ref(null)
+		const { initialChatParam, navigate } = useNavigation({ currentChat, view, fileContextIds, settingsSection })
+		const settingsMounted = ref(view.value === 'settings')
+		function openSettings(section = 'general') {
+			settingsMounted.value = true
+			navigate('settings', section)
+		}
 		const busy = ref(false)
 		const chatsLoading = ref(true)
+		const loadingMoreChats = ref(false)
+		const chatsNextOffset = ref(null)
+		const chatsNextCursor = ref(null)
 		// First message typed on the dashboard hero: passed to the chat view
 		// and sent automatically as soon as the conversation is open.
 		const pendingPrompt = ref('')
 		const chatFilter = ref('')
-		const showBookmarked = ref(false)
 		const apiError = ref('')
 		const chatDialog = ref(null)
 		const showArchived = ref(false)
@@ -207,11 +207,6 @@ export default {
 		// One flat, ordered list of headings + chat items for the sidebar.
 		const navItems = computed(() => {
 			const query = chatFilter.value.trim()
-			if (showBookmarked.value) {
-				const base = query ? (searchResults.value || chats.value.filter((chat) => String(chat.title || '').toLowerCase().includes(query.toLowerCase()))) : bookmarkedChats.value
-				const matches = base.filter((chat) => Number(chat.bookmarkedCount || 0) > 0 && chat.value.some((facet) => facet.id === chat.id))
-				return [{ type: 'heading', key: 'h-bookmarks', label: t('Bookmarked answers'), icon: mdiBookmarkOutline, count: bookmarkedCount.value }, ...matches.map((chat) => ({ type: 'chat', key: 'chat-' + chat.id, chat }))]
-			}
 			if (query) {
 				const base = searchResults.value || chats.value.filter((chat) => String(chat.title || '').toLowerCase().includes(query.toLowerCase()))
 				return base.filter((c) => c.id && !c.archived).map((c) => ({ type: 'chat', key: 'chat-' + c.id, chat: c }))
@@ -231,9 +226,6 @@ export default {
 			}
 			return items
 		})
-		const activeChats = computed(() => chats.value.filter((c) => !c.archived))
-		const bookmarkedChats = computed(() => chats.value.filter((chat) => Number(chat.bookmarkedCount || 0) > 0))
-		const bookmarkedCount = computed(() => bookmarkedChats.value.reduce((total, chat) => total + Number(chat.bookmarkedCount || 0), 0))
 		const listChats = computed(() => {
 			const query = chatFilter.value.trim().toLowerCase()
 			if (!query) return []
@@ -281,15 +273,19 @@ export default {
 
 		const loadChats = () => {
 			chatsLoading.value = true
+			chatsNextOffset.value = null
+			chatsNextCursor.value = null
 			apiError.value = ''
-			return requestApi('GET', '/chats').then((list) => {
+			return requestApi('GET', '/chats/page', { keyset: 1, offset: 0, limit: 50 }).then((page) => {
 				apiError.value = ''
-				if (!Array.isArray(list)) throw new Error(t('The chat list response was invalid.'))
-				chats.value = list
-				if (!currentChat.value || !list.some((chat) => chat.id === currentChat.value)) {
+				if (!page || !Array.isArray(page.chats)) throw new Error(t('The chat list response was invalid.'))
+				chats.value = page.chats
+				chatsNextCursor.value = page.nextCursor || null
+				chatsNextOffset.value = chatsNextCursor.value ? null : page.nextOffset
+				if (!currentChat.value && !initialChatParam) {
 					// Prefer a chat the user can actually see (archived chats
 					// are collapsed by default).
-					const first = list.find((chat) => !chat.archived) || list[0]
+					const first = page.chats.find((chat) => !chat.archived) || page.chats[0]
 					currentChat.value = first ? first.id : null
 				}
 			}).catch((error) => {
@@ -298,6 +294,27 @@ export default {
 			}).finally(() => {
 				chatsLoading.value = false
 			})
+		}
+
+		const loadMoreChats = async () => {
+			if (loadingMoreChats.value || (chatsNextOffset.value === null && chatsNextCursor.value === null)) return
+			loadingMoreChats.value = true
+			try {
+				const cursor = chatsNextCursor.value
+				const params = cursor
+					? { keyset: 1, beforeUpdated: cursor.beforeUpdated, beforeChatId: cursor.beforeChatId, limit: 50 }
+					: { offset: chatsNextOffset.value, limit: 50 }
+				const page = await requestApi('GET', '/chats/page', params)
+				if (!page || !Array.isArray(page.chats)) throw new Error(t('The chat list response was invalid.'))
+				const known = new Set(chats.value.map(chat => chat.id))
+				chats.value = chats.value.concat(page.chats.filter(chat => !known.has(chat.id)))
+				chatsNextCursor.value = page.nextCursor || null
+				chatsNextOffset.value = chatsNextCursor.value ? null : page.nextOffset
+			} catch (error) {
+				apiError.value = t('Chat list unavailable: {error}', { error: errMsg(error) })
+			} finally {
+				loadingMoreChats.value = false
+			}
 		}
 
 		// Apply pinned/folder/archived metadata and refresh both lists.
@@ -320,10 +337,14 @@ export default {
 				const c = await requestApi('POST', '/chats', {})
 				if (!c || !c.id) throw new Error(t('The server returned no chat ID.'))
 				pendingPrompt.value = String(prompt || '').trim()
-				await loadChats()
+				// The create response already contains the full, revisioned empty
+				// chat. Hand it to ChatView so it can enable the composer without
+				// an immediate second request that can race a database replica.
+				currentChatData.value = c
 				currentChat.value = c.id
 				navigate('chat')
 				apiError.value = ''
+				loadChats()
 			} catch (error) {
 				apiError.value = t('A new chat could not be created: {error}', { error: errMsg(error) })
 			} finally {
@@ -332,10 +353,10 @@ export default {
 		}
 
 		const selectChat = (id) => {
+			currentChatData.value = null
 			// A dashboard prompt belongs only to the chat that was just created.
 			// Clear it before switching to an existing conversation.
 			pendingPrompt.value = ''
-			showBookmarked.value = false
 			currentChat.value = id
 			// Clear an active message search so the normal chat list returns.
 			if (chatFilter.value.trim()) {
@@ -426,8 +447,9 @@ export default {
 				// ?chat=<id> opens an existing one.
 				if (initialChatParam === 'new') {
 					newChat()
-				} else if (initialChatParam && chats.value.some((c) => c.id === initialChatParam)) {
+				} else if (initialChatParam) {
 					currentChat.value = initialChatParam
+					view.value = 'chat'
 				}
 			})
 			if (typeof window !== 'undefined' && window.addEventListener) {
@@ -441,13 +463,13 @@ export default {
 		})
 
 		return {
-			view, adminMode: isAdminMode, mobileOpen, buildVersion,
-			chats, currentChat, busy, chatsLoading, chatFilter, apiError, chatDialog, showArchived,
-			navItems, listChats, activeChats, showBookmarked, bookmarkedChats, bookmarkedCount,
+			view, settingsSection, settingsSections, settingsMounted, openSettings, mdiArrowLeft,
+			chats, currentChat, currentChatData, busy, chatsLoading, loadingMoreChats, chatsNextOffset, chatsNextCursor, chatFilter, apiError, chatDialog, showArchived,
+			navItems, listChats,
 			fileContextIds, itemName, itemTip,
-			newChat, selectChat, renameChat, deleteChat, closeChatDialog, confirmChatDialog, loadChats, navigate, updateChatMeta, pendingPrompt,
+			newChat, selectChat, renameChat, deleteChat, closeChatDialog, confirmChatDialog, loadChats, loadMoreChats, navigate, updateChatMeta, pendingPrompt,
 			mdiChatProcessing, mdiFileDocumentOutline, mdiTune, mdiTrashCanOutline, mdiMessagePlus, mdiPencilOutline, mdiViewDashboardOutline,
-			mdiPinOutline, mdiBookmarkOutline, mdiArchiveOutline, mdiArchiveArrowUpOutline,
+			mdiPinOutline, mdiArchiveOutline, mdiArchiveArrowUpOutline, mdiChevronDown, mdiPinOffOutline,
 		}
 	},
 }
@@ -456,8 +478,11 @@ export default {
 <style scoped>
 .eva-ai-app {
 	width: 100%;
-	--eva-content-width: clamp(1180px, 78vw, 1680px);
+	--eva-content-width: 1120px;
 }
+
+.chat-list-heading > button { border: 0; background: transparent; color: inherit; font: inherit; cursor: pointer; text-align: start; flex: 1; min-height: 44px; }
+.chat-list-heading > button:focus-visible { outline: 2px solid var(--color-primary-element); }
 
 .new-chat-container {
 	background: transparent;
@@ -528,6 +553,14 @@ export default {
 </style>
 
 <style>
+/* Keep page headers on the same content rail as their view. */
+.eva-ai-app .page-header,
+.eva-ai-app .agent-runs__header,
+.eva-ai-app .file-context-root > .head {
+	width: 100%;
+	box-sizing: border-box;
+}
+
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after {
     scroll-behavior: auto !important;

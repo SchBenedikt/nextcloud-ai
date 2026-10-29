@@ -4,9 +4,9 @@ declare(strict_types=1);
 
 namespace OCA\EvaAi\Search;
 
-use OCA\EvaAi\Db\ChunkMapper;
 use OCA\EvaAi\Db\Document;
 use OCA\EvaAi\Db\DocumentMapper;
+use OCA\EvaAi\Service\Searcher;
 use OCP\Files\IRootFolder;
 use OCP\IL10N;
 use OCP\IURLGenerator;
@@ -32,7 +32,7 @@ final class EvaSearchProvider implements IProvider {
         private IURLGenerator $urlGenerator,
         private IRootFolder $rootFolder,
         private DocumentMapper $documentMapper,
-        private ChunkMapper $chunkMapper,
+        private Searcher $searcher,
     ) {
     }
 
@@ -70,23 +70,21 @@ final class EvaSearchProvider implements IProvider {
         // searchable text chunk (for example a binary file with metadata).
         $pathTerm = trim(str_replace(['%', '_'], ' ', mb_substr($term, 0, 120)));
         if ($pathTerm !== '') {
-            foreach ($this->documentMapper->findByUser($uid, $pathTerm, self::MAX_CANDIDATES, 0) as $document) {
+            foreach ($this->documentMapper->findByUser($uid, $pathTerm, self::MAX_CANDIDATES, 0, ['source' => Document::SOURCE_FILES]) as $document) {
                 if ($this->isSearchableFile($document)) {
-                    $documents[$document->getId()] = ['document' => $document, 'excerpt' => ''];
+                    $documents[$document->getId()] = [
+                        'document' => $document,
+                        'excerpt' => '',
+                        'rank' => $this->metadataRank($document, $term),
+                    ];
                 }
             }
         }
 
-        // Content matches use the same bounded token prefilter as RAG, but
-        // never deserialize embeddings or call an inference provider.
-        $tokens = $this->tokens($term);
-        if ($tokens !== []) {
-            $chunks = $this->chunkMapper->filterChunksByTokens(
-                $uid,
-                $tokens,
-                self::MAX_CANDIDATES,
-                Document::SOURCE_FILES,
-            );
+        // Content candidates come from Searcher's active generation contract,
+        // with a bounded local SQL path and no query embedding/provider call.
+        $chunks = $this->searcher->searchFileCandidates($uid, $term, self::MAX_CANDIDATES);
+        if ($chunks !== []) {
             $documentIds = [];
             foreach ($chunks as $chunk) {
                 $id = (int)($chunk['document_id'] ?? 0);
@@ -95,17 +93,18 @@ final class EvaSearchProvider implements IProvider {
                 }
             }
             foreach ($this->documentMapper->findByIds(array_keys($documentIds)) as $document) {
-                if (!$this->isSearchableFile($document) || isset($documents[$document->getId()])) {
-                    continue;
-                }
-                $documents[$document->getId()] = ['document' => $document, 'excerpt' => ''];
+                if (!$this->isSearchableFile($document)) continue;
+                $id = $document->getId();
+                $documents[$id] ??= ['document' => $document, 'excerpt' => '', 'rank' => 0.0];
             }
             foreach ($chunks as $chunk) {
                 $id = (int)($chunk['document_id'] ?? 0);
-                if ($id <= 0 || !isset($documents[$id]) || $documents[$id]['excerpt'] !== '') {
-                    continue;
+                if ($id <= 0 || !isset($documents[$id])) continue;
+                $contentRank = $this->contentRank($chunk['_eva_search_score'] ?? 0);
+                $documents[$id]['rank'] = max($documents[$id]['rank'], $contentRank);
+                if ($documents[$id]['excerpt'] === '') {
+                    $documents[$id]['excerpt'] = $this->excerpt((string)($chunk['content'] ?? ''), $term);
                 }
-                $documents[$id]['excerpt'] = $this->excerpt((string)($chunk['content'] ?? ''), $term);
             }
         }
 
@@ -116,11 +115,15 @@ final class EvaSearchProvider implements IProvider {
             if ($fileId <= 0 || !$this->isCurrentlyAccessible($uid, $fileId)) {
                 continue;
             }
-            $accessible[] = $row;
+            $accessible[] = ['row' => $row, 'rank' => $row['rank'], 'id' => (int)$document->getId()];
         }
+        usort($accessible, static fn(array $left, array $right): int =>
+            ($right['rank'] <=> $left['rank']) ?: ($right['id'] <=> $left['id'])
+        );
 
         $entries = [];
-        foreach (array_slice($accessible, $offset, $limit) as $row) {
+        foreach (array_slice($accessible, $offset, $limit) as $candidate) {
+            $row = $candidate['row'];
             $document = $row['document'];
             $fileId = (int)$document->getFileId();
             $link = $this->urlGenerator->linkToRouteAbsolute('files.View.showFile', ['fileid' => $fileId]);
@@ -143,15 +146,30 @@ final class EvaSearchProvider implements IProvider {
             }
         }
 
-        return SearchResult::paginated($name, $entries, $offset + count($entries));
+        if ($offset + count($entries) < count($accessible)) {
+            return SearchResult::paginated($name, $entries, $offset + count($entries));
+        }
+        return SearchResult::complete($name, $entries);
     }
 
-    /** @return list<string> */
-    private function tokens(string $term): array {
-        $parts = preg_split('/[^\p{L}\p{N}_-]+/u', mb_strtolower($term), -1, PREG_SPLIT_NO_EMPTY) ?: [];
-        $parts = array_map(static fn(string $part): string => str_replace(['%', '_'], '', $part), $parts);
-        $parts = array_values(array_unique(array_filter($parts, static fn(string $part): bool => mb_strlen($part) >= 2)));
-        return array_slice($parts, 0, 12);
+    /** Prefer exact and leading filename matches over a generic path match. */
+    private function metadataRank(Document $document, string $term): float {
+        $needle = mb_strtolower(trim($term));
+        if ($needle === '') return 0.0;
+        $name = mb_strtolower((string)$document->getName());
+        $path = mb_strtolower((string)$document->getPath());
+        if ($name === $needle) return 100.0;
+        if (str_starts_with($name, $needle)) return 80.0;
+        if (str_contains($name, $needle)) return 60.0;
+        if (str_contains($path, $needle)) return 40.0;
+        return 10.0;
+    }
+
+    /** Bound database-derived scores before combining them with metadata matches. */
+    private function contentRank(mixed $score): float {
+        if (!is_int($score) && !is_float($score)) return 0.0;
+        if (!is_finite((float)$score) || $score <= 0) return 0.0;
+        return 20.0 + min(30.0, log1p((float)$score) * 10.0);
     }
 
     private function excerpt(string $content, string $term): string {
@@ -162,7 +180,7 @@ final class EvaSearchProvider implements IProvider {
         $needle = mb_strtolower($term);
         $position = mb_stripos($content, $needle);
         if ($position === false) {
-            foreach ($this->tokens($term) as $token) {
+            foreach ($this->excerptTokens($term) as $token) {
                 $position = mb_stripos($content, $token);
                 if ($position !== false) {
                     break;
@@ -172,6 +190,13 @@ final class EvaSearchProvider implements IProvider {
         $start = $position === false ? 0 : max(0, $position - 70);
         $excerpt = mb_substr($content, $start, 220);
         return ($start > 0 ? '…' : '') . $excerpt . (mb_strlen($content) > $start + 220 ? '…' : '');
+    }
+
+    /** @return list<string> */
+    private function excerptTokens(string $term): array {
+        $parts = preg_split('/[^\p{L}\p{N}_-]+/u', mb_strtolower($term), -1, PREG_SPLIT_NO_EMPTY) ?: [];
+        $parts = array_map(static fn(string $part): string => str_replace(['%', '_'], '', $part), $parts);
+        return array_slice(array_values(array_unique(array_filter($parts, static fn(string $part): bool => mb_strlen($part) >= 2))), 0, 12);
     }
 
     private function isSearchableFile(Document $document): bool {

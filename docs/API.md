@@ -7,6 +7,116 @@ The Vue client uses `@nextcloud/axios`, which supplies Nextcloud's request token
 and OCS headers. Admin routes live under `api/admin/` and require administrator
 privileges.
 
+## Application pages
+
+Signed-in pages under `/index.php/apps/eva_ai/` include `chat`, `documents`,
+`settings`, `metrics`, and `runs`. The `/runs` page opens the background-run
+workspace; it is separate from the OCS endpoints that list and control runs.
+The legacy `/admin` page route redirects to Nextcloud's native
+**Administration → Eva AI** settings section and requires an administrator.
+
+## Administrator storage snapshot
+
+The native administration section starts with the built-in SQL default and
+does not load account or scheduler totals. The documented
+`GET /api/admin/summary` remains available to existing admin API clients, but
+the page does not call it. Opening **Optional storage and migration tools**
+loads the admin-only
+`GET /api/admin/overview` account list and the read-only
+`GET /api/admin/vector-storage` snapshot. These endpoints do not contact Qdrant
+or an embedding provider.
+
+`GET /api/admin/vector-storage` is admin-only and read-only. It reads local
+configuration and actionable outbox counts, never contacting Qdrant or an
+embedding provider. The OCS data on success is:
+
+```json
+{"available":true,"retrieval_backend":"sql_legacy","connection":{"enabled":false,"configured":false,"key_configured":false},"erasure_worker_enabled":false,"chunk_sync_available":true,"points_requested":false,"point_worker_enabled":false,"staged_chunks":0,"queue":{"pending":0,"processing":0,"dead":0},"observed_at":1793209009}
+```
+
+`observed_at` is a Unix timestamp. Claimed operations can include expired leases;
+they do not prove a worker is running. Counts cover pending/processing/dead events,
+excluding delivered/superseded history from the aggregate query. This is an
+observational snapshot, not an atomic distributed health assessment. Configuration
+flags do not establish remote reachability or collection readiness. SQL remains
+the only selected retrieval backend in this stack. `chunk_sync_available=true`
+indicates the prepared-point consumer exists, not that backfill, verification or
+cutover is available. `points_requested` records explicit administrator consent;
+`point_worker_enabled` additionally requires the connection/cleanup gates.
+
+Pending operations can now include durable source-deletion tombstones. They stay
+queued until the relevant delivery gates allow processing; queue presence does
+not prove remote erasure. SQL-only source deletion does not create vector operations.
+
+`staged_chunks` counts generation-tagged SQL rows separately from the NULL-
+generation legacy index. It does not assert delivery, verification or readiness.
+Both native admin surfaces display it; count failures make the snapshot unavailable.
+
+Metadata/database failures return HTTP 503 with `available=false` (plus the common
+error envelope), never zeroed healthy counters or raw database errors. Non-admins
+are rejected by `AdminRequired`. No target URL, keys, owner identities, generation
+descriptors, file paths or content are returned. Both the EVA admin view and the
+server-rendered Nextcloud administration page use the same snapshot service.
+
+## Administrator vector connection operations
+
+The legacy admin overview user rows additionally expose `vectorOwnerState`: open,
+blocked, uninitialized or unavailable. Lookups use bounded 100-owner SQL batches
+and no network calls. An empty owner table means uninitialized, while a read
+failure means unavailable.
+
+These OCS endpoints require a signed-in Nextcloud administrator. Writes and the
+explicit probe require the normal request token; none has a CSRF exemption:
+
+| Method and path | Behavior |
+| --- | --- |
+| `GET /api/admin/vector-storage/connection` | Offline form state: `endpoint`, `auth` (`api_key`/`none`), exact `private_origins`, `configured`, `enabled`, `key_configured`. No plaintext/encrypted key is returned. Unlike the compact snapshot, this admin-only form exposes the configured endpoint. |
+| `PUT /api/admin/vector-storage/connection` | Full replacement from a JSON body, at most 8 KiB. Requires `endpoint`, explicit `auth`, explicit boolean `enabled`, and a new `api_key` string for `auth=api_key` or null/omitted key for `auth=none`. Optional `private_origins` is a list of at most 100 exact HTTP(S) origins with no credentials/path/query/fragment. No retained-key placeholder or query-string credentials. Returns the offline form state. |
+| `POST /api/admin/vector-storage/disable` | Disables all Qdrant transport without discarding targets or journal intent. Returns compact connection status. |
+| `POST /api/admin/vector-storage/check` | Explicit bounded root-API version/reachability probe using the saved enabled connection. Returns `{available, code}`; an unsuccessful probe is a successful operation with `available=false`, not proof of an empty/ready index. |
+
+Configuration validates before starting replacement, disables transport first,
+saves the encrypted target/configuration and enables it last only if explicitly
+requested. Replacement performs no HTTP request or collection preparation. It
+does not activate chunk synchronization or change retrieval. Enabling requests
+can resume already-enabled generation cleanup against current or retained
+destinations. A partial save failure can leave transport disabled; reload before
+retrying. Retargeting requires fresh credentials or explicit no-key mode.
+
+Validation errors return HTTP 400 with a bounded English message. Unexpected
+storage/configuration failures return 503 without raw exceptions or secrets.
+Private/loopback network approvals remain instance-owned, not accepted from this
+form; the egress policy applies to every explicit probe too. The live probe uses
+the adapter's three-second HTTP bound plus operating-system DNS resolution limits.
+
+`GET /apps/eva_ai/admin` is a legacy AdminRequired route that redirects to
+Nextcloud's native **Administration → Eva AI** section. The optional controls
+load on demand inside that settings page. Its OCS mutation endpoints remain
+protected by the usual Nextcloud request token.
+
+## Lightweight index progress
+
+`GET /api/index/status` requires a signed-in user and returns:
+
+```json
+{"indexing": false, "indexStopping": false, "indexMode": "", "lastStarted": "", "lastFinished": "", "lastError": ""}
+```
+
+While an explicit background run is yielded to an active chat request, the
+response additionally includes `indexWaitingForChat: true`. The field is omitted
+when false to preserve the existing idle/running response shape.
+
+It checks abandoned-run recovery but does not query models, document totals,
+chat history or OCR. The full `GET /api/status` remains available for settings
+and diagnostics. Its `providerKeys` object maps configured profile IDs to
+credential-presence booleans, never actual keys.
+
+Provider profiles retain the existing settings contract. `PUT /api/settings`
+accepts `provider_profiles` and `chat_provider` together, plus a write-only
+`custom_provider_api_key`. Profiles can specify `auth: "none"` to omit bearer
+authentication; omitted `auth` means `api_key`. Built-in IDs `ollama` and `groq`
+are reserved. See [Providers](PROVIDERS.md).
+
 ## Error responses
 
 Non-streaming API and admin errors use one OCS data shape:
@@ -42,7 +152,7 @@ clients. New integrations should use the consistent paths below:
 optional `days` parameter accepts an integer from 1 to 365 (default: 30). The
 response groups request counts, token totals, average and maximum response
 times by provider/model, and daily totals. It also includes slow tool-call
-timings and all-time answer feedback counts. Estimated token totals are marked
+timings. Estimated token totals are marked
 as estimates. EVA does not store prompts or responses in this metrics table.
 Each model row includes `estimated_cost_usd` when that user configured input and
 output rates per million tokens; otherwise it is `null`. The estimate is based
@@ -55,14 +165,14 @@ input_per_million, output_per_million}` prices. Rates must be non-negative USD
 amounts no greater than 10,000 per million tokens; at most 50 unique model
 entries are accepted. Sending an empty `prices` array clears the estimates.
 
-`GET /api/feedback/stats` returns the signed-in user's all-time
-`helpful`, `notHelpful`, and `bookmarked` answer counts as non-negative
-integers.
-
-`POST /api/chats/{id}/reaction` accepts a non-negative `index`, a `type` of
-`helpful` or `bookmarked`, and an optional boolean `value`. Omit or set
-`value: null` to clear helpful feedback; clearing a bookmark sets it to false.
-The response returns the current `reactions` object and chat `rev`.
+`GET /api/chats/page?offset=0&limit=50` retains the offset-compatible response
+`{chats, nextOffset, total, activeTotal}` for existing clients. The EVA sidebar
+adds `keyset=1`; when normalized SQL chat storage is active it receives
+`{chats, nextCursor}` and follows `beforeUpdated` plus `beforeChatId` for
+the next page. This keyset path decrypts only the requested page's metadata and
+does not load message payloads. AppData-backed accounts continue using offsets
+until SQL reads are enabled. `limit` is 1–100; `nextCursor` is `null` at the end.
+The original `GET /api/chats` response remains an array for existing clients.
 
 `POST /api/chats/{id}/messages` accepts a `role` (`user` or `assistant`) and
 non-empty `text` up to 50,000 characters. Assistant messages may include up to
@@ -72,6 +182,29 @@ up to 128 characters. The server records a `createdAt` timestamp for each new
 message. Legacy form clients may send the array/object fields as JSON strings;
 malformed or wrongly typed data returns HTTP 400. A successful append returns
 `{ "ok": true, "rev": 1 }`, where `rev` is the updated chat revision.
+
+`POST /api/chats/{id}/turns` persists a completed question/answer pair in one
+protected write. Supply a safe 16–128-character `requestId`, integer
+`expectedRev` (the revision loaded/created by this client), string `question`
+and an `answer` object with the assistant fields described above. Both messages
+are validated before writing. A new turn cannot carry `regenerateRev`. The
+response is `{ "ok": true, "rev": <updated revision> }`; the revision advances
+for both messages. Repeating an identical request ID/payload is idempotent;
+reusing the ID for different content or submitting a stale revision returns
+HTTP 409 without writing. Receipts are bounded to 100 per chat; revision checks
+still reject evicted old requests. Missing/foreign chat IDs return HTTP 404.
+The native browser uses this endpoint for complete turns, confirmation
+placeholders and stopped partial answers. It does not rerun the model to save.
+
+Individual assistant appends carrying a stale or superseded `regenerateRev`
+now return HTTP 409 instead of appending an answer to a newer conversation.
+A failed or empty-stopped regeneration leaves the original stored conversation
+intact. Before another turn, the native client refreshes the revision and
+restores that conversation; a retry may use the original base or the freshly
+read current revision. If answer storage itself failed, the visible new answer
+is preserved for copying and persistence stays unconfirmed.
+Successful metadata updates also return the current `rev` so personalization
+changes made by the open chat keep its revision guard current.
 
 `POST /api/streamChat` and `POST /api/chat` also accept an optional `images`
 list for the current user message. Each entry contains a `name`, a `mime`
@@ -132,7 +265,11 @@ Read keys can list chats and indexed documents and read their content in bounded
 pages. They are limited to 100 requests per minute; write keys (30/min) can also send a chat request, and
 admin keys (10/min) inherit both capabilities. The external chat route never
 runs EVA tools or mutating actions. The API key owner must remain an enabled
-Nextcloud user.
+Nextcloud user. Counters use Nextcloud's shared locking cache and fall back to
+instance-keyed HMAC fixed-window records in the instance SQL database during
+cache outages.
+If both backends are unavailable, key-authenticated requests return HTTP 503
+instead of being processed without a rate limit.
 
 ```sh
 curl -X POST 'https://nextcloud.example.com/ocs/v2.php/apps/eva_ai/api/v1/chat' \
@@ -199,3 +336,126 @@ recorded in history.
 
 The legacy `/api/mailIndex`, `/api/talkIndex`, `/api/indexStop`,
 `/api/indexReset`, and `POST /api/folders/delete` paths remain supported.
+
+Normal file-index cleanup deletes canonical source rows and generation chunks
+in one SQL transaction. When a source belongs to an optional Qdrant generation,
+the transaction records bounded durable tombstone work; it does not make a
+Qdrant request on the indexing or chat path. This lifecycle wiring does not
+enable generation-based retrieval or change index reset behavior.
+
+### Document list freshness
+
+`GET /api/documents` returns `Cache-Control: private, no-cache` with its ETag.
+Clients may retain a private copy but must revalidate before reusing it; an
+explicit refresh therefore sees new indexing results. Chunk previews retain
+the existing 200-row bounded pagination contract.
+
+### Vector-generation metadata in personal data export
+
+The existing authenticated personal-data export adds `vector_generations`, an
+array of the requesting account's generation metadata (empty before preparation).
+Rows include immutable embedding/collection identity and lifecycle state, with an
+endpoint hash rather than a URL. Provider credentials are not included. Retrieval
+of this metadata is ownership-filtered and keyset-paged; a metadata read failure
+fails the export rather than falsely presenting it as complete. This addition
+creates no vector-management HTTP routes; generation preparation is OCC-only.
+
+## Prepared-point consent
+
+`POST /api/admin/vector-storage/points` requires an administrator, normal CSRF
+validation, `Content-Type: application/json` and `{ "enabled": true|false }`.
+String/numeric values are rejected with HTTP 400. Success returns
+`{ "points_requested": true|false }`. Enabling also allows the existing generation
+cleanup worker; disabling points does not disable cleanup. No provider/collection
+probe, backfill or retrieval switch runs in the request. Read the shared status
+snapshot after saving, including after HTTP 503, to observe authoritative gates.
+Existing connection disable stops all Qdrant transfers.
+
+## Generation embedding administration
+
+`GET /api/admin/vector-generations/{userId}?after=<generation ID>` returns
+`items` and `next_after` (null except for a full 50-row page). It requires an
+existing enabled canonical Nextcloud owner and returns only generation ID,
+backend, lifecycle state, provider/profile ID, model, dimension, chunk settings,
+the text-payload opt-in and creation timestamp. Credentials, endpoint URLs/hashes
+and vector content are not included. The `after` cursor is a lowercase
+32-character hexadecimal ID. This GET never contacts the provider.
+
+`POST /api/admin/vector-generations/{userId}/qdrant` creates a new immutable
+Qdrant generation by copying the selected account's active SQL generation
+identity. Its JSON body requires `source_generation_id`, the boolean
+`include_text_payload`, and the boolean `confirm_text_storage`. Text storage
+requires both booleans to be true. This creates only local metadata; it does not
+contact Qdrant, read documents or change retrieval. An administrator then uses
+`POST /api/admin/vector-generations/{userId}/{id}/prepare` to create/repair the
+empty collection using the saved enabled Qdrant connection. That explicit action
+sends collection schema only and returns `document_content_sent: false`; file
+backfill still requires the separate build consent below. Both routes require
+administrator authorization and native CSRF protection.
+
+`POST /api/admin/vector-generations/{userId}/{id}/check` explicitly checks an
+owned building generation with a fixed public test sentence. No client text,
+vector or credential is accepted. Success returns `available: true`,
+`generation_id`, `dimension`, `retrieval_changed: false` and
+`document_content_sent: false`. Invalid selections return 400; configuration,
+model-space or transport failures return 503 with a sanitized error message.
+Both routes require an administrator; the POST retains native CSRF protection.
+A successful probe does not activate a generation or verify its complete index.
+See [generation embeddings](GENERATION-EMBEDDINGS.md).
+
+## Background generation builds
+
+`GET /api/admin/vector-generations/{userId}/{id}/build` returns `status`,
+`backend`, `include_text_payload`, `documents_done`, `total_documents`, `staged_chunks`, `heartbeat_at`, `error_code`,
+`can_start`, `retrieval_changed: false` and whether a current verification
+certificate exists. Counts describe SQL
+preparation. Missing state is `not_started`; a completed pass is `staged`, never
+an activated or verified index. No lease token, destination, content or vectors
+are returned, and this read performs no provider request.
+
+`POST /api/admin/vector-generations/{userId}/{id}/build/{operation}` accepts
+`start`, `pause`, `resume` or `cancel`. Start requires JSON
+`{"confirm_document_transfer":true}`. For a generation created with the optional
+Qdrant text-payload capability, start and resume additionally require
+`{"confirm_text_transfer":true}`. This is separate consent to copy chunk text
+into Qdrant. Other operations accept an empty JSON
+object. The path parameter is named `operation` because Nextcloud reserves and
+removes `action` before controller dispatch. All routes require native admin
+authorization; mutation retains native CSRF protection. Invalid requests return
+400, unavailable/disabled build controls 409, and database failures sanitized 503.
+
+Mutations return the same authoritative status shape. Start is idempotent and
+does not reset an existing build. It schedules background work instead of running
+model requests synchronously. See [generation builds](GENERATION-BUILDS.md) for
+consent, source-enrollment/destination gates, lease semantics and remaining
+verification requirements.
+
+`GET /api/admin/vector-generations/{userId}/{id}/verification` returns the
+verification `status`, `phase`, backend, point counts, sample count, heartbeat,
+sanitized error code, `can_start`, `verified`, `can_activate`, `can_rollback`,
+effective `retrieval_backend`, `include_text_payload` and `active`. The matching POST route accepts
+`start`, `pause`, `resume`, `cancel`, `retry`, `activate` or `rollback` with an
+empty JSON object. These administrator-only controls schedule or manage bounded
+background work; verification never performs provider or vector-store I/O in
+the request. Activation only updates local SQL state and performs no remote I/O.
+SQL verification checks local vector shape, revisions, content hashes and source
+manifests; Qdrant verification additionally reconciles the configured remote
+store. Opted-in text-payload generations also require zero live points with a
+missing text field and compare sampled remote text with the exact SQL source;
+dense-only generations never send or retrieve chunk text.
+Neither path sends source text to an embedding model. A verified certificate
+is invalidated atomically when canonical source data changes. SQL activates
+automatically after current verification; Qdrant requires explicit canary
+activation and can be rolled back to SQL. See
+[generation verification](GENERATION-VERIFICATION.md).
+
+`POST /api/admin/vector-generations/{userId}/{id}/shadow` accepts a short
+administrator-supplied `query`, `top_k` from 1 to 20 and an optional Files
+`scope_path`. It is available only after a current verification certificate and
+requires active point delivery. The explicit probe sends the sample to the
+generation-pinned embedding provider and configured vector store, compares the
+exact SQL dense ranking with Qdrant and returns overlap and timing aggregates.
+It does not return point IDs, save the sample/vector, answer a chat or change the
+retrieval backend. Query/embedding, remote vector, SQL row and total wall-time
+budgets are enforced. The native admin UI requires a deliberate button press.
+See [generation shadow comparison](GENERATION-SHADOW.md).

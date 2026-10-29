@@ -1,3 +1,47 @@
+/* Shared answer typography for workspace, file context and compatibility chat. */
+.rt { white-space: normal; font-size: 14px; line-height: 1.6; color: inherit; text-align: left; }
+.rt p { margin: 0 0 9px; }
+.rt p:last-child { margin-bottom: 0; }
+.rt ul, .rt ol { margin: 0 0 9px 22px; padding: 0; }
+.rt ul { list-style: disc; }
+.rt ol { list-style: decimal; }
+.rt li { margin: 3px 0; }
+.rt h1, .rt h2, .rt h3,
+.rt h4, .rt h5, .rt h6 {
+	margin: 12px 0 6px;
+	font-weight: 650;
+	line-height: 1.3;
+}
+.rt h1 { font-size: 18px; }
+.rt h2 { font-size: 16px; }
+.rt h3 { font-size: 15px; }
+.rt h4, .rt h5, .rt h6 { font-size: 14px; }
+.rt p code, .rt li code {
+	font-family: var(--font-family-monospace, monospace);
+	font-size: 85%;
+	background: var(--color-background-hover, #eee);
+	padding: 1px 5px;
+	border-radius: 4px;
+}
+.rt pre {
+	margin: 0 0 9px;
+	padding: 11px 13px;
+	border: 1px solid var(--color-border, #ddd);
+	border-radius: 6px;
+	background: var(--color-background-hover, #f3f3f3);
+	overflow-x: auto;
+}
+.rt pre code {
+	font-family: var(--font-family-monospace, monospace);
+	font-size: 13px;
+	background: transparent;
+	padding: 0;
+	white-space: pre-wrap;
+}
+.rt blockquote { margin: 7px 0; padding: 4px 12px; border-left: 3px solid var(--color-border, #ccc); color: var(--color-text-maxcontrast, #555); }
+.rt a { color: var(--color-primary-element, #00679c); text-decoration: underline; }
+.rt hr { border: 0; border-top: 1px solid var(--color-border, #ddd); margin: 12px 0; }
+
 .rt { min-width: 0; overflow-wrap: anywhere; }
 .rt .md-table-scroll { max-width: 100%; overflow-x: auto; margin: 10px 0; }
 .rt table { border-collapse: collapse; width: max-content; min-width: 100%; }

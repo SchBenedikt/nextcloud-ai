@@ -4,7 +4,8 @@ const fs = require('node:fs')
 const path = require('node:path')
 
 test('every web-search toggle exposed to the settings template is returned from setup', () => {
-	const source = fs.readFileSync(path.join(__dirname, '..', 'src', 'views', 'SettingsView.vue'), 'utf8')
+	const source = fs.readFileSync(path.join(__dirname, '..', 'src', 'components', 'settings', 'ToolsSettings.vue'), 'utf8')
+	const logic = fs.readFileSync(path.join(__dirname, '..', 'src', 'composables', 'useEvaSettings.js'), 'utf8')
 	for (const binding of [
 		'userWebSearchEnabled',
 		'userWebSearchSafeSearch',
@@ -13,7 +14,7 @@ test('every web-search toggle exposed to the settings template is returned from 
 		'userWebSearchBrowser',
 	]) {
 		assert.match(source, new RegExp(`v-model="${binding}"`), `${binding} must be bound in the template`)
-		const returned = source.slice(source.lastIndexOf('\t\treturn {'))
+		const returned = logic.slice(logic.lastIndexOf('\treturn {'))
 		assert.match(returned, new RegExp(`\\b${binding}\\b`), `${binding} must be returned from setup`)
 	}
 })
