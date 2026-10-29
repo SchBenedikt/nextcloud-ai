@@ -1045,7 +1045,12 @@ class ChatStore {
      * @return array{ok:true,rev:int,messageIndex:int,targetText:string}|array{ok:false,error:string}
      */
     public function beginRegenerate(string $user, string $id, int $messageIndex, ?string $newText, ?int $expectedRev): array {
-        return $this->withUserLock($user, function () use ($user, $id, $messageIndex, $newText, $expectedRev): array {
+        return $this->withChatAwareLock($user, $id, function () use ($user, $id, $messageIndex, $newText, $expectedRev): array {
+            if ($this->sqlReadsEnabled($user)) {
+                $result = $this->sqlChats->beginRegenerate($user, $id, $messageIndex, $newText, $expectedRev);
+                unset($this->chatSnapshots[$user]);
+                return $result;
+            }
             $all = $this->read($user);
             foreach ($all as &$chat) {
                 if (($chat['id'] ?? '') !== $id) {
