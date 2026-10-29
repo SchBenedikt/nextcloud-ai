@@ -49,6 +49,7 @@ class OpenAICompatible {
     }
     public function chat(array $messages, array $tools = [], int $timeout = 120): array {
         $id = $this->provider();
+        $startedAt = hrtime(true);
         try {
             $payload = ['model' => $this->model(), 'messages' => $this->normalizeMessages($messages), 'temperature' => max(0.0, min(2.0, (float)$this->config->get('temperature'))), 'stream' => false];
             if ($tools !== []) $payload['tools'] = $tools;
@@ -60,7 +61,8 @@ class OpenAICompatible {
             $calls = [];
             foreach (($message['tool_calls'] ?? []) as $call) { $args = json_decode((string)($call['function']['arguments'] ?? '{}'), true); if (is_array($args)) $calls[] = ['name' => (string)($call['function']['name'] ?? ''), 'arguments' => $args]; }
             $answer = (string)($message['content'] ?? '');
-            $this->usage?->recordChat($this->config->userId(), $id, $this->model(), $messages, $answer, null, null, 0);
+            $durationMs = (int)round((hrtime(true) - $startedAt) / 1_000_000);
+            $this->usage?->recordChat($this->config->userId(), $id, $this->model(), $messages, $answer, null, null, $durationMs);
             return ['answer' => $answer, 'model' => $this->model(), 'tool_calls' => $calls, 'raw_tool_calls' => $message['tool_calls'] ?? []];
         } catch (JsonException $e) {
             return ['error' => 'Provider returned invalid JSON: ' . $e->getMessage()];

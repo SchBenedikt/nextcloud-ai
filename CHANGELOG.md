@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Export bounded provider completion quantiles (1.18.76)
+
+- Export successful chat-completion p50/p95/p99 latency by fixed provider type from up to 5,000 recent rows per type; custom profile IDs and model names are not exposed.
+
 ### Make saved AI providers selectable for chats (1.18.75)
 
 - Add an explicit action to switch chats to an existing provider profile and show a result only after the server confirms the change.

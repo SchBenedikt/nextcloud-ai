@@ -14,6 +14,7 @@ create a separate public metrics endpoint or background poller.
 | `nextcloud_eva_ai_account_cleanup_pending` | none | Durable local account-erasure requests. |
 | `nextcloud_eva_ai_account_cleanup_oldest_age_seconds` | none | Age of the oldest durable local account-erasure request. |
 | `nextcloud_eva_ai_operation_duration_ms` | `operation`, `quantile` | Approximate recent provider chat-completion and slow-tool duration quantiles. |
+| `nextcloud_eva_ai_provider_completion_duration_ms` | `provider`, `quantile` | Approximate successful provider completion latency by fixed provider type. |
 | `nextcloud_eva_ai_retrieval_stage_duration_ms` | `backend`, `stage`, `quantile` | Approximate retrieval-stage duration quantiles on successful chat requests. |
 
 ## Duration quantiles
@@ -25,19 +26,22 @@ quantile labels come from fixed allowlists; no account, provider, model, chat,
 file or content labels are exported.
 
 Provider chat-completion duration is the provider call duration already stored
-by EVA; it is not the whole RAG turn. Tool duration is recorded only for calls
+by EVA; it is not the whole RAG turn. The provider-specific family reports this
+same duration separately for Ollama, Groq and OpenAI-compatible profiles. It
+uses a bounded sample of up to 5,000 recent records per type. Profile IDs and
+model names are never metric labels. Tool duration is recorded only for calls
 that take at least 100 ms. Retrieval stages cover count, query embedding,
 candidate retrieval, SQL hydration, scope filtering, ranking and total retrieval.
 They are rounded to integer milliseconds and attached to the existing chat usage
 row; no additional retrieval write or content-bearing field is added. Only
 completed provider chat records with observed stages enter these quantiles.
 
-Both duration families use nearest rank over at most 5,000 recent rows from the
-preceding seven days. These are bounded approximate gauges, not complete
+Duration families use nearest rank over bounded samples from the preceding
+seven days. These are bounded approximate gauges, not complete
 histograms or full-traffic Prometheus distributions. Retrieval stages do not
 separate SQL dense scanning from lexical selection within the candidate phase;
-queue-wait, lock-wait, standalone embedding and provider percentiles remain
-separate work.
+queue-wait and lock-wait durations, plus indexing-embedding distributions,
+remain separate work.
 
 ## Privacy and availability
 
@@ -60,7 +64,7 @@ durations, never prompt or answer content.
 
 ## Remaining observability work
 
-The PDF's full target still needs provider/embedding percentiles, queue-age
+The PDF's full target still needs embedding-provider percentiles, queue-age
 histograms, distributed trace propagation beyond one chat request, and
 representative quality, sampling and load evidence. Keep request logging
 content-free and validate performance claims on frozen corpora.
