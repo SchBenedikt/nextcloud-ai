@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Use reliable thumbnails in image-search tool output (1.20.37)
+
+- Generate the shared image-search Markdown from provider previews, with the original picture URL only as a fallback, so Talk and other tool consumers can display results reliably too.
+
 ### Diagnose image search from Nextcloud administration (1.20.36)
 
 - Add an image-search mode to the existing live provider check so administrators can verify that the image index returns usable previews and source pages.
