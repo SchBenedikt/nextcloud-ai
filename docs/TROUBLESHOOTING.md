@@ -16,6 +16,13 @@ Bing returns an anti-bot page. If the privacy gate is enabled but EVA reports
 that no pictures were found, check outbound HTTPS access from the Nextcloud
 server to `www.bing.com` and `api.openverse.org`.
 
+Administrators can isolate the image provider without asking a chat model:
+open **Shared web search services**, choose **Images** in **Test the web
+search**, and run the same query. A successful check shows provider previews
+and source pages. If this check returns pictures but chat does not, reload the
+EVA page so its current chat bundle and image policy are loaded, then confirm
+that Web search is enabled in the user's personal settings.
+
 ## A section does not load
 
 Look for missing JavaScript chunks in the browser Network panel. Deploy all

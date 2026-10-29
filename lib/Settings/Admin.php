@@ -7,6 +7,7 @@ namespace OCA\EvaAi\Settings;
 use OCA\EvaAi\Service\AppConfig;
 use OCA\EvaAi\Service\WebSearchService;
 use OCP\AppFramework\Http\TemplateResponse;
+use OCP\AppFramework\Http\ContentSecurityPolicy;
 use OCP\IURLGenerator;
 use OCP\Settings\ISettings;
 use OCP\Util;
@@ -35,7 +36,7 @@ class Admin implements ISettings {
         // API base for AJAX requests.
         $apiBase = $this->urlGenerator->getAbsoluteURL('/ocs/v2.php/apps/eva_ai/api/');
 
-        return new TemplateResponse('eva_ai', 'admin', [
+        $response = new TemplateResponse('eva_ai', 'admin', [
             'adminSettings' => $adminSettings,
             'apiBase' => $apiBase,
             'webSearchKeyConfigured' => $this->webSearch->hasApiKey(),
@@ -44,6 +45,10 @@ class Admin implements ISettings {
             'webSearchBrowserBrowsersPath' => $this->webSearch->browserBrowsersPath(),
             'webSearchBrowserInstallCommand' => $this->webSearch->browserInstallCommand(),
         ]);
+        $policy = new ContentSecurityPolicy();
+        $policy->addAllowedImageDomain('https:');
+        $response->setContentSecurityPolicy($policy);
+        return $response;
     }
 
     public function getSection(): string {

@@ -85,11 +85,40 @@ class AdminController extends OCSController {
         $this->webSearch->setUserId($this->userId);
         $query = trim((string)$this->request->getParam('query', ''));
         $mode = trim((string)$this->request->getParam('mode', 'web'));
-        if (!in_array($mode, WebSearchService::MODES, true)) {
+        if (!in_array($mode, [...WebSearchService::MODES, 'images'], true)) {
             $mode = 'web';
         }
         if ($query === '') {
             return new ErrorDataResponse(['ok' => false, 'error' => 'Enter a search query first.'], 400);
+        }
+
+        if ($mode === 'images') {
+            $result = $this->webSearch->searchImages($query, 5);
+            if (!$result['ok']) {
+                return new ErrorDataResponse([
+                    'ok' => false,
+                    'provider' => (string)($result['provider'] ?? 'image search'),
+                    'mode' => 'images',
+                    'enabled' => $this->webSearch->isEnabled(),
+                    'error' => (string)($result['error'] ?? 'The image search failed.'),
+                ]);
+            }
+            $images = [];
+            foreach ($result['images'] as $image) {
+                $images[] = [
+                    'url' => (string)$image['url'],
+                    'preview' => (string)$image['preview'],
+                    'title' => (string)$image['title'],
+                    'page' => (string)$image['page'],
+                ];
+            }
+            return new ErrorDataResponse([
+                'ok' => true,
+                'provider' => (string)$result['provider'],
+                'mode' => 'images',
+                'enabled' => $this->webSearch->isEnabled(),
+                'images' => $images,
+            ]);
         }
 
         $provider = $this->webSearch->provider();

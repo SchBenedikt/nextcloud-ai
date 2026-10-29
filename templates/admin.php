@@ -233,6 +233,7 @@ $providerLabels = [
 			<option value="web"><?php p($l->t('Web')); ?></option>
 			<option value="news"><?php p($l->t('News')); ?></option>
 			<option value="all"><?php p($l->t('Web and news')); ?></option>
+			<option value="images"><?php p($l->t('Images')); ?></option>
 		</select>
 		<button type="button" id="eva-test-run" class="secondary eva-test-button"><?php p($l->t('Run search')); ?></button>
 		<span id="eva-test-status" class="eva-status-text" role="status" aria-live="polite"></span>
