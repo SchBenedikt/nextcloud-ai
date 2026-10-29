@@ -74,6 +74,12 @@ are not searchable in SQL.
   AppData chat folders. Import batches and account erasure share the same
   per-user lock, and the migration stops if the Nextcloud account disappears.
 
+The normalized SQL sidebar uses updated-time/chat-ID keyset pages and decrypts
+metadata only for the requested page. AppData users and older clients retain
+the offset-compatible path while migration is incomplete. Chat content search
+still reads encrypted message records explicitly; the schema adds no plaintext
+search index.
+
 Frontend pagination is implemented. Mixed-version deployment/rollback
 rehearsal, sustained load, and restore drills remain follow-up work. The
 background job never removes AppData. In a mixed-version cluster, older EVA

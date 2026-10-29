@@ -2,6 +2,11 @@
 
 ## [Unreleased]
 
+### Keyset-paginated SQL chat history (1.18.57)
+
+- Load normalized SQL chat metadata a page at a time using the existing updated-time/chat-ID keyset, instead of decrypting every conversation before slicing the sidebar page.
+- Keep offset pagination for AppData and older clients; remove the sidebar count badge that required a full-history scan to report an accurate active-only total.
+
 ### Compact existing local generation vectors (1.18.56)
 
 - Add a recurring, keyset-paged Nextcloud job that rewrites historical SQL-generation JSON vectors into the compact format when it is smaller.

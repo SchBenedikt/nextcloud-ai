@@ -1310,6 +1310,18 @@ class ApiController extends OCSController {
             return new ErrorDataResponse(['error' => 'Invalid chat page.'], 400);
         }
         try {
+            if ($this->requestParam('keyset', '0') === '1') {
+                $updatedRaw = $this->requestParam('beforeUpdated', null);
+                $chatIdRaw = $this->requestParam('beforeChatId', null);
+                $beforeUpdated = $updatedRaw === null ? null : filter_var($updatedRaw, FILTER_VALIDATE_INT);
+                if (($updatedRaw !== null && $beforeUpdated === false)
+                    || ($chatIdRaw !== null && (!is_string($chatIdRaw) || $chatIdRaw === '' || strlen($chatIdRaw) > 128))
+                    || (($updatedRaw === null) !== ($chatIdRaw === null))) {
+                    return new ErrorDataResponse(['error' => 'Invalid chat page cursor.'], 400);
+                }
+                $page = $this->chatStore->listSqlCursorPage($user, $beforeUpdated, $chatIdRaw, $limit);
+                if ($page !== null) return new ErrorDataResponse($page);
+            }
             return new ErrorDataResponse($this->chatStore->listPage($user, $offset, $limit, true));
         } catch (\Throwable $e) {
             return $this->chatErrorResponse($e);

@@ -113,7 +113,7 @@ final class EncryptedChatRepository {
 
 	/** @return list<array{id:string,created:int,updated:int,count:int,metadata:array}> */
 	public function metadataPage(string $userId, int $limit = 50, ?int $beforeUpdated = null, ?string $beforeChatId = null): array {
-		$limit = min(100, max(1, $limit));
+		$limit = min(101, max(1, $limit));
 		$qb = $this->db->getQueryBuilder();
 		$qb->select('chat_id', 'created_at', 'updated_at', 'message_count', 'encrypted_metadata')->from('eva_ai_chats')
 			->where($qb->expr()->eq('user_id', $qb->createNamedParameter(hash('sha256', $userId))));
