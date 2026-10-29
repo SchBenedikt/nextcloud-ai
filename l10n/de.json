@@ -1523,7 +1523,11 @@
     "Checking local SQL vectors": "Lokale SQL-Vektoren werden geprüft",
     "Verification stopped safely. Check the source index and generation data, then retry.": "Die Prüfung wurde sicher angehalten. Prüfe den Quellenindex und die Generationsdaten und starte sie erneut.",
     "yes": "ja",
-    "no": "nein"
+    "no": "nein",
+    "EVA uses the Nextcloud database by default. External vector storage is optional for larger installations.": "EVA verwendet standardmäßig die Nextcloud-Datenbank. Externer Vektorspeicher ist für größere Installationen optional.",
+    "Advanced index administration": "Erweiterte Indexverwaltung",
+    "The index overview is unavailable. Use Refresh to try again.": "Die Indexübersicht ist nicht verfügbar. Aktualisiere die Seite und versuche es erneut.",
+    "{count} accounts tracked by EVA": "{count} von EVA erfasste Konten"
   },
   "pluralForm": "nplurals=2; plural=(n != 1);",
   "EVA – Chat": "EVA – Chat",

@@ -95,6 +95,10 @@ protection and required checks remain administrative follow-up.
 | 13 | Normalized encrypted chat/message SQL storage | 12 | **In progress (1.18.27–1.18.29 stack).** Additive encrypted tables, small resumable imports, per-message SQL mirroring, automatic new-account SQL, scheduled verified migration for existing users, owner-scoped erasure, indexed metadata pages, per-user SQL reads with AppData export rollback, and paginated native sidebar loading are implemented. Mixed-version deployment/rollback rehearsal, performance/load evidence, and restore drills remain. Preserve encryption and add no plaintext search indexes. |
 | 14 | Operational hardening and portability | 13 | PostgreSQL/MariaDB lifecycle coverage; metrics exporter/trace correlation; restore and delete drills; sustained soak; cache outage/rate-limit semantics (embedding-cache 15-second process-local cooldown now avoids repeated failing cache calls while preserving uncached operation); domain-controller extraction; dependency/SAST/SBOM policy. Administrative main protection requires its own explicit rollout. |
 
+## Stage 14 interface slice: compact administration
+
+The admin landing view now presents the built-in Nextcloud SQL default and a concise account/index queue summary. Per-user index actions, generation setup, and optional external vector storage are grouped under a collapsed native HTML disclosure, so standalone installations do not lead with infrastructure configuration. Advanced administration remains available. This is a presentation change; it does not alter indexing consent, background jobs, or storage selection.
+
 ## Frontend integration required throughout the stack
 
 The user explicitly requested frontend changes alongside the backend. Every
