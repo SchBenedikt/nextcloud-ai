@@ -106,6 +106,7 @@ endpoint rejects them.
 Embedding vectors are cached in Nextcloud's distributed cache for up to 30 days
 (user-isolated, content-derived keys; document text is never stored in the key).
 Resetting a user's index clears that user's cached vectors.
+A temporary cache outage does not stop indexing or retrieval. EVA bypasses the distributed cache for 15 seconds after an error, then retries it automatically. Cache contents are an optimization and are recomputed from the configured embedding provider when unavailable.
 
 #### What an EVA app upgrade does to indexing
 
