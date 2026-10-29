@@ -14,6 +14,7 @@ create a separate public metrics endpoint or background poller.
 | `nextcloud_eva_ai_account_cleanup_pending` | none | Durable local account-erasure requests. |
 | `nextcloud_eva_ai_account_cleanup_oldest_age_seconds` | none | Age of the oldest durable local account-erasure request. |
 | `nextcloud_eva_ai_operation_duration_ms` | `operation`, `quantile` | Approximate recent provider chat-completion and slow-tool duration quantiles. |
+| `nextcloud_eva_ai_retrieval_stage_duration_ms` | `backend`, `stage`, `quantile` | Approximate retrieval-stage duration quantiles on successful chat requests. |
 
 ## Duration quantiles
 
@@ -25,18 +26,26 @@ file or content labels are exported.
 
 Provider chat-completion duration is the provider call duration already stored
 by EVA; it is not the whole RAG turn. Tool duration is recorded only for calls
-that take at least 100 ms. These quantiles are a bounded recent sample, not a
-complete histogram or a full-traffic Prometheus distribution. They do not
-represent separate RAG, embedding, SQL, queue-wait or lock-wait stages.
-Detailed privacy-safe stage timings remain in optional Nextcloud debug logs and
-are not persisted as metric rows.
+that take at least 100 ms. Retrieval stages cover count, query embedding,
+candidate retrieval, SQL hydration, scope filtering, ranking and total retrieval.
+They are rounded to integer milliseconds and attached to the existing chat usage
+row; no additional retrieval write or content-bearing field is added. Only
+completed provider chat records with observed stages enter these quantiles.
+
+Both duration families use nearest rank over at most 5,000 recent rows from the
+preceding seven days. These are bounded approximate gauges, not complete
+histograms or full-traffic Prometheus distributions. Retrieval stages do not
+separate SQL dense scanning from lexical selection within the candidate phase;
+queue-wait, lock-wait, standalone embedding and provider percentiles remain
+separate work.
 
 ## Privacy and availability
 
 EVA does not label metrics with account IDs, file names or paths, query text,
 chat content, provider URLs, model credentials or vector values. Vector-outbox
-metrics use fixed operation/state labels. The families are collected on demand;
-they do not add writes to indexing or interactive retrieval requests.
+metrics use fixed operation/state labels. The families are collected on demand.
+Retrieval stage values share the existing successful chat usage write; scraping
+adds no write to indexing or retrieval.
 
 Nextcloud controls access to `/metrics` using its `openmetrics_allowed_clients`
 system setting. Keep that allowlist restricted to the monitoring network. A
@@ -51,7 +60,7 @@ durations, never prompt or answer content.
 
 ## Remaining observability work
 
-The PDF's full target still needs separate retrieval-stage/provider/embedding
-percentiles, queue-age histograms, distributed trace propagation beyond one
-chat request, and production sampling/load evidence. Keep request logging
-content-free and measure overhead before enabling additional per-request writes.
+The PDF's full target still needs provider/embedding percentiles, queue-age
+histograms, distributed trace propagation beyond one chat request, and
+representative quality, sampling and load evidence. Keep request logging
+content-free and validate performance claims on frozen corpora.

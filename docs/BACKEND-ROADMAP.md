@@ -69,8 +69,12 @@ The implementation entries further below record the actual delivered slices.
   chat and slow-tool durations from the newest 5,000 records in a seven-day
   window, with only fixed operation and quantile labels. Retrieval stages,
   standalone provider timing and queue-age histograms remain unaggregated.
-  Exported labels contain no tenant, file, prompt, endpoint, or credential data;
-  stage-level percentiles and queue-age histograms remain open.
+  Exported labels contain no tenant, file, prompt, endpoint, or credential data.
+  Version 1.18.72 adds approximate seven-day p50/p95/p99 metrics for retrieval
+  count, embedding, candidate retrieval, hydration, scope filtering, ranking and
+  total duration. It samples at most 5,000 recent chat rows and labels only by
+  the fixed retrieval backend and stage. Queue-age histograms, provider timing
+  distributions, and cross-service traces remain open.
 - Usage records have a 365-day maximum retention matching the supported report
   window. Daily bounded cleanup and account-erasure integration prevent
   indefinite growth and remove per-user rows when an account is deleted.

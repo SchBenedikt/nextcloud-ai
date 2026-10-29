@@ -76,6 +76,9 @@ class Searcher {
             $measurements['failed'] = $failed;
             $traceId ??= $this->traceContext?->id();
             if ($traceId !== null && preg_match('/^[a-f0-9]{32}$/D', $traceId) === 1) $measurements['trace_id'] = $traceId;
+            if ($traceId !== null && preg_match('/^[a-f0-9]{32}$/D', $traceId) === 1) {
+                $this->traceContext?->recordRetrievalMeasurements($traceId, $measurements);
+            }
             try {
                 // No query, account ID, path, content or exception payload.
                 $this->logger?->debug('eva_ai: retrieval timings', $measurements);
