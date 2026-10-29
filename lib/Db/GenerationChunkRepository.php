@@ -45,6 +45,17 @@ class GenerationChunkRepository {
      */
     public function putBuildingChunk(VectorGeneration $generation, string $target,
         VectorDocumentSnapshot $snapshot, PreparedVectorChunk $chunk): array {
+        return $this->putChunkForGenerationStatus($generation,$target,$snapshot,$chunk,'building');
+    }
+
+    /** Idempotent per-chunk upsert for a leased, active-generation mutation. */
+    public function putActiveChunk(VectorGeneration $generation, string $target,
+        VectorDocumentSnapshot $snapshot, PreparedVectorChunk $chunk): array {
+        return $this->putChunkForGenerationStatus($generation,$target,$snapshot,$chunk,'active');
+    }
+
+    private function putChunkForGenerationStatus(VectorGeneration $generation, string $target,
+        VectorDocumentSnapshot $snapshot, PreparedVectorChunk $chunk, string $expectedStatus): array {
         if ($snapshot->userId !== $generation->userId || preg_match('/^[a-f0-9]{64}$/D', $target) !== 1) throw new VectorStoreException('source_identity_mismatch');
         $chunk->validate($generation);
         $embedding = json_encode(array_map('floatval', $chunk->vector), JSON_THROW_ON_ERROR);
@@ -54,9 +65,9 @@ class GenerationChunkRepository {
             'chunk_overlap' => $generation->chunkOverlap]], JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE);
         if (strlen($embedding) > 524288 || strlen($provenance) > 4096) throw new VectorStoreException('chunk_too_large');
 
-        return $this->outbox->transaction(function () use ($generation, $target, $snapshot, $chunk, $embedding, $hash, $provenance): array {
+        return $this->outbox->transaction(function () use ($generation, $target, $snapshot, $chunk, $embedding, $hash, $provenance, $expectedStatus): array {
             $this->owners->lockOpen($generation->userId);
-            $this->lockBuilding($generation, $target);
+            $this->lockGenerationStatus($generation, $target, $expectedStatus);
             // Lock source before checking the stamp. Normal metadata updates and
             // deletes serialize on this document row, including older cores.
             $this->lockSnapshot($snapshot);
@@ -206,7 +217,7 @@ class GenerationChunkRepository {
         $revisions=[];foreach($rows as$row)$revisions[(int)$row['id']]=(int)$row['vector_revision'];return $revisions;
     }
 
-    private function lockBuilding(VectorGeneration $generation, string $target): void {
+    private function lockGenerationStatus(VectorGeneration $generation, string $target, string $expectedStatus): void {
         $qb = $this->db->getQueryBuilder();
         $qb->update('eva_ai_vec_generations')->set('build_cursor', $qb->func()->add('build_cursor', $qb->createNamedParameter(0, IQueryBuilder::PARAM_INT)))
             ->where($qb->expr()->eq('id', $qb->createNamedParameter($generation->id)))
@@ -216,7 +227,7 @@ class GenerationChunkRepository {
             ->andWhere($read->expr()->eq('user_id', $read->createNamedParameter($generation->userId)));
         $result = $read->executeQuery();
         try { $row = $result->fetch(); } finally { $result->closeCursor(); }
-        if (!$row || $row['status'] !== 'building' || $row['storage_endpoint_hash'] !== $target
-            || VectorGeneration::fromRow($row)->toRow() !== $generation->toRow()) throw new VectorStoreException('generation_not_building');
+        if (!$row || $row['status'] !== $expectedStatus || $row['storage_endpoint_hash'] !== $target
+            || VectorGeneration::fromRow($row)->toRow() !== $generation->toRow()) throw new VectorStoreException('generation_state_changed');
     }
 }

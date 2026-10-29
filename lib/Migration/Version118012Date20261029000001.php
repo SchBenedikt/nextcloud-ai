@@ -19,7 +19,10 @@ final class Version118012Date20261029000001 extends SimpleMigrationStep {
             foreach (['lease_token'=>32, 'error_code'=>48] as $key => $length) {
                 $table->addColumn($key, Types::STRING, ['length' => $length, 'notnull' => false]);
             }
-            foreach (['document_id','revision','attempts','available_at','lease_until','created_at','updated_at'] as $key) {
+            foreach (['plan_hash'=>64,'source_stamp'=>64] as $key=>$length) {
+                $table->addColumn($key,Types::STRING,['length'=>$length,'notnull'=>false]);
+            }
+            foreach (['document_id','revision','attempts','chunk_cursor','available_at','lease_until','created_at','updated_at'] as $key) {
                 $table->addColumn($key, Types::BIGINT, ['notnull' => true, 'default' => 0]);
             }
             $table->setPrimaryKey(['id']);
