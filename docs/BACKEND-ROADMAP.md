@@ -334,6 +334,12 @@ MySQL-only backtick quoting. This closes a concrete SQL-dialect incompatibility
 in those paths; it does not replace PostgreSQL/MariaDB migration and API
 integration runs, which remain required evidence.
 
+### Stage 14 schema portability correction (1.18.61)
+
+The usage `estimated` flag is normalized to an integer column, matching the
+portable `SUM()` aggregations. This addresses a schema drift found during the
+local MariaDB upgrade; PostgreSQL and SQLite migration execution remain open.
+
 ### Stage 02 implementation
 
 Indexer and Searcher now consume the EmbeddingProvider contract; bootstrap binds
