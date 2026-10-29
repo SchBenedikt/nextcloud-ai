@@ -183,6 +183,12 @@ live VFS access check are served by `FileContextController`, keeping the
 Nextcloud Files flow isolated while sharing the same per-user chat lock and
 rate-limit policy. The existing OCS URLs remain stable.
 
+`IndexController` owns user-scoped full, Mail, Talk and reset indexing requests.
+It claims the bounded run before scheduling `IndexRequestJob`, retains the
+worker-owned cancellation transition, and enrolls users on a successful
+explicit request. It keeps the established route paths and does not make the
+optional external vector store part of installation or normal indexing.
+
 `IntegrationController` owns external-connector discovery, configuration,
 diagnostics and plugin toggles. Those operations retain their authenticated
 per-user routes and run through the same `ActionExecutor` policy as chat tools.

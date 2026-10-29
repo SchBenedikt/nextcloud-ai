@@ -7,6 +7,7 @@ namespace OCA\EvaAi\Tests;
 use OCA\EvaAi\BackgroundJob\IndexRequestJob;
 use OCA\EvaAi\Controller\ApiController;
 use OCA\EvaAi\Controller\BackgroundChatController;
+use OCA\EvaAi\Controller\IndexController;
 use OCA\EvaAi\Controller\SystemController;
 use OCA\EvaAi\Db\DocumentMapper;
 use OCA\EvaAi\Dto\ChatRequest;
@@ -175,10 +176,19 @@ final class ApiControllerIntegrationTest extends TestCase {
 
 		$dependencies = compact('request', 'documentMapper', 'ollama', 'config', 'rag', 'executor', 'indexer', 'jobList', 'lockingProvider', 'chatStore', 'knowledgeInitializer', 'lockGuard', 'cacheFactory', 'logger', 'backgroundChatQueue');
 		return new ApiController(
-			'eva_ai', $request, $userId, $config, $rag, $executor, $indexer, $ollama,
-			$jobList, $lockingProvider, $chatStore, $appManager, $lockGuard,
+			'eva_ai', $request, $userId, $config, $rag, $executor, $ollama,
+			$jobList, $lockingProvider, $chatStore, $appManager,
 			$userDataService, $chatLearner, $cacheFactory, $indexScheduler, $usageMetrics,
 			$logger, $systemController,
+		);
+	}
+
+	/** @param array<string,mixed> $params @param array<string,mixed> $dependencies @param array<string,mixed> $storedValues */
+	private function indexController(?string $userId, array $params, array &$dependencies, array &$storedValues): IndexController {
+		$this->controller($userId, $params, $dependencies, $storedValues);
+		return new IndexController(
+			'eva_ai', $dependencies['request'], $userId, $dependencies['config'], $dependencies['indexer'],
+			$dependencies['rag'], $dependencies['jobList'], $dependencies['lockingProvider'], $dependencies['lockGuard'],
 		);
 	}
 
@@ -302,7 +312,7 @@ final class ApiControllerIntegrationTest extends TestCase {
 	public function testIndexRequestQueuesTheExpectedBackgroundJob(): void {
 		$stored = [];
 		$dependencies = [];
-		$controller = $this->controller('alice', [], $dependencies, $stored);
+		$controller = $this->indexController('alice', [], $dependencies, $stored);
 		$jobArguments = null;
 		$dependencies['lockGuard']->expects(self::once())->method('acquireIndexLock')->with('alice', LockGuard::indexLockPath('alice'));
 		$dependencies['lockingProvider']->expects(self::once())->method('releaseLock')->with(LockGuard::indexLockPath('alice'), ILockingProvider::LOCK_EXCLUSIVE);
