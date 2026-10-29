@@ -2,6 +2,11 @@
 
 ## [Unreleased]
 
+### Expose bounded indexing queue-age distributions (1.18.82)
+
+- Export fixed, privacy-safe wait-age buckets for queued indexing requests and vector outbox events, alongside existing queue depth and oldest-age metrics.
+- Use gauge bucket distributions because Nextcloud's OpenMetrics family interface exposes scalar samples and its renderer does not serialize histogram buckets.
+
 ### Serialize chat provider selection with settings saves (1.18.81)
 
 - Route provider switches through the same serialized settings queue as autosaves and provider profile changes, preventing overlapping writes from restoring an older selection.
