@@ -2,8 +2,11 @@
 
 EVA 1.18.27 introduces normalized SQL tables for encrypted chat metadata and
 individual encrypted messages. The existing encrypted AppData file remains the
-live source of truth in this rollout stage. Importing SQL rows does not enable
-SQL reads, delete the AppData copy, or alter chat behavior.
+live source of truth in this rollout stage. On current EVA versions, successful
+AppData writes are mirrored to SQL in the same per-user critical section, with
+only changed message rows rewritten. SQL mirror errors leave the AppData write
+intact and invalidate the SQL migration checkpoint. Importing SQL rows does not
+enable SQL reads, delete the AppData copy, or alter chat behavior.
 
 ## Import one account
 
@@ -27,6 +30,8 @@ with `source-changed-retry`; rerun it to restart from the new source snapshot.
   rename them as part of this import.
 - A database error leaves the checkpoint in `running`; rerun after correcting
   the database issue. A failed verification resets and retries on the next run.
+- A failed live SQL mirror marks the checkpoint failed; rerun the command to
+  rebuild SQL from the authoritative AppData snapshot.
 - `source-changed-retry` means a chat was written while the SQL copy was in
   progress. AppData remains authoritative; rerun to copy the latest snapshot.
 - To restore from a Nextcloud backup, restore the database and the EVA AppData
@@ -39,4 +44,7 @@ with `source-changed-retry`; rerun it to restart from the new source snapshot.
 
 SQL cutover, automatic background migration, frontend pagination, and a
 mixed-version write recovery protocol are separate follow-up work. Do not
-enable a SQL read path before those pieces are complete.
+enable a SQL read path before those pieces are complete. In a mixed-version
+cluster, older EVA nodes still write AppData without the SQL mirror; wait until
+all nodes run the new code, rerun this import, and verify completion before any
+future SQL read cutover.
