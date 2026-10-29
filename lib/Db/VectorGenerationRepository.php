@@ -76,6 +76,17 @@ class VectorGenerationRepository {
         return $generation?->backend==='qdrant'?$generation:null;
     }
 
+    /** Any local generation means bootstrap has already been attempted. */
+    public function hasSqlGeneration(string $userId): bool {
+        $q = $this->db->getQueryBuilder();
+        $q->select('id')->from('eva_ai_vec_generations')
+            ->where($q->expr()->eq('user_id', $q->createNamedParameter($userId)))
+            ->andWhere($q->expr()->eq('backend', $q->createNamedParameter('sql')))
+            ->setMaxResults(1);
+        $r = $q->executeQuery();
+        try { return $r->fetchOne() !== false; } finally { $r->closeCursor(); }
+    }
+
     /** The explicitly selected local or remote primary generation with no unfinished source changes. */
     public function activeGenerationForUser(string $userId): ?VectorGeneration {
         $q=$this->db->getQueryBuilder();

@@ -504,6 +504,17 @@ class Indexer {
             }
         }
 
+        // Older enrolled accounts may have a complete legacy index but no
+        // changed files, so flushBatch() never gets a chance to provision the
+        // default SQL generation. Bootstrap only after a healthy file pass;
+        // it probes with public text and leaves document content to the
+        // bounded background generation builder.
+        if (($mode === 'all' || $mode === 'files') && $result['error'] === null
+            && $this->sqlGenerationProvisioner !== null
+            && $this->documentMapper->countForUser($userId) > 0) {
+            $this->sqlGenerationProvisioner->bootstrap($userId, $this->ollama);
+        }
+
         return $result;
     }
 
