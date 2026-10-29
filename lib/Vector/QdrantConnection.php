@@ -18,10 +18,21 @@ class QdrantConnection {
     private const MAX_BODY = 2097152;
     public function __construct(private IConfig $config, private ICrypto $crypto, private IClientService $clients, private VectorTargetRepository $targets, private ?TraceContext $traceContext = null) {}
 
-    public function configure(string $url, ?string $key, bool $noKey, bool $enable): void {
+    public function configure(string $url, ?string $key, bool $noKey, bool $enable, ?array $privateOrigins = null): void {
         $url = $this->validateBase($url);
         if ($noKey ? $key !== null : $key === null) throw new VectorStoreException('select_key_or_no_key');
         if ($key !== null && ($key === '' || strlen($key) > 4096 || preg_match('/[\x00-\x20\x7f]/', $key))) throw new VectorStoreException('invalid_key');
+        $normalizedOrigins=null;
+        if ($privateOrigins !== null) {
+            if (!array_is_list($privateOrigins) || count($privateOrigins)>100) throw new VectorStoreException('invalid_private_origins');
+            $normalizedOrigins=[];
+            foreach ($privateOrigins as $origin) {
+                if (!is_string($origin)) throw new VectorStoreException('invalid_private_origins');
+                try { $normalizedOrigins[]=ProviderEndpointPolicy::normalizeOrigin($origin); }
+                catch (ProviderException) { throw new VectorStoreException('invalid_private_origins'); }
+            }
+            $normalizedOrigins=array_values(array_unique($normalizedOrigins));
+        }
         $encrypted = $key !== null ? $this->crypto->encrypt($key) : '';
         // Disable first: incomplete updates must not enable an unintended target.
         $this->config->setAppValue(AppConfig::APP, 'qdrant_enabled', '0');
@@ -30,6 +41,7 @@ class QdrantConnection {
         $this->config->setAppValue(AppConfig::APP, 'qdrant_api_key_encrypted', $encrypted);
         $this->config->setAppValue(AppConfig::APP, 'qdrant_key_target', hash('sha256', $url));
         $this->config->setAppValue(AppConfig::APP, 'qdrant_auth', $noKey ? 'none' : 'api_key');
+        if ($normalizedOrigins !== null) $this->config->setAppValue(AppConfig::APP,'vector_private_origins',json_encode($normalizedOrigins,JSON_THROW_ON_ERROR));
         if ($enable) $this->config->setAppValue(AppConfig::APP, 'qdrant_enabled', '1');
     }
 
@@ -54,7 +66,21 @@ class QdrantConnection {
         if ($url !== '') $url = $this->validateBase($url);
         $auth = $this->config->getAppValue(AppConfig::APP, 'qdrant_auth', 'api_key');
         if (!in_array($auth, ['api_key', 'none'], true)) throw new VectorStoreException('invalid_auth');
-        return $this->status() + ['endpoint' => $url, 'auth' => $auth];
+        return $this->status() + ['endpoint' => $url, 'auth' => $auth,'private_origins'=>$this->privateOrigins()];
+    }
+
+    /** @return list<string> */
+    private function privateOrigins(): array {
+        $raw=$this->config->getAppValue(AppConfig::APP,'vector_private_origins','[]');
+        $origins=json_decode($raw,true);
+        if (!is_array($origins) || !array_is_list($origins) || count($origins)>100) throw new VectorStoreException('invalid_private_origins');
+        $normalized=[];
+        foreach($origins as $origin) {
+            if (!is_string($origin)) throw new VectorStoreException('invalid_private_origins');
+            try { $normalized[]=ProviderEndpointPolicy::normalizeOrigin($origin); }
+            catch(ProviderException) { throw new VectorStoreException('invalid_private_origins'); }
+        }
+        return array_values(array_unique($normalized));
     }
 
     public function targetFingerprint(): string {

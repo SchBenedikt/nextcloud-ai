@@ -200,7 +200,7 @@ for infrastructure concerns.
 | Backend stage | Matching interface deliverable |
 | --- | --- |
 | 07–08 | Shared offline storage status in EVA administration and Nextcloud administration settings: actual search mode, connection configuration, cleanup state and actionable queue counts. Errors remain unknown, never a healthy zero. No automatic external probes. |
-| 08–09 | Native administrator configuration with write-only credentials for optional remote storage, explicit connection test, bounded operation inspection/retry, build progress and cancel/resume once the corresponding guarded backend APIs exist. Keep default setup simple; separate optional connection setup from migration and activation. |
+| 08–09 | Native administrator configuration with write-only credentials for optional remote storage, exact private-origin approvals, explicit connection test, Qdrant generation preparation from active SQL, bounded operation inspection/retry, build progress and cancel/resume. Keep default setup simple; separate optional connection setup from migration and activation. |
 | 02, 09 | Embedding provider/model selection separate from chat provider, immutable generation summary and clear rebuild requirement. Expose only implemented adapters. |
 | 10–11 | Readable SQL/shadow/canary/primary status and rollback control, verification blockers and last comparison. Advanced migration details belong in disclosure panels, not the chat composer. |
 | 12 | Consistent search/source states and understandable partial failure/fallback messages. Preserve the focused ChatGPT/Talk-like chat layout and native controls. |

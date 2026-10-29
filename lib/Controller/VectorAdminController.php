@@ -39,7 +39,7 @@ class VectorAdminController extends OCSController {
             $input = json_decode($raw, true, 16, JSON_THROW_ON_ERROR);
             if (!is_array($input) || array_is_list($input)) throw new \InvalidArgumentException('Send a configuration object.');
             $update = VectorConnectionRequest::fromArray($input);
-            $this->connection->configure($update->endpoint, $update->apiKey, $update->noKey, $update->enabled);
+            $this->connection->configure($update->endpoint, $update->apiKey, $update->noKey, $update->enabled, $update->privateOrigins);
             return new ErrorDataResponse($this->connection->configuration());
         } catch (\InvalidArgumentException | \JsonException) {
             return $this->failure('invalid_request', 'Enter a valid server URL, authentication choice and API key. Supply enabled as a JSON boolean.', 400);

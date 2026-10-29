@@ -6,6 +6,14 @@ chat retrieval; only an explicitly verified and activated generation can serve
 as a Qdrant canary. Installation, upgrade, page rendering and generation
 metadata creation make no Qdrant request.
 
+Administrators configure the endpoint, encrypted API key, exact private-origin
+allowlist, and request/point-delivery switches in **Administration settings →
+EVA AI → Knowledge storage → Configure Qdrant and manage search migrations**.
+The admin UI can create a Qdrant generation from an account's active SQL
+generation, prepare/repair its empty collection, and then guide the separate
+build, verification, explicit canary activation, and SQL rollback steps. SQL
+remains usable if Qdrant is absent or disabled.
+
 ## Protocol and identity
 
 Dense retrieval targets Qdrant 1.x, minimum 1.16.0. Native hybrid retrieval
@@ -39,8 +47,9 @@ against guessing; vectors and identifiers remain personal data requiring access
 controls and retention policy.
 
 Native hybrid retrieval is an explicit per-generation option, off by default.
-Creating a Qdrant generation with `--include-text-payload` records that choice;
-starting or resuming its build separately requires `--confirm-text-transfer`.
+The admin UI or `--include-text-payload` records that choice when creating a
+Qdrant generation; starting or resuming its build separately requires
+`--confirm-text-transfer` (the UI asks for the same separate confirmation).
 Those controls are distinct from consent to send text to the embedding provider.
 Only opted-in generations add chunk text to the Qdrant `content` payload and
 build the BM25/phrase index. Qdrant can contain plaintext document chunks; remote

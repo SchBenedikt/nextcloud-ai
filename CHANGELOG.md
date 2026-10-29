@@ -2,6 +2,11 @@
 
 ## [Unreleased]
 
+### Configure and prepare optional Qdrant from native admin settings (1.20.4)
+
+- Add exact private-origin approvals to the encrypted Qdrant connection form and let administrators create a Qdrant generation from the account's active SQL generation.
+- Add explicit empty-collection preparation and keep backfill consent, SQL default, verification, canary activation and SQL rollback as separate steps.
+
 ### Allow larger extracted documents in SQL generation builds (1.20.3)
 
 - Raise the bounded per-document chunk ceiling to 10,000 while retaining the 16 MiB text limit and 256-chunk worker batches.
