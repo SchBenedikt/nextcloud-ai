@@ -192,7 +192,7 @@ class VectorSourceDeletion {
         $r=$q->executeQuery();try{$rows=$r->fetchAll();}finally{$r->closeCursor();}
         foreach($rows as$row){
             $currentDocument=(int)$row['document_id'];
-            $rewind=$firstId<=(int)$row['after_document_id']||($currentDocument>0&&$firstId<$currentDocument);
+            $rewind=$firstId<=(int)$row['after_document_id']||($currentDocument>0&&$firstId<=$currentDocument);
             $manifest=$this->db->getQueryBuilder();
             $manifest->selectAlias($manifest->createFunction('COUNT(*)'),'total')->from('eva_ai_vec_build_docs')
                 ->where($manifest->expr()->eq('generation_id',$manifest->createNamedParameter($row['generation_id'])))
