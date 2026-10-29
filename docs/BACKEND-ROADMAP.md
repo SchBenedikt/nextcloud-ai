@@ -492,14 +492,23 @@ verified.
 
 ### Incremental file-index retry recovery (1.18.64)
 
-The AppData-backed per-user file-change queue now restores failed entries after
-each bounded drain, with a five-attempt limit and five-minute retry delay. Queue
-merge gives events that arrived during the worker run priority over the failed
-snapshot, so stale retries cannot overwrite newer file state. Exhausted entries
-are logged and left to the recurring full index for recovery. This closes the
-worker's previous drain-then-drop behavior for transient extraction/provider
-failures; it does not make the AppData queue transactional or prove crash,
-concurrency, or provider-outage recovery under execution.
+The first retry slice restored failed entries from the AppData queue with a
+five-attempt limit and five-minute delay, and let newer events replace stale
+retries. Version 1.18.66 supersedes that storage with the SQL queue and leases
+described below.
+
+### Incremental file-change SQL queue (1.18.66)
+
+File changes now enter an indexed Nextcloud SQL queue with one coalesced row per
+user and source key. A bounded worker claims one row at a time with an expiring
+lease, acknowledges only the claimed revision, retries failures with backoff,
+and dead-letters entries after five attempts. This preserves newer events while
+old work is running and makes abandoned claims available after a worker crash.
+Existing AppData JSON queues import in bounded slices; a SQL hash/offset cursor
+protects progress if rewriting or deleting the legacy file is interrupted.
+Account erasure removes both queue rows and import state. MariaDB migration and
+runtime status are locally verified; multi-database, crash-injection, and
+concurrency execution remain open evidence.
 
 ### Stage 08 generation-erasure consumer
 

@@ -101,7 +101,7 @@ class FileChangeListener implements IEventListener {
             $this->config->setUserValue($userId, AppConfig::APP, 'search_revision', (string)(($revision + 1) % 2147483647));
             // One debounced job per user drains the whole queue (IJobList
             // updates the run time when the argument already exists).
-            $this->jobList->scheduleAfter(\OCA\EvaAi\BackgroundJob\ReindexFileJob::class, self::DEBOUNCE_SECONDS, ['userId' => $userId]);
+            $this->jobList->scheduleAfter(\OCA\EvaAi\BackgroundJob\ReindexFileJob::class, time() + self::DEBOUNCE_SECONDS, ['userId' => $userId]);
         } catch (\Throwable $e) {
             // Never break the user's filesystem operation over indexing.
             $this->logger->debug('eva_ai file change queue failed', [

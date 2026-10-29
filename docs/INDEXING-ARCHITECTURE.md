@@ -41,10 +41,12 @@ baseline and portability path; optional ANN storage is the scale path.
 1. New and changed files are processed by a resumable, bounded background
    pipeline. Upload, rename, chat response, and interactive UI requests do not
    wait for extraction or embedding.
-   Incremental file-change work is debounced; failed entries are restored to the
-   per-user queue with bounded backoff, while newer queued changes supersede
-   retries for the same source. The periodic index remains the recovery path
-   after five failed attempts.
+   Incremental file-change work is debounced into a coalesced Nextcloud SQL
+   queue. Workers claim entries with expiring leases and acknowledge only the
+   revision they processed; a newer event therefore survives an older worker.
+   Failed work retries with bounded backoff, and the periodic index remains the
+   recovery path after five failed attempts. Legacy AppData queue files migrate
+   incrementally with a SQL cursor.
 2. Every generation pins the embedding provider identity, endpoint fingerprint,
    model, dimensions, chunk settings, metric and schema version. Legacy rows do
    not receive guessed provenance.

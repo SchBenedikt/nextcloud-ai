@@ -2,6 +2,12 @@
 
 ## [Unreleased]
 
+### Move incremental file changes to a recoverable SQL queue (1.18.66)
+
+- Coalesce file and folder changes in an indexed Nextcloud SQL queue, claim work with expiring leases, and acknowledge only the source revision actually processed.
+- Retry failures in bounded batches, recover claims after worker crashes, and import legacy AppData queue files incrementally without losing progress if a migration write is interrupted.
+- Add separate per-user processing indexes and cross-user lease-recovery indexes so both hot-path claims and scheduled recovery stay bounded.
+
 ### Retry failed incremental file indexing (1.18.64)
 
 - Restore failed file and folder-change entries instead of losing them when a bounded worker batch encounters a transient error.

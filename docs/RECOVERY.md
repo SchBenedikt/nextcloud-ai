@@ -10,9 +10,11 @@ for the rehearsal.
 Take a consistent Nextcloud backup of:
 
 - the Nextcloud SQL database, including EVA documents, chunks, generations,
-  migration state, cleanup retries, and vector outbox;
+  migration state, cleanup retries, vector outbox, and the incremental file
+  change queue;
 - the configured Nextcloud data directory, including EVA AppData, encrypted
-  chats, chat backups, dirty-index queues, and indexing state;
+  chats, chat backups, any legacy dirty-index queues not yet imported, and
+  indexing state;
 - the matching Nextcloud configuration and encryption material needed to read
   encrypted app data and provider credentials;
 - the EVA application version and any administrator-managed deployment

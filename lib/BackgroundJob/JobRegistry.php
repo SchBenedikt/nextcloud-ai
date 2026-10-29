@@ -23,6 +23,7 @@ final class JobRegistry {
         LexicalIndexBackfillJob::class,
         GenerationVectorCompactionJob::class,
         UsageMetricsRetentionJob::class,
+        DirtyIndexRecoveryJob::class,
     ];
 
     public static function ensureScheduled(IJobList $jobs): void {
