@@ -22,6 +22,7 @@ final class JobRegistry {
         VectorNormBackfillJob::class,
         LexicalIndexBackfillJob::class,
         GenerationVectorCompactionJob::class,
+        UsageMetricsRetentionJob::class,
     ];
 
     public static function ensureScheduled(IJobList $jobs): void {

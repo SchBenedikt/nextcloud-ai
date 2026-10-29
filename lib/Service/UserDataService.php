@@ -39,7 +39,8 @@ class UserDataService {
         private ?\OCA\EvaAi\Db\VectorGenerationRepository $vectorGenerations = null,
         private ?\OCA\EvaAi\Db\GenerationBuildRepository $generationBuilds = null,
         private ?\OCA\EvaAi\Db\GenerationVerificationRepository $generationVerifications = null,
-        private ?\OCA\EvaAi\Db\AccountCleanupRepository $accountCleanup = null
+        private ?\OCA\EvaAi\Db\AccountCleanupRepository $accountCleanup = null,
+        private ?UsageMetrics $usageMetrics = null
     ) {
     }
 
@@ -175,6 +176,7 @@ class UserDataService {
             'agent_state' => fn() => $this->agentStore->deleteUserData($userId),
             'background_chat' => fn() => $this->backgroundChatQueue->deleteUserData($userId),
             'ai_marks' => fn() => $this->deleteAiMarksFolder($userId),
+            'usage_metrics' => fn() => $this->usageMetrics?->deleteUserData($userId),
             'user_config' => fn() => $this->config->deleteUserValues($userId),
         ];
     }

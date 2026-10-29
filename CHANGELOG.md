@@ -2,6 +2,11 @@
 
 ## [Unreleased]
 
+### Retain usage metrics for one year (1.18.59)
+
+- Delete a user's usage rows as part of account erasure and purge records older than the longest supported 365-day report window once per day in bounded batches.
+- Add an index for portable, ordered expiration scans.
+
 ### Export recent operation duration quantiles (1.18.58)
 
 - Expose approximate p50/p95/p99 chat and slow-tool durations from the existing usage records through Nextcloud OpenMetrics.
