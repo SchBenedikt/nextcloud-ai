@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Generation-aware indexing reuse (1.18.34)
+
+- Reuse a matching active SQL generation for normal file changes instead of provisioning a redundant full rebuild. Keep a deliberately selected Qdrant generation untouched. Seed generation-scoped embedding cache entries only from vectors just validated by the configured provider and only under the exact pinned model, endpoint, dimension and chunk identity, so bounded build and mutation workers can skip duplicate embedding requests.
+
 ### Legacy index SQL generation bootstrap (1.18.33)
 
 - Automatically bootstrap the default SQL generation for enrolled accounts with an existing legacy index, even when no files changed during the current pass. A public-text probe pins the real embedding model and dimensions; existing file content is processed only by the bounded SQL background builder. Respect explicit opt-outs and Qdrant selection, and retry provider failures after a six-hour cooldown.

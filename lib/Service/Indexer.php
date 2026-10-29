@@ -46,7 +46,6 @@ class Indexer {
 
     /** Wall-clock timestamp of the last heartbeat write for this pass. */
     private int $lastHeartbeatAt = 0;
-    private bool $sqlGenerationProvisioned = false;
 
     public function __construct(
         private AppConfig $config,
@@ -73,7 +72,6 @@ class Indexer {
      */
     public function run(string $userId, ?int $maxFiles = null, string $mode = 'all', bool $keepRunning = false, ?string $runId = null): array {
         $this->config->setUserId($userId);
-        $this->sqlGenerationProvisioned = false;
         $mode = in_array($mode, ['all', 'files', 'mail', 'talk'], true) ? $mode : 'all';
         $maxFiles = $maxFiles ?? min(10000, max(1, $this->config->getInt('max_files_per_run', 40)));
         $result = [
@@ -968,14 +966,20 @@ class Indexer {
                 }
             }
         }
-        if (!$this->sqlGenerationProvisioned && $this->sqlGenerationProvisioner !== null && $userId !== null) {
+        if ($this->sqlGenerationProvisioner !== null && $userId !== null) {
             $model = $this->ollama->lastEmbeddingModel();
-            foreach ($vecs as $vector) {
-                if ($model !== null && is_array($vector) && $vector !== []) {
-                    $this->sqlGenerationProvisioner->ensure($userId, $model, count($vector));
-                    $this->sqlGenerationProvisioned = true;
-                    break;
+            $provenVectors = [];
+            foreach ($vecs as $index => $vector) {
+                if ($model !== null && is_array($vector) && $vector !== [] && isset($batch[$index]['content'])) {
+                    // These exact text/vector pairs have just been validated
+                    // by the configured provider. The provisioner may reuse
+                    // them only under a matching immutable generation identity.
+                    $provenVectors[] = ['text' => $batch[$index]['content'], 'vector' => $vector];
                 }
+            }
+            if ($model !== null && $provenVectors !== []) {
+                $dimension = count($provenVectors[0]['vector']);
+                $this->sqlGenerationProvisioner->ensure($userId, $model, $dimension, $provenVectors);
             }
         }
         $batch = [];
