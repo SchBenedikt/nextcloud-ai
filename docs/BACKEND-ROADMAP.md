@@ -193,14 +193,15 @@ for infrastructure concerns.
 | 13 | Paginated conversation history, preserved encryption and visible migration/recovery state only when necessary. Preserve the centered home composer/recent-chat width and no-scroll home behavior. |
 | 14 | Compact operational diagnostics and accessible loading/empty/error/disabled states across narrow screens and light/dark themes. Avoid raw backend errors, identifiers and secrets in personal settings. |
 
-The first interface slice provides read-only status in both admin surfaces through
-one backend snapshot. Native connection configuration, explicit API check and
-transport disable are now exposed through an administrator-only page and dedicated
-controller. The prior dormant Vue admin branch is replaced by a separate entry
-without personal chat initialization. Migration/activation/progress controls
-remain pending until their backend operations exist. Fixture browser checks,
-authenticated local consent and isolated remote-transport evidence are recorded
-in QUALITY.md; the full access-control/portability/rollout matrix remains open.
+The native admin landing page shows the SQL default and links to optional storage
+controls without repeating account totals, scheduler counts or vector status.
+The administrator-only storage page loads its status and account list only when
+opened, and keeps its own frontend entry separate from personal chat state. Native
+connection configuration, explicit API check and transport disable remain there.
+Migration/activation/progress controls remain pending until their backend
+operations exist. Fixture browser checks, authenticated local consent and
+isolated remote-transport evidence are recorded in QUALITY.md; the full
+access-control/portability/rollout matrix remains open.
 
 ## Native Nextcloud integration direction
 
