@@ -28,7 +28,9 @@ transfer requires explicit configuration and a separate consented build.
 This adapts the report's recommendation to prioritize Qdrant as a production
 backend to the user's requirement that EVA work as a standalone Nextcloud app.
 It does not dismiss the report's measured risks: PHP full-index cosine scans
-and JSON vector storage remain performance problems. SQL lexical retrieval now
+and legacy JSON vector storage remain performance problems. New SQL-generation
+vectors use compact, versioned float64 encoding when it is smaller than JSON;
+historical and Qdrant rows remain readable as JSON. SQL lexical retrieval now
 has a portable posting index; it uses postings for indexed chunks and the legacy
 `LIKE` path only for pending or unsupported chunks during catch-up. SQL-native generation search is the usable
 baseline and portability path; optional ANN storage is the scale path.

@@ -10,6 +10,7 @@ use OCA\EvaAi\Db\Chunk;
 use OCA\EvaAi\Db\VectorGenerationRepository;
 use OCA\EvaAi\Db\GenerationChunkRepository;
 use OCA\EvaAi\Vector\{GenerationEmbeddingProvider,QdrantVectorStore,SearchFilters,VectorGeneration,VectorStoreException};
+use OCA\EvaAi\Vector\VectorEmbeddingCodec;
 use Psr\Log\LoggerInterface;
 
 class Searcher {
@@ -243,7 +244,7 @@ class Searcher {
         $dense = [];
         if ($queryVector !== null && !$nativeHybrid) {
             foreach ($rows as $i => $row) {
-                $vec = json_decode($row['embedding'], true);
+                $vec = VectorEmbeddingCodec::decode((string)$row['embedding'], count($queryVector));
                 if (!is_array($vec)) {
                     continue;
                 }
@@ -482,7 +483,7 @@ class Searcher {
                     if ($page === []) break;
                     $afterId = (int)$page[count($page) - 1]['id'];
                     foreach ($page as $row) {
-                        $vec = json_decode($row['embedding'], true);
+                        $vec = VectorEmbeddingCodec::decode((string)$row['embedding'], count($queryVector));
                         if (!is_array($vec)) {
                             continue;
                         }

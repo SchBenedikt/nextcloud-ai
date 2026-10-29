@@ -77,7 +77,10 @@ The implementation entries further below record the actual delivered slices.
   null or invalid metadata falls back to the prior exact calculation. This
   removes the repeated candidate norm pass but leaves the full dot-product scan
   and needs representative measurement.
-- `Chunk` still stores embeddings as JSON text. SQL lexical retrieval now uses
+- Legacy and Qdrant chunk embeddings remain JSON text. New SQL-generation
+  vectors use a versioned, network-order float64 text encoding when it is
+  smaller than JSON, and avoid JSON decoding during exact scans. Existing SQL
+  generations continue to read their historical JSON rows. SQL lexical retrieval now uses
   a portable SHA-256-keyed term-postings index. Normal/generation writes enqueue
   rows for bounded asynchronous indexing; source deletion clears derived rows.
   Existing rows migrate in background batches; only

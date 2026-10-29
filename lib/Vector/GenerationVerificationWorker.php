@@ -62,7 +62,7 @@ class GenerationVerificationWorker {
                         !$generation->includeTextPayload,!$generation->includeTextPayload):null;
                     $hash=$state['verification_hash'];$sampled=0;
                     foreach($rows as$row){
-                        $expected=json_decode($row['embedding'],true,32,JSON_THROW_ON_ERROR);
+                        $expected=VectorEmbeddingCodec::decode((string)$row['embedding'],$generation->dimension);
                         if(!is_array($expected))throw new VectorStoreException('invalid_sql_vector');
                         try{$generation->validateVector($expected);}catch(\Throwable){throw new VectorStoreException('invalid_sql_vector');}
                         if($generation->backend==='qdrant'){

@@ -89,6 +89,13 @@ outages remain misses/best-effort writes. Complete response batches are validate
 before any returned vector is published or cached. A cached result still checks
 current owned configuration and the caller's guard.
 
+Built-in SQL generations store newly written vectors as versioned base64-wrapped
+IEEE-754 float64 values in network byte order when that representation is
+smaller than JSON. The codec validates the declared dimension and exact byte
+count, and reads historical JSON vectors during transition. Qdrant payload
+delivery retains its existing JSON representation. This requires no schema
+migration or platform-specific byte order.
+
 The ordinary indexer may seed this generation-specific key family with vectors it
 has just received from the provider, but only when the enrolled user's active or
 building SQL generation matches the exact model, endpoint, dimension, metric and

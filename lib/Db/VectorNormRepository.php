@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace OCA\EvaAi\Db;
 
+use OCA\EvaAi\Vector\VectorEmbeddingCodec;
 use OCA\EvaAi\Vector\VectorNorm;
 use OCP\DB\QueryBuilder\IQueryBuilder;
 use OCP\IDBConnection;
@@ -26,7 +27,8 @@ final class VectorNormRepository {
 		foreach ($rows as $row) {
 			$id = (int)$row['id'];
 			if ($id < 1 || !is_string($row['embedding'] ?? null)) continue;
-			$norm = VectorNorm::fromJson($row['embedding']);
+			$vector = VectorEmbeddingCodec::decode($row['embedding']);
+			$norm = $vector === null ? null : VectorNorm::of($vector);
 			// A negative sentinel means the row was examined but invalid. Search
 			// treats it as absent and retains its existing defensive validation.
 			$value = $norm ?? -1.0;

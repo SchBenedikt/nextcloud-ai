@@ -2,6 +2,11 @@
 
 ## [Unreleased]
 
+### Compact local SQL generation vectors (1.18.55)
+
+- Store new built-in SQL-generation vectors as versioned, network-order float64 data when it is smaller than JSON, reducing bytes transferred and JSON decoding during exact dense scans.
+- Keep legacy and Qdrant JSON vectors readable; no schema migration or external service is required.
+
 ### Simplify the administrator landing page (1.18.54)
 
 - Replace the metric dashboard with a native Nextcloud SQL-default summary and an optional collapsed section for external storage and generation tools.
