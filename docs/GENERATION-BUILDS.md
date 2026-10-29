@@ -64,6 +64,16 @@ document cursor, current document/chunk cursor, plan identity, state, lease,
 heartbeat and a sanitized failure code. `eva_ai_vec_build_docs` records each
 completed canonical source stamp, plan hash and expected chunk count.
 
+Normal Nextcloud document insertion extends the high-water mark and total in
+the same owner-fenced SQL transaction. A row committed behind the cursor rewinds
+the build and invalidates its lease; a safely appended row leaves the current
+document and embedding request alone. A build that was already staged is queued
+again when new indexed sources arrive. Before staging, the worker rechecks for
+new documents while holding the same owner fence used by insertion, so an
+insert racing with finalization is either consumed by that tick or reopens the
+build after it commits. These hooks transfer no source text and do not add work
+to chat requests.
+
 Sources use a tenant-filtered document-ID keyset, without OFFSET scans. One tick
 claims one generation for 180 seconds and admits at most 256 chunks/16 sources
 subject to a 90-second admission budget checked between operations. Embeddings
@@ -104,9 +114,10 @@ late worker from recreating it. Legacy NULL-generation vectors remain intact.
 
 `staged` means the bounded source pass finished. SQL verification must still
 check local vectors, revisions, content hashes and source manifests. Qdrant
-verification additionally checks every remote point. Source additions beyond
-the initial high-water mark, changes behind the cursor, deleted documents and
-queued tombstones still need reconciliation. The UI/API report
+verification additionally checks every remote point. New documents committed
+while a build is queued, running, paused or staged are added to its work range.
+In-place metadata changes behind the cursor, deleted-document manifest cleanup,
+and changes after a build is cancelled or failed still need reconciliation. The UI/API report
 `retrieval_changed: false` until a later cutover.
 
 The read-only persisted verifier now consumes the tenant-scoped exact live-count

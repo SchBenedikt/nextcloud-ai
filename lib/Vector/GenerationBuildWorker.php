@@ -26,9 +26,15 @@ class GenerationBuildWorker {
                 $this->access->assertOwner($generation->userId);
                 $documentId=$this->builds->nextDocument($row);
                 if ($documentId===null) {
-                    $this->builds->withLease($claim,function()use($claim):void {
+                    $nextDocument=null;
+                    $this->builds->withLease($claim,function(array $current)use($claim,&$nextDocument):void {
+                        // Recheck under the same owner fence as document creation.
+                        // A new source may have arrived after nextDocument() above.
+                        $nextDocument=$this->builds->nextDocument($current);
+                        if($nextDocument!==null)return;
                         $this->builds->checkpoint($claim,['status'=>'staged','lease_token'=>null,'lease_until'=>0]);
                     });
+                    if($nextDocument!==null)continue;
                     $stats['staged']=true;
                     return $stats;
                 }
