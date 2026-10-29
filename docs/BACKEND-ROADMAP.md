@@ -49,6 +49,11 @@ The implementation entries further below record the actual delivered slices.
   content/provenance rows are loaded only for the bounded cosine top set. This
   reduces database result transfer and PHP row materialization, but does not
   change the O(N) cosine scan or establish a latency result.
+- Nextcloud OpenMetrics now exposes instance-wide indexed item totals, vector
+  generation counts by backend/state, and outbox queue depth and oldest age by
+  operation/state.
+  Exported labels contain no tenant, file, prompt, endpoint, or credential data;
+  request percentiles, provider timings, and queue-age histograms remain open.
 - `Chunk` stores embeddings as JSON text. `ChunkMapper` supplies lexical
   candidates through SQL LIKE, not an inverted index.
 - `Indexer` already bounds file traversal, extraction and embedding batches and

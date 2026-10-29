@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Native OpenMetrics backend gauges (1.18.37)
+
+- Export aggregate index totals, vector generation counts, and durable vector outbox depth/age through Nextcloud's OpenMetrics exporter. Labels exclude account IDs, file metadata, prompts, provider URLs, and credentials.
+
 ### Lighter SQL dense candidate scans (1.18.36)
 
 - Fetch only chunk IDs and embeddings while scanning large SQL indexes for dense candidates. Hydrate content, document IDs and provenance only for the bounded top set; ranking behavior and the full-coverage scan remain unchanged.
