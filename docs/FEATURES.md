@@ -173,9 +173,10 @@ of them can never remove entries of another. Size, path, and count limits preven
 a single run from consuming unbounded resources, and a file that cannot be read
 is skipped instead of stopping the run.
 
-When local OCR is enabled, EVA also reads text from standalone raster images
-and from up to four embedded images in DOCX, PPTX and OpenDocument files. This
-work is local to the Nextcloud server and has per-image size and runtime limits.
+When local OCR is enabled, EVA also reads text from standalone raster images,
+from up to four embedded images in DOCX, PPTX and OpenDocument files, and from
+up to eight sparse pages in mixed text/scanned PDFs. This work is local to the
+Nextcloud server and has per-image size and runtime limits.
 If a chat starts during OCR, EVA stops the OCR subprocess promptly, keeps the
 previous indexed version available, and retries the changed file later.
 

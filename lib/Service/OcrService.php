@@ -85,7 +85,7 @@ class OcrService {
         return implode('+', $valid);
     }
 
-    public function extract(string $bytes, string $mime, string $language, int $maxRuntimeSeconds = 60, ?callable $shouldYield = null): string {
+    public function extract(string $bytes, string $mime, string $language, int $maxRuntimeSeconds = 60, ?callable $shouldYield = null, ?array $pdfPages = null): string {
         if (!preg_match('/^[a-zA-Z0-9_]{1,24}(?:\+[a-zA-Z0-9_]{1,24}){0,3}$/D', $language)) {
             throw new \RuntimeException('Invalid OCR language');
         }
@@ -109,8 +109,20 @@ class OcrService {
                     throw new \RuntimeException('PDF OCR requires 1–30 pages; the existing index was preserved');
                 }
                 $pages = (int)$matches[1];
+                if ($pdfPages !== null) {
+                    if (count($pdfPages) > self::MAX_PAGES) throw new \RuntimeException('PDF OCR page selection exceeds its limit');
+                    $selectedPages = [];
+                    foreach ($pdfPages as $page) {
+                        if (!is_int($page) || $page < 1 || $page > $pages) throw new \RuntimeException('Invalid PDF OCR page selection');
+                        $selectedPages[$page] = true;
+                    }
+                    if ($selectedPages === []) return '';
+                } else {
+                    $selectedPages = null;
+                }
                 $text = '';
                 for ($page = 1; $page <= $pages; $page++) {
+                    if ($selectedPages !== null && !isset($selectedPages[$page])) continue;
                     $prefix = $dir . '/page';
                     $this->runOcrCommand([$pdftoppm, '-f', (string)$page, '-l', (string)$page, '-singlefile', '-scale-to', '2000', '-png', $input, $prefix], $deadline, $shouldYield);
                     $pageText = $this->runOcrCommand([$tesseract, $prefix . '.png', 'stdout', '-l', $language], $deadline, $shouldYield);
