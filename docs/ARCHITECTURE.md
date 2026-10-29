@@ -2,6 +2,23 @@
 
 High-level overview of how eva_ai is built and how data flows through it.
 
+# Encrypted SQL chat storage rollout
+
+Starting with 1.18.27, EVA creates additive `eva_ai_chats`,
+`eva_ai_chat_messages`, and `eva_ai_chat_migrations` tables. Chat metadata and
+each message payload use Nextcloud `ICrypto` encryption with the existing
+`EVA-CHAT-1` format marker. Database owner keys are SHA-256 hashes of the exact
+Nextcloud user ID. Only structural IDs, timestamps, message counts, and
+migration state are queryable; no plaintext title, role, or message index is
+created.
+
+This schema foundation does not switch active reads or writes away from the
+encrypted AppData JSON store. AppData remains authoritative until the
+checkpointed import, dual-version recovery path, and ChatStore cutover are
+implemented and documented. Keep the encrypted source snapshots through the
+rollback window.
+
+
 ## Directory layout
 
 ```

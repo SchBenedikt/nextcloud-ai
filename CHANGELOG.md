@@ -2,6 +2,11 @@
 
 ## [Unreleased]
 
+### Encrypted SQL chat storage foundation (1.18.27)
+
+- Add additive, owner-scoped tables for encrypted chat metadata, encrypted messages, and per-user migration checkpoints. Existing AppData chat files remain untouched until a later migration/cutover step is ready.
+- Add encrypted repository primitives for atomic chat snapshots, individual message writes, metadata pagination, and owner-scoped account erasure. No plaintext title, role, or message search indexes are introduced.
+
 ### Native Qdrant BM25 opt-in (1.18.26)
 
 - Add per-generation native BM25 full-text indexing and dense+BM25 RRF for Qdrant 1.20+, while keeping the built-in SQL index and dense-only generations text-free by default.
