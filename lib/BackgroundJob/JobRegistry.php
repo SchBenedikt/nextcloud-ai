@@ -11,6 +11,7 @@ final class JobRegistry {
     public const JOBS = [
         IndexJob::class,
         ChatCleanupJob::class,
+        ChatStorageMigrationJob::class,
         ProactiveBriefingJob::class,
         BackgroundChatJob::class,
         VectorErasureJob::class,

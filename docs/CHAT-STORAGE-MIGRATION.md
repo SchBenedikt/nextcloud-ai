@@ -1,12 +1,17 @@
 # Encrypted chat storage migration
 
 EVA 1.18.27 introduces normalized SQL tables for encrypted chat metadata and
-individual encrypted messages. The existing encrypted AppData file remains the
-live source of truth in this rollout stage. On current EVA versions, successful
-AppData writes are mirrored to SQL in the same per-user critical section, with
-only changed message rows rewritten. SQL mirror errors leave the AppData write
-intact and invalidate the SQL migration checkpoint. Importing SQL rows does not
-enable SQL reads, delete the AppData copy, or alter chat behavior.
+individual encrypted messages. New and empty accounts enter the SQL path
+automatically. A scheduled Nextcloud background job migrates existing accounts
+in small batches, verifies encrypted SQL records against AppData, then enables
+SQL reads per user. AppData stays available for explicit rollback. While SQL
+reads are disabled, successful AppData writes mirror only changed SQL message
+rows. Mirror errors leave AppData intact and invalidate the checkpoint.
+
+The job is registered on app enable/update and checks up to two accounts every
+five minutes. It imports at most two batches of five chats per account per run,
+persists its account cursor, and returns to an unfinished account on the next
+tick. Empty accounts need no copy and switch to SQL on first chat-store access.
 
 ## Import one account
 
@@ -16,12 +21,12 @@ Run as the Nextcloud web/PHP user using `occ`:
 php occ eva_ai:migrate-chat-storage USER_ID
 ```
 
-The command takes a locked AppData snapshot, writes chats in batches of 25,
+The command takes a locked AppData snapshot, writes chats in batches of 5,
 stores a checkpoint after each batch, then decrypts and compares every SQL chat
 against its source record. The source fingerprint is calculated from the
 stored AppData bytes; no title or message text is put into migration state.
-Rerun the same command after an interrupted run. Completed batches are resumed
-from their checkpoint. If AppData changed during the import, the command exits
+Rerun the same command after an interrupted or `in-progress` run. Completed
+batches are resumed from their checkpoint. If AppData changed during the import, the command exits
 with `source-changed-retry`; rerun it to restart from the new source snapshot.
 
 After the import reports `complete`, enable the per-user SQL read flag with:
@@ -69,7 +74,8 @@ are not searchable in SQL.
   AppData chat folders. Import batches and account erasure share the same
   per-user lock, and the migration stops if the Nextcloud account disappears.
 
-Frontend pagination and restore/load drills remain follow-up work. During a
-rolling deployment, keep SQL reads disabled until all nodes run a version that
-supports the SQL mirror. Older nodes write only AppData. Rerun and verify the
-import after deployment, then enable SQL reads for a canary account.
+Frontend pagination is implemented. Mixed-version deployment/rollback
+rehearsal, sustained load, and restore drills remain follow-up work. The
+background job never removes AppData. In a mixed-version cluster, older EVA
+nodes write AppData without SQL mirroring; wait until all nodes run the new
+code before the scheduled migration activates SQL reads.

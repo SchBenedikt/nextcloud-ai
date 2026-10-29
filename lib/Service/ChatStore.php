@@ -1072,6 +1072,18 @@ class ChatStore {
         try {
             $chats = $this->decodeStoredList($raw, 'chat data');
             $this->chatSnapshots[$user] = $chats;
+            if ($chats === [] && $this->sqlChats !== null) {
+                try {
+                    $state = $this->sqlChats->migrationState($user);
+                    if ($state === null && $this->sqlChats->chatCount($user) === 0) {
+                        $this->sqlChats->saveMigrationState($user, 'complete', null, hash('sha256', $raw));
+                        $this->sqlChats->setSqlReadsEnabled($user, true);
+                        $this->sqlReadModes[$user] = true;
+                    }
+                } catch (\Throwable) {
+                    // A fresh account can still use AppData if SQL setup is unavailable.
+                }
+            }
             return $chats;
         } catch (\RuntimeException $error) {
             // Recover the last complete payload when a worker was killed
