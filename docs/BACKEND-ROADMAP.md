@@ -326,8 +326,10 @@ Normal document insertion now extends any queued, running, paused or staged
 generation build in the same owner-fenced transaction. Late-committing rows
 rewind a cursor and reclaim a stale lease, while safe tail appends preserve the
 current document and provider request. Final staging rechecks under the owner
-fence. This closes additions during a build but does not yet synchronize
-in-place metadata mutations, automatic generation provisioning, or retrieval.
+fence. Canonical in-place metadata changes now also rewind eligible builds and
+remove stale generation chunks/manifests under the owner fence. Automatic
+generation provisioning, deleted-document manifest cleanup and retrieval remain
+open.
 No SQL primary/shadow reads are enabled. No remote write/load/isolation tests or
 container startup have been run under the user's instruction to defer testing.
 
