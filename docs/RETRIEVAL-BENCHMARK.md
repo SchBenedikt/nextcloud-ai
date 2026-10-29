@@ -3,6 +3,8 @@
 The benchmark is an offline quality evaluator and exact-cosine oracle. It does
 not require Nextcloud, an inference server or a vector database. It makes no
 network connections and does not install or populate a search backend.
+The CLI explicitly loads its shared scope validator, so these commands do not
+depend on Nextcloud's runtime autoloader.
 
 ```sh
 php tools/retrieval-benchmark.php exact benchmarks/retrieval/example > exact-report.json

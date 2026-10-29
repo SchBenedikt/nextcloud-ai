@@ -2,6 +2,11 @@
 
 ## [Unreleased]
 
+### Load shared scope validation in the offline retrieval benchmark (1.18.71)
+
+- Make the documented exact and evaluation commands self-contained without Nextcloud's runtime autoloader.
+- Reuse EVA's production search-scope validator for benchmark input validation.
+
 ### Remove saved provider credentials when authentication is disabled (1.18.70)
 
 - Clear a profile's encrypted API key when its API-key authentication switch is turned off.

@@ -3,6 +3,9 @@
 
 declare(strict_types=1);
 
+// The offline runner intentionally has no dependency on Nextcloud's autoloader.
+// Load the shared path validator used by the evaluator explicitly.
+require_once __DIR__ . '/../lib/Vector/SearchFilters.php';
 require_once __DIR__ . '/../lib/Service/RetrievalBenchmark.php';
 
 use OCA\EvaAi\Service\RetrievalBenchmark;
