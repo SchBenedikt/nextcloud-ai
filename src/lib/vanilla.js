@@ -106,21 +106,36 @@ export function mountChat(root, opts = {}) {
 				// Bounded history writes may finish when the page closes.
 				if (historyWrite && new TextEncoder().encode(opts.body).length < 60000) opts.keepalive = true
 			}
-			fetch(API_BASE + path, opts)
-				.then(async (r) => {
+			const request = async (attempt = 0) => {
+				try {
+					const r = await fetch(API_BASE + path, opts)
 					const text = await r.text()
 					let json = null
 					try { json = text ? JSON.parse(text) : null } catch (_) {}
 					if (!r.ok) {
+						// Only repeat idempotent reads for brief lock/rate contention.
+						// Never replay a write or a model-generation request.
+						if (method === 'GET' && [408, 423, 429, 503].includes(r.status) && attempt < 2) {
+							await new Promise((done) => setTimeout(done, 200 * (attempt + 1) + Math.floor(Math.random() * 100)))
+							return request(attempt + 1)
+						}
 						const detail = apiErrorMessage(json) || text
 						throw new Error(('HTTP ' + r.status + ' ' + String(detail || '')).trim().slice(0, 260))
 					}
 					const data = json && json.ocs && typeof json.ocs.data !== 'undefined' ? json.ocs.data : json
 					if (path.endsWith('/meta') && Number.isSafeInteger(data?.rev)) chatRev = Math.max(chatRev ?? 0, data.rev)
 					resolve(data)
-				})
-				.catch(reject)
-				.finally(() => { if (timer) clearTimeout(timer) })
+				} catch (error) {
+					if (method === 'GET' && attempt < 2 && error?.name === 'TypeError') {
+						await new Promise((done) => setTimeout(done, 200 * (attempt + 1) + Math.floor(Math.random() * 100)))
+						return request(attempt + 1)
+					}
+					reject(error)
+				} finally {
+					if (timer) clearTimeout(timer)
+				}
+			}
+			request()
 		})
 	}
 
@@ -1684,7 +1699,29 @@ export function mountChat(root, opts = {}) {
 			sendBtn.disabled = false
 			return true
 		}).catch(() => {
-			if (!destroyed) showErr(t('Chat history could not be loaded. Reopen this conversation to try again.'))
+			if (!destroyed) {
+				showErr(t('Chat history could not be loaded. Reopen this conversation to try again.'))
+				// Keep the composer disabled: sending without the restored revision
+				// could overwrite newer history. A retry stays in this conversation.
+				const retry = document.createElement('button')
+				retry.type = 'button'
+				retry.className = 'button'
+				retry.textContent = t('Retry loading chat')
+				retry.addEventListener('click', () => {
+					retry.disabled = true
+					restoreServerChat(chatId, { timeout: 10000, requireRevision: true }).then(() => {
+						if (destroyed) return
+						showErr('')
+						retry.remove()
+						input.disabled = false
+						sendBtn.disabled = false
+					}).catch(() => {
+						retry.disabled = false
+					})
+				})
+				err.appendChild(document.createTextNode(' '))
+				err.appendChild(retry)
+			}
 			return false
 		})
 	}

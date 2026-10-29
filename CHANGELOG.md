@@ -2,6 +2,12 @@
 
 ## [Unreleased]
 
+### Recover chat history during brief storage contention (1.20.15)
+
+- Retry idempotent chat reads briefly when Nextcloud reports lock contention, rate limiting, or a transient network failure; model requests and writes are never replayed.
+- Allow a user to retry loading a conversation in place after repeated history failures, while keeping sending disabled until its revision is restored.
+- Extend shared chat-lock retries so short overlapping history writes are less likely to surface as a failed conversation load.
+
 ### Isolate background indexing lifecycle (1.20.14)
 
 - Move index start, stop, reset and queue admission into a focused user-scoped controller while preserving the existing OCS paths, bounded worker lifecycle and lock ownership.

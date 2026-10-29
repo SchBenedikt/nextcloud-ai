@@ -305,17 +305,13 @@ sudo -u www-data php occ config:list apps --app=eva_ai
 - **Talk bot does not appear** → run `occ eva_ai:talk:setup`, then activate the
   bot per conversation. If the bot stays silent on ordinary messages, check
   `talk_classify_all` (default `0` keeps human smalltalk away from the LLM).
-- **"Chat storage is busy" keeps coming back** → a request is writing the chat
-  file, or a request died while holding its lock. The app logs this as
-  `eva_ai: chat lock contention` with the user, the wait in milliseconds and
-  whether the lock is still held; when the lock is still held after the retries
-  it logs at error level instead. Reads never block (they fall back to a
-  lock-free read of the intact file), and the lock is not owner-bound, so a lock
-  left behind by a crashed request clears itself when the locking provider
-  reaches its own timeout — 3600 s for the database provider, which is a
-  constructor setting of that provider and cannot be lowered per request. If a
-  single user is stuck for that long and you do not want to wait, clear the lock
-  for that user with `occ` after confirming no request is running:
+- **Chat history could not be loaded / chat storage is busy** → EVA retries
+  brief SQL chat-lock contention for history reads and offers an in-place retry.
+  If it persists, inspect `eva_ai: SQL chat lock could not be acquired` log
+  entries and the configured Nextcloud locking backend. SQL-backed chat reads
+  never continue without their per-conversation lock. Legacy AppData reads can
+  still use an intact lock-free snapshot during contention. Never clear a lock
+  while a request may still be using it:
 
   ```bash
   # Reports whether the lock is held and, with --force, releases it
