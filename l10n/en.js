@@ -1263,6 +1263,7 @@ OC.L10N.register("eva_ai", {
   "Background API access": "Background API access",
   "Background tasks": "Background tasks",
   "Chat history could not be loaded. Reopen this conversation to try again.": "Chat history could not be loaded. Reopen this conversation to try again.",
+  "Retry loading chat": "Retry loading chat",
   "Choose where chat requests are sent. Each provider keeps its own encrypted API key. File indexing uses Ollama separately.": "Choose where chat requests are sent. Each provider keeps its own encrypted API key. File indexing uses Ollama separately.",
   "Configure": "Configure",
   "Configure a model below": "Configure a model below",

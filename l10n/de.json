@@ -1264,6 +1264,7 @@
     "Background API access": "API-Zugriff im Hintergrund",
     "Background tasks": "Hintergrundaufgaben",
     "Chat history could not be loaded. Reopen this conversation to try again.": "Der Chatverlauf konnte nicht geladen werden. Öffne dieses Gespräch erneut, um es noch einmal zu versuchen.",
+    "Retry loading chat": "Chat erneut laden",
     "Choose where chat requests are sent. Each provider keeps its own encrypted API key. File indexing uses Ollama separately.": "Wähle, wohin Chat-Anfragen gesendet werden. Jeder Anbieter hat einen eigenen verschlüsselten API-Schlüssel. Die Dateiindizierung verwendet separat Ollama.",
     "Configure": "Konfigurieren",
     "Configure a model below": "Konfiguriere unten ein Modell",

@@ -1475,11 +1475,14 @@ class ChatStore {
     // How often and how long to wait for user or conversation locks before giving up.
     // Page loads fire several chat reads in parallel; Nextcloud's lock
     // acquisition is non-blocking, so without retries a short write would make
-    // every read fail instantly. Reads retry briefly and then degrade to a
-    // lock-free read (a page must never stall or 500); writes retry longer
-    // because serializing them is a correctness requirement.
+    // every read fail instantly. Legacy AppData reads can fall back to a valid
+    // lock-free snapshot; SQL chat reads require per-conversation coordination.
+    // Writes retry longer because serializing them is a correctness requirement.
     private const LOCK_RETRY_ATTEMPTS_EXCLUSIVE = 6;
-    private const LOCK_RETRY_ATTEMPTS_SHARED = 3;
+    // Chat history reads frequently overlap the final turn receipt write. Give
+    // short Nextcloud lock collisions enough time to clear before returning a
+    // transient 503 to the browser.
+    private const LOCK_RETRY_ATTEMPTS_SHARED = 6;
     private const LOCK_RETRY_BASE_USLEEP = 100000; // 100 ms, growing per attempt
     /**
      * How long contention may take before a mutation is reported as busy.
