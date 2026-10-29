@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Serialize chat provider selection with settings saves (1.18.81)
+
+- Route provider switches through the same serialized settings queue as autosaves and provider profile changes, preventing overlapping writes from restoring an older selection.
+
 ### Avoid loading chat history when creating a SQL conversation (1.18.80)
 
 - Reuse empty SQL chats through bounded, keyset-paginated metadata reads and create new chats directly in SQL without decrypting existing messages.
