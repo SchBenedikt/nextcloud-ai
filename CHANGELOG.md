@@ -2,15 +2,20 @@
 
 ## [Unreleased]
 
+### Mixed-state lexical retrieval (1.18.45)
+
+- Use indexed token postings immediately while lexical backfill is running; query the prior `LIKE` path only for chunks whose postings are pending or unsupported, then merge and bound the tenant-scoped candidates.
+- This makes catch-up progress useful to search before the final chunk is indexed. Exact-token semantics apply as individual chunks become indexed; representative quality and latency comparisons remain open.
+
 ### Off-path lexical index backfill (1.18.44)
 
-- Keep file and generation indexing free of synchronous term-posting expansion. Chunk writes mark derived lexical state pending; a bounded, batched Nextcloud background job builds postings after the source write commits. Search retains its complete LIKE path until the user's generation is fully indexed.
+- Keep file and generation indexing free of synchronous term-posting expansion. Chunk writes mark derived lexical state pending; a bounded, batched Nextcloud background job builds postings after the source write commits.
 
 
 ### Portable SQL lexical postings (1.18.43)
 
 - Add an indexed, exact-token posting table for SQL lexical candidates and BM25 term frequencies. A bounded Nextcloud job builds postings off the file-index write path; source deletion removes derived rows.
-- Gradually backfill existing chunks. Each user/generation keeps the complete prior SQL `LIKE` query until all of its rows are indexed, preserving candidate behavior during rollout.
+- Gradually backfill existing chunks. Search combines indexed exact-token candidates with the prior SQL `LIKE` query for rows not yet indexed.
 - Frozen-corpus quality, cross-database migration, and representative latency evidence remain pending.
 
 

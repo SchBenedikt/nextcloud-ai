@@ -49,9 +49,9 @@ The implementation entries further below record the actual delivered slices.
   exact Unicode word frequencies for all query terms. It avoids rescanning each
   chunk body for every term. Exact-token SQL postings now select indexed
   candidates and provide term frequencies; a bounded background job builds them
-  after source indexing commits and backfills existing chunks. A user/generation
-  keeps the complete old LIKE path until all
-  its rows have postings, then switches to the indexed candidates.
+  after source indexing commits and backfills existing chunks. Search uses
+  postings for completed chunks while applying the complete LIKE fallback only
+  to pending or unsupported chunks, then bounds and merges the candidate sets.
   The full dense scan remains. This changes substring matches inside larger
   words to exact word matches, so
   ranking quality needs frozen-corpus comparison. A local synthetic term-count
@@ -633,12 +633,22 @@ Large-index SQL lexical selection now uses an indexed SHA-256-keyed token-postin
 table, with exact term frequencies passed to BM25 instead of retokenizing each
 indexed candidate body. Normal indexing and generation writes maintain the derived
 rows transactionally; source deletion removes them in the same boundary. Existing
-rows are populated by bounded recurring Nextcloud work. A user's active generation
-continues using the full legacy LIKE query until all its chunks are marked indexed,
-so mixed migration state does not shrink its candidate set. This removes LIKE from
-the completed lexical path, but does not change or accelerate the SQL dense scan.
+rows are populated by bounded recurring Nextcloud work. The implementation first
+used the full legacy LIKE query during mixed migration; 1.18.45 refines this to use
+postings for completed chunks and LIKE only for pending or unsupported rows. This
+does not change or accelerate the SQL dense scan.
 Portability migration execution, frozen-corpus quality, and representative latency
 measurements remain open; no speedup is claimed yet.
+
+
+### Mixed-state lexical retrieval (1.18.45)
+
+Search no longer sends the entire user's lexical query through SQL `LIKE` just
+because a small set of chunks is still pending. It combines indexed exact-token
+postings with a tenant/source/generation-scoped `LIKE` query over only pending or
+unsupported rows, sorts the union deterministically and applies the candidate
+cap. Exact-token semantics take effect per chunk as backfill completes; frozen
+corpus quality and latency comparisons remain open.
 
 
 ### Off-path lexical maintenance (1.18.44)
@@ -647,7 +657,7 @@ Chunk and generation writes now mark lexical postings pending instead of expandi
 all tokens inside the source-index transaction. A recurring Nextcloud worker claims
 a bounded set, reads current content after acquiring row claims, and inserts its
 postings in one batch transaction. Generation writes reset the marker when content
-changes; source deletion clears postings. Search uses the old complete LIKE path
-while any eligible row is pending. This trades a temporary period of legacy search
-for shorter indexing transactions; the backfill's database load and catch-up rate
-remain to be measured on representative installations.
+changes; source deletion clears postings. While pending rows remain, search uses
+the legacy LIKE path for those rows; see 1.18.45 for mixed-state candidate merging.
+Backfill database load and catch-up rate remain to be measured on representative
+installations.
