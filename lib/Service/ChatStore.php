@@ -605,54 +605,70 @@ class ChatStore {
      * only when the chat itself does not exist.
      */
     public function setMeta(string $user, string $id, array $meta): bool {
-        return $this->withUserLock($user, function () use ($user, $id, $meta): bool {
-            $all = $this->read($user);
-            foreach ($all as &$chat) {
-                if (($chat['id'] ?? '') !== $id) {
-                    continue;
-                }
-                if (array_key_exists('pinned', $meta)) {
-                    $chat['pinned'] = !empty($meta['pinned']);
-                }
-                if (array_key_exists('archived', $meta)) {
-                    $chat['archived'] = !empty($meta['archived']);
-                }
-                if (array_key_exists('folder', $meta)) {
-                    $folder = trim((string)$meta['folder']);
-                    if ($folder !== '') {
-                        // Unknown names create the folder (Issue #87) so the
-                        // sidebar's "new folder" flow needs no extra API call.
-                        $this->createFolderLocked($user, $folder);
-                    }
-                    $chat['folder'] = $folder;
-                }
-                if (array_key_exists('tags', $meta)) {
-                    $chat['tags'] = $this->normalizeTags($meta['tags']);
-                }
-                if (array_key_exists('scopePath', $meta)) {
-                    // Per-chat retrieval scope (Issue #88): restricts RAG to
-                    // documents at/under this folder path. Empty clears it.
-                    $chat['scopePath'] = trim((string)$meta['scopePath']);
-                }
-                if (array_key_exists('instructions', $meta)) {
-                    // Per-chat custom instructions (Issue #90). Capped to the
-                    // same limit RagService enforces when building prompts.
-                    $chat['instructions'] = mb_substr(trim((string)$meta['instructions']), 0, 2000);
-                }
-                if (array_key_exists('persona', $meta)) {
-                    // Preset persona slug (Issue #90); validated against the
-                    // known set in RagService, stored verbatim here.
-                    $chat['persona'] = trim((string)$meta['persona']);
-                }
-                $chat['updated'] = time();
-                $chat['rev'] = (int)($chat['rev'] ?? 0) + 1;
-                unset($chat);
-                $this->write($user, $all);
-                return true;
-            }
-            unset($chat);
-            return false;
+        // Folder definitions remain a small AppData collection. When changing
+        // a folder, hold the user fence while checking the chat, creating the
+        // folder and updating metadata so a concurrent delete cannot leave a
+        // newly created orphan folder. No conversation history is loaded.
+        if (array_key_exists('folder', $meta)) {
+            return $this->withUserLock($user, function () use ($user, $id, $meta): bool {
+                unset($this->sqlReadModes[$user]);
+                if (!$this->sqlReadsEnabled($user)) return $this->updateAppDataChatMetaLocked($user, $id, $meta);
+                if ($this->sqlChats->metadata($user, $id) === null) return false;
+                $folder = trim((string)$meta['folder']);
+                if ($folder !== '') $this->createFolderLocked($user, $folder);
+                return $this->updateSqlChatMeta($user, $id, $meta);
+            });
+        }
+
+        return $this->withChatAwareLock($user, $id, function () use ($user, $id, $meta): bool {
+            if ($this->sqlReadsEnabled($user)) return $this->updateSqlChatMeta($user, $id, $meta);
+            return $this->updateAppDataChatMetaLocked($user, $id, $meta);
         });
+    }
+
+    /** Update one legacy AppData chat while its user-wide lock is held. */
+    private function updateAppDataChatMetaLocked(string $user, string $id, array $meta): bool {
+        $all = $this->read($user);
+        foreach ($all as &$chat) {
+            if (($chat['id'] ?? '') !== $id) continue;
+            if (array_key_exists('pinned', $meta)) $chat['pinned'] = !empty($meta['pinned']);
+            if (array_key_exists('archived', $meta)) $chat['archived'] = !empty($meta['archived']);
+            if (array_key_exists('folder', $meta)) {
+                $folder = trim((string)$meta['folder']);
+                if ($folder !== '') $this->createFolderLocked($user, $folder);
+                $chat['folder'] = $folder;
+            }
+            if (array_key_exists('tags', $meta)) $chat['tags'] = $this->normalizeTags($meta['tags']);
+            if (array_key_exists('scopePath', $meta)) $chat['scopePath'] = trim((string)$meta['scopePath']);
+            if (array_key_exists('instructions', $meta)) $chat['instructions'] = mb_substr(trim((string)$meta['instructions']), 0, 2000);
+            if (array_key_exists('persona', $meta)) $chat['persona'] = trim((string)$meta['persona']);
+            $chat['updated'] = time();
+            $chat['rev'] = (int)($chat['rev'] ?? 0) + 1;
+            unset($chat);
+            $this->write($user, $all);
+            return true;
+        }
+        unset($chat);
+        return false;
+    }
+
+    /** Update one normalized SQL chat while its user or conversation fence is held. */
+    private function updateSqlChatMeta(string $user, string $id, array $meta): bool {
+        $record = $this->sqlChats->metadata($user, $id);
+        if ($record === null) return false;
+        $metadata = $record['metadata'];
+        if (array_key_exists('pinned', $meta)) $metadata['pinned'] = !empty($meta['pinned']);
+        if (array_key_exists('archived', $meta)) $metadata['archived'] = !empty($meta['archived']);
+        if (array_key_exists('folder', $meta)) $metadata['folder'] = trim((string)$meta['folder']);
+        if (array_key_exists('tags', $meta)) $metadata['tags'] = $this->normalizeTags($meta['tags']);
+        if (array_key_exists('scopePath', $meta)) $metadata['scopePath'] = trim((string)$meta['scopePath']);
+        if (array_key_exists('instructions', $meta)) $metadata['instructions'] = mb_substr(trim((string)$meta['instructions']), 0, 2000);
+        if (array_key_exists('persona', $meta)) $metadata['persona'] = trim((string)$meta['persona']);
+        $metadata['updated'] = time();
+        $metadata['rev'] = (int)($metadata['rev'] ?? 0) + 1;
+        $this->sqlChats->updateMetadata($user, $id, $metadata);
+        unset($this->chatSnapshots[$user]);
+        return true;
     }
 
     /**

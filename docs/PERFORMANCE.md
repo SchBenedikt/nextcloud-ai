@@ -82,9 +82,11 @@ existing offset-compatible path until SQL reads are enabled. Chat content search
 remains a separate, explicit full-text walk because message bodies stay
 encrypted and are not indexed in plaintext.
 
-On normalized SQL storage, title changes, single-message edits, truncation and
-regeneration preparation update only the affected conversation. They do not
-decrypt, diff or rewrite the account's other chat histories.
+On normalized SQL storage, title changes, single-message edits, truncation,
+regeneration preparation and per-chat settings update only the affected
+conversation. They do not decrypt, diff or rewrite the account's other chat
+histories. Creating a new folder remains protected by the user-wide AppData
+fence and does not materialize SQL chat messages.
 
 The wrapper destroys its renderer when replaced or unmounted. Destruction
 hands an active request to the existing durable background flow, removes the
