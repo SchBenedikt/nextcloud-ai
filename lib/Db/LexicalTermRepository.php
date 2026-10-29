@@ -36,7 +36,10 @@ final class LexicalTermRepository {
 				}
 				$indexedIds[] = (int)$chunk['id'];
 				foreach ($frequencies as $term => $frequency) {
-					$values[] = [(int)$chunk['id'], (int)$chunk['documentId'], hash('sha256', $term), (int)$frequency];
+					// PHP casts numeric-looking array keys (for example "2026") to
+					// integers. hash() is strict about its input type, so restore the
+					// token string before hashing the portable posting key.
+					$values[] = [(int)$chunk['id'], (int)$chunk['documentId'], hash('sha256', (string)$term), (int)$frequency];
 				}
 			}
 			$this->insertPostings($values);

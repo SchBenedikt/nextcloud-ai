@@ -19,8 +19,10 @@ final class LexicalIndexBackfillJob extends TimedJob {
 	protected function run($argument): void {
 		try {
 			$this->terms->backfill();
-		} catch (\Throwable) {
-			$this->logger->warning('eva_ai: lexical index backfill tick interrupted');
+		} catch (\Throwable $e) {
+			$this->logger->warning('eva_ai: lexical index backfill tick failed', [
+				'exception' => $e,
+			]);
 		}
 	}
 }
