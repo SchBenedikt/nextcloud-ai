@@ -2,6 +2,11 @@
 
 ## [Unreleased]
 
+### Make saved AI providers selectable for chats (1.18.75)
+
+- Add an explicit action to switch chats to an existing provider profile and show a result only after the server confirms the change.
+- Keep provider-switch errors visible in the settings section and document the action.
+
 ### Bound retrieval metric reads to the latest chat sample (1.18.74)
 
 - Read at most 5,000 recent chat rows before filtering for retrieval backends, so OpenMetrics scrapes stay bounded when most chats have no retrieved documents.

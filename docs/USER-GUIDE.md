@@ -42,6 +42,8 @@ derived data; resetting it differs from deleting the original file.
 Indexing continues on the server. Changing views does not stop it; use the
 explicit stop action. Progress checks do not probe AI providers.
 
-Core settings auto-save. Provider profiles use **Save & use provider**.
+Core settings auto-save. Provider profiles use **Save & use provider** when
+adding or editing the active profile. To switch to a profile that is already
+saved, choose **Use for chats** in that provider's actions.
 Blank key fields preserve an existing encrypted key. See
 [Workspace settings](WORKSPACE.md) for retention, personal knowledge and exports.
