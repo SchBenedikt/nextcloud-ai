@@ -97,12 +97,17 @@ identical chunk text without repeating provider work. A matching active SQL
 generation is extended through the transactional mutation journal; it does not
 start a redundant full rebuild. Qdrant primary selection is left unchanged.
 
-The automatic local SQL provisioner creates Ollama generations from the regular
-indexing settings. If an administrator explicitly activates an SQL generation
-using an OpenAI-compatible embedding profile, later legacy-index batches preserve
-that selected generation; they do not silently replace it with an Ollama build.
-Changing the immutable provider/model requires preparing and verifying a new
-generation through the generation controls.
+The automatic SQL provisioner uses Ollama and the regular indexing model by
+default. A user can configure an OpenAI-compatible provider profile with an
+embedding model and vector dimension, then explicitly select it for automatic
+file indexing in that profile's settings. This selection authorizes indexed file
+text to be sent to that endpoint. The generation pins provider profile, endpoint,
+model, dimension and chunk settings; changing those creates a fresh generation.
+Vectors produced by the legacy Ollama indexer are never reused for a compatible
+provider generation, even when their dimensions happen to match. Clearing the
+selection returns automatic generation provisioning to Ollama, which builds a
+new generation when its identity differs. Chat profile selection alone never
+changes the embedding destination.
 
 ## Validation and remaining backfill work
 

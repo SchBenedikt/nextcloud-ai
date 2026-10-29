@@ -47,12 +47,13 @@ class VectorGenerationRepository {
     }
 
     /** Find an unfinished SQL generation with the same immutable embedding identity. */
-    public function findBuildingSql(string $userId, string $model, string $endpointHash, int $dimension, int $chunkSize, int $chunkOverlap): ?VectorGeneration {
+    public function findBuildingSql(string $userId, string $provider, ?string $profileId, string $model, string $endpointHash, int $dimension, int $chunkSize, int $chunkOverlap): ?VectorGeneration {
         $qb = $this->db->getQueryBuilder();
         $qb->select('*')->from('eva_ai_vec_generations')
             ->where($qb->expr()->eq('user_id', $qb->createNamedParameter($userId)))
             ->andWhere($qb->expr()->eq('backend', $qb->createNamedParameter('sql')))
-            ->andWhere($qb->expr()->eq('embedding_provider', $qb->createNamedParameter('ollama')))
+            ->andWhere($qb->expr()->eq('embedding_provider', $qb->createNamedParameter($provider)))
+            ->andWhere($profileId === null ? $qb->expr()->isNull('profile_id') : $qb->expr()->eq('profile_id', $qb->createNamedParameter($profileId)))
             ->andWhere($qb->expr()->eq('embedding_model', $qb->createNamedParameter($model)))
             ->andWhere($qb->expr()->eq('endpoint_hash', $qb->createNamedParameter($endpointHash)))
             ->andWhere($qb->expr()->eq('dimension', $qb->createNamedParameter($dimension, IQueryBuilder::PARAM_INT)))

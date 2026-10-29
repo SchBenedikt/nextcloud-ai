@@ -6,6 +6,7 @@ export function createSettingsDefaults() {
 		custom_provider_url: '',
 		custom_provider_model: '',
 		provider_profiles: '[]',
+		generation_embedding_profile_id: '',
 		ollama_url: 'http://127.0.0.1:11434',
 		embedding_model: 'nomic-embed-text',
 		chat_model: 'gemma4:cloud',

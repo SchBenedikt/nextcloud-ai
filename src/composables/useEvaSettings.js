@@ -245,7 +245,10 @@ export function useEvaSettings({ section = ref('general') } = {}) {
 			try {
 				const profiles = JSON.parse(f.value.provider_profiles || '[]')
 				if (!Array.isArray(profiles) || profiles.length > 20) errors.push(t('Provider profiles must be a JSON array with at most {max} entries.', { max: 20 }))
-				for (const p of profiles) if (!p || !/^[a-z][a-z0-9_-]{1,31}$/.test(String(p.id || '')) || !String(p.name || '').trim() || !/^https?:\/\/\S+$/i.test(String(p.url || '')) || !String(p.model || '').trim()) errors.push(t('Each provider profile needs an ID, name, URL and model.'))
+				for (const p of profiles) {
+					if (!p || !/^[a-z][a-z0-9_-]{1,31}$/.test(String(p.id || '')) || !String(p.name || '').trim() || !/^https?:\/\/\S+$/i.test(String(p.url || '')) || !String(p.model || '').trim()) errors.push(t('Each provider profile needs an ID, name, URL and model.'))
+					if (!!p.embedding_model !== (p.embedding_dimension !== undefined) || (p.embedding_dimension !== undefined && (!Number.isInteger(Number(p.embedding_dimension)) || Number(p.embedding_dimension) < 1 || Number(p.embedding_dimension) > 16384))) errors.push(t('Embedding profiles need a model and dimensions from 1 to 16384.'))
+				}
 			} catch (_) { errors.push(t('Provider profiles must contain valid JSON.')) }
 		}
 		if (includes('embedding_model') && !f.value.embedding_model.trim()) errors.push(t('Embedding model is required.'))

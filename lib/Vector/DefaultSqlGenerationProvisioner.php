@@ -20,9 +20,13 @@ final class DefaultSqlGenerationProvisioner {
 
     /** @param list<array{text:string,vector:list<float|int>}> $provenVectors */
     public function ensure(string $userId, string $model, int $dimension, array $provenVectors = []): void {
-        if ($userId === '' || $model === '' || $dimension < 1 || !$this->isEnrolled($userId)) return;
-
-        $endpointHash = hash('sha256', $this->config->ollamaUrl());
+        if ($userId === '' || !$this->isEnrolled($userId)) return;
+        try { $identity = $this->embeddingIdentity($userId, $model, $dimension); }
+        catch (\Throwable $e) {
+            $this->logger->warning('eva_ai: configured generation embedding profile is unavailable', ['exception' => $e::class]);
+            return;
+        }
+        if ($identity['model'] === '' || $identity['dimension'] < 1) return;
         $chunkSize = $this->config->getInt('chunk_size', 900);
         $chunkOverlap = $this->config->getInt('chunk_overlap', 120);
         try {
@@ -31,32 +35,26 @@ final class DefaultSqlGenerationProvisioner {
             // shadowed by automatic SQL provisioning.
             if ($retrievalBackend === 'qdrant_generation') return;
 
-            // Normal indexing already journals changed sources for the active
-            // generation. Reuse it when immutable embedding settings still
-            // match; otherwise this is a genuine model/configuration rebuild.
+            // Normal indexing journals changes for the active generation. Reuse
+            // it only when the complete configured provider identity matches.
             $activeId = $this->generations->activeGenerationId($userId);
             $active = $activeId === null ? null : $this->generations->find($userId, $activeId);
-            // This automatic provisioner is deliberately Ollama-backed. A
-            // separately configured SQL generation may use an OpenAI-compatible
-            // embedding profile; never replace that active choice with Ollama
-            // just because the legacy indexer completed another batch.
-            if ($active?->backend === 'sql' && $active->embeddingProvider !== 'ollama'
+            if ($this->matches($active, $identity, $chunkSize, $chunkOverlap)
                 && $retrievalBackend === 'sql_generation') {
-                return;
-            }
-            if ($this->matches($active, $model, $endpointHash, $dimension, $chunkSize, $chunkOverlap)
-                && $retrievalBackend === 'sql_generation') {
-                $this->cacheProvenVectors($active, $provenVectors);
+                if ($identity['provider'] === 'ollama') $this->cacheProvenVectors($active, $provenVectors);
                 return;
             }
 
-            $generation = $this->generations->findBuildingSql($userId, $model, $endpointHash, $dimension, $chunkSize, $chunkOverlap);
+            $generation = $this->generations->findBuildingSql($userId, $identity['provider'], $identity['profile_id'],
+                $identity['model'], $identity['endpoint_hash'], $identity['dimension'], $chunkSize, $chunkOverlap);
             if ($generation === null) {
-                $generation = new VectorGeneration(bin2hex(random_bytes(16)), $userId, 'sql', 'ollama', null,
-                    $model, $endpointHash, $dimension, $chunkSize, $chunkOverlap);
+                $generation = new VectorGeneration(bin2hex(random_bytes(16)), $userId, 'sql', $identity['provider'], $identity['profile_id'],
+                    $identity['model'], $identity['endpoint_hash'], $identity['dimension'], $chunkSize, $chunkOverlap);
                 $this->generations->create($generation);
             }
-            $this->cacheProvenVectors($generation, $provenVectors);
+            // Legacy indexing vectors are always produced by Ollama. They can
+            // seed only an Ollama generation, never a same-dimension profile.
+            if ($identity['provider'] === 'ollama') $this->cacheProvenVectors($generation, $provenVectors);
             $target = $this->generations->target($userId, $generation->id);
             if ($target !== null) $this->builds->start($userId, $generation->id, $target);
         } catch (\Throwable $e) {
@@ -67,12 +65,37 @@ final class DefaultSqlGenerationProvisioner {
         }
     }
 
-    private function matches(?VectorGeneration $generation, string $model, string $endpointHash,
-        int $dimension, int $chunkSize, int $chunkOverlap): bool {
-        return $generation !== null && $generation->backend === 'sql' && $generation->embeddingProvider === 'ollama'
-            && $generation->embeddingModel === $model && hash_equals($generation->endpointHash, $endpointHash)
-            && $generation->dimension === $dimension && $generation->chunkSize === $chunkSize
+    private function matches(?VectorGeneration $generation, array $identity, int $chunkSize, int $chunkOverlap): bool {
+        return $generation !== null && $generation->backend === 'sql' && $generation->embeddingProvider === $identity['provider']
+            && $generation->profileId === $identity['profile_id'] && $generation->embeddingModel === $identity['model']
+            && hash_equals($generation->endpointHash, $identity['endpoint_hash'])
+            && $generation->dimension === $identity['dimension'] && $generation->chunkSize === $chunkSize
             && $generation->chunkOverlap === $chunkOverlap && $this->generations->status($generation->userId, $generation->id) === 'active';
+    }
+
+    /** @return array{provider:string,profile_id:?string,model:string,dimension:int,endpoint_hash:string} */
+    private function embeddingIdentity(string $userId, string $ollamaModel, int $ollamaDimension): array {
+        $previous = $this->config->userId();
+        try {
+            $this->config->setUserId($userId);
+            $profileId = trim((string)$this->config->get('generation_embedding_profile_id'));
+            if ($profileId === '') {
+                if ($ollamaModel === '' || $ollamaDimension < 1) return ['provider'=>'ollama','profile_id'=>null,'model'=>'','dimension'=>0,'endpoint_hash'=>''];
+                return ['provider'=>'ollama','profile_id'=>null,'model'=>$ollamaModel,'dimension'=>$ollamaDimension,
+                    'endpoint_hash'=>hash('sha256',rtrim($this->config->ollamaUrl(),'/'))];
+            }
+            $profiles=json_decode((string)$this->config->get('provider_profiles'),true,64,JSON_THROW_ON_ERROR);
+            if (!is_array($profiles)||!array_is_list($profiles)) throw new \RuntimeException('Invalid embedding provider profiles.');
+            foreach($profiles as$profile){
+                if(!is_array($profile)||($profile['id']??null)!==$profileId)continue;
+                $url=is_string($profile['url']??null)?rtrim($profile['url'],'/'):'';
+                $model=is_string($profile['embedding_model']??null)?trim($profile['embedding_model']):'';
+                $dimension=filter_var($profile['embedding_dimension']??null,FILTER_VALIDATE_INT);
+                if($url===''||$model===''||$dimension===false||$dimension<1||$dimension>16384)throw new \RuntimeException('Invalid embedding provider identity.');
+                return ['provider'=>'openai_compatible','profile_id'=>$profileId,'model'=>$model,'dimension'=>$dimension,'endpoint_hash'=>hash('sha256',$url)];
+            }
+            throw new \RuntimeException('Selected embedding profile does not exist.');
+        } finally { $this->config->setUserId($previous); }
     }
 
     /** Exact text and proven vectors are cached only under the full generation identity. */
@@ -95,12 +118,25 @@ final class DefaultSqlGenerationProvisioner {
      */
     public function bootstrap(string $userId, EmbeddingProvider $provider): void {
         if ($userId === '' || !$this->isEnrolled($userId)
-            || $this->generations->hasSqlGeneration($userId)
             || $this->generations->retrievalBackendForUser($userId) === 'qdrant_generation') return;
 
         $previous = $this->config->userId();
         try {
             $this->config->setUserId($userId);
+            if (trim((string)$this->config->get('generation_embedding_profile_id')) !== '') {
+                // Selecting the embedding profile is explicit consent for the
+                // background generation build to send chunks to that endpoint.
+                $this->ensure($userId, '', 0);
+                return;
+            }
+            $activeId=$this->generations->activeGenerationId($userId);
+            $active=$activeId===null?null:$this->generations->find($userId,$activeId);
+            $expectedModel=trim((string)$this->config->get('embedding_model'));
+            $expectedEndpoint=hash('sha256',rtrim($this->config->ollamaUrl(),'/'));
+            if($active!==null&&$active->backend==='sql'&&$active->embeddingProvider==='ollama'
+                &&$active->embeddingModel===$expectedModel&&hash_equals($active->endpointHash,$expectedEndpoint)
+                &&$active->chunkSize===$this->config->getInt('chunk_size',900)
+                &&$active->chunkOverlap===$this->config->getInt('chunk_overlap',120))return;
             if ((int)$this->config->get('sql_generation_probe_after') > time()) return;
             $this->config->set('sql_generation_probe_after', (string)(time() + 21600));
             [$vectors, $error] = $provider->embedBatch(['EVA local SQL generation compatibility probe ' . bin2hex(random_bytes(12))]);

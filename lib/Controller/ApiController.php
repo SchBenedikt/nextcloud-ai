@@ -288,6 +288,22 @@ class ApiController extends OCSController {
                 if ($profileError !== null) $validationErrors[$key] = 'Provider profiles ' . $profileError . '.';
             }
         }
+        $embeddingProfileId = trim((string)($pending['generation_embedding_profile_id'] ?? $this->config->get('generation_embedding_profile_id')));
+        if ($embeddingProfileId !== '') {
+            $profiles = $pending['provider_profiles'] ?? $this->config->get('provider_profiles');
+            if (is_string($profiles)) {
+                try { $profiles = json_decode($profiles, true, 64, JSON_THROW_ON_ERROR); }
+                catch (\Throwable) { $profiles = []; }
+            }
+            $embeddingProfile = null;
+            foreach (is_array($profiles) ? $profiles : [] as $profile) {
+                if (is_array($profile) && ($profile['id'] ?? null) === $embeddingProfileId) { $embeddingProfile = $profile; break; }
+            }
+            if (!is_array($embeddingProfile) || !is_string($embeddingProfile['embedding_model'] ?? null)
+                || !isset($embeddingProfile['embedding_dimension'])) {
+                $validationErrors['generation_embedding_profile_id'] = 'The selected embedding profile must configure an embedding model and dimension.';
+            }
+        }
         if ($indexRunning && array_diff(array_keys($pending), ['proactive_enabled', 'proactive_schedules']) !== []) {
             return new ErrorDataResponse(['error' => 'Only scheduled briefings can be changed while indexing is running.'], 409);
         }

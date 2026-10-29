@@ -44,9 +44,11 @@ See the [provider guide](docs/PROVIDERS.md).
 Previews show the workspace components with synthetic conversation data in a
 test shell using Nextcloud core styles. They do not contain private account data.
 
-Document indexing uses an Ollama embedding model independently of the chat
-provider. A locally hosted endpoint can still use a cloud model. Review the
-provider and model before assuming inference stays on your own infrastructure.
+Automatic file-search generations use Ollama by default, independently of the
+chat provider. A compatible profile can optionally configure its own embedding
+model and dimensions; selecting it sends indexed file text to that endpoint.
+Review the provider and model before assuming inference stays on your own
+infrastructure. See [generation embeddings](docs/GENERATION-EMBEDDINGS.md).
 
 ## Ask about your documents
 
@@ -112,7 +114,7 @@ Read [Privacy](docs/PRIVACY.md), [Security](docs/SECURITY.md) and
   [workspace migration](docs/WORKSPACE-MIGRATION.md).
 - [Encrypted chat storage migration](docs/CHAT-STORAGE-MIGRATION.md): resumable SQL import and recovery; AppData remains authoritative until the later cutover.
 - [API reference](docs/API.md), [plugins](docs/PLUGIN_API.md) and [connectors](docs/CONNECTORS.md).
-- [Optional generation embeddings](docs/GENERATION-EMBEDDINGS.md): native administrator model/space checks; SQL remains the installation default.
+- [Generation embeddings](docs/GENERATION-EMBEDDINGS.md): Ollama default, explicit compatible-profile opt-in, native administrator model/space checks; SQL remains the installation default.
 - [Background generation builds](docs/GENERATION-BUILDS.md): explicit source processing, progress and pause/resume; search activation still requires full verification.
 - [Contributing](CONTRIBUTING.md), [development](docs/DEVELOPMENT.md) and [CI](docs/CI.md).
 
