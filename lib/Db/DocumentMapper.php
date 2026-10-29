@@ -362,6 +362,22 @@ class DocumentMapper extends QBMapper {
         return $out;
     }
 
+    /** Compact instance-wide totals for native administration; no account rows are exposed. */
+    public function aggregateInstance(): array {
+        $q = $this->db->getQueryBuilder();
+        $q->selectAlias($q->createFunction('COUNT(DISTINCT user_id)'), 'account_count')
+            ->selectAlias($q->createFunction('COUNT(*)'), 'document_count')
+            ->selectAlias($q->createFunction('COALESCE(SUM(chunk_count), 0)'), 'chunk_count')
+            ->from('eva_ai_documents');
+        $r = $q->executeQuery();
+        try { $row = $r->fetch(); } finally { $r->closeCursor(); }
+        return [
+            'accounts' => (int)($row['account_count'] ?? 0),
+            'documents' => (int)($row['document_count'] ?? 0),
+            'chunks' => (int)($row['chunk_count'] ?? 0),
+        ];
+    }
+
     public function findByUser(string $userId, ?string $search = null, ?int $limit = 100, ?int $offset = 0, array $filters = [], ?string $sort = null, string $dir = 'DESC'): array {
         $qb = $this->db->getQueryBuilder();
         $qb->select('*')

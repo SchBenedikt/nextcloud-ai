@@ -259,7 +259,7 @@ from an instance-wide value.
 | `rate_limit_background_per_minute` | I | `5` | `1`–`30` | requests | Per-user background chat requests allowed per minute. |
 | `index_scheduler_active` | JSON map `user → heartbeat` of currently running index slots (default `{}`, Issue #142); stale slots are reclaimed after 15 minutes. |
 | `index_scheduler_queue` | JSON FIFO list of users waiting behind the concurrency limit (default `[]`, Issue #142). |
-| `index_job_stop_requested` | Durable stop request (default `0`) for the periodic background run: the running tick aborts at the next user boundary and the following tick acknowledges (clears) the flag without starting. Set via the admin dashboard “Stop background indexing” action. |
+| `index_job_stop_requested` | Durable stop request (default `0`) for the periodic background run: the running tick aborts at the next user boundary and the following tick acknowledges (clears) the flag without starting. Set via the native EVA admin settings “Stop background indexing” action. |
 
 ## Settings page
 

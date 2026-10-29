@@ -280,6 +280,26 @@ class IndexScheduler {
         }
     }
 
+    /** Counts for compact admin status; never materializes account identifiers. */
+    public function summary(): array {
+        $this->lock();
+        try {
+            $active = $this->readActive();
+            $this->reclaimStaleLocked($active);
+            $queue = $this->readQueue();
+            $running = 0;
+            foreach ($active as $user => $_entry) if ((string)$user !== '') $running++;
+            $queued = [];
+            foreach ($queue as $entry) {
+                $user = (string)($entry['user'] ?? '');
+                if ($user !== '' && !isset($active[$user])) $queued[$user] = true;
+            }
+            return ['running' => $running, 'queued' => count($queued), 'limit' => $this->maxConcurrent()];
+        } finally {
+            $this->unlock();
+        }
+    }
+
     /** @param list<array{user:string,queuedAt:int}> $queue */
     private function dropUserLocked(array &$queue, string $userId): void {
         $queue = array_values(array_filter(

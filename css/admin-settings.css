@@ -177,11 +177,6 @@ table.grid th {
 	max-width: 760px;
 }
 
-.eva-user-table td,
-.eva-user-table th {
-	vertical-align: top;
-}
-
 .eva-actions {
 	display: flex;
 	align-items: center;
