@@ -103,6 +103,7 @@ class RagService {
                 try {
                     $this->logger->debug('eva_ai: chat request timings', [
                         'trace_id' => $this->traceContext->id(),
+                        'span_id' => $this->traceContext->spanId(),
                         'total_ms' => (hrtime(true) - $started) / 1_000_000,
                         'failed' => $failed,
                     ]);
@@ -266,6 +267,7 @@ class RagService {
                 try {
                     $this->logger->debug('eva_ai: streamed chat request timings', [
                         'trace_id' => $this->traceContext->id(),
+                        'span_id' => $this->traceContext->spanId(),
                         'total_ms' => (hrtime(true) - $started) / 1_000_000,
                     ]);
                 } catch (\Throwable) {
@@ -487,6 +489,8 @@ $this->executor->setUserId($userId);
     private function logTraceEvent(string $event, array $context): void {
         $traceId = $this->traceContext->id();
         if ($traceId !== null) $context['trace_id'] = $traceId;
+        $spanId = $this->traceContext->spanId();
+        if ($spanId !== null) $context['span_id'] = $spanId;
         try {
             $this->logger->debug('eva_ai: ' . $event, $context);
         } catch (\Throwable) {

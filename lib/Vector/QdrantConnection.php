@@ -7,6 +7,7 @@ namespace OCA\EvaAi\Vector;
 use OCA\EvaAi\Service\AppConfig;
 use OCA\EvaAi\Service\ProviderEndpointPolicy;
 use OCA\EvaAi\Service\ProviderException;
+use OCA\EvaAi\Service\TraceContext;
 use OCA\EvaAi\Db\VectorTargetRepository;
 use OCP\Http\Client\IClientService;
 use OCP\IConfig;
@@ -15,7 +16,7 @@ use OCP\Security\ICrypto;
 /** Instance-only, explicitly enabled transport. Construction performs no I/O. */
 class QdrantConnection {
     private const MAX_BODY = 2097152;
-    public function __construct(private IConfig $config, private ICrypto $crypto, private IClientService $clients, private VectorTargetRepository $targets) {}
+    public function __construct(private IConfig $config, private ICrypto $crypto, private IClientService $clients, private VectorTargetRepository $targets, private ?TraceContext $traceContext = null) {}
 
     public function configure(string $url, ?string $key, bool $noKey, bool $enable): void {
         $url = $this->validateBase($url);
@@ -75,6 +76,7 @@ class QdrantConnection {
         $base = $this->validateBase($target['endpoint']);
         if (!str_starts_with($path, '/') || str_contains($path, '..') || !in_array($method, ['get', 'post', 'put', 'delete'], true)) throw new VectorStoreException('invalid_request');
         $headers = ['Accept' => 'application/json', 'Content-Type' => 'application/json'];
+        $headers += $this->traceContext?->outboundHeaders() ?? [];
         if (!hash_equals(hash('sha256', $base), $targetId)) throw new VectorStoreException('target_changed');
         $auth = $target['auth'];
         if ($auth === 'api_key') {

@@ -78,7 +78,9 @@ The implementation entries further below record the actual delivered slices.
   count, embedding, candidate retrieval, hydration, scope filtering, ranking and
   total duration. It samples at most 5,000 recent chat rows before filtering,
   and labels only by the fixed retrieval backend and stage. Embedding-provider
-  distributions and cross-service traces remain open.
+  distributions remain open; W3C trace-context propagation is implemented at
+  configured provider and optional vector-service boundaries, while native
+  spans and end-to-end tracing evidence remain open.
 - Usage records have a 365-day maximum retention matching the supported report
   window. Daily bounded cleanup and account-erasure integration prevent
   indefinite growth and remove per-user rows when an account is deleted.
@@ -150,17 +152,20 @@ still open.
 | 11 | Canary and primary generation-based reads | 10 | Verified SQL-generation retrieval is automatic for enrolled users; an administrator can explicitly activate a verified Qdrant canary and roll back to built-in SQL. Queries apply tenant/generation/scope filters, hydrate exact revisions from SQL, and fall back on remote errors or pending mutations. Keep legacy rows; production soak and release-cycle rollback evidence remain pending. |
 | 12 | Native hybrid retrieval | 11 | Implemented the explicit generation text-payload opt-in, separate build/resume consent, Qdrant 1.20+ BM25 index preparation, native dense+BM25 RRF, exact SQL hydration and SQL fallback. Existing generations remain dense-only. Verification checks text-field coverage and compares sampled text with SQL. Remaining: run representative quality/latency comparison, verify live Qdrant 1.20+ index schema and text erasure, then enable only for evaluated canaries. SQL/dense-only rollback remains available. |
 | 13 | Normalized encrypted chat/message SQL storage | 12 | **In progress (1.18.27–1.18.29, 1.18.57, 1.18.80).** Additive encrypted tables, small resumable imports, per-message SQL mirroring, automatic new-account SQL, scheduled verified migration for existing users, owner-scoped erasure, indexed metadata pages, per-user SQL reads with AppData export rollback, keyset-paginated sidebar loading, and metadata-only SQL chat creation are implemented. Mixed-version deployment/rollback rehearsal, performance/load evidence, and restore drills remain. Preserve encryption and add no plaintext search indexes. |
-| 14 | Operational hardening and portability | 13 | Partial: native OpenMetrics exports indexed-item, lexical-state, vector/outbox, account-erasure, bounded provider-type completion/chat/slow-tool and retrieval-stage duration aggregates; usage rows expire after 365 days and are deleted on account erasure. The Activity feed uses Nextcloud QueryBuilder; Mail integration SQL avoids MySQL-only identifier quotes and normalizes search case independent of database collation. PostgreSQL/MariaDB lifecycle coverage, embedding-provider distributions, cross-service traces, restore/delete drills, sustained soak, domain-controller extraction, dependency/SAST/SBOM policy and enforced PR checks remain open. Embedding-cache 15-second process-local cooldown preserves uncached operation during cache outages. |
+| 14 | Operational hardening and portability | 13 | Partial: native OpenMetrics exports indexed-item, lexical-state, vector/outbox, account-erasure, bounded provider-type completion/chat/slow-tool and retrieval-stage duration aggregates; usage rows expire after 365 days and are deleted on account erasure. W3C trace context now propagates to configured model and optional vector services; native spans, complete DB/lock traces and end-to-end evidence remain open. The Activity feed uses Nextcloud QueryBuilder; Mail integration SQL avoids MySQL-only identifier quotes and normalizes search case independent of database collation. PostgreSQL/MariaDB lifecycle coverage, embedding-provider distributions, restore/delete drills, sustained soak, domain-controller extraction, dependency/SAST/SBOM policy and enforced PR checks remain open. Embedding-cache 15-second process-local cooldown preserves uncached operation during cache outages. |
 
 ## Stage 14 interface slice: correlated chat timings
 
-Normal, streamed and queued chat work now gets a random 128-bit trace ID held in
-request context. The same ID appears in chat totals, retrieval stage timings,
-provider completion timings and slow-tool timings. Queued jobs retain it only in
-the temporary queue record and omit it from completed history. These are
-privacy-preserving debug logs, not OpenTelemetry spans, percentiles, or an
-exporter; those remain open. The trace ID does not change provider payloads or
-chat responses.
+Normal, streamed and queued chat work gets a random 128-bit trace ID and a
+request span ID. Both appear in EVA's content-free chat, retrieval, provider and
+slow-tool debug events. Configured model providers and optional Qdrant receive
+the W3C `traceparent` HTTP header on inference, embedding and vector operations;
+provider payloads and chat responses remain unchanged. No baggage or user data
+is sent. The trace flag is unsampled because EVA does not create or export
+OpenTelemetry spans. This provides cross-service correlation context, not a
+distributed tracing SDK/exporter or complete child-span telemetry; those,
+database spans, and representative end-to-end trace evidence remain open.
+Queued jobs retain the trace ID only until completion or expiry.
 
 ## Stage 14 interface slice: compact administration
 
