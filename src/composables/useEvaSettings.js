@@ -452,7 +452,13 @@ export function useEvaSettings({ section = ref('general'), active = ref(true) } 
 			window.setTimeout(() => { saved.value = false }, 3000)
 			return true
 		} catch (error) {
-			setMessage('error', t('The settings could not be saved: {error}', { error: errMsg(error) }))
+			const payload = error?.response?.data?.ocs?.data ?? error?.response?.data
+			validationErrors.value = Array.isArray(payload?.validationErrors)
+				? payload.validationErrors.filter(value => typeof value === 'string' && value.trim()).slice(0, 5)
+				: []
+			setMessage('error', validationErrors.value.length
+				? t('The server rejected these settings. Review the validation messages above.')
+				: t('The settings could not be saved: {error}', { error: errMsg(error) }))
 			return false
 		}
 	}

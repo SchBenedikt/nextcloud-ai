@@ -22,6 +22,9 @@ Nextcloud page prompts before discarding them.
 Validation errors appear above the selected section. Provider profiles are
 saved explicitly with their keys in the same request. Cancelling their dialog
 does not activate the draft.
+If Nextcloud rejects a value that passes the browser's basic checks, the
+server's field-level reason is shown above the form so you can correct the
+specific setting.
 
 Credentials are encrypted separately per user. The browser only receives
 presence flags for stored keys. Never put a key in a URL or profile name.
