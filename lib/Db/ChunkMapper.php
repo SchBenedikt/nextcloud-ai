@@ -26,10 +26,12 @@ class ChunkMapper extends QBMapper {
     }
 
     private VectorSourceDeletion $sourceDeletion;
+    private LexicalTermRepository $lexicalTerms;
 
     public function __construct(IDBConnection $db, ?VectorSourceDeletion $sourceDeletion = null) {
         parent::__construct($db, 'eva_ai_chunks');
         $this->sourceDeletion = $sourceDeletion ?? new VectorSourceDeletion($db, new VectorOutboxRepository($db));
+        $this->lexicalTerms = new LexicalTermRepository($db);
     }
 
     public function insert(\OCP\AppFramework\Db\Entity $entity): \OCP\AppFramework\Db\Entity {
@@ -49,7 +51,13 @@ class ChunkMapper extends QBMapper {
         $inserted=[];
         foreach(array_chunk($entities,500)as$batch){
             array_push($inserted,...$this->sourceDeletion->insertChunks($documentId,
-                fn():array=>array_map(fn(Chunk$chunk):\OCP\AppFramework\Db\Entity=>parent::insert($chunk),$batch)));
+				function() use ($batch): array {
+					$rows = array_map(fn(Chunk $chunk): \OCP\AppFramework\Db\Entity => parent::insert($chunk), $batch);
+					$this->lexicalTerms->indexChunks(array_map(static fn(Chunk $chunk): array => [
+						'id' => (int)$chunk->getId(), 'documentId' => (int)$chunk->getDocumentId(), 'content' => (string)$chunk->getContent(),
+					], $batch));
+					return $rows;
+				}));
         }
         return $inserted;
     }
@@ -185,31 +193,80 @@ class ChunkMapper extends QBMapper {
      * @return array<int,array<string,mixed>>
      */
     public function filterChunksByTokens(string $userId, array $tokens, int $cap, ?string $source = null, ?string $generationId = null, string $generationState = 'ready'): array {
-        if ($tokens === []) {
-            // Empty token list: a lexical filter has nothing to match against.
-            // Return a bounded page instead of the full index (Issue #13).
-            return $this->chunksForUserPage($userId, $cap, 0, $generationId, $generationState);
+        $cap = max(1, min(8000, $cap));
+        $tokens = array_values(array_unique($tokens));
+        if ($tokens === []) return $this->chunksForUserPage($userId, $cap, 0, $generationId, $generationState);
+        $candidateTokens = array_slice($tokens, 0, 12);
+        $candidateHashes = array_map(static fn(string $token): string => hash('sha256', $token), $candidateTokens);
+        $frequencyHashes = array_map(static fn(string $token): string => hash('sha256', $token), array_slice($tokens, 0, 64));
+        if ($this->hasUnindexedChunks($userId, $source, $generationId, $generationState)) {
+            return $this->legacyTokenCandidates($userId, $candidateTokens, $cap, $source, $generationId, $generationState);
         }
-        $qb = $this->db->getQueryBuilder();
-        $qb->select('c.id', 'c.document_id', 'c.chunk_index', 'c.content', 'c.embedding', 'c.vector_norm', 'c.provenance')
+
+        // Select a bounded candidate ID set from postings without moving chunk bodies or embeddings.
+        $indexed = $this->db->getQueryBuilder();
+        $indexed->selectDistinct('c.id', 'c.document_id')
             ->from('eva_ai_chunks', 'c')
-            ->innerJoin('c', 'eva_ai_documents', 'd', $qb->expr()->eq('c.document_id', 'd.id'))
-            ->where($qb->expr()->eq('d.user_id', $qb->createNamedParameter($userId)));
-        if ($source !== null && $source !== '') {
-            $qb->andWhere($qb->expr()->eq('d.source', $qb->createNamedParameter($source)));
+            ->innerJoin('c', 'eva_ai_documents', 'd', $indexed->expr()->eq('c.document_id', 'd.id'))
+            ->innerJoin('c', 'eva_ai_chunk_terms', 't', $indexed->expr()->eq('t.chunk_id', 'c.id'))
+            ->where($indexed->expr()->eq('d.user_id', $indexed->createNamedParameter($userId)))
+            ->andWhere($indexed->expr()->in('t.term_hash', $indexed->createNamedParameter($candidateHashes, IQueryBuilder::PARAM_STR_ARRAY)));
+        if ($source !== null && $source !== '') $indexed->andWhere($indexed->expr()->eq('d.source', $indexed->createNamedParameter($source)));
+        $indexed->orderBy('c.document_id', 'ASC')->addOrderBy('c.id', 'ASC')->setMaxResults($cap);
+        $this->filterGeneration($indexed, $generationId, $generationState);
+        $result = $indexed->executeQuery();
+        try { $postingRows = $result->fetchAll(); } finally { $result->closeCursor(); }
+        $orderedIds = array_map(static fn(array $row): int => (int)$row['id'], $postingRows);
+        $frequencies = array_fill_keys($orderedIds, []);
+        foreach (array_chunk($orderedIds, 500) as $idBatch) {
+            $terms = $this->db->getQueryBuilder();
+            $terms->select('chunk_id', 'term_hash', 'frequency')->from('eva_ai_chunk_terms')
+                ->where($terms->expr()->in('chunk_id', $terms->createNamedParameter($idBatch, IQueryBuilder::PARAM_INT_ARRAY)))
+                ->andWhere($terms->expr()->in('term_hash', $terms->createNamedParameter($frequencyHashes, IQueryBuilder::PARAM_STR_ARRAY)));
+            $result = $terms->executeQuery();
+            try { $termRows = $result->fetchAll(); } finally { $result->closeCursor(); }
+            foreach ($termRows as $termRow) {
+                $frequencies[(int)$termRow['chunk_id']][(string)$termRow['term_hash']] = (int)$termRow['frequency'];
+            }
         }
-        $like = $qb->expr()->orX();
-        foreach (array_slice($tokens, 0, 12) as $tok) {
-            $like->add($qb->expr()->like('c.content', $qb->createNamedParameter('%' . $this->escapeLike($tok) . '%')));
+        $indexedRows = [];
+        foreach ($this->findChunksByIds($orderedIds, $generationId, $generationState) as $row) {
+            $row['_eva_lexical_frequencies'] = $frequencies[(int)$row['id']] ?? [];
+            $indexedRows[(int)$row['id']] = $row;
         }
-        $qb->andWhere($like);
-        $qb->orderBy('c.document_id', 'ASC')
-            ->setMaxResults($cap);
-        $this->filterGeneration($qb,$generationId,$generationState);
-        $result = $qb->executeQuery();
-        $rows = $result->fetchAll();
-        $result->closeCursor();
+        $rows = [];
+        foreach ($orderedIds as $id) if (isset($indexedRows[$id])) $rows[] = $indexedRows[$id];
         return $rows;
+    }
+
+    private function hasUnindexedChunks(string $userId, ?string $source, ?string $generationId, string $generationState): bool {
+        $q = $this->db->getQueryBuilder();
+        $q->select('c.id')->from('eva_ai_chunks', 'c')
+            ->innerJoin('c', 'eva_ai_documents', 'd', $q->expr()->eq('c.document_id', 'd.id'))
+            ->where($q->expr()->eq('d.user_id', $q->createNamedParameter($userId)))
+            ->andWhere($q->expr()->neq('c.lexical_indexed', $q->createNamedParameter(1, IQueryBuilder::PARAM_INT)))
+            ->setMaxResults(1);
+        if ($source !== null && $source !== '') $q->andWhere($q->expr()->eq('d.source', $q->createNamedParameter($source)));
+        $this->filterGeneration($q, $generationId, $generationState);
+        $result = $q->executeQuery();
+        try { return $result->fetch() !== false; } finally { $result->closeCursor(); }
+    }
+
+    /** Keep the complete previous candidate behavior until every eligible row has postings. */
+    private function legacyTokenCandidates(string $userId, array $tokens, int $cap, ?string $source, ?string $generationId, string $generationState): array {
+        $q = $this->db->getQueryBuilder();
+        $q->select('c.id', 'c.document_id', 'c.chunk_index', 'c.content', 'c.embedding', 'c.vector_norm', 'c.provenance')
+            ->from('eva_ai_chunks', 'c')
+            ->innerJoin('c', 'eva_ai_documents', 'd', $q->expr()->eq('c.document_id', 'd.id'))
+            ->where($q->expr()->eq('d.user_id', $q->createNamedParameter($userId)));
+        if ($source !== null && $source !== '') $q->andWhere($q->expr()->eq('d.source', $q->createNamedParameter($source)));
+        $like = $q->expr()->orX();
+        foreach ($tokens as $token) $like->add($q->expr()->like('c.content', $q->createNamedParameter('%' . $this->escapeLike($token) . '%')));
+        $q->andWhere($like)->orderBy('c.document_id', 'ASC')->setMaxResults($cap);
+        $this->filterGeneration($q, $generationId, $generationState);
+        $result = $q->executeQuery();
+        try { return $result->fetchAll(); } finally { $result->closeCursor(); }
+
     }
 
     /** Bounded exact-phrase candidate recovery for native remote hybrid search. */

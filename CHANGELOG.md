@@ -2,6 +2,13 @@
 
 ## [Unreleased]
 
+### Portable SQL lexical postings (1.18.43)
+
+- Add an indexed, exact-token posting table for SQL lexical candidates and BM25 term frequencies; update postings in the same transaction as normal and generation chunk writes and remove them with source deletion.
+- Gradually backfill existing chunks in bounded Nextcloud background work. Each user/generation keeps the complete prior SQL `LIKE` query until all of its rows are indexed, preserving candidate behavior during rollout.
+- Frozen-corpus quality, cross-database migration, and representative latency evidence remain pending.
+
+
 ### Compact native admin dashboard (1.18.42)
 
 - Replace the account-by-account admin landing page with aggregate SQL index and scheduler counts; preserve the legacy overview endpoint for existing clients.

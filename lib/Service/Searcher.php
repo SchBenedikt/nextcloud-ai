@@ -582,7 +582,15 @@ class Searcher {
             $len = $this->tokenCount(strlen($row['content']));
             $lengths[$i] = $len;
             $total += $len;
-            if ($pattern === null || preg_match_all($pattern, mb_strtolower((string)$row['content']), $matches) === false) {
+            $indexedTerms = $row['_eva_lexical_frequencies'] ?? null;
+            if (is_array($indexedTerms)) {
+                $counts = [];
+                foreach ($bodyTerms as $term) {
+                    $frequency = (int)($indexedTerms[hash('sha256', $term)] ?? 0);
+                    if ($frequency > 0) $counts[$term] = $frequency;
+                }
+                $frequencies[$i] = $counts;
+            } elseif ($pattern === null || preg_match_all($pattern, mb_strtolower((string)$row['content']), $matches) === false) {
                 $frequencies[$i] = [];
             } else {
                 $frequencies[$i] = array_count_values($matches[0]);
