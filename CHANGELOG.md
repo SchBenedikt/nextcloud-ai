@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Refresh new chat history from the server when requested (1.20.24)
+
+- Use the create response only for the first render of a new chat; explicit refreshes and conflict recovery read the canonical server state.
+
 ### Start new chats without a redundant history read (1.20.23)
 
 - Initialize a new conversation from the successful create response so the composer is immediately ready.

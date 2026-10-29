@@ -1574,8 +1574,9 @@ export function mountChat(root, opts = {}) {
 
 	function restoreServerChat(id, requestOptions = {}) {
 		const initialChat = opts.initialChat
-		if (initialChat && initialChat.id === id && Number.isSafeInteger(initialChat.rev) && Array.isArray(initialChat.messages)) {
+		if (!requestOptions.requireRevision && initialChat && initialChat.id === id && Number.isSafeInteger(initialChat.rev) && Array.isArray(initialChat.messages)) {
 			try {
+				opts.initialChat = null
 				applyServerChat(initialChat)
 				return Promise.resolve(true)
 			} catch (_) {
