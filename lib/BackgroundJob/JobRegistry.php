@@ -23,6 +23,7 @@ final class JobRegistry {
         LexicalIndexBackfillJob::class,
         GenerationVectorCompactionJob::class,
         UsageMetricsRetentionJob::class,
+        RateLimitCleanupJob::class,
         DirtyIndexRecoveryJob::class,
     ];
 

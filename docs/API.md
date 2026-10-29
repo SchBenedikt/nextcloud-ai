@@ -265,7 +265,11 @@ Read keys can list chats and indexed documents and read their content in bounded
 pages. They are limited to 100 requests per minute; write keys (30/min) can also send a chat request, and
 admin keys (10/min) inherit both capabilities. The external chat route never
 runs EVA tools or mutating actions. The API key owner must remain an enabled
-Nextcloud user.
+Nextcloud user. Counters use Nextcloud's shared locking cache and fall back to
+instance-keyed HMAC fixed-window records in the instance SQL database during
+cache outages.
+If both backends are unavailable, key-authenticated requests return HTTP 503
+instead of being processed without a rate limit.
 
 ```sh
 curl -X POST 'https://nextcloud.example.com/ocs/v2.php/apps/eva_ai/api/v1/chat' \

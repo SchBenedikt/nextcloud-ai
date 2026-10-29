@@ -2,6 +2,12 @@
 
 ## [Unreleased]
 
+### Keep request limits available during cache outages (1.20.7)
+
+- Fall back to instance-keyed HMAC fixed-window counters in Nextcloud SQL when the shared locking cache is unavailable.
+- Keep chat and image availability behavior when both counter backends fail; return a controlled 503 for external API keys instead of an internal server error.
+- Expire SQL fallback counters through Nextcloud's scheduled cleanup job.
+
 ### Simplify optional storage administration (1.20.6)
 
 - Keep the built-in SQL path visible while moving queue and synchronization detail behind a native disclosure.
