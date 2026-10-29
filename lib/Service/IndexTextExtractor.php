@@ -35,6 +35,10 @@ class IndexTextExtractor {
         'conf', 'properties', 'env', 'webmanifest', 'svg', 'css', 'scss', 'less', 'sass',
         'js', 'mjs', 'cjs', 'jsx', 'ts', 'tsx', 'vue', 'py', 'pyw', 'rb', 'php', 'phtml',
         'sh', 'bash', 'zsh', 'fish', 'expect', 'ps1', 'bat', 'cmd', 'sql',
+        // Office Open XML and OpenDocument containers are parsed as text, never executed.
+        'docx', 'docm', 'dotx', 'dotm', 'xlsx', 'xlsm', 'xltx', 'xltm',
+        'pptx', 'pptm', 'ppsx', 'ppsm', 'ppsxm', 'potx', 'potm',
+        'odt', 'ods', 'odp', 'odg', 'odf', 'epub',
         'c', 'h', 'cpp', 'hpp', 'cc', 'cxx', 'cs', 'java', 'kt', 'kts', 'go', 'rs',
         'swift', 'pl', 'pm', 'lua', 'r', 'm', 'mm', 'scala', 'groovy', 'shader',
         'erl', 'ex', 'exs', 'clj', 'cljs', 'hs', 'fs', 'fsx', 'ml', 'nim', 'zig',
@@ -148,24 +152,24 @@ class IndexTextExtractor {
         if (in_array($mime, ['image/png', 'image/jpeg', 'image/tiff', 'image/webp', 'image/bmp', 'image/x-ms-bmp', 'image/gif'], true) && $this->config->get('ocr_enabled') === '1') {
             return (new OcrService())->extract($this->readFile($file), $mime, $this->config->get('ocr_language'), 60, $this->shouldYield);
         }
-        // DOCX + Varianten (DOTX/DOCM) / ODT / EPUB / ODS / ODP: Zip-Container.
-        if (in_array($ext, ['docx', 'docm', 'dotx'], true) || $mime === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' || $mime === 'application/vnd.openxmlformats-officedocument.wordprocessingml.template') {
+        // DOCX + macro-enabled/template variants share the same readable XML body.
+        if (in_array($ext, ['docx', 'docm', 'dotx', 'dotm'], true) || $mime === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' || $mime === 'application/vnd.openxmlformats-officedocument.wordprocessingml.template') {
             return $this->zipWebText($file, 'docx');
         }
-        if (in_array($ext, ['odt', 'ods', 'odp'], true) || $mime === 'application/vnd.oasis.opendocument.text' || $mime === 'application/vnd.oasis.opendocument.spreadsheet' || $mime === 'application/vnd.oasis.opendocument.presentation') {
+        if (in_array($ext, ['odt', 'ods', 'odp', 'odg', 'odf'], true) || $mime === 'application/vnd.oasis.opendocument.text' || $mime === 'application/vnd.oasis.opendocument.spreadsheet' || $mime === 'application/vnd.oasis.opendocument.presentation' || $mime === 'application/vnd.oasis.opendocument.graphics' || $mime === 'application/vnd.oasis.opendocument.formula') {
             return $this->zipWebText($file, 'odf');
         }
         if ($ext === 'epub' || $mime === 'application/epub+zip') {
             return $this->zipWebText($file, 'epub');
         }
 
-        // Excel (+ XLSM/XLTX): Text steht in xl/sharedStrings.xml (alle Zellinhalte).
-        if (in_array($ext, ['xlsx', 'xlsm', 'xltx'], true) || $mime === 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' || $mime === 'application/vnd.openxmlformats-officedocument.spreadsheetml.template') {
+        // Excel (+ macro-enabled workbook/template variants): shared strings and cells.
+        if (in_array($ext, ['xlsx', 'xlsm', 'xltx', 'xltm'], true) || $mime === 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' || $mime === 'application/vnd.openxmlformats-officedocument.spreadsheetml.template') {
             return $this->zipWebText($file, 'xlsx');
         }
 
-        // PowerPoint (+ PPTM/PPSX/POTX): Text aus den Folien (a:t-Tags).
-        if (in_array($ext, ['pptx', 'pptm', 'ppsx', 'potx'], true) || $mime === 'application/vnd.openxmlformats-officedocument.presentationml.presentation' || $mime === 'application/vnd.openxmlformats-officedocument.presentationml.template') {
+        // PowerPoint (+ macro-enabled slideshow/template variants): slide text.
+        if (in_array($ext, ['pptx', 'pptm', 'ppsx', 'ppsm', 'ppsxm', 'potx', 'potm'], true) || $mime === 'application/vnd.openxmlformats-officedocument.presentationml.presentation' || $mime === 'application/vnd.openxmlformats-officedocument.presentationml.template') {
             return $this->zipWebText($file, 'pptx');
         }
 

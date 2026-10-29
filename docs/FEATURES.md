@@ -157,8 +157,10 @@ index remains the recovery path after the bounded retry budget.
 ### Indexable Content
 
 EVA can process plain text, Markdown, source code, CSV/TSV, HTML, JSON, XML,
-YAML, TOML, RTF, SQL, PDF, Microsoft Office files, OpenDocument files, and
-EPUB. It also reads saved mail (`.eml`), web archives (`.mht`/`.mhtml`),
+YAML, TOML, RTF, SQL, PDF, Microsoft Office files (including macro-enabled
+Open XML documents, templates, slideshows and presentations), OpenDocument text,
+spreadsheets, presentations, drawings and formulas, and EPUB. It also reads saved
+mail (`.eml`), web archives (`.mht`/`.mhtml`),
 mailboxes (`.mbox`) and Jupyter notebooks (`.ipynb`): a mail contributes its
 envelope (subject, sender, recipients, date) and its readable body, and a
 mailbox contributes every message it contains. Roughly 35 further text formats
