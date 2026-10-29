@@ -382,3 +382,15 @@ does not reset an existing build. It schedules background work instead of runnin
 model requests synchronously. See [generation builds](GENERATION-BUILDS.md) for
 consent, source-enrollment/destination gates, lease semantics and remaining
 verification requirements.
+
+`GET /api/admin/vector-generations/{userId}/{id}/verification` returns the
+verification `status`, `phase`, point counts, sample count, heartbeat, sanitized
+error code, `can_start`, `verified` and `retrieval_changed: false`. The matching
+POST route accepts `start`, `pause`, `resume`, `cancel` or `retry` with an empty
+JSON object. These administrator-only controls schedule or manage bounded
+background work; they never perform provider or vector-store I/O in the request.
+Verification checks stored SQL chunks against the already configured vector
+store and does not send source text to an embedding model. A verified certificate
+is invalidated atomically when canonical source data changes. Search remains on
+SQL and no activation route is provided. See
+[generation verification](GENERATION-VERIFICATION.md).

@@ -2,11 +2,12 @@
 declare(strict_types=1);
 namespace OCA\EvaAi\Vector;
 
-use OCA\EvaAi\Db\{GenerationBuildRepository, VectorGenerationRepository};
+use OCA\EvaAi\Db\{GenerationBuildRepository, GenerationVerificationRepository, VectorGenerationRepository};
 
 /** Shared native/OCC control; starting schedules work, never makes a provider request. */
 class GenerationBuildService {
-    public function __construct(private GenerationBuildRepository $builds,private VectorGenerationRepository $generations,private VectorSourceAccess $access) {}
+    public function __construct(private GenerationBuildRepository $builds,private VectorGenerationRepository $generations,private VectorSourceAccess $access,
+        private ?GenerationVerificationRepository $verifications=null) {}
 
     public function status(string $user,string $id): array {
         $this->access->assertOwner($user);
@@ -16,7 +17,7 @@ class GenerationBuildService {
         $result=$row===null?['status'=>'not_started','documents_done'=>0,'total_documents'=>0,'heartbeat_at'=>0,'error_code'=>null]:
             array_intersect_key($row,array_flip(['status','documents_done','total_documents','heartbeat_at','error_code']));
         return $result+['staged_chunks'=>$this->builds->stagedCount($id),'can_start'=>$target!==null && $this->builds->available($user,$id,$target),
-            'retrieval_changed'=>false,'verified'=>false];
+            'retrieval_changed'=>false,'verified'=>$this->verifications?->certificateCurrent($user,$id)??false];
     }
 
     public function control(string $user,string $id,string $action,bool $confirmed=false): array {

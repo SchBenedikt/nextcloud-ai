@@ -95,12 +95,12 @@ initial high-water mark, changes behind the cursor, deleted documents, queued
 tombstones and failed remote delivery still need reconciliation and verification.
 The UI/API always report `verified: false` and `retrieval_changed: false` here.
 
-Exact current SQL/remote ID and revision comparison, dimensions, sampled cosine
-scores, tenant/adversarial checks and persisted verification evidence remain
-stage 09 gates. The storage contract now exposes tenant-scoped exact live counts
-and bounded exact-ID retrieval with payload, revision, deletion state and dense
-vectors. These are verification primitives only; no verifier consumes them yet.
-Activation is unavailable. Continuous update ingestion,
+The read-only persisted verifier now consumes the tenant-scoped exact live-count
+and exact-ID retrieval contract. It checks SQL/remote IDs, revisions, dimensions,
+source manifests, deterministic sampled cosine scores and the snapshot boundary,
+then stores a certificate that canonical source changes invalidate. See
+[GENERATION-VERIFICATION.md](GENERATION-VERIFICATION.md). Cross-database and
+adversarial evidence remain stage 09 gates. Activation is unavailable. Continuous update ingestion,
 shadow/canary/primary rollout and normalized encrypted SQL chat storage are later
 stages in [the full ledger](BACKEND-ROADMAP.md). See [QUALITY.md](QUALITY.md) for
 what was actually checked; a staged count is not a verified migration.

@@ -65,6 +65,8 @@ return [
         ['name' => 'generationAdmin#check', 'url' => '/api/admin/vector-generations/{userId}/{id}/check', 'verb' => 'POST'],
         ['name' => 'generationBuildAdmin#status', 'url' => '/api/admin/vector-generations/{userId}/{id}/build', 'verb' => 'GET'],
         ['name' => 'generationBuildAdmin#control', 'url' => '/api/admin/vector-generations/{userId}/{id}/build/{operation}', 'verb' => 'POST'],
+        ['name' => 'generationVerificationAdmin#status', 'url' => '/api/admin/vector-generations/{userId}/{id}/verification', 'verb' => 'GET'],
+        ['name' => 'generationVerificationAdmin#control', 'url' => '/api/admin/vector-generations/{userId}/{id}/verification/{operation}', 'verb' => 'POST'],
         ['name' => 'api#chatAppend', 'url' => '/api/chats/{id}/messages', 'verb' => 'POST'],
         ['name' => 'api#chatTurn', 'url' => '/api/chats/{id}/turns', 'verb' => 'POST'],
         ['name' => 'api#briefingHistory', 'url' => '/api/briefings/history', 'verb' => 'GET'],

@@ -60,7 +60,7 @@ The default chat model is hosted by Ollama Cloud, so prompts and retrieved file 
 
 Licensed under AGPL-3.0-or-later.
     </description>
-    <version>1.18.11</version>
+    <version>1.18.12</version>
     <licence>agpl</licence>
     <author>Benedikt Schächner</author>
     <namespace>EvaAi</namespace>
@@ -82,6 +82,7 @@ Licensed under AGPL-3.0-or-later.
         <job>OCA\EvaAi\BackgroundJob\VectorErasureJob</job>
         <job>OCA\EvaAi\BackgroundJob\VectorPointJob</job>
         <job>OCA\EvaAi\BackgroundJob\GenerationBuildJob</job>
+        <job>OCA\EvaAi\BackgroundJob\GenerationVerificationJob</job>
     </background-jobs>
     <repair-steps>
         <step>OCA\EvaAi\Migration\MigrateLegacyAppIdRepairStep</step>
@@ -94,6 +95,7 @@ Licensed under AGPL-3.0-or-later.
         <command>OCA\EvaAi\Command\VectorGeneration</command>
         <command>OCA\EvaAi\Command\VectorEmbedding</command>
         <command>OCA\EvaAi\Command\VectorBuild</command>
+        <command>OCA\EvaAi\Command\VectorVerify</command>
         <command>OCA\EvaAi\Command\RetrievalBenchmark</command>
         <command>OCA\EvaAi\Command\Index</command>
         <command>OCA\EvaAi\Command\Reset</command>

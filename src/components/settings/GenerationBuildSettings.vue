@@ -9,8 +9,9 @@
 				<NcProgressBar :value="progress" :aria-label="$t('Documents staged')" />
 				<p>{{ $t('Documents staged: {done} of {total}', { done: state.documents_done, total: state.total_documents }) }} · {{ $t('Chunks staged: {count}', { count: state.staged_chunks }) }}</p>
 			</template>
-			<NcNoteCard v-if="state.status === 'staged'" type="info">{{ $t('Source processing finished. Complete index verification is still required before search can change.') }}</NcNoteCard>
-			<NcNoteCard v-else-if="!state.can_start" type="info">{{ $t('Enable the owner’s source index, prepare the generation on the current storage destination and allow point delivery. Search continues to use SQL.') }}</NcNoteCard>
+			<NcNoteCard v-if="state.status === 'staged' && !state.verified" type="info">{{ $t('Source processing finished. Verify all current SQL and remote points before search can change.') }}</NcNoteCard>
+			<NcNoteCard v-if="state.status === 'staged' && state.verified" type="success">{{ $t('The staged generation is verified. Search still uses SQL until a later rollout step.') }}</NcNoteCard>
+			<NcNoteCard v-if="state.status !== 'staged' && !state.can_start" type="info">{{ $t('Enable the owner’s source index, prepare the generation on the current storage destination and allow point delivery. Search continues to use SQL.') }}</NcNoteCard>
 			<NcNoteCard v-if="state.error_code" type="warning">{{ failure }}</NcNoteCard>
 			<template v-if="state.status === 'not_started'">
 				<p>{{ $t('The build reads the owner’s indexed sources and sends text to the generation’s fixed embedding provider. It runs in the background and does not change search.') }}</p>
@@ -23,6 +24,7 @@
 				<NcButton :disabled="busy || loading" variant="tertiary" @click="load">{{ $t('Refresh build progress') }}</NcButton>
 			</div>
 		</template>
+		<GenerationVerificationSettings v-if="state?.status === 'staged'" :key="`${user}:${generation}:verification`" :user="user" :generation="generation" />
 	</div>
 </template>
 
@@ -31,17 +33,18 @@ import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { NcButton, NcCheckboxRadioSwitch, NcLoadingIcon, NcNoteCard, NcProgressBar } from '@nextcloud/vue'
 import { api, errMsg } from '../../lib/api'
 import { translate as t } from '../../lib/i18n'
+import GenerationVerificationSettings from './GenerationVerificationSettings.vue'
 
 export default {
 	name: 'GenerationBuildSettings',
-	components: { NcButton, NcCheckboxRadioSwitch, NcLoadingIcon, NcNoteCard, NcProgressBar },
+	components: { NcButton, NcCheckboxRadioSwitch, NcLoadingIcon, NcNoteCard, NcProgressBar, GenerationVerificationSettings },
 	props: { user: { type: String, required: true }, generation: { type: String, required: true } },
 	setup(props) {
 		const state = ref(null), error = ref(''), loading = ref(false), busy = ref(false), confirmed = ref(false)
 		let controller, epoch = 0, timer
 		const path = `admin/vector-generations/${encodeURIComponent(props.user)}/${props.generation}/build`
 		const states = ['not_started', 'queued', 'running', 'paused', 'cancelled', 'failed', 'staged']
-		const label = computed(() => ({ not_started: t('Not started'), queued: t('Waiting for the next background tick'), running: t('Processing sources'), paused: t('Build paused'), cancelled: t('Build stopped'), failed: t('Build needs attention'), staged: t('Staged; not verified') })[state.value?.status])
+		const label = computed(() => ({ not_started: t('Not started'), queued: t('Waiting for the next background tick'), running: t('Processing sources'), paused: t('Build paused'), cancelled: t('Build stopped'), failed: t('Build needs attention'), staged: state.value?.verified ? t('Verified; search unchanged') : t('Staged; not verified') })[state.value?.status])
 		const progress = computed(() => state.value?.total_documents > 0 ? Math.min(100, 100 * state.value.documents_done / state.value.total_documents) : 0)
 		const failure = computed(() => {
 			const code = state.value?.error_code
@@ -52,7 +55,7 @@ export default {
 			return t('The build stopped safely. Check the fixed embedding model, provider policy and storage connection, then resume.')
 		})
 		function accept(result) {
-			if (!result || !states.includes(result.status) || typeof result.can_start !== 'boolean' || result.retrieval_changed !== false || result.verified !== false
+			if (!result || !states.includes(result.status) || typeof result.can_start !== 'boolean' || result.retrieval_changed !== false || typeof result.verified !== 'boolean'
 				|| !['documents_done', 'total_documents', 'staged_chunks', 'heartbeat_at'].every(key => Number.isSafeInteger(result[key]) && result[key] >= 0)
 				|| !(result.error_code === null || typeof result.error_code === 'string')) throw new Error(t('Build progress could not be confirmed.'))
 			state.value = result

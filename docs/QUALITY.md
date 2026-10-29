@@ -327,3 +327,17 @@ corrected controller uses `operation`. A fixture-only success did not count as
 native API validation. Native component browser checks additionally cover start,
 pause/resume, staged-but-unverified presentation and uncertain writes without
 automatic POST retries. No search activation or live Qdrant rollout is claimed.
+
+## Persisted generation verification (1.18.12)
+
+Two focused worker tests passed (12 assertions): an exact SQL/remote point and
+source-manifest match issues a certificate, while a missing remote point fails
+closed without issuing one. PHP syntax checks passed for every changed PHP file;
+translation JSON parsed and the production webpack build compiled both app entry
+points. The local Nextcloud 35 RC3 upgrade applied EVA 1.18.12 and the new
+verification table, returned from maintenance mode, and reports
+`needsDbUpgrade=false`. The anonymous app route returns the expected 401; no
+authenticated frontend session was checked. The platform still reports the
+previous unrelated Social/Mail schema drift and `oc_eva_ai_usage.estimated` type
+discrepancy. Cross-database migration, native OCS/admin browser flow, concurrency,
+source-writer coverage under load and real Qdrant reconciliation remain open.

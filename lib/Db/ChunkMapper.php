@@ -32,6 +32,28 @@ class ChunkMapper extends QBMapper {
         $this->sourceDeletion = $sourceDeletion ?? new VectorSourceDeletion($db, new VectorOutboxRepository($db));
     }
 
+    public function insert(\OCP\AppFramework\Db\Entity $entity): \OCP\AppFramework\Db\Entity {
+        if(!$entity instanceof Chunk||!is_int($entity->getDocumentId())||$entity->getDocumentId()<1)throw new \InvalidArgumentException('Chunks require an indexed source document.');
+        return $this->insertMany([$entity])[0];
+    }
+
+    /** Insert one document's bounded chunk batch while acquiring owner/source fences once. */
+    public function insertMany(array $entities): array {
+        if($entities===[])throw new \InvalidArgumentException('Chunk insert batch must not be empty.');
+        $documentId=null;
+        foreach($entities as$entity){
+            if(!$entity instanceof Chunk||!is_int($entity->getDocumentId())||$entity->getDocumentId()<1
+                ||($documentId!==null&&$documentId!==$entity->getDocumentId()))throw new \InvalidArgumentException('Chunk batch must belong to one indexed source document.');
+            $documentId=$entity->getDocumentId();
+        }
+        $inserted=[];
+        foreach(array_chunk($entities,500)as$batch){
+            array_push($inserted,...$this->sourceDeletion->insertChunks($documentId,
+                fn():array=>array_map(fn(Chunk$chunk):\OCP\AppFramework\Db\Entity=>parent::insert($chunk),$batch)));
+        }
+        return $inserted;
+    }
+
     public function deleteByDocument(int $documentId): void {
         $this->sourceDeletion->deleteDocuments([$documentId]);
     }

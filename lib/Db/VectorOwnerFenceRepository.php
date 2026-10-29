@@ -32,6 +32,12 @@ class VectorOwnerFenceRepository {
         if ($qb->executeStatement() !== 1) throw new VectorStoreException('owner_erased');
     }
 
+    /** Serialize an EVA user-config write with account deletion on the same DB connection. */
+    public function mutateOpen(string $userId,callable $mutation): mixed {
+        if($this->db->inTransaction()){$this->lockOpen($userId);return $mutation();}
+        return $this->outbox->transaction(function()use($userId,$mutation):mixed{$this->lockOpen($userId);return $mutation();});
+    }
+
     /** Commit the fence before best-effort cleanup can fail or be interrupted. */
     public function beginErasure(string $userId): void {
         if ($this->db->inTransaction()) throw new \LogicException('Account erasure must start outside an existing transaction.');

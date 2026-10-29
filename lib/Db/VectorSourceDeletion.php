@@ -11,7 +11,37 @@ use OCP\IDBConnection;
 
 /** Canonical deletion and remote tombstone intent share one SQL transaction. */
 class VectorSourceDeletion {
-    public function __construct(private IDBConnection $db, private VectorOutboxRepository $outbox) {}
+    private VectorOwnerFenceRepository $owners;
+    public function __construct(private IDBConnection $db, private VectorOutboxRepository $outbox,?VectorOwnerFenceRepository $owners=null) {
+        $this->owners=$owners??new VectorOwnerFenceRepository($db,$outbox);
+    }
+
+    /** Source creation and verification invalidation commit atomically. */
+    public function insertDocument(string $userId,callable $insert): mixed {
+        return $this->outbox->transaction(function()use($userId,$insert):mixed{
+            $this->owners->lockOpen($userId);
+            $entity=$insert();
+            $this->invalidateOwnerVerification($userId);
+            return $entity;
+        });
+    }
+
+    /** Serialize each legacy chunk insert against the persistent owner erase fence. */
+    public function insertChunk(int $documentId,callable $insert): mixed {
+        return $this->insertChunks($documentId,$insert);
+    }
+
+    /** Hold source/owner fences once for a bounded batch belonging to one document. */
+    public function insertChunks(int $documentId,callable $insert): mixed {
+        if($documentId<1)throw new \InvalidArgumentException('Chunk requires a valid source document.');
+        return $this->outbox->transaction(function()use($documentId,$insert):mixed{
+            $user=$this->documentOwner($documentId)??throw new VectorStoreException('source_missing');
+            $this->owners->lockOpen($user);
+            $this->lockDocuments([$documentId]);
+            if($this->documentOwner($documentId)!==$user)throw new VectorStoreException('source_changed');
+            return $insert();
+        });
+    }
 
     /** @return array{chunks:int,documents:int} */
     public function deleteDocuments(array $ids, bool $removeDocuments = false, bool $generationOnly = false, ?string $generationId = null): array {
@@ -25,6 +55,8 @@ class VectorSourceDeletion {
             // Same source-row boundary as putBuildingChunk. A concurrent writer
             // must recheck the source after this transaction releases the lock.
             $this->lockDocuments($ids);
+            // Any canonical chunk deletion changes the certified SQL inventory.
+            foreach($this->documentOwners($ids)as$user)$this->invalidateOwnerVerification($user);
             $cursor = 0;
             do {
                 $qb = $this->db->getQueryBuilder();
@@ -75,15 +107,48 @@ class VectorSourceDeletion {
             $result = $mutation();
             $after = $this->sourceMetadata($ids);
             $changed = [];
+            $owners=[];
             foreach ($before as $id => $metadata) {
                 if (isset($after[$id]) && $metadata['user_id'] !== $after[$id]['user_id']) throw new VectorStoreException('source_identity_mismatch');
-                if ($metadata !== ($after[$id] ?? null)) $changed[] = $id;
+                if ($metadata !== ($after[$id] ?? null)) { $changed[] = $id; $owners[$metadata['user_id']]=true; }
             }
             // Old point IDs become terminal tombstones. A later backfill uses
             // fresh IDs and a new source stamp; legacy search stays available.
-            if ($changed !== []) $this->deleteDocuments($changed, false, true);
+            if ($changed !== []) {
+                foreach(array_keys($owners)as$user)$this->invalidateOwnerVerification((string)$user);
+                $this->deleteDocuments($changed, false, true);
+            }
             return $result;
         });
+    }
+
+    private function invalidateOwnerVerification(string $userId): void {
+        $q=$this->db->getQueryBuilder();$q->update('eva_ai_vec_generations')
+            ->set('verified_at',$q->createNamedParameter(null,IQueryBuilder::PARAM_NULL))
+            ->set('verification_hash',$q->createNamedParameter(null,IQueryBuilder::PARAM_NULL))
+            ->where($q->expr()->eq('user_id',$q->createNamedParameter($userId)))->executeStatement();
+        $q=$this->db->getQueryBuilder();$q->update('eva_ai_vec_verifications')
+            ->set('status',$q->createNamedParameter('stale'))
+            ->set('error_code',$q->createNamedParameter('source_changed'))
+            ->set('lease_token',$q->createNamedParameter(null,IQueryBuilder::PARAM_NULL))
+            ->set('lease_until',$q->createNamedParameter(0,IQueryBuilder::PARAM_INT))
+            ->set('updated_at',$q->createNamedParameter(time(),IQueryBuilder::PARAM_INT))
+            ->set('revision',$q->func()->add('revision',$q->createNamedParameter(1,IQueryBuilder::PARAM_INT)))
+            ->where($q->expr()->eq('user_id',$q->createNamedParameter($userId)))->executeStatement();
+    }
+
+    /** @return list<string> */
+    private function documentOwners(array $ids): array {
+        $q=$this->db->getQueryBuilder();$q->selectDistinct('user_id')->from('eva_ai_documents')
+            ->where($q->expr()->in('id',$q->createNamedParameter($ids,IQueryBuilder::PARAM_INT_ARRAY)));
+        $r=$q->executeQuery();try{$rows=$r->fetchAll();}finally{$r->closeCursor();}
+        return array_values(array_unique(array_filter(array_map(static fn(array$row):string=>(string)$row['user_id'],$rows))));
+    }
+
+    private function documentOwner(int $id): ?string {
+        $q=$this->db->getQueryBuilder();$q->select('user_id')->from('eva_ai_documents')->where($q->expr()->eq('id',$q->createNamedParameter($id,IQueryBuilder::PARAM_INT)));
+        $r=$q->executeQuery();try{$owner=$r->fetchOne();}finally{$r->closeCursor();}
+        return is_string($owner)&&$owner!==''?$owner:null;
     }
 
     private function lockDocuments(array $ids): void {
