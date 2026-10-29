@@ -2,6 +2,11 @@
 
 ## [Unreleased]
 
+### Compact existing local generation vectors (1.18.56)
+
+- Add a recurring, keyset-paged Nextcloud job that rewrites historical SQL-generation JSON vectors into the compact format when it is smaller.
+- Keep the rewrite bounded and guarded by the original embedding and generation ID so concurrent indexing wins; no embedding calls or vector semantic changes are involved.
+
 ### Compact local SQL generation vectors (1.18.55)
 
 - Store new built-in SQL-generation vectors as versioned, network-order float64 data when it is smaller than JSON, reducing bytes transferred and JSON decoding during exact dense scans.
