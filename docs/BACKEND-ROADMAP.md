@@ -185,6 +185,9 @@ disclosure. Version 1.18.54 removes the unnecessary aggregate dashboard query
 from page load while retaining its documented API for compatibility; opening
 the disclosure still requests the admin-only account list and storage snapshot.
 Optional vector controls remain outside ordinary chat and personal settings.
+Version 1.18.98 also collapses the rarely changed server-wide limits and shared
+web-search infrastructure in the native Nextcloud settings form, leaving the
+SQL default and optional vector-storage entry visible without setup clutter.
 
 ## Frontend integration required throughout the stack
 

@@ -66,6 +66,9 @@ $providerLabels = [
 	<p class="settings-hint"><?php p($l->t('EVA uses Nextcloud SQL automatically. Optional Qdrant is available for explicitly configured larger installations.')); ?></p>
 	<p><a class="button" href="<?php p($_['storageAdminUrl']); ?>"><?php p($l->t('Optional storage and migration controls')); ?></a></p>
 
+	<details class="eva-admin-details">
+		<summary><?php p($l->t('Advanced indexing and request limits')); ?></summary>
+		<div class="eva-admin-details__content">
 	<h3><?php p($l->t('Indexing performance')); ?></h3>
 	<p class="settings-hint">
 		<?php p($l->t('The background indexer runs on Nextcloud cron. These values bound how much work one cron run may do, so a large library is indexed steadily without slowing the instance down.')); ?>
@@ -112,7 +115,20 @@ $providerLabels = [
 		<button type="button" id="eva-index-save" class="primary"><?php p($l->t('Save indexing settings')); ?></button>
 		<span id="eva-index-status" class="eva-status-text" role="status" aria-live="polite"></span>
 	</p>
+	<h3><?php p($l->t('Background indexing')); ?></h3>
+	<p class="settings-hint">
+		<?php p($l->t('Users manage recurring indexing in personal EVA settings. This action requests that the current background pass stop at its next safe boundary.')); ?>
+	</p>
+	<p class="eva-actions">
+		<button type="button" id="eva-stop-background" class="secondary"><?php p($l->t('Stop background indexing')); ?></button>
+		<span id="eva-background-status" class="eva-status-text" role="status" aria-live="polite"></span>
+	</p>
+		</div>
+	</details>
 
+	<details class="eva-admin-details">
+		<summary><?php p($l->t('Shared web search services')); ?></summary>
+		<div class="eva-admin-details__content">
 	<h3><?php p($l->t('Web search')); ?></h3>
 	<p class="settings-hint">
 		<?php p($l->t('Web search is opt-in and off by default. Each user turns it on and picks a provider in their personal Eva AI settings; the options below provide the instance-wide infrastructure for everyone.')); ?>
@@ -173,6 +189,9 @@ $providerLabels = [
 		<?php p($l->t('Search limits, page reading, images, safe search and browser rendering are configured by each user in personal Eva AI settings. This page only stores shared provider credentials and browser infrastructure.')); ?>
 	</p>
 
+	<details class="eva-admin-details eva-admin-details--nested">
+		<summary><?php p($l->t('Browser rendering (optional)')); ?></summary>
+		<div class="eva-admin-details__content">
 	<div class="eva-field">
 		<label for="eva-browser-node"><?php p($l->t('Node.js path')); ?></label>
 		<input type="text" id="eva-browser-node" name="web_search_browser_node"
@@ -190,6 +209,8 @@ $providerLabels = [
 			<?php p($l->t('Leave empty to use Playwright\'s own location for the user the web server runs as. Set it when the browser build lives elsewhere - for example in a shared directory, or when the app runs as a user whose home directory the browser installer did not use. The placeholder shows the path that is used right now.')); ?>
 		</p>
 	</div>
+		</div>
+	</details>
 
 	<p class="eva-actions">
 		<button type="button" id="eva-websearch-save" class="primary"><?php p($l->t('Save web search settings')); ?></button>
@@ -216,13 +237,6 @@ $providerLabels = [
 
 	<div id="eva-test-results" class="eva-test-results" hidden></div>
 
-	<h3><?php p($l->t('Background indexing')); ?></h3>
-	<p class="settings-hint">
-		<?php p($l->t('Users manage recurring indexing in personal EVA settings. This action requests that the current background pass stop at its next safe boundary.')); ?>
-	</p>
-
-	<p class="eva-actions">
-		<button type="button" id="eva-stop-background" class="secondary"><?php p($l->t('Stop background indexing')); ?></button>
-		<span id="eva-background-status" class="eva-status-text" role="status" aria-live="polite"></span>
-	</p>
+		</div>
+	</details>
 </div>

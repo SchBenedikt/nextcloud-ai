@@ -203,3 +203,36 @@ table.grid th {
 .eva-browser-state.is-missing {
 	color: var(--color-warning-text, #a35d00);
 }
+
+/* Keep the normal admin view focused; optional controls follow Nextcloud's
+   native disclosure pattern and inherit the current light/dark theme. */
+.eva-admin-details {
+	max-width: 760px;
+	margin: 20px 0;
+	border-top: 1px solid var(--color-border);
+}
+
+.eva-admin-details > summary {
+	width: fit-content;
+	padding: 14px 0;
+	cursor: pointer;
+	font-weight: 600;
+	color: var(--color-main-text);
+}
+
+.eva-admin-details[open] > summary {
+	margin-bottom: 8px;
+}
+
+.eva-admin-details__content {
+	padding-bottom: 12px;
+}
+
+.eva-admin-details--nested {
+	margin: 12px 0;
+	border-bottom: 1px solid var(--color-border);
+}
+
+.eva-admin-details--nested > summary {
+	padding: 10px 0;
+}
