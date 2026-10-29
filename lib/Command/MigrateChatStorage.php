@@ -34,6 +34,10 @@ final class MigrateChatStorage extends Command {
 				$output->writeln('<error>SQL verification did not match the encrypted AppData snapshot. Source data was preserved.</error>');
 				return 1;
 			}
+			if ($result['status'] === 'account-removed') {
+				$output->writeln('<comment>The account was removed while the copy was running. No chat rows were re-created.</comment>');
+				return 1;
+			}
 			return 0;
 		} catch (\Throwable $e) {
 			$output->writeln('<error>Chat storage migration failed: ' . $e->getMessage() . '</error>');

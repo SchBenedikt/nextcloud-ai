@@ -240,6 +240,11 @@ class ChatStore {
         }, ILockingProvider::LOCK_SHARED);
     }
 
+    /** Serialize a bounded SQL import batch with chat writes and account erasure. */
+    public function withMigrationLock(string $user, callable $operation): mixed {
+        return $this->withUserLock($user, $operation, ILockingProvider::LOCK_EXCLUSIVE);
+    }
+
     /** Import validated chat history as new chats, never overwriting existing IDs. */
     public function importAll(string $user, array $chats): int {
         return $this->withUserLock($user, function () use ($user, $chats): int {
@@ -401,14 +406,14 @@ class ChatStore {
             } catch (\Throwable $e) {
                 $this->logger->warning('eva_ai: chat cleanup failed for deleted account', ['user' => $user]);
             }
+            // This uses the same per-user lock as every bounded SQL import
+            // batch, so an in-flight migration cannot recreate erased rows.
+            try {
+                $this->sqlChats?->deleteUserData($user);
+            } catch (\Throwable $e) {
+                $this->logger->warning('eva_ai: SQL chat cleanup failed for deleted account', ['user' => $user]);
+            }
         });
-        // SQL chat rows and an interrupted migration checkpoint are erased
-        // even while AppData remains the active store during staged rollout.
-        try {
-            $this->sqlChats?->deleteUserData($user);
-        } catch (\Throwable $e) {
-            $this->logger->warning('eva_ai: SQL chat cleanup failed for deleted account', ['user' => $user]);
-        }
     }
 
     public function setTitle(string $user, string $id, string $title): void {

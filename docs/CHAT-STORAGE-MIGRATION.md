@@ -34,7 +34,8 @@ with `source-changed-retry`; rerun it to restart from the new source snapshot.
   continue serving chats even if the imported SQL tables are cleared and
   rebuilt with this command.
 - Account deletion removes the SQL chat rows and checkpoint as well as EVA's
-  AppData chat folders.
+  AppData chat folders. Import batches and account erasure share the same
+  per-user lock, and the migration stops if the Nextcloud account disappears.
 
 SQL cutover, automatic background migration, frontend pagination, and a
 mixed-version write recovery protocol are separate follow-up work. Do not
