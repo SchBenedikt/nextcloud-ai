@@ -75,6 +75,10 @@ Specifically:
 - SQL verification is queued for enrolled users after a staged build. Failed
   or cancelled verification remains explicit; successful verification still
   does not activate the generation or alter retrieval.
+- Canonical creates and metadata changes now write coalesced mutation intent
+  for an active generation in the same SQL transaction. Deletes cancel pending
+  upserts. The worker that consumes this journal is still required before an
+  active generation can safely serve as the primary index.
 - There is no guarded generation activation path or production shadow sampling.
 - `VectorStorageStatus` reports `sql_legacy`; the interface must stay truthful
   until SQL generation writes and search are actually wired into normal use.

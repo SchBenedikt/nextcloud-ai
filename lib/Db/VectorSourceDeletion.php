@@ -12,8 +12,11 @@ use OCP\IDBConnection;
 /** Canonical deletion and remote tombstone intent share one SQL transaction. */
 class VectorSourceDeletion {
     private VectorOwnerFenceRepository $owners;
-    public function __construct(private IDBConnection $db, private VectorOutboxRepository $outbox,?VectorOwnerFenceRepository $owners=null) {
+    private VectorGenerationMutationRepository $mutations;
+    public function __construct(private IDBConnection $db, private VectorOutboxRepository $outbox,
+        ?VectorOwnerFenceRepository $owners=null, ?VectorGenerationMutationRepository $mutations=null) {
         $this->owners=$owners??new VectorOwnerFenceRepository($db,$outbox);
+        $this->mutations=$mutations??new VectorGenerationMutationRepository($db);
     }
 
     /** Source creation and verification invalidation commit atomically. */
@@ -23,7 +26,10 @@ class VectorSourceDeletion {
             $entity=$insert();
             if (is_object($entity) && method_exists($entity, 'getId')) {
                 $documentId=(int)$entity->getId();
-                if ($documentId>0) $this->extendBuildWatermarks($userId,$documentId);
+                if ($documentId>0) {
+                    $this->extendBuildWatermarks($userId,$documentId);
+                    $this->mutations->enqueueActive($userId,$documentId);
+                }
             }
             $this->invalidateOwnerVerification($userId);
             return $entity;
@@ -132,6 +138,7 @@ class VectorSourceDeletion {
             $chunks = $delete->executeStatement();
             $documents = 0;
             if ($removeDocuments) {
+                $this->mutations->deleteSources($ids);
                 $delete = $this->db->getQueryBuilder();
                 $delete->delete('eva_ai_documents')->where($delete->expr()->in('id', $delete->createNamedParameter($ids, IQueryBuilder::PARAM_INT_ARRAY)));
                 $documents = $delete->executeStatement();
@@ -170,6 +177,9 @@ class VectorSourceDeletion {
                     $this->invalidateOwnerVerification($user);
                     $ownedIds=array_values(array_map('intval',array_filter($changed,static fn(int$id):bool=>($before[$id]['user_id']??null)===$user)));
                     $this->rewindBuildsForChangedDocuments($user,$ownedIds);
+                    foreach($ownedIds as$documentId) {
+                        if (isset($after[$documentId])) $this->mutations->enqueueActive($user,$documentId);
+                    }
                 }
                 $this->deleteDocuments($changed, false, true);
             }

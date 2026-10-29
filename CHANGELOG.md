@@ -2,6 +2,12 @@
 
 ## [Unreleased]
 
+### Active generation mutation journal (1.18.21)
+
+- Add a transactional, coalesced SQL journal for source creates and metadata changes affecting an active vector generation.
+- Cancel queued generation upserts when their canonical source is deleted.
+- Keep embedding and vector delivery out of the source mutation transaction; the bounded consumer is the next stack step.
+
 ### Automatic SQL generation verification (1.18.20)
 
 - Automatically queue local verification when an enrolled SQL generation build is staged.
