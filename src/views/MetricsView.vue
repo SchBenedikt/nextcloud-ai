@@ -22,6 +22,13 @@
 					<tr v-for="row in indexRunRows" :key="row.mode + row.outcome"><td>{{ row.modeLabel }}</td><td>{{ row.outcomeLabel }}</td><td>{{ format(row.runs) }}</td><td>{{ format(row.items) }}</td><td>{{ format(row.file_chunks) }}</td><td>{{ Number(row.average_file_chunks_per_second || 0).toLocaleString() }}</td><td>{{ format(row.p50_ms) }} ms</td><td>{{ format(row.p95_ms) }} ms</td><td>{{ format(row.p99_ms) }} ms</td></tr>
 				</tbody></table></div>
 			</section>
+			<section v-if="chatStoreLockWait.samples > 0" class="metrics-panel">
+				<h2>{{ $t('Chat storage lock waits') }}</h2>
+				<p class="metrics-note">{{ $t('Waits are recorded only when a chat-store lock collides. Uncontended requests add no telemetry write.') }}</p>
+				<div class="metrics-table-scroll"><table><thead><tr><th>{{ $t('Lock type') }}</th><th>{{ $t('Result') }}</th><th>{{ $t('Contended requests') }}</th><th>p50</th><th>p95</th><th>p99</th></tr></thead><tbody>
+					<tr v-for="row in chatStoreLockWaitRows" :key="row.mode + row.outcome"><td>{{ row.modeLabel }}</td><td>{{ row.outcomeLabel }}</td><td>{{ format(row.count) }}</td><td>{{ format(row.p50_ms) }} ms</td><td>{{ format(row.p95_ms) }} ms</td><td>{{ format(row.p99_ms) }} ms</td></tr>
+				</tbody></table></div>
+			</section>
 			<section v-if="totals.total_tokens" class="metrics-insights" :aria-label="$t('Usage breakdown')">
 				<div class="metrics-panel token-split"><h2>{{ $t('Total tokens') }}</h2><div class="split-chart" :style="{ '--input': inputShare + '%' }" aria-hidden="true"><span>{{ format(totals.total_tokens) }}</span></div><div class="chart-legend"><span><i class="input-dot"></i>{{ $t('Input tokens') }} · {{ inputShare }}%</span><span><i class="output-dot"></i>{{ $t('Output tokens') }} · {{ 100 - inputShare }}%</span></div></div>
 				<div class="metrics-panel"><h2>{{ $t('Top models by token use') }}</h2><div class="model-bars"><div v-for="row in byModel.slice(0, 5)" :key="row.provider + row.model" class="model-bar"><span :title="row.provider + ' / ' + row.model">{{ row.provider }} / {{ row.model }}</span><div><i :style="{ width: (Number(row.total_tokens || 0) / maxModel * 100) + '%' }"></i></div><strong>{{ format(row.total_tokens) }}</strong></div></div></div>
@@ -80,6 +87,14 @@ export default {
 			outcome,
 			modeLabel: ({ all: t('All sources'), files: t('Files'), mail: t('Mail'), talk: t('Talk') })[mode] || t('Other'),
 			outcomeLabel: ({ complete: t('Completed'), error: t('Error'), incomplete: t('Interrupted') })[outcome] || t('Other'),
+			...row,
+		}))))
+		const chatStoreLockWait = computed(() => data.value.chat_store_lock_wait || { samples: 0, modes: {} })
+		const chatStoreLockWaitRows = computed(() => Object.entries(chatStoreLockWait.value.modes || {}).flatMap(([mode, outcomes]) => Object.entries(outcomes || {}).map(([outcome, row]) => ({
+			mode,
+			outcome,
+			modeLabel: ({ shared: t('Shared read'), exclusive: t('Exclusive write') })[mode] || t('Other'),
+			outcomeLabel: ({ acquired: t('Acquired after retry'), degraded_read: t('Read without lock'), busy: t('Write returned busy'), read_failed: t('Degraded read failed') })[outcome] || t('Other'),
 			...row,
 		}))))
 		const maxDaily = computed(() => Math.max(1, ...daily.value.map(row => Number(row.total_tokens) || 0))); const maxModel = computed(() => Math.max(1, ...byModel.value.map(row => Number(row.total_tokens) || 0))); const inputShare = computed(() => Math.round((Number(totals.value.input_tokens || 0) / Math.max(1, Number(totals.value.total_tokens || 0))) * 100)); const format = value => Number(value || 0).toLocaleString()
@@ -161,7 +176,7 @@ export default {
 		}
 		const downloadCsv = () => {
 			if (!hasCurrentData.value) return
-			const content = buildMetricsCsv({ days: days.value, totals: totals.value, byModel: byModel.value, daily: daily.value, slowTools: slowTools.value, ragRequestDuration: ragRequestDuration.value, indexRuns: indexRuns.value })
+			const content = buildMetricsCsv({ days: days.value, totals: totals.value, byModel: byModel.value, daily: daily.value, slowTools: slowTools.value, ragRequestDuration: ragRequestDuration.value, indexRuns: indexRuns.value, chatStoreLockWait: chatStoreLockWait.value })
 			const url = URL.createObjectURL(new Blob([content], { type: 'text/csv;charset=utf-8' }))
 			const link = document.createElement('a')
 			link.href = url
@@ -185,7 +200,7 @@ export default {
 			document.removeEventListener('visibilitychange', refreshWhenVisible)
 			requestId++
 		})
-		return { days, loading, error, hasCurrentData, totals, byModel, daily, slowTools, ragRequestDuration, ragRequestOutcomes, indexRuns, indexRunRows, adminUsers, selectedUser, canFilterUsers, maxDaily, maxModel, inputShare, cards, format, formatMoney, priceKey, ensurePrice, savingPricing, pricingStatus, savePricing, load, downloadCsv, printReport, updatedLabel }
+		return { days, loading, error, hasCurrentData, totals, byModel, daily, slowTools, ragRequestDuration, ragRequestOutcomes, indexRuns, indexRunRows, chatStoreLockWait, chatStoreLockWaitRows, adminUsers, selectedUser, canFilterUsers, maxDaily, maxModel, inputShare, cards, format, formatMoney, priceKey, ensurePrice, savingPricing, pricingStatus, savePricing, load, downloadCsv, printReport, updatedLabel }
 	},
 }
 </script>

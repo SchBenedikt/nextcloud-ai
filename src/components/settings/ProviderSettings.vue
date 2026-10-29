@@ -6,6 +6,7 @@
 				<template #subname>{{ provider.model || t('Configure a model below') }}</template>
 				<template #actions>
 					<NcActionButton :close-after-click="true" :disabled="locked || saving || selectingProvider !== '' || active === provider.id" @click.stop="selectProvider(provider)">{{ selectingProvider === provider.id ? t('Switching provider…') : active === provider.id ? t('In use for chats') : t('Use for chats') }}</NcActionButton>
+					<NcActionButton v-if="active === provider.id" :close-after-click="true" :disabled="locked || saving || selectingProvider !== '' || checkingProvider !== ''" @click.stop="checkProvider(provider)">{{ checkingProvider === provider.id ? t('Testing connection…') : t('Check connection') }}</NcActionButton>
 					<NcActionButton :close-after-click="true" :disabled="locked || saving || selectingProvider !== ''" @click.stop="edit(provider)">{{ t('Configure') }}</NcActionButton>
 					<NcActionButton v-if="!['ollama', 'groq'].includes(provider.id)" :close-after-click="true" :disabled="locked || saving || selectingProvider !== ''" @click.stop="requestRemove(provider)">{{ t('Remove provider') }}</NcActionButton>
 				</template>
@@ -14,6 +15,10 @@
 		<NcButton variant="secondary" :disabled="locked || profiles.length >= 20" @click="add">{{ t('Add AI provider') }}</NcButton>
 		<p v-if="notice" class="field-help" role="status">{{ notice }}</p>
 		<p v-if="error && !draft" class="field-help provider-error" role="alert">{{ error }}</p>
+		<NcNoteCard v-if="connectionResult" :type="connectionResult.ok ? 'success' : 'error'" role="status">
+			<strong>{{ connectionResult.ok ? t('Connection successful') : t('Connection failed') }}</strong>
+			<span>{{ connectionResult.message }}</span>
+		</NcNoteCard>
 		<NcModal v-if="draft" size="normal" :label-id="titleId" @close="close">
 			<form class="provider-editor" @submit.prevent="save">
 				<h2 :id="titleId">{{ editing ? t('Configure provider') : t('Add AI provider') }}</h2>
@@ -118,6 +123,8 @@ export default {
 		const useForGeneration = ref(false)
 		const saving = ref(false)
 		const selectingProvider = ref('')
+		const checkingProvider = ref('')
+		const connectionResult = ref(null)
 		const error = ref('')
 		const notice = ref('')
 		const providerToRemove = ref(null)
@@ -197,6 +204,27 @@ export default {
 				selectingProvider.value = ''
 			}
 		}
+		const checkProvider = async provider => {
+			if (provider.id !== active.value || props.locked || saving.value || checkingProvider.value) return
+			checkingProvider.value = provider.id
+			connectionResult.value = null
+			error.value = ''
+			try {
+				const result = await api('POST', 'check')
+				const details = provider.id === 'ollama' ? result?.chat : provider.id === 'groq' ? result?.groq : result?.custom
+				const ok = provider.id === 'ollama' ? Boolean(result?.server?.ok && details?.ok) : Boolean(details?.ok)
+				connectionResult.value = {
+					ok,
+					message: ok
+						? t('{provider} responded successfully with model {model}.', { provider: provider.name, model: details?.model || provider.model || t('the configured model') })
+						: String(details?.error || result?.server?.error || t('Check the endpoint, model and saved credentials.')),
+				}
+			} catch (failure) {
+				connectionResult.value = { ok: false, message: errMsg(failure) }
+			} finally {
+				checkingProvider.value = ''
+			}
+		}
 		const save = async () => {
 			if (saving.value || props.locked || !draft.value) return
 			const row = { ...draft.value, model: draft.value.model.trim() }
@@ -237,7 +265,7 @@ export default {
 			} catch (failure) { error.value = errMsg(failure) }
 			finally { saving.value = false }
 		}
-		return { mdiRobotOutline, mdiServerOutline, titleId, removeTitleId, t, profiles, providers, providerDetails, active, generationProfileId, presets, presetId, draft, editing, builtin, selectForChat, submitLabel, needsKey, useForGeneration, key, keySaved, saving, selectingProvider, error, notice, providerToRemove, removeError, removing, requestRemove, closeRemove, removeProvider, mediaFields, add, edit, selectProvider, applyPreset, close, save }
+		return { mdiRobotOutline, mdiServerOutline, titleId, removeTitleId, t, profiles, providers, providerDetails, active, generationProfileId, presets, presetId, draft, editing, builtin, selectForChat, submitLabel, needsKey, useForGeneration, key, keySaved, saving, selectingProvider, checkingProvider, connectionResult, error, notice, providerToRemove, removeError, removing, requestRemove, closeRemove, removeProvider, mediaFields, add, edit, selectProvider, checkProvider, applyPreset, close, save }
 	},
 }
 </script>

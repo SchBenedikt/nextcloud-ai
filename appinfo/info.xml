@@ -60,7 +60,7 @@ The default chat model is hosted by Ollama Cloud, so prompts and retrieved file 
 
 Licensed under AGPL-3.0-or-later.
     </description>
-    <version>1.18.88</version>
+    <version>1.18.90</version>
     <licence>agpl</licence>
     <author>Benedikt Schächner</author>
     <namespace>EvaAi</namespace>
@@ -90,6 +90,7 @@ Licensed under AGPL-3.0-or-later.
         <exporter>OCA\EvaAi\OpenMetrics\RagRequestDuration</exporter>
         <exporter>OCA\EvaAi\OpenMetrics\IndexRunDuration</exporter>
         <exporter>OCA\EvaAi\OpenMetrics\IndexRunThroughput</exporter>
+        <exporter>OCA\EvaAi\OpenMetrics\ChatStoreLockWait</exporter>
         <exporter>OCA\EvaAi\OpenMetrics\EmbeddingBatchDuration</exporter>
         <exporter>OCA\EvaAi\OpenMetrics\EmbeddingCacheHitRatio</exporter>
         <exporter>OCA\EvaAi\OpenMetrics\EmbeddingBatchSamples</exporter>
