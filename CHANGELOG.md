@@ -2,6 +2,11 @@
 
 ## [Unreleased]
 
+### Fix lexical indexing of numeric-only tokens (1.20.28)
+
+- Cast numeric-looking token keys back to strings before hashing their SQL posting keys; otherwise PHP raises a type error and aborts the entire backfill batch.
+- Preserve the original exception and stack trace when a bounded lexical-index backfill tick fails, so future database or migration faults are diagnosable.
+
 ### Make new chat startup reliable and bound agent tool loops (1.20.26)
 
 - Accept numeric-string revisions and revisionless empty-chat snapshots from the create response, avoiding a failing detail read before the first message.
