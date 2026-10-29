@@ -1,6 +1,6 @@
 # EVA backend observability
 
-EVA contributes three aggregate metric families to Nextcloud's OpenMetrics
+EVA contributes aggregate metric families to Nextcloud's OpenMetrics
 exporter:
 
 | Metric family | Labels | Meaning |
@@ -9,6 +9,8 @@ exporter:
 | `nextcloud_eva_ai_vector_generations` | `backend`, `status` | SQL/Qdrant generations by lifecycle state. |
 | `nextcloud_eva_ai_vector_outbox_events` | `operation`, `state` | Actionable pending, processing, and dead vector delivery/deletion queue depth. |
 | `nextcloud_eva_ai_vector_outbox_oldest_age_seconds` | `state` | Age of the oldest pending, processing, or dead event. |
+| `nextcloud_eva_ai_account_cleanup_pending` | none | Count of durable local account-erasure requests. |
+| `nextcloud_eva_ai_account_cleanup_oldest_age_seconds` | none | Age of the oldest durable local account-erasure request. |
 
 EVA exports aggregate counts only. It does not label metrics with account IDs,
 file names or paths, query text, chat content, provider URLs, model credentials,

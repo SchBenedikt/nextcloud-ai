@@ -175,10 +175,22 @@ class EmbeddingCache {
 
     public function clearUser(string $userId): void {
         try {
-            $this->store()->clear($this->userPrefix($userId));
+            $this->clearUserForErasure($userId);
         } catch (\Throwable $e) {
             $this->markUnavailable($e);
             $this->logger->debug('eva_ai user embedding cache clear skipped', ['exception' => $e]);
+        }
+    }
+
+    /** Strict variant used by durable account erasure so cache failure is retried. */
+    public function clearUserForErasure(string $userId): void {
+        try {
+            if (!$this->store()->clear($this->userPrefix($userId))) {
+                throw new \RuntimeException('Embedding cache did not confirm account erasure.');
+            }
+        } catch (\Throwable $e) {
+            $this->markUnavailable($e);
+            throw $e;
         }
     }
 

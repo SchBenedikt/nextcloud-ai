@@ -237,14 +237,16 @@ retry after core has forgotten the account. Never substitute a personal account.
 Run fixture setup as the same web-server user; root-created dirty-queue files can
 otherwise prevent the fixture from being written and invalidate the setup.
 
-Local results: both native SQL lifecycle checks and the installed account-delete
-plus retry drill passed; six focused PHP tests passed with 76 assertions. Five
-previously deleted, dedicated audit accounts were repaired through the same
-cleanup service, with zero retained EVA source/config/agent/generation rows and
-zero chunks for their former document IDs. No frontend source changed, so no
-frontend compilation was needed. These are sequential local checks, not proof of
-in-flight legacy-writer fencing, a durable cleanup retry coordinator, distributed
-races or external vector erasure; those acceptance gates remain open.
+Earlier local results: both native SQL lifecycle checks and the installed
+account-delete plus retry drill passed; six focused PHP tests passed with 76
+assertions. Five previously deleted, dedicated audit accounts were repaired
+through the same cleanup service, with zero retained EVA source/config/agent/
+generation rows and zero chunks for their former document IDs. Version 1.18.39
+adds the durable local cleanup retry coordinator described in
+[ACCOUNT-ERASURE.md](ACCOUNT-ERASURE.md). This change received PHP syntax, XML,
+and diff checks only; its tests and installed retry drill have not been run.
+In-flight legacy-writer fencing, distributed races, cross-database behavior,
+production recovery, and confirmed external vector erasure remain open gates.
 
 ## Canonical generation-source preparation
 

@@ -90,9 +90,10 @@ Generation retirement, superseding prior events, collection-erasure intent,
 chunk/document erasure and generation/active-pointer removal now share one SQL
 transaction in account cleanup. Bound generations carry a complete immutable
 descriptor and fixed target in the deletion event. A SQL failure rolls this part
-back, retaining ownership for a retry. The remaining AppData/config cleanup
-retains its previous best-effort behavior; a persistent account-cleanup retry
-coordinator remains pending.
+back, retaining ownership for a retry. AppData/config cleanup now uses a durable
+encrypted-identity retry record and one scheduled, idempotent cleanup pass at a
+time. The queue record is removed after local cleanup succeeds; remote collection
+erasure remains separately pending in this outbox.
 
 The 1.18.9 native lifecycle correction uses Nextcloud's `selectDistinct()` for
 the bounded chunk query; Doctrine's `distinct()` is not part of the native API
@@ -240,9 +241,10 @@ can still operate, but optional vector generation creation remains blocked until
 a separately reviewed fresh-owner/cleanup-verification workflow is implemented.
 There is no unblock/prune command in this stage. Historical erasures before this
 migration are not retroactively inferred; reconcile old destinations before any
-live cutover. A durable account-cleanup retry coordinator and remote preparation
-reconciliation remain pending. No in-flight request can be recalled by a SQL row
-check alone; the earlier grace and suspension limits still apply.
+live cutover. Durable local account-cleanup retries are handled by the separate
+`eva_ai_account_cleanup` queue. Remote preparation reconciliation remains
+pending. No in-flight request can be recalled by a SQL row check alone; the
+earlier grace and suspension limits still apply.
 
 Required unexecuted checks include concurrent first initialization, creator-before-
 eraser and eraser-before-creator orderings, bind/erase races, cleanup rollback with

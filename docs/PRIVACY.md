@@ -20,6 +20,7 @@ you can remove it.
 | Agent conversation state | Nextcloud database (`eva_ai_agent_store`) | Per conversation token; deleted on reset |
 | App configuration | Nextcloud database (`oc_appconfig`) | Persistent until manually changed |
 | Optional vector generation metadata and durable synchronization intent | Nextcloud database (`eva_ai_vec_generations`, `eva_ai_vec_outbox`) | Pending/failed erasure intent must survive until cleanup is confirmed; automatic journal pruning is not implemented yet |
+| Incomplete account-erasure retry | Nextcloud database (`eva_ai_account_cleanup`) | Contains a purpose-separated owner hash and Nextcloud-encrypted account ID; deleted after all local cleanup steps succeed |
 | Optional storage targets and encrypted credentials | Nextcloud database (`eva_ai_vec_targets`) | Instance infrastructure configuration; retained destinations can be needed for outstanding cleanup and are not removed with one user's account |
 | Vector ownership fence (purpose-separated owner hash, state, revision, timestamp) | Nextcloud database (`eva_ai_vec_owners`) | Open state while in use; blocked fingerprint intentionally retained after account erasure to prevent stale recreation; no automatic expiry/unblock exists yet |
 
@@ -45,9 +46,10 @@ The vector owner fingerprint is pseudonymous personal data, not an anonymous
 record. It contains no account name, document text, embedding or credential, but
 can still be linked by someone who knows the Nextcloud user ID. The personal data
 export includes that user's `vector_owner_fence` metadata. A cleanup failure does
-not reopen the blocked state; general cleanup retry/reconciliation and reviewed
-retention for completed operational records remain unfinished work. See
-[VECTOR-OUTBOX.md](VECTOR-OUTBOX.md) before enabling optional cleanup or storage.
+not reopen the blocked state; local failures remain in the encrypted retry queue
+until the idempotent cleanup pass succeeds. The blocked owner fingerprint and
+remote deletion journal retain their separate recovery lifecycles. See
+[ACCOUNT-ERASURE.md](ACCOUNT-ERASURE.md) and [VECTOR-OUTBOX.md](VECTOR-OUTBOX.md).
 
 ## 3. What happens when a file is modified or deleted?
 

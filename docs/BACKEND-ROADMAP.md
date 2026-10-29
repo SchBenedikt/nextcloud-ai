@@ -34,7 +34,7 @@ The implementation entries further below record the actual delivered slices.
 | 13–14 | Resumable backfill, immutable model rebuild, activation pointer, shadow/canary rollout and rollback | 09–11: bounded build, verification and guarded SQL activation/search exist; explicit Qdrant account canary and SQL rollback are available. Production shadow/soak and rollback drills remain pending. SQL runs without Qdrant; performance and release gates remain open. |
 | 15 | Native hybrid BM25/RRF, phrases, scope and diversification | 12: preserve current relevance behavior before enabling backend hybrid retrieval; compare quality against both exact and current hybrid baselines. |
 | 7, 15, 22 | ChatStore hot-file writes, normalized encrypted SQL messages and distributed chat coordination | 13–14: independent additive chat migration, recovery and erasure; lock lifecycle fix is only the immediate consecutive-request repair. |
-| 15–18 | OTel correlation, provider/tool/DB/lock metrics, cache outages, restore/delete drills and domain extraction | 03, 14: retrieval stage timing is available; exporter, cross-service traces, drills and controller decomposition remain pending. |
+| 15–18 | OTel correlation, provider/tool/DB/lock metrics, cache outages, restore/delete drills and domain extraction | 03, 14: native aggregate OpenMetrics and durable account-erasure retries are implemented; request percentiles, cross-service traces, restore/delete drills and controller decomposition remain pending. |
 | 16, 18 | PHPStan/Psalm, SAST, secrets, SBOM, dependency and pinned-action policy | 14: define supported versions and executed evidence before enabling enforced checks; no claim of completed CI hardening. |
 | 18–19 | Frozen corpus, adversarial tenants, quality thresholds and cold/warm load at concurrency 1/5/20/50 | 05, 09–12, 14: offline evaluator and explicit SQL snapshot runner exist; representative real datasets, ANN comparisons, load/soak and resource measurements remain pending. |
 | 20–22 | Optional deployments, authoritative Nextcloud SQL/VFS and reconstructible vector index | 07, 09, 14: standalone default preserved; backup/restore and reconstruction drills remain pending. |
@@ -330,9 +330,9 @@ The legacy cleanup removed document rows before deleting chunks, but
 ChunkMapper::deleteForUser identifies chunks through those document rows. Cleanup
 now deletes chunks first and only deletes parent documents if that succeeds.
 A chunk-deletion failure retains the ownership mapping for a retry while the
-remaining best-effort account cleanup continues. This prevents newly orphaning
-chunks in this path; it does not retroactively identify owners of historical
-orphans or implement a durable retry queue. Those remain storage-erasure work.
+remaining cleanup continues. This prevents newly orphaning chunks in this path;
+it does not retroactively identify owners of historical orphans. Version 1.18.39
+adds the durable encrypted-identity retry queue for incomplete local cleanup.
 
 ### Stage 06 generation schema and contracts
 
@@ -393,8 +393,9 @@ successful replacement deletion through the canonical source-deletion
 transaction. SQL generation rows are removed with their source; Qdrant tombstones
 are durably enqueued without remote calls on the index/chat path. Generation
 upserts from normal indexing, reset/rename integration, remote revision/lease
-hardening, target retention/pruning and persistent account-cleanup retries
-remain pending. VECTOR-OUTBOX.md distinguishes these implementation gaps from
+hardening and target retention/pruning remain pending. Durable local account
+cleanup retries are implemented; remote generation deletion remains on its
+separate outbox. VECTOR-OUTBOX.md distinguishes these implementation gaps from
 the queue primitives. No delivery/crash/concurrency or live migration gate is
 verified.
 
@@ -429,9 +430,10 @@ ownership. Preparation reads owner/building/target state in one post-DNS query.
 OCC owner-status works for deleted IDs; personal export includes fence metadata.
 Both native administration surfaces show blocked/unavailable owner state using
 bounded bulk lookups, without presenting an unblock control.
-No unblock/prune or general cleanup retry coordinator exists yet. SQL writes and
-chunk consumers are still pending; no remote activation, migration lifecycle or
-concurrency gate is verified. Privacy documentation now distinguishes local
+No unblock/prune or remote-preparation reconciliation exists yet. Durable local
+account-cleanup retries are implemented separately from the vector outbox. SQL
+writes and chunk consumers are still pending; no remote activation, migration
+lifecycle or concurrency gate is verified. Privacy documentation now distinguishes local
 extraction/storage from provider-dependent inference and retained deletion state.
 
 ### Stage 08 isolated building chunks and atomic upsert intent
@@ -510,8 +512,9 @@ ownership available to the scheduler. The query uses native `selectDistinct()`
 now, and cleanup never reopens a deleted home. Actual MariaDB tenant isolation,
 chunk/document cleanup, native user deletion, AppData removal and repeat cleanup
 have passed locally; known disposable audit remnants were removed and checked.
-This advances the sequential delete drill in stage 14. Durable retry coordination,
-in-flight legacy-writer fencing and distributed/remote erasure remain pending.
+This advances the sequential delete drill in stage 14. Version 1.18.39 adds
+durable local retry coordination; in-flight legacy-writer fencing and
+distributed/remote erasure remain pending.
 
 ### Stage 09 source-input slice: shared canonical extraction
 
@@ -551,7 +554,7 @@ sampled cosine scores, snapshot reconciliation, exact live counts and invalidata
 certificates. SQL activation and explicit Qdrant canary activation now consume
 these certificates. Cross-database and adversarial evidence, representative
 load/soak, hard remote-storage/IMAP budgets, full legacy-writer coverage and
-durable erasure retries remain pending. Stage 10 has only an explicit admin
+durable erasure validation remain pending. Stage 10 has only an explicit admin
 probe; production shadow/soak and remaining stages 11–14 evidence remain open.
 See [GENERATION-BUILDS.md](GENERATION-BUILDS.md).
 
@@ -571,3 +574,15 @@ Per-generation concurrency, provider/vector deadlines, SQL scan limits and a
 wall-clock guard bound work. This measures one explicit probe; it is not a
 production shadow/soak period, hybrid-ranking comparison, canary or cutover.
 See [GENERATION-SHADOW.md](GENERATION-SHADOW.md).
+
+### Durable local account-erasure retries (1.18.39)
+
+Account deletion now records a Nextcloud-encrypted identity in a local SQL retry
+queue, immediately runs all idempotent cleanup steps, and retries failed work
+with a leased Nextcloud background job and bounded exponential backoff. The
+queue exports aggregate pending-count and oldest-age OpenMetrics only. Qdrant
+collection deletion remains the existing independent vector-outbox operation.
+PHP syntax, app XML, and diff checks passed locally; tests, installed retry
+drills, cross-database runs, concurrency/restore drills, production evidence,
+and remote-vector confirmation remain pending. See
+[ACCOUNT-ERASURE.md](ACCOUNT-ERASURE.md).

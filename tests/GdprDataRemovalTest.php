@@ -102,7 +102,7 @@ final class GdprDataRemovalTest extends TestCase {
         $eraseChunks = $chunks->expects(self::once())->method('deleteForUser')->with('alice');
         if ($failChunks) $eraseChunks->willThrowException(new \RuntimeException('Temporary database failure'));
         $embeddings = $this->createMock(EmbeddingCache::class);
-        $embeddings->expects(self::once())->method('clearUser')->with('alice');
+        $embeddings->expects(self::once())->method('clearUserForErasure')->with('alice');
         $root = $this->createMock(IRootFolder::class);
         $root->expects(self::never())->method('getUserFolder');
         $factory = $this->createMock(IAppDataFactory::class);

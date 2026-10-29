@@ -319,6 +319,7 @@ final class BackgroundChatQueue {
     /** Erase both per-user queue records and the global discovery index. */
     public function deleteUserData(string $user): void {
         if ($user === '') return;
+		$failed = false;
         try {
             $this->withLock($user, function () use ($user): void {
                 $this->config->deleteUserValue($user, AppConfig::APP, self::KEY);
@@ -326,6 +327,7 @@ final class BackgroundChatQueue {
             });
         } catch (\Throwable $e) {
             $this->logger->warning('eva_ai: background queue cleanup failed on account deletion', ['user' => $user]);
+			$failed = true;
         }
         try {
             $this->withUsersLock(function () use ($user): void {
@@ -337,7 +339,9 @@ final class BackgroundChatQueue {
             });
         } catch (\Throwable $e) {
             $this->logger->warning('eva_ai: background queue user index cleanup failed', ['user' => $user]);
+			$failed = true;
         }
+		if ($failed) throw new \RuntimeException('Background chat queue cleanup was incomplete.');
     }
 
     private function rememberUser(string $user): void {
