@@ -379,7 +379,9 @@ replaced by a successful build or an adapter unit test.
   same URLs and permission checks; the remaining API controller domains still
   need incremental extraction. Version 1.20.10 moves connector and plugin API
   operations into `IntegrationController`; chat and file-context domains still
-  remain in the large API controller.
+  remain in the large API controller. Version 1.20.11 moves queued-chat
+  admission and lifecycle endpoints behind `BackgroundChatController`, sharing
+  the same rate-limit policy and worker queue.
 
 ### Stage 14 portability slice: Activity and Mail SQL (1.18.60)
 

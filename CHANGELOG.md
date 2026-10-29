@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Isolate queued-chat request lifecycle (1.20.11)
+
+- Move queued chat admission, status, cancellation, pause, resume and retry into a focused controller while retaining the existing URLs and shared rate-limit fallback.
+
 ### Separate connector and plugin API endpoints (1.20.10)
 
 - Move connector configuration, discovery, diagnostics and plugin toggles into a focused authenticated OCS controller while preserving endpoint URLs and the shared tool-policy executor.
