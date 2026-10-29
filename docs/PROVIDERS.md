@@ -9,7 +9,8 @@ provider does not migrate or rebuild the document index.
 2. Choose a template. It fills the API base URL, not a model or pricing tier.
 3. Enter a display name and exact chat model ID.
 4. Enter an API key, or explicitly disable authentication for a server that
-   accepts unauthenticated requests.
+   accepts unauthenticated requests. Saving with authentication disabled also
+   removes any API key previously stored for this profile.
 5. Choose **Save & use provider**, then send a short chat to verify inference.
 
 Editing an existing inactive profile saves its configuration without changing
@@ -73,7 +74,9 @@ alone does not establish image or audio compatibility.
 The active provider receives prompts, relevant conversation context, retrieved
 excerpts and tool results needed for the request. Keys are encrypted in
 Nextcloud user configuration, separate from profile JSON. A blank key field
-keeps a stored key; the status response exposes only `providerKeys` presence flags.
+keeps a stored key while authentication remains enabled; turning authentication
+off removes that profile's stored key. The status response exposes only
+`providerKeys` presence flags.
 
 Base URLs must be plain HTTP(S) URLs without embedded credentials, query strings
 or fragments. Review [Privacy](PRIVACY.md) and [Security](SECURITY.md) before

@@ -19,6 +19,7 @@
 				<NcCheckboxRadioSwitch v-if="!builtin" v-model="needsKey" type="switch" :disabled="saving">{{ t('Authenticate with an API key') }}</NcCheckboxRadioSwitch>
 				<NcTextField v-if="needsKey" v-model="key" type="password" autocomplete="new-password" :label="t('API key')" :disabled="saving" maxlength="512" />
 				<p v-if="needsKey" class="field-help">{{ keySaved ? t('A key is saved. Leave blank to keep it.') : t('Enter an API key. It is encrypted on the server and never returned to the browser.') }}</p>
+				<p v-else-if="keySaved" class="field-help">{{ t('Saving without authentication also removes this provider’s saved API key.') }}</p>
 				<p v-if="!builtin" class="field-help">{{ t('Uses the Chat Completions API. Model features vary by provider. The server must be able to reach this address.') }}</p>
 				<details v-if="!builtin" class="provider-extra"><summary>{{ t('Image & audio models (optional)') }}</summary>
 					<p class="field-help">{{ t('Only configure these when your provider supports the matching image or audio endpoint.') }}</p>
@@ -156,6 +157,9 @@ export default {
 					if (key.value && needsKey.value) {
 						payload.custom_provider_id = row.id
 						payload.custom_provider_api_key = key.value
+					} else if (keySaved.value && !needsKey.value) {
+						payload.custom_provider_id = row.id
+						payload.remove_custom_provider_api_key = true
 					}
 				}
 				await api('PUT', 'settings', payload)
