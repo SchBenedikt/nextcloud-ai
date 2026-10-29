@@ -2,25 +2,27 @@
 
 ## Knowledge storage status
 
-The EVA **Admin dashboard** opens with a compact native Nextcloud section that
-explains the built-in SQL default. It does not load account totals, scheduler
-counts, vector status or external services. **Optional scale and migration tools** is collapsed by
-default; opening it loads the account list and storage snapshot. The snapshot
+The native Nextcloud **Administration → Eva AI** section explains the built-in
+SQL default and keeps shared server settings in one place. It does not load
+account totals, scheduler counts or vector status initially. **Optional storage
+and migration tools** is collapsed by default; opening it loads the account list
+and storage snapshot. The snapshot
 distinguishes built-in SQL, optional Qdrant configuration, generation cleanup,
 and queued or failed operations. Configured/request-enabled does not mean
 connected, verified or selected for search. Status reads never contact Qdrant
 or an embedding provider. Failed reads stay unavailable instead of showing an
 empty healthy queue.
 
-The **Optional storage and migration controls** link opens an administrator-
-only EVA page. Expand **Configure optional storage** to edit the server URL,
-choose API-key or explicit no-key authentication, and allow/disable requests.
-Saving requires re-entering the API key; stored keys are never returned and the
-form clears the key after the attempt. A save neither uploads documents nor
-creates collections. **Check saved connection** is a separate explicit probe
-available when transport is enabled; success does not prove migration readiness.
-**Disable storage requests** preserves pending cleanup work. Allowing requests
-can resume previously enabled cleanup jobs, including retained destinations.
+Opening the disclosure loads the optional controls on demand. **Configure
+optional storage** edits the server URL, API-key or explicit no-key
+authentication, and request allowance. Saving requires re-entering the API key;
+stored keys are never returned and the form clears the key after the attempt. A
+save neither uploads documents nor creates collections. **Check saved
+connection** is a separate explicit probe available when transport is enabled;
+success does not prove migration readiness. **Disable storage requests**
+preserves pending cleanup work. Allowing requests can resume previously enabled
+cleanup jobs, including retained destinations. The old `/apps/eva_ai/admin`
+route redirects to this native settings section.
 
 SQL remains the installation default and needs no external service. Chunk
 synchronization and read cutover are not available yet; only generation cleanup
@@ -260,7 +262,7 @@ from an instance-wide value.
 | `index_job_running` | `1` while a periodic `IndexJob` run is active. |
 | `index_job_started` | Unix timestamp when the current run claimed the scheduler lock. |
 | `index_job_max_seconds` | Wall-clock budget (seconds, default `50`, range `10`–`600`) one periodic run may spend before the next cron tick continues (Issue #112). Shared fairly across all selected accounts within a run. Editable on the admin page (Indexing performance) or via `occ config:app:set eva_ai index_job_max_seconds …`. |
-| `index_job_interval_minutes` | How often the periodic `IndexJob` runs (minutes, default `5`, range `1`–`60`). Lower values index a large library sooner at the cost of more frequent background work; each tick is still bounded by `index_job_max_seconds`. |
+| `index_job_interval_minutes` | How often the periodic `IndexJob` runs (minutes, default `5`, range `1`–`60`). Lower values index a large library sooner at the cost of more frequent background work; each tick is still bounded by `index_job_max_seconds`. Saving a changed value re-registers the Nextcloud job immediately. |
 | `index_job_last_user` | Last user finished by a periodic run; the next run rotates past it for fairness (Issue #112). |
 | `index_max_concurrent` | I | `2` | `1`–`16` | passes | Maximum index passes running concurrently across all users (Issue #142). Editable on the admin page (Indexing performance) or via `occ config:app:set eva_ai index_max_concurrent …`. |
 | `index_storage_quota` | U | `0` | `0`–`1099511627776` | bytes | Maximum total source-file size indexed for one user; `0` disables the quota. |

@@ -38,7 +38,6 @@ class Admin implements ISettings {
         return new TemplateResponse('eva_ai', 'admin', [
             'adminSettings' => $adminSettings,
             'apiBase' => $apiBase,
-            'storageAdminUrl' => $this->urlGenerator->linkToRoute('eva_ai.page.admin'),
             'webSearchKeyConfigured' => $this->webSearch->hasApiKey(),
             'webSearchProviders' => WebSearchService::PROVIDERS,
             'webSearchBrowserStatus' => $this->webSearch->browserStatus(),

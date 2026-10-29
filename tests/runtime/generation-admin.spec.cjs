@@ -38,6 +38,8 @@ test.describe('installed generation administration', () => {
   test('metadata loads locally and the native explicit probe respects origin denial', async () => {
     const before = requests()
     await page.goto(`${base}/index.php/apps/eva_ai/admin`, { waitUntil: 'domcontentloaded' })
+    await expect(page).toHaveURL(/\/settings\/admin\/eva_ai/)
+    await page.getByText('Optional storage and migration tools', { exact: true }).click()
     await expect(page.getByRole('heading', { name: 'Embedding generations', exact: true })).toBeVisible()
     await page.getByLabel('Generation owner', { exact: true }).click()
     await page.getByRole('option').filter({ has: page.getByTitle(`EVA Runtime Audit (${metadata.user})`, { exact: true }) }).click()
@@ -92,11 +94,13 @@ test.describe('installed generation administration', () => {
     expect(requests()).toBe(before)
   })
 
-  test('native Nextcloud administration links the shared build controls', async () => {
+  test('native Nextcloud administration keeps optional controls collapsed until opened', async () => {
     await page.goto(`${base}/index.php/settings/admin/eva_ai`, { waitUntil: 'domcontentloaded' })
-    const link = page.getByRole('link', { name: 'Manage storage and background builds', exact: true })
-    await expect(link).toBeVisible()
-    await expect(link).toHaveAttribute('href', /\/apps\/eva_ai\/admin/)
+    const section = page.locator('#eva-ai-storage-tools')
+    await expect(section).toBeVisible()
+    await expect(section).not.toHaveJSProperty('open', true)
+    await page.getByText('Optional storage and migration tools', { exact: true }).click()
+    await expect(page.getByRole('heading', { name: 'Embedding generations', exact: true })).toBeVisible()
   })
 
   test('a normal account cannot list or probe an administrator generation', async () => {

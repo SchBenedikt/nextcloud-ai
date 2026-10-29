@@ -12,14 +12,16 @@ privileges.
 Signed-in pages under `/index.php/apps/eva_ai/` include `chat`, `documents`,
 `settings`, `metrics`, and `runs`. The `/runs` page opens the background-run
 workspace; it is separate from the OCS endpoints that list and control runs.
-The administrator workspace remains at `/admin` and requires an administrator.
+The legacy `/admin` page route redirects to Nextcloud's native
+**Administration → Eva AI** settings section and requires an administrator.
 
 ## Administrator storage snapshot
 
-The `/admin` page starts with the built-in SQL default and does not load account
-or scheduler totals. The documented `GET /api/admin/summary` remains available
-to existing admin API clients, but the page no longer calls it. Opening
-**Optional scale and migration tools** loads the admin-only
+The native administration section starts with the built-in SQL default and
+does not load account or scheduler totals. The documented
+`GET /api/admin/summary` remains available to existing admin API clients, but
+the page does not call it. Opening **Optional storage and migration tools**
+loads the admin-only
 `GET /api/admin/overview` account list and the read-only
 `GET /api/admin/vector-storage` snapshot. These endpoints do not contact Qdrant
 or an embedding provider.
@@ -87,11 +89,10 @@ Private/loopback network approvals remain instance-owned, not accepted from this
 form; the egress policy applies to every explicit probe too. The live probe uses
 the adapter's three-second HTTP bound plus operating-system DNS resolution limits.
 
-`GET /apps/eva_ai/admin` is a separate AdminRequired page, linked from Nextcloud's
-EVA administration settings. It loads a dedicated frontend entry without mounting
-the personal chat shell. The page GET is CSRF-exempt like the app's other page
-routes; its OCS mutation endpoints remain protected. Access, CSRF, native rendering
-and actual remote transport have not been exercised while tests are deferred.
+`GET /apps/eva_ai/admin` is a legacy AdminRequired route that redirects to
+Nextcloud's native **Administration → Eva AI** section. The optional controls
+load on demand inside that settings page. Its OCS mutation endpoints remain
+protected by the usual Nextcloud request token.
 
 ## Lightweight index progress
 

@@ -764,7 +764,7 @@
     "{path}, {count} chunks": "{path}, {count} Abschnitte",
     "{title} · {count} messages": "{title} · {count} Nachrichten",
     "Cron run frequency": "Häufigkeit des Cron-Laufs",
-    "Minutes between runs, 1–60, default 5. Together with the time budget this is how fast a large library is caught up. Takes effect after the next app update.": "Minuten zwischen zwei Läufen, 1–60, Standard 5. Zusammen mit dem Zeitbudget bestimmt das, wie schnell eine große Bibliothek erfasst wird. Wirkt nach dem nächsten App-Update.",
+    "Minutes between runs, 1–60, default 5. Together with the time budget this is how fast a large library is caught up. The new interval takes effect as soon as you save.": "Minuten zwischen zwei Läufen, 1–60, Standard 5. Zusammen mit dem Zeitbudget bestimmt das, wie schnell eine große Bibliothek erfasst wird. Das neue Intervall gilt direkt nach dem Speichern.",
     "Pages compared before choosing": "Vor der Auswahl geprüfte Seiten",
     "How many hits are read and scored before the best ones are returned. 3–20, default 12. A larger field costs one page fetch per candidate but stops the search from trusting the first hits.": "Wie viele Treffer gelesen und bewertet werden, bevor die besten zurückgegeben werden. 3–20, Standard 12. Ein größeres Feld kostet einen Seitenabruf pro Kandidat, verhindert aber, dass die Suche den ersten Treffern vertraut.",
     "Show images from the result pages": "Bilder aus den Ergebnis-Seiten anzeigen",
@@ -1529,7 +1529,13 @@
     "The index overview is unavailable. Use Refresh to try again.": "Die Indexübersicht ist nicht verfügbar. Aktualisiere die Seite und versuche es erneut.",
     "{count} accounts tracked by EVA": "{count} von EVA erfasste Konten",
     "Waiting for your chat to finish": "Warten, bis dein Chat beendet ist",
-    "Indexing is paused between embedding batches to keep chat responses responsive. It will continue automatically.": "Die Indexierung pausiert zwischen den Einbettungsstapeln, damit Chatantworten schnell bleiben. Sie wird automatisch fortgesetzt."
+    "Indexing is paused between embedding batches to keep chat responses responsive. It will continue automatically.": "Die Indexierung pausiert zwischen den Einbettungsstapeln, damit Chatantworten schnell bleiben. Sie wird automatisch fortgesetzt.",
+    "Optional storage and migration tools": "Optionale Speicher- und Migrationswerkzeuge",
+    "These controls are only needed for optional external storage or explicit generation migration. They load when opened and never change the default SQL search path.": "Diese Steuerelemente werden nur für optionalen externen Speicher oder eine ausdrücklich gestartete Generationsmigration benötigt. Sie werden beim Öffnen geladen und ändern nicht den standardmäßigen SQL-Suchpfad.",
+    "Open this section to load optional controls.": "Öffne diesen Bereich, um die optionalen Steuerelemente zu laden.",
+    "Loading optional controls…": "Optionale Steuerelemente werden geladen…",
+    "Optional controls could not be loaded. Reopen this section to retry.": "Die optionalen Steuerelemente konnten nicht geladen werden. Öffne diesen Bereich erneut, um es noch einmal zu versuchen.",
+    "These optional tools do not change the built-in SQL search path. Installation, indexing and chat work without an external vector service.": "Diese optionalen Werkzeuge ändern den integrierten SQL-Suchpfad nicht. Installation, Indexierung und Chat funktionieren ohne externen Vektordienst."
   },
   "pluralForm": "nplurals=2; plural=(n != 1);",
   "EVA – Chat": "EVA – Chat",
