@@ -184,7 +184,10 @@ export default {
 			error.value = ''
 			notice.value = ''
 			try {
-				const result = await api('PUT', 'settings', { chat_provider: provider.id })
+				// Serialize provider selection with autosaved settings and profile edits.
+				const result = await (props.savePatch
+					? props.savePatch({ chat_provider: provider.id })
+					: api('PUT', 'settings', { chat_provider: provider.id }))
 				if (result?.chat_provider !== provider.id) throw new Error(t('The server did not confirm the selected provider.'))
 				notice.value = t('{provider} is now used for chats.', { provider: provider.name })
 				emit('saved')
