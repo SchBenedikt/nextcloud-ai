@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Bound retrieval metric reads to the latest chat sample (1.18.74)
+
+- Read at most 5,000 recent chat rows before filtering for retrieval backends, so OpenMetrics scrapes stay bounded when most chats have no retrieved documents.
+
 ### Use a valid default for retrieval metric backend (1.18.73)
 
 - Use a non-empty `none` sentinel for chat usage rows without retrieval measurements so the additive schema migration is accepted by Nextcloud.
