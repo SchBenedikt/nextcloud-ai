@@ -26,6 +26,7 @@ create a separate public metrics endpoint or background poller.
 | `nextcloud_eva_ai_embedding_batch_samples` | `provider`, `result` | Success/error counts in the bounded embedding sample. |
 | `nextcloud_eva_ai_embedding_cache_hit_ratio` | `provider` | Cache hits divided by hits plus misses in the bounded sample. |
 | `nextcloud_eva_ai_embedding_query_duration_ms` | `provider`, `quantile` | Approximate query-embedding stage duration by fixed provider type. |
+| `nextcloud_eva_ai_sql_dense_scan_rows` | `backend`, `quantile` | Approximate SQL vector rows read for exact dense scoring. |
 
 ## Duration quantiles
 
@@ -57,6 +58,11 @@ provider comparison. Its duration includes cache and request setup around the
 query embedding call, not only provider network time. Retrieval stages do not
 separate SQL dense scanning from lexical selection within the candidate phase.
 Queue age and contended chat-store lock waits use separate fixed-label metrics.
+SQL dense scan rows count vector records returned to EVA for exact cosine
+scoring; they do not measure database pages, bytes transferred or physical disk
+I/O. Qdrant queries are excluded. Account metrics use the requesting user's
+newest 5,000 eligible rows in the selected period; OpenMetrics uses the newest
+5,000 eligible rows across the instance in the preceding seven days.
 
 Chat-store lock waits are recorded only when lock acquisition collides, when a
 shared read must degrade to a lock-free read, or when acquisition ultimately

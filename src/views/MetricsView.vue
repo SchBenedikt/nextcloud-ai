@@ -22,6 +22,13 @@
 					<tr v-for="row in embeddingQueryRows" :key="row.provider"><td>{{ row.label }}</td><td>{{ format(row.count) }}</td><td>{{ format(row.p50_ms) }} ms</td><td>{{ format(row.p95_ms) }} ms</td><td>{{ format(row.p99_ms) }} ms</td></tr>
 				</tbody></table></div>
 			</section>
+			<section v-if="sqlDenseScan.samples > 0" class="metrics-panel">
+				<h2>{{ $t('SQL vectors read for dense search') }}</h2>
+				<p class="metrics-note">{{ $t('Count of vector rows EVA loaded for exact SQL cosine scoring. This measures application rows, not physical database or disk reads.') }}</p>
+				<div class="metrics-table-scroll"><table><thead><tr><th>{{ $t('Search path') }}</th><th>{{ $t('Requests') }}</th><th>p50</th><th>p95</th><th>p99</th></tr></thead><tbody>
+					<tr v-for="row in sqlDenseScanRows" :key="row.backend"><td>{{ row.label }}</td><td>{{ format(row.count) }}</td><td>{{ format(row.p50_rows) }}</td><td>{{ format(row.p95_rows) }}</td><td>{{ format(row.p99_rows) }}</td></tr>
+				</tbody></table></div>
+			</section>
 			<section v-if="indexRuns.samples > 0" class="metrics-panel">
 				<h2>{{ $t('Indexing performance') }}</h2>
 				<p class="metrics-note">{{ $t('Background run duration and successfully written file chunks. Chunk throughput covers file traversal through SQL writes, including extraction and embedding.') }}</p>
@@ -87,6 +94,12 @@ export default {
 		const embeddingQueryRows = computed(() => Object.entries(embeddingQueryDuration.value.providers || {}).map(([provider, row]) => ({
 			provider,
 			label: ({ ollama: t('Ollama'), openai_compatible: t('OpenAI-compatible') })[provider] || t('Other'),
+			...row,
+		})))
+		const sqlDenseScan = computed(() => data.value.sql_dense_scan || { samples: 0, backends: {} })
+		const sqlDenseScanRows = computed(() => Object.entries(sqlDenseScan.value.backends || {}).map(([backend, row]) => ({
+			backend,
+			label: ({ sql_legacy: t('Legacy SQL'), sql_generation: t('SQL generation') })[backend] || t('Other'),
 			...row,
 		})))
 		const ragRequestOutcomes = computed(() => Object.entries(ragRequestDuration.value.outcomes || {}).map(([outcome, row]) => ({
@@ -189,7 +202,7 @@ export default {
 		}
 		const downloadCsv = () => {
 			if (!hasCurrentData.value) return
-			const content = buildMetricsCsv({ days: days.value, totals: totals.value, byModel: byModel.value, daily: daily.value, slowTools: slowTools.value, ragRequestDuration: ragRequestDuration.value, embeddingQueryDuration: embeddingQueryDuration.value, indexRuns: indexRuns.value, chatStoreLockWait: chatStoreLockWait.value })
+			const content = buildMetricsCsv({ days: days.value, totals: totals.value, byModel: byModel.value, daily: daily.value, slowTools: slowTools.value, ragRequestDuration: ragRequestDuration.value, embeddingQueryDuration: embeddingQueryDuration.value, sqlDenseScan: sqlDenseScan.value, indexRuns: indexRuns.value, chatStoreLockWait: chatStoreLockWait.value })
 			const url = URL.createObjectURL(new Blob([content], { type: 'text/csv;charset=utf-8' }))
 			const link = document.createElement('a')
 			link.href = url
@@ -213,7 +226,7 @@ export default {
 			document.removeEventListener('visibilitychange', refreshWhenVisible)
 			requestId++
 		})
-		return { days, loading, error, hasCurrentData, totals, byModel, daily, slowTools, ragRequestDuration, ragRequestOutcomes, embeddingQueryDuration, embeddingQueryRows, indexRuns, indexRunRows, chatStoreLockWait, chatStoreLockWaitRows, adminUsers, selectedUser, canFilterUsers, maxDaily, maxModel, inputShare, cards, format, formatMoney, priceKey, ensurePrice, savingPricing, pricingStatus, savePricing, load, downloadCsv, printReport, updatedLabel }
+		return { days, loading, error, hasCurrentData, totals, byModel, daily, slowTools, ragRequestDuration, ragRequestOutcomes, embeddingQueryDuration, embeddingQueryRows, sqlDenseScan, sqlDenseScanRows, indexRuns, indexRunRows, chatStoreLockWait, chatStoreLockWaitRows, adminUsers, selectedUser, canFilterUsers, maxDaily, maxModel, inputShare, cards, format, formatMoney, priceKey, ensurePrice, savingPricing, pricingStatus, savePricing, load, downloadCsv, printReport, updatedLabel }
 	},
 }
 </script>

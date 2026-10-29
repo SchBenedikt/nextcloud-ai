@@ -172,7 +172,7 @@ class Searcher {
         $measurements['dense_enabled'] = $queryMagnitude !== null;
         $phase = $this->startStage($measurements, 'candidates_ms');
         try {
-            $rows = $this->loadCandidates($userId, $query, $queryVector, $queryMagnitude, $generation, $scopePath, $topK);
+            $rows = $this->loadCandidates($userId, $query, $queryVector, $queryMagnitude, $generation, $scopePath, $topK, $measurements);
         } catch (\Throwable $error) {
             if ($generation?->backend !== 'qdrant') throw $error;
             // Remote search failure is observable and degrades to the built-in index.
@@ -195,7 +195,7 @@ class Searcher {
             $measurements['embedding_ms']+=(hrtime(true)-$fallbackEmbeddingStarted)/1_000_000;
             $measurements['embedding_provider']=$embeddingProvider;
             $measurements['dense_enabled']=$queryMagnitude!==null;
-            $rows=$this->loadCandidates($userId,$query,$queryVector,$queryMagnitude,null,$scopePath,$topK);
+            $rows=$this->loadCandidates($userId,$query,$queryVector,$queryMagnitude,null,$scopePath,$topK,$measurements);
         }
         $measurements['candidates_ms'] = (hrtime(true) - $phase) / 1_000_000;
         $measurements['candidates'] = count($rows);
@@ -418,7 +418,8 @@ class Searcher {
      *        embedding request failed (dense ranking is then skipped).
      * @return array<int,array<string,mixed>>
      */
-    private function loadCandidates(string $userId, string $query, ?array $queryVector, ?float $queryMagnitude, ?VectorGeneration $generation = null, ?string $scopePath = null, int $topK = 20): array {
+    private function loadCandidates(string $userId, string $query, ?array $queryVector, ?float $queryMagnitude, ?VectorGeneration $generation, ?string $scopePath, int $topK, array &$measurements): array {
+        $measurements['dense_sql_rows_scanned'] = 0;
         $generationId=$generation?->id;
         $generationState=$generation?->backend==='qdrant'?'delivered':'ready';
         if($generation?->backend==='qdrant'){
@@ -474,7 +475,9 @@ class Searcher {
         }
         $n = $this->chunkMapper->countForUser($userId,$generationId,$generationState);
         if ($n <= self::POOL) {
-            return $this->chunkMapper->chunksForUser($userId,self::POOL,$generationId,$generationState);
+            $rows = $this->chunkMapper->chunksForUser($userId,self::POOL,$generationId,$generationState);
+            if ($queryVector !== null) $measurements['dense_sql_rows_scanned'] = count($rows);
+            return $rows;
         }
 
         $tokens = $this->tokens($query);
@@ -496,6 +499,7 @@ class Searcher {
                 for ($scanned = 0; $scanned < $n; $scanned += self::DENSE_SCAN_PAGE) {
                     $page = $this->chunkMapper->vectorsForUserAfter($userId, $afterId, self::DENSE_SCAN_PAGE, $generationId,$generationState);
                     if ($page === []) break;
+                    $measurements['dense_sql_rows_scanned'] += count($page);
                     $afterId = (int)$page[count($page) - 1]['id'];
                     foreach ($page as $row) {
                         $vec = VectorEmbeddingCodec::decode((string)$row['embedding'], count($queryVector));

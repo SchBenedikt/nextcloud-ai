@@ -2,6 +2,11 @@
 
 ## [Unreleased]
 
+### Report SQL dense scan volume (1.18.94)
+
+- Count SQL vector rows loaded for exact dense scoring and expose bounded p50/p95/p99 values in account metrics and OpenMetrics.
+- Keep the measurement separate from physical database I/O and exclude Qdrant retrievals.
+
 ### Measure query embedding latency by provider (1.18.93)
 
 - Store the fixed embedding provider type alongside existing retrieval timings and expose bounded p50/p95/p99 query-embedding stage durations in account metrics and OpenMetrics.
