@@ -1700,36 +1700,53 @@ class ChatStore {
      *
      * @return array{path:string,was_locked:bool,released:bool}
      */
-    public function clearLock(string $user, bool $force = false): array {
-        $lockPath = 'eva_ai/chat/' . $this->namespaceFor($user);
-        $mode = ILockingProvider::LOCK_EXCLUSIVE;
-        $wasLocked = false;
-        try {
-            $wasLocked = $this->lockingProvider->isLocked($lockPath, $mode);
-        } catch (\Throwable $e) {
-            // A provider that cannot answer is reported as "not locked": the
-            // command then does nothing instead of failing on a healthy store.
-            $wasLocked = false;
+    public function clearLock(string $user, bool $force = false, ?string $chatId = null): array {
+        if ($chatId !== null && ($chatId === '' || strlen($chatId) > 128)) {
+            throw new \InvalidArgumentException('Invalid chat identifier.');
         }
-        $released = false;
-        // Some DB locking-provider versions can report an expired/stale row as
-        // unlocked even though releaseLock() is still able to remove it.  The
-        // explicit recovery command passes $force after the administrator has
-        // verified that no writer is running, so attempt the release once in
-        // that mode instead of leaving the user blocked for the provider's
-        // full (often one-hour) TTL.
-        if ($wasLocked || $force) {
+        $lockPath = $chatId === null
+            ? 'eva_ai/chat/' . $this->namespaceFor($user)
+            : 'eva_ai/chat-entry/' . $this->namespaceFor($user) . '/' . hash('sha256', $chatId);
+        // Conversation reads hold shared locks; mutations hold exclusive locks.
+        // The earlier recovery command only checked the user-wide lock and
+        // could not release the per-conversation lock used by SQL storage.
+        $modes = $chatId === null
+            ? [ILockingProvider::LOCK_EXCLUSIVE]
+            : [ILockingProvider::LOCK_EXCLUSIVE, ILockingProvider::LOCK_SHARED];
+        $lockedModes = [];
+        foreach ($modes as $mode) {
             try {
-                $this->lockingProvider->releaseLock($lockPath, $mode);
-                $released = true;
-            } catch (\Throwable $e) {
-                $this->logger->warning('eva_ai: chat lock could not be released', [
-                    'user' => $user,
-                    'exception' => $e->getMessage(),
-                ]);
+                if ($this->lockingProvider->isLocked($lockPath, $mode)) $lockedModes[] = $mode;
+            } catch (\Throwable) {
+                // A provider that cannot answer is reported as unlocked; never
+                // clear a lock blindly unless the administrator passed force.
             }
         }
-        return ['path' => $lockPath, 'was_locked' => $wasLocked, 'released' => $released];
+        $released = false;
+        if ($force) {
+            foreach ($lockedModes as $mode) {
+                try {
+                    if ($mode === ILockingProvider::LOCK_SHARED) {
+                        // DBLockingProvider caches shared locks in-process, so a
+                        // release from this recovery command would only mutate
+                        // its local counter. Convert the single stale shared
+                        // lock to exclusive first; conversion fails safely when
+                        // another shared reader still holds the path.
+                        $this->lockingProvider->changeLock($lockPath, ILockingProvider::LOCK_EXCLUSIVE);
+                        $this->lockingProvider->releaseLock($lockPath, ILockingProvider::LOCK_EXCLUSIVE);
+                    } else {
+                        $this->lockingProvider->releaseLock($lockPath, $mode);
+                    }
+                    $released = true;
+                } catch (\Throwable $e) {
+                    $this->logger->warning('eva_ai: chat lock could not be released', [
+                        'user' => $user,
+                        'exception' => $e->getMessage(),
+                    ]);
+                }
+            }
+        }
+        return ['path' => $lockPath, 'was_locked' => $lockedModes !== [], 'released' => $released];
     }
 
     /**

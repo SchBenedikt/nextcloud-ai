@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace OCA\EvaAi\Service;
 
-use OCP\DB\IQueryBuilder;
+use OCP\DB\QueryBuilder\IQueryBuilder;
 use OCP\ICacheFactory;
 use OCP\IConfig;
 use OCP\IDBConnection;
@@ -89,6 +89,7 @@ final class RequestRateLimiter {
 			try {
 				$this->logger->error('eva_ai: shared cache and SQL rate-limit fallback unavailable', [
 					'exception' => $e::class,
+					'error' => $e->getMessage(),
 				]);
 			} catch (\Throwable) {
 				// Rate limiting failure policy is decided by the caller.
