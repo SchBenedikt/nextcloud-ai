@@ -11,7 +11,11 @@ provider does not migrate or rebuild the document index.
 4. Enter an API key, or explicitly disable authentication for a server that
    accepts unauthenticated requests. Saving with authentication disabled also
    removes any API key previously stored for this profile.
-5. Choose **Save & use provider**, then send a short chat to verify inference.
+5. Choose **Save & use provider**. In the provider list, open its actions and
+   choose **Check connection** to verify the saved endpoint, credentials and
+   selected model. EVA shows the result and any provider error in Settings.
+   A successful connection check confirms the provider's model-list endpoint;
+   send a short chat to verify inference and model-specific features.
 
 Editing an existing inactive profile saves its configuration without changing
 the active chat provider. This lets you configure a dedicated embedding profile

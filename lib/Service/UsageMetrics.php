@@ -174,6 +174,31 @@ class UsageMetrics {
 		}
 	}
 
+	/** Store only real chat-lock contention; uncontended locks add no SQL write. */
+	public function recordChatStoreLockWait(string $userId, string $mode, string $outcome, int $durationMs): void {
+		if ($userId === '' || !in_array($mode, ['shared', 'exclusive'], true)
+			|| !in_array($outcome, ['acquired', 'degraded_read', 'busy', 'read_failed'], true)
+			|| $durationMs < 1) return;
+		try {
+			$qb = $this->db->getQueryBuilder();
+			$qb->insert('eva_ai_usage')->values([
+				'user_id' => $qb->createNamedParameter($userId),
+				'created_at' => $qb->createNamedParameter(time(), IQueryBuilder::PARAM_INT),
+				'provider' => $qb->createNamedParameter('internal'),
+				'model' => $qb->createNamedParameter($mode . ':' . $outcome),
+				'operation' => $qb->createNamedParameter('chat_lock_wait'),
+				'input_tokens' => $qb->createNamedParameter(0, IQueryBuilder::PARAM_INT),
+				'output_tokens' => $qb->createNamedParameter(0, IQueryBuilder::PARAM_INT),
+				'total_tokens' => $qb->createNamedParameter(0, IQueryBuilder::PARAM_INT),
+				'estimated' => $qb->createNamedParameter(0, IQueryBuilder::PARAM_INT),
+				'duration_ms' => $qb->createNamedParameter($durationMs, IQueryBuilder::PARAM_INT),
+			])->executeStatement();
+		} catch (\Throwable $e) {
+			try { $this->logger->debug('eva_ai chat lock wait metric could not be stored', ['exception' => $e->getMessage()]); }
+			catch (\Throwable) { /* Optional telemetry must not affect chat storage. */ }
+		}
+	}
+
 	/** Record only slow tool calls; never persist arguments or returned data. */
 	public function recordTool(?string $userId, string $tool, int $durationMs, bool $ok): void {
 		if ($userId === null || $userId === '' || $durationMs < 100) return;
@@ -236,6 +261,7 @@ class UsageMetrics {
 		$slowTools = [];
 		$ragRequestDuration = ['samples' => 0, 'outcomes' => []];
 		$indexRuns = ['samples' => 0, 'modes' => []];
+		$chatStoreLockWait = ['samples' => 0, 'modes' => []];
 		try {
 			$qb = $this->db->getQueryBuilder();
 			$qb->select('provider', 'model')
@@ -389,7 +415,41 @@ class UsageMetrics {
 		}
 		foreach ($indexRuns['modes'] as $mode => $outcomes) $indexRuns['modes'][$mode] = (object)$outcomes;
 		$indexRuns['modes'] = (object)$indexRuns['modes'];
-		return ['days' => $days, 'totals' => $totals, 'by_model' => $byModel, 'daily' => $daily, 'slow_tools' => $slowTools, 'rag_request_duration' => $ragRequestDuration, 'index_runs' => $indexRuns];
+		try {
+			$qb = $this->db->getQueryBuilder();
+			$qb->select('model', 'duration_ms')->from('eva_ai_usage')
+				->where($qb->expr()->eq('user_id', $qb->createNamedParameter($userId)))
+				->andWhere($qb->expr()->eq('operation', $qb->createNamedParameter('chat_lock_wait')))
+				->andWhere($qb->expr()->gte('created_at', $qb->createNamedParameter($since, IQueryBuilder::PARAM_INT)))
+				->andWhere($qb->expr()->gt('duration_ms', $qb->createNamedParameter(0, IQueryBuilder::PARAM_INT)))
+				->orderBy('created_at', 'DESC')->setMaxResults(5000);
+			$result = $qb->executeQuery();
+			$waits = [];
+			try {
+				while (($row = $result->fetch()) !== false) {
+					$parts = explode(':', (string)$row['model'], 2);
+					if (count($parts) !== 2 || !in_array($parts[0], ['shared', 'exclusive'], true)
+						|| !in_array($parts[1], ['acquired', 'degraded_read', 'busy', 'read_failed'], true)) continue;
+					$waits[$parts[0]][$parts[1]][] = max(0, (int)$row['duration_ms']);
+				}
+			} finally { $result->closeCursor(); }
+			foreach ($waits as $mode => $outcomes) foreach ($outcomes as $outcome => $values) {
+				sort($values, SORT_NUMERIC);
+				$count = count($values);
+				$quantiles = [];
+				foreach (['p50' => 0.5, 'p95' => 0.95, 'p99' => 0.99] as $name => $quantile) {
+					$quantiles[$name . '_ms'] = $values[max(0, (int)ceil($quantile * $count) - 1)];
+				}
+				$chatStoreLockWait['samples'] += $count;
+				$chatStoreLockWait['modes'][$mode][$outcome] = ['count' => $count] + $quantiles;
+			}
+		} catch (\Throwable $e) {
+			try { $this->logger->debug('eva_ai chat lock wait summary unavailable', ['exception' => $e->getMessage()]); }
+			catch (\Throwable) { /* Optional metrics must not fail the dashboard. */ }
+		}
+		foreach ($chatStoreLockWait['modes'] as $mode => $outcomes) $chatStoreLockWait['modes'][$mode] = (object)$outcomes;
+		$chatStoreLockWait['modes'] = (object)$chatStoreLockWait['modes'];
+		return ['days' => $days, 'totals' => $totals, 'by_model' => $byModel, 'daily' => $daily, 'slow_tools' => $slowTools, 'rag_request_duration' => $ragRequestDuration, 'index_runs' => $indexRuns, 'chat_store_lock_wait' => $chatStoreLockWait];
 	}
 
 	/** @return array<string,int> */

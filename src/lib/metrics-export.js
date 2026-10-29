@@ -1,5 +1,5 @@
 /** Build a privacy-preserving CSV from the signed-in user's metrics response. */
-export function buildMetricsCsv({ days, totals = {}, byModel = [], daily = [], slowTools = [], ragRequestDuration = {}, indexRuns = {}, generatedAt = new Date() } = {}) {
+export function buildMetricsCsv({ days, totals = {}, byModel = [], daily = [], slowTools = [], ragRequestDuration = {}, indexRuns = {}, chatStoreLockWait = {}, generatedAt = new Date() } = {}) {
 	const rows = [
 		['report', 'EVA AI usage metrics'],
 		['period_days', days ?? ''],
@@ -32,6 +32,10 @@ export function buildMetricsCsv({ days, totals = {}, byModel = [], daily = [], s
 		['indexing_run_performance'],
 		['mode', 'outcome', 'runs', 'processed_items', 'file_chunks', 'average_file_chunks_per_second', 'run_p50_ms', 'run_p95_ms', 'run_p99_ms'],
 		...Object.entries(indexRuns.modes || {}).flatMap(([mode, outcomes]) => Object.entries(outcomes || {}).map(([outcome, row]) => [mode, outcome, row.runs, row.items, row.file_chunks, row.average_file_chunks_per_second, row.p50_ms, row.p95_ms, row.p99_ms])),
+		[],
+		['chat_store_lock_waits'],
+		['mode', 'outcome', 'contended_requests', 'p50_ms', 'p95_ms', 'p99_ms'],
+		...Object.entries(chatStoreLockWait.modes || {}).flatMap(([mode, outcomes]) => Object.entries(outcomes || {}).map(([outcome, row]) => [mode, outcome, row.count, row.p50_ms, row.p95_ms, row.p99_ms])),
 	]
 
 	const cell = value => {

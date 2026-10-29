@@ -2,6 +2,15 @@
 
 ## [Unreleased]
 
+### Show provider connection results in settings (1.18.90)
+
+- Add a direct connection check for the active chat provider and show its result in the provider settings section.
+
+### Measure contended chat-store lock waits (1.18.89)
+
+- Record wait duration and outcome only when a shared or exclusive chat lock collides; uncontended chat operations add no telemetry write.
+- Show bounded p50/p95/p99 lock-wait quantiles in personal metrics, CSV and Nextcloud OpenMetrics using fixed mode/outcome labels.
+
 ### Preserve unsaved settings while navigating (1.18.88)
 
 - Keep settings mounted after the first visit so changing to another EVA view does not discard pending edits.

@@ -41,7 +41,8 @@ class ChatStore {
         private LoggerInterface $logger,
         private ILockingProvider $lockingProvider,
         private ?ICrypto $crypto = null,
-        private ?EncryptedChatRepository $sqlChats = null
+        private ?EncryptedChatRepository $sqlChats = null,
+        private ?UsageMetrics $usageMetrics = null
     ) {
     }
 
@@ -1439,7 +1440,7 @@ class ChatStore {
             ? self::LOCK_RETRY_ATTEMPTS_SHARED
             : self::LOCK_RETRY_ATTEMPTS_EXCLUSIVE;
         $acquired = false;
-        $started = microtime(true);
+        $started = hrtime(true);
         for ($attempt = 0; $attempt < $attempts; $attempt++) {
             try {
                 $this->lockingProvider->acquireLock($lockPath, $mode);
@@ -1460,6 +1461,7 @@ class ChatStore {
             }
         }
         if ($acquired) {
+            $waitedMs = max(0, (int)ceil((hrtime(true) - $started) / 1_000_000));
             try {
                 return $operation();
             } finally {
@@ -1469,15 +1471,27 @@ class ChatStore {
                     // A lock that was already released (e.g. expired TTL on a
                     // crashed node) must not mask the operation's own result.
                 }
+				if ($attempt > 0) {
+					$this->usageMetrics?->recordChatStoreLockWait(
+						$user,
+						$mode === ILockingProvider::LOCK_SHARED ? 'shared' : 'exclusive',
+						'acquired',
+						$waitedMs,
+					);
+				}
             }
         }
         if ($mode === ILockingProvider::LOCK_SHARED) {
             // Reads never mutate the store: serve the current file whenever it
             // is intact. A read racing an active write can only fail JSON
             // decoding, which is reported as busy - never as a hard error.
+			$waitedMs = max(1, (int)ceil((hrtime(true) - $started) / 1_000_000));
             try {
-                return $operation();
+                $value = $operation();
+				$this->usageMetrics?->recordChatStoreLockWait($user, 'shared', 'degraded_read', $waitedMs);
+				return $value;
             } catch (\Throwable $e) {
+				$this->usageMetrics?->recordChatStoreLockWait($user, 'shared', 'read_failed', $waitedMs);
                 $this->logger->warning('eva_ai: chat lock busy, degraded read failed', [
                     'user' => $user,
                     'exception' => $e->getMessage(),
@@ -1543,8 +1557,9 @@ class ChatStore {
      * of the block and the lock's current state are logged instead of only the
      * fact that the operation failed (issue #193).
      */
-    private function logContention(string $user, string $lockPath, int $mode, int $attempts, float $started): void {
-        $waitedMs = (int)round((microtime(true) - $started) * 1000);
+    private function logContention(string $user, string $lockPath, int $mode, int $attempts, int $started): void {
+        $waitedMs = max(1, (int)ceil((hrtime(true) - $started) / 1_000_000));
+        $this->usageMetrics?->recordChatStoreLockWait($user, 'exclusive', 'busy', $waitedMs);
         $stillLocked = false;
         try {
             $stillLocked = $this->lockingProvider->isLocked($lockPath, $mode);
