@@ -2,6 +2,11 @@
 
 ## [Unreleased]
 
+### Recheck chat storage mode after acquiring its lock (1.18.97)
+
+- Refresh the SQL/AppData read mode under the user fence so a concurrent migration cutover cannot send one operation down a stale storage path.
+- Release a SQL shared fence before retrying an AppData operation under its required user-wide lock.
+
 ### Update SQL chat conversations without loading account history (1.18.96)
 
 - Persist chat titles, message edits and message truncation directly against the affected encrypted SQL conversation.
