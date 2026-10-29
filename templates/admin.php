@@ -15,13 +15,18 @@ declare(strict_types=1);
 /** @var \OCP\IL10N $l */
 
 $admin = $_['adminSettings'];
-$ollamaOnline = $_['ollamaOnline'];
-$ollamaError = $_['ollamaError'] ?? '';
-$ollamaUrl = $_['ollamaUrl'];
-$users = $_['users'];
-$userCount = $_['userCount'];
-$totalDocuments = $_['totalDocuments'];
-$totalChunks = $_['totalChunks'];
+$totals = $_['totals'];
+$storage = $_['vectorStorage'] ?? ['available' => false];
+$sqlAccounts = (int)($storage['active_sql_accounts'] ?? 0);
+$qdrantAccounts = (int)($storage['active_qdrant_accounts'] ?? 0);
+$storageBackend = !$storage['available'] ? $l->t('Status unavailable')
+	: ($qdrantAccounts > 0 && $sqlAccounts > 0
+		? $l->t('SQL generations serve {sql} accounts; Qdrant canaries serve {qdrant} accounts', ['sql' => $sqlAccounts, 'qdrant' => $qdrantAccounts])
+		: ($qdrantAccounts > 0
+			? $l->t('Optional Qdrant canary active for {count} accounts', ['count' => $qdrantAccounts])
+			: ($sqlAccounts > 0
+				? $l->t('SQL generations active for {count} accounts', ['count' => $sqlAccounts])
+				: $l->t('Built-in Nextcloud SQL'))));
 $scheduler = $_['scheduler'];
 $apiBase = $_['apiBase'];
 $providers = $_['webSearchProviders'] ?? [];
@@ -45,7 +50,6 @@ $indexJobInterval = $admin['index_job_interval_minutes'] ?? '5';
 $rateLimitChat = $admin['rate_limit_chat_per_minute'] ?? '30';
 $rateLimitStream = $admin['rate_limit_stream_per_minute'] ?? '10';
 $rateLimitBackground = $admin['rate_limit_background_per_minute'] ?? '5';
-$lastIndexFailed = (int)($admin['last_index_failed'] ?? 0);
 
 $schedulerRunning = (int)($scheduler['running'] ?? 0);
 $schedulerQueued = (int)($scheduler['queued'] ?? 0);
@@ -76,22 +80,19 @@ $providerLabels = [
 	</p>
 
 	<p class="eva-chip-row">
-		<span class="eva-chip <?php p($ollamaOnline ? 'eva-chip--ok' : 'eva-chip--error'); ?>">
-			<?php p($ollamaOnline ? $l->t('Language model connected') : $l->t('Language model unavailable')); ?>
-		</span>
 		<span class="eva-chip <?php p($schedulerRunning > 0 ? 'eva-chip--busy' : 'eva-chip--idle'); ?>">
 			<?php p($schedulerRunning > 0
 				? $l->n('%n index pass running', '%n index passes running', $schedulerRunning)
 				: $l->t('Indexer idle')); ?>
 		</span>
 		<span class="eva-chip eva-chip--idle">
-			<?php p($l->n('%n indexed account', '%n indexed accounts', (int)$userCount)); ?>
+			<?php p($l->n('%n indexed account', '%n indexed accounts', (int)$totals['accounts'])); ?>
 		</span>
 	</p>
 
 	<h3><?php p($l->t('Instance status')); ?></h3>
 	<p class="settings-hint">
-		<?php p($l->t('Live information about the services Eva AI depends on. Nothing here changes a setting.')); ?>
+		<?php p($l->t('Indexing totals, the active search path and optional service configuration. Opening this page does not contact model or vector services.')); ?>
 	</p>
 
 	<table class="grid">
@@ -103,20 +104,6 @@ $providerLabels = [
 			</tr>
 		</thead>
 		<tbody>
-			<tr>
-				<td><strong><?php p($l->t('Language model server')); ?></strong></td>
-				<td>
-					<span class="eva-status <?php p($ollamaOnline ? 'eva-status--ok' : 'eva-status--error'); ?>">
-						<?php p($ollamaOnline ? $l->t('Connected') : $l->t('Not connected')); ?>
-					</span>
-				</td>
-				<td>
-					<span class="eva-mono"><?php p($ollamaUrl); ?></span>
-					<?php if (!$ollamaOnline && $ollamaError !== ''): ?>
-						<span class="eva-error eva-block"><?php p($ollamaError); ?></span>
-					<?php endif; ?>
-				</td>
-			</tr>
 			<tr>
 				<td><strong><?php p($l->t('Web search')); ?></strong></td>
 				<td>
@@ -134,15 +121,8 @@ $providerLabels = [
 			</tr>
 			<tr>
 				<td><strong><?php p($l->t('Knowledge base')); ?></strong></td>
-				<td><?php p($l->t('%s documents', [(string)$totalDocuments])); ?></td>
-				<td>
-					<?php p($l->t('%s text chunks', [(string)$totalChunks])); ?>
-					<?php if ($lastIndexFailed > 0): ?>
-						<span class="eva-block eva-muted">
-							<?php p($l->t('%s files were skipped and are retried on the next run', [(string)$lastIndexFailed])); ?>
-						</span>
-					<?php endif; ?>
-				</td>
+				<td><?php p($l->t('%s documents', [(string)$totals['documents']])); ?></td>
+				<td><?php p($l->t('%s text chunks', [(string)$totals['chunks']])); ?></td>
 			</tr>
 			<tr>
 				<td><strong><?php p($l->t('Background indexing')); ?></strong></td>
@@ -159,14 +139,13 @@ $providerLabels = [
 
 	<h3><?php p($l->t('Knowledge storage')); ?></h3>
 	<p><a class="button" href="<?php p($_['storageAdminUrl']); ?>"><?php p($l->t('Manage storage and background builds')); ?></a></p>
-	<p class="settings-hint"><?php p($l->t('Search uses the built-in database. Optional vector storage is being prepared for larger knowledge bases.')); ?></p>
-	<?php $storage = $_['vectorStorage'] ?? ['available' => false]; ?>
+	<p class="settings-hint"><?php p($l->t('EVA uses Nextcloud SQL automatically. Optional Qdrant is available for explicitly configured larger installations.')); ?></p>
 	<?php if (!$storage['available']): ?>
 		<p role="alert"><?php p($l->t('Storage status could not be loaded. Retry or check the database migrations. This does not indicate an empty queue.')); ?></p>
 	<?php else: ?>
 		<table class="grid">
 			<tbody>
-				<tr><th scope="row"><?php p($l->t('Search backend')); ?></th><td><?php p($l->t('Built-in database (SQL)')); ?></td></tr>
+				<tr><th scope="row"><?php p($l->t('Search backend')); ?></th><td><?php p($storageBackend); ?></td></tr>
 				<tr><th scope="row"><?php p($l->t('Optional Qdrant connection')); ?></th><td><?php p(!$storage['connection']['configured'] ? $l->t('Not configured') : ($storage['connection']['enabled'] ? $l->t('Configured · requests allowed') : $l->t('Configured · requests disabled'))); ?></td></tr>
 				<tr><th scope="row"><?php p($l->t('Generation cleanup')); ?></th><td><?php p($storage['erasure_worker_enabled'] ? $l->t('Enabled') : $l->t('Paused')); ?></td></tr>
 				<tr><th scope="row"><?php p($l->t('Chunk synchronization')); ?></th><td><?php p($storage['point_worker_enabled'] ? $l->t('Enabled') : $l->t('Paused')); ?></td></tr>
@@ -348,101 +327,8 @@ $providerLabels = [
 
 	<h3><?php p($l->t('Accounts and indexing')); ?></h3>
 	<p class="settings-hint">
-		<?php p($l->t('Manage which accounts build a knowledge base, re-index one account now or delete its index. Original Nextcloud files are never modified.')); ?>
+		<?php p($l->t('Indexing is managed by each account from personal EVA settings. This page shows instance totals and the active search backend without exposing individual account activity.')); ?>
 	</p>
-
-	<?php if (empty($users)): ?>
-		<p class="eva-empty"><?php p($l->t('No account has enrolled in indexing yet.')); ?></p>
-	<?php else: ?>
-		<table class="grid eva-user-table">
-			<thead>
-				<tr>
-					<th scope="col"><?php p($l->t('Account')); ?></th>
-					<th scope="col"><?php p($l->t('Background indexing')); ?></th>
-					<th scope="col"><?php p($l->t('Documents')); ?></th>
-					<th scope="col"><?php p($l->t('Chunks')); ?></th>
-					<th scope="col"><?php p($l->t('Last indexed')); ?></th>
-					<th scope="col"><?php p($l->t('Actions')); ?></th>
-				</tr>
-			</thead>
-			<tbody>
-			<?php foreach ($users as $user): ?>
-				<tr data-user-id="<?php p($user['userId']); ?>">
-					<td>
-						<strong><?php p($user['displayName']); ?></strong>
-						<?php if ($user['displayName'] !== $user['userId']): ?>
-							<span class="eva-muted eva-block"><?php p($user['userId']); ?></span>
-						<?php endif; ?>
-					</td>
-					<td>
-						<label class="eva-checkbox">
-							<input type="checkbox" class="eva-enroll-toggle"
-								data-user="<?php p($user['userId']); ?>"
-								value="1" <?php p($user['enrolled'] ? 'checked' : ''); ?>
-								<?php if ($user['indexing']) p('disabled'); ?>>
-							<span><?php p($l->t('Enabled')); ?></span>
-						</label>
-					</td>
-					<td><?php p((string)$user['documents']); ?></td>
-					<td><?php p((string)$user['chunks']); ?></td>
-					<td>
-						<?php if ($user['lastIndexedAt'] !== null): ?>
-							<span class="eva-mono"><?php p(gmdate('Y-m-d H:i', (int)$user['lastIndexedAt'])); ?></span>
-						<?php else: ?>
-							<span class="eva-muted">—</span>
-						<?php endif; ?>
-					</td>
-					<td>
-						<?php
-						// An account with an index but no recurring enrollment is not
-						// "inactive": it holds documents. Only a truly empty, unenrolled
-						// account is inactive.
-						if ($user['indexing']) {
-							$stateClass = 'eva-status--busy';
-							$stateLabel = $l->t('Indexing');
-						} elseif ($user['enrolled']) {
-							$stateClass = 'eva-status--ok';
-							$stateLabel = $l->t('Enrolled');
-						} elseif ((int)$user['documents'] > 0) {
-							$stateClass = 'eva-status--ok';
-							$stateLabel = $l->t('Indexed');
-						} else {
-							$stateClass = 'eva-status--idle';
-							$stateLabel = $l->t('Inactive');
-						}
-						?>
-						<span class="eva-status <?php p($stateClass); ?>"><?php p($stateLabel); ?></span>
-						<?php if (($user['vectorOwnerState'] ?? '') === 'blocked'): ?>
-							<small class="eva-error eva-block"><?php p($l->t('Vector ownership blocked after account erasure. Inspect cleanup before creating a new generation.')); ?></small>
-						<?php elseif (($user['vectorOwnerState'] ?? '') === 'unavailable'): ?>
-							<small class="eva-error eva-block"><?php p($l->t('Vector ownership status unavailable.')); ?></small>
-						<?php endif; ?>
-						<?php if ($user['error'] !== ''): ?>
-							<span class="eva-error eva-block"><?php p($user['error']); ?></span>
-						<?php endif; ?>
-						<?php if ((int)($user['failed'] ?? 0) > 0): ?>
-							<span class="eva-block eva-muted">
-								<?php p($l->t('%s files skipped', [(string)(int)$user['failed']])); ?>
-							</span>
-						<?php endif; ?>
-						<span class="eva-actions eva-actions--inline">
-							<button type="button" class="secondary eva-btn-reindex"
-								data-user="<?php p($user['userId']); ?>"
-								<?php if ($user['indexing']) p('disabled'); ?>>
-								<?php p($l->t('Re-index now')); ?>
-							</button>
-							<button type="button" class="secondary eva-btn-reset"
-								data-user="<?php p($user['userId']); ?>"
-								<?php if ($user['indexing']) p('disabled'); ?>>
-								<?php p($l->t('Delete index')); ?>
-							</button>
-						</span>
-					</td>
-				</tr>
-			<?php endforeach; ?>
-			</tbody>
-		</table>
-	<?php endif; ?>
 
 	<p class="eva-actions">
 		<button type="button" id="eva-stop-background" class="secondary"><?php p($l->t('Stop background indexing')); ?></button>

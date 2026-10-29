@@ -142,8 +142,8 @@ export default {
 			stopping.value = true
 			try {
 				const res = await apiPost('admin/stop', {})
-				flash('success', res?.requestedFor?.length
-					? t('Stop requested for {count} running pass(es).', { count: res.requestedFor.length })
+				flash('success', res?.requestedCount > 0
+					? t('Stop requested for {count} running pass(es).', { count: res.requestedCount })
 					: t('Background indexing stop requested.'))
 				await load()
 			} catch (e) {
@@ -159,8 +159,7 @@ export default {
 			try {
 				const res = await apiGet('admin/overview')
 				if (!res || typeof res !== 'object' || !Array.isArray(res.users)
-					|| !res.scheduler || typeof res.scheduler !== 'object'
-					|| !res.ollama || typeof res.ollama !== 'object') {
+					|| !res.scheduler || typeof res.scheduler !== 'object') {
 					throw new Error(t('The admin overview response was incomplete.'))
 				}
 				data.value = res

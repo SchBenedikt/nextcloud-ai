@@ -9,7 +9,6 @@ use OCA\EvaAi\Service\AppConfig;
 use OCA\EvaAi\Service\Indexer;
 use OCA\EvaAi\Service\IndexScheduler;
 use OCA\EvaAi\Service\ModelPricing;
-use OCA\EvaAi\Service\Ollama;
 use OCA\EvaAi\Service\RagService;
 use OCA\EvaAi\Service\UsageMetrics;
 use OCA\EvaAi\Service\WebSearchService;
@@ -38,7 +37,6 @@ class AdminController extends OCSController {
         private DocumentMapper $documentMapper,
         private Indexer $indexer,
         private RagService $ragService,
-        private Ollama $ollama,
         private IndexScheduler $scheduler,
         private IJobList $jobList,
         private IUserManager $userManager,
@@ -237,10 +235,11 @@ class AdminController extends OCSController {
         // …plus users explicitly enrolled in background indexing (their
         // index may legitimately still be empty, e.g. before the first pass).
         $enrolled = $this->config->enrolledUserIds();
-        $userIdSet = [];
+        $aggregateByUser = [];
         foreach ($aggregates as $row) {
-            $userIdSet[$row['user_id']] = true;
+            $aggregateByUser[$row['user_id']] = $row;
         }
+        $userIdSet = array_fill_keys(array_keys($aggregateByUser), true);
         foreach ($enrolled as $uid) {
             if ($uid !== '') {
                 $userIdSet[$uid] = true;
@@ -250,14 +249,7 @@ class AdminController extends OCSController {
         $users = [];
         foreach (array_keys($userIdSet) as $uid) {
             $uid = (string)$uid;
-            $agg = null;
-            foreach ($aggregates as $row) {
-                if ($row['user_id'] === $uid) {
-                    $agg = $row;
-                    break;
-                }
-            }
-            $users[] = $this->userRow($uid, $agg);
+            $users[] = $this->userRow($uid, $aggregateByUser[$uid] ?? null);
         }
         usort($users, static fn(array $a, array $b): int => strcmp((string)$a['userId'], (string)$b['userId']));
         try { $ownerStates = $this->vectorOwners?->statesForUsers(array_column($users, 'userId')) ?? []; }
@@ -267,11 +259,7 @@ class AdminController extends OCSController {
 
         return new ErrorDataResponse([
             'users' => $users,
-            'scheduler' => $this->scheduler->overview(),
-            'ollama' => [
-                // ping is a detail array; the boolean lives in its 'ok' key.
-                'online' => (bool)($this->ollama->status()['ping']['ok'] ?? false),
-            ],
+            'scheduler' => $this->scheduler->summary(),
         ]);
     }
 
@@ -338,8 +326,8 @@ class AdminController extends OCSController {
         $this->config->setUserId(null);
         return new ErrorDataResponse([
             'stopped' => true,
-            'requestedFor' => $activeUsers,
-            'scheduler' => $this->scheduler->overview(),
+            'requestedCount' => count($activeUsers),
+            'scheduler' => $this->scheduler->summary(),
         ]);
     }
 

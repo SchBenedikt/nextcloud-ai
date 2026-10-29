@@ -348,78 +348,6 @@
 
 	// ── Tools ────────────────────────────────────────────────────────────
 
-	// ── Per-user enrollment toggle ───────────────────────────────────────
-
-	root.addEventListener('change', function (event) {
-		var toggle = event.target
-		if (!toggle || !toggle.classList.contains('eva-enroll-toggle')) {
-			return
-		}
-		var userId = toggle.dataset.user
-		if (!userId) {
-			return
-		}
-		var enabled = toggle.checked
-		toggle.disabled = true
-		api('POST', 'admin/users/' + encodeURIComponent(userId) + '/enrollment', { enabled: enabled })
-			.then(function () {
-				if (window.OC && OC.Notification && OC.Notification.showTemporary) {
-					OC.Notification.showTemporary(
-						enabled ? tr('Indexing enabled for ') + userId : tr('Indexing disabled for ') + userId
-					)
-				}
-			})
-			.catch(function (err) {
-				toggle.checked = !enabled
-				window.alert(tr('Could not change enrollment: ') + err.message)
-			})
-			.finally(function () {
-				toggle.disabled = false
-			})
-	})
-
-	// ── Per-user re-index / delete ───────────────────────────────────────
-
-	root.addEventListener('click', function (event) {
-		var button = event.target.closest('.eva-btn-reindex, .eva-btn-reset')
-		if (!button) {
-			return
-		}
-		var userId = button.dataset.user
-		if (!userId) {
-			return
-		}
-		var isReset = button.classList.contains('eva-btn-reset')
-		if (isReset && !window.confirm(
-			tr('Delete the complete index for ') + userId + '? '
-			+ tr('This removes indexed documents and their vectors. Original Nextcloud files stay untouched.')
-		)) {
-			return
-		}
-
-		button.disabled = true
-		var action = isReset
-			? 'admin/users/' + encodeURIComponent(userId) + '/reset'
-			: 'admin/users/' + encodeURIComponent(userId) + '/reindex'
-		api('POST', action)
-			.then(function (data) {
-				if (isReset) {
-					var result = data.result || {}
-					window.alert(
-						tr('Index deleted: ') + (result.documents || 0) + tr(' documents and ')
-						+ (result.chunks || 0) + tr(' chunks removed.')
-					)
-				} else {
-					window.alert(tr('Re-index queued for ') + userId + '.')
-				}
-				window.location.reload()
-			})
-			.catch(function (err) {
-				window.alert(tr('Action failed: ') + err.message)
-				button.disabled = false
-			})
-	})
-
 	// ── Stop background indexing ─────────────────────────────────────────
 
 	var stopButton = el('eva-stop-background')
@@ -429,11 +357,12 @@
 			setStatus('eva-background-status', 'info', tr('Stopping…'))
 			api('POST', 'admin/stop')
 				.then(function (data) {
-					var users = (data.requestedFor || [])
 					setStatus(
 						'eva-background-status',
 						'success',
-						tr('Stop requested for ') + (users.length ? users.join(', ') : tr('the next run')) + '.'
+						data.requestedCount > 0
+							? tr('Stop requested for {count} running pass(es).', { count: data.requestedCount })
+							: tr('Background indexing stop requested.')
 					)
 					window.setTimeout(function () {
 						window.location.reload()

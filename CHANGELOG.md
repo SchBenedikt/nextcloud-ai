@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Native admin overview simplification (1.18.35)
+
+- Replace the instance-wide per-account indexing table with aggregate Nextcloud SQL totals and active search-path status. Per-account indexing controls remain in personal EVA settings; optional storage administration stays in its separate advanced page. Opening native administration no longer pings Ollama, materializes account names, or includes scheduler account identifiers.
+
 ### Generation-aware indexing reuse (1.18.34)
 
 - Reuse a matching active SQL generation for normal file changes instead of provisioning a redundant full rebuild. Keep a deliberately selected Qdrant generation untouched. Seed generation-scoped embedding cache entries only from vectors just validated by the configured provider and only under the exact pinned model, endpoint, dimension and chunk identity, so bounded build and mutation workers can skip duplicate embedding requests.
