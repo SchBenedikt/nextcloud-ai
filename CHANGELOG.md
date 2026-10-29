@@ -2,6 +2,11 @@
 
 ## [Unreleased]
 
+### Use active generations in Nextcloud Unified Search (1.20.1)
+
+- Route native global file search through the same active verified generation as EVA chat, with bounded local SQL lexical retrieval and safe fallback during source changes.
+- Keep global search provider-free and recheck file access against the live Nextcloud VFS before returning results.
+
 ### Move storage administration into native settings (1.20.0)
 
 - Put optional vector-storage and generation controls behind a disclosure in Nextcloud's native Eva AI administration settings.

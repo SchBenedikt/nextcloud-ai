@@ -4,10 +4,10 @@ declare(strict_types=1);
 
 namespace OCA\EvaAi\Tests;
 
-use OCA\EvaAi\Db\ChunkMapper;
 use OCA\EvaAi\Db\Document;
 use OCA\EvaAi\Db\DocumentMapper;
 use OCA\EvaAi\Search\EvaSearchProvider;
+use OCA\EvaAi\Service\Searcher;
 use OCP\Files\Folder;
 use OCP\Files\IRootFolder;
 use OCP\IL10N;
@@ -34,17 +34,17 @@ final class EvaSearchProviderTest extends TestCase {
         $documents->expects(self::once())->method('findByUser')->willReturn([]);
         $documents->expects(self::once())->method('findByIds')->with([7])->willReturn([$document]);
 
-        $chunks = $this->createMock(ChunkMapper::class);
-        $chunks->expects(self::once())->method('filterChunksByTokens')->with(
-            'alice', ['budget'], 200, Document::SOURCE_FILES
-        )->willReturn([['document_id' => 7, 'content' => 'The approved budget is 2026.',]]);
+        $searcher = $this->createMock(Searcher::class);
+        $searcher->expects(self::once())->method('searchFileCandidates')->with(
+            'alice', 'budget', 200
+        )->willReturn([['document_id' => 7, 'content' => 'The approved budget is 2026.']]);
 
         $root = $this->createMock(IRootFolder::class);
         $folder = $this->createMock(Folder::class);
         $folder->method('getById')->with(42)->willReturn([new \stdClass()]);
         $root->method('getUserFolder')->with('alice')->willReturn($folder);
 
-        $provider = $this->provider($documents, $chunks, $root);
+        $provider = $this->provider($documents, $searcher, $root);
         $result = $provider->search($user, $query)->jsonSerialize();
         $entries = array_map(static fn($entry): array => $entry->jsonSerialize(), $result['entries']);
 
@@ -65,8 +65,8 @@ final class EvaSearchProviderTest extends TestCase {
             $this->document(8, -8, 'Talk room', 'Talk/room', Document::SOURCE_TALK),
             $this->document(9, 43, 'Private.md', 'Private.md'),
         ]);
-        $chunks = $this->createMock(ChunkMapper::class);
-        $chunks->method('filterChunksByTokens')->willReturn([
+        $searcher = $this->createMock(Searcher::class);
+        $searcher->method('searchFileCandidates')->willReturn([
             ['document_id' => 8, 'content' => 'budget'],
             ['document_id' => 9, 'content' => 'budget'],
         ]);
@@ -75,7 +75,7 @@ final class EvaSearchProviderTest extends TestCase {
         $folder->method('getById')->with(43)->willReturn([]);
         $root->method('getUserFolder')->willReturn($folder);
 
-        $result = $this->provider($documents, $chunks, $root)->search($user, $this->query('budget', 10))->jsonSerialize();
+        $result = $this->provider($documents, $searcher, $root)->search($user, $this->query('budget', 10))->jsonSerialize();
         self::assertSame([], $result['entries']);
     }
 
@@ -88,14 +88,14 @@ final class EvaSearchProviderTest extends TestCase {
             $this->document(12, 52, 'Second.md', 'Second.md'),
             $this->document(13, 53, 'Third.md', 'Third.md'),
         ]);
-        $chunks = $this->createMock(ChunkMapper::class);
-        $chunks->method('filterChunksByTokens')->willReturn([]);
+        $searcher = $this->createMock(Searcher::class);
+        $searcher->method('searchFileCandidates')->willReturn([]);
         $root = $this->createMock(IRootFolder::class);
         $folder = $this->createMock(Folder::class);
         $folder->method('getById')->willReturnCallback(static fn(int $id): array => [$id]);
         $root->method('getUserFolder')->willReturn($folder);
 
-        $result = $this->provider($documents, $chunks, $root)
+        $result = $this->provider($documents, $searcher, $root)
             ->search($user, $this->query('First', 1, 1))->jsonSerialize();
 
         self::assertSame(2, $result['cursor']);
@@ -103,12 +103,12 @@ final class EvaSearchProviderTest extends TestCase {
         self::assertSame('Second.md', $result['entries'][0]->jsonSerialize()['title']);
     }
 
-    private function provider(DocumentMapper $documents, ChunkMapper $chunks, IRootFolder $root): EvaSearchProvider {
+    private function provider(DocumentMapper $documents, Searcher $searcher, IRootFolder $root): EvaSearchProvider {
         $l10n = $this->createMock(IL10N::class);
         $l10n->method('t')->willReturnCallback(static fn(string $text): string => $text);
         $urls = $this->createMock(IURLGenerator::class);
         $urls->method('linkToRouteAbsolute')->willReturn('https://cloud.test/index.php/f/42');
-        return new EvaSearchProvider($l10n, $urls, $root, $documents, $chunks);
+        return new EvaSearchProvider($l10n, $urls, $root, $documents, $searcher);
     }
 
     private function query(string $term, int $limit, ?int $cursor = null): ISearchQuery {

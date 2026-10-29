@@ -4,9 +4,9 @@ declare(strict_types=1);
 
 namespace OCA\EvaAi\Search;
 
-use OCA\EvaAi\Db\ChunkMapper;
 use OCA\EvaAi\Db\Document;
 use OCA\EvaAi\Db\DocumentMapper;
+use OCA\EvaAi\Service\Searcher;
 use OCP\Files\IRootFolder;
 use OCP\IL10N;
 use OCP\IURLGenerator;
@@ -32,7 +32,7 @@ final class EvaSearchProvider implements IProvider {
         private IURLGenerator $urlGenerator,
         private IRootFolder $rootFolder,
         private DocumentMapper $documentMapper,
-        private ChunkMapper $chunkMapper,
+        private Searcher $searcher,
     ) {
     }
 
@@ -70,23 +70,17 @@ final class EvaSearchProvider implements IProvider {
         // searchable text chunk (for example a binary file with metadata).
         $pathTerm = trim(str_replace(['%', '_'], ' ', mb_substr($term, 0, 120)));
         if ($pathTerm !== '') {
-            foreach ($this->documentMapper->findByUser($uid, $pathTerm, self::MAX_CANDIDATES, 0) as $document) {
+            foreach ($this->documentMapper->findByUser($uid, $pathTerm, self::MAX_CANDIDATES, 0, ['source' => Document::SOURCE_FILES]) as $document) {
                 if ($this->isSearchableFile($document)) {
                     $documents[$document->getId()] = ['document' => $document, 'excerpt' => ''];
                 }
             }
         }
 
-        // Content matches use the same bounded token prefilter as RAG, but
-        // never deserialize embeddings or call an inference provider.
-        $tokens = $this->tokens($term);
-        if ($tokens !== []) {
-            $chunks = $this->chunkMapper->filterChunksByTokens(
-                $uid,
-                $tokens,
-                self::MAX_CANDIDATES,
-                Document::SOURCE_FILES,
-            );
+        // Content candidates come from Searcher's active generation contract,
+        // with a bounded local SQL path and no query embedding/provider call.
+        $chunks = $this->searcher->searchFileCandidates($uid, $term, self::MAX_CANDIDATES);
+        if ($chunks !== []) {
             $documentIds = [];
             foreach ($chunks as $chunk) {
                 $id = (int)($chunk['document_id'] ?? 0);
@@ -149,14 +143,6 @@ final class EvaSearchProvider implements IProvider {
         return SearchResult::complete($name, $entries);
     }
 
-    /** @return list<string> */
-    private function tokens(string $term): array {
-        $parts = preg_split('/[^\p{L}\p{N}_-]+/u', mb_strtolower($term), -1, PREG_SPLIT_NO_EMPTY) ?: [];
-        $parts = array_map(static fn(string $part): string => str_replace(['%', '_'], '', $part), $parts);
-        $parts = array_values(array_unique(array_filter($parts, static fn(string $part): bool => mb_strlen($part) >= 2)));
-        return array_slice($parts, 0, 12);
-    }
-
     private function excerpt(string $content, string $term): string {
         $content = trim((string)preg_replace('/\s+/u', ' ', $content));
         if ($content === '') {
@@ -165,7 +151,7 @@ final class EvaSearchProvider implements IProvider {
         $needle = mb_strtolower($term);
         $position = mb_stripos($content, $needle);
         if ($position === false) {
-            foreach ($this->tokens($term) as $token) {
+            foreach ($this->excerptTokens($term) as $token) {
                 $position = mb_stripos($content, $token);
                 if ($position !== false) {
                     break;
@@ -175,6 +161,13 @@ final class EvaSearchProvider implements IProvider {
         $start = $position === false ? 0 : max(0, $position - 70);
         $excerpt = mb_substr($content, $start, 220);
         return ($start > 0 ? '…' : '') . $excerpt . (mb_strlen($content) > $start + 220 ? '…' : '');
+    }
+
+    /** @return list<string> */
+    private function excerptTokens(string $term): array {
+        $parts = preg_split('/[^\p{L}\p{N}_-]+/u', mb_strtolower($term), -1, PREG_SPLIT_NO_EMPTY) ?: [];
+        $parts = array_map(static fn(string $part): string => str_replace(['%', '_'], '', $part), $parts);
+        return array_slice(array_values(array_unique(array_filter($parts, static fn(string $part): bool => mb_strlen($part) >= 2))), 0, 12);
     }
 
     private function isSearchableFile(Document $document): bool {

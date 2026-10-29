@@ -57,9 +57,13 @@ specific folder.
 
 EVA also registers a native Unified Search provider. Global Nextcloud searches
 match indexed file names, paths, and bounded text snippets without starting an
-AI request. Results are limited to the signed-in user's file-source documents,
-re-checked against the live VFS permissions, and link back to the original file.
-Mail and Talk index rows are never presented as Files search results.
+AI request. Content candidates follow the same active, verified generation as
+chat retrieval, with the legacy SQL index used while generation metadata is
+missing or source changes are pending. The search stays on bounded local SQL;
+typing does not contact an embedding provider or optional vector service.
+Results are limited to the signed-in user's file-source documents, re-checked
+against live VFS permissions, and link back to the original file. Mail and Talk
+index rows are never presented as Files search results.
 
 For agent workflows, the same live Nextcloud home is available through bounded
 tools: `list_files`, `search_files`, `read_file`, `read_files`, and

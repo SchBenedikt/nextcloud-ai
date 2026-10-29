@@ -228,6 +228,7 @@ class DocumentMapper extends QBMapper {
      *
      * Supported filters (all validated/bounded in the controller):
      *  - type: MIME group ("text", "application") or full MIME type
+     *  - source: exact indexed source type (for example files)
      *  - folder: relative folder path prefix ("Documents/Notes")
      *  - dateFrom/dateTo: indexed_at unix timestamps (inclusive)
      *  - sizeMin/sizeMax: file size in bytes (inclusive)
@@ -238,6 +239,9 @@ class DocumentMapper extends QBMapper {
             $qb->andWhere(
                 $qb->expr()->like('path', $qb->createNamedParameter('%' . $this->escapeLike($search) . '%'))
             );
+        }
+        if (isset($filters['source']) && $filters['source'] !== '') {
+            $qb->andWhere($qb->expr()->eq('source', $qb->createNamedParameter((string)$filters['source'])));
         }
         if (isset($filters['type']) && $filters['type'] !== '') {
             $type = $filters['type'];
