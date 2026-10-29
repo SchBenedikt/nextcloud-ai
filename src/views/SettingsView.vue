@@ -4,7 +4,7 @@
 			<div><h1>{{ currentSection.label }}</h1><p class="page-intro">{{ currentSection.description }}</p></div>
 			<div class="settings-save-controls">
 				<span class="saved-label" role="status" aria-live="polite">
-					{{ loadError ? $t('Settings unavailable') : !formReady ? $t('Loading settings…') : saving ? $t('Saving changes…') : hasUnsavedSettings ? $t('Unsaved changes') : saved ? $t('All changes saved') : $t('Changes save automatically') }}
+					{{ loadError ? $t('Settings unavailable') : !formReady ? $t('Loading settings…') : saving ? $t('Saving changes…') : hasUnsavedSettings ? $t('Unsaved changes') : saved ? $t('All changes saved') : $t('Settings are up to date') }}
 				</span>
 				<NcButton v-if="formReady && hasUnsavedSettings" variant="primary" :loading="saving" :disabled="saveNowLocked" @click="saveNow">{{ $t('Save changes') }}</NcButton>
 			</div>

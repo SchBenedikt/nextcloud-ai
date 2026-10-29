@@ -137,7 +137,7 @@ test('a delayed briefing response preserves newer edits in another settings sect
 	expect(errors).toEqual([])
 })
 
-test('a delayed provider refresh preserves newer edits and autosaves them', async ({ page }) => {
+test('a delayed provider refresh preserves newer unsaved edits', async ({ page }) => {
 	const { calls, errors, settings } = await openWorkspace(page, { view: 'settings' })
 	await expect(page.getByRole('button', { name: 'Add AI provider', exact: true })).toBeEnabled()
 	let release
@@ -162,6 +162,8 @@ test('a delayed provider refresh preserves newer edits and autosaves them', asyn
 	await sources.fill('7')
 	release()
 	await expect(sources).toHaveValue('7')
+	await expect(page.getByText('Unsaved changes', { exact: true })).toBeVisible()
+	await page.getByRole('button', { name: 'Save changes', exact: true }).click()
 	await expect.poll(() => calls.some(call => call.method === 'PUT' && call.body?.top_k === '7')).toBe(true)
 	expect(errors).toEqual([])
 })

@@ -1,5 +1,5 @@
 /** Build a privacy-preserving CSV from the signed-in user's metrics response. */
-export function buildMetricsCsv({ days, totals = {}, byModel = [], daily = [], slowTools = [], ragRequestDuration = {}, generatedAt = new Date() } = {}) {
+export function buildMetricsCsv({ days, totals = {}, byModel = [], daily = [], slowTools = [], ragRequestDuration = {}, indexRuns = {}, generatedAt = new Date() } = {}) {
 	const rows = [
 		['report', 'EVA AI usage metrics'],
 		['period_days', days ?? ''],
@@ -28,6 +28,10 @@ export function buildMetricsCsv({ days, totals = {}, byModel = [], daily = [], s
 		['end_to_end_eva_request_duration'],
 		['outcome', 'requests', 'p50_ms', 'p95_ms', 'p99_ms'],
 		...Object.entries(ragRequestDuration.outcomes || {}).map(([outcome, row]) => [outcome, row.count, row.p50_ms, row.p95_ms, row.p99_ms]),
+		[],
+		['indexing_run_performance'],
+		['mode', 'outcome', 'runs', 'processed_items', 'file_chunks', 'average_file_chunks_per_second', 'run_p50_ms', 'run_p95_ms', 'run_p99_ms'],
+		...Object.entries(indexRuns.modes || {}).flatMap(([mode, outcomes]) => Object.entries(outcomes || {}).map(([outcome, row]) => [mode, outcome, row.runs, row.items, row.file_chunks, row.average_file_chunks_per_second, row.p50_ms, row.p95_ms, row.p99_ms])),
 	]
 
 	const cell = value => {

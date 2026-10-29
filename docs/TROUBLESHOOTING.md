@@ -34,10 +34,10 @@ connection checks and Advanced for system diagnostics.
 
 ## A setting does not save
 
-Read the validation message above Settings. Core fields auto-save; provider
-profiles need **Save & use provider**. Index-related settings stay locked during
-a run. Do not refresh away an unsaved provider draft before copying its
-non-secret values.
+Read the validation message above Settings. Core fields and account tokens
+remain pending until **Save changes**; provider profiles use their own **Save**
+action. Index-related settings stay locked during a run. Do not refresh away an
+unsaved provider draft before copying its non-secret values.
 
 ## Background work is still running
 

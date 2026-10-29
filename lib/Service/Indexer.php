@@ -84,6 +84,7 @@ class Indexer {
             'cache_hits' => 0,
             'cache_misses' => 0,
             'ollama_requests' => 0,
+			'file_chunks_indexed' => 0,
             'error' => null,
         ];
         // Bounded key: the full sha256 would exceed the varchar(64) key column
@@ -145,6 +146,9 @@ class Indexer {
         $this->config->set('last_index_cache_hits', '0');
         $this->config->set('last_index_cache_misses', '0');
         $this->config->set('last_index_ollama_requests', '0');
+		$runStartedAt = hrtime(true);
+		$filePassStartedAt = null;
+		$filePassDurationMs = 0;
         
         // Calculate the file-index configuration hash only for file passes.
         // A mail- or Talk-only request must not invalidate the user's file index.
@@ -170,6 +174,7 @@ class Indexer {
         $cancelled = false;
         try {
             if ($mode === 'all' || $mode === 'files') {
+				$filePassStartedAt = hrtime(true);
                 $userFolder = $this->rootFolder->getUserFolder($userId);
             $scope = $this->config->get('scope_path');
             $root = $userFolder;
@@ -456,12 +461,19 @@ class Indexer {
                 }
             }
             }
+			if ($filePassStartedAt !== null) {
+				$filePassDurationMs = max(0, (int)round((hrtime(true) - $filePassStartedAt) / 1_000_000));
+				$filePassStartedAt = null;
+			}
             if (!$cancelled && ($mode === 'all' || $mode === 'mail')) {
                 $this->indexEmails($userId, $result, $maxFiles, $mode === 'mail', $runId);
             }
             if (!$cancelled && ($mode === 'all' || $mode === 'talk')) {
                 $this->indexTalkRooms($userId, $result, $runId, $mode === 'talk');
             }
+			if ($this->cancellationRequested($runId)) {
+				$cancelled = true;
+			}
 
             if ($result['error'] === null && $result['processed'] === 0 && $result['total_seen'] > 0) {
                 $result['error'] = null; // up to date
@@ -475,7 +487,20 @@ class Indexer {
                 // held. Otherwise a new run could start between lock release
                 // and these writes and be overwritten by the older worker.
                 $ownsRun = $runId === null || $this->config->get('index_run_id') === $runId;
+				if ($filePassStartedAt !== null) {
+					$filePassDurationMs = max(0, (int)round((hrtime(true) - $filePassStartedAt) / 1_000_000));
+				}
                 if ($ownsRun) {
+					$outcome = $result['error'] !== null ? 'error' : ($cancelled ? 'incomplete' : 'complete');
+					$this->usageMetrics?->recordIndexRun(
+						$userId,
+						$mode,
+						max(0, (int)round((hrtime(true) - $runStartedAt) / 1_000_000)),
+						$filePassDurationMs,
+						(int)$result['processed'],
+						(int)$result['file_chunks_indexed'],
+						$outcome,
+					);
                     if (!$keepRunning) {
                         $this->config->set('index_running', '0');
                         $this->config->set('index_finished', (string)time());
@@ -932,6 +957,7 @@ class Indexer {
             $batch = [];
             return;
         }
+		$publishedChunks = 0;
         foreach ($perDoc as $docId => $chunks) {
             if ($this->cancellationRequested($runId)) {
                 $this->discardStagedBatch($batch);
@@ -976,7 +1002,9 @@ class Indexer {
                     $this->logger->warning('eva_ai: Failed to remove old document after re-index', ['error' => $e->getMessage(), 'oldDocId' => $oldDocId]);
                 }
             }
+			$publishedChunks += count($chunks);
         }
+		$result['file_chunks_indexed'] = (int)($result['file_chunks_indexed'] ?? 0) + $publishedChunks;
         if ($this->sqlGenerationProvisioner !== null && $userId !== null) {
             $model = $this->ollama->lastEmbeddingModel();
             $provenVectors = [];

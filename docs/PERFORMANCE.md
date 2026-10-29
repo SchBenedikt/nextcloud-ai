@@ -53,9 +53,9 @@ to existing API clients.
 Models initially loads core settings. History, personal knowledge, connectors,
 extensions, keys and diagnostics load on first entry into their section.
 Independent optional resources load concurrently. `useEvaSettings` owns form
-state; section components render it. Scalar edits autosave, while the shared
-header also offers a native Save changes action that immediately flushes only
-pending values and reports the server-confirmed result.
+state; section components render it. Scalar edits stay local until the shared
+native Save changes action sends pending values and reports the server-confirmed
+result.
 
 A full status response containing model information no longer triggers another
 initial model-discovery request. Editing the endpoint still discovers models
@@ -117,6 +117,18 @@ in the existing usage metrics view and CSV, and as seven-day OpenMetrics gauges
 from a bounded 5,000-sample query. Only a fixed outcome, user ownership, time
 and duration are stored. This is operational latency telemetry, not a frozen
 corpus benchmark or a Prometheus histogram.
+
+## Background indexing throughput
+
+Each scheduler-owned indexing run records its fixed mode and outcome, elapsed
+time, processed-item count, and successfully published file-chunk count. The
+file phase has its own monotonic duration so file chunk throughput excludes
+Mail/Talk work performed by an `all` run. It includes traversal, extraction,
+embedding and SQL writes. No paths, names, extracted text or vectors enter the
+metrics row. The usage metrics view and CSV show bounded per-account p50/p95/p99
+run duration and average file chunks per second; OpenMetrics exposes approximate
+seven-day p50/p95/p99 gauges from at most 5,000 recent runs. These observations
+describe the current instance workload and are not a controlled load benchmark.
 
 ## Backend retrieval timing baseline
 
