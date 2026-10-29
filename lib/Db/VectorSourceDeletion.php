@@ -33,7 +33,7 @@ class VectorSourceDeletion {
     /** Keep active generation builds current with normal indexed document inserts. */
     private function extendBuildWatermarks(string $userId,int $documentId): void {
         $q=$this->db->getQueryBuilder();
-        $q->select('b.generation_id','b.status','b.upper_document_id','b.after_document_id')
+        $q->select('b.generation_id','b.status','b.upper_document_id','b.after_document_id','b.document_id')
             ->from('eva_ai_vec_builds','b')
             ->innerJoin('b','eva_ai_vec_generations','g',$q->expr()->eq('g.id','b.generation_id'))
             ->where($q->expr()->eq('b.user_id',$q->createNamedParameter($userId)))
@@ -42,7 +42,8 @@ class VectorSourceDeletion {
             ->andWhere($q->expr()->in('b.status',$q->createNamedParameter(['queued','running','paused','staged'],IQueryBuilder::PARAM_STR_ARRAY)));
         $r=$q->executeQuery();try{$rows=$r->fetchAll();}finally{$r->closeCursor();}
         foreach($rows as$row){
-            $rewind=$documentId<=(int)$row['after_document_id'];
+            $currentDocument=(int)$row['document_id'];
+            $rewind=$documentId<=(int)$row['after_document_id']||($currentDocument>0&&$documentId<$currentDocument);
             $invalidate=$rewind||$row['status']==='staged';
             $after=$rewind?max(0,$documentId-1):(int)$row['after_document_id'];
             $upper=max((int)$row['upper_document_id'],$documentId);

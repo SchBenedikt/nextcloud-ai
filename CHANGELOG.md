@@ -2,6 +2,11 @@
 
 ## [Unreleased]
 
+### Late source ordering during generation builds (1.18.17)
+
+- Rewind a generation build when a late-committing source ID falls before its current in-flight document, even when it is still ahead of the last completed cursor.
+- Revoke the active lease before the worker can advance past that source.
+
 ### Live generation build watermarks (1.18.16)
 
 - Extend owned generation build snapshots when normal Nextcloud indexing creates a document during backfill; preserve an in-flight document and embedding lease when the new row is beyond the current cursor.

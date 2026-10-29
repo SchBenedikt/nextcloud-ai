@@ -66,7 +66,8 @@ completed canonical source stamp, plan hash and expected chunk count.
 
 Normal Nextcloud document insertion extends the high-water mark and total in
 the same owner-fenced SQL transaction. A row committed behind the cursor rewinds
-the build and invalidates its lease; a safely appended row leaves the current
+the build and invalidates its lease; an ID that lands before the current
+in-flight document also forces a rewind. A safely appended row leaves the current
 document and embedding request alone. A build that was already staged is queued
 again when new indexed sources arrive. Before staging, the worker rechecks for
 new documents while holding the same owner fence used by insertion, so an
