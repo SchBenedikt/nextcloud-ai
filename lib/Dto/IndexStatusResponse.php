@@ -14,9 +14,14 @@ final class IndexStatusResponse {
         public readonly string $lastFinished,
         public readonly string $lastError,
         public readonly string $retrievalBackend,
+        public readonly bool $indexWaitingForChat = false,
     ) {}
 
     public function toArray(): array {
-        return get_object_vars($this);
+        $values = get_object_vars($this);
+        // Keep the legacy status payload unchanged unless the user benefits
+        // from the additional active queue state.
+        if (!$this->indexWaitingForChat) unset($values['indexWaitingForChat']);
+        return $values;
     }
 }

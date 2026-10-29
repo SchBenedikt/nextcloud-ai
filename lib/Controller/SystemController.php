@@ -97,6 +97,7 @@ final class SystemController extends OCSController {
             $running, $running && $cancelled, $this->config->get('index_mode'),
             $this->config->get('index_started'), $this->config->get('index_finished'),
             $this->config->get('last_index_error'), $this->ragService->retrievalBackendForUser($user),
+            $running && $this->config->get('index_waiting_for_chat') === '1',
         );
         return new ErrorDataResponse($response->toArray());
     }

@@ -92,23 +92,29 @@ class IndexRequestJob extends QueuedJob {
                 // A bounded pass that changed nothing means the complete
                 // current scope is indexed. Errors must not be retried in a
                 // tight loop while Ollama or Mail is unavailable.
-                if (($lastResult['error'] ?? null) !== null || (int)($lastResult['processed'] ?? 0) === 0) {
+                if (($lastResult['error'] ?? null) !== null
+                    || (int)($lastResult['processed'] ?? 0) === 0
+                    || !empty($lastResult['deferred_for_chat'])) {
                     break;
                 }
             } while ($passes < self::MAX_PASSES);
 
-            if ($passes >= self::MAX_PASSES && !$this->cancelRequested($runId)) {
+            $deferredForChat = !empty($lastResult['deferred_for_chat']) && !$this->cancelRequested($runId);
+            if (($deferredForChat || $passes >= self::MAX_PASSES) && !$this->cancelRequested($runId)) {
                 // Do not report a successful continuation as an error. Queue
-                // the same run again; the run id preserves cancellation and
-                // stale-job protection across the hand-off.
+                // the same run again; this also defers a yielded embedding
+                // batch until a later cron tick without losing the run ID.
                 $this->config->set('index_running', '1');
                 $this->config->set('index_mode', $mode);
+                $this->config->set('index_heartbeat', (string)time());
                 $this->jobList->add(self::class, [
                     'userId' => $userId,
                     'mode' => $mode,
                     'runId' => $runId,
                 ]);
-                $this->logger->info('eva_ai: queued follow-up index pass batch', [
+                $this->logger->info($deferredForChat
+                    ? 'eva_ai: deferred indexing until chat request completes'
+                    : 'eva_ai: queued follow-up index pass batch', [
                     'userId' => $userId,
                     'mode' => $mode,
                 ]);
@@ -123,11 +129,18 @@ class IndexRequestJob extends QueuedJob {
         } finally {
             // A stale job must never clear a newer run's state.
             if ($this->config->get('index_run_id') === $runId) {
-                $this->config->set('index_running', '0');
-                $this->config->set('index_finished', (string)time());
-                $this->config->set('index_mode', 'idle');
-                $this->config->set('index_cancel_requested', '0');
-                $this->config->set('index_heartbeat', '');
+                $deferredForChat = !empty($lastResult['deferred_for_chat']) && !$this->cancelRequested($runId);
+                if ($deferredForChat) {
+                    $this->config->set('index_running', '1');
+                    $this->config->set('index_heartbeat', (string)time());
+                } else {
+                    $this->config->set('index_running', '0');
+                    $this->config->set('index_finished', (string)time());
+                    $this->config->set('index_mode', 'idle');
+                    $this->config->set('index_cancel_requested', '0');
+                    $this->config->set('index_waiting_for_chat', '0');
+                    $this->config->set('index_heartbeat', '');
+                }
             }
             $this->config->setUserId(null);
         }

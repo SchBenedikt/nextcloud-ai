@@ -101,6 +101,10 @@ and actual remote transport have not been exercised while tests are deferred.
 {"indexing": false, "indexStopping": false, "indexMode": "", "lastStarted": "", "lastFinished": "", "lastError": ""}
 ```
 
+While an explicit background run is yielded to an active chat request, the
+response additionally includes `indexWaitingForChat: true`. The field is omitted
+when false to preserve the existing idle/running response shape.
+
 It checks abandoned-run recovery but does not query models, document totals,
 chat history or OCR. The full `GET /api/status` remains available for settings
 and diagnostics. Its `providerKeys` object maps configured profile IDs to

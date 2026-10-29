@@ -17,8 +17,8 @@
 
 		<div role="status" aria-live="polite" aria-atomic="true">
 		<NcNoteCard v-if="indexingActive" type="info">
-			<strong>{{ indexStatus?.indexStopping ? $t('Stopping indexing…') : indexStatus?.indexMode === 'mail' ? $t('Email indexing is running') : indexStatus?.indexMode === 'talk' ? $t('Chat indexing is running') : $t('Indexing is running') }}</strong>
-			<span>{{ $t('The job continues on the server even if you close this page.') }}</span>
+			<strong>{{ indexStatus?.indexStopping ? $t('Stopping indexing…') : indexStatus?.indexWaitingForChat ? $t('Waiting for your chat to finish') : indexStatus?.indexMode === 'mail' ? $t('Email indexing is running') : indexStatus?.indexMode === 'talk' ? $t('Chat indexing is running') : $t('Indexing is running') }}</strong>
+			<span>{{ indexStatus?.indexWaitingForChat ? $t('Indexing is paused between embedding batches to keep chat responses responsive. It will continue automatically.') : $t('The job continues on the server even if you close this page.') }}</span>
 		</NcNoteCard>
 		<NcNoteCard v-if="!indexStatusKnown && indexStatusLoading" type="info">{{ $t('Checking indexing status…') }}</NcNoteCard>
 		<NcNoteCard v-if="indexStatusError" type="error"><span>{{ $t('Indexing status could not be loaded: {error}', { error: indexStatusError }) }}</span><NcButton variant="tertiary" :loading="indexStatusLoading" :disabled="indexStatusLoading" @click="loadStatus">{{ $t('Try again') }}</NcButton></NcNoteCard>

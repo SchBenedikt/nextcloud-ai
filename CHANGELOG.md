@@ -2,6 +2,12 @@
 
 ## [Unreleased]
 
+### Yield indexing to active chat requests (1.19.0)
+
+- Defer new embedding batches while this account has an active chat request, and resume queued indexing on a later background tick.
+- Show the waiting state in personal indexing settings and the document library.
+- Discard unembedded replacement rows so the previous indexed document remains available.
+
 ### Confirm provider settings against the server (1.18.103)
 
 - Confirm provider actions against the saved settings response before showing success.

@@ -34,8 +34,8 @@
 
 			<div v-if="indexingActive" class="indexing-banner" role="status">
 				<div>
-					<strong>{{ status?.indexStopping ? $t('Stopping indexing…') : status?.indexMode === 'mail' ? $t('Email indexing is running') : $t('Indexing is running') }}</strong>
-					<span>{{ $t('You can leave this page; the background job continues on the server. Settings stay locked until it finishes.') }}</span>
+					<strong>{{ status?.indexStopping ? $t('Stopping indexing…') : status?.indexWaitingForChat ? $t('Waiting for your chat to finish') : status?.indexMode === 'mail' ? $t('Email indexing is running') : $t('Indexing is running') }}</strong>
+					<span>{{ status?.indexWaitingForChat ? $t('Indexing is paused between embedding batches to keep chat responses responsive. It will continue automatically.') : $t('You can leave this page; the background job continues on the server. Settings stay locked until it finishes.') }}</span>
 				</div>
 				<NcButton variant="secondary" :loading="stopping" :disabled="status?.indexStopping" @click="stopIndex">{{ $t('Stop indexing') }}</NcButton>
 			</div>

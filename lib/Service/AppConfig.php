@@ -63,7 +63,7 @@ class AppConfig {
      * back to the hardcoded defaults - never to an instance value.
      */
     private const USER_STATE_KEYS = [
-        'index_running', 'index_started', 'index_heartbeat', 'index_finished', 'last_index_processed',
+        'index_running', 'index_waiting_for_chat', 'index_started', 'index_heartbeat', 'index_finished', 'last_index_processed',
         'last_index_total', 'last_index_error', 'last_index_cache_hits', 'last_index_cache_misses',
         'last_index_ollama_requests', 'last_index_failed', 'index_config_hash', 'index_mode',
         'index_cancel_requested', 'index_run_id', 'index_enrolled', 'knowledge_initialized',
@@ -232,6 +232,7 @@ class AppConfig {
         'web_search_browser_browsers_path' => '',
         'web_search_browser_timeout' => '20',
         'index_running' => '0',
+        'index_waiting_for_chat' => '0',
         'index_started' => '',
         'index_heartbeat' => '',
         'index_finished' => '0',
@@ -517,6 +518,7 @@ class AppConfig {
             return false;
         }
         $this->set('index_running', '0');
+        $this->set('index_waiting_for_chat', '0');
         $this->set('index_mode', 'idle');
         $this->set('index_cancel_requested', '0');
         $this->set('index_run_id', '');

@@ -69,7 +69,7 @@ class Indexer {
 
     /**
      * Perform one bounded indexing pass for a user.
-     * @return array{processed:int,changed:int,skipped:int,failed:int,total_seen:int,cache_hits:int,cache_misses:int,ollama_requests:int,error:?string}
+     * @return array{processed:int,changed:int,skipped:int,failed:int,total_seen:int,cache_hits:int,cache_misses:int,ollama_requests:int,deferred_for_chat:bool,error:?string}
      */
     public function run(string $userId, ?int $maxFiles = null, string $mode = 'all', bool $keepRunning = false, ?string $runId = null): array {
         $this->config->setUserId($userId);
@@ -85,6 +85,7 @@ class Indexer {
             'cache_misses' => 0,
             'ollama_requests' => 0,
 			'file_chunks_indexed' => 0,
+            'deferred_for_chat' => false,
             'error' => null,
         ];
         // Bounded key: the full sha256 would exceed the varchar(64) key column
@@ -137,6 +138,7 @@ class Indexer {
         }
 
         $this->config->set('index_running', '1');
+        $this->config->set('index_waiting_for_chat', '0');
         $this->config->set('index_started', (string)time());
         $this->config->set('index_heartbeat', (string)time());
         // A new pass starts with a fresh heartbeat window, so the first file
@@ -425,6 +427,11 @@ class Indexer {
 
                 if (count($batch) >= $batchSize || $result['processed'] >= $maxFiles) {
                     $this->flushBatch($batch, $result, $runId, $userId);
+                    if (!empty($result['deferred_for_chat'])) {
+                        $cancelled = true;
+                        $completed = false;
+                        break;
+                    }
                 }
                 if ($result['processed'] >= $maxFiles) {
                     $completed = false;
@@ -436,6 +443,10 @@ class Indexer {
                 $cancelled = true;
             }
             $this->flushBatch($batch, $result, $runId, $userId);
+            if (!empty($result['deferred_for_chat'])) {
+                $cancelled = true;
+                $completed = false;
+            }
             // The bulk fingerprint map is only needed during file traversal;
             // release it before cleanup/mail/Talk work so large indexes do not
             // keep a second full document-state graph alive for the rest of
@@ -467,9 +478,11 @@ class Indexer {
 			}
             if (!$cancelled && ($mode === 'all' || $mode === 'mail')) {
                 $this->indexEmails($userId, $result, $maxFiles, $mode === 'mail', $runId);
+                if (!empty($result['deferred_for_chat'])) $cancelled = true;
             }
             if (!$cancelled && ($mode === 'all' || $mode === 'talk')) {
                 $this->indexTalkRooms($userId, $result, $runId, $mode === 'talk');
+                if (!empty($result['deferred_for_chat'])) $cancelled = true;
             }
 			if ($this->cancellationRequested($runId)) {
 				$cancelled = true;
@@ -503,6 +516,7 @@ class Indexer {
 					);
                     if (!$keepRunning) {
                         $this->config->set('index_running', '0');
+                        $this->config->set('index_waiting_for_chat', '0');
                         $this->config->set('index_finished', (string)time());
                         $this->config->set('index_heartbeat', '');
                     }
@@ -534,6 +548,7 @@ class Indexer {
         // it probes with public text and leaves document content to the
         // bounded background generation builder.
         if (($mode === 'all' || $mode === 'files') && $result['error'] === null
+            && empty($result['deferred_for_chat'])
             && $this->sqlGenerationProvisioner !== null
             && $this->documentMapper->countForUser($userId) > 0) {
             $this->sqlGenerationProvisioner->bootstrap($userId, $this->ollama);
@@ -880,6 +895,22 @@ class Indexer {
             $batch = [];
             return;
         }
+        // Do not compete with this account's active chat for the configured
+        // embedding endpoint. A batch already sent cannot be preempted, but
+        // every later batch boundary yields without holding up chat requests.
+        if ($userId !== null && $this->chatRequestIsActive($userId)) {
+            $stagedDocuments = [];
+            foreach ($batch as $entry) {
+                if (isset($entry['docId'])) $stagedDocuments[(int)$entry['docId']] = true;
+            }
+            $this->discardStagedBatch($batch);
+            $result['processed'] = max(0, $result['processed'] - count($stagedDocuments));
+            $result['changed'] = max(0, $result['changed'] - count($stagedDocuments));
+            $result['deferred_for_chat'] = true;
+            $this->config->set('index_waiting_for_chat', '1');
+            $batch = [];
+            return;
+        }
         $this->touchHeartbeat($runId);
         $texts = [];
         foreach ($batch as $b) {
@@ -1031,6 +1062,27 @@ class Indexer {
         }
     }
 
+    /** Check a chat claim without waiting or interfering with an incoming chat. */
+    private function chatRequestIsActive(string $userId): bool {
+        $path = LockGuard::chatRequestLockPath($userId);
+        try {
+            $this->lockingProvider->acquireLock($path, ILockingProvider::LOCK_EXCLUSIVE, 'EVA index chat-priority check');
+        } catch (\OCP\Lock\LockedException) {
+            return true;
+        } catch (\Throwable $e) {
+            // A coordination outage must not turn an indexing pass into an
+            // error or block chat; continue with the bounded batch instead.
+            $this->logger->debug('eva_ai chat-priority check unavailable', ['exception_class' => get_class($e)]);
+            return false;
+        }
+        try {
+            $this->lockingProvider->releaseLock($path, ILockingProvider::LOCK_EXCLUSIVE);
+        } catch (\Throwable $e) {
+            $this->logger->warning('eva_ai chat-priority check release failed', ['exception_class' => get_class($e)]);
+        }
+        return false;
+    }
+
     /** Remove staged replacement documents without touching their old versions. */
     private function discardStagedBatch(array $batch): void {
         $docIds = [];
@@ -1124,11 +1176,12 @@ class Indexer {
             $processedThisPass++;
             if (count($batch) >= min(200, max(1, $this->config->getInt('embed_batch_size', self::DEFAULT_BATCH)))) {
                 $this->flushBatch($batch, $result, $runId, $userId);
+                if (!empty($result['deferred_for_chat'])) break;
             }
         }
         $this->flushBatch($batch, $result, $runId, $userId);
 
-        if ($this->cancellationRequested($runId)) {
+        if ($this->cancellationRequested($runId) || !empty($result['deferred_for_chat'])) {
             return;
         }
 
@@ -1271,12 +1324,13 @@ class Indexer {
             $result['processed']++;
             if (count($batch) >= min(200, max(1, $this->config->getInt('embed_batch_size', self::DEFAULT_BATCH)))) {
                 $this->flushBatch($batch, $result, $runId, $userId);
+                if (!empty($result['deferred_for_chat'])) break;
             }
         }
         $result['total_seen'] += count($currentRoomIds);
         $this->flushBatch($batch, $result, $runId, $userId);
 
-        if ($this->cancellationRequested($runId)) {
+        if ($this->cancellationRequested($runId) || !empty($result['deferred_for_chat'])) {
             return;
         }
         $this->reconcileTalkIndex($userId, $currentRoomIds);
