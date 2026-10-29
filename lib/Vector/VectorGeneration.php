@@ -20,7 +20,7 @@ final readonly class VectorGeneration {
         public int $schemaVersion = 1,
     ) {
         if (preg_match('/^[a-f0-9]{32}$/D', $id) !== 1 || $userId === '' || mb_strlen($userId) > 64 || preg_match('/[\x00-\x1f\x7f]/', $userId)
-            || $backend !== 'qdrant' || !in_array($embeddingProvider, ['ollama', 'openai_compatible'], true)
+            || !in_array($backend, ['sql', 'qdrant'], true) || !in_array($embeddingProvider, ['ollama', 'openai_compatible'], true)
             || trim($embeddingModel) === '' || mb_strlen($embeddingModel) > 128 || preg_match('/[\x00-\x1f\x7f]/', $embeddingModel)
             || preg_match('/^[a-f0-9]{64}$/D', $endpointHash) !== 1 || $dimension < 1 || $dimension > 16384
             || $chunkSize < 128 || $chunkSize > 10000 || $chunkOverlap < 0 || $chunkOverlap >= $chunkSize || $chunkOverlap > 5000 || $schemaVersion !== 1) {

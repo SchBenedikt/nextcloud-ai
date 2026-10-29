@@ -33,8 +33,8 @@ class GenerationBuildAdminController extends OCSController {
         } catch(\InvalidArgumentException) {return $this->failure('invalid_request','Confirm document transfer and select a valid build action.',400);}
         catch(VectorStoreException $error) {
             $message=match($error->reason) {
-                'build_disabled','build_target_changed'=>'Enable the source index, configured storage connection and point delivery before starting or resuming.',
-                'generation_unprepared','generation_not_building'=>'Prepare an owned building generation on the current storage destination first.',
+                'build_disabled','build_target_changed'=>'Enable source indexing and ensure the selected generation backend is available before starting or resuming.',
+                'generation_unprepared','generation_not_building'=>'Prepare an owned building generation on the selected backend first.',
                 'build_missing'=>'Start this build before changing its state.',
                 default=>'This build or its owner is unavailable. Refresh the current state before retrying.',
             };

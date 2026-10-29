@@ -77,9 +77,17 @@ class GenerationChunkRepository {
                 if ($revision < 1 || $revision > 9007199254740991) throw new VectorStoreException('invalid_revision');
                 return ['id' => (int)$row['id'], 'revision' => $revision, 'changed' => false];
             }
+            $isSql = $generation->backend === 'sql';
+            $revision = null;
+            if ($isSql) {
+                $previousRevision = (int)($row['vector_revision'] ?? 0);
+                if ($previousRevision < 0 || $previousRevision >= 9007199254740991) throw new VectorStoreException('invalid_revision');
+                $revision = $previousRevision + 1;
+            }
             $values = ['document_id' => $snapshot->id, 'chunk_index' => $chunk->index, 'content' => $chunk->content,
                 'embedding' => $embedding, 'provenance' => $provenance, 'token_count' => $chunk->tokens,
-                'vector_generation_id' => $generation->id, 'vector_state' => 'pending', 'content_hash' => $hash];
+                'vector_generation_id' => $generation->id, 'vector_state' => $isSql ? 'ready' : 'pending', 'content_hash' => $hash];
+            if ($isSql) $values['vector_revision'] = $revision;
             $write = $this->db->getQueryBuilder();
             if ($row === null) {
                 $write->insert('eva_ai_chunks');
@@ -94,11 +102,13 @@ class GenerationChunkRepository {
                 foreach ($values as $key => $value) $write->set($key, $write->createNamedParameter($value, is_int($value) ? IQueryBuilder::PARAM_INT : IQueryBuilder::PARAM_STR));
                 $write->executeStatement();
             }
-            $revision = $this->outbox->enqueue($generation, $target, 'upsert', $snapshot->id, $id);
-            if ($revision > 9007199254740991 || ($row !== null && $revision <= (int)$row['vector_revision'])) throw new VectorStoreException('invalid_revision');
-            $version = $this->db->getQueryBuilder();
-            $version->update('eva_ai_chunks')->set('vector_revision', $version->createNamedParameter($revision, IQueryBuilder::PARAM_INT))
-                ->where($version->expr()->eq('id', $version->createNamedParameter($id, IQueryBuilder::PARAM_INT)))->executeStatement();
+            if (!$isSql) {
+                $revision = $this->outbox->enqueue($generation, $target, 'upsert', $snapshot->id, $id);
+                if ($revision > 9007199254740991 || ($row !== null && $revision <= (int)$row['vector_revision'])) throw new VectorStoreException('invalid_revision');
+                $version = $this->db->getQueryBuilder();
+                $version->update('eva_ai_chunks')->set('vector_revision', $version->createNamedParameter($revision, IQueryBuilder::PARAM_INT))
+                    ->where($version->expr()->eq('id', $version->createNamedParameter($id, IQueryBuilder::PARAM_INT)))->executeStatement();
+            }
             return ['id' => $id, 'revision' => $revision, 'changed' => true];
         });
     }

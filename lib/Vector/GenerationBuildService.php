@@ -11,12 +11,12 @@ class GenerationBuildService {
 
     public function status(string $user,string $id): array {
         $this->access->assertOwner($user);
-        if ($this->generations->find($user,$id)===null) throw new VectorStoreException('generation_missing');
+        $generation=$this->generations->find($user,$id) ?? throw new VectorStoreException('generation_missing');
         $target=$this->generations->target($user,$id);
         $row=$this->builds->find($user,$id);
         $result=$row===null?['status'=>'not_started','documents_done'=>0,'total_documents'=>0,'heartbeat_at'=>0,'error_code'=>null]:
             array_intersect_key($row,array_flip(['status','documents_done','total_documents','heartbeat_at','error_code']));
-        return $result+['staged_chunks'=>$this->builds->stagedCount($id),'can_start'=>$target!==null && $this->builds->available($user,$id,$target),
+        return $result+['backend'=>$generation->backend,'staged_chunks'=>$this->builds->stagedCount($id),'can_start'=>$target!==null && $this->builds->available($user,$id,$target),
             'retrieval_changed'=>false,'verified'=>$this->verifications?->certificateCurrent($user,$id)??false];
     }
 

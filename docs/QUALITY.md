@@ -357,3 +357,22 @@ The admin-triggered comparison is not yet evidence of a live Qdrant ranking run,
 a chat-path shadow sample or a multi-day soak; those remain open, as do
 authenticated browser coverage and cross-database checks. Existing unrelated
 Social/Mail and `oc_eva_ai_usage.estimated` schema discrepancies remain.
+
+## Local SQL generation build and verification foundation (1.18.14)
+
+The SQL backend now binds generations to a deterministic local target, writes
+ready generation chunks and revisions directly in Nextcloud SQL, and bypasses
+Qdrant point-outbox delivery. Its bounded verifier checks local vector shape,
+revision, chunk hash and source manifests. Qdrant transport rejects SQL
+generations, and SQL source cleanup creates no remote erasure work. The native
+admin status shows backend-specific verification and hides Qdrant shadow probes
+for SQL generations. New OCC generation metadata defaults to SQL.
+
+Validation for this slice: PHP syntax checks for changed services/controllers
+passed, translation JSON/JS catalogs were checked for exact parity, `git diff
+--check` passed, and the production webpack build compiled both app bundles.
+PHPUnit, browser, native database and live Nextcloud upgrade checks were not run
+at the user's request to defer tests/PR checks. Normal file indexing and chat
+search still use `sql_legacy`; SQL generation build and verification do not yet
+prove search cutover, ranking quality, background incremental updates or
+cross-database behavior. No retrieval activation is claimed.

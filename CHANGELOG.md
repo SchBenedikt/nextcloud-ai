@@ -2,6 +2,12 @@
 
 ## [Unreleased]
 
+### SQL generation builds (1.18.14)
+
+- Add an app-local SQL backend for generation builds, with stable local target fencing, ready chunk revisions, SQL-only source cleanup and no Qdrant outbox writes.
+- Verify SQL generations from their stored vectors, content hashes and source manifests without requiring a vector service; retain remote reconciliation for Qdrant generations.
+- Default new OCC generation metadata to SQL and keep Qdrant explicit and optional. Normal indexing/search cutover remains a later stack stage.
+
 ### Bounded shadow comparison (1.18.13)
 
 - Add an administrator-started, read-only comparison for already verified generations; SQL dense ranking remains the baseline and chat/search never call the shadow path.

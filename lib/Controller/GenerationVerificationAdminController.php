@@ -31,7 +31,7 @@ class GenerationVerificationAdminController extends OCSController {
         catch(VectorStoreException$error){
             $message=match($error->reason){
                 'build_not_staged'=>'Complete source preparation before verifying the generation.',
-                'build_disabled'=>'Enable the source index, configured storage connection and point delivery before starting or resuming verification.',
+                'build_disabled'=>'Enable source indexing and ensure the selected generation backend is available before starting or resuming verification.',
                 'verification_missing'=>'Start verification before changing its state.',
                 default=>'This generation or its owner is unavailable. Refresh the current state before retrying.',
             };

@@ -363,8 +363,9 @@ See [generation embeddings](GENERATION-EMBEDDINGS.md).
 ## Background generation builds
 
 `GET /api/admin/vector-generations/{userId}/{id}/build` returns `status`,
-`documents_done`, `total_documents`, `staged_chunks`, `heartbeat_at`, `error_code`,
-`can_start`, `retrieval_changed: false` and `verified: false`. Counts describe SQL
+`backend`, `documents_done`, `total_documents`, `staged_chunks`, `heartbeat_at`, `error_code`,
+`can_start`, `retrieval_changed: false` and whether a current verification
+certificate exists. Counts describe SQL
 preparation. Missing state is `not_started`; a completed pass is `staged`, never
 an activated or verified index. No lease token, destination, content or vectors
 are returned, and this read performs no provider request.
@@ -384,13 +385,14 @@ consent, source-enrollment/destination gates, lease semantics and remaining
 verification requirements.
 
 `GET /api/admin/vector-generations/{userId}/{id}/verification` returns the
-verification `status`, `phase`, point counts, sample count, heartbeat, sanitized
-error code, `can_start`, `verified` and `retrieval_changed: false`. The matching
+verification `status`, `phase`, backend, point counts, sample count, heartbeat,
+sanitized error code, `can_start`, `verified` and `retrieval_changed: false`. The matching
 POST route accepts `start`, `pause`, `resume`, `cancel` or `retry` with an empty
 JSON object. These administrator-only controls schedule or manage bounded
 background work; they never perform provider or vector-store I/O in the request.
-Verification checks stored SQL chunks against the already configured vector
-store and does not send source text to an embedding model. A verified certificate
+SQL verification checks local vector shape, revisions, content hashes and source
+manifests; Qdrant verification additionally reconciles the configured remote
+store. Neither path sends source text to an embedding model. A verified certificate
 is invalidated atomically when canonical source data changes. Search remains on
 SQL and no activation route is provided. See
 [generation verification](GENERATION-VERIFICATION.md).

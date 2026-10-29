@@ -1,21 +1,33 @@
 # Resumable background generation builds
 
-EVA 1.18.10 can build an explicitly prepared, owned **building** generation from
-the owner's canonical indexed sources. SQL remains the search backend. Installing
-or upgrading EVA starts no build and requires no external database.
+EVA can build an explicitly prepared, owned **building** generation from the
+owner's canonical indexed sources. SQL generations are stored entirely in the
+Nextcloud database and need no vector service. Qdrant remains an optional
+external scale path. The legacy SQL index stays active until a later verified
+cutover. Installing or upgrading EVA starts no build and transmits no documents.
 
 ## Start and control
 
-Configure optional storage and prepare the generation using the existing
-[Qdrant administration procedure](QDRANT.md). Its immutable model, dimension,
-endpoint and chunk settings must match the intended embedding space. Prefer
-versioned model identifiers: an API's echoed model name does not prove that an
-operator has kept mutable model weights unchanged.
+Prepare a generation with the immutable model, dimension, endpoint and chunk
+settings matching the intended embedding space. The `sql` backend is the
+default and stores vectors locally in Nextcloud SQL. Select `qdrant` only when
+that optional service is explicitly configured; see the
+[Qdrant administration procedure](QDRANT.md). Prefer versioned model
+identifiers: an API's echoed model name does not prove that an operator has kept
+mutable model weights unchanged.
+
+The OCC generation command defaults to SQL; select Qdrant only when needed:
+
+```sh
+php occ eva_ai:vector:generation create USER --provider=ollama --model=MODEL --endpoint=http://localhost:11434 --dimension=DIMENSION
+php occ eva_ai:vector:generation create USER --backend=qdrant --provider=ollama --model=MODEL --endpoint=http://localhost:11434 --dimension=DIMENSION
+```
 
 In EVA administration, select the owner and generation under **Embedding
 generations**. **Background build** explains the transfer and requires a separate
-document-processing checkbox. The owner's source index must be enrolled, the
-generation bound to the current destination, and storage/point delivery enabled.
+document-processing checkbox. The owner's source index must be enrolled and the
+generation bound to its backend. SQL builds need only Nextcloud SQL and the
+pinned embedding provider; Qdrant builds also require storage and point delivery.
 Nextcloud's native EVA administration page links to these same controls through
 **Manage storage and background builds**. No controls are added to chat.
 
@@ -25,8 +37,9 @@ Pause invalidates the current lease; explicit resume retains its checkpoints.
 An already-started request may finish, but a paused process cannot publish a
 new checkpoint. Cancel also stops admission and retains prepared data; explicit
 resume is possible. It does not purge a collection or erase the legacy index.
-Previously committed vector operations remain governed by the separate point
-delivery permission. Disable storage requests to stop all Qdrant transfers.
+SQL builds create no remote point-delivery operations. Previously committed
+Qdrant vector operations remain governed by the separate point-delivery
+permission. Disable storage requests to stop all Qdrant transfers.
 
 The same control service is available to local administrators:
 
@@ -65,8 +78,8 @@ Repeated source-budget exhaustion without progress stops for attention instead
 of consuming every later background tick indefinitely.
 
 Provider/native-source I/O runs outside SQL transactions. Each batch atomically
-commits prepared rows, vector journal intent and the build checkpoint. Lock order
-is owner, generation, build, then source. A reclaimed process has a different
+commits prepared rows and the build checkpoint; Qdrant batches also commit vector
+journal intent. Lock order is owner, generation, build, then source. A reclaimed process has a different
 token; a late process cannot acknowledge its successor or overwrite a pause.
 Transfer guards recheck lease, flags, target, generation identity, source metadata
 and native access. Fresh SQL preferences also honor an explicit personal indexing
@@ -89,11 +102,12 @@ late worker from recreating it. Legacy NULL-generation vectors remain intact.
 
 ## Prepared is not verified
 
-`staged` means the bounded source pass finished. It does not mean every remote
-point is present, current or correctly ranked. Source additions beyond the
-initial high-water mark, changes behind the cursor, deleted documents, queued
-tombstones and failed remote delivery still need reconciliation and verification.
-The UI/API always report `verified: false` and `retrieval_changed: false` here.
+`staged` means the bounded source pass finished. SQL verification must still
+check local vectors, revisions, content hashes and source manifests. Qdrant
+verification additionally checks every remote point. Source additions beyond
+the initial high-water mark, changes behind the cursor, deleted documents and
+queued tombstones still need reconciliation. The UI/API report
+`retrieval_changed: false` until a later cutover.
 
 The read-only persisted verifier now consumes the tenant-scoped exact live-count
 and exact-ID retrieval contract. It checks SQL/remote IDs, revisions, dimensions,

@@ -14,8 +14,10 @@ class GenerationBuildRepository {
         private VectorOwnerFenceRepository $owners, private VectorGenerationRepository $generations) {}
 
     public function available(string $user, string $id, string $target): bool {
-        return $this->indexAllowed($user) && $this->outbox->pointsEnabled() && $this->outbox->pointTargetIsCurrent($target)
-            && $this->generations->isBuildingBound($user, $id, $target);
+        if (!$this->indexAllowed($user) || !$this->generations->isBuildingBound($user, $id, $target)) return false;
+        $generation = $this->generations->find($user, $id);
+        if ($generation?->backend === 'sql') return hash_equals(VectorGenerationRepository::sqlTargetHash(), $target);
+        return $generation?->backend === 'qdrant' && $this->outbox->pointsEnabled() && $this->outbox->pointTargetIsCurrent($target);
     }
 
     /** Explicit personal opt-out wins over retained documents and request caches. */
@@ -82,7 +84,6 @@ class GenerationBuildRepository {
 
     /** At most one valid token; an expired process cannot checkpoint its successor. */
     public function claim(int $now): ?array {
-        if (!$this->outbox->pointsEnabled()) return null;
         for($attempt=0;$attempt<8;$attempt++) {
             $q=$this->db->getQueryBuilder();
             $q->select('b.user_id','b.generation_id','b.target_hash','b.revision')->from('eva_ai_vec_builds','b')
@@ -95,6 +96,7 @@ class GenerationBuildRepository {
                     $q->expr()->andX($q->expr()->eq('b.status',$q->createNamedParameter('running')),
                         $q->expr()->lte('b.lease_until',$q->createNamedParameter($now,IQueryBuilder::PARAM_INT)))))
                 ->orderBy('b.updated_at','ASC')->addOrderBy('b.generation_id','ASC')->setMaxResults(1);
+            if (!$this->outbox->pointsEnabled()) $q->andWhere($q->expr()->eq('g.backend',$q->createNamedParameter('sql')));
             $r=$q->executeQuery();try{$candidate=$r->fetch();}finally{$r->closeCursor();}
             if (!$candidate) return null;
             $claim=$this->outbox->transaction(function()use($candidate,$now):?array {

@@ -16,7 +16,14 @@ class VectorGenerationRepository {
         $this->outbox->transaction(function () use ($generation): void {
             $this->owners->lockOpen($generation->userId);
             $this->insertBuilding($generation);
+            if ($generation->backend === 'sql') {
+                $this->bindTargetLocked($generation->userId, $generation->id, self::sqlTargetHash());
+            }
         });
+    }
+
+    public static function sqlTargetHash(): string {
+        return hash('sha256', 'eva_ai:sql-generation-store:v1');
     }
 
     private function insertBuilding(VectorGeneration $generation): void {
@@ -146,7 +153,7 @@ class VectorGenerationRepository {
                 $rows = $this->page($userId, $cursor);
                 foreach ($rows as $row) {
                     $this->outbox->supersedeGeneration($userId, $row['id']);
-                    if ($row['storage_endpoint_hash'] !== null) $this->outbox->enqueue(VectorGeneration::fromRow($row), $row['storage_endpoint_hash'], 'delete_generation');
+                    if ($row['storage_endpoint_hash'] !== null && $row['backend'] === 'qdrant') $this->outbox->enqueue(VectorGeneration::fromRow($row), $row['storage_endpoint_hash'], 'delete_generation');
                     $cursor = $row['id'];
                 }
             } while (count($rows) === 50);
@@ -162,9 +169,12 @@ class VectorGenerationRepository {
     public function ownerMetadata(string $userId): ?array { return $this->owners->metadata($userId); }
 
     public function target(string $userId,string $id): ?string {
-        $q=$this->db->getQueryBuilder();$q->select('storage_endpoint_hash')->from('eva_ai_vec_generations')
+        $q=$this->db->getQueryBuilder();$q->select('storage_endpoint_hash','backend')->from('eva_ai_vec_generations')
             ->where($q->expr()->eq('user_id',$q->createNamedParameter($userId)))->andWhere($q->expr()->eq('id',$q->createNamedParameter($id)));
-        $r=$q->executeQuery();try{$target=$r->fetchOne();}finally{$r->closeCursor();}
+        $r=$q->executeQuery();try{$row=$r->fetch();}finally{$r->closeCursor();}
+        if (!$row) return null;
+        if ($row['backend'] === 'sql') return $row['storage_endpoint_hash'] === self::sqlTargetHash() ? self::sqlTargetHash() : null;
+        $target=$row['storage_endpoint_hash'];
         return is_string($target) && preg_match('/^[a-f0-9]{64}$/D',$target)===1?$target:null;
     }
 }

@@ -88,7 +88,7 @@ class VectorPointWorker {
             $data = json_decode($event['generation_json'], true, 64, JSON_THROW_ON_ERROR);
             if (!is_array($data)) throw new \RuntimeException();
             $generation = VectorGeneration::fromRow($data);
-            if ($generation->id !== $event['generation_id'] || $generation->userId !== $event['user_id']) throw new \RuntimeException();
+            if ($generation->backend !== 'qdrant' || $generation->id !== $event['generation_id'] || $generation->userId !== $event['user_id']) throw new \RuntimeException();
             return $generation;
         } catch (\Throwable) { throw new VectorStoreException('invalid_event'); }
     }

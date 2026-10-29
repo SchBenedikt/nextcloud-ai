@@ -100,7 +100,6 @@ class GenerationVerificationRepository {
 
     /** One expiring CAS lease; workers never hold SQL transactions over HTTP. */
     public function claim(int $now): ?array {
-        if(!$this->outbox->pointsEnabled())return null;
         for($try=0;$try<8;$try++){
             $q=$this->db->getQueryBuilder();$q->select('v.user_id','v.generation_id','v.revision','v.upper_document_id','g.storage_endpoint_hash')
                 ->from('eva_ai_vec_verifications','v')
@@ -115,6 +114,7 @@ class GenerationVerificationRepository {
                 ->andWhere($q->expr()->orX($q->expr()->eq('v.status',$q->createNamedParameter('queued')),
                     $q->expr()->andX($q->expr()->eq('v.status',$q->createNamedParameter('running')),$q->expr()->lte('v.lease_until',$q->createNamedParameter($now,IQueryBuilder::PARAM_INT)))))
                 ->orderBy('v.updated_at','ASC')->addOrderBy('v.generation_id','ASC')->setMaxResults(1);
+            if(!$this->outbox->pointsEnabled())$q->andWhere($q->expr()->eq('g.backend',$q->createNamedParameter('sql')));
             $r=$q->executeQuery();try{$candidate=$r->fetch();}finally{$r->closeCursor();}
             if(!$candidate)return null;
             $claim=$this->outbox->transaction(function()use($candidate,$now):?array{
@@ -136,9 +136,9 @@ class GenerationVerificationRepository {
         return null;
     }
 
-    /** @return list<array{id:int,document_id:int,vector_revision:int,embedding:string,content_hash:string,source:string}> */
+    /** @return list<array{id:int,document_id:int,vector_revision:int,embedding:string,content:string,content_hash:string,source:string}> */
     public function page(array $claim,int $limit=100): array {
-        $q=$this->db->getQueryBuilder();$q->select('c.id','c.document_id','c.vector_revision','c.embedding','c.content_hash','d.source')->from('eva_ai_chunks','c')
+        $q=$this->db->getQueryBuilder();$q->select('c.id','c.document_id','c.vector_revision','c.vector_state','c.embedding','c.content','c.content_hash','d.source')->from('eva_ai_chunks','c')
             ->innerJoin('c','eva_ai_documents','d',$q->expr()->eq('d.id','c.document_id'))
             ->where($q->expr()->eq('c.vector_generation_id',$q->createNamedParameter($claim['generation_id'])))
             ->andWhere($q->expr()->eq('d.user_id',$q->createNamedParameter($claim['user_id'])))
@@ -222,10 +222,13 @@ class GenerationVerificationRepository {
                 ->where($q->expr()->eq('user_id',$q->createNamedParameter($claim['user_id'])))
                 ->andWhere($q->expr()->eq('generation_id',$q->createNamedParameter($claim['generation_id'])));
             $r=$q->executeQuery();try{$buildStatus=$r->fetchOne();}finally{$r->closeCursor();}
-            if($buildStatus!=='staged'||$remoteCount!==$row['expected_count']||$this->expectedCount($claim['user_id'],$claim['generation_id'])!==$row['expected_count']
+            if($buildStatus!=='staged')throw new VectorStoreException('build_not_staged');
+            $generation=$this->generations->find($claim['user_id'],$claim['generation_id']);
+            $mismatch=$generation?->backend==='sql'?'sql_inventory_changed':'remote_count_mismatch';
+            if($remoteCount!==$row['expected_count']||$this->expectedCount($claim['user_id'],$claim['generation_id'])!==$row['expected_count']
                 ||$this->documentsBeyondSnapshot($claim['user_id'],$row['upper_document_id'])>0)
-                throw new VectorStoreException('remote_count_mismatch');
-            $hash=hash('sha256',$row['verification_hash'].':expected:'.$row['expected_count'].':remote:'.$remoteCount.':samples:'.$row['sample_count']);
+                throw new VectorStoreException($mismatch);
+            $hash=hash('sha256',$row['verification_hash'].':expected:'.$row['expected_count'].':observed:'.$remoteCount.':samples:'.$row['sample_count']);
             $gen=$this->db->getQueryBuilder();$gen->update('eva_ai_vec_generations')
                 ->set('verified_at',$gen->createNamedParameter(time(),IQueryBuilder::PARAM_INT))
                 ->set('verification_hash',$gen->createNamedParameter($hash))

@@ -33,6 +33,7 @@ class QdrantVectorStore implements VectorStore {
 
     /** Explicit preparation, not a constructor or installation side effect. */
     public function prepare(VectorGeneration $generation): void {
+        $this->assertQdrant($generation);
         $health = $this->health();
         if (!$health['available']) throw new VectorStoreException($health['code']);
         $path = $this->collection($generation);
@@ -62,6 +63,7 @@ class QdrantVectorStore implements VectorStore {
     }
 
     public function upsert(VectorGeneration $generation, array $points, int $revision): void {
+        $this->assertQdrant($generation);
         $this->validateRevision($revision);
         if (!array_is_list($points) || count($points) > 200) throw new VectorStoreException('invalid_batch');
         if ($points === []) return;
@@ -96,6 +98,7 @@ class QdrantVectorStore implements VectorStore {
     }
 
     public function tombstoneChunks(VectorGeneration $generation, array $chunkIds, int $revision): void {
+        $this->assertQdrant($generation);
         $this->validateRevision($revision);
         if (!array_is_list($chunkIds) || count($chunkIds) > 200) throw new VectorStoreException('invalid_batch');
         if ($chunkIds === []) return;
@@ -116,6 +119,7 @@ class QdrantVectorStore implements VectorStore {
 
     /** Exact count is used only by the offline generation verification workflow. */
     public function countLive(VectorGeneration $generation): int {
+        $this->assertQdrant($generation);
         $data=$this->request('post',$this->collection($generation).'/points/count?timeout=10',[
             'filter'=>['must'=>[
                 ['key'=>'user_id','match'=>['value'=>$this->tenant($generation)]],
@@ -132,6 +136,7 @@ class QdrantVectorStore implements VectorStore {
 
     /** Retrieve at most 100 exact IDs; callers compare SQL identity and vectors. */
     public function retrieve(VectorGeneration $generation,array $ids): array {
+        $this->assertQdrant($generation);
         if(!array_is_list($ids)||count($ids)>100)throw new VectorStoreException('invalid_batch');
         if($ids===[])return [];
         $seen=[];
@@ -176,6 +181,7 @@ class QdrantVectorStore implements VectorStore {
 
     /** A missing collection already satisfies terminal generation erasure. */
     public function deleteGeneration(VectorGeneration $generation): void {
+        $this->assertQdrant($generation);
         $data = $this->request('delete', $this->collection($generation) . '?timeout=10', null, true, 10);
         if ($data !== null) {
             $this->ok($data);
@@ -184,6 +190,7 @@ class QdrantVectorStore implements VectorStore {
     }
 
     public function search(VectorGeneration $generation, array $queryVector, int $topK, SearchFilters $filters,int $timeoutSeconds=5): array {
+        $this->assertQdrant($generation);
         $generation->validateVector($queryVector);
         if ($topK < 1 || $topK > 100||$timeoutSeconds<1||$timeoutSeconds>5) throw new VectorStoreException('invalid_limit');
         $data = $this->request('post', $this->collection($generation) . '/points/query?timeout=' . $timeoutSeconds,
@@ -237,6 +244,9 @@ class QdrantVectorStore implements VectorStore {
     }
 
     private function collection(VectorGeneration $generation): string { return '/collections/' . $generation->collection(); }
+    private function assertQdrant(VectorGeneration $generation): void {
+        if ($generation->backend !== 'qdrant') throw new VectorStoreException('generation_backend_mismatch');
+    }
     private function tenant(VectorGeneration $generation): string { return hash('sha256', $generation->userId); }
     private function ok(?array $data): void { if (($data['status'] ?? null) !== 'ok') throw new VectorStoreException('invalid_operation_response'); }
     private function completed(?array $data): void {

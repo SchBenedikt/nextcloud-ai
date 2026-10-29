@@ -25,7 +25,7 @@ class VectorOutboxRepository {
     /** Must share the transaction and connection of the canonical SQL mutation. */
     public function enqueue(VectorGeneration $generation, string $targetHash, string $operation, ?int $documentId = null, ?int $chunkId = null): int {
         if (!$this->db->inTransaction()) throw new \LogicException('Vector intent requires the canonical mutation transaction.');
-        if (preg_match('/^[a-f0-9]{64}$/D', $targetHash) !== 1 || !in_array($operation, ['upsert', 'delete_chunk', 'delete_generation'], true)
+        if ($generation->backend !== 'qdrant' || preg_match('/^[a-f0-9]{64}$/D', $targetHash) !== 1 || !in_array($operation, ['upsert', 'delete_chunk', 'delete_generation'], true)
             || ($operation === 'delete_generation' && ($documentId !== null || $chunkId !== null))
             || ($operation !== 'delete_generation' && ($documentId === null || $documentId < 1 || $chunkId === null || $chunkId < 1))) throw new \InvalidArgumentException('Invalid vector synchronization intent.');
         $json = json_encode($generation->toRow(), JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
