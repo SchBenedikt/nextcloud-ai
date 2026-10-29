@@ -10,6 +10,7 @@
 				<p>{{ $t('Documents staged: {done} of {total}', { done: state.documents_done, total: state.total_documents }) }} · {{ $t('Chunks staged: {count}', { count: state.staged_chunks }) }}</p>
 			</template>
 			<NcNoteCard v-if="state.status === 'staged' && !state.verified" type="info">{{ state.backend === 'sql' ? $t('Source processing finished. SQL generation vectors and current source manifests are checked automatically before activation.') : $t('Source processing finished. Verify all current SQL and remote points before this remote generation can be considered ready.') }}</NcNoteCard>
+			<NcNoteCard v-if="state.backend === 'qdrant' && ['not_started', 'paused', 'failed', 'cancelled'].includes(state.status)" type="info">{{ $t('Prepare the empty Qdrant collection before starting the build. This step sends collection settings only; document transfer requires the separate build confirmation below.') }}</NcNoteCard>
 			<NcNoteCard v-if="state.active && state.retrieval_backend === 'sql_generation'" type="success">{{ $t('This verified SQL generation is serving search.') }}</NcNoteCard>
 			<NcNoteCard v-else-if="state.active && state.retrieval_backend === 'qdrant_generation'" type="info">{{ $t('This verified Qdrant generation is serving search as an explicit canary. Roll back from verification status at any time.') }}</NcNoteCard>
 			<NcNoteCard v-else-if="state.status === 'staged' && state.verified" type="success">{{ $t('The staged SQL generation is verified and will become active automatically when its source snapshot is current.') }}</NcNoteCard>
@@ -24,6 +25,7 @@
 				<NcCheckboxRadioSwitch v-model="confirmedText" :disabled="!state.can_start || busy">{{ $t('Allow document text storage and query search in Qdrant') }}</NcCheckboxRadioSwitch>
 			</template>
 			<div class="generation-build-actions">
+				<NcButton v-if="state.backend === 'qdrant' && ['not_started', 'paused', 'failed', 'cancelled'].includes(state.status)" variant="secondary" :disabled="busy || loading" :loading="preparing" @click="prepareCollection">{{ $t('Prepare or repair Qdrant collection') }}</NcButton>
 				<NcButton v-if="state.status === 'not_started'" :disabled="!state.can_start || !confirmed || (state.include_text_payload && !confirmedText) || busy" :loading="busy" @click="control('start')">{{ $t('Start background build') }}</NcButton>
 				<NcButton v-else-if="['queued', 'running'].includes(state.status)" :disabled="busy" :loading="busy" @click="control('pause')">{{ $t('Pause build') }}</NcButton>
 				<NcButton v-else-if="['paused', 'failed', 'cancelled'].includes(state.status)" :disabled="!state.can_start || (state.include_text_payload && !confirmedText) || busy" :loading="busy" @click="control('resume')">{{ $t('Resume build') }}</NcButton>
@@ -46,7 +48,7 @@ export default {
 	components: { NcButton, NcCheckboxRadioSwitch, NcLoadingIcon, NcNoteCard, NcProgressBar, GenerationVerificationSettings },
 	props: { user: { type: String, required: true }, generation: { type: String, required: true } },
 	setup(props) {
-		const state = ref(null), error = ref(''), loading = ref(false), busy = ref(false), confirmed = ref(false), confirmedText = ref(false)
+		const state = ref(null), error = ref(''), loading = ref(false), busy = ref(false), preparing = ref(false), confirmed = ref(false), confirmedText = ref(false)
 		let controller, epoch = 0, timer
 		const path = `admin/vector-generations/${encodeURIComponent(props.user)}/${props.generation}/build`
 		const states = ['not_started', 'queued', 'running', 'paused', 'cancelled', 'failed', 'staged']
@@ -85,12 +87,22 @@ export default {
 			busy.value = true
 			try { await request(action) } finally { busy.value = false }
 		}
+		async function prepareCollection() {
+			if (busy.value || loading.value || state.value?.backend !== 'qdrant') return
+			busy.value = true; preparing.value = true
+			try {
+				const result = await api('POST', `admin/vector-generations/${encodeURIComponent(props.user)}/${props.generation}/prepare`, {}, { timeout: 30000, retries: 0 })
+				if (result?.prepared !== true || result.generation_id !== props.generation || result.retrieval_changed !== false || result.document_content_sent !== false) throw new Error(t('The Qdrant collection preparation could not be confirmed.'))
+				await request()
+			} catch (e) { error.value = errMsg(e) }
+			finally { busy.value = false; preparing.value = false }
+		}
 		onMounted(() => {
 			load()
 			timer = setInterval(() => { if (document.visibilityState === 'visible' && ['queued', 'running'].includes(state.value?.status)) load() }, 5000)
 		})
 		onBeforeUnmount(() => { epoch++; controller?.abort(); clearInterval(timer) })
-		return { state, error, loading, busy, confirmed, confirmedText, label, progress, failure, load, control }
+		return { state, error, loading, busy, preparing, confirmed, confirmedText, label, progress, failure, load, control, prepareCollection }
 	},
 }
 </script>

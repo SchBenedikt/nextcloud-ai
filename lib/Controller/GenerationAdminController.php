@@ -23,8 +23,9 @@ class GenerationAdminController extends OCSController {
             $this->access->assertOwner($userId);
             $rows = $this->generations->page($userId,$query->after);
             $items = array_map(static function(array $row): array {
-                $item=array_intersect_key($row,array_flip(['id','status','embedding_provider','profile_id','embedding_model','dimension','chunk_size','chunk_overlap','created_at']));
+                $item=array_intersect_key($row,array_flip(['id','backend','status','embedding_provider','profile_id','embedding_model','dimension','chunk_size','chunk_overlap','include_text_payload','created_at']));
                 foreach (['dimension','chunk_size','chunk_overlap','created_at'] as $key) $item[$key]=(int)$item[$key];
+                $item['include_text_payload']=(bool)($item['include_text_payload']??false);
                 return $item;
             },$rows);
             return new ErrorDataResponse(['items'=>$items,'next_after'=>count($rows)===50?$rows[49]['id']:null]);

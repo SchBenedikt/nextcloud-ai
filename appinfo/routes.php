@@ -63,6 +63,8 @@ return [
         ['name' => 'api#chatDetail', 'url' => '/api/chats/{id}', 'verb' => 'GET'],
         ['name' => 'api#chatDelete', 'url' => '/api/chats/{id}', 'verb' => 'DELETE'],
         ['name' => 'generationAdmin#listing', 'url' => '/api/admin/vector-generations/{userId}', 'verb' => 'GET'],
+        ['name' => 'generationQdrantAdmin#create', 'url' => '/api/admin/vector-generations/{userId}/qdrant', 'verb' => 'POST'],
+        ['name' => 'generationQdrantAdmin#prepare', 'url' => '/api/admin/vector-generations/{userId}/{id}/prepare', 'verb' => 'POST'],
         ['name' => 'generationAdmin#check', 'url' => '/api/admin/vector-generations/{userId}/{id}/check', 'verb' => 'POST'],
         ['name' => 'generationBuildAdmin#status', 'url' => '/api/admin/vector-generations/{userId}/{id}/build', 'verb' => 'GET'],
         ['name' => 'generationBuildAdmin#control', 'url' => '/api/admin/vector-generations/{userId}/{id}/build/{operation}', 'verb' => 'POST'],

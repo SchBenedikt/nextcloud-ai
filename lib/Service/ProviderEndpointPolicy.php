@@ -38,6 +38,26 @@ class ProviderEndpointPolicy {
         };
     }
 
+    /** Canonical exact origin for administrator-owned private destination approvals. */
+    public static function normalizeOrigin(string $origin): string {
+        $parts=parse_url(trim($origin));
+        if ($parts===false || !isset($parts['scheme'],$parts['host'])
+            || !in_array(strtolower($parts['scheme']),['http','https'],true)
+            || isset($parts['user']) || isset($parts['pass']) || isset($parts['query']) || isset($parts['fragment'])
+            || (isset($parts['path']) && $parts['path']!=='/' ) || preg_match('/[\x00-\x20\x7f\\\\]/',$origin)) {
+            throw new ProviderException('Private origin must be an HTTP(S) origin without credentials or a path.');
+        }
+        $scheme=strtolower($parts['scheme']);
+        $host=strtolower(rtrim(trim($parts['host'],'[]'),'.'));
+        if ($host==='' || str_contains($host,'%') || preg_match('/[^a-z0-9.:-]/',$host)) throw new ProviderException('Invalid private origin host.');
+        if (filter_var($host,FILTER_VALIDATE_IP)===false && (str_contains($host,':') || preg_match('/^(?:0x[0-9a-f]+|[0-9]+)(?:\.(?:0x[0-9a-f]+|[0-9]+))*$/i',$host))) {
+            throw new ProviderException('Non-canonical private origin host.');
+        }
+        $port=(int)($parts['port']??($scheme==='https'?443:80));
+        if ($port<1 || $port>65535) throw new ProviderException('Invalid private origin port.');
+        return $scheme.'://'.(str_contains($host,':')?'['.$host.']':$host).':'.$port;
+    }
+
     /** @return array{host:string,port:int,addresses:list<string>} */
     public function validateTarget(string $url): array {
         $parts = parse_url($url);
@@ -83,7 +103,12 @@ class ProviderEndpointPolicy {
         $origins = json_decode($raw, true);
         if (!is_array($origins) || count($origins) > 100) return false;
         // Explicit scheme/host/port strings; never read personal configuration.
-        return in_array($origin, $origins, true);
+        foreach ($origins as $candidate) {
+            if (!is_string($candidate)) continue;
+            try { if (hash_equals($origin,self::normalizeOrigin($candidate))) return true; }
+            catch (ProviderException) { continue; }
+        }
+        return false;
     }
 
     /** DNS is resolved here, after Nextcloud middleware, and pinned for transfer. */

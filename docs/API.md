@@ -70,8 +70,8 @@ explicit probe require the normal request token; none has a CSRF exemption:
 
 | Method and path | Behavior |
 | --- | --- |
-| `GET /api/admin/vector-storage/connection` | Offline form state: `endpoint`, `auth` (`api_key`/`none`), `configured`, `enabled`, `key_configured`. No plaintext/encrypted key is returned. Unlike the compact snapshot, this admin-only form exposes the configured endpoint. |
-| `PUT /api/admin/vector-storage/connection` | Full replacement from a JSON body, at most 8 KiB. Requires `endpoint`, explicit `auth`, explicit boolean `enabled`, and a new `api_key` string for `auth=api_key` or null/omitted key for `auth=none`. No retained-key placeholder or query-string credentials. Returns the offline form state. |
+| `GET /api/admin/vector-storage/connection` | Offline form state: `endpoint`, `auth` (`api_key`/`none`), exact `private_origins`, `configured`, `enabled`, `key_configured`. No plaintext/encrypted key is returned. Unlike the compact snapshot, this admin-only form exposes the configured endpoint. |
+| `PUT /api/admin/vector-storage/connection` | Full replacement from a JSON body, at most 8 KiB. Requires `endpoint`, explicit `auth`, explicit boolean `enabled`, and a new `api_key` string for `auth=api_key` or null/omitted key for `auth=none`. Optional `private_origins` is a list of at most 100 exact HTTP(S) origins with no credentials/path/query/fragment. No retained-key placeholder or query-string credentials. Returns the offline form state. |
 | `POST /api/admin/vector-storage/disable` | Disables all Qdrant transport without discarding targets or journal intent. Returns compact connection status. |
 | `POST /api/admin/vector-storage/check` | Explicit bounded root-API version/reachability probe using the saved enabled connection. Returns `{available, code}`; an unsuccessful probe is a successful operation with `available=false`, not proof of an empty/ready index. |
 
@@ -372,10 +372,22 @@ Existing connection disable stops all Qdrant transfers.
 `GET /api/admin/vector-generations/{userId}?after=<generation ID>` returns
 `items` and `next_after` (null except for a full 50-row page). It requires an
 existing enabled canonical Nextcloud owner and returns only generation ID,
-lifecycle state, provider/profile ID, model, dimension, chunk settings and
-creation timestamp. Credentials, endpoint URLs/hashes and vector content are
-not included. The `after` cursor is a lowercase 32-character hexadecimal ID.
-This GET never contacts the provider.
+backend, lifecycle state, provider/profile ID, model, dimension, chunk settings,
+the text-payload opt-in and creation timestamp. Credentials, endpoint URLs/hashes
+and vector content are not included. The `after` cursor is a lowercase
+32-character hexadecimal ID. This GET never contacts the provider.
+
+`POST /api/admin/vector-generations/{userId}/qdrant` creates a new immutable
+Qdrant generation by copying the selected account's active SQL generation
+identity. Its JSON body requires `source_generation_id`, the boolean
+`include_text_payload`, and the boolean `confirm_text_storage`. Text storage
+requires both booleans to be true. This creates only local metadata; it does not
+contact Qdrant, read documents or change retrieval. An administrator then uses
+`POST /api/admin/vector-generations/{userId}/{id}/prepare` to create/repair the
+empty collection using the saved enabled Qdrant connection. That explicit action
+sends collection schema only and returns `document_content_sent: false`; file
+backfill still requires the separate build consent below. Both routes require
+administrator authorization and native CSRF protection.
 
 `POST /api/admin/vector-generations/{userId}/{id}/check` explicitly checks an
 owned building generation with a fixed public test sentence. No client text,
