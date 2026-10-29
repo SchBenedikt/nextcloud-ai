@@ -54,6 +54,10 @@ The implementation entries further below record the actual delivered slices.
   operation/state.
   Exported labels contain no tenant, file, prompt, endpoint, or credential data;
   request percentiles, provider timings, and queue-age histograms remain open.
+- SQL cosine ranking validates and computes the query-vector magnitude once per
+  request instead of repeating that query-side work for every candidate. This is
+  an algorithm-preserving CPU reduction; no latency improvement is claimed
+  without representative measurements.
 - `Chunk` stores embeddings as JSON text. `ChunkMapper` supplies lexical
   candidates through SQL LIKE, not an inverted index.
 - `Indexer` already bounds file traversal, extraction and embedding batches and

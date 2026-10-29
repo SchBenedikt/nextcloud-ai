@@ -155,11 +155,13 @@ class Searcher {
             [$queryVec, $err] = $this->ollama->embedQuery([$query], $userId);
             $queryVector = $err === null && is_array($queryVec) && isset($queryVec[0]) ? $queryVec[0] : null;
         }
+        $queryMagnitude = $queryVector === null ? null : $this->vectorMagnitude($queryVector);
+        if ($queryMagnitude === null) $queryVector = null;
         $measurements['embedding_ms'] = (hrtime(true) - $phase) / 1_000_000;
-        $measurements['dense_enabled'] = $queryVector !== null;
+        $measurements['dense_enabled'] = $queryMagnitude !== null;
         $phase = $this->startStage($measurements, 'candidates_ms');
         try {
-            $rows = $this->loadCandidates($userId, $query, $queryVector, $generation, $scopePath, $topK);
+            $rows = $this->loadCandidates($userId, $query, $queryVector, $queryMagnitude, $generation, $scopePath, $topK);
         } catch (\Throwable $error) {
             if ($generation?->backend !== 'qdrant') throw $error;
             // Remote search failure is observable and degrades to the built-in index.
@@ -173,9 +175,11 @@ class Searcher {
                 [$fallbackVector,$fallbackError]=$this->ollama->embedQuery([$query],$userId);
                 $queryVector=$fallbackError===null&&is_array($fallbackVector)&&isset($fallbackVector[0])?$fallbackVector[0]:null;
             }
+            $queryMagnitude=$queryVector===null?null:$this->vectorMagnitude($queryVector);
+            if($queryMagnitude===null)$queryVector=null;
             $measurements['embedding_ms']+=(hrtime(true)-$fallbackEmbeddingStarted)/1_000_000;
-            $measurements['dense_enabled']=$queryVector!==null;
-            $rows=$this->loadCandidates($userId,$query,$queryVector,null,$scopePath,$topK);
+            $measurements['dense_enabled']=$queryMagnitude!==null;
+            $rows=$this->loadCandidates($userId,$query,$queryVector,$queryMagnitude,null,$scopePath,$topK);
         }
         $measurements['candidates_ms'] = (hrtime(true) - $phase) / 1_000_000;
         $measurements['candidates'] = count($rows);
@@ -243,7 +247,7 @@ class Searcher {
                 if (!is_array($vec)) {
                     continue;
                 }
-                $similarity = $this->cosine($queryVector, $vec);
+                $similarity = $this->cosine($queryVector, $vec, $queryMagnitude);
                 if ($similarity !== null) {
                     $dense[$i] = $similarity;
                 }
@@ -398,7 +402,7 @@ class Searcher {
      *        embedding request failed (dense ranking is then skipped).
      * @return array<int,array<string,mixed>>
      */
-    private function loadCandidates(string $userId, string $query, ?array $queryVector, ?VectorGeneration $generation = null, ?string $scopePath = null, int $topK = 20): array {
+    private function loadCandidates(string $userId, string $query, ?array $queryVector, ?float $queryMagnitude, ?VectorGeneration $generation = null, ?string $scopePath = null, int $topK = 20): array {
         $generationId=$generation?->id;
         $generationState=$generation?->backend==='qdrant'?'delivered':'ready';
         if($generation?->backend==='qdrant'){
@@ -482,7 +486,7 @@ class Searcher {
                         if (!is_array($vec)) {
                             continue;
                         }
-                        $similarity = $this->cosine($queryVector, $vec);
+                        $similarity = $this->cosine($queryVector, $vec, $queryMagnitude);
                         if ($similarity !== null) {
                             $best[(int)$row['id']] = $similarity;
                         }
@@ -669,27 +673,36 @@ class Searcher {
         return array_values(array_unique(array_filter(array_map('trim', $matches[1] ?? []))));
     }
 
-    private function cosine(array $a, array $b): ?float {
-        if ($a === [] || count($a) !== count($b)) {
+    private function vectorMagnitude(array $vector): ?float {
+        if ($vector === []) return null;
+        $norm = 0.0;
+        foreach ($vector as $value) {
+            if (!is_numeric($value) || !is_finite((float)$value)) return null;
+            $value = (float)$value;
+            $norm += $value * $value;
+        }
+        if (!is_finite($norm) || $norm <= 0.0) return null;
+        return sqrt($norm);
+    }
+
+    private function cosine(array $a, array $b, ?float $magnitudeA): ?float {
+        if ($a === [] || count($a) !== count($b) || $magnitudeA === null || $magnitudeA <= 0.0) {
             return null;
         }
         $dot = 0.0;
-        $na = 0.0;
         $nb = 0.0;
         foreach ($a as $i => $value) {
-            if (!is_numeric($value) || !is_finite((float)$value)
-                || !array_key_exists($i, $b) || !is_numeric($b[$i]) || !is_finite((float)$b[$i])) {
+            if (!array_key_exists($i, $b) || !is_numeric($b[$i]) || !is_finite((float)$b[$i])) {
                 return null;
             }
             $va = (float)$value;
             $vb = (float)$b[$i];
             $dot += $va * $vb;
-            $na += $va * $va;
             $nb += $vb * $vb;
         }
-        if ($na <= 0 || $nb <= 0) {
+        if (!is_finite($nb) || $nb <= 0.0) {
             return null;
         }
-        return $dot / (sqrt($na) * sqrt($nb));
+        return $dot / ($magnitudeA * sqrt($nb));
     }
 }

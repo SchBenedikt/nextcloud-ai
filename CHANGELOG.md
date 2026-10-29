@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Reuse query-vector norm during SQL ranking (1.18.38)
+
+- Validate and normalize the query-vector magnitude once per retrieval, then reuse it for each SQL cosine comparison. Dense rankings remain exact; this removes repeated query-side norm work from large-index scans.
+
 ### Native OpenMetrics backend gauges (1.18.37)
 
 - Export aggregate index totals, vector generation counts, and durable vector outbox depth/age through Nextcloud's OpenMetrics exporter. Labels exclude account IDs, file metadata, prompts, provider URLs, and credentials.
