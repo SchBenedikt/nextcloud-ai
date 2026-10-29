@@ -155,7 +155,9 @@ PHP suite follows existing conventions and skips platform tests without OCP.
 Settings sections live in `src/components/settings/`; their shared state and
 deferred loaders live in `src/composables/useEvaSettings.js`. Keep data ownership
 in the composable so section switches cannot discard edits. Provider drafts
-belong to `ProviderSettings` and save explicitly through the settings API.
+belong to `ProviderSettings` and save through the shared serialized settings
+writer. Removing a custom provider also removes its saved credential; keep the
+profile selected for file indexing until another embedding provider is chosen.
 
 `ChatView` must await the renderer's `ready` promise before sending an initial
 prompt. Otherwise an asynchronous history restore can overwrite the new
