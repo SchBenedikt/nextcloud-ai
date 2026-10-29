@@ -8,6 +8,7 @@ use OCA\EvaAi\Db\Chunk;
 use OCA\EvaAi\Db\ChunkMapper;
 use OCA\EvaAi\Db\Document;
 use OCA\EvaAi\Db\DocumentMapper;
+use OCA\EvaAi\Db\VectorSourceDeletion;
 use OCP\Files\File;
 use OCP\Files\Folder;
 use OCP\Files\IRootFolder;
@@ -58,7 +59,8 @@ class Indexer {
         private LoggerInterface $logger,
         private ILockingProvider $lockingProvider,
         private LockGuard $lockGuard,
-        private IndexScheduler $scheduler
+        private IndexScheduler $scheduler,
+        private ?VectorSourceDeletion $vectorSourceDeletion = null
     ) {
     }
 
@@ -658,8 +660,7 @@ class Indexer {
             return 0;
         }
         $ids = array_map(static fn($d) => (int)$d->getId(), $docs);
-        $this->chunkMapper->deleteByDocumentIds($ids);
-        $this->documentMapper->deleteByIds($ids);
+        $this->deleteIndexedDocuments($ids);
         return count($ids);
     }
 
@@ -688,8 +689,7 @@ class Indexer {
         if ($doc === null) {
             return;
         }
-        $this->chunkMapper->deleteByDocument((int)$doc->getId());
-        $this->documentMapper->deleteByUserAndFile($userId, $fileId);
+        $this->deleteIndexedDocuments([(int)$doc->getId()]);
     }
 
     /**
@@ -813,9 +813,22 @@ class Indexer {
     private function removeStaleDocument(string $userId, int $fileId): void {
         $existing = $this->documentMapper->findByUserAndFile($userId, $fileId);
         if ($existing !== null) {
-            $this->chunkMapper->deleteByDocument((int)$existing->getId());
-            $this->documentMapper->delete($existing);
+            $this->deleteIndexedDocuments([(int)$existing->getId()]);
         }
+    }
+
+    /** Keep optional vector generations and their remote tombstones in sync with canonical source deletion. */
+    private function deleteIndexedDocuments(array $documentIds): void {
+        if ($documentIds === []) return;
+        if ($this->vectorSourceDeletion !== null) {
+            foreach (array_chunk(array_values(array_unique(array_map('intval', $documentIds))), 500) as $batch) {
+                $this->vectorSourceDeletion->deleteDocuments($batch, true);
+            }
+            return;
+        }
+        // Older isolated unit fixtures construct Indexer without the vector lifecycle service.
+        $this->chunkMapper->deleteByDocumentIds($documentIds);
+        $this->documentMapper->deleteByIds($documentIds);
     }
 
     private function flushBatch(array &$batch, array &$result, ?string $runId = null, ?string $userId = null): void {
@@ -932,8 +945,7 @@ class Indexer {
                 try {
                     $oldDoc = $this->documentMapper->findById($oldDocId);
                     if ($oldDoc !== null) {
-                        $this->chunkMapper->deleteByDocument($oldDocId);
-                        $this->documentMapper->delete($oldDoc);
+                        $this->deleteIndexedDocuments([$oldDocId]);
                         $this->logger->debug('eva_ai: Removed old document after successful re-index', ['oldDocId' => $oldDocId]);
                     }
                 } catch (\Throwable $e) {
@@ -1268,11 +1280,10 @@ class Indexer {
             $doc = $this->documentMapper->findByUserAndFile($userId, (int)$fileId);
             if ($doc !== null) {
                 $docIds[] = (int)$doc->getId();
-                $this->documentMapper->delete($doc);
                 $this->logger->info('eva_ai: Removed stale document', ['fileId' => $fileId, 'userId' => $userId]);
             }
         }
-        $this->chunkMapper->deleteByDocumentIds($docIds);
+        $this->deleteIndexedDocuments($docIds);
         
         // Also remove documents that are now excluded by exclude_paths configuration
         $this->cleanupExcluded($userId);
@@ -1312,13 +1323,7 @@ class Indexer {
         } while (count($docs) === $limit);
         
         if (!empty($excludedDocIds)) {
-            $this->chunkMapper->deleteByDocumentIds($excludedDocIds);
-            foreach ($excludedDocIds as $docId) {
-                $doc = $this->documentMapper->findById($docId);
-                if ($doc !== null) {
-                    $this->documentMapper->delete($doc);
-                }
-            }
+            $this->deleteIndexedDocuments($excludedDocIds);
             $this->logger->info('eva_ai: Cleaned up excluded documents', [
                 'userId' => $userId,
                 'count' => count($excludedDocIds)

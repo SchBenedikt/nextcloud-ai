@@ -86,6 +86,11 @@ surface, focused validation, recovery notes and a stacked reviewable PR.
   resume, cancel and recover abandoned leases without changing chat answers.
 - Source mutation, access revocation, deletion and account erasure cannot leave
   retrievable stale chunks or permit stale work to resurrect deleted content.
+- Normal stale-file, exclusion, folder-prefix, and successful replacement
+  cleanup use the canonical vector source-deletion transaction. SQL generation
+  chunks are deleted with their source; configured Qdrant generations receive
+  durable tombstone intents. This does not yet wire normal indexing writes or
+  retrieval to generation storage.
 - SQL and configured optional-store rankings pass the frozen quality corpus;
   tenant and scope adversarial cases pass; shadow and load evidence meet agreed
   latency and error budgets.

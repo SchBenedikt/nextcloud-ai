@@ -312,6 +312,12 @@ recorded in history.
 The legacy `/api/mailIndex`, `/api/talkIndex`, `/api/indexStop`,
 `/api/indexReset`, and `POST /api/folders/delete` paths remain supported.
 
+Normal file-index cleanup deletes canonical source rows and generation chunks
+in one SQL transaction. When a source belongs to an optional Qdrant generation,
+the transaction records bounded durable tombstone work; it does not make a
+Qdrant request on the indexing or chat path. This lifecycle wiring does not
+enable generation-based retrieval or change index reset behavior.
+
 ### Document list freshness
 
 `GET /api/documents` returns `Cache-Control: private, no-cache` with its ETag.
