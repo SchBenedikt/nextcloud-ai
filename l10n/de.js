@@ -495,6 +495,7 @@ OC.L10N.register("eva_ai", {
   "OCR is unavailable: ask your administrator to install Tesseract and its language data.": "OCR ist nicht verfügbar: Bitte die Administration, Tesseract und die Sprachdaten zu installieren.",
   "OCR languages (for example eng or deu+eng)": "OCR-Sprachen (zum Beispiel eng oder deu+eng)",
   "OCR limits: 20 MiB, 30 PDF pages, 25 megapixels and 60 seconds per file. Failed extraction keeps the previous index.": "OCR-Grenzen: 20 MiB, 30 PDF-Seiten, 25 Megapixel und 60 Sekunden pro Datei. Bei Fehlern bleibt der bisherige Index erhalten.",
+  "With OCR enabled, Office documents also extract text from up to four embedded images (5 MiB and 10 seconds per image).": "Mit aktivierter OCR liest EVA auch Text aus bis zu vier eingebetteten Bildern in Office-Dateien (je 5 MiB und 10 Sekunden).",
   "Off": "Aus",
   "Offline": "Offline",
   "Oldest first": "Älteste zuerst",

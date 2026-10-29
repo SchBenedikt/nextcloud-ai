@@ -85,16 +85,17 @@ class OcrService {
         return implode('+', $valid);
     }
 
-    public function extract(string $bytes, string $mime, string $language): string {
+    public function extract(string $bytes, string $mime, string $language, int $maxRuntimeSeconds = 60): string {
         if (!preg_match('/^[a-zA-Z0-9_]{1,24}(?:\+[a-zA-Z0-9_]{1,24}){0,3}$/D', $language)) {
             throw new \RuntimeException('Invalid OCR language');
         }
+        if ($maxRuntimeSeconds < 1 || $maxRuntimeSeconds > 60) throw new \InvalidArgumentException('OCR runtime must be between 1 and 60 seconds.');
         if (strlen($bytes) > self::MAX_BYTES) throw new \RuntimeException('OCR input exceeds 20 MiB');
         $tesseract = $this->binary('tesseract');
         if ($tesseract === null) throw new \RuntimeException('OCR requires tesseract on the server');
         $dir = sys_get_temp_dir() . '/eva-ocr-' . bin2hex(random_bytes(12));
         if (!mkdir($dir, 0700)) throw new \RuntimeException('Unable to create OCR temporary directory');
-        $deadline = microtime(true) + 60;
+        $deadline = microtime(true) + $maxRuntimeSeconds;
         try {
             $input = $dir . '/input';
             if (file_put_contents($input, $bytes) === false) throw new \RuntimeException('Unable to stage OCR input');

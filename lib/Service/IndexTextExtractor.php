@@ -12,6 +12,9 @@ class IndexTextExtractor {
     private const MAX_DECOMPRESSED_BYTES = 104857600;
     private const MAX_ZIP_ENTRIES = 1000;
     private const MAX_EXTRACT_CHARS = 2000000;
+    private const MAX_EMBEDDED_OCR_IMAGES = 4;
+    private const MAX_EMBEDDED_OCR_IMAGE_BYTES = 5242880;
+    private const MAX_EMBEDDED_OCR_TOTAL_BYTES = 10485760;
 
     public function __construct(private AppConfig $config, private LoggerInterface $logger) {}
 
@@ -606,6 +609,10 @@ class IndexTextExtractor {
                 } elseif ($kind === 'epub') {
                     $out = $this->epubZipText($zip, $total, $aborted);
                 }
+                if (!$aborted && $this->config->get('ocr_enabled') === '1' && in_array($kind, ['docx', 'pptx', 'odf'], true)) {
+                    $embedded = $this->zipEmbeddedImageOcr($zip, $total, $aborted, $kind);
+                    if ($embedded !== '') $out .= "\n\n" . $embedded;
+                }
             } finally {
                 $zip->close();
             }
@@ -615,6 +622,56 @@ class IndexTextExtractor {
             }
         }
         return $this->normalize($out ?? '');
+    }
+
+    /** Extract a small, bounded number of embedded Office images with local OCR. */
+    private function zipEmbeddedImageOcr(\ZipArchive $zip, int &$total, bool &$aborted, string $kind): string {
+        $prefixes = match ($kind) {
+            'docx' => ['word/media/'],
+            'pptx' => ['ppt/media/'],
+            'odf' => ['pictures/'],
+            default => [],
+        };
+        if ($prefixes === []) return '';
+        $mimes = [
+            'png' => 'image/png', 'jpg' => 'image/jpeg', 'jpeg' => 'image/jpeg',
+            'tif' => 'image/tiff', 'tiff' => 'image/tiff', 'webp' => 'image/webp',
+            'bmp' => 'image/bmp', 'gif' => 'image/gif',
+        ];
+        $out = [];
+        $imageBytes = 0;
+        $processed = 0;
+        $count = min($zip->numFiles, self::MAX_ZIP_ENTRIES);
+        for ($index = 0; $index < $count && !$aborted && $processed < self::MAX_EMBEDDED_OCR_IMAGES; $index++) {
+            $entry = $zip->getNameIndex($index);
+            if (!is_string($entry)) continue;
+            $lower = strtolower($entry);
+            $isMedia = false;
+            foreach ($prefixes as $prefix) {
+                if (str_starts_with($lower, $prefix)) { $isMedia = true; break; }
+            }
+            if (!$isMedia) continue;
+            $extension = strtolower(pathinfo($entry, PATHINFO_EXTENSION));
+            if (!isset($mimes[$extension])) continue;
+            $stat = $zip->statIndex($index);
+            if (!is_array($stat) || (int)($stat['size'] ?? 0) < 1 || (int)$stat['size'] > self::MAX_EMBEDDED_OCR_IMAGE_BYTES
+                || $imageBytes + (int)$stat['size'] > self::MAX_EMBEDDED_OCR_TOTAL_BYTES) continue;
+            $bytes = $this->zipReadEntry($zip, $index, $total, $aborted);
+            if ($bytes === '' || strlen($bytes) > self::MAX_EMBEDDED_OCR_IMAGE_BYTES) continue;
+            $imageBytes += strlen($bytes);
+            $processed++;
+            try {
+                $text = (new OcrService())->extract($bytes, $mimes[$extension], $this->config->get('ocr_language'), 10);
+                if (trim($text) !== '') $out[] = '[Embedded image ' . $processed . "]\n" . $text;
+            } catch (\Throwable $error) {
+                $this->logWarning('eva_ai: embedded Office image OCR skipped', [
+                    'kind' => $kind,
+                    'image_number' => $processed,
+                    'exception' => $error::class,
+                ]);
+            }
+        }
+        return implode("\n\n", $out);
     }
 
     private function pdfToText(File $file): ?string {

@@ -171,6 +171,10 @@ of them can never remove entries of another. Size, path, and count limits preven
 a single run from consuming unbounded resources, and a file that cannot be read
 is skipped instead of stopping the run.
 
+When local OCR is enabled, EVA also reads text from standalone raster images
+and from up to four embedded images in DOCX, PPTX and OpenDocument files. This
+work is local to the Nextcloud server and has per-image size and runtime limits.
+
 On first authenticated launch EVA may create a clearly marked, editable profile
 section in `KNOWLEDGE.md`. It contains only the intended baseline data and does
 not overwrite existing notes. Personal facts mentioned explicitly later can be

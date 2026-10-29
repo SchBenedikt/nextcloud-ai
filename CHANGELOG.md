@@ -2,6 +2,12 @@
 
 ## [Unreleased]
 
+### Index text embedded in Office images (1.20.17)
+
+- When local OCR is enabled, extract text from up to four embedded images in DOCX, PPTX and OpenDocument files.
+- Bound embedded image OCR to 5 MiB and 10 seconds per image, four images and 10 MiB total per document; continue indexing document text if an image cannot be recognized.
+- Keep OCR local and expose its scope and limits in native knowledge settings and configuration docs.
+
 ### Restore image attachments in the native chat composer (1.20.16)
 
 - Add bounded PNG, JPEG and WebP attachments to the main Nextcloud chat composer, including local previews, removal controls and a provider privacy note.
