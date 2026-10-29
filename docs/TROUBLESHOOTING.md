@@ -71,6 +71,16 @@ normal policy; this fix does not clear locks owned by other requests. The
 a general request-slot reset. SQL syntax/streaming/concurrency runtime validation
 remains outstanding while tests are deferred.
 
+## A chat history cannot be loaded or saved in SQL mode
+
+The per-conversation SQL lock key must also fit Nextcloud's 64-character
+`file_locks.key` limit. EVA now uses a bounded, hashed key for each conversation.
+Earlier builds combined a 40-character user hash with a full 64-character chat
+hash, producing a 123-character key. Depending on the database, this could make
+history reads fail or cause unrelated conversations to contend on a truncated
+key. Update the app before retrying. Old lock rows are left to Nextcloud's normal
+lock cleanup; do not remove locks while requests are active.
+
 ## Reporting a problem
 
 Include app and Nextcloud versions, the screen, expected and actual behavior,

@@ -2,6 +2,11 @@
 
 ## [Unreleased]
 
+### Fix SQL chat history locks and normalize OCS paths (1.20.29)
+
+- Keep per-conversation lock keys within Nextcloud's 64-character lock-table limit, so history reads and chat requests do not fail on oversized keys.
+- Strip the trailing slash from the OCS API base in both chat frontends, preventing malformed double-slash request paths.
+
 ### Fix lexical indexing of numeric-only tokens (1.20.28)
 
 - Cast numeric-looking token keys back to strings before hashing their SQL posting keys; otherwise PHP raises a type error and aborts the entire backfill batch.
