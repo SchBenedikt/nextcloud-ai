@@ -5,6 +5,7 @@
 			{{ $t('Storage status could not be loaded. Retry or check the database migrations. This does not indicate an empty queue.') }}
 		</NcNoteCard>
 		<template v-else-if="status">
+			<NcNoteCard type="info">{{ $t('Built-in Nextcloud SQL search works without Qdrant. The external service is optional and is used only after an administrator prepares, verifies and activates a generation.') }}</NcNoteCard>
 			<details>
 				<summary>{{ $t('Queue and synchronization details') }}</summary>
 				<NcButton variant="tertiary" :disabled="loading" @click="refresh">{{ $t('Refresh storage status') }}</NcButton>

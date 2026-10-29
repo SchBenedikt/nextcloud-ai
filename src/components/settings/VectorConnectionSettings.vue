@@ -10,8 +10,8 @@
 		</div>
 		<NcNoteCard v-if="notice.text" :type="notice.type" role="status">{{ notice.text }}</NcNoteCard>
 		<details @toggle="onToggle">
-			<summary>{{ $t('Configure optional storage') }}</summary>
-			<p>{{ $t('Saving changes the connection. Allowing requests can resume enabled workers; it does not backfill files, create collections or switch SQL search.') }}</p>
+			<summary>{{ $t('Optional Qdrant connection') }}</summary>
+			<p>{{ $t('EVA works with the built-in Nextcloud SQL database alone. Configure Qdrant only if you need an external vector service; saving a connection does not switch search from SQL.') }}</p>
 			<NcButton v-if="!formReady" variant="tertiary" :disabled="!!busy" :loading="busy === 'load'" @click="loadConfiguration">
 				{{ $t('Load connection settings') }}
 			</NcButton>

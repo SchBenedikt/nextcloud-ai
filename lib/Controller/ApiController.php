@@ -6,11 +6,10 @@ namespace OCA\EvaAi\Controller;
 
 use OCA\EvaAi\Controller\Traits\ReadsRequestParameters;
 use OCA\EvaAi\Controller\Traits\RequestLimits;
-use OCA\EvaAi\Db\DocumentMapper;
+use OCA\EvaAi\Controller\Traits\ChatRequestCoordination;
 use OCA\EvaAi\Service\AppConfig;
 use OCA\EvaAi\Service\ActionExecutor;
 use OCA\EvaAi\Service\ChatStore;
-use OCA\EvaAi\Service\FileContextChatService;
 use OCA\EvaAi\Service\Indexer;
 use OCA\EvaAi\Service\LockGuard;
 use OCA\EvaAi\BackgroundJob\IndexRequestJob;
@@ -23,8 +22,6 @@ use OCA\EvaAi\Dto\ChatFolderRequest;
 use OCA\EvaAi\Dto\ChatTitleRequest;
 use OCA\EvaAi\Dto\ChatRegenerateRequest;
 use OCA\EvaAi\Dto\ChatCompletionRequest;
-use OCA\EvaAi\Dto\FileContextChatRequest;
-use OCA\EvaAi\Dto\FileContextStatusResponse;
 use OCA\EvaAi\Dto\ConfirmToolRequest;
 use OCA\EvaAi\Dto\ChatTemplateImportRequest;
 use OCA\EvaAi\Dto\ChatListQuery;
@@ -46,6 +43,7 @@ use Psr\Log\LoggerInterface;
 class ApiController extends OCSController {
     use ReadsRequestParameters;
     use RequestLimits;
+    use ChatRequestCoordination;
 
     private const MAX_MESSAGE_LENGTH = 50000;
     public function __construct(
@@ -57,11 +55,9 @@ class ApiController extends OCSController {
         private ActionExecutor $executor,
         private Indexer $indexer,
         private Ollama $ollama,
-        private DocumentMapper $documentMapper,
         private IJobList $jobList,
         private ILockingProvider $lockingProvider,
         private ChatStore $chatStore,
-        private FileContextChatService $fileContextChat,
         private IAppManager $appManager,
         private LockGuard $lockGuard,
         private \OCA\EvaAi\Service\UserDataService $userDataService,
@@ -79,11 +75,7 @@ class ApiController extends OCSController {
 
     /** Release the PHP session lock before a long model/tool request starts. */
     private function releaseSessionLock(): void {
-        try {
-            \OCP\Server::get(\OCP\ISession::class)->close();
-        } catch (\Throwable) {
-            // CLI/test surfaces may not have an active session.
-        }
+        $this->releasePhpSessionLock();
     }
 
     private function messageTooLong(string $message): bool {
@@ -98,22 +90,11 @@ class ApiController extends OCSController {
     private function acquireChatSlot(string $user): ?string {
         // Keep this separate from ChatStore's lock. LockGuard owns the bounded
         // path so indexing can yield to the same active per-user chat claim.
-        $path = LockGuard::chatRequestLockPath($user);
-        try {
-            $this->lockingProvider->acquireLock($path, ILockingProvider::LOCK_EXCLUSIVE, 'EVA chat request');
-            return $path;
-        } catch (\OCP\Lock\LockedException) {
-            return null;
-        } catch (\Throwable $e) {
-            $this->logger->warning('eva_ai: chat request coordination unavailable', ['exception_class' => get_class($e)]);
-            throw $e;
-        }
+        return $this->acquireChatRequestSlot($user, $this->lockingProvider, $this->logger);
     }
 
     private function releaseChatSlot(?string $path): void {
-        if ($path === null) return;
-        try { $this->lockingProvider->releaseLock($path, ILockingProvider::LOCK_EXCLUSIVE); }
-        catch (\Throwable $e) { $this->logger->warning('eva_ai: chat request release failed', ['exception_class' => get_class($e)]); }
+        $this->releaseChatRequestSlot($path, $this->lockingProvider, $this->logger);
     }
 
     private function requireUser(): ?string {
@@ -688,68 +669,6 @@ class ApiController extends OCSController {
             'instructions' => trim((string)($chat['instructions'] ?? '')),
             'persona' => trim((string)($chat['persona'] ?? '')),
         ];
-    }
-
-    /**
-     * Kontext-Chat ueber explizit ausgewaehlte Dateien ("Mit AI oeffnen"
-     * bzw. "Mit diesen Dateien chatten"). Antwort wird ausschliesslich
-     * aus den Chunks der uebergebenen fileIds erzeugt.
-     */
-    #[NoAdminRequired]
-    public function fileContextChat(): DataResponse {
-        $user = $this->requireUser();
-        if ($user === null) {
-            return new ErrorDataResponse(['error' => 'Not logged in'], 401);
-        }
-        try {
-            $request = FileContextChatRequest::fromArray([
-                'fileIds' => $this->requestParam('fileIds'),
-                'message' => $this->requestParam('message'),
-                'history' => $this->requestParam('history'),
-            ]);
-        } catch (\InvalidArgumentException $e) {
-            return new ErrorDataResponse(['error' => $e->getMessage()], 400);
-        }
-        if (($limited = $this->rateLimitResponse($user, 'file_context', $this->config->getInt('rate_limit_chat_per_minute', 30))) !== null) return $limited;
-        try { $chatSlot = $this->acquireChatSlot($user); }
-        catch (\Throwable) { return new ErrorDataResponse(['error' => 'chat_unavailable', 'message' => 'Chat is temporarily unavailable. Please retry shortly.'], 503); }
-        if ($chatSlot === null) return new ErrorDataResponse(['error' => 'busy', 'message' => 'Another chat request is already running. Please retry shortly.'], 429, ['Retry-After' => '5']);
-        try {
-            $this->releaseSessionLock();
-            return new ErrorDataResponse($this->fileContextChat->chat($user, $request->fileIds, $request->message, $request->history));
-        } finally {
-            $this->releaseChatSlot($chatSlot);
-        }
-    }
-
-    #[NoAdminRequired]
-    public function fileContextStatus(): DataResponse {
-        $user = $this->requireUser();
-        if ($user === null) {
-            return new ErrorDataResponse(['error' => 'Not logged in'], 401);
-        }
-        $fileIds = $this->requestParam('fileIds');
-        if (!is_array($fileIds)) {
-            $fileIds = [];
-        }
-        $fileIds = array_values(array_filter(array_map('intval', $fileIds), static fn($v) => $v > 0));
-        if ($fileIds === []) {
-            return new ErrorDataResponse(FileContextStatusResponse::forRequestedFiles([], [])->toArray());
-        }
-        $docs = $this->fileContextChat->accessibleDocuments(
-            $user,
-            $this->documentMapper->findByUserAndFileIds($user, $fileIds)
-        );
-        $files = [];
-        foreach ($docs as $d) {
-            $fid = (int)$d->getFileId();
-            $files[] = [
-                'fileId' => $fid,
-                'name' => $d->getName(),
-                'path' => $d->getPath(),
-            ];
-        }
-        return new ErrorDataResponse(FileContextStatusResponse::forRequestedFiles($fileIds, $files)->toArray());
     }
 
     /**

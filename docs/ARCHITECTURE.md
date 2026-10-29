@@ -178,6 +178,11 @@ VFS permission checks while depending only on document/chunk mappers and the
 file-access service. This keeps document inspection out of the cross-domain
 `ApiController`.
 
+`ApiController` handles the main chat and app API. Selected-file chat and its
+live VFS access check are served by `FileContextController`, keeping the
+Nextcloud Files flow isolated while sharing the same per-user chat lock and
+rate-limit policy. The existing OCS URLs remain stable.
+
 `IntegrationController` owns external-connector discovery, configuration,
 diagnostics and plugin toggles. Those operations retain their authenticated
 per-user routes and run through the same `ActionExecutor` policy as chat tools.
