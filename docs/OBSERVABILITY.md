@@ -43,6 +43,12 @@ system setting. Keep that allowlist restricted to the monitoring network. A
 missing or failed family means its source query could not be collected; it must
 not be interpreted as a zero-valued healthy queue.
 
+Usage records that power the administrator usage dashboard are retained for
+at most 365 days, matching its longest report window. A daily background job
+removes older rows in bounded batches, and EVA removes a user's rows during
+account erasure. These records contain aggregate request metadata and
+durations, never prompt or answer content.
+
 ## Remaining observability work
 
 The PDF's full target still needs separate retrieval-stage/provider/embedding

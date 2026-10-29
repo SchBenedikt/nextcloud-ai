@@ -71,6 +71,9 @@ The implementation entries further below record the actual delivered slices.
   standalone provider timing and queue-age histograms remain unaggregated.
   Exported labels contain no tenant, file, prompt, endpoint, or credential data;
   stage-level percentiles and queue-age histograms remain open.
+- Usage records have a 365-day maximum retention matching the supported report
+  window. Daily bounded cleanup and account-erasure integration prevent
+  indefinite growth and remove per-user rows when an account is deleted.
 - SQL cosine ranking validates and computes the query-vector magnitude once per
   request instead of repeating that query-side work for every candidate. This is
   an algorithm-preserving CPU reduction; no latency improvement is claimed

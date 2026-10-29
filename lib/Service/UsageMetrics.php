@@ -24,6 +24,37 @@ class UsageMetrics {
 		return $text === '' ? 0 : max(1, (int)ceil(mb_strlen($text) / 4));
 	}
 
+	/** Remove metrics immediately when their owning account is erased. */
+	public function deleteUserData(string $userId): void {
+		if ($userId === '') return;
+		$qb = $this->db->getQueryBuilder();
+		$qb->delete('eva_ai_usage')->where($qb->expr()->eq('user_id', $qb->createNamedParameter($userId)))->executeStatement();
+	}
+
+	/** Delete expired usage rows in small, portable batches; return rows removed. */
+	public function deleteExpired(int $before, int $batchSize = 500, int $maxBatches = 20): int {
+		$batchSize = max(1, min(1000, $batchSize));
+		$maxBatches = max(1, min(100, $maxBatches));
+		$deleted = 0;
+		for ($batch = 0; $batch < $maxBatches; $batch++) {
+			$select = $this->db->getQueryBuilder();
+			$select->select('id')->from('eva_ai_usage')
+				->where($select->expr()->lt('created_at', $select->createNamedParameter($before, IQueryBuilder::PARAM_INT)))
+				->orderBy('created_at', 'ASC')->addOrderBy('id', 'ASC')->setMaxResults($batchSize);
+			$result = $select->executeQuery();
+			try { $ids = array_map(static fn(array $row): int => (int)$row['id'], $result->fetchAll()); }
+			finally { $result->closeCursor(); }
+			if ($ids === []) break;
+
+			$remove = $this->db->getQueryBuilder();
+			$deleted += $remove->delete('eva_ai_usage')
+				->where($remove->expr()->in('id', $remove->createNamedParameter($ids, IQueryBuilder::PARAM_INT_ARRAY)))
+				->executeStatement();
+			if (count($ids) < $batchSize) break;
+		}
+		return $deleted;
+	}
+
 	/** @return list<string> User IDs with recorded metrics; caller must enforce admin access. */
 	public function userIdsWithUsage(): array {
 		$qb = $this->db->getQueryBuilder();
