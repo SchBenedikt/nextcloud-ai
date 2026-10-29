@@ -27,10 +27,12 @@ candidates by indexed SHA-256 term keys and supplies stored frequencies directly
 to BM25. Normal and generation chunk writes mark their lexical state pending;
 a bounded background job builds postings after those writes commit and backfills
 existing rows. This keeps token expansion off the file-index write transaction.
-A user/generation stays on the
-complete legacy `LIKE` query until all its chunks are indexed, preserving its
-candidate behavior during migration. This does not remove the dense SQL scan;
-quality, migration portability and retrieval latency still need
+A mixed index uses postings immediately for completed chunks and runs the
+legacy `LIKE` query only for pending or unsupported chunks. Candidates are
+merged and bounded in stable document/chunk order. Exact-token semantics take
+effect as backfill completes, so retrieval quality during catch-up needs a frozen
+corpus comparison. This does not remove the dense SQL scan; migration portability
+and retrieval latency still need
 measurement against a frozen corpus.
 
 A local microbenchmark over 8,000 synthetic 896-byte chunks and 12 query terms

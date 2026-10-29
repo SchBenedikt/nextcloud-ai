@@ -191,9 +191,7 @@ class ChunkMapper extends QBMapper {
         $candidateTokens = array_slice($tokens, 0, 12);
         $candidateHashes = array_map(static fn(string $token): string => hash('sha256', $token), $candidateTokens);
         $frequencyHashes = array_map(static fn(string $token): string => hash('sha256', $token), array_slice($tokens, 0, 64));
-        if ($this->hasUnindexedChunks($userId, $source, $generationId, $generationState)) {
-            return $this->legacyTokenCandidates($userId, $candidateTokens, $cap, $source, $generationId, $generationState);
-        }
+        $hasPendingChunks = $this->hasUnindexedChunks($userId, $source, $generationId, $generationState);
 
         // Select a bounded candidate ID set from postings without moving chunk bodies or embeddings.
         $indexed = $this->db->getQueryBuilder();
@@ -202,6 +200,7 @@ class ChunkMapper extends QBMapper {
             ->innerJoin('c', 'eva_ai_documents', 'd', $indexed->expr()->eq('c.document_id', 'd.id'))
             ->innerJoin('c', 'eva_ai_chunk_terms', 't', $indexed->expr()->eq('t.chunk_id', 'c.id'))
             ->where($indexed->expr()->eq('d.user_id', $indexed->createNamedParameter($userId)))
+            ->andWhere($indexed->expr()->eq('c.lexical_indexed', $indexed->createNamedParameter(1, IQueryBuilder::PARAM_INT)))
             ->andWhere($indexed->expr()->in('t.term_hash', $indexed->createNamedParameter($candidateHashes, IQueryBuilder::PARAM_STR_ARRAY)));
         if ($source !== null && $source !== '') $indexed->andWhere($indexed->expr()->eq('d.source', $indexed->createNamedParameter($source)));
         $indexed->orderBy('c.document_id', 'ASC')->addOrderBy('c.id', 'ASC')->setMaxResults($cap);
@@ -226,9 +225,15 @@ class ChunkMapper extends QBMapper {
             $row['_eva_lexical_frequencies'] = $frequencies[(int)$row['id']] ?? [];
             $indexedRows[(int)$row['id']] = $row;
         }
-        $rows = [];
-        foreach ($orderedIds as $id) if (isset($indexedRows[$id])) $rows[] = $indexedRows[$id];
-        return $rows;
+        $rows = $indexedRows;
+        if ($hasPendingChunks) {
+            foreach ($this->legacyTokenCandidates($userId, $candidateTokens, $cap, $source, $generationId, $generationState) as $row) {
+                $rows[(int)$row['id']] ??= $row;
+            }
+        }
+        $rows = array_values($rows);
+        usort($rows, static fn(array $a, array $b): int => ((int)$a['document_id'] <=> (int)$b['document_id']) ?: ((int)$a['id'] <=> (int)$b['id']));
+        return array_slice($rows, 0, $cap);
     }
 
     private function hasUnindexedChunks(string $userId, ?string $source, ?string $generationId, string $generationState): bool {
@@ -244,17 +249,18 @@ class ChunkMapper extends QBMapper {
         try { return $result->fetch() !== false; } finally { $result->closeCursor(); }
     }
 
-    /** Keep the complete previous candidate behavior until every eligible row has postings. */
+    /** Search only rows without usable postings while the bounded backfill catches up. */
     private function legacyTokenCandidates(string $userId, array $tokens, int $cap, ?string $source, ?string $generationId, string $generationState): array {
         $q = $this->db->getQueryBuilder();
         $q->select('c.id', 'c.document_id', 'c.chunk_index', 'c.content', 'c.embedding', 'c.vector_norm', 'c.provenance')
             ->from('eva_ai_chunks', 'c')
             ->innerJoin('c', 'eva_ai_documents', 'd', $q->expr()->eq('c.document_id', 'd.id'))
-            ->where($q->expr()->eq('d.user_id', $q->createNamedParameter($userId)));
+            ->where($q->expr()->eq('d.user_id', $q->createNamedParameter($userId)))
+            ->andWhere($q->expr()->neq('c.lexical_indexed', $q->createNamedParameter(1, IQueryBuilder::PARAM_INT)));
         if ($source !== null && $source !== '') $q->andWhere($q->expr()->eq('d.source', $q->createNamedParameter($source)));
         $like = $q->expr()->orX();
         foreach ($tokens as $token) $like->add($q->expr()->like('c.content', $q->createNamedParameter('%' . $this->escapeLike($token) . '%')));
-        $q->andWhere($like)->orderBy('c.document_id', 'ASC')->setMaxResults($cap);
+        $q->andWhere($like)->orderBy('c.document_id', 'ASC')->addOrderBy('c.id', 'ASC')->setMaxResults($cap);
         $this->filterGeneration($q, $generationId, $generationState);
         $result = $q->executeQuery();
         try { return $result->fetchAll(); } finally { $result->closeCursor(); }
