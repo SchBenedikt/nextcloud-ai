@@ -160,6 +160,39 @@ table.grid th {
 	vertical-align: top;
 }
 
+.eva-image-results {
+	display: grid;
+	grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+	gap: 12px;
+	max-width: 760px;
+}
+
+.eva-image-result {
+	min-width: 0;
+}
+
+.eva-image-result img {
+	display: block;
+	width: 100%;
+	height: 132px;
+	object-fit: cover;
+	border-radius: var(--border-radius, 6px);
+	background: var(--color-background-dark, #f5f5f5);
+}
+
+.eva-image-result p {
+	margin: 6px 0 0;
+	font-size: 13px;
+	overflow-wrap: anywhere;
+}
+
+.eva-image-preview-unavailable {
+	display: block;
+	padding: 12px;
+	color: var(--color-text-maxcontrast);
+	font-size: 13px;
+}
+
 /* A long description must not stretch the table past the viewport. */
 .eva-search-snippet {
 	margin-top: 4px;

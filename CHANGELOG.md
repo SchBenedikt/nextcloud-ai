@@ -2,6 +2,11 @@
 
 ## [Unreleased]
 
+### Diagnose image search from Nextcloud administration (1.20.36)
+
+- Add an image-search mode to the existing live provider check so administrators can verify that the image index returns usable previews and source pages.
+- Show preview cards with a no-referrer policy and a clear disabled/no-results state, without changing personal web-search settings or chat retrieval.
+
 ### Make requested image search independent and deterministic (1.20.35)
 
 - Run a server-side image search when a user explicitly asks to see pictures instead of relying on the model to choose a tool call.

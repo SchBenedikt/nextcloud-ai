@@ -214,9 +214,63 @@
 			return
 		}
 
-		var results = data.results || []
 		var summary = document.createElement('p')
 		summary.className = 'eva-test-summary'
+		if (data.mode === 'images') {
+			var images = Array.isArray(data.images) ? data.images : []
+			summary.textContent = tr('Results: {count} · Provider: {provider} · Mode: {mode}', { count: images.length, provider: data.provider || '?', mode: tr('images') })
+			box.appendChild(summary)
+			if (images.length === 0) {
+				var noImages = document.createElement('p')
+				noImages.className = 'settings-hint'
+				noImages.textContent = tr('The image provider returned no usable pictures. Try a different query.')
+				box.appendChild(noImages)
+				return
+			}
+			var gallery = document.createElement('div')
+			gallery.className = 'eva-image-results'
+			var renderedImages = 0
+			images.forEach(function (hit) {
+				if (!hit || typeof hit.preview !== 'string' || !/^https:\/\//i.test(hit.preview)
+					|| typeof hit.page !== 'string' || !/^https?:\/\//i.test(hit.page)) return
+				var card = document.createElement('article')
+				card.className = 'eva-image-result'
+				var link = document.createElement('a')
+				link.href = hit.page
+				link.target = '_blank'
+				link.rel = 'noopener noreferrer'
+				var image = document.createElement('img')
+				image.src = hit.preview
+				image.alt = hit.title || tr('Search result image')
+				image.loading = 'lazy'
+				image.decoding = 'async'
+				image.referrerPolicy = 'no-referrer'
+				image.addEventListener('error', function () {
+					image.hidden = true
+					var unavailable = document.createElement('span')
+					unavailable.className = 'eva-image-preview-unavailable'
+					unavailable.textContent = tr('Preview unavailable; open the source page.')
+					card.insertBefore(unavailable, link)
+				})
+				link.appendChild(image)
+				card.appendChild(link)
+				var title = document.createElement('p')
+				title.textContent = hit.title || hit.page
+				card.appendChild(title)
+				gallery.appendChild(card)
+				renderedImages++
+			})
+			box.appendChild(gallery)
+			if (renderedImages === 0) {
+				var unusable = document.createElement('p')
+				unusable.className = 'settings-hint'
+				unusable.textContent = tr('The provider returned image records, but none had a safe preview and source page.')
+				box.appendChild(unusable)
+			}
+			return
+		}
+
+		var results = data.results || []
 		summary.textContent = tr('Results: {count} · Provider: {provider} · Mode: {mode}', { count: results.length, provider: data.provider || '?', mode: data.mode || 'web' })
 		box.appendChild(summary)
 
