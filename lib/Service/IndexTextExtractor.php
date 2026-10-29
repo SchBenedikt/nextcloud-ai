@@ -17,6 +17,13 @@ class IndexTextExtractor {
     private const MAX_EMBEDDED_OCR_TOTAL_BYTES = 10485760;
     private const MAX_SPARSE_PDF_OCR_PAGES = 8;
     private const SPARSE_PDF_TEXT_CHARS = 160;
+    private const OCR_IMAGE_MIMES = [
+        'image/png', 'image/jpeg', 'image/tiff', 'image/webp', 'image/bmp',
+        'image/x-ms-bmp', 'image/gif', 'image/avif', 'image/heic', 'image/heif',
+    ];
+    private const OCR_IMAGE_EXTENSIONS = [
+        'avif' => 'image/avif', 'heic' => 'image/heic', 'heif' => 'image/heif',
+    ];
 
     public function __construct(private AppConfig $config, private LoggerInterface $logger) {}
 
@@ -48,10 +55,16 @@ class IndexTextExtractor {
     ];
 
     public function isTextMime(?string $mime, string $name = ''): bool {
+        $ext = strtolower(pathinfo($name, PATHINFO_EXTENSION));
         if ($mime === null) {
-            return false;
+            $extensionMime = self::OCR_IMAGE_EXTENSIONS[$ext] ?? null;
+            return $this->config->get('ocr_enabled') === '1' && $extensionMime !== null && OcrService::supportsImageMime($extensionMime);
         }
-        if (in_array($mime, ['image/png', 'image/jpeg', 'image/tiff', 'image/webp', 'image/bmp', 'image/x-ms-bmp', 'image/gif'], true) && $this->config->get('ocr_enabled') === '1') return true;
+        $extensionMime = self::OCR_IMAGE_EXTENSIONS[$ext] ?? null;
+        if ($this->config->get('ocr_enabled') === '1'
+            && ($this->supportsOcrImageMime($mime)
+                || ($extensionMime !== null && in_array($mime, ['application/octet-stream', 'application/x-empty'], true)
+                    && OcrService::supportsImageMime($extensionMime)))) return true;
         if (str_starts_with($mime, 'text/')) {
             return true;
         }
@@ -89,8 +102,12 @@ class IndexTextExtractor {
         }
         // Fallback: bekannte Text-Erweiterungen, deren MIME nicht text/* ist
         // (z.B. svg -> image/svg+xml, md -> application/octet-stream, ...)
-        $ext = strtolower(pathinfo($name, PATHINFO_EXTENSION));
         return in_array($ext, self::TEXT_EXT, true);
+    }
+
+    private function supportsOcrImageMime(string $mime): bool {
+        return in_array($mime, self::OCR_IMAGE_MIMES, true)
+            && (!in_array($mime, ['image/avif', 'image/heic', 'image/heif'], true) || OcrService::supportsImageMime($mime));
     }
 
 
@@ -151,8 +168,11 @@ class IndexTextExtractor {
             return '';
         }
 
-        if (in_array($mime, ['image/png', 'image/jpeg', 'image/tiff', 'image/webp', 'image/bmp', 'image/x-ms-bmp', 'image/gif'], true) && $this->config->get('ocr_enabled') === '1') {
-            return (new OcrService())->extract($this->readFile($file), $mime, $this->config->get('ocr_language'), 60, $this->shouldYield);
+        $ocrMime = in_array($mime, self::OCR_IMAGE_MIMES, true)
+            ? $mime
+            : (in_array($mime, ['application/octet-stream', 'application/x-empty'], true) ? (self::OCR_IMAGE_EXTENSIONS[$ext] ?? null) : null);
+        if ($ocrMime !== null && $this->config->get('ocr_enabled') === '1') {
+            return (new OcrService())->extract($this->readFile($file), $ocrMime, $this->config->get('ocr_language'), 60, $this->shouldYield);
         }
         // DOCX + macro-enabled/template variants share the same readable XML body.
         if (in_array($ext, ['docx', 'docm', 'dotx', 'dotm'], true) || $mime === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' || $mime === 'application/vnd.openxmlformats-officedocument.wordprocessingml.template') {
@@ -667,6 +687,7 @@ class IndexTextExtractor {
             'png' => 'image/png', 'jpg' => 'image/jpeg', 'jpeg' => 'image/jpeg',
             'tif' => 'image/tiff', 'tiff' => 'image/tiff', 'webp' => 'image/webp',
             'bmp' => 'image/bmp', 'gif' => 'image/gif',
+            'avif' => 'image/avif', 'heic' => 'image/heic', 'heif' => 'image/heif',
         ];
         $out = [];
         $imageBytes = 0;

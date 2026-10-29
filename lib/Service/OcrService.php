@@ -8,12 +8,25 @@ class OcrService {
     private const MAX_BYTES = 20971520;
     private const MAX_PAGES = 30;
     private const MAX_TEXT = 2097152;
+    private const MAX_IMAGE_PIXELS = 25000000;
+    private const MAX_CONVERTED_PIXELS = 4000000;
+    private const MAX_CONVERTED_BYTES = 33554432;
+    private const CONVERTED_IMAGE_MIMES = ['image/avif', 'image/heic', 'image/heif'];
+    private const IMAGICK_FORMATS = ['image/avif' => 'AVIF', 'image/heic' => 'HEIC', 'image/heif' => 'HEIF'];
+    private static ?array $supportedImageFormats = null;
 
     /** Supported image MIME types for OCR. */
     private const IMAGE_MIMES = [
         'image/png', 'image/jpeg', 'image/tiff', 'image/webp',
-        'image/bmp', 'image/gif',
+        'image/bmp', 'image/gif', 'image/avif', 'image/heic', 'image/heif',
     ];
+
+    /** Whether this PHP installation can safely decode a modern photo MIME. */
+    public static function supportsImageMime(string $mime): bool {
+        if (!in_array($mime, self::CONVERTED_IMAGE_MIMES, true) || !class_exists(\Imagick::class)) return false;
+        $formats = self::supportedImageFormats();
+        return in_array(self::IMAGICK_FORMATS[$mime], $formats, true);
+    }
 
     public function capabilities(): array {
         $tools = [];
@@ -23,7 +36,23 @@ class OcrService {
         // Check available Tesseract languages
         $tesseract = $this->binary('tesseract');
         $tools['tesseract_languages'] = $tesseract !== null ? $this->getAvailableLanguages($tesseract) : [];
+        $tools['image_conversion_formats'] = self::supportedImageFormats();
         return $tools;
+    }
+
+    /** @return list<string> */
+    private static function supportedImageFormats(): array {
+        if (self::$supportedImageFormats !== null) return self::$supportedImageFormats;
+        self::$supportedImageFormats = [];
+        if (!class_exists(\Imagick::class)) return self::$supportedImageFormats;
+        foreach (self::IMAGICK_FORMATS as $format) {
+            try {
+                if (\Imagick::queryFormats($format) !== []) self::$supportedImageFormats[] = $format;
+            } catch (\Throwable) {
+                // An ImageMagick build may omit individual codecs.
+            }
+        }
+        return self::$supportedImageFormats;
     }
 
     protected function binary(string $name): ?string {
@@ -132,15 +161,73 @@ class OcrService {
                 }
                 return trim($text);
             }
-            $size = @getimagesizefromstring($bytes);
-            if ($size === false) throw new \RuntimeException('OCR requires a valid image file');
-            if ($size[0] * $size[1] > 25000000) throw new \RuntimeException('OCR requires an image of at most 25 megapixels');
-            // Tesseract handles the supported image formats directly.
             $inputFile = $input;
+            if (in_array($mime, self::CONVERTED_IMAGE_MIMES, true)) {
+                if (!self::supportsImageMime($mime)) throw new \RuntimeException('This HEIC/HEIF/AVIF codec is not available in ImageMagick');
+                $inputFile = $dir . '/normalized.png';
+                $this->convertModernImage($bytes, $inputFile, $deadline, $shouldYield);
+            } else {
+                $size = @getimagesizefromstring($bytes);
+                if ($size === false) throw new \RuntimeException('OCR requires a valid image file');
+                if ($size[0] * $size[1] > self::MAX_IMAGE_PIXELS) throw new \RuntimeException('OCR requires an image of at most 25 megapixels');
+            }
             return trim($this->runOcrCommand([$tesseract, $inputFile, 'stdout', '-l', $language], $deadline, $shouldYield));
         } finally {
             foreach (glob($dir . '/*') ?: [] as $file) @unlink($file);
             @rmdir($dir);
+        }
+    }
+
+    /** Convert one bounded modern photo to a Tesseract-friendly PNG. */
+    private function convertModernImage(string $bytes, string $output, float $deadline, ?callable $shouldYield): void {
+        if ($shouldYield !== null && $shouldYield()) throw new ChatPriorityYieldException('OCR yielded to an interactive chat.');
+        $resourceLimits = [
+            \Imagick::RESOURCETYPE_MEMORY => 201326592,
+            \Imagick::RESOURCETYPE_MAP => 268435456,
+            \Imagick::RESOURCETYPE_DISK => 134217728,
+            \Imagick::RESOURCETYPE_THREAD => 1,
+            \Imagick::RESOURCETYPE_TIME => max(1, (int)ceil($deadline - microtime(true))),
+        ];
+        $previousLimits = [];
+        $probe = null;
+        $image = null;
+        try {
+            foreach ($resourceLimits as $type => $limit) {
+                $previousLimits[$type] = \Imagick::getResourceLimit($type);
+                if (!\Imagick::setResourceLimit($type, $limit)) throw new \RuntimeException('ImageMagick resource limits could not be applied');
+            }
+            $probe = new \Imagick();
+            $probe->pingImageBlob($bytes);
+            if ($probe->getNumberImages() !== 1) throw new \RuntimeException('Animated or multi-frame images are not supported for OCR');
+            $width = (int)$probe->getImageWidth();
+            $height = (int)$probe->getImageHeight();
+            $probe->clear();
+            $probe = null;
+            if ($width < 1 || $height < 1 || $width * $height > self::MAX_IMAGE_PIXELS) {
+                throw new \RuntimeException('OCR requires an image of at most 25 megapixels');
+            }
+            $image = new \Imagick();
+            $image->readImageBlob($bytes);
+            $image->setIteratorIndex(0);
+            $image->thumbnailImage(2000, 2000, true, true);
+            $geometry = $image->getImageGeometry();
+            if ((int)($geometry['width'] ?? 0) * (int)($geometry['height'] ?? 0) > self::MAX_CONVERTED_PIXELS) {
+                throw new \RuntimeException('Converted OCR image exceeds its pixel limit');
+            }
+            $image->setImageFormat('png');
+            $image->stripImage();
+            if ($shouldYield !== null && $shouldYield()) throw new ChatPriorityYieldException('OCR yielded to an interactive chat.');
+            if (microtime(true) >= $deadline) throw new \RuntimeException('Image conversion exceeded its runtime limit');
+            if (!$image->writeImage($output)) throw new \RuntimeException('ImageMagick could not create the OCR image');
+            if (!is_file($output) || filesize($output) > self::MAX_CONVERTED_BYTES) throw new \RuntimeException('Converted OCR image exceeds its byte limit');
+        } catch (\ImagickException $error) {
+            throw new \RuntimeException('ImageMagick could not decode this HEIC/HEIF/AVIF image', 0, $error);
+        } finally {
+            if ($probe instanceof \Imagick) $probe->clear();
+            if ($image instanceof \Imagick) $image->clear();
+            foreach ($previousLimits as $type => $limit) {
+                try { \Imagick::setResourceLimit((int)$type, (int)$limit); } catch (\Throwable) { /* Keep OCR failure primary. */ }
+            }
         }
     }
 

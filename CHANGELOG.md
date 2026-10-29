@@ -2,6 +2,12 @@
 
 ## [Unreleased]
 
+### OCR modern phone photo formats (1.20.22)
+
+- Index HEIC, HEIF and AVIF photos when local OCR is enabled and ImageMagick provides the codec.
+- Convert a single image to a bounded PNG locally; cap source/converted pixels, bytes, ImageMagick resources and runtime.
+- Show available image conversion codecs in native Knowledge settings.
+
 ### OCR sparse pages in mixed PDFs (1.20.21)
 
 - Keep normal PDF text extraction and add local OCR for up to eight pages with little or no extractable text.
