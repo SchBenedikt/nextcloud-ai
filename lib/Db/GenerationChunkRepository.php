@@ -9,6 +9,7 @@ use OCA\EvaAi\Vector\VectorDocumentSnapshot;
 use OCA\EvaAi\Vector\VectorGeneration;
 use OCA\EvaAi\Vector\VectorStoreException;
 use OCA\EvaAi\Vector\SearchFilters;
+use OCA\EvaAi\Vector\VectorNorm;
 use OCP\DB\QueryBuilder\IQueryBuilder;
 use OCP\IDBConnection;
 
@@ -40,7 +41,7 @@ class GenerationChunkRepository {
         $rowsById=[];
         foreach(array_chunk(array_keys($revisions),500)as$ids){
             $q=$this->db->getQueryBuilder();
-            $q->select('c.id','c.document_id','c.chunk_index','c.content','c.embedding','c.provenance','c.content_hash','c.vector_revision','c.vector_state',
+            $q->select('c.id','c.document_id','c.chunk_index','c.content','c.embedding','c.vector_norm','c.provenance','c.content_hash','c.vector_revision','c.vector_state',
                 'd.user_id','d.file_id','d.path','d.name','d.source')
                 ->from('eva_ai_chunks','c')->innerJoin('c','eva_ai_documents','d',$q->expr()->eq('d.id','c.document_id'))
                 ->where($q->expr()->in('c.id',$q->createNamedParameter($ids,IQueryBuilder::PARAM_INT_ARRAY)))
@@ -97,13 +98,15 @@ class GenerationChunkRepository {
         if ($snapshot->userId !== $generation->userId || preg_match('/^[a-f0-9]{64}$/D', $target) !== 1) throw new VectorStoreException('source_identity_mismatch');
         $chunk->validate($generation);
         $embedding = json_encode(array_map('floatval', $chunk->vector), JSON_THROW_ON_ERROR);
+        $vectorNorm = VectorNorm::fromJson($embedding);
+        if ($vectorNorm === null) throw new VectorStoreException('invalid_sql_vector');
         $hash = hash('sha256', $chunk->content);
         $provenance = json_encode($chunk->provenance + ['_eva_vector' => ['version' => 1,
             'document_stamp' => $snapshot->stamp, 'chunk_size' => $generation->chunkSize,
             'chunk_overlap' => $generation->chunkOverlap]], JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE);
         if (strlen($embedding) > 524288 || strlen($provenance) > 4096) throw new VectorStoreException('chunk_too_large');
 
-        return $this->outbox->transaction(function () use ($generation, $target, $snapshot, $chunk, $embedding, $hash, $provenance, $expectedStatus): array {
+        return $this->outbox->transaction(function () use ($generation, $target, $snapshot, $chunk, $embedding, $vectorNorm, $hash, $provenance, $expectedStatus): array {
             $this->owners->lockOpen($generation->userId);
             $this->lockGenerationStatus($generation, $target, $expectedStatus);
             // Lock source before checking the stamp. Normal metadata updates and
@@ -134,7 +137,7 @@ class GenerationChunkRepository {
                 $revision = $previousRevision + 1;
             }
             $values = ['document_id' => $snapshot->id, 'chunk_index' => $chunk->index, 'content' => $chunk->content,
-                'embedding' => $embedding, 'provenance' => $provenance, 'token_count' => $chunk->tokens,
+                'embedding' => $embedding, 'vector_norm' => (string)$vectorNorm, 'provenance' => $provenance, 'token_count' => $chunk->tokens,
                 'vector_generation_id' => $generation->id, 'vector_state' => $isSql ? 'ready' : 'pending', 'content_hash' => $hash];
             if ($isSql) $values['vector_revision'] = $revision;
             $write = $this->db->getQueryBuilder();
@@ -210,10 +213,12 @@ class GenerationChunkRepository {
         int $maxRows=20000,float $budgetSeconds=3.0): array {
         $generation->validateVector($vector);
         if($topK<1||$topK>20||$maxRows<1||$maxRows>20000||$budgetSeconds<=0||$budgetSeconds>5)throw new VectorStoreException('invalid_shadow_budget');
+        $queryNorm=VectorNorm::of($vector);
+        if($queryNorm===null)throw new VectorStoreException('invalid_shadow_vector');
         $started=microtime(true);$cursor=0;$scanned=0;$best=[];
         do{
             if(microtime(true)-$started>=$budgetSeconds)throw new VectorStoreException('sql_shadow_budget_exceeded');
-            $q=$this->db->getQueryBuilder();$q->select('c.id','c.document_id','c.vector_revision','c.embedding','d.path','d.source')
+            $q=$this->db->getQueryBuilder();$q->select('c.id','c.document_id','c.vector_revision','c.embedding','c.vector_norm','d.path','d.source')
                 ->from('eva_ai_chunks','c')->innerJoin('c','eva_ai_documents','d',$q->expr()->eq('d.id','c.document_id'))
                 ->where($q->expr()->eq('c.vector_generation_id',$q->createNamedParameter($generation->id)))
                 ->andWhere($q->expr()->eq('d.user_id',$q->createNamedParameter($generation->userId)))
@@ -231,11 +236,20 @@ class GenerationChunkRepository {
                 }
                 $embedding=json_decode($row['embedding'],true,32,JSON_THROW_ON_ERROR);
                 if(!is_array($embedding))throw new VectorStoreException('invalid_sql_vector');
-                try{$generation->validateVector($embedding);}catch(\Throwable){throw new VectorStoreException('invalid_sql_vector');}
-                $dot=0.0;$aa=0.0;$bb=0.0;
-                foreach($vector as$i=>$value){$other=(float)$embedding[$i];$dot+=$value*$other;$aa+=$value*$value;$bb+=$other*$other;}
-                if($aa<=0||$bb<=0)continue;
-                $best[]=['id'=>$cursor,'revision'=>(int)$row['vector_revision'],'score'=>$dot/sqrt($aa*$bb)];
+                if(!array_is_list($embedding)||count($embedding)!==$generation->dimension)throw new VectorStoreException('invalid_sql_vector');
+                $dot=0.0;$sum=0.0;
+                $storedNorm=is_numeric($row['vector_norm']??null)&&(float)$row['vector_norm']>0.0
+                    ?(float)$row['vector_norm']:null;
+                foreach($vector as$i=>$value){
+                    if(!is_int($embedding[$i]??null)&&!is_float($embedding[$i]??null))throw new VectorStoreException('invalid_sql_vector');
+                    $other=(float)$embedding[$i];
+                    if(!is_finite($other))throw new VectorStoreException('invalid_sql_vector');
+                    $dot+=$value*$other;
+                    if($storedNorm===null)$sum+=$other*$other;
+                }
+                $magnitude=$storedNorm??(is_finite($sum)&&$sum>0?sqrt($sum):null);
+                if($magnitude===null||!is_finite($magnitude)||$magnitude<=0)continue;
+                $best[]=['id'=>$cursor,'revision'=>(int)$row['vector_revision'],'score'=>$dot/($queryNorm*$magnitude)];
             }
             if(count($best)>$topK*4){usort($best,static fn(array$a,array$b):int=>($b['score']<=>$a['score'])?:($a['id']<=>$b['id']));$best=array_slice($best,0,$topK);}
         }while($rows!==[]);

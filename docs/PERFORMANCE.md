@@ -2,6 +2,19 @@
 
 These are request and lifecycle improvements, not measured throughput claims.
 
+## Cached exact vector norms
+
+Exact SQL cosine retrieval still visits every eligible vector, but each vector
+no longer needs a second norm pass on every query. EVA stores the exact vector
+magnitude beside each chunk, writes it with new legacy and generation chunks,
+and gradually fills the value for existing rows in bounded background pages.
+Rows without a valid cached magnitude retain the previous calculation path, so
+the rollout does not require a synchronous full-table migration. The ranking
+formula and candidate coverage are unchanged; this reduces per-query arithmetic
+but does not remove the O(N × dimension) dot-product scan or establish a latency
+improvement. A portable ANN backend and representative benchmarks remain needed
+for large indexes.
+
 ## Home
 
 Home receives the navigation's chat list as props. It makes no separate `stats`
