@@ -6,8 +6,8 @@ namespace OCA\EvaAi\Tests;
 
 use OCA\EvaAi\BackgroundJob\IndexRequestJob;
 use OCA\EvaAi\Controller\ApiController;
+use OCA\EvaAi\Controller\BackgroundChatController;
 use OCA\EvaAi\Controller\SystemController;
-use OCA\EvaAi\Db\ChunkMapper;
 use OCA\EvaAi\Db\DocumentMapper;
 use OCA\EvaAi\Dto\ChatRequest;
 use OCA\EvaAi\Service\ActionExecutor;
@@ -155,7 +155,6 @@ final class ApiControllerIntegrationTest extends TestCase {
 		$indexer = $this->createMock(Indexer::class);
 		$ollama = $this->createMock(Ollama::class);
 		$documentMapper = $this->createMock(DocumentMapper::class);
-		$chunkMapper = $this->createMock(ChunkMapper::class);
 		$jobList = $this->createMock(IJobList::class);
 		$lockingProvider = $this->createMock(ILockingProvider::class);
 		$chatStore = $this->createMock(ChatStore::class);
@@ -176,13 +175,23 @@ final class ApiControllerIntegrationTest extends TestCase {
 			$cacheFactory, $backgroundChatQueue, $logger,
 		);
 
-		$dependencies = compact('documentMapper', 'ollama', 'config', 'rag', 'executor', 'indexer', 'jobList', 'lockingProvider', 'chatStore', 'knowledgeInitializer', 'lockGuard', 'cacheFactory', 'logger');
+		$dependencies = compact('request', 'documentMapper', 'ollama', 'config', 'rag', 'executor', 'indexer', 'jobList', 'lockingProvider', 'chatStore', 'knowledgeInitializer', 'lockGuard', 'cacheFactory', 'logger', 'backgroundChatQueue');
 		return new ApiController(
 			'eva_ai', $request, $userId, $config, $rag, $executor, $indexer, $ollama,
-			$documentMapper, $chunkMapper, $jobList, $lockingProvider, $chatStore,
+			$documentMapper, $jobList, $lockingProvider, $chatStore,
 			$fileContextChat, $appManager, $knowledgeInitializer, $lockGuard,
 			$userDataService, $chatLearner, $cacheFactory, $indexScheduler, $usageMetrics,
-			$backgroundChatQueue, $logger, $systemController,
+			$logger, $systemController,
+		);
+	}
+
+	/** @param array<string,mixed> $params @param array<string,mixed> $dependencies @param array<string,mixed> $storedValues */
+	private function backgroundChatController(?string $userId, array $params, array &$dependencies, array &$storedValues): BackgroundChatController {
+		$this->controller($userId, $params, $dependencies, $storedValues);
+		return new BackgroundChatController(
+			'eva_ai', $dependencies['request'], $userId, $dependencies['config'],
+			$dependencies['backgroundChatQueue'], $dependencies['chatStore'], $dependencies['jobList'],
+			$dependencies['cacheFactory'], $dependencies['logger'],
 		);
 	}
 
@@ -220,7 +229,7 @@ final class ApiControllerIntegrationTest extends TestCase {
 		foreach (['cancelBackgroundChat', 'pauseBackgroundChat', 'resumeBackgroundChat', 'retryBackgroundChat'] as $method) {
 			$stored = [];
 			$dependencies = [];
-			$controller = $this->controller('alice', ['id' => []], $dependencies, $stored);
+			$controller = $this->backgroundChatController('alice', ['id' => []], $dependencies, $stored);
 
 			$response = $controller->{$method}();
 

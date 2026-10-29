@@ -439,7 +439,7 @@ final class FrontendContractTest extends TestCase {
         self::assertStringContainsString("'queuedFor' =>", (string)file_get_contents(__DIR__ . '/../lib/Service/BackgroundChatQueue.php'));
         $job = (string)file_get_contents(__DIR__ . '/../lib/BackgroundJob/BackgroundChatJob.php');
         self::assertStringContainsString('scheduleAfter(self::class, time() + 5)', $job);
-        $api = (string)file_get_contents(__DIR__ . '/../lib/Controller/ApiController.php');
+        $api = (string)file_get_contents(__DIR__ . '/../lib/Controller/BackgroundChatController.php');
         self::assertStringContainsString('public function backgroundChatStatus()', $api);
         self::assertStringContainsString('scheduleAfter(BackgroundChatJob::class, time() + 1)', $api);
     }
