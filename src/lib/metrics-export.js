@@ -1,5 +1,5 @@
 /** Build a privacy-preserving CSV from the signed-in user's metrics response. */
-export function buildMetricsCsv({ days, totals = {}, byModel = [], daily = [], slowTools = [], ragRequestDuration = {}, embeddingQueryDuration = {}, indexRuns = {}, chatStoreLockWait = {}, generatedAt = new Date() } = {}) {
+export function buildMetricsCsv({ days, totals = {}, byModel = [], daily = [], slowTools = [], ragRequestDuration = {}, embeddingQueryDuration = {}, sqlDenseScan = {}, indexRuns = {}, chatStoreLockWait = {}, generatedAt = new Date() } = {}) {
 	const rows = [
 		['report', 'EVA AI usage metrics'],
 		['period_days', days ?? ''],
@@ -32,6 +32,10 @@ export function buildMetricsCsv({ days, totals = {}, byModel = [], daily = [], s
 		['query_embedding_duration_by_provider'],
 		['provider', 'requests', 'p50_ms', 'p95_ms', 'p99_ms'],
 		...Object.entries(embeddingQueryDuration.providers || {}).map(([provider, row]) => [provider, row.count, row.p50_ms, row.p95_ms, row.p99_ms]),
+		[],
+		['sql_dense_scan_rows'],
+		['backend', 'requests', 'p50_rows', 'p95_rows', 'p99_rows'],
+		...Object.entries(sqlDenseScan.backends || {}).map(([backend, row]) => [backend, row.count, row.p50_rows, row.p95_rows, row.p99_rows]),
 		[],
 		['indexing_run_performance'],
 		['mode', 'outcome', 'runs', 'processed_items', 'file_chunks', 'average_file_chunks_per_second', 'run_p50_ms', 'run_p95_ms', 'run_p99_ms'],
