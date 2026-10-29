@@ -1,6 +1,5 @@
 <template>
-	<NcSettingsSection :name="$t('Knowledge storage')"
-		:description="$t('Search uses the built-in database. Optional vector storage is being prepared for larger knowledge bases.')">
+	<div class="vector-storage">
 		<NcLoadingIcon v-if="loading" :name="$t('Loading storage status')" />
 		<NcNoteCard v-else-if="error" type="warning">
 			{{ $t('Storage status could not be loaded. Retry or check the database migrations. This does not indicate an empty queue.') }}
@@ -28,19 +27,19 @@
 		</template>
 		<NcButton variant="secondary" :disabled="loading" @click="refresh">{{ $t('Refresh storage status') }}</NcButton>
 		<VectorConnectionSettings :enabled="status?.connection?.enabled === true" @changed="refresh" />
-	</NcSettingsSection>
+	</div>
 </template>
 
 <script>
 import { ref, onMounted, onBeforeUnmount } from 'vue'
-import { NcButton, NcCheckboxRadioSwitch, NcLoadingIcon, NcNoteCard, NcSettingsSection } from '@nextcloud/vue'
+import { NcButton, NcCheckboxRadioSwitch, NcLoadingIcon, NcNoteCard } from '@nextcloud/vue'
 import { api } from '../../lib/api'
 import { translate as t } from '../../lib/i18n'
 import VectorConnectionSettings from './VectorConnectionSettings.vue'
 
 export default {
 	name: 'VectorStorageStatus',
-	components: { NcButton, NcCheckboxRadioSwitch, NcLoadingIcon, NcNoteCard, NcSettingsSection, VectorConnectionSettings },
+	components: { NcButton, NcCheckboxRadioSwitch, NcLoadingIcon, NcNoteCard, VectorConnectionSettings },
 	setup() {
 		const status = ref(null)
 		const loading = ref(false)

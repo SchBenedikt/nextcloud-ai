@@ -2,6 +2,11 @@
 
 ## [Unreleased]
 
+### Simplify the administrator landing page (1.18.54)
+
+- Replace the metric dashboard with a native Nextcloud SQL-default summary and an optional collapsed section for external storage and generation tools.
+- Remove the redundant dashboard summary request so admin page load does not query instance-wide index and scheduler totals.
+
 ### Keep chat and embedding provider choices independent (1.18.53)
 
 - Editing an existing inactive provider now saves its profile without switching the active chat provider.

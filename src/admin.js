@@ -1,6 +1,6 @@
 import { createApp, h } from 'vue'
 import { setRequestToken } from '@nextcloud/auth'
-import { NcContent, NcAppContent, NcButton, NcCheckboxRadioSwitch, NcModal } from '@nextcloud/vue'
+import { NcContent, NcAppContent } from '@nextcloud/vue'
 import { translate, translatePlural, loadTranslations } from '@nextcloud/l10n'
 import AdminView from './views/AdminView.vue'
 
@@ -12,9 +12,6 @@ const app = createApp({
 })
 app.config.globalProperties.$t = (text, placeholders) => translate('eva_ai', text, placeholders)
 app.config.globalProperties.$n = (singular, plural, count, placeholders) => translatePlural('eva_ai', singular, plural, count, placeholders)
-app.component('NcButton', NcButton)
-app.component('NcCheckboxRadioSwitch', NcCheckboxRadioSwitch)
-app.component('NcModal', NcModal)
 const token = document.querySelector('meta[name="requesttoken"]')?.content
 if (token) setRequestToken(token)
 loadTranslations('eva_ai')
