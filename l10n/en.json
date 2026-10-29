@@ -1523,7 +1523,11 @@
     "Checking local SQL vectors": "Checking local SQL vectors",
     "Verification stopped safely. Check the source index and generation data, then retry.": "Verification stopped safely. Check the source index and generation data, then retry.",
     "yes": "yes",
-    "no": "no"
+    "no": "no",
+    "EVA uses the Nextcloud database by default. External vector storage is optional for larger installations.": "EVA uses the Nextcloud database by default. External vector storage is optional for larger installations.",
+    "Advanced index administration": "Advanced index administration",
+    "The index overview is unavailable. Use Refresh to try again.": "The index overview is unavailable. Use Refresh to try again.",
+    "{count} accounts tracked by EVA": "{count} accounts tracked by EVA"
   },
   "pluralForm": "nplurals=2; plural=(n != 1);",
   "EVA – Chat": "EVA – Chat",

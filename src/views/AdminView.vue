@@ -4,7 +4,7 @@
 			<div class="header-copy">
 				<p class="eyebrow">EVA AI</p>
 				<h1 class="settings-title">{{ $t('Admin dashboard') }}</h1>
-				<p class="page-intro">{{ $t('Overview of the RAG index per user with re-index, reset and enrollment management.') }}</p>
+				<p class="page-intro">{{ $t('EVA uses the Nextcloud database by default. External vector storage is optional for larger installations.') }}</p>
 			</div>
 			<div class="header-actions">
 				<NcButton v-if="(data?.scheduler?.running ?? 0) > 0" variant="tertiary" :loading="stopping" @click="stopBackground">
@@ -27,91 +27,75 @@
 			<span>{{ message.text }}</span>
 		</div>
 
-		<div v-if="data" class="admin-summary-grid" :aria-label="$t('Instance status')">
-			<div class="summary-card" :class="data?.ollama?.online ? 'is-ok' : 'is-muted'">
-				<span class="status-dot" aria-hidden="true"></span>
-				<div>
-					<span class="summary-label">{{ $t('Ollama') }}</span>
-					<strong>{{ data?.ollama?.online ? $t('Connected') : $t('Not connected') }}</strong>
-				</div>
-			</div>
-			<div class="summary-card">
-				<div>
-					<span class="summary-label">{{ $t('Concurrent index passes') }}</span>
-					<strong>{{ data?.scheduler?.running ?? 0 }} / {{ data?.scheduler?.limit ?? 0 }}</strong>
-					<small v-if="(data?.scheduler?.running ?? 0) > 0">
-						{{ $t('{count} waiting', { count: data?.scheduler?.queued ?? 0 }) }}
-						· <button class="linklike" type="button" :disabled="stopping" @click="stopBackground">{{ $t('Stop') }}</button>
-					</small>
-					<small v-else>{{ $t('{count} waiting', { count: data?.scheduler?.queued ?? 0 }) }}</small>
-				</div>
-			</div>
-			<div class="summary-card">
-				<div>
-					<span class="summary-label">{{ $t('Users with an index') }}</span>
-					<strong>{{ data?.users?.length ?? 0 }}</strong>
-				</div>
-			</div>
+		<div v-if="data" class="admin-overview-status" :aria-label="$t('Instance status')">
+			<strong>{{ $t('{count} accounts tracked by EVA', { count: data.users.length }) }}</strong>
+			<span>{{ data.scheduler?.running ?? 0 }} / {{ data.scheduler?.limit ?? 0 }} {{ $t('Concurrent index passes') }}</span>
+			<span>{{ $t('{count} waiting', { count: data.scheduler?.queued ?? 0 }) }}</span>
 		</div>
+		<p v-else-if="loading" class="admin-overview-status" role="status">{{ $t('Loading admin overview…') }}</p>
+		<p v-else class="admin-overview-status">{{ $t('The index overview is unavailable. Use Refresh to try again.') }}</p>
 
-		<VectorStorageStatus />
-		<GenerationEmbeddingSettings :users="data?.users || []" />
+		<details class="admin-advanced">
+			<summary>{{ $t('Advanced index administration') }}</summary>
+			<VectorStorageStatus />
+			<GenerationEmbeddingSettings :users="data?.users || []" />
 
-		<main class="admin-body">
-			<div v-if="!data && loading" class="admin-loading" role="status">{{ $t('Loading admin overview…') }}</div>
-			<div v-else-if="!data && loadError" class="admin-empty">{{ $t('User indexing details are unavailable.') }}</div>
-			<div v-else-if="data && !data.users.length" class="admin-empty">{{ $t('No users have an index yet.') }}</div>
-			<div v-else class="admin-table-wrap">
-				<table class="admin-table">
-					<thead>
-						<tr>
-							<th>{{ $t('User') }}</th>
-							<th class="num">{{ $t('Docs') }}</th>
-							<th class="num">{{ $t('Chunks') }}</th>
-							<th>{{ $t('Last indexed') }}</th>
-							<th>{{ $t('Progress') }}</th>
-							<th>{{ $t('Enrollment') }}</th>
-							<th>{{ $t('State') }}</th>
-							<th>{{ $t('Actions') }}</th>
-						</tr>
-					</thead>
-					<tbody>
-						<tr v-for="user in data.users" :key="user.userId" :class="{ 'row-error': !!user.error }">
-							<td>
-								<strong class="user-name">{{ user.displayName }}</strong>
-								<small class="user-id">{{ user.userId }}</small>
-								<div v-if="user.error" class="user-error" :title="user.error">{{ user.error }}</div>
-								<small v-if="user.vectorOwnerState === 'blocked'" class="user-error">{{ $t('Vector ownership blocked after account erasure. Inspect cleanup before creating a new generation.') }}</small>
-								<small v-else-if="user.vectorOwnerState === 'unavailable'" class="user-error">{{ $t('Vector ownership status unavailable.') }}</small>
-							</td>
-							<td class="num">{{ user.documents }}</td>
-							<td class="num">{{ user.chunks }}</td>
-							<td>{{ user.lastIndexedAt ? formatTime(user.lastIndexedAt) : '—' }}</td>
-							<td>{{ user.indexing && user.lastTotal ? `${user.lastProcessed} / ${user.lastTotal}` : (user.indexFinishedAt ? formatTime(user.indexFinishedAt) : '—') }}</td>
-							<td>
-								<NcCheckboxRadioSwitch :checked="user.enrolled" :disabled="busyFor(user.userId)"
-									@update:checked="toggleEnrollment(user)">
-									{{ user.enrolled ? $t('Enrolled') : $t('Off') }}
-								</NcCheckboxRadioSwitch>
-							</td>
-							<td>
-								<span v-if="user.indexing" class="state-pill state-running">{{ $t('Indexing') }}</span>
-								<span v-else-if="user.mode && user.mode !== 'idle'" class="state-pill">{{ user.mode }}</span>
-								<span v-else class="state-pill state-idle">{{ $t('Idle') }}</span>
-							</td>
-							<td class="admin-actions">
-								<NcButton variant="tertiary" :loading="busyFor(user.userId) === 'reindex'" :disabled="!!busyFor(user.userId)" @click="reindex(user)">
-									{{ $t('Re-index') }}
-								</NcButton>
-								<NcButton variant="tertiary" :loading="busyFor(user.userId) === 'reset'" :disabled="!!busyFor(user.userId) || user.indexing" @click="resetUser(user)">
-									{{ $t('Reset') }}
-								</NcButton>
-							</td>
-						</tr>
-					</tbody>
-				</table>
-			</div>
-		</main>
+			<main class="admin-body">
+				<div v-if="!data && loading" class="admin-loading" role="status">{{ $t('Loading admin overview…') }}</div>
+				<div v-else-if="!data && loadError" class="admin-empty">{{ $t('User indexing details are unavailable.') }}</div>
+				<div v-else-if="data && !data.users.length" class="admin-empty">{{ $t('No users have an index yet.') }}</div>
+				<div v-else class="admin-table-wrap">
+					<table class="admin-table">
+						<thead>
+							<tr>
+								<th>{{ $t('User') }}</th>
+								<th class="num">{{ $t('Docs') }}</th>
+								<th class="num">{{ $t('Chunks') }}</th>
+								<th>{{ $t('Last indexed') }}</th>
+								<th>{{ $t('Progress') }}</th>
+								<th>{{ $t('Enrollment') }}</th>
+								<th>{{ $t('State') }}</th>
+								<th>{{ $t('Actions') }}</th>
+							</tr>
+						</thead>
+						<tbody>
+							<tr v-for="user in data.users" :key="user.userId" :class="{ 'row-error': !!user.error }">
+								<td>
+									<strong class="user-name">{{ user.displayName }}</strong>
+									<small class="user-id">{{ user.userId }}</small>
+									<div v-if="user.error" class="user-error" :title="user.error">{{ user.error }}</div>
+									<small v-if="user.vectorOwnerState === 'blocked'" class="user-error">{{ $t('Vector ownership blocked after account erasure. Inspect cleanup before creating a new generation.') }}</small>
+									<small v-else-if="user.vectorOwnerState === 'unavailable'" class="user-error">{{ $t('Vector ownership status unavailable.') }}</small>
+								</td>
+								<td class="num">{{ user.documents }}</td>
+								<td class="num">{{ user.chunks }}</td>
+								<td>{{ user.lastIndexedAt ? formatTime(user.lastIndexedAt) : '—' }}</td>
+								<td>{{ user.indexing && user.lastTotal ? `${user.lastProcessed} / ${user.lastTotal}` : (user.indexFinishedAt ? formatTime(user.indexFinishedAt) : '—') }}</td>
+								<td>
+									<NcCheckboxRadioSwitch :checked="user.enrolled" :disabled="busyFor(user.userId)"
+										@update:checked="toggleEnrollment(user)">
+										{{ user.enrolled ? $t('Enrolled') : $t('Off') }}
+									</NcCheckboxRadioSwitch>
+								</td>
+								<td>
+									<span v-if="user.indexing" class="state-pill state-running">{{ $t('Indexing') }}</span>
+									<span v-else-if="user.mode && user.mode !== 'idle'" class="state-pill">{{ user.mode }}</span>
+									<span v-else class="state-pill state-idle">{{ $t('Idle') }}</span>
+								</td>
+								<td class="admin-actions">
+									<NcButton variant="tertiary" :loading="busyFor(user.userId) === 'reindex'" :disabled="!!busyFor(user.userId)" @click="reindex(user)">
+										{{ $t('Re-index') }}
+									</NcButton>
+									<NcButton variant="tertiary" :loading="busyFor(user.userId) === 'reset'" :disabled="!!busyFor(user.userId) || user.indexing" @click="resetUser(user)">
+										{{ $t('Reset') }}
+									</NcButton>
+								</td>
+							</tr>
+						</tbody>
+					</table>
+				</div>
+			</main>
+		</details>
 		<NcModal v-if="resetTarget" size="small" :name="$t('Reset user index')" @close="closeResetDialog">
 			<div class="admin-reset-dialog">
 				<p>{{ $t('The index for {name} will be permanently deleted. This removes indexed content and search chunks; files in Nextcloud will not be changed.', { name: resetTarget.displayName }) }}</p>
@@ -296,40 +280,27 @@ export default {
 	opacity: .75;
 	max-width: 560px;
 }
-.admin-summary-grid {
-	display: grid;
-	grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-	gap: 12px;
-	margin-bottom: 24px;
-}
-.summary-card {
+.admin-overview-status {
 	display: flex;
-	align-items: flex-start;
-	gap: 10px;
-	border: 1px solid var(--color-border);
-	border-radius: 12px;
-	padding: 14px 16px;
-	background: var(--color-main-background);
+	align-items: center;
+	flex-wrap: wrap;
+	gap: 8px 16px;
+	margin: 8px 0 24px;
+	color: var(--color-text-maxcontrast);
 }
-.summary-card .status-dot {
-	width: 10px;
-	height: 10px;
-	border-radius: 50%;
-	margin-top: 5px;
-	background: var(--color-text-maxcontrast);
+.admin-overview-status strong { color: var(--color-main-text); }
+.admin-advanced {
+	border-top: 1px solid var(--color-border);
+	padding-top: 16px;
 }
-.summary-card.is-ok .status-dot { background: var(--color-success, #2ecc71); }
-.summary-card.is-muted .status-dot { background: var(--color-error, #e9322d); }
-.summary-label {
-	display: block;
-	font-size: 11px;
-	text-transform: uppercase;
-	letter-spacing: .06em;
-	opacity: .6;
-	margin-bottom: 2px;
+.admin-advanced > summary {
+	width: fit-content;
+	cursor: pointer;
+	font-weight: 600;
+	color: var(--color-main-text);
 }
-.summary-card strong { display: block; font-size: 15px; }
-.summary-card small { opacity: .7; }
+.admin-advanced[open] > summary { margin-bottom: 16px; }
+
 .admin-table-wrap {
 	overflow-x: auto;
 	border: 1px solid var(--color-border);

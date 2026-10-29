@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Compact administration overview (1.18.31)
+
+- Keep the default admin view focused on the Nextcloud SQL default and a short indexing summary. Move per-user reindex/reset controls, generation configuration, and optional external vector storage into a native disclosure.
+
 ### Resilient embedding cache (1.18.30)
 
 - Temporarily bypass the distributed embedding cache for 15 seconds after a cache failure, avoiding repeated slow cache calls during an outage. Indexing and retrieval continue through uncached embeddings; cached values are retried automatically after the cooldown.
