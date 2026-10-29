@@ -19,6 +19,8 @@ create a separate public metrics endpoint or background poller.
 | `nextcloud_eva_ai_provider_completion_duration_ms` | `provider`, `quantile` | Approximate successful provider completion latency by fixed provider type. |
 | `nextcloud_eva_ai_retrieval_stage_duration_ms` | `backend`, `stage`, `quantile` | Approximate retrieval-stage duration quantiles on successful chat requests. |
 | `nextcloud_eva_ai_rag_request_duration_ms` | `outcome`, `quantile` | Approximate end-to-end EVA request duration quantiles for completed, failed and interrupted requests. |
+| `nextcloud_eva_ai_index_run_duration_ms` | `mode`, `outcome`, `quantile` | Approximate seven-day duration quantiles for bounded background indexing runs. |
+| `nextcloud_eva_ai_index_run_file_chunks_per_second` | `mode`, `outcome`, `quantile` | Approximate file chunk throughput quantiles measured over the file-indexing phase. |
 | `nextcloud_eva_ai_embedding_batch_duration_ms` | `provider`, `result`, `quantile` | Approximate indexing/generation embedding batch latency; chat query embedding is already measured in retrieval stages. |
 | `nextcloud_eva_ai_embedding_batch_samples` | `provider`, `result` | Success/error counts in the bounded embedding sample. |
 | `nextcloud_eva_ai_embedding_cache_hit_ratio` | `provider` | Cache hits divided by hits plus misses in the bounded sample. |
@@ -69,6 +71,16 @@ recent requests total; OpenMetrics reads at most 5,000 rows per outcome from
 the preceding seven days. No user or chat labels are exported.
 The dashboard shows the requesting account's values and never mixes in other
 accounts when an administrator selects a user.
+
+Index-run rows store only user ownership, one of four fixed modes, one of three
+fixed outcomes, run duration, processed-item count and successfully written
+file-chunk count. File-phase duration is measured separately from whole-run
+duration, so Mail and Talk processing in an `all` run does not dilute the file
+chunk-throughput denominator. The phase includes file traversal, extraction,
+embedding and SQL writes. User and OpenMetrics queries are bounded to the newest
+5,000 rows in the seven-day window; existing usage retention and account-erasure
+cleanup apply. Item and chunk totals are operational observations for the sample,
+not cumulative counters.
 
 ## Privacy and availability
 

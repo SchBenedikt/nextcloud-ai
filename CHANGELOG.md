@@ -2,10 +2,16 @@
 
 ## [Unreleased]
 
+### Measure background indexing performance (1.18.87)
+
+- Record bounded per-run duration, outcome, processed item count and successfully written file chunks without storing file paths or content.
+- Show run percentiles and file-phase chunk throughput in the existing usage metrics view and CSV export.
+- Export seven-day run-duration and file-chunk throughput quantiles through Nextcloud OpenMetrics.
+
 ### Make pending settings changes explicit (1.18.86)
 
-- Add a native Save changes action beside the autosave status so users can flush pending edits immediately and retry after a failed save.
-- Keep automatic saving and serialized partial updates; the action sends only values that differ from the last server-confirmed settings.
+- Keep core settings and account tokens pending until the user selects the native Save changes action.
+- Show dirty, saving and confirmed states accurately; keep provider profiles on their own explicit Save action.
 
 ### Expose end-to-end EVA request latency (1.18.85)
 

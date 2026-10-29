@@ -184,7 +184,7 @@ export default {
 			error.value = ''
 			notice.value = ''
 			try {
-				// Serialize provider selection with autosaved settings and profile edits.
+				// Serialize provider selection with pending settings and profile edits.
 				const result = await (props.savePatch
 					? props.savePatch({ chat_provider: provider.id })
 					: api('PUT', 'settings', { chat_provider: provider.id }))

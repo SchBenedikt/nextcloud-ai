@@ -141,7 +141,36 @@ class UsageMetrics {
 			])->executeStatement();
 		} catch (\Throwable $e) {
 			// Optional telemetry must never turn an answer or stream into an error.
-			$this->logger->debug('eva_ai request duration could not be stored', ['exception' => $e->getMessage()]);
+			try { $this->logger->debug('eva_ai request duration could not be stored', ['exception' => $e->getMessage()]); }
+			catch (\Throwable) { /* Telemetry must not alter chat results. */ }
+		}
+	}
+
+	/** Store bounded indexing-run metadata, never paths, names or extracted text. */
+	public function recordIndexRun(string $userId, string $mode, int $durationMs, int $filePassDurationMs, int $items, int $fileChunks, string $outcome): void {
+		if ($userId === '' || !in_array($mode, ['all', 'files', 'mail', 'talk'], true)
+			|| !in_array($outcome, ['complete', 'error', 'incomplete'], true)) return;
+		try {
+			$qb = $this->db->getQueryBuilder();
+			$qb->insert('eva_ai_usage')->values([
+				'user_id' => $qb->createNamedParameter($userId),
+				'created_at' => $qb->createNamedParameter(time(), IQueryBuilder::PARAM_INT),
+				'provider' => $qb->createNamedParameter('internal'),
+				'model' => $qb->createNamedParameter($outcome),
+				'operation' => $qb->createNamedParameter('index_run'),
+				'input_tokens' => $qb->createNamedParameter(0, IQueryBuilder::PARAM_INT),
+				'output_tokens' => $qb->createNamedParameter(0, IQueryBuilder::PARAM_INT),
+				'total_tokens' => $qb->createNamedParameter(0, IQueryBuilder::PARAM_INT),
+				'estimated' => $qb->createNamedParameter(0, IQueryBuilder::PARAM_INT),
+				'duration_ms' => $qb->createNamedParameter(max(0, $durationMs), IQueryBuilder::PARAM_INT),
+				'index_run_mode' => $qb->createNamedParameter($mode),
+				'index_run_items' => $qb->createNamedParameter(max(0, $items), IQueryBuilder::PARAM_INT),
+				'index_run_chunks' => $qb->createNamedParameter(max(0, $fileChunks), IQueryBuilder::PARAM_INT),
+				'index_run_file_duration_ms' => $qb->createNamedParameter(max(0, $filePassDurationMs), IQueryBuilder::PARAM_INT),
+			])->executeStatement();
+		} catch (\Throwable $e) {
+			try { $this->logger->debug('eva_ai index run metrics could not be stored', ['exception' => $e->getMessage()]); }
+			catch (\Throwable) { /* Telemetry must not alter indexing results. */ }
 		}
 	}
 
@@ -206,6 +235,7 @@ class UsageMetrics {
 		$daily = [];
 		$slowTools = [];
 		$ragRequestDuration = ['samples' => 0, 'outcomes' => []];
+		$indexRuns = ['samples' => 0, 'modes' => []];
 		try {
 			$qb = $this->db->getQueryBuilder();
 			$qb->select('provider', 'model')
@@ -307,7 +337,59 @@ class UsageMetrics {
 			$this->logger->debug('eva_ai request duration metrics unavailable', ['exception' => $e->getMessage()]);
 		}
 		$ragRequestDuration['outcomes'] = (object)$ragRequestDuration['outcomes'];
-		return ['days' => $days, 'totals' => $totals, 'by_model' => $byModel, 'daily' => $daily, 'slow_tools' => $slowTools, 'rag_request_duration' => $ragRequestDuration];
+		try {
+			$qb = $this->db->getQueryBuilder();
+			$qb->select('index_run_mode', 'model', 'duration_ms', 'index_run_items', 'index_run_chunks', 'index_run_file_duration_ms')->from('eva_ai_usage')
+				->where($qb->expr()->eq('user_id', $qb->createNamedParameter($userId)))
+				->andWhere($qb->expr()->eq('operation', $qb->createNamedParameter('index_run')))
+				->andWhere($qb->expr()->gte('created_at', $qb->createNamedParameter($since, IQueryBuilder::PARAM_INT)))
+				->andWhere($qb->expr()->gt('duration_ms', $qb->createNamedParameter(0, IQueryBuilder::PARAM_INT)))
+				->orderBy('created_at', 'DESC')->setMaxResults(5000);
+			$result = $qb->executeQuery();
+			$rows = [];
+			try {
+				while (($row = $result->fetch()) !== false) {
+					$mode = (string)$row['index_run_mode'];
+					$outcome = (string)$row['model'];
+					if (!in_array($mode, ['all', 'files', 'mail', 'talk'], true)
+						|| !in_array($outcome, ['complete', 'error', 'incomplete'], true)) continue;
+					$rows[$mode][$outcome][] = [
+						'duration_ms' => max(0, (int)$row['duration_ms']),
+						'items' => max(0, (int)$row['index_run_items']),
+						'file_chunks' => max(0, (int)$row['index_run_chunks']),
+						'file_duration_ms' => max(0, (int)$row['index_run_file_duration_ms']),
+					];
+				}
+			} finally { $result->closeCursor(); }
+			foreach ($rows as $mode => $outcomes) {
+				foreach ($outcomes as $outcome => $values) {
+					$durations = array_column($values, 'duration_ms');
+					sort($durations, SORT_NUMERIC);
+					$count = count($values);
+					$writeSamples = array_values(array_filter($values, static fn(array $value): bool => $value['file_chunks'] > 0 && $value['file_duration_ms'] > 0));
+					$fileDurationTotal = array_sum(array_column($writeSamples, 'file_duration_ms'));
+					$itemsTotal = array_sum(array_column($values, 'items'));
+					$chunksTotal = array_sum(array_column($values, 'file_chunks'));
+					$quantiles = [];
+					foreach (['p50' => 0.5, 'p95' => 0.95, 'p99' => 0.99] as $name => $quantile) {
+						$quantiles[$name . '_ms'] = $durations[max(0, (int)ceil($quantile * $count) - 1)];
+					}
+					$indexRuns['samples'] += $count;
+					$indexRuns['modes'][$mode][$outcome] = [
+						'runs' => $count,
+						'items' => $itemsTotal,
+						'file_chunks' => $chunksTotal,
+						'average_file_chunks_per_second' => $fileDurationTotal > 0 ? round(array_sum(array_column($writeSamples, 'file_chunks')) / ($fileDurationTotal / 1000), 2) : 0,
+					] + $quantiles;
+				}
+			}
+		} catch (\Throwable $e) {
+			try { $this->logger->debug('eva_ai index run summary unavailable', ['exception' => $e->getMessage()]); }
+			catch (\Throwable) { /* Optional metrics must not fail the dashboard. */ }
+		}
+		foreach ($indexRuns['modes'] as $mode => $outcomes) $indexRuns['modes'][$mode] = (object)$outcomes;
+		$indexRuns['modes'] = (object)$indexRuns['modes'];
+		return ['days' => $days, 'totals' => $totals, 'by_model' => $byModel, 'daily' => $daily, 'slow_tools' => $slowTools, 'rag_request_duration' => $ragRequestDuration, 'index_runs' => $indexRuns];
 	}
 
 	/** @return array<string,int> */

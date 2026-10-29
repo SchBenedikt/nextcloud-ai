@@ -20,7 +20,7 @@ export function useEvaSettings({ section = ref('general') } = {}) {
 		return providerProfiles.value.find(profile => profile.id === f.value.chat_provider)?.name || f.value.chat_provider || t('the configured provider')
 	})
 	// All settings controls use the official Nextcloud Vue components. Keep
-	// their models as plain strings so autosave and server validation remain
+	// their models as plain strings so saving and server validation remain
 	// backwards compatible with the existing API contract.
 	const embeddingModelOptions = computed(() => [...new Set([...embeddingModels.value, f.value.embedding_model].filter(Boolean))])
 	const chatModelOptions = computed(() => [...new Set([...chatModels.value, f.value.chat_model].filter(Boolean))])
@@ -40,7 +40,6 @@ export function useEvaSettings({ section = ref('general') } = {}) {
 	]
 	const nextcloudApiToken = ref('')
 	const removeNextcloudApiToken = ref(false)
-	let credentialAutoSaveTimer = null
 	const status = ref(null)
 	const limits = ref({})
 	const availableModels = ref([])
@@ -115,8 +114,6 @@ export function useEvaSettings({ section = ref('general') } = {}) {
 	const userWebSearchSafeSearch = computed({ get: () => f.value.web_search_safe_search === '1', set: v => { f.value.web_search_safe_search = v ? '1' : '0' } })
 	const { connectors, connectorEndpointQuery, plugins, pluginsSaving, pluginsLoading, pluginLoadError, connectorsLoading, connectorLoadError, connectorsBusy, connectorDiagnostics, apiKeys, apiKeysLoading, apiKeysBusy, apiKeyError, createdApiKey, apiKeyDraft, apiKeyScopeOptions, apiDocsUrl, connectorToRemove, connectorRemovalError, connectorDraft, applyConnectorExample, loadConnectors, loadApiKeys, createApiKey, revokeApiKey, copyApiKey, loadPlugins, setPluginEnabled, saveConnector, removeConnector, closeConnectorRemoval, confirmRemoveConnector, editConnector, connectorCredentialLabel, connectorCredentialClass, pluginRiskLabel, pluginSurfacesLabel, filteredConnectorEndpoints, discoverConnector, testConnector } = useIntegrationSettings({ setMessage })
 	const formReady = ref(false)
-	let autoSaveTimer = null
-	let autoSaveDirty = false
 	let pendingSettingsSaves = 0
 	let settingsSaveQueue = Promise.resolve()
 	let applyingServerState = false
@@ -126,22 +123,12 @@ export function useEvaSettings({ section = ref('general') } = {}) {
 	}
 	const hasUnsavedSettings = computed(() => changedSettingKeys().length > 0 || nextcloudApiToken.value !== '' || removeNextcloudApiToken.value)
 
-	function queueAutoSave() {
-		if (disposed || applyingServerState) return
-		if (!formReady.value) return
-		autoSaveDirty = true
-		window.clearTimeout(autoSaveTimer)
-		autoSaveTimer = window.setTimeout(async () => {
-			if (!autoSaveDirty) return
-			const changedKeys = changedSettingKeys()
-			const briefingOnly = changedKeys.length > 0 && changedKeys.every(key => key === 'proactive_enabled' || key === 'proactive_schedules')
-			if (settingsLocked.value && !(indexingActive.value && briefingOnly)) {
-				queueAutoSave()
-				return
-			}
-			autoSaveDirty = false
-			await save({ changedOnly: true })
-		}, 700)
+	function markSettingsDirty() {
+		// Keep form edits local until the user presses the shared Save changes
+		// button. The previous debounce wrote values during typing, which made
+		// the visible save action and the reported persistence state misleading.
+		if (disposed || applyingServerState || !formReady.value) return
+		saved.value = false
 	}
 
 	const mailIndexEnabled = computed({
@@ -312,7 +299,7 @@ export function useEvaSettings({ section = ref('general') } = {}) {
 			}
 		})
 		applyingServerState = false
-		if (formReady.value && changedSettingKeys().length) queueAutoSave()
+		if (formReady.value && changedSettingKeys().length) markSettingsDirty()
 	}
 
 	async function loadStatus(syncForm = false) {
@@ -402,7 +389,7 @@ export function useEvaSettings({ section = ref('general') } = {}) {
 	}
 
 	function save(options = {}) {
-		// Settings sections can trigger saves from autosave, explicit actions,
+		// Settings sections can trigger saves from explicit actions,
 		// credentials, and provider controls at nearly the same time. Serialize
 		// writes so an older response cannot overwrite a newer server value.
 		pendingSettingsSaves++
@@ -415,15 +402,13 @@ export function useEvaSettings({ section = ref('general') } = {}) {
 		})
 	}
 
-	/** Flush pending autosave edits immediately from the shared settings header. */
+	/** Save pending form edits from the shared settings header. */
 	function saveNow() {
 		if (!formReady.value || saveNowLocked.value) return Promise.resolve(false)
-		window.clearTimeout(autoSaveTimer)
-		autoSaveDirty = false
 		return save({ changedOnly: true })
 	}
 
-	/** Serialize explicit provider-profile writes with autosaved form settings. */
+	/** Serialize explicit provider-profile writes with form settings. */
 	function savePatch(values) {
 		pendingSettingsSaves++
 		saving.value = true
@@ -471,18 +456,6 @@ export function useEvaSettings({ section = ref('general') } = {}) {
 			return false
 		}
 	}
-	function queueCredentialAutoSave() {
-		if (!formReady.value) return
-		window.clearTimeout(credentialAutoSaveTimer)
-		credentialAutoSaveTimer = window.setTimeout(() => {
-			if (settingsLocked.value) {
-				queueCredentialAutoSave()
-				return
-			}
-			save({ changedOnly: true })
-		}, 700)
-	}
-
 	async function checkOllama() {
 		if (checking.value) return
 		checking.value = true
@@ -704,10 +677,9 @@ export function useEvaSettings({ section = ref('general') } = {}) {
 	let statusTimer = null
 	let modelTimer = null
 	// Watch the scalar settings values without Vue's recursive deep traversal.
-	// The form is flat, so a shallow value snapshot preserves autosave while
-	// avoiding a full object walk on every keystroke.
-	watch(() => Object.values(f.value), queueAutoSave, { flush: 'sync' })
-	watch([nextcloudApiToken, removeNextcloudApiToken], queueCredentialAutoSave)
+	// The form is flat, so a shallow value snapshot tracks dirty state without
+	// a full object walk on every keystroke. Changes remain local until saved.
+	watch(() => Object.values(f.value), markSettingsDirty, { flush: 'sync' })
 	watch(() => f.value.ollama_url, (value) => {
 		window.clearTimeout(modelTimer)
 		modelTimer = window.setTimeout(() => discoverModels(value), 500)
@@ -736,8 +708,6 @@ export function useEvaSettings({ section = ref('general') } = {}) {
 		disposed = true
 		if (statusTimer !== null) window.clearInterval(statusTimer)
 		if (modelTimer !== null) window.clearTimeout(modelTimer)
-		window.clearTimeout(autoSaveTimer)
-		window.clearTimeout(credentialAutoSaveTimer)
 	})
 
 	const ocrEnabled = computed({ get: () => f.value.ocr_enabled === '1', set: value => { f.value.ocr_enabled = value ? '1' : '0' } })

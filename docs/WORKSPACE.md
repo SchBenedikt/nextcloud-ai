@@ -15,9 +15,11 @@ briefing history or personal knowledge.
 
 ## Saving
 
-Core fields save automatically after editing. Validation errors appear above
-the selected section. Provider profiles are saved explicitly with their keys
-in the same request. Cancelling their dialog does not activate the draft.
+Core fields and account tokens stay as unsaved edits until you select **Save
+changes**. The header shows whether changes are pending, saving, or confirmed.
+Validation errors appear above the selected section. Provider profiles are
+saved explicitly with their keys in the same request. Cancelling their dialog
+does not activate the draft.
 
 Credentials are encrypted separately per user. The browser only receives
 presence flags for stored keys. Never put a key in a URL or profile name.

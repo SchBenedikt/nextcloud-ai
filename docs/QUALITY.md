@@ -82,7 +82,7 @@ It checked idempotent staging, metadata invalidation, preserved legacy rows,
 fresh point IDs and document deletion with durable tombstones. These are local
 results, not PostgreSQL/SQLite or representative ANN/load evidence.
 
-An opt-in browser suite covers real login, native pages, settings autosave/reload
+An opt-in browser suite covers real login, native pages, explicit settings save/reload
 and two real model answers followed by history reload. Use a disposable administrator
 account named `eva-runtime-audit-*`, with English UI, the first-run wizard completed,
 and an available configured chat model. It makes real model requests and creates

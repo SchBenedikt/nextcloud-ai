@@ -50,7 +50,7 @@ test.describe('authenticated Nextcloud runtime', () => {
 		} finally { await page.setViewportSize({ width: 1440, height: 1000 }) }
 	})
 
-	test('native settings autosave and survive reload', async () => {
+	test('native settings save explicitly and survive reload', async () => {
 		await page.goto(app('settings?section=knowledge'), { waitUntil: 'domcontentloaded' })
 		const input = page.getByRole('spinbutton', { name: 'Sources per answer', exact: true })
 		await expect(input).toBeEnabled()
@@ -59,6 +59,8 @@ test.describe('authenticated Nextcloud runtime', () => {
 		try {
 			await input.fill(value)
 			await input.blur()
+			await expect(page.getByText('Unsaved changes', { exact: true })).toBeVisible()
+			await page.getByRole('button', { name: 'Save changes', exact: true }).click()
 			await expect.poll(async () => {
 				const response = await context.request.get(api('settings'), { headers: { 'OCS-APIRequest': 'true' } })
 				expect(response.ok()).toBe(true)
