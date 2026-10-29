@@ -51,6 +51,9 @@ export default {
 	components: { NcButton, NcIconSvgWrapper, NcTextField },
 	props: {
 		chatId: { type: String, default: null },
+		// A just-created chat can be rendered from the create response instead
+		// of immediately reading the same record back from storage.
+		initialChat: { type: Object, default: null },
 		initialPrompt: { type: String, default: '' },
 		// When true the initialPrompt is sent immediately after the chat
 		// mounts instead of only being pre-filled into the input (Issue:
@@ -117,6 +120,7 @@ export default {
 			delete root.value.__evaAi
 			mountChat(root.value, {
 				chatId: props.chatId || null,
+				initialChat: props.initialChat?.id === props.chatId ? props.initialChat : null,
 				form: composerForm.value,
 				input: composerField.value?.$el?.querySelector('input'),
 				sendBtn: sendButton.value?.$el,
