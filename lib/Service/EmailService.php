@@ -55,7 +55,7 @@ class EmailService {
      */
     public function accountsOf(string $userId): array {
         $rows = $this->q(
-            'SELECT `id`, `email`, `name` FROM *PREFIX*mail_accounts WHERE `user_id` = ?',
+            'SELECT id, email, name FROM *PREFIX*mail_accounts WHERE user_id = ?',
             [$userId]
         );
         $out = [];
@@ -81,14 +81,14 @@ class EmailService {
             return [];
         }
 
-        $whereMailbox = 'm.`mailbox_id` IN (' . implode(',', $mailboxIds) . ')';
-        $extra = $unreadOnly ? ' AND m.`flag_seen` = 0' : '';
+        $whereMailbox = 'm.mailbox_id IN (' . implode(',', $mailboxIds) . ')';
+        $extra = $unreadOnly ? ' AND m.flag_seen = 0' : '';
 
-        $sql = "SELECT m.`id`, m.`mailbox_id`, m.`subject`, m.`sent_at`, m.`flag_seen`,
-                       m.`preview_text`, m.`summary`
+        $sql = "SELECT m.id, m.mailbox_id, m.subject, m.sent_at, m.flag_seen,
+                       m.preview_text, m.summary
                 FROM *PREFIX*mail_messages m
                 WHERE {$whereMailbox}{$extra}
-                ORDER BY m.`sent_at` DESC
+                ORDER BY m.sent_at DESC
                 LIMIT " . (int)$limit;
 
         $rows = $this->q($sql, []);
@@ -106,11 +106,11 @@ class EmailService {
     /** One exact owned source, independent of the recent-message listing limit. */
     public function messageForIndexing(string $userId, int $messageId): ?array {
         if ($userId === '' || $messageId < 1) return null;
-        $rows = $this->q('SELECT m.`id`, m.`subject`, m.`sent_at`, m.`flag_seen`, m.`preview_text`, m.`summary`
+        $rows = $this->q('SELECT m.id, m.subject, m.sent_at, m.flag_seen, m.preview_text, m.summary
             FROM *PREFIX*mail_messages m
-            INNER JOIN *PREFIX*mail_mailboxes b ON m.`mailbox_id` = b.`id`
-            INNER JOIN *PREFIX*mail_accounts a ON b.`account_id` = a.`id`
-            WHERE a.`user_id` = ? AND m.`id` = ?', [$userId, $messageId]);
+            INNER JOIN *PREFIX*mail_mailboxes b ON m.mailbox_id = b.id
+            INNER JOIN *PREFIX*mail_accounts a ON b.account_id = a.id
+            WHERE a.user_id = ? AND m.id = ?', [$userId, $messageId]);
         return $rows === [] ? null : $this->indexMetadata($rows[0]);
     }
 
@@ -133,8 +133,8 @@ class EmailService {
         if ($mailboxIds === []) {
             return [];
         }
-        $whereMailbox = 'm.`mailbox_id` IN (' . implode(',', $mailboxIds) . ')';
-        $sql = "SELECT m.`id` FROM *PREFIX*mail_messages m WHERE {$whereMailbox}";
+        $whereMailbox = 'm.mailbox_id IN (' . implode(',', $mailboxIds) . ')';
+        $sql = "SELECT m.id FROM *PREFIX*mail_messages m WHERE {$whereMailbox}";
         $rows = $this->q($sql, []);
         return array_map('intval', array_column($rows, 'id'));
     }
@@ -148,10 +148,10 @@ class EmailService {
     /** Ownership check only: no IMAP fetch, recipients or message body. */
     public function messageAccessible(string $userId, int $messageId): bool {
         if ($messageId < 1) return false;
-        return $this->q('SELECT m.`id` FROM *PREFIX*mail_messages m
-            INNER JOIN *PREFIX*mail_mailboxes b ON m.`mailbox_id` = b.`id`
-            INNER JOIN *PREFIX*mail_accounts a ON b.`account_id` = a.`id`
-            WHERE m.`id` = ? AND a.`user_id` = ?', [$messageId, $userId]) !== [];
+        return $this->q('SELECT m.id FROM *PREFIX*mail_messages m
+            INNER JOIN *PREFIX*mail_mailboxes b ON m.mailbox_id = b.id
+            INNER JOIN *PREFIX*mail_accounts a ON b.account_id = a.id
+            WHERE m.id = ? AND a.user_id = ?', [$messageId, $userId]) !== [];
     }
 
     public function readMessage(string $userId, int $messageId): array {
@@ -161,9 +161,9 @@ class EmailService {
         }
 
         $rows = $this->q(
-            'SELECT `id`, `mailbox_id`, `subject`, `sent_at`, `flag_seen`,
-                    `preview_text`, `summary`
-             FROM *PREFIX*mail_messages WHERE `id` = ?',
+            'SELECT id, mailbox_id, subject, sent_at, flag_seen,
+                    preview_text, summary
+             FROM *PREFIX*mail_messages WHERE id = ?',
             [$messageId]
         );
         if ($rows === []) {
@@ -210,17 +210,17 @@ class EmailService {
         $mboxSql = implode(',', $mailboxIds);
 
         // Search subject + preview_text + recipients (sender name/email)
-        $sql = "SELECT m.`id`, m.`subject`, m.`sent_at`, m.`flag_seen`,
-                       m.`preview_text`
+        $sql = "SELECT m.id, m.subject, m.sent_at, m.flag_seen,
+                       m.preview_text
                 FROM *PREFIX*mail_messages m
                 LEFT JOIN *PREFIX*mail_recipients r
-                    ON r.`message_id` = m.`id` AND r.`type` = " . self::RCV_FROM . "
-                WHERE m.`mailbox_id` IN ({$mboxSql})
-                  AND (m.`subject` LIKE ? ESCAPE '!'
-                       OR m.`preview_text` LIKE ? ESCAPE '!'
-                       OR r.`email` LIKE ? ESCAPE '!'
-                       OR r.`label` LIKE ? ESCAPE '!')
-                ORDER BY m.`sent_at` DESC
+                    ON r.message_id = m.id AND r.type = " . self::RCV_FROM . "
+                WHERE m.mailbox_id IN ({$mboxSql})
+                  AND (m.subject LIKE ? ESCAPE '!'
+                       OR m.preview_text LIKE ? ESCAPE '!'
+                       OR r.email LIKE ? ESCAPE '!'
+                       OR r.label LIKE ? ESCAPE '!')
+                ORDER BY m.sent_at DESC
                 LIMIT " . (int)$limit;
 
         $rows = $this->q($sql, [$like, $like, $like, $like]);
@@ -258,7 +258,7 @@ class EmailService {
         $mboxSql = implode(',', $mailboxIds);
         $r = $this->q(
             "SELECT COUNT(*) AS c FROM *PREFIX*mail_messages
-             WHERE `mailbox_id` IN ({$mboxSql}) AND `flag_seen` = 0",
+             WHERE mailbox_id IN ({$mboxSql}) AND flag_seen = 0",
             []
         );
         return (int)($r[0]['c'] ?? 0);
@@ -282,7 +282,7 @@ class EmailService {
 
         // Fallback to DB preview/summary.
         $rows = $this->q(
-            'SELECT `preview_text`, `summary` FROM *PREFIX*mail_messages WHERE `id` = ?',
+            'SELECT preview_text, summary FROM *PREFIX*mail_messages WHERE id = ?',
             [$messageId]
         );
         if ($rows === []) {
@@ -443,10 +443,10 @@ class EmailService {
     private function resolveMailContext(string $userId, int $messageId): ?array {
         // Look up the message's mailbox_id and IMAP uid.
         $rows = $this->q(
-            'SELECT m.`uid`, m.`mailbox_id`, mb.`account_id`
+            'SELECT m.uid, m.mailbox_id, mb.account_id
              FROM *PREFIX*mail_messages m
-             JOIN *PREFIX*mail_mailboxes mb ON mb.`id` = m.`mailbox_id`
-             WHERE m.`id` = ?',
+             JOIN *PREFIX*mail_mailboxes mb ON mb.id = m.mailbox_id
+             WHERE m.id = ?',
             [$messageId]
         );
         if ($rows === []) {
@@ -524,7 +524,7 @@ class EmailService {
         $accountIds = array_map(static fn(array $a): int => $a['id'], $accounts);
         $ids = [];
         foreach ($this->q(
-            'SELECT `id` FROM *PREFIX*mail_mailboxes WHERE `account_id` IN (' . implode(',', $accountIds) . ')',
+            'SELECT id FROM *PREFIX*mail_mailboxes WHERE account_id IN (' . implode(',', $accountIds) . ')',
             []
         ) as $m) {
             $ids[] = (int)$m['id'];
@@ -542,7 +542,7 @@ class EmailService {
         }
         $out = [];
         foreach ($this->q(
-            'SELECT `id`, `name` FROM *PREFIX*mail_mailboxes WHERE `id` IN (' . implode(',', $ids) . ')',
+            'SELECT id, name FROM *PREFIX*mail_mailboxes WHERE id IN (' . implode(',', $ids) . ')',
             []
         ) as $row) {
             $out[(int)$row['id']] = (string)($row['name'] ?? '');
@@ -555,8 +555,8 @@ class EmailService {
      */
     private function senderOf(int $messageId): string {
         $rows = $this->q(
-            'SELECT `email`, `label` FROM *PREFIX*mail_recipients
-             WHERE `message_id` = ? AND `type` = ?',
+            'SELECT email, label FROM *PREFIX*mail_recipients
+             WHERE message_id = ? AND type = ?',
             [$messageId, self::RCV_FROM]
         );
         if ($rows === []) {
@@ -577,8 +577,8 @@ class EmailService {
      */
     private function recipients(int $messageId, int $type): array {
         $rows = $this->q(
-            'SELECT `email`, `label` FROM *PREFIX*mail_recipients
-             WHERE `message_id` = ? AND `type` = ?',
+            'SELECT email, label FROM *PREFIX*mail_recipients
+             WHERE message_id = ? AND type = ?',
             [$messageId, $type]
         );
         $out = [];
