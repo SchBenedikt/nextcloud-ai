@@ -17,6 +17,12 @@ provider does not migrate or rebuild the document index.
    A successful connection check confirms the provider's model-list endpoint;
    send a short chat to verify inference and model-specific features.
 
+Provider actions are confirmed against the settings returned by Nextcloud before
+EVA shows a success notice. The shared Settings form updates from that confirmed
+response immediately, while unrelated edits remain pending for the main **Save
+changes** action. If the server response omits or disagrees with a changed
+setting, EVA reports the save as unconfirmed instead of showing a success notice.
+
 Editing an existing inactive profile saves its configuration without changing
 the active chat provider. This lets you configure a dedicated embedding profile
 without redirecting chat. Its API key is stored against that exact profile ID,

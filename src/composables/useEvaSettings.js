@@ -412,12 +412,50 @@ export function useEvaSettings({ section = ref('general'), active = ref(true) } 
 	function savePatch(values) {
 		pendingSettingsSaves++
 		saving.value = true
-		const task = settingsSaveQueue.then(() => api('PUT', 'settings', values))
+		const task = settingsSaveQueue.then(async () => {
+			const settings = await api('PUT', 'settings', values)
+			if (!settings || typeof settings !== 'object' || Array.isArray(settings)) {
+				throw new Error(t('The server did not confirm the saved settings.'))
+			}
+
+			// Provider actions use this patch path instead of the form Save button.
+			// Confirm each form setting against the server response and immediately
+			// reconcile the shared form state. This prevents a success notice from
+			// masking a stale or incomplete response, while preserving unrelated
+			// edits the user made during the request.
+			const confirmed = {}
+			for (const [key, expected] of Object.entries(values)) {
+				if (!Object.prototype.hasOwnProperty.call(f.value, key)) continue
+				if (!Object.prototype.hasOwnProperty.call(settings, key) || !settingValueMatches(key, expected, settings[key])) {
+					const setting = key === 'provider_profiles' ? t('AI providers') : key === 'chat_provider' ? t('Chat provider') : t('provider settings')
+					throw new Error(t('The server did not confirm the saved setting: {setting}.', { setting }))
+				}
+				confirmed[key] = String(settings[key])
+			}
+			if (Object.keys(confirmed).length) fill(confirmed, { ...persistedSettings.value })
+			return settings
+		})
 		settingsSaveQueue = task.then(() => undefined, () => undefined)
 		return task.finally(() => {
 			pendingSettingsSaves = Math.max(0, pendingSettingsSaves - 1)
 			saving.value = pendingSettingsSaves > 0
 		})
+	}
+
+	function settingValueMatches(key, expected, actual) {
+		if (key === 'provider_profiles') {
+			try {
+				const canonical = value => Array.isArray(value)
+					? value.map(canonical)
+					: value && typeof value === 'object'
+						? Object.fromEntries(Object.keys(value).sort().map(name => [name, canonical(value[name])]))
+						: value
+				return JSON.stringify(canonical(JSON.parse(String(expected)))) === JSON.stringify(canonical(JSON.parse(String(actual))))
+			} catch (_) {
+				return false
+			}
+		}
+		return String(expected) === String(actual)
 	}
 
 	async function persistSettings({ changedOnly = false, onlyKeys = null } = {}) {
