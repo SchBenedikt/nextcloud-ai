@@ -16,6 +16,9 @@ create a separate public metrics endpoint or background poller.
 | `nextcloud_eva_ai_operation_duration_ms` | `operation`, `quantile` | Approximate recent provider chat-completion and slow-tool duration quantiles. |
 | `nextcloud_eva_ai_provider_completion_duration_ms` | `provider`, `quantile` | Approximate successful provider completion latency by fixed provider type. |
 | `nextcloud_eva_ai_retrieval_stage_duration_ms` | `backend`, `stage`, `quantile` | Approximate retrieval-stage duration quantiles on successful chat requests. |
+| `nextcloud_eva_ai_embedding_batch_duration_ms` | `provider`, `result`, `quantile` | Approximate indexing/generation embedding batch latency; chat query embedding is already measured in retrieval stages. |
+| `nextcloud_eva_ai_embedding_batch_samples` | `provider`, `result` | Success/error counts in the bounded embedding sample. |
+| `nextcloud_eva_ai_embedding_cache_hit_ratio` | `provider` | Cache hits divided by hits plus misses in the bounded sample. |
 
 ## Duration quantiles
 
@@ -38,10 +41,11 @@ completed provider chat records with observed stages enter these quantiles.
 
 Duration families use nearest rank over bounded samples from the preceding
 seven days. These are bounded approximate gauges, not complete
-histograms or full-traffic Prometheus distributions. Retrieval stages do not
-separate SQL dense scanning from lexical selection within the candidate phase;
-queue-wait and lock-wait durations, plus indexing-embedding distributions,
-remain separate work.
+histograms or full-traffic Prometheus distributions. Embedding batch metrics
+cover only background indexing and generation builds; query embedding remains
+part of retrieval-stage telemetry and adds no second usage write. Retrieval
+stages do not separate SQL dense scanning from lexical selection within the
+candidate phase; queue-age and lock-wait durations remain separate work.
 
 ## Privacy and availability
 
@@ -49,7 +53,10 @@ EVA does not label metrics with account IDs, file names or paths, query text,
 chat content, provider URLs, model credentials or vector values. Vector-outbox
 metrics use fixed operation/state labels. The families are collected on demand.
 Retrieval stage values share the existing successful chat usage write; scraping
-adds no write to indexing or retrieval.
+adds no write to indexing or retrieval. Background embedding batches add one
+usage row per provider batch with generic model value `embedding` and no document
+identifiers or content. These rows use the existing 365-day retention and
+account-erasure cleanup.
 
 Nextcloud controls access to `/metrics` using its `openmetrics_allowed_clients`
 system setting. Keep that allowlist restricted to the monitoring network. A
@@ -64,7 +71,7 @@ durations, never prompt or answer content.
 
 ## Remaining observability work
 
-The PDF's full target still needs embedding-provider percentiles, queue-age
-histograms, distributed trace propagation beyond one chat request, and
+The PDF's full target still needs queue-age histograms, distributed trace
+propagation beyond one chat request, and
 representative quality, sampling and load evidence. Keep request logging
 content-free and validate performance claims on frozen corpora.

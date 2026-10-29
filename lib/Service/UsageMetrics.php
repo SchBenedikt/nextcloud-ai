@@ -139,6 +139,42 @@ class UsageMetrics {
 		}
 	}
 
+	/**
+	 * Record one embedding batch without storing its text, model name or profile
+	 * ID. Only the two supported provider classes are persisted for global stats.
+	 */
+	public function recordEmbeddingBatch(
+		?string $userId,
+		string $provider,
+		int $durationMs,
+		int $cacheHits,
+		int $cacheMisses,
+		bool $ok,
+	): void {
+		if ($userId === null || $userId === '') return;
+		if (!in_array($provider, ['ollama', 'openai_compatible'], true)) $provider = 'openai_compatible';
+		try {
+			$qb = $this->db->getQueryBuilder();
+			$qb->insert('eva_ai_usage')->values([
+				'user_id' => $qb->createNamedParameter($userId),
+				'created_at' => $qb->createNamedParameter(time(), IQueryBuilder::PARAM_INT),
+				'provider' => $qb->createNamedParameter($provider),
+				'model' => $qb->createNamedParameter('embedding'),
+				'operation' => $qb->createNamedParameter($ok ? 'embedding' : 'embedding_error'),
+				'input_tokens' => $qb->createNamedParameter(0, IQueryBuilder::PARAM_INT),
+				'output_tokens' => $qb->createNamedParameter(0, IQueryBuilder::PARAM_INT),
+				'total_tokens' => $qb->createNamedParameter(0, IQueryBuilder::PARAM_INT),
+				'estimated' => $qb->createNamedParameter(0, IQueryBuilder::PARAM_INT),
+				'duration_ms' => $qb->createNamedParameter(max(0, $durationMs), IQueryBuilder::PARAM_INT),
+				'embedding_cache_hits' => $qb->createNamedParameter(max(0, $cacheHits), IQueryBuilder::PARAM_INT),
+				'embedding_cache_misses' => $qb->createNamedParameter(max(0, $cacheMisses), IQueryBuilder::PARAM_INT),
+			])->executeStatement();
+		} catch (\Throwable $e) {
+			// Observability must never fail indexing or a chat request.
+			$this->logger->debug('eva_ai embedding metric could not be stored', ['exception' => $e->getMessage()]);
+		}
+	}
+
 	/** @return array{totals:array<string,int>,by_model:list<array<string,mixed>>,daily:list<array<string,mixed>>} */
 	public function summaryForUser(string $userId, int $days = 30, array $pricing = []): array {
 		$since = time() - max(1, min(365, $days)) * 86400;
