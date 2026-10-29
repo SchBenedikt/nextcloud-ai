@@ -2,6 +2,11 @@
 
 ## [Unreleased]
 
+### Propagate chat correlation to configured services (1.18.84)
+
+- Send W3C `traceparent` headers with model inference, embeddings and optional Qdrant operations, and include request span IDs in EVA debug events.
+- Keep the header unsampled and baggage-free; this adds correlation context without claiming OpenTelemetry spans or an exporter.
+
 ### Ship the serialized provider settings fix (1.18.83)
 
 - Regenerate the committed frontend bundles so provider selection uses the serialized settings writer in installed Nextcloud deployments.

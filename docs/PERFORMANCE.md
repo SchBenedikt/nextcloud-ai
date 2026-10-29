@@ -114,13 +114,18 @@ Nextcloud's logger. It records the fixed retrieval backend (`sql_legacy`,
 `ranking_ms`. Durations use the monotonic clock and are in milliseconds.
 
 These remain per-request detail logs. Normal, streamed, and queued chat work receives a random, short-lived
-`trace_id` that is attached to the chat total, retrieval stages, provider duration,
-and slow-tool duration events. The ID is held only in the request context; queued
-work keeps it only until completion or expiry. No prompts, account identifiers,
-paths, chunk contents, vectors, or provider response bodies are part of these
-telemetry events. Debug events follow the Nextcloud logging level and retention
-policy; no special log level is enabled by the app. Logging failure is ignored so
-it cannot mask a successful result or the original error.
+`trace_id` and request `span_id`, attached to the chat total, retrieval stages,
+provider duration, and slow-tool duration events. Configured model providers
+and optional Qdrant receive a W3C `traceparent` HTTP header on inference,
+embedding and vector operations. The header carries correlation IDs only; its
+sampled flag is clear, and EVA sends no baggage. Request bodies and chat
+responses are unchanged. These IDs provide correlation context without an
+OpenTelemetry SDK, exporter or distinct child spans. Queued work keeps the trace
+only until completion or expiry. No prompts, account identifiers, paths, chunk
+contents, vectors, or provider response bodies are part of these telemetry
+events. Debug events follow the Nextcloud logging level and retention policy; no
+special log level is enabled by the app. Logging failure is ignored so it
+cannot mask a successful result or the original error.
 
 Version 1.18.72 also stores reached retrieval stages on the existing usage row
 for a successful provider chat completion. Nextcloud OpenMetrics exports

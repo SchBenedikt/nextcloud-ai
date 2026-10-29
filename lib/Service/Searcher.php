@@ -75,7 +75,11 @@ class Searcher {
             $measurements['total_ms'] = (hrtime(true) - $started) / 1_000_000;
             $measurements['failed'] = $failed;
             $traceId ??= $this->traceContext?->id();
-            if ($traceId !== null && preg_match('/^[a-f0-9]{32}$/D', $traceId) === 1) $measurements['trace_id'] = $traceId;
+            if ($traceId !== null && preg_match('/^[a-f0-9]{32}$/D', $traceId) === 1) {
+                $measurements['trace_id'] = $traceId;
+                $spanId = $this->traceContext?->spanId();
+                if ($spanId !== null) $measurements['span_id'] = $spanId;
+            }
             if ($traceId !== null && preg_match('/^[a-f0-9]{32}$/D', $traceId) === 1) {
                 $this->traceContext?->recordRetrievalMeasurements($traceId, $measurements);
             }

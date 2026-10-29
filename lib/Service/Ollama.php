@@ -84,18 +84,20 @@ class Ollama implements EmbeddingProvider {
         private EmbeddingCache $embeddingCache,
         private ?Groq $groq = null,
         private ?UsageMetrics $usageMetrics = null,
-        private ?ProviderCredentials $providerCredentials = null
+        private ?ProviderCredentials $providerCredentials = null,
+        private ?TraceContext $traceContext = null
     ) {
     }
 
     private function groqClient(): Groq {
         $credentials = $this->providerCredentials ?? \OCP\Server::get(ProviderCredentials::class);
-        return $this->groq ??= new Groq($this->config, $this->clientService, $credentials, $this->usageMetrics, $this->logger);
+        return $this->groq ??= new Groq($this->config, $this->clientService, $credentials, $this->usageMetrics, $this->logger, $this->traceContext);
     }
     private function openAiCompatible(): OpenAICompatible {
         $credentials = $this->providerCredentials ?? \OCP\Server::get(ProviderCredentials::class);
-        return new OpenAICompatible($this->config, $this->clientService, $credentials, $this->usageMetrics, $this->logger, $this->config->providerEndpointPolicy());
+        return new OpenAICompatible($this->config, $this->clientService, $credentials, $this->usageMetrics, $this->logger, $this->config->providerEndpointPolicy(), $this->traceContext);
     }
+    private function traceHeaders(): array { return $this->traceContext?->outboundHeaders() ?? []; }
     public function groqInfo(): array { return $this->groqClient()->info(); }
     public function saveGroqKey(string $key): void { $this->groqClient()->saveKey($key); }
     public function checkGroq(): array { return $this->groqClient()->check(); }
@@ -763,6 +765,7 @@ class Ollama implements EmbeddingProvider {
         try {
             $this->lastEmbeddingStats['ollama_requests']++;
             $r = $this->client()->post($this->base() . '/api/embed', [
+                'headers' => $this->traceHeaders(),
                 'json' => $payload,
                 'timeout' => $this->embedTimeout(count($texts)),
                 'read_timeout' => self::EMBED_READ_TIMEOUT,
@@ -883,6 +886,7 @@ class Ollama implements EmbeddingProvider {
                     $payload['keep_alive'] = $keepAlive;
                 }
                 $r = $this->client()->post($this->base() . '/api/embeddings', [
+                    'headers' => $this->traceHeaders(),
                     'json' => $payload,
                     'timeout' => $this->embedTimeout(1),
                     'read_timeout' => self::EMBED_READ_TIMEOUT,
@@ -1021,6 +1025,7 @@ class Ollama implements EmbeddingProvider {
         $startedAt = microtime(true);
         try {
             $r = $this->client()->post($this->base() . '/api/chat', [
+                'headers' => $this->traceHeaders(),
                 'json' => $payload,
                 'timeout' => max(1, $totalTimeout),
                 // Bound idle reads too: an unresponsive endpoint releases the
@@ -1178,6 +1183,7 @@ class Ollama implements EmbeddingProvider {
                 return;
             }
             $r = $this->client()->post($this->base() . '/api/chat', [
+                'headers' => $this->traceHeaders(),
                 'json' => $payload,
                 'timeout' => max(1, $timeout ?? self::TIMEOUT),
                 // Bound idle reads so disconnect checks can release the worker

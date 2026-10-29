@@ -82,6 +82,11 @@ durations, never prompt or answer content.
 
 ## Remaining observability work
 
-The PDF's full target still needs distributed trace propagation beyond one
-chat request, plus representative quality, sampling and load evidence. Keep
-request logging content-free and validate performance claims on frozen corpora.
+Model-provider and optional Qdrant HTTP operations now receive a W3C
+`traceparent` header tied to the active EVA chat request. EVA logs the same
+trace and request-span IDs without prompts, answers or baggage. The trace flag
+is unsampled: this is correlation context, not OpenTelemetry instrumentation.
+An SDK/exporter, distinct child spans, database and lock spans, and
+representative end-to-end trace evidence remain open. The PDF's representative
+quality, sampling and load evidence is also still required. Keep request
+logging content-free and validate performance claims on frozen corpora.
