@@ -37,7 +37,7 @@ lib/
   AppInfo/          Application bootstrap (services, listeners, providers)
   BackgroundJob/    IndexJob — periodic background indexing
   Command/          occ commands (Index, Reset, Mounts, Tool, TalkSetup)
-  Controller/       PageController (UI), ApiController (REST API)
+  Controller/       PageController (UI), domain OCS controllers (REST API)
   Search/           Native Unified Search provider for the EVA file index
   Db/               Entities + mappers (Document, Chunk)
   Listener/         TalkBotListener — reacts to Talk BotInvokeEvent
@@ -171,6 +171,12 @@ tools are allowed in each:
 | `taskprocessing_confirmed` | Native Assistant confirmation phase | ✅ only the confirmed action |
 
 ## API routes (`appinfo/routes.php`)
+
+`DocumentController` owns user-scoped inspection of the SQL document index. It
+preserves the endpoint URLs, DTO validation, ETags, chunk pagination, and live
+VFS permission checks while depending only on document/chunk mappers and the
+file-access service. This keeps document inspection out of the cross-domain
+`ApiController`.
 
 - `GET  /`  `/app`  `/standalone` — page routes
 - `GET  /api/status` — app + Ollama status

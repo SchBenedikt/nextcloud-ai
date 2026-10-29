@@ -24,10 +24,10 @@ final class DocumentChunksPaginationTest extends TestCase {
     }
 
     public function testDocumentChunksEndpointClampsLimitAndPassesOffset(): void {
-        $controller = (string)file_get_contents(__DIR__ . '/../lib/Controller/ApiController.php');
+        $controller = (string)file_get_contents(__DIR__ . '/../lib/Controller/DocumentController.php');
         $start = strpos($controller, 'public function documentChunks(): DataResponse');
         self::assertNotFalse($start);
-        $end = strpos($controller, 'public function chat(): DataResponse', $start);
+        $end = strpos($controller, 'private function requireUser(): ?string', $start);
         self::assertNotFalse($end);
         $method = substr($controller, $start, $end - $start);
 
@@ -36,7 +36,7 @@ final class DocumentChunksPaginationTest extends TestCase {
         self::assertStringContainsString("'hasMore'", $method);
         self::assertStringContainsString("'nextOffset'", $method);
         self::assertStringContainsString('DocumentChunksQuery::fromArray', $method);
-        self::assertStringContainsString('$this->chunkMapper->findByDocument($id, $query->limit, $query->offset)', $method);
+        self::assertStringContainsString('$this->chunks->findByDocument($id, $query->limit, $query->offset)', $method);
         $query = (string)file_get_contents(__DIR__ . '/../lib/Dto/DocumentChunksQuery.php');
         self::assertStringContainsString('max(1, min(500, self::integerValue($input, \'limit\', 200)))', $query);
         self::assertStringContainsString('max(0, self::integerValue($input, \'offset\', 0))', $query);

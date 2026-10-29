@@ -51,7 +51,7 @@ final class FrontendContractTest extends TestCase {
         self::assertStringContainsString('hasMore.value = incoming.length === pageSize', $documents);
         self::assertStringContainsString('loadMore, loadChunks, loadMoreChunks, loadStatus', $documents);
 
-        $controller = (string)file_get_contents(__DIR__ . '/../lib/Controller/ApiController.php');
+        $controller = (string)file_get_contents(__DIR__ . '/../lib/Controller/DocumentController.php');
         // The document summary must come from full-index aggregates (computed
         // with the same search filter), never from the loaded page (Issue #74).
         self::assertStringContainsString("'total' => \$aggregates['count']", $controller);
@@ -223,10 +223,11 @@ final class FrontendContractTest extends TestCase {
         self::assertStringContainsString('KnowledgeInitializer $knowledgeInitializer', $controller);
         self::assertStringContainsString('ensureInitialized($user)', $controller);
         self::assertStringContainsString('knowledge_initialized', (string)file_get_contents(__DIR__ . '/../lib/Service/KnowledgeInitializer.php'));
-        self::assertStringContainsString('private function requestParam', $controller);
-        self::assertStringContainsString('private function requestBody', $controller);
-        self::assertStringContainsString('$this->request->getParam(', $controller);
-        self::assertStringNotContainsString('private function param', $controller);
+        $requestParameters = (string)file_get_contents(__DIR__ . '/../lib/Controller/Traits/ReadsRequestParameters.php');
+        self::assertStringContainsString('private function requestParam', $requestParameters);
+        self::assertStringContainsString('private function requestBody', $requestParameters);
+        self::assertStringContainsString('$this->request->getParam(', $requestParameters);
+        self::assertStringNotContainsString('private function param', $requestParameters);
         self::assertStringNotContainsString('function jsonBody', $controller);
         self::assertStringContainsString('deleteAll(string $user)', (string)file_get_contents(__DIR__ . '/../lib/Service/ChatStore.php'));
         self::assertStringContainsString('public function setMeta(string $user, string $id, array $meta): bool', (string)file_get_contents(__DIR__ . '/../lib/Service/ChatStore.php'));
