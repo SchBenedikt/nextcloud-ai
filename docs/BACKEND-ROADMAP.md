@@ -386,6 +386,10 @@ need incremental extraction. Version 1.20.10 moves connector and plugin API
 Nextcloud filesystem services. Version 1.20.13 moves selected-file chat into
 `FileContextController`. Version 1.20.14 moves indexing admission and lifecycle
 into `IndexController`; main chat/history and settings remain to be extracted.
+Version 1.20.38 moves chat listing, keyset/offset paging, creation, detail
+reads and deletion into `ChatHistoryController` without changing route paths
+or response behavior. Chat generation/streaming, settings and remaining chat
+mutations still need separate domain extractions.
 
 ### Stage 14 portability slice: Activity and Mail SQL (1.18.60)
 

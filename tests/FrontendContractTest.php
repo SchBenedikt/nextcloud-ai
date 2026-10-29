@@ -180,8 +180,8 @@ final class FrontendContractTest extends TestCase {
         self::assertStringContainsString("api('DELETE', 'chats')", $settings);
         self::assertStringContainsString("new CustomEvent('eva-ai:chats-cleared')", $settings);
         self::assertStringContainsString("'eva-ai:chats-cleared'", $app);
-        self::assertStringContainsString('api#deleteAllChats', (string)file_get_contents(__DIR__ . '/../appinfo/routes.php'));
-        self::assertStringContainsString('public function deleteAllChats', (string)file_get_contents(__DIR__ . '/../lib/Controller/ApiController.php'));
+        self::assertStringContainsString('chatHistory#deleteAllChats', (string)file_get_contents(__DIR__ . '/../appinfo/routes.php'));
+        self::assertStringContainsString('public function deleteAllChats', (string)file_get_contents(__DIR__ . '/../lib/Controller/ChatHistoryController.php'));
         self::assertStringContainsString("public function models(): DataResponse", (string)file_get_contents(__DIR__ . '/../lib/Controller/ApiController.php'));
         self::assertStringContainsString('public function listModels(?string $baseUrl = null): array', (string)file_get_contents(__DIR__ . '/../lib/Service/Ollama.php'));
         self::assertStringContainsString('availableModels', $settings);
