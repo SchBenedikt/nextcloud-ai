@@ -4,8 +4,8 @@ declare(strict_types=1);
 
 namespace OCA\EvaAi\Controller;
 
+use OCA\EvaAi\Controller\Traits\ReadsRequestParameters;
 use OCA\EvaAi\Db\DocumentMapper;
-use OCA\EvaAi\Db\ChunkMapper;
 use OCA\EvaAi\Service\AppConfig;
 use OCA\EvaAi\Service\ActionExecutor;
 use OCA\EvaAi\Service\ChatStore;
@@ -31,8 +31,6 @@ use OCA\EvaAi\Dto\KnowledgeContentSaveResponse;
 use OCA\EvaAi\Dto\FileContextStatusResponse;
 use OCA\EvaAi\Dto\ConfirmToolRequest;
 use OCA\EvaAi\Dto\ChatTemplateImportRequest;
-use OCA\EvaAi\Dto\DocumentsQuery;
-use OCA\EvaAi\Dto\DocumentChunksQuery;
 use OCA\EvaAi\Dto\ChatListQuery;
 use OCA\EvaAi\Dto\ChatListResponse;
 use OCA\EvaAi\Dto\BackgroundChatIdRequest;
@@ -53,6 +51,8 @@ use OCP\Lock\ILockingProvider;
 use Psr\Log\LoggerInterface;
 
 class ApiController extends OCSController {
+    use ReadsRequestParameters;
+
     private const MAX_MESSAGE_LENGTH = 50000;
     public function __construct(
         string $appName,
@@ -64,7 +64,6 @@ class ApiController extends OCSController {
         private Indexer $indexer,
         private Ollama $ollama,
         private DocumentMapper $documentMapper,
-        private ChunkMapper $chunkMapper,
         private IJobList $jobList,
         private ILockingProvider $lockingProvider,
         private ChatStore $chatStore,
@@ -86,23 +85,6 @@ class ApiController extends OCSController {
         $this->config->setUserId($this->userId);
     }
 
-    /**
-     * Read JSON bodies once without shadowing framework/controller parameter APIs.
-     * IRequest exposes query/form parameters directly, while JSON bodies need
-     * this small fallback on the supported Nextcloud versions.
-     */
-    private ?array $bodyParams = null;
-
-    private function requestBody(): array {
-        if ($this->bodyParams !== null) {
-            return $this->bodyParams;
-        }
-        $raw = (string)file_get_contents('php://input');
-        $decoded = $raw !== '' ? json_decode($raw, true) : null;
-        $this->bodyParams = is_array($decoded) ? $decoded : [];
-        return $this->bodyParams;
-    }
-
     /** Release the PHP session lock before a long model/tool request starts. */
     private function releaseSessionLock(): void {
         try {
@@ -110,15 +92,6 @@ class ApiController extends OCSController {
         } catch (\Throwable) {
             // CLI/test surfaces may not have an active session.
         }
-    }
-
-    private function requestParam(string $key, mixed $default = null): mixed {
-        $value = $this->request->getParam($key, null);
-        if ($value !== null) {
-            return $value;
-        }
-        $body = $this->requestBody();
-        return array_key_exists($key, $body) ? $body[$key] : $default;
     }
 
     private function messageTooLong(string $message): bool {
@@ -672,104 +645,6 @@ class ApiController extends OCSController {
         // job and the indexer need the same one; this call is only the HTTP
         // entry point into it.
         $this->config->recoverAbandonedRun();
-    }
-
-    #[NoAdminRequired]
-    public function documents(): DataResponse {
-        $user = $this->requireUser();
-        if ($user === null) {
-            return new ErrorDataResponse(['error' => 'Not logged in'], 401);
-        }
-        try {
-            $query = DocumentsQuery::fromArray([
-                'search' => $this->requestParam('search'),
-                'limit' => $this->requestParam('limit'),
-                'offset' => $this->requestParam('offset'),
-                'type' => $this->requestParam('type'),
-                'folder' => $this->requestParam('folder'),
-                'dateFrom' => $this->requestParam('dateFrom'),
-                'dateTo' => $this->requestParam('dateTo'),
-                'sizeMin' => $this->requestParam('sizeMin'),
-                'sizeMax' => $this->requestParam('sizeMax'),
-                'sort' => $this->requestParam('sort'),
-                'dir' => $this->requestParam('dir'),
-            ]);
-        } catch (\InvalidArgumentException $e) {
-            return new ErrorDataResponse(['error' => $e->getMessage()], 400);
-        }
-        $docs = $this->documentMapper->findByUser($user, $query->search, $query->limit, $query->offset, $query->filters, $query->sort, $query->direction);
-        $out = array_map(static function ($d) {
-            return [
-                'id' => (int)$d->getId(),
-                'path' => $d->getPath(),
-                'name' => $d->getName(),
-                'mime' => $d->getMime(),
-                'size' => (int)$d->getSize(),
-                'chunks' => (int)$d->getChunkCount(),
-                'indexedAt' => $d->getIndexedAt(),
-            ];
-        }, $docs);
-        // Totals describe the whole filtered index, independent of the page
-        // that was requested (Issue #74).
-        $aggregates = $this->documentMapper->aggregateForUser($user, $query->search, $query->filters);
-        $payload = [
-            'documents' => $out,
-            'total' => $aggregates['count'],
-            'totalChunks' => $aggregates['chunks'],
-            'totalSize' => $aggregates['size'],
-        ];
-        $etag = '"' . hash('sha256', (string)json_encode($payload, JSON_UNESCAPED_SLASHES)) . '"';
-        $headers = ['Cache-Control' => 'private, no-cache', 'ETag' => $etag];
-        $ifNoneMatch = trim((string)$this->request->getHeader('If-None-Match'));
-        if ($ifNoneMatch !== '' && hash_equals($etag, $ifNoneMatch)) {
-            return new ErrorDataResponse([], 304, $headers);
-        }
-        return new ErrorDataResponse($payload, 200, $headers);
-    }
-
-    #[NoAdminRequired]
-    public function documentChunks(): DataResponse {
-        $user = $this->requireUser();
-        if ($user === null) {
-            return new ErrorDataResponse(['error' => 'Not logged in'], 401);
-        }
-        try {
-            $query = DocumentChunksQuery::fromArray([
-                'id' => $this->requestParam('id'),
-                'limit' => $this->requestParam('limit'),
-                'offset' => $this->requestParam('offset'),
-            ]);
-        } catch (\InvalidArgumentException $e) {
-            return new ErrorDataResponse(['error' => $e->getMessage()], 400);
-        }
-        $id = $query->id;
-        $doc = $id > 0 ? $this->documentMapper->findById($id) : null;
-        if ($doc === null || $doc->getUserId() !== $user
-            || !$this->fileContextChat->fileAccessible($user, (int)$doc->getFileId())) {
-            return new ErrorDataResponse(['error' => 'Document not found'], 404);
-        }
-        // Bounded pagination (Issues #91/#140): a huge document must not be
-        // transferred all at once. The client streams pages of LIMIT chunks
-        // until it reached document.chunks.
-        $rows = $this->chunkMapper->findByDocument($id, $query->limit, $query->offset);
-        $totalChunks = (int)$doc->getChunkCount();
-        $nextOffset = $query->offset + count($rows);
-        return new ErrorDataResponse([
-            'document' => [
-                'id' => (int)$doc->getId(),
-                'path' => $doc->getPath(),
-                'chunks' => $totalChunks,
-            ],
-            'offset' => $query->offset,
-            'limit' => $query->limit,
-            'hasMore' => $nextOffset < $totalChunks,
-            'nextOffset' => $nextOffset,
-            'chunks' => array_map(static fn($c) => [
-                'index' => (int)$c['chunk_index'],
-                'content' => (string)$c['content'],
-                'provenance' => json_decode((string)($c['provenance'] ?? '{}'), true) ?: [],
-            ], $rows),
-        ], 200, ['Cache-Control' => 'private, max-age=300']);
     }
 
     #[NoAdminRequired]

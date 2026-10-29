@@ -374,7 +374,10 @@ replaced by a successful build or an adapter unit test.
   serialization, restore/delete drills, portability and rollout evidence remain
   open. No Qdrant production deployment or
   production data migration has occurred. Validation and production rollout
-  remain separately recorded.
+  remain separately recorded. Version 1.20.9 starts the controller split by
+  moving user-scoped document inspection to a focused OCS controller with the
+  same URLs and permission checks; the remaining API controller domains still
+  need incremental extraction.
 
 ### Stage 14 portability slice: Activity and Mail SQL (1.18.60)
 

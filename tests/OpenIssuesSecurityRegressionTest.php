@@ -166,11 +166,12 @@ final class OpenIssuesSecurityRegressionTest extends TestCase {
         self::assertStringContainsString("'waitForCancellation'", $controller);
         self::assertStringContainsString('$waitForCancellation', $requestJob);
         self::assertStringContainsString('sleep(1)', $requestJob);
-        self::assertStringContainsString('private function requestParam', $controller);
-        self::assertStringContainsString('private function requestBody', $controller);
-        self::assertStringContainsString('$this->request->getParam(', $controller);
-        self::assertStringNotContainsString('private function param', $controller);
-        self::assertStringNotContainsString('function jsonBody', $controller);
+        $requestParameters = (string)file_get_contents(__DIR__ . '/../lib/Controller/Traits/ReadsRequestParameters.php');
+        self::assertStringContainsString('private function requestParam', $requestParameters);
+        self::assertStringContainsString('private function requestBody', $requestParameters);
+        self::assertStringContainsString('$this->request->getParam(', $requestParameters);
+        self::assertStringNotContainsString('private function param', $requestParameters);
+        self::assertStringNotContainsString('function jsonBody', $requestParameters);
         // The stale-run rule lives in exactly one place and every entry point
         // delegates to it. It used to be written out four times with slightly
         // different details, which is how a run left behind by a dead worker

@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Separate SQL index inspection endpoints (1.20.9)
+
+- Move document and chunk inspection into a focused user-scoped OCS controller while preserving endpoint URLs, ETags, pagination, and live file-access checks.
+
 ### Keep optional Qdrant settings reactive (1.20.8)
 
 - Expose the approved private-origin field to the settings template so administrators can edit and save private Qdrant endpoints without a broken Vue binding.
