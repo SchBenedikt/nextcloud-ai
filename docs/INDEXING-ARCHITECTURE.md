@@ -54,8 +54,9 @@ portability path; optional ANN storage is the scale path.
 The current tree has durable generation metadata, a bounded build,
 verification, an explicit shadow probe and a guarded SQL retrieval path for
 enrolled users. Normal indexing continues writing legacy chunks while the new
-generation backfill and source mutations run in the background. These jobs do
-not delay the index response or send content to Qdrant. Specifically:
+generation backfill and source mutations run in the background. They do not
+delay the index response. SQL generation builds do not send content to Qdrant;
+the optional remote build requires separate administrator consent. Specifically:
 
 - `VectorGeneration` accepts `sql` and `qdrant`; SQL generations bind to a
   deterministic local target and write directly to Nextcloud SQL.
@@ -75,8 +76,9 @@ not delay the index response or send content to Qdrant. Specifically:
   this bootstrap path.
 - SQL verification is queued for enrolled users after a staged build. Failed
   or cancelled verification remains explicit. A current successful
-  verification can activate the SQL generation automatically; this path does
-  not activate Qdrant generations.
+  verification can activate the SQL generation automatically. A fully
+  verified Qdrant generation can be activated only by an explicit administrator
+  action, with a direct rollback to legacy SQL.
 - Canonical creates and metadata changes now write coalesced mutation intent
   for an active generation in the same SQL transaction. Deletes cancel pending
   upserts. A bounded background worker re-embeds with the generation's pinned
@@ -86,6 +88,11 @@ not delay the index response or send content to Qdrant. Specifically:
 - Guarded activation and generation-aware SQL reads now serve explicitly
   enrolled users. The old generation is retired atomically while its rows
   remain available for recovery.
+- An administrator can optionally canary a verified Qdrant generation for an
+  enrolled account. Every remote query enforces the tenant, generation and
+  folder-scope filters; search hydrates only exact-revision, source-current
+  rows from SQL. A remote error or queued source mutation falls back to legacy
+  SQL. This canary is opt-in and has an explicit rollback action.
 - SQL generation reads still deserialize JSON vectors and perform PHP cosine
   ranking, including full-index scans on large indexes. Those scans now use
   stable keyset pages instead of database offsets; the full vector scan still

@@ -16,10 +16,12 @@ class GenerationBuildService {
         $row=$this->builds->find($user,$id);
         $result=$row===null?['status'=>'not_started','documents_done'=>0,'total_documents'=>0,'heartbeat_at'=>0,'error_code'=>null]:
             array_intersect_key($row,array_flip(['status','documents_done','total_documents','heartbeat_at','error_code']));
-        $serving=$this->generations->activeGenerationId($user)===$id&&$this->generations->activeSqlForUser($user)?->id===$id;
+        $activeGeneration=$this->generations->activeGenerationForUser($user);
+        $serving=$activeGeneration?->id===$id;
+        $retrievalBackend=$activeGeneration===null?'sql_legacy':($activeGeneration->backend==='qdrant'?'qdrant_generation':'sql_generation');
         return $result+['backend'=>$generation->backend,'staged_chunks'=>$this->builds->stagedCount($id),'can_start'=>$target!==null && $this->builds->available($user,$id,$target),
             'retrieval_changed'=>false,'verified'=>$this->verifications?->certificateCurrent($user,$id)??false,
-            'active'=>$serving,'retrieval_backend'=>$serving?'sql_generation':'sql_legacy'];
+            'active'=>$serving,'retrieval_backend'=>$retrievalBackend];
     }
 
     public function control(string $user,string $id,string $action,bool $confirmed=false): array {

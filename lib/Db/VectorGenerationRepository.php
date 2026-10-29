@@ -67,6 +67,17 @@ class VectorGenerationRepository {
 
     /** The user's enrolled, active local SQL generation, if the primary pointer is current. */
     public function activeSqlForUser(string $userId): ?VectorGeneration {
+        $generation=$this->activeGenerationForUser($userId);
+        return $generation?->backend==='sql'?$generation:null;
+    }
+
+    public function activeQdrantForUser(string $userId): ?VectorGeneration {
+        $generation=$this->activeGenerationForUser($userId);
+        return $generation?->backend==='qdrant'?$generation:null;
+    }
+
+    /** The explicitly selected local or remote primary generation with no unfinished source changes. */
+    public function activeGenerationForUser(string $userId): ?VectorGeneration {
         $q=$this->db->getQueryBuilder();
         $q->select('g.*')->from('eva_ai_vec_state','s')
             ->innerJoin('s','eva_ai_vec_generations','g',$q->expr()->andX(
@@ -78,8 +89,9 @@ class VectorGenerationRepository {
                 $q->expr()->eq('m.generation_id','g.id'),$q->expr()->eq('m.user_id','g.user_id'),
                 $q->expr()->neq('m.status',$q->createNamedParameter('completed'))))
             ->where($q->expr()->eq('s.user_id',$q->createNamedParameter($userId)))
-            ->andWhere($q->expr()->eq('s.retrieval_backend',$q->createNamedParameter('sql_generation')))
-            ->andWhere($q->expr()->eq('g.backend',$q->createNamedParameter('sql')))
+            ->andWhere($q->expr()->orX(
+                $q->expr()->andX($q->expr()->eq('s.retrieval_backend',$q->createNamedParameter('sql_generation')),$q->expr()->eq('g.backend',$q->createNamedParameter('sql'))),
+                $q->expr()->andX($q->expr()->eq('s.retrieval_backend',$q->createNamedParameter('qdrant_generation')),$q->expr()->eq('g.backend',$q->createNamedParameter('qdrant')))))
             ->andWhere($q->expr()->eq('g.status',$q->createNamedParameter('active')))
             ->andWhere($q->expr()->isNull('m.id'))->setMaxResults(1);
         $r=$q->executeQuery();try{$row=$r->fetch();}finally{$r->closeCursor();}
@@ -96,6 +108,14 @@ class VectorGenerationRepository {
 
     /** Number of enrolled accounts currently reading their local SQL generation. */
     public function activeSqlCount(): int {
+        return $this->activeBackendCount('sql_generation','sql');
+    }
+
+    public function activeQdrantCount(): int {
+        return $this->activeBackendCount('qdrant_generation','qdrant');
+    }
+
+    private function activeBackendCount(string $retrievalBackend,string $generationBackend): int {
         $q=$this->db->getQueryBuilder();
         $q->selectAlias($q->createFunction('COUNT(DISTINCT s.user_id)'),'total')->from('eva_ai_vec_state','s')
             ->innerJoin('s','eva_ai_vec_generations','g',$q->expr()->andX(
@@ -103,10 +123,21 @@ class VectorGenerationRepository {
             ->innerJoin('s','preferences','p',$q->expr()->andX(
                 $q->expr()->eq('p.userid','s.user_id'),$q->expr()->eq('p.appid',$q->createNamedParameter('eva_ai')),
                 $q->expr()->eq('p.configkey',$q->createNamedParameter('index_enrolled')),$q->expr()->eq('p.configvalue',$q->createNamedParameter('1'))))
-            ->where($q->expr()->eq('s.retrieval_backend',$q->createNamedParameter('sql_generation')))
-            ->andWhere($q->expr()->eq('g.backend',$q->createNamedParameter('sql')))
-            ->andWhere($q->expr()->eq('g.status',$q->createNamedParameter('active')));
+            ->leftJoin('s','eva_ai_vec_mutations','m',$q->expr()->andX(
+                $q->expr()->eq('m.generation_id','g.id'),$q->expr()->eq('m.user_id','g.user_id'),
+                $q->expr()->neq('m.status',$q->createNamedParameter('completed'))))
+            ->where($q->expr()->eq('s.retrieval_backend',$q->createNamedParameter($retrievalBackend)))
+            ->andWhere($q->expr()->eq('g.backend',$q->createNamedParameter($generationBackend)))
+            ->andWhere($q->expr()->eq('g.status',$q->createNamedParameter('active')))
+            ->andWhere($q->expr()->isNull('m.id'));
         $r=$q->executeQuery();try{return (int)$r->fetchOne();}finally{$r->closeCursor();}
+    }
+
+    public function retrievalBackendForUser(string $userId): string {
+        $q=$this->db->getQueryBuilder();$q->select('retrieval_backend')->from('eva_ai_vec_state')
+            ->where($q->expr()->eq('user_id',$q->createNamedParameter($userId)));
+        $r=$q->executeQuery();try{$backend=$r->fetchOne();}finally{$r->closeCursor();}
+        return is_string($backend)&&in_array($backend,['sql_legacy','sql_generation','qdrant_generation'],true)?$backend:'sql_legacy';
     }
 
     /** Pending or failed source mutations make an active snapshot incomplete. */

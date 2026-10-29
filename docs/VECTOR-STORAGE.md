@@ -63,9 +63,12 @@ and erasure always bind user ownership. Listings use at most 50 rows and an ID
 keyset cursor. Generation identity is immutable; changing a model, endpoint,
 dimension or chunk configuration requires a new generation.
 
-There is deliberately no activation command yet. Creating metadata cannot skip
-backfill verification, tenant checks, outbox delivery, measured shadow comparison
-or rollback preparation. The complete migration requirements are tracked in
+SQL generations activate automatically only after current verification and
+source-mutation checks. Qdrant activation is an explicit administrator canary
+action with tenant/scope-filtered search, exact-revision SQL hydration, SQL
+fallback and a one-step rollback. Creating metadata alone cannot skip
+verification, tenant checks, or completed point delivery. Production shadow
+comparison, soak and rollback evidence remain open in
 [BACKEND-ROADMAP.md](BACKEND-ROADMAP.md).
 
 Version 1.18.2 adds a lazy owner fence. Creation and binding serialize against

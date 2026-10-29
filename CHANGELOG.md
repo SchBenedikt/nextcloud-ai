@@ -2,6 +2,14 @@
 
 ## [Unreleased]
 
+### Optional Qdrant retrieval canary (1.18.25)
+
+- Allow an administrator to explicitly activate a fully verified Qdrant generation for an enrolled account, with a one-action rollback to built-in SQL.
+- Widen the persisted retrieval-mode column so the Qdrant canary survives Nextcloud upgrades on existing installations.
+- Query Qdrant with tenant, generation and folder-scope filters; hydrate only current, exact-revision chunks owned by that account from Nextcloud SQL.
+- Keep active source mutations on the legacy SQL fallback until their generation points are synchronized; remote search failures also fall back to SQL.
+- Keep Qdrant optional and opt-in. SQL generation retrieval remains the automatic default; full performance, shadow/soak and database-matrix evidence remain open.
+
 ### Keyset dense retrieval scans (1.18.24)
 
 - Replace large-index cosine scan offsets with stable chunk-ID keyset pages for both legacy SQL and active SQL generations.

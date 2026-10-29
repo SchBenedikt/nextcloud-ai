@@ -7,7 +7,7 @@
 		</NcNoteCard>
 		<template v-else-if="status">
 			<dl class="storage-status">
-				<div><dt>{{ $t('Search backend') }}</dt><dd>{{ status.active_sql_accounts > 0 ? $t('Built-in SQL generations for {count} enrolled accounts', { count: status.active_sql_accounts }) : $t('Built-in database (SQL)') }}</dd></div>
+				<div><dt>{{ $t('Search backend') }}</dt><dd>{{ status.active_qdrant_accounts > 0 ? $t('Optional Qdrant canary for {count} enrolled accounts', { count: status.active_qdrant_accounts }) : status.active_sql_accounts > 0 ? $t('Built-in SQL generations for {count} enrolled accounts', { count: status.active_sql_accounts }) : $t('Built-in database (SQL)') }}</dd></div>
 				<div><dt>{{ $t('Optional Qdrant connection') }}</dt><dd>{{ !status.connection.configured ? $t('Not configured') : status.connection.enabled ? $t('Configured · requests allowed') : $t('Configured · requests disabled') }}</dd></div>
 				<div><dt>{{ $t('Generation cleanup') }}</dt><dd>{{ status.erasure_worker_enabled ? $t('Enabled') : $t('Paused') }}</dd></div>
 				<div><dt>{{ $t('Chunk synchronization') }}</dt><dd>{{ status.point_worker_enabled ? $t('Enabled') : $t('Paused') }}</dd></div>
@@ -56,8 +56,9 @@ export default {
 			status.value = null
 			try {
 				const result = await api('GET', 'admin/vector-storage', null, { signal: controller.signal, retries: 0, timeout: 10000 })
-				if (result?.available !== true || !['sql_legacy', 'sql_generation'].includes(result.retrieval_backend)
+				if (result?.available !== true || !['sql_legacy', 'sql_generation', 'qdrant_generation'].includes(result.retrieval_backend)
 					|| !Number.isSafeInteger(result.active_sql_accounts) || result.active_sql_accounts < 0
+					|| !Number.isSafeInteger(result.active_qdrant_accounts) || result.active_qdrant_accounts < 0
 					|| !Number.isSafeInteger(result.staged_chunks) || result.staged_chunks < 0
 					|| result.chunk_sync_available !== true || !result.connection
 					|| typeof result.points_requested !== 'boolean' || typeof result.point_worker_enabled !== 'boolean'

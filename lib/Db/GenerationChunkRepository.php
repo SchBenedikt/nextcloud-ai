@@ -27,6 +27,44 @@ class GenerationChunkRepository {
         return $row ? VectorDocumentSnapshot::fromRow($row) : null;
     }
 
+    /** Hydrate tenant-owned SQL chunks at the exact remote point revisions. */
+    public function searchRows(string $userId, VectorGeneration $generation, array $hits): array {
+        if($generation->userId!==$userId||$generation->backend!=='qdrant'||!array_is_list($hits)||count($hits)>100)throw new VectorStoreException('invalid_search_response');
+        if($hits===[])return [];
+        $revisions=[];
+        foreach($hits as$hit){
+            if(!is_array($hit)||!is_int($hit['chunkId']??null)||$hit['chunkId']<1||isset($revisions[$hit['chunkId']])
+                ||!is_int($hit['revision']??null)||$hit['revision']<1||$hit['revision']>9007199254740991)throw new VectorStoreException('invalid_search_response');
+            $revisions[$hit['chunkId']]=$hit['revision'];
+        }
+        $rowsById=[];
+        foreach(array_chunk(array_keys($revisions),500)as$ids){
+            $q=$this->db->getQueryBuilder();
+            $q->select('c.id','c.document_id','c.chunk_index','c.content','c.embedding','c.provenance','c.content_hash','c.vector_revision','c.vector_state',
+                'd.user_id','d.file_id','d.path','d.name','d.source')
+                ->from('eva_ai_chunks','c')->innerJoin('c','eva_ai_documents','d',$q->expr()->eq('d.id','c.document_id'))
+                ->where($q->expr()->in('c.id',$q->createNamedParameter($ids,IQueryBuilder::PARAM_INT_ARRAY)))
+                ->andWhere($q->expr()->eq('c.vector_generation_id',$q->createNamedParameter($generation->id)))
+                ->andWhere($q->expr()->eq('c.vector_state',$q->createNamedParameter('delivered')))
+                ->andWhere($q->expr()->eq('d.user_id',$q->createNamedParameter($userId)));
+            $r=$q->executeQuery();try{$rows=$r->fetchAll();}finally{$r->closeCursor();}
+            foreach($rows as$row)$rowsById[(int)$row['id']]=$row;
+        }
+        $snapshots=[];$ordered=[];
+        foreach($hits as$hit){
+            $id=$hit['chunkId'];$row=$rowsById[$id]??null;
+            if($row===null||(int)$row['vector_revision']!==$hit['revision'])throw new VectorStoreException('search_stale_revision');
+            $documentId=(int)$row['document_id'];
+            $snapshot=$snapshots[$documentId]??=$this->snapshot($userId,$documentId);
+            $provenance=json_decode((string)$row['provenance'],true);
+            if($snapshot===null||!is_array($provenance)||!is_array($provenance['_eva_vector']??null)
+                ||!hash_equals($snapshot->stamp,(string)($provenance['_eva_vector']['document_stamp']??''))
+                ||!hash_equals(hash('sha256',(string)$row['content']),(string)$row['content_hash']))throw new VectorStoreException('search_stale_source');
+            $ordered[]=$row;
+        }
+        return $ordered;
+    }
+
     /** Source-row lock shared by chunk writes and zero-chunk build checkpoints. */
     public function lockSnapshot(VectorDocumentSnapshot $snapshot): void {
         if (!$this->db->inTransaction()) throw new \LogicException('Source locking requires the mutation transaction.');
