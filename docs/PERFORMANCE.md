@@ -22,9 +22,14 @@ once and counts only the query's exact Unicode word tokens. Previously each
 query term rescanned every candidate body with substring counting, so a query
 with several terms revisited the same text repeatedly and could match partial
 words. This lowers repeated text work and makes body term frequency match the
-query tokenizer. It does not remove the SQL `LIKE` candidate prefilter or the
-dense SQL scan; quality and latency still need measurement against a frozen
-corpus.
+query tokenizer. A portable SQL term-postings table now selects exact-token
+candidates by indexed SHA-256 term keys and supplies stored frequencies directly
+to BM25. Normal and generation chunk writes maintain the postings transactionally;
+a bounded background job backfills existing rows. A user/generation stays on the
+complete legacy `LIKE` query until all its chunks are indexed, preserving its
+candidate behavior during migration. This does not remove the dense SQL scan;
+quality, migration portability and retrieval latency still need
+measurement against a frozen corpus.
 
 A local microbenchmark over 8,000 synthetic 896-byte chunks and 12 query terms
 reported a 30.3 ms median for exact-token extraction versus 40.0 ms for repeated

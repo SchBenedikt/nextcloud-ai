@@ -21,10 +21,11 @@ transfer requires explicit configuration and a separate consented build.
 
 This adapts the report's recommendation to prioritize Qdrant as a production
 backend to the user's requirement that EVA work as a standalone Nextcloud app.
-It does not dismiss the report's measured risks: PHP full-index cosine scans,
-JSON vector storage, and SQL `LIKE` candidate selection remain performance
-problems to solve. SQL-native generation search is the usable baseline and
-portability path; optional ANN storage is the scale path.
+It does not dismiss the report's measured risks: PHP full-index cosine scans
+and JSON vector storage remain performance problems. SQL lexical retrieval now
+has a portable posting index; it uses the legacy `LIKE` path for a user/generation
+until all its chunks are indexed. SQL-native generation search is the usable
+baseline and portability path; optional ANN storage is the scale path.
 
 ## Required behavior
 

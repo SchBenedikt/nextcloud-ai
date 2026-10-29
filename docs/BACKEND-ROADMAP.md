@@ -47,8 +47,12 @@ The implementation entries further below record the actual delivered slices.
   BM25, quoted-phrase boost, reciprocal rank fusion and document diversification.
 - BM25 candidate-body frequency now tokenizes each candidate once and uses
   exact Unicode word frequencies for all query terms. It avoids rescanning each
-  chunk body for every term; the SQL LIKE prefilter and full dense scan remain.
-  This changes substring matches inside larger words to exact word matches, so
+  chunk body for every term. Exact-token SQL postings now select indexed
+  candidates and provide term frequencies; a bounded background job backfills
+  existing chunks. A user/generation keeps the complete old LIKE path until all
+  its rows have postings, then switches to the indexed candidates.
+  The full dense scan remains. This changes substring matches inside larger
+  words to exact word matches, so
   ranking quality needs frozen-corpus comparison. A local synthetic term-count
   microbenchmark measured 30.3 ms versus 40.0 ms for 8,000 896-byte chunks and
   12 terms (median of 7); this is not a full retrieval or SQL latency result.
@@ -70,8 +74,11 @@ The implementation entries further below record the actual delivered slices.
   null or invalid metadata falls back to the prior exact calculation. This
   removes the repeated candidate norm pass but leaves the full dot-product scan
   and needs representative measurement.
-- `Chunk` stores embeddings as JSON text. `ChunkMapper` supplies lexical
-  candidates through SQL LIKE, not an inverted index.
+- `Chunk` still stores embeddings as JSON text. SQL lexical retrieval now uses
+  a portable SHA-256-keyed term-postings index, transactionally updated for new
+  and changed chunks. Existing rows migrate in bounded background batches; only
+  rows not yet indexed use the legacy LIKE fallback. This does not replace
+  Qdrant's optional native BM25 or the SQL dense scan.
 - `Indexer` already bounds file traversal, extraction and embedding batches and
   supports cancellation, heartbeats and reuse of compatible cached embeddings.
 - `ChatStore` aggregates a user's encrypted conversations in AppData. It is a
@@ -617,3 +624,16 @@ Search reuses a valid magnitude and keeps the old exact calculation for missing
 or invalid metadata. PHP syntax, migration/app XML, and diff checks passed
 locally; tests and representative performance measurements have not been run.
 Full-index dot products remain O(N × dimension).
+
+### Portable SQL lexical postings (1.18.43)
+
+Large-index SQL lexical selection now uses an indexed SHA-256-keyed token-postings
+table, with exact term frequencies passed to BM25 instead of retokenizing each
+indexed candidate body. Normal indexing and generation writes maintain the derived
+rows transactionally; source deletion removes them in the same boundary. Existing
+rows are populated by bounded recurring Nextcloud work. A user's active generation
+continues using the full legacy LIKE query until all its chunks are marked indexed,
+so mixed migration state does not shrink its candidate set. This removes LIKE from
+the completed lexical path, but does not change or accelerate the SQL dense scan.
+Portability migration execution, frozen-corpus quality, and representative latency
+measurements remain open; no speedup is claimed yet.

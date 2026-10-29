@@ -131,6 +131,9 @@ class VectorSourceDeletion {
                     $cursor = (int)$row['id'];
                 }
             } while (count($rows) === 250);
+            $terms = new LexicalTermRepository($this->db);
+            if ($generationOnly) $terms->deleteGenerationDocuments($ids, $generationId);
+            else $terms->deleteDocuments($ids);
             $delete = $this->db->getQueryBuilder();
             $delete->delete('eva_ai_chunks')->where($delete->expr()->in('document_id', $delete->createNamedParameter($ids, IQueryBuilder::PARAM_INT_ARRAY)));
             if ($generationOnly) $delete->andWhere($delete->expr()->isNotNull('vector_generation_id'));

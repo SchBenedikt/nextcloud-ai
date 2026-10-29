@@ -161,6 +161,7 @@ class GenerationChunkRepository {
                 $version->update('eva_ai_chunks')->set('vector_revision', $version->createNamedParameter($revision, IQueryBuilder::PARAM_INT))
                     ->where($version->expr()->eq('id', $version->createNamedParameter($id, IQueryBuilder::PARAM_INT)))->executeStatement();
             }
+            (new LexicalTermRepository($this->db))->indexChunk($id, $snapshot->id, $chunk->content);
             return ['id' => $id, 'revision' => $revision, 'changed' => true];
         });
     }
