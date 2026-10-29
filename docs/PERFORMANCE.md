@@ -107,13 +107,13 @@ focused composables and loaded on demand.
 ## Backend retrieval timing baseline
 
 Searcher writes an optional debug-level `eva_ai: retrieval timings` event through
-Nextcloud's logger. It records `backend=sql_legacy`, `total_ms`, `failed`, result
-count, `count_ms`, `index_chunks`, `embedding_ms`, `dense_enabled`,
+Nextcloud's logger. It records the fixed retrieval backend (`sql_legacy`,
+`sql_generation` or `qdrant_generation`), `total_ms`, `failed`, result count,
+`count_ms`, `index_chunks`, `embedding_ms`, `dense_enabled`,
 `candidates_ms`, `candidates`, `hydrate_ms`, `scope_ms`, `scoped_candidates` and
 `ranking_ms`. Durations use the monotonic clock and are in milliseconds.
 
-These are per-request measurements, not aggregated percentiles or a Prometheus
-exporter. Normal, streamed, and queued chat work receives a random, short-lived
+These remain per-request detail logs. Normal, streamed, and queued chat work receives a random, short-lived
 `trace_id` that is attached to the chat total, retrieval stages, provider duration,
 and slow-tool duration events. The ID is held only in the request context; queued
 work keeps it only until completion or expiry. No prompts, account identifiers,
@@ -121,6 +121,14 @@ paths, chunk contents, vectors, or provider response bodies are part of these
 telemetry events. Debug events follow the Nextcloud logging level and retention
 policy; no special log level is enabled by the app. Logging failure is ignored so
 it cannot mask a successful result or the original error.
+
+Version 1.18.72 also stores reached retrieval stages on the existing usage row
+for a successful provider chat completion. Nextcloud OpenMetrics exports
+approximate seven-day p50/p95/p99 values for count, embedding, candidates,
+hydration, scope, ranking and total retrieval, labelled only by a fixed backend
+and stage. The exporter reads at most 5,000 recent chats. These integer-ms
+quantiles cover successful chats with a measured stage; they are not a complete
+histogram and are not evidence for the PDF's corpus-quality or load targets.
 
 Early empty-query/empty-index returns and failures emit only the stages reached.
 `dense_enabled=false` also covers an unavailable query embedding. Candidate time

@@ -2,6 +2,11 @@
 
 ## [Unreleased]
 
+### Export retrieval stage latency (1.18.72)
+
+- Store bounded retrieval stage durations on the existing chat usage row, without saving query text, identifiers or document data.
+- Export approximate seven-day p50/p95/p99 values by fixed backend and stage labels from at most 5,000 recent requests.
+
 ### Load shared scope validation in the offline retrieval benchmark (1.18.71)
 
 - Make the documented exact and evaluation commands self-contained without Nextcloud's runtime autoloader.
