@@ -2,6 +2,12 @@
 
 ## [Unreleased]
 
+### Vector inventory contract (1.18.11)
+
+- Add exact tenant/generation-scoped live counts and bounded point retrieval for the upcoming generation verification worker.
+- Validate returned point ownership, revision, dense-vector dimension and finite vector values before a verifier can consume them.
+- These APIs do not enable point delivery, search or generation activation.
+
 ### Background generation builds (1.18.10)
 
 - Add explicit native administrator/OCC start, progress, pause/resume and cancel controls with durable document/chunk checkpoints and exclusive SQL leases.
