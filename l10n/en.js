@@ -1524,6 +1524,8 @@ OC.L10N.register("eva_ai", {
   "no": "no",
   "EVA uses the Nextcloud database by default. External vector storage is optional for larger installations.": "EVA uses the Nextcloud database by default. External vector storage is optional for larger installations.",
   "Advanced index administration": "Advanced index administration",
+  "Generation controls load only when opened.": "Generation controls load only when opened.",
+  "Queue and synchronization details": "Queue and synchronization details",
   "The index overview is unavailable. Use Refresh to try again.": "The index overview is unavailable. Use Refresh to try again.",
   "{count} accounts tracked by EVA": "{count} accounts tracked by EVA",
   "Waiting for your chat to finish": "Waiting for your chat to finish",

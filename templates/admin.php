@@ -58,16 +58,12 @@ $providerLabels = [
 <div id="eva-ai-admin" class="section" data-api-base="<?php p($apiBase); ?>">
 
 	<h2><?php p($l->t('Eva AI')); ?></h2>
-	<p class="settings-hint">
-		<?php p($l->t('EVA uses the built-in Nextcloud database for search. Users choose their models and indexing scope in personal settings. Configure shared services and server-wide limits here only when needed.')); ?>
-	</p>
 
 	<h3><?php p($l->t('Knowledge storage')); ?></h3>
-	<p class="settings-hint"><?php p($l->t('EVA uses Nextcloud SQL automatically. Optional Qdrant is available for explicitly configured larger installations.')); ?></p>
+	<p class="settings-hint"><?php p($l->t('EVA uses the Nextcloud database by default. External vector storage is optional for larger installations.')); ?></p>
 	<details id="eva-ai-storage-tools" class="eva-admin-details">
-		<summary><?php p($l->t('Configure Qdrant and manage search migrations')); ?></summary>
+		<summary><?php p($l->t('Optional storage and migration tools')); ?></summary>
 		<div class="eva-admin-details__content">
-			<p class="settings-hint"><?php p($l->t('SQL stays ready without extra services. Configure Qdrant here only when you need remote vector storage; switching search requires a separate verified canary action.')); ?></p>
 			<p id="eva-ai-storage-load-status" class="settings-hint" role="status" aria-live="polite"><?php p($l->t('Open this section to load optional controls.')); ?></p>
 			<div id="eva_ai-admin-app"></div>
 		</div>

@@ -180,6 +180,11 @@ vector storage load only inside a collapsed disclosure. This keeps the default
 installation free of infrastructure setup while preserving explicit scale
 controls when needed.
 
+Version 1.20.6 keeps optional storage status in its own disclosure and delays
+the per-account generation controls request until an administrator opens the
+advanced section. The normal SQL installation path remains visible and usable
+without loading the migration account list.
+
 Version 1.18.46 wired generation preparation and verification into that
 disclosure. Version 1.18.54 removes the unnecessary aggregate dashboard query
 from page load while retaining its documented API for compatibility; opening
