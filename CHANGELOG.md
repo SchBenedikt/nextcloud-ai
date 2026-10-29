@@ -2,6 +2,11 @@
 
 ## [Unreleased]
 
+### Keep optional server settings out of the normal admin view (1.18.98)
+
+- Present built-in Nextcloud SQL and the optional vector-storage link first.
+- Move server-wide indexing limits and shared web-search configuration into native Nextcloud disclosures; keep browser-rendering paths nested under their optional setup.
+
 ### Recheck chat storage mode after acquiring its lock (1.18.97)
 
 - Refresh the SQL/AppData read mode under the user fence so a concurrent migration cutover cannot send one operation down a stale storage path.
