@@ -38,15 +38,14 @@ EVA may only suggest changes in an interactive, authenticated context. Before
 execution the UI shows the exact tool name and its arguments. Only **Confirm and
 execute** carries out the action; **Cancel** changes nothing.
 
-### Admin Dashboard
+### Native administration settings
 
-Administrators get a dedicated **Eva AI** section in the Nextcloud administration
-settings (Issue #82). It shows a per-user overview of the RAG index: document and
-chunk counts, last index time, background-indexing enrollment, index state, and
-the most recent per-user error. From there an admin can queue a re-index for a
-user, reset a user's complete index, and toggle enrollment – all without ever
-seeing file names, paths, or content (metadata only). Every endpoint is
-`#[AdminRequired]`; non-admins receive a 403.
+Administrators get a native **Eva AI** section in Nextcloud administration.
+Built-in SQL is the default and needs no service setup. Optional vector-storage
+and generation controls appear only after opening their disclosure. The old
+`/apps/eva_ai/admin` route redirects to this section. Admin APIs remain
+administrator-only and expose generation metadata without file names, paths or
+content.
 
 ### Nextcloud Files
 

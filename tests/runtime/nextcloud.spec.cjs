@@ -31,7 +31,7 @@ test.describe('authenticated Nextcloud runtime', () => {
 	test.afterAll(async () => { await context?.close() })
 
 	test('native pages load without runtime errors', async () => {
-		for (const [route, heading] of [['documents', 'Documents'], ['settings', 'AI models'], ['admin', 'Admin dashboard'], ['metrics', 'Usage metrics'], ['runs', 'Background tasks']]) {
+		for (const [route, heading] of [['documents', 'Documents'], ['settings', 'AI models'], ['admin', 'Eva AI'], ['metrics', 'Usage metrics'], ['runs', 'Background tasks']]) {
 			await page.goto(app(route), { waitUntil: 'domcontentloaded' })
 			await expect(page.getByRole('heading', { name: heading, exact: true }).first()).toBeVisible()
 			await expect(page.locator('#eva_ai-error')).not.toBeVisible()

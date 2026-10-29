@@ -178,11 +178,21 @@ class AdminController extends OCSController {
             ], 400);
         }
 
+        $refreshIndexJob = isset($pending['index_job_interval_minutes'])
+            && $pending['index_job_interval_minutes'] !== $this->config->get('index_job_interval_minutes');
         foreach ($pending as $key => $value) {
             if (in_array($key, ['weather_tool_enabled', 'web_search_enabled', 'web_search_safe_search'], true)) {
                 $value = in_array(strtolower($value), ['1', 'true', 'on'], true) ? '1' : '0';
             }
             $this->config->set($key, $value);
+        }
+
+        // TimedJob stores its interval on the registered Nextcloud job row.
+        // Recreate that row after changing the setting so the new interval is
+        // active immediately instead of waiting for the next app upgrade.
+        if ($refreshIndexJob) {
+            $this->jobList->remove(\OCA\EvaAi\BackgroundJob\IndexJob::class);
+            $this->jobList->add(\OCA\EvaAi\BackgroundJob\IndexJob::class);
         }
 
         if ($removeApiKey) {

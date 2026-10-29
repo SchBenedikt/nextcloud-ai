@@ -2,6 +2,13 @@
 
 ## [Unreleased]
 
+### Move storage administration into native settings (1.20.0)
+
+- Put optional vector-storage and generation controls behind a disclosure in Nextcloud's native Eva AI administration settings.
+- Load the administration bundle only when the optional tools are opened; the default SQL settings stay lightweight.
+- Redirect the legacy `/apps/eva_ai/admin` page route to the native settings section.
+- Apply a changed background-indexing cron interval immediately when the administrator saves it.
+
 ### Coordinate chat priority across accounts (1.19.1)
 
 - Mark RAG conversations with a shared Nextcloud lock so indexing yields across accounts using the same Ollama service.

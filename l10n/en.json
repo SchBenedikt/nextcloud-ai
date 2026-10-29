@@ -764,7 +764,7 @@
     "{path}, {count} chunks": "{path}, {count} chunks",
     "{title} · {count} messages": "{title} · {count} messages",
     "Cron run frequency": "Cron run frequency",
-    "Minutes between runs, 1–60, default 5. Together with the time budget this is how fast a large library is caught up. Takes effect after the next app update.": "Minutes between runs, 1–60, default 5. Together with the time budget this is how fast a large library is caught up. Takes effect after the next app update.",
+    "Minutes between runs, 1–60, default 5. Together with the time budget this is how fast a large library is caught up. The new interval takes effect as soon as you save.": "Minutes between runs, 1–60, default 5. Together with the time budget this is how fast a large library is caught up. The new interval takes effect as soon as you save.",
     "Pages compared before choosing": "Pages compared before choosing",
     "How many hits are read and scored before the best ones are returned. 3–20, default 12. A larger field costs one page fetch per candidate but stops the search from trusting the first hits.": "How many hits are read and scored before the best ones are returned. 3–20, default 12. A larger field costs one page fetch per candidate but stops the search from trusting the first hits.",
     "Show images from the result pages": "Show images from the result pages",
@@ -1529,7 +1529,13 @@
     "The index overview is unavailable. Use Refresh to try again.": "The index overview is unavailable. Use Refresh to try again.",
     "{count} accounts tracked by EVA": "{count} accounts tracked by EVA",
     "Waiting for your chat to finish": "Waiting for your chat to finish",
-    "Indexing is paused between embedding batches to keep chat responses responsive. It will continue automatically.": "Indexing is paused between embedding batches to keep chat responses responsive. It will continue automatically."
+    "Indexing is paused between embedding batches to keep chat responses responsive. It will continue automatically.": "Indexing is paused between embedding batches to keep chat responses responsive. It will continue automatically.",
+    "Optional storage and migration tools": "Optional storage and migration tools",
+    "These controls are only needed for optional external storage or explicit generation migration. They load when opened and never change the default SQL search path.": "These controls are only needed for optional external storage or explicit generation migration. They load when opened and never change the default SQL search path.",
+    "Open this section to load optional controls.": "Open this section to load optional controls.",
+    "Loading optional controls…": "Loading optional controls…",
+    "Optional controls could not be loaded. Reopen this section to retry.": "Optional controls could not be loaded. Reopen this section to retry.",
+    "These optional tools do not change the built-in SQL search path. Installation, indexing and chat work without an external vector service.": "These optional tools do not change the built-in SQL search path. Installation, indexing and chat work without an external vector service."
   },
   "pluralForm": "nplurals=2; plural=(n != 1);",
   "EVA – Chat": "EVA – Chat",

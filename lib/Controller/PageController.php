@@ -6,6 +6,7 @@ namespace OCA\EvaAi\Controller;
 
 use OCP\AppFramework\Controller;
 use OCP\AppFramework\Http\TemplateResponse;
+use OCP\AppFramework\Http\RedirectResponse;
 use OCP\AppFramework\Http\Attribute\NoAdminRequired;
 use OCP\AppFramework\Http\Attribute\NoCSRFRequired;
 use OCP\AppFramework\Http\Attribute\AdminRequired;
@@ -73,8 +74,11 @@ class PageController extends Controller {
 
     #[AdminRequired]
     #[NoCSRFRequired]
-    public function admin(): TemplateResponse {
-        return $this->appPage('admin-app', 'eva_ai-admin');
+    public function admin(): RedirectResponse {
+        return new RedirectResponse($this->urlGenerator->linkToRoute(
+            'settings.AdminSettings.index',
+            ['section' => 'eva_ai'],
+        ));
     }
 
     /**

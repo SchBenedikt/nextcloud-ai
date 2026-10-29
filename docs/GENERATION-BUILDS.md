@@ -25,7 +25,8 @@ php occ eva_ai:vector:generation create USER --backend=qdrant --provider=ollama 
 php occ eva_ai:vector:generation create USER --backend=qdrant --include-text-payload --provider=ollama --model=MODEL --endpoint=http://localhost:11434 --dimension=DIMENSION
 ```
 
-In EVA administration, select the owner and generation under **Embedding
+In Nextcloud **Administration → Eva AI → Knowledge storage → Optional storage
+and migration tools**, select the owner and generation under **Embedding
 generations**. **Background build** explains the transfer and requires a separate
 document-processing checkbox. The owner's source index must be enrolled and the
 generation bound to its backend. SQL builds need only Nextcloud SQL and the
@@ -35,8 +36,9 @@ to off. It requires Qdrant 1.20 or newer and creates an indexed text payload for
 native BM25/RRF. The generation's start/resume controls require a second,
 separate confirmation before any chunk text is copied to Qdrant. Existing
 dense-only generations remain text-free and continue using SQL lexical retrieval.
-Nextcloud's native EVA administration page links to these same controls through
-**Manage storage and background builds**. No controls are added to chat.
+The controls are part of the native Nextcloud administration settings and load
+only after the optional-tools disclosure is opened. No controls are added to
+chat.
 
 Start only schedules SQL work. Native Nextcloud cron processes the job in the
 background. Progress reads inspect SQL metadata and never probe a provider.

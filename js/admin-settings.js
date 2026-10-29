@@ -374,4 +374,29 @@
 				})
 		})
 	}
+
+	// Keep the large optional storage interface out of the normal admin page
+	// load. Its dedicated bundle is requested only after the disclosure opens.
+	var storageTools = el('eva-ai-storage-tools')
+	if (storageTools !== null) {
+		storageTools.addEventListener('toggle', function () {
+			if (!storageTools.open || storageTools.dataset.loadState === 'loading' || storageTools.dataset.loadState === 'loaded') {
+				return
+			}
+			var status = el('eva-ai-storage-load-status')
+			if (status !== null) status.textContent = tr('Loading optional controls…')
+			storageTools.dataset.loadState = 'loading'
+			var script = document.createElement('script')
+			script.src = window.OC.filePath('eva_ai', '', 'js/eva_ai-admin.js')
+			script.onload = function () {
+				storageTools.dataset.loadState = 'loaded'
+				if (status !== null) status.textContent = ''
+			}
+			script.onerror = function () {
+				storageTools.dataset.loadState = ''
+				if (status !== null) status.textContent = tr('Optional controls could not be loaded. Reopen this section to retry.')
+			}
+			document.head.appendChild(script)
+		})
+	}
 })()

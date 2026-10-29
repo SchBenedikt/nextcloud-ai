@@ -64,7 +64,14 @@ $providerLabels = [
 
 	<h3><?php p($l->t('Knowledge storage')); ?></h3>
 	<p class="settings-hint"><?php p($l->t('EVA uses Nextcloud SQL automatically. Optional Qdrant is available for explicitly configured larger installations.')); ?></p>
-	<p><a class="button" href="<?php p($_['storageAdminUrl']); ?>"><?php p($l->t('Optional storage and migration controls')); ?></a></p>
+	<details id="eva-ai-storage-tools" class="eva-admin-details">
+		<summary><?php p($l->t('Optional storage and migration tools')); ?></summary>
+		<div class="eva-admin-details__content">
+			<p class="settings-hint"><?php p($l->t('These controls are only needed for optional external storage or explicit generation migration. They load when opened and never change the default SQL search path.')); ?></p>
+			<p id="eva-ai-storage-load-status" class="settings-hint" role="status" aria-live="polite"><?php p($l->t('Open this section to load optional controls.')); ?></p>
+			<div id="eva_ai-admin-app"></div>
+		</div>
+	</details>
 
 	<details class="eva-admin-details">
 		<summary><?php p($l->t('Advanced indexing and request limits')); ?></summary>
@@ -98,7 +105,7 @@ $providerLabels = [
 			<input type="number" id="eva-job-interval" name="index_job_interval_minutes"
 				min="1" max="60" step="1" value="<?php p($indexJobInterval); ?>">
 			<p class="eva-field-hint">
-				<?php p($l->t('Minutes between runs, 1–60, default 5. Together with the time budget this is how fast a large library is caught up. Takes effect after the next app update.')); ?>
+				<?php p($l->t('Minutes between runs, 1–60, default 5. Together with the time budget this is how fast a large library is caught up. The new interval takes effect as soon as you save.')); ?>
 			</p>
 		</div>
 	</div>
