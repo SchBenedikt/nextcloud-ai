@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Legacy index SQL generation bootstrap (1.18.33)
+
+- Automatically bootstrap the default SQL generation for enrolled accounts with an existing legacy index, even when no files changed during the current pass. A public-text probe pins the real embedding model and dimensions; existing file content is processed only by the bounded SQL background builder. Respect explicit opt-outs and Qdrant selection, and retry provider failures after a six-hour cooldown.
+
 ### Correlated chat timings (1.18.32)
 
 - Generate a short-lived trace ID for each normal, streamed, and queued chat request and attach it to privacy-preserving chat, retrieval, provider, and slow-tool timing events. No prompts, file paths, account identifiers, or trace IDs are stored in long-lived history.
