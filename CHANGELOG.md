@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Keep optional Qdrant settings reactive (1.20.8)
+
+- Expose the approved private-origin field to the settings template so administrators can edit and save private Qdrant endpoints without a broken Vue binding.
+
 ### Keep request limits available during cache outages (1.20.7)
 
 - Fall back to instance-keyed HMAC fixed-window counters in Nextcloud SQL when the shared locking cache is unavailable.

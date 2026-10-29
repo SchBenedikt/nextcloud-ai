@@ -124,7 +124,7 @@ export default {
 		}
 		function onToggle(event) { if (event.target.open && !formReady.value) loadConfiguration() }
 		onBeforeUnmount(() => { controller.abort(); apiKey.value = '' })
-		return { endpoint, apiKey, noKey, allowRequests, keyConfigured, formReady, busy, notice, onToggle, loadConfiguration, save, disable, check }
+		return { endpoint, privateOriginsText, apiKey, noKey, allowRequests, keyConfigured, formReady, busy, notice, onToggle, loadConfiguration, save, disable, check }
 	},
 }
 </script>
