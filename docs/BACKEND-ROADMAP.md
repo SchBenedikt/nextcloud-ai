@@ -91,7 +91,7 @@ protection and required checks remain administrative follow-up.
 | 09a | Optional Qdrant adapter and explicit transfer setup | 06, 08 | Server-only encrypted credentials, TLS for remote service, bounded timeouts/batches, stable point IDs, indexed tenant/generation/document/source payload. Every query forces server-side tenant AND generation filters. Hydrate text from owned SQL rows. SQL remains independently usable when Qdrant is absent or unavailable. |
 | 10 | Shadow reads and comparison telemetry | 09 | SQL serves enrolled accounts by default; Qdrant canary is explicit and opt-in. The current comparison slice is an admin probe with bounded query/provider/vector/SQL work; production shadow sampling and soak remain pending. Compare recall, ranking, scope, tenant isolation and errors. No answer-content logs. |
 | 11 | Canary and primary generation-based reads | 10 | Verified SQL-generation retrieval is automatic for enrolled users; an administrator can explicitly activate a verified Qdrant canary and roll back to built-in SQL. Queries apply tenant/generation/scope filters, hydrate exact revisions from SQL, and fall back on remote errors or pending mutations. Keep legacy rows; production soak and release-cycle rollback evidence remain pending. |
-| 12 | Native hybrid retrieval | 11 | Port BM25/RRF while preserving filename/path context, quoted phrases, scope and document diversification. Version-pin backend capabilities and compare against current hybrid baseline before activation. Dense-only rollback available. |
+| 12 | Native hybrid retrieval | 11 | Port BM25/RRF while preserving filename/path context, quoted phrases, scope and document diversification. Qdrant payload BM25 requires a separately documented text-transfer consent, an explicit user/admin opt-in distinct from vector transfer, Qdrant 1.20+ capability checks, and a rebuilt generation before native hybrid can serve. Keep text in SQL by default; existing dense-only collections must never be treated as hybrid-ready. Compare against current hybrid baseline before activation. SQL/dense-only rollback remains available. |
 | 13 | Normalized encrypted chat/message SQL storage | 12 | Additive tables, per-message writes, indexed metadata pagination/retention, transactional migration with checkpoint, mixed-version recovery and account erasure. Preserve encryption; do not add plaintext search indexes for encrypted messages. Separate feature flag and backup/restore runbook. |
 | 14 | Operational hardening and portability | 13 | PostgreSQL/MariaDB lifecycle coverage; metrics exporter/trace correlation; restore and delete drills; sustained soak; cache outage/rate-limit semantics; domain-controller extraction; dependency/SAST/SBOM policy. Administrative main protection requires its own explicit rollout. |
 
@@ -154,9 +154,13 @@ composables are starting points; assess remaining paths from current source.
 
 A generation is immutable after building begins. A provider/model change creates
 another building generation; it never overwrites the active collection in place.
-Collection names are server-controlled and must not expose user IDs. Stored point
-payloads contain identifiers and metadata only during dense migration. Text stays
-in SQL. Query endpoints cannot accept arbitrary tenant filters from clients.
+Collection names are server-controlled and must not expose user IDs. Dense-only
+point payloads contain identifiers and metadata; text stays in SQL. Any future
+native full-text retrieval that copies chunk text to Qdrant is a separate data
+transfer and requires its own explicit opt-in, clear retention/erasure behavior,
+and a rebuilt generation with verified text coverage. Qdrant 1.20+ BM25 support
+must be capability checked; older servers remain on the current SQL lexical path.
+Query endpoints cannot accept arbitrary tenant filters from clients.
 
 Events need a durable monotonic revision or tombstone: retrying an old upsert after
 an account/document delete must not recreate deleted data. Workers must verify
