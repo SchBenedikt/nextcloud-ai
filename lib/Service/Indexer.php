@@ -62,7 +62,8 @@ class Indexer {
         private LockGuard $lockGuard,
         private IndexScheduler $scheduler,
         private ?VectorSourceDeletion $vectorSourceDeletion = null,
-        private ?DefaultSqlGenerationProvisioner $sqlGenerationProvisioner = null
+        private ?DefaultSqlGenerationProvisioner $sqlGenerationProvisioner = null,
+        private ?UsageMetrics $usageMetrics = null
     ) {
     }
 
@@ -860,8 +861,18 @@ class Indexer {
             $texts[] = $b['content'];
         }
 
+        $embeddingStartedAt = hrtime(true);
         [$vecs, $err] = $this->ollama->embedBatch($texts, $userId);
+        $embeddingElapsedMs = max(0, (int)round((hrtime(true) - $embeddingStartedAt) / 1_000_000));
         $stats = $this->ollama->lastEmbeddingStats();
+        $this->usageMetrics?->recordEmbeddingBatch(
+            $userId,
+            'ollama',
+            ($stats['ollama_requests'] ?? 0) > 0 ? $embeddingElapsedMs : 0,
+            $stats['cache_hits'] ?? 0,
+            $stats['cache_misses'] ?? 0,
+            $err === null && $vecs !== null,
+        );
         $result['cache_hits'] += $stats['cache_hits'];
         $result['cache_misses'] += $stats['cache_misses'];
         $result['ollama_requests'] += $stats['ollama_requests'];

@@ -3,7 +3,7 @@ declare(strict_types=1);
 
 namespace OCA\EvaAi\Vector;
 
-use OCA\EvaAi\Service\{AppConfig, EmbeddingCache, ProviderException};
+use OCA\EvaAi\Service\{AppConfig, EmbeddingCache, ProviderException, UsageMetrics};
 use OCP\Http\Client\IClientService;
 
 /** Exact generation requests: no chat routing, model fallback or legacy vector inference. */
@@ -11,7 +11,8 @@ class GenerationEmbeddingProvider {
     private const MAX_BODY = 4194304;
 
     public function __construct(private AppConfig $config, private IClientService $clients,
-        private GenerationEmbeddingConfiguration $configuration, private EmbeddingCache $cache) {}
+        private GenerationEmbeddingConfiguration $configuration, private EmbeddingCache $cache,
+        private ?UsageMetrics $usageMetrics = null) {}
 
     /** @param list<string> $texts @return list<list<float>> */
     public function embed(VectorGeneration $generation, array $texts, \Closure $guard, bool $useCache = true, int $timeoutSeconds = 30): array {
@@ -23,9 +24,10 @@ class GenerationEmbeddingProvider {
         $guard();
         $context = $this->context($generation);
         $vectors = []; $missing = []; $positions = [];
+        $cacheHits = 0;
         foreach ($texts as $index => $text) {
             $cached = $useCache ? $this->cache->getForGeneration($generation, $text) : null;
-            if ($cached !== null) { $vectors[$index] = $cached; continue; }
+            if ($cached !== null) { $vectors[$index] = $cached; $cacheHits++; continue; }
             $hash = hash('sha256', $text);
             $positions[$hash][] = $index;
             $missing[$hash] = $text;
@@ -39,14 +41,30 @@ class GenerationEmbeddingProvider {
                 $guard();
                 if ($this->context($generation) !== $context) throw new VectorStoreException('embedding_profile_changed');
             };
-            $data = $this->request($generation, $context, $payload, $transferGuard, $timeoutSeconds);
-            $received = $this->decode($generation, $data, count($input));
-            // Validate the whole batch before publishing any result or cache entry.
-            $transferGuard();
-            foreach (array_keys($missing) as $slot => $hash) {
-                foreach ($positions[$hash] as $index) $vectors[$index] = $received[$slot];
+            $startedAt = hrtime(true);
+            $requestSucceeded = false;
+            try {
+                $data = $this->request($generation, $context, $payload, $transferGuard, $timeoutSeconds);
+                $received = $this->decode($generation, $data, count($input));
+                // Validate the whole batch before publishing any result or cache entry.
+                $transferGuard();
+                foreach (array_keys($missing) as $slot => $hash) {
+                    foreach ($positions[$hash] as $index) $vectors[$index] = $received[$slot];
+                }
+                if ($useCache) $this->cache->putForGeneration($generation, array_values($missing), $received);
+                $requestSucceeded = true;
+            } finally {
+                $this->usageMetrics?->recordEmbeddingBatch(
+                    $generation->userId,
+                    $generation->embeddingProvider,
+                    max(0, (int)round((hrtime(true) - $startedAt) / 1_000_000)),
+                    $cacheHits,
+                    count($missing),
+                    $requestSucceeded,
+                );
             }
-            if ($useCache) $this->cache->putForGeneration($generation, array_values($missing), $received);
+        } else {
+            $this->usageMetrics?->recordEmbeddingBatch($generation->userId, $generation->embeddingProvider, 0, $cacheHits, 0, true);
         }
         $guard();
         if ($this->context($generation) !== $context) throw new VectorStoreException('embedding_profile_changed');

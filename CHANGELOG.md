@@ -2,6 +2,11 @@
 
 ## [Unreleased]
 
+### Measure embedding batches and cache reuse (1.18.78)
+
+- Record successful and failed indexing/generation embedding batches with provider type, bounded duration and cache hit/miss counts; do not add a write to chat query embedding.
+- Export approximate seven-day latency quantiles, sampled outcomes and cache hit ratio through Nextcloud OpenMetrics with fixed provider labels.
+
 ### Simplify the native admin overview (1.18.77)
 
 - Remove duplicate instance, scheduler and vector status tables from the native admin landing page; the optional storage page remains available on demand.
