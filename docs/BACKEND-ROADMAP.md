@@ -34,7 +34,7 @@ The implementation entries further below record the actual delivered slices.
 | 13–14 | Resumable backfill, immutable model rebuild, activation pointer, shadow/canary rollout and rollback | 09–11: bounded build, verification and guarded SQL activation/search exist; explicit Qdrant account canary and SQL rollback are available. Production shadow/soak and rollback drills remain pending. SQL runs without Qdrant; performance and release gates remain open. |
 | 15 | Native hybrid BM25/RRF, phrases, scope and diversification | 12: preserve current relevance behavior before enabling backend hybrid retrieval; compare quality against both exact and current hybrid baselines. |
 | 7, 15, 22 | ChatStore hot-file writes, normalized encrypted SQL messages and distributed chat coordination | 13–14: independent additive chat migration, recovery and erasure; lock lifecycle fix is only the immediate consecutive-request repair. |
-| 15–18 | OTel correlation, provider/tool/DB/lock metrics, cache outages, restore/delete drills and domain extraction | 03, 14: native aggregate OpenMetrics and durable account-erasure retries are implemented; approximate seven-day chat/slow-tool p50/p95/p99 is now exported from bounded usage samples. Stage-level percentiles, cross-service traces, restore/delete drills and controller decomposition remain pending. |
+| 15–18 | OTel correlation, provider/tool/DB/lock metrics, cache outages, restore/delete drills and domain extraction | 03, 14: native aggregate OpenMetrics and durable account-erasure retries are implemented; approximate seven-day chat/slow-tool p50/p95/p99 is exported from bounded usage samples, with a 365-day retention limit and account-erasure deletion. Stage-level metric export, cross-service traces, restore/delete drills and controller decomposition remain pending. |
 | 16, 18 | PHPStan/Psalm, SAST, secrets, SBOM, dependency and pinned-action policy | 14: define supported versions and executed evidence before enabling enforced checks; no claim of completed CI hardening. |
 | 18–19 | Frozen corpus, adversarial tenants, quality thresholds and cold/warm load at concurrency 1/5/20/50 | 05, 09–12, 14: offline evaluator and explicit SQL/Qdrant generation snapshot runners exist; representative real datasets, ANN comparisons, load/soak and resource measurements remain pending. |
 | 20–22 | Optional deployments, authoritative Nextcloud SQL/VFS and reconstructible vector index | 07, 09, 14: standalone default preserved; backup/restore and reconstruction drills remain pending. |
@@ -142,7 +142,7 @@ still open.
 | 11 | Canary and primary generation-based reads | 10 | Verified SQL-generation retrieval is automatic for enrolled users; an administrator can explicitly activate a verified Qdrant canary and roll back to built-in SQL. Queries apply tenant/generation/scope filters, hydrate exact revisions from SQL, and fall back on remote errors or pending mutations. Keep legacy rows; production soak and release-cycle rollback evidence remain pending. |
 | 12 | Native hybrid retrieval | 11 | Implemented the explicit generation text-payload opt-in, separate build/resume consent, Qdrant 1.20+ BM25 index preparation, native dense+BM25 RRF, exact SQL hydration and SQL fallback. Existing generations remain dense-only. Verification checks text-field coverage and compares sampled text with SQL. Remaining: run representative quality/latency comparison, verify live Qdrant 1.20+ index schema and text erasure, then enable only for evaluated canaries. SQL/dense-only rollback remains available. |
 | 13 | Normalized encrypted chat/message SQL storage | 12 | **In progress (1.18.27–1.18.29, 1.18.57).** Additive encrypted tables, small resumable imports, per-message SQL mirroring, automatic new-account SQL, scheduled verified migration for existing users, owner-scoped erasure, indexed metadata pages, per-user SQL reads with AppData export rollback, and keyset-paginated native SQL sidebar loading are implemented. Mixed-version deployment/rollback rehearsal, performance/load evidence, and restore drills remain. Preserve encryption and add no plaintext search indexes. |
-| 14 | Operational hardening and portability | 13 | PostgreSQL/MariaDB lifecycle coverage; metrics exporter (chat, provider, retrieval and slow-tool events now share short-lived trace IDs, but aggregation/export is open); restore and delete drills; sustained soak; cache outage/rate-limit semantics (embedding-cache 15-second process-local cooldown now avoids repeated failing cache calls while preserving uncached operation); domain-controller extraction; dependency/SAST/SBOM policy. PR-only main protection is active; required checks and reviews remain intentionally disabled for now. |
+| 14 | Operational hardening and portability | 13 | Partial: native OpenMetrics exports indexed-item, lexical-state, vector/outbox, account-erasure and bounded chat/slow-tool duration aggregates; usage rows expire after 365 days and are deleted on account erasure. PostgreSQL/MariaDB lifecycle coverage, retrieval-stage metrics export, cross-service traces, restore/delete drills, sustained soak, domain-controller extraction, dependency/SAST/SBOM policy and enforced PR checks remain open. Embedding-cache 15-second process-local cooldown preserves uncached operation during cache outages. |
 
 ## Stage 14 interface slice: correlated chat timings
 
@@ -308,9 +308,22 @@ replaced by a successful build or an adapter unit test.
   implemented, now including the opt-in prepared-point worker and canonical source
   mutation/deletion journal. Backfill, bulk throughput and continuous generation
   reconciliation remain pending.
-- 09–14: pending; a stage is complete only when its code and matching operating
-  documentation exist. Validation and production rollout remain separately
-  recorded. No Qdrant deployment or production data migration has occurred.
+- 09: bounded generation build and persisted verification are implemented,
+  including automatic SQL verification handoff and recovery; cross-database,
+  interrupted-build and production activation evidence remain open.
+- 10: an explicit bounded Qdrant admin probe exists; production shadow sampling,
+  representative comparisons and soak evidence remain open.
+- 11: verified SQL generations are the default retrieval path for enrolled
+  users; Qdrant canary activation and SQL rollback are explicit. Production
+  rollout and restore/rollback drills remain open.
+- 12: optional consent-gated Qdrant hybrid retrieval and SQL fallback are
+  implemented. Representative quality/latency comparison and live index,
+  transfer-erasure and failure evidence remain open.
+- 13: normalized encrypted chat/message storage and keyset history reads are
+  in progress; mixed-version rollback, load and restore drills remain open.
+- 14: partial; see the Stage 14 row above. No Qdrant production deployment or
+  production data migration has occurred. Validation and production rollout
+  remain separately recorded.
 
 ### Stage 02 implementation
 
