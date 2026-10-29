@@ -143,6 +143,12 @@ chat responses.
 
 The admin landing view now presents the built-in Nextcloud SQL default and a concise account/index queue summary. Per-user index actions, generation setup, and optional external vector storage are grouped under a collapsed native HTML disclosure, so standalone installations do not lead with infrastructure configuration. Advanced administration remains available. This is a presentation change; it does not alter indexing consent, background jobs, or storage selection.
 
+Version 1.18.46 wires the already-implemented generation preparation and
+verification interface into that disclosure. It requests the admin-only account
+list only after the disclosure opens; the default view continues to load only
+aggregate counts. This removes an unreachable admin component without moving
+optional vector controls into ordinary chat or personal settings.
+
 ## Frontend integration required throughout the stack
 
 The user explicitly requested frontend changes alongside the backend. Every

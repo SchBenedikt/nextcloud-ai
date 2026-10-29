@@ -2,9 +2,8 @@
 	<div class="admin-view">
 		<header class="page-header">
 			<div>
-				<p class="eyebrow">EVA AI</p>
-				<h1>{{ $t('Admin dashboard') }}</h1>
-				<p class="page-intro">{{ $t('EVA uses the Nextcloud database by default. Optional vector storage is available for larger installations.') }}</p>
+				<h1>{{ $t('Index overview') }}</h1>
+				<p class="page-intro">{{ $t('EVA uses the built-in Nextcloud database automatically. Optional vector storage and generation tools are available for larger installations.') }}</p>
 			</div>
 			<NcButton variant="secondary" :loading="loading" @click="load">{{ $t('Refresh') }}</NcButton>
 		</header>
@@ -34,10 +33,16 @@
 		<p v-else class="empty-state">{{ $t('The index overview is unavailable. Use Refresh to try again.') }}</p>
 
 		<details class="advanced" @toggle="onAdvancedToggle">
-			<summary>{{ $t('Advanced storage settings') }}</summary>
+			<summary>{{ $t('Advanced vector storage and migration') }}</summary>
 			<div v-if="advancedOpen" class="advanced-content">
-				<p>{{ $t('The built-in database remains the default. Configure optional vector storage only when you need it.') }}</p>
+				<p>{{ $t('The built-in database remains the default. Configure an external vector service and prepare a verified generation only when you need additional scale.') }}</p>
 				<VectorStorageStatus />
+				<NcLoadingIcon v-if="usersLoading" :name="$t('Loading indexed accounts')" />
+				<NcNoteCard v-else-if="usersError" type="warning">
+					{{ $t('Generation management could not load the account list. Close and reopen this section to retry.') }}
+				</NcNoteCard>
+				<GenerationEmbeddingSettings v-else-if="generationUsers.length" :users="generationUsers" />
+				<p v-else-if="usersLoaded" class="empty-state">{{ $t('No indexed or enrolled accounts are available for generation management.') }}</p>
 			</div>
 		</details>
 	</div>
@@ -48,17 +53,22 @@ import { ref, onMounted } from 'vue'
 import { NcButton, NcLoadingIcon, NcNoteCard } from '@nextcloud/vue'
 import { api as requestApi, errMsg } from '../lib/api'
 import VectorStorageStatus from '../components/settings/VectorStorageStatus.vue'
+import GenerationEmbeddingSettings from '../components/settings/GenerationEmbeddingSettings.vue'
 
 const apiGet = (path) => requestApi('GET', path)
 
 export default {
 	name: 'AdminView',
-	components: { NcButton, NcLoadingIcon, NcNoteCard, VectorStorageStatus },
+	components: { NcButton, NcLoadingIcon, NcNoteCard, VectorStorageStatus, GenerationEmbeddingSettings },
 	setup() {
 		const data = ref(null)
 		const loading = ref(false)
 		const loadError = ref('')
 		const advancedOpen = ref(false)
+		const generationUsers = ref([])
+		const usersLoading = ref(false)
+		const usersLoaded = ref(false)
+		const usersError = ref(false)
 
 		async function load() {
 			loading.value = true
@@ -80,10 +90,28 @@ export default {
 
 		function onAdvancedToggle(event) {
 			advancedOpen.value = event.target.open
+			if (advancedOpen.value && !usersLoaded.value && !usersLoading.value) loadGenerationUsers()
+		}
+
+		async function loadGenerationUsers() {
+			usersLoading.value = true
+			usersError.value = false
+			try {
+				const result = await apiGet('admin/overview')
+				if (!Array.isArray(result?.users) || result.users.some(user =>
+					typeof user?.userId !== 'string' || !user.userId
+					|| typeof user.displayName !== 'string')) throw new Error('Invalid generation account list')
+				generationUsers.value = result.users.map(user => ({ userId: user.userId, displayName: user.displayName }))
+				usersLoaded.value = true
+			} catch (_) {
+				usersError.value = true
+			} finally {
+				usersLoading.value = false
+			}
 		}
 
 		onMounted(load)
-		return { data, loading, loadError, advancedOpen, load, onAdvancedToggle }
+		return { data, loading, loadError, advancedOpen, generationUsers, usersLoading, usersLoaded, usersError, load, onAdvancedToggle }
 	},
 }
 </script>
@@ -101,13 +129,6 @@ export default {
 	justify-content: space-between;
 	gap: 16px;
 	margin-bottom: 28px;
-}
-.eyebrow {
-	margin: 0 0 4px;
-	font-size: 12px;
-	letter-spacing: .08em;
-	text-transform: uppercase;
-	color: var(--color-text-maxcontrast);
 }
 h1 { margin: 0; font-size: 24px; }
 .page-intro { max-width: 620px; margin: 8px 0 0; color: var(--color-text-maxcontrast); }
