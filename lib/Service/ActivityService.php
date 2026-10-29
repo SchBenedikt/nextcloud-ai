@@ -40,19 +40,23 @@ class ActivityService {
             return ['ok' => false, 'error' => 'The Nextcloud Activity app is not enabled for this user.'];
         }
         try {
-            $stmt = $this->db->prepare(
-                'SELECT *'
-                . ' FROM `*PREFIX*activity`'
-                . ' WHERE `affecteduser` = ?'
-                . ' ORDER BY `timestamp` DESC, `activity_id` DESC LIMIT ' . (int)$limit
-            );
-            $stmt->execute([$userId]);
+            $query = $this->db->getQueryBuilder();
+            $query->select('*')->from('activity')
+                ->where($query->expr()->eq('affecteduser', $query->createNamedParameter($userId)))
+                ->orderBy('timestamp', 'DESC')->addOrderBy('activity_id', 'DESC')
+                ->setMaxResults($limit);
+            $result = $query->executeQuery();
+            try {
+                $rows = $result->fetchAll();
+            } finally {
+                $result->closeCursor();
+            }
         } catch (\Throwable $e) {
             return ['ok' => false, 'error' => 'Activity data not available: ' . $e->getMessage()];
         }
         $timezone = $this->userTimeZone($userId);
         $out = [];
-        foreach ($stmt->fetchAll() as $row) {
+        foreach ($rows as $row) {
             $timestamp = (int)($row['timestamp'] ?? 0);
             $out[] = [
                 'id' => (int)($row['activity_id'] ?? 0),

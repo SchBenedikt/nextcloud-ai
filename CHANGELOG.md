@@ -2,6 +2,11 @@
 
 ## [Unreleased]
 
+### Use portable SQL in Activity and Mail integrations (1.18.60)
+
+- Replace MySQL-specific identifier quoting in the optional Nextcloud Activity and Mail reads; Activity feed pagination now uses Nextcloud's QueryBuilder.
+- Keep Mail values bound or integer-constrained and preserve its user/mailbox ownership checks.
+
 ### Retain usage metrics for one year (1.18.59)
 
 - Delete a user's usage rows as part of account erasure and purge records older than the longest supported 365-day report window once per day in bounded batches.
