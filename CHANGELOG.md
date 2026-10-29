@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Ship the serialized provider settings fix (1.18.83)
+
+- Regenerate the committed frontend bundles so provider selection uses the serialized settings writer in installed Nextcloud deployments.
+
 ### Expose bounded indexing queue-age distributions (1.18.82)
 
 - Export fixed, privacy-safe wait-age buckets for queued indexing requests and vector outbox events, alongside existing queue depth and oldest-age metrics.
