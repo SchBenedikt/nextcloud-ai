@@ -80,6 +80,12 @@ the offset-compatible path while migration is incomplete. Chat content search
 still reads encrypted message records explicitly; the schema adds no plaintext
 search index.
 
+SQL-backed new-chat creation checks only indexed, keyset-paginated metadata for
+empty conversations before reusing one. When none is reusable, EVA writes the
+new empty conversation directly to SQL. It does not decrypt or transfer the
+user's existing messages for this action. AppData-backed accounts retain their
+existing whole-file compatibility path.
+
 Frontend pagination is implemented. Mixed-version deployment/rollback
 rehearsal, sustained load, and restore drills remain follow-up work. The
 background job never removes AppData. In a mixed-version cluster, older EVA

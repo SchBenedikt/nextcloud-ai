@@ -2,6 +2,11 @@
 
 ## [Unreleased]
 
+### Avoid loading chat history when creating a SQL conversation (1.18.80)
+
+- Reuse empty SQL chats through bounded, keyset-paginated metadata reads and create new chats directly in SQL without decrypting existing messages.
+- Add a matching owner/count/time index for the empty-chat lookup; AppData chat behavior is unchanged.
+
 ### Complete provider profile removal (1.18.79)
 
 - Add a confirmation flow to remove custom AI providers and their encrypted API keys; switching an active chat provider falls back to Ollama.
