@@ -126,8 +126,13 @@ surface, focused validation, recovery notes and a stacked reviewable PR.
 - Normal stale-file, exclusion, folder-prefix, and successful replacement
   cleanup use the canonical vector source-deletion transaction. SQL generation
   chunks are deleted with their source; configured Qdrant generations receive
-  durable tombstone intents. This does not yet wire normal indexing writes or
-  retrieval to generation storage.
+  durable tombstone intents. Enrolled users use verified SQL-generation
+  retrieval automatically. Ordinary indexing keeps legacy chunks for rollback
+  and queues active-generation mutation work; the bounded worker updates SQL
+  generation rows asynchronously, and search falls back while mutations remain
+  pending. Continue auditing each Files/Mail/Talk/VFS mutation and deletion
+  path, and verify crash recovery and backend portability before removing the
+  legacy rollback path.
 - SQL and configured optional-store rankings pass the frozen quality corpus;
   tenant and scope adversarial cases pass; shadow and load evidence meet agreed
   latency and error budgets.

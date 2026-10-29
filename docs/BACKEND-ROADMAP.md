@@ -343,16 +343,20 @@ An optional loopback-only Compose example requires explicit approved image/key
 configuration and is never run by installation. QDRANT.md records API references,
 behavior, restrictions and unverified integration boundaries.
 
-Normal document insertion now extends any queued, running, paused or staged
+Normal document insertion extends any queued, running, paused or staged
 generation build in the same owner-fenced transaction. Late-committing rows
 rewind a cursor and reclaim a stale lease, while safe tail appends preserve the
 current document and provider request. Final staging rechecks under the owner
-fence. Canonical in-place metadata changes now also rewind eligible builds and
-remove stale generation chunks/manifests under the owner fence. Automatic
-generation provisioning, deleted-document manifest cleanup and retrieval remain
-open.
-No SQL primary/shadow reads are enabled. No remote write/load/isolation tests or
-container startup have been run under the user's instruction to defer testing.
+fence. Canonical in-place metadata changes also rewind eligible builds and
+remove stale generation chunks/manifests under the owner fence. Enrolled users
+now receive automatic SQL-generation provisioning, including a public-text
+bootstrap probe for unchanged legacy indexes; the bounded builder, verifier and
+activation job switch retrieval to the verified SQL generation. Normal source
+mutations queue bounded generation updates, and search falls back to legacy SQL
+while those updates are pending. Deleted-source SQL chunks and configured
+Qdrant points use the canonical deletion path. Remote write/load/isolation tests,
+container startup and production portability/soak evidence remain open; those
+gates are not proved by syntax checks or the local bundle build.
 
 Normal indexed-file flushes now recognize a matching active SQL generation and
 let the transactional mutation journal extend it instead of provisioning a
