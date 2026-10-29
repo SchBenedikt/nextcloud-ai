@@ -146,6 +146,22 @@ class ChunkMapper extends QBMapper {
         return $rows;
     }
 
+    /** Stable keyset page for large-index scans; inserts/deletes before the cursor cannot shift later pages. */
+    public function chunksForUserAfter(string $userId, int $afterId, int $limit, ?string $generationId = null): array {
+        $qb = $this->db->getQueryBuilder();
+        $qb->select('c.id', 'c.document_id', 'c.chunk_index', 'c.content', 'c.embedding', 'c.provenance')
+            ->from('eva_ai_chunks', 'c')
+            ->innerJoin('c', 'eva_ai_documents', 'd', $qb->expr()->eq('c.document_id', 'd.id'))
+            ->where($qb->expr()->eq('d.user_id', $qb->createNamedParameter($userId)))
+            ->andWhere($qb->expr()->gt('c.id', $qb->createNamedParameter(max(0, $afterId), IQueryBuilder::PARAM_INT)))
+            ->orderBy('c.id', 'ASC')
+            ->setMaxResults(max(1, min(5000, $limit)));
+        $this->filterGeneration($qb, $generationId);
+        $result = $qb->executeQuery();
+        try { return $result->fetchAll(); }
+        finally { $result->closeCursor(); }
+    }
+
     /**
      * Coarse lexical preselect for very large collections: only chunks whose
      * content contains at least one query token, up to $cap rows.

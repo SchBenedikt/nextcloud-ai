@@ -2,6 +2,12 @@
 
 ## [Unreleased]
 
+### Keyset dense retrieval scans (1.18.24)
+
+- Replace large-index cosine scan offsets with stable chunk-ID keyset pages for both legacy SQL and active SQL generations.
+- Keep scan work bounded to the snapshot's initial row count and stop when a page is empty, avoiding offset shifts when rows are concurrently deleted.
+- Preserve exact full-coverage cosine ranking and candidate limits; this reduces database paging cost but does not remove PHP vector scoring or the full scan.
+
 ### SQL generation search cutover (1.18.23)
 
 - Automatically activate a fully built, currently verified SQL generation for explicitly enrolled users.
