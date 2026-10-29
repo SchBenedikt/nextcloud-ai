@@ -203,6 +203,12 @@ export function useEvaSettings({ section = ref('general') } = {}) {
 	const indexingActive = computed(() => indexing.value || status.value?.indexing === true)
 	const busy = computed(() => saving.value || checking.value || indexing.value || resetting.value || deletingChats.value || stopping.value)
 	const settingsLocked = computed(() => busy.value || indexingActive.value)
+	const saveNowLocked = computed(() => {
+		const changed = changedSettingKeys()
+		const briefingOnly = changed.length > 0 && changed.every(key => key === 'proactive_enabled' || key === 'proactive_schedules')
+		return saving.value || checking.value || indexing.value || resetting.value || deletingChats.value || stopping.value
+			|| (indexingActive.value && !briefingOnly)
+	})
 	// Scheduled briefings stay editable during indexing, but avoid racing
 	// another settings write against their independent save request.
 	const briefingsLocked = computed(() => saving.value || checking.value || resetting.value || deletingChats.value || stopping.value || !formReady.value)
@@ -407,6 +413,14 @@ export function useEvaSettings({ section = ref('general') } = {}) {
 			pendingSettingsSaves = Math.max(0, pendingSettingsSaves - 1)
 			saving.value = pendingSettingsSaves > 0
 		})
+	}
+
+	/** Flush pending autosave edits immediately from the shared settings header. */
+	function saveNow() {
+		if (!formReady.value || saveNowLocked.value) return Promise.resolve(false)
+		window.clearTimeout(autoSaveTimer)
+		autoSaveDirty = false
+		return save({ changedOnly: true })
 	}
 
 	/** Serialize explicit provider-profile writes with autosaved form settings. */
@@ -729,12 +743,12 @@ export function useEvaSettings({ section = ref('general') } = {}) {
 	const ocrEnabled = computed({ get: () => f.value.ocr_enabled === '1', set: value => { f.value.ocr_enabled = value ? '1' : '0' } })
 	return {
 		group, formReady, chatRetentionOptions, nextcloudApiToken, removeNextcloudApiToken, hasUnsavedSettings, ocrEnabled, f, providerProfiles, selectedChatProvider, embeddingModelOptions, chatModelOptions, summaryModelOptions, webSearchProviderOptions, status, health, healthLoading, statusTimer, limits, availableModels, embeddingModels, chatModels, embeddingInstalledHint, chatInstalledHint, modelLoading, modelError, checkOut, saving, checking, indexing, resetting, deletingChats, stopping, saved, loadError, statusRefreshError, message, validationErrors, resetConfirm, chatsDeleteConfirm,
-		newExcludePath, excludeError, excludeList, actionsEnabled, backgroundActionsEnabled, voiceInputEnabled, notificationsEnabled, learningEnabled, safeCommandsEnabled, terminalCommandsEnabled, terminalCommandAny, mailIndexEnabled, talkIndexEnabled, talkWriteEnabled, indexEnrolled, actionsDisabled, busy, indexingActive, settingsLocked, briefingsLocked, maxFileSizeMb,
+		newExcludePath, excludeError, excludeList, actionsEnabled, backgroundActionsEnabled, voiceInputEnabled, notificationsEnabled, learningEnabled, safeCommandsEnabled, terminalCommandsEnabled, terminalCommandAny, mailIndexEnabled, talkIndexEnabled, talkWriteEnabled, indexEnrolled, actionsDisabled, busy, indexingActive, settingsLocked, saveNowLocked, briefingsLocked, maxFileSizeMb,
 		userWebSearchEnabled, userWebSearchSafeSearch, userWebSearchImages, userWebSearchBrowser, userWebSearchFetchContent,
 		connectors, connectorsLoading, connectorsBusy, connectorDiagnostics, connectorDraft, connectorToRemove, connectorRemovalError, connectorEndpointQuery, filteredConnectorEndpoints, applyConnectorExample, saveConnector, editConnector, connectorCredentialLabel, connectorCredentialClass, removeConnector, closeConnectorRemoval, confirmRemoveConnector, discoverConnector, testConnector, loadConnectors, connectorLoadError, plugins, pluginsLoading, pluginsSaving, setPluginEnabled, loadPlugins, pluginLoadError, pluginRiskLabel, pluginSurfacesLabel,
 		apiKeys, apiKeysLoading, apiKeysBusy, apiKeyError, createdApiKey, apiKeyDraft, apiKeyScopeOptions, apiDocsUrl, loadApiKeys, createApiKey, revokeApiKey, copyApiKey,
 		proactiveEnabled, proactiveBriefings, briefingDraft, briefingFormError, editingBriefingId, briefingHistory, briefingTypeOptions, weekdays, dayName, briefingTypeName, channelName, formatDateTime, failureSummary, saveBriefing, editBriefing, cancelEditBriefing, removeBriefing, toggleBriefing, toggleBriefingActions, runBriefingNow,
-		exporting, downloadExport, savePatch,
+		exporting, downloadExport, savePatch, saveNow,
 		knowledgeContent, knowledgeOriginal, savingKnowledge, knowledgeSaved, knowledgeLoading, knowledgeLoadError, knowledgeReady, loadKnowledge, saveKnowledgeContent,
 		formatNumber, loadStatus, loadHealth, healthError, save, checkOllama, addExclude, removeExclude, startIndex, startMailIndex, startTalkIndex, stopIndex, resetIndex, deleteAllChats,
 	}

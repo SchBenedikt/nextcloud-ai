@@ -53,7 +53,9 @@ to existing API clients.
 Models initially loads core settings. History, personal knowledge, connectors,
 extensions, keys and diagnostics load on first entry into their section.
 Independent optional resources load concurrently. `useEvaSettings` owns form
-state; section components render it.
+state; section components render it. Scalar edits autosave, while the shared
+header also offers a native Save changes action that immediately flushes only
+pending values and reports the server-confirmed result.
 
 A full status response containing model information no longer triggers another
 initial model-discovery request. Editing the endpoint still discovers models

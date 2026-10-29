@@ -2,6 +2,11 @@
 
 ## [Unreleased]
 
+### Make pending settings changes explicit (1.18.86)
+
+- Add a native Save changes action beside the autosave status so users can flush pending edits immediately and retry after a failed save.
+- Keep automatic saving and serialized partial updates; the action sends only values that differ from the last server-confirmed settings.
+
 ### Expose end-to-end EVA request latency (1.18.85)
 
 - Record bounded, content-free durations for completed, failed and interrupted EVA requests, including retrieval, model and tool work.
