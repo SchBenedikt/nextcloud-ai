@@ -388,8 +388,11 @@ Nextcloud filesystem services. Version 1.20.13 moves selected-file chat into
 into `IndexController`; main chat/history and settings remain to be extracted.
 Version 1.20.38 moves chat listing, keyset/offset paging, creation, detail
 reads and deletion into `ChatHistoryController` without changing route paths
-or response behavior. Chat generation/streaming, settings and remaining chat
-mutations still need separate domain extractions.
+or response behavior. Version 1.20.39 moves personal settings reads, updates,
+validation and credential persistence into `SettingsController`; it also
+replaces missing controller dependencies with explicit services. Chat
+generation/streaming and remaining chat mutations still need separate domain
+extractions.
 
 ### Stage 14 portability slice: Activity and Mail SQL (1.18.60)
 

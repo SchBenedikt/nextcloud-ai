@@ -188,6 +188,12 @@ detail reads, and deletion. It keeps chat history owner-scoped and preserves
 the existing OCS routes and storage error mapping. The main `ApiController`
 continues to own chat generation, streaming, and turn mutations for now.
 
+`SettingsController` owns personal settings reads and updates, their DTO and
+provider validation, and credential persistence. It receives the knowledge
+initializer and model services explicitly and keeps the existing
+`/api/settings` routes while removing this configuration workflow from the
+main chat controller.
+
 `IndexController` owns user-scoped full, Mail, Talk and reset indexing requests.
 It claims the bounded run before scheduling `IndexRequestJob`, retains the
 worker-owned cancellation transition, and enrolls users on a successful

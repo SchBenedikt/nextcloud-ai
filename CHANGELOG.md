@@ -2,6 +2,11 @@
 
 ## [Unreleased]
 
+### Extract settings API from the main chat controller (1.20.39)
+
+- Move personal settings reads, validation and credential persistence into `SettingsController` while preserving the `/api/settings` contract.
+- Inject the knowledge initializer explicitly and recover stale index state through `AppConfig`, fixing missing dependencies in the settings route.
+
 ### Extract chat history endpoints from the main API controller (1.20.38)
 
 - Move owner-scoped chat listing, paging, creation, deletion and detail reads into a focused controller while preserving route URLs, request validation, storage error responses and legacy connector-confirmation normalization.

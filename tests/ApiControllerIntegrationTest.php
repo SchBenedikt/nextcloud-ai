@@ -8,6 +8,7 @@ use OCA\EvaAi\BackgroundJob\IndexRequestJob;
 use OCA\EvaAi\Controller\ApiController;
 use OCA\EvaAi\Controller\BackgroundChatController;
 use OCA\EvaAi\Controller\IndexController;
+use OCA\EvaAi\Controller\SettingsController;
 use OCA\EvaAi\Controller\SystemController;
 use OCA\EvaAi\Db\DocumentMapper;
 use OCA\EvaAi\Dto\ChatRequest;
@@ -20,8 +21,11 @@ use OCA\EvaAi\Service\IndexScheduler;
 use OCA\EvaAi\Service\Indexer;
 use OCA\EvaAi\Service\KnowledgeInitializer;
 use OCA\EvaAi\Service\LockGuard;
+use OCA\EvaAi\Service\ModelSelectionValidator;
 use OCA\EvaAi\Service\Ollama;
+use OCA\EvaAi\Service\ProviderCredentials;
 use OCA\EvaAi\Service\RagService;
+use OCA\EvaAi\Service\SettingsPersistence;
 use OCA\EvaAi\Service\UsageMetrics;
 use OCA\EvaAi\Service\UserDataService;
 use OCP\App\IAppManager;
@@ -160,6 +164,9 @@ final class ApiControllerIntegrationTest extends TestCase {
 		$chatStore = $this->createMock(ChatStore::class);
 		$appManager = $this->createMock(IAppManager::class);
 		$knowledgeInitializer = $this->createMock(KnowledgeInitializer::class);
+		$providerCredentials = $this->createMock(ProviderCredentials::class);
+		$settingsPersistence = new SettingsPersistence($config);
+		$modelSelectionValidator = new ModelSelectionValidator($config, $ollama);
 		$lockGuard = $this->createMock(LockGuard::class);
 		$userDataService = $this->createMock(UserDataService::class);
 		$chatLearner = $this->createMock(ChatLearner::class);
@@ -174,12 +181,22 @@ final class ApiControllerIntegrationTest extends TestCase {
 			$cacheFactory, $backgroundChatQueue, $logger,
 		);
 
-		$dependencies = compact('request', 'documentMapper', 'ollama', 'config', 'rag', 'executor', 'indexer', 'jobList', 'lockingProvider', 'chatStore', 'knowledgeInitializer', 'lockGuard', 'cacheFactory', 'logger', 'backgroundChatQueue');
+		$dependencies = compact('request', 'documentMapper', 'ollama', 'config', 'rag', 'executor', 'indexer', 'jobList', 'lockingProvider', 'chatStore', 'knowledgeInitializer', 'providerCredentials', 'settingsPersistence', 'modelSelectionValidator', 'lockGuard', 'cacheFactory', 'logger', 'backgroundChatQueue');
 		return new ApiController(
 			'eva_ai', $request, $userId, $config, $rag, $executor, $ollama,
 			$jobList, $lockingProvider, $chatStore, $appManager,
 			$userDataService, $chatLearner, $cacheFactory, $indexScheduler, $usageMetrics,
 			$logger, $systemController,
+		);
+	}
+
+	/** @param array<string,mixed> $params @param array<string,mixed> $dependencies @param array<string,mixed> $storedValues */
+	private function settingsController(?string $userId, array $params, array &$dependencies, array &$storedValues): SettingsController {
+		$this->controller($userId, $params, $dependencies, $storedValues);
+		return new SettingsController(
+			'eva_ai', $dependencies['request'], $userId, $dependencies['config'],
+			$dependencies['ollama'], $dependencies['knowledgeInitializer'],
+			$dependencies['providerCredentials'], $dependencies['settingsPersistence'], $dependencies['modelSelectionValidator'],
 		);
 	}
 
@@ -270,7 +287,7 @@ final class ApiControllerIntegrationTest extends TestCase {
 	public function testSettingsSaveIsVisibleOnTheNextRead(): void {
 		$stored = [];
 		$dependencies = [];
-		$controller = $this->controller('alice', ['temperature' => '0.7'], $dependencies, $stored);
+		$controller = $this->settingsController('alice', ['temperature' => '0.7'], $dependencies, $stored);
 
 		$saved = $controller->saveSettings();
 		$reloaded = $controller->settings();
@@ -283,7 +300,7 @@ final class ApiControllerIntegrationTest extends TestCase {
 
 	public function testInvalidLaterCredentialDoesNotOverwriteAnEarlierCredential(): void {
 		$stored = []; $dependencies = [];
-		$controller = $this->controller('alice', ['groq_api_key' => 'gsk_abcdefghijklmnop', 'nextcloud_api_token' => "invalid token"], $dependencies, $stored);
+		$controller = $this->settingsController('alice', ['groq_api_key' => 'gsk_abcdefghijklmnop', 'nextcloud_api_token' => "invalid token"], $dependencies, $stored);
 		$dependencies['ollama']->expects(self::never())->method('saveGroqKey');
 		self::assertSame(400, $controller->saveSettings()->getStatus());
 	}
@@ -291,7 +308,7 @@ final class ApiControllerIntegrationTest extends TestCase {
 	public function testProviderProfilesSentAsJsonSurviveASaveAndReload(): void {
 		$stored = []; $dependencies = [];
 		$profiles = [['id' => 'local-model', 'name' => 'Local model', 'url' => 'http://127.0.0.1:1234/v1', 'model' => 'local-chat', 'auth' => 'none']];
-		$controller = $this->controller('alice', ['provider_profiles' => json_encode($profiles)], $dependencies, $stored);
+		$controller = $this->settingsController('alice', ['provider_profiles' => json_encode($profiles)], $dependencies, $stored);
 		self::assertSame(200, $controller->saveSettings()->getStatus());
 		self::assertSame($profiles, json_decode($controller->settings()->getData()['provider_profiles'], true));
 	}
