@@ -211,34 +211,76 @@ class ChatStore {
 
     public function create(string $user, ?string $title = null): array {
         return $this->withUserLock($user, function () use ($user, $title): array {
+            if ($this->sqlReadsEnabled($user)) {
+                $beforeUpdated = null;
+                $beforeChatId = null;
+                do {
+                    // Reuse checks need only encrypted metadata for empty rows;
+                    // loading every message in every conversation here turns a
+                    // simple new-chat action into work proportional to history.
+                    $records = $this->sqlChats->metadataPage($user, 101, $beforeUpdated, $beforeChatId, true);
+                    $hasMore = count($records) > 100;
+                    if ($hasMore) array_pop($records);
+                    foreach ($records as $record) {
+                        $existing = $record['metadata'];
+                        $existing['id'] = $record['id'];
+                        $existing['created'] = $record['created'];
+                        $existing['updated'] = $record['updated'];
+                        $existing['messages'] = [];
+                        if ($this->isReusableEmptyChat($existing, $title)) {
+                            $existing['reused'] = true;
+                            $existing['title'] = $this->displayTitle($existing);
+                            return $existing;
+                        }
+                    }
+                    if (!$hasMore || $records === []) break;
+                    $last = $records[count($records) - 1];
+                    $beforeUpdated = $last['updated'];
+                    $beforeChatId = $last['id'];
+                } while (true);
+
+                $chat = $this->newChat($title);
+                $this->sqlChats->writeChat($user, $chat);
+                if (isset($this->chatSnapshots[$user])) $this->chatSnapshots[$user][] = $chat;
+                return $chat;
+            }
+
             // Keine doppelten leeren Chats: ein noch leerer Chat wird wiederverwendet.
             $all = $this->read($user);
             foreach ($all as $existing) {
-                if (count($existing['messages'] ?? []) === 0
-                    && empty($existing['archived']) && empty($existing['instructions'])
-                    && empty($existing['scopePath']) && empty($existing['folder'])
-                    && in_array($existing['persona'] ?? '', ['', 'default'], true)
-                    && ($title === null || $title === '' || ($existing['title'] ?? '') === $this->clipTitle($title))) {
+                if ($this->isReusableEmptyChat($existing, $title)) {
                     $existing['reused'] = true;
                     $existing['title'] = $this->displayTitle($existing);
                     return $existing;
                 }
             }
-            $chat = [
-                'id' => 'c' . date('YmdHis') . '-' . bin2hex(random_bytes(4)),
-                'title' => $title !== null && $title !== '' ? $this->clipTitle($title) : '',
-                'created' => time(),
-                'updated' => time(),
-                'messages' => [],
-                // Monotonic per-chat revision: every mutation bumps it, and
-                // regenerate/edit requests validate against it so concurrent
-                // edits cannot silently overwrite each other (Issue #182).
-                'rev' => 1,
-            ];
+            $chat = $this->newChat($title);
             $all[] = $chat;
             $this->write($user, $all);
             return $chat;
         });
+    }
+
+    private function isReusableEmptyChat(array $chat, ?string $title): bool {
+        return count($chat['messages'] ?? []) === 0
+            && empty($chat['archived']) && empty($chat['instructions'])
+            && empty($chat['scopePath']) && empty($chat['folder'])
+            && in_array($chat['persona'] ?? '', ['', 'default'], true)
+            && ($title === null || $title === '' || ($chat['title'] ?? '') === $this->clipTitle($title));
+    }
+
+    private function newChat(?string $title): array {
+        return [
+            'id' => 'c' . date('YmdHis') . '-' . bin2hex(random_bytes(4)),
+            'title' => $title !== null && $title !== '' ? $this->clipTitle($title) : '',
+            'created' => time(),
+            'updated' => time(),
+            'messages' => [],
+            // Monotonic per-chat revision: every mutation bumps it, and
+            // regenerate/edit requests validate against it so concurrent
+            // edits cannot silently overwrite each other (Issue #182).
+            'rev' => 1,
+        ];
     }
 
     public function delete(string $user, string $id): bool {
