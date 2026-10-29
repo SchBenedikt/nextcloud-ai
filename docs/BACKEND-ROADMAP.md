@@ -58,6 +58,11 @@ The implementation entries further below record the actual delivered slices.
   request instead of repeating that query-side work for every candidate. This is
   an algorithm-preserving CPU reduction; no latency improvement is claimed
   without representative measurements.
+- Exact SQL cosine now also reuses a persisted per-chunk magnitude. New writes
+  carry it atomically; a bounded background job backfills existing rows, and
+  null or invalid metadata falls back to the prior exact calculation. This
+  removes the repeated candidate norm pass but leaves the full dot-product scan
+  and needs representative measurement.
 - `Chunk` stores embeddings as JSON text. `ChunkMapper` supplies lexical
   candidates through SQL LIKE, not an inverted index.
 - `Indexer` already bounds file traversal, extraction and embedding batches and
@@ -594,3 +599,14 @@ configuration backup boundary, isolated restore sequence, encrypted chat and
 cleanup retry checks, and optional Qdrant recovery handling. This makes the
 rehearsal steps reviewable; no full restore, deletion, cluster, or cross-database
 rehearsal has been run, so all corresponding release gates remain open.
+
+### Cached SQL cosine magnitudes (1.18.40)
+
+SQL chunks now store their exact magnitude in a portable nullable numeric
+column. The ordinary indexer and generation builder populate it in the same
+write as each embedding. A small recurring Nextcloud job fills existing rows
+in bounded pages with an update guard against concurrent embedding changes.
+Search reuses a valid magnitude and keeps the old exact calculation for missing
+or invalid metadata. PHP syntax, migration/app XML, and diff checks passed
+locally; tests and representative performance measurements have not been run.
+Full-index dot products remain O(N × dimension).

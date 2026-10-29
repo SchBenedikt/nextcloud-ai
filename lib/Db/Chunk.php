@@ -27,6 +27,8 @@ use OCP\AppFramework\Db\Entity;
  * @method void setContentHash(?string $hash)
  * @method int getVectorRevision()
  * @method void setVectorRevision(int $revision)
+ * @method ?float getVectorNorm()
+ * @method void setVectorNorm(?float $norm)
  */
 class Chunk extends Entity {
     protected ?int $documentId = null;
@@ -39,12 +41,14 @@ class Chunk extends Entity {
     protected ?string $vectorState = 'legacy';
     protected ?string $contentHash = null;
     protected ?int $vectorRevision = 0;
+    protected ?float $vectorNorm = null;
 
     public function __construct() {
         $this->addType('documentId', 'integer');
         $this->addType('chunkIndex', 'integer');
         $this->addType('tokenCount', 'integer');
         $this->addType('vectorRevision', 'integer');
+        $this->addType('vectorNorm', 'double');
     }
 
     public function setProvenanceArray(array $metadata): void {
@@ -58,6 +62,8 @@ class Chunk extends Entity {
     }
 
     public function setEmbeddingArray(array $vector): void {
-        $this->setEmbedding(json_encode($vector));
+        $json = json_encode($vector, JSON_THROW_ON_ERROR);
+        $this->setEmbedding($json);
+        $this->setVectorNorm(\OCA\EvaAi\Vector\VectorNorm::fromJson($json));
     }
 }

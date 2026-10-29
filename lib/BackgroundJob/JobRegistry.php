@@ -19,6 +19,7 @@ final class JobRegistry {
         GenerationBuildJob::class,
         GenerationVerificationJob::class,
         AccountCleanupJob::class,
+        VectorNormBackfillJob::class,
     ];
 
     public static function ensureScheduled(IJobList $jobs): void {

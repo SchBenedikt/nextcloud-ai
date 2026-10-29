@@ -2,6 +2,11 @@
 
 ## [Unreleased]
 
+### Cached per-chunk vector magnitudes (1.18.40)
+
+- Persist exact vector magnitudes beside chunks and reuse them during SQL cosine ranking; backfill existing rows gradually in bounded background work.
+- Preserve exact ranking and the prior calculation for rows without valid cached metadata. Full-index dot-product cost and measured latency remain open.
+
 ### Durable account-erasure retries (1.18.39)
 
 - Persist an encrypted cleanup identity and retry incomplete local erasure steps through a bounded Nextcloud background job. The owner write fence is established before index cleanup; retries continue to cover SQL, cache, AppData and per-user configuration failures.

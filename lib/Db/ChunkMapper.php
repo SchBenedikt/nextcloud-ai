@@ -105,7 +105,7 @@ class ChunkMapper extends QBMapper {
     public function chunksForUser(string $userId, int $limit = 8000, ?string $generationId = null, string $generationState = 'ready'): array {
         $limit = max(1, $limit);
         $qb = $this->db->getQueryBuilder();
-        $qb->select('c.id', 'c.document_id', 'c.chunk_index', 'c.content', 'c.embedding', 'c.provenance')
+        $qb->select('c.id', 'c.document_id', 'c.chunk_index', 'c.content', 'c.embedding', 'c.vector_norm', 'c.provenance')
             ->from('eva_ai_chunks', 'c')
             ->innerJoin('c', 'eva_ai_documents', 'd', $qb->expr()->eq('c.document_id', 'd.id'))
             ->where($qb->expr()->eq('d.user_id', $qb->createNamedParameter($userId)))
@@ -132,7 +132,7 @@ class ChunkMapper extends QBMapper {
         $limit = max(1, $limit);
         $offset = max(0, $offset);
         $qb = $this->db->getQueryBuilder();
-        $qb->select('c.id', 'c.document_id', 'c.chunk_index', 'c.content', 'c.embedding', 'c.provenance')
+        $qb->select('c.id', 'c.document_id', 'c.chunk_index', 'c.content', 'c.embedding', 'c.vector_norm', 'c.provenance')
             ->from('eva_ai_chunks', 'c')
             ->innerJoin('c', 'eva_ai_documents', 'd', $qb->expr()->eq('c.document_id', 'd.id'))
             ->where($qb->expr()->eq('d.user_id', $qb->createNamedParameter($userId)))
@@ -149,7 +149,7 @@ class ChunkMapper extends QBMapper {
     /** Stable keyset page for large-index scans; inserts/deletes before the cursor cannot shift later pages. */
     public function chunksForUserAfter(string $userId, int $afterId, int $limit, ?string $generationId = null, string $generationState = 'ready'): array {
         $qb = $this->db->getQueryBuilder();
-        $qb->select('c.id', 'c.document_id', 'c.chunk_index', 'c.content', 'c.embedding', 'c.provenance')
+        $qb->select('c.id', 'c.document_id', 'c.chunk_index', 'c.content', 'c.embedding', 'c.vector_norm', 'c.provenance')
             ->from('eva_ai_chunks', 'c')
             ->innerJoin('c', 'eva_ai_documents', 'd', $qb->expr()->eq('c.document_id', 'd.id'))
             ->where($qb->expr()->eq('d.user_id', $qb->createNamedParameter($userId)))
@@ -165,7 +165,7 @@ class ChunkMapper extends QBMapper {
     /** Lightweight page for dense ranking: full chunk rows are hydrated only for top matches. */
     public function vectorsForUserAfter(string $userId, int $afterId, int $limit, ?string $generationId = null, string $generationState = 'ready'): array {
         $qb = $this->db->getQueryBuilder();
-        $qb->select('c.id', 'c.embedding')
+        $qb->select('c.id', 'c.embedding', 'c.vector_norm')
             ->from('eva_ai_chunks', 'c')
             ->innerJoin('c', 'eva_ai_documents', 'd', $qb->expr()->eq('c.document_id', 'd.id'))
             ->where($qb->expr()->eq('d.user_id', $qb->createNamedParameter($userId)))
@@ -191,7 +191,7 @@ class ChunkMapper extends QBMapper {
             return $this->chunksForUserPage($userId, $cap, 0, $generationId, $generationState);
         }
         $qb = $this->db->getQueryBuilder();
-        $qb->select('c.id', 'c.document_id', 'c.chunk_index', 'c.content', 'c.embedding', 'c.provenance')
+        $qb->select('c.id', 'c.document_id', 'c.chunk_index', 'c.content', 'c.embedding', 'c.vector_norm', 'c.provenance')
             ->from('eva_ai_chunks', 'c')
             ->innerJoin('c', 'eva_ai_documents', 'd', $qb->expr()->eq('c.document_id', 'd.id'))
             ->where($qb->expr()->eq('d.user_id', $qb->createNamedParameter($userId)));
@@ -218,7 +218,7 @@ class ChunkMapper extends QBMapper {
             && trim($phrase) !== '' && strlen($phrase) <= 800))), 0, 5);
         if ($phrases === []) return [];
         $qb = $this->db->getQueryBuilder();
-        $qb->select('c.id', 'c.document_id', 'c.chunk_index', 'c.content', 'c.embedding', 'c.provenance', 'c.vector_revision')
+        $qb->select('c.id', 'c.document_id', 'c.chunk_index', 'c.content', 'c.embedding', 'c.vector_norm', 'c.provenance', 'c.vector_revision')
             ->from('eva_ai_chunks', 'c')->innerJoin('c', 'eva_ai_documents', 'd', $qb->expr()->eq('c.document_id', 'd.id'))
             ->where($qb->expr()->eq('d.user_id', $qb->createNamedParameter($userId)));
         $matches = $qb->expr()->orX();
@@ -261,7 +261,7 @@ class ChunkMapper extends QBMapper {
         $out = [];
         foreach (array_chunk($ids, 500) as $chunkIds) {
             $qb = $this->db->getQueryBuilder();
-            $qb->select('c.id', 'c.document_id', 'c.chunk_index', 'c.content', 'c.embedding', 'c.provenance')
+            $qb->select('c.id', 'c.document_id', 'c.chunk_index', 'c.content', 'c.embedding', 'c.vector_norm', 'c.provenance')
                 ->from('eva_ai_chunks', 'c')
                 ->where($qb->expr()->in('c.id', $qb->createNamedParameter($chunkIds, IQueryBuilder::PARAM_INT_ARRAY)));
             $this->filterGeneration($qb,$generationId,$generationState);

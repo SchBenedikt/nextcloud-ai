@@ -247,7 +247,7 @@ class Searcher {
                 if (!is_array($vec)) {
                     continue;
                 }
-                $similarity = $this->cosine($queryVector, $vec, $queryMagnitude);
+                $similarity = $this->cosine($queryVector, $vec, $queryMagnitude, $row['vector_norm'] ?? null);
                 if ($similarity !== null) {
                     $dense[$i] = $similarity;
                 }
@@ -486,7 +486,7 @@ class Searcher {
                         if (!is_array($vec)) {
                             continue;
                         }
-                        $similarity = $this->cosine($queryVector, $vec, $queryMagnitude);
+                        $similarity = $this->cosine($queryVector, $vec, $queryMagnitude, $row['vector_norm'] ?? null);
                         if ($similarity !== null) {
                             $best[(int)$row['id']] = $similarity;
                         }
@@ -685,11 +685,13 @@ class Searcher {
         return sqrt($norm);
     }
 
-    private function cosine(array $a, array $b, ?float $magnitudeA): ?float {
+    private function cosine(array $a, array $b, ?float $magnitudeA, mixed $magnitudeB = null): ?float {
         if ($a === [] || count($a) !== count($b) || $magnitudeA === null || $magnitudeA <= 0.0) {
             return null;
         }
         $dot = 0.0;
+        $knownMagnitudeB = is_numeric($magnitudeB) && is_finite((float)$magnitudeB) && (float)$magnitudeB > 0.0
+            ? (float)$magnitudeB : null;
         $nb = 0.0;
         foreach ($a as $i => $value) {
             if (!array_key_exists($i, $b) || !is_numeric($b[$i]) || !is_finite((float)$b[$i])) {
@@ -698,11 +700,12 @@ class Searcher {
             $va = (float)$value;
             $vb = (float)$b[$i];
             $dot += $va * $vb;
-            $nb += $vb * $vb;
+            if ($knownMagnitudeB === null) $nb += $vb * $vb;
         }
-        if (!is_finite($nb) || $nb <= 0.0) {
+        $magnitude = $knownMagnitudeB ?? (is_finite($nb) && $nb > 0.0 ? sqrt($nb) : null);
+        if ($magnitude === null || !is_finite($magnitude) || $magnitude <= 0.0) {
             return null;
         }
-        return $dot / ($magnitudeA * sqrt($nb));
+        return $dot / ($magnitudeA * $magnitude);
     }
 }
