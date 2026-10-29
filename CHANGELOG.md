@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Use the DBAL type object in the usage migration (1.18.62)
+
+- Pass the integer DBAL type object to Nextcloud's schema wrapper when normalizing existing usage tables.
+
 ### Normalize the usage estimate column (1.18.61)
 
 - Align existing usage tables with the integer 0/1 type used by portable aggregate queries.
