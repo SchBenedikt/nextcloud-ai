@@ -354,6 +354,15 @@ open.
 No SQL primary/shadow reads are enabled. No remote write/load/isolation tests or
 container startup have been run under the user's instruction to defer testing.
 
+Normal indexed-file flushes now recognize a matching active SQL generation and
+let the transactional mutation journal extend it instead of provisioning a
+second full backfill. Vectors just validated for exact chunk text can seed only
+the matching generation-scoped cache, reducing duplicate embedding requests in
+the bounded builder/mutation workers. Model, endpoint, dimension or chunk-setting
+changes still produce a separate immutable generation; an explicitly selected
+Qdrant primary is not displaced. Provider calls and chunk SQL writes retain their
+existing bounded worker boundaries.
+
 ### Stage 08 durable journal and target foundation
 
 The 1.18.1 schema, encrypted target registry, immutable storage binding, transaction-

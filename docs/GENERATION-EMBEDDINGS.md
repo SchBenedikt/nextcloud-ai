@@ -89,6 +89,14 @@ outages remain misses/best-effort writes. Complete response batches are validate
 before any returned vector is published or cached. A cached result still checks
 current owned configuration and the caller's guard.
 
+The ordinary indexer may seed this generation-specific key family with vectors it
+has just received from the provider, but only when the enrolled user's active or
+building SQL generation matches the exact model, endpoint, dimension, metric and
+chunk settings. This lets the subsequent bounded build or mutation worker reuse
+identical chunk text without repeating provider work. A matching active SQL
+generation is extended through the transactional mutation journal; it does not
+start a redundant full rebuild. Qdrant primary selection is left unchanged.
+
 ## Validation and remaining backfill work
 
 The optional `tests/runtime/generation-embedding.php` probe uses native Nextcloud
