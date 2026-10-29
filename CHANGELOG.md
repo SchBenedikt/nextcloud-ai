@@ -2,6 +2,12 @@
 
 ## [Unreleased]
 
+### Add a privacy-focused local Qdrant deployment profile (1.20.25)
+
+- Provide a persistent Docker Compose setup bound to loopback with Qdrant telemetry disabled.
+- Document native Nextcloud connection setup and preserve SQL as the standalone default.
+- Record the local adapter health result without claiming generation migration or search cutover.
+
 ### Refresh new chat history from the server when requested (1.20.24)
 
 - Use the create response only for the first render of a new chat; explicit refreshes and conflict recovery read the canonical server state.

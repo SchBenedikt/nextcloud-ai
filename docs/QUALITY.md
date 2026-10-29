@@ -104,8 +104,16 @@ its fixture transaction, without contacting a vector/embedding service. Remove t
 disposable account after verification. The browser suite requires configuration
 and is skipped if its environment variables are absent. A mock browser run does
 not substitute for it. Hosted image/audio providers, external app actions,
-Qdrant transport/cutover, distributed races, restoration and load/soak still need
+Qdrant point-delivery/cutover, distributed races, restoration and load/soak still need
 separate configured evidence; they are not established by these smoke checks.
+
+### Local Qdrant connection (2026-10-29)
+
+The optional Compose profile started Qdrant 1.20.0 on `127.0.0.1:6333` with
+telemetry disabled and persistent storage. EVA's native OCC health command
+returned `api_reachable`; the Qdrant collection list remained empty. This
+validates local reachability and the app's configured transport only. No
+documents or vectors were sent, and search still uses the normal SQL path.
 
 The authenticated reload check also exposed a completion race after the first
 recovery deployment: chat became ready before its history writes settled. The
