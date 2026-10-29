@@ -2,6 +2,12 @@
 
 ## [Unreleased]
 
+### Yield OCR indexing to interactive chats (1.20.19)
+
+- Check for active chat requests before changed-file extraction and while local OCR subprocesses run.
+- Terminate OCR promptly when a chat starts, keep the previous indexed version and retry later.
+- Defer incremental file claims without spending their transient-failure retry budget.
+
 ### Recover SQL chats and restore the rate-limit fallback (1.20.18)
 
 - Use the correct Nextcloud query-builder interface so the SQL rate-limit fallback works when the configured cache is unavailable.

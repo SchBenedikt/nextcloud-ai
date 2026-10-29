@@ -187,6 +187,30 @@ class DirtyIndexStore {
         });
     }
 
+    /** Return chat-deferred claims to the queue without spending a failure attempt. */
+    public function deferClaimed(string $userId, array $deferred, int $delaySeconds = 30): int {
+        if ($userId === '' || $deferred === []) return 0;
+        return $this->withUserLock($userId, function () use ($userId, $deferred, $delaySeconds): int {
+            $now = time();
+            $updated = 0;
+            foreach ($deferred as $entry) {
+                if (!is_array($entry) || (int)($entry['id'] ?? 0) <= 0 || (int)($entry['revision'] ?? 0) <= 0) continue;
+                $query = $this->db->getQueryBuilder();
+                $updated += $query->update('eva_ai_dirty_index')
+                    ->set('status', $query->createNamedParameter('pending'))
+                    ->set('available_at', $query->createNamedParameter($now + max(1, min(3600, $delaySeconds)), IQueryBuilder::PARAM_INT))
+                    ->set('lease_until', $query->createNamedParameter(0, IQueryBuilder::PARAM_INT))
+                    ->set('updated_at', $query->createNamedParameter($now, IQueryBuilder::PARAM_INT))
+                    ->where($query->expr()->eq('id', $query->createNamedParameter((int)$entry['id'], IQueryBuilder::PARAM_INT)))
+                    ->andWhere($query->expr()->eq('user_id', $query->createNamedParameter($userId)))
+                    ->andWhere($query->expr()->eq('revision', $query->createNamedParameter((int)$entry['revision'], IQueryBuilder::PARAM_INT)))
+                    ->andWhere($query->expr()->eq('status', $query->createNamedParameter('running')))
+                    ->executeStatement();
+            }
+            return $updated;
+        });
+    }
+
     public function pending(string $userId): int {
         if ($userId === '') return 0;
         $query = $this->db->getQueryBuilder();

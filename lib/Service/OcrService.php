@@ -85,7 +85,7 @@ class OcrService {
         return implode('+', $valid);
     }
 
-    public function extract(string $bytes, string $mime, string $language, int $maxRuntimeSeconds = 60): string {
+    public function extract(string $bytes, string $mime, string $language, int $maxRuntimeSeconds = 60, ?callable $shouldYield = null): string {
         if (!preg_match('/^[a-zA-Z0-9_]{1,24}(?:\+[a-zA-Z0-9_]{1,24}){0,3}$/D', $language)) {
             throw new \RuntimeException('Invalid OCR language');
         }
@@ -104,7 +104,7 @@ class OcrService {
                 $pdfinfo = $this->binary('pdfinfo');
                 $pdftoppm = $this->binary('pdftoppm');
                 if ($pdfinfo === null || $pdftoppm === null) throw new \RuntimeException('PDF OCR requires pdfinfo and pdftoppm');
-                $info = $this->run([$pdfinfo, $input], $deadline);
+                $info = $this->runOcrCommand([$pdfinfo, $input], $deadline, $shouldYield);
                 if (!preg_match('/^Pages:\s+(\d+)/m', $info, $matches) || (int)$matches[1] < 1 || (int)$matches[1] > self::MAX_PAGES) {
                     throw new \RuntimeException('PDF OCR requires 1–30 pages; the existing index was preserved');
                 }
@@ -112,8 +112,8 @@ class OcrService {
                 $text = '';
                 for ($page = 1; $page <= $pages; $page++) {
                     $prefix = $dir . '/page';
-                    $this->run([$pdftoppm, '-f', (string)$page, '-l', (string)$page, '-singlefile', '-scale-to', '2000', '-png', $input, $prefix], $deadline);
-                    $pageText = $this->run([$tesseract, $prefix . '.png', 'stdout', '-l', $language], $deadline);
+                    $this->runOcrCommand([$pdftoppm, '-f', (string)$page, '-l', (string)$page, '-singlefile', '-scale-to', '2000', '-png', $input, $prefix], $deadline, $shouldYield);
+                    $pageText = $this->runOcrCommand([$tesseract, $prefix . '.png', 'stdout', '-l', $language], $deadline, $shouldYield);
                     $text .= "[Page $page]\n" . $pageText . "\n\n";
                     if (strlen($text) > self::MAX_TEXT) throw new \RuntimeException('OCR text exceeds 2 MiB');
                     @unlink($prefix . '.png');
@@ -125,7 +125,7 @@ class OcrService {
             if ($size[0] * $size[1] > 25000000) throw new \RuntimeException('OCR requires an image of at most 25 megapixels');
             // Tesseract handles the supported image formats directly.
             $inputFile = $input;
-            return trim($this->run([$tesseract, $inputFile, 'stdout', '-l', $language], $deadline));
+            return trim($this->runOcrCommand([$tesseract, $inputFile, 'stdout', '-l', $language], $deadline, $shouldYield));
         } finally {
             foreach (glob($dir . '/*') ?: [] as $file) @unlink($file);
             @rmdir($dir);
@@ -134,6 +134,18 @@ class OcrService {
 
     /** No shell interpolation; subprocess output is drained with a hard deadline. */
     protected function run(array $arguments, float $deadline): string {
+        return $this->runProcess($arguments, $deadline, null);
+    }
+
+    /** Keep the overridable two-argument runner used by providers and tests. */
+    private function runOcrCommand(array $arguments, float $deadline, ?callable $shouldYield): string {
+        if ($shouldYield !== null && $shouldYield()) throw new ChatPriorityYieldException('OCR yielded to an interactive chat.');
+        return $shouldYield === null
+            ? $this->run($arguments, $deadline)
+            : $this->runProcess($arguments, $deadline, $shouldYield);
+    }
+
+    private function runProcess(array $arguments, float $deadline, ?callable $shouldYield): string {
         $process = proc_open($arguments, [0 => ['pipe', 'r'], 1 => ['pipe', 'w'], 2 => ['pipe', 'w']], $pipes, null, ['LC_ALL' => 'C', 'OMP_THREAD_LIMIT' => '1']);
         if (!is_resource($process)) throw new \RuntimeException('Unable to start OCR tool');
         fclose($pipes[0]);
@@ -142,6 +154,9 @@ class OcrService {
         $output = '';
         try {
             while (true) {
+                if ($shouldYield !== null && $shouldYield()) {
+                    throw new ChatPriorityYieldException('OCR yielded to an interactive chat.');
+                }
                 $output .= stream_get_contents($pipes[1]);
                 stream_get_contents($pipes[2]);
                 if (strlen($output) > self::MAX_TEXT || microtime(true) >= $deadline) {
@@ -153,7 +168,7 @@ class OcrService {
                     if ($status['exitcode'] !== 0 || strlen($output) > self::MAX_TEXT) throw new \RuntimeException('OCR tool failed; check installed language data and input format');
                     return $output;
                 }
-                usleep(10000);
+                usleep(250000);
             }
         } finally {
             if (proc_get_status($process)['running']) proc_terminate($process, 9);

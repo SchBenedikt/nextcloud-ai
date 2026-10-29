@@ -49,6 +49,7 @@ class ReindexFileJob extends QueuedJob {
             }
             $processed = 0;
             $retainedFailures = 0;
+            $deferredForChat = false;
             for ($claimed = 0; $claimed < self::DRAIN_LIMIT; $claimed++) {
                 $entries = $this->dirty->claim($userId, 1, $claimed === 0);
                 if ($entries === []) break;
@@ -57,6 +58,11 @@ class ReindexFileJob extends QueuedJob {
                 try {
                     if ($kind === 'file') {
                         $result = $this->indexer->reindexFile($userId, (int)($entry['fileId'] ?? 0));
+                        if (!empty($result['deferred_for_chat'])) {
+                            $this->dirty->deferClaimed($userId, [$entry]);
+                            $deferredForChat = true;
+                            break;
+                        }
                         if (is_string($result['error'] ?? null) && $result['error'] !== '') {
                             throw new \RuntimeException($result['error']);
                         }
@@ -104,6 +110,7 @@ class ReindexFileJob extends QueuedJob {
                 'userId' => $userId,
                 'processed' => $processed,
                 'retrying' => $retainedFailures,
+                'deferred_for_chat' => $deferredForChat,
             ]);
         } finally {
             $this->config->setUserId(null);
