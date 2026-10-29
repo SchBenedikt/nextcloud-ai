@@ -3,7 +3,7 @@ declare(strict_types=1);
 namespace OCA\EvaAi\BackgroundJob;
 
 use OCA\EvaAi\Db\GenerationVerificationRepository;
-use OCA\EvaAi\Vector\GenerationVerificationWorker;
+use OCA\EvaAi\Vector\{GenerationActivationService,GenerationVerificationWorker};
 use OCP\AppFramework\Utility\ITimeFactory;
 use OCP\BackgroundJob\TimedJob;
 use Psr\Log\LoggerInterface;
@@ -11,7 +11,8 @@ use Psr\Log\LoggerInterface;
 /** Queues local verification for enrolled SQL generations and advances bounded verification work. */
 class GenerationVerificationJob extends TimedJob {
     public function __construct(ITimeFactory $time, private GenerationVerificationWorker $worker,
-        private GenerationVerificationRepository $verifications, private LoggerInterface $logger) {
+        private GenerationVerificationRepository $verifications, private GenerationActivationService $activation,
+        private LoggerInterface $logger) {
         parent::__construct($time);
         $this->setInterval(60);
     }
@@ -19,6 +20,7 @@ class GenerationVerificationJob extends TimedJob {
         try {
             $this->verifications->startNextEnrolledSql();
             $this->worker->run();
+            $this->activation->activateNextEnrolledSql();
         }
         catch(\Throwable){$this->logger->warning('eva_ai: generation verification tick interrupted');}
     }

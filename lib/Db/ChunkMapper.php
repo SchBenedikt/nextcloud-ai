@@ -102,7 +102,7 @@ class ChunkMapper extends QBMapper {
      * full-index materialisation when a new call site is added (Issue #394).
      * @return array<int,array<string,mixed>>
      */
-    public function chunksForUser(string $userId, int $limit = 8000): array {
+    public function chunksForUser(string $userId, int $limit = 8000, ?string $generationId = null): array {
         $limit = max(1, $limit);
         $qb = $this->db->getQueryBuilder();
         $qb->select('c.id', 'c.document_id', 'c.chunk_index', 'c.content', 'c.embedding', 'c.provenance')
@@ -111,7 +111,7 @@ class ChunkMapper extends QBMapper {
             ->where($qb->expr()->eq('d.user_id', $qb->createNamedParameter($userId)))
             ->orderBy('c.id', 'ASC')
             ->setMaxResults($limit);
-        $qb->andWhere($qb->expr()->isNull('c.vector_generation_id'));
+        $this->filterGeneration($qb,$generationId);
         $result = $qb->executeQuery();
         $rows = $result->fetchAll();
         $result->closeCursor();
@@ -128,7 +128,7 @@ class ChunkMapper extends QBMapper {
      *
      * @return array<int,array<string,mixed>>
      */
-    public function chunksForUserPage(string $userId, int $limit, int $offset): array {
+    public function chunksForUserPage(string $userId, int $limit, int $offset, ?string $generationId = null): array {
         $limit = max(1, $limit);
         $offset = max(0, $offset);
         $qb = $this->db->getQueryBuilder();
@@ -139,7 +139,7 @@ class ChunkMapper extends QBMapper {
             ->orderBy('c.id', 'ASC')
             ->setMaxResults($limit)
             ->setFirstResult($offset);
-        $qb->andWhere($qb->expr()->isNull('c.vector_generation_id'));
+        $this->filterGeneration($qb,$generationId);
         $result = $qb->executeQuery();
         $rows = $result->fetchAll();
         $result->closeCursor();
@@ -152,11 +152,11 @@ class ChunkMapper extends QBMapper {
      * @param string[] $tokens
      * @return array<int,array<string,mixed>>
      */
-    public function filterChunksByTokens(string $userId, array $tokens, int $cap, ?string $source = null): array {
+    public function filterChunksByTokens(string $userId, array $tokens, int $cap, ?string $source = null, ?string $generationId = null): array {
         if ($tokens === []) {
             // Empty token list: a lexical filter has nothing to match against.
             // Return a bounded page instead of the full index (Issue #13).
-            return $this->chunksForUserPage($userId, $cap, 0);
+            return $this->chunksForUserPage($userId, $cap, 0, $generationId);
         }
         $qb = $this->db->getQueryBuilder();
         $qb->select('c.id', 'c.document_id', 'c.chunk_index', 'c.content', 'c.embedding', 'c.provenance')
@@ -173,7 +173,7 @@ class ChunkMapper extends QBMapper {
         $qb->andWhere($like);
         $qb->orderBy('c.document_id', 'ASC')
             ->setMaxResults($cap);
-        $qb->andWhere($qb->expr()->isNull('c.vector_generation_id'));
+        $this->filterGeneration($qb,$generationId);
         $result = $qb->executeQuery();
         $rows = $result->fetchAll();
         $result->closeCursor();
@@ -184,6 +184,16 @@ class ChunkMapper extends QBMapper {
         return addcslashes($value, '%_\\');
     }
 
+    private function filterGeneration(IQueryBuilder $qb, ?string $generationId): void {
+        if ($generationId === null) {
+            $qb->andWhere($qb->expr()->isNull('c.vector_generation_id'));
+            return;
+        }
+        if (preg_match('/^[a-f0-9]{32}$/D',$generationId)!==1) throw new \InvalidArgumentException('Invalid vector generation filter.');
+        $qb->andWhere($qb->expr()->eq('c.vector_generation_id',$qb->createNamedParameter($generationId)))
+            ->andWhere($qb->expr()->eq('c.vector_state',$qb->createNamedParameter('ready')));
+    }
+
     /**
      * Full rows for a bounded set of chunk ids (used to materialise the dense
      * candidate set after the cosine scan, Issue #61). Batch sizes stay well
@@ -192,7 +202,7 @@ class ChunkMapper extends QBMapper {
      * @param int[] $ids
      * @return array<int,array<string,mixed>>
      */
-    public function findChunksByIds(array $ids): array {
+    public function findChunksByIds(array $ids, ?string $generationId = null): array {
         $ids = array_values(array_unique(array_filter(array_map('intval', $ids), static fn($id) => $id > 0)));
         $out = [];
         foreach (array_chunk($ids, 500) as $chunkIds) {
@@ -200,7 +210,7 @@ class ChunkMapper extends QBMapper {
             $qb->select('c.id', 'c.document_id', 'c.chunk_index', 'c.content', 'c.embedding', 'c.provenance')
                 ->from('eva_ai_chunks', 'c')
                 ->where($qb->expr()->in('c.id', $qb->createNamedParameter($chunkIds, IQueryBuilder::PARAM_INT_ARRAY)));
-            $qb->andWhere($qb->expr()->isNull('c.vector_generation_id'));
+            $this->filterGeneration($qb,$generationId);
             $result = $qb->executeQuery();
             $rows = $result->fetchAll();
             $result->closeCursor();
@@ -211,13 +221,13 @@ class ChunkMapper extends QBMapper {
         return $out;
     }
 
-    public function countForUser(string $userId): int {
+    public function countForUser(string $userId, ?string $generationId = null): int {
         $qb = $this->db->getQueryBuilder();
         $qb->selectAlias($qb->createFunction('COUNT(*)'), 'c')
             ->from('eva_ai_chunks', 'c')
             ->innerJoin('c', 'eva_ai_documents', 'd', $qb->expr()->eq('c.document_id', 'd.id'))
             ->where($qb->expr()->eq('d.user_id', $qb->createNamedParameter($userId)));
-        $qb->andWhere($qb->expr()->isNull('c.vector_generation_id'));
+        $this->filterGeneration($qb,$generationId);
         $row = $qb->executeQuery()->fetch();
         return $row ? (int)$row['c'] : 0;
     }

@@ -2,6 +2,14 @@
 
 ## [Unreleased]
 
+### SQL generation search cutover (1.18.23)
+
+- Automatically activate a fully built, currently verified SQL generation for explicitly enrolled users.
+- Route retrieval to ready generation chunks with the generation-pinned embedding model; use the legacy index whenever generation metadata is unavailable or source mutations are pending.
+- Keep the previous generation and legacy chunks available for fallback; optional Qdrant generations are not activated by this SQL cutover.
+- Show the effective SQL search path and active enrolled-account count in Nextcloud administration.
+- Full-database performance, quality, cross-database, shadow/soak and rollback drills remain open.
+
 ### Active generation mutation worker (1.18.22)
 
 - Consume active-generation source changes in bounded, resumable background slices with expiring leases and retry backoff.

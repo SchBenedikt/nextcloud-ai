@@ -7,9 +7,9 @@
 			<p>{{ label }}</p>
 			<NcProgressBar v-if="state.status !== 'not_started'" :value="progress" :aria-label="$t('Points verified')" />
 			<p v-if="state.status !== 'not_started'">{{ state.backend === 'sql' ? $t('SQL chunks checked: {done} of {total}', { done: state.checked_count, total: state.expected_count }) : $t('Points verified: {done} of {total}', { done: state.checked_count, total: state.expected_count }) }} · {{ state.backend === 'sql' ? $t('SQL vectors validated: {count}', { count: state.sample_count }) : $t('Vectors sampled: {count}', { count: state.sample_count }) }}</p>
-			<NcNoteCard v-if="state.verified" type="success">{{ state.backend === 'sql' ? $t('SQL generation vectors, chunk hashes and source manifests are valid. Search still uses SQL.') : $t('SQL and remote point identities, revisions, source manifests, dimensions and sampled vectors match. Search still uses SQL.') }}</NcNoteCard>
+			<NcNoteCard v-if="state.verified" type="success">{{ state.active && state.retrieval_backend === 'sql_generation' ? $t('SQL generation vectors, chunk hashes and source manifests are valid. This generation is serving search.') : state.backend === 'sql' ? $t('SQL generation vectors, chunk hashes and source manifests are valid. Activation will follow when its source snapshot is current.') : $t('SQL and remote point identities, revisions, source manifests, dimensions and sampled vectors match. This remote generation is not serving search.') }}</NcNoteCard>
 			<GenerationShadowSettings v-if="state.verified && state.backend === 'qdrant'" :key="`${user}:${generation}:shadow`" :user="user" :generation="generation" />
-			<NcNoteCard v-else-if="!state.verified">{{ state.backend === 'sql' ? $t('This read-only check validates local SQL vectors, chunk hashes, revisions and current source manifests. It does not change retrieval.') : $t('This read-only background check compares SQL chunks with the configured vector store. It never changes retrieval or sends source text to an embedding provider.') }}</NcNoteCard>
+			<NcNoteCard v-else-if="!state.verified">{{ state.backend === 'sql' ? $t('This background check validates local SQL vectors, chunk hashes, revisions and current source manifests. A current verified SQL generation is activated automatically.') : $t('This read-only background check compares SQL chunks with the configured vector store. It does not activate remote retrieval or send source text to an embedding provider.') }}</NcNoteCard>
 			<NcNoteCard v-if="state.error_code" type="warning">{{ failure }}</NcNoteCard>
 			<div class="verification-actions">
 				<NcButton v-if="['not_started', 'failed', 'stale', 'cancelled'].includes(state.status)" :disabled="!state.can_start || busy" :loading="busy" @click="control(state.status === 'not_started' ? 'start' : 'retry')">{{ state.status === 'not_started' ? $t('Start verification') : $t('Retry verification') }}</NcButton>
@@ -37,7 +37,7 @@ export default {
 		let controller, epoch = 0, timer
 		const path = `admin/vector-generations/${encodeURIComponent(props.user)}/${props.generation}/verification`
 		const states = ['not_started', 'queued', 'running', 'paused', 'cancelled', 'failed', 'stale', 'verified']
-		const label = computed(() => ({ not_started: t('Not started'), queued: t('Waiting for the next verification tick'), running: state.value?.backend === 'sql' ? t('Checking local SQL vectors') : t('Comparing stored points'), paused: t('Verification paused'), cancelled: t('Verification stopped'), failed: t('Verification needs attention'), stale: t('Verification invalidated by source changes'), verified: t('Verified; search unchanged') })[state.value?.status])
+		const label = computed(() => ({ not_started: t('Not started'), queued: t('Waiting for the next verification tick'), running: state.value?.backend === 'sql' ? t('Checking local SQL vectors') : t('Comparing stored points'), paused: t('Verification paused'), cancelled: t('Verification stopped'), failed: t('Verification needs attention'), stale: t('Verification invalidated by source changes'), verified: state.value?.active ? t('Verified and active') : t('Verified; activation pending') })[state.value?.status])
 		const progress = computed(() => state.value?.expected_count > 0 ? Math.min(100, 100 * state.value.checked_count / state.value.expected_count) : 0)
 		const failure = computed(() => {
 			const code = state.value?.error_code
@@ -49,7 +49,7 @@ export default {
 			return state.value?.backend === 'sql' ? t('Verification stopped safely. Check the source index and generation data, then retry.') : t('Verification stopped safely. Check the storage connection and owner index, then retry.')
 		})
 		function accept(result) {
-			if (!result || !states.includes(result.status) || !['sql', 'qdrant'].includes(result.backend) || typeof result.can_start !== 'boolean' || result.retrieval_changed !== false || typeof result.verified !== 'boolean'
+			if (!result || !states.includes(result.status) || !['sql', 'qdrant'].includes(result.backend) || typeof result.can_start !== 'boolean' || result.retrieval_changed !== false || typeof result.verified !== 'boolean' || typeof result.active !== 'boolean' || !['sql_legacy', 'sql_generation'].includes(result.retrieval_backend)
 				|| !['expected_count', 'checked_count', 'sample_count', 'heartbeat_at'].every(key => Number.isSafeInteger(result[key]) && result[key] >= 0)
 				|| !(result.error_code === null || typeof result.error_code === 'string')) throw new Error(t('Verification progress could not be confirmed.'))
 			state.value = result

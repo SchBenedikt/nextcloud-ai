@@ -65,6 +65,60 @@ class VectorGenerationRepository {
         return $row ? VectorGeneration::fromRow($row) : null;
     }
 
+    /** The user's enrolled, active local SQL generation, if the primary pointer is current. */
+    public function activeSqlForUser(string $userId): ?VectorGeneration {
+        $q=$this->db->getQueryBuilder();
+        $q->select('g.*')->from('eva_ai_vec_state','s')
+            ->innerJoin('s','eva_ai_vec_generations','g',$q->expr()->andX(
+                $q->expr()->eq('g.id','s.active_generation_id'),$q->expr()->eq('g.user_id','s.user_id')))
+            ->innerJoin('s','preferences','p',$q->expr()->andX(
+                $q->expr()->eq('p.userid','s.user_id'),$q->expr()->eq('p.appid',$q->createNamedParameter('eva_ai')),
+                $q->expr()->eq('p.configkey',$q->createNamedParameter('index_enrolled')),$q->expr()->eq('p.configvalue',$q->createNamedParameter('1'))))
+            ->leftJoin('s','eva_ai_vec_mutations','m',$q->expr()->andX(
+                $q->expr()->eq('m.generation_id','g.id'),$q->expr()->eq('m.user_id','g.user_id'),
+                $q->expr()->neq('m.status',$q->createNamedParameter('completed'))))
+            ->where($q->expr()->eq('s.user_id',$q->createNamedParameter($userId)))
+            ->andWhere($q->expr()->eq('s.retrieval_backend',$q->createNamedParameter('sql_generation')))
+            ->andWhere($q->expr()->eq('g.backend',$q->createNamedParameter('sql')))
+            ->andWhere($q->expr()->eq('g.status',$q->createNamedParameter('active')))
+            ->andWhere($q->expr()->isNull('m.id'))->setMaxResults(1);
+        $r=$q->executeQuery();try{$row=$r->fetch();}finally{$r->closeCursor();}
+        return $row?VectorGeneration::fromRow($row):null;
+    }
+
+    public function activeGenerationId(string $userId): ?string {
+        $q=$this->db->getQueryBuilder();
+        $q->select('active_generation_id')->from('eva_ai_vec_state')
+            ->where($q->expr()->eq('user_id',$q->createNamedParameter($userId)));
+        $r=$q->executeQuery();try{$id=$r->fetchOne();}finally{$r->closeCursor();}
+        return is_string($id)&&preg_match('/^[a-f0-9]{32}$/D',$id)===1?$id:null;
+    }
+
+    /** Number of enrolled accounts currently reading their local SQL generation. */
+    public function activeSqlCount(): int {
+        $q=$this->db->getQueryBuilder();
+        $q->selectAlias($q->createFunction('COUNT(DISTINCT s.user_id)'),'total')->from('eva_ai_vec_state','s')
+            ->innerJoin('s','eva_ai_vec_generations','g',$q->expr()->andX(
+                $q->expr()->eq('g.id','s.active_generation_id'),$q->expr()->eq('g.user_id','s.user_id')))
+            ->innerJoin('s','preferences','p',$q->expr()->andX(
+                $q->expr()->eq('p.userid','s.user_id'),$q->expr()->eq('p.appid',$q->createNamedParameter('eva_ai')),
+                $q->expr()->eq('p.configkey',$q->createNamedParameter('index_enrolled')),$q->expr()->eq('p.configvalue',$q->createNamedParameter('1'))))
+            ->where($q->expr()->eq('s.retrieval_backend',$q->createNamedParameter('sql_generation')))
+            ->andWhere($q->expr()->eq('g.backend',$q->createNamedParameter('sql')))
+            ->andWhere($q->expr()->eq('g.status',$q->createNamedParameter('active')));
+        $r=$q->executeQuery();try{return (int)$r->fetchOne();}finally{$r->closeCursor();}
+    }
+
+    /** Pending or failed source mutations make an active snapshot incomplete. */
+    public function pendingMutationCount(string $userId,string $generationId): int {
+        $q=$this->db->getQueryBuilder();
+        $q->selectAlias($q->createFunction('COUNT(*)'),'total')->from('eva_ai_vec_mutations')
+            ->where($q->expr()->eq('user_id',$q->createNamedParameter($userId)))
+            ->andWhere($q->expr()->eq('generation_id',$q->createNamedParameter($generationId)))
+            ->andWhere($q->expr()->neq('status',$q->createNamedParameter('completed')));
+        $r=$q->executeQuery();try{return (int)$r->fetchOne();}finally{$r->closeCursor();}
+    }
+
     /** Keyset listing, not an unbounded per-account history read. */
     public function page(string $userId, string $after = ''): array {
         if ($after !== '' && preg_match('/^[a-f0-9]{32}$/D', $after) !== 1) throw new \InvalidArgumentException('Invalid generation cursor.');
