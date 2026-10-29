@@ -42,7 +42,6 @@ final class RetrievalStageDuration implements IMetricFamily {
 		$q->select('retrieval_backend', 'retrieval_stage_mask', ...$columns)->from('eva_ai_usage')
 			->where($q->expr()->gte('created_at', $q->createNamedParameter(time() - self::WINDOW_SECONDS, IQueryBuilder::PARAM_INT)))
 			->andWhere($q->expr()->eq('operation', $q->createNamedParameter('chat')))
-			->andWhere($q->expr()->in('retrieval_backend', $q->createNamedParameter(self::BACKENDS, IQueryBuilder::PARAM_STR_ARRAY)))
 			->orderBy('created_at', 'DESC')->setMaxResults(self::SAMPLE_LIMIT);
 		try {
 			$result = $q->executeQuery();

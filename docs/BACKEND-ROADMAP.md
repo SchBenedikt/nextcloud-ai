@@ -34,7 +34,7 @@ The implementation entries further below record the actual delivered slices.
 | 13–14 | Resumable backfill, immutable model rebuild, activation pointer, shadow/canary rollout and rollback | 09–11: bounded build, verification and guarded SQL activation/search exist; explicit Qdrant account canary and SQL rollback are available. Production shadow/soak and rollback drills remain pending. SQL runs without Qdrant; performance and release gates remain open. |
 | 15 | Native hybrid BM25/RRF, phrases, scope and diversification | 12: preserve current relevance behavior before enabling backend hybrid retrieval; compare quality against both exact and current hybrid baselines. |
 | 7, 15, 22 | ChatStore hot-file writes, normalized encrypted SQL messages and distributed chat coordination | 13–14: independent additive chat migration, recovery and erasure; lock lifecycle fix is only the immediate consecutive-request repair. |
-| 15–18 | OTel correlation, provider/tool/DB/lock metrics, cache outages, restore/delete drills and domain extraction | 03, 14: native aggregate OpenMetrics and durable account-erasure retries are implemented; approximate seven-day chat/slow-tool p50/p95/p99 is exported from bounded usage samples, with a 365-day retention limit and account-erasure deletion. Stage-level metric export, cross-service traces, restore/delete drills and controller decomposition remain pending. |
+| 15–18 | OTel correlation, provider/tool/DB/lock metrics, cache outages, restore/delete drills and domain extraction | 03, 14: native aggregate OpenMetrics and durable account-erasure retries are implemented; approximate seven-day chat/slow-tool and retrieval-stage p50/p95/p99 is exported from bounded samples, with a 365-day retention limit and account-erasure deletion. Provider/embedding distributions, cross-service traces, restore/delete drills and controller decomposition remain pending. |
 | 16, 18 | PHPStan/Psalm, SAST, secrets, SBOM, dependency and pinned-action policy | 14: define supported versions and executed evidence before enabling enforced checks; no claim of completed CI hardening. |
 | 18–19 | Frozen corpus, adversarial tenants, quality thresholds and cold/warm load at concurrency 1/5/20/50 | 05, 09–12, 14: offline evaluator and explicit SQL/Qdrant generation snapshot runners exist; representative real datasets, ANN comparisons, load/soak and resource measurements remain pending. |
 | 20–22 | Optional deployments, authoritative Nextcloud SQL/VFS and reconstructible vector index | 07, 09, 14: standalone default preserved; backup/restore and reconstruction drills remain pending. |
@@ -67,14 +67,14 @@ The implementation entries further below record the actual delivered slices.
   lexical posting state so operators can see bounded backfill progress without
   account or source labels. Version 1.18.58 adds approximate p50/p95/p99
   chat and slow-tool durations from the newest 5,000 records in a seven-day
-  window, with only fixed operation and quantile labels. Retrieval stages,
-  standalone provider timing and queue-age histograms remain unaggregated.
+  window, with only fixed operation and quantile labels. Standalone provider
+  timing distributions and queue-age histograms remain unaggregated.
   Exported labels contain no tenant, file, prompt, endpoint, or credential data.
   Version 1.18.72 adds approximate seven-day p50/p95/p99 metrics for retrieval
   count, embedding, candidate retrieval, hydration, scope filtering, ranking and
-  total duration. It samples at most 5,000 recent chat rows and labels only by
-  the fixed retrieval backend and stage. Queue-age histograms, provider timing
-  distributions, and cross-service traces remain open.
+  total duration. It samples at most 5,000 recent chat rows before filtering,
+  and labels only by the fixed retrieval backend and stage. Queue-age histograms,
+  provider timing distributions, and cross-service traces remain open.
 - Usage records have a 365-day maximum retention matching the supported report
   window. Daily bounded cleanup and account-erasure integration prevent
   indefinite growth and remove per-user rows when an account is deleted.
@@ -146,7 +146,7 @@ still open.
 | 11 | Canary and primary generation-based reads | 10 | Verified SQL-generation retrieval is automatic for enrolled users; an administrator can explicitly activate a verified Qdrant canary and roll back to built-in SQL. Queries apply tenant/generation/scope filters, hydrate exact revisions from SQL, and fall back on remote errors or pending mutations. Keep legacy rows; production soak and release-cycle rollback evidence remain pending. |
 | 12 | Native hybrid retrieval | 11 | Implemented the explicit generation text-payload opt-in, separate build/resume consent, Qdrant 1.20+ BM25 index preparation, native dense+BM25 RRF, exact SQL hydration and SQL fallback. Existing generations remain dense-only. Verification checks text-field coverage and compares sampled text with SQL. Remaining: run representative quality/latency comparison, verify live Qdrant 1.20+ index schema and text erasure, then enable only for evaluated canaries. SQL/dense-only rollback remains available. |
 | 13 | Normalized encrypted chat/message SQL storage | 12 | **In progress (1.18.27–1.18.29, 1.18.57).** Additive encrypted tables, small resumable imports, per-message SQL mirroring, automatic new-account SQL, scheduled verified migration for existing users, owner-scoped erasure, indexed metadata pages, per-user SQL reads with AppData export rollback, and keyset-paginated native SQL sidebar loading are implemented. Mixed-version deployment/rollback rehearsal, performance/load evidence, and restore drills remain. Preserve encryption and add no plaintext search indexes. |
-| 14 | Operational hardening and portability | 13 | Partial: native OpenMetrics exports indexed-item, lexical-state, vector/outbox, account-erasure and bounded chat/slow-tool duration aggregates; usage rows expire after 365 days and are deleted on account erasure. The Activity feed uses Nextcloud QueryBuilder; Mail integration SQL avoids MySQL-only identifier quotes and normalizes search case independent of database collation. PostgreSQL/MariaDB lifecycle coverage, retrieval-stage metrics export, cross-service traces, restore/delete drills, sustained soak, domain-controller extraction, dependency/SAST/SBOM policy and enforced PR checks remain open. Embedding-cache 15-second process-local cooldown preserves uncached operation during cache outages. |
+| 14 | Operational hardening and portability | 13 | Partial: native OpenMetrics exports indexed-item, lexical-state, vector/outbox, account-erasure, bounded chat/slow-tool and retrieval-stage duration aggregates; usage rows expire after 365 days and are deleted on account erasure. The Activity feed uses Nextcloud QueryBuilder; Mail integration SQL avoids MySQL-only identifier quotes and normalizes search case independent of database collation. PostgreSQL/MariaDB lifecycle coverage, provider/embedding distributions, cross-service traces, restore/delete drills, sustained soak, domain-controller extraction, dependency/SAST/SBOM policy and enforced PR checks remain open. Embedding-cache 15-second process-local cooldown preserves uncached operation during cache outages. |
 
 ## Stage 14 interface slice: correlated chat timings
 
