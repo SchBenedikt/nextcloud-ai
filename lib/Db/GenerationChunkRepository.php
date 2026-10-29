@@ -19,6 +19,37 @@ class GenerationChunkRepository {
     public function __construct(private IDBConnection $db, private VectorOutboxRepository $outbox,
         private VectorOwnerFenceRepository $owners) {}
 
+    /** Compact a bounded keyset page of historical SQL-generation vectors. */
+    public function compactSqlVectorsAfter(int $afterId, int $limit = 200): array {
+        $limit = max(1, min(200, $limit));
+        $q = $this->db->getQueryBuilder();
+        $q->select('c.id', 'c.embedding', 'c.vector_generation_id')->from('eva_ai_chunks', 'c')
+            ->innerJoin('c', 'eva_ai_vec_generations', 'g', $q->expr()->eq('g.id', 'c.vector_generation_id'))
+            ->where($q->expr()->eq('g.backend', $q->createNamedParameter('sql')))
+            ->andWhere($q->expr()->gt('c.id', $q->createNamedParameter(max(0, $afterId), IQueryBuilder::PARAM_INT)))
+            ->orderBy('c.id', 'ASC')->setMaxResults($limit);
+        $r = $q->executeQuery();
+        try { $rows = $r->fetchAll(); } finally { $r->closeCursor(); }
+
+        foreach ($rows as $row) {
+            $id = (int)$row['id'];
+            $stored = (string)$row['embedding'];
+            $vector = VectorEmbeddingCodec::decode($stored);
+            if ($vector === null || str_starts_with($stored, 'eva64:')) continue;
+            $compact = VectorEmbeddingCodec::encode($vector);
+            if (!str_starts_with($compact, 'eva64:')) continue;
+            $update = $this->db->getQueryBuilder();
+            $update->update('eva_ai_chunks')->set('embedding', $update->createNamedParameter($compact))
+                ->where($update->expr()->eq('id', $update->createNamedParameter($id, IQueryBuilder::PARAM_INT)))
+                ->andWhere($update->expr()->eq('embedding', $update->createNamedParameter($stored)))
+                ->andWhere($update->expr()->eq('vector_generation_id', $update->createNamedParameter((string)$row['vector_generation_id'])));
+            // The row identity and original value fence the rewrite against concurrent indexing.
+            $update->executeStatement();
+        }
+
+        return ['cursor' => $rows === [] ? max(0, $afterId) : (int)$rows[count($rows) - 1]['id'], 'done' => count($rows) < $limit];
+    }
+
     public function snapshot(string $userId, int $documentId): ?VectorDocumentSnapshot {
         $qb = $this->db->getQueryBuilder();
         $qb->select('id', 'user_id', 'file_id', 'path', 'name', 'source', 'content_hash', 'file_mtime', 'size', 'mime')

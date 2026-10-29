@@ -38,6 +38,14 @@ and validate finite nonzero vector dimension and generation chunk size. Reserved
 checks do not prove which model generated an input vector; provider identity
 checks and later verification remain required. No upload endpoint is exposed.
 
+SQL-generation embeddings use the versioned `eva64` float64 codec whenever it
+stores fewer bytes than JSON. Existing JSON vectors remain readable and are
+rewritten by a recurring job in keyset pages of at most 200 rows. The cursor is
+stored in app configuration, and each update compares both the original vector
+and generation ID so a concurrent index write is preserved. This maintenance
+does not call an embedding provider or change vector values; legacy and Qdrant
+rows keep their existing JSON representation.
+
 ## Atomic row and journal write
 
 The short transaction locks the open owner, the building generation and the

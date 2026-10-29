@@ -21,6 +21,7 @@ final class JobRegistry {
         AccountCleanupJob::class,
         VectorNormBackfillJob::class,
         LexicalIndexBackfillJob::class,
+        GenerationVectorCompactionJob::class,
     ];
 
     public static function ensureScheduled(IJobList $jobs): void {
