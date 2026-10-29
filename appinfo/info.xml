@@ -60,7 +60,7 @@ The default chat model is hosted by Ollama Cloud, so prompts and retrieved file 
 
 Licensed under AGPL-3.0-or-later.
     </description>
-    <version>1.18.36</version>
+    <version>1.18.37</version>
     <licence>agpl</licence>
     <author>Benedikt Schächner</author>
     <namespace>EvaAi</namespace>
@@ -74,6 +74,12 @@ Licensed under AGPL-3.0-or-later.
     <optional-apps>
         <app>spreed</app>
     </optional-apps>
+    <openmetrics>
+        <exporter>OCA\EvaAi\OpenMetrics\IndexedItems</exporter>
+        <exporter>OCA\EvaAi\OpenMetrics\VectorGenerations</exporter>
+        <exporter>OCA\EvaAi\OpenMetrics\VectorOutbox</exporter>
+        <exporter>OCA\EvaAi\OpenMetrics\VectorOutboxAge</exporter>
+    </openmetrics>
     <background-jobs>
         <job>OCA\EvaAi\BackgroundJob\IndexJob</job>
         <job>OCA\EvaAi\BackgroundJob\ChatCleanupJob</job>
