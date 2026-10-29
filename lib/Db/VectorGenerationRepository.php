@@ -177,7 +177,7 @@ class VectorGenerationRepository {
                 }
             } while (count($rows) === 50);
             if ($deleteIndex !== null) $deleteIndex();
-            foreach (['eva_ai_vec_build_docs', 'eva_ai_vec_builds', 'eva_ai_vec_verifications', 'eva_ai_vec_state', 'eva_ai_vec_generations'] as $table) {
+            foreach (['eva_ai_vec_mutations','eva_ai_vec_build_docs','eva_ai_vec_builds','eva_ai_vec_verifications','eva_ai_vec_state','eva_ai_vec_generations'] as $table) {
                 $qb = $this->db->getQueryBuilder();
                 $qb->delete($table)->where($qb->expr()->eq('user_id', $qb->createNamedParameter($userId)))->executeStatement();
             }

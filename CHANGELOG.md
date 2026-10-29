@@ -2,6 +2,18 @@
 
 ## [Unreleased]
 
+### Active generation mutation worker (1.18.22)
+
+- Consume active-generation source changes in bounded, resumable background slices with expiring leases and retry backoff.
+- Reuse the generation-pinned embedding configuration and existing SQL/Qdrant chunk delivery safeguards.
+- Keep changed documents hidden from a future generation read until their coalesced mutation completes; account erasure removes journal rows.
+
+### Active generation mutation journal (1.18.21)
+
+- Add a transactional, coalesced SQL journal for source creates and metadata changes affecting an active vector generation.
+- Cancel queued generation upserts when their canonical source is deleted.
+- Keep embedding and vector delivery out of the source mutation transaction; the bounded consumer is the next stack step.
+
 ### Automatic SQL generation verification (1.18.20)
 
 - Automatically queue local verification when an enrolled SQL generation build is staged.
