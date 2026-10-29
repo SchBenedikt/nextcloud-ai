@@ -2,6 +2,11 @@
 
 ## [Unreleased]
 
+### Export recent operation duration quantiles (1.18.58)
+
+- Expose approximate p50/p95/p99 chat and slow-tool durations from the existing usage records through Nextcloud OpenMetrics.
+- Bound the sample to 5,000 recent records in a seven-day window, use only fixed operation/quantile labels, and add a matching SQL index.
+
 ### Keyset-paginated SQL chat history (1.18.57)
 
 - Load normalized SQL chat metadata a page at a time using the existing updated-time/chat-ID keyset, instead of decrypting every conversation before slicing the sidebar page.
