@@ -409,6 +409,18 @@ export function useEvaSettings({ section = ref('general') } = {}) {
 		})
 	}
 
+	/** Serialize explicit provider-profile writes with autosaved form settings. */
+	function savePatch(values) {
+		pendingSettingsSaves++
+		saving.value = true
+		const task = settingsSaveQueue.then(() => api('PUT', 'settings', values))
+		settingsSaveQueue = task.then(() => undefined, () => undefined)
+		return task.finally(() => {
+			pendingSettingsSaves = Math.max(0, pendingSettingsSaves - 1)
+			saving.value = pendingSettingsSaves > 0
+		})
+	}
+
 	async function persistSettings({ changedOnly = false, onlyKeys = null } = {}) {
 		const keys = Array.isArray(onlyKeys)
 			? onlyKeys.filter(key => Object.prototype.hasOwnProperty.call(f.value, key))
@@ -722,7 +734,7 @@ export function useEvaSettings({ section = ref('general') } = {}) {
 		connectors, connectorsLoading, connectorsBusy, connectorDiagnostics, connectorDraft, connectorToRemove, connectorRemovalError, connectorEndpointQuery, filteredConnectorEndpoints, applyConnectorExample, saveConnector, editConnector, connectorCredentialLabel, connectorCredentialClass, removeConnector, closeConnectorRemoval, confirmRemoveConnector, discoverConnector, testConnector, loadConnectors, connectorLoadError, plugins, pluginsLoading, pluginsSaving, setPluginEnabled, loadPlugins, pluginLoadError, pluginRiskLabel, pluginSurfacesLabel,
 		apiKeys, apiKeysLoading, apiKeysBusy, apiKeyError, createdApiKey, apiKeyDraft, apiKeyScopeOptions, apiDocsUrl, loadApiKeys, createApiKey, revokeApiKey, copyApiKey,
 		proactiveEnabled, proactiveBriefings, briefingDraft, briefingFormError, editingBriefingId, briefingHistory, briefingTypeOptions, weekdays, dayName, briefingTypeName, channelName, formatDateTime, failureSummary, saveBriefing, editBriefing, cancelEditBriefing, removeBriefing, toggleBriefing, toggleBriefingActions, runBriefingNow,
-		exporting, downloadExport,
+		exporting, downloadExport, savePatch,
 		knowledgeContent, knowledgeOriginal, savingKnowledge, knowledgeSaved, knowledgeLoading, knowledgeLoadError, knowledgeReady, loadKnowledge, saveKnowledgeContent,
 		formatNumber, loadStatus, loadHealth, healthError, save, checkOllama, addExclude, removeExclude, startIndex, startMailIndex, startTalkIndex, stopIndex, resetIndex, deleteAllChats,
 	}

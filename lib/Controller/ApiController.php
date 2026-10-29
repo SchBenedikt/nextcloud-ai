@@ -394,7 +394,27 @@ class ApiController extends OCSController {
                 $removeNextcloudToken ? '' : $nextcloudToken
             );
         }
-        return new ErrorDataResponse((new \OCA\EvaAi\Service\SettingsPersistence($this->config))->save($update));
+        $removedProviderIds = [];
+        if (array_key_exists('provider_profiles', $pending)) {
+            $existingProfiles = json_decode((string)$this->config->get('provider_profiles'), true);
+            $existingProfiles = is_array($existingProfiles) ? $existingProfiles : [];
+            $remainingIds = [];
+            foreach ($pending['provider_profiles'] as $profile) {
+                if (is_array($profile) && isset($profile['id'])) $remainingIds[(string)$profile['id']] = true;
+            }
+            foreach ($existingProfiles as $profile) {
+                $id = is_array($profile) ? (string)($profile['id'] ?? '') : '';
+                if ($id !== '' && !isset($remainingIds[$id])) $removedProviderIds[] = $id;
+            }
+        }
+        $savedSettings = (new \OCA\EvaAi\Service\SettingsPersistence($this->config))->save($update);
+        if ($removedProviderIds !== []) {
+            $credentials ??= \OCP\Server::get(\OCA\EvaAi\Service\ProviderCredentials::class);
+            foreach ($removedProviderIds as $removedProviderId) {
+                $credentials->saveCustom($user, $removedProviderId, '');
+            }
+        }
+        return new ErrorDataResponse($savedSettings);
     }
 
     /** Validate the small, deliberately data-only scheduler format. */

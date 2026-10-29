@@ -1,12 +1,13 @@
 <template>
 	<div class="provider-settings">
 		<ul class="provider-list">
-			<NcListItem v-for="provider in providers" :key="provider.id" :name="provider.name" :details="providerDetails(provider)" :force-actions="true" :actions-aria-label="t('Configure {provider}', { provider: provider.name })" @click="edit(provider)">
+			<NcListItem v-for="provider in providers" :key="provider.id" :name="provider.name" :details="providerDetails(provider)" :force-display-actions="true" :actions-aria-label="t('Configure {provider}', { provider: provider.name })" @click="edit(provider)">
 				<template #icon><NcIconSvgWrapper :path="provider.id === 'ollama' ? mdiServerOutline : mdiRobotOutline" :size="32" /></template>
 				<template #subname>{{ provider.model || t('Configure a model below') }}</template>
 				<template #actions>
 					<NcActionButton :close-after-click="true" :disabled="locked || saving || selectingProvider !== '' || active === provider.id" @click.stop="selectProvider(provider)">{{ selectingProvider === provider.id ? t('Switching provider…') : active === provider.id ? t('In use for chats') : t('Use for chats') }}</NcActionButton>
 					<NcActionButton :close-after-click="true" :disabled="locked || saving || selectingProvider !== ''" @click.stop="edit(provider)">{{ t('Configure') }}</NcActionButton>
+					<NcActionButton v-if="!['ollama', 'groq'].includes(provider.id)" :close-after-click="true" :disabled="locked || saving || selectingProvider !== ''" @click.stop="requestRemove(provider)">{{ t('Remove provider') }}</NcActionButton>
 				</template>
 			</NcListItem>
 		</ul>
@@ -42,6 +43,18 @@
 				</div>
 			</form>
 		</NcModal>
+		<NcModal v-if="providerToRemove" size="small" :label-id="removeTitleId" @close="closeRemove">
+			<div class="provider-remove">
+				<h2 :id="removeTitleId">{{ t('Remove {provider}?', { provider: providerToRemove.name }) }}</h2>
+				<p>{{ t('EVA will delete this provider and its saved API key. If it is currently used for chats, chat requests will switch to Ollama.') }}</p>
+				<p v-if="providerToRemove.id === generationProfileId" class="provider-error" role="alert">{{ t('This provider is still used for file indexing. Choose another embedding provider first, then remove it.') }}</p>
+				<NcNoteCard v-if="removeError" type="error">{{ removeError }}</NcNoteCard>
+				<div class="provider-editor__actions">
+					<NcButton type="button" variant="tertiary" :disabled="removing" @click="closeRemove">{{ t('Cancel') }}</NcButton>
+					<NcButton type="button" variant="error" :loading="removing" :disabled="removing || locked || providerToRemove.id === generationProfileId" @click="removeProvider">{{ t('Remove provider') }}</NcButton>
+				</div>
+			</div>
+		</NcModal>
 	</div>
 </template>
 
@@ -69,14 +82,16 @@ const presets = [
 export default {
 	name: 'ProviderSettings',
 	components: { NcActionButton, NcButton, NcCheckboxRadioSwitch, NcIconSvgWrapper, NcListItem, NcModal, NcNoteCard, NcSelect, NcTextField },
-	props: { status: { type: Object, default: null }, settings: { type: Object, default: null }, locked: { type: Boolean, default: false } },
+	props: { status: { type: Object, default: null }, settings: { type: Object, default: null }, locked: { type: Boolean, default: false }, savePatch: { type: Function, default: null } },
 	emits: ['saved'],
 	setup(props, { emit }) {
 		const titleId = 'eva-provider-' + useId()
+		const removeTitleId = 'eva-provider-remove-' + useId()
 		const profiles = computed(() => {
 			try { const value = JSON.parse((props.settings || props.status?.settings)?.provider_profiles || '[]'); return Array.isArray(value) ? value : [] } catch { return [] }
 		})
 		const active = computed(() => (props.settings || props.status?.settings)?.chat_provider || 'ollama')
+		const generationProfileId = computed(() => (props.settings || props.status?.settings)?.generation_embedding_profile_id || '')
 		const providers = computed(() => {
 			const settings = props.settings || props.status?.settings || {}
 			const rows = [
@@ -105,6 +120,9 @@ export default {
 		const selectingProvider = ref('')
 		const error = ref('')
 		const notice = ref('')
+		const providerToRemove = ref(null)
+		const removeError = ref('')
+		const removing = ref(false)
 		const builtin = computed(() => ['ollama', 'groq'].includes(draft.value?.id))
 		const selectForChat = computed(() => !editing.value || active.value === draft.value?.id)
 		const submitLabel = computed(() => selectForChat.value ? t('Save & use provider') : t('Save provider'))
@@ -134,6 +152,32 @@ export default {
 		}
 		const add = () => { editing.value = false; presetId.value = 'openai'; applyPreset('openai') }
 		const close = () => { if (!saving.value) { draft.value = null; key.value = '' } }
+		const requestRemove = provider => {
+			if (props.locked || saving.value || removing.value) return
+			providerToRemove.value = provider
+			removeError.value = ''
+		}
+		const closeRemove = () => { if (!removing.value) providerToRemove.value = null }
+		const removeProvider = async () => {
+			const provider = providerToRemove.value
+			if (!provider || removing.value || provider.id === generationProfileId.value) return
+			removing.value = true
+			removeError.value = ''
+			try {
+				const remaining = profiles.value.filter(profile => profile.id !== provider.id)
+				const payload = { provider_profiles: JSON.stringify(remaining) }
+				if (active.value === provider.id) payload.chat_provider = 'ollama'
+				const result = await (props.savePatch ? props.savePatch(payload) : api('PUT', 'settings', payload))
+				if (JSON.parse(result?.provider_profiles || '[]').some(profile => profile.id === provider.id)) throw new Error(t('The server did not confirm provider removal.'))
+				providerToRemove.value = null
+				notice.value = t('{provider} was removed.', { provider: provider.name })
+				emit('saved')
+			} catch (failure) {
+				removeError.value = errMsg(failure)
+			} finally {
+				removing.value = false
+			}
+		}
 		const selectProvider = async provider => {
 			if (props.locked || saving.value || selectingProvider.value || active.value === provider.id) return
 			selectingProvider.value = provider.id
@@ -183,14 +227,14 @@ export default {
 						payload.remove_custom_provider_api_key = true
 					}
 				}
-				await api('PUT', 'settings', payload)
+				await (props.savePatch ? props.savePatch(payload) : api('PUT', 'settings', payload))
 				key.value = ''; draft.value = null
 				notice.value = selectForChat.value ? t('Provider saved and selected.') : t('Provider settings saved.')
 				emit('saved')
 			} catch (failure) { error.value = errMsg(failure) }
 			finally { saving.value = false }
 		}
-		return { mdiRobotOutline, mdiServerOutline, titleId, t, profiles, providers, providerDetails, active, presets, presetId, draft, editing, builtin, selectForChat, submitLabel, needsKey, useForGeneration, key, keySaved, saving, selectingProvider, error, notice, mediaFields, add, edit, selectProvider, applyPreset, close, save }
+		return { mdiRobotOutline, mdiServerOutline, titleId, removeTitleId, t, profiles, providers, providerDetails, active, generationProfileId, presets, presetId, draft, editing, builtin, selectForChat, submitLabel, needsKey, useForGeneration, key, keySaved, saving, selectingProvider, error, notice, providerToRemove, removeError, removing, requestRemove, closeRemove, removeProvider, mediaFields, add, edit, selectProvider, applyPreset, close, save }
 	},
 }
 </script>
@@ -200,6 +244,8 @@ export default {
 .provider-editor { display: grid; gap: 16px; padding: 24px; }
 .provider-editor h2 { font-size: 22px; font-weight: 600; }
 .provider-editor__actions { display: flex; justify-content: flex-end; gap: 8px; }
+.provider-remove { display: grid; gap: 12px; padding: 24px; }
+.provider-remove h2 { font-size: 20px; font-weight: 600; }
 .provider-extra { display: grid; gap: 12px; }
 .provider-extra summary { cursor: pointer; padding: 8px 0; }
 .provider-error { color: var(--color-error); }

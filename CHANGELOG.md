@@ -2,6 +2,12 @@
 
 ## [Unreleased]
 
+### Complete provider profile removal (1.18.79)
+
+- Add a confirmation flow to remove custom AI providers and their encrypted API keys; switching an active chat provider falls back to Ollama.
+- Prevent removing a provider while it is selected for file indexing, and serialize provider changes with automatic settings saves.
+- Keep native provider actions visible in the list so they are discoverable on touch and desktop layouts.
+
 ### Measure embedding batches and cache reuse (1.18.78)
 
 - Record successful and failed indexing/generation embedding batches with provider type, bounded duration and cache hit/miss counts; do not add a write to chat query embedding.
