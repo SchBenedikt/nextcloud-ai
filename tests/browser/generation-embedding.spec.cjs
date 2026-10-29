@@ -11,6 +11,7 @@ async function openGenerations(page, fail = false) {
     if (url.pathname === '/') return route.fulfill({ contentType: 'text/html', body: '<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="requesttoken" content="test-token"></head><body><main id="generation-root"></main></body></html>' })
     if (url.pathname.endsWith('.js')) return route.fulfill({ contentType: 'text/javascript', body: await fs.readFile(path.join(__dirname, '../../node_modules/.cache/eva-ai-browser', path.basename(url.pathname))) })
     calls.push({ path: url.pathname, method: route.request().method() })
+    if (url.pathname.endsWith('/build')) return route.fulfill({ contentType: 'application/json', body: JSON.stringify({ ocs: { data: { status: 'not_started', documents_done: 0, total_documents: 0, staged_chunks: 0, heartbeat_at: 0, error_code: null, can_start: false, retrieval_changed: false, verified: false } } }) })
     if (url.pathname.endsWith('/check')) {
       return route.fulfill({ status: fail ? 503 : 200, contentType: 'application/json', body: JSON.stringify({ ocs: { data: fail ? { error: { message: 'The provider returned a different model or vector space.' } } : { available: true, generation_id: id, dimension: 2, retrieval_changed: false, document_content_sent: false } } }) })
     }

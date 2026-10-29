@@ -2,9 +2,10 @@
 
 Version 1.18.3 adds an internal generation writer and an indexed generation/
 document/chunk slot. The writer makes no model or Qdrant requests. Regular SQL
-indexing and automatic backfill do not produce these generation rows yet; the
-opt-in worker added in 1.18.7 can now deliver explicitly prepared rows. Use this
-mutation boundary when connecting the later builder.
+indexing does not produce generation rows. The explicit background builder added
+in 1.18.10 uses this mutation boundary; the opt-in point worker delivers prepared
+rows. See [generation builds](GENERATION-BUILDS.md) for start/pause/resume and
+the verification gates that still prevent search activation.
 
 ## Preserve rollback data
 
@@ -26,7 +27,7 @@ reset chunk IDs or journal sequences: remote tombstones require stable IDs.
 
 Capture an owned source through `GenerationChunkRepository::snapshot()`. Its
 stamp covers ID, owner, source, file identity, path/name, content hash, modification
-time, size and MIME. The future builder must read the permitted source and use
+time, size and MIME. The background builder reads the permitted canonical source and uses
 the generation's exact provider/model/endpoint and chunking settings. Extraction,
 network requests and inference stay outside SQL transactions and the answer path.
 
@@ -80,9 +81,8 @@ A failed enqueue rolls back its batch's SQL deletion. Large resets commit bounde
 batches and can be retried; they are not one atomic whole-index operation unless
 the caller already supplies an outer transaction. The SQL source-row lock also
 makes concurrent staged writers recheck their source after deletion. No provider
-or vector request runs during these transactions. Point events for retired or
-missing generations must be superseded by the future point worker, which must
-not recreate a collection after generation erasure.
+or vector request runs during these transactions. The point worker supersedes stale events and must not recreate a collection
+after generation erasure.
 
 Source updates now use the same source-row transaction boundary. Changes to the
 fields used by `VectorDocumentSnapshot` (including path, source, content hash and
@@ -92,18 +92,19 @@ timestamps avoid that boundary, and identical source metadata is a no-op for
 invalidation. Ownership reassignment is rejected and rolled back. Bulk hash
 clearing uses bounded tenant-filtered batches through this boundary too.
 
-Rebuilding invalidated entries remains pending. Prepared-point consumption is
+An in-progress build reconstructs its current source and restarts that document
+if the plan changed. Changes behind its completed cursor still require later
+reconciliation and full verification. Prepared-point consumption is
 available through its separate administrator consent, without activating reads. Rebuilding must allocate fresh chunk IDs and
-capture the new source stamp; terminal tombstone IDs must never be reused. Resumable source/provider-pinned
-backfill, generation completeness checks, exact-ID/revision verification, quotas,
+capture the new source stamp; terminal tombstone IDs must never be reused. Resumable source/provider-pinned building is available through explicit consent.
+Generation completeness checks, exact-ID/revision verification, quotas,
 retention, shadow/primary reads and rollback drills remain pending. Per-generation
 text/vector copies temporarily require extra SQL space. No speed improvement or
 completed migration is claimed by this internal writer alone.
 
-Unexecuted gates include database/index lifecycle, concurrent slot/erase/failure
-ordering, stale-source rejection, rollback after event allocation, idempotent
-repeat, revision exhaustion, legacy read isolation and native counter states.
-Tests remain deferred; syntax/build checks do not prove these runtime properties.
+Native lifecycle and isolated SQL/transport evidence are recorded in QUALITY.md.
+Actual concurrent interruption, full database portability, representative
+throughput/soak and generation verification remain separate acceptance gates.
 
 Document source stamps accept the existing Indexer MD5 content hashes (and
 SHA-256 hashes for compatible future sources). The stamp itself remains SHA-256
@@ -129,8 +130,9 @@ File preparation respects the smaller of the owner's file-size setting and
 20 MiB, including a bounded VFS stream read if the file grows after metadata was
 captured. Extracted text is limited to two million characters without silently
 truncating file content. Existing Mail/Talk canonical limits are part of their
-source representation and remain unchanged. External converter/OCR elapsed-time
-budgets still require hardening before a general bounded worker is enabled.
+source representation and remain unchanged. PDF/Office commands now have time/output limits; OCR retains its existing
+bounded-operation limits. Native remote storage/IMAP transport behavior and
+representative concurrency/load still require separate evidence.
 
 `GenerationDocumentPreparer` uses the generation's immutable chunk size/overlap,
 never mutable personal chunk settings. It bounds a document to 4,096 chunks and
@@ -141,15 +143,14 @@ the budget instead of materializing an unbounded chunk list. Long headings and
 retained overlap no longer exceed the embedding input size. Text plans contain
 no inferred legacy embeddings and are not provider authorization or verification.
 
-This is the shared source-input slice of stage 09. It does not yet run the
-durable cursor/lease/cancel/resume worker or enable any administrative build action.
-The relevant native controls belong with that working control API; no dormant
-chat or settings control is added here. SQL retrieval and the current native
-interface remain active. Native runtime evidence is recorded in QUALITY.md.
+The source-input slice is used by the explicit resumable builder in
+[GENERATION-BUILDS.md](GENERATION-BUILDS.md), including native progress and
+pause/resume. SQL search stays active; preparation is not complete verification
+or activation. Native runtime evidence is recorded in QUALITY.md.
 
 The optional consumer is documented in [VECTOR-OUTBOX.md](VECTOR-OUTBOX.md#prepared-point-worker-1187).
 It transfers only current, accessible prepared rows and marks the matching SQL
-revision delivered. Regular SQL indexing is unchanged; generation backfill,
-reconciliation after invalidation and verification remain prerequisites to search
-cutover. The native storage panels expose the consent separately from connection
-setup and from the still-unavailable migration/activation controls.
+revision delivered. Regular SQL retrieval remains active. Reconciliation after source changes and
+complete verification remain prerequisites to search cutover. Storage/point
+permission and document-processing consent are separate; activation stays
+unavailable.

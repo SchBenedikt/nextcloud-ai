@@ -71,6 +71,22 @@ final class ChunkerRegressionTest extends TestCase {
         $this->chunker(128, 127)->chunkWithSettings(str_repeat('x', 100000), 128, 127, 32);
     }
 
+    public function testLargeOverlapAlsoStopsAtTheGeneratedTextByteBudget(): void {
+        $this->expectException(\LengthException::class);
+        $this->chunker(500,499)->chunkWithSettings(str_repeat('x',2000),500,499,4096,1024);
+    }
+
+    public function testDeepMultibyteHeadingsFitTheStoredProvenanceBudget(): void {
+        $text='';for($level=1;$level<=6;$level++)$text.=str_repeat('#',$level).' '.str_repeat('💠',120)."\n";
+        $text.="\nPublic body.";
+        foreach($this->chunker(128,12)->chunkWithSettings($text,128,12) as $index=>$chunk){
+            self::assertLessThanOrEqual(3000,strlen(json_encode($chunk['provenance'])));
+            self::assertTrue(mb_check_encoding($chunk['provenance']['section'],'UTF-8'));
+            $prepared=new \OCA\EvaAi\Dto\PreparedVectorChunk($index,$chunk['content'],[],$chunk['tokens'],$chunk['provenance']);
+            self::assertSame($chunk['content'],$prepared->content);
+        }
+    }
+
     public function testRepeatedPassagesArePreservedWithSequentialContent(): void {
         // A 20-char budget fits exactly one sentence per chunk, so three
         // identical sentences produce three identical chunks. The previous

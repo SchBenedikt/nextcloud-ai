@@ -151,7 +151,7 @@ class VectorGenerationRepository {
                 }
             } while (count($rows) === 50);
             if ($deleteIndex !== null) $deleteIndex();
-            foreach (['eva_ai_vec_state', 'eva_ai_vec_generations'] as $table) {
+            foreach (['eva_ai_vec_build_docs', 'eva_ai_vec_builds', 'eva_ai_vec_state', 'eva_ai_vec_generations'] as $table) {
                 $qb = $this->db->getQueryBuilder();
                 $qb->delete($table)->where($qb->expr()->eq('user_id', $qb->createNamedParameter($userId)))->executeStatement();
             }
@@ -160,4 +160,11 @@ class VectorGenerationRepository {
 
     public function ownerStatus(string $userId): string { return $this->owners->status($userId); }
     public function ownerMetadata(string $userId): ?array { return $this->owners->metadata($userId); }
+
+    public function target(string $userId,string $id): ?string {
+        $q=$this->db->getQueryBuilder();$q->select('storage_endpoint_hash')->from('eva_ai_vec_generations')
+            ->where($q->expr()->eq('user_id',$q->createNamedParameter($userId)))->andWhere($q->expr()->eq('id',$q->createNamedParameter($id)));
+        $r=$q->executeQuery();try{$target=$r->fetchOne();}finally{$r->closeCursor();}
+        return is_string($target) && preg_match('/^[a-f0-9]{64}$/D',$target)===1?$target:null;
+    }
 }

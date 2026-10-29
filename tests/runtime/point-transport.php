@@ -41,7 +41,7 @@ $table->addColumn('id',Types::BIGINT,['autoincrement'=>true,'notnull'=>true]);$t
 foreach(['document_id','chunk_index','token_count'] as $c)$table->addColumn($c,Types::BIGINT,['notnull'=>true,'default'=>0]);
 foreach(['content','embedding','provenance'] as $c)$table->addColumn($c,Types::TEXT,['notnull'=>true]);
 $output=$doubles->stub(OCP\Migration\IOutput::class);
-foreach(['Version118000Date20261028000000','Version118001Date20261028000001','Version118002Date20261028000002','Version118003Date20261028000003','Version118004Date20261028000004'] as $class){
+foreach(['Version118000Date20261028000000','Version118001Date20261028000001','Version118002Date20261028000002','Version118003Date20261028000003','Version118004Date20261028000004','Version118010Date20261028000010'] as $class){
     $class='OCA\\EvaAi\\Migration\\'.$class;(new $class())->changeSchema($output,static fn()=>$schema,[]);
 }
 foreach($schema->getWrappedSchema()->toSql($db->getDatabasePlatform()) as $sql)$db->executeStatement($sql);

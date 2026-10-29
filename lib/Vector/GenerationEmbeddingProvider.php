@@ -14,7 +14,8 @@ class GenerationEmbeddingProvider {
         private GenerationEmbeddingConfiguration $configuration, private EmbeddingCache $cache) {}
 
     /** @param list<string> $texts @return list<list<float>> */
-    public function embed(VectorGeneration $generation, array $texts, \Closure $guard, bool $useCache = true): array {
+    public function embed(VectorGeneration $generation, array $texts, \Closure $guard, bool $useCache = true, int $timeoutSeconds = 30): array {
+        if ($timeoutSeconds<1 || $timeoutSeconds>30) throw new \InvalidArgumentException('Invalid embedding timeout.');
         if (!array_is_list($texts) || $texts === [] || count($texts) > 8 || count($texts) * $generation->dimension > 131072) throw new VectorStoreException('embedding_batch_too_large');
         foreach ($texts as $text) {
             if (!is_string($text) || !mb_check_encoding($text,'UTF-8') || trim($text) === '' || strlen($text) > 40000 || mb_strlen($text) > $generation->chunkSize) throw new VectorStoreException('invalid_embedding_input');
@@ -38,7 +39,7 @@ class GenerationEmbeddingProvider {
                 $guard();
                 if ($this->context($generation) !== $context) throw new VectorStoreException('embedding_profile_changed');
             };
-            $data = $this->request($generation, $context, $payload, $transferGuard);
+            $data = $this->request($generation, $context, $payload, $transferGuard, $timeoutSeconds);
             $received = $this->decode($generation, $data, count($input));
             // Validate the whole batch before publishing any result or cache entry.
             $transferGuard();
@@ -69,10 +70,10 @@ class GenerationEmbeddingProvider {
         return $snapshot;
     }
 
-    private function request(VectorGeneration $generation, array $context, array $payload, \Closure $guard): array {
+    private function request(VectorGeneration $generation, array $context, array $payload, \Closure $guard, int $timeoutSeconds): array {
         $headers = ['Accept'=>'application/json','Content-Type'=>'application/json'];
         $headers += $this->configuration->authorization($context);
-        $options = ['headers'=>$headers, 'json'=>$payload, 'timeout'=>30, 'connect_timeout'=>5, 'read_timeout'=>30,
+        $options = ['headers'=>$headers, 'json'=>$payload, 'timeout'=>$timeoutSeconds, 'connect_timeout'=>min(5,$timeoutSeconds), 'read_timeout'=>$timeoutSeconds,
             'allow_redirects'=>false,'http_errors'=>false,'stream'=>true,
             'progress'=>static function ($total,$downloaded): void { if ($downloaded > self::MAX_BODY) throw new VectorStoreException('embedding_response_too_large'); }];
         $stream = null;

@@ -2,6 +2,13 @@
 
 ## [Unreleased]
 
+### Background generation builds (1.18.10)
+
+- Add explicit native administrator/OCC start, progress, pause/resume and cancel controls with durable document/chunk checkpoints and exclusive SQL leases.
+- Keep source extraction and eight-input embedding batches outside SQL transactions; atomically commit chunks, journal intent and progress, preserving the legacy SQL index.
+- Recheck native source access, generation/target/lease identity and personal index enrollment; reject stale processes and erase/export owned build metadata with the account lifecycle.
+- Bound local PDF/Office conversions and stop Mail attachment work once the canonical index prefix is full. A staged pass does not activate search or replace full generation verification.
+
 ### Generation embedding identity (1.18.9)
 
 - Add exact, bounded Ollama/OpenAI-compatible generation embedding requests with fresh SQL endpoint/key snapshots, transfer-time guards and strict model/vector validation.

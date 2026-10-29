@@ -19,21 +19,33 @@ class IndexDocumentText {
     }
 
     /** The metadata must come from an owner-filtered EmailService query. */
-    public function mail(string $userId, array $mail): string {
+    public function mail(string $userId, array $mail, ?\Closure $guard = null): string {
         $id = (int)$mail['id'];
         $body = '';
+        if($guard)$guard();
         try { $body = $this->email->bodyText($id, $userId); }
         catch (\Throwable) {}
+        if($guard)$guard();
         $text = "EMAIL\nFrom: " . $mail['from'] . "\nTo: " . implode(', ', (array)($mail['to'] ?? []))
             . "\nDate: " . date('Y-m-d H:i', (int)$mail['sent']) . "\nSubject: " . $mail['subject'] . "\n\n" . trim($body);
-        try {
-            foreach ($this->email->fetchAttachments($userId, $id) as $attachment) {
+        $text=$this->extractor->normalize($text);
+        if(mb_strlen($text)>=30000)return mb_substr($text,0,30000);
+        try { $attachments=$this->email->fetchAttachments($userId,$id); }
+        catch(\Throwable){$attachments=[];}
+        if($guard)$guard();
+        foreach($attachments as $attachment) {
+            if($guard)$guard();
+            try {
                 $content = $this->extractor->extractTextFromBlob($attachment['content'], $attachment['mime']);
                 if (trim($content) !== '') $text .= "\n\nATTACHMENT " . $attachment['name'] . "\n" . $content;
+            } catch (\Throwable) {
+                // Preserve ordinary indexing's best-effort attachment semantics.
+                // A generation reader additionally requires the complete stored hash.
+                break;
             }
-        } catch (\Throwable) {
-            // Preserve ordinary indexing's best-effort attachment semantics.
-            // A generation reader additionally requires the complete stored hash.
+            if($guard)$guard();
+            $text=$this->extractor->normalize($text);
+            if(mb_strlen($text)>=30000)break;
         }
         return mb_substr($this->extractor->normalize($text), 0, 30000);
     }

@@ -19,6 +19,7 @@
 				<p class="generation-hint">{{ $t('This check sends one public test sentence to the selected embedding provider. It does not read files, build the index or change search.') }}</p>
 				<NcButton :disabled="!selected || selected.status !== 'building' || checking" :loading="checking" @click="check">{{ $t('Check embedding model') }}</NcButton>
 				<NcNoteCard v-if="notice" :type="notice.type">{{ notice.text }}</NcNoteCard>
+				<GenerationBuildSettings v-if="selected" :key="`${owner.userId}:${selected.id}`" :user="owner.userId" :generation="selected.id" />
 			</template>
 			<div class="generation-pagination">
 				<NcButton v-if="cursor" variant="tertiary" @click="load('')">{{ $t('First generations') }}</NcButton>
@@ -34,10 +35,11 @@ import { computed, ref, watch, onBeforeUnmount } from 'vue'
 import { NcButton, NcLoadingIcon, NcNoteCard, NcSelect, NcSettingsSection } from '@nextcloud/vue'
 import { api, errMsg } from '../../lib/api'
 import { translate as t } from '../../lib/i18n'
+import GenerationBuildSettings from './GenerationBuildSettings.vue'
 
 export default {
 	name: 'GenerationEmbeddingSettings',
-	components: { NcButton, NcLoadingIcon, NcNoteCard, NcSelect, NcSettingsSection },
+	components: { NcButton, NcLoadingIcon, NcNoteCard, NcSelect, NcSettingsSection, GenerationBuildSettings },
 	props: { users: { type: Array, default: () => [] } },
 	setup(props) {
 		const owner = ref(null), selected = ref(null), items = ref([]), loading = ref(false), checking = ref(false)

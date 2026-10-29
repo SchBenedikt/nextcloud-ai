@@ -62,6 +62,43 @@ test.describe('installed generation administration', () => {
     expect(Object.keys(data.items[0]).sort()).toEqual(['id', 'status', 'embedding_provider', 'profile_id', 'embedding_model', 'dimension', 'chunk_size', 'chunk_overlap', 'created_at'].sort())
   })
 
+  test('native build controls show the explicit storage gate without scheduling work', async () => {
+    const before = requests()
+    await expect(page.getByRole('heading', { name: 'Background build', exact: true })).toBeVisible()
+    await expect(page.getByText('Not started', { exact: true })).toBeVisible()
+    await expect(page.getByRole('button', { name: 'Start background build', exact: true })).toBeDisabled()
+    await expect(page.getByText('Enable the owner’s source index, prepare the generation on the current storage destination and allow point delivery. Search continues to use SQL.', { exact: true })).toBeVisible()
+    await page.locator('.generation-build').screenshot({ path: '/tmp/eva-build-native-admin.png' })
+    expect(requests()).toBe(before)
+    expect(errors).toEqual([])
+  })
+
+  test('actual build metadata is private and start requires consent plus a prepared enabled destination', async () => {
+    const before = requests()
+    const token = await page.locator('meta[name="requesttoken"]').getAttribute('content')
+    const headers = { 'OCS-APIRequest': 'true', requesttoken: token }
+    const path = `admin/vector-generations/${encodeURIComponent(metadata.user)}/${metadata.generation}/build`
+    const response = await admin.context.request.get(api(path), { headers })
+    expect(response.status()).toBe(200)
+    const state = (await response.json()).ocs.data
+    expect(state).toMatchObject({ status: 'not_started', can_start: false, verified: false, retrieval_changed: false })
+    expect(Object.keys(state).sort()).toEqual(['status', 'documents_done', 'total_documents', 'staged_chunks', 'heartbeat_at', 'error_code', 'can_start', 'retrieval_changed', 'verified'].sort())
+    const denied = await admin.context.request.post(api(`${path}/start`), { data: {}, headers })
+    expect(denied.status()).toBe(400)
+    const gated = await admin.context.request.post(api(`${path}/start`), { data: { confirm_document_transfer: true }, headers })
+    expect(gated.status()).toBe(409)
+    const unchanged = await admin.context.request.get(api(path), { headers })
+    expect((await unchanged.json()).ocs.data.status).toBe('not_started')
+    expect(requests()).toBe(before)
+  })
+
+  test('native Nextcloud administration links the shared build controls', async () => {
+    await page.goto(`${base}/index.php/settings/admin/eva_ai`, { waitUntil: 'domcontentloaded' })
+    const link = page.getByRole('link', { name: 'Manage storage and background builds', exact: true })
+    await expect(link).toBeVisible()
+    await expect(link).toHaveAttribute('href', /\/apps\/eva_ai\/admin/)
+  })
+
   test('a normal account cannot list or probe an administrator generation', async () => {
     const before = requests()
     const token = await regular.page.locator('meta[name="requesttoken"]').getAttribute('content')
@@ -70,6 +107,9 @@ test.describe('installed generation administration', () => {
     expect(listing.status()).toBe(403)
     const probe = await regular.context.request.post(api(`admin/vector-generations/${encodeURIComponent(metadata.user)}/${metadata.generation}/check`), { data: {}, headers })
     expect(probe.status()).toBe(403)
+    const build = `admin/vector-generations/${encodeURIComponent(metadata.user)}/${metadata.generation}/build`
+    expect((await regular.context.request.get(api(build), { headers })).status()).toBe(403)
+    expect((await regular.context.request.post(api(`${build}/start`), { data: { confirm_document_transfer: true }, headers })).status()).toBe(403)
     expect(requests()).toBe(before)
   })
 })

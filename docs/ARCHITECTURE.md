@@ -28,6 +28,9 @@ lib/
 | `IndexTextExtractor` | Shared file/blob parsers, native format detection and an optional bounded VFS stream read |
 | `IndexDocumentText` | Canonical file, Mail envelope/attachment and Talk text shared by indexing and generation preparation |
 | `Chunker` | Streams sections/sentences into overlapping chunks; generation plans use explicit immutable settings and a chunk-count bound |
+| `GenerationBuildWorker` | Separate background keyset builder with lease/owner/source guards; commits chunks, outbox and progress together without changing SQL retrieval |
+| `GenerationBuildService` | Shared native administrator/OCC control and secret-free progress reads; explicit start schedules work instead of calling a provider |
+| `LocalTextProcess` | Argv-based PDF/Office conversion with runtime/output limits; no raw converter stderr reaches the user |
 | `Ollama` | Thin HTTP client for the Ollama API (embedding + chat) |
 | `Searcher` | Hybrid retrieval: vector search + BM25, fused with RRF |
 | `RagService` | Orchestrates retrieval + prompt building + answer generation |

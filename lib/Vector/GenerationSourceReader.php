@@ -16,7 +16,8 @@ class GenerationSourceReader {
         private IRootFolder $files, private IndexDocumentText $text,
         private EmailService $mail, private TalkTranscriptService $talk) {}
 
-    public function read(VectorDocumentSnapshot $source): string {
+    public function read(VectorDocumentSnapshot $source, ?\Closure $guard = null): string {
+        if($guard)$guard();
         if ($this->config->userId() !== $source->userId) throw new VectorStoreException('embedding_owner_mismatch');
         $metadata = $source->metadata;
         $point = ['source' => $metadata['source'], 'file_id' => $metadata['file_id'], 'path' => $metadata['path'],
@@ -34,6 +35,7 @@ class GenerationSourceReader {
                     && ltrim($relative, '/') === $metadata['path']) {
                     try { $content = $this->text->file($file, $limit); }
                     catch (\LengthException) { throw new VectorStoreException('source_too_large'); }
+                    catch (\Throwable) { throw new VectorStoreException('source_extraction_failed'); }
                     break;
                 }
             }
@@ -41,7 +43,7 @@ class GenerationSourceReader {
         } elseif ($metadata['source'] === 'mail') {
             $message = $this->mail->messageForIndexing($source->userId, -$metadata['file_id']);
             if ($message === null) throw new VectorStoreException('source_unavailable');
-            $content = $this->text->mail($source->userId, $message);
+            $content = $this->text->mail($source->userId, $message, $guard);
         } else {
             if (preg_match('~^talk://([1-9][0-9]{0,17})$~D', $metadata['path'], $matches) !== 1) throw new VectorStoreException('source_unavailable');
             $transcript = $this->talk->transcript($source->userId, (int)$matches[1]);
@@ -54,6 +56,7 @@ class GenerationSourceReader {
         $hash = hash(strlen($metadata['content_hash']) === 32 ? 'md5' : 'sha256', $content);
         if (!hash_equals($metadata['content_hash'], $hash)) throw new VectorStoreException('source_changed');
         $this->access->assertAccessible($source->userId, $point);
+        if($guard)$guard();
         return $content;
     }
 }

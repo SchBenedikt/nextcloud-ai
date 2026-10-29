@@ -13,9 +13,9 @@ class GenerationDocumentPreparer {
 
     public function __construct(private GenerationSourceReader $sources, private Chunker $chunker) {}
 
-    public function prepare(VectorGeneration $generation, VectorDocumentSnapshot $source): PreparedGenerationDocument {
+    public function prepare(VectorGeneration $generation, VectorDocumentSnapshot $source, ?\Closure $guard = null): PreparedGenerationDocument {
         if ($generation->userId !== $source->userId) throw new VectorStoreException('source_identity_mismatch');
-        $text = $this->sources->read($source);
+        $text = $this->sources->read($source, $guard);
         try { $chunks = $this->chunker->chunkWithSettings($text, $generation->chunkSize, $generation->chunkOverlap, self::MAX_CHUNKS); }
         catch (\LengthException) { throw new VectorStoreException('source_chunk_limit'); }
         $digest = hash_init('sha256');
@@ -25,6 +25,7 @@ class GenerationDocumentPreparer {
             // whole-document JSON allocation alongside the chunk array.
             hash_update($digest, "\n" . json_encode($chunk, JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE));
         }
+        if($guard)$guard();
         return new PreparedGenerationDocument($source, $chunks, hash_final($digest));
     }
 }
