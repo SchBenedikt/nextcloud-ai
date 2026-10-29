@@ -46,6 +46,25 @@ class VectorGenerationRepository {
         return $row ? VectorGeneration::fromRow($row) : null;
     }
 
+    /** Find an unfinished SQL generation with the same immutable embedding identity. */
+    public function findBuildingSql(string $userId, string $model, string $endpointHash, int $dimension, int $chunkSize, int $chunkOverlap): ?VectorGeneration {
+        $qb = $this->db->getQueryBuilder();
+        $qb->select('*')->from('eva_ai_vec_generations')
+            ->where($qb->expr()->eq('user_id', $qb->createNamedParameter($userId)))
+            ->andWhere($qb->expr()->eq('backend', $qb->createNamedParameter('sql')))
+            ->andWhere($qb->expr()->eq('embedding_provider', $qb->createNamedParameter('ollama')))
+            ->andWhere($qb->expr()->eq('embedding_model', $qb->createNamedParameter($model)))
+            ->andWhere($qb->expr()->eq('endpoint_hash', $qb->createNamedParameter($endpointHash)))
+            ->andWhere($qb->expr()->eq('dimension', $qb->createNamedParameter($dimension, IQueryBuilder::PARAM_INT)))
+            ->andWhere($qb->expr()->eq('chunk_size', $qb->createNamedParameter($chunkSize, IQueryBuilder::PARAM_INT)))
+            ->andWhere($qb->expr()->eq('chunk_overlap', $qb->createNamedParameter($chunkOverlap, IQueryBuilder::PARAM_INT)))
+            ->andWhere($qb->expr()->eq('status', $qb->createNamedParameter('building')))
+            ->orderBy('created_at', 'ASC')->setMaxResults(1);
+        $result = $qb->executeQuery();
+        try { $row = $result->fetch(); } finally { $result->closeCursor(); }
+        return $row ? VectorGeneration::fromRow($row) : null;
+    }
+
     /** Keyset listing, not an unbounded per-account history read. */
     public function page(string $userId, string $after = ''): array {
         if ($after !== '' && preg_match('/^[a-f0-9]{32}$/D', $after) !== 1) throw new \InvalidArgumentException('Invalid generation cursor.');

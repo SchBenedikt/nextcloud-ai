@@ -56,6 +56,7 @@ class Ollama implements EmbeddingProvider {
     private bool $statusStoreInitialized = false;
     /** @var array{cache_hits:int,cache_misses:int,ollama_requests:int} */
     private array $lastEmbeddingStats = ['cache_hits' => 0, 'cache_misses' => 0, 'ollama_requests' => 0];
+    private ?string $lastEmbeddingModel = null;
 
     /** Floor for one embedding request; a cold model load alone can take a while. */
     private const EMBED_TIMEOUT_FLOOR = 30;
@@ -638,6 +639,7 @@ class Ollama implements EmbeddingProvider {
      */
     public function embedBatch(array $texts, ?string $userId = null): array {
         $this->lastEmbeddingStats = ['cache_hits' => 0, 'cache_misses' => 0, 'ollama_requests' => 0];
+        $this->lastEmbeddingModel = null;
         if (empty($texts)) {
             return [[], null];
         }
@@ -723,6 +725,7 @@ class Ollama implements EmbeddingProvider {
             }
             // Publish only after the complete response has been validated.
             $this->embeddingCache->putMany($cacheEntries);
+            $this->lastEmbeddingModel = $modelName;
             return [$vectors, null];
         } catch (\Throwable $e) {
             $this->logger->error('eva_ai embed batch failed', ['exception' => $e]);
@@ -857,6 +860,10 @@ class Ollama implements EmbeddingProvider {
     /** @return array{cache_hits:int,cache_misses:int,ollama_requests:int} */
     public function lastEmbeddingStats(): array {
         return $this->lastEmbeddingStats;
+    }
+
+    public function lastEmbeddingModel(): ?string {
+        return $this->lastEmbeddingModel;
     }
 
     /** @param string[] $texts */
