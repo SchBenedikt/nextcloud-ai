@@ -1534,43 +1534,56 @@ export function mountChat(root, opts = {}) {
 		}
 	}
 
+	function applyServerChat(chat, requestOptions = {}) {
+		if (destroyed) return false
+		if (requestOptions.requireRevision && (!Number.isSafeInteger(chat?.rev) || !Array.isArray(chat.messages))) throw new Error('Missing chat state')
+		// Per-chat folder scope (Issue #88): visible in the header so the
+		// user knows the answer only uses documents from that folder.
+		if (chat && chat.scopePath) {
+			scopePill.textContent = t('Scoped to {path}', { path: chat.scopePath })
+			scopePill.hidden = false
+		} else {
+			scopePill.hidden = true
+		}
+		refreshCustomizePill(chat)
+		// The header shows the real chat title instead of the generic
+		// placeholder once the conversation has been given one.
+		if (chat && chat.title) {
+			chatTitle = chat.title
+			h1.textContent = chat.title
+		}
+		if (chat && chat.rev != null) chatRev = parseInt(chat.rev, 10) || null
+		messages.length = 0
+		trimmedMessages = (chat && chat.trimmed) ? parseInt(chat.trimmed, 10) || 0 : 0
+		;(chat.messages || []).forEach((m) => messages.push({
+			role: m.role === 'user' || m.role === 'assistant' ? m.role : 'assistant',
+			text: m.text || '',
+			createdAt: Number.isSafeInteger(m.createdAt) ? m.createdAt : null,
+			model: typeof m.model === 'string' ? m.model : null,
+			thinking: '',
+			followups: Array.isArray(m.followups) ? m.followups : [],
+			tools: Array.isArray(m.tools) ? m.tools : [],
+			// A persisted pending confirmation re-renders the inline panel so
+			// approving after a reload still works (Issue #185).
+			confirmation: m.confirmation || null,
+			done: true,
+		}))
+		renderAll(messages)
+		return true
+	}
+
 	function restoreServerChat(id, requestOptions = {}) {
-		return api('GET', '/chats/' + id, null, requestOptions).then((chat) => {
-			if (destroyed) return
-			if (requestOptions.requireRevision && (!Number.isSafeInteger(chat?.rev) || !Array.isArray(chat.messages))) throw new Error('Missing chat state')
-			// Per-chat folder scope (Issue #88): visible in the header so the
-			// user knows the answer only uses documents from that folder.
-			if (chat && chat.scopePath) {
-				scopePill.textContent = t('Scoped to {path}', { path: chat.scopePath })
-				scopePill.hidden = false
-			} else {
-				scopePill.hidden = true
+		const initialChat = opts.initialChat
+		if (initialChat && initialChat.id === id && Number.isSafeInteger(initialChat.rev) && Array.isArray(initialChat.messages)) {
+			try {
+				applyServerChat(initialChat)
+				return Promise.resolve(true)
+			} catch (_) {
+				// Fall back to the canonical detail endpoint if the create payload
+				// is incomplete; it remains the source of truth for old clients.
 			}
-			refreshCustomizePill(chat)
-			// The header shows the real chat title instead of the generic
-			// placeholder once the conversation has been given one.
-			if (chat && chat.title) {
-				chatTitle = chat.title
-				h1.textContent = chat.title
-			}
-			if (chat && chat.rev != null) chatRev = parseInt(chat.rev, 10) || null
-			messages.length = 0
-			trimmedMessages = (chat && chat.trimmed) ? parseInt(chat.trimmed, 10) || 0 : 0
-			;(chat.messages || []).forEach((m) => messages.push({
-				role: m.role === 'user' || m.role === 'assistant' ? m.role : 'assistant',
-				text: m.text || '',
-				createdAt: Number.isSafeInteger(m.createdAt) ? m.createdAt : null,
-				model: typeof m.model === 'string' ? m.model : null,
-				thinking: '',
-				followups: Array.isArray(m.followups) ? m.followups : [],
-				tools: Array.isArray(m.tools) ? m.tools : [],
-				// A persisted pending confirmation re-renders the inline panel so
-				// approving after a reload still works (Issue #185).
-				confirmation: m.confirmation || null,
-				done: true,
-			}))
-			renderAll(messages)
-			})
+		}
+		return api('GET', '/chats/' + encodeURIComponent(id), null, requestOptions).then((chat) => applyServerChat(chat, requestOptions))
 	}
 
 	function showHistorySaveWarning() {

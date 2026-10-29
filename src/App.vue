@@ -119,7 +119,7 @@
 		</NcAppNavigation>
 		<NcAppContent>
 			<HomeView v-if="view === 'home'" :chats="chats" :loading="chatsLoading" :busy="busy" :error="apiError" @retry="loadChats" @new-chat="newChat" @open-chat="selectChat" />
-			<ChatView v-else-if="view === 'chat'" :chat-id="currentChat" :initial-prompt="pendingPrompt" :auto-send="!!pendingPrompt" @chat-updated="loadChats" @prompt-consumed="pendingPrompt = ''" />
+			<ChatView v-else-if="view === 'chat'" :key="currentChat" :chat-id="currentChat" :initial-chat="currentChatData?.id === currentChat ? currentChatData : null" :initial-prompt="pendingPrompt" :auto-send="!!pendingPrompt" @chat-updated="loadChats" @prompt-consumed="pendingPrompt = ''" />
 			<FileContextChatView v-else-if="view === 'fileContext'" :file-ids="fileContextIds" />
 			<DocumentsView v-else-if="view === 'docs'" />
 			<MetricsView v-else-if="view === 'metrics'" />
@@ -181,6 +181,7 @@ export default {
 
 		const chats = ref([])
 		const currentChat = ref(null)
+		const currentChatData = ref(null)
 		const { initialChatParam, navigate } = useNavigation({ currentChat, view, fileContextIds, settingsSection })
 		const settingsMounted = ref(view.value === 'settings')
 		function openSettings(section = 'general') {
@@ -336,10 +337,14 @@ export default {
 				const c = await requestApi('POST', '/chats', {})
 				if (!c || !c.id) throw new Error(t('The server returned no chat ID.'))
 				pendingPrompt.value = String(prompt || '').trim()
-				await loadChats()
+				// The create response already contains the full, revisioned empty
+				// chat. Hand it to ChatView so it can enable the composer without
+				// an immediate second request that can race a database replica.
+				currentChatData.value = c
 				currentChat.value = c.id
 				navigate('chat')
 				apiError.value = ''
+				loadChats()
 			} catch (error) {
 				apiError.value = t('A new chat could not be created: {error}', { error: errMsg(error) })
 			} finally {
@@ -348,6 +353,7 @@ export default {
 		}
 
 		const selectChat = (id) => {
+			currentChatData.value = null
 			// A dashboard prompt belongs only to the chat that was just created.
 			// Clear it before switching to an existing conversation.
 			pendingPrompt.value = ''
@@ -458,7 +464,7 @@ export default {
 
 		return {
 			view, settingsSection, settingsSections, settingsMounted, openSettings, mdiArrowLeft,
-			chats, currentChat, busy, chatsLoading, loadingMoreChats, chatsNextOffset, chatsNextCursor, chatFilter, apiError, chatDialog, showArchived,
+			chats, currentChat, currentChatData, busy, chatsLoading, loadingMoreChats, chatsNextOffset, chatsNextCursor, chatFilter, apiError, chatDialog, showArchived,
 			navItems, listChats,
 			fileContextIds, itemName, itemTip,
 			newChat, selectChat, renameChat, deleteChat, closeChatDialog, confirmChatDialog, loadChats, loadMoreChats, navigate, updateChatMeta, pendingPrompt,

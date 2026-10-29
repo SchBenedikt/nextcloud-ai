@@ -2,6 +2,11 @@
 
 ## [Unreleased]
 
+### Start new chats without a redundant history read (1.20.23)
+
+- Initialize a new conversation from the successful create response so the composer is immediately ready.
+- Refresh the sidebar in the background; existing conversation loads retain their normal retry flow.
+
 ### OCR modern phone photo formats (1.20.22)
 
 - Index HEIC, HEIF and AVIF photos when local OCR is enabled and ImageMagick provides the codec.
