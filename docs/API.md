@@ -153,6 +153,11 @@ input_per_million, output_per_million}` prices. Rates must be non-negative USD
 amounts no greater than 10,000 per million tokens; at most 50 unique model
 entries are accepted. Sending an empty `prices` array clears the estimates.
 
+`GET /api/chats/page?offset=0&limit=50` returns `{chats, nextOffset, total, activeTotal}`.
+`limit` is 1–100 and `offset` is non-negative. `nextOffset` is `null` at the end.
+The EVA sidebar loads the first page and requests additional pages as needed.
+The original `GET /api/chats` response remains an array for existing clients.
+
 `POST /api/chats/{id}/messages` accepts a `role` (`user` or `assistant`) and
 non-empty `text` up to 50,000 characters. Assistant messages may include up to
 three string `followups`, an optional non-negative `regenerateRev`, a

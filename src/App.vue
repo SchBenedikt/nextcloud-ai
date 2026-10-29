@@ -39,7 +39,7 @@
 				</NcAppNavigationItem>
 				<li class="chat-list-heading">
 					<span>{{ $t('Chats') }}</span>
-					<NcCounterBubble :count="activeChats.length" />
+					<NcCounterBubble :count="activeChatCount" />
 				</li>
 				<template v-for="item in navItems" :key="item.key">
 					<li
@@ -92,6 +92,9 @@
 				<li v-if="chatsLoading" class="chat-list-empty" role="status">{{ $t('Loading chats…') }}</li>
 				<li v-else-if="!apiError && !chats.length" class="chat-list-empty">{{ $t('No chats yet — start a new one.') }}</li>
 				<li v-else-if="!apiError && chatFilter.trim() && !listChats.length" class="chat-list-empty">{{ $t('No chats match your search.') }}</li>
+				<li v-if="!chatFilter.trim() && chatsNextOffset !== null && !chatsLoading" class="chat-list-more">
+					<NcButton variant="tertiary" :wide="true" :loading="loadingMoreChats" :disabled="loadingMoreChats" @click="loadMoreChats">{{ $t('Load more chats') }}</NcButton>
+				</li>
 				</template>
 			</template>
 			<template v-if="view !== 'settings'" #footer>
@@ -179,9 +182,12 @@ export default {
 
 		const chats = ref([])
 		const currentChat = ref(null)
-		const { initialChatParam, navigate } = useNavigation({ chats, currentChat, view, fileContextIds, settingsSection })
+		const { initialChatParam, navigate } = useNavigation({ currentChat, view, fileContextIds, settingsSection })
 		const busy = ref(false)
 		const chatsLoading = ref(true)
+		const loadingMoreChats = ref(false)
+		const chatsNextOffset = ref(null)
+		const activeChatCount = ref(0)
 		// First message typed on the dashboard hero: passed to the chat view
 		// and sent automatically as soon as the conversation is open.
 		const pendingPrompt = ref('')
@@ -215,7 +221,6 @@ export default {
 			}
 			return items
 		})
-		const activeChats = computed(() => chats.value.filter((c) => !c.archived))
 		const listChats = computed(() => {
 			const query = chatFilter.value.trim().toLowerCase()
 			if (!query) return []
@@ -263,15 +268,18 @@ export default {
 
 		const loadChats = () => {
 			chatsLoading.value = true
+			chatsNextOffset.value = null
 			apiError.value = ''
-			return requestApi('GET', '/chats').then((list) => {
+			return requestApi('GET', '/chats/page', { offset: 0, limit: 50 }).then((page) => {
 				apiError.value = ''
-				if (!Array.isArray(list)) throw new Error(t('The chat list response was invalid.'))
-				chats.value = list
-				if (!currentChat.value || !list.some((chat) => chat.id === currentChat.value)) {
+				if (!page || !Array.isArray(page.chats)) throw new Error(t('The chat list response was invalid.'))
+				chats.value = page.chats
+				chatsNextOffset.value = page.nextOffset
+				activeChatCount.value = Number(page.activeTotal) || 0
+				if (!currentChat.value && !initialChatParam) {
 					// Prefer a chat the user can actually see (archived chats
 					// are collapsed by default).
-					const first = list.find((chat) => !chat.archived) || list[0]
+					const first = page.chats.find((chat) => !chat.archived) || page.chats[0]
 					currentChat.value = first ? first.id : null
 				}
 			}).catch((error) => {
@@ -280,6 +288,22 @@ export default {
 			}).finally(() => {
 				chatsLoading.value = false
 			})
+		}
+
+		const loadMoreChats = async () => {
+			if (loadingMoreChats.value || chatsNextOffset.value === null) return
+			loadingMoreChats.value = true
+			try {
+				const page = await requestApi('GET', '/chats/page', { offset: chatsNextOffset.value, limit: 50 })
+				if (!page || !Array.isArray(page.chats)) throw new Error(t('The chat list response was invalid.'))
+				const known = new Set(chats.value.map(chat => chat.id))
+				chats.value = chats.value.concat(page.chats.filter(chat => !known.has(chat.id)))
+				chatsNextOffset.value = page.nextOffset
+			} catch (error) {
+				apiError.value = t('Chat list unavailable: {error}', { error: errMsg(error) })
+			} finally {
+				loadingMoreChats.value = false
+			}
 		}
 
 		// Apply pinned/folder/archived metadata and refresh both lists.
@@ -407,8 +431,9 @@ export default {
 				// ?chat=<id> opens an existing one.
 				if (initialChatParam === 'new') {
 					newChat()
-				} else if (initialChatParam && chats.value.some((c) => c.id === initialChatParam)) {
+				} else if (initialChatParam) {
 					currentChat.value = initialChatParam
+					view.value = 'chat'
 				}
 			})
 			if (typeof window !== 'undefined' && window.addEventListener) {
@@ -423,10 +448,10 @@ export default {
 
 		return {
 			view, settingsSection, settingsSections, mdiArrowLeft,
-			chats, currentChat, busy, chatsLoading, chatFilter, apiError, chatDialog, showArchived,
-			navItems, listChats, activeChats,
+			chats, currentChat, busy, chatsLoading, loadingMoreChats, chatsNextOffset, activeChatCount, chatFilter, apiError, chatDialog, showArchived,
+			navItems, listChats,
 			fileContextIds, itemName, itemTip,
-			newChat, selectChat, renameChat, deleteChat, closeChatDialog, confirmChatDialog, loadChats, navigate, updateChatMeta, pendingPrompt,
+			newChat, selectChat, renameChat, deleteChat, closeChatDialog, confirmChatDialog, loadChats, loadMoreChats, navigate, updateChatMeta, pendingPrompt,
 			mdiChatProcessing, mdiFileDocumentOutline, mdiTune, mdiTrashCanOutline, mdiMessagePlus, mdiPencilOutline, mdiViewDashboardOutline,
 			mdiPinOutline, mdiArchiveOutline, mdiArchiveArrowUpOutline, mdiChevronDown, mdiPinOffOutline,
 		}

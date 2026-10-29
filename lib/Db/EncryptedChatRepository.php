@@ -72,7 +72,7 @@ final class EncryptedChatRepository {
 					|| count($messages) !== count($oldMessages)) {
 					$this->upsertMetadata($owner, $id, (int)($chat['created'] ?? time()), (int)($chat['updated'] ?? time()), count($messages), $this->seal($metadata));
 				}
-				$firstChanged = count($messages);
+				$firstChanged = min(count($messages), count($oldMessages));
 				for ($i = 0; $i < min(count($messages), count($oldMessages)); $i++) {
 					if ($this->digest($messages[$i]) !== $this->digest($oldMessages[$i])) { $firstChanged = $i; break; }
 				}
@@ -83,14 +83,6 @@ final class EncryptedChatRepository {
 			}
 			$this->db->commit();
 		} catch (\Throwable $e) { $this->db->rollBack(); throw $e; }
-	}
-
-	/** Append a single encrypted message without rewriting prior message rows. */
-	public function appendMessage(string $userId, string $chatId, int $index, array $message): void {
-		if ($index < 0 || $chatId === '' || strlen($chatId) > 128) {
-			throw new \InvalidArgumentException('Invalid chat message position.');
-		}
-		$this->insertMessage(hash('sha256', $userId), $chatId, $index, (int)($message['created'] ?? time()), $this->seal($message));
 	}
 
 	public function metadata(string $userId, string $chatId): ?array {
@@ -119,11 +111,11 @@ final class EncryptedChatRepository {
 		return $chat;
 	}
 
-	/** @return list<array{created:int,updated:int,count:int,metadata:array}> */
+	/** @return list<array{id:string,created:int,updated:int,count:int,metadata:array}> */
 	public function metadataPage(string $userId, int $limit = 50, ?int $beforeUpdated = null, ?string $beforeChatId = null): array {
 		$limit = min(100, max(1, $limit));
 		$qb = $this->db->getQueryBuilder();
-		$qb->select('created_at', 'updated_at', 'message_count', 'encrypted_metadata')->from('eva_ai_chats')
+		$qb->select('chat_id', 'created_at', 'updated_at', 'message_count', 'encrypted_metadata')->from('eva_ai_chats')
 			->where($qb->expr()->eq('user_id', $qb->createNamedParameter(hash('sha256', $userId))));
 		if ($beforeUpdated !== null && $beforeChatId !== null) {
 			$qb->andWhere($qb->expr()->orX(
@@ -139,11 +131,73 @@ final class EncryptedChatRepository {
 		try {
 			$out = [];
 			while (($row = $result->fetch()) !== false) {
-				$out[] = ['created' => (int)$row['created_at'], 'updated' => (int)$row['updated_at'],
+				$out[] = ['id' => (string)$row['chat_id'], 'created' => (int)$row['created_at'], 'updated' => (int)$row['updated_at'],
 					'count' => (int)$row['message_count'], 'metadata' => $this->open((string)$row['encrypted_metadata'])];
 			}
 			return $out;
 		} finally { $result->closeCursor(); }
+	}
+
+	/** @return list<array<string,mixed>> */
+	public function allChats(string $userId): array {
+		$owner = hash('sha256', $userId);
+		$qb = $this->db->getQueryBuilder();
+		$qb->select('c.chat_id', 'c.created_at', 'c.updated_at', 'c.message_count', 'c.encrypted_metadata', 'm.message_index', 'm.encrypted_message')
+			->from('eva_ai_chats', 'c')
+			->leftJoin('c', 'eva_ai_chat_messages', 'm', $qb->expr()->andX(
+				$qb->expr()->eq('c.user_id', 'm.user_id'), $qb->expr()->eq('c.chat_id', 'm.chat_id')))
+			->where($qb->expr()->eq('c.user_id', $qb->createNamedParameter($owner)))
+			->orderBy('c.updated_at', 'DESC')->addOrderBy('c.chat_id', 'DESC')->addOrderBy('m.message_index', 'ASC');
+		$result = $qb->executeQuery();
+		try {
+			$chats = [];
+			$expected = [];
+			while (($row = $result->fetch()) !== false) {
+				$id = (string)$row['chat_id'];
+				if (!isset($chats[$id])) {
+					$chat = $this->open((string)$row['encrypted_metadata']);
+					$chat['created'] = (int)$row['created_at'];
+					$chat['updated'] = (int)$row['updated_at'];
+					$chat['messages'] = [];
+					$chats[$id] = $chat;
+					$expected[$id] = (int)$row['message_count'];
+				}
+				if ($row['encrypted_message'] !== null) $chats[$id]['messages'][] = $this->open((string)$row['encrypted_message']);
+			}
+			foreach ($chats as $id => $chat) {
+				if (count($chat['messages']) !== $expected[$id]) throw new \RuntimeException('Stored chat message count is inconsistent.');
+			}
+			return array_values($chats);
+		} finally { $result->closeCursor(); }
+	}
+
+	public function sqlReadsEnabled(string $userId): bool {
+		$qb = $this->db->getQueryBuilder();
+		$qb->select('state', 'sql_read_enabled')->from('eva_ai_chat_migrations')
+			->where($qb->expr()->eq('user_id', $qb->createNamedParameter(hash('sha256', $userId))));
+		$result = $qb->executeQuery();
+		try { $row = $result->fetch(); } finally { $result->closeCursor(); }
+		return $row !== false && $row['state'] === 'complete' && (int)$row['sql_read_enabled'] === 1;
+	}
+
+	public function chatCount(string $userId): int {
+		$qb = $this->db->getQueryBuilder();
+		$qb->selectAlias($qb->createFunction('COUNT(*)'), 'chat_count')->from('eva_ai_chats')
+			->where($qb->expr()->eq('user_id', $qb->createNamedParameter(hash('sha256', $userId))));
+		$result = $qb->executeQuery();
+		try { return (int)$result->fetchOne(); } finally { $result->closeCursor(); }
+	}
+
+	public function setSqlReadsEnabled(string $userId, bool $enabled): void {
+		$owner = hash('sha256', $userId);
+		if ($enabled) {
+			$state = $this->migrationState($userId);
+			if (($state['state'] ?? '') !== 'complete') throw new \RuntimeException('Chat SQL import must be complete before enabling SQL reads.');
+		}
+		$qb = $this->db->getQueryBuilder();
+		$qb->update('eva_ai_chat_migrations')->set('sql_read_enabled', $qb->createNamedParameter($enabled ? 1 : 0, IQueryBuilder::PARAM_INT))
+			->set('updated_at', $qb->createNamedParameter(time(), IQueryBuilder::PARAM_INT))
+			->where($qb->expr()->eq('user_id', $qb->createNamedParameter($owner)))->executeStatement();
 	}
 
 	public function deleteChat(string $userId, string $chatId): bool {
@@ -158,6 +212,23 @@ final class EncryptedChatRepository {
 			$this->db->commit();
 			return $deleted;
 		} catch (\Throwable $e) { $this->db->rollBack(); throw $e; }
+	}
+
+	public function deleteOlderThan(string $userId, int $cutoff): int {
+		$owner = hash('sha256', $userId);
+		$deleted = 0;
+		do {
+			$qb = $this->db->getQueryBuilder();
+			$qb->select('chat_id')->from('eva_ai_chats')
+				->where($qb->expr()->eq('user_id', $qb->createNamedParameter($owner)))
+				->andWhere($qb->expr()->lt('updated_at', $qb->createNamedParameter($cutoff, IQueryBuilder::PARAM_INT)))
+				->setMaxResults(100);
+			$result = $qb->executeQuery();
+			try { $ids = array_map(static fn(array $row): string => (string)$row['chat_id'], $result->fetchAll()); }
+			finally { $result->closeCursor(); }
+			foreach ($ids as $id) if ($this->deleteChat($userId, $id)) $deleted++;
+		} while (count($ids) === 100);
+		return $deleted;
 	}
 
 	/** Clear only imported chat rows, retaining the resumable migration marker. */

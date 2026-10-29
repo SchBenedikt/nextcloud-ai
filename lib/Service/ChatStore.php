@@ -33,6 +33,8 @@ class ChatStore {
     private array $rawSnapshots = [];
     /** @var array<string,list<array<string,mixed>>> decoded snapshots for SQL diff writes */
     private array $chatSnapshots = [];
+    /** @var array<string,bool> per-request cache for the SQL canary flag */
+    private array $sqlReadModes = [];
 
     public function __construct(
         private IAppDataFactory $appDataFactory,
@@ -56,6 +58,14 @@ class ChatStore {
      */
     public function list(string $user, ?string $search = null, bool $includeArchived = false): array {
         return $this->withUserLock($user, function () use ($user, $search, $includeArchived): array {
+            if ($this->sqlReadsEnabled($user)) {
+                try {
+                    return $this->listFromSql($user, $search, $includeArchived);
+                } catch (\Throwable $e) {
+                    $this->logger->error('eva_ai: SQL chat list failed', ['user' => $user]);
+                    throw $e;
+                }
+            }
             $all = $this->read($user);
             $needle = $search !== null ? mb_strtolower(trim($search)) : '';
             $out = [];
@@ -117,9 +127,34 @@ class ChatStore {
         }, ILockingProvider::LOCK_SHARED);
     }
 
+    /** @return array{chats:list<array<string,mixed>>,nextOffset:?int,total:int,activeTotal:int} */
+    public function listPage(string $user, int $offset = 0, int $limit = 50, bool $includeArchived = true): array {
+        $offset = max(0, $offset);
+        $limit = min(100, max(1, $limit));
+        $all = $this->list($user, null, $includeArchived);
+        $page = array_slice($all, $offset, $limit);
+        $next = $offset + count($page);
+        return ['chats' => $page, 'nextOffset' => $next < count($all) ? $next : null,
+            'total' => count($all), 'activeTotal' => count(array_filter($all, static fn(array $chat): bool => empty($chat['archived'])))];
+    }
+
     /** @return array|null */
     public function get(string $user, string $id): ?array {
         return $this->withUserLock($user, function () use ($user, $id): ?array {
+            if ($this->sqlReadsEnabled($user)) {
+                try {
+                    $chat = $this->sqlChats->chat($user, $id);
+                    if ($chat !== null) {
+                        $chat['title'] = $this->displayTitle($chat);
+                        unset($chat['regenerate']);
+                        return $chat;
+                    }
+                    return null;
+                } catch (\Throwable $e) {
+                    $this->logger->error('eva_ai: SQL chat read failed', ['user' => $user]);
+                    throw $e;
+                }
+            }
             foreach ($this->read($user) as $chat) {
                 if (($chat['id'] ?? '') === $id) {
                     // Same normalization as list(): the stored German default
@@ -169,6 +204,7 @@ class ChatStore {
 
     public function delete(string $user, string $id): bool {
         return $this->withUserLock($user, function () use ($user, $id): bool {
+            if ($this->sqlReadsEnabled($user)) return $this->sqlChats->deleteChat($user, $id);
             $all = $this->read($user);
             $kept = array_values(array_filter($all, static fn($c) => ($c['id'] ?? '') !== $id));
             if (count($kept) === count($all)) {
@@ -185,6 +221,12 @@ class ChatStore {
      */
     public function deleteAll(string $user): int {
         return $this->withUserLock($user, function () use ($user): int {
+            if ($this->sqlReadsEnabled($user)) {
+                $count = $this->sqlChats->chatCount($user);
+                $this->sqlChats->resetImportedChats($user);
+                $this->chatSnapshots[$user] = [];
+                return $count;
+            }
             $all = $this->read($user);
             $deleted = count($all);
             if ($deleted > 0) {
@@ -207,6 +249,7 @@ class ChatStore {
         }
         $cutoff = time() - $days * 86400;
         return $this->withUserLock($user, function () use ($user, $cutoff): int {
+            if ($this->sqlReadsEnabled($user)) return $this->sqlChats->deleteOlderThan($user, $cutoff);
             $all = $this->read($user);
             if ($all === []) {
                 return 0;
@@ -245,6 +288,19 @@ class ChatStore {
     /** Serialize a bounded SQL import batch with chat writes and account erasure. */
     public function withMigrationLock(string $user, callable $operation): mixed {
         return $this->withUserLock($user, $operation, ILockingProvider::LOCK_EXCLUSIVE);
+    }
+
+    /** Restore a full AppData snapshot before disabling an active SQL read path. */
+    public function restoreAppDataAndDisableSql(string $user): int {
+        return $this->withUserLock($user, function () use ($user): int {
+            if (!$this->sqlReadsEnabled($user)) return 0;
+            $chats = $this->sqlChats->allChats($user);
+            $this->chatSnapshots[$user] = $chats;
+            $this->write($user, $chats, true);
+            $this->sqlChats->setSqlReadsEnabled($user, false);
+            $this->sqlReadModes[$user] = false;
+            return count($chats);
+        });
     }
 
     /** Import validated chat history as new chats, never overwriting existing IDs. */
@@ -415,7 +471,7 @@ class ChatStore {
             } catch (\Throwable $e) {
                 $this->logger->warning('eva_ai: SQL chat cleanup failed for deleted account', ['user' => $user]);
             }
-            unset($this->chatSnapshots[$user], $this->rawSnapshots[$user]);
+            unset($this->chatSnapshots[$user], $this->rawSnapshots[$user], $this->sqlReadModes[$user]);
         });
     }
 
@@ -715,6 +771,15 @@ class ChatStore {
             return;
         }
         $this->withUserLock($user, function () use ($user, $id, $role, $text, $followups, $regenerateRev, $confirmation, $tools, $model): void {
+            if ($this->sqlReadsEnabled($user)) {
+                $chat = $this->sqlChats->chat($user, $id);
+                if ($chat === null) return;
+                $previous = $chat;
+                $this->appendToChat($chat, $role, $text, $followups, $regenerateRev, $confirmation, $tools, $model);
+                $this->sqlChats->syncChats($user, [$previous], [$chat]);
+                $this->replaceCachedChat($user, $chat);
+                return;
+            }
             $all = $this->read($user);
             foreach ($all as &$chat) {
                 if (($chat['id'] ?? '') === $id) {
@@ -730,6 +795,27 @@ class ChatStore {
     /** Both messages and the receipt share one protected encrypted-file write. */
     public function appendTurn(string $user, string $id, \OCA\EvaAi\Dto\ChatTurnRequest $turn): array {
         return $this->withUserLock($user, function () use ($user, $id, $turn): array {
+            if ($this->sqlReadsEnabled($user)) {
+                $chat = $this->sqlChats->chat($user, $id);
+                if ($chat === null) return ['error' => 'not_found'];
+                $fingerprint = $turn->fingerprint();
+                $receipt = $chat['turnReceipts'][$turn->requestId] ?? null;
+                if ($receipt !== null) {
+                    return is_string($receipt) && hash_equals($receipt, $fingerprint)
+                        ? ['ok' => true, 'rev' => (int)($chat['rev'] ?? 0)]
+                        : ['error' => 'conflict'];
+                }
+                if ((int)($chat['rev'] ?? 0) !== $turn->expectedRev) return ['error' => 'conflict'];
+                $previous = $chat;
+                $this->appendToChat($chat, 'user', $turn->question->text);
+                $answer = $turn->answer;
+                $this->appendToChat($chat, 'assistant', $answer->text, $answer->followups, null, $answer->confirmation, $answer->tools, $answer->model);
+                $chat['turnReceipts'][$turn->requestId] = $fingerprint;
+                $chat['turnReceipts'] = array_slice($chat['turnReceipts'], -100, null, true);
+                $this->sqlChats->syncChats($user, [$previous], [$chat]);
+                $this->replaceCachedChat($user, $chat);
+                return ['ok' => true, 'rev' => (int)$chat['rev']];
+            }
             $all = $this->read($user);
             foreach ($all as &$chat) {
                 if (($chat['id'] ?? '') !== $id) continue;
@@ -956,6 +1042,16 @@ class ChatStore {
 
     /** @return list<array{id:string,title:string,created:int,updated:int,messages:list<array{role:string,text:string}>}> */
     private function read(string $user): array {
+        if ($this->sqlReadsEnabled($user)) {
+            try {
+                $chats = $this->sqlChats->allChats($user);
+                $this->chatSnapshots[$user] = $chats;
+                return $chats;
+            } catch (\Throwable $e) {
+                $this->logger->error('eva_ai: SQL chat store failed', ['user' => $user]);
+                throw $e;
+            }
+        }
         try {
             $raw = $this->rootFor($user)->getContent();
         } catch (NotFoundException $e) {
@@ -984,6 +1080,67 @@ class ChatStore {
                 throw $error;
             }
         }
+    }
+
+    /** @return list<array<string,mixed>> */
+    private function listFromSql(string $user, ?string $search, bool $includeArchived): array {
+        $needle = $search !== null ? mb_strtolower(trim($search)) : '';
+        $out = [];
+        $beforeUpdated = null;
+        $beforeChatId = null;
+        do {
+            $page = $this->sqlChats->metadataPage($user, 100, $beforeUpdated, $beforeChatId);
+            foreach ($page as $record) {
+                $chat = $record['metadata'];
+                $chat['id'] = $record['id'];
+                $chat['created'] = $record['created'];
+                $chat['updated'] = $record['updated'];
+                if (!$includeArchived && !empty($chat['archived'])) continue;
+                $entry = [
+                    'id' => $record['id'], 'title' => $this->displayTitle($chat),
+                    'created' => $record['created'], 'updated' => $record['updated'],
+                    'count' => $record['count'], 'trimmed' => (int)($chat['trimmed'] ?? 0),
+                    'pinned' => !empty($chat['pinned']), 'folder' => (string)($chat['folder'] ?? ''),
+                    'tags' => $this->normalizeTags($chat['tags'] ?? []), 'archived' => !empty($chat['archived']),
+                    'scopePath' => (string)($chat['scopePath'] ?? ''),
+                    'instructions' => (string)($chat['instructions'] ?? ''), 'persona' => (string)($chat['persona'] ?? ''),
+                ];
+                if ($needle !== '') {
+                    $snippet = null;
+                    $matchCount = 0;
+                    foreach ($this->sqlChats->messages($user, $record['id']) as $message) {
+                        $text = (string)($message['text'] ?? '');
+                        if ($text === '' || mb_stripos($text, $needle) === false) continue;
+                        $matchCount++;
+                        if ($snippet === null) $snippet = $this->snippetAround($text, $needle);
+                    }
+                    if (mb_strpos(mb_strtolower($entry['title']), $needle) === false && $matchCount === 0) continue;
+                    if ($matchCount > 0) { $entry['snippet'] = $snippet ?? ''; $entry['matchCount'] = $matchCount; }
+                }
+                $out[] = $entry;
+            }
+            if ($page !== []) {
+                $last = $page[count($page) - 1];
+                $beforeUpdated = $last['updated'];
+                $beforeChatId = $last['id'];
+            }
+        } while (count($page) === 100);
+
+        usort($out, static fn($a, $b) => ($b['pinned'] <=> $a['pinned']) ?: ($b['updated'] <=> $a['updated']));
+        return $out;
+    }
+
+    private function sqlReadsEnabled(string $user): bool {
+        if (array_key_exists($user, $this->sqlReadModes)) return $this->sqlReadModes[$user];
+        return $this->sqlReadModes[$user] = $this->sqlChats?->sqlReadsEnabled($user) ?? false;
+    }
+
+    private function replaceCachedChat(string $user, array $updated): void {
+        if (!isset($this->chatSnapshots[$user])) return;
+        foreach ($this->chatSnapshots[$user] as &$chat) {
+            if (($chat['id'] ?? null) === ($updated['id'] ?? null)) { $chat = $updated; break; }
+        }
+        unset($chat);
     }
 
     private function decodeStoredList(string $raw, string $label): array {
@@ -1017,8 +1174,19 @@ class ChatStore {
         return $data;
     }
 
-    private function write(string $user, array $data): void {
+    private function write(string $user, array $data, bool $forceAppData = false): void {
         try {
+            $previous = $this->chatSnapshots[$user] ?? [];
+            if (!$forceAppData && $this->sqlReadsEnabled($user)) {
+                try {
+                    $this->sqlChats->syncChats($user, $previous, $data);
+                    $this->chatSnapshots[$user] = $data;
+                    return;
+                } catch (\Throwable $mirrorError) {
+                    $this->logger->error('eva_ai: primary SQL chat write failed', ['user' => $user]);
+                    throw $mirrorError;
+                }
+            }
             $json = json_encode($data, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR);
             if ($this->crypto !== null) {
                 $json = "EVA-CHAT-1\n" . $this->crypto->encrypt($json);
@@ -1029,21 +1197,23 @@ class ChatStore {
             // worker kill during putContent() cannot permanently destroy the
             // conversation (Issue #389).
             try {
-                $previous = $this->rawSnapshots[$user] ?? '';
-                if ($previous !== '') {
+                $previousRaw = $this->rawSnapshots[$user] ?? '';
+                if ($previousRaw === '') {
+                    try { $previousRaw = $root->getContent(); } catch (NotFoundException) {}
+                }
+                if ($previousRaw !== '') {
                     $folder = $this->userFolderFor($user);
                     $backupName = 'chats.json.backup';
                     if ($folder->fileExists($backupName)) {
-                        $folder->getFile($backupName)->putContent($previous);
+                        $folder->getFile($backupName)->putContent($previousRaw);
                     } else {
-                        $folder->newFile($backupName, $previous);
+                        $folder->newFile($backupName, $previousRaw);
                     }
                 }
             } catch (\Throwable $backupError) {
                 $this->logger->debug('eva_ai: chat backup could not be updated', ['exception' => $backupError->getMessage()]);
             }
             $root->putContent($json);
-            $previous = $this->chatSnapshots[$user] ?? [];
             if ($this->sqlChats !== null) {
                 try {
                     $this->sqlChats->syncChats($user, $previous, $data);

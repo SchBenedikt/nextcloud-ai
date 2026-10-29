@@ -12,17 +12,21 @@ Nextcloud user ID. Only structural IDs, timestamps, message counts, and
 migration state are queryable; no plaintext title, role, or message index is
 created.
 
-This schema foundation does not switch active reads or writes away from the
-encrypted AppData JSON store. AppData remains authoritative until the
-checkpointed import, dual-version recovery path, and ChatStore cutover are
-implemented and documented. Keep the encrypted source snapshots through the
-rollback window.
+The per-user `sql_read_enabled` flag defaults off. After the checkpointed import
+and ciphertext fingerprint verification, an administrator can enable SQL reads
+for a canary account. Enabled reads use a direct encrypted-message query for a
+conversation and indexed metadata pages for the chat list. Content search still
+decrypts messages in the owning account because messages are never plaintext
+indexed.
 
-Current ChatStore mutations mirror their changed chat metadata and message
-rows in one SQL transaction after the AppData write succeeds. A mirror failure
-does not fail the chat operation; it marks the checkpoint failed so an
-administrator can rebuild SQL from AppData. This is a migration bridge, not a
-mixed-version SQL-read guarantee: older application nodes do not write SQL.
+With SQL reads disabled, ChatStore mutations mirror changed metadata and
+message rows in one SQL transaction after the AppData write succeeds. With SQL
+reads enabled, message-level SQL writes become primary and avoid rewriting the
+AppData JSON snapshot; the encrypted AppData copy remains as the pre-cutover
+rollback image. SQL errors surface instead of silently falling back to stale
+AppData. Use the per-user deactivation command to export current SQL back to
+AppData before deploying code without SQL support. Older application nodes do
+not write SQL, so wait for deployment completion before enabling the flag.
 
 
 ## Directory layout

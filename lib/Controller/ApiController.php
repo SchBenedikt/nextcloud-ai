@@ -1285,6 +1285,22 @@ class ApiController extends OCSController {
     }
 
     #[NoAdminRequired]
+    public function chatPage(): DataResponse {
+        $user = $this->requireUser();
+        if ($user === null) return new ErrorDataResponse(['error' => 'Not logged in'], 401);
+        $offset = filter_var($this->requestParam('offset', 0), FILTER_VALIDATE_INT);
+        $limit = filter_var($this->requestParam('limit', 50), FILTER_VALIDATE_INT);
+        if ($offset === false || $limit === false || $offset < 0 || $limit < 1 || $limit > 100) {
+            return new ErrorDataResponse(['error' => 'Invalid chat page.'], 400);
+        }
+        try {
+            return new ErrorDataResponse($this->chatStore->listPage($user, $offset, $limit, true));
+        } catch (\Throwable $e) {
+            return $this->chatErrorResponse($e);
+        }
+    }
+
+    #[NoAdminRequired]
     public function chats(): DataResponse {
         $user = $this->requireUser();
         if ($user === null) {
