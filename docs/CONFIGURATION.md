@@ -32,6 +32,12 @@ the corresponding guarded backend operations in subsequent stack PRs.
 
 ## Settings reference
 
+Personal settings save automatically after a short pause. If an explicit
+action (such as starting an index) saves while an earlier settings request is
+still running, EVA serializes the writes and rechecks the changed fields when
+each request starts. The saved indicator stays active until the queued writes
+finish; a delayed server response cannot silently discard a newer setting.
+
 Instance settings are stored in `oc_appconfig` under the app ID `eva_ai`. Personal
 settings can be overridden per user (from the app's **Settings** tab), but when
 a user has no personal value they fall back to the admin-configured instance
