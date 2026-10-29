@@ -357,7 +357,18 @@ class Indexer {
                 }
 
                 try {
-                    $content = $this->extractText($actualFile);
+                    if ($this->chatRequestIsActive($userId)) {
+                        $this->deferBatchForChat($batch, $result);
+                        $cancelled = true;
+                        $completed = false;
+                        break;
+                    }
+                    $content = $this->extractText($actualFile, fn(): bool => $this->chatRequestIsActive($userId));
+                } catch (ChatPriorityYieldException) {
+                    $this->deferBatchForChat($batch, $result);
+                    $cancelled = true;
+                    $completed = false;
+                    break;
                 } catch (\Throwable $e) {
                     // A single unreadable file must never end the pass. Count it
                     // as skipped (not as a run error) so the background index
@@ -565,7 +576,7 @@ class Indexer {
      * stale index rows. Skips without error when a full index run holds the
      * per-user lock (the periodic job reconciles that file later).
      *
-     * @return array{processed:int,changed:int,skipped:int,deleted:int,error:?string}
+     * @return array{processed:int,changed:int,skipped:int,deleted:int,cache_hits:int,cache_misses:int,ollama_requests:int,deferred_for_chat:bool,error:?string}
      */
     public function reindexFile(string $userId, int $fileId): array {
         $result = [
@@ -627,8 +638,15 @@ class Indexer {
                 return $result;
             }
 
+            if ($this->chatRequestIsActive($userId)) {
+                $result['deferred_for_chat'] = true;
+                return $result;
+            }
             try {
-                $content = $this->extractText($file);
+                $content = $this->extractText($file, fn(): bool => $this->chatRequestIsActive($userId));
+            } catch (ChatPriorityYieldException) {
+                $result['deferred_for_chat'] = true;
+                return $result;
             } catch (\Throwable $e) {
                 // Transient parser failure: keep the last-good version.
                 $result['error'] = 'Transient extraction failure';
@@ -851,8 +869,8 @@ class Indexer {
         return $this->documentText ??= new IndexDocumentText(new IndexTextExtractor($this->config, $this->logger), $this->email);
     }
 
-    private function extractText(File $file): string {
-        return $this->documentText()->file($file);
+    private function extractText(File $file, ?callable $shouldYield = null): string {
+        return $this->documentText()->file($file, null, $shouldYield);
     }
 
     private function relativePath(string $userId, string $path): string {
@@ -899,16 +917,7 @@ class Indexer {
         // An embedding request that has already started cannot be preempted,
         // but every later batch boundary yields without holding up chats.
         if ($userId !== null && $this->chatRequestIsActive($userId)) {
-            $stagedDocuments = [];
-            foreach ($batch as $entry) {
-                if (isset($entry['docId'])) $stagedDocuments[(int)$entry['docId']] = true;
-            }
-            $this->discardStagedBatch($batch);
-            $result['processed'] = max(0, $result['processed'] - count($stagedDocuments));
-            $result['changed'] = max(0, $result['changed'] - count($stagedDocuments));
-            $result['deferred_for_chat'] = true;
-            $this->config->set('index_waiting_for_chat', '1');
-            $batch = [];
+            $this->deferBatchForChat($batch, $result);
             return;
         }
         $this->touchHeartbeat($runId);
@@ -1060,6 +1069,20 @@ class Indexer {
         if (function_exists('gc_collect_cycles')) {
             gc_collect_cycles();
         }
+    }
+
+    /** Discard only staged replacements, retaining the last searchable version. */
+    private function deferBatchForChat(array &$batch, array &$result): void {
+        $stagedDocuments = [];
+        foreach ($batch as $entry) {
+            if (isset($entry['docId'])) $stagedDocuments[(int)$entry['docId']] = true;
+        }
+        $this->discardStagedBatch($batch);
+        $result['processed'] = max(0, $result['processed'] - count($stagedDocuments));
+        $result['changed'] = max(0, $result['changed'] - count($stagedDocuments));
+        $result['deferred_for_chat'] = true;
+        $this->config->set('index_waiting_for_chat', '1');
+        $batch = [];
     }
 
     /** Check shared-service chat activity and the legacy per-user claim. */

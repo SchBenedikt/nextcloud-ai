@@ -19,6 +19,7 @@ class IndexTextExtractor {
     public function __construct(private AppConfig $config, private LoggerInterface $logger) {}
 
     private ?int $maxFileBytes = null;
+    private ?\Closure $shouldYield = null;
 
     /** Erweiterungen, die bedenkenlos als Text gelesen werden dürfen. */
     public const TEXT_EXT = [
@@ -88,12 +89,14 @@ class IndexTextExtractor {
 
 
 
-    public function extractText(File $file, ?int $maxBytes = null): string {
+    public function extractText(File $file, ?int $maxBytes = null, ?callable $shouldYield = null): string {
         if ($maxBytes !== null && ($maxBytes < 1 || $maxBytes > 20971520)) throw new \InvalidArgumentException('Invalid source read budget.');
         $previous = $this->maxFileBytes;
+        $previousYield = $this->shouldYield;
         $this->maxFileBytes = $maxBytes;
+        $this->shouldYield = $shouldYield !== null ? \Closure::fromCallable($shouldYield) : null;
         try { return $this->extractFile($file); }
-        finally { $this->maxFileBytes = $previous; }
+        finally { $this->maxFileBytes = $previous; $this->shouldYield = $previousYield; }
     }
 
     private function readFile(File $file): string {
@@ -143,7 +146,7 @@ class IndexTextExtractor {
         }
 
         if (in_array($mime, ['image/png', 'image/jpeg', 'image/tiff', 'image/webp', 'image/bmp', 'image/x-ms-bmp', 'image/gif'], true) && $this->config->get('ocr_enabled') === '1') {
-            return (new OcrService())->extract($this->readFile($file), $mime, $this->config->get('ocr_language'));
+            return (new OcrService())->extract($this->readFile($file), $mime, $this->config->get('ocr_language'), 60, $this->shouldYield);
         }
         // DOCX + Varianten (DOTX/DOCM) / ODT / EPUB / ODS / ODP: Zip-Container.
         if (in_array($ext, ['docx', 'docm', 'dotx'], true) || $mime === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' || $mime === 'application/vnd.openxmlformats-officedocument.wordprocessingml.template') {
@@ -202,7 +205,7 @@ class IndexTextExtractor {
         if ($ext === 'pdf' || $mime === 'application/pdf') {
             $txt = $this->pdfToText($file);
             if (trim((string)$txt) === '' && $this->config->get('ocr_enabled') === '1') {
-                $txt = (new OcrService())->extract($this->readFile($file), 'application/pdf', $this->config->get('ocr_language'));
+                $txt = (new OcrService())->extract($this->readFile($file), 'application/pdf', $this->config->get('ocr_language'), 60, $this->shouldYield);
             }
             return $this->normalize((string)$txt);
         }
@@ -661,7 +664,7 @@ class IndexTextExtractor {
             $imageBytes += strlen($bytes);
             $processed++;
             try {
-                $text = (new OcrService())->extract($bytes, $mimes[$extension], $this->config->get('ocr_language'), 10);
+                $text = (new OcrService())->extract($bytes, $mimes[$extension], $this->config->get('ocr_language'), 10, $this->shouldYield);
                 if (trim($text) !== '') $out[] = '[Embedded image ' . $processed . "]\n" . $text;
             } catch (\Throwable $error) {
                 $this->logWarning('eva_ai: embedded Office image OCR skipped', [

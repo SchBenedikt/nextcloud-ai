@@ -174,6 +174,8 @@ is skipped instead of stopping the run.
 When local OCR is enabled, EVA also reads text from standalone raster images
 and from up to four embedded images in DOCX, PPTX and OpenDocument files. This
 work is local to the Nextcloud server and has per-image size and runtime limits.
+If a chat starts during OCR, EVA stops the OCR subprocess promptly, keeps the
+previous indexed version available, and retries the changed file later.
 
 On first authenticated launch EVA may create a clearly marked, editable profile
 section in `KNOWLEDGE.md`. It contains only the intended baseline data and does

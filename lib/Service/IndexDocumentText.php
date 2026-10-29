@@ -10,8 +10,8 @@ use OCP\Files\File;
 class IndexDocumentText {
     public function __construct(private IndexTextExtractor $extractor, private EmailService $email) {}
 
-    public function file(File $file, ?int $maxBytes = null): string {
-        return $this->extractor->extractText($file, $maxBytes);
+    public function file(File $file, ?int $maxBytes = null, ?callable $shouldYield = null): string {
+        return $this->extractor->extractText($file, $maxBytes, $shouldYield);
     }
 
     public function isSupported(?string $mime, string $name = ''): bool {
