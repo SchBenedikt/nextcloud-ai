@@ -286,6 +286,45 @@ final class EncryptedChatRepository {
 		} finally { $result->closeCursor(); }
 	}
 
+	/**
+	 * Reassign chats from one folder to another without loading messages.
+	 * Metadata remains encrypted; the user fence is owned by ChatStore.
+	 */
+	public function reassignFolder(string $userId, string $from, string $to): int {
+		$owner = hash('sha256', $userId);
+		$this->db->beginTransaction();
+		try {
+			$beforeUpdated = null;
+			$beforeChatId = null;
+			$updated = 0;
+			do {
+				$rows = $this->metadataPage($userId, 101, $beforeUpdated, $beforeChatId);
+				foreach ($rows as $row) {
+					$metadata = $row['metadata'];
+					if ((string)($metadata['folder'] ?? '') !== $from) continue;
+					$metadata['folder'] = $to;
+					unset($metadata['messages']);
+					$qb = $this->db->getQueryBuilder();
+					$qb->update('eva_ai_chats')
+						->set('encrypted_metadata', $qb->createNamedParameter($this->seal($metadata)))
+						->where($qb->expr()->eq('user_id', $qb->createNamedParameter($owner)))
+						->andWhere($qb->expr()->eq('chat_id', $qb->createNamedParameter($row['id'])))
+						->executeStatement();
+					$updated++;
+				}
+				if ($rows === []) break;
+				$last = $rows[count($rows) - 1];
+				$beforeUpdated = $last['updated'];
+				$beforeChatId = $last['id'];
+			} while (count($rows) === 101);
+			$this->db->commit();
+			return $updated;
+		} catch (\Throwable $e) {
+			$this->db->rollBack();
+			throw $e;
+		}
+	}
+
 	/** @return list<array<string,mixed>> */
 	public function allChats(string $userId): array {
 		$owner = hash('sha256', $userId);

@@ -88,6 +88,12 @@ conversation. They do not decrypt, diff or rewrite the account's other chat
 histories. Creating a new folder remains protected by the user-wide AppData
 fence and does not materialize SQL chat messages.
 
+Renaming or deleting a folder on normalized SQL storage walks encrypted chat
+metadata in keyset pages and changes only matching metadata rows in one SQL
+transaction. It does not load message bodies; the small AppData folder registry
+is restored if the SQL transaction fails. Legacy AppData chat stores retain the
+existing whole-file update path.
+
 The wrapper destroys its renderer when replaced or unmounted. Destruction
 hands an active request to the existing durable background flow, removes the
 page-hide listener, aborts the browser stream, stops speech, clears its timer,
