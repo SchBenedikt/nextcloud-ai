@@ -17,6 +17,7 @@ use Psr\Log\LoggerInterface;
  * source; the old AppData JSON queue is imported incrementally after upgrade.
  */
 class DirtyIndexStore {
+    public const DEBOUNCE_SECONDS = 45;
     private const LEGACY_IMPORT_BATCH = 300;
     private const CLAIM_LEASE_SECONDS = 900;
 
@@ -28,18 +29,18 @@ class DirtyIndexStore {
     ) {
     }
 
-    public function markFile(string $userId, int $fileId): void {
+    public function markFile(string $userId, int $fileId, int $delaySeconds = self::DEBOUNCE_SECONDS): void {
         if ($fileId <= 0) return;
-        $this->mark($userId, 'f' . $fileId, ['kind' => 'file', 'fileId' => $fileId, 'path' => '', 'oldPath' => '']);
+        $this->mark($userId, 'f' . $fileId, ['kind' => 'file', 'fileId' => $fileId, 'path' => '', 'oldPath' => ''], $delaySeconds);
     }
 
-    public function markFolderDeleted(string $userId, string $path): void {
-        $this->mark($userId, 'd' . $path, ['kind' => 'folder-delete', 'fileId' => 0, 'path' => $path, 'oldPath' => '']);
+    public function markFolderDeleted(string $userId, string $path, int $delaySeconds = self::DEBOUNCE_SECONDS): void {
+        $this->mark($userId, 'd' . $path, ['kind' => 'folder-delete', 'fileId' => 0, 'path' => $path, 'oldPath' => ''], $delaySeconds);
     }
 
-    public function markFolderRenamed(string $userId, string $oldPath, string $newPath): void {
+    public function markFolderRenamed(string $userId, string $oldPath, string $newPath, int $delaySeconds = self::DEBOUNCE_SECONDS): void {
         if ($oldPath === '' || $newPath === '') return;
-        $this->mark($userId, 'r' . $oldPath, ['kind' => 'folder-rename', 'fileId' => 0, 'path' => $newPath, 'oldPath' => $oldPath]);
+        $this->mark($userId, 'r' . $oldPath, ['kind' => 'folder-rename', 'fileId' => 0, 'path' => $newPath, 'oldPath' => $oldPath], $delaySeconds);
     }
 
     /**
@@ -253,9 +254,9 @@ class DirtyIndexStore {
         });
     }
 
-    private function mark(string $userId, string $key, array $entry): void {
+    private function mark(string $userId, string $key, array $entry, int $delaySeconds): void {
         if ($userId === '') return;
-        $this->withUserLock($userId, function () use ($userId, $key, $entry): void {
+        $this->withUserLock($userId, function () use ($userId, $key, $entry, $delaySeconds): void {
             $eventKey = hash('sha256', $key);
             $now = time();
             $read = $this->db->getQueryBuilder();
@@ -274,18 +275,18 @@ class DirtyIndexStore {
                     ->set('attempts', $update->createNamedParameter(0, IQueryBuilder::PARAM_INT))
                     ->set('revision', $update->createNamedParameter((int)$existing['revision'] + 1, IQueryBuilder::PARAM_INT))
                     ->set('status', $update->createNamedParameter('pending'))
-                    ->set('available_at', $update->createNamedParameter($now, IQueryBuilder::PARAM_INT))
+                    ->set('available_at', $update->createNamedParameter($now + max(0, $delaySeconds), IQueryBuilder::PARAM_INT))
                     ->set('lease_until', $update->createNamedParameter(0, IQueryBuilder::PARAM_INT))
                     ->set('updated_at', $update->createNamedParameter($now, IQueryBuilder::PARAM_INT))
                     ->where($update->expr()->eq('id', $update->createNamedParameter((int)$existing['id'], IQueryBuilder::PARAM_INT)))
                     ->executeStatement();
                 return;
             }
-            $this->insertEntryLocked($userId, $eventKey, $entry, 0, false);
+            $this->insertEntryLocked($userId, $eventKey, $entry, 0, false, $now + max(0, $delaySeconds));
         });
     }
 
-    private function insertEntryLocked(string $userId, string $eventKey, array $entry, int $attempts, bool $onlyIfMissing): void {
+    private function insertEntryLocked(string $userId, string $eventKey, array $entry, int $attempts, bool $onlyIfMissing, ?int $availableAt = null): void {
         if ($onlyIfMissing) {
             $read = $this->db->getQueryBuilder();
             $read->select('id')->from('eva_ai_dirty_index')
@@ -308,7 +309,7 @@ class DirtyIndexStore {
             'attempts' => $insert->createNamedParameter(max(0, $attempts), IQueryBuilder::PARAM_INT),
             'revision' => $insert->createNamedParameter(1, IQueryBuilder::PARAM_INT),
             'status' => $insert->createNamedParameter($exhausted ? 'failed' : 'pending'),
-            'available_at' => $insert->createNamedParameter($now, IQueryBuilder::PARAM_INT),
+            'available_at' => $insert->createNamedParameter($availableAt ?? $now, IQueryBuilder::PARAM_INT),
             'lease_until' => $insert->createNamedParameter(0, IQueryBuilder::PARAM_INT),
             'updated_at' => $insert->createNamedParameter($now, IQueryBuilder::PARAM_INT),
         ])->executeStatement();
