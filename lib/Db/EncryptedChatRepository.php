@@ -68,6 +68,17 @@ final class EncryptedChatRepository {
 		];
 	}
 
+	public function chat(string $userId, string $chatId): ?array {
+		$record = $this->metadata($userId, $chatId);
+		if ($record === null) return null;
+		$chat = $record['metadata'];
+		$chat['created'] = $record['created'];
+		$chat['updated'] = $record['updated'];
+		$chat['messages'] = $this->messages($userId, $chatId, 0, 1000);
+		if (count($chat['messages']) !== $record['count']) return null;
+		return $chat;
+	}
+
 	/** @return list<array{created:int,updated:int,count:int,metadata:array}> */
 	public function metadataPage(string $userId, int $limit = 50, ?int $beforeUpdated = null, ?string $beforeChatId = null): array {
 		$limit = min(100, max(1, $limit));
@@ -109,13 +120,30 @@ final class EncryptedChatRepository {
 		} catch (\Throwable $e) { $this->db->rollBack(); throw $e; }
 	}
 
+	/** Clear only imported chat rows, retaining the resumable migration marker. */
+	public function resetImportedChats(string $userId): void {
+		$owner = hash('sha256', $userId);
+		$this->db->beginTransaction();
+		try {
+			foreach (['eva_ai_chat_messages', 'eva_ai_chats'] as $table) {
+				$qb = $this->db->getQueryBuilder();
+				$qb->delete($table)->where($qb->expr()->eq('user_id', $qb->createNamedParameter($owner)))->executeStatement();
+			}
+			$this->db->commit();
+		} catch (\Throwable $e) { $this->db->rollBack(); throw $e; }
+	}
+
 	/** Account erasure is owner-scoped and also removes an interrupted migration checkpoint. */
 	public function deleteUserData(string $userId): void {
 		$owner = hash('sha256', $userId);
-		foreach (['eva_ai_chat_messages', 'eva_ai_chats', 'eva_ai_chat_migrations'] as $table) {
-			$qb = $this->db->getQueryBuilder();
-			$qb->delete($table)->where($qb->expr()->eq('user_id', $qb->createNamedParameter($owner)))->executeStatement();
-		}
+		$this->db->beginTransaction();
+		try {
+			foreach (['eva_ai_chat_messages', 'eva_ai_chats', 'eva_ai_chat_migrations'] as $table) {
+				$qb = $this->db->getQueryBuilder();
+				$qb->delete($table)->where($qb->expr()->eq('user_id', $qb->createNamedParameter($owner)))->executeStatement();
+			}
+			$this->db->commit();
+		} catch (\Throwable $e) { $this->db->rollBack(); throw $e; }
 	}
 
 	public function migrationState(string $userId): ?array {

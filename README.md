@@ -110,6 +110,7 @@ Read [Privacy](docs/PRIVACY.md), [Security](docs/SECURITY.md) and
 - [Provider setup](docs/PROVIDERS.md) and [troubleshooting](docs/TROUBLESHOOTING.md).
 - [Architecture](docs/ARCHITECTURE.md), [performance](docs/PERFORMANCE.md) and
   [workspace migration](docs/WORKSPACE-MIGRATION.md).
+- [Encrypted chat storage migration](docs/CHAT-STORAGE-MIGRATION.md): resumable SQL import and recovery; AppData remains authoritative until the later cutover.
 - [API reference](docs/API.md), [plugins](docs/PLUGIN_API.md) and [connectors](docs/CONNECTORS.md).
 - [Optional generation embeddings](docs/GENERATION-EMBEDDINGS.md): native administrator model/space checks; SQL remains the installation default.
 - [Background generation builds](docs/GENERATION-BUILDS.md): explicit source processing, progress and pause/resume; search activation still requires full verification.

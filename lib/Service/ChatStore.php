@@ -10,6 +10,7 @@ use OCP\Files\NotPermittedException;
 use OCP\Files\SimpleFS\ISimpleFolder;
 use OCP\Lock\ILockingProvider;
 use OCP\Security\ICrypto;
+use OCA\EvaAi\Db\EncryptedChatRepository;
 use Psr\Log\LoggerInterface;
 
 /**
@@ -35,7 +36,8 @@ class ChatStore {
         private IAppDataFactory $appDataFactory,
         private LoggerInterface $logger,
         private ILockingProvider $lockingProvider,
-        private ?ICrypto $crypto = null
+        private ?ICrypto $crypto = null,
+        private ?EncryptedChatRepository $sqlChats = null
     ) {
     }
 
@@ -230,6 +232,14 @@ class ChatStore {
         }, ILockingProvider::LOCK_SHARED);
     }
 
+    /** Export a migration snapshot and fingerprint only the stored ciphertext. */
+    public function migrationSnapshot(string $user): array {
+        return $this->withUserLock($user, function () use ($user): array {
+            $chats = $this->read($user);
+            return ['chats' => $chats, 'sourceHash' => hash('sha256', $this->rawSnapshots[$user] ?? '')];
+        }, ILockingProvider::LOCK_SHARED);
+    }
+
     /** Import validated chat history as new chats, never overwriting existing IDs. */
     public function importAll(string $user, array $chats): int {
         return $this->withUserLock($user, function () use ($user, $chats): int {
@@ -392,6 +402,13 @@ class ChatStore {
                 $this->logger->warning('eva_ai: chat cleanup failed for deleted account', ['user' => $user]);
             }
         });
+        // SQL chat rows and an interrupted migration checkpoint are erased
+        // even while AppData remains the active store during staged rollout.
+        try {
+            $this->sqlChats?->deleteUserData($user);
+        } catch (\Throwable $e) {
+            $this->logger->warning('eva_ai: SQL chat cleanup failed for deleted account', ['user' => $user]);
+        }
     }
 
     public function setTitle(string $user, string $id, string $title): void {
