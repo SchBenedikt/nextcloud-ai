@@ -55,8 +55,10 @@ The current tree has durable generation metadata, a bounded build,
 verification and an explicit shadow probe. Normal indexing still writes the
 legacy chunks and search still reads them. When a user has explicitly enrolled
 in indexing, a successful embedding batch now schedules a matching internal
-SQL generation build in the background. It reuses the existing bounded worker;
-it does not delay the index response or send content to Qdrant. Specifically:
+SQL generation build in the background. Once staged, the recurring worker
+queues its bounded local verification automatically and recovers a missed
+handoff. It does not delay the index response or send content to Qdrant.
+Specifically:
 
 - `VectorGeneration` accepts `sql` and `qdrant`; SQL generations bind to a
   deterministic local target and write directly to Nextcloud SQL.
@@ -70,6 +72,9 @@ it does not delay the index response or send content to Qdrant. Specifically:
   exact model reported by a successful uncached embedding request. Cache-only
   batches do not guess model provenance. SQL is the only backend selected by
   this bootstrap path.
+- SQL verification is queued for enrolled users after a staged build. Failed
+  or cancelled verification remains explicit; successful verification still
+  does not activate the generation or alter retrieval.
 - There is no guarded generation activation path or production shadow sampling.
 - `VectorStorageStatus` reports `sql_legacy`; the interface must stay truthful
   until SQL generation writes and search are actually wired into normal use.

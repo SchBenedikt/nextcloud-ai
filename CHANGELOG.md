@@ -2,6 +2,12 @@
 
 ## [Unreleased]
 
+### Automatic SQL generation verification (1.18.20)
+
+- Automatically queue local verification when an enrolled SQL generation build is staged.
+- Recover a missed build-to-verification handoff without retrying failed or cancelled verification.
+- Keep verification bounded and SQL-only; this does not activate the generation or change search results.
+
 ### Automatic SQL generation bootstrap (1.18.19)
 
 - Queue a bounded local SQL generation backfill after a successfully embedded batch for users explicitly enrolled in indexing.
