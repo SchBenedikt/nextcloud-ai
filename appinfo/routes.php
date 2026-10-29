@@ -112,6 +112,7 @@ return [
         ['name' => 'admin#getSettings', 'url' => '/api/admin/settings', 'verb' => 'GET'],
         ['name' => 'admin#saveSettings', 'url' => '/api/admin/settings', 'verb' => 'PUT'],
         ['name' => 'admin#overview', 'url' => '/api/admin/overview', 'verb' => 'GET'],
+        ['name' => 'admin#summary', 'url' => '/api/admin/summary', 'verb' => 'GET'],
         ['name' => 'admin#vectorStorage', 'url' => '/api/admin/vector-storage', 'verb' => 'GET'],
         ['name' => 'vector_admin#connection', 'url' => '/api/admin/vector-storage/connection', 'verb' => 'GET'],
         ['name' => 'vector_admin#configure', 'url' => '/api/admin/vector-storage/connection', 'verb' => 'PUT'],
