@@ -9,7 +9,8 @@ use OCA\EvaAi\Service\Chunker;
 
 /** Canonical source + immutable settings, before provider I/O or SQL mutation. */
 class GenerationDocumentPreparer {
-    public const MAX_CHUNKS = 4096;
+    /** Bound pathological sources while accommodating large extracted documents. */
+    public const MAX_CHUNKS = 10000;
 
     public function __construct(private GenerationSourceReader $sources, private Chunker $chunker) {}
 

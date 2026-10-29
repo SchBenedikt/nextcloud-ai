@@ -96,8 +96,10 @@ request deadlines capped at 30 seconds and shortened near the tick budget.
 Source extraction is reused across batches within the tick. Resume reconstructs
 the current canonical source and requires the same plan; if it changed, only
 that document's rows in this generation are tombstoned and rebuilt with new IDs.
-Plans are limited to 4,096 chunks and 16 MiB of generated chunk text, so very
+Plans are limited to 10,000 chunks and 16 MiB of generated chunk text, so very
 large overlap cannot multiply a small source into an excessive in-memory plan.
+The higher chunk ceiling accommodates long extracted documents, including
+page-heavy PDF text, while preserving the byte cap and bounded worker batches.
 Repeated source-budget exhaustion without progress stops for attention instead
 of consuming every later background tick indefinitely.
 

@@ -143,7 +143,7 @@ bounded-operation limits. Native remote storage/IMAP transport behavior and
 representative concurrency/load still require separate evidence.
 
 `GenerationDocumentPreparer` uses the generation's immutable chunk size/overlap,
-never mutable personal chunk settings. It bounds a document to 4,096 chunks and
+never mutable personal chunk settings. It bounds a document to 10,000 chunks and
 returns an internal text plan with a SHA-256 identity over chunker version,
 generation identity, source stamp and every chunk/provenance record. Sections,
 sentences and hard splits are consumed incrementally; a large overlap stops at

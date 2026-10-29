@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Allow larger extracted documents in SQL generation builds (1.20.3)
+
+- Raise the bounded per-document chunk ceiling to 10,000 while retaining the 16 MiB text limit and 256-chunk worker batches.
+
 ### Prevent stale async Vue chunks after app updates (1.20.2)
 
 - Add content hashes to webpack's lazy-loaded chunks so updated main bundles cannot load a cached chunk from an earlier app version.
