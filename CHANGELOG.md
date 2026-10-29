@@ -2,6 +2,16 @@
 
 ## [Unreleased]
 
+### Show when personal settings are saved (1.18.68)
+
+- Make loading, unsaved edits, queued saves, completed saves and unavailable settings visible in the page header.
+- Include pending credential changes in the unsaved state.
+
+### Serialize overlapping settings saves (1.18.67)
+
+- Queue settings writes so autosave and explicit actions cannot silently discard a save while another request is still in flight.
+- Keep the form in its saving state until all queued writes finish, and calculate changed fields when each write starts so it includes the latest values.
+
 ### Move incremental file changes to a recoverable SQL queue (1.18.66)
 
 - Coalesce file and folder changes in an indexed Nextcloud SQL queue, claim work with expiring leases, and acknowledge only the source revision actually processed.

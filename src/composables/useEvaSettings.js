@@ -104,7 +104,7 @@ export function useEvaSettings({ section = ref('general') } = {}) {
 		get: () => f.value.terminal_command_any === '1',
 		set: value => { f.value.terminal_command_any = value ? '1' : '0' },
 	})
-	const { proactiveEnabled, weekdays, briefingDraft, briefingFormError, editingBriefingId, briefingHistory, briefingTypeOptions, proactiveBriefings, dayName, briefingTypeName, channelName, formatDateTime, failureSummary, saveBriefing, editBriefing, cancelEditBriefing, removeBriefing, toggleBriefing, toggleBriefingActions, loadBriefingHistory, runBriefingNow } = useBriefingSettings({ f, fill, setMessage })
+	const { proactiveEnabled, weekdays, briefingDraft, briefingFormError, editingBriefingId, briefingHistory, briefingTypeOptions, proactiveBriefings, dayName, briefingTypeName, channelName, formatDateTime, failureSummary, saveBriefing, editBriefing, cancelEditBriefing, removeBriefing, toggleBriefing, toggleBriefingActions, loadBriefingHistory, runBriefingNow } = useBriefingSettings({ f, setMessage, save })
 	const userWebSearchEnabled = computed({
 		get: () => f.value.web_search_enabled === '1',
 		set: value => { f.value.web_search_enabled = value ? '1' : '0' },
@@ -117,11 +117,14 @@ export function useEvaSettings({ section = ref('general') } = {}) {
 	const formReady = ref(false)
 	let autoSaveTimer = null
 	let autoSaveDirty = false
+	let pendingSettingsSaves = 0
+	let settingsSaveQueue = Promise.resolve()
 	let applyingServerState = false
 	let statusRequestId = 0
 	function changedSettingKeys() {
 		return Object.keys(f.value).filter(key => String(f.value[key]) !== String(persistedSettings.value[key] ?? ''))
 	}
+	const hasUnsavedSettings = computed(() => changedSettingKeys().length > 0 || nextcloudApiToken.value !== '' || removeNextcloudApiToken.value)
 
 	function queueAutoSave() {
 		if (disposed || applyingServerState) return
@@ -392,23 +395,37 @@ export function useEvaSettings({ section = ref('general') } = {}) {
 		}
 	}
 
-	async function save({ changedOnly = false } = {}) {
-		if (saving.value) return false
-		const keys = changedOnly ? changedSettingKeys() : Object.keys(f.value)
+	function save(options = {}) {
+		// Settings sections can trigger saves from autosave, explicit actions,
+		// credentials, and provider controls at nearly the same time. Serialize
+		// writes so an older response cannot overwrite a newer server value.
+		pendingSettingsSaves++
+		saving.value = true
+		const task = settingsSaveQueue.then(() => persistSettings(options))
+		settingsSaveQueue = task.then(() => undefined, () => undefined)
+		return task.finally(() => {
+			pendingSettingsSaves = Math.max(0, pendingSettingsSaves - 1)
+			saving.value = pendingSettingsSaves > 0
+		})
+	}
+
+	async function persistSettings({ changedOnly = false, onlyKeys = null } = {}) {
+		const keys = Array.isArray(onlyKeys)
+			? onlyKeys.filter(key => Object.prototype.hasOwnProperty.call(f.value, key))
+			: changedOnly ? changedSettingKeys() : Object.keys(f.value)
 		if (keys.length === 0 && !nextcloudApiToken.value && !removeNextcloudApiToken.value) return true
-		validationErrors.value = validate(changedOnly ? keys : null)
+		validationErrors.value = validate(Array.isArray(onlyKeys) ? keys : changedOnly ? keys : null)
 		if (validationErrors.value.length) {
 			setMessage('error', t('Please correct the highlighted settings before saving.'))
 			return false
 		}
-		saving.value = true
 		saved.value = false
 		message.value = { type: '', text: '' }
 		const snapshot = { ...f.value }
 		try {
-		const values = changedOnly
-			? Object.fromEntries(keys.map(key => [key, f.value[key]]))
-			: { ...f.value }
+			const values = changedOnly || Array.isArray(onlyKeys)
+				? Object.fromEntries(keys.map(key => [key, f.value[key]]))
+				: { ...f.value }
 			const settings = await api('PUT', 'settings', { ...values, ...(nextcloudApiToken.value ? { nextcloud_api_token: nextcloudApiToken.value } : {}), remove_nextcloud_api_token: removeNextcloudApiToken.value })
 			if (!settings || typeof settings !== 'object' || keys.some(key => settings[key] === undefined || settings[key] === null)) {
 				throw new Error(t('The settings save response was incomplete.'))
@@ -417,7 +434,8 @@ export function useEvaSettings({ section = ref('general') } = {}) {
 			nextcloudApiToken.value = ''
 			removeNextcloudApiToken.value = false
 			validationErrors.value = []
-			if (settings) fill(settings, snapshot)
+			const savedSettings = Object.fromEntries(keys.map(key => [key, settings[key]]))
+			fill(savedSettings, snapshot)
 			saved.value = true
 			setMessage('success', t('Your settings were saved.'))
 			window.setTimeout(() => { saved.value = false }, 3000)
@@ -425,8 +443,6 @@ export function useEvaSettings({ section = ref('general') } = {}) {
 		} catch (error) {
 			setMessage('error', t('The settings could not be saved: {error}', { error: errMsg(error) }))
 			return false
-		} finally {
-			saving.value = false
 		}
 	}
 	function queueCredentialAutoSave() {
@@ -700,7 +716,7 @@ export function useEvaSettings({ section = ref('general') } = {}) {
 
 	const ocrEnabled = computed({ get: () => f.value.ocr_enabled === '1', set: value => { f.value.ocr_enabled = value ? '1' : '0' } })
 	return {
-		group, formReady, chatRetentionOptions, nextcloudApiToken, removeNextcloudApiToken, ocrEnabled, f, providerProfiles, selectedChatProvider, embeddingModelOptions, chatModelOptions, summaryModelOptions, webSearchProviderOptions, status, health, healthLoading, statusTimer, limits, availableModels, embeddingModels, chatModels, embeddingInstalledHint, chatInstalledHint, modelLoading, modelError, checkOut, saving, checking, indexing, resetting, deletingChats, stopping, saved, loadError, statusRefreshError, message, validationErrors, resetConfirm, chatsDeleteConfirm,
+		group, formReady, chatRetentionOptions, nextcloudApiToken, removeNextcloudApiToken, hasUnsavedSettings, ocrEnabled, f, providerProfiles, selectedChatProvider, embeddingModelOptions, chatModelOptions, summaryModelOptions, webSearchProviderOptions, status, health, healthLoading, statusTimer, limits, availableModels, embeddingModels, chatModels, embeddingInstalledHint, chatInstalledHint, modelLoading, modelError, checkOut, saving, checking, indexing, resetting, deletingChats, stopping, saved, loadError, statusRefreshError, message, validationErrors, resetConfirm, chatsDeleteConfirm,
 		newExcludePath, excludeError, excludeList, actionsEnabled, backgroundActionsEnabled, voiceInputEnabled, notificationsEnabled, learningEnabled, safeCommandsEnabled, terminalCommandsEnabled, terminalCommandAny, mailIndexEnabled, talkIndexEnabled, talkWriteEnabled, indexEnrolled, actionsDisabled, busy, indexingActive, settingsLocked, briefingsLocked, maxFileSizeMb,
 		userWebSearchEnabled, userWebSearchSafeSearch, userWebSearchImages, userWebSearchBrowser, userWebSearchFetchContent,
 		connectors, connectorsLoading, connectorsBusy, connectorDiagnostics, connectorDraft, connectorToRemove, connectorRemovalError, connectorEndpointQuery, filteredConnectorEndpoints, applyConnectorExample, saveConnector, editConnector, connectorCredentialLabel, connectorCredentialClass, removeConnector, closeConnectorRemoval, confirmRemoveConnector, discoverConnector, testConnector, loadConnectors, connectorLoadError, plugins, pluginsLoading, pluginsSaving, setPluginEnabled, loadPlugins, pluginLoadError, pluginRiskLabel, pluginSurfacesLabel,

@@ -2,7 +2,7 @@ import { computed, ref } from 'vue'
 import { api, errMsg } from '../lib/api'
 import { translate as t } from '../lib/i18n'
 
-export function useBriefingSettings({ f, fill, setMessage }) {
+export function useBriefingSettings({ f, setMessage, save }) {
 	const proactiveEnabled = computed({
 		get: () => f.value.proactive_enabled === '1',
 		set: value => { f.value.proactive_enabled = value ? '1' : '0' },
@@ -35,19 +35,14 @@ export function useBriefingSettings({ f, fill, setMessage }) {
 		if (await saveBriefingSchedule()) setMessage('success', t(messageKey))
 	}
 	async function saveBriefingSchedule() {
-		// Save the schedule explicitly.  The general settings watcher may be
-		// saving another field at the same time; relying on changedSettingKeys()
-		// here made the Add button appear to do nothing when that save raced.
+		// Save only the schedule fields, through the same serialized writer as
+		// autosaved settings, so rapid Add/edit/toggle actions cannot race.
 		const payload = {
 			proactive_enabled: f.value.proactive_enabled,
 			proactive_schedules: f.value.proactive_schedules,
 		}
 		try {
-			const settings = await api('PUT', 'settings', payload)
-			if (!settings || Object.keys(payload).some(key => settings[key] === undefined || settings[key] === null)) throw new Error(t('The settings save response was incomplete.'))
-			// A briefing request only confirms its own fields, never other form edits.
-			fill(Object.fromEntries(Object.keys(payload).map(key => [key, settings[key]])), payload)
-			return true
+			return await save({ onlyKeys: Object.keys(payload) })
 		} catch (error) {
 			setMessage('error', t('The briefing could not be saved: {error}', { error: errMsg(error) }))
 			return false
