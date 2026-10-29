@@ -36,7 +36,7 @@ The implementation entries further below record the actual delivered slices.
 | 7, 15, 22 | ChatStore hot-file writes, normalized encrypted SQL messages and distributed chat coordination | 13–14: independent additive chat migration, recovery and erasure; lock lifecycle fix is only the immediate consecutive-request repair. |
 | 15–18 | OTel correlation, provider/tool/DB/lock metrics, cache outages, restore/delete drills and domain extraction | 03, 14: native aggregate OpenMetrics and durable account-erasure retries are implemented; request percentiles, cross-service traces, restore/delete drills and controller decomposition remain pending. |
 | 16, 18 | PHPStan/Psalm, SAST, secrets, SBOM, dependency and pinned-action policy | 14: define supported versions and executed evidence before enabling enforced checks; no claim of completed CI hardening. |
-| 18–19 | Frozen corpus, adversarial tenants, quality thresholds and cold/warm load at concurrency 1/5/20/50 | 05, 09–12, 14: offline evaluator and explicit SQL snapshot runner exist; representative real datasets, ANN comparisons, load/soak and resource measurements remain pending. |
+| 18–19 | Frozen corpus, adversarial tenants, quality thresholds and cold/warm load at concurrency 1/5/20/50 | 05, 09–12, 14: offline evaluator and explicit SQL/Qdrant generation snapshot runners exist; representative real datasets, ANN comparisons, load/soak and resource measurements remain pending. |
 | 20–22 | Optional deployments, authoritative Nextcloud SQL/VFS and reconstructible vector index | 07, 09, 14: standalone default preserved; backup/restore and reconstruction drills remain pending. |
 | 23 | External references | Retained as historical report sources; verify current vendor/API facts against primary documentation when implementing the corresponding adapter. |
 
@@ -337,9 +337,8 @@ acceptance gate verified on the basis of PHP syntax checks.
 The streaming exact-cosine oracle and backend ranking evaluator are implemented
 in `tools/retrieval-benchmark.php`, with a frozen synthetic format example and
 strict corpus/query hashes. Quality, isolation, duplicate and nearest-rank latency
-metrics are documented in RETRIEVAL-BENCHMARK.md. Live EVA/Qdrant snapshot recording,
-representative corpus collection, load execution and empirical acceptance gates
-remain pending. The synthetic example is not a real retrieval-quality benchmark.
+metrics are documented in RETRIEVAL-BENCHMARK.md. The synthetic example is not a
+real retrieval-quality benchmark.
 
 ### Stage 05 live SQL baseline integration
 
@@ -352,6 +351,19 @@ operator prerequisite; the fingerprint protocol is not a serializable transactio
 Live executions, representative datasets and acceptance measurements remain pending
 under the instruction to defer tests. Neither successful syntax checking nor the
 synthetic dataset satisfies the production quality/performance gates.
+
+### Stage 05 live Qdrant generation integration
+
+`export-qdrant|record-qdrant` explicitly snapshots and measures one active,
+verified Qdrant generation. The export pins the generation identity and target,
+hashes delivered tenant-owned SQL generation rows and embeddings, and embeds
+query seeds using the pinned generation provider. Recording calls the active
+dense or explicitly configured native-hybrid Qdrant search, hydrates results
+through revision/source-validated SQL rows, and fingerprints the snapshot before
+and after the run. The measured retrieval interval includes Qdrant plus SQL
+hydration; query embedding preflight is reported separately. No live run or
+representative quality/latency evidence is claimed; load execution and empirical
+acceptance gates remain pending.
 
 ### Account-erasure prerequisite discovered during schema work
 

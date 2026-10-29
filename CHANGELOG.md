@@ -2,6 +2,11 @@
 
 ## [Unreleased]
 
+### Live Qdrant generation benchmark (1.18.48)
+
+- Add explicit OCC export and recording for one active, verified Qdrant generation. Snapshots pin generation/target identity and tenant-owned SQL rows; runs use generation-pinned embeddings, dense or opted-in hybrid Qdrant search, and revision-validated SQL hydration. No automatic chat or indexing traffic is added.
+- Document the timing boundary and operational requirements. Representative live quality, latency and load evidence remains pending.
+
 ### Lexical indexing OpenMetrics (1.18.47)
 
 - Export aggregate chunk counts by lexical posting state through Nextcloud OpenMetrics. Labels contain only the fixed state vocabulary; no account, file, path or content identifiers are exposed. The metric performs one grouped read at scrape time and adds no writes to chat or indexing requests.

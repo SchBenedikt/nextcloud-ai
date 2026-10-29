@@ -16,8 +16,8 @@ final class RetrievalBenchmark extends Command {
 
     protected function configure(): void {
         $this->setName('eva_ai:retrieval:benchmark')
-            ->setDescription('Explicitly export a private retrieval snapshot or record a verified SQL baseline')
-            ->addArgument('action', InputArgument::REQUIRED, 'export or record')
+            ->setDescription('Explicitly export a private retrieval snapshot or record a verified SQL/Qdrant baseline')
+            ->addArgument('action', InputArgument::REQUIRED, 'export, record, export-qdrant or record-qdrant')
             ->addArgument('user', InputArgument::REQUIRED, 'Existing user whose index is explicitly selected')
             ->addArgument('dataset', InputArgument::REQUIRED, 'Private dataset directory')
             ->addOption('queries', null, InputOption::VALUE_REQUIRED, 'Query seed JSON for export; sent to the configured embedding endpoint')
@@ -31,8 +31,12 @@ final class RetrievalBenchmark extends Command {
                 $this->snapshots->export($input->getArgument('user'), $input->getArgument('dataset'), $input->getOption('queries'));
             } elseif ($action === 'record' && is_string($input->getOption('output'))) {
                 $this->snapshots->record($input->getArgument('user'), $input->getArgument('dataset'), $input->getOption('output'));
+            } elseif ($action === 'export-qdrant' && is_string($input->getOption('queries'))) {
+                $this->snapshots->exportQdrant($input->getArgument('user'), $input->getArgument('dataset'), $input->getOption('queries'));
+            } elseif ($action === 'record-qdrant' && is_string($input->getOption('output'))) {
+                $this->snapshots->recordQdrant($input->getArgument('user'), $input->getArgument('dataset'), $input->getOption('output'));
             } else {
-                $output->writeln('Use export with --queries or record with --output.');
+                $output->writeln('Use export/export-qdrant with --queries or record/record-qdrant with --output.');
                 return 2;
             }
             $output->writeln('Benchmark operation completed. Outputs are private; no performance target is implied.');
