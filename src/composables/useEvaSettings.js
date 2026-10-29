@@ -226,6 +226,7 @@ export function useEvaSettings({ section = ref('general'), active = ref(true) } 
 			['top_k', t('Sources per answer'), ...effective('top_k', [1, 8])],
 			['context_size', t('Model context size'), ...effective('context_size', [256, 131072])],
 			['temperature', t('Answer creativity'), ...effective('temperature', [0, 2])],
+			['agent_max_tool_rounds', t('Maximum agent steps per request'), ...effective('agent_max_tool_rounds', [2, 8])],
 			['chunk_size', t('Chunk size'), ...effective('chunk_size', [128, 10000])],
 			['chunk_overlap', t('Chunk overlap'), ...effective('chunk_overlap', [0, 5000])],
 			['max_files_per_run', t('Files per indexing run'), ...effective('max_files_per_run', [1, 10000])],

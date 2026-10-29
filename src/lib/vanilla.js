@@ -1534,9 +1534,17 @@ export function mountChat(root, opts = {}) {
 		}
 	}
 
+	function chatRevision(chat) {
+		const value = chat?.rev
+		const revision = typeof value === 'number'
+			? value
+			: (typeof value === 'string' && /^(0|[1-9][0-9]*)$/.test(value) ? Number(value) : null)
+		return Number.isSafeInteger(revision) && revision >= 0 ? revision : null
+	}
+
 	function applyServerChat(chat, requestOptions = {}) {
 		if (destroyed) return false
-		if (requestOptions.requireRevision && (!Number.isSafeInteger(chat?.rev) || !Array.isArray(chat.messages))) throw new Error('Missing chat state')
+		if (requestOptions.requireRevision && (chatRevision(chat) === null || !Array.isArray(chat.messages))) throw new Error('Missing chat state')
 		// Per-chat folder scope (Issue #88): visible in the header so the
 		// user knows the answer only uses documents from that folder.
 		if (chat && chat.scopePath) {
@@ -1552,7 +1560,7 @@ export function mountChat(root, opts = {}) {
 			chatTitle = chat.title
 			h1.textContent = chat.title
 		}
-		if (chat && chat.rev != null) chatRev = parseInt(chat.rev, 10) || null
+		chatRev = chatRevision(chat)
 		messages.length = 0
 		trimmedMessages = (chat && chat.trimmed) ? parseInt(chat.trimmed, 10) || 0 : 0
 		;(chat.messages || []).forEach((m) => messages.push({
@@ -1574,10 +1582,15 @@ export function mountChat(root, opts = {}) {
 
 	function restoreServerChat(id, requestOptions = {}) {
 		const initialChat = opts.initialChat
-		if (!requestOptions.requireRevision && initialChat && initialChat.id === id && Number.isSafeInteger(initialChat.rev) && Array.isArray(initialChat.messages)) {
+		const initialRevision = chatRevision(initialChat)
+		// Empty chats are safe to initialize from the create response even when
+		// a legacy reused record has no revision field. Its first turn is guarded
+		// by revision 0 on the server and does not need a redundant detail read.
+		const revisionlessEmptyChat = Array.isArray(initialChat?.messages) && initialChat.messages.length === 0 && initialRevision === null
+		if (!requestOptions.requireRevision && initialChat && initialChat.id === id && Array.isArray(initialChat.messages) && (initialRevision !== null || revisionlessEmptyChat)) {
 			try {
 				opts.initialChat = null
-				applyServerChat(initialChat)
+				applyServerChat(initialRevision === null ? { ...initialChat, rev: 0 } : { ...initialChat, rev: initialRevision })
 				return Promise.resolve(true)
 			} catch (_) {
 				// Fall back to the canonical detail endpoint if the create payload

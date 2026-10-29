@@ -176,7 +176,7 @@ class AppConfig {
         // no-shell parser and confirmation gate still apply to every command.
         'terminal_command_any' => '0',
         'terminal_command_allowlist' => 'date,uptime,php,node,git,ls,find,grep,rg,cat,head,tail,df,du,free,uname',
-        'agent_max_tool_rounds' => '16',
+        'agent_max_tool_rounds' => '6',
         'exec_write_types' => '',
         'exec_write_max_chars' => '100000',
         'exec_delete_mode' => 'own',
@@ -291,7 +291,7 @@ class AppConfig {
         'index_storage_quota' => [0, 1099511627776],
         'context_size' => [256, 131072],
         'temperature' => [0.0, 2.0],
-        'agent_max_tool_rounds' => [4, 32],
+        'agent_max_tool_rounds' => [2, 8],
         'exec_write_max_chars' => [1, 10000000],
         'mail_index_max' => [1, 500],
         'talk_index_max_rooms' => [1, 200],

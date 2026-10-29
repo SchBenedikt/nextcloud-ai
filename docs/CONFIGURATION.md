@@ -145,7 +145,7 @@ rows; that action never touches the original files.
 | `terminal_command_any` | P | `0` | `1`/`0` | – | Optional custom-executable mode. When enabled, any executable path may be requested, but shell syntax is still rejected and every exact command requires explicit confirmation. |
 | `plugin_tools_enabled` | P | `{}` | JSON object of disabled plugin tool names | – | Per-user plugin switches. Tools are enabled by default; only entries set to `false` are disabled. Plugin code runs inside the Nextcloud PHP process and is trusted code, not sandboxed. |
 | `terminal_command_allowlist` | P | `date,uptime,php,node,git,ls,find,grep,rg,cat,head,tail,df,du,free,uname` | comma-separated names/absolute paths, max. 32 | – | Executables that the confirmed terminal tool may start; bare names resolve through `PATH`, while absolute entries require an exact path match; pipes, redirects, substitutions and newlines are rejected. |
-| `agent_max_tool_rounds` | P | `16` | `4`–`32` | steps | Maximum model/tool rounds in one request. Higher values allow longer multi-tool workflows; duplicate-call protection still applies. |
+| `agent_max_tool_rounds` | P | `6` | `2`–`8` | steps | Maximum model/tool rounds in one request. The bounded default keeps tool use responsive; duplicate-call protection still applies. |
 | `exec_write_types` | P | `''` (all) | `*`, empty, or ≤32 extensions `md,txt,…` | – | Allowed extensions for AI-created files. |
 | `exec_write_max_chars` | P | `100000` | `1`–`10000000` | characters | Maximum size of AI-created file contents. |
 | `exec_delete_mode` | P | `own` | `off`/`own`/`all` | – | `own` = delete only EVA-created files; `all` = also user files (with confirmation); `off` = deletion disabled. |
