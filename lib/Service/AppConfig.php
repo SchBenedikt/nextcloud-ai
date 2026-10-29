@@ -243,7 +243,9 @@ class AppConfig {
         'index_mode' => 'idle',
         'index_cancel_requested' => '0',
         'index_run_id' => '',
-        'index_enrolled' => '0',
+        // Recurring local indexing is the standard once indexing has begun;
+        // users can explicitly pause it from their personal settings.
+        'index_enrolled' => '1',
         'knowledge_initialized' => '0',
         // Only the scheduler lock is global; it is not exposed as a user setting.
         'index_job_running' => '0',

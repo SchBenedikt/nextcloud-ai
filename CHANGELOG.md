@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Default local generation maintenance (1.18.49)
+
+- Make recurring local indexing and SQL-generation maintenance the personal default after the user starts indexing, while preserving explicit per-user pause and the install-without-scan behavior. Qdrant remains separately configured and consented.
+
 ### Live Qdrant generation benchmark (1.18.48)
 
 - Add explicit OCC export and recording for one active, verified Qdrant generation. Snapshots pin generation/target identity and tenant-owned SQL rows; runs use generation-pinned embeddings, dense or opted-in hybrid Qdrant search, and revision-validated SQL hydration. No automatic chat or indexing traffic is added.
