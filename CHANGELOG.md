@@ -2,6 +2,13 @@
 
 ## [Unreleased]
 
+### Restore image attachments in the native chat composer (1.20.16)
+
+- Add bounded PNG, JPEG and WebP attachments to the main Nextcloud chat composer, including local previews, removal controls and a provider privacy note.
+- Send images through the existing validated multimodal chat request and preserve attachment names in chat history.
+- Allow image-only prompts and stop cleanly when creating a server chat fails.
+- Include BMP and GIF files in optional local OCR indexing, matching the formats already supported by the OCR service.
+
 ### Recover chat history during brief storage contention (1.20.15)
 
 - Retry idempotent chat reads briefly when Nextcloud reports lock contention, rate limiting, or a transient network failure; model requests and writes are never replayed.

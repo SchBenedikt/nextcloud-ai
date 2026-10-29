@@ -56,6 +56,7 @@ OC.L10N.register("eva_ai", {
   "An attached image is invalid or exceeds 25 megapixels.": "Ein angehängtes Bild ist ungültig oder hat mehr als 25 Megapixel.",
   "Attached image": "Angehängtes Bild",
   "Attached images": "Angehängte Bilder",
+  "Attached images are sent to the configured chat provider with your message.": "Angehängte Bilder werden zusammen mit deiner Nachricht an den konfigurierten Chat-Anbieter gesendet.",
   "Describe these images.": "Beschreibe diese Bilder.",
   "Create images": "Bilder erstellen",
   "Export options": "Exportoptionen",
