@@ -40,20 +40,19 @@ class ReindexFileJob extends QueuedJob {
         if ($userId === '') {
             return;
         }
-        $entries = $this->dirty->drain($userId, self::DRAIN_LIMIT);
-        if ($entries === []) {
-            return;
-        }
         $this->config->setUserId($userId);
         try {
             // Honor the per-user opt-out: drop queued work silently.
             if ($this->config->hasIndexEnrollment($userId) && !$this->config->isIndexEnrolled($userId)) {
-                $this->dirty->drain($userId, 100000); // clear everything
+                $this->dirty->deleteUserData($userId);
                 return;
             }
             $processed = 0;
-            $failedEntries = [];
-            foreach ($entries as $entry) {
+            $retainedFailures = 0;
+            for ($claimed = 0; $claimed < self::DRAIN_LIMIT; $claimed++) {
+                $entries = $this->dirty->claim($userId, 1, $claimed === 0);
+                if ($entries === []) break;
+                $entry = $entries[0];
                 $kind = (string)($entry['kind'] ?? '');
                 try {
                     if ($kind === 'file') {
@@ -66,9 +65,9 @@ class ReindexFileJob extends QueuedJob {
                     } elseif ($kind === 'folder-rename') {
                         $this->indexer->updatePathPrefix($userId, (string)($entry['oldPath'] ?? ''), (string)($entry['path'] ?? ''));
                     }
+                    $this->dirty->acknowledge($userId, [$entry]);
                     $processed++;
                 } catch (\Throwable $e) {
-                    $failedEntries[] = $entry;
                     $this->logger->warning('eva_ai incremental entry failed', [
                         'userId' => $userId,
                         'kind' => $kind,
@@ -76,37 +75,35 @@ class ReindexFileJob extends QueuedJob {
                         'max_attempts' => self::MAX_ATTEMPTS,
                         'exception' => $e->getMessage(),
                     ]);
-                }
-            }
-
-            $retainedFailures = 0;
-            if ($failedEntries !== []) {
-                try {
-                    $retainedFailures = $this->dirty->requeueFailed($userId, $failedEntries, self::MAX_ATTEMPTS);
-                    if (count($failedEntries) > $retainedFailures) {
-                        $this->logger->error('eva_ai incremental entries exhausted their retry budget; periodic indexing remains the recovery path', [
+                    try {
+                        $retry = $this->dirty->requeueFailed($userId, [$entry], self::MAX_ATTEMPTS, self::RETRY_DELAY_SECONDS);
+                        $retainedFailures += $retry['requeued'];
+                        if ($retry['exhausted'] > 0) {
+                            $this->logger->error('eva_ai incremental entries exhausted their retry budget; periodic indexing remains the recovery path', [
+                                'userId' => $userId,
+                                'entries' => $retry['exhausted'],
+                            ]);
+                        }
+                    } catch (\Throwable $retryError) {
+                        // The lease expires and makes the claim available again
+                        // if SQL could not persist the retry state.
+                        $this->logger->error('eva_ai incremental retry could not be persisted', [
                             'userId' => $userId,
-                            'entries' => count($failedEntries) - $retainedFailures,
+                            'exception' => $retryError->getMessage(),
                         ]);
                     }
-                } catch (\Throwable $e) {
-                    // The periodic full index is still the recovery path if
-                    // AppData cannot persist a retry at this point.
-                    $this->logger->error('eva_ai incremental retry could not be persisted', [
-                        'userId' => $userId,
-                        'exception' => $e->getMessage(),
-                    ]);
                 }
             }
-            if ($retainedFailures > 0 || $this->dirty->pending($userId) > 0) {
-                // Retry transient failures with backoff; fresh events without
-                // failures continue quickly through the debounced queue.
-                $delay = $retainedFailures > 0 ? self::RETRY_DELAY_SECONDS : 30;
-                $this->jobList->scheduleAfter(self::class, $delay, ['userId' => $userId]);
+            if ($this->dirty->pending($userId) > 0) {
+                // Preserve delayed retries and recover expired leases if a
+                // worker exits after claiming an entry.
+                $delay = $this->dirty->secondsUntilNext($userId) ?? 30;
+                $this->jobList->scheduleAfter(self::class, time() + max(30, $delay), ['userId' => $userId]);
             }
             $this->logger->info('eva_ai incremental reindex batch done', [
                 'userId' => $userId,
                 'processed' => $processed,
+                'retrying' => $retainedFailures,
             ]);
         } finally {
             $this->config->setUserId(null);
