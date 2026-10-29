@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Complete native search pagination (1.18.51)
+
+- Return a complete Nextcloud Unified Search result when the last accessible page has been reached, instead of advertising an endless empty next page.
+
 ### Preserve configured SQL embedding provider (1.18.50)
 
 - Prevent automatic Ollama SQL-generation provisioning from replacing an explicitly active SQL generation that uses an OpenAI-compatible embedding profile.

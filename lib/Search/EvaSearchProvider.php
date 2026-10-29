@@ -143,7 +143,10 @@ final class EvaSearchProvider implements IProvider {
             }
         }
 
-        return SearchResult::paginated($name, $entries, $offset + count($entries));
+        if ($offset + count($entries) < count($accessible)) {
+            return SearchResult::paginated($name, $entries, $offset + count($entries));
+        }
+        return SearchResult::complete($name, $entries);
     }
 
     /** @return list<string> */
