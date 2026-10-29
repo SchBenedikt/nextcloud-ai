@@ -74,6 +74,7 @@
 				<p v-if="ocrEnabled && !status?.dependencies?.tesseract" class="field-help">{{ $t('OCR is unavailable: ask your administrator to install Tesseract and its language data.') }}</p>
 				<p v-if="ocrEnabled && (!status?.dependencies?.pdftoppm || !status?.dependencies?.pdfinfo)" class="field-help">{{ $t('Scanned PDFs also require Poppler (pdfinfo and pdftoppm).') }}</p>
 				<p class="field-help">{{ $t('OCR limits: 20 MiB, 30 PDF pages, 25 megapixels and 60 seconds per file. Failed extraction keeps the previous index.') }}</p>
+				<p class="field-help">{{ $t('With OCR enabled, Office documents also extract text from up to four embedded images (5 MiB and 10 seconds per image).') }}</p>
 				<NcCheckboxRadioSwitch v-model="mailIndexEnabled" type="switch" class="native-toggle compact-switch" :description="$t('Include subject, sender and message text from the Nextcloud Mail app in search results.')">{{ $t('Index Mail messages') }}
 				</NcCheckboxRadioSwitch>
 				<NcCheckboxRadioSwitch v-model="talkIndexEnabled" type="switch" class="native-toggle compact-switch" :description="$t('Include the chat histories of your Nextcloud Talk conversations in search results, so older parts of a conversation can be quoted in an answer. Only chats you are a member of are indexed, and only your own chat becomes context in a Talk answer.')">{{ $t('Index Nextcloud Talk chat histories') }}

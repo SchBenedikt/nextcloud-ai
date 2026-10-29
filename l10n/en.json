@@ -496,6 +496,7 @@
     "OCR is unavailable: ask your administrator to install Tesseract and its language data.": "OCR is unavailable: ask your administrator to install Tesseract and its language data.",
     "OCR languages (for example eng or deu+eng)": "OCR languages (for example eng or deu+eng)",
     "OCR limits: 20 MiB, 30 PDF pages, 25 megapixels and 60 seconds per file. Failed extraction keeps the previous index.": "OCR limits: 20 MiB, 30 PDF pages, 25 megapixels and 60 seconds per file. Failed extraction keeps the previous index.",
+    "With OCR enabled, Office documents also extract text from up to four embedded images (5 MiB and 10 seconds per image).": "With OCR enabled, Office documents also extract text from up to four embedded images (5 MiB and 10 seconds per image).",
     "Off": "Off",
     "Offline": "Offline",
     "Oldest first": "Oldest first",
