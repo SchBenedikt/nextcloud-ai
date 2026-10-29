@@ -2,6 +2,11 @@
 
 ## [Unreleased]
 
+### Save API keys to the selected provider profile (1.18.69)
+
+- Include the profile ID with custom provider credentials so editing an inactive profile stores its encrypted key on that profile instead of the active chat provider.
+- Validate explicit credential targets against the saved or same-request provider profile list.
+
 ### Show when personal settings are saved (1.18.68)
 
 - Make loading, unsaved edits, queued saves, completed saves and unavailable settings visible in the page header.

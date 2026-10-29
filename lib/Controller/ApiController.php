@@ -334,6 +334,7 @@ class ApiController extends OCSController {
         $groqKey = $secrets->groqKey;
         $removeGroqKey = $secrets->removeGroqKey;
         $customKey = $secrets->customKey;
+        $customCredentialProviderId = $secrets->customProviderId ?? $selectedProvider;
         $removeCustomKey = $secrets->removeCustomKey;
         $nextcloudToken = $secrets->nextcloudToken;
         $removeNextcloudToken = $secrets->removeNextcloudToken;
@@ -345,18 +346,47 @@ class ApiController extends OCSController {
             ], 400);
         }
         $providerId = $selectedProvider;
-        if ($providerId !== 'ollama' && $providerId !== 'groq') {
+        $credentials = null;
+        if ($customKey !== null || $removeCustomKey) {
+            if (in_array($customCredentialProviderId, ['ollama', 'groq'], true)) {
+                return new ErrorDataResponse(['error' => 'Custom credentials must target a custom provider profile.'], 400);
+            }
             $credentials = \OCP\Server::get(\OCA\EvaAi\Service\ProviderCredentials::class);
-            if (($selectedProfile['auth'] ?? 'api_key') !== 'none' && !$removeCustomKey && (!is_string($customKey) || $customKey === '') && !$credentials->customConfigured($user, $providerId)) {
+            // New clients identify the exact profile being edited. Validate it
+            // against the profile list in this same request or the saved list;
+            // older clients continue to target the currently selected profile.
+            if ($secrets->customProviderId !== null) {
+                $credentialProfiles = $pending['provider_profiles'] ?? $this->config->get('provider_profiles');
+                if (is_string($credentialProfiles)) $credentialProfiles = json_decode($credentialProfiles, true);
+                $credentialProfileExists = false;
+                foreach (is_array($credentialProfiles) ? $credentialProfiles : [] as $profile) {
+                    if (is_array($profile) && (string)($profile['id'] ?? '') === $customCredentialProviderId) {
+                        $credentialProfileExists = true;
+                        break;
+                    }
+                }
+                if (!$credentialProfileExists) {
+                    return new ErrorDataResponse(['error' => 'The custom credential target is not a configured provider profile.'], 400);
+                }
+            }
+        }
+        if ($providerId !== 'ollama' && $providerId !== 'groq') {
+            $credentials ??= \OCP\Server::get(\OCA\EvaAi\Service\ProviderCredentials::class);
+            $customKeyTargetsSelectedProvider = $customCredentialProviderId === $providerId && is_string($customKey) && $customKey !== '';
+            $removingSelectedProviderKey = $customCredentialProviderId === $providerId && $removeCustomKey;
+            if (($selectedProfile['auth'] ?? 'api_key') !== 'none'
+                && !$removingSelectedProviderKey
+                && !$customKeyTargetsSelectedProvider
+                && !$credentials->customConfigured($user, $providerId)) {
                 return new ErrorDataResponse(['error' => 'Save an API key for the selected custom provider first.'], 400);
             }
         }
         // All values, model roles and credential requirements are valid now.
         if ($removeGroqKey) $this->ollama->saveGroqKey('');
         elseif ($groqKey !== null && $groqKey !== '') $this->ollama->saveGroqKey($groqKey);
-        if ($providerId !== 'ollama' && $providerId !== 'groq') {
-            if ($removeCustomKey) $credentials->saveCustom($user, $providerId, '');
-            elseif ($customKey !== null && $customKey !== '') $credentials->saveCustom($user, $providerId, $customKey);
+        if ($customCredentialProviderId !== 'ollama' && $customCredentialProviderId !== 'groq') {
+            if ($removeCustomKey) $credentials->saveCustom($user, $customCredentialProviderId, '');
+            elseif ($customKey !== null && $customKey !== '') $credentials->saveCustom($user, $customCredentialProviderId, $customKey);
         }
         if ($removeNextcloudToken || (is_string($nextcloudToken) && $nextcloudToken !== '')) {
             \OCP\Server::get(\OCA\EvaAi\Service\ProviderCredentials::class)->saveNextcloudToken(
