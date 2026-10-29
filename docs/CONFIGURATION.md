@@ -338,15 +338,18 @@ sudo -u www-data php occ config:list apps --app=eva_ai
 `ocr_language` defaults to `eng`; use installed Tesseract language codes such as
 `deu+eng` (at most four identifiers). Settings report missing Tesseract/Poppler.
 PNG, JPEG, TIFF, WebP, BMP and GIF images plus textless PDFs are processed
-locally. Mixed PDFs also OCR up to eight pages where text extraction found
+locally. HEIC, HEIF and AVIF photos are also supported when the server's
+ImageMagick installation includes their codecs; Settings reports which
+converters are available. Mixed PDFs also OCR up to eight pages where text extraction found
 fewer than 160 characters. When OCR is enabled, DOCX, PPTX and OpenDocument
 files can also extract text from up to four embedded images (5 MiB and 10
 seconds per image). Hard
 limits: 20 MiB input,
-30 PDF pages, 25 megapixels per input image, 2 MiB extracted text and 60 seconds
-per file. PDFs are rendered one page at a time at no more than 2000 pixels per
-side. OCR errors preserve the last-good index. Install language packages on the
-server; the app never downloads documents or language data to a remote service.
+30 PDF pages, 25 megapixels per input image, 4 megapixels and 32 MiB per
+converted image, 2 MiB extracted text and 60 seconds per file. PDFs are rendered
+one page at a time at no more than 2000 pixels per side. OCR errors preserve the
+last-good index. Install language packages on the server; the app never downloads
+documents or language data to a remote service.
 
 ## Groq API credentials and free usage
 

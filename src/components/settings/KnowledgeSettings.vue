@@ -73,6 +73,7 @@
 				<NcTextField v-if="ocrEnabled" v-model="f.ocr_language" :label="$t('OCR languages (for example eng or deu+eng)')" :disabled="busy" />
 				<p v-if="ocrEnabled && !status?.dependencies?.tesseract" class="field-help">{{ $t('OCR is unavailable: ask your administrator to install Tesseract and its language data.') }}</p>
 				<p v-if="ocrEnabled && (!status?.dependencies?.pdftoppm || !status?.dependencies?.pdfinfo)" class="field-help">{{ $t('Scanned PDFs also require Poppler (pdfinfo and pdftoppm).') }}</p>
+				<p v-if="ocrEnabled && status?.dependencies?.tesseract && status?.dependencies?.image_conversion_formats?.length" class="field-help">{{ $t('This server can also OCR {formats} photos using local ImageMagick conversion.', { formats: status.dependencies.image_conversion_formats.join(', ') }) }}</p>
 				<p class="field-help">{{ $t('OCR limits: 20 MiB, 30 PDF pages, 25 megapixels and 60 seconds per file. Failed extraction keeps the previous index.') }}</p>
 				<p class="field-help">{{ $t('With OCR enabled, Office documents also extract text from up to four embedded images (5 MiB and 10 seconds per image).') }}</p>
 				<NcCheckboxRadioSwitch v-model="mailIndexEnabled" type="switch" class="native-toggle compact-switch" :description="$t('Include subject, sender and message text from the Nextcloud Mail app in search results.')">{{ $t('Index Mail messages') }}
