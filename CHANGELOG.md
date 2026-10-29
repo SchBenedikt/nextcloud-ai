@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Lexical indexing OpenMetrics (1.18.47)
+
+- Export aggregate chunk counts by lexical posting state through Nextcloud OpenMetrics. Labels contain only the fixed state vocabulary; no account, file, path or content identifiers are exposed. The metric performs one grouped read at scrape time and adds no writes to chat or indexing requests.
+
 ### Lazy advanced generation controls (1.18.46)
 
 - Keep the standard admin landing page focused on aggregate indexing status. Load account identities and expose generation preparation, verification and optional vector migration controls only when an administrator opens the advanced section.

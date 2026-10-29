@@ -6,6 +6,7 @@ exporter:
 | Metric family | Labels | Meaning |
 | --- | --- | --- |
 | `nextcloud_eva_ai_indexed_items` | `kind=documents|chunks` | Indexed document and chunk totals. |
+| `nextcloud_eva_ai_lexical_index_chunks` | `state=pending|indexed|unsupported|processing` | Chunks by exact-token posting backfill state. |
 | `nextcloud_eva_ai_vector_generations` | `backend`, `status` | SQL/Qdrant generations by lifecycle state. |
 | `nextcloud_eva_ai_vector_outbox_events` | `operation`, `state` | Actionable pending, processing, and dead vector delivery/deletion queue depth. |
 | `nextcloud_eva_ai_vector_outbox_oldest_age_seconds` | `state` | Age of the oldest pending, processing, or dead event. |
@@ -27,3 +28,7 @@ These gauges do not yet provide request latency percentiles, provider failure
 rates, SQL timing, indexing throughput, or queue-age histograms. Existing
 privacy-preserving debug timing logs remain separate from the exporter. Those
 measurements and representative operational dashboards still require follow-up.
+
+The lexical state family groups one database read at scrape time. It includes
+only the fixed state label vocabulary and contributes no writes to indexing or
+interactive retrieval requests.
