@@ -901,6 +901,7 @@ class Indexer {
                 $batch = [];
                 return;
             }
+            $entities=[];
             foreach ($chunks as $c) {
                 $chunk = new Chunk();
                 $chunk->setDocumentId($docId);
@@ -909,8 +910,9 @@ class Indexer {
                 $chunk->setEmbeddingArray($c['vec']);
                 $chunk->setTokenCount($c['tokens']);
                 $chunk->setProvenanceArray($c['provenance'] ?? []);
-                $this->chunkMapper->insert($chunk);
+                $entities[]=$chunk;
             }
+            $this->chunkMapper->insertMany($entities);
             $doc = $this->documentMapper->findById($docId);
             if ($doc !== null) {
                 $doc->setChunkCount(count($chunks));

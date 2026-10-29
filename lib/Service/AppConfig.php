@@ -314,7 +314,8 @@ class AppConfig {
     /** @var array<string,string> Request-level cache: avoids repeated DB round-trips. */
     private array $cache = [];
 
-    public function __construct(private IConfig $config, private ?ILockingProvider $locks = null) {
+    public function __construct(private IConfig $config, private ?ILockingProvider $locks = null,
+        private ?\OCA\EvaAi\Db\VectorOwnerFenceRepository $owners = null) {
     }
 
     /** Instance-owned network policy for every compatible-provider construction path. */
@@ -388,7 +389,8 @@ class AppConfig {
 
     public function set(string $key, string $value): void {
         if ($this->userId !== null && $this->isUserSetting($key)) {
-            $this->config->setUserValue($this->userId, self::APP, $key, $value);
+            $write=fn()=> $this->config->setUserValue($this->userId, self::APP, $key, $value);
+            if($this->owners!==null)$this->owners->mutateOpen($this->userId,$write);else $write();
         } else {
             $this->config->setAppValue(self::APP, $key, $value);
         }
@@ -521,14 +523,13 @@ class AppConfig {
         $previous = $this->userId;
         $this->setUserId($userId);
         try {
-            $sentinel = "\0eva_ai_missing\0";
-            $current = $this->config->getUserValue($userId, self::APP, 'index_running', $sentinel);
-            if ($current === $sentinel) {
-                // The first claim has no competing stored value yet. Persist a
-                // default before using the conditional update on later runs.
-                $this->config->setUserValue($userId, self::APP, 'index_running', '0');
-            }
-            $this->config->setUserValue($userId, self::APP, 'index_running', '1', '0');
+            $claim=function()use($userId):void{
+                $sentinel="\0eva_ai_missing\0";
+                $current=$this->config->getUserValue($userId,self::APP,'index_running',$sentinel);
+                if($current===$sentinel)$this->config->setUserValue($userId,self::APP,'index_running','0');
+                $this->config->setUserValue($userId,self::APP,'index_running','1','0');
+            };
+            if($this->owners!==null)$this->owners->mutateOpen($userId,$claim);else $claim();
             return true;
         } catch (\Throwable $e) {
             return false;

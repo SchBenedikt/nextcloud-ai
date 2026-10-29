@@ -2,6 +2,13 @@
 
 ## [Unreleased]
 
+### Persisted generation verification (1.18.12)
+
+- Add a resumable, owner-scoped background reconciliation for staged SQL chunks and exact Qdrant point identities, revisions, dimensions, source manifests, sampled vectors and live counts.
+- Keep every network request outside SQL transactions, bound each tick and batch, and issue a persisted certificate only after the complete snapshot matches.
+- Invalidate certificates atomically on source insertion, mutation or deletion; fence source writes against account erasure and expose native administrator progress plus an OCC command.
+- Keep verification read-only: SQL remains the search path, no embedding request is made, and verification never activates a generation.
+
 ### Vector inventory contract (1.18.11)
 
 - Add exact tenant/generation-scoped live counts and bounded point retrieval for the upcoming generation verification worker.

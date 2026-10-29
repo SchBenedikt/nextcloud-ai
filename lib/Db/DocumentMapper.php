@@ -22,6 +22,11 @@ class DocumentMapper extends QBMapper {
         return $entity;
     }
 
+    public function insert(Entity $entity): Entity {
+        if(!$entity instanceof Document||!is_string($entity->getUserId())||$entity->getUserId()==='')throw new \InvalidArgumentException('Indexed documents require an owner.');
+        return $this->sourceDeletion->insertDocument($entity->getUserId(),fn():Entity=>parent::insert($entity));
+    }
+
     public function update(Entity $entity): Entity {
         $sourceFields = ['userId', 'fileId', 'path', 'name', 'source', 'contentHash', 'fileMtime', 'size', 'mime'];
         if (array_intersect(array_keys($entity->getUpdatedFields()), $sourceFields) === []) return parent::update($entity);

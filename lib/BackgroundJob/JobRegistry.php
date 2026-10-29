@@ -16,6 +16,7 @@ final class JobRegistry {
         VectorErasureJob::class,
         VectorPointJob::class,
         GenerationBuildJob::class,
+        GenerationVerificationJob::class,
     ];
 
     public static function ensureScheduled(IJobList $jobs): void {

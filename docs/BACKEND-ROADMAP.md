@@ -484,14 +484,15 @@ canonical prefix. Actual MariaDB transaction/rollback probes, isolated SQLite
 resume/lease/erase scenarios, combined native VFS + HTTP embedding + SQL building
 and authenticated native administration are recorded in QUALITY.md.
 
-Stage 09 is still incomplete: complete current SQL/remote ID/revision and dimension
-verification, sampled scores, tenant/adversarial evidence, source reconciliation
-behind/beyond the snapshot and persisted verification certificates remain gates.
-No activation is available. Representative load/soak, hard remote-storage/IMAP
+Stage 09 now has a first persisted verification slice: exact SQL/remote point IDs,
+tenant/generation identity, revisions, dimensions, source manifests, deterministic
+sampled cosine scores, snapshot reconciliation, exact live counts and invalidatable
+certificates. Search remains on SQL and no activation is available. Cross-database
+and adversarial evidence, representative load/soak, hard remote-storage/IMAP
 budgets, in-flight legacy-writer fencing, durable erasure retries and stages
 10–14 remain pending. See [GENERATION-BUILDS.md](GENERATION-BUILDS.md).
 
 The 1.18.11 storage contract adds exact tenant/generation-filtered live counts
-and bounded exact-ID point reads with vectors for that verifier. These are not
-verification results: no persisted verifier, reconciliation, activation, or
-retrieval change has been implemented by this slice.
+and bounded exact-ID point reads with vectors. Version 1.18.12 uses them in the
+read-only persisted verifier described in
+[GENERATION-VERIFICATION.md](GENERATION-VERIFICATION.md).
