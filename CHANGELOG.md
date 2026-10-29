@@ -2,6 +2,11 @@
 
 ## [Unreleased]
 
+### Recover expired chat request locks (1.20.34)
+
+- Reclaim only an EVA chat-request lock whose Nextcloud lock TTL has expired, so a crashed request cannot leave the account stuck behind a permanent busy response.
+- Keep unexpired locks exclusive; genuinely concurrent requests still receive the existing retryable busy response.
+
 ### Recover chat reads and preserve image search results (1.20.33)
 
 - Repair stale SQL chat message counts from the encrypted message rows so readable chats do not become false 404s or leave the composer disabled.

@@ -6,15 +6,14 @@ namespace OCA\EvaAi\Controller\Traits;
 
 use OCA\EvaAi\Service\LockGuard;
 use OCP\Lock\ILockingProvider;
+use OCP\IDBConnection;
 use Psr\Log\LoggerInterface;
 
 /** Shares the per-user model-work claim across chat request controllers. */
 trait ChatRequestCoordination {
 	private function acquireChatRequestSlot(string $user, ILockingProvider $lockingProvider, LoggerInterface $logger): ?string {
-		$path = LockGuard::chatRequestLockPath($user);
 		try {
-			$lockingProvider->acquireLock($path, ILockingProvider::LOCK_EXCLUSIVE, 'EVA chat request');
-			return $path;
+			return LockGuard::acquireChatRequestLock($user, $lockingProvider, \OCP\Server::get(IDBConnection::class));
 		} catch (\OCP\Lock\LockedException) {
 			return null;
 		} catch (\Throwable $e) {

@@ -63,6 +63,10 @@ failures return temporary-unavailable (503), not falsely occupied (429), with
 sanitized coordination diagnostics in the server log. Real simultaneous chat
 requests still receive a busy response; the request-rate budget remains enforced.
 
+If a PHP worker dies before cleanup, the next request now removes only this
+account's EVA request-lock row after its Nextcloud TTL has expired, then retries
+acquisition once. Unexpired locks are never deleted by this recovery path.
+
 This changes the request-lock namespace, so quiesce chat requests and deploy the
 fix together on all application nodes. Do not serve old and new request-gate code
 concurrently during rollout. Legacy abandoned rows can expire under Nextcloud's
