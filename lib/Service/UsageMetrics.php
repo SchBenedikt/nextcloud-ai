@@ -104,7 +104,7 @@ class UsageMetrics {
 					'total_tokens' => $qb->createNamedParameter($inputTokens + $outputTokens, IQueryBuilder::PARAM_INT),
 					'estimated' => $qb->createNamedParameter($estimated ? 1 : 0, IQueryBuilder::PARAM_INT),
 					'duration_ms' => $qb->createNamedParameter(max(0, $durationMs), IQueryBuilder::PARAM_INT),
-					'retrieval_backend' => $qb->createNamedParameter($retrieval['backend'] ?? ''),
+					'retrieval_backend' => $qb->createNamedParameter($retrieval['backend'] ?? 'none'),
 					'retrieval_stage_mask' => $qb->createNamedParameter($retrieval['stage_mask'] ?? 0, IQueryBuilder::PARAM_INT),
 					'retrieval_count_ms' => $qb->createNamedParameter($retrieval['count_ms'] ?? 0, IQueryBuilder::PARAM_INT),
 					'retrieval_embedding_ms' => $qb->createNamedParameter($retrieval['embedding_ms'] ?? 0, IQueryBuilder::PARAM_INT),

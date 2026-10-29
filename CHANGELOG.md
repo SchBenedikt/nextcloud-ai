@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Use a valid default for retrieval metric backend (1.18.73)
+
+- Use a non-empty `none` sentinel for chat usage rows without retrieval measurements so the additive schema migration is accepted by Nextcloud.
+
 ### Export retrieval stage latency (1.18.72)
 
 - Store bounded retrieval stage durations on the existing chat usage row, without saving query text, identifiers or document data.

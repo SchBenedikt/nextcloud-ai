@@ -17,7 +17,7 @@ final class Version118067Date20261029000014 extends SimpleMigrationStep {
 		if (!$schema->hasTable('eva_ai_usage')) return $schema;
 		$table = $schema->getTable('eva_ai_usage');
 		if (!$table->hasColumn('retrieval_backend')) {
-			$table->addColumn('retrieval_backend', Types::STRING, ['length' => 32, 'notnull' => true, 'default' => '']);
+			$table->addColumn('retrieval_backend', Types::STRING, ['length' => 32, 'notnull' => true, 'default' => 'none']);
 		}
 		if (!$table->hasColumn('retrieval_stage_mask')) {
 			$table->addColumn('retrieval_stage_mask', Types::INTEGER, ['notnull' => true, 'default' => 0]);
