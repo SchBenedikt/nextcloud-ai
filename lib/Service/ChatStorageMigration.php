@@ -105,7 +105,16 @@ final class ChatStorageMigration {
 				throw new \RuntimeException('The SQL chat import does not match AppData. Rerun the import before enabling SQL reads.');
 			}
 		}
-		$this->target->setSqlReadsEnabled($userId, true);
+		$this->source->withMigrationSourceLock($userId, function (string $currentHash) use ($userId, $snapshot): void {
+			if (!$this->users->userExists($userId) || !hash_equals($snapshot['sourceHash'], $currentHash)) {
+				throw new \RuntimeException('AppData changed during SQL read activation. Rerun the import and activation.');
+			}
+			$latestState = $this->target->migrationState($userId);
+			if (($latestState['state'] ?? '') !== 'complete' || !hash_equals((string)($latestState['source_hash'] ?? ''), $currentHash)) {
+				throw new \RuntimeException('The SQL migration checkpoint changed during activation. Rerun the import and activation.');
+			}
+			$this->target->setSqlReadsEnabled($userId, true);
+		});
 	}
 
 	public function disableSqlReads(string $userId): int {

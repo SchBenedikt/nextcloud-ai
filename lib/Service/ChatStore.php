@@ -290,6 +290,13 @@ class ChatStore {
         return $this->withUserLock($user, $operation, ILockingProvider::LOCK_EXCLUSIVE);
     }
 
+    /** Hold the same lock as chat mutations while validating the source fingerprint. */
+    public function withMigrationSourceLock(string $user, callable $operation): mixed {
+        return $this->withUserLock($user, function () use ($user, $operation): mixed {
+            return $operation(hash('sha256', $this->rootFor($user)->getContent()));
+        }, ILockingProvider::LOCK_EXCLUSIVE);
+    }
+
     /** Restore a full AppData snapshot before disabling an active SQL read path. */
     public function restoreAppDataAndDisableSql(string $user): int {
         return $this->withUserLock($user, function () use ($user): int {
