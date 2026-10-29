@@ -15,7 +15,6 @@ use OCA\EvaAi\Service\AppConfig;
 use OCA\EvaAi\Service\BackgroundChatQueue;
 use OCA\EvaAi\Service\ChatLearner;
 use OCA\EvaAi\Service\ChatStore;
-use OCA\EvaAi\Service\FileContextChatService;
 use OCA\EvaAi\Service\IndexScheduler;
 use OCA\EvaAi\Service\Indexer;
 use OCA\EvaAi\Service\KnowledgeInitializer;
@@ -158,7 +157,6 @@ final class ApiControllerIntegrationTest extends TestCase {
 		$jobList = $this->createMock(IJobList::class);
 		$lockingProvider = $this->createMock(ILockingProvider::class);
 		$chatStore = $this->createMock(ChatStore::class);
-		$fileContextChat = $this->createMock(FileContextChatService::class);
 		$appManager = $this->createMock(IAppManager::class);
 		$knowledgeInitializer = $this->createMock(KnowledgeInitializer::class);
 		$lockGuard = $this->createMock(LockGuard::class);
@@ -178,8 +176,7 @@ final class ApiControllerIntegrationTest extends TestCase {
 		$dependencies = compact('request', 'documentMapper', 'ollama', 'config', 'rag', 'executor', 'indexer', 'jobList', 'lockingProvider', 'chatStore', 'knowledgeInitializer', 'lockGuard', 'cacheFactory', 'logger', 'backgroundChatQueue');
 		return new ApiController(
 			'eva_ai', $request, $userId, $config, $rag, $executor, $indexer, $ollama,
-			$documentMapper, $jobList, $lockingProvider, $chatStore,
-			$fileContextChat, $appManager, $lockGuard,
+			$jobList, $lockingProvider, $chatStore, $appManager, $lockGuard,
 			$userDataService, $chatLearner, $cacheFactory, $indexScheduler, $usageMetrics,
 			$logger, $systemController,
 		);

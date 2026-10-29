@@ -2,6 +2,11 @@
 
 ## [Unreleased]
 
+### Separate selected-file chat and clarify optional Qdrant setup (1.20.13)
+
+- Move selected-file chat and its live-access status endpoint into a focused controller while keeping the existing API URLs and shared per-user chat admission.
+- Make the administrator UI state clearly that built-in Nextcloud SQL works without Qdrant and that configuring Qdrant does not switch search.
+
 ### Use Nextcloud VFS for personal EVA knowledge (1.20.12)
 
 - Move personal knowledge-file reads and writes into a focused controller with injected Nextcloud VFS and initialization services, preserving the existing endpoint URLs and response contracts.
