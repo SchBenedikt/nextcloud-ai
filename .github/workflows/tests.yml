@@ -197,6 +197,87 @@ jobs:
               composer test
             '
 
+  nextcloud-app-database:
+    name: Nextcloud app lifecycle with ${{ matrix.label }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # SQLite-only lifecycle coverage hid portability regressions in the
+        # migrations, mappers and API paths. Install and exercise the app on a
+        # real PostgreSQL and a real MariaDB as well (backend analysis, DB
+        # portability finding).
+        include:
+          - label: PostgreSQL
+            database: pgsql
+            image: postgres:17-alpine
+            port: 5432
+            health: --health-cmd "pg_isready -U nextcloud -d nextcloud" --health-interval 5s --health-timeout 5s --health-retries 30
+          - label: MariaDB
+            database: mysql
+            image: mariadb:11.4
+            port: 3306
+            health: --health-cmd "healthcheck.sh --connect --innodb_initialized" --health-interval 5s --health-timeout 5s --health-retries 30
+    services:
+      # One service identifier for both engines: the image, port and health
+      # check come from the matrix, the environment carries the defaults of
+      # both engines and each one ignores the other's variables.
+      db:
+        image: ${{ matrix.image }}
+        env:
+          POSTGRES_USER: nextcloud
+          POSTGRES_PASSWORD: nextcloud
+          POSTGRES_DB: nextcloud
+          MARIADB_ROOT_PASSWORD: nextcloud
+          MARIADB_DATABASE: nextcloud
+          MARIADB_USER: nextcloud
+          MARIADB_PASSWORD: nextcloud
+        ports:
+          - ${{ matrix.port }}:${{ matrix.port }}
+        options: ${{ matrix.health }}
+    steps:
+      - uses: actions/checkout@v7
+      - name: Install and exercise the app in Nextcloud with ${{ matrix.label }}
+        env:
+          NC: stable35
+          DB: ${{ matrix.database }}
+          DB_PORT: ${{ matrix.port }}
+        run: |
+          # The service container publishes its port on the runner; the app
+          # container reaches it through the docker host gateway.
+          docker run --rm \
+            --add-host db:host-gateway \
+            -v "$PWD":/app:ro \
+            -e NC="$NC" \
+            -e DB="$DB" \
+            -e DB_PORT="$DB_PORT" \
+            ghcr.io/nextcloud/continuous-integration-php8.3 sh -euxc '
+              if [ "$NC" = "latest" ]; then
+                url="https://download.nextcloud.com/server/releases/latest.tar.bz2"
+              else
+                version="${NC#stable}"
+                url="https://download.nextcloud.com/server/releases/latest-$version.tar.bz2"
+              fi
+              printf "deb https://deb.debian.org/debian bookworm main\n" > /tmp/eva-debian.list
+              apt-get update -qq -o Dir::Etc::sourcelist=/tmp/eva-debian.list -o Dir::Etc::sourceparts=- -o APT::Get::List-Cleanup=0
+              apt-get install -y --no-install-recommends bzip2
+              curl -fsSL "$url" -o /tmp/nextcloud.tar.bz2
+              mkdir -p /srv
+              tar -xjf /tmp/nextcloud.tar.bz2 -C /srv
+              cp -a /app /srv/nextcloud/apps/eva_ai
+              cd /srv/nextcloud/apps/eva_ai
+              composer install --no-interaction --prefer-dist
+              cd /srv/nextcloud
+              php occ maintenance:install --database "$DB" --database-host db --database-port "$DB_PORT" \
+                --database-name nextcloud --database-user nextcloud --database-pass nextcloud \
+                --admin-user admin --admin-pass admin --admin-email admin@example.test
+              php occ app:enable eva_ai
+              php occ app:list | grep -F eva_ai
+              cd /srv/nextcloud/apps/eva_ai
+              NEXTCLOUD_ROOT=/srv/nextcloud vendor/bin/phpunit --fail-on-skipped tests/ApiControllerIntegrationTest.php
+              composer test
+            '
+
   lint:
     name: PHP syntax check
     runs-on: ubuntu-latest

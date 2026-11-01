@@ -2,6 +2,11 @@
 
 ## [Unreleased]
 
+### PostgreSQL and MariaDB app-lifecycle checks (1.20.40)
+
+- Install the app into real Nextcloud on a real PostgreSQL and a real MariaDB instead of SQLite only, and run the API integration test and the PHPUnit suite there, so engine-specific migration, mapper and API regressions fail the pull request.
+- Document the job, its local reproduction and the still-open portability evidence in `docs/CI.md` and `docs/BACKEND-ROADMAP.md`.
+
 ### Extract settings API from the main chat controller (1.20.39)
 
 - Move personal settings reads, validation and credential persistence into `SettingsController` while preserving the `/api/settings` contract.

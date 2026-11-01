@@ -18,6 +18,14 @@ superseded in-progress runs.
   `occ app:enable eva_ai` → `occ app:list` → `tests/ApiControllerIntegrationTest.php`
   inside the install → `composer test`. This catches metadata, bootstrap, route,
   dependency, and runtime-API breakage across the oldest/middle/newest lines.
+- **nextcloud-app-database** — the same lifecycle on the current `stable35` line,
+  but against a real PostgreSQL 17 and a real MariaDB 11.4 instead of SQLite
+  (GitHub service containers published on the runner and reached through the
+  docker host gateway): fresh `occ maintenance:install` on that engine →
+  `occ app:enable eva_ai` → `occ app:list` →
+  `tests/ApiControllerIntegrationTest.php` → `composer test`. Migrations, mapper
+  and API paths are the engine-sensitive parts, so they run on both engines and
+  not only on SQLite.
 - **frontend** — `npm ci`, `npm test` (`node --test`), Playwright browser tests,
   a production `npm run build`, and a Git check that the committed `js/` bundles
   match a fresh build (a `src/` change must be rebuilt and committed).
@@ -45,4 +53,8 @@ npm run lint     # advisory ESLint
 
 The app-lifecycle jobs need Docker and network access to a Nextcloud release, so
 they run in GitHub Actions rather than against the standalone local PHPUnit
-bootstrap.
+bootstrap. To reproduce the database legs locally, start `postgres:17-alpine` and
+`mariadb:11.4` with `POSTGRES_USER`/`POSTGRES_PASSWORD`/`POSTGRES_DB` and
+`MARIADB_USER`/`MARIADB_PASSWORD`/`MARIADB_DATABASE` all set to `nextcloud`, then
+run the job's container command with `--add-host db:host-gateway`,
+`--database-host db` and the published port.

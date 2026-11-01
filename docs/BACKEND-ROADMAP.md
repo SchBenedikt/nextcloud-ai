@@ -27,7 +27,7 @@ The implementation entries further below record the actual delivered slices.
 | --- | --- | --- |
 | 1, 4–5, 7 | PHP dense full scan, JSON vectors and SQL LIKE bottlenecks | 03, 05–12: measure the baseline, use bounded keyset scans for SQL pages, then continue toward indexed/hybrid retrieval; Qdrant remains optional. |
 | 2, 9–10, 20–21 | Engine comparison, cost estimates and deployment choices | 07, 14: Qdrant is the selected optional adapter; document single-node/managed/HA operations. Alternative engines and estimated prices are decision inputs, not a requirement to ship five adapters or measured savings. |
-| 3, 16 | P0 main protection, database matrix and security checks | 04, 14: provider endpoint boundary implemented; `main` now requires PRs and blocks force-push/deletion, while required CI checks and reviews remain disabled per current direction. Executed portability/security gates remain pending. |
+| 3, 16 | P0 main protection, database matrix and security checks | 04, 14: provider endpoint boundary implemented; `main` now requires PRs and blocks force-push/deletion, while required CI checks and reviews remain disabled per current direction. The PostgreSQL/MariaDB lifecycle job now exists in `tests.yml`; its green run, the remaining security gates and any measured portability findings stay open. |
 | 6, 8, 18 | Provider contracts, encrypted secrets, SSRF/DNS/TLS and local-service approvals | 02, 04, 07, 14: use native HTTP guards and explicit admin policy on every transfer. Hosted-provider contract tests remain opt-in; no account credentials are needed for installation. |
 | 7–8, 11–12 | Immutable embedding generations, tenant filters, SQL hydration and transactional outbox | 06–09: additive schema, isolated chunk journal, point delivery, persisted verification, guarded enrolled-user SQL activation and generation-aware search exist; portability, adversarial and soak evidence remain open. |
 | 9 | Major dependency upgrades require compatibility evidence | 14: assess PHPUnit/Symfony upgrades separately; do not merge them merely to clear Dependabot notifications. |
@@ -156,7 +156,7 @@ still open.
 | 11 | Canary and primary generation-based reads | 10 | Verified SQL-generation retrieval is automatic for enrolled users; an administrator can explicitly activate a verified Qdrant canary and roll back to built-in SQL. Queries apply tenant/generation/scope filters, hydrate exact revisions from SQL, and fall back on remote errors or pending mutations. Keep legacy rows; production soak and release-cycle rollback evidence remain pending. |
 | 12 | Native hybrid retrieval | 11 | Implemented the explicit generation text-payload opt-in, separate build/resume consent, Qdrant 1.20+ BM25 index preparation, native dense+BM25 RRF, exact SQL hydration and SQL fallback. Existing generations remain dense-only. Verification checks text-field coverage and compares sampled text with SQL. Remaining: run representative quality/latency comparison, verify live Qdrant 1.20+ index schema and text erasure, then enable only for evaluated canaries. SQL/dense-only rollback remains available. |
 | 13 | Normalized encrypted chat/message SQL storage | 12 | **In progress (1.18.27–1.18.29, 1.18.57, 1.18.80, 1.18.96–1.18.101).** Additive encrypted tables, small resumable imports, per-message SQL mirroring, automatic new-account SQL, scheduled verified migration for existing users, owner-scoped erasure, indexed metadata pages, per-user SQL reads with AppData export rollback, keyset-paginated sidebar loading, metadata-only SQL chat creation, per-conversation coordination, direct SQL updates for titles, message edits/truncation, regeneration preparation, chat settings and bounded folder reassignment are implemented. Mixed-version deployment/rollback rehearsal, performance/load evidence, and restore drills remain. Preserve encryption and add no plaintext search indexes. |
-| 14 | Operational hardening and portability | 13 | Partial: native OpenMetrics exports indexed-item, lexical-state, vector/outbox, account-erasure, bounded provider-type completion/chat/slow-tool, retrieval-stage, query-embedding-stage and SQL dense-scan-row aggregates; usage rows expire after 365 days and are deleted on account erasure. Rate limits use the shared locking cache with a hashed SQL fallback and cron cleanup; internal chat/image paths fail open only if both stores fail, while key-authenticated API requests return 503. W3C trace context now propagates to configured model and optional vector services; native spans, complete DB/lock traces and end-to-end evidence remain open. The Activity feed uses Nextcloud QueryBuilder; Mail integration SQL avoids MySQL-only identifier quotes and normalizes search case independent of database collation. PostgreSQL/MariaDB lifecycle coverage, provider network-only latency, restore/delete drills, sustained soak, domain-controller extraction, dependency/SAST/SBOM policy and enforced PR checks remain open. Embedding-cache 15-second process-local cooldown preserves uncached operation during cache outages. |
+| 14 | Operational hardening and portability | 13 | Partial: native OpenMetrics exports indexed-item, lexical-state, vector/outbox, account-erasure, bounded provider-type completion/chat/slow-tool, retrieval-stage, query-embedding-stage and SQL dense-scan-row aggregates; usage rows expire after 365 days and are deleted on account erasure. Rate limits use the shared locking cache with a hashed SQL fallback and cron cleanup; internal chat/image paths fail open only if both stores fail, while key-authenticated API requests return 503. W3C trace context now propagates to configured model and optional vector services; native spans, complete DB/lock traces and end-to-end evidence remain open. The Activity feed uses Nextcloud QueryBuilder; Mail integration SQL avoids MySQL-only identifier quotes and normalizes search case independent of database collation. PostgreSQL/MariaDB lifecycle coverage (job added; no green run yet), provider network-only latency, restore/delete drills, sustained soak, domain-controller extraction, dependency/SAST/SBOM policy and enforced PR checks remain open. Embedding-cache 15-second process-local cooldown preserves uncached operation during cache outages. |
 
 ## Stage 14 interface slice: correlated chat timings
 
@@ -319,8 +319,12 @@ replaced by a successful build or an adapter unit test.
 
 ## Findings beyond the vector migration
 
-- DB portability: run real migrations, mapper and API paths on PostgreSQL and
-  MariaDB in addition to SQLite when checks resume.
+- DB portability: migrations, mapper and API paths now also run on PostgreSQL
+  and MariaDB instead of SQLite only (`nextcloud-app-database` in `tests.yml`,
+  see [CI.md](CI.md)). The legs were reproduced locally with Nextcloud 35: 22
+  app tables and `app:enable` succeeded on both PostgreSQL 17 and MariaDB 11.4,
+  and the API integration test executed on MariaDB. A green CI run and
+  cross-database evidence for the whole suite remain open.
 - Provider contracts: mock API shapes and opt-in live provider checks; never
   publish secrets or transmit user documents during automatic verification.
 - Observability: request correlation, provider/tool durations, queue age, dead
@@ -829,3 +833,23 @@ changes; source deletion clears postings. While pending rows remain, search uses
 the legacy LIKE path for those rows; see 1.18.45 for mixed-state candidate merging.
 Backfill database load and catch-up rate remain to be measured on representative
 installations.
+
+
+### Database portability lifecycle job (1.20.40)
+
+`tests.yml` gained `nextcloud-app-database`, which installs and exercises the app
+in real Nextcloud 35 against a real PostgreSQL 17 service container and a real
+MariaDB 11.4 service container instead of SQLite only. Both legs perform a fresh
+`occ maintenance:install` on the target engine, `occ app:enable eva_ai` (all app
+migrations), `occ app:list`, `tests/ApiControllerIntegrationTest.php` and the full
+`composer test` suite, so engine-specific migration, mapper and API regressions
+fail the pull request. The service is published on the runner and reached from
+the Nextcloud CI container through the docker host gateway.
+
+Locally reproduced on 2026-11-01 with Nextcloud 35: PostgreSQL 17 and MariaDB 11.4
+each ended up with 22 `oc_eva_ai_*` tables after `app:enable`, and
+`ApiControllerIntegrationTest` ran on MariaDB. Its two failures reproduce
+identically on SQLite, so they are pre-existing on this branch and not database
+related; the branch's own PHPUnit, frontend and app-lifecycle checks still fail
+independently of this job. No green run of the new job exists yet, and the
+executed evidence stays limited to these local legs.
