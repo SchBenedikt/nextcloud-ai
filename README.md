@@ -2,7 +2,10 @@
 
 Ask questions, find information in your files and work through everyday tasks
 without leaving Nextcloud. EVA brings conversations, cited document answers and
-optional Nextcloud tools into one workspace.
+Nextcloud tools into one workspace. It is built deeply into Nextcloud: it runs
+as a native app, powers the Nextcloud Assistant across the whole instance, and
+talks to Files, Mail, Calendar, Contacts, Tasks, Shares and Talk through their
+real APIs — with more than 80 built-in actions.
 
 [![Tests](https://github.com/SchBenedikt/nextcloud-ai/actions/workflows/tests.yml/badge.svg?branch=main)](https://github.com/SchBenedikt/nextcloud-ai/actions/workflows/tests.yml)
 [![License: AGPL v3](https://img.shields.io/badge/License-AGPL%20v3-blue.svg)](LICENSE)
@@ -23,9 +26,38 @@ Settings are grouped into Models, Documents, Tools & permissions, Automation,
 Personal & data, and Advanced. Optional integrations load when you open their
 section, keeping the everyday path focused.
 
+EVA can also tell you what it can do: ask "What can you do?" and it lists its
+file, calendar, task, contact, mail and communication actions for your setup.
+
+![EVA answering "What can you do?" with its files, calendar, tasks, contacts and mail actions](screenshots/eva-capabilities.png)
+
 ![EVA home with a direct message input and recent conversations](screenshots/eva-home.png)
 
 ![A conversation with the compact header](screenshots/eva-chat.png)
+
+## Deep Nextcloud integration and the Nextcloud Assistant
+
+EVA is not an external chatbot next to Nextcloud — it is woven into it:
+
+- **Nextcloud Assistant**: EVA registers native TaskProcessing providers, so it
+  powers the official Nextcloud Assistant app. Chat with your indexed files
+  directly in the Assistant sidebar, use EVA for text work (translate, summarize,
+  proofread, formalize, reformulate, headlines, topics, emoji), audio
+  (transcription, subtitles, text-to-speech, audio chat) and images (OCR, image
+  analysis, text-to-image). Scheduled tasks ("Geplante Aufgaben") can trigger
+  EVA, and the Assistant can propose file, calendar, mail and task actions that
+  you confirm before anything runs.
+- **Files**: open with EVA from the file menu for a focused file conversation,
+  index documents, mails and Talk conversations, and let EVA create, move,
+  rename, share or comment on files.
+- **Talk**: add EVA as a bot to a Talk conversation, or let EVA read and post
+  messages in rooms on your behalf (off by default, enabled per user).
+- **Search**: EVA appears in the unified Nextcloud search for your indexed
+  content.
+- **Admin**: native admin settings, OpenMetrics exporters and OCC commands fit
+  into standard Nextcloud operations.
+
+![EVA powering the official Nextcloud Assistant with chat and scheduled tasks](screenshots/eva-nextcloud-assistant.png)
 
 ## Choose your AI provider
 
@@ -57,16 +89,41 @@ then combines semantic and keyword retrieval. File answers can link to their
 sources so you can verify the response. Optional extraction utilities are
 needed for some formats; see [Features](docs/FEATURES.md).
 
-Use Documents to inspect the index and extracted text, or choose **Open with
-EVA** from Files for a focused file conversation. Background indexing continues
-when you leave the page. Progress checks use a lightweight endpoint without
-model discovery or system diagnostics.
+Use Documents to inspect the index and extracted text — with search, filters and
+the extracted chunk text per file — or choose **Open with EVA** from Files for a
+focused file conversation. Background indexing continues when you leave the
+page. Progress checks use a lightweight endpoint without model discovery or
+system diagnostics.
 
-## Add tools when you need them
+![The EVA documents view listing indexed files, types, sizes, chunks and status](screenshots/eva-documents-index.png)
 
-Optional tools integrate with Files, Mail, Calendar, Contacts, Tasks, Talk and
-other Nextcloud services. Review permissions and confirmation requests before
-approving actions. Web search and external connectors have separate data flows.
+## More than 80 actions across Nextcloud
+
+EVA works with the real Nextcloud services through their APIs. Every write
+action asks for your confirmation before it runs. Highlights:
+
+- **Files & knowledge**: search, read, create, rename, move, copy, checksum and
+delete files, create Markdown notes, keep a KNOWLEDGE.md memory, manage shares
+(public links or users), comments, system tags and file versions.
+- **Calendar**: list calendars and events, create, update and delete events, and
+find free slots for a meeting.
+- **Mail**: search, list and read mails, count unread messages and summarize your
+inbox (mails are also indexable for semantic search).
+- **Tasks & Contacts**: create, update, complete and delete tasks; search,
+create, update and delete contacts, and manage your own profile.
+- **Talk**: list rooms, read chats and post messages into Nextcloud Talk.
+- **Web search & images**: search the web for current information and show
+images from the internet directly in the chat, with the source page always
+cited.
+- **Briefings & scheduling**: scheduled briefings and Nextcloud Assistant
+scheduled tasks, plus recent activity and weather on request.
+- **Extensibility**: terminal commands, generic Nextcloud App API calls and
+external connectors for services beyond Nextcloud.
+
+Web search, image search and external connectors have separate data flows —
+review permissions and privacy switches before enabling them.
+
+![EVA showing images fetched from the web in the chat, with sources](screenshots/eva-image-search.png)
 
 Scheduled briefings, usage metrics, background runs, extensions and scoped API
 keys remain available through the relevant settings sections. Export chats as

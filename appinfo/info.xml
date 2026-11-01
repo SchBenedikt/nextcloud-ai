@@ -9,49 +9,42 @@
           more spaces into a code block, so indenting the copy makes the whole
           store listing render as source code. See docs/VERSIONING.md. -->
     <description>
-EVA adds AI-powered search and chat to your Nextcloud. Ask questions about your files and get answers with source links, so you can check where the information came from. Choose local Ollama models or configure a hosted provider.
+EVA adds a capable AI assistant to your Nextcloud. It is deeply integrated into Nextcloud itself: it powers the official Nextcloud Assistant, works inside Files, Talk, Mail, Calendar, Contacts and Tasks, and answers with cited sources from your own documents.
 
-## Why Eva AI?
+## Deep Nextcloud integration
 
-EVA stores its search index in Nextcloud. Where AI inference happens depends on the model and integrations you configure. The default chat model, gemma4:cloud, uses Ollama Cloud; choose a local model in EVA Settings if chat prompts and retrieved file excerpts must stay on your infrastructure.
+EVA is not an external chatbot — it is a native Nextcloud app. It registers TaskProcessing providers, so it powers the official Nextcloud Assistant app across the whole instance: chat with your indexed files in the Assistant sidebar, use text, audio and image tools, and run scheduled tasks ("Geplante Aufgaben") that trigger EVA. In Files you can open any document with EVA for a focused file conversation. EVA can also join Nextcloud Talk as a bot and read or post messages in rooms (off by default).
 
-## Key Features
+## More than 80 actions
 
-**Intelligent File Indexing**
-EVA reads and chunks supported files for semantic search, including plain text, PDF, Microsoft Office, OpenDocument, EPUB, saved mail, web archives, and Jupyter notebooks. Extraction covers readable document content; macros are not executed. Unsupported or unreadable files are skipped without stopping the indexing run.
+EVA works through the real Nextcloud APIs, and every write action asks for your confirmation first:
 
-**Hybrid Retrieval Engine**
-Combines vector-based semantic search with lexical search (BM25) using Reciprocal Rank Fusion (RRF) to deliver the most relevant results — even for exact-match queries.
+- **Files &amp; knowledge**: search, read, create, rename, move, copy and delete files, write Markdown notes, keep a personal knowledge memory, manage shares, comments, system tags and file versions.
+- **Calendar &amp; tasks**: list, create, update and delete events, find free slots, and create, complete and delete your to-dos.
+- **Mail &amp; contacts**: search, list and read mails, summarize your inbox, and manage contacts and your profile.
+- **Talk**: list rooms, read conversations and post messages into Nextcloud Talk.
 
-**Cited Sources**
-Every answer includes the exact file path where the information was found, so you can always verify the source. Answers that used the web list the pages they actually retrieved, with their site and an excerpt, marked as web sources.
+## Web search and images from the internet
 
-**Nextcloud Integration**
-EVA can work with Nextcloud Files, Mail, Calendar, Contacts, Tasks, Shares, and Talk. The available tools depend on enabled apps and execution surface; review action confirmations and settings before enabling write-capable features.
+EVA can search the current web for up-to-date answers and show images from the internet directly in the chat. Answers list the pages that were actually retrieved, and image results always link back to their source page.
 
-**Ollama and Groq Support**
-Use Ollama or configure an OpenAI-compatible hosted provider. Check each provider's settings to understand where prompts, retrieved excerpts, and tool results are processed.
+## Your models, your choice
 
-**Talk Integration**
-Optionally add EVA to Nextcloud Talk. EVA registers one bot and can use its supported read-only tools in conversations.
+Use native Ollama or Groq, or add compatible profiles for OpenAI, Google Gemini, Mistral, DeepSeek, OpenRouter and other Chat Completions servers. The search index stays on your Nextcloud server; you decide where inference happens.
+
+## Cited answers from your files
+
+EVA extracts text, PDF, Office, OpenDocument and many other formats, then combines semantic and keyword retrieval. Every file answer links back to its sources so you can verify it.
 
 ## Requirements
 
 - Nextcloud 30–35
 - PHP 8.2+
-- Ollama reachable from the Nextcloud server (default: http://127.0.0.1:11434)
-- Optional: hosted provider credentials, if you choose a cloud model
-
-## Get Started
-
-1. Install the app
-2. Choose a local Ollama model or configure the default hosted chat model
-3. Open EVA from the left sidebar and select your models in Settings
-4. Start indexing and chat with your files
+- Ollama reachable from the Nextcloud server (default: http://127.0.0.1:11434), or a hosted provider key
 
 ## Privacy
 
-The default chat model is hosted by Ollama Cloud, so prompts and retrieved file excerpts are sent there for inference. To keep this chat data on your infrastructure, select a local chat model and local embedding model, and do not enable hosted providers or external connectors. Optional services such as web search, Mail, Talk, and OCR have their own data flows; configure them deliberately. EVA does not add third-party indexing or analytics.
+The search index is stored on your Nextcloud server. Chat prompts, retrieved excerpts and tool results are sent to the model provider you configured; the default chat model uses Ollama Cloud, so select a local model to keep everything on your infrastructure. Web search, image search, Mail, Talk and external connectors each have their own data flow and stay disabled until you enable them. EVA adds no third-party analytics.
 
 ## Support
 
@@ -60,7 +53,7 @@ The default chat model is hosted by Ollama Cloud, so prompts and retrieved file 
 
 Licensed under AGPL-3.0-or-later.
     </description>
-    <version>1.20.41</version>
+    <version>1.20.42</version>
     <licence>agpl</licence>
     <author>Benedikt Schächner</author>
     <namespace>EvaAi</namespace>
