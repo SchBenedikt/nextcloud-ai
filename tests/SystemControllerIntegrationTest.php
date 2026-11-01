@@ -81,7 +81,7 @@ final class SystemControllerIntegrationTest extends TestCase {
         );
         $response = $controller->indexStatus();
         self::assertSame(200, $response->getStatus());
-        self::assertSame(['indexing' => true, 'indexStopping' => true, 'indexMode' => 'mail', 'lastStarted' => '', 'lastFinished' => '', 'lastError' => ''], $response->getData());
+        self::assertSame(['indexing' => true, 'indexStopping' => true, 'indexMode' => 'mail', 'lastStarted' => '', 'lastFinished' => '', 'lastError' => '', 'retrievalBackend' => ''], $response->getData());
     }
 
     public function testMetricsUsesTheRequestedDateRange(): void {

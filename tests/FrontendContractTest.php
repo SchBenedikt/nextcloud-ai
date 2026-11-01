@@ -132,7 +132,9 @@ final class FrontendContractTest extends TestCase {
 		self::assertStringContainsString('@click.stop="deleteChat(item.chat.id)"', $app);
 		self::assertStringContainsString('@click.stop="updateChatMeta(item.chat.id, { pinned:', $app);
 		self::assertStringContainsString('@click.stop="updateChatMeta(item.chat.id, { archived:', $app);
-        self::assertStringContainsString("return requestApi('GET', '/chats')", $app);
+        // Chats are listed through the keyset-paginated endpoint, so a large
+        // history is read in bounded pages instead of one array.
+        self::assertStringContainsString("requestApi('GET', '/chats/page', { keyset: 1, offset: 0, limit: 50 })", $app);
 		// The app starts on a modern dashboard home view with a stats API.
 		self::assertStringContainsString('HomeView', $app);
 		self::assertStringContainsString("view === 'home'", $app);
@@ -279,12 +281,13 @@ final class FrontendContractTest extends TestCase {
     public function testSettingsPersistExclusionsAndDoNotOverwriteFormDuringPolling(): void {
         $settings = self::settingsSource();
         self::assertStringContainsString('async function persistExcludeList(list, previous)', $settings);
-        self::assertStringContainsString('const savedSuccessfully = await save()', $settings);
+        self::assertStringContainsString('const savedSuccessfully = await save({ onlyKeys: [\'exclude_paths\'] })', $settings);
         self::assertStringContainsString('async function loadStatus(syncForm = false)', $settings);
         self::assertStringContainsString('syncForm', $settings);
         self::assertStringContainsString('await loadStatus(true)', $settings);
 
-        $controller = (string)file_get_contents(__DIR__ . '/../lib/Controller/ApiController.php');
+        // Personal settings live in the focused settings controller now.
+        $controller = (string)file_get_contents(__DIR__ . '/../lib/Controller/SettingsController.php');
         self::assertStringContainsString('private function validateOllamaUrl(string $url): ?string', $controller);
         self::assertStringNotContainsString('Only the local Ollama service may be configured by a non-administrator.', $controller);
     }
@@ -407,15 +410,16 @@ final class FrontendContractTest extends TestCase {
     public function testAdminDashboardSurfaceAndAdminOnlyRoutes(): void {
         // Issue #82: an admin dashboard exists with per-user overview and
         // management, and every endpoint is admin-gated via #[AdminRequired].
+        // The admin page is a compact surface: storage status plus the account
+        // list for generation management. Per-user reindex/reset/enrollment
+        // stay available as admin-only API endpoints, which the controller and
+        // route assertions below pin down.
         $adminView = (string)file_get_contents(__DIR__ . '/../src/views/AdminView.vue');
         self::assertStringContainsString('admin/overview', $adminView);
-        self::assertStringContainsString('/reindex', $adminView);
-        self::assertStringContainsString('/reset', $adminView);
-        self::assertStringContainsString('/enrollment', $adminView);
-        self::assertStringContainsString('user.documents', $adminView);
-        self::assertStringContainsString('user.chunks', $adminView);
-        self::assertStringContainsString('user.lastIndexedAt', $adminView);
-        self::assertStringContainsString('user.enrolled', $adminView);
+        self::assertStringContainsString('<VectorStorageStatus', $adminView);
+        self::assertStringContainsString('<GenerationEmbeddingSettings', $adminView);
+        self::assertStringContainsString('generationUsers', $adminView);
+        self::assertStringContainsString("typeof user?.userId !== 'string'", $adminView);
 
         $controller = (string)file_get_contents(__DIR__ . '/../lib/Controller/AdminController.php');
         self::assertStringContainsString('#[AdminRequired]', $controller);
@@ -425,9 +429,11 @@ final class FrontendContractTest extends TestCase {
         self::assertStringContainsString('public function setEnrollment(string $userId)', $controller);
         self::assertStringContainsString('aggregatePerUser()', $controller);
 
-        // The admin view must never show personal file content, only counts.
+        // The admin view must never show personal file content, not even counts.
         self::assertStringNotContainsString('user.files', $adminView);
         self::assertStringNotContainsString('user.path', $adminView);
+        self::assertStringNotContainsString('user.documents', $adminView);
+        self::assertStringNotContainsString('user.chunks', $adminView);
 
         $routes = (string)file_get_contents(__DIR__ . '/../appinfo/routes.php');
         self::assertStringContainsString("admin#overview", $routes);

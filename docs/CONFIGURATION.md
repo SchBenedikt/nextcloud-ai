@@ -236,6 +236,7 @@ from an instance-wide value.
 | Key | Meaning |
 |---|---|
 | `index_running` | `1` while a per-user index pass holds its claim. |
+| `index_waiting_for_chat` | `1` while a claimed pass is yielding to an active chat request instead of spending embedding capacity. |
 | `index_started` / `index_heartbeat` | Unix timestamps of claim start / last progress. |
 | `index_finished` | `1` after the last completed pass. |
 | `last_index_processed` / `last_index_total` | Progress counters of the last pass. |

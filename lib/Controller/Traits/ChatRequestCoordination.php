@@ -13,12 +13,25 @@ use Psr\Log\LoggerInterface;
 trait ChatRequestCoordination {
 	private function acquireChatRequestSlot(string $user, ILockingProvider $lockingProvider, LoggerInterface $logger): ?string {
 		try {
-			return LockGuard::acquireChatRequestLock($user, $lockingProvider, \OCP\Server::get(IDBConnection::class));
+			return LockGuard::acquireChatRequestLock($user, $lockingProvider, $this->chatRequestDatabase());
 		} catch (\OCP\Lock\LockedException) {
 			return null;
 		} catch (\Throwable $e) {
 			$logger->warning('eva_ai: chat request coordination unavailable', ['exception_class' => get_class($e)]);
 			throw $e;
+		}
+	}
+
+	/**
+	 * Optional stale-lock recovery source. Surfaces without a booted server
+	 * (CLI probes, unit tests) keep the plain lock semantics instead of
+	 * failing the whole request.
+	 */
+	private function chatRequestDatabase(): ?IDBConnection {
+		try {
+			return \OCP\Server::get(IDBConnection::class);
+		} catch (\Throwable) {
+			return null;
 		}
 	}
 

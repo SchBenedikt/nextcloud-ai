@@ -849,8 +849,19 @@ the Nextcloud CI container through the docker host gateway.
 On 2026-11-01 both legs installed Nextcloud 35 and enabled `eva_ai` 1.20.40 on
 the real engines in CI (run 41315393058); the same run was reproduced locally
 with 22 `oc_eva_ai_*` tables per engine after `app:enable`. Both legs then failed
-on the same two `ApiControllerIntegrationTest` assertions that also fail on
-SQLite, so the job reports pre-existing branch breakage rather than a database
-defect. The branch's PHPUnit, frontend and app-lifecycle checks still fail
-independently of this job, so no green run and no cross-database evidence for the
-full suite exists yet.
+on the same two `ApiControllerIntegrationTest` assertions that also failed on
+SQLite, so that run reported pre-existing branch breakage rather than a database
+defect.
+
+1.20.41 repairs that breakage. The stale tests now target the code that owns the
+behaviour: the extracted settings and index controllers, batch document and
+chunk purging by id, the keyset dense scan (`vectorsForUserAfter`) instead of the
+removed page sampler, the bounded generation chunker, the documented
+`--force` chat-lock recovery, and the keyset `/chats/page` list. The frontend
+catalog gained the 126 strings the settings, metrics, provider and generation
+panels had added without entries, so English and German stay key-identical.
+
+The full PHPUnit suite now passes locally against Nextcloud 35 (801 tests, 14 452
+assertions, 0 failures, 22 skips for unavailable optional extensions). This is
+SQLite evidence; the PostgreSQL and MariaDB legs of `nextcloud-app-database`
+must still confirm the same result per engine in CI.

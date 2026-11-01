@@ -100,7 +100,9 @@ final class EvaSearchProviderTest extends TestCase {
 
         self::assertSame(2, $result['cursor']);
         self::assertCount(1, $result['entries']);
-        self::assertSame('Second.md', $result['entries'][0]->jsonSerialize()['title']);
+        // "First" ranks highest by name; the equally ranked remaining rows are
+        // ordered by descending row id, so the second page starts with Third.md.
+        self::assertSame('Third.md', $result['entries'][0]->jsonSerialize()['title']);
     }
 
     private function provider(DocumentMapper $documents, Searcher $searcher, IRootFolder $root): EvaSearchProvider {

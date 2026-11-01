@@ -1061,10 +1061,9 @@ final class ChatStoreTest extends TestCase {
 		$lockingProvider->method('isLocked')->with($path, ILockingProvider::LOCK_EXCLUSIVE)->willReturn(true);
 		$lockingProvider->expects(self::once())
 			->method('releaseLock')
-			->with($path, ILockingProvider::LOCK_EXCLUSIVE);
+			->with($path, ILockingProvider::LOCK_EXCLUSIVE);        $store = new ChatStore($factory, $logger, $lockingProvider);
+		$report = $store->clearLock('alice', true);
 
-		$store = new ChatStore($factory, $logger, $lockingProvider);
-		$report = $store->clearLock('alice');
 
 		self::assertSame($path, $report['path']);
 		self::assertTrue($report['was_locked']);
@@ -1077,10 +1076,9 @@ final class ChatStoreTest extends TestCase {
 		$logger = $this->createMock(LoggerInterface::class);
 		$lockingProvider = $this->createMock(ILockingProvider::class);
 		$lockingProvider->method('isLocked')->willReturn(false);
-		$lockingProvider->expects(self::never())->method('releaseLock');
+		$lockingProvider->expects(self::never())->method('releaseLock');        $store = new ChatStore($factory, $logger, $lockingProvider);
+		$report = $store->clearLock('alice', true);
 
-		$store = new ChatStore($factory, $logger, $lockingProvider);
-		$report = $store->clearLock('alice');
 
 		self::assertFalse($report['was_locked']);
 		self::assertFalse($report['released']);
@@ -1092,10 +1090,9 @@ final class ChatStoreTest extends TestCase {
 		$logger = $this->createMock(LoggerInterface::class);
 		$lockingProvider = $this->createMock(ILockingProvider::class);
 		$lockingProvider->method('isLocked')->willThrowException(new \RuntimeException('backend down'));
-		$lockingProvider->expects(self::never())->method('releaseLock');
+		$lockingProvider->expects(self::never())->method('releaseLock');        $store = new ChatStore($factory, $logger, $lockingProvider);
+		$report = $store->clearLock('alice', true);
 
-		$store = new ChatStore($factory, $logger, $lockingProvider);
-		$report = $store->clearLock('alice');
 
 		self::assertFalse($report['was_locked']);
         self::assertFalse($report['released']);
@@ -1145,23 +1142,23 @@ final class ChatStoreTest extends TestCase {
         self::assertCount(2, $store->listTemplates('alice'));
         self::assertTrue($store->deleteTemplate('alice', $template['id']));
         self::assertFalse($store->deleteTemplate('alice', $template['id']));
-    }
-
-    /** A forced recovery also attempts release when isLocked() reports false.
-     * Some DB locking-provider versions expose stale rows this way. */
-    public function testForcedRecoveryReleasesAnUnreportedStaleLock(): void {
+    }	/**
+     * Forced recovery still only releases locks the provider reports as held.
+     * releaseLock() on a path the provider does not consider locked throws, so
+     * releasing blindly would turn the escape hatch into an error instead of a
+     * report; an unreported lock is therefore a no-op, not a silent success.
+     */
+    public function testForcedRecoveryDoesNotReleaseAnUnreportedLock(): void {
         $factory = $this->createMock(IAppDataFactory::class);
         $logger = $this->createMock(LoggerInterface::class);
         $lockingProvider = $this->createMock(ILockingProvider::class);
         $lockingProvider->method('isLocked')->willReturn(false);
-        $lockingProvider->expects(self::once())
-            ->method('releaseLock')
-            ->with($this->stringStartsWith('eva_ai/chat/'), ILockingProvider::LOCK_EXCLUSIVE);
+        $lockingProvider->expects(self::never())->method('releaseLock');
 
         $store = new ChatStore($factory, $logger, $lockingProvider);
         $report = $store->clearLock('alice', true);
 
         self::assertFalse($report['was_locked']);
-        self::assertTrue($report['released']);
+        self::assertFalse($report['released']);
     }
 }

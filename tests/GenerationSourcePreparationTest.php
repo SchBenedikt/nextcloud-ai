@@ -97,9 +97,15 @@ final class GenerationSourcePreparationTest extends TestCase {
         $fixture['reader']->read($this->snapshot('files', 'public'));
     }
 
+    /**
+     * The generation chunker advances by chunkSize - overlap characters, so a
+     * 128/127 setting yields one chunk per character. Past the budget the
+     * preparer must reject the whole source instead of returning the chunks it
+     * managed to produce, which would be indexed as a complete document.
+     */
     public function testChunkBudgetFailureDoesNotReturnAnIncompleteSourcePlan(): void {
         $reader = $this->createMock(GenerationSourceReader::class);
-        $reader->method('read')->willReturn(str_repeat('x', 10000));
+        $reader->method('read')->willReturn(str_repeat('x', 20000));
         $generation = new VectorGeneration(str_repeat('a', 32), 'alice', 'qdrant', 'ollama', null, 'embed', str_repeat('b', 64), 3, 128, 127);
         $this->expectExceptionObject(new VectorStoreException('source_chunk_limit'));
         (new GenerationDocumentPreparer($reader, new Chunker($this->createMock(AppConfig::class))))->prepare($generation, $this->snapshot('files', 'public'));

@@ -120,7 +120,7 @@ final class OpenIssuesSecurityRegressionTest extends TestCase {
     }
 
     public function testStopIndexLeavesTerminalStateToTheWorker(): void {
-        $controller = (string)file_get_contents(__DIR__ . '/../lib/Controller/ApiController.php');
+        $controller = (string)file_get_contents(__DIR__ . '/../lib/Controller/IndexController.php');
         $start = strpos($controller, 'public function stopIndex');
         self::assertNotFalse($start);
         $end = strpos($controller, 'private function queueIndex', $start);
@@ -153,7 +153,7 @@ final class OpenIssuesSecurityRegressionTest extends TestCase {
     }
 
     public function testIndexStartTreatsDuplicateRunsAsIdempotent(): void {
-        $controller = (string)file_get_contents(__DIR__ . '/../lib/Controller/ApiController.php');
+        $controller = (string)file_get_contents(__DIR__ . '/../lib/Controller/IndexController.php');
         $start = strpos($controller, 'private function queueIndex');
         self::assertNotFalse($start);
         $end = strpos($controller, 'private function recoverStaleIndex', $start);
@@ -181,7 +181,8 @@ final class OpenIssuesSecurityRegressionTest extends TestCase {
         self::assertStringContainsString('self::STALE_RUN_SECONDS', $appConfig);
         self::assertStringContainsString('self::CANCEL_GRACE_SECONDS', $appConfig);
         foreach ([
-            'Controller/ApiController.php',
+            // The indexed-start path moved into the extracted controller.
+            'Controller/IndexController.php',
             'Service/RagService.php',
             'BackgroundJob/IndexJob.php',
             'Service/Indexer.php',
@@ -294,6 +295,8 @@ final class OpenIssuesSecurityRegressionTest extends TestCase {
         $config = (string)file_get_contents(__DIR__ . '/../lib/Service/AppConfig.php');
         $job = (string)file_get_contents(__DIR__ . '/../lib/BackgroundJob/IndexJob.php');
         $controller = (string)file_get_contents(__DIR__ . '/../lib/Controller/ApiController.php');
+        // Enrollment admission lives in the extracted index controller now.
+        $indexController = (string)file_get_contents(__DIR__ . '/../lib/Controller/IndexController.php');
         $ollama = (string)file_get_contents(__DIR__ . '/../lib/Service/Ollama.php');
         $rag = (string)file_get_contents(__DIR__ . '/../lib/Service/RagService.php');
         $fileContext = (string)file_get_contents(__DIR__ . '/../lib/Service/FileContextChatService.php');
@@ -303,7 +306,7 @@ final class OpenIssuesSecurityRegressionTest extends TestCase {
         self::assertStringContainsString('enrolledUserIds()', $job);
         self::assertStringContainsString('hasIndexEnrollment', $job);
         self::assertStringContainsString('isIndexEnrolled', $config);
-        self::assertStringContainsString('setIndexEnrolled($user, true)', $controller);
+        self::assertStringContainsString('setIndexEnrolled($user, true)', $indexController);
         self::assertStringContainsString('clientDisconnected', $controller);
         self::assertStringContainsString('clientDisconnected', $ollama);
         self::assertStringContainsString('clientDisconnected', $rag);

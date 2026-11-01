@@ -55,15 +55,20 @@ class LockGuard {
     }
 
     /** Acquire a chat slot and reclaim only an expired lock left by a dead request. */
-    public static function acquireChatRequestLock(string $userId, ILockingProvider $lockingProvider, IDBConnection $db): string {
+    public static function acquireChatRequestLock(string $userId, ILockingProvider $lockingProvider, ?IDBConnection $db = null): string {
         $path = self::chatRequestLockPath($userId);
         try {
             $lockingProvider->acquireLock($path, ILockingProvider::LOCK_EXCLUSIVE, 'EVA chat request');
             return $path;
-        } catch (LockedException) {
+        } catch (LockedException $held) {
             // The database locking provider can retain an expired lock row if
             // Nextcloud cleanup has not run. Reclaim only rows past their TTL;
             // a live request's lock remains untouched and still returns 429.
+            // Without a database there is nothing to reclaim, so the live lock
+            // stays authoritative.
+            if ($db === null) {
+                throw $held;
+            }
         }
 
         $qb = $db->getQueryBuilder();

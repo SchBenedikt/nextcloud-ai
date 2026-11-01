@@ -7,9 +7,11 @@ namespace OCA\EvaAi\Tests;
 use OCA\EvaAi\BackgroundJob\IndexRequestJob;
 use OCA\EvaAi\Controller\ApiController;
 use OCA\EvaAi\Controller\BackgroundChatController;
+use OCA\EvaAi\Controller\DocumentController;
 use OCA\EvaAi\Controller\IndexController;
 use OCA\EvaAi\Controller\SettingsController;
 use OCA\EvaAi\Controller\SystemController;
+use OCA\EvaAi\Db\ChunkMapper;
 use OCA\EvaAi\Db\DocumentMapper;
 use OCA\EvaAi\Dto\ChatRequest;
 use OCA\EvaAi\Service\ActionExecutor;
@@ -17,6 +19,7 @@ use OCA\EvaAi\Service\AppConfig;
 use OCA\EvaAi\Service\BackgroundChatQueue;
 use OCA\EvaAi\Service\ChatLearner;
 use OCA\EvaAi\Service\ChatStore;
+use OCA\EvaAi\Service\FileContextChatService;
 use OCA\EvaAi\Service\IndexScheduler;
 use OCA\EvaAi\Service\Indexer;
 use OCA\EvaAi\Service\KnowledgeInitializer;
@@ -315,7 +318,7 @@ final class ApiControllerIntegrationTest extends TestCase {
 
 	public function testDocumentListRevalidatesRatherThanServingStaleIndexData(): void {
 		$stored = []; $dependencies = [];
-		$controller = $this->controller('alice', [], $dependencies, $stored);
+		$controller = $this->documentController('alice', [], $dependencies, $stored);
 		$dependencies['documentMapper']->method('findByUser')->willReturn([]);
 		$dependencies['documentMapper']->method('aggregateForUser')->willReturn(['count' => 0, 'chunks' => 0, 'size' => 0]);
 		$response = $controller->documents();
@@ -324,6 +327,19 @@ final class ApiControllerIntegrationTest extends TestCase {
 		$headers = (new \ReflectionProperty(\OCP\AppFramework\Http\Response::class, 'headers'))->getValue($response);
 		self::assertSame('private, no-cache', $headers['Cache-Control']);
 		self::assertArrayHasKey('ETag', $headers);
+	}
+
+	/** The document list moved out of ApiController; build it on the same wiring. */
+	private function documentController(?string $userId, array $params, array &$dependencies, array &$storedValues): DocumentController {
+		$this->controller($userId, $params, $dependencies, $storedValues);
+		return new DocumentController(
+			'eva_ai',
+			$dependencies['request'],
+			$userId,
+			$dependencies['documentMapper'],
+			$this->createMock(ChunkMapper::class),
+			$this->createMock(FileContextChatService::class),
+		);
 	}
 
 	public function testIndexRequestQueuesTheExpectedBackgroundJob(): void {

@@ -107,7 +107,8 @@ final class IncrementalIndexTest extends TestCase {
         [$indexer, $docMapper, $chunkMapper, $ollama] = $this->harness(files: [$this->file(7, '/alice/files/notes.txt', 'new content')]);
 
         $docMapper->expects(self::once())->method('insert');
-        $chunkMapper->expects(self::once())->method('insert');
+        // Chunks are published as one batch per document, not row by row.
+        $chunkMapper->expects(self::once())->method('insertMany');
 
         $result = $indexer->reindexFile('alice', 7);
         self::assertSame(1, $result['processed'], 'result: ' . json_encode($result));
@@ -125,7 +126,7 @@ final class IncrementalIndexTest extends TestCase {
 
         $docMapper->expects(self::once())->method('update');
         $docMapper->expects(self::never())->method('insert');
-        $chunkMapper->expects(self::never())->method('insert');
+        $chunkMapper->expects(self::never())->method('insertMany');
         $ollama->expects(self::never())->method('embedBatch');
 
         $result = $indexer->reindexFile('alice', 9);
@@ -138,8 +139,10 @@ final class IncrementalIndexTest extends TestCase {
         $existing->setId(5);
         [$indexer, $docMapper, $chunkMapper] = $this->harness(files: [], existing: $existing);
 
-        $docMapper->expects(self::once())->method('deleteByUserAndFile')->with('alice', 12);
-        $chunkMapper->expects(self::once())->method('deleteByDocument')->with(5);
+        // Purging goes through the document-id path so vector generations and
+        // their remote tombstones are deleted with the rows.
+        $docMapper->expects(self::once())->method('deleteByIds')->with([5]);
+        $chunkMapper->expects(self::once())->method('deleteByDocumentIds')->with([5]);
 
         $result = $indexer->reindexFile('alice', 12);
         self::assertSame(1, $result['deleted']);
@@ -150,7 +153,7 @@ final class IncrementalIndexTest extends TestCase {
         $existing->setId(3);
         [$indexer, $docMapper] = $this->harness(scope: 'Documents', files: [$this->file(3, '/alice/files/Private/x.txt', 'secret')], existing: $existing);
 
-        $docMapper->expects(self::once())->method('deleteByUserAndFile');
+        $docMapper->expects(self::once())->method('deleteByIds')->with([3]);
         $result = $indexer->reindexFile('alice', 3);
         self::assertSame(1, $result['deleted']);
     }
@@ -160,7 +163,7 @@ final class IncrementalIndexTest extends TestCase {
         $existing->setId(4);
         [$indexer, $docMapper] = $this->harness(exclude: 'Secret', files: [$this->file(4, '/alice/files/Secret/x.txt', 'secret')], existing: $existing);
 
-        $docMapper->expects(self::once())->method('deleteByUserAndFile');
+        $docMapper->expects(self::once())->method('deleteByIds')->with([4]);
         $result = $indexer->reindexFile('alice', 4);
         self::assertSame(1, $result['deleted']);
     }
@@ -171,7 +174,7 @@ final class IncrementalIndexTest extends TestCase {
         $existing->setId(6);
         [$indexer, $docMapper] = $this->harness(maxSize: 20971520, files: [$this->file(6, '/alice/files/big.txt', 'big', $big)], existing: $existing);
 
-        $docMapper->expects(self::once())->method('deleteByUserAndFile');
+        $docMapper->expects(self::once())->method('deleteByIds')->with([6]);
         $result = $indexer->reindexFile('alice', 6);
         self::assertSame(1, $result['deleted']);
     }

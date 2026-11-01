@@ -23,8 +23,10 @@ final class ApiRouteCompatibilityTest extends TestCase {
         ] as $signature) {
             self::assertContains($signature, $signatures);
         }
+        // URL and verb are the compatibility contract; the index routes moved to
+        // IndexController, so their handler names follow the controller.
         $routeNames = array_column($all, 'name');
-        foreach (['api#startMailIndexSnake', 'api#startTalkIndexSnake', 'api#stopIndexSnake', 'api#resetIndexSnake', 'api#deleteFolderRest', 'api#templates', 'api#saveTemplate', 'api#exportTemplates', 'api#importTemplates', 'api#deleteTemplate', 'api#useTemplate', 'api#briefingHistory', 'api#runBriefingNow'] as $routeName) {
+        foreach (['index#startMailIndexSnake', 'index#startTalkIndexSnake', 'index#stopIndexSnake', 'index#resetIndexSnake', 'api#deleteFolderRest', 'api#templates', 'api#saveTemplate', 'api#exportTemplates', 'api#importTemplates', 'api#deleteTemplate', 'api#useTemplate', 'api#briefingHistory', 'api#runBriefingNow'] as $routeName) {
             self::assertContains($routeName, $routeNames, 'Missing route handler ' . $routeName);
         }
     }

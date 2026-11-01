@@ -9,7 +9,6 @@ use OCA\EvaAi\Db\DocumentMapper;
 use OCA\EvaAi\Service\AppConfig;
 use OCA\EvaAi\Service\Indexer;
 use OCA\EvaAi\Service\IndexScheduler;
-use OCA\EvaAi\Service\Ollama;
 use OCA\EvaAi\Service\RagService;
 use OCA\EvaAi\Service\WebSearchService;
 use OCA\EvaAi\Service\UsageMetrics;
@@ -61,7 +60,8 @@ final class AdminDashboardTest extends TestCase {
 
         self::assertArrayHasKey('users', $data);
         self::assertArrayHasKey('scheduler', $data);
-        self::assertArrayHasKey('ollama', $data);
+        // The overview stays metadata-only: it must not probe the model provider.
+        self::assertArrayNotHasKey('ollama', $data);
         self::assertCount(2, $data['users']);
 
         $alice = $data['users'][0];
@@ -281,7 +281,8 @@ final class AdminDashboardTest extends TestCase {
         $data = $controller->stopBackgroundIndex()->getData();
 
         self::assertTrue($data['stopped']);
-        self::assertSame(['alice', 'bob'], $data['requestedFor']);
+        // The answer reports how many users were flagged, not their identities.
+        self::assertSame(2, $data['requestedCount']);
         self::assertArrayHasKey('scheduler', $data);
         self::assertContains(['set', 'index_job_stop_requested', '1'], $calls);
         self::assertSame(2, count(array_filter(
@@ -364,7 +365,6 @@ final class AdminDashboardTest extends TestCase {
             $mapper ?? $this->createMock(DocumentMapper::class),
             $indexer ?? $this->createMock(Indexer::class),
             $this->createMock(RagService::class),
-            $this->createMock(Ollama::class),
             $scheduler ?? $this->createMock(IndexScheduler::class),
             $jobList ?? $this->createMock(IJobList::class),
             $userManager ?? $this->createMock(IUserManager::class),

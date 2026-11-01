@@ -2,6 +2,12 @@
 
 ## [Unreleased]
 
+### Repair the test suite after the controller and retrieval extraction (1.20.41)
+
+- Point the regression and integration tests at the controllers, services and batch writers that now own the code (settings, index queue, document and chunk purging, keyset dense scan), instead of the removed single-controller paths they still asserted.
+- Align the generation chunk-budget test with the bounded chunk settings, and force the recovery command's documented `--force` semantics for chat-lock release.
+- Translate the 126 frontend strings that the settings, metrics, provider and generation panels had added without catalog entries; English and German catalogs stay key-identical and placeholder-safe.
+
 ### PostgreSQL and MariaDB app-lifecycle checks (1.20.40)
 
 - Install the app into real Nextcloud on a real PostgreSQL and a real MariaDB instead of SQLite only, and run the API integration test and the PHPUnit suite there, so engine-specific migration, mapper and API regressions fail the pull request.
