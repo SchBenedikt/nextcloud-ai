@@ -7,6 +7,16 @@ use PHPUnit\Framework\TestCase;
 use Psr\Log\LoggerInterface;
 
 final class IndexDocumentTextTest extends TestCase {
+    protected function setUp(): void
+    {
+        parent::setUp();
+        // The extractor takes a PSR-3 logger that only a Nextcloud tree (or its
+        // composer dependencies) provides; without it the typed mock fails.
+        if (!interface_exists(LoggerInterface::class)) {
+            $this->markTestSkipped('PSR-3 logger is not available');
+        }
+    }
+
     private function message(): array {return ['id'=>7,'from'=>'public','to'=>[],'sent'=>0,'subject'=>'Public'];}
 
     public function testFullMailBodyAvoidsUnusedAttachmentFetchAndKeepsCanonicalPrefix(): void {

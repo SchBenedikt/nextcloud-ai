@@ -10,6 +10,18 @@ use PHPUnit\Framework\TestCase;
 use Psr\Log\LoggerInterface;
 
 final class GenerationShadowServiceTest extends TestCase {
+    protected function setUp(): void
+    {
+        parent::setUp();
+        // The shadow probe takes a Nextcloud locking provider and a PSR-3
+        // logger; without a Nextcloud tree the bootstrap cannot autoload them,
+        // so the typed mocks cannot be built.
+        if (!defined('EVA_AI_OCP_AVAILABLE') || !EVA_AI_OCP_AVAILABLE
+            || !interface_exists(ILockingProvider::class) || !interface_exists(LoggerInterface::class)) {
+            $this->markTestSkipped('Nextcloud OCP interfaces are not available');
+        }
+    }
+
     private function fixture(bool $certificate=true,int $sqlRevision=5,int $remoteRevision=5): array {
         $generation=new VectorGeneration(str_repeat('a',32),'alice','qdrant','ollama',null,'embed',str_repeat('b',64),2,900,120);
         $config=$this->createMock(AppConfig::class);$config->method('userId')->willReturn('prior-user');
