@@ -18,7 +18,11 @@ final class Version118011Date20261029000000 extends SimpleMigrationStep {
             foreach(['revision','after_chunk_id','after_document_id','upper_document_id','expected_count','checked_count','sample_count','mismatch_count','lease_until','heartbeat_at','created_at','updated_at'] as$key)
                 $table->addColumn($key,Types::BIGINT,['notnull'=>true,'default'=>0]);
             $table->addColumn('remote_count',Types::BIGINT,['notnull'=>false]);
-            $table->setPrimaryKey(['generation_id']);
+            // Name the primary key explicitly: the default Postgres-style name
+            // (eva_ai_vec_verifications_pkey with the oc_ prefix) exceeds the
+            // 30-character identifier limit that Nextcloud 30 still enforces, so
+            // app:enable aborted there instead of installing the app.
+            $table->setPrimaryKey(['generation_id'], 'eva_verify_pk');
             $table->addIndex(['status','lease_until','updated_at'],'eva_verify_claim');
             $table->addIndex(['user_id'],'eva_verify_owner');
         }
