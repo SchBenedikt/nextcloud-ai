@@ -99,6 +99,11 @@ final class AppConfigUserSettingsTest extends TestCase {
             'id' => 'deepseek', 'name' => 'DeepSeek', 'url' => 'https://api.deepseek.com/v1', 'model' => 'deepseek-chat',
         ]]));
         self::assertSame('deepseek-chat', $appConfig->providerProfile()['model'] ?? null);
+        $local = ['id' => 'local', 'name' => 'Local model', 'url' => 'http://127.0.0.1:1234/v1', 'model' => 'local-model', 'auth' => 'none'];
+        self::assertNull($appConfig->validateValue('provider_profiles', [$local]));
+        self::assertNotNull($appConfig->validateValue('provider_profiles', [array_replace($local, ['auth' => 'invalid'])]));
+        self::assertNotNull($appConfig->validateValue('provider_profiles', [array_replace($local, ['id' => 'ollama'])]));
+        self::assertNotNull($appConfig->validateValue('provider_profiles', [array_replace($local, ['id' => 'groq'])]));
         self::assertNotNull($appConfig->validateValue('provider_profiles', [['id' => 'bad id', 'name' => '', 'url' => 'file:///tmp', 'model' => '']]));
         self::assertNotNull($appConfig->validateValue('provider_profiles', [
             ['id' => 'deepseek', 'name' => 'One', 'url' => 'https://one.example/v1', 'model' => 'm1'],

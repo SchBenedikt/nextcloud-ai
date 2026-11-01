@@ -17,15 +17,16 @@ final class ApiRouteCompatibilityTest extends TestCase {
             '/api/indexStop POST', '/api/index/stop POST',
             '/api/indexReset POST', '/api/index/reset POST',
             '/api/folders/delete POST', '/api/folders DELETE',
-            '/api/chats/{id}/reaction POST', '/api/feedback/stats GET',
             '/api/templates GET', '/api/templates POST', '/api/templates/export GET',
             '/api/templates/import POST', '/api/templates/{id} DELETE', '/api/templates/{id}/use POST',
             '/api/briefings/history GET', '/api/briefings/{id}/run POST',
         ] as $signature) {
             self::assertContains($signature, $signatures);
         }
+        // URL and verb are the compatibility contract; the index routes moved to
+        // IndexController, so their handler names follow the controller.
         $routeNames = array_column($all, 'name');
-        foreach (['api#startMailIndexSnake', 'api#startTalkIndexSnake', 'api#stopIndexSnake', 'api#resetIndexSnake', 'api#deleteFolderRest', 'api#chatReaction', 'api#feedbackStats', 'api#templates', 'api#saveTemplate', 'api#exportTemplates', 'api#importTemplates', 'api#deleteTemplate', 'api#useTemplate', 'api#briefingHistory', 'api#runBriefingNow'] as $routeName) {
+        foreach (['index#startMailIndexSnake', 'index#startTalkIndexSnake', 'index#stopIndexSnake', 'index#resetIndexSnake', 'api#deleteFolderRest', 'api#templates', 'api#saveTemplate', 'api#exportTemplates', 'api#importTemplates', 'api#deleteTemplate', 'api#useTemplate', 'api#briefingHistory', 'api#runBriefingNow'] as $routeName) {
             self::assertContains($routeName, $routeNames, 'Missing route handler ' . $routeName);
         }
     }

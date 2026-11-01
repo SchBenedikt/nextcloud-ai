@@ -198,7 +198,7 @@ in the agent proposal phase while it is disabled.
 | --- | --- |
 | `readable: no usable messages` for a room that clearly has content | Every message in it is machinery (changelog, bot, system). Check the room in Talk. |
 | `in the index: no` while `readable` shows messages | The Talk pass has not run since change. Press the button or run `--index`. |
-| Nothing recalled, but the room is indexed | The question embeddings are unavailable (Ollama unreachable) - that breaks file search the same way. Check `occ eva_ai:status` or the admin page. |
+| Nothing recalled, but the room is indexed | The question embeddings are unavailable (Ollama unreachable) - that breaks file search the same way. Check `occ eva_ai:status` or Nextcloud Administration → Eva AI. |
 | `Indexing is already running for this user.` | A run holds the claim. If its worker is gone (a killed process, a fatal error), the claim is released automatically once its heartbeat is older than 15 minutes - see below. |
 | Rooms appear only as `talk://<id>` in the documents list | That is the stored path; the document name (`Talk: <room name>`) is what the UI shows next to it. |
 

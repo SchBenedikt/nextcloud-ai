@@ -5,12 +5,33 @@ declare(strict_types=1);
 namespace OCA\EvaAi\Db;
 
 use OCP\AppFramework\Db\QBMapper;
+use OCP\AppFramework\Db\Entity;
 use OCP\DB\QueryBuilder\IQueryBuilder;
 use OCP\IDBConnection;
 
 class DocumentMapper extends QBMapper {
-    public function __construct(IDBConnection $db) {
+    private VectorSourceDeletion $sourceDeletion;
+
+    public function __construct(IDBConnection $db, ?VectorSourceDeletion $sourceDeletion = null) {
         parent::__construct($db, 'eva_ai_documents');
+        $this->sourceDeletion = $sourceDeletion ?? new VectorSourceDeletion($db, new VectorOutboxRepository($db));
+    }
+
+    public function delete(Entity $entity): Entity {
+        $this->deleteByIds([(int)$entity->getId()]);
+        return $entity;
+    }
+
+    public function insert(Entity $entity): Entity {
+        if(!$entity instanceof Document||!is_string($entity->getUserId())||$entity->getUserId()==='')throw new \InvalidArgumentException('Indexed documents require an owner.');
+        return $this->sourceDeletion->insertDocument($entity->getUserId(),fn():Entity=>parent::insert($entity));
+    }
+
+    public function update(Entity $entity): Entity {
+        $sourceFields = ['userId', 'fileId', 'path', 'name', 'source', 'contentHash', 'fileMtime', 'size', 'mime'];
+        if (array_intersect(array_keys($entity->getUpdatedFields()), $sourceFields) === []) return parent::update($entity);
+        if ($entity->getId() === null) throw new \InvalidArgumentException('Entity which should be updated has no id');
+        return $this->sourceDeletion->mutateDocuments([(int)$entity->getId()], fn(): Entity => parent::update($entity));
     }
 
     public function findByUserAndFile(string $userId, int $fileId): ?Document {
@@ -183,11 +204,7 @@ class DocumentMapper extends QBMapper {
     }
 
     public function deleteByUserAndFile(string $userId, int $fileId): void {
-        $qb = $this->db->getQueryBuilder();
-        $qb->delete('eva_ai_documents')
-            ->where($qb->expr()->eq('user_id', $qb->createNamedParameter($userId)))
-            ->andWhere($qb->expr()->eq('file_id', $qb->createNamedParameter($fileId, IQueryBuilder::PARAM_INT)));
-        $qb->executeStatement();
+        $this->deleteMatching($userId, $fileId);
     }
 
     public function countForUser(string $userId, ?string $search = null): int {
@@ -211,6 +228,7 @@ class DocumentMapper extends QBMapper {
      *
      * Supported filters (all validated/bounded in the controller):
      *  - type: MIME group ("text", "application") or full MIME type
+     *  - source: exact indexed source type (for example files)
      *  - folder: relative folder path prefix ("Documents/Notes")
      *  - dateFrom/dateTo: indexed_at unix timestamps (inclusive)
      *  - sizeMin/sizeMax: file size in bytes (inclusive)
@@ -221,6 +239,9 @@ class DocumentMapper extends QBMapper {
             $qb->andWhere(
                 $qb->expr()->like('path', $qb->createNamedParameter('%' . $this->escapeLike($search) . '%'))
             );
+        }
+        if (isset($filters['source']) && $filters['source'] !== '') {
+            $qb->andWhere($qb->expr()->eq('source', $qb->createNamedParameter((string)$filters['source'])));
         }
         if (isset($filters['type']) && $filters['type'] !== '') {
             $type = $filters['type'];
@@ -345,6 +366,22 @@ class DocumentMapper extends QBMapper {
         return $out;
     }
 
+    /** Compact instance-wide totals for native administration; no account rows are exposed. */
+    public function aggregateInstance(): array {
+        $q = $this->db->getQueryBuilder();
+        $q->selectAlias($q->createFunction('COUNT(DISTINCT user_id)'), 'account_count')
+            ->selectAlias($q->createFunction('COUNT(*)'), 'document_count')
+            ->selectAlias($q->createFunction('COALESCE(SUM(chunk_count), 0)'), 'chunk_count')
+            ->from('eva_ai_documents');
+        $r = $q->executeQuery();
+        try { $row = $r->fetch(); } finally { $r->closeCursor(); }
+        return [
+            'accounts' => (int)($row['account_count'] ?? 0),
+            'documents' => (int)($row['document_count'] ?? 0),
+            'chunks' => (int)($row['chunk_count'] ?? 0),
+        ];
+    }
+
     public function findByUser(string $userId, ?string $search = null, ?int $limit = 100, ?int $offset = 0, array $filters = [], ?string $sort = null, string $dir = 'DESC'): array {
         $qb = $this->db->getQueryBuilder();
         $qb->select('*')
@@ -427,29 +464,36 @@ class DocumentMapper extends QBMapper {
 
     /** @param int[] $ids */
     public function deleteByIds(array $ids): void {
-        if (empty($ids)) {
-            return;
-        }
         $ids = array_values(array_unique(array_filter(array_map('intval', $ids), static fn(int $id): bool => $id > 0)));
-        foreach (array_chunk($ids, 500) as $batch) {
-            $qb = $this->db->getQueryBuilder();
-            $qb->delete('eva_ai_documents')
-                ->where($qb->expr()->in('id', $qb->createNamedParameter($batch, IQueryBuilder::PARAM_INT_ARRAY)));
-            $qb->executeStatement();
-        }
+        foreach (array_chunk($ids, 500) as $batch) $this->sourceDeletion->deleteDocuments($batch, true);
     }
 
     public function deleteByUser(string $userId): int {
-        $qb = $this->db->getQueryBuilder();
-        $qb->delete('eva_ai_documents')
-            ->where($qb->expr()->eq('user_id', $qb->createNamedParameter($userId)));
-        return $qb->executeStatement();
+        return $this->deleteMatching($userId);
     }
 
     public function deleteAll(): int {
-        $qb = $this->db->getQueryBuilder();
-        $qb->delete('eva_ai_documents');
-        return $qb->executeStatement();
+        return $this->deleteMatching(null);
+    }
+
+    private function deleteMatching(?string $userId, ?int $fileId = null): int {
+        $cursor = 0; $deleted = 0;
+        do {
+            $qb = $this->db->getQueryBuilder();
+            $qb->select('id')->from('eva_ai_documents')
+                ->where($qb->expr()->gt('id', $qb->createNamedParameter($cursor, IQueryBuilder::PARAM_INT)))
+                ->orderBy('id', 'ASC')->setMaxResults(500);
+            if ($userId !== null) $qb->andWhere($qb->expr()->eq('user_id', $qb->createNamedParameter($userId)));
+            if ($fileId !== null) $qb->andWhere($qb->expr()->eq('file_id', $qb->createNamedParameter($fileId, IQueryBuilder::PARAM_INT)));
+            $result = $qb->executeQuery();
+            try { $rows = $result->fetchAll(); } finally { $result->closeCursor(); }
+            $ids = array_map(static fn(array $row): int => (int)$row['id'], $rows);
+            if ($ids !== []) {
+                $deleted += $this->sourceDeletion->deleteDocuments($ids, true)['documents'];
+                $cursor = $ids[count($ids) - 1];
+            }
+        } while (count($rows) === 500);
+        return $deleted;
     }
 
     /**
@@ -457,10 +501,26 @@ class DocumentMapper extends QBMapper {
      * Used when configuration changes that affect embeddings/chunking
      */
     public function clearHashesForUser(string $userId): void {
-        $qb = $this->db->getQueryBuilder();
-        $qb->update('eva_ai_documents')
-            ->set('content_hash', $qb->createNamedParameter(''))
-            ->where($qb->expr()->eq('user_id', $qb->createNamedParameter($userId)));
-        $qb->executeStatement();
+        $cursor = 0;
+        do {
+            $qb = $this->db->getQueryBuilder();
+            $qb->select('id')->from('eva_ai_documents')
+                ->where($qb->expr()->eq('user_id', $qb->createNamedParameter($userId)))
+                ->andWhere($qb->expr()->neq('content_hash', $qb->createNamedParameter('')))
+                ->andWhere($qb->expr()->gt('id', $qb->createNamedParameter($cursor, IQueryBuilder::PARAM_INT)))
+                ->orderBy('id', 'ASC')->setMaxResults(500);
+            $result = $qb->executeQuery();
+            try { $rows = $result->fetchAll(); } finally { $result->closeCursor(); }
+            $ids = array_map(static fn(array $row): int => (int)$row['id'], $rows);
+            if ($ids !== []) {
+                $this->sourceDeletion->mutateDocuments($ids, function () use ($ids, $userId): void {
+                    $update = $this->db->getQueryBuilder();
+                    $update->update('eva_ai_documents')->set('content_hash', $update->createNamedParameter(''))
+                        ->where($update->expr()->in('id', $update->createNamedParameter($ids, IQueryBuilder::PARAM_INT_ARRAY)))
+                        ->andWhere($update->expr()->eq('user_id', $update->createNamedParameter($userId)))->executeStatement();
+                });
+                $cursor = $ids[count($ids) - 1];
+            }
+        } while (count($rows) === 500);
     }
 }

@@ -2,13 +2,47 @@
 	<div class="metrics-view">
 		<header class="page-header">
 			<div><p class="eyebrow">EVA AI</p><h1>{{ $t('Usage metrics') }}</h1><p>{{ $t('See how many model tokens your requests used, grouped by model and day.') }}</p></div>
-			<div class="metrics-actions"><label v-if="canFilterUsers && adminUsers.length" class="metrics-user-filter"><span>{{ $t('User') }}</span><select v-model="selectedUser" :aria-label="$t('Filter metrics by user')" @change="load()"><option value="">{{ $t('My metrics') }}</option><option v-for="user in adminUsers" :key="user.userId" :value="user.userId">{{ user.displayName }} ({{ user.userId }})</option></select></label><div class="period-switcher" role="group" :aria-label="$t('Metrics period')"><button v-for="value in [7, 30, 90]" :key="value" type="button" :class="{ active: days === value }" :aria-pressed="days === value" @click="load(value)">{{ value }} {{ $t('days') }}</button></div><button type="button" class="metrics-download" :disabled="loading || !hasCurrentData" @click="downloadCsv">{{ $t('Download CSV') }}</button><button type="button" class="metrics-download" :disabled="loading || !hasCurrentData" @click="printReport">{{ $t('Print / Save as PDF') }}</button><span class="metrics-refresh-status" role="status" aria-live="polite">{{ $t('Refreshes automatically every minute') }}<template v-if="updatedLabel"> · {{ updatedLabel }}</template></span></div>
+			<div class="metrics-actions"><label v-if="canFilterUsers && adminUsers.length" class="metrics-user-filter"><span>{{ $t('User') }}</span><select v-model="selectedUser" :aria-label="$t('Filter metrics by user')" @change="load()"><option value="">{{ $t('My metrics') }}</option><option v-for="user in adminUsers" :key="user.userId" :value="user.userId">{{ user.displayName }} ({{ user.userId }})</option></select></label><div class="period-switcher" role="group" :aria-label="$t('Metrics period')"><button v-for="value in [7, 30, 90]" :key="value" type="button" :class="{ active: days === value }" :aria-pressed="days === value" @click="load(value)">{{ value }} {{ $t('days') }}</button></div><NcButton type="button" variant="secondary" class="metrics-download" :disabled="loading || !hasCurrentData" @click="downloadCsv">{{ $t('Download CSV') }}</NcButton><NcButton type="button" variant="secondary" class="metrics-download" :disabled="loading || !hasCurrentData" @click="printReport">{{ $t('Print / Save as PDF') }}</NcButton><span class="metrics-refresh-status" role="status" aria-live="polite">{{ $t('Refreshes automatically every minute') }}<template v-if="updatedLabel"> · {{ updatedLabel }}</template></span></div>
 		</header>
-		<div v-if="error" class="metrics-error" role="alert"><span>{{ error }}</span><button type="button" class="metrics-retry" @click="load()">{{ $t('Try again') }}</button></div>
+		<div v-if="error" class="metrics-error" role="alert"><span>{{ error }}</span><NcButton type="button" variant="secondary" class="metrics-retry" @click="load()">{{ $t('Try again') }}</NcButton></div>
 		<div v-if="loading" class="metrics-loading">{{ $t('Loading metrics…') }}</div>
 		<template v-else-if="hasCurrentData">
 			<section class="metrics-cards" :aria-label="$t('Usage totals')"><div v-for="card in cards" :key="card.label" class="metrics-card"><span>{{ card.label }}</span><strong>{{ card.money ? formatMoney(card.value) : format(card.value) }}</strong><small>{{ card.hint }}</small></div></section>
-			<section class="metrics-panel feedback-metrics" :aria-label="$t('Answer feedback')"><h2>{{ $t('Answer feedback') }}</h2><p class="metrics-note">{{ $t('All-time feedback on assistant answers') }}</p><div class="feedback-totals"><div><strong>{{ format(feedbackStats.helpful) }}</strong><span>{{ $t('Helpful') }}</span></div><div><strong>{{ format(feedbackStats.notHelpful) }}</strong><span>{{ $t('Not helpful') }}</span></div><div><strong>{{ format(feedbackStats.bookmarked) }}</strong><span>{{ $t('Bookmarked') }}</span></div></div></section>
+			<section v-if="ragRequestDuration.samples > 0" class="metrics-panel">
+				<h2>{{ $t('End-to-end EVA request time') }}</h2>
+				<p class="metrics-note">{{ $t('Time inside EVA from request processing through a final answer, confirmation or error. Includes retrieval, model and tool work.') }}</p>
+				<div class="metrics-table-scroll"><table><thead><tr><th>{{ $t('Outcome') }}</th><th>{{ $t('Requests') }}</th><th>p50</th><th>p95</th><th>p99</th></tr></thead><tbody>
+					<tr v-for="row in ragRequestOutcomes" :key="row.outcome"><td>{{ row.label }}</td><td>{{ format(row.count) }}</td><td>{{ format(row.p50_ms) }} ms</td><td>{{ format(row.p95_ms) }} ms</td><td>{{ format(row.p99_ms) }} ms</td></tr>
+				</tbody></table></div>
+			</section>
+			<section v-if="embeddingQueryDuration.samples > 0" class="metrics-panel">
+				<h2>{{ $t('Query embedding time by provider') }}</h2>
+				<p class="metrics-note">{{ $t('Time spent preparing the search vector for a chat query. This stage includes cache and request setup; lexical-only and mixed fallback requests are excluded.') }}</p>
+				<div class="metrics-table-scroll"><table><thead><tr><th>{{ $t('Provider') }}</th><th>{{ $t('Requests') }}</th><th>p50</th><th>p95</th><th>p99</th></tr></thead><tbody>
+					<tr v-for="row in embeddingQueryRows" :key="row.provider"><td>{{ row.label }}</td><td>{{ format(row.count) }}</td><td>{{ format(row.p50_ms) }} ms</td><td>{{ format(row.p95_ms) }} ms</td><td>{{ format(row.p99_ms) }} ms</td></tr>
+				</tbody></table></div>
+			</section>
+			<section v-if="sqlDenseScan.samples > 0" class="metrics-panel">
+				<h2>{{ $t('SQL vectors read for dense search') }}</h2>
+				<p class="metrics-note">{{ $t('Count of vector rows EVA loaded for exact SQL cosine scoring. This measures application rows, not physical database or disk reads.') }}</p>
+				<div class="metrics-table-scroll"><table><thead><tr><th>{{ $t('Search path') }}</th><th>{{ $t('Requests') }}</th><th>p50</th><th>p95</th><th>p99</th></tr></thead><tbody>
+					<tr v-for="row in sqlDenseScanRows" :key="row.backend"><td>{{ row.label }}</td><td>{{ format(row.count) }}</td><td>{{ format(row.p50_rows) }}</td><td>{{ format(row.p95_rows) }}</td><td>{{ format(row.p99_rows) }}</td></tr>
+				</tbody></table></div>
+			</section>
+			<section v-if="indexRuns.samples > 0" class="metrics-panel">
+				<h2>{{ $t('Indexing performance') }}</h2>
+				<p class="metrics-note">{{ $t('Background run duration and successfully written file chunks. Chunk throughput covers file traversal through SQL writes, including extraction and embedding.') }}</p>
+				<div class="metrics-table-scroll"><table><thead><tr><th>{{ $t('Run type') }}</th><th>{{ $t('Outcome') }}</th><th>{{ $t('Runs') }}</th><th>{{ $t('Processed items') }}</th><th>{{ $t('File chunks') }}</th><th>{{ $t('Average file chunks / second') }}</th><th>{{ $t('Run p50') }}</th><th>{{ $t('Run p95') }}</th><th>{{ $t('Run p99') }}</th></tr></thead><tbody>
+					<tr v-for="row in indexRunRows" :key="row.mode + row.outcome"><td>{{ row.modeLabel }}</td><td>{{ row.outcomeLabel }}</td><td>{{ format(row.runs) }}</td><td>{{ format(row.items) }}</td><td>{{ format(row.file_chunks) }}</td><td>{{ Number(row.average_file_chunks_per_second || 0).toLocaleString() }}</td><td>{{ format(row.p50_ms) }} ms</td><td>{{ format(row.p95_ms) }} ms</td><td>{{ format(row.p99_ms) }} ms</td></tr>
+				</tbody></table></div>
+			</section>
+			<section v-if="chatStoreLockWait.samples > 0" class="metrics-panel">
+				<h2>{{ $t('Chat storage lock waits') }}</h2>
+				<p class="metrics-note">{{ $t('Waits are recorded only when a chat-store lock collides. Uncontended requests add no telemetry write.') }}</p>
+				<div class="metrics-table-scroll"><table><thead><tr><th>{{ $t('Lock type') }}</th><th>{{ $t('Result') }}</th><th>{{ $t('Contended requests') }}</th><th>p50</th><th>p95</th><th>p99</th></tr></thead><tbody>
+					<tr v-for="row in chatStoreLockWaitRows" :key="row.mode + row.outcome"><td>{{ row.modeLabel }}</td><td>{{ row.outcomeLabel }}</td><td>{{ format(row.count) }}</td><td>{{ format(row.p50_ms) }} ms</td><td>{{ format(row.p95_ms) }} ms</td><td>{{ format(row.p99_ms) }} ms</td></tr>
+				</tbody></table></div>
+			</section>
 			<section v-if="totals.total_tokens" class="metrics-insights" :aria-label="$t('Usage breakdown')">
 				<div class="metrics-panel token-split"><h2>{{ $t('Total tokens') }}</h2><div class="split-chart" :style="{ '--input': inputShare + '%' }" aria-hidden="true"><span>{{ format(totals.total_tokens) }}</span></div><div class="chart-legend"><span><i class="input-dot"></i>{{ $t('Input tokens') }} · {{ inputShare }}%</span><span><i class="output-dot"></i>{{ $t('Output tokens') }} · {{ 100 - inputShare }}%</span></div></div>
 				<div class="metrics-panel"><h2>{{ $t('Top models by token use') }}</h2><div class="model-bars"><div v-for="row in byModel.slice(0, 5)" :key="row.provider + row.model" class="model-bar"><span :title="row.provider + ' / ' + row.model">{{ row.provider }} / {{ row.model }}</span><div><i :style="{ width: (Number(row.total_tokens || 0) / maxModel * 100) + '%' }"></i></div><strong>{{ format(row.total_tokens) }}</strong></div></div></div>
@@ -35,6 +69,7 @@
 
 <script>
 import { ref, computed, onMounted, onBeforeUnmount } from 'vue'
+import { NcButton } from '@nextcloud/vue'
 import { api, errMsg } from '../lib/api'
 import { translate as t } from '../lib/i18n'
 import { formatToolName } from '../lib/chat-utils'
@@ -42,9 +77,9 @@ import { buildMetricsCsv } from '../lib/metrics-export'
 
 export default {
 	name: 'MetricsView',
+	components: { NcButton },
 	setup() {
 		const days = ref(30); const loading = ref(true); const error = ref(''); const dataDays = ref(null); const data = ref({ totals: {}, by_model: [], daily: [], slow_tools: [] })
-		const feedbackStats = ref({ helpful: 0, notHelpful: 0, bookmarked: 0 })
 		const adminUsers = ref([]); const selectedUser = ref(''); const canFilterUsers = ref(false)
 		const prices = ref({}); const pricesLoaded = ref(false); const savingPricing = ref(false); const pricingStatus = ref('')
 		const lastUpdated = ref(0)
@@ -54,6 +89,40 @@ export default {
 		let requestId = 0; let refreshTimer = null; let adminUsersChecked = false
 		const hasCurrentData = computed(() => dataDays.value === days.value)
 		const totals = computed(() => data.value.totals || {}); const byModel = computed(() => data.value.by_model || []); const daily = computed(() => data.value.daily || []); const slowTools = computed(() => data.value.slow_tools || [])
+		const ragRequestDuration = computed(() => data.value.rag_request_duration || { samples: 0, outcomes: {} })
+		const embeddingQueryDuration = computed(() => data.value.embedding_query_duration || { samples: 0, providers: {} })
+		const embeddingQueryRows = computed(() => Object.entries(embeddingQueryDuration.value.providers || {}).map(([provider, row]) => ({
+			provider,
+			label: ({ ollama: t('Ollama'), openai_compatible: t('OpenAI-compatible') })[provider] || t('Other'),
+			...row,
+		})))
+		const sqlDenseScan = computed(() => data.value.sql_dense_scan || { samples: 0, backends: {} })
+		const sqlDenseScanRows = computed(() => Object.entries(sqlDenseScan.value.backends || {}).map(([backend, row]) => ({
+			backend,
+			label: ({ sql_legacy: t('Legacy SQL'), sql_generation: t('SQL generation') })[backend] || t('Other'),
+			...row,
+		})))
+		const ragRequestOutcomes = computed(() => Object.entries(ragRequestDuration.value.outcomes || {}).map(([outcome, row]) => ({
+			outcome,
+			label: ({ complete: t('Completed'), error: t('Error'), incomplete: t('Interrupted') })[outcome] || t('Other'),
+			...row,
+		})))
+		const indexRuns = computed(() => data.value.index_runs || { samples: 0, modes: {} })
+		const indexRunRows = computed(() => Object.entries(indexRuns.value.modes || {}).flatMap(([mode, outcomes]) => Object.entries(outcomes || {}).map(([outcome, row]) => ({
+			mode,
+			outcome,
+			modeLabel: ({ all: t('All sources'), files: t('Files'), mail: t('Mail'), talk: t('Talk') })[mode] || t('Other'),
+			outcomeLabel: ({ complete: t('Completed'), error: t('Error'), incomplete: t('Interrupted') })[outcome] || t('Other'),
+			...row,
+		}))))
+		const chatStoreLockWait = computed(() => data.value.chat_store_lock_wait || { samples: 0, modes: {} })
+		const chatStoreLockWaitRows = computed(() => Object.entries(chatStoreLockWait.value.modes || {}).flatMap(([mode, outcomes]) => Object.entries(outcomes || {}).map(([outcome, row]) => ({
+			mode,
+			outcome,
+			modeLabel: ({ shared: t('Shared read'), exclusive: t('Exclusive write') })[mode] || t('Other'),
+			outcomeLabel: ({ acquired: t('Acquired after retry'), degraded_read: t('Read without lock'), busy: t('Write returned busy'), read_failed: t('Degraded read failed') })[outcome] || t('Other'),
+			...row,
+		}))))
 		const maxDaily = computed(() => Math.max(1, ...daily.value.map(row => Number(row.total_tokens) || 0))); const maxModel = computed(() => Math.max(1, ...byModel.value.map(row => Number(row.total_tokens) || 0))); const inputShare = computed(() => Math.round((Number(totals.value.input_tokens || 0) / Math.max(1, Number(totals.value.total_tokens || 0))) * 100)); const format = value => Number(value || 0).toLocaleString()
 		const estimatedCost = computed(() => byModel.value.reduce((sum, row) => sum + (Number(row.estimated_cost_usd) || 0), 0))
 		const priceKey = row => JSON.stringify([row.provider, row.model])
@@ -90,9 +159,8 @@ export default {
 				await loadAdminUsers()
 				const otherUser = selectedUser.value !== ''
 				const metricsPath = otherUser ? `admin/users/${encodeURIComponent(selectedUser.value)}/metrics` : 'metrics'
-				const [result, feedback, settings] = await Promise.all([
+				const [result, settings] = await Promise.all([
 					api('GET', metricsPath, { days: period }),
-					otherUser ? Promise.resolve(null) : api('GET', 'feedback/stats').catch(() => null),
 					otherUser || pricesLoaded.value ? Promise.resolve(null) : api('GET', 'settings').catch(() => null),
 				])
 				if (currentRequest !== requestId) return
@@ -106,7 +174,6 @@ export default {
 				if (settings) pricesLoaded.value = true
 				data.value = result
 				for (const row of result.by_model || []) ensurePrice(row)
-				if (feedback || result.feedback) feedbackStats.value = feedback || result.feedback
 				dataDays.value = period
 				lastUpdated.value = Date.now()
 				error.value = ''
@@ -135,7 +202,7 @@ export default {
 		}
 		const downloadCsv = () => {
 			if (!hasCurrentData.value) return
-			const content = buildMetricsCsv({ days: days.value, totals: totals.value, byModel: byModel.value, daily: daily.value, slowTools: slowTools.value, feedbackStats: feedbackStats.value })
+			const content = buildMetricsCsv({ days: days.value, totals: totals.value, byModel: byModel.value, daily: daily.value, slowTools: slowTools.value, ragRequestDuration: ragRequestDuration.value, embeddingQueryDuration: embeddingQueryDuration.value, sqlDenseScan: sqlDenseScan.value, indexRuns: indexRuns.value, chatStoreLockWait: chatStoreLockWait.value })
 			const url = URL.createObjectURL(new Blob([content], { type: 'text/csv;charset=utf-8' }))
 			const link = document.createElement('a')
 			link.href = url
@@ -159,7 +226,7 @@ export default {
 			document.removeEventListener('visibilitychange', refreshWhenVisible)
 			requestId++
 		})
-		return { days, loading, error, hasCurrentData, totals, byModel, daily, slowTools, feedbackStats, adminUsers, selectedUser, canFilterUsers, maxDaily, maxModel, inputShare, cards, format, formatMoney, priceKey, ensurePrice, savingPricing, pricingStatus, savePricing, load, downloadCsv, printReport, updatedLabel }
+		return { days, loading, error, hasCurrentData, totals, byModel, daily, slowTools, ragRequestDuration, ragRequestOutcomes, embeddingQueryDuration, embeddingQueryRows, sqlDenseScan, sqlDenseScanRows, indexRuns, indexRunRows, chatStoreLockWait, chatStoreLockWaitRows, adminUsers, selectedUser, canFilterUsers, maxDaily, maxModel, inputShare, cards, format, formatMoney, priceKey, ensurePrice, savingPricing, pricingStatus, savePricing, load, downloadCsv, printReport, updatedLabel }
 	},
 }
 </script>
@@ -168,7 +235,6 @@ export default {
 .metrics-refresh-status { color: var(--color-text-maxcontrast); font-size: .8rem; }
 .metrics-user-filter { display:grid; gap:3px; color:var(--color-text-maxcontrast); font-size:11px; }
 .metrics-user-filter select { max-width:220px; min-height:36px; padding:5px 8px; border:1px solid var(--color-border); border-radius:var(--border-radius-element); background:var(--color-main-background); color:var(--color-main-text); font:inherit; font-size:12px; }
-.feedback-metrics { margin-top: 0; }.feedback-totals { display: flex; gap: 32px; flex-wrap: wrap; }.feedback-totals div { display: grid; gap: 3px; }.feedback-totals strong { font-size: 1.35rem; }.feedback-totals span { color: var(--color-text-maxcontrast); }
 .pricing-panel table { width: 100%; }.pricing-panel input { box-sizing: border-box; width: min(100%, 11rem); }.pricing-actions { display: flex; align-items: center; gap: 12px; margin-top: 12px; }.visually-hidden { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
 .metrics-panel, .metrics-insights { min-width: 0; }.metrics-table-scroll { width: 100%; max-width: 100%; min-width: 0; overflow-x: auto; -webkit-overflow-scrolling: touch; }
 @media print { .metrics-actions, .metrics-error, .metrics-loading, .pricing-actions, .metrics-refresh-status { display: none !important; }.metrics-panel, .metrics-cards { break-inside: avoid; box-shadow: none !important; }.metrics-table-scroll { overflow: visible; }.metrics-view { max-width: none; }.pricing-panel input { border: 0; background: transparent; color: inherit; } }

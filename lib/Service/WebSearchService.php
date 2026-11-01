@@ -280,10 +280,23 @@ class WebSearchService {
             $this->rawConfig->deleteAppValue(AppConfig::APP, self::API_KEY_KEY);
             return;
         }
-        if (!preg_match('/^[A-Za-z0-9._-]{8,256}$/D', $key)) {
+        $this->assertApiKeyFormat($key);
+        $this->rawConfig->setAppValue(AppConfig::APP, self::API_KEY_KEY, $this->crypto->encrypt($key));
+    }
+
+    /** Validate a proposed API key before an admin save writes any settings. */
+    public function validateApiKey(string $key): ?string {
+        $key = trim($key);
+        if ($key === '' || preg_match('/^[A-Za-z0-9._-]{8,256}$/D', $key)) {
+            return null;
+        }
+        return 'web_search_api_key must be 8-256 characters: letters, digits, dot, underscore or dash.';
+    }
+
+    private function assertApiKeyFormat(string $key): void {
+        if ($this->validateApiKey($key) !== null) {
             throw new \InvalidArgumentException('Invalid web search API key format');
         }
-        $this->rawConfig->setAppValue(AppConfig::APP, self::API_KEY_KEY, $this->crypto->encrypt($key));
     }
 
     private function apiKey(): string {
@@ -515,9 +528,9 @@ class WebSearchService {
         if (!$this->isEnabled()) {
             return $empty + ['ok' => false, 'error' => 'Web search is disabled by the administrator.'];
         }
-        if (!$this->imagesEnabled()) {
-            return $empty + ['ok' => false, 'error' => 'Image search is disabled by the administrator.'];
-        }
+        // `web_search_images` controls whether article images are attached to
+        // ordinary web-search hits. Dedicated image search is a separate tool
+        // and only follows the instance-wide web_search_enabled privacy gate.
         $count = max(1, min(self::ABSOLUTE_MAX_IMAGES, $limit ?? self::DEFAULT_IMAGES));
 
         $endpoint = self::BING_IMAGE_ENDPOINT . '?' . http_build_query([

@@ -23,6 +23,8 @@ class EmbeddingCache {
 
     private ?ICache $store = null;
     private bool $initialized = false;
+    /** Skip repeated slow cache failures briefly; embeddings remain correct without this cache. */
+    private int $unavailableUntil = 0;
     /**
      * Process-local memo of the per-user+model dimension guard. With it, a
      * batch of N get() calls issues N cache reads instead of 2N; misses fall
@@ -31,6 +33,43 @@ class EmbeddingCache {
      * @var array<string,int|null>
      */
     private array $dimensionMemo = [];
+
+    /** Proven generation entries never read legacy/fallback cache records. */
+    public function getForGeneration(\OCA\EvaAi\Vector\VectorGeneration $generation, string $text): ?array {
+        try {
+            $entry = $this->store()->get($this->generationKey($generation, $text));
+            if (!is_array($entry) || ($entry['schema'] ?? null) !== 2
+                || ($entry['identity'] ?? null) !== $this->generationIdentity($generation)
+                || !is_array($entry['vector'] ?? null)) return null;
+            $generation->validateVector($entry['vector']);
+            return array_map('floatval', $entry['vector']);
+        } catch (\Throwable $e) { $this->markUnavailable($e); return null; }
+    }
+
+    /** Cache availability cannot turn a successful generation batch into a failure. */
+    public function putForGeneration(\OCA\EvaAi\Vector\VectorGeneration $generation, array $texts, array $vectors): void {
+        if (!array_is_list($texts) || !array_is_list($vectors) || count($texts) !== count($vectors)) return;
+        try {
+            foreach ($texts as $i => $text) {
+                if (!is_string($text) || trim($text) === '' || strlen($text) > 40000) return;
+                $generation->validateVector($vectors[$i]);
+            }
+            $identity = $this->generationIdentity($generation);
+            foreach ($texts as $i => $text) {
+                $this->store()->set($this->generationKey($generation, $text),
+                    ['schema'=>2, 'identity'=>$identity, 'vector'=>array_map('floatval', $vectors[$i])], self::TTL);
+            }
+        } catch (\Throwable $e) { $this->markUnavailable($e); /* Valid vectors remain usable without caching. */ }
+    }
+
+    private function generationIdentity(\OCA\EvaAi\Vector\VectorGeneration $generation): string {
+        return hash('sha256', json_encode([$generation->embeddingProvider, $generation->profileId,
+            $generation->endpointHash, $generation->embeddingModel, $generation->dimension, $generation->distance()], JSON_THROW_ON_ERROR));
+    }
+
+    private function generationKey(\OCA\EvaAi\Vector\VectorGeneration $generation, string $text): string {
+        return $this->userPrefix($generation->userId) . 'pinned_v2_' . $this->generationIdentity($generation) . '_' . hash('sha256', $text);
+    }
 
     public function __construct(
         private ICacheFactory $cacheFactory,
@@ -54,6 +93,7 @@ class EmbeddingCache {
             }
             $expectedDimension = $this->dimensionMemo[$memoKey];
         } catch (\Throwable $e) {
+            $this->markUnavailable($e);
             return null;
         }
         if (!is_array($entry)) {
@@ -82,7 +122,6 @@ class EmbeddingCache {
         if ($entries === []) {
             return;
         }
-        $writtenKeys = [];
         try {
             $store = $this->store();
             $dimension = null;
@@ -106,26 +145,16 @@ class EmbeddingCache {
                     'created' => time(),
                     'vector' => array_map('floatval', $entry['vector']),
                 ], self::TTL);
-                $writtenKeys[] = $key;
             }
             $dimensionKey = $this->dimensionKey($entries[0]['userId']);
             $store->set($dimensionKey, $dimension, self::TTL);
-            $writtenKeys[] = $dimensionKey;
             // A newly published dimension invalidates the read-side memo so
             // the next get() re-reads the guard instead of trusting a stale
             // value from before this write.
             unset($this->dimensionMemo[$dimensionKey]);
         } catch (\Throwable $e) {
-            // A cache outage must never make indexing fail. Remove entries
-            // written by this attempt so a failed update cannot advertise a
-            // partially published cache generation.
-            foreach ($writtenKeys as $key) {
-                try {
-                    $store?->remove($key);
-                } catch (\Throwable $ignored) {
-                    // Cache cleanup is best effort and must not mask the error.
-                }
-            }
+            $this->markUnavailable($e);
+            // Cache contents are disposable; avoid retrying cleanup calls against a failing backend.
             $this->logger->debug('eva_ai embedding cache write skipped', ['exception' => $e]);
         }
     }
@@ -139,15 +168,29 @@ class EmbeddingCache {
         try {
             $this->store()->clear();
         } catch (\Throwable $e) {
+            $this->markUnavailable($e);
             $this->logger->debug('eva_ai embedding cache clear skipped', ['exception' => $e]);
         }
     }
 
     public function clearUser(string $userId): void {
         try {
-            $this->store()->clear($this->userPrefix($userId));
+            $this->clearUserForErasure($userId);
         } catch (\Throwable $e) {
+            $this->markUnavailable($e);
             $this->logger->debug('eva_ai user embedding cache clear skipped', ['exception' => $e]);
+        }
+    }
+
+    /** Strict variant used by durable account erasure so cache failure is retried. */
+    public function clearUserForErasure(string $userId): void {
+        try {
+            if (!$this->store()->clear($this->userPrefix($userId))) {
+                throw new \RuntimeException('Embedding cache did not confirm account erasure.');
+            }
+        } catch (\Throwable $e) {
+            $this->markUnavailable($e);
+            throw $e;
         }
     }
 
@@ -156,19 +199,45 @@ class EmbeddingCache {
             $this->store();
             return true;
         } catch (\Throwable $e) {
+            $this->markUnavailable($e);
             return false;
         }
     }
 
     private function store(): ICache {
+        if (time() < $this->unavailableUntil) {
+            throw new \RuntimeException('Distributed cache is in temporary cooldown');
+        }
         if (!$this->initialized) {
             $this->initialized = true;
-            $this->store = $this->cacheFactory->createDistributed(self::PREFIX);
+            try {
+                $this->store = $this->cacheFactory->createDistributed(self::PREFIX);
+            } catch (\Throwable $e) {
+                $this->markUnavailable($e);
+                throw $e;
+            }
         }
         if ($this->store === null) {
             throw new \RuntimeException('No distributed cache available');
         }
         return $this->store;
+    }
+
+    private function markUnavailable(\Throwable $error): void {
+        if (time() < $this->unavailableUntil) {
+            return;
+        }
+        $this->unavailableUntil = time() + 15;
+        $this->store = null;
+        $this->initialized = false;
+        try {
+            $this->logger->debug('eva_ai distributed embedding cache temporarily unavailable', [
+                'exception' => get_class($error),
+                'retry_after_seconds' => 15,
+            ]);
+        } catch (\Throwable) {
+            // Logging must not affect the uncached embedding path.
+        }
     }
 
     private function key(string $userId, string $text): string {

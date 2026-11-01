@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace OCA\EvaAi\Tests;
 
-use OCA\EvaAi\Service\Indexer;
+use OCA\EvaAi\Service\IndexTextExtractor;
 use OCP\Files\File;
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
@@ -25,17 +25,25 @@ final class IndexerExtractionTest extends TestCase {
         }
     }
 
-    private function extractor(): Indexer {
-        $reflection = new ReflectionClass(Indexer::class);
-        /** @var Indexer $indexer */
-        $indexer = $reflection->newInstanceWithoutConstructor();
+    private function extractor(): IndexTextExtractor {
+        $indexer = new IndexTextExtractor($this->createMock(\OCA\EvaAi\Service\AppConfig::class), $this->createMock(\Psr\Log\LoggerInterface::class));
         return $indexer;
     }
 
-    private function invokeExtract(Indexer $indexer, File $file): string {
-        $reflection = new ReflectionClass(Indexer::class);
-        $method = $reflection->getMethod('extractText');
-        return (string)$method->invoke($indexer, $file);
+    private function invokeExtract(IndexTextExtractor $indexer, File $file): string {
+        return $indexer->extractText($file);
+    }
+
+    public function testMissingOptionalConvertersDoNotExecuteAnEmptyCommand(): void {
+        $extractor = new class($this->createMock(\OCA\EvaAi\Service\AppConfig::class), $this->createMock(\Psr\Log\LoggerInterface::class)) extends IndexTextExtractor {
+            protected function resolveSystemBinary(string $name): ?string { return null; }
+        };
+        foreach ([['report.pdf', 'application/pdf'], ['report.doc', 'application/msword']] as [$name, $mime]) {
+            $file = $this->mockFile($name, $mime, 'unused');
+            $file->expects(self::never())->method('getContent');
+            self::assertSame('', $extractor->extractText($file));
+        }
+        self::assertSame('', $extractor->extractTextFromBlob('unused', 'application/pdf'));
     }
 
     private function mockFile(string $name, string $mime, string $content): File {
@@ -212,8 +220,8 @@ final class IndexerExtractionTest extends TestCase {
     }
 
     /** @param array<int,string> $args */
-    private function callPrivate(Indexer $indexer, string $method, array $args): mixed {
-        $reflection = new ReflectionClass(Indexer::class);
+    private function callPrivate(IndexTextExtractor $indexer, string $method, array $args): mixed {
+        $reflection = new ReflectionClass(IndexTextExtractor::class);
         return $reflection->getMethod($method)->invokeArgs($indexer, $args);
     }
 

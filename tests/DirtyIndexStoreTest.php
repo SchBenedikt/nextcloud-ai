@@ -6,11 +6,21 @@ namespace OCA\EvaAi\Tests;
 
 use OCA\EvaAi\Service\DirtyIndexStore;
 use OCP\Files\AppData\IAppDataFactory;
-use OCP\Files\IAppData;
-use OCP\Files\SimpleFS\ISimpleFile;
-use OCP\Files\SimpleFS\ISimpleFolder;
+use OCP\IDBConnection;
+use OCP\Lock\ILockingProvider;
 use PHPUnit\Framework\TestCase;
+use Psr\Log\LoggerInterface;
 
+/**
+ * Guards for the coalesced filesystem-change queue.
+ *
+ * The queue moved from an AppData JSON file to Nextcloud SQL, so the previous
+ * version of this test (which asserted on the removed AppData representation and
+ * the removed drain() API) could not pass. Deduplication, lease reclaim and
+ * bounded claiming are now SQL statements; they need a live connection and are
+ * exercised by tests/runtime/account-erasure.php. What stays unit-testable are
+ * the rejection paths below, which must never touch storage or take a lock.
+ */
 final class DirtyIndexStoreTest extends TestCase {
     protected function setUp(): void {
         parent::setUp();
@@ -19,72 +29,45 @@ final class DirtyIndexStoreTest extends TestCase {
         }
     }
 
-    private function harness(string $initial, ?string &$written): DirtyIndexStore {
-        $factory = $this->createMock(IAppDataFactory::class);
-        $appData = $this->createMock(IAppData::class);
-        $dir = $this->createMock(ISimpleFolder::class);
-        $file = $this->createMock(ISimpleFile::class);
-        $name = substr(hash('sha256', 'alice'), 0, 40) . '.json';
-
-        $factory->method('get')->with('eva_ai')->willReturn($appData);
-        $appData->method('getFolder')->with('dirty')->willReturn($dir);
-        $dir->method('fileExists')->with($name)->willReturn(true);
-        $dir->method('getFile')->with($name)->willReturn($file);
-        $file->method('getContent')->willReturnCallback(static function () use (&$written, $initial): string {
-            return $written ?? $initial;
-        });
-        $file->method('putContent')->willReturnCallback(static function (string $content) use (&$written): void {
-            $written = $content;
-        });
-
-        return new DirtyIndexStore($factory);
+    /** A store whose storage and locking must stay untouched by the call under test. */
+    private function unusedStore(): DirtyIndexStore {
+        $appData = $this->createMock(IAppDataFactory::class);
+        $appData->expects(self::never())->method('get');
+        $locks = $this->createMock(ILockingProvider::class);
+        $locks->expects(self::never())->method('acquireLock');
+        $db = $this->createMock(IDBConnection::class);
+        $db->expects(self::never())->method('getQueryBuilder');
+        $db->expects(self::never())->method('beginTransaction');
+        return new DirtyIndexStore($appData, $locks, $db, $this->createMock(LoggerInterface::class));
     }
 
-    public function testMarkDrainAndDeduplicate(): void {
-        $written = null;
-        $store = $this->harness('[]', $written);
+    public function testNonPositiveFileIdsAreIgnored(): void {
+        $store = $this->unusedStore();
 
-        $store->markFile('alice', 7);
-        $store->markFile('alice', 7); // repeated event collapses
-        $store->markFile('alice', 8);
-        self::assertSame(2, $store->pending('alice'));
-
-        $entries = $store->drain('alice');
-        self::assertCount(2, $entries);
-        $kinds = array_map(static fn($e) => $e['kind'], $entries);
-        self::assertSame(['file', 'file'], $kinds);
-        self::assertSame(0, $store->pending('alice'), 'queue is cleared after drain');
+        $store->markFile('alice', 0);
+        $store->markFile('alice', -7);
     }
 
-    public function testFolderRenameReplacesOldEntry(): void {
-        $written = null;
-        $store = $this->harness('[]', $written);
+    public function testFolderRenameNeedsBothPaths(): void {
+        $store = $this->unusedStore();
 
-        $store->markFolderRenamed('alice', 'Notes/Old', 'Notes/New');
-        $store->markFolderRenamed('alice', 'Notes/Old', 'Notes/Newer'); // same old path
-        $entries = $store->drain('alice');
-        self::assertCount(1, $entries);
-        self::assertSame('folder-rename', $entries[0]['kind']);
-        self::assertSame('Notes/Old', $entries[0]['oldPath']);
-        self::assertSame('Notes/Newer', $entries[0]['path']);
+        $store->markFolderRenamed('alice', '', 'Notes/New');
+        $store->markFolderRenamed('alice', 'Notes/Old', '');
     }
 
-    public function testDrainIsBounded(): void {
-        $initial = json_encode([
-            ['kind' => 'file', 'fileId' => 1, 'path' => '', 'oldPath' => ''],
-            ['kind' => 'file', 'fileId' => 2, 'path' => '', 'oldPath' => ''],
-            ['kind' => 'file', 'fileId' => 3, 'path' => '', 'oldPath' => ''],
-        ]);
-        $written = null;
-        $store = $this->harness($initial, $written);
+    public function testClaimWithoutAUserDoesNothing(): void {
+        self::assertSame([], $this->unusedStore()->claim(''));
+    }
 
-        $first = $store->drain('alice', 2);
-        self::assertCount(2, $first);
-        self::assertSame([1, 2], array_map(static fn($e) => $e['fileId'], $first));
-        self::assertSame(1, $store->pending('alice'));
+    public function testAcknowledgeWithoutEntriesDoesNothing(): void {
+        self::assertSame(0, $this->unusedStore()->acknowledge('alice', []));
+        self::assertSame(0, $this->unusedStore()->acknowledge('', [['id' => 1, 'revision' => 1]]));
+    }
 
-        $rest = $store->drain('alice', 2);
-        self::assertCount(1, $rest);
-        self::assertSame(3, $rest[0]['fileId']);
+    public function testRequeueWithoutEntriesReportsNoCounts(): void {
+        $empty = ['requeued' => 0, 'exhausted' => 0, 'superseded' => 0];
+
+        self::assertSame($empty, $this->unusedStore()->requeueFailed('alice', []));
+        self::assertSame($empty, $this->unusedStore()->requeueFailed('', [['id' => 1, 'revision' => 1]]));
     }
 }

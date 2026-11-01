@@ -5,11 +5,13 @@ declare(strict_types=1);
 namespace OCA\EvaAi\Service;
 
 use OCP\IDBConnection;
-use OCP\ICacheFactory;
 
 /** Hash-only user API keys and their per-key request budget. */
 class ApiKeyService {
-	public function __construct(private IDBConnection $db, private ICacheFactory $cacheFactory) {
+	public function __construct(
+		private IDBConnection $db,
+		private RequestRateLimiter $requestRateLimiter,
+	) {
 	}
 
 	/** @return array{key: string, record: array<string, mixed>} */
@@ -78,12 +80,8 @@ class ApiKeyService {
 		if (is_array($allowedIps) && $allowedIps !== [] && !in_array($ip, $allowedIps, true)) return null;
 		$limits = ['read' => 100, 'write' => 30, 'admin' => 10];
 		$limit = $limits[(string)$row['scope']] ?? 0;
-		$cache = $this->cacheFactory->createLocking('eva_ai_key_rate');
-		$window = intdiv(time(), 60);
-		$rateKey = $row['id'] . ':' . $window;
-		$cache->add($rateKey, 0, 61);
-		$count = $cache->inc($rateKey);
-		if (!is_int($count)) throw new \RuntimeException('API key rate limiter did not return a counter.');
+		$count = $this->requestRateLimiter->consume((string)$row['id'], 'api_' . (string)$row['scope'], 60, 'eva_ai_key_rate');
+		if ($count === null) throw new ApiKeyRateLimitUnavailableException('Rate limiting is temporarily unavailable.');
 		if ($count > $limit) throw new ApiKeyRateLimitException('Per-key request limit exceeded.');
 		$this->db->getQueryBuilder()->update('eva_ai_api_keys')->set('last_used_at', ':now')->set('call_count', 'call_count + 1')->where('id = :id')->setParameter('now', time())->setParameter('id', $row['id'])->executeStatement();
 		$row['last_used_at'] = time();

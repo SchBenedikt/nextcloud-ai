@@ -4,45 +4,25 @@ declare(strict_types=1);
 
 namespace OCA\EvaAi\Controller;
 
-use OCA\EvaAi\Db\DocumentMapper;
-use OCA\EvaAi\Db\ChunkMapper;
+use OCA\EvaAi\Controller\Traits\ReadsRequestParameters;
+use OCA\EvaAi\Controller\Traits\RequestLimits;
+use OCA\EvaAi\Controller\Traits\ChatRequestCoordination;
 use OCA\EvaAi\Service\AppConfig;
 use OCA\EvaAi\Service\ActionExecutor;
 use OCA\EvaAi\Service\ChatStore;
-use OCA\EvaAi\Service\FileContextChatService;
-use OCA\EvaAi\Service\Indexer;
-use OCA\EvaAi\Service\LockGuard;
-use OCA\EvaAi\BackgroundJob\IndexRequestJob;
-use OCA\EvaAi\BackgroundJob\BackgroundChatJob;
 use OCA\EvaAi\Service\Ollama;
 use OCA\EvaAi\Service\OllamaUrlValidator;
 use OCA\EvaAi\Service\RagService;
-use OCA\EvaAi\Service\KnowledgeInitializer;
 use OCA\EvaAi\Dto\ChatMetadataRequest;
 use OCA\EvaAi\Dto\ChatImportRequest;
 use OCA\EvaAi\Dto\ChatFolderRequest;
 use OCA\EvaAi\Dto\ChatTitleRequest;
 use OCA\EvaAi\Dto\ChatRegenerateRequest;
 use OCA\EvaAi\Dto\ChatCompletionRequest;
-use OCA\EvaAi\Dto\FileContextChatRequest;
-use OCA\EvaAi\Dto\KnowledgeContentRequest;
-use OCA\EvaAi\Dto\KnowledgeContentResponse;
-use OCA\EvaAi\Dto\KnowledgeContentSaveResponse;
-use OCA\EvaAi\Dto\FileContextStatusResponse;
 use OCA\EvaAi\Dto\ConfirmToolRequest;
 use OCA\EvaAi\Dto\ChatTemplateImportRequest;
-use OCA\EvaAi\Dto\DocumentsQuery;
-use OCA\EvaAi\Dto\DocumentChunksQuery;
-use OCA\EvaAi\Dto\ChatListQuery;
-use OCA\EvaAi\Dto\ChatListResponse;
-use OCA\EvaAi\Dto\BackgroundChatIdRequest;
-use OCA\EvaAi\Dto\FeedbackStatsResponse;
-use OCA\EvaAi\Dto\ChatReactionRequest;
-use OCA\EvaAi\Dto\ChatReactionResponse;
 use OCA\EvaAi\Dto\ChatAppendRequest;
 use OCA\EvaAi\Dto\ChatAppendResponse;
-use OCA\EvaAi\Dto\PluginToggleRequest;
-use OCA\EvaAi\Service\PluginToolSettings;
 use OCP\AppFramework\OCSController;
 use OCP\AppFramework\Http\Attribute\NoAdminRequired;
 use OCA\EvaAi\Http\StreamTraversableResponse;
@@ -56,6 +36,10 @@ use OCP\Lock\ILockingProvider;
 use Psr\Log\LoggerInterface;
 
 class ApiController extends OCSController {
+    use ReadsRequestParameters;
+    use RequestLimits;
+    use ChatRequestCoordination;
+
     private const MAX_MESSAGE_LENGTH = 50000;
     public function __construct(
         string $appName,
@@ -64,100 +48,46 @@ class ApiController extends OCSController {
         private AppConfig $config,
         private RagService $ragService,
         private ActionExecutor $executor,
-        private Indexer $indexer,
         private Ollama $ollama,
-        private DocumentMapper $documentMapper,
-        private ChunkMapper $chunkMapper,
         private IJobList $jobList,
         private ILockingProvider $lockingProvider,
         private ChatStore $chatStore,
-        private FileContextChatService $fileContextChat,
         private IAppManager $appManager,
-        private KnowledgeInitializer $knowledgeInitializer,
-        private LockGuard $lockGuard,
         private \OCA\EvaAi\Service\UserDataService $userDataService,
         private \OCA\EvaAi\Service\ChatLearner $chatLearner,
         private ICacheFactory $cacheFactory,
         private \OCA\EvaAi\Service\IndexScheduler $indexScheduler,
         private \OCA\EvaAi\Service\UsageMetrics $usageMetrics,
-        private \OCA\EvaAi\Service\BackgroundChatQueue $backgroundChatQueue,
         private LoggerInterface $logger,
-        private SystemController $systemController
+        private SystemController $systemController,
+        private ?\OCA\EvaAi\Service\RequestRateLimiter $requestRateLimiter = null
     ) {
         parent::__construct($appName, $request);
         $this->config->setUserId($this->userId);
     }
 
-    /**
-     * Read JSON bodies once without shadowing framework/controller parameter APIs.
-     * IRequest exposes query/form parameters directly, while JSON bodies need
-     * this small fallback on the supported Nextcloud versions.
-     */
-    private ?array $bodyParams = null;
-
-    private function requestBody(): array {
-        if ($this->bodyParams !== null) {
-            return $this->bodyParams;
-        }
-        $raw = (string)file_get_contents('php://input');
-        $decoded = $raw !== '' ? json_decode($raw, true) : null;
-        $this->bodyParams = is_array($decoded) ? $decoded : [];
-        return $this->bodyParams;
-    }
-
     /** Release the PHP session lock before a long model/tool request starts. */
     private function releaseSessionLock(): void {
-        try {
-            \OCP\Server::get(\OCP\ISession::class)->close();
-        } catch (\Throwable) {
-            // CLI/test surfaces may not have an active session.
-        }
-    }
-
-    private function requestParam(string $key, mixed $default = null): mixed {
-        $value = $this->request->getParam($key, null);
-        if ($value !== null) {
-            return $value;
-        }
-        $body = $this->requestBody();
-        return array_key_exists($key, $body) ? $body[$key] : $default;
+        $this->releasePhpSessionLock();
     }
 
     private function messageTooLong(string $message): bool {
         return mb_strlen($message) > self::MAX_MESSAGE_LENGTH;
     }
 
-    /** Enforce a bounded per-user request budget in a shared cache window. */
+    /** Enforce a bounded per-user budget with a SQL fallback if shared cache is down. */
     private function rateLimitResponse(string $user, string $bucket, int $max): ?DataResponse {
-        try {
-            $cache = $this->cacheFactory->createLocking('eva_ai_rate');
-            $window = intdiv(time(), 60);
-            $key = 'v1:' . hash('sha256', $user) . ':' . $bucket . ':' . $window;
-            $cache->add($key, 0, 61);
-            $count = $cache->inc($key);
-            if (is_int($count) && $count > $max) {
-                return new ErrorDataResponse(['error' => 'rate_limited', 'message' => 'Too many requests. Please retry shortly.'], 429, ['Retry-After' => '60']);
-            }
-        } catch (\Throwable $e) {
-            // A missing cache backend must not make the chat unavailable.
-            $this->logger->debug('eva_ai: rate limiter unavailable', ['exception' => $e]);
-        }
-        return null;
+        return $this->consumeRequestLimit($user, $bucket, $max, $this->requestRateLimiter, $this->cacheFactory, $this->logger);
     }
 
     private function acquireChatSlot(string $user): ?string {
-        $path = 'eva_ai/chat/' . hash('sha256', $user);
-        try {
-            $this->lockingProvider->acquireLock($path, ILockingProvider::LOCK_EXCLUSIVE, 'EVA chat request');
-            return $path;
-        } catch (\Throwable) {
-            return null;
-        }
+        // Keep this separate from ChatStore's lock. LockGuard owns the bounded
+        // path so indexing can yield to the same active per-user chat claim.
+        return $this->acquireChatRequestSlot($user, $this->lockingProvider, $this->logger);
     }
 
     private function releaseChatSlot(?string $path): void {
-        if ($path === null) return;
-        try { $this->lockingProvider->releaseLock($path, ILockingProvider::LOCK_EXCLUSIVE); } catch (\Throwable) { }
+        $this->releaseChatRequestSlot($path, $this->lockingProvider, $this->logger);
     }
 
     private function requireUser(): ?string {
@@ -170,6 +100,9 @@ class ApiController extends OCSController {
      * the user to the admin recovery command instead of a generic 500.
      */
     private function chatErrorResponse(\Throwable $e): DataResponse {
+        if ($e instanceof \OCA\EvaAi\Service\ChatStoreConflictException) {
+            return new ErrorDataResponse(['error' => 'conflict', 'message' => $e->getMessage()], 409);
+        }
         // A temporarily locked chat store is a busy condition, not an error:
         // the page load fires several chat reads in parallel and a crashed
         // request can hold the lock until the backend TTL expires. A 503 lets
@@ -218,619 +151,6 @@ class ApiController extends OCSController {
     }
 
     #[NoAdminRequired]
-    public function settings(): DataResponse {
-        $user = $this->requireUser();
-        if ($user === null) {
-            return new ErrorDataResponse(['error' => 'Not logged in'], 401);
-        }
-        $this->knowledgeInitializer->ensureInitialized($user);
-        return new ErrorDataResponse($this->config->all() + [
-            // Instance-wide kill switch: dictation requires both admin and user opt-in.
-            'voice_input_available' => $this->config->get('voice_input_available'),
-        ], 200, ['Cache-Control' => 'private, max-age=300']);
-    }
-
-    #[NoAdminRequired]
-    public function saveSettings(): DataResponse {
-        $user = $this->requireUser();
-        if ($user === null) {
-            return new ErrorDataResponse(['error' => 'Not logged in'], 401);
-        }
-        $this->config->setUserId($user);
-        $this->recoverStaleIndex();
-        $indexRunning = $this->config->get('index_running') === '1';
-        $allowed = [
-            'chat_provider', 'groq_model', 'custom_provider_url', 'custom_provider_model', 'provider_profiles', 'ollama_url', 'embedding_model', 'chat_model', 'chat_model_fallback',
-            'embedding_model_fallback', 'summary_model', 'top_k', 'chunk_size',
-            'chunk_overlap', 'max_file_size', 'max_files_per_run', 'index_storage_quota', 'scope_path', 'context_size', 'temperature',
-            'actions_enabled', 'background_actions_enabled', 'learning_enabled', 'safe_commands_enabled', 'terminal_commands_enabled', 'terminal_command_any', 'terminal_command_allowlist', 'agent_max_tool_rounds',
-            'exec_write_types', 'exec_write_max_chars', 'exec_delete_mode',
-            'notify_on_complete',
-            'voice_input_enabled',
-            'proactive_enabled', 'proactive_schedules',
-            'mail_index_enabled',
-            'mail_index_max',
-            'embed_batch_size', 'ocr_enabled', 'ocr_language',
-            'ollama_keep_alive', 'followups_mode',
-            // Shared provider infrastructure stays on the admin endpoint;
-            // tool permissions and web search behavior are user settings.
-            'talk_history_size',
-            'talk_bot_trigger',
-            'talk_classify_all',
-            // Posting into Talk as the signed-in user (off by default).
-            'talk_write_enabled',
-            'exclude_paths',
-            'index_enrolled',
-            'chat_retention_days',
-            // Per-user web search settings (Issue #187): each user may
-            // individually enable web search and choose their provider.
-            'web_search_enabled',
-            'web_search_provider',
-            'web_search_max_results', 'web_search_timeout', 'web_search_safe_search',
-            'web_search_fetch_content', 'web_search_content_chars', 'web_search_candidates',
-            'web_search_images', 'web_search_browser', 'web_search_browser_timeout',
-        ];
-        $validationErrors = [];
-        $pending = [];
-        foreach ($allowed as $key) {
-            $value = $this->requestParam($key);
-            if ($value === null) {
-                continue;
-            }
-            $pending[$key] = $value;
-            $validationValue = $value;
-            if ($key === 'provider_profiles' && is_string($value)) {
-                $validationValue = json_decode($value, true);
-            }
-            $limitError = $this->config->validateValue($key, $validationValue);
-            if ($limitError !== null) {
-                $validationErrors[$key] = $key . ' ' . $limitError . '.';
-            }
-            if ($key === 'index_enrolled' && $this->config->validateValue($key, $value) !== null) {
-                $validationErrors[$key] = $key . ' must be a boolean value.';
-            }
-            if ($key === 'ollama_url') {
-                $urlError = $this->validateOllamaUrl((string)$value);
-                if ($urlError !== null) {
-                    $validationErrors[$key] = $urlError;
-                }
-            }
-            if (in_array($key, ['scope_path', 'exclude_paths'], true)
-                && preg_match('~(^|[\\\\/])\\.\\.?([\\\\/]|$)~', (string)$value)) {
-                $validationErrors[$key] = $key . ' may not contain relative path traversal.';
-            }
-            if ($key === 'proactive_schedules') {
-                $scheduleError = $this->validateProactiveSchedules($value);
-                if ($scheduleError !== null) {
-                    $validationErrors[$key] = $scheduleError;
-                }
-            }
-            if ($key === 'provider_profiles') {
-                $profileError = $this->config->validateValue($key, $validationValue);
-                if ($profileError !== null) $validationErrors[$key] = 'Provider profiles ' . $profileError . '.';
-            }
-        }
-        if ($indexRunning && array_diff(array_keys($pending), ['proactive_enabled', 'proactive_schedules']) !== []) {
-            return new ErrorDataResponse(['error' => 'Only scheduled briefings can be changed while indexing is running.'], 409);
-        }
-        if ($validationErrors !== []) {
-            return new ErrorDataResponse([
-                'error' => 'Invalid settings.',
-                'validationErrors' => array_values($validationErrors),
-            ], 400);
-        }
-        $selectedProvider = (string)($pending['chat_provider'] ?? $this->config->get('chat_provider'));
-        if ($selectedProvider !== 'ollama' && $selectedProvider !== 'groq') {
-            $profiles = $pending['provider_profiles'] ?? $this->config->get('provider_profiles');
-            if (is_string($profiles)) $profiles = json_decode($profiles, true);
-            $selectedProfile = null;
-            foreach (is_array($profiles) ? $profiles : [] as $profile) {
-                if (is_array($profile) && (string)($profile['id'] ?? '') === $selectedProvider) { $selectedProfile = $profile; break; }
-            }
-            $customUrl = trim((string)($selectedProfile['url'] ?? $pending['custom_provider_url'] ?? $this->config->get('custom_provider_url')));
-            $customModel = trim((string)($selectedProfile['model'] ?? $pending['custom_provider_model'] ?? $this->config->get('custom_provider_model')));
-            if ($customUrl === '' || $customModel === '') {
-                return new ErrorDataResponse(['error' => 'Custom provider requires both an endpoint URL and model name.'], 400);
-            }
-            $parts = parse_url($customUrl);
-            if ($parts === false || isset($parts['user']) || isset($parts['pass']) || isset($parts['query']) || isset($parts['fragment']) || empty($parts['host'])) {
-                return new ErrorDataResponse(['error' => 'Custom provider endpoint must be a plain URL without credentials, query or fragment.'], 400);
-            }
-        }
-        $groqKey = $this->requestParam('groq_api_key');
-        $removeGroqKey = $this->requestParam('remove_groq_api_key', false);
-        if (($groqKey !== null && (!is_string($groqKey) || ($groqKey !== '' && !preg_match('/^gsk_[A-Za-z0-9_-]{16,256}$/D', $groqKey))))
-            || !in_array($removeGroqKey, [true, false, 0, 1, '0', '1'], true)) {
-            return new ErrorDataResponse(['error' => 'Invalid Groq credential input.'], 400);
-        }
-        $roleErrors = $this->validateModelRoles($pending);
-        if ($roleErrors !== []) {
-            return new ErrorDataResponse([
-                'error' => 'Invalid settings.',
-                'validationErrors' => array_values($roleErrors),
-            ], 400);
-        }
-        if ($removeGroqKey) $this->ollama->saveGroqKey('');
-        elseif (is_string($groqKey) && $groqKey !== '') $this->ollama->saveGroqKey($groqKey);
-        $customKey = $this->requestParam('custom_provider_api_key');
-        $removeCustomKey = $this->requestParam('remove_custom_provider_api_key', false);
-        $providerId = (string)($pending['chat_provider'] ?? $this->config->get('chat_provider'));
-        if ($customKey !== null && (!is_string($customKey) || strlen($customKey) > 512)) return new ErrorDataResponse(['error' => 'Invalid custom provider credential input.'], 400);
-        if (!in_array($removeCustomKey, [true, false, 0, 1, '0', '1'], true)) return new ErrorDataResponse(['error' => 'Invalid custom provider credential input.'], 400);
-        if ($providerId !== 'ollama' && $providerId !== 'groq') {
-            $credentials = \OCP\Server::get(\OCA\EvaAi\Service\ProviderCredentials::class);
-            if (!$removeCustomKey && (!is_string($customKey) || $customKey === '') && !$credentials->customConfigured($user, $providerId)) {
-                return new ErrorDataResponse(['error' => 'Save an API key for the selected custom provider first.'], 400);
-            }
-            if ($removeCustomKey) $credentials->saveCustom($user, $providerId, '');
-            elseif (is_string($customKey) && $customKey !== '') $credentials->saveCustom($user, $providerId, $customKey);
-        }
-        $nextcloudToken = $this->requestParam('nextcloud_api_token');
-        $removeNextcloudToken = $this->requestParam('remove_nextcloud_api_token', false);
-        if ($nextcloudToken !== null && (!is_string($nextcloudToken) || strlen($nextcloudToken) > 512 || preg_match('/\s/', $nextcloudToken))) {
-            return new ErrorDataResponse(['error' => 'Invalid Nextcloud app token input.'], 400);
-        }
-        if (!in_array($removeNextcloudToken, [true, false, 0, 1, '0', '1'], true)) {
-            return new ErrorDataResponse(['error' => 'Invalid Nextcloud app token input.'], 400);
-        }
-        if ($removeNextcloudToken || (is_string($nextcloudToken) && $nextcloudToken !== '')) {
-            \OCP\Server::get(\OCA\EvaAi\Service\ProviderCredentials::class)->saveNextcloudToken(
-                $user,
-                $removeNextcloudToken ? '' : $nextcloudToken
-            );
-        }
-        foreach ($pending as $key => $value) {
-                if (in_array($key, ['top_k', 'chunk_size', 'chunk_overlap', 'max_file_size', 'max_files_per_run', 'index_storage_quota', 'context_size', 'exec_write_max_chars', 'mail_index_max', 'talk_history_size', 'talk_index_max_rooms', 'talk_index_max_messages', 'chat_retention_days', 'embed_batch_size', 'agent_max_tool_rounds', 'web_search_max_results', 'web_search_timeout', 'web_search_content_chars', 'web_search_candidates', 'web_search_browser_timeout'], true)) {
-                    $value = (string)$value;
-                }
-                if ($key === 'exec_delete_mode') {
-                    $value = in_array($value, ['off', 'own', 'all'], true) ? $value : 'own';
-                }
-                if ($key === 'exec_write_types') {
-                    $value = $this->config->normalizeValue($key, $value);
-                }
-                if ($key === 'provider_profiles') {
-                    $value = json_encode(is_array($value) ? $value : [], JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE) ?: '[]';
-                }
-                if (in_array($key, AppConfig::BOOLEAN_SETTINGS, true)) {
-                    $value = in_array((string)$value, ['1', 'true', 'on'], true) ? '1' : '0';
-                }
-                if ($key === 'temperature') {
-                    $value = (string)max(0.0, min(2.0, (float)$value));
-                }
-                if ($key === 'web_search_provider') {
-                    $value = trim((string)$value);
-                    if (!in_array($value, ['duckduckgo', 'bing', 'searxng', 'brave', 'tavily'], true)) {
-                        $value = 'duckduckgo';
-                    }
-                }
-                if ($key === 'ollama_keep_alive' || $key === 'followups_mode') {
-                    $value = trim((string)$value);
-                    if ($key === 'ollama_keep_alive' && $value === '') {
-                        $value = '5m'; // Ollama server default
-                    }
-                    if ($key === 'followups_mode' && !in_array($value, ['fast', 'llm'], true)) {
-                        $value = 'fast';
-                    }
-                }
-                if ($key === 'talk_bot_trigger') {
-                    $value = trim((string)$value);
-                    if ($value === '') {
-                        $value = 'EVA'; // Default falls leer
-                    }
-                }
-                // Keep the final storage coercion available to every settings
-                // client through AppConfig (Issue #319).
-                $value = $this->config->normalizeSetting($key, $value);
-                $this->config->set($key, (string)$value);
-        }
-        return new ErrorDataResponse($this->config->all());
-    }
-
-    /** Validate the small, deliberately data-only scheduler format. */
-    private function validateProactiveSchedules(mixed $value): ?string {
-        if (!is_string($value) || strlen($value) > 20000) {
-            return 'Scheduled briefings must be a small JSON list.';
-        }
-        $rows = json_decode($value, true);
-        if (!is_array($rows) || count($rows) > 20) {
-            return 'Scheduled briefings must contain at most 20 entries.';
-        }
-        foreach ($rows as $row) {
-            if (!is_array($row)
-                || preg_match('/^[a-zA-Z0-9_-]{1,64}$/', (string)($row['id'] ?? '')) !== 1
-                || !is_string($row['prompt'] ?? null) || mb_strlen(trim((string)$row['prompt'])) < 1 || mb_strlen((string)$row['prompt']) > 2000
-                || preg_match('/^(?:[01]\\d|2[0-3]):[0-5]\\d$/', (string)($row['time'] ?? '')) !== 1
-                || !is_array($row['days'] ?? null) || $row['days'] === []) {
-                return 'Every scheduled briefing needs an id, prompt, HH:MM time and at least one weekday.';
-            }
-            if (array_key_exists('allow_actions', $row) && !is_bool($row['allow_actions'])) {
-                return 'Scheduled briefing allow_actions must be a boolean.';
-            }
-            if (array_key_exists('type', $row) && !in_array($row['type'], ['morning', 'document_digest', 'custom'], true)) {
-                return 'Scheduled briefing type must be morning, document_digest or custom.';
-            }
-            if (array_key_exists('channels', $row)) {
-                $channels = $row['channels'];
-                if (!is_array($channels) || $channels === [] || count($channels) > 3 || array_diff($channels, ['notification', 'email', 'talk']) !== []) {
-                    return 'Choose one or more supported briefing delivery channels.';
-                }
-                if (in_array('talk', $channels, true)
-                    && (!is_string($row['talk_room'] ?? null) || trim($row['talk_room']) === '' || mb_strlen($row['talk_room']) > 128)) {
-                    return 'A Talk briefing needs a room name or room token of at most 128 characters.';
-                }
-            }
-            foreach ($row['days'] as $day) {
-                if (!is_int($day) && !ctype_digit((string)$day) || (int)$day < 1 || (int)$day > 7) {
-                    return 'Scheduled briefing weekdays must be between 1 (Monday) and 7 (Sunday).';
-                }
-            }
-        }
-        return null;
-    }
-
-    /**
-     * Reject role-mismatched model selections before they are stored (Issue
-     * #148): when the endpoint reports capabilities for an installed model,
-     * an embedding model must actually produce vectors and a chat model must
-     * accept chat/completion. Selections for models that are not installed
-     * yet (or an offline endpoint) are allowed - the pull may still be
-     * pending, and indexing/chat will surface the real error.
-     */
-    private function validateModelRoles(array $pending): array {
-        $modelKeys = ['embedding_model', 'chat_model', 'summary_model'];
-        if (!array_intersect(array_keys($pending), [...$modelKeys, 'ollama_url'])) {
-            return [];
-        }
-        $errors = [];
-        $previousUrl = null;
-        $urlPending = isset($pending['ollama_url']) && is_scalar($pending['ollama_url']);
-        if ($urlPending) {
-            // Capability checks must run against the endpoint the user is
-            // about to save, not the previously stored one.
-            $previousUrl = $this->config->get('ollama_url');
-            $this->config->set('ollama_url', trim((string)$pending['ollama_url']));
-        }
-        try {
-            $caps = $this->ollama->capabilities();
-            if (!$caps['available'] || $caps['models'] === []) {
-                // Cannot verify capabilities (offline or still starting): do
-                // not block saving, the connection check explains the state.
-                return [];
-            }
-            $byLower = [];
-            foreach ($caps['models'] as $name => $info) {
-                $lower = strtolower($name);
-                $byLower[$lower] = $info['roles'] ?? [];
-                if (str_ends_with($lower, ':latest')) {
-                    $byLower[substr($lower, 0, -7)] = $info['roles'] ?? [];
-                }
-            }
-            $expect = [
-                'embedding_model' => 'embedding',
-                'chat_model' => 'chat',
-                'summary_model' => 'chat',
-            ];
-            foreach ($expect as $key => $role) {
-                if (($pending['chat_provider'] ?? $this->config->get('chat_provider')) === 'groq' && $role === 'chat') continue;
-                if (!isset($pending[$key]) || !is_scalar($pending[$key])) {
-                    continue;
-                }
-                $model = trim((string)$pending[$key]);
-                if ($model === '') {
-                    continue;
-                }
-                $roles = $byLower[strtolower($model)] ?? null;
-                if ($roles === null) {
-                    continue; // Not installed yet: allow, pull may be pending.
-                }
-                if (!in_array($role, $roles, true)) {
-                    $errors[] = $key . ' model "' . $model . '" does not support ' . $role
-                        . ' (provider reports: ' . implode(', ', $roles) . ').';
-                }
-            }
-        } finally {
-            if ($urlPending && $previousUrl !== null) {
-                $this->config->set('ollama_url', $previousUrl);
-            }
-        }
-        return $errors;
-    }
-
-    private function validateOllamaUrl(string $url): ?string {
-        return OllamaUrlValidator::validate($url);
-    }
-
-    /** REST-style URL alias for integrations; preserves the legacy route. */
-    #[NoAdminRequired]
-    public function resetIndexSnake(): DataResponse {
-        return $this->resetIndex();
-    }
-
-    #[NoAdminRequired]
-    public function resetIndex(): DataResponse {
-        $user = $this->requireUser();
-        if ($user === null) {
-            return new ErrorDataResponse(['error' => 'Not logged in'], 401);
-        }
-        $this->config->setUserId($user);
-        $this->recoverStaleIndex();
-        if ($this->config->get('index_running') === '1') {
-            return new ErrorDataResponse(['error' => 'Stop indexing before deleting the index.'], 409);
-        }
-        $deleted = $this->indexer->reset($user);
-        return new ErrorDataResponse([
-            'result' => $deleted,
-            'status' => $this->ragService->buildStatus($user),
-        ]);
-    }
-
-    #[NoAdminRequired]
-    public function startIndex(): DataResponse {
-        return $this->queueIndex('all');
-    }
-
-    #[NoAdminRequired]
-    public function startMailIndex(): DataResponse {
-        return $this->queueIndex('mail');
-    }
-
-    /** REST-style URL alias for integrations; preserves the legacy route. */
-    #[NoAdminRequired]
-    public function startMailIndexSnake(): DataResponse {
-        return $this->startMailIndex();
-    }
-
-    /**
-     * Index the user's Nextcloud Talk chat histories.
-     *
-     * An explicit start always runs, even when the automatic Talk indexing
-     * toggle is off: the user asked for it now. Only rooms the user is a member
-     * of are read, and membership is checked again at answer time.
-     */
-    #[NoAdminRequired]
-    public function startTalkIndex(): DataResponse {
-        return $this->queueIndex('talk');
-    }
-
-    /** REST-style URL alias for integrations; preserves the legacy route. */
-    #[NoAdminRequired]
-    public function startTalkIndexSnake(): DataResponse {
-        return $this->startTalkIndex();
-    }
-
-    /** REST-style URL alias for integrations; preserves the legacy route. */
-    #[NoAdminRequired]
-    public function stopIndexSnake(): DataResponse {
-        return $this->stopIndex();
-    }
-
-    #[NoAdminRequired]
-    public function stopIndex(): DataResponse {
-        $user = $this->requireUser();
-        if ($user === null) {
-            return new ErrorDataResponse(['error' => 'Not logged in'], 401);
-        }
-        $this->config->setUserId($user);
-        $this->recoverStaleIndex();
-        if ($this->config->get('index_running') !== '1') {
-            return new ErrorDataResponse(['stopped' => true, 'status' => $this->ragService->buildStatus($user)]);
-        }
-        // Keep the run claim and heartbeat until the worker confirms that it
-        // has stopped. Clearing them here makes the UI report a false
-        // completion and allows a second worker to race with the first one.
-        // The worker observes this durable cancellation flag at its next
-        // boundary and owns the terminal-state transition in its finally block.
-        $this->config->set('index_cancel_requested', '1');
-        return new ErrorDataResponse([
-            'stopped' => true,
-            'stopping' => true,
-            'status' => $this->ragService->buildStatus($user),
-        ]);
-    }
-
-    private function queueIndex(string $mode): DataResponse {
-        $user = $this->requireUser();
-        if ($user === null) {
-            return new ErrorDataResponse(['error' => 'Not logged in'], 401);
-        }
-        $this->config->setUserId($user);
-        $this->recoverStaleIndex();
-        if ($this->config->get('index_running') === '1') {
-            if ($this->config->get('index_cancel_requested') === '1') {
-                // A restart requested while the previous worker is stopping
-                // is queued behind it. The queued job claims a fresh run only
-                // after the old worker has released its lock and terminal state.
-                try {
-                    $this->jobList->add(IndexRequestJob::class, [
-                        'userId' => $user,
-                        'mode' => $mode,
-                        'waitForCancellation' => true,
-                    ]);
-                    return new ErrorDataResponse([
-                        'queued' => true,
-                        'waitingForStop' => true,
-                        'mode' => $mode,
-                        'status' => $this->ragService->buildStatus($user),
-                    ]);
-                } catch (\Throwable $e) {
-                    return new ErrorDataResponse(['error' => 'The follow-up index job could not be queued.'], 500);
-                }
-            }
-            return new ErrorDataResponse([
-                'queued' => false,
-                'alreadyRunning' => true,
-                'message' => 'Indexing is already running for this user.',
-                'status' => $this->ragService->buildStatus($user),
-            ]);
-        }
-        $runId = bin2hex(random_bytes(16));
-        // Bounded key: the full sha256 would exceed the varchar(64) key column
-        // of Nextcloud's file_locks table and break acquire/release.
-        $lockPath = LockGuard::indexLockPath($user);
-        try {
-            // Serialize the initial claim as well. IConfig's precondition is
-            // atomic only after the first missing value has been created. The
-            // guard reclaims an expired row a crashed worker left behind;
-            // without it such a row blocks every future start until a cron
-            // maintenance job happens to clean file_locks.
-            $this->lockGuard->acquireIndexLock($user, $lockPath);
-        } catch (\Throwable $e) {
-            return new ErrorDataResponse([
-                'queued' => false,
-                'error' => 'Indexing is currently locked by another worker. Please retry shortly.',
-                'status' => $this->ragService->buildStatus($user),
-            ], 409);
-        }
-        if (!$this->config->tryClaimIndex($user)) {
-            $this->lockingProvider->releaseLock($lockPath, ILockingProvider::LOCK_EXCLUSIVE);
-            return new ErrorDataResponse([
-                'queued' => false,
-                'error' => 'Indexing could not be claimed because another worker is active. Please retry shortly.',
-                'status' => $this->ragService->buildStatus($user),
-            ], 409);
-        }
-        try {
-            $this->config->setUserId($user);
-            $this->config->set('index_started', (string)time());
-            $this->config->set('index_heartbeat', (string)time());
-            $this->config->set('index_finished', '0');
-            $this->config->set('last_index_error', '');
-            $this->config->set('index_mode', $mode);
-            $this->config->set('index_cancel_requested', '0');
-            $this->config->set('index_run_id', $runId);
-            $this->jobList->add(IndexRequestJob::class, [
-                'userId' => $user,
-                'mode' => $mode,
-                'runId' => $runId,
-            ]);
-            // A successful explicit start enrolls this user even if the
-            // current pass eventually finds zero indexable documents.
-            $this->config->setIndexEnrolled($user, true);
-            return new ErrorDataResponse([
-                'queued' => true,
-                'mode' => $mode,
-                'status' => $this->ragService->buildStatus($user),
-            ]);
-        } catch (\Throwable $e) {
-            $this->config->setUserId($user);
-            if ($this->config->get('index_run_id') === $runId) {
-                $this->config->set('index_running', '0');
-                $this->config->set('index_mode', 'idle');
-                $this->config->set('index_run_id', '');
-                $this->config->set('index_heartbeat', '');
-            }
-            return new ErrorDataResponse(['error' => 'The background index job could not be queued.'], 500);
-        } finally {
-            $this->lockingProvider->releaseLock($lockPath, ILockingProvider::LOCK_EXCLUSIVE);
-        }
-    }    private function recoverStaleIndex(): void
-    {
-        // The rule itself lives with the run state (AppConfig), because the cron
-        // job and the indexer need the same one; this call is only the HTTP
-        // entry point into it.
-        $this->config->recoverAbandonedRun();
-    }
-
-    #[NoAdminRequired]
-    public function documents(): DataResponse {
-        $user = $this->requireUser();
-        if ($user === null) {
-            return new ErrorDataResponse(['error' => 'Not logged in'], 401);
-        }
-        try {
-            $query = DocumentsQuery::fromArray([
-                'search' => $this->requestParam('search'),
-                'limit' => $this->requestParam('limit'),
-                'offset' => $this->requestParam('offset'),
-                'type' => $this->requestParam('type'),
-                'folder' => $this->requestParam('folder'),
-                'dateFrom' => $this->requestParam('dateFrom'),
-                'dateTo' => $this->requestParam('dateTo'),
-                'sizeMin' => $this->requestParam('sizeMin'),
-                'sizeMax' => $this->requestParam('sizeMax'),
-                'sort' => $this->requestParam('sort'),
-                'dir' => $this->requestParam('dir'),
-            ]);
-        } catch (\InvalidArgumentException $e) {
-            return new ErrorDataResponse(['error' => $e->getMessage()], 400);
-        }
-        $docs = $this->documentMapper->findByUser($user, $query->search, $query->limit, $query->offset, $query->filters, $query->sort, $query->direction);
-        $out = array_map(static function ($d) {
-            return [
-                'id' => (int)$d->getId(),
-                'path' => $d->getPath(),
-                'name' => $d->getName(),
-                'mime' => $d->getMime(),
-                'size' => (int)$d->getSize(),
-                'chunks' => (int)$d->getChunkCount(),
-                'indexedAt' => $d->getIndexedAt(),
-            ];
-        }, $docs);
-        // Totals describe the whole filtered index, independent of the page
-        // that was requested (Issue #74).
-        $aggregates = $this->documentMapper->aggregateForUser($user, $query->search, $query->filters);
-        $payload = [
-            'documents' => $out,
-            'total' => $aggregates['count'],
-            'totalChunks' => $aggregates['chunks'],
-            'totalSize' => $aggregates['size'],
-        ];
-        $etag = '"' . hash('sha256', (string)json_encode($payload, JSON_UNESCAPED_SLASHES)) . '"';
-        $headers = ['Cache-Control' => 'private, max-age=300', 'ETag' => $etag];
-        $ifNoneMatch = trim((string)$this->request->getHeader('If-None-Match'));
-        if ($ifNoneMatch !== '' && hash_equals($etag, $ifNoneMatch)) {
-            return new ErrorDataResponse([], 304, $headers);
-        }
-        return new ErrorDataResponse($payload, 200, $headers);
-    }
-
-    #[NoAdminRequired]
-    public function documentChunks(): DataResponse {
-        $user = $this->requireUser();
-        if ($user === null) {
-            return new ErrorDataResponse(['error' => 'Not logged in'], 401);
-        }
-        try {
-            $query = DocumentChunksQuery::fromArray([
-                'id' => $this->requestParam('id'),
-                'limit' => $this->requestParam('limit'),
-                'offset' => $this->requestParam('offset'),
-            ]);
-        } catch (\InvalidArgumentException $e) {
-            return new ErrorDataResponse(['error' => $e->getMessage()], 400);
-        }
-        $id = $query->id;
-        $doc = $id > 0 ? $this->documentMapper->findById($id) : null;
-        if ($doc === null || $doc->getUserId() !== $user
-            || !$this->fileContextChat->fileAccessible($user, (int)$doc->getFileId())) {
-            return new ErrorDataResponse(['error' => 'Document not found'], 404);
-        }
-        // Bounded pagination (Issues #91/#140): a huge document must not be
-        // transferred all at once. The client streams pages of LIMIT chunks
-        // until it reached document.chunks.
-        $rows = $this->chunkMapper->findByDocument($id, $query->limit, $query->offset);
-        $totalChunks = (int)$doc->getChunkCount();
-        $nextOffset = $query->offset + count($rows);
-        return new ErrorDataResponse([
-            'document' => [
-                'id' => (int)$doc->getId(),
-                'path' => $doc->getPath(),
-                'chunks' => $totalChunks,
-            ],
-            'offset' => $query->offset,
-            'limit' => $query->limit,
-            'hasMore' => $nextOffset < $totalChunks,
-            'nextOffset' => $nextOffset,
-            'chunks' => array_map(static fn($c) => [
-                'index' => (int)$c['chunk_index'],
-                'content' => (string)$c['content'],
-                'provenance' => json_decode((string)($c['provenance'] ?? '{}'), true) ?: [],
-            ], $rows),
-        ], 200, ['Cache-Control' => 'private, max-age=300']);
-    }
-
-    #[NoAdminRequired]
     public function chat(): DataResponse {
         $user = $this->requireUser();
         if ($user === null) {
@@ -848,13 +168,12 @@ class ApiController extends OCSController {
             return new ErrorDataResponse(['error' => $e->getMessage()], 400);
         }
         if (($limited = $this->rateLimitResponse($user, 'chat', $this->config->getInt('rate_limit_chat_per_minute', 30))) !== null) return $limited;
-        $chatSlot = $this->acquireChatSlot($user);
+        try { $chatSlot = $this->acquireChatSlot($user); }
+        catch (\Throwable) { return new ErrorDataResponse(['error' => 'chat_unavailable', 'message' => 'Chat is temporarily unavailable. Please retry shortly.'], 503); }
         if ($chatSlot === null) return new ErrorDataResponse(['error' => 'busy', 'message' => 'Another chat request is already running. Please retry shortly.'], 429, ['Retry-After' => '5']);
-        $this->releaseSessionLock();
-        // Per-chat folder scope (Issue #88) and custom instructions
-        // (Issue #90) are resolved from the chat's stored metadata.
-        $custom = $this->customFor($user, $request->chatId);
         try {
+            $this->releaseSessionLock();
+            $custom = $this->customFor($user, $request->chatId);
             return new ErrorDataResponse($this->ragService->ask(new \OCA\EvaAi\Dto\ChatRequest(
                 userId: $user,
                 message: $request->message,
@@ -868,235 +187,6 @@ class ApiController extends OCSController {
         } finally {
             $this->releaseChatSlot($chatSlot);
         }
-    }
-
-    /** Queue a chat request so a closed browser tab cannot lose it. */
-    #[NoAdminRequired]
-    public function backgroundChat(): DataResponse {
-        $user = $this->requireUser();
-        if ($user === null) return new ErrorDataResponse(['error' => 'Not logged in'], 401);
-        if (($limited = $this->rateLimitResponse($user, 'background', $this->config->getInt('rate_limit_background_per_minute', 5))) !== null) return $limited;
-        $chatId = trim((string)($this->requestParam('chatId') ?? ''));
-        $message = trim((string)($this->requestParam('message') ?? ''));
-        $history = $this->requestParam('history', []);
-        $requestId = $this->requestParam('requestId');
-        if (is_string($history)) $history = json_decode($history, true) ?? [];
-        if ($chatId === '' || $message === '' || !is_array($history)) return new ErrorDataResponse(['error' => 'chatId, message and history are required'], 400);
-        if ($this->messageTooLong($message)) return new ErrorDataResponse(['error' => 'Message exceeds the maximum length of 50,000 characters.'], 400);
-        $this->releaseSessionLock();
-        $chat = $this->chatStore->get($user, $chatId);
-        if ($chat === null) return new ErrorDataResponse(['error' => 'Chat not found'], 404);
-        // pagehide may fire before the normal user-message persistence call;
-        // append it only when it is not already the final stored user message.
-        $stored = $chat['messages'] ?? [];
-        $last = $stored !== [] ? $stored[count($stored) - 1] : null;
-        if (($last['role'] ?? '') !== 'user' || trim((string)($last['text'] ?? '')) !== $message) {
-            $this->chatStore->append($user, $chatId, 'user', $message);
-        }
-        $id = $this->backgroundChatQueue->enqueue($user, $chatId, $message, $history, is_string($requestId) ? $requestId : null);
-        if ($id === null) return new ErrorDataResponse(['error' => 'Background queue is full or the message is too large'], 429);
-        // Wake the timed worker on the next cron tick instead of waiting for
-        // its previous 30-second interval (or a stale 1970 last-run entry).
-        try { $this->jobList->scheduleAfter(BackgroundChatJob::class, time() + 1); } catch (\Throwable) { /* cron remains the fallback */ }
-        return new ErrorDataResponse(['queued' => true, 'id' => $id]);
-    }
-
-    #[NoAdminRequired]
-    public function externalConnectors(): DataResponse {
-        $user = $this->requireUser();
-        if ($user === null) return new ErrorDataResponse(['error' => 'Not logged in'], 401);
-        return new ErrorDataResponse($this->executor->run($user, 'list_external_connectors', []));
-    }
-
-    /** List installed third-party EVA tools without exposing plugin secrets. */
-    #[NoAdminRequired]
-    public function plugins(): DataResponse {
-        $user = $this->requireUser();
-        if ($user === null) return new ErrorDataResponse(['error' => 'Not logged in'], 401);
-        // The plugin catalog is optional UI metadata. A third-party plugin
-        // must never make the EVA app page fail while the built-in tools and
-        // chat remain available. Registration already isolates plugin events;
-        // keep the same failure boundary around catalog/schema generation.
-        try {
-            $plugins = array_values(array_filter(
-                $this->executor->pluginCatalog(),
-                static fn(array $tool): bool => str_starts_with((string)($tool['name'] ?? ''), 'plugin_')
-            ));
-        } catch (\Throwable) {
-            $plugins = [];
-        }
-        return new ErrorDataResponse(['plugins' => $plugins]);
-    }
-
-    #[NoAdminRequired]
-    public function setPluginEnabled(): DataResponse {
-        $user = $this->requireUser();
-        if ($user === null) return new ErrorDataResponse(['error' => 'Not logged in'], 401);
-        $raw = file_get_contents('php://input', false, null, 0, 4097);
-        if (!is_string($raw) || strlen($raw) > 4096) return new ErrorDataResponse(['error' => 'Plugin settings request is too large.'], 413);
-        $decoded = json_decode($raw, true);
-        try {
-            $input = PluginToggleRequest::fromArray(is_array($decoded) ? $decoded : []);
-        } catch (\InvalidArgumentException $e) {
-            return new ErrorDataResponse(['error' => $e->getMessage()], 400);
-        }
-        $this->config->setUserId($user);
-        $this->executor->setUserId($user);
-        $known = [];
-        try {
-            foreach ($this->executor->pluginCatalog() as $plugin) {
-                $name = (string)($plugin['name'] ?? '');
-                if ($name !== '') $known[$name] = true;
-            }
-        } catch (\Throwable) {
-            return new ErrorDataResponse(['error' => 'The EVA extension catalog is unavailable.'], 503);
-        }
-        if (!isset($known[$input->name])) return new ErrorDataResponse(['error' => 'Plugin tool not found.'], 404);
-
-        $this->config->set('plugin_tools_enabled', PluginToolSettings::withEnabledState(
-            $this->config->get('plugin_tools_enabled'),
-            $input->name,
-            $input->enabled,
-            array_keys($known),
-        ));
-        return new ErrorDataResponse(['name' => $input->name, 'enabled' => $input->enabled]);
-    }
-
-    #[NoAdminRequired]
-    public function saveExternalConnector(): DataResponse {
-        $user = $this->requireUser();
-        if ($user === null) return new ErrorDataResponse(['error' => 'Not logged in'], 401);
-        $body = $this->requestBody();
-        $result = $this->executor->runConfirmed($user, 'configure_external_connector', $body);
-        return new ErrorDataResponse($result, ($result['ok'] ?? false) ? 200 : 400);
-    }
-
-    #[NoAdminRequired]
-    public function discoverExternalConnector(): DataResponse {
-        $user = $this->requireUser();
-        if ($user === null) return new ErrorDataResponse(['error' => 'Not logged in'], 401);
-        $result = $this->executor->run($user, 'discover_external_connector', $this->requestBody());
-        return new ErrorDataResponse($result, ($result['ok'] ?? false) ? 200 : 400);
-    }
-
-    /** Read-only transport diagnostic executed on the Nextcloud host. */
-    #[NoAdminRequired]
-    public function diagnoseExternalConnector(): DataResponse {
-        $user = $this->requireUser();
-        if ($user === null) return new ErrorDataResponse(['error' => 'Not logged in'], 401);
-        $result = $this->executor->run($user, 'diagnose_external_connector', $this->requestBody());
-        return new ErrorDataResponse($result, ($result['ok'] ?? false) ? 200 : 400);
-    }
-
-    /** Perform an explicit, read-only connectivity check against a connector. */
-    #[NoAdminRequired]
-    public function testExternalConnector(): DataResponse {
-        $user = $this->requireUser();
-        if ($user === null) return new ErrorDataResponse(['error' => 'Not logged in'], 401);
-        $id = strtolower(trim((string)($this->requestBody()['id'] ?? $this->requestParam('id') ?? '')));
-        if ($id === '') return new ErrorDataResponse(['error' => 'Connector id required'], 400);
-        // A test must diagnose transport and authentication, not guess a
-        // random learned route (which may be protected or require path
-        // parameters). The diagnostic uses the same credentials and host
-        // validation as normal calls and never returns response data.
-        $result = $this->executor->run($user, 'diagnose_external_connector', ['id' => $id]);
-        $httpStatus = (($result['ok'] ?? false) || isset($result['result'])) ? 200 : 400;
-        return new ErrorDataResponse($result, $httpStatus);
-    }
-
-    #[NoAdminRequired]
-    public function deleteExternalConnector(): DataResponse {
-        $user = $this->requireUser();
-        if ($user === null) return new ErrorDataResponse(['error' => 'Not logged in'], 401);
-        $id = strtolower(trim((string)($this->requestParam('id') ?? $this->requestBody()['id'] ?? '')));
-        if (!preg_match('/^[a-z0-9][a-z0-9_-]{0,39}$/D', $id)) return new ErrorDataResponse(['error' => 'Valid connector id required'], 400);
-        $config = \OCP\Server::get(\OCP\IConfig::class);
-        $raw = json_decode($config->getUserValue($user, AppConfig::APP, 'external_connectors', '{}'), true);
-        if (!is_array($raw) || !array_key_exists($id, $raw)) return new ErrorDataResponse(['error' => 'Connector not found'], 404);
-        unset($raw[$id]); $config->setUserValue($user, AppConfig::APP, 'external_connectors', json_encode($raw, JSON_UNESCAPED_SLASHES) ?: '{}');
-        \OCP\Server::get(\OCA\EvaAi\Service\ProviderCredentials::class)->saveCustom($user, 'connector_' . $id, '');
-        return new ErrorDataResponse(['ok' => true, 'deleted' => $id]);
-    }
-
-    /** Inspect queued background-agent work without exposing conversation history. */
-    #[NoAdminRequired]
-    public function backgroundChatStatus(): DataResponse {
-        $user = $this->requireUser();
-        if ($user === null) return new ErrorDataResponse(['error' => 'Not logged in'], 401);
-        $items = $this->backgroundChatQueue->status($user);
-        // The UI polls this endpoint while a tab is open. Use that heartbeat
-        // to recover gracefully when a cron tick was missed or another job
-        // temporarily reserved the timed worker.
-        $needsWake = false;
-        foreach ($items as $item) {
-            if (in_array(($item['status'] ?? ''), ['pending', 'running'], true)) { $needsWake = true; break; }
-        }
-        if ($needsWake) {
-            try { $this->jobList->scheduleAfter(BackgroundChatJob::class, time() + 1); } catch (\Throwable) { /* cron remains the fallback */ }
-        }
-        return new ErrorDataResponse(['items' => $items]);
-    }
-
-    #[NoAdminRequired]
-    public function cancelBackgroundChat(): DataResponse {
-        $user = $this->requireUser();
-        if ($user === null) return new ErrorDataResponse(['error' => 'Not logged in'], 401);
-        try {
-            $request = BackgroundChatIdRequest::fromArray(['id' => $this->requestParam('id')]);
-        } catch (\InvalidArgumentException $e) {
-            return new ErrorDataResponse(['error' => $e->getMessage()], 400);
-        }
-        $id = $request->id;
-        if (!$this->backgroundChatQueue->cancel($user, $id)) return new ErrorDataResponse(['error' => 'Background job not found'], 404);
-        return new ErrorDataResponse(['ok' => true, 'cancelRequested' => true]);
-    }
-
-    #[NoAdminRequired]
-    public function pauseBackgroundChat(): DataResponse {
-        $user = $this->requireUser();
-        if ($user === null) return new ErrorDataResponse(['error' => 'Not logged in'], 401);
-        try {
-            $request = BackgroundChatIdRequest::fromArray(['id' => $this->requestParam('id')]);
-        } catch (\InvalidArgumentException $e) {
-            return new ErrorDataResponse(['error' => $e->getMessage()], 400);
-        }
-        if (!$this->backgroundChatQueue->pause($user, $request->id)) return new ErrorDataResponse(['error' => 'Pending background job not found'], 404);
-        return new ErrorDataResponse(['ok' => true, 'paused' => true]);
-    }
-
-    #[NoAdminRequired]
-    public function resumeBackgroundChat(): DataResponse {
-        $user = $this->requireUser();
-        if ($user === null) return new ErrorDataResponse(['error' => 'Not logged in'], 401);
-        try {
-            $request = BackgroundChatIdRequest::fromArray(['id' => $this->requestParam('id')]);
-        } catch (\InvalidArgumentException $e) {
-            return new ErrorDataResponse(['error' => $e->getMessage()], 400);
-        }
-        if (!$this->backgroundChatQueue->resume($user, $request->id)) return new ErrorDataResponse(['error' => 'Paused background job not found'], 404);
-        return new ErrorDataResponse(['ok' => true, 'resumed' => true]);
-    }
-
-    /** Requeue a failed background run without losing its original context. */
-    #[NoAdminRequired]
-    public function retryBackgroundChat(): DataResponse {
-        $user = $this->requireUser();
-        if ($user === null) return new ErrorDataResponse(['error' => 'Not logged in'], 401);
-        try {
-            $request = BackgroundChatIdRequest::fromArray(['id' => $this->requestParam('id')]);
-        } catch (\InvalidArgumentException $e) {
-            return new ErrorDataResponse(['error' => $e->getMessage()], 400);
-        }
-        $id = $request->id;
-        $known = false;
-        foreach ($this->backgroundChatQueue->status($user) as $item) {
-            if (($item['id'] ?? '') === $id) { $known = true; break; }
-        }
-        if (!$known) return new ErrorDataResponse(['error' => 'Background job not found'], 404);
-        if ($this->backgroundChatQueue->retry($user, $id, 'Retry limit reached.')) {
-            return new ErrorDataResponse(['error' => 'This background run has reached its retry limit.'], 409);
-        }
-        return new ErrorDataResponse(['ok' => true, 'queued' => true]);
     }
 
     /**
@@ -1130,122 +220,6 @@ class ApiController extends OCSController {
             'instructions' => trim((string)($chat['instructions'] ?? '')),
             'persona' => trim((string)($chat['persona'] ?? '')),
         ];
-    }
-
-    /**
-     * Kontext-Chat ueber explizit ausgewaehlte Dateien ("Mit AI oeffnen"
-     * bzw. "Mit diesen Dateien chatten"). Antwort wird ausschliesslich
-     * aus den Chunks der uebergebenen fileIds erzeugt.
-     */
-    #[NoAdminRequired]
-    public function fileContextChat(): DataResponse {
-        $user = $this->requireUser();
-        if ($user === null) {
-            return new ErrorDataResponse(['error' => 'Not logged in'], 401);
-        }
-        try {
-            $request = FileContextChatRequest::fromArray([
-                'fileIds' => $this->requestParam('fileIds'),
-                'message' => $this->requestParam('message'),
-                'history' => $this->requestParam('history'),
-            ]);
-        } catch (\InvalidArgumentException $e) {
-            return new ErrorDataResponse(['error' => $e->getMessage()], 400);
-        }
-        if (($limited = $this->rateLimitResponse($user, 'file_context', $this->config->getInt('rate_limit_chat_per_minute', 30))) !== null) return $limited;
-        $chatSlot = $this->acquireChatSlot($user);
-        if ($chatSlot === null) return new ErrorDataResponse(['error' => 'busy', 'message' => 'Another chat request is already running. Please retry shortly.'], 429, ['Retry-After' => '5']);
-        $this->releaseSessionLock();
-        try {
-            return new ErrorDataResponse($this->fileContextChat->chat($user, $request->fileIds, $request->message, $request->history));
-        } finally {
-            $this->releaseChatSlot($chatSlot);
-        }
-    }
-
-    /**
-     * Liefert die indexierten Dokument-IDs zu einer Liste von File-IDs
-     * (fuer die UI, damit vor dem Chat geprueft werden kann, ob die
-     * Auswahl bereits indexiert ist).
-     */
-    #[NoAdminRequired]
-    public function knowledge(): DataResponse {
-        $user = $this->requireUser();
-        if ($user === null) {
-            return new ErrorDataResponse(['error' => 'Not logged in'], 401);
-        }
-        $this->knowledgeInitializer->ensureInitialized($user);
-        try {
-            $rootFolder = \OCP\Server::get(\OCP\Files\IRootFolder::class);
-            $home = $rootFolder->getUserFolder($user);
-            $content = '';
-            if ($home->nodeExists('KNOWLEDGE.md')) {
-                $node = $home->get('KNOWLEDGE.md');
-                if ($node instanceof \OCP\Files\File) {
-                    $content = (string)$node->getContent();
-                }
-            }
-            return new ErrorDataResponse(KnowledgeContentResponse::fromContent($content)->toArray());
-        } catch (\Throwable $e) {
-            return new ErrorDataResponse(['error' => 'Could not read personal knowledge file.'], 500);
-        }
-    }
-
-    #[NoAdminRequired]
-    public function saveKnowledge(): DataResponse {
-        $user = $this->requireUser();
-        if ($user === null) {
-            return new ErrorDataResponse(['error' => 'Not logged in'], 401);
-        }
-        try {
-            $request = KnowledgeContentRequest::fromArray(['content' => $this->requestParam('content', '')]);
-        } catch (\InvalidArgumentException $e) {
-            return new ErrorDataResponse(['error' => $e->getMessage()], 400);
-        }
-        $content = $request->content;
-        try {
-            $rootFolder = \OCP\Server::get(\OCP\Files\IRootFolder::class);
-            $home = $rootFolder->getUserFolder($user);
-            $path = 'KNOWLEDGE.md';
-            if ($home->nodeExists($path)) {
-                $home->get($path)->putContent($content);
-            } else {
-                $home->newFile($path, $content);
-            }
-            return new ErrorDataResponse(KnowledgeContentSaveResponse::saved($content)->toArray());
-        } catch (\Throwable $e) {
-            return new ErrorDataResponse(['error' => 'Could not save knowledge file: ' . $e->getMessage()], 500);
-        }
-    }
-
-    #[NoAdminRequired]
-    public function fileContextStatus(): DataResponse {
-        $user = $this->requireUser();
-        if ($user === null) {
-            return new ErrorDataResponse(['error' => 'Not logged in'], 401);
-        }
-        $fileIds = $this->requestParam('fileIds');
-        if (!is_array($fileIds)) {
-            $fileIds = [];
-        }
-        $fileIds = array_values(array_filter(array_map('intval', $fileIds), static fn($v) => $v > 0));
-        if ($fileIds === []) {
-            return new ErrorDataResponse(FileContextStatusResponse::forRequestedFiles([], [])->toArray());
-        }
-        $docs = $this->fileContextChat->accessibleDocuments(
-            $user,
-            $this->documentMapper->findByUserAndFileIds($user, $fileIds)
-        );
-        $files = [];
-        foreach ($docs as $d) {
-            $fid = (int)$d->getFileId();
-            $files[] = [
-                'fileId' => $fid,
-                'name' => $d->getName(),
-                'path' => $d->getPath(),
-            ];
-        }
-        return new ErrorDataResponse(FileContextStatusResponse::forRequestedFiles($fileIds, $files)->toArray());
     }
 
     /**
@@ -1317,7 +291,13 @@ class ApiController extends OCSController {
         if ($user !== null && ($limited = $this->rateLimitResponse($user, 'stream', $this->config->getInt('rate_limit_stream_per_minute', 10))) !== null) {
             return new StreamTraversableResponse(new \ArrayIterator([json_encode(['type' => 'error', 'message' => 'Too many requests. Please retry shortly.']) . "\n"]), 429, ['Content-Type' => 'application/x-ndjson', 'Retry-After' => '60', 'Cache-Control' => 'no-cache, no-store, must-revalidate']);
         }
-        $chatSlot = $user !== null ? $this->acquireChatSlot($user) : null;
+        // Resolve potentially failing storage reads before acquiring the slot.
+        $scopePath = $this->scopePathFor($user, $request?->chatId);
+        $custom = $this->customFor($user, $request?->chatId);
+        try { $chatSlot = $user !== null ? $this->acquireChatSlot($user) : null; }
+        catch (\Throwable) {
+            return new StreamTraversableResponse(new \ArrayIterator([json_encode(['type' => 'error', 'message' => 'Chat is temporarily unavailable. Please retry shortly.']) . "\n"]), 503, ['Content-Type' => 'application/x-ndjson']);
+        }
         if ($user !== null && $chatSlot === null) {
             return new StreamTraversableResponse(new \ArrayIterator([json_encode(['type' => 'error', 'message' => 'Another chat request is already running. Please retry shortly.']) . "\n"]), 429, ['Content-Type' => 'application/x-ndjson', 'Retry-After' => '5']);
         }
@@ -1328,67 +308,7 @@ class ApiController extends OCSController {
         if ($user !== null && $message !== '') {
             $this->releaseSessionLock();
         }
-        // Per-chat folder scope (Issue #88) and custom instructions (Issue #90)
-        // are resolved once, outside the generator, so they cannot change
-        // mid-stream.
-        $scopePath = $this->scopePathFor($user, $request?->chatId);
-        $custom = $this->customFor($user, $request?->chatId);
-
-        $generator = (function () use ($user, $message, $history, $images, $model, $scopePath, $custom, $chatSlot): \Generator {
-            // Aber die PHP-Output-Buffering-Schicht (php.ini output_buffering)
-            // würde jede erzeugte Zeile bis zum Ende puffern -> keine Live-Streams.
-            // Deshalb entfernen wir hier alle Puffer und flush'eriessen wirklich.
-            while (ob_get_level() > 0) {
-                @ob_end_flush();
-            }
-            if ($user === null) {
-                yield json_encode(['type' => 'error', 'message' => 'Not logged in']) . "\n";
-                return;
-            }
-            if ($this->clientDisconnected()) {
-                return;
-            }
-            $gen = null;
-            try {
-                $gen = $this->ragService->askStream(new \OCA\EvaAi\Dto\ChatRequest(
-                    userId: $user,
-                    message: $message,
-                    history: $history,
-                    scopePath: $scopePath,
-                    instructions: $custom['instructions'],
-                    persona: $custom['persona'],
-                    images: $images,
-                    model: $model,
-                ));
-                foreach ($gen as $line) {
-                    if ($this->clientDisconnected()) {
-                        return;
-                    }
-                    try {
-                        $ev = json_decode((string)$line, true);
-                        if (is_array($ev) && ($ev['type'] ?? '') === 'done') {
-                            $answer = (string)($ev['answer'] ?? '');
-                            if ($answer !== '' && $this->config->get('notify_on_complete') === '1') {
-                                $this->sendAnswerNotification($user, $answer);
-                            }
-                        }
-                        yield $line;
-                        if ($this->clientDisconnected()) {
-                            return;
-                        }
-                    } catch (\Throwable $e) {
-                        if (!$this->clientDisconnected()) {
-                            yield json_encode(['type' => 'error', 'message' => $e->getMessage()]) . "\n";
-                        }
-                    }
-                }
-            } finally {
-                // Dropping the generator reference closes nested stream
-                // resources on every supported PHP version.
-                $gen = null;
-                $this->releaseChatSlot($chatSlot);
-            }
-        })();
+        $generator = $this->streamEvents($user, $message, $history, $images, $model, $scopePath, $custom, $chatSlot);
 
         return new StreamTraversableResponse($generator, 200, [
             'Content-Type' => 'application/x-ndjson',
@@ -1397,6 +317,54 @@ class ApiController extends OCSController {
         ]);
     }
 
+
+    private function streamEvents(?string $user, string $message, array $history, array $images, ?string $model, string $scopePath, array $custom, ?string $chatSlot): \Generator {
+        // Flush each frame in web requests; preserve CLI test-runner buffers.
+        $gen = null;
+        $terminal = null;
+        try {
+            if (!in_array(PHP_SAPI, ['cli', 'phpdbg'], true)) while (ob_get_level() > 0) @ob_end_flush();
+            if ($user === null) {
+                yield json_encode(['type' => 'error', 'message' => 'Not logged in']) . "\n";
+                return;
+            }
+            if ($this->clientDisconnected()) return;
+            $gen = $this->ragService->askStream(new \OCA\EvaAi\Dto\ChatRequest(
+                userId: $user,
+                message: $message,
+                history: $history,
+                scopePath: $scopePath,
+                instructions: $custom['instructions'],
+                persona: $custom['persona'],
+                images: $images,
+                model: $model,
+            ));
+            foreach ($gen as $line) {
+                if ($this->clientDisconnected()) {
+                    return;
+                }
+                $ev = json_decode((string)$line, true);
+                if (is_array($ev) && in_array($ev['type'] ?? '', ['done', 'confirmation', 'error'], true)) {
+                    if (($ev['type'] ?? '') === 'done') {
+                        $answer = (string)($ev['answer'] ?? '');
+                        if ($answer !== '' && $this->config->get('notify_on_complete') === '1') $this->sendAnswerNotification($user, $answer);
+                    }
+                    // Close the producer and release coordination BEFORE the
+                    // browser sees a terminal event and can send again.
+                    $terminal = $line;
+                    break;
+                }
+                yield $line;
+                if ($this->clientDisconnected()) return;
+            }
+        } finally {
+            // Dropping the generator reference closes nested stream
+            // resources on every supported PHP version.
+            $gen = null;
+            $this->releaseChatSlot($chatSlot);
+        }
+        if ($terminal !== null && !$this->clientDisconnected()) yield $terminal;
+    }
 
     private function clientDisconnected(): bool {
         return function_exists('connection_aborted') && connection_aborted() > 0;
@@ -1423,116 +391,24 @@ class ApiController extends OCSController {
     }
 
     #[NoAdminRequired]
-    public function chats(): DataResponse {
+    public function chatTurn(string $id): DataResponse {
         $user = $this->requireUser();
-        if ($user === null) {
-            return new ErrorDataResponse(['error' => 'Not logged in'], 401);
-        }
-        // Optional text search across chat titles and message content.
+        if ($user === null) return new ErrorDataResponse(['error' => 'Not logged in'], 401);
         try {
-            $query = ChatListQuery::fromArray(['search' => $this->requestParam('search', '')]);
+            $turn = \OCA\EvaAi\Dto\ChatTurnRequest::fromArray([
+                'requestId' => $this->requestParam('requestId'),
+                'expectedRev' => $this->requestParam('expectedRev'),
+                'question' => $this->requestParam('question'),
+                'answer' => $this->requestParam('answer'),
+            ]);
+            $result = $this->chatStore->appendTurn($user, $id, $turn);
+            if (($result['error'] ?? '') === 'not_found') return new ErrorDataResponse(['error' => 'Requested resource was not found.'], 404);
+            if (($result['error'] ?? '') === 'conflict') return new ErrorDataResponse(['error' => 'conflict', 'message' => 'Chat history changed. Reload before saving another turn.'], 409);
+            $this->learnSavedChat($user, $id);
+            return new ErrorDataResponse($result);
         } catch (\InvalidArgumentException $e) {
             return new ErrorDataResponse(['error' => $e->getMessage()], 400);
-        }
-        // Archived chats are always included: the sidebar splits them into
-        // its own section and would otherwise never see them again (Issue #87).
-        // The dashboard widget reads the store directly and keeps hiding them.
-        try {
-            $response = ChatListResponse::fromArray($this->chatStore->list($user, $query->search, true));
-            return new ErrorDataResponse($response->toArray());
-        } catch (\Throwable $e) {
-            return $this->chatErrorResponse($e);
-        }
-    }
-
-    #[NoAdminRequired]
-    public function createChat(): DataResponse {
-        $user = $this->requireUser();
-        if ($user === null) {
-            return new ErrorDataResponse(['error' => 'Not logged in'], 401);
-        }
-        try {
-            $request = ChatTitleRequest::create(['title' => $this->requestParam('title', '')]);
-            $chat = $this->chatStore->create($user, $request->title);
-            return new ErrorDataResponse($chat);
-        } catch (\InvalidArgumentException $e) {
-            return new ErrorDataResponse(['error' => $e->getMessage()], 400);
-        } catch (\Throwable $e) {
-            return $this->chatErrorResponse($e);
-        }
-    }
-
-    #[NoAdminRequired]
-    public function deleteAllChats(): DataResponse {
-        $user = $this->requireUser();
-        if ($user === null) {
-            return new ErrorDataResponse(['error' => 'Not logged in'], 401);
-        }
-        try {
-            return new ErrorDataResponse(['ok' => true, 'deleted' => $this->chatStore->deleteAll($user)]);
-        } catch (\Throwable $e) {
-            return $this->chatErrorResponse($e);
-        }
-    }
-
-    #[NoAdminRequired]
-    public function chatDetail(string $id): DataResponse {
-        $user = $this->requireUser();
-        if ($user === null) {
-            return new ErrorDataResponse(['error' => 'Not logged in'], 401);
-        }
-        try {
-            $chat = $this->chatStore->get($user, $id);
-        } catch (\Throwable $e) {
-            return $this->chatErrorResponse($e);
-        }
-        if ($chat === null) {
-            return new ErrorDataResponse(['error' => 'Requested resource was not found.'], 404);
-        }
-        // Migrate old pending confirmations at read time. Before connector
-        // alias normalization was added, chats could persist a
-        // call_app_api confirmation for an external connector. Rewriting the
-        // response keeps existing chats usable immediately without mutating
-        // the stored history or exposing connector secrets.
-        $chat = $this->normalizeConnectorConfirmations($user, $chat);
-        return new ErrorDataResponse($chat);
-    }
-
-    private function normalizeConnectorConfirmations(string $user, array $chat): array {
-        $raw = \OCP\Server::get(\OCP\IConfig::class)->getUserValue($user, AppConfig::APP, 'external_connectors', '{}');
-        $connectors = json_decode($raw, true);
-        if (!is_array($connectors)) return $chat;
-        foreach (($chat['messages'] ?? []) as $index => $message) {
-            $confirmation = $message['confirmation'] ?? null;
-            if (!is_array($confirmation) || ($confirmation['name'] ?? '') !== 'call_app_api') continue;
-            $args = $confirmation['arguments'] ?? [];
-            $alias = is_array($args) ? strtolower(trim((string)($args['app_id'] ?? ''))) : '';
-            if ($alias === '' || !array_key_exists($alias, $connectors)) continue;
-            $confirmation['name'] = 'call_external_connector';
-            if (is_array($args)) {
-                $args['id'] = $alias;
-                unset($args['app_id']);
-                $confirmation['arguments'] = $args;
-            }
-            $chat['messages'][$index]['confirmation'] = $confirmation;
-        }
-        return $chat;
-    }
-
-    #[NoAdminRequired]
-    public function chatDelete(string $id): DataResponse {
-        $user = $this->requireUser();
-        if ($user === null) {
-            return new ErrorDataResponse(['error' => 'Not logged in'], 401);
-        }
-        try {
-            if (!$this->chatStore->delete($user, $id)) {
-                return new ErrorDataResponse(['error' => 'Requested resource was not found.'], 404);
-            }
-            return new ErrorDataResponse(['ok' => true]);
-        } catch (\Throwable $e) {
-            return $this->chatErrorResponse($e);
-        }
+        } catch (\Throwable $e) { return $this->chatErrorResponse($e); }
     }
 
     #[NoAdminRequired]
@@ -1567,16 +443,7 @@ class ApiController extends OCSController {
             $rev = $appended !== null ? (int)($appended['rev'] ?? 0) : 0;
 
             // After an assistant message is saved, learn from the full chat.
-            if ($request->role === 'assistant') {
-                try {
-                    $fullChat = $this->chatStore->getChat($user, $id);
-                    if ($fullChat !== null && count($fullChat['messages']) >= 4 && $this->config->get('learning_enabled') === '1') {
-                        $this->chatLearner->learnFromChat($user, $fullChat['messages']);
-                    }
-                } catch (\Throwable $e) {
-                    // Learning failure must never break chat persistence.
-                }
-            }
+            if ($request->role === 'assistant') $this->learnSavedChat($user, $id);
 
             $response = ChatAppendResponse::fromArray(['ok' => true, 'rev' => $rev]);
             return new ErrorDataResponse($response->toArray());
@@ -1585,39 +452,14 @@ class ApiController extends OCSController {
         }
     }
 
-    #[NoAdminRequired]
-    public function chatReaction(string $id): DataResponse {
-        $user = $this->requireUser();
-        if ($user === null) return new ErrorDataResponse(['error' => 'Not logged in'], 401);
+    private function learnSavedChat(string $user, string $id): void {
         try {
-            $request = ChatReactionRequest::fromArray([
-                'index' => $this->requestParam('index'),
-                'type' => $this->requestParam('type'),
-                'value' => $this->requestParam('value'),
-            ]);
-        } catch (\InvalidArgumentException $e) {
-            return new ErrorDataResponse(['error' => $e->getMessage()], 400);
-        }
-        try {
-            $result = $this->chatStore->setMessageReaction($user, $id, $request->index, $request->type, $request->value);
-            if ($result === null) return new ErrorDataResponse(['error' => 'Requested assistant message was not found.'], 404);
-            $response = ChatReactionResponse::fromArray($result);
-            return new ErrorDataResponse($response->toArray());
-        } catch (\Throwable $e) {
-            return $this->chatErrorResponse($e);
-        }
-    }
-
-    #[NoAdminRequired]
-    public function feedbackStats(): DataResponse {
-        $user = $this->requireUser();
-        if ($user === null) return new ErrorDataResponse(['error' => 'Not logged in'], 401);
-        try {
-            $response = FeedbackStatsResponse::fromArray($this->chatStore->feedbackStats($user));
-            return new ErrorDataResponse($response->toArray());
-        } catch (\Throwable $e) {
-            return $this->chatErrorResponse($e);
-        }
+            $this->config->setUserId($user);
+            $fullChat = $this->chatStore->getChat($user, $id);
+            if ($fullChat !== null && count($fullChat['messages']) >= 4 && $this->config->get('learning_enabled') === '1') {
+                $this->chatLearner->learnFromChat($user, $fullChat['messages']);
+            }
+        } catch (\Throwable) { /* Learning failure must never break persistence. */ }
     }
 
     #[NoAdminRequired]
@@ -1752,7 +594,7 @@ class ApiController extends OCSController {
             if (!$this->chatStore->setMeta($user, $id, $meta)) {
                 return new ErrorDataResponse(['error' => 'Requested resource was not found.'], 404);
             }
-            return new ErrorDataResponse(['ok' => true]);
+            return new ErrorDataResponse(['ok' => true, 'rev' => (int)($this->chatStore->getChat($user, $id)['rev'] ?? 0)]);
         } catch (\Throwable $e) {
             return $this->chatErrorResponse($e);
         }
@@ -1962,7 +804,7 @@ class ApiController extends OCSController {
         }
         $this->config->setUserId($user);
         $endpoint = trim((string)($this->requestParam('endpoint') ?? $this->config->ollamaUrl()));
-        $urlError = $this->validateOllamaUrl($endpoint);
+        $urlError = OllamaUrlValidator::validate($endpoint);
         if ($urlError !== null) {
             return new ErrorDataResponse(['error' => $urlError], 400);
         }

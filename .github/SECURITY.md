@@ -5,9 +5,9 @@ data. We take security reports seriously.
 
 ## Supported versions
 
-Security fixes are provided for the **latest released line** (currently the
-`1.17.x` series). See [docs/VERSIONING.md](docs/VERSIONING.md) for the release
-and support policy, and [appinfo/info.xml](appinfo/info.xml) for the supported
+Security fixes are provided for the **latest released line**. See
+[versioning](../docs/VERSIONING.md) for the release
+and support policy, and [app metadata](../appinfo/info.xml) for the supported
 Nextcloud (`30`–`35`) and PHP (`8.2+`) versions.
 
 ## Reporting a vulnerability
@@ -33,6 +33,6 @@ and disclosure timeline with you.
 ## Data-flow awareness
 
 Where prompts and excerpts are sent depends on the configured model and
-enabled integrations. See the "Data & Privacy" section of the README and
-[docs/SECURITY.md](docs/SECURITY.md) for the tool/policy model and the review
+enabled integrations. See the [privacy guide](../docs/PRIVACY.md) and
+[security guide](../docs/SECURITY.md) for the tool/policy model and the review
 checklist before enabling write-capable tools or external connectors.

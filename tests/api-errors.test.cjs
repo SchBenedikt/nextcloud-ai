@@ -38,3 +38,12 @@ test('gateway HTML is replaced with a useful timeout message', () => {
 test('server failures without details get a retryable message', () => {
   assert.equal(context.errMsg({ response: { status: 503, data: { error: '<html>proxy</html>' } } }), '503 The AI service is temporarily unavailable. Please retry shortly.')
 })
+
+test('cancelled API requests are sent only once', async () => {
+  let requests = 0
+  const cancellation = Object.assign(new Error('cancelled'), { code: 'ERR_CANCELED' })
+  const isolated = vm.createContext({ setTimeout, generateOcsUrl: value => value, axios: { request: async () => { requests++; throw cancellation } } })
+  vm.runInContext(source, isolated)
+  await assert.rejects(isolated.api('GET', 'models'), error => error === cancellation)
+  assert.equal(requests, 1)
+})

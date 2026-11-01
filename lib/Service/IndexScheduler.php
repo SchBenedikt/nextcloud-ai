@@ -280,6 +280,62 @@ class IndexScheduler {
         }
     }
 
+    /** Counts for compact admin status; never materializes account identifiers. */
+    public function summary(): array {
+        $this->lock();
+        try {
+            $active = $this->readActive();
+            $this->reclaimStaleLocked($active);
+            $queue = $this->readQueue();
+            $running = 0;
+            foreach ($active as $user => $_entry) if ((string)$user !== '') $running++;
+            $queued = [];
+            foreach ($queue as $entry) {
+                $user = (string)($entry['user'] ?? '');
+                if ($user !== '' && !isset($active[$user])) $queued[$user] = true;
+            }
+            return ['running' => $running, 'queued' => count($queued), 'limit' => $this->maxConcurrent()];
+        } finally {
+            $this->unlock();
+        }
+    }
+
+    /**
+     * Count queued index requests by bounded wait-age bucket.
+     * Account identifiers stay inside the scheduler and are never returned.
+     *
+     * @return array<string,int>
+     */
+    public function queueAgeBuckets(?int $now = null): array {
+        $now ??= time();
+        $counts = array_fill_keys(['under_1m', '1m_5m', '5m_1h', '1h_24h', 'over_24h'], 0);
+        $this->lock();
+        try {
+            $active = [];
+            foreach ($this->readActive() as $user => $heartbeat) {
+                if ($now - (int)$heartbeat <= self::STALE_SLOT_SECONDS) $active[(string)$user] = true;
+            }
+            $seen = [];
+            foreach ($this->readQueue() as $entry) {
+                $user = (string)($entry['user'] ?? '');
+                if ($user === '' || isset($active[$user]) || isset($seen[$user])) continue;
+                $seen[$user] = true;
+                $age = max(0, $now - max(0, (int)($entry['queuedAt'] ?? $now)));
+                $bucket = match (true) {
+                    $age < 60 => 'under_1m',
+                    $age < 300 => '1m_5m',
+                    $age < 3600 => '5m_1h',
+                    $age < 86400 => '1h_24h',
+                    default => 'over_24h',
+                };
+                $counts[$bucket]++;
+            }
+            return $counts;
+        } finally {
+            $this->unlock();
+        }
+    }
+
     /** @param list<array{user:string,queuedAt:int}> $queue */
     private function dropUserLocked(array &$queue, string $userId): void {
         $queue = array_values(array_filter(

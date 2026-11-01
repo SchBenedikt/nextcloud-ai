@@ -31,6 +31,7 @@ export async function api(method, path, data, options = {}) {
 			res = await axios.request(cfg)
 			break
 		} catch (error) {
+			if (cfg.signal?.aborted || error?.code === 'ERR_CANCELED') throw error
 			lastError = error
 			const status = Number(error?.response?.status || 0)
 			const retryable = status === 408 || status === 429 || status >= 500 || !error?.response
@@ -59,8 +60,13 @@ export function errMsg(e) {
 		const status = Number(e.response.status || 0)
 		let detail = ''
 		try {
-			const apiError = data?.ocs?.data?.error ?? data?.error
-			detail = data?.ocs?.data?.message
+			const payload = data?.ocs?.data ?? data
+			const apiError = payload?.error
+			const validationErrors = Array.isArray(payload?.validationErrors)
+				? payload.validationErrors.filter(value => typeof value === 'string' && value.trim()).slice(0, 5)
+				: []
+			detail = validationErrors.join(' ')
+				|| data?.ocs?.data?.message
 				|| (typeof apiError === 'object' ? apiError?.message : '')
 				|| data?.ocs?.message
 				|| data?.message

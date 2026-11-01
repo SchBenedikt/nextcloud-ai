@@ -8,6 +8,30 @@ use OCP\Http\Client\{IClient, IClientService, IResponse};
 use PHPUnit\Framework\TestCase;
 
 final class OpenAICompatibleTest extends TestCase {
+    public function testUnauthenticatedLocalProfileDoesNotReadOrSendAnApiKey(): void {
+        if (!defined('EVA_AI_OCP_AVAILABLE') || !EVA_AI_OCP_AVAILABLE) self::markTestSkipped('Nextcloud OCP interfaces are not available');
+        $config = $this->createMock(AppConfig::class);
+        $config->method('get')->willReturnCallback(static fn(string $key): string => $key === 'chat_provider' ? 'local' : '0.1');
+        $config->method('providerProfile')->with('local')->willReturn([
+            'id' => 'local', 'name' => 'Local server', 'url' => 'http://127.0.0.1:1234/v1', 'model' => 'local-model', 'auth' => 'none',
+        ]);
+        $credentials = $this->createMock(ProviderCredentials::class);
+        $credentials->expects(self::never())->method('getCustom');
+        $response = $this->createMock(IResponse::class);
+        $response->method('getStatusCode')->willReturn(200);
+        $response->method('getBody')->willReturn('{"choices":[{"message":{"content":"Local reply"}}]}');
+        $client = $this->createMock(IClient::class);
+        $client->expects(self::once())->method('post')->willReturnCallback(static function (string $url, array $options) use ($response) {
+            self::assertSame('http://127.0.0.1:1234/v1/chat/completions', $url);
+            self::assertArrayNotHasKey('Authorization', $options['headers']);
+            self::assertSame('local-model', $options['json']['model']);
+            return $response;
+        });
+        $clients = $this->createMock(IClientService::class);
+        $clients->method('newClient')->willReturn($client);
+        self::assertSame('Local reply', (new OpenAICompatible($config, $clients, $credentials))->chat([['role' => 'user', 'content' => 'Hello']])['answer']);
+    }
+
     protected function setUp(): void {
         if (!defined('EVA_AI_OCP_AVAILABLE') || !EVA_AI_OCP_AVAILABLE) {
             self::markTestSkipped('Nextcloud OCP interfaces are not available');

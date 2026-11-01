@@ -39,6 +39,54 @@ final class ChunkerRegressionTest extends TestCase {
         return new Chunker(new AppConfig($config));
     }
 
+    public function testPinnedSettingsDoNotReadMutableUserChunkPreferences(): void {
+        $config = $this->createMock(AppConfig::class);
+        $config->expects(self::never())->method('getInt');
+        $chunks = (new Chunker($config))->chunkWithSettings('One sentence. Another sentence. Last sentence.', 20, 0);
+        self::assertSame(['One sentence.', 'Another sentence.', 'Last sentence.'], array_column($chunks, 'content'));
+    }
+
+    public function testLongHeadingAndOverlapNeverExceedTheModelInputBudget(): void {
+        $text = '# ' . str_repeat('Überschrift ', 20) . "\n\n" . str_repeat('A fairly long sentence. ', 20);
+        foreach ([0, 19] as $overlap) {
+            $chunks = $this->chunker(20, $overlap)->chunkWithSettings($text, 20, $overlap);
+            self::assertNotEmpty($chunks);
+            foreach ($chunks as $chunk) {
+                self::assertNotSame('', $chunk['content']);
+                self::assertLessThanOrEqual(20, mb_strlen($chunk['content']));
+            }
+            self::assertStringContainsString('Überschrift', implode(' ', array_column($chunks, 'content')));
+            self::assertStringContainsString('sentence.', implode('', array_column($chunks, 'content')));
+        }
+    }
+
+    public function testRetainedOverlapShrinksWhenTheNextSentenceConsumesTheBudget(): void {
+        $chunks = $this->chunker(20, 15)->chunkWithSettings('First sentence. Another long phrase.', 20, 15);
+        foreach ($chunks as $chunk) self::assertLessThanOrEqual(20, mb_strlen($chunk['content']));
+        self::assertStringContainsString('Another long phrase.', implode(' ', array_column($chunks, 'content')));
+    }
+
+    public function testLargeOverlapStopsAtTheExplicitChunkBudget(): void {
+        $this->expectException(\LengthException::class);
+        $this->chunker(128, 127)->chunkWithSettings(str_repeat('x', 100000), 128, 127, 32);
+    }
+
+    public function testLargeOverlapAlsoStopsAtTheGeneratedTextByteBudget(): void {
+        $this->expectException(\LengthException::class);
+        $this->chunker(500,499)->chunkWithSettings(str_repeat('x',2000),500,499,4096,1024);
+    }
+
+    public function testDeepMultibyteHeadingsFitTheStoredProvenanceBudget(): void {
+        $text='';for($level=1;$level<=6;$level++)$text.=str_repeat('#',$level).' '.str_repeat('💠',120)."\n";
+        $text.="\nPublic body.";
+        foreach($this->chunker(128,12)->chunkWithSettings($text,128,12) as $index=>$chunk){
+            self::assertLessThanOrEqual(3000,strlen(json_encode($chunk['provenance'])));
+            self::assertTrue(mb_check_encoding($chunk['provenance']['section'],'UTF-8'));
+            $prepared=new \OCA\EvaAi\Dto\PreparedVectorChunk($index,$chunk['content'],[],$chunk['tokens'],$chunk['provenance']);
+            self::assertSame($chunk['content'],$prepared->content);
+        }
+    }
+
     public function testRepeatedPassagesArePreservedWithSequentialContent(): void {
         // A 20-char budget fits exactly one sentence per chunk, so three
         // identical sentences produce three identical chunks. The previous

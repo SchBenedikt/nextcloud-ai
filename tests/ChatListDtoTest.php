@@ -24,7 +24,7 @@ final class ChatListDtoTest extends TestCase {
 	public function testPreservesTypedChatSummaryAndOptionalSearchFields(): void {
 		$chat = [
 			'id' => 'c1', 'title' => 'Planning', 'created' => 10, 'updated' => 20,
-			'count' => 2, 'bookmarkedCount' => 1, 'trimmed' => 0, 'pinned' => true,
+			'count' => 2, 'trimmed' => 0, 'pinned' => true,
 			'folder' => 'Work', 'tags' => ['urgent'], 'archived' => false, 'scopePath' => '',
 			'instructions' => '', 'persona' => 'default', 'snippet' => 'Budget review', 'matchCount' => 1,
 		];

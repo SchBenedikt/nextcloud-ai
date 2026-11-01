@@ -23,6 +23,7 @@ module.exports = [
 	{
 		ignores: [
 			'node_modules/**',
+			'vendor/**', // Composer dependencies contain third-party report scripts
 			'js/**', // committed build output (rebuilt with webpack)
 			'coverage/**',
 			'dist/**',

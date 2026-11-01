@@ -418,6 +418,34 @@ final class ChatStoreTest extends TestCase {
         self::assertSame('Actually, never mind', $chat['messages'][2]['text']);
     }
 
+    public function testCompletedTurnUsesOneWriteAndIsIdempotent(): void {
+        $written = null;
+        [$store, $file] = $this->chatFileHarness(json_encode([['id'=>'c1','title'=>'','rev'=>1,'messages'=>[]]]), $written);
+        $file->expects(self::once())->method('putContent');
+        $turn = \OCA\EvaAi\Dto\ChatTurnRequest::fromArray(['requestId'=>'turn_1234567890123456','expectedRev'=>1,'question'=>'Question','answer'=>['text'=>'Answer','model'=>'test-model']]);
+        self::assertSame(['ok'=>true,'rev'=>3], $store->appendTurn('alice','c1',$turn));
+        self::assertSame(['ok'=>true,'rev'=>3], $store->appendTurn('alice','c1',$turn));
+        $chat = $store->get('alice','c1');
+        self::assertSame(['user','assistant'], array_column($chat['messages'],'role'));
+        self::assertSame(['Question','Answer'], array_column($chat['messages'],'text'));
+        self::assertSame('test-model', $chat['messages'][1]['model']);
+        self::assertSame('Question', $chat['title']);
+    }
+
+    public function testLateOrConflictingTurnsNeverWriteOrReorderHistory(): void {
+        $written = null;
+        [$store] = $this->chatFileHarness(json_encode([['id'=>'c1','title'=>'','rev'=>1,'messages'=>[]]]), $written);
+        $input = ['requestId'=>'turn_1234567890123456','expectedRev'=>1,'question'=>'Question','answer'=>['text'=>'Answer']];
+        $store->appendTurn('alice','c1',\OCA\EvaAi\Dto\ChatTurnRequest::fromArray($input));
+        $saved = $written;
+        foreach ([['requestId'=>'turn_abcdefghijklmnop'], ['answer'=>['text'=>'Changed']]] as $change) {
+            self::assertSame(['error'=>'conflict'], $store->appendTurn('alice','c1',\OCA\EvaAi\Dto\ChatTurnRequest::fromArray(array_replace($input,$change))));
+            self::assertSame($saved,$written);
+        }
+        self::assertSame(['error'=>'not_found'], $store->appendTurn('alice','missing',\OCA\EvaAi\Dto\ChatTurnRequest::fromArray($input)));
+        self::assertSame($saved,$written);
+    }
+
     private function chatFileHarness(string $json, ?string &$written, string $foldersJson = '[]', ?string &$foldersWritten = null, string $templatesJson = '[]', ?string &$templatesWritten = null): array {
         $factory = $this->createMock(IAppDataFactory::class);
         $appData = $this->createMock(IAppData::class);
@@ -791,13 +819,14 @@ final class ChatStoreTest extends TestCase {
 		$store->append('alice', 'c1', 'user', 'q3');
 		self::assertCount(5, $store->get('alice', 'c1')['messages']);
 
-		// A late answer carrying the old token can no longer truncate the
-		// newer message; it is appended as a plain message.
-		$store->append('alice', 'c1', 'assistant', 'a1-late', [], $result['rev']);
+		// A late answer must neither truncate nor append out of order.
+		try {
+			$store->append('alice', 'c1', 'assistant', 'a1-late', [], $result['rev']);
+			self::fail('Expected a stale regeneration conflict.');
+		} catch (\OCA\EvaAi\Service\ChatStoreConflictException) {}
 		$chat = $store->get('alice', 'c1');
-		self::assertCount(6, $chat['messages']);
+		self::assertCount(5, $chat['messages']);
 		self::assertSame('q3', $chat['messages'][4]['text']);
-		self::assertSame('a1-late', $chat['messages'][5]['text']);
 	}
 
 	public function testRegenerateConflictsAndValidation(): void {
@@ -824,6 +853,14 @@ final class ChatStoreTest extends TestCase {
 		self::assertSame(7, $retry['rev']);
 		// A different base revision while a regeneration is pending -> conflict.
 		self::assertSame('conflict', $store->beginRegenerate('alice', 'c1', 0, null, 6)['error']);
+        // A client that refreshed after failure may retry from the latest revision.
+        $currentRetry = $store->beginRegenerate('alice', 'c1', 0, null, 7);
+        self::assertTrue($currentRetry['ok']);
+        self::assertSame(8, $currentRetry['rev']);
+        $turn = \OCA\EvaAi\Dto\ChatTurnRequest::fromArray(['requestId'=>'turn_after_failed_regeneration','expectedRev'=>8,'question'=>'Next question','answer'=>['text'=>'Next answer']]);
+        self::assertSame(['ok'=>true,'rev'=>10], $store->appendTurn('alice','c1',$turn));
+        self::assertArrayNotHasKey('regenerate', $store->get('alice','c1'));
+
 	}
 
 	public function testRepairStoreReportsCorruptionWithoutWritingAndAppliesWithBackup(): void {
@@ -1024,10 +1061,9 @@ final class ChatStoreTest extends TestCase {
 		$lockingProvider->method('isLocked')->with($path, ILockingProvider::LOCK_EXCLUSIVE)->willReturn(true);
 		$lockingProvider->expects(self::once())
 			->method('releaseLock')
-			->with($path, ILockingProvider::LOCK_EXCLUSIVE);
+			->with($path, ILockingProvider::LOCK_EXCLUSIVE);        $store = new ChatStore($factory, $logger, $lockingProvider);
+		$report = $store->clearLock('alice', true);
 
-		$store = new ChatStore($factory, $logger, $lockingProvider);
-		$report = $store->clearLock('alice');
 
 		self::assertSame($path, $report['path']);
 		self::assertTrue($report['was_locked']);
@@ -1040,10 +1076,9 @@ final class ChatStoreTest extends TestCase {
 		$logger = $this->createMock(LoggerInterface::class);
 		$lockingProvider = $this->createMock(ILockingProvider::class);
 		$lockingProvider->method('isLocked')->willReturn(false);
-		$lockingProvider->expects(self::never())->method('releaseLock');
+		$lockingProvider->expects(self::never())->method('releaseLock');        $store = new ChatStore($factory, $logger, $lockingProvider);
+		$report = $store->clearLock('alice', true);
 
-		$store = new ChatStore($factory, $logger, $lockingProvider);
-		$report = $store->clearLock('alice');
 
 		self::assertFalse($report['was_locked']);
 		self::assertFalse($report['released']);
@@ -1055,10 +1090,9 @@ final class ChatStoreTest extends TestCase {
 		$logger = $this->createMock(LoggerInterface::class);
 		$lockingProvider = $this->createMock(ILockingProvider::class);
 		$lockingProvider->method('isLocked')->willThrowException(new \RuntimeException('backend down'));
-		$lockingProvider->expects(self::never())->method('releaseLock');
+		$lockingProvider->expects(self::never())->method('releaseLock');        $store = new ChatStore($factory, $logger, $lockingProvider);
+		$report = $store->clearLock('alice', true);
 
-		$store = new ChatStore($factory, $logger, $lockingProvider);
-		$report = $store->clearLock('alice');
 
 		self::assertFalse($report['was_locked']);
         self::assertFalse($report['released']);
@@ -1079,28 +1113,6 @@ final class ChatStoreTest extends TestCase {
         self::assertFalse($store->setFolderColor('alice', 'Work', 'red'));
         self::assertTrue($store->setFolderColor('alice', 'Work', null));
         self::assertArrayNotHasKey('color', $store->listFolders('alice')[0]);
-    }
-
-    public function testAssistantMessageReactionsPersistAndAppearInFeedbackStats(): void {
-        $seed = json_encode([
-            ['id' => 'a', 'title' => 'A', 'created' => 1, 'updated' => 1, 'messages' => [
-                ['role' => 'user', 'text' => 'Question'],
-                ['role' => 'assistant', 'text' => 'Answer'],
-            ]],
-        ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
-        $written = null;
-        [$store] = $this->chatFileHarness($seed, $written);
-
-        self::assertIsArray($store->setMessageReaction('alice', 'a', 1, 'helpful', true));
-        self::assertIsArray($store->setMessageReaction('alice', 'a', 1, 'bookmarked', true));
-        self::assertSame(1, $store->list('alice')[0]['bookmarkedCount']);
-        self::assertSame(['helpful' => 1, 'notHelpful' => 0, 'bookmarked' => 1], $store->feedbackStats('alice'));
-        self::assertNull($store->setMessageReaction('alice', 'a', 0, 'helpful', true), 'User messages cannot receive reactions');
-        self::assertNull($store->setMessageReaction('alice', 'missing', 1, 'helpful', true));
-        self::assertSame(['role' => 'assistant', 'text' => 'Answer', 'reactions' => json_decode((string)$written, true)[0]['messages'][1]['reactions']], $store->exportAll('alice')[0]['messages'][1]);
-
-        self::assertIsArray($store->setMessageReaction('alice', 'a', 1, 'helpful', null));
-        self::assertSame(['helpful' => 0, 'notHelpful' => 0, 'bookmarked' => 1], $store->feedbackStats('alice'));
     }
 
     public function testPromptTemplatesSupportVariablesUsageImportAndDeletion(): void {
@@ -1130,23 +1142,23 @@ final class ChatStoreTest extends TestCase {
         self::assertCount(2, $store->listTemplates('alice'));
         self::assertTrue($store->deleteTemplate('alice', $template['id']));
         self::assertFalse($store->deleteTemplate('alice', $template['id']));
-    }
-
-    /** A forced recovery also attempts release when isLocked() reports false.
-     * Some DB locking-provider versions expose stale rows this way. */
-    public function testForcedRecoveryReleasesAnUnreportedStaleLock(): void {
+    }	/**
+     * Forced recovery still only releases locks the provider reports as held.
+     * releaseLock() on a path the provider does not consider locked throws, so
+     * releasing blindly would turn the escape hatch into an error instead of a
+     * report; an unreported lock is therefore a no-op, not a silent success.
+     */
+    public function testForcedRecoveryDoesNotReleaseAnUnreportedLock(): void {
         $factory = $this->createMock(IAppDataFactory::class);
         $logger = $this->createMock(LoggerInterface::class);
         $lockingProvider = $this->createMock(ILockingProvider::class);
         $lockingProvider->method('isLocked')->willReturn(false);
-        $lockingProvider->expects(self::once())
-            ->method('releaseLock')
-            ->with($this->stringStartsWith('eva_ai/chat/'), ILockingProvider::LOCK_EXCLUSIVE);
+        $lockingProvider->expects(self::never())->method('releaseLock');
 
         $store = new ChatStore($factory, $logger, $lockingProvider);
         $report = $store->clearLock('alice', true);
 
         self::assertFalse($report['was_locked']);
-        self::assertTrue($report['released']);
+        self::assertFalse($report['released']);
     }
 }

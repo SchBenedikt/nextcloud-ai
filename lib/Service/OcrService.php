@@ -8,12 +8,25 @@ class OcrService {
     private const MAX_BYTES = 20971520;
     private const MAX_PAGES = 30;
     private const MAX_TEXT = 2097152;
+    private const MAX_IMAGE_PIXELS = 25000000;
+    private const MAX_CONVERTED_PIXELS = 4000000;
+    private const MAX_CONVERTED_BYTES = 33554432;
+    private const CONVERTED_IMAGE_MIMES = ['image/avif', 'image/heic', 'image/heif'];
+    private const IMAGICK_FORMATS = ['image/avif' => 'AVIF', 'image/heic' => 'HEIC', 'image/heif' => 'HEIF'];
+    private static ?array $supportedImageFormats = null;
 
     /** Supported image MIME types for OCR. */
     private const IMAGE_MIMES = [
         'image/png', 'image/jpeg', 'image/tiff', 'image/webp',
-        'image/bmp', 'image/gif',
+        'image/bmp', 'image/gif', 'image/avif', 'image/heic', 'image/heif',
     ];
+
+    /** Whether this PHP installation can safely decode a modern photo MIME. */
+    public static function supportsImageMime(string $mime): bool {
+        if (!in_array($mime, self::CONVERTED_IMAGE_MIMES, true) || !class_exists(\Imagick::class)) return false;
+        $formats = self::supportedImageFormats();
+        return in_array(self::IMAGICK_FORMATS[$mime], $formats, true);
+    }
 
     public function capabilities(): array {
         $tools = [];
@@ -23,7 +36,23 @@ class OcrService {
         // Check available Tesseract languages
         $tesseract = $this->binary('tesseract');
         $tools['tesseract_languages'] = $tesseract !== null ? $this->getAvailableLanguages($tesseract) : [];
+        $tools['image_conversion_formats'] = self::supportedImageFormats();
         return $tools;
+    }
+
+    /** @return list<string> */
+    private static function supportedImageFormats(): array {
+        if (self::$supportedImageFormats !== null) return self::$supportedImageFormats;
+        self::$supportedImageFormats = [];
+        if (!class_exists(\Imagick::class)) return self::$supportedImageFormats;
+        foreach (self::IMAGICK_FORMATS as $format) {
+            try {
+                if (\Imagick::queryFormats($format) !== []) self::$supportedImageFormats[] = $format;
+            } catch (\Throwable) {
+                // An ImageMagick build may omit individual codecs.
+            }
+        }
+        return self::$supportedImageFormats;
     }
 
     protected function binary(string $name): ?string {
@@ -85,16 +114,17 @@ class OcrService {
         return implode('+', $valid);
     }
 
-    public function extract(string $bytes, string $mime, string $language): string {
+    public function extract(string $bytes, string $mime, string $language, int $maxRuntimeSeconds = 60, ?callable $shouldYield = null, ?array $pdfPages = null): string {
         if (!preg_match('/^[a-zA-Z0-9_]{1,24}(?:\+[a-zA-Z0-9_]{1,24}){0,3}$/D', $language)) {
             throw new \RuntimeException('Invalid OCR language');
         }
+        if ($maxRuntimeSeconds < 1 || $maxRuntimeSeconds > 60) throw new \InvalidArgumentException('OCR runtime must be between 1 and 60 seconds.');
         if (strlen($bytes) > self::MAX_BYTES) throw new \RuntimeException('OCR input exceeds 20 MiB');
         $tesseract = $this->binary('tesseract');
         if ($tesseract === null) throw new \RuntimeException('OCR requires tesseract on the server');
         $dir = sys_get_temp_dir() . '/eva-ocr-' . bin2hex(random_bytes(12));
         if (!mkdir($dir, 0700)) throw new \RuntimeException('Unable to create OCR temporary directory');
-        $deadline = microtime(true) + 60;
+        $deadline = microtime(true) + $maxRuntimeSeconds;
         try {
             $input = $dir . '/input';
             if (file_put_contents($input, $bytes) === false) throw new \RuntimeException('Unable to stage OCR input');
@@ -103,36 +133,118 @@ class OcrService {
                 $pdfinfo = $this->binary('pdfinfo');
                 $pdftoppm = $this->binary('pdftoppm');
                 if ($pdfinfo === null || $pdftoppm === null) throw new \RuntimeException('PDF OCR requires pdfinfo and pdftoppm');
-                $info = $this->run([$pdfinfo, $input], $deadline);
+                $info = $this->runOcrCommand([$pdfinfo, $input], $deadline, $shouldYield);
                 if (!preg_match('/^Pages:\s+(\d+)/m', $info, $matches) || (int)$matches[1] < 1 || (int)$matches[1] > self::MAX_PAGES) {
                     throw new \RuntimeException('PDF OCR requires 1–30 pages; the existing index was preserved');
                 }
                 $pages = (int)$matches[1];
+                if ($pdfPages !== null) {
+                    if (count($pdfPages) > self::MAX_PAGES) throw new \RuntimeException('PDF OCR page selection exceeds its limit');
+                    $selectedPages = [];
+                    foreach ($pdfPages as $page) {
+                        if (!is_int($page) || $page < 1 || $page > $pages) throw new \RuntimeException('Invalid PDF OCR page selection');
+                        $selectedPages[$page] = true;
+                    }
+                    if ($selectedPages === []) return '';
+                } else {
+                    $selectedPages = null;
+                }
                 $text = '';
                 for ($page = 1; $page <= $pages; $page++) {
+                    if ($selectedPages !== null && !isset($selectedPages[$page])) continue;
                     $prefix = $dir . '/page';
-                    $this->run([$pdftoppm, '-f', (string)$page, '-l', (string)$page, '-singlefile', '-scale-to', '2000', '-png', $input, $prefix], $deadline);
-                    $pageText = $this->run([$tesseract, $prefix . '.png', 'stdout', '-l', $language], $deadline);
+                    $this->runOcrCommand([$pdftoppm, '-f', (string)$page, '-l', (string)$page, '-singlefile', '-scale-to', '2000', '-png', $input, $prefix], $deadline, $shouldYield);
+                    $pageText = $this->runOcrCommand([$tesseract, $prefix . '.png', 'stdout', '-l', $language], $deadline, $shouldYield);
                     $text .= "[Page $page]\n" . $pageText . "\n\n";
                     if (strlen($text) > self::MAX_TEXT) throw new \RuntimeException('OCR text exceeds 2 MiB');
                     @unlink($prefix . '.png');
                 }
                 return trim($text);
             }
-            $size = @getimagesizefromstring($bytes);
-            if ($size === false) throw new \RuntimeException('OCR requires a valid image file');
-            if ($size[0] * $size[1] > 25000000) throw new \RuntimeException('OCR requires an image of at most 25 megapixels');
-            // Tesseract handles the supported image formats directly.
             $inputFile = $input;
-            return trim($this->run([$tesseract, $inputFile, 'stdout', '-l', $language], $deadline));
+            if (in_array($mime, self::CONVERTED_IMAGE_MIMES, true)) {
+                if (!self::supportsImageMime($mime)) throw new \RuntimeException('This HEIC/HEIF/AVIF codec is not available in ImageMagick');
+                $inputFile = $dir . '/normalized.png';
+                $this->convertModernImage($bytes, $inputFile, $deadline, $shouldYield);
+            } else {
+                $size = @getimagesizefromstring($bytes);
+                if ($size === false) throw new \RuntimeException('OCR requires a valid image file');
+                if ($size[0] * $size[1] > self::MAX_IMAGE_PIXELS) throw new \RuntimeException('OCR requires an image of at most 25 megapixels');
+            }
+            return trim($this->runOcrCommand([$tesseract, $inputFile, 'stdout', '-l', $language], $deadline, $shouldYield));
         } finally {
             foreach (glob($dir . '/*') ?: [] as $file) @unlink($file);
             @rmdir($dir);
         }
     }
 
+    /** Convert one bounded modern photo to a Tesseract-friendly PNG. */
+    private function convertModernImage(string $bytes, string $output, float $deadline, ?callable $shouldYield): void {
+        if ($shouldYield !== null && $shouldYield()) throw new ChatPriorityYieldException('OCR yielded to an interactive chat.');
+        $resourceLimits = [
+            \Imagick::RESOURCETYPE_MEMORY => 201326592,
+            \Imagick::RESOURCETYPE_MAP => 268435456,
+            \Imagick::RESOURCETYPE_DISK => 134217728,
+            \Imagick::RESOURCETYPE_THREAD => 1,
+            \Imagick::RESOURCETYPE_TIME => max(1, (int)ceil($deadline - microtime(true))),
+        ];
+        $previousLimits = [];
+        $probe = null;
+        $image = null;
+        try {
+            foreach ($resourceLimits as $type => $limit) {
+                $previousLimits[$type] = \Imagick::getResourceLimit($type);
+                if (!\Imagick::setResourceLimit($type, $limit)) throw new \RuntimeException('ImageMagick resource limits could not be applied');
+            }
+            $probe = new \Imagick();
+            $probe->pingImageBlob($bytes);
+            if ($probe->getNumberImages() !== 1) throw new \RuntimeException('Animated or multi-frame images are not supported for OCR');
+            $width = (int)$probe->getImageWidth();
+            $height = (int)$probe->getImageHeight();
+            $probe->clear();
+            $probe = null;
+            if ($width < 1 || $height < 1 || $width * $height > self::MAX_IMAGE_PIXELS) {
+                throw new \RuntimeException('OCR requires an image of at most 25 megapixels');
+            }
+            $image = new \Imagick();
+            $image->readImageBlob($bytes);
+            $image->setIteratorIndex(0);
+            $image->thumbnailImage(2000, 2000, true, true);
+            $geometry = $image->getImageGeometry();
+            if ((int)($geometry['width'] ?? 0) * (int)($geometry['height'] ?? 0) > self::MAX_CONVERTED_PIXELS) {
+                throw new \RuntimeException('Converted OCR image exceeds its pixel limit');
+            }
+            $image->setImageFormat('png');
+            $image->stripImage();
+            if ($shouldYield !== null && $shouldYield()) throw new ChatPriorityYieldException('OCR yielded to an interactive chat.');
+            if (microtime(true) >= $deadline) throw new \RuntimeException('Image conversion exceeded its runtime limit');
+            if (!$image->writeImage($output)) throw new \RuntimeException('ImageMagick could not create the OCR image');
+            if (!is_file($output) || filesize($output) > self::MAX_CONVERTED_BYTES) throw new \RuntimeException('Converted OCR image exceeds its byte limit');
+        } catch (\ImagickException $error) {
+            throw new \RuntimeException('ImageMagick could not decode this HEIC/HEIF/AVIF image', 0, $error);
+        } finally {
+            if ($probe instanceof \Imagick) $probe->clear();
+            if ($image instanceof \Imagick) $image->clear();
+            foreach ($previousLimits as $type => $limit) {
+                try { \Imagick::setResourceLimit((int)$type, (int)$limit); } catch (\Throwable) { /* Keep OCR failure primary. */ }
+            }
+        }
+    }
+
     /** No shell interpolation; subprocess output is drained with a hard deadline. */
     protected function run(array $arguments, float $deadline): string {
+        return $this->runProcess($arguments, $deadline, null);
+    }
+
+    /** Keep the overridable two-argument runner used by providers and tests. */
+    private function runOcrCommand(array $arguments, float $deadline, ?callable $shouldYield): string {
+        if ($shouldYield !== null && $shouldYield()) throw new ChatPriorityYieldException('OCR yielded to an interactive chat.');
+        return $shouldYield === null
+            ? $this->run($arguments, $deadline)
+            : $this->runProcess($arguments, $deadline, $shouldYield);
+    }
+
+    private function runProcess(array $arguments, float $deadline, ?callable $shouldYield): string {
         $process = proc_open($arguments, [0 => ['pipe', 'r'], 1 => ['pipe', 'w'], 2 => ['pipe', 'w']], $pipes, null, ['LC_ALL' => 'C', 'OMP_THREAD_LIMIT' => '1']);
         if (!is_resource($process)) throw new \RuntimeException('Unable to start OCR tool');
         fclose($pipes[0]);
@@ -141,6 +253,9 @@ class OcrService {
         $output = '';
         try {
             while (true) {
+                if ($shouldYield !== null && $shouldYield()) {
+                    throw new ChatPriorityYieldException('OCR yielded to an interactive chat.');
+                }
                 $output .= stream_get_contents($pipes[1]);
                 stream_get_contents($pipes[2]);
                 if (strlen($output) > self::MAX_TEXT || microtime(true) >= $deadline) {
@@ -152,7 +267,7 @@ class OcrService {
                     if ($status['exitcode'] !== 0 || strlen($output) > self::MAX_TEXT) throw new \RuntimeException('OCR tool failed; check installed language data and input format');
                     return $output;
                 }
-                usleep(10000);
+                usleep(250000);
             }
         } finally {
             if (proc_get_status($process)['running']) proc_terminate($process, 9);

@@ -38,7 +38,10 @@
 			</div>
 			<div v-for="(m, i) in messages" :key="i" :class="['msg', m.role]">
 				<div class="msg-author">{{ m.role === 'user' ? $t('You') : 'EVA' }}</div>
-				<div class="msg-body">{{ m.content }}</div>
+				<!-- The shared Markdown renderer disables raw HTML and unsafe URL schemes. -->
+				<!-- eslint-disable-next-line vue/no-v-html -->
+				<div v-if="m.role === 'assistant'" class="msg-body rt" v-html="mdToHtml(m.content)"></div>
+				<div v-else class="msg-body">{{ m.content }}</div>
 				<div v-if="m.sources && m.sources.length" class="msg-sources">
 					<template v-for="(s, index) in m.sources" :key="s.url || s.path || index">
 						<a v-if="s.url" :href="s.url" target="_blank" rel="noopener noreferrer">{{ s.ref !== undefined ? '[' + s.ref + '] ' : '' }}{{ s.name }}</a>
@@ -55,6 +58,7 @@
 		<form class="input-row" @submit.prevent="ask">
 			<NcTextField
 				v-model="input"
+				:label="$t('Ask about these files…')"
 				:placeholder="statusLoading ? $t('Loading selected files…') : apiError ? $t('Selected files could not be loaded.') : files.length === 0 ? $t('No indexed files available') : $t('Ask about these files…')"
 				:disabled="busy || !canAsk"
 				@keydown.enter.exact.prevent="ask" />
@@ -75,7 +79,8 @@ import NcIconSvgWrapper from '@nextcloud/vue/components/NcIconSvgWrapper'
 import { mdiSend, mdiFileDocumentOutline } from '@mdi/js'
 import { api, errMsg } from '../lib/api'
 import { translate as t } from '../lib/i18n'
-import { citedSources } from '../lib/chat-utils'
+import '../lib/markdown.css'
+import { citedSources, mdToHtml } from '../lib/chat-utils'
 
 export default {
 	name: 'FileContextChatView',
@@ -154,7 +159,8 @@ export default {
 					history,
 				})
 				if (r && r.error) {
-					messages.value.push({ role: 'assistant', content: t('Error: {error}', { error: r.error }), sources: [] })
+					const detail = typeof r.error === 'string' ? r.error : r.error.message
+					messages.value.push({ role: 'assistant', content: t('Error: {error}', { error: typeof detail === 'string' ? detail : t('Check your connection and try again.') }), sources: [] })
 				} else if (!r || typeof r.answer !== 'string' || r.answer.trim() === '') {
 					messages.value.push({ role: 'assistant', content: t('The model returned an empty response. Try asking a more specific question.'), sources: [] })
 				} else {
@@ -184,7 +190,7 @@ export default {
 		})
 		onMounted(loadStatus)
 
-		return { files, missing, messages, input, busy, messagesEl, apiError, statusLoading, statusLoaded, canAsk, loadStatus, ask, mdiSend, mdiFileDocumentOutline }
+		return { files, missing, messages, input, busy, messagesEl, apiError, statusLoading, statusLoaded, canAsk, loadStatus, ask, mdToHtml, mdiSend, mdiFileDocumentOutline }
 	},
 }
 </script>
@@ -234,9 +240,8 @@ export default {
 }
 .head h1 {
 	margin: 0;
-	font-size: clamp(22px, 3vw, 28px);
-	font-weight: 700;
-	letter-spacing: -.02em;
+	font-size: 24px;
+	font-weight: 600;
 }
 .head .subtitle {
 	margin: 4px 0 0 0;
@@ -326,7 +331,7 @@ export default {
 	opacity: 0.7;
 	margin-bottom: 4px;
 }
-.msg-body {
+.msg.user .msg-body {
 	white-space: pre-wrap;
 	word-wrap: break-word;
 }

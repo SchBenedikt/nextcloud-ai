@@ -80,7 +80,7 @@ class AgentStore {
 			return max(0, (int)$stmt->rowCount());
 		} catch (\Throwable $e) {
 			$this->logger->warning('eva_ai: agent state cleanup failed on account deletion', ['user' => $userId]);
-			return 0;
+			throw new \RuntimeException('Unable to erase account agent state.', 0, $e);
 		}
 	}
 

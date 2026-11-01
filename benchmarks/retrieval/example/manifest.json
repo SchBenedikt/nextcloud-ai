@@ -1,0 +1,7 @@
+{
+  "version": 1,
+  "name": "Synthetic format example only",
+  "corpus_sha256": "3843725c9b65f2034fea416e83bc67f4d67f220682fb76a63b9523ff467f07de",
+  "embedding_model": "synthetic-three-dimensional",
+  "hardware": "Not measured"
+}

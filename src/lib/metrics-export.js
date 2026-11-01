@@ -1,5 +1,5 @@
 /** Build a privacy-preserving CSV from the signed-in user's metrics response. */
-export function buildMetricsCsv({ days, totals = {}, byModel = [], daily = [], slowTools = [], feedbackStats = {}, generatedAt = new Date() } = {}) {
+export function buildMetricsCsv({ days, totals = {}, byModel = [], daily = [], slowTools = [], ragRequestDuration = {}, embeddingQueryDuration = {}, sqlDenseScan = {}, indexRuns = {}, chatStoreLockWait = {}, generatedAt = new Date() } = {}) {
 	const rows = [
 		['report', 'EVA AI usage metrics'],
 		['period_days', days ?? ''],
@@ -12,9 +12,6 @@ export function buildMetricsCsv({ days, totals = {}, byModel = [], daily = [], s
 		['total_tokens', totals.total_tokens ?? 0],
 		['estimated_requests', totals.estimated_requests ?? 0],
 		['estimated_cost_usd', byModel.reduce((sum, row) => sum + (Number(row.estimated_cost_usd) || 0), 0)],
-		['helpful_answers_all_time', feedbackStats.helpful ?? 0],
-		['not_helpful_answers_all_time', feedbackStats.notHelpful ?? 0],
-		['bookmarked_answers_all_time', feedbackStats.bookmarked ?? 0],
 		[],
 		['model_usage'],
 		['provider', 'model', 'requests', 'input_tokens', 'output_tokens', 'total_tokens', 'estimated_requests', 'average_duration_ms', 'maximum_duration_ms', 'estimated_cost_usd'],
@@ -27,6 +24,26 @@ export function buildMetricsCsv({ days, totals = {}, byModel = [], daily = [], s
 		['slow_tool_calls_over_100ms'],
 		['tool', 'calls', 'average_duration_ms', 'maximum_duration_ms', 'errors'],
 		...slowTools.map(row => [row.tool, row.calls, row.avg_duration_ms, row.max_duration_ms, row.errors]),
+		[],
+		['end_to_end_eva_request_duration'],
+		['outcome', 'requests', 'p50_ms', 'p95_ms', 'p99_ms'],
+		...Object.entries(ragRequestDuration.outcomes || {}).map(([outcome, row]) => [outcome, row.count, row.p50_ms, row.p95_ms, row.p99_ms]),
+		[],
+		['query_embedding_duration_by_provider'],
+		['provider', 'requests', 'p50_ms', 'p95_ms', 'p99_ms'],
+		...Object.entries(embeddingQueryDuration.providers || {}).map(([provider, row]) => [provider, row.count, row.p50_ms, row.p95_ms, row.p99_ms]),
+		[],
+		['sql_dense_scan_rows'],
+		['backend', 'requests', 'p50_rows', 'p95_rows', 'p99_rows'],
+		...Object.entries(sqlDenseScan.backends || {}).map(([backend, row]) => [backend, row.count, row.p50_rows, row.p95_rows, row.p99_rows]),
+		[],
+		['indexing_run_performance'],
+		['mode', 'outcome', 'runs', 'processed_items', 'file_chunks', 'average_file_chunks_per_second', 'run_p50_ms', 'run_p95_ms', 'run_p99_ms'],
+		...Object.entries(indexRuns.modes || {}).flatMap(([mode, outcomes]) => Object.entries(outcomes || {}).map(([outcome, row]) => [mode, outcome, row.runs, row.items, row.file_chunks, row.average_file_chunks_per_second, row.p50_ms, row.p95_ms, row.p99_ms])),
+		[],
+		['chat_store_lock_waits'],
+		['mode', 'outcome', 'contended_requests', 'p50_ms', 'p95_ms', 'p99_ms'],
+		...Object.entries(chatStoreLockWait.modes || {}).flatMap(([mode, outcomes]) => Object.entries(outcomes || {}).map(([outcome, row]) => [mode, outcome, row.count, row.p50_ms, row.p95_ms, row.p99_ms])),
 	]
 
 	const cell = value => {

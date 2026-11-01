@@ -9,7 +9,7 @@ use OCP\ICache;
 use OCP\ICacheFactory;
 use Psr\Log\LoggerInterface;
 
-class Ollama {
+class Ollama implements EmbeddingProvider {
     /** Maximum default lifetime of a streamed chat request. A caller may pass
      * a stricter budget, but an omitted timeout must never pin a PHP worker for
      * ten minutes while an upstream model is stalled. */
@@ -56,6 +56,7 @@ class Ollama {
     private bool $statusStoreInitialized = false;
     /** @var array{cache_hits:int,cache_misses:int,ollama_requests:int} */
     private array $lastEmbeddingStats = ['cache_hits' => 0, 'cache_misses' => 0, 'ollama_requests' => 0];
+    private ?string $lastEmbeddingModel = null;
 
     /** Floor for one embedding request; a cold model load alone can take a while. */
     private const EMBED_TIMEOUT_FLOOR = 30;
@@ -83,18 +84,20 @@ class Ollama {
         private EmbeddingCache $embeddingCache,
         private ?Groq $groq = null,
         private ?UsageMetrics $usageMetrics = null,
-        private ?ProviderCredentials $providerCredentials = null
+        private ?ProviderCredentials $providerCredentials = null,
+        private ?TraceContext $traceContext = null
     ) {
     }
 
     private function groqClient(): Groq {
         $credentials = $this->providerCredentials ?? \OCP\Server::get(ProviderCredentials::class);
-        return $this->groq ??= new Groq($this->config, $this->clientService, $credentials, $this->usageMetrics, $this->logger);
+        return $this->groq ??= new Groq($this->config, $this->clientService, $credentials, $this->usageMetrics, $this->logger, $this->traceContext);
     }
     private function openAiCompatible(): OpenAICompatible {
         $credentials = $this->providerCredentials ?? \OCP\Server::get(ProviderCredentials::class);
-        return new OpenAICompatible($this->config, $this->clientService, $credentials, $this->usageMetrics, $this->logger);
+        return new OpenAICompatible($this->config, $this->clientService, $credentials, $this->usageMetrics, $this->logger, $this->config->providerEndpointPolicy(), $this->traceContext);
     }
+    private function traceHeaders(): array { return $this->traceContext?->outboundHeaders() ?? []; }
     public function groqInfo(): array { return $this->groqClient()->info(); }
     public function saveGroqKey(string $key): void { $this->groqClient()->saveKey($key); }
     public function checkGroq(): array { return $this->groqClient()->check(); }
@@ -174,8 +177,8 @@ class Ollama {
      *
      * @return array{available:bool,online:bool,error:?string,models:array<string,array{roles:list<string>,declared:list<string>,heuristic:bool}>}
      */
-    public function capabilities(): array {
-        $status = $this->status();
+    public function capabilities(?string $baseUrl = null): array {
+        $status = $this->status($baseUrl);
         $ping = $status['ping'];
         if (!($ping['ok'] ?? false)) {
             return [
@@ -386,8 +389,8 @@ class Ollama {
      *
      * @return array{ping:array,models:array<int,array<string,mixed>>,meta:array{version:int,checkedAt:int,latencyMs:?int,fromCache:bool}}
      */
-    public function status(): array {
-        $base = $this->base();
+    public function status(?string $baseUrl = null): array {
+        $base = $baseUrl !== null ? rtrim($baseUrl, '/') : $this->base();
         $now = time();
         $key = 'tags_' . hash('sha256', $base);
         $cached = $this->readStatusCache($key, $base, $now);
@@ -638,6 +641,7 @@ class Ollama {
      */
     public function embedBatch(array $texts, ?string $userId = null): array {
         $this->lastEmbeddingStats = ['cache_hits' => 0, 'cache_misses' => 0, 'ollama_requests' => 0];
+        $this->lastEmbeddingModel = null;
         if (empty($texts)) {
             return [[], null];
         }
@@ -723,6 +727,7 @@ class Ollama {
             }
             // Publish only after the complete response has been validated.
             $this->embeddingCache->putMany($cacheEntries);
+            $this->lastEmbeddingModel = $modelName;
             return [$vectors, null];
         } catch (\Throwable $e) {
             $this->logger->error('eva_ai embed batch failed', ['exception' => $e]);
@@ -760,6 +765,7 @@ class Ollama {
         try {
             $this->lastEmbeddingStats['ollama_requests']++;
             $r = $this->client()->post($this->base() . '/api/embed', [
+                'headers' => $this->traceHeaders(),
                 'json' => $payload,
                 'timeout' => $this->embedTimeout(count($texts)),
                 'read_timeout' => self::EMBED_READ_TIMEOUT,
@@ -859,6 +865,10 @@ class Ollama {
         return $this->lastEmbeddingStats;
     }
 
+    public function lastEmbeddingModel(): ?string {
+        return $this->lastEmbeddingModel;
+    }
+
     /** @param string[] $texts */
     private function embedBatchLegacy(array $texts): array {
         $model = $this->resolveEmbeddingModel();
@@ -876,6 +886,7 @@ class Ollama {
                     $payload['keep_alive'] = $keepAlive;
                 }
                 $r = $this->client()->post($this->base() . '/api/embeddings', [
+                    'headers' => $this->traceHeaders(),
                     'json' => $payload,
                     'timeout' => $this->embedTimeout(1),
                     'read_timeout' => self::EMBED_READ_TIMEOUT,
@@ -1014,6 +1025,7 @@ class Ollama {
         $startedAt = microtime(true);
         try {
             $r = $this->client()->post($this->base() . '/api/chat', [
+                'headers' => $this->traceHeaders(),
                 'json' => $payload,
                 'timeout' => max(1, $totalTimeout),
                 // Bound idle reads too: an unresponsive endpoint releases the
@@ -1171,6 +1183,7 @@ class Ollama {
                 return;
             }
             $r = $this->client()->post($this->base() . '/api/chat', [
+                'headers' => $this->traceHeaders(),
                 'json' => $payload,
                 'timeout' => max(1, $timeout ?? self::TIMEOUT),
                 // Bound idle reads so disconnect checks can release the worker

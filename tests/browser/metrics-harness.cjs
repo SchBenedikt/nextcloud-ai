@@ -37,7 +37,6 @@ async function openMetrics(page, width = 1280) {
 			by_model: [{ provider: 'openai', model: 'gpt-test', requests: 2, input_tokens: 250000, output_tokens: 100000, total_tokens: 350000, estimated_requests: 0, average_duration_ms: 1200, max_duration_ms: 1800, estimated_cost_usd: 1.3 }],
 			daily: [], slow_tools: [],
 		}
-		else if (endpoint === 'feedback/stats') data = { helpful: 2, notHelpful: 0, bookmarked: 1 }
 		else if (endpoint === 'settings' && request.method() === 'GET') data = { model_pricing: '[{"provider":"openai","model":"gpt-test","input_per_million":2,"output_per_million":8}]' }
 		else if (request.method() !== 'GET') {
 			data = JSON.parse(request.postData() || '{}')

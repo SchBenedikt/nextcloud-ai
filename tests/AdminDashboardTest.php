@@ -7,10 +7,8 @@ namespace OCA\EvaAi\Tests;
 use OCA\EvaAi\Controller\AdminController;
 use OCA\EvaAi\Db\DocumentMapper;
 use OCA\EvaAi\Service\AppConfig;
-use OCA\EvaAi\Service\ChatStore;
 use OCA\EvaAi\Service\Indexer;
 use OCA\EvaAi\Service\IndexScheduler;
-use OCA\EvaAi\Service\Ollama;
 use OCA\EvaAi\Service\RagService;
 use OCA\EvaAi\Service\WebSearchService;
 use OCA\EvaAi\Service\UsageMetrics;
@@ -62,7 +60,8 @@ final class AdminDashboardTest extends TestCase {
 
         self::assertArrayHasKey('users', $data);
         self::assertArrayHasKey('scheduler', $data);
-        self::assertArrayHasKey('ollama', $data);
+        // The overview stays metadata-only: it must not probe the model provider.
+        self::assertArrayNotHasKey('ollama', $data);
         self::assertCount(2, $data['users']);
 
         $alice = $data['users'][0];
@@ -132,19 +131,18 @@ final class AdminDashboardTest extends TestCase {
         $metrics->expects(self::once())->method('summaryForUser')->with('alice', 90, [])->willReturn([
             'days' => 90, 'totals' => ['requests' => 2], 'by_model' => [], 'daily' => [], 'slow_tools' => [],
         ]);
-        $chatStore = $this->createMock(ChatStore::class);
-        $chatStore->expects(self::once())->method('feedbackStats')->with('alice')->willReturn(['helpful' => 1, 'notHelpful' => 0, 'bookmarked' => 0]);
         $alice = $this->createMock(IUser::class);
         $alice->method('getDisplayName')->willReturn('Alice Example');
         $users = $this->createMock(IUserManager::class);
         $users->method('get')->with('alice')->willReturn($alice);
 
-        $response = $this->controller(request: $request, config: $config, userManager: $users, usageMetrics: $metrics, chatStore: $chatStore)->userMetrics('alice');
+        $response = $this->controller(request: $request, config: $config, userManager: $users, usageMetrics: $metrics)->userMetrics('alice');
 
         self::assertSame(200, $response->getStatus());
         self::assertSame('alice', $response->getData()['user_id']);
         self::assertSame('Alice Example', $response->getData()['display_name']);
-        self::assertSame(1, $response->getData()['feedback']['helpful']);
+        self::assertArrayNotHasKey('feedback', $response->getData());
+        self::assertSame(2, $response->getData()['totals']['requests']);
         self::assertSame(['alice', 'admin'], $scopes);
     }
 
@@ -283,7 +281,8 @@ final class AdminDashboardTest extends TestCase {
         $data = $controller->stopBackgroundIndex()->getData();
 
         self::assertTrue($data['stopped']);
-        self::assertSame(['alice', 'bob'], $data['requestedFor']);
+        // The answer reports how many users were flagged, not their identities.
+        self::assertSame(2, $data['requestedCount']);
         self::assertArrayHasKey('scheduler', $data);
         self::assertContains(['set', 'index_job_stop_requested', '1'], $calls);
         self::assertSame(2, count(array_filter(
@@ -357,7 +356,6 @@ final class AdminDashboardTest extends TestCase {
         ?IRequest $request = null,
         ?IndexScheduler $scheduler = null,
         ?UsageMetrics $usageMetrics = null,
-        ?ChatStore $chatStore = null,
     ): AdminController {
         return new AdminController(
             'eva_ai',
@@ -367,13 +365,11 @@ final class AdminDashboardTest extends TestCase {
             $mapper ?? $this->createMock(DocumentMapper::class),
             $indexer ?? $this->createMock(Indexer::class),
             $this->createMock(RagService::class),
-            $this->createMock(Ollama::class),
             $scheduler ?? $this->createMock(IndexScheduler::class),
             $jobList ?? $this->createMock(IJobList::class),
             $userManager ?? $this->createMock(IUserManager::class),
             $this->createMock(WebSearchService::class),
             $usageMetrics ?? $this->createMock(UsageMetrics::class),
-            $chatStore ?? $this->createMock(ChatStore::class),
         );
     }
 }

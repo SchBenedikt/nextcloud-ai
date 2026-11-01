@@ -11,8 +11,20 @@ final class JobRegistry {
     public const JOBS = [
         IndexJob::class,
         ChatCleanupJob::class,
+        ChatStorageMigrationJob::class,
         ProactiveBriefingJob::class,
         BackgroundChatJob::class,
+        VectorErasureJob::class,
+        VectorPointJob::class,
+        GenerationBuildJob::class,
+        GenerationVerificationJob::class,
+        AccountCleanupJob::class,
+        VectorNormBackfillJob::class,
+        LexicalIndexBackfillJob::class,
+        GenerationVectorCompactionJob::class,
+        UsageMetricsRetentionJob::class,
+        RateLimitCleanupJob::class,
+        DirtyIndexRecoveryJob::class,
     ];
 
     public static function ensureScheduled(IJobList $jobs): void {

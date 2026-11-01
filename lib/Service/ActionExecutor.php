@@ -835,8 +835,8 @@ class ActionExecutor {
             ['type' => 'function', 'function' => [
                 'name' => 'search_images',
                 'description' => 'Find pictures of a subject on the web and show them to the user. You CAN display pictures: whenever the user asks to see images, photos, pictures or a logo of something ("show me pictures of X", "zeig mir Bilder von X", "wie sieht X aus", "what does X look like"), call this tool. NEVER reply that you are unable to show images. '
-                    . 'Every hit carries `url` (the picture itself - embed it with markdown image syntax `![title](url)`), `title` (a caption, use it as the alt text), `page` (the page the picture was found on - link it) and `preview` (a thumbnail that always loads). '
-                    . 'Embed two to four pictures with `![title](url)` so they appear in the answer, then one short sentence about them. '
+                    . 'Every hit carries `url` (the original picture), `preview` (a reliable search thumbnail), `title` (a caption, use it as the alt text) and `page` (the page the picture was found on). '
+                    . 'Embed `preview` when it is present using `![title](preview)` so the picture reliably loads; use `url` only when there is no preview. Cite the result page in your answer. Embed two to four pictures, then one short sentence about them. '
                     . 'You do not need to be asked: for anything visual - a product, device, vehicle, place, building, event, artwork, animal, dish or logo - show the pictures alongside your answer, including when the user asked a factual question about it. '
                     . 'When the user asks for a picture together with facts (e.g. "show me pictures of the Eiffel Tower and tell me when it was built"), also run a web_search for the facts and mention the source. '
                     . 'Use the words the user used as the query; do not send personal or confidential details.',

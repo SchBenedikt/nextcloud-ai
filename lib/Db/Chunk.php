@@ -19,6 +19,16 @@ use OCP\AppFramework\Db\Entity;
  * @method void setEmbedding(string $json)
  * @method int getTokenCount()
  * @method void setTokenCount(int $n)
+ * @method ?string getVectorGenerationId()
+ * @method void setVectorGenerationId(?string $id)
+ * @method string getVectorState()
+ * @method void setVectorState(string $state)
+ * @method ?string getContentHash()
+ * @method void setContentHash(?string $hash)
+ * @method int getVectorRevision()
+ * @method void setVectorRevision(int $revision)
+ * @method ?float getVectorNorm()
+ * @method void setVectorNorm(?float $norm)
  */
 class Chunk extends Entity {
     protected ?int $documentId = null;
@@ -27,11 +37,18 @@ class Chunk extends Entity {
     protected ?string $embedding = '';
     protected ?string $provenance = '{}';
     protected ?int $tokenCount = 0;
+    protected ?string $vectorGenerationId = null;
+    protected ?string $vectorState = 'legacy';
+    protected ?string $contentHash = null;
+    protected ?int $vectorRevision = 0;
+    protected ?float $vectorNorm = null;
 
     public function __construct() {
         $this->addType('documentId', 'integer');
         $this->addType('chunkIndex', 'integer');
         $this->addType('tokenCount', 'integer');
+        $this->addType('vectorRevision', 'integer');
+        $this->addType('vectorNorm', 'double');
     }
 
     public function setProvenanceArray(array $metadata): void {
@@ -41,10 +58,12 @@ class Chunk extends Entity {
     }
 
     public function getEmbeddingArray(): array {
-        return json_decode((string)$this->embedding, true) ?? [];
+        return \OCA\EvaAi\Vector\VectorEmbeddingCodec::decode((string)$this->embedding) ?? [];
     }
 
     public function setEmbeddingArray(array $vector): void {
-        $this->setEmbedding(json_encode($vector));
+        $json = json_encode($vector, JSON_THROW_ON_ERROR);
+        $this->setEmbedding($json);
+        $this->setVectorNorm(\OCA\EvaAi\Vector\VectorNorm::fromJson($json));
     }
 }

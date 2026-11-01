@@ -1,12 +1,13 @@
 import './markdown.css'
+import { createApp } from 'vue'
+import ChatActions from '../components/ChatActions.vue'
 import { readNdjson } from './ndjson'
-import { mdiDownload, mdiTune } from '@mdi/js'
+import { mdiDownload } from '@mdi/js'
 import { translate as t } from './i18n'
 import { buildConfirmForm } from './confirmForms'
 import { mdToHtml, citedSources, formatToolName, copyText, installImageFallback, apiErrorMessage } from './chat-utils'
 import { createChatExport, createChatArchive } from './chat-export'
 import { createPromptHistory } from './prompt-history'
-import { createSpeechService } from './speech'
 
 /* EvaAi – Vanilla-Chat-Mount.
  * Wird von ChatView.vue aufgerufen und rendert den kompletten Chat
@@ -20,7 +21,6 @@ import { createSpeechService } from './speech'
 export function mountChat(root, opts = {}) {
 	if (!root || root.__evaAi) return
 	root.__evaAi = true
-	const speech = createSpeechService()
 
 	const { onRecent } = opts
 	let chatId = opts.chatId || null
@@ -33,7 +33,9 @@ export function mountChat(root, opts = {}) {
 		const el = document.head.querySelector('meta[name="' + name + '"]')
 		return el ? el.getAttribute('content') : ''
 	}
-	const API_BASE = meta('eva-ai-api')
+	// The OCS route metadata ends in `/`; normalize once so endpoint paths do
+	// not produce `/api//chats` (some reverse proxies treat that as a new path).
+	const API_BASE = meta('eva-ai-api').replace(/\/+$/, '')
 	const REQUEST_TOKEN = meta('requesttoken')
 	const STREAM_URL = meta('eva-ai-stream') || ''
 	let promptStorage
@@ -46,6 +48,7 @@ export function mountChat(root, opts = {}) {
 	let selectionMode = false
 	let selectionChatId = null
 	let sending = false
+	let destroyed = false
 	let currentAbort = null
 	let stoppedByUser = false
 	let queuedOnUnload = false
@@ -83,8 +86,12 @@ export function mountChat(root, opts = {}) {
 		else flush()
 	}
 
-	function api(method, path, body) {
+	function api(method, path, body, { timeout = 0 } = {}) {
 		return new Promise((resolve, reject) => {
+			const historyWrite = method === 'POST' && /\/(messages|turns)$/.test(path)
+			const deadline = historyWrite ? 15000 : timeout
+			const controller = deadline > 0 ? new AbortController() : null
+			const timer = controller ? setTimeout(() => { controller.abort(); reject(new Error('Chat request timed out')) }, deadline) : null
 			const opts = {
 				method,
 				credentials: 'same-origin',
@@ -94,23 +101,43 @@ export function mountChat(root, opts = {}) {
 					'requesttoken': REQUEST_TOKEN,
 				},
 			}
+			if (controller) opts.signal = controller.signal
 			if (body) {
 				opts.headers['Content-Type'] = 'application/json'
 				opts.body = JSON.stringify(body)
+				// Bounded history writes may finish when the page closes.
+				if (historyWrite && new TextEncoder().encode(opts.body).length < 60000) opts.keepalive = true
 			}
-			fetch(API_BASE + path, opts)
-				.then(async (r) => {
+			const request = async (attempt = 0) => {
+				try {
+					const r = await fetch(API_BASE + path, opts)
 					const text = await r.text()
 					let json = null
 					try { json = text ? JSON.parse(text) : null } catch (_) {}
 					if (!r.ok) {
+						// Only repeat idempotent reads for brief lock/rate contention.
+						// Never replay a write or a model-generation request.
+						if (method === 'GET' && [408, 423, 429, 503].includes(r.status) && attempt < 2) {
+							await new Promise((done) => setTimeout(done, 200 * (attempt + 1) + Math.floor(Math.random() * 100)))
+							return request(attempt + 1)
+						}
 						const detail = apiErrorMessage(json) || text
 						throw new Error(('HTTP ' + r.status + ' ' + String(detail || '')).trim().slice(0, 260))
 					}
 					const data = json && json.ocs && typeof json.ocs.data !== 'undefined' ? json.ocs.data : json
+					if (path.endsWith('/meta') && Number.isSafeInteger(data?.rev)) chatRev = Math.max(chatRev ?? 0, data.rev)
 					resolve(data)
-				})
-				.catch(reject)
+				} catch (error) {
+					if (method === 'GET' && attempt < 2 && error?.name === 'TypeError') {
+						await new Promise((done) => setTimeout(done, 200 * (attempt + 1) + Math.floor(Math.random() * 100)))
+						return request(attempt + 1)
+					}
+					reject(error)
+				} finally {
+					if (timer) clearTimeout(timer)
+				}
+			}
+			request()
 		})
 	}
 
@@ -138,8 +165,8 @@ export function mountChat(root, opts = {}) {
 			userName: document.querySelector('meta[name="eva-ai-display-name"]')?.content || '',
 			fromDate: exportFromDate.value,
 			toDate: exportToDate.value,
-			labels: {
-				you: t('You'), eva: 'Eva', helpful: t('Marked helpful'), notHelpful: t('Marked not helpful'), bookmarked: t('Bookmarked'),
+				labels: {
+					you: t('You'), eva: 'Eva',
 				exportedAt: (date) => t('Exported {date}', { date }),
 				timestamp: (date) => t('Sent {date}', { date }),
 				model: (name) => t('Model: {name}', { name }),
@@ -225,6 +252,24 @@ export function mountChat(root, opts = {}) {
 		}
 	}
 
+	function renderAnswerActions(m, idx) {
+		const actBar = document.createElement('div')
+		actBar.className = 'racts'
+		const cb = document.createElement('button')
+		cb.className = 'rcopy'
+		cb.title = t('Copy answer')
+		cb.textContent = '⧉'
+		cb.addEventListener('click', () => copyText(String(m.text || ''), cb))
+		actBar.appendChild(cb)
+		const rb = document.createElement('button')
+		rb.className = 'ract'
+		rb.title = t('Regenerate')
+		rb.textContent = '↻'
+		rb.addEventListener('click', () => regenerateMessage(idx))
+		actBar.appendChild(rb)
+		return actBar
+	}
+
 	function renderMsg(scroll, emptyEl, m, idx) {
 		const wrap = document.createElement('div')
 		wrap.className = 'rm ' + m.role
@@ -287,143 +332,7 @@ export function mountChat(root, opts = {}) {
 			modelLabel.textContent = t('Model: {name}', { name: m.model })
 			b.appendChild(modelLabel)
 		}
-		if (m.role === 'assistant' && m.done) {
-			const actBar = document.createElement('div')
-			actBar.className = 'racts'
-			const cb = document.createElement('button')
-			cb.className = 'rcopy'
-			cb.title = t('Copy answer')
-			cb.textContent = '⧉'
-			cb.addEventListener('click', () => copyText(String(m.text || ''), cb))
-			actBar.appendChild(cb)
-			const speak = document.createElement('button')
-			speak.className = 'ract rspeak'
-			speak.type = 'button'
-			speak.textContent = '▶'
-			speak.setAttribute('aria-label', t('Read answer aloud'))
-			speak.title = speech.supported ? t('Read answer aloud') : t('Speech playback is not supported in this browser.')
-			speak.disabled = !speech.supported
-			const stopSpeech = document.createElement('button')
-			stopSpeech.className = 'ract rspeak-stop'
-			stopSpeech.type = 'button'
-			stopSpeech.textContent = '■'
-			stopSpeech.setAttribute('aria-label', t('Stop speech'))
-			stopSpeech.title = t('Stop speech')
-			stopSpeech.disabled = !speech.supported
-			const rate = document.createElement('select')
-			rate.className = 'rspeech-rate'
-			rate.setAttribute('aria-label', t('Playback speed'))
-			;[0.75, 1, 1.25, 1.5, 2].forEach((value) => {
-				const option = document.createElement('option')
-				option.value = String(value)
-				option.textContent = value + '×'
-				option.selected = value === 1
-				rate.appendChild(option)
-			})
-			const voice = document.createElement('select')
-			voice.className = 'rspeech-voice'
-			voice.setAttribute('aria-label', t('Voice'))
-			const setVoices = () => {
-				const selected = voice.value
-				voice.replaceChildren()
-				const defaultVoice = document.createElement('option')
-				defaultVoice.value = ''
-				defaultVoice.textContent = t('Default voice')
-				voice.appendChild(defaultVoice)
-				speech.getVoices().forEach((entry) => {
-					const option = document.createElement('option')
-					option.value = entry.voiceURI || entry.name
-					option.textContent = entry.name + (entry.lang ? ' (' + entry.lang + ')' : '')
-					voice.appendChild(option)
-				})
-				voice.value = selected
-			}
-			setVoices()
-			if (speech.supported && typeof window.speechSynthesis.addEventListener === 'function') {
-				window.speechSynthesis.addEventListener('voiceschanged', setVoices, { once: true })
-			}
-			let speechState = 'idle'
-			const setSpeechState = (state) => {
-				speechState = state
-				const paused = state === 'paused'
-				speak.textContent = state === 'speaking' ? 'Ⅱ' : '▶'
-				speak.setAttribute('aria-label', t(state === 'speaking' ? 'Pause speech' : paused ? 'Resume speech' : 'Read answer aloud'))
-				speak.title = t(state === 'speaking' ? 'Pause speech' : paused ? 'Resume speech' : 'Read answer aloud')
-			}
-			const renderedText = document.createElement('div')
-			renderedText.innerHTML = mdToHtml(String(m.text || ''))
-			const speechText = renderedText.textContent || ''
-			speak.disabled = !speech.supported || !speechText.trim()
-			stopSpeech.disabled = !speech.supported || !speechText.trim()
-			speak.addEventListener('click', () => {
-				if (speechState === 'speaking') {
-					speech.pause()
-					setSpeechState('paused')
-				} else if (speechState === 'paused') {
-					speech.resume()
-					setSpeechState('speaking')
-				} else {
-					setSpeechState('speaking')
-					speech.speak(speechText, {
-						rate: rate.value,
-						voice: voice.value,
-						lang: document.documentElement.lang || 'en',
-						onState: setSpeechState,
-					})
-				}
-			})
-			stopSpeech.addEventListener('click', () => speech.stop())
-			actBar.append(speak, stopSpeech, rate, voice)
-			const rb = document.createElement('button')
-			rb.className = 'ract'
-			rb.title = t('Regenerate')
-			rb.textContent = '↻'
-			rb.addEventListener('click', () => regenerateMessage(idx))
-			actBar.appendChild(rb)
-			b.appendChild(actBar)
-			const feedback = document.createElement('div')
-			feedback.className = 'rfeedback'
-			const status = document.createElement('span')
-			status.className = 'rfeedback-status'
-			status.setAttribute('role', 'status')
-			status.setAttribute('aria-live', 'polite')
-			const buttons = []
-			const addReactionButton = (type, value, label, symbol) => {
-				const button = document.createElement('button')
-				button.type = 'button'
-				button.className = 'rfeedback-button'
-				button.textContent = symbol
-				button.title = t(label)
-				button.setAttribute('aria-label', t(label))
-				button.setAttribute('aria-pressed', String(type === 'helpful' ? m.reactions?.helpful === value : !!m.reactions?.bookmarked))
-				button.classList.toggle('is-active', button.getAttribute('aria-pressed') === 'true')
-				button.disabled = !chatId
-				button.addEventListener('click', () => {
-					button.disabled = true
-					const next = type === 'bookmarked' ? !m.reactions?.bookmarked : (m.reactions?.helpful === value ? null : value)
-						saveReaction(idx, type, next)
-						.then((result) => {
-							if (result && result.rev != null) chatRev = parseInt(result.rev, 10) || null
-							m.reactions = result && result.reactions && Object.keys(result.reactions).length ? result.reactions : undefined
-							buttons.forEach(({ button: item, type: itemType, value: itemValue }) => {
-								item.setAttribute('aria-pressed', String(itemType === 'helpful' ? m.reactions?.helpful === itemValue : !!m.reactions?.bookmarked))
-								item.classList.toggle('is-active', item.getAttribute('aria-pressed') === 'true')
-							})
-							status.textContent = t('Feedback saved')
-							if (typeof onRecent === 'function') onRecent()
-						})
-						.catch(() => { status.textContent = t('Feedback could not be saved.') })
-						.finally(() => { button.disabled = !chatId })
-				})
-				buttons.push({ button, type, value })
-				feedback.appendChild(button)
-			}
-			addReactionButton('helpful', true, 'Helpful', '👍')
-			addReactionButton('helpful', false, 'Not helpful', '👎')
-			addReactionButton('bookmarked', true, 'Bookmark answer', m.reactions?.bookmarked ? '🔖' : '♧')
-			feedback.appendChild(status)
-			b.appendChild(feedback)
-		}
+		if (m.role === 'assistant' && m.done) b.appendChild(renderAnswerActions(m, idx))
 		if (m.role === 'user' && m.done) {
 			const actBar = document.createElement('div')
 			actBar.className = 'racts'
@@ -903,8 +812,9 @@ export function mountChat(root, opts = {}) {
 			reuse.textContent = item.text
 			reuse.title = t('Use prompt')
 			reuse.addEventListener('click', () => {
-				input.value = item.text
+				setInputValue(item.text)
 				promptPanel.open = false
+				promptPanel.dispatchEvent(new CustomEvent('eva-prompt-chosen', { bubbles: true }))
 				input.focus()
 			})
 			const metaText = document.createElement('span')
@@ -1006,7 +916,7 @@ export function mountChat(root, opts = {}) {
 					const current = await api('POST', '/templates/' + encodeURIComponent(template.id) + '/use', {})
 					let prompt = String(current.body || '')
 					for (const [variable, value] of values) prompt = prompt.replace(new RegExp('\\{' + variable + '\\}', 'g'), value)
-					input.value = prompt
+					setInputValue(prompt)
 					if (current.persona) {
 						if (chatId) await api('POST', '/chats/' + encodeURIComponent(chatId) + '/meta', { instructions: current.persona })
 						else pendingTemplatePersona = current.persona
@@ -1106,30 +1016,34 @@ export function mountChat(root, opts = {}) {
 
 	// Per-chat custom instructions (Issue #90): a small header action that
 	// opens a dialog to pick a preset persona and/or free-text instructions.
-	const customizeBtn = document.createElement('button')
-	customizeBtn.className = 'export customize-btn'
-	customizeBtn.type = 'button'
-	customizeBtn.setAttribute('aria-label', t('Customize EVA for this chat'))
-	customizeBtn.title = t('Customize EVA for this chat')
-	const customizeIcon = document.createElementNS('http://www.w3.org/2000/svg', 'svg')
-	customizeIcon.classList.add('export-icon')
-	customizeIcon.setAttribute('viewBox', '0 0 24 24')
-	customizeIcon.setAttribute('aria-hidden', 'true')
-	const customizePath = document.createElementNS('http://www.w3.org/2000/svg', 'path')
-	customizePath.setAttribute('d', mdiTune)
-	customizeIcon.append(customizePath)
-	const customizeLabel = document.createElement('span')
-	customizeLabel.textContent = t('Customize')
-	customizeBtn.append(customizeIcon, customizeLabel)
 	const customizePill = document.createElement('span')
 	customizePill.className = 'pill pill-ok'
 	customizePill.hidden = true
-	const agentStatusPill = document.createElement('span')
+	const agentStatusPill = document.createElement('button')
+	agentStatusPill.type = 'button'
 	agentStatusPill.className = 'pill pill-warn'
 	agentStatusPill.hidden = true
-	agentStatusPill.setAttribute('role', 'status')
-	customizeBtn.addEventListener('click', () => openCustomizeDialog())
-	head.append(h1, imageModeBtn, scopePill, customizePill, agentStatusPill, customizeBtn, promptPanel, exportSelectionLabel, exportOptions, exportFormat, exportBtn, exportAllBtn)
+	agentStatusPill.setAttribute('aria-live', 'polite')
+	const exportPanel = document.createElement('div')
+	exportPanel.className = 'chat-export-panel'
+	exportOptions.open = true
+	exportPanel.append(exportSelectionLabel, exportOptions, exportFormat, exportBtn, exportAllBtn)
+	promptPanel.open = true
+	const actionsHost = document.createElement('div')
+	actionsHost.className = 'chat-actions-host'
+	const actionsApp = createApp(ChatActions, {
+		panels: { exports: exportPanel, prompts: promptPanel },
+		onAction: (action) => {
+			if (action === 'images') imageModeBtn.click()
+			if (action === 'customize') openCustomizeDialog()
+		},
+	})
+	actionsApp.mount(actionsHost)
+	head.append(h1, agentStatusPill, actionsHost)
+	// Scope and custom instructions remain visible below the compact header.
+	const contextBar = document.createElement('div')
+	contextBar.className = 'chat-context'
+	contextBar.append(scopePill, customizePill)
 
 	const scroll = document.createElement('div')
 	scroll.className = 'chat-log'
@@ -1161,22 +1075,30 @@ export function mountChat(root, opts = {}) {
 	emptyEl.append(eico, et, ed)
 	scroll.appendChild(emptyEl)
 
-	const form = document.createElement('form')
-	form.className = 'chatform'
-	const input = document.createElement('input')
-	input.id = 'chatinput'
-	input.type = 'text'
-	input.autocomplete = 'off'
-	input.placeholder = t('Ask a question or describe a task')
-	input.setAttribute('aria-label', t('Ask a question or describe a task'))
-	const sendBtn = document.createElement('button')
-	sendBtn.type = 'submit'
-	sendBtn.className = 'cbtn'
-	sendBtn.textContent = t('Send message')
+	const form = opts.form || document.createElement('form')
+	if (!opts.form) form.className = 'chatform'
+	const input = opts.input || document.createElement('input')
+	if (!opts.input) {
+		input.id = 'chatinput'
+		input.type = 'text'
+		input.autocomplete = 'off'
+		input.placeholder = t('Ask a question or describe a task')
+		input.setAttribute('aria-label', t('Ask a question or describe a task'))
+	}
+	const sendBtn = opts.sendBtn || document.createElement('button')
+	if (!opts.sendBtn) {
+		sendBtn.type = 'submit'
+		sendBtn.className = 'cbtn'
+		sendBtn.textContent = t('Send message')
+	}
 	sendBtn.addEventListener('click', () => {
 		if (sending) stopStream()
 	})
-	form.append(input, sendBtn)
+	if (!opts.form) form.append(input, sendBtn)
+	const setInputValue = (value) => {
+		input.value = String(value ?? '')
+		if (typeof opts.onInputValueChange === 'function') opts.onInputValueChange(input.value)
+	}
 
 	const err = document.createElement('div')
 	err.className = 'err'
@@ -1188,7 +1110,7 @@ export function mountChat(root, opts = {}) {
 		err.style.display = msg ? 'block' : 'none'
 	}
 
-	root.append(head, imagePanel, scroll, form, err)
+	root.append(head, contextBar, imagePanel, scroll, err)
 
 	const renderAll = (list) => {
 		if (selectionChatId !== chatId) {
@@ -1297,6 +1219,7 @@ export function mountChat(root, opts = {}) {
 		// chips: they only exist after the stream is done, and updateMessage
 		// runs incrementally while the DOM was built for an in-flight answer.
 		if (m.done) {
+			if (m.role === 'assistant' && !wrap.querySelector('.racts')) (wrap.querySelector('.rb') || wrap).appendChild(renderAnswerActions(m, i))
 			const oldSrc = wrap.querySelector('.rs')
 			if (oldSrc) oldSrc.remove()
 			const oldFu = wrap.querySelector('.rfu')
@@ -1325,7 +1248,7 @@ export function mountChat(root, opts = {}) {
 		details.appendChild(summary)
 		const list = document.createElement('div')
 		list.className = 'rs-list'
-		m.sources.forEach((item, sourceIndex) => {
+		m.sources.forEach((item) => {
 			const src = item.src || item
 			const row = document.createElement('div')
 			row.className = 'rs-item' + (src.external ? ' rs-item-external' : '')
@@ -1381,7 +1304,7 @@ export function mountChat(root, opts = {}) {
 			btn.textContent = q
 			btn.addEventListener('click', () => {
 				if (sending) return
-				input.value = q
+				setInputValue(q)
 				send()
 			})
 			chips.appendChild(btn)
@@ -1447,16 +1370,17 @@ export function mountChat(root, opts = {}) {
 	// A queued request can outlive this tab. Surface its server-side state when
 	// the chat is open; the endpoint intentionally returns no conversation data.
 	const refreshBackgroundStatus = () => {
+		if (document.hidden) return
 		if (!chatId) { agentStatusPill.hidden = true; return }
 		api('GET', '/backgroundChat').then((payload) => {
 			const items = payload && Array.isArray(payload.items) ? payload.items : []
-			const item = items.find((entry) => entry && entry.chatId === chatId)
+			const item = items.find((entry) => entry && entry.chatId === chatId && ['pending', 'running', 'failed', 'paused'].includes(entry.status))
 			if (!item) { agentStatusPill.hidden = true; return }
 			const state = String(item.status || 'pending')
 			const progress = state === 'running' && item.phase === 'tool' && item.tool
 				? ` · ${String(item.tool)} · step ${Number(item.steps || 0)}`
 				: ''
-			agentStatusPill.textContent = state === 'running'
+			agentStatusPill.title = state === 'running'
 				? t('EVA is continuing this chat in the background') + progress
 				: state === 'failed'
 					? t('Background EVA run failed — click to retry')
@@ -1465,6 +1389,8 @@ export function mountChat(root, opts = {}) {
 						: state === 'pending'
 							? t('Background EVA run queued — click to pause')
 					: t('EVA will continue this chat in the background')
+			agentStatusPill.textContent = t('Background tasks') + ': ' + ({ running: t('Running'), failed: t('Failed'), paused: t('Paused'), pending: t('Queued') }[state] || t('Completed'))
+			agentStatusPill.disabled = !item.id || !['failed', 'paused', 'pending'].includes(state)
 			if (item.id && ['failed', 'paused', 'pending'].includes(state)) {
 				agentStatusPill.style.cursor = 'pointer'
 				agentStatusPill.onclick = () => {
@@ -1484,9 +1410,12 @@ export function mountChat(root, opts = {}) {
 	// The server checks connection_aborted() between events, so aborting the
 	// fetch also stops the generation server-side.
 	const setStreamingUI = (active) => {
-		sendBtn.type = active ? 'button' : 'submit'
-	sendBtn.textContent = active ? t('Stop') : t('Send message')
-		sendBtn.classList.toggle('cbtn-stop', active)
+		if (typeof opts.onStreamingChange === 'function') opts.onStreamingChange(active)
+		else {
+			sendBtn.type = active ? 'button' : 'submit'
+			sendBtn.textContent = active ? t('Stop') : t('Send message')
+			sendBtn.classList.toggle('cbtn-stop', active)
+		}
 	}
 	const stopStream = () => {
 		if (!sending) return
@@ -1522,15 +1451,10 @@ export function mountChat(root, opts = {}) {
 			.then((resp) => {
 				// Keep the client's revision in sync so the next regenerate/edit
 				// validates against the current stored state.
-				if (resp && resp.rev != null) chatRev = parseInt(resp.rev, 10) || null
+				if (Number.isSafeInteger(resp?.rev)) chatRev = Math.max(chatRev ?? 0, resp.rev)
 				return true
 			})
 			.catch(() => false)
-	}
-
-	function saveReaction(index, type, value) {
-		if (!chatId) return Promise.reject(new Error(t('Chat is not ready yet.')))
-		return api('POST', '/chats/' + encodeURIComponent(chatId) + '/reaction', { index, type, value })
 	}
 
 	// The server derives the title of an untitled chat from its first user
@@ -1549,12 +1473,31 @@ export function mountChat(root, opts = {}) {
 		return ok
 	})
 
+	// One request carries both messages, including during page dismissal.
+	// The server's revision guard rejects a save overtaken by another tab/turn.
+	const saveTurn = (question, answer) => {
+		if (!chatId) return Promise.resolve(false)
+		// Background-job cancellation clears its own ID before persistence.
+		// Keep the turn receipt independent and stable for this exact payload.
+		answer._turnRequestId ||= (window.crypto && crypto.randomUUID) ? crypto.randomUUID() : ('turn_' + Date.now() + '_' + Math.random().toString(36).slice(2))
+		return api('POST', '/chats/' + encodeURIComponent(chatId) + '/turns', {
+			requestId: answer._turnRequestId, expectedRev: chatRev ?? 0, question,
+			answer: { text: answer.text, followups: answer.followups || [], confirmation: answer.confirmation || null, tools: answer.tools || [], model: answer.model || null },
+		}).then((resp) => {
+			if (resp?.ok !== true || !Number.isSafeInteger(resp.rev)) return false
+			if (Number.isSafeInteger(resp?.rev)) chatRev = Math.max(chatRev ?? 0, resp.rev)
+			refreshTitle()
+			return true
+		}).catch(() => false)
+	}
+
 	// A page/tab can disappear while the streaming request is still running.
 	// keepalive lets the server persist a durable worker job without waiting for
 	// the browser to render another response. The worker deliberately waits a
 	// few seconds, avoiding a race with a stream that is about to finish.
 	const queueOnPageHide = () => {
 		if (!sending || queuedOnUnload || !chatId) return
+		if (messages[messages.length - 1]?.done) return
 		const lastUser = [...messages].reverse().find((m) => m.role === 'user')
 		if (!lastUser || !lastUser.text) return
 		const history = messages.slice(0, Math.max(0, messages.length - 2))
@@ -1569,6 +1512,12 @@ export function mountChat(root, opts = {}) {
 			}).catch(() => {})
 		} catch (_) {}
 	}
+	const warnBeforeUnload = (event) => {
+		if (!sending) return
+		event.preventDefault()
+		event.returnValue = ''
+	}
+	if (typeof window !== 'undefined') window.addEventListener('beforeunload', warnBeforeUnload)
 	if (typeof window !== 'undefined') window.addEventListener('pagehide', queueOnPageHide)
 	const cancelBackgroundJob = () => {
 		if (!backgroundRequestId) return
@@ -1587,46 +1536,77 @@ export function mountChat(root, opts = {}) {
 		}
 	}
 
-	function restoreServerChat(id) {
-		return api('GET', '/chats/' + id).then((chat) => {
-			// Per-chat folder scope (Issue #88): visible in the header so the
-			// user knows the answer only uses documents from that folder.
-			if (chat && chat.scopePath) {
-				scopePill.textContent = t('Scoped to {path}', { path: chat.scopePath })
-				scopePill.hidden = false
-			} else {
-				scopePill.hidden = true
+	function chatRevision(chat) {
+		const value = chat?.rev
+		const revision = typeof value === 'number'
+			? value
+			: (typeof value === 'string' && /^(0|[1-9][0-9]*)$/.test(value) ? Number(value) : null)
+		return Number.isSafeInteger(revision) && revision >= 0 ? revision : null
+	}
+
+	function applyServerChat(chat, requestOptions = {}) {
+		if (destroyed) return false
+		if (requestOptions.requireRevision && (chatRevision(chat) === null || !Array.isArray(chat.messages))) throw new Error('Missing chat state')
+		// Per-chat folder scope (Issue #88): visible in the header so the
+		// user knows the answer only uses documents from that folder.
+		if (chat && chat.scopePath) {
+			scopePill.textContent = t('Scoped to {path}', { path: chat.scopePath })
+			scopePill.hidden = false
+		} else {
+			scopePill.hidden = true
+		}
+		refreshCustomizePill(chat)
+		// The header shows the real chat title instead of the generic
+		// placeholder once the conversation has been given one.
+		if (chat && chat.title) {
+			chatTitle = chat.title
+			h1.textContent = chat.title
+		}
+		chatRev = chatRevision(chat)
+		messages.length = 0
+		trimmedMessages = (chat && chat.trimmed) ? parseInt(chat.trimmed, 10) || 0 : 0
+		;(chat.messages || []).forEach((m) => messages.push({
+			role: m.role === 'user' || m.role === 'assistant' ? m.role : 'assistant',
+			text: m.text || '',
+			createdAt: Number.isSafeInteger(m.createdAt) ? m.createdAt : null,
+			model: typeof m.model === 'string' ? m.model : null,
+			thinking: '',
+			followups: Array.isArray(m.followups) ? m.followups : [],
+			tools: Array.isArray(m.tools) ? m.tools : [],
+			// A persisted pending confirmation re-renders the inline panel so
+			// approving after a reload still works (Issue #185).
+			confirmation: m.confirmation || null,
+			done: true,
+		}))
+		if (chat?.messageCountRepaired) {
+			showErr(t('The chat history was recovered and its message index repaired.'))
+		}
+		renderAll(messages)
+		return true
+	}
+
+	function restoreServerChat(id, requestOptions = {}) {
+		const initialChat = opts.initialChat
+		const initialRevision = chatRevision(initialChat)
+		// Empty chats are safe to initialize from the create response even when
+		// a legacy reused record has no revision field. Its first turn is guarded
+		// by revision 0 on the server and does not need a redundant detail read.
+		const revisionlessEmptyChat = Array.isArray(initialChat?.messages) && initialChat.messages.length === 0 && initialRevision === null
+		if (!requestOptions.requireRevision && initialChat && initialChat.id === id && Array.isArray(initialChat.messages) && (initialRevision !== null || revisionlessEmptyChat)) {
+			try {
+				opts.initialChat = null
+				applyServerChat(initialRevision === null ? { ...initialChat, rev: 0 } : { ...initialChat, rev: initialRevision })
+				return Promise.resolve(true)
+			} catch (_) {
+				// Fall back to the canonical detail endpoint if the create payload
+				// is incomplete; it remains the source of truth for old clients.
 			}
-			refreshCustomizePill(chat)
-			// The header shows the real chat title instead of the generic
-			// placeholder once the conversation has been given one.
-			if (chat && chat.title) {
-				chatTitle = chat.title
-				h1.textContent = chat.title
-			}
-			if (chat && chat.rev != null) chatRev = parseInt(chat.rev, 10) || null
-			messages.length = 0
-			trimmedMessages = (chat && chat.trimmed) ? parseInt(chat.trimmed, 10) || 0 : 0
-			;(chat.messages || []).forEach((m) => messages.push({
-				role: m.role === 'user' || m.role === 'assistant' ? m.role : 'assistant',
-				text: m.text || '',
-				createdAt: Number.isSafeInteger(m.createdAt) ? m.createdAt : null,
-				model: typeof m.model === 'string' ? m.model : null,
-				thinking: '',
-				followups: Array.isArray(m.followups) ? m.followups : [],
-				reactions: m.reactions && typeof m.reactions === 'object' ? m.reactions : undefined,
-				tools: Array.isArray(m.tools) ? m.tools : [],
-				// A persisted pending confirmation re-renders the inline panel so
-				// approving after a reload still works (Issue #185).
-				confirmation: m.confirmation || null,
-				done: true,
-			}))
-			renderAll(messages)
-			})
+		}
+		return api('GET', '/chats/' + encodeURIComponent(id), null, requestOptions).then((chat) => applyServerChat(chat, requestOptions))
 	}
 
 	function showHistorySaveWarning() {
-		err.textContent = t('The response is visible, but could not be saved to chat history.')
+		err.textContent = t('The response is visible, but saving to chat history could not be confirmed. Reload before sending another message.')
 		err.style.display = 'block'
 	}
 
@@ -1741,8 +1721,42 @@ export function mountChat(root, opts = {}) {
 		instrTa.focus()
 	}
 
+	let ready = Promise.resolve(true)
 	if (chatId) {
-		restoreServerChat(chatId).then(refreshBackgroundStatus).catch(() => { /* falls Chat nicht existiert: leer starten */ })
+		input.disabled = true
+		sendBtn.disabled = true
+		ready = restoreServerChat(chatId).then(() => {
+			if (destroyed) return false
+			input.disabled = false
+			sendBtn.disabled = false
+			return true
+		}).catch((loadError) => {
+			if (!destroyed) {
+				const detail = String(loadError && loadError.message ? loadError.message : '').trim()
+				showErr(t('Chat history could not be loaded. Reopen this conversation to try again.') + (detail ? ' ' + detail : ''))
+				// Keep the composer disabled: sending without the restored revision
+				// could overwrite newer history. A retry stays in this conversation.
+				const retry = document.createElement('button')
+				retry.type = 'button'
+				retry.className = 'button'
+				retry.textContent = t('Retry loading chat')
+				retry.addEventListener('click', () => {
+					retry.disabled = true
+					restoreServerChat(chatId, { timeout: 10000, requireRevision: true }).then(() => {
+						if (destroyed) return
+						showErr('')
+						retry.remove()
+						input.disabled = false
+						sendBtn.disabled = false
+					}).catch(() => {
+						retry.disabled = false
+					})
+				})
+				err.appendChild(document.createTextNode(' '))
+				err.appendChild(retry)
+			}
+			return false
+		})
 	}
 
 	// Streams a server-side re-run (regenerate or edit) and persists the new
@@ -1768,6 +1782,7 @@ export function mountChat(root, opts = {}) {
 		setStreamingUI(true)
 		err.style.display = 'none'
 		messages.push({ role: 'assistant', text: '', thinking: '', done: false, tools: [] })
+		let persistedOrPending = false
 		renderAll(messages)
 		const unlock = () => {
 			sending = false
@@ -1779,6 +1794,7 @@ export function mountChat(root, opts = {}) {
 				// The server commits the deferred truncation only when the
 				// persisted answer carries this revision token (Issue #182).
 				pendingRegenerateRev = ev.rev != null ? ev.rev : null
+				if (Number.isSafeInteger(ev.rev)) chatRev = Math.max(chatRev ?? 0, ev.rev)
 				return
 			}
 			if (!last || last.role !== 'assistant' || last.done) return
@@ -1827,6 +1843,7 @@ export function mountChat(root, opts = {}) {
 					? t('Some required details are missing - please complete them below.')
 					: t('Please review this action and confirm it explicitly.')
 				last.done = true
+				persistedOrPending = true
 				renderAll(messages)
 				scroll.scrollTop = scroll.scrollHeight
 				return
@@ -1841,15 +1858,21 @@ export function mountChat(root, opts = {}) {
 				// Persist with the regeneration token: the server truncates and
 				// applies the edit atomically with this message. Without the
 				// token (or after a failure) the stored history stays intact.
-				saveMessage('assistant', last.text, last.followups, pendingRegenerateRev, null, last.tools, last.model)
+				last._pendingSave = saveMessage('assistant', last.text, last.followups, pendingRegenerateRev, null, last.tools, last.model)
 					.then((saved) => {
+						persistedOrPending = saved
 						if (saved && onRecent) onRecent()
 						else if (!saved) showHistorySaveWarning()
 					})
 				pendingRegenerateRev = null
 			} else if (ev.type === 'error') {
-				last.text = streamFailureMessage(ev.message)
+				last.text = [last.text, ev.partialAnswer, streamFailureMessage(ev.message)]
+					.map(part => typeof part === 'string' ? part.trim() : '')
+					.filter(Boolean)
+					.join('\n\n')
 				last.done = true
+				err.textContent = last.text
+				err.style.display = 'block'
 				pendingRegenerateRev = null
 			}
 			stickToBottom()
@@ -1865,7 +1888,8 @@ export function mountChat(root, opts = {}) {
 				// a reload keeps the conversation instead of dropping it. The
 				// token commits the truncation with the partial text.
 					if (stoppedByUser && last.text.trim() !== '') {
-						saveMessage('assistant', last.text, null, pendingRegenerateRev, null, last.tools).then((saved) => {
+						last._pendingSave = saveMessage('assistant', last.text, null, pendingRegenerateRev, null, last.tools).then((saved) => {
+							persistedOrPending = saved
 							if (!saved) showHistorySaveWarning()
 						})
 				}
@@ -1875,7 +1899,24 @@ export function mountChat(root, opts = {}) {
 				err.textContent = streamFailureMessage(e)
 				err.style.display = 'block'
 			}
-		}).finally(() => {
+		}).finally(async () => {
+			const attemptedSave = messages[messages.length - 1]?._pendingSave
+			try { await attemptedSave } catch (_) { showHistorySaveWarning() }
+			if (!persistedOrPending) {
+				// beginRegenerate advances SQL/AppData state even if no model
+				// event reaches us. Refresh before the next revision-guarded send.
+				try {
+					if (!attemptedSave) {
+						// Restore the original answer/context after a model failure or
+						// empty stop. A failed write keeps its visible answer for copying.
+						await restoreServerChat(chatId, { timeout: 10000, requireRevision: true })
+					} else {
+						const chat = await api('GET', '/chats/' + encodeURIComponent(chatId), null, { timeout: 10000 })
+						if (!Number.isSafeInteger(chat?.rev)) throw new Error('Missing chat revision')
+						chatRev = Math.max(chatRev ?? 0, chat.rev)
+					}
+				} catch (_) { showHistorySaveWarning() }
+			}
 			stoppedByUser = false
 			currentAbort = null
 			pendingRegenerateRev = null
@@ -1911,21 +1952,36 @@ export function mountChat(root, opts = {}) {
 		streamRegenerateAnswer({ messageIndex: userIdx, message: newText.trim() })
 	}
 
+	const encodeImage = (attachment) => new Promise((resolve, reject) => {
+		const reader = new FileReader()
+		reader.onerror = () => reject(new Error(t('An attached image could not be read.')))
+		reader.onload = () => {
+			const match = String(reader.result || '').match(/^data:(image\/(?:jpeg|png|webp));base64,([A-Za-z0-9+/=]+)$/)
+			if (!match) { reject(new Error(t('An attached image could not be read.'))); return }
+			resolve({ name: attachment.name, mime: match[1], data: match[2] })
+		}
+		reader.readAsDataURL(attachment.file)
+	})
+
 	const send = () => {
 		const typedMessage = input.value.trim()
-		if (!typedMessage || sending) return
-		const msg = typedMessage
+		const outgoingAttachments = typeof opts.getPendingImages === 'function' ? opts.getPendingImages() : []
+		if ((!typedMessage && !outgoingAttachments.length) || sending) return
+		const msg = typedMessage || t('Describe these images.')
+		const savedQuestion = outgoingAttachments.length
+			? msg + '\n\n[' + t('Attached images') + ': ' + outgoingAttachments.map(image => image.name).join(', ') + ']'
+			: msg
 		promptHistory.record(msg)
 		renderPromptHistory()
 		sending = true
 		currentAbort = new AbortController()
 		stoppedByUser = false
 		setStreamingUI(true)
-		input.value = ''
+		setInputValue('')
 		err.style.display = 'none'
 		if (emptyEl.parentNode) scroll.removeChild(emptyEl)
 
-		messages.push({ role: 'user', text: msg, createdAt: Math.floor(Date.now() / 1000) })
+		messages.push({ role: 'user', text: savedQuestion, attachments: outgoingAttachments.map(({ name, url }) => ({ name, url })), createdAt: Math.floor(Date.now() / 1000) })
 		messages.push({ role: 'assistant', text: '', thinking: '', done: false, tools: [] })
 		renderAll(messages)
 		const assistantIdx = messages.length - 1
@@ -1937,8 +1993,11 @@ export function mountChat(root, opts = {}) {
 			history.push({ role: m.role, content: m.text })
 		}
 
-		ensureChat().then(async () => {
-			return apiStream(STREAM_URL, { message: msg, history, chatId }, (ev) => {
+		ensureChat().then(async (chatReady) => {
+			if (!chatReady) throw new Error(t('Chat could not be created.'))
+			const images = await Promise.all(outgoingAttachments.map(encodeImage))
+			if (outgoingAttachments.length && typeof opts.consumePendingImages === 'function') opts.consumePendingImages()
+			return apiStream(STREAM_URL, { message: msg, history, chatId, images }, (ev) => {
 				const last = messages[assistantIdx]
 				if (!last || last.role !== 'assistant' || last.done) return
 				if (ev.type === 'thinking') {
@@ -1981,24 +2040,9 @@ export function mountChat(root, opts = {}) {
 						? t('Some required details are missing - please complete them below.')
 						: t('Please review this action and confirm it explicitly.')
 					last.done = true
-					// Persist the pending confirmation with the placeholder so a
-					// reload rebuilds the inline panel instead of leaving a dangling
-					// question (Issue #185). The idempotency token makes approve
-					// safe: the same action cannot run twice after a reload. The user
-					// message is saved first so the placeholder stays the last
-					// stored assistant message.
+					// Persist the question and confirmation placeholder together.
 					last.confirmation.token = (window.crypto && crypto.randomUUID) ? crypto.randomUUID() : String(Date.now()) + '-' + Math.random().toString(36).slice(2)
-					last._pendingSave = saveUserMessage(msg)
-						.then((savedUser) => savedUser ? saveMessage('assistant', last.text, null, null, {
-							name: last.confirmation.name,
-							arguments: last.confirmation.arguments,
-							risk: last.confirmation.risk,
-							missing,
-							preview: last.confirmation.preview,
-							token: last.confirmation.token,
-							resolved: false,
-						}) : false)
-						.catch(() => false)
+					last._pendingSave = saveTurn(savedQuestion, last).then((saved) => { if (!saved) showHistorySaveWarning(); return saved })
 					renderAll(messages)
 				} else if (ev.type === 'done') {
 					cancelBackgroundJob()
@@ -2008,11 +2052,7 @@ export function mountChat(root, opts = {}) {
 					last.sources = citedSources(last.text, ev.sources || [])
 					last.followups = ev.followups || []
 					last.done = true
-					// Persist the pair in conversation order. Sending both requests at
-					// once lets the per-user file lock acquire them in either order,
-					// which can swap the question and answer after a reload.
-					saveUserMessage(msg)
-						.then((savedUser) => savedUser ? saveMessage('assistant', last.text, last.followups, null, null, last.tools, last.model) : false)
+					last._pendingSave = saveTurn(savedQuestion, last)
 						.then((saved) => {
 							if (saved && onRecent) onRecent()
 							else if (!saved) showHistorySaveWarning()
@@ -2021,7 +2061,7 @@ export function mountChat(root, opts = {}) {
 					cancelBackgroundJob()
 					last.text = streamFailureMessage(ev.message)
 					last.done = true
-					saveUserMessage(msg).then((saved) => { if (!saved) showHistorySaveWarning() })
+					last._pendingSave = saveUserMessage(savedQuestion).then((saved) => { if (!saved) showHistorySaveWarning(); return saved })
 				}
 				// One coalesced update per frame instead of one DOM rebuild per
 				// NDJSON event; terminal states below still update immediately.
@@ -2037,8 +2077,7 @@ export function mountChat(root, opts = {}) {
 					// Persist the partial answer when the user stopped the stream so
 					// a reload keeps the conversation instead of dropping it.
 					if (stoppedByUser && last.text.trim() !== '') {
-						saveUserMessage(msg)
-							.then((ok) => ok ? saveMessage('assistant', last.text, null, null, null, last.tools) : false)
+						last._pendingSave = saveTurn(savedQuestion, last)
 							.then((saved) => { if (!saved) showHistorySaveWarning() })
 					}
 				}
@@ -2047,20 +2086,29 @@ export function mountChat(root, opts = {}) {
 					err.textContent = streamFailureMessage(e)
 					err.style.display = 'block'
 				}
-			}).finally(() => {
+			}).finally(async () => {
+				// Completion includes ordered history writes, so another turn
+				// cannot overtake them and completed chats survive reload.
+				try { await messages[assistantIdx]?._pendingSave } catch (_) { showHistorySaveWarning() }
 				stoppedByUser = false
 				currentAbort = null
 				sending = false
+				if (destroyed) return
 				setStreamingUI(false)
 				input.focus()
 				stickToBottom()
 			})
-		}).catch(() => {
+		}).catch((error) => {
+			// The image remains in the composer if chat creation or encoding fails.
+			// Remove optimistic bubbles so the user can retry without duplicate text.
+			messages.splice(Math.max(0, assistantIdx - 1), 2)
+			renderAll(messages)
+			setInputValue(typedMessage)
 			stoppedByUser = false
 			currentAbort = null
 			sending = false
 			setStreamingUI(false)
-			err.textContent = t('Chat could not be created.')
+			err.textContent = String(error?.message || t('Chat could not be created.'))
 			err.style.display = 'block'
 		})
 	}
@@ -2083,13 +2131,20 @@ export function mountChat(root, opts = {}) {
 	refreshBackgroundStatus()
 	input.focus()
 	form.addEventListener('submit', (e) => { e.preventDefault(); send() })
-	root.__evaAi = { destroy: () => {
-		speech.stop()
+	root.__evaAi = { ready, destroy: () => {
+		if (destroyed) return
+		destroyed = true
+		// Preserve the durable background handoff before releasing the stream.
+		queueOnPageHide()
+		window.removeEventListener('pagehide', queueOnPageHide)
+		window.removeEventListener('beforeunload', warnBeforeUnload)
+		if (currentAbort) currentAbort.abort()
 		messages.forEach((message) => (message.attachments || []).forEach((attachment) => URL.revokeObjectURL(attachment.url)))
 		if (pendingUpdateFrame !== null && typeof cancelAnimationFrame === 'function') cancelAnimationFrame(pendingUpdateFrame)
 		pendingUpdateFrame = null
 		updateScheduled = false
 		pendingUpdateIdx = null
 		clearInterval(backgroundStatusTimer)
+		actionsApp.unmount()
 	} }
 }

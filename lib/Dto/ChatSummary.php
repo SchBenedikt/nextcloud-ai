@@ -15,7 +15,6 @@ final class ChatSummary {
 		public readonly int $created,
 		public readonly int $updated,
 		public readonly int $count,
-		public readonly int $bookmarkedCount,
 		public readonly int $trimmed,
 		public readonly bool $pinned,
 		public readonly string $folder,
@@ -36,7 +35,7 @@ final class ChatSummary {
 				throw new InvalidArgumentException($field . ' must be a string');
 			}
 		}
-		foreach (['created', 'updated', 'count', 'bookmarkedCount', 'trimmed'] as $field) {
+		foreach (['created', 'updated', 'count', 'trimmed'] as $field) {
 			if (!isset($data[$field]) || !is_int($data[$field])) {
 				throw new InvalidArgumentException($field . ' must be an integer');
 			}
@@ -65,7 +64,7 @@ final class ChatSummary {
 
 		return new self(
 			$data['id'], $data['title'], $data['created'], $data['updated'], $data['count'],
-			$data['bookmarkedCount'], $data['trimmed'], $data['pinned'], $data['folder'],
+			$data['trimmed'], $data['pinned'], $data['folder'],
 			$data['tags'], $data['archived'], $data['scopePath'], $data['instructions'],
 			$data['persona'], $snippet, $matchCount,
 		);
@@ -79,7 +78,6 @@ final class ChatSummary {
 			'created' => $this->created,
 			'updated' => $this->updated,
 			'count' => $this->count,
-			'bookmarkedCount' => $this->bookmarkedCount,
 			'trimmed' => $this->trimmed,
 			'pinned' => $this->pinned,
 			'folder' => $this->folder,

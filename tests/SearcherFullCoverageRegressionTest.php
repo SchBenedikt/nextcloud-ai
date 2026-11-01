@@ -43,13 +43,27 @@ final class SearcherFullCoverageRegressionTest extends TestCase {
         // No query token overlaps, so the lexical prefilter contributes nothing.
         $chunkMapper->method('filterChunksByTokens')->willReturn([]);
 
+        // The full-coverage scan walks the index with keyset pagination: each
+        // page starts after the last id of the previous one, so no chunk is
+        // skipped and no random sample window is needed.
         $pageCalls = [];
-        $chunkMapper->method('chunksForUserPage')
-            ->willReturnCallback(static function (string $userId, int $limit, int $offset) use (&$pageCalls): array {
-                $pageCalls[] = $offset;
-                return [];
+        $chunkMapper->method('vectorsForUserAfter')
+            ->willReturnCallback(static function (string $userId, int $afterId, int $limit) use (&$pageCalls): array {
+                $pageCalls[] = $afterId;
+                $page = [];
+                for ($i = 1; $i <= $limit; $i++) {
+                    $page[] = [
+                        'id' => $afterId + $i,
+                        'document_id' => 1,
+                        'chunk_index' => 0,
+                        'content' => 'unrelated chunk ' . ($afterId + $i),
+                        'embedding' => json_encode([0.0, 0.0, 1.0]),
+                    ];
+                }
+                return $page;
             });
-        // chunky id fetch is only used for ids that scored well; empty pages never score
+        // chunky id fetch is only used for ids that scored well; a mock that
+        // returns nothing keeps the candidate set empty.
         $chunkMapper->method('findChunksByIds')->willReturn([]);
         $chunkMapper->expects(self::never())->method('chunksForUser');
 
@@ -76,21 +90,25 @@ final class SearcherFullCoverageRegressionTest extends TestCase {
         ];
         $chunkMapper->method('filterChunksByTokens')->willReturn($lexical);
 
+        // A semantic-only match living in the middle of the index. With keyset
+        // pagination it is picked up by the page that starts after id 4000.
+        $semantic = ['id' => 4001, 'document_id' => 20, 'chunk_index' => 3, 'content' => 'Quarterly figures exceed all targets.', 'embedding' => json_encode([0.95, 0.0, 0.0])];
         $pageCalls = [];
-        $chunkMapper->method('chunksForUserPage')
-            ->willReturnCallback(static function (string $userId, int $limit, int $offset) use (&$pageCalls): array {
-                $pageCalls[] = $offset;
-                // A semantic-only match living in the middle of the index.
-                return $offset === 4000
-                    ? [['id' => 2, 'document_id' => 20, 'chunk_index' => 3, 'content' => 'Quarterly figures exceed all targets.', 'embedding' => json_encode([0.95, 0.0, 0.0])]]
-                    : [];
+        $chunkMapper->method('vectorsForUserAfter')
+            ->willReturnCallback(static function (string $userId, int $afterId, int $limit) use (&$pageCalls, $semantic): array {
+                $pageCalls[] = $afterId;
+                $page = [];
+                for ($i = 1; $i <= $limit; $i++) {
+                    $id = $afterId + $i;
+                    $page[] = $id === $semantic['id']
+                        ? $semantic
+                        : ['id' => $id, 'document_id' => 1, 'chunk_index' => 0, 'content' => 'unrelated chunk ' . $id, 'embedding' => json_encode([0.0, 0.0, 1.0])];
+                }
+                return $page;
             });
+        // The winning ids are fetched by batched id lookups, as before.
         $chunkMapper->method('findChunksByIds')
-            ->willReturnCallback(static function (array $ids) use ($pageCalls): array {
-                return in_array(2, $ids, true)
-                    ? [['id' => 2, 'document_id' => 20, 'chunk_index' => 3, 'content' => 'Quarterly figures exceed all targets.', 'embedding' => json_encode([0.95, 0.0, 0.0])]]
-                    : [];
-            });
+            ->willReturnCallback(static fn(array $ids): array => in_array($semantic['id'], $ids, true) ? [$semantic] : []);
         $chunkMapper->expects(self::never())->method('chunksForUser');
 
         $documentMapper->method('findByIds')->willReturn([]);
@@ -103,7 +121,7 @@ final class SearcherFullCoverageRegressionTest extends TestCase {
         // index must be candidates again.
         $ids = array_map(static fn(array $r): int => $r['chunkId'], $results);
         self::assertContains(1, $ids);
-        self::assertContains(2, $ids);
+        self::assertContains($semantic['id'], $ids);
         // The dense scan still covered the full index deterministically.
         self::assertSame([0, 2000, 4000, 6000, 8000], $pageCalls);
     }	public function testFolderScopeRestrictsRetrievalToTheChosenPath(): void {

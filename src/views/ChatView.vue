@@ -1,15 +1,59 @@
 <template>
-	<div ref="root" class="chatview-root"></div>
+	<div class="chatview-shell">
+		<div ref="root" class="chatview-root"></div>
+		<div v-if="pendingImages.length" class="chat-composer__attachments" :aria-label="$t('Attached images')">
+			<div v-for="image in pendingImages" :key="image.id" class="chat-composer__attachment">
+				<img :src="image.url" :alt="image.file.name">
+				<span>{{ image.file.name }}</span>
+				<NcButton type="button" variant="tertiary-no-background" :aria-label="$t('Remove image {name}', { name: image.file.name })" @click="removeImage(image.id)">×</NcButton>
+			</div>
+			<p class="chat-composer__privacy">{{ $t('Attached images are sent to the configured chat provider with your message.') }}</p>
+		</div>
+		<p v-if="imageError" class="chat-composer__error" role="alert">{{ imageError }}</p>
+		<form ref="composerForm" class="chat-composer">
+			<input ref="imageInput" class="chat-composer__file" type="file" accept="image/png,image/jpeg,image/webp" multiple @change="onImagesSelected">
+			<NcButton class="chat-composer__attach" type="button" variant="tertiary" :aria-label="$t('Attach images')" :title="$t('Attach images')" :disabled="!ready || sending" @click="imageInput?.click()">
+				<template #icon><NcIconSvgWrapper :path="mdiImageOutline" :size="20" /></template>
+			</NcButton>
+			<NcTextField
+				ref="composerField"
+				v-model="draft"
+				id="chatinput"
+				class="chat-composer__field"
+				:label="$t('Message EVA')"
+				:placeholder="$t('Ask a question or describe a task')"
+				:disabled="!ready || sending"
+				pill
+			/>
+			<NcButton
+				ref="sendButton"
+				class="chat-composer__send"
+				size="small"
+				:type="sending ? 'button' : 'submit'"
+				:variant="sending ? 'error' : 'tertiary'"
+				:aria-label="sending ? $t('Stop') : $t('Send message')"
+				:disabled="!ready">
+				<template #icon><NcIconSvgWrapper :path="sending ? mdiStopCircleOutline : mdiSendOutline" :size="20" /></template>
+			</NcButton>
+		</form>
+	</div>
 </template>
 
 <script>
-import { ref, onMounted, watch } from 'vue'
+import { ref, onMounted, onBeforeUnmount, watch } from 'vue'
+import { NcButton, NcIconSvgWrapper, NcTextField } from '@nextcloud/vue'
+import { mdiImageOutline, mdiSendOutline, mdiStopCircleOutline } from '@mdi/js'
+import { translate as t } from '../lib/i18n'
 import { mountChat } from '../lib/vanilla'
 
 export default {
 	name: 'ChatView',
+	components: { NcButton, NcIconSvgWrapper, NcTextField },
 	props: {
 		chatId: { type: String, default: null },
+		// A just-created chat can be rendered from the create response instead
+		// of immediately reading the same record back from storage.
+		initialChat: { type: Object, default: null },
 		initialPrompt: { type: String, default: '' },
 		// When true the initialPrompt is sent immediately after the chat
 		// mounts instead of only being pre-filled into the input (Issue:
@@ -19,14 +63,44 @@ export default {
 	emits: ['chat-updated', 'prompt-consumed'],
 	setup(props, { emit }) {
 		const root = ref(null)
+		const composerForm = ref(null)
+		const composerField = ref(null)
+		const sendButton = ref(null)
+		const imageInput = ref(null)
+		const draft = ref('')
+		const pendingImages = ref([])
+		const imageError = ref('')
+		const ready = ref(false)
+		const sending = ref(false)
 		let mounted = false
 
+		const removeImage = id => {
+			const image = pendingImages.value.find(item => item.id === id)
+			if (image) URL.revokeObjectURL(image.url)
+			pendingImages.value = pendingImages.value.filter(item => item.id !== id)
+			imageError.value = ''
+		}
+
+		const onImagesSelected = event => {
+			const files = Array.from(event.target?.files || [])
+			if (event.target) event.target.value = ''
+			const totalCount = pendingImages.value.length + files.length
+			const totalBytes = pendingImages.value.reduce((sum, image) => sum + image.file.size, 0) + files.reduce((sum, file) => sum + file.size, 0)
+			if (totalCount > 4) { imageError.value = t('Attach up to four supported images at a time.'); return }
+			if (files.some(file => !['image/png', 'image/jpeg', 'image/webp'].includes(file.type))) { imageError.value = t('Choose PNG, JPEG, or WebP images.'); return }
+			if (totalBytes > 4 * 1024 * 1024) { imageError.value = t('Attached images must total no more than 4 MB.'); return }
+			pendingImages.value = pendingImages.value.concat(files.map(file => ({ id: `${Date.now()}-${Math.random()}`, file, url: URL.createObjectURL(file) })))
+			imageError.value = ''
+		}
+
 		const applyInitialPrompt = () => {
-			if (!mounted || !root.value || !props.initialPrompt) return
-			const input = root.value.querySelector('#chatinput')
-			const form = root.value.querySelector('form.chatform')
+			if (!mounted || !ready.value || !composerField.value || !props.initialPrompt) return
+			const input = composerField.value.$el?.querySelector('input')
+			const form = composerForm.value
 			if (!input || !form) return
+			draft.value = props.initialPrompt
 			input.value = props.initialPrompt
+			input.dispatchEvent(new Event('input', { bubbles: true }))
 			input.focus()
 			if (props.autoSend && input.value.trim()) {
 				// The vanilla chat listens on the form's submit event, so
@@ -41,24 +115,48 @@ export default {
 			if (!root.value) return
 			if (root.value.__evaAi && typeof root.value.__evaAi.destroy === 'function') root.value.__evaAi.destroy()
 			root.value.innerHTML = ''
+			ready.value = false
+			sending.value = false
 			delete root.value.__evaAi
 			mountChat(root.value, {
 				chatId: props.chatId || null,
+				initialChat: props.initialChat?.id === props.chatId ? props.initialChat : null,
+				form: composerForm.value,
+				input: composerField.value?.$el?.querySelector('input'),
+				sendBtn: sendButton.value?.$el,
+				getPendingImages: () => pendingImages.value.map(image => ({ file: image.file, name: image.file.name, url: image.url })),
+				consumePendingImages: () => { pendingImages.value = []; imageError.value = '' },
+				onInputValueChange: value => { draft.value = value },
+				onStreamingChange: value => { sending.value = value },
 				onRecent: () => emit('chat-updated'),
 			})
 			mounted = true
-			applyInitialPrompt()
+			const renderer = root.value.__evaAi
+			renderer.ready.then(loaded => {
+				if (!mounted || root.value?.__evaAi !== renderer || !loaded) return
+				ready.value = true
+				applyInitialPrompt()
+			})
 		}
 
+		onBeforeUnmount(() => {
+			mounted = false
+			root.value?.__evaAi?.destroy()
+			pendingImages.value.forEach(image => URL.revokeObjectURL(image.url))
+			pendingImages.value = []
+		})
 		onMounted(mount)
 		watch(() => props.initialPrompt, () => {
 			applyInitialPrompt()
 		})
 		watch(() => props.chatId, () => {
+			pendingImages.value.forEach(image => URL.revokeObjectURL(image.url))
+			pendingImages.value = []
+			imageError.value = ''
 			if (mounted) mount()
 		})
 
-		return { root }
+		return { root, composerForm, composerField, sendButton, imageInput, pendingImages, imageError, removeImage, onImagesSelected, draft, ready, sending, mdiImageOutline, mdiSendOutline, mdiStopCircleOutline }
 	},
 }
 </script>
@@ -68,11 +166,12 @@ export default {
 .chatview-root {
 	width: 100%;
 	height: 100%;
+	flex: 1 1 auto;
 	min-height: 0;
 	box-sizing: border-box;
 	display: flex;
 	flex-direction: column;
-	padding: 0 clamp(16px, 3vw, 44px);
+	padding: 0;
 	overflow: hidden;
 	background: var(--color-main-background, #fff);
 }
@@ -101,11 +200,13 @@ export default {
 	color: var(--color-main-text, #222);
 }
 
-.chatview-root .head-right {
-	display: flex;
-	align-items: center;
-	gap: 8px;
-}
+.chatview-root .chat-actions-host { flex: 0 0 auto; }
+.chatview-root .head h1 { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.chatview-root .chat-context { width: min(100%, 800px); margin: 8px auto 0; display: flex; gap: 8px; flex-wrap: wrap; }
+.chatview-root .chat-context:not(:has(.pill:not([hidden]))) { display: none; }
+.chatview-root .head > .pill { max-width: 40%; overflow-wrap: anywhere; }
+.chatview-root .chat-log { max-width: 800px; }
+
 
 
 
@@ -175,53 +276,11 @@ export default {
 }
 
 .chatview-root .rm.assistant .rb {
-	padding-right: 34px;
+	padding-right: 58px;
 	background: transparent !important;
 	color: var(--color-main-text, #222) !important;
 }
 
-.chatview-root .rt { white-space: normal; font-size: 14px; line-height: 1.6; color: inherit; text-align: left; }
-.chatview-root .rt p { margin: 0 0 9px; }
-.chatview-root .rt p:last-child { margin-bottom: 0; }
-.chatview-root .rt ul, .chatview-root .rt ol { margin: 0 0 9px 22px; padding: 0; }
-.chatview-root .rt ul { list-style: disc; }
-.chatview-root .rt ol { list-style: decimal; }
-.chatview-root .rt li { margin: 3px 0; }
-.chatview-root .rt h1, .chatview-root .rt h2, .chatview-root .rt h3,
-.chatview-root .rt h4, .chatview-root .rt h5, .chatview-root .rt h6 {
-	margin: 12px 0 6px;
-	font-weight: 650;
-	line-height: 1.3;
-}
-.chatview-root .rt h1 { font-size: 18px; }
-.chatview-root .rt h2 { font-size: 16px; }
-.chatview-root .rt h3 { font-size: 15px; }
-.chatview-root .rt h4, .chatview-root .rt h5, .chatview-root .rt h6 { font-size: 14px; }
-.chatview-root .rt p code, .chatview-root .rt li code {
-	font-family: var(--font-family-monospace, monospace);
-	font-size: 85%;
-	background: var(--color-background-hover, #eee);
-	padding: 1px 5px;
-	border-radius: 4px;
-}
-.chatview-root .rt pre {
-	margin: 0 0 9px;
-	padding: 11px 13px;
-	border: 1px solid var(--color-border, #ddd);
-	border-radius: 6px;
-	background: var(--color-background-hover, #f3f3f3);
-	overflow-x: auto;
-}
-.chatview-root .rt pre code {
-	font-family: var(--font-family-monospace, monospace);
-	font-size: 13px;
-	background: transparent;
-	padding: 0;
-	white-space: pre-wrap;
-}
-.chatview-root .rt blockquote { margin: 7px 0; padding: 4px 12px; border-left: 3px solid var(--color-border, #ccc); color: var(--color-text-maxcontrast, #555); }
-.chatview-root .rt a { color: var(--color-primary-element, #00679c); text-decoration: underline; }
-.chatview-root .rt hr { border: 0; border-top: 1px solid var(--color-border, #ddd); margin: 12px 0; }
 .chatview-root .rm.assistant { position: relative; }
 
 .chatview-root .rcopy {
@@ -246,15 +305,11 @@ export default {
 .chatview-root .rcopy:hover { background: var(--color-background-hover, #e5e5e5); }
 
 .chatview-root .racts { position: absolute; top: -2px; right: 0; display: flex; gap: 2px; opacity: 0; transition: opacity .12s; }
-.chatview-root .rfeedback { display: flex; align-items: center; gap: 4px; margin-top: 8px; min-height: 26px; }
-.chatview-root .rfeedback-button { border: 1px solid transparent; border-radius: 6px; background: transparent; color: var(--color-text-maxcontrast, #555); cursor: pointer; padding: 3px 6px; font-size: 14px; }
-.chatview-root .rfeedback-button:hover, .chatview-root .rfeedback-button.is-active { background: var(--color-background-hover, #eee); border-color: var(--color-border, #ccc); color: var(--color-main-text, #222); }
-.chatview-root .rfeedback-status { color: var(--color-text-maxcontrast, #666); font-size: 11px; }
-.chatview-root .rfeedback { flex-wrap: wrap; }
 .chatview-root .rm:hover .racts { opacity: 1; }
 .chatview-root .rm:focus-within .racts { opacity: 1; }
 .chatview-root .racts .rcopy,
 .chatview-root .racts .ract {
+	position: static; opacity: 1;
 	width: 24px; height: 24px; padding: 0; border: 0; border-radius: 5px;
 	background: transparent; color: var(--color-text-maxcontrast, #888);
 	font-size: 13px; line-height: 1; cursor: pointer;
@@ -262,10 +317,6 @@ export default {
 }
 .chatview-root .racts .ract:hover,
 .chatview-root .racts .rcopy:hover { background: var(--color-background-hover, #e5e5e5); }
-.chatview-root .racts .rspeech-rate,
-.chatview-root .racts .rspeech-voice { align-self: center; min-height: 28px; max-width: 110px; padding: 2px 6px; border: 1px solid var(--color-border, #bbb); border-radius: 6px; color: var(--color-main-text, #222); background: var(--color-main-background, #fff); font: inherit; font-size: 11px; }
-.chatview-root .racts .rspeech-rate:focus-visible,
-.chatview-root .racts .rspeech-voice:focus-visible { outline: 2px solid var(--color-primary-element, #00679c); outline-offset: 1px; }
 .chatview-root .racts button:disabled { opacity: .55; cursor: not-allowed; }
 @media (prefers-reduced-motion: reduce) { .chatview-root .racts { transition: none; } }
 
@@ -328,33 +379,6 @@ export default {
 .chatview-root .rtools pre { margin: 4px 0 0; padding: 6px 8px; max-width: min(720px, 80vw); max-height: 180px; overflow: auto; white-space: pre-wrap; word-break: break-word; border: 1px solid var(--color-border, #ddd); border-radius: 4px; background: var(--color-main-background, #fff); color: var(--color-main-text, #222); font: 11px/1.4 var(--font-family-monospace, monospace); }
 .chatview-root .rtools .tool-error { margin: 3px 0 0 18px; color: var(--color-error, #e9322d); font-family: var(--font-family-sans-serif, sans-serif); font-size: 11px; white-space: pre-wrap; word-break: break-word; }
 
-.chatview-root .chatform {
-	display: flex;
-	align-items: center;
-	gap: 8px;
-	flex: 0 0 auto;
-	width: min(100%, var(--eva-content-width, 1180px));
-	margin: 0 auto;
-	padding: 12px 0 16px;
-	border-top: 1px solid var(--color-border, #ddd);
-	box-sizing: border-box;
-	background: transparent;
-}
-.chatview-root .chatform input {
-	flex: 1;
-	min-width: 0;
-	padding: 10px 12px;
-	border: 1px solid var(--color-border, #bbb);
-	border-radius: 8px;
-	font-size: 14px;
-	color: var(--color-main-text, #111);
-	background: var(--color-main-background, #fff);
-}
-.chatview-root .chatform input:focus {
-	border-color: var(--color-primary-element, #00679c);
-	outline: 2px solid color-mix(in srgb, var(--color-primary-element, #00679c) 22%, transparent);
-	outline-offset: 0;
-}
 .chatview-root .chat-model-select { flex: 0 0 auto; max-width: min(210px, 34vw); min-width: 100px; min-height: 40px; padding: 8px 10px; border: 1px solid var(--color-border, #bbb); border-radius: 8px; color: var(--color-main-text, #222); background: var(--color-main-background, #fff); font: inherit; font-size: 13px; }
 .chatview-root .chat-model-select[hidden] { display: none; }
 .chatview-root .rmodel { margin-top: 6px; color: var(--color-text-maxcontrast, #666); font-size: 11px; }
@@ -389,60 +413,23 @@ export default {
 .chatview-root .err { margin: 0 0 8px; color: var(--color-error, #e9322d); font-size: 13px; white-space: pre-wrap; }
 
 @media (min-width: 1400px) {
-	.chatview-root { padding-inline: clamp(28px, 7vw, 120px); }
 	.chatview-root .chat-log { padding-top: 30px; padding-bottom: 24px; }
 	.chatview-root .rt { font-size: 15px; line-height: 1.65; }
 }
 
 @media (max-width: 600px) {
-	.chatview-root { padding: 36px 12px 0; }
-	.chatview-root .head { min-height: 48px; flex-wrap: wrap; }
+	.chatview-root .head { min-height: 48px; flex-wrap: nowrap; }
 	.chatview-root .head h1 { font-size: 16px; }
-	.chatview-root .head h1 { flex: 1 0 100%; }
-	.chatview-root .prompt-history > summary { padding-inline: 7px; }
-	.chatview-root .head-right { gap: 4px; flex-wrap: wrap; }
+
 	.chatview-root .chat-log { padding-top: 18px; gap: 16px; }
 	.chatview-root .rb { max-width: 94%; }
 	.chatview-root .rm.assistant .rb { padding-right: 28px; }
 	.chatview-root .rconfirm-share-form { grid-template-columns: 1fr; }
 	.chatview-root .rconfirm-field:first-child { grid-column: auto; }
 	.chatview-root .cbtn { padding-inline: 13px; }
-	.chatview-root .chatform { flex-wrap: wrap; gap: 8px; }
-	.chatview-root .chatform input { flex: 1 0 100%; }
 	.chatview-root .chat-model-select { flex: 1 1 120px; }
 }
-.chatview-root .head .export { display: inline-flex; align-items: center; justify-content: center; gap: 6px; min-height: var(--default-clickable-area, 34px); padding: 6px 12px; border: 1px solid var(--color-border, #ccd0d4); border-radius: var(--border-radius-element, 8px); background: var(--color-main-background, #fff); color: var(--color-main-text, #222); cursor: pointer; font: inherit; font-size: 13px; font-weight: 500; line-height: 1.2; transition: background-color var(--animation-quick, .2s), border-color var(--animation-quick, .2s), color var(--animation-quick, .2s); }
-.chatview-root .head .export:hover:not(:disabled) { border-color: var(--color-border-dark, #b5b9bd); background: var(--color-background-hover, #f1f2f4); }
-.chatview-root .head .export:focus-visible { outline: 2px solid var(--color-main-text, #222); outline-offset: 2px; }
-.chatview-root .head .export:disabled { opacity: .5; cursor: default; }
-.chatview-root .head .export-icon { width: 16px; height: 16px; fill: currentColor; }
-.chatview-root .head .export-format { min-height: var(--default-clickable-area, 34px); max-width: 120px; padding: 5px 7px; border: 1px solid var(--color-border, #ccd0d4); border-radius: var(--border-radius-element, 8px); background: var(--color-main-background, #fff); color: var(--color-main-text, #222); font: inherit; font-size: 12px; }
-.chatview-root .export-selection-mode { display: inline-flex; align-items: center; gap: 5px; color: var(--color-text-maxcontrast, #555); font-size: 12px; white-space: nowrap; cursor: pointer; }
-.chatview-root .export-selection-mode input { margin: 0; }
-.chatview-root .message-export-select { display: flex; align-items: center; gap: 5px; margin-bottom: -12px; color: var(--color-text-maxcontrast, #555); font-size: 12px; cursor: pointer; }
-.chatview-root .message-export-select[hidden] { display: none; }
-.chatview-root .head .customize-btn { min-width: 0; }
-.chatview-root .prompt-history { position: relative; flex: 0 0 auto; font-size: 13px; }
-.chatview-root .prompt-history > summary { display: inline-flex; align-items: center; min-height: var(--default-clickable-area, 34px); padding: 6px 10px; border: 1px solid var(--color-border, #ccd0d4); border-radius: var(--border-radius-element, 8px); cursor: pointer; list-style: none; white-space: nowrap; }
-.chatview-root .prompt-history > summary::-webkit-details-marker { display: none; }
-.chatview-root .prompt-history[open] > summary { border-color: var(--color-primary-element, #0082c9); }
-.chatview-root .prompt-history-list { position: absolute; z-index: 30; top: calc(100% + 8px); right: 0; width: min(520px, calc(100vw - 32px)); max-height: min(60vh, 480px); overflow: auto; padding: 8px; border: 1px solid var(--color-border, #ccd0d4); border-radius: var(--border-radius-large, 12px); background: var(--color-main-background, #fff); box-shadow: 0 8px 28px rgba(0, 0, 0, .2); }
-.chatview-root .prompt-history > input { position: absolute; z-index: 31; top: calc(100% + 8px); right: 0; width: min(520px, calc(100vw - 32px)); box-sizing: border-box; padding: 8px 10px; border: 1px solid var(--color-border, #ccd0d4); border-radius: var(--border-radius-element, 8px); background: var(--color-main-background, #fff); color: var(--color-main-text, #222); }
-.chatview-root .prompt-history[open] .prompt-history-list { margin-top: 43px; }
-.chatview-root .prompt-history-row { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; gap: 4px 8px; align-items: center; padding: 7px 4px; border-bottom: 1px solid var(--color-border, #ddd); }
-.chatview-root .prompt-history-reuse { grid-column: 1 / -1; overflow: hidden; border: 0; background: transparent; color: var(--color-main-text, #222); text-align: left; text-overflow: ellipsis; white-space: nowrap; cursor: pointer; font: inherit; }
-.chatview-root .prompt-history-meta { overflow: hidden; color: var(--color-text-maxcontrast, #666); font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }
-.chatview-root .prompt-history-action { min-height: 30px; padding: 3px 8px; border: 1px solid var(--color-border, #ccd0d4); border-radius: var(--border-radius-element, 8px); background: var(--color-main-background, #fff); color: var(--color-main-text, #222); cursor: pointer; font: inherit; }
-.chatview-root .prompt-history-empty { margin: 8px 4px; color: var(--color-text-maxcontrast, #666); }
-.chatview-root .prompt-history > .cbtn { margin-top: 6px; }
-.chatview-root .prompt-history :focus-visible { outline: 2px solid var(--color-main-text, #222); outline-offset: 2px; }
-.chatview-root .prompt-templates { position: relative; margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--color-border, #ddd); }
-.chatview-root .prompt-templates > summary { padding: 6px 4px; cursor: pointer; font-weight: 600; }
-.chatview-root .prompt-templates > input { display: block; width: 100%; box-sizing: border-box; margin: 6px 0; padding: 8px 10px; border: 1px solid var(--color-border, #ccd0d4); border-radius: var(--border-radius-element, 8px); background: var(--color-main-background, #fff); color: var(--color-main-text, #222); }
-.chatview-root .prompt-template-list { max-height: 240px; overflow: auto; }
-.chatview-root .prompt-templates > .cbtn { margin: 5px 4px 0 0; }
-
-.chatview-root .image-generator { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; gap: 8px; width: min(100%, var(--eva-content-width, 1180px)); box-sizing: border-box; margin: 10px auto; padding: 12px; border: 1px solid var(--color-border, #ddd); border-radius: 12px; background: var(--color-background-dark, #f7f7f7); }
+.chatview-root .image-generator { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; gap: 8px; width: min(100%, var(--eva-chat-column-width, 900px)); box-sizing: border-box; margin: 10px auto; padding: 12px; border: 1px solid var(--color-border, #ddd); border-radius: 12px; background: var(--color-background-dark, #f7f7f7); }
 .chatview-root .image-generator[hidden] { display: none; }
 .chatview-root .image-generator h2, .chatview-root .image-generator-privacy, .chatview-root .image-generator-status, .chatview-root .image-gallery { grid-column: 1 / -1; margin: 0; }
 .chatview-root .image-generator h2 { font-size: 16px; }
@@ -453,12 +440,10 @@ export default {
 .chatview-root .generated-image { display: grid; gap: 5px; min-width: 0; font-size: 12px; }
 .chatview-root .generated-image img { width: 100%; aspect-ratio: 1; object-fit: contain; border: 1px solid var(--color-border, #ddd); border-radius: 8px; background: var(--color-main-background, #fff); }
 .chatview-root .generated-image span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.chatview-root .head .image-mode-toggle { white-space: nowrap; }
-.chatview-root .export-options { position: relative; white-space: nowrap; }
-.chatview-root .export-options > summary { cursor: pointer; font-size: 12px; }
-.chatview-root .export-options > label { display: flex; align-items: center; gap: 6px; margin-top: 6px; font-size: 12px; }
 
-/* Per-chat custom instructions dialog (Issue #90). */
+.chatview-root [hidden] { display: none !important; }
+.chatview-root .message-export-select { display: flex; align-items: center; gap: 6px; margin-bottom: 8px; font-size: 12px; color: var(--color-text-maxcontrast); }
+
 .customize-overlay { position: fixed; inset: 0; z-index: 2000; display: flex; align-items: center; justify-content: center; padding: 24px; background: rgba(0, 0, 0, .45); }
 .customize-box { width: min(480px, 100%); max-height: 90vh; overflow: auto; padding: 22px 24px; border-radius: var(--border-radius-large, 12px); background: var(--color-main-background, #fff); box-shadow: 0 8px 32px rgba(0, 0, 0, .25); color: var(--color-main-text, #222); }
 .customize-box h3 { margin: 0 0 6px; font-size: 17px; font-weight: 650; }
@@ -471,4 +456,142 @@ export default {
 .customize-actions .cbtn { padding-inline: 16px; }
 .chatview-root .cbtn-ghost { background: transparent; border: 1px solid var(--color-border, #ccd0d4); color: var(--color-main-text, #222); }
 .customize-err { margin-top: 10px; color: var(--color-error, #e9322d); font-size: 12px; white-space: pre-wrap; }
+
+/* Keep the conversation and composer on one readable, centered column. */
+.chatview-root {
+	padding: 0 clamp(16px, 3vw, 40px);
+}
+
+.chatview-root .head {
+	width: min(100%, var(--eva-chat-column-width, 900px));
+	min-height: 56px;
+	padding-block: 8px;
+	border-bottom-color: color-mix(in srgb, var(--color-border, #ddd) 65%, transparent);
+}
+
+.chatview-root .head h1 {
+	font-size: 16px;
+	font-weight: 600;
+}
+
+.chatview-root .chat-context,
+.chatview-root .chat-log,
+.chatview-root .voice-status,
+.chatview-root .image-attachments {
+	width: min(100%, var(--eva-chat-column-width, 900px));
+	max-width: var(--eva-chat-column-width, 900px);
+}
+
+.chatview-root .chat-context {
+	margin-top: 8px;
+}
+
+.chatview-root .chat-log {
+	gap: 28px;
+	padding: 32px 0 24px;
+}
+
+.chatview-root .rm {
+	width: 100%;
+	max-width: 100%;
+	margin-inline: auto;
+}
+
+.chatview-root .rb {
+	max-width: 100%;
+	font-size: 15px;
+	line-height: 1.7;
+}
+
+.chatview-root .rm.user .rb {
+	max-width: min(82%, 720px);
+	padding: 10px 16px;
+	border-radius: 20px 20px 5px 20px;
+}
+
+.chatview-root .rm.assistant .rb {
+	padding-right: 0;
+}
+
+.chatview-shell {
+	--eva-chat-column-width: 900px;
+	width: 100%;
+	height: 100%;
+	min-height: 0;
+	box-sizing: border-box;
+	display: flex;
+	flex-direction: column;
+	padding: 0 clamp(16px, 3vw, 40px);
+	overflow: hidden;
+	background: var(--color-main-background, #fff);
+}
+
+.chatview-root {
+	height: auto;
+	min-height: 0;
+	padding: 0;
+}
+
+.chat-composer {
+	display: flex;
+	align-items: center;
+	gap: var(--default-grid-baseline, 4px);
+	flex: 0 0 auto;
+	width: min(100%, var(--eva-chat-column-width, 900px));
+	margin: 0 auto;
+	padding: 4px 0 max(8px, env(safe-area-inset-bottom));
+	box-sizing: border-box;
+}
+
+.chat-composer__file { display: none; }
+.chat-composer__attach { flex: 0 0 auto; }
+.chat-composer__attachments {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 8px;
+	width: min(100%, var(--eva-chat-column-width, 900px));
+	margin: 0 auto 8px;
+}
+.chat-composer__privacy { flex: 1 0 100%; margin: 0; color: var(--color-text-maxcontrast, #666); font-size: 12px; }
+.chat-composer__attachment {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	max-width: 260px;
+	padding: 4px 8px 4px 4px;
+	border: 1px solid var(--color-border, #ddd);
+	border-radius: var(--border-radius-pill, 24px);
+	background: var(--color-main-background, #fff);
+	color: var(--color-main-text, #222);
+	font-size: 12px;
+}
+.chat-composer__attachment img { width: 32px; height: 32px; object-fit: cover; border-radius: 50%; }
+.chat-composer__attachment span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.chat-composer__error { width: min(100%, var(--eva-chat-column-width, 900px)); margin: 0 auto 6px; color: var(--color-error, #e9322d); font-size: 12px; }
+
+.chat-composer__field {
+	flex: 1 1 auto;
+	min-width: 0;
+}
+
+.chat-composer__field :deep(.input-field) {
+	width: 100%;
+	margin: 0;
+}
+
+.chat-composer__send {
+	flex: 0 0 auto;
+}
+
+@media (max-width: 600px) {
+	.chatview-shell { padding-inline: 12px; }
+	.chatview-root .head { min-height: 48px; }
+	.chatview-root .chat-log { gap: 20px; padding-top: 18px; padding-bottom: 16px; }
+	.chatview-root .rm.user .rb { max-width: 90%; }
+	.chatview-root .rb { font-size: 15px; }
+}
+
+@media (hover: none) {
+	.chatview-root .racts { opacity: 1; }
+}
 </style>

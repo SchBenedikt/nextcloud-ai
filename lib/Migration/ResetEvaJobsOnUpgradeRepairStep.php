@@ -26,7 +26,7 @@ use OCP\IDBConnection;
 class ResetEvaJobsOnUpgradeRepairStep implements IRepairStep {
     private const APP = 'eva_ai';
     private const USER_STATE = [
-        'index_running', 'index_started', 'index_heartbeat', 'index_mode', 'index_cancel_requested',
+        'index_running', 'index_waiting_for_chat', 'index_started', 'index_heartbeat', 'index_mode', 'index_cancel_requested',
         'index_run_id', 'background_chat_queue',
     ];
 

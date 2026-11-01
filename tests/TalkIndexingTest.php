@@ -422,6 +422,15 @@ final class TalkIndexingTest extends TestCase {
         $docMapper->method('findById')->willReturn(null);
         if ($onDelete !== null) {
             $docMapper->method('delete')->willReturnCallback($onDelete);
+            // Reconciliation purges by document id so the vector generations
+            // and their tombstones go with the stale room.
+            $docMapper->method('deleteByIds')->willReturnCallback(
+                static function (array $ids) use ($onDelete, $staleDocument): void {
+                    if ($staleDocument !== null && in_array((int)$staleDocument->getId(), array_map('intval', $ids), true)) {
+                        $onDelete($staleDocument);
+                    }
+                },
+            );
         }
 
         $chunkMapper = $this->createMock(ChunkMapper::class);

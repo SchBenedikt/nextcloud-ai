@@ -214,9 +214,63 @@
 			return
 		}
 
-		var results = data.results || []
 		var summary = document.createElement('p')
 		summary.className = 'eva-test-summary'
+		if (data.mode === 'images') {
+			var images = Array.isArray(data.images) ? data.images : []
+			summary.textContent = tr('Results: {count} · Provider: {provider} · Mode: {mode}', { count: images.length, provider: data.provider || '?', mode: tr('images') })
+			box.appendChild(summary)
+			if (images.length === 0) {
+				var noImages = document.createElement('p')
+				noImages.className = 'settings-hint'
+				noImages.textContent = tr('The image provider returned no usable pictures. Try a different query.')
+				box.appendChild(noImages)
+				return
+			}
+			var gallery = document.createElement('div')
+			gallery.className = 'eva-image-results'
+			var renderedImages = 0
+			images.forEach(function (hit) {
+				if (!hit || typeof hit.preview !== 'string' || !/^https:\/\//i.test(hit.preview)
+					|| typeof hit.page !== 'string' || !/^https?:\/\//i.test(hit.page)) return
+				var card = document.createElement('article')
+				card.className = 'eva-image-result'
+				var link = document.createElement('a')
+				link.href = hit.page
+				link.target = '_blank'
+				link.rel = 'noopener noreferrer'
+				var image = document.createElement('img')
+				image.src = hit.preview
+				image.alt = hit.title || tr('Search result image')
+				image.loading = 'lazy'
+				image.decoding = 'async'
+				image.referrerPolicy = 'no-referrer'
+				image.addEventListener('error', function () {
+					image.hidden = true
+					var unavailable = document.createElement('span')
+					unavailable.className = 'eva-image-preview-unavailable'
+					unavailable.textContent = tr('Preview unavailable; open the source page.')
+					card.insertBefore(unavailable, link)
+				})
+				link.appendChild(image)
+				card.appendChild(link)
+				var title = document.createElement('p')
+				title.textContent = hit.title || hit.page
+				card.appendChild(title)
+				gallery.appendChild(card)
+				renderedImages++
+			})
+			box.appendChild(gallery)
+			if (renderedImages === 0) {
+				var unusable = document.createElement('p')
+				unusable.className = 'settings-hint'
+				unusable.textContent = tr('The provider returned image records, but none had a safe preview and source page.')
+				box.appendChild(unusable)
+			}
+			return
+		}
+
+		var results = data.results || []
 		summary.textContent = tr('Results: {count} · Provider: {provider} · Mode: {mode}', { count: results.length, provider: data.provider || '?', mode: data.mode || 'web' })
 		box.appendChild(summary)
 
@@ -348,78 +402,6 @@
 
 	// ── Tools ────────────────────────────────────────────────────────────
 
-	// ── Per-user enrollment toggle ───────────────────────────────────────
-
-	root.addEventListener('change', function (event) {
-		var toggle = event.target
-		if (!toggle || !toggle.classList.contains('eva-enroll-toggle')) {
-			return
-		}
-		var userId = toggle.dataset.user
-		if (!userId) {
-			return
-		}
-		var enabled = toggle.checked
-		toggle.disabled = true
-		api('POST', 'admin/users/' + encodeURIComponent(userId) + '/enrollment', { enabled: enabled })
-			.then(function () {
-				if (window.OC && OC.Notification && OC.Notification.showTemporary) {
-					OC.Notification.showTemporary(
-						enabled ? tr('Indexing enabled for ') + userId : tr('Indexing disabled for ') + userId
-					)
-				}
-			})
-			.catch(function (err) {
-				toggle.checked = !enabled
-				window.alert(tr('Could not change enrollment: ') + err.message)
-			})
-			.finally(function () {
-				toggle.disabled = false
-			})
-	})
-
-	// ── Per-user re-index / delete ───────────────────────────────────────
-
-	root.addEventListener('click', function (event) {
-		var button = event.target.closest('.eva-btn-reindex, .eva-btn-reset')
-		if (!button) {
-			return
-		}
-		var userId = button.dataset.user
-		if (!userId) {
-			return
-		}
-		var isReset = button.classList.contains('eva-btn-reset')
-		if (isReset && !window.confirm(
-			tr('Delete the complete index for ') + userId + '? '
-			+ tr('This removes indexed documents and their vectors. Original Nextcloud files stay untouched.')
-		)) {
-			return
-		}
-
-		button.disabled = true
-		var action = isReset
-			? 'admin/users/' + encodeURIComponent(userId) + '/reset'
-			: 'admin/users/' + encodeURIComponent(userId) + '/reindex'
-		api('POST', action)
-			.then(function (data) {
-				if (isReset) {
-					var result = data.result || {}
-					window.alert(
-						tr('Index deleted: ') + (result.documents || 0) + tr(' documents and ')
-						+ (result.chunks || 0) + tr(' chunks removed.')
-					)
-				} else {
-					window.alert(tr('Re-index queued for ') + userId + '.')
-				}
-				window.location.reload()
-			})
-			.catch(function (err) {
-				window.alert(tr('Action failed: ') + err.message)
-				button.disabled = false
-			})
-	})
-
 	// ── Stop background indexing ─────────────────────────────────────────
 
 	var stopButton = el('eva-stop-background')
@@ -429,11 +411,12 @@
 			setStatus('eva-background-status', 'info', tr('Stopping…'))
 			api('POST', 'admin/stop')
 				.then(function (data) {
-					var users = (data.requestedFor || [])
 					setStatus(
 						'eva-background-status',
 						'success',
-						tr('Stop requested for ') + (users.length ? users.join(', ') : tr('the next run')) + '.'
+						data.requestedCount > 0
+							? tr('Stop requested for {count} running pass(es).', { count: data.requestedCount })
+							: tr('Background indexing stop requested.')
 					)
 					window.setTimeout(function () {
 						window.location.reload()
@@ -443,6 +426,31 @@
 					setStatus('eva-background-status', 'error', tr('Could not stop: ') + err.message)
 					stopButton.disabled = false
 				})
+		})
+	}
+
+	// Keep the large optional storage interface out of the normal admin page
+	// load. Its dedicated bundle is requested only after the disclosure opens.
+	var storageTools = el('eva-ai-storage-tools')
+	if (storageTools !== null) {
+		storageTools.addEventListener('toggle', function () {
+			if (!storageTools.open || storageTools.dataset.loadState === 'loading' || storageTools.dataset.loadState === 'loaded') {
+				return
+			}
+			var status = el('eva-ai-storage-load-status')
+			if (status !== null) status.textContent = tr('Loading optional controls…')
+			storageTools.dataset.loadState = 'loading'
+			var script = document.createElement('script')
+			script.src = window.OC.filePath('eva_ai', '', 'js/eva_ai-admin.js')
+			script.onload = function () {
+				storageTools.dataset.loadState = 'loaded'
+				if (status !== null) status.textContent = ''
+			}
+			script.onerror = function () {
+				storageTools.dataset.loadState = ''
+				if (status !== null) status.textContent = tr('Optional controls could not be loaded. Reopen this section to retry.')
+			}
+			document.head.appendChild(script)
 		})
 	}
 })()

@@ -5,22 +5,16 @@ updates:
     schedule:
       interval: monthly
     open-pull-requests-limit: 5
-    labels:
-      - dependencies
-      - php
+    labels: []
   - package-ecosystem: npm
     directory: /
     schedule:
       interval: monthly
     open-pull-requests-limit: 5
-    labels:
-      - dependencies
-      - frontend
+    labels: []
   - package-ecosystem: github-actions
     directory: /
     schedule:
       interval: monthly
     open-pull-requests-limit: 5
-    labels:
-      - dependencies
-      - ci
+    labels: []

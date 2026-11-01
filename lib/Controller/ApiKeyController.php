@@ -172,6 +172,8 @@ final class ApiKeyController extends OCSController {
 			$key = $this->keys->authenticate($match[1], (string)$this->request->getRemoteAddress());
 		} catch (\OCA\EvaAi\Service\ApiKeyRateLimitException) {
 			return new DataResponse(['error' => 'rate_limited'], 429, ['Retry-After' => '60']);
+		} catch (\OCA\EvaAi\Service\ApiKeyRateLimitUnavailableException) {
+			return new DataResponse(['error' => 'rate_limiter_unavailable'], 503, ['Retry-After' => '30']);
 		} catch (\Throwable) {
 			return new DataResponse(['error' => 'temporarily_unavailable'], 503);
 		}

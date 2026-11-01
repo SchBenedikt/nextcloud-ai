@@ -2,6 +2,33 @@
 
 High-level overview of how eva_ai is built and how data flows through it.
 
+# Encrypted SQL chat storage rollout
+
+Starting with 1.18.27, EVA creates additive `eva_ai_chats`,
+`eva_ai_chat_messages`, and `eva_ai_chat_migrations` tables. Chat metadata and
+each message payload use Nextcloud `ICrypto` encryption with the existing
+`EVA-CHAT-1` format marker. Database owner keys are SHA-256 hashes of the exact
+Nextcloud user ID. Only structural IDs, timestamps, message counts, and
+migration state are queryable; no plaintext title, role, or message index is
+created.
+
+The per-user `sql_read_enabled` flag defaults off. After the checkpointed import
+and ciphertext fingerprint verification, an administrator can enable SQL reads
+for a canary account. Enabled reads use a direct encrypted-message query for a
+conversation and indexed metadata pages for the chat list. Content search still
+decrypts messages in the owning account because messages are never plaintext
+indexed.
+
+With SQL reads disabled, ChatStore mutations mirror changed metadata and
+message rows in one SQL transaction after the AppData write succeeds. With SQL
+reads enabled, message-level SQL writes become primary and avoid rewriting the
+AppData JSON snapshot; the encrypted AppData copy remains as the pre-cutover
+rollback image. SQL errors surface instead of silently falling back to stale
+AppData. Use the per-user deactivation command to export current SQL back to
+AppData before deploying code without SQL support. Older application nodes do
+not write SQL, so wait for deployment completion before enabling the flag.
+
+
 ## Directory layout
 
 ```
@@ -10,7 +37,7 @@ lib/
   AppInfo/          Application bootstrap (services, listeners, providers)
   BackgroundJob/    IndexJob — periodic background indexing
   Command/          occ commands (Index, Reset, Mounts, Tool, TalkSetup)
-  Controller/       PageController (UI), ApiController (REST API)
+  Controller/       PageController (UI), domain OCS controllers (REST API)
   Search/           Native Unified Search provider for the EVA file index
   Db/               Entities + mappers (Document, Chunk)
   Listener/         TalkBotListener — reacts to Talk BotInvokeEvent
@@ -24,10 +51,15 @@ lib/
 
 | Service | Responsibility |
 |---|---|
-| `Indexer` | Walks the user's files (generator-based), extracts text, calls `Chunker`, writes documents/chunks, reconciles deleted/modified files |
-| `Chunker` | Splits extracted text into overlapping chunks |
+| `Indexer` | Walks native sources, delegates canonical text extraction, writes documents/chunks and reconciles deleted/modified sources |
+| `IndexTextExtractor` | Shared file/blob parsers, native format detection and an optional bounded VFS stream read |
+| `IndexDocumentText` | Canonical file, Mail envelope/attachment and Talk text shared by indexing and generation preparation |
+| `Chunker` | Streams sections/sentences into overlapping chunks; generation plans use explicit immutable settings and a chunk-count bound |
+| `GenerationBuildWorker` | Separate background keyset builder with lease/owner/source guards; commits chunks, outbox and progress together without changing SQL retrieval |
+| `GenerationBuildService` | Shared native administrator/OCC control and secret-free progress reads; explicit start schedules work instead of calling a provider |
+| `LocalTextProcess` | Argv-based PDF/Office conversion with runtime/output limits; no raw converter stderr reaches the user |
 | `Ollama` | Thin HTTP client for the Ollama API (embedding + chat) |
-| `Searcher` | Hybrid retrieval: vector search + BM25, fused with RRF |
+| `Searcher` | SQL-first hybrid retrieval; explicitly opted-in Qdrant generations can run native BM25 + dense RRF, retain file/path and phrase signals, hydrate exact revisions from SQL, then diversify results |
 | `RagService` | Orchestrates retrieval + prompt building + answer generation |
 | `ActionExecutor` | **Single chokepoint** for all tools — enforces `ToolPolicy` before executing; bounded name/content file search and protected knowledge trimming |
 | `ToolPolicy` | Central tool registry: risk class, allowed surfaces, confirmation flags |
@@ -140,6 +172,46 @@ tools are allowed in each:
 
 ## API routes (`appinfo/routes.php`)
 
+`DocumentController` owns user-scoped inspection of the SQL document index. It
+preserves the endpoint URLs, DTO validation, ETags, chunk pagination, and live
+VFS permission checks while depending only on document/chunk mappers and the
+file-access service. This keeps document inspection out of the cross-domain
+`ApiController`.
+
+`ApiController` handles the main chat and app API. Selected-file chat and its
+live VFS access check are served by `FileContextController`, keeping the
+Nextcloud Files flow isolated while sharing the same per-user chat lock and
+rate-limit policy. The existing OCS URLs remain stable.
+
+`ChatHistoryController` owns chat listing, keyset/offset paging, creation,
+detail reads, and deletion. It keeps chat history owner-scoped and preserves
+the existing OCS routes and storage error mapping. The main `ApiController`
+continues to own chat generation, streaming, and turn mutations for now.
+
+`SettingsController` owns personal settings reads and updates, their DTO and
+provider validation, and credential persistence. It receives the knowledge
+initializer and model services explicitly and keeps the existing
+`/api/settings` routes while removing this configuration workflow from the
+main chat controller.
+
+`IndexController` owns user-scoped full, Mail, Talk and reset indexing requests.
+It claims the bounded run before scheduling `IndexRequestJob`, retains the
+worker-owned cancellation transition, and enrolls users on a successful
+explicit request. It keeps the established route paths and does not make the
+optional external vector store part of installation or normal indexing.
+
+`IntegrationController` owns external-connector discovery, configuration,
+diagnostics and plugin toggles. Those operations retain their authenticated
+per-user routes and run through the same `ActionExecutor` policy as chat tools.
+
+`BackgroundChatController` owns queued-turn admission and lifecycle controls.
+It shares the same per-user limiter, SQL-backed fallback, encrypted `ChatStore`
+and bounded worker queue used by the prior routes.
+
+`KnowledgeController` reads and saves each user's `KNOWLEDGE.md` through the
+injected Nextcloud VFS root and initializes the file before reading. It does not
+depend on static server lookup or expose another user's file.
+
 - `GET  /`  `/app`  `/standalone` — page routes
 - `GET  /api/status` — app + Ollama status
 - `GET/PUT /api/settings` — read/update settings
@@ -176,3 +248,50 @@ The Stop indexing action sets a durable per-user cancellation flag but does not 
 ## Index conflict recovery
 
 A repeated start request for the same user is treated as an idempotent status response rather than a user-visible HTTP 409. A genuine worker-lock conflict remains a 409 with an actionable message. Request parameters use Nextcloud's native IRequest access first, with one non-recursive JSON-body fallback for POST payloads; the app does not use the old recursively named wrapper. Stale per-user index state is recovered after 15 minutes without a heartbeat; cancellation recovery remains faster. These responses are application concurrency handling, not Content Security Policy decisions.
+
+## Focused workspace
+
+`App.vue` owns the shared conversation list. `HomeView` receives it as props
+and emits the first prompt through the normal chat-creation path. It makes
+no independent stats or greeting requests. Answer typography is shared in
+`src/lib/markdown.css`; file-context replies use the same safe Markdown renderer. `ChatView` owns the lifetime of the
+shared renderer; `ChatActions` supplies native actions and modal dialogs.
+
+`SettingsView` is the shell for asynchronously loaded components under
+`src/components/settings/`. `useEvaSettings` owns shared form state and starts
+optional resource loaders when their section is selected. Styles are scoped
+under `.settings-view` in `src/styles/settings.scss`.
+
+`SystemController::indexStatus()` returns `IndexStatusResponse` without building
+full RAG status. Provider profiles use the existing settings route and encrypted
+`ProviderCredentials` storage; authentication defaults to `api_key` for legacy
+profiles. See [Performance](PERFORMANCE.md) and [Migration](WORKSPACE-MIGRATION.md).
+
+## Settings boundaries
+
+`SettingsUpdateRequest` decodes the wire format and restricts allowed fields.
+`SettingsCredentialsRequest` validates all secrets before credential writes.
+`ModelSelectionValidator` checks capabilities against the proposed endpoint
+without temporarily persisting it. `SettingsPersistence` normalizes the full
+update before writing values. Provider profile JSON is decoded once and stored
+as the validated list, preserving profiles across save/reload.
+
+Frontend settings coordinate independent briefing, integration and personal
+knowledge composables. Optional resources load only when their section opens.
+The shared form stays mounted across sections; save responses preserve edits
+made after a request began and queue outstanding changes.
+
+## Embedding dependency boundary
+
+`Indexer` and `Searcher` depend on `EmbeddingProvider`, bound by Nextcloud's
+bootstrap service alias to the existing shared `Ollama` service. Chat orchestration
+continues to use its existing provider path. The contract preserves ordered batch
+results, rejected-input null slots, error tuples, query embedding and per-batch
+cache counters. This stage changes no endpoint, model, cache identity or retrieval
+ranking. Constructor parameter names remain compatible with existing callers.
+
+A new embedding adapter must pin the same embedding space for ingestion and query
+vectors. Provider selection and vector-generation metadata are subsequent migration
+stages; this interface alone does not safely enable switching embedding models on
+an existing index. The historical `ollama_requests` status counter remains Ollama
+specific and must not be incremented by a future hosted-provider adapter.

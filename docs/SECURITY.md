@@ -162,7 +162,11 @@ CI runs the suite on PHP 8.2 / 8.3 / 8.4.
 
 Groq receives conversation messages, retrieved file excerpts and tool results
 when the user selects it. Tool authorization and confirmation checks still run
-on the Nextcloud server. Embeddings remain on Ollama. Personal API keys use
+on the Nextcloud server. Automatic SQL generations use Ollama unless a user
+explicitly selects a compatible provider profile with a configured embedding
+model and dimension; that selection sends indexed file text to that profile.
+Regular legacy indexing embeddings remain on the configured Ollama endpoint.
+Personal API keys use
 Nextcloud ICrypto at rest, are never inherited from other users and are omitted
 from settings responses and exports. Nextcloud administrators who control the
 server secret can decrypt stored credentials. Transport errors are sanitized to

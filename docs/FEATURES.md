@@ -19,14 +19,16 @@ print-ready HTML view. Responses are streamed; loading, empty, error, and retry
 states are reflected in the UI. Exports can include or omit per-message
 timestamps, model names, and the current user's display name. The document view lets you browse your personal
 index page by page. Settings expose Ollama, models, index, retrieval quality,
-and tool configuration.
+and tool configuration. See [Workspace settings](WORKSPACE.md) for the task-based
+layout and [Providers](PROVIDERS.md) for the profile form.
 
-Chat messages can include up to four PNG, JPEG, or WebP images (4 MB total).
-Image bytes go to the configured chat provider for that request and are not
-stored in chat history; filenames remain with the saved message.
-With Ollama, users can choose a different installed chat model for each
-message. Answers record the model that handled them, and model-specific usage
-is reflected in the metrics.
+The primary workspace uses the active provider and model configured in
+Settings. Answers record the model that handled them, and usage metrics keep
+that model context. Its native composer accepts up to four PNG, JPEG or WebP
+attachments (4 MB total); vision-capable configured providers can analyze them.
+The standalone compatibility chat retains the same attachment limits and can
+select an Ollama model per message.
+
 The image generator accepts up to four outputs per prompt from the selected
 OpenAI-compatible provider, stores them in the user's `EVA` Files folder, and
 shows a gallery with in-place previews and downloads. Ollama and Groq do not
@@ -36,15 +38,14 @@ EVA may only suggest changes in an interactive, authenticated context. Before
 execution the UI shows the exact tool name and its arguments. Only **Confirm and
 execute** carries out the action; **Cancel** changes nothing.
 
-### Admin Dashboard
+### Native administration settings
 
-Administrators get a dedicated **Eva AI** section in the Nextcloud administration
-settings (Issue #82). It shows a per-user overview of the RAG index: document and
-chunk counts, last index time, background-indexing enrollment, index state, and
-the most recent per-user error. From there an admin can queue a re-index for a
-user, reset a user's complete index, and toggle enrollment – all without ever
-seeing file names, paths, or content (metadata only). Every endpoint is
-`#[AdminRequired]`; non-admins receive a 403.
+Administrators get a native **Eva AI** section in Nextcloud administration.
+Built-in SQL is the default and needs no service setup. Optional vector-storage
+and generation controls appear only after opening their disclosure. The old
+`/apps/eva_ai/admin` route redirects to this section. Admin APIs remain
+administrator-only and expose generation metadata without file names, paths or
+content.
 
 ### Nextcloud Files
 
@@ -56,9 +57,13 @@ specific folder.
 
 EVA also registers a native Unified Search provider. Global Nextcloud searches
 match indexed file names, paths, and bounded text snippets without starting an
-AI request. Results are limited to the signed-in user's file-source documents,
-re-checked against the live VFS permissions, and link back to the original file.
-Mail and Talk index rows are never presented as Files search results.
+AI request. Content candidates follow the same active, verified generation as
+chat retrieval, with the legacy SQL index used while generation metadata is
+missing or source changes are pending. The search stays on bounded local SQL;
+typing does not contact an embedding provider or optional vector service.
+Results are limited to the signed-in user's file-source documents, re-checked
+against live VFS permissions, and link back to the original file. Mail and Talk
+index rows are never presented as Files search results.
 
 For agent workflows, the same live Nextcloud home is available through bounded
 tools: `list_files`, `search_files`, `read_file`, `read_files`, and
@@ -142,14 +147,20 @@ described to the model only once it is on.
 direct tool diagnostics, and Talk bot registration. A background job processes
 enrolled user accounts incrementally. Large collections are continued across
 multiple bounded runs instead of launching a single unbounded process.
+File-change events are debounced and processed off the user's upload path. A
+coalesced Nextcloud SQL queue uses expiring worker leases and revision-checked
+acknowledgements; transient failures retry with backoff, while the periodic
+index remains the recovery path after the bounded retry budget.
 
 ## 2. Local Knowledge Search (RAG)
 
 ### Indexable Content
 
 EVA can process plain text, Markdown, source code, CSV/TSV, HTML, JSON, XML,
-YAML, TOML, RTF, SQL, PDF, Microsoft Office files, OpenDocument files, and
-EPUB. It also reads saved mail (`.eml`), web archives (`.mht`/`.mhtml`),
+YAML, TOML, RTF, SQL, PDF, Microsoft Office files (including macro-enabled
+Open XML documents, templates, slideshows and presentations), OpenDocument text,
+spreadsheets, presentations, drawings and formulas, and EPUB. It also reads saved
+mail (`.eml`), web archives (`.mht`/`.mhtml`),
 mailboxes (`.mbox`) and Jupyter notebooks (`.ipynb`): a mail contributes its
 envelope (subject, sender, recipients, date) and its readable body, and a
 mailbox contributes every message it contains. Roughly 35 further text formats
@@ -161,6 +172,15 @@ non-file sources is stored under its own source marker, so a cleanup pass for on
 of them can never remove entries of another. Size, path, and count limits prevent
 a single run from consuming unbounded resources, and a file that cannot be read
 is skipped instead of stopping the run.
+
+When local OCR is enabled, EVA also reads text from standalone raster images.
+HEIC, HEIF and AVIF are included when the server's ImageMagick build has those
+codecs. EVA can also read up to four embedded images in DOCX, PPTX and
+OpenDocument files, and up to eight sparse pages in mixed text/scanned PDFs.
+This work is local to the Nextcloud server and has per-image size and runtime
+limits.
+If a chat starts during OCR, EVA stops the OCR subprocess promptly, keeps the
+previous indexed version available, and retries the changed file later.
 
 On first authenticated launch EVA may create a clearly marked, editable profile
 section in `KNOWLEDGE.md`. It contains only the intended baseline data and does

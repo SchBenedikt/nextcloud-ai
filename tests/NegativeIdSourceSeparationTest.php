@@ -192,8 +192,10 @@ final class NegativeIdSourceSeparationTest extends TestCase {
         ?callable $isMember = null,
     ): array {
         $byFileId = [];
+        $byDocumentId = [];
         foreach ($documents as $doc) {
             $byFileId[$doc->getFileId()] = $doc;
+            $byDocumentId[(int)$doc->getId()] = (int)$doc->getFileId();
         }
 
         $config = $this->createMock(AppConfig::class);
@@ -233,6 +235,15 @@ final class NegativeIdSourceSeparationTest extends TestCase {
             $deleted[] = (int)$doc->getFileId();
             return $doc;
         });
+        // Reconciliation purges by document id (one batch per stale document)
+        // so the vector generations and tombstones go with it.
+        $documentMapper->method('deleteByIds')->willReturnCallback(
+            static function (array $ids) use (&$deleted, $byDocumentId): void {
+                foreach ($ids as $id) {
+                    $deleted[] = $byDocumentId[(int)$id] ?? (int)$id;
+                }
+            },
+        );
         $documentMapper->method('findByUserAndFile')->willReturnCallback(
             static fn(string $user, int $fileId): ?Document => $byFileId[$fileId] ?? null,
         );
