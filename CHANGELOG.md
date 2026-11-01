@@ -7,6 +7,9 @@
 - Point the regression and integration tests at the controllers, services and batch writers that now own the code (settings, index queue, document and chunk purging, keyset dense scan), instead of the removed single-controller paths they still asserted.
 - Align the generation chunk-budget test with the bounded chunk settings, and force the recovery command's documented `--force` semantics for chat-lock release.
 - Translate the 126 frontend strings that the settings, metrics, provider and generation panels had added without catalog entries; English and German catalogs stay key-identical and placeholder-safe.
+- Install on Nextcloud 30 again: the verification table's default primary-key name was two characters over the 30-character identifier limit there, so `occ app:enable` aborted, and the SQL dense-scan counter column now fits the same limit.
+- Keep the settings form editable while a save is in flight; the reply only overwrites fields the user has not changed since, so edits in another section survive a slow request instead of freezing the page.
+- Pin `minimatch` to the fixed release through the existing override block so the production dependency audit stays clean.
 
 ### PostgreSQL and MariaDB app-lifecycle checks (1.20.40)
 
