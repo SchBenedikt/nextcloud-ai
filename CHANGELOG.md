@@ -2,6 +2,11 @@
 
 ## [Unreleased]
 
+### Release packaging and store listing (1.20.42)
+
+- Rewrite the App Store description in `appinfo/info.xml` around EVA's deep Nextcloud and Nextcloud Assistant integration, its more than 80 actions across Files, Calendar, Mail, Tasks and Talk, web search with images from the internet, and the privacy model.
+- Expand the README with the new screenshots: EVA answering "What can you do?", EVA powering the Nextcloud Assistant, the documents index and image search results.
+
 ### Repair the test suite after the controller and retrieval extraction (1.20.41)
 
 - Point the regression and integration tests at the controllers, services and batch writers that now own the code (settings, index queue, document and chunk purging, keyset dense scan), instead of the removed single-controller paths they still asserted.
