@@ -322,9 +322,9 @@ replaced by a successful build or an adapter unit test.
 - DB portability: migrations, mapper and API paths now also run on PostgreSQL
   and MariaDB instead of SQLite only (`nextcloud-app-database` in `tests.yml`,
   see [CI.md](CI.md)). The legs were reproduced locally with Nextcloud 35: 22
-  app tables and `app:enable` succeeded on both PostgreSQL 17 and MariaDB 11.4,
-  and the API integration test executed on MariaDB. A green CI run and
-  cross-database evidence for the whole suite remain open.
+  app tables and `app:enable` succeeded on both PostgreSQL 17 and MariaDB 11.4
+  in CI and locally. A green run and cross-database evidence for the whole suite
+  remain open.
 - Provider contracts: mock API shapes and opt-in live provider checks; never
   publish secrets or transmit user documents during automatic verification.
 - Observability: request correlation, provider/tool durations, queue age, dead
@@ -846,10 +846,11 @@ migrations), `occ app:list`, `tests/ApiControllerIntegrationTest.php` and the fu
 fail the pull request. The service is published on the runner and reached from
 the Nextcloud CI container through the docker host gateway.
 
-Locally reproduced on 2026-11-01 with Nextcloud 35: PostgreSQL 17 and MariaDB 11.4
-each ended up with 22 `oc_eva_ai_*` tables after `app:enable`, and
-`ApiControllerIntegrationTest` ran on MariaDB. Its two failures reproduce
-identically on SQLite, so they are pre-existing on this branch and not database
-related; the branch's own PHPUnit, frontend and app-lifecycle checks still fail
-independently of this job. No green run of the new job exists yet, and the
-executed evidence stays limited to these local legs.
+On 2026-11-01 both legs installed Nextcloud 35 and enabled `eva_ai` 1.20.40 on
+the real engines in CI (run 41315393058); the same run was reproduced locally
+with 22 `oc_eva_ai_*` tables per engine after `app:enable`. Both legs then failed
+on the same two `ApiControllerIntegrationTest` assertions that also fail on
+SQLite, so the job reports pre-existing branch breakage rather than a database
+defect. The branch's PHPUnit, frontend and app-lifecycle checks still fail
+independently of this job, so no green run and no cross-database evidence for the
+full suite exists yet.
