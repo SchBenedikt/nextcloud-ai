@@ -106,7 +106,7 @@ class UsageMetrics {
 					'duration_ms' => $qb->createNamedParameter(max(0, $durationMs), IQueryBuilder::PARAM_INT),
 					'retrieval_backend' => $qb->createNamedParameter($retrieval['backend'] ?? 'none'),
 					'retrieval_embedding_provider' => $qb->createNamedParameter($retrieval['embedding_provider'] ?? 'none'),
-					'retrieval_dense_sql_rows_scanned' => $qb->createNamedParameter($retrieval['dense_sql_rows_scanned'] ?? 0, IQueryBuilder::PARAM_INT),
+					'retrieval_dense_rows_scanned' => $qb->createNamedParameter($retrieval['dense_sql_rows_scanned'] ?? 0, IQueryBuilder::PARAM_INT),
 					'retrieval_stage_mask' => $qb->createNamedParameter($retrieval['stage_mask'] ?? 0, IQueryBuilder::PARAM_INT),
 					'retrieval_count_ms' => $qb->createNamedParameter($retrieval['count_ms'] ?? 0, IQueryBuilder::PARAM_INT),
 					'retrieval_embedding_ms' => $qb->createNamedParameter($retrieval['embedding_ms'] ?? 0, IQueryBuilder::PARAM_INT),
@@ -402,11 +402,11 @@ class UsageMetrics {
 		$embeddingQueryDuration['providers'] = (object)$embeddingQueryDuration['providers'];
 		try {
 			$qb = $this->db->getQueryBuilder();
-			$qb->select('retrieval_backend', 'retrieval_stage_mask', 'retrieval_dense_sql_rows_scanned')->from('eva_ai_usage')
+			$qb->select('retrieval_backend', 'retrieval_stage_mask', 'retrieval_dense_rows_scanned')->from('eva_ai_usage')
 				->where($qb->expr()->eq('user_id', $qb->createNamedParameter($userId)))
 				->andWhere($qb->expr()->eq('operation', $qb->createNamedParameter('chat')))
 				->andWhere($qb->expr()->gte('created_at', $qb->createNamedParameter($since, IQueryBuilder::PARAM_INT)))
-				->andWhere($qb->expr()->gt('retrieval_dense_sql_rows_scanned', $qb->createNamedParameter(0, IQueryBuilder::PARAM_INT)))
+				->andWhere($qb->expr()->gt('retrieval_dense_rows_scanned', $qb->createNamedParameter(0, IQueryBuilder::PARAM_INT)))
 				->orderBy('created_at', 'DESC')->setMaxResults(5000);
 			$result = $qb->executeQuery();
 			$samples = ['sql_legacy' => [], 'sql_generation' => []];
@@ -414,7 +414,7 @@ class UsageMetrics {
 				while (($row = $result->fetch()) !== false) {
 					$backend = (string)$row['retrieval_backend'];
 					if (isset($samples[$backend]) && (((int)$row['retrieval_stage_mask'] & (1 << 2)) !== 0)) {
-						$samples[$backend][] = max(0, (int)$row['retrieval_dense_sql_rows_scanned']);
+						$samples[$backend][] = max(0, (int)$row['retrieval_dense_rows_scanned']);
 					}
 				}
 			} finally { $result->closeCursor(); }

@@ -27,10 +27,10 @@ final class SqlDenseScanRows implements IMetricFamily {
 
 	public function metrics(): Generator {
 		$q = $this->db->getQueryBuilder();
-		$q->select('retrieval_backend', 'retrieval_stage_mask', 'retrieval_dense_sql_rows_scanned')->from('eva_ai_usage')
+		$q->select('retrieval_backend', 'retrieval_stage_mask', 'retrieval_dense_rows_scanned')->from('eva_ai_usage')
 			->where($q->expr()->eq('operation', $q->createNamedParameter('chat')))
 			->andWhere($q->expr()->gte('created_at', $q->createNamedParameter(time() - self::WINDOW_SECONDS, IQueryBuilder::PARAM_INT)))
-			->andWhere($q->expr()->gt('retrieval_dense_sql_rows_scanned', $q->createNamedParameter(0, IQueryBuilder::PARAM_INT)))
+			->andWhere($q->expr()->gt('retrieval_dense_rows_scanned', $q->createNamedParameter(0, IQueryBuilder::PARAM_INT)))
 			->orderBy('created_at', 'DESC')->setMaxResults(self::SAMPLE_LIMIT);
 		$samples = [];
 		try {
@@ -39,7 +39,7 @@ final class SqlDenseScanRows implements IMetricFamily {
 				while (($row = $result->fetch()) !== false) {
 					$backend = (string)$row['retrieval_backend'];
 					if (!in_array($backend, self::BACKENDS, true) || (((int)$row['retrieval_stage_mask'] & (1 << 2)) === 0)) continue;
-					$samples[$backend][] = max(0, (int)$row['retrieval_dense_sql_rows_scanned']);
+					$samples[$backend][] = max(0, (int)$row['retrieval_dense_rows_scanned']);
 				}
 			} finally { $result->closeCursor(); }
 		} catch (\Throwable) {

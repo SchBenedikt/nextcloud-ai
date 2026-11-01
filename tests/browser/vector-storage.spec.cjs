@@ -23,12 +23,18 @@ async function openStorage(page, { failSave = false } = {}) {
       requested = calls.at(-1).body.enabled
       return route.fulfill({ contentType: 'application/json', body: JSON.stringify({ ocs: { data: { points_requested: requested } } }) })
     }
+    // The panel rejects a status payload it cannot fully validate, so the fixture
+    // carries the account counts the native surface now reports.
     const data = { available: true, retrieval_backend: 'sql_legacy', connection: { configured: false, enabled: false }, erasure_worker_enabled: false,
-      chunk_sync_available: true, points_requested: requested, point_worker_enabled: false, staged_chunks: 0, queue: { pending: 0, processing: 0, dead: 0 } }
+      chunk_sync_available: true, points_requested: requested, point_worker_enabled: false, staged_chunks: 0,
+      active_sql_accounts: 0, active_qdrant_accounts: 0, queue: { pending: 0, processing: 0, dead: 0 } }
     return route.fulfill({ contentType: 'application/json', body: JSON.stringify({ ocs: { data } }) })
   })
   await page.goto('http://127.0.0.1:4173/')
   await page.addScriptTag({ url: 'http://127.0.0.1:4173/vectorstatus.js' })
+  // The consent switch and the queue counters live in the collapsed
+  // "Queue and synchronization details" section of the compact admin surface.
+  await page.getByText('Queue and synchronization details', { exact: true }).click()
   return { calls, errors }
 }
 

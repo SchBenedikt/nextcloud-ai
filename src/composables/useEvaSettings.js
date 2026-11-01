@@ -196,6 +196,11 @@ export function useEvaSettings({ section = ref('general'), active = ref(true) } 
 		return saving.value || checking.value || indexing.value || resetting.value || deletingChats.value || stopping.value
 			|| (indexingActive.value && !briefingOnly)
 	})
+	// A plain settings save keeps the form editable: the save response only
+	// overwrites fields whose value still matches the request snapshot, so edits
+	// made in another section while a request is in flight survive the reply.
+	// Long-running actions and indexing still lock the form.
+	const formLocked = computed(() => !formReady.value || checking.value || indexing.value || resetting.value || deletingChats.value || stopping.value || indexingActive.value)
 	// Scheduled briefings stay editable during indexing, but avoid racing
 	// another settings write against their independent save request.
 	const briefingsLocked = computed(() => saving.value || checking.value || resetting.value || deletingChats.value || stopping.value || !formReady.value)
@@ -758,7 +763,7 @@ export function useEvaSettings({ section = ref('general'), active = ref(true) } 
 	const ocrEnabled = computed({ get: () => f.value.ocr_enabled === '1', set: value => { f.value.ocr_enabled = value ? '1' : '0' } })
 	return {
 		group, formReady, chatRetentionOptions, nextcloudApiToken, removeNextcloudApiToken, hasUnsavedSettings, ocrEnabled, f, providerProfiles, selectedChatProvider, embeddingModelOptions, chatModelOptions, summaryModelOptions, webSearchProviderOptions, status, health, healthLoading, statusTimer, limits, availableModels, embeddingModels, chatModels, embeddingInstalledHint, chatInstalledHint, modelLoading, modelError, checkOut, saving, checking, indexing, resetting, deletingChats, stopping, saved, loadError, statusRefreshError, message, validationErrors, resetConfirm, chatsDeleteConfirm,
-		newExcludePath, excludeError, excludeList, actionsEnabled, backgroundActionsEnabled, voiceInputEnabled, notificationsEnabled, learningEnabled, safeCommandsEnabled, terminalCommandsEnabled, terminalCommandAny, mailIndexEnabled, talkIndexEnabled, talkWriteEnabled, indexEnrolled, actionsDisabled, busy, indexingActive, settingsLocked, saveNowLocked, briefingsLocked, maxFileSizeMb,
+		newExcludePath, excludeError, excludeList, actionsEnabled, backgroundActionsEnabled, voiceInputEnabled, notificationsEnabled, learningEnabled, safeCommandsEnabled, terminalCommandsEnabled, terminalCommandAny, mailIndexEnabled, talkIndexEnabled, talkWriteEnabled, indexEnrolled, actionsDisabled, busy, indexingActive, settingsLocked, saveNowLocked, formLocked, briefingsLocked, maxFileSizeMb,
 		userWebSearchEnabled, userWebSearchSafeSearch, userWebSearchImages, userWebSearchBrowser, userWebSearchFetchContent,
 		connectors, connectorsLoading, connectorsBusy, connectorDiagnostics, connectorDraft, connectorToRemove, connectorRemovalError, connectorEndpointQuery, filteredConnectorEndpoints, applyConnectorExample, saveConnector, editConnector, connectorCredentialLabel, connectorCredentialClass, removeConnector, closeConnectorRemoval, confirmRemoveConnector, discoverConnector, testConnector, loadConnectors, connectorLoadError, plugins, pluginsLoading, pluginsSaving, setPluginEnabled, loadPlugins, pluginLoadError, pluginRiskLabel, pluginSurfacesLabel,
 		apiKeys, apiKeysLoading, apiKeysBusy, apiKeyError, createdApiKey, apiKeyDraft, apiKeyScopeOptions, apiDocsUrl, loadApiKeys, createApiKey, revokeApiKey, copyApiKey,

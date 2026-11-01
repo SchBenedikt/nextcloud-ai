@@ -4,7 +4,9 @@ const path = require('node:path')
 
 async function open(page, { failed = false } = {}) {
   const calls = [], errors = []
-  let state = { status: 'not_started', documents_done: 0, total_documents: 2, staged_chunks: 0, heartbeat_at: 0, error_code: null, can_start: true, retrieval_changed: false, verified: false }
+  // Every field the build panel validates; a native surface that cannot
+  // account for its own progress refuses to render a half-known state.
+  let state = { status: 'not_started', backend: 'sql', include_text_payload: false, active: false, retrieval_backend: 'sql_legacy', documents_done: 0, total_documents: 2, staged_chunks: 0, heartbeat_at: 0, error_code: null, can_start: true, retrieval_changed: false, verified: false }
   page.on('pageerror', e => errors.push(e.message))
   await page.route('http://127.0.0.1:4173/**', async route => {
     const url = new URL(route.request().url())
@@ -20,7 +22,8 @@ async function open(page, { failed = false } = {}) {
       }
       return route.fulfill({ contentType: 'application/json', body: JSON.stringify({ ocs: { data: state } }) })
     }
-    return route.fulfill({ contentType: 'application/json', body: JSON.stringify({ ocs: { data: { items: [{ id: 'a'.repeat(32), status: 'building', embedding_provider: 'ollama', embedding_model: 'exact-embed', dimension: 3, chunk_size: 900, chunk_overlap: 120, created_at: 1 }], next_after: null } } }) })
+    // The panel rejects generation metadata it cannot fully account for.
+    return route.fulfill({ contentType: 'application/json', body: JSON.stringify({ ocs: { data: { items: [{ id: 'a'.repeat(32), backend: 'sql', include_text_payload: false, status: 'building', embedding_provider: 'ollama', embedding_model: 'exact-embed', dimension: 3, chunk_size: 900, chunk_overlap: 120, created_at: 1 }], next_after: null } } }) })
   })
   await page.goto('http://127.0.0.1:4173/')
   await page.addScriptTag({ url: 'http://127.0.0.1:4173/generations.js' })
@@ -47,7 +50,7 @@ test('native build consent, pause and resume only update background control', as
   setState({ status: 'staged', documents_done: 2, staged_chunks: 5 })
   await page.getByRole('button', { name: 'Refresh build progress' }).click()
   await expect(page.getByText('Staged; not verified', { exact: true })).toBeVisible()
-  await expect(page.getByText('Source processing finished. Complete index verification is still required before search can change.', { exact: true })).toBeVisible()
+  await expect(page.getByText('Source processing finished. SQL generation vectors and current source manifests are checked automatically before activation.', { exact: true })).toBeVisible()
   expect(calls.filter(c => c.method === 'POST').map(c => c.path.split('/').at(-1))).toEqual(['start', 'pause', 'resume'])
   expect(errors).toEqual([])
 })

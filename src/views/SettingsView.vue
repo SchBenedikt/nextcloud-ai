@@ -39,7 +39,7 @@
 				</div>
 				<NcButton variant="secondary" :loading="stopping" :disabled="status?.indexStopping" @click="stopIndex">{{ $t('Stop indexing') }}</NcButton>
 			</div>
-			<fieldset v-if="active" class="settings-fieldset" :disabled="(group === 'automation' ? briefingsLocked : settingsLocked) || !formReady">
+			<fieldset v-if="active" class="settings-fieldset" :disabled="group === 'automation' ? briefingsLocked : formLocked">
 				<GeneralSettings v-if="group === 'general'" />
 				<KnowledgeSettings v-if="group === 'knowledge'" />
 				<ToolsSettings v-if="group === 'tools'" />

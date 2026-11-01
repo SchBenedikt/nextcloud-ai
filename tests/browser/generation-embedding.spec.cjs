@@ -15,7 +15,9 @@ async function openGenerations(page, fail = false) {
     if (url.pathname.endsWith('/check')) {
       return route.fulfill({ status: fail ? 503 : 200, contentType: 'application/json', body: JSON.stringify({ ocs: { data: fail ? { error: { message: 'The provider returned a different model or vector space.' } } : { available: true, generation_id: id, dimension: 2, retrieval_changed: false, document_content_sent: false } } }) })
     }
-    const items = url.pathname.endsWith('/bob') ? [] : [{ id, status: 'building', embedding_provider: 'ollama', embedding_model: 'exact-embed', dimension: 2, chunk_size: 900, chunk_overlap: 120, created_at: 1 }]
+    // The panel rejects generation metadata it cannot fully account for, so the
+    // fixture carries every field the native surface relies on.
+    const items = url.pathname.endsWith('/bob') ? [] : [{ id, backend: 'sql', include_text_payload: false, status: 'building', embedding_provider: 'ollama', embedding_model: 'exact-embed', dimension: 2, chunk_size: 900, chunk_overlap: 120, created_at: 1 }]
     return route.fulfill({ contentType: 'application/json', body: JSON.stringify({ ocs: { data: { items, next_after: null } } }) })
   })
   await page.goto('http://127.0.0.1:4173/')

@@ -6,7 +6,7 @@
 		</NcNoteCard>
 		<template v-else-if="status">
 			<NcNoteCard type="info">{{ $t('Built-in Nextcloud SQL search works without Qdrant. The external service is optional and is used only after an administrator prepares, verifies and activates a generation.') }}</NcNoteCard>
-			<details>
+			<details :open="detailsOpen" @toggle="detailsOpen = $event.target.open">
 				<summary>{{ $t('Queue and synchronization details') }}</summary>
 				<NcButton variant="tertiary" :disabled="loading" @click="refresh">{{ $t('Refresh storage status') }}</NcButton>
 				<dl class="storage-status">
@@ -21,7 +21,6 @@
 				</dl>
 				<NcCheckboxRadioSwitch :model-value="status.points_requested" :disabled="pointSaving || loading" @update:model-value="setPointDelivery">{{ $t('Allow prepared vector point delivery') }}</NcCheckboxRadioSwitch>
 				<p class="storage-hint">{{ $t('Enabling also resumes generation cleanup when storage requests are allowed. Disabling pauses point delivery; use Disable storage requests to stop all transfers. This does not backfill files or switch search.') }}</p>
-				<NcNoteCard v-if="pointError" type="error">{{ pointError }}</NcNoteCard>
 				<NcNoteCard v-if="status.queue.dead > 0" type="warning">
 					{{ $t('Some background operations exhausted their retries. An administrator needs to inspect them before retrying.') }}
 				</NcNoteCard>
@@ -29,6 +28,9 @@
 				<p class="storage-hint">{{ $t('Removing a file clears its local index and queues cleanup for prepared vector points. Renaming or changing a source discards its prepared entries for rebuilding. Prepared point updates and cleanup run only when their delivery switches allow them.') }}</p>
 				<p v-if="status.staged_chunks > 0" class="storage-hint">{{ $t('Prepared generation chunks are separate from the SQL search index. Their presence does not mean migration is verified or active.') }}</p>
 			</details>
+			<!-- Outside the collapsible block: a failed save refreshes the status,
+				so an error the admin has to click open again is not actionable. -->
+			<NcNoteCard v-if="pointError" type="error">{{ pointError }}</NcNoteCard>
 		</template>
 		<NcButton v-if="error" variant="secondary" :disabled="loading" @click="refresh">{{ $t('Refresh storage status') }}</NcButton>
 		<VectorConnectionSettings :enabled="status?.connection?.enabled === true" @changed="refresh" />
@@ -51,6 +53,9 @@ export default {
 		const error = ref(false)
 		const pointSaving = ref(false)
 		const pointError = ref('')
+		// Every refresh replaces the status object, which used to rebuild the
+		// collapsible block closed. Keep the admin's choice across refreshes.
+		const detailsOpen = ref(false)
 		let controller
 		async function refresh() {
 			if (loading.value) return
@@ -92,7 +97,7 @@ export default {
 		}
 		onMounted(refresh)
 		onBeforeUnmount(() => controller?.abort())
-		return { status, loading, error, refresh, pointSaving, pointError, setPointDelivery }
+		return { status, loading, error, refresh, pointSaving, pointError, detailsOpen, setPointDelivery }
 	},
 }
 </script>
