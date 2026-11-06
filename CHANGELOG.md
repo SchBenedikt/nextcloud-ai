@@ -2,6 +2,12 @@
 
 ## [Unreleased]
 
+### Keep indexing passes alive when a source contains invalid UTF-8 (1.20.44)
+
+- Convert legacy Windows-1252/ISO-8859 text to UTF-8 before Unicode-aware extraction and chunking.
+- Fall back to a safe line split if PCRE cannot find sentence boundaries, and isolate per-source chunking errors so the previous indexed version remains available.
+- Log the source path and count chunking failures while continuing with other files, Mail messages and Talk rooms.
+
 ### Restore chunk inspection for indexed Mail and Talk documents (1.20.43)
 
 - Keep the owner check for every document while applying the live VFS permission check only to regular files. Mail and Talk rows use synthetic file IDs and do not have an `oc_filecache` record.

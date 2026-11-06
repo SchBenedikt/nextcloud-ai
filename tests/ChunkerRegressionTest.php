@@ -162,4 +162,14 @@ final class ChunkerRegressionTest extends TestCase {
         self::assertStringContainsString('# Leerer Abschnitt', (string)$chunks[0]['content']);
         self::assertStringContainsString('# Naechster Abschnitt', (string)$chunks[1]['content']);
     }
+
+    public function testLegacyWindowsBytesAreConvertedBeforeChunking(): void {
+        $text = "ADR;WORK;CHARSET=ISO-8859-1:;;Musterstr. 1;W\xFCrzburg;;97070;Deutschland";
+
+        $chunks = $this->chunker(200, 0)->chunk($text);
+        $content = implode("\n", array_column($chunks, 'content'));
+
+        self::assertTrue(mb_check_encoding($content, 'UTF-8'));
+        self::assertStringContainsString('Würzburg', $content);
+    }
 }
