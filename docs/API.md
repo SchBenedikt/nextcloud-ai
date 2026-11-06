@@ -355,6 +355,11 @@ regular files it also revalidates current VFS access; owned Mail and Talk
 documents use synthetic file IDs and are checked by document ownership because
 they have no `oc_filecache` entry.
 
+Text extraction and chunking repair legacy Windows-1252/ISO-8859 bytes before
+Unicode parsing. A chunking failure is isolated to its source, logged with the
+file path, and counted as failed; the prior indexed version is kept while the
+remaining sources continue processing.
+
 ### Vector-generation metadata in personal data export
 
 The existing authenticated personal-data export adds `vector_generations`, an

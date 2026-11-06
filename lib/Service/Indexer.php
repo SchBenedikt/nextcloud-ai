@@ -407,7 +407,16 @@ class Indexer {
                     continue;
                 }
 
-                $chunks = $this->chunker->chunk($content);
+                try {
+                    $chunks = $this->chunker->chunk($content);
+                } catch (\Throwable $e) {
+                    // Keep this source isolated: a malformed document must not
+                    // discard staged work from earlier files in the same pass.
+                    $result['skipped']++;
+                    $result['failed']++;
+                    $this->logger->warning('eva_ai: chunking failed; preserving previous index', ['file' => $path, 'e' => $e->getMessage()]);
+                    continue;
+                }
                 if (empty($chunks)) {
                     $result['skipped']++;
                     continue;
@@ -678,7 +687,14 @@ class Indexer {
                 return $result;
             }
 
-            $chunks = $this->chunker->chunk($content);
+            try {
+                $chunks = $this->chunker->chunk($content);
+            } catch (\Throwable $e) {
+                $result['skipped']++;
+                $result['failed']++;
+                $this->logger->warning('eva_ai: chunking failed; preserving previous index', ['file' => $rel, 'e' => $e->getMessage()]);
+                return $result;
+            }
             if (empty($chunks)) {
                 $result['skipped']++;
                 return $result;
@@ -1175,7 +1191,14 @@ class Indexer {
             if (($hashes[$mailFileId] ?? null) === $hash) {
                 continue; // unchanged since last run
             }
-            $chunks = $this->chunker->chunk($content);
+            try {
+                $chunks = $this->chunker->chunk($content);
+            } catch (\Throwable $e) {
+                $result['skipped']++;
+                $result['failed']++;
+                $this->logger->warning('eva_ai: mail chunking failed; preserving previous index', ['file' => 'mail://' . $msgId, 'e' => $e->getMessage()]);
+                continue;
+            }
             if (empty($chunks)) {
                 continue;
             }
@@ -1318,7 +1341,14 @@ class Indexer {
                 $result['skipped']++;
                 continue;
             }
-            $chunks = $this->chunker->chunk($content);
+            try {
+                $chunks = $this->chunker->chunk($content);
+            } catch (\Throwable $e) {
+                $result['skipped']++;
+                $result['failed']++;
+                $this->logger->warning('eva_ai: Talk chunking failed; preserving previous index', ['file' => 'talk://' . $roomId, 'e' => $e->getMessage()]);
+                continue;
+            }
             if ($chunks === []) {
                 continue;
             }

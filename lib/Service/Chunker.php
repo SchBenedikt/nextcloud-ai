@@ -20,6 +20,7 @@ class Chunker {
      * @return array<int,array{content:string,tokens:int}>
      */
     public function chunk(string $text): array {
+        $text = $this->toUtf8($text);
         $chunkSize = $this->config->getInt('chunk_size', 900);
         $overlap = $this->config->getInt('chunk_overlap', 120);
         if ($overlap >= $chunkSize) {
@@ -33,6 +34,7 @@ class Chunker {
     public function chunkWithSettings(string $text, int $chunkSize, int $overlap, int $maxChunks = 4096, int $maxBytes = 16777216): array {
         if ($chunkSize < 1 || $chunkSize > 10000 || $overlap < 0 || $overlap >= $chunkSize
             || $maxChunks < 1 || $maxChunks > 10000 || $maxBytes<1 || $maxBytes>16777216) throw new \InvalidArgumentException('Invalid bounded chunk settings.');
+        $text = $this->toUtf8($text);
         $chunks = []; $bytes=0;
         foreach ($this->chunks($text, $chunkSize, $overlap) as $chunk) {
             $bytes+=strlen($chunk['content']);
@@ -171,7 +173,17 @@ class Chunker {
         $length = strlen($text);
         for ($start = 0; $start < $length; $start = $end) {
             $found = preg_match('/(?<=[.!?:;])[ \t]+(?=\S)|\n/u', $text, $match, PREG_OFFSET_CAPTURE, $start);
-            if ($found === false) throw new \InvalidArgumentException('Chunk text must be valid UTF-8.');
+            if ($found === false) {
+                // PCRE can fail on resource limits even after encoding repair.
+                // Fall back to a line or tail boundary instead of aborting a run.
+                $lineBreak = strpos($text, "\n", $start);
+                if ($lineBreak === false) {
+                    $found = 0;
+                } else {
+                    $found = 1;
+                    $match = [["\n", $lineBreak]];
+                }
+            }
             $position = $found === 1 ? $match[0][1] : $length;
             $newline = $found === 1 && $match[0][0] === "\n";
             $part = trim(substr($text, $start, $position - $start));
@@ -188,6 +200,14 @@ class Chunker {
             yield mb_substr($text, $start, $size);
             $start += $step;
         }
+    }
+
+    private function toUtf8(string $text): string {
+        if ($text === '' || mb_check_encoding($text, 'UTF-8')) {
+            return $text;
+        }
+        $converted = @mb_convert_encoding($text, 'UTF-8', 'Windows-1252, ISO-8859-15, ISO-8859-1');
+        return is_string($converted) ? $converted : '';
     }
 
     public function estimateTokens(string $text): int {

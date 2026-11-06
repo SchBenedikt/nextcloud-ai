@@ -1105,6 +1105,9 @@ class IndexTextExtractor {
     }
 
     public function normalize(string $text): string {
+        // Files can advertise UTF-8 while still containing legacy bytes (for
+        // example old vCards). Repair encoding before Unicode-aware parsing.
+        $text = $this->toUtf8($text);
         $text = str_replace(["\r\n", "\r"], "\n", $text);
         // Überflüssige Leerzeichen/Zeilenumbrüche glätten, Blockgrenzen behalten.
         $text = preg_replace('/[ \t]+/', ' ', $text);
