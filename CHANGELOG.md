@@ -2,6 +2,11 @@
 
 ## [Unreleased]
 
+### Report connector authentication rejection as a connection error (1.20.48)
+
+- Treat HTTP 401/403 diagnostics as authentication failures instead of successful connector tests.
+- Align the settings message with the authentication status shown in the connector diagnostics card.
+
 ### Trace dense SQL retrieval pages (1.20.47)
 
 - Add a content-free Nextcloud timing span around each keyset page used by SQL dense retrieval.

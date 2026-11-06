@@ -623,7 +623,7 @@ private function connectorRows(): array {
             if ($effectiveAuthType === '') {
                 $effectiveAuthType = !empty($row['token_configured']) ? 'bearer' : 'none';
             }
-            return ['ok' => $errno === 0 && $status >= 200 && $status < 500, 'result' => [
+            return ['ok' => $errno === 0 && $category === 'reachable', 'result' => [
                 'connector' => $id, 'base_url' => $base, 'status' => $status,
                 'resolved_ip' => $ip, 'elapsed_ms' => $elapsed, 'category' => $category,
                 'auth_type' => $effectiveAuthType,

@@ -111,7 +111,9 @@ bounded results, redaction and confirmation policy.
   address from the Nextcloud server itself.
 - **HTTP 401/403:** verify the selected scheme, secret and service ACL. Editing
   the connector with an empty secret keeps the encrypted secret; it does not
-  delete it.
+  delete it. **Test connection** reports these as authentication failures,
+  while a reachable service that returns 404 at its root still counts as
+  reachable.
 - **No schema found:** provide the service's same-host OpenAPI URL or inspect
   the learned route list. Services without a schema can still expose bounded
   runtime, hypermedia, JavaScript-route or vendor-fallback metadata.
