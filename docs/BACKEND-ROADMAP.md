@@ -383,7 +383,7 @@ replaced by a successful build or an adapter unit test.
   same URLs and permission checks; the remaining API controller domains still
 need incremental extraction. Version 1.20.10 moves connector and plugin API
   operations into `IntegrationController`; chat and file-context domains still
-  remain in the large API controller. Version 1.20.11 moves queued-chat
+  now use `FileContextController`. Version 1.20.11 moves queued-chat
   admission and lifecycle endpoints behind `BackgroundChatController`, sharing
   the same rate-limit policy and worker queue. Version 1.20.12 moves personal
   knowledge-file operations to a focused VFS-backed controller with injected
@@ -722,6 +722,16 @@ fix oversized headings and overlap overruns in ordinary indexing.
 Actual installed DI/VFS/SQL preparation and changed-file rejection have passed
 locally. This supplies the input used by the following durable-worker slice.
 Source planning alone does not constitute a completed or verified migration.
+
+The 1.20.44 source-resilience slice converts legacy Windows-1252/ISO-8859 text
+before Unicode parsing and treats chunking failures as source-local errors. The
+indexer records the affected path, increments the failure count, preserves the
+last-good document and continues with other files, Mail messages and Talk rooms.
+The document inspector also recognizes owner-scoped Mail/Talk rows with
+synthetic file IDs while retaining live VFS permission checks for regular files.
+These changes prevent a malformed source or non-file ID from stopping the
+ordinary indexing/inspection path; they do not replace representative corpus,
+soak or multi-database evidence from the PDF's later rollout gates.
 
 ### Stage 09 durable builder and native control (1.18.10)
 
