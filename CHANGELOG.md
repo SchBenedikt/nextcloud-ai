@@ -2,6 +2,11 @@
 
 ## [Unreleased]
 
+### Add Spanish interface translations (1.20.45)
+
+- Add the Spanish catalog submitted in #696 for the app's user interface.
+- Untranslated administration and newer interface strings continue to use Nextcloud's English fallback.
+
 ### Keep indexing passes alive when a source contains invalid UTF-8 (1.20.44)
 
 - Convert legacy Windows-1252/ISO-8859 text to UTF-8 before Unicode-aware extraction and chunking.

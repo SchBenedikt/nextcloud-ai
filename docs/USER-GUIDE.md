@@ -1,5 +1,9 @@
 # Using EVA
 
+EVA follows the language selected in your Nextcloud profile. The Spanish
+interface catalog covers the strings submitted in #696; untranslated strings,
+including the administration interface, use Nextcloud's English fallback.
+
 ## Conversations
 
 Home has one starting point: enter a message or choose an example. Recent chats
