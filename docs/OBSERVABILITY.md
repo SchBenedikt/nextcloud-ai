@@ -127,11 +127,20 @@ durations, never prompt or answer content.
 
 ## Remaining observability work
 
-Model-provider and optional Qdrant HTTP operations now receive a W3C
-`traceparent` header tied to the active EVA chat request. EVA logs the same
-trace and request-span IDs without prompts, answers or baggage. The trace flag
-is unsampled: this is correlation context, not OpenTelemetry instrumentation.
-An SDK/exporter, distinct child spans, database and lock spans, and
+EVA records `chat.request` or `chat.stream`, `retrieval` and
+`retrieval.embedding` as named events through Nextcloud's `IEventLogger`. The
+logger controls whether events are collected and applies the configured
+diagnostics threshold. Event names are fixed; event IDs carry only the trace,
+span and parent-span IDs. No account identifier, prompt, answer, query, path,
+model name or provider URL is added to these events.
+
+Each retrieval and query-embedding event gets a child W3C span ID. The exact
+generation embedding request now receives that child `traceparent`, matching
+the propagation already used by the legacy model and optional vector clients.
+Diagnostics failures are ignored so they cannot affect chat or retrieval.
+
+These native timing events improve local request attribution but are not an
+OpenTelemetry SDK/exporter. Database and lock spans, OTLP export, and
 representative end-to-end trace evidence remain open. The PDF's representative
-quality, sampling and load evidence is also still required. Keep request
-logging content-free and validate performance claims on frozen corpora.
+quality and load evidence is also still required. Validate performance claims
+on frozen corpora.

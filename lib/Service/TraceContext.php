@@ -4,12 +4,19 @@ declare(strict_types=1);
 
 namespace OCA\EvaAi\Service;
 
+use OCP\Diagnostics\IEventLogger;
+
 /** Short-lived correlation context for one chat execution. */
 final class TraceContext {
+    private const NATIVE_SPANS = ['chat.request', 'chat.stream', 'retrieval', 'retrieval.embedding'];
+
     private ?string $traceId = null;
     private ?string $spanId = null;
     /** @var array{backend:string,embedding_provider:string,dense_sql_rows_scanned:int,stage_mask:int,count_ms:int,embedding_ms:int,candidates_ms:int,hydrate_ms:int,scope_ms:int,ranking_ms:int,total_ms:int}|null */
     private ?array $retrievalMeasurements = null;
+
+    public function __construct(private ?IEventLogger $eventLogger = null) {
+    }
 
     public function id(): ?string {
         return $this->traceId;
@@ -68,9 +75,11 @@ final class TraceContext {
             $this->spanId = $this->randomHex(8);
             $this->retrievalMeasurements = null;
         }
+        $eventId = $previous === null ? $this->startNativeSpan('chat.request', null) : null;
         try {
             return $operation();
         } finally {
+            $this->endNativeSpan($eventId);
             $this->traceId = $previous;
             $this->spanId = $previousSpanId;
             $this->retrievalMeasurements = $previousMeasurements;
@@ -87,12 +96,58 @@ final class TraceContext {
             $this->spanId = $this->randomHex(8);
             $this->retrievalMeasurements = null;
         }
+        $eventId = $previous === null ? $this->startNativeSpan('chat.stream', null) : null;
         try {
             yield from $operation();
         } finally {
+            $this->endNativeSpan($eventId);
             $this->traceId = $previous;
             $this->spanId = $previousSpanId;
             $this->retrievalMeasurements = $previousMeasurements;
+        }
+    }
+
+    /** Run a named child span and propagate its W3C span ID downstream. */
+    public function span(string $name, callable $operation): mixed {
+        if ($this->traceId === null || !in_array($name, self::NATIVE_SPANS, true)
+            || $name === 'chat.request' || $name === 'chat.stream') {
+            return $operation();
+        }
+
+        $parentSpanId = $this->spanId;
+        $this->spanId = $this->randomHex(8);
+        $eventId = $this->startNativeSpan($name, $parentSpanId);
+        try {
+            return $operation();
+        } finally {
+            $this->endNativeSpan($eventId);
+            $this->spanId = $parentSpanId;
+        }
+    }
+
+    private function startNativeSpan(string $name, ?string $parentSpanId): ?string {
+        if ($this->eventLogger === null || $this->traceId === null || $this->spanId === null) {
+            return null;
+        }
+        $id = 'eva_ai:' . $this->traceId . ':' . $this->spanId . ':' . ($parentSpanId ?? 'root');
+        try {
+            // Nextcloud emits these events only while its diagnostics logger is
+            // active; descriptions are fixed and contain no user content.
+            $this->eventLogger->start($id, 'EVA ' . $name);
+            return $id;
+        } catch (\Throwable) {
+            return null;
+        }
+    }
+
+    private function endNativeSpan(?string $id): void {
+        if ($id === null || $this->eventLogger === null) {
+            return;
+        }
+        try {
+            $this->eventLogger->end($id);
+        } catch (\Throwable) {
+            // Diagnostics must never change chat, retrieval or provider results.
         }
     }
 

@@ -10,6 +10,7 @@ use OCP\AppFramework\Bootstrap\IBootContext;
 use OCP\AppFramework\Bootstrap\IBootstrap;
 use OCP\AppFramework\Bootstrap\IRegistrationContext;
 use OCP\BackgroundJob\IJobList;
+use OCP\Diagnostics\IEventLogger;
 use OCP\IUserSession;
 use OCP\Util;
 use OCP\App\Events\AppEnableEvent;
@@ -52,7 +53,9 @@ class Application extends App implements IBootstrap {
 
     public function register(IRegistrationContext $context): void {
         $context->registerParameter('appId', self::APP_ID);
-        $context->registerService(\OCA\EvaAi\Service\TraceContext::class, static fn() => new \OCA\EvaAi\Service\TraceContext());
+        $context->registerService(\OCA\EvaAi\Service\TraceContext::class, static fn(\OCP\IContainer $container) =>
+            new \OCA\EvaAi\Service\TraceContext($container->get(IEventLogger::class))
+        );
         $context->registerServiceAlias(\OCA\EvaAi\Service\EmbeddingProvider::class, \OCA\EvaAi\Service\Ollama::class);
         $context->registerServiceAlias(\OCA\EvaAi\Vector\VectorStore::class, \OCA\EvaAi\Vector\QdrantVectorStore::class);
         $context->registerEventListener(AppEnableEvent::class, \OCA\EvaAi\Listener\AppLifecycleListener::class);
