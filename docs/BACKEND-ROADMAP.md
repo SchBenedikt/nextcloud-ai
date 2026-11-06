@@ -373,9 +373,10 @@ replaced by a successful build or an adapter unit test.
 - 14: partial; native metrics now include bounded indexing/generation/query
   embedding-stage, SQL dense-scan-row, provider, retrieval and whole-request latency, outcomes and cache-hit ratios,
   chat-store lock-wait quantiles for contended operations, plus fixed wait-age
-  distributions for the instance index scheduler and vector outbox. W3C context
-  propagation exists without native spans. Complete DB traces, native histogram
-  serialization, restore/delete drills, portability and rollout evidence remain
+  distributions for the instance index scheduler and vector outbox. Nextcloud
+  native timing events now cover chat, retrieval and query embedding, with child
+  W3C context propagated to the generation embedding request. Complete DB/lock
+  traces, OTLP export, native histogram serialization, restore/delete drills, portability and rollout evidence remain
   open. No Qdrant production deployment or
   production data migration has occurred. Validation and production rollout
   remain separately recorded. Version 1.20.9 starts the controller split by

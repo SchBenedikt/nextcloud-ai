@@ -42,7 +42,8 @@ class Searcher {
      * @return array<int,array{chunk:array,doc:?array,cosine:float,lexical:float,score:float}>
      */
     public function search(string $userId, string $query, int $topK, ?string $scopePath = null, ?string $traceId = null): array {
-        return $this->runSearch($userId, $query, $topK, $scopePath, null, $traceId);
+        $search = fn(): array => $this->runSearch($userId, $query, $topK, $scopePath, null, $traceId);
+        return $this->traceContext === null ? $search() : $this->traceContext->span('retrieval', $search);
     }
 
     /** Explicit benchmark mode: rank with the checked frozen vector, without another provider call. */
@@ -220,7 +221,8 @@ class Searcher {
                 $guard = function () use ($userId,$generation): void {
                     if (!$this->isActiveGenerationCurrent($userId,$generation->id)) throw new VectorStoreException('generation_not_active');
                 };
-                $queryVector = $this->generationEmbeddings?->embed($generation,[$query],$guard,true,30)[0] ?? null;
+                $embed = fn() => $this->generationEmbeddings?->embed($generation,[$query],$guard,true,30)[0] ?? null;
+                $queryVector = $this->traceContext === null ? $embed() : $this->traceContext->span('retrieval.embedding', $embed);
             } catch (\Throwable) { $queryVector = null; }
         }
         if ($generation !== null && !$this->isActiveGenerationCurrent($userId,$generation->id)) {
@@ -236,7 +238,8 @@ class Searcher {
             $embeddingProvider = $fixedVector !== null ? 'frozen' : ($cloudChatWithLocalEmbedding ? 'none' : 'ollama');
         }
         if ($queryVector === null && $generation === null && !$cloudChatWithLocalEmbedding) {
-            [$queryVec, $err] = $this->ollama->embedQuery([$query], $userId);
+            $embed = fn() => $this->ollama->embedQuery([$query], $userId);
+            [$queryVec, $err] = $this->traceContext === null ? $embed() : $this->traceContext->span('retrieval.embedding', $embed);
             $queryVector = $err === null && is_array($queryVec) && isset($queryVec[0]) ? $queryVec[0] : null;
         }
         $queryMagnitude = $queryVector === null ? null : $this->vectorMagnitude($queryVector);
@@ -261,7 +264,8 @@ class Searcher {
             // Keep mixed time out of provider-specific latency aggregates.
             $embeddingProvider=$fixedVector!==null?'frozen':($cloudChatWithLocalEmbedding?'none':'mixed');
             if($queryVector===null&&!$cloudChatWithLocalEmbedding){
-                [$fallbackVector,$fallbackError]=$this->ollama->embedQuery([$query],$userId);
+                $embed = fn() => $this->ollama->embedQuery([$query],$userId);
+                [$fallbackVector,$fallbackError] = $this->traceContext === null ? $embed() : $this->traceContext->span('retrieval.embedding', $embed);
                 $queryVector=$fallbackError===null&&is_array($fallbackVector)&&isset($fallbackVector[0])?$fallbackVector[0]:null;
             }
             $queryMagnitude=$queryVector===null?null:$this->vectorMagnitude($queryVector);

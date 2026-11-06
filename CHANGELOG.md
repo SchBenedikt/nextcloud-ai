@@ -2,6 +2,12 @@
 
 ## [Unreleased]
 
+### Add native Nextcloud chat and retrieval timing spans (1.20.46)
+
+- Emit fixed-name chat, retrieval and query-embedding events through Nextcloud's diagnostics logger when it is enabled.
+- Propagate a child W3C trace context to generation embedding requests; keep diagnostics content-free and fail-open.
+- Document that OTLP export, database/lock spans and representative trace evidence remain separate roadmap work.
+
 ### Add Spanish interface translations (1.20.45)
 
 - Add the Spanish catalog submitted in #696 for the app's user interface.

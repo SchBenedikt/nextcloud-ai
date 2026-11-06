@@ -3,7 +3,7 @@ declare(strict_types=1);
 
 namespace OCA\EvaAi\Vector;
 
-use OCA\EvaAi\Service\{AppConfig, EmbeddingCache, ProviderException, UsageMetrics};
+use OCA\EvaAi\Service\{AppConfig, EmbeddingCache, ProviderException, TraceContext, UsageMetrics};
 use OCP\Http\Client\IClientService;
 
 /** Exact generation requests: no chat routing, model fallback or legacy vector inference. */
@@ -12,7 +12,7 @@ class GenerationEmbeddingProvider {
 
     public function __construct(private AppConfig $config, private IClientService $clients,
         private GenerationEmbeddingConfiguration $configuration, private EmbeddingCache $cache,
-        private ?UsageMetrics $usageMetrics = null) {}
+        private ?UsageMetrics $usageMetrics = null, private ?TraceContext $traceContext = null) {}
 
     /** @param list<string> $texts @return list<list<float>> */
     public function embed(VectorGeneration $generation, array $texts, \Closure $guard, bool $useCache = true, int $timeoutSeconds = 30): array {
@@ -91,6 +91,7 @@ class GenerationEmbeddingProvider {
     private function request(VectorGeneration $generation, array $context, array $payload, \Closure $guard, int $timeoutSeconds): array {
         $headers = ['Accept'=>'application/json','Content-Type'=>'application/json'];
         $headers += $this->configuration->authorization($context);
+        $headers += $this->traceContext?->outboundHeaders() ?? [];
         $options = ['headers'=>$headers, 'json'=>$payload, 'timeout'=>$timeoutSeconds, 'connect_timeout'=>min(5,$timeoutSeconds), 'read_timeout'=>$timeoutSeconds,
             'allow_redirects'=>false,'http_errors'=>false,'stream'=>true,
             'progress'=>static function ($total,$downloaded): void { if ($downloaded > self::MAX_BODY) throw new VectorStoreException('embedding_response_too_large'); }];
