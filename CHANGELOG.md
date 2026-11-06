@@ -2,6 +2,11 @@
 
 ## [Unreleased]
 
+### Restore chunk inspection for indexed Mail and Talk documents (1.20.43)
+
+- Keep the owner check for every document while applying the live VFS permission check only to regular files. Mail and Talk rows use synthetic file IDs and do not have an `oc_filecache` record.
+- Document the source-specific access rule for the `documentChunks` endpoint.
+
 ### Release packaging and store listing (1.20.42)
 
 - Rewrite the App Store description in `appinfo/info.xml` around EVA's deep Nextcloud and Nextcloud Assistant integration, its more than 80 actions across Files, Calendar, Mail, Tasks and Talk, web search with images from the internet, and the privacy model.

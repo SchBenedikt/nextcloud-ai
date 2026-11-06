@@ -6,6 +6,7 @@ namespace OCA\EvaAi\Controller;
 
 use OCA\EvaAi\Controller\Traits\ReadsRequestParameters;
 use OCA\EvaAi\Db\ChunkMapper;
+use OCA\EvaAi\Db\Document;
 use OCA\EvaAi\Db\DocumentMapper;
 use OCA\EvaAi\Dto\DocumentChunksQuery;
 use OCA\EvaAi\Dto\DocumentsQuery;
@@ -111,8 +112,18 @@ final class DocumentController extends OCSController {
 
 		$id = $query->id;
 		$document = $id > 0 ? $this->documents->findById($id) : null;
-		if ($document === null || $document->getUserId() !== $user
-			|| !$this->fileAccess->fileAccessible($user, (int)$document->getFileId())) {
+		if ($document === null || $document->getUserId() !== $user) {
+			return new ErrorDataResponse(['error' => 'Document not found'], 404);
+		}
+
+		// Mail messages and Talk transcripts have synthetic file IDs and no
+		// oc_filecache entry. Their indexed document is already owner-scoped;
+		// only real files need a fresh VFS permission check here.
+		$path = (string)$document->getPath();
+		$isSyntheticSource = in_array($document->getSource(), [Document::SOURCE_MAIL, Document::SOURCE_TALK], true)
+			|| str_starts_with($path, 'mail://')
+			|| str_starts_with($path, 'talk://');
+		if (!$isSyntheticSource && !$this->fileAccess->fileAccessible($user, (int)$document->getFileId())) {
 			return new ErrorDataResponse(['error' => 'Document not found'], 404);
 		}
 
