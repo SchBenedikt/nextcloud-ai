@@ -350,6 +350,11 @@ Clients may retain a private copy but must revalidate before reusing it; an
 explicit refresh therefore sees new indexing results. Chunk previews retain
 the existing 200-row bounded pagination contract.
 
+`POST /api/documentChunks` requires ownership of the indexed document. For
+regular files it also revalidates current VFS access; owned Mail and Talk
+documents use synthetic file IDs and are checked by document ownership because
+they have no `oc_filecache` entry.
+
 ### Vector-generation metadata in personal data export
 
 The existing authenticated personal-data export adds `vector_generations`, an

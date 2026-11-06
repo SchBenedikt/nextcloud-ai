@@ -46,6 +46,22 @@ final class DocumentChunksPaginationTest extends TestCase {
         self::assertStringContainsString("'nextOffset' => \$nextOffset,", $method);
     }
 
+    public function testDocumentChunksKeepsOwnedMailAndTalkRowsWithSyntheticFileIds(): void {
+        $controller = (string)file_get_contents(__DIR__ . '/../lib/Controller/DocumentController.php');
+        $start = strpos($controller, 'public function documentChunks(): DataResponse');
+        self::assertNotFalse($start);
+        $end = strpos($controller, 'private function requireUser(): ?string', $start);
+        self::assertNotFalse($end);
+        $method = substr($controller, $start, $end - $start);
+
+        self::assertStringContainsString('$document->getUserId() !== $user', $method);
+        self::assertStringContainsString('Document::SOURCE_MAIL', $method);
+        self::assertStringContainsString('Document::SOURCE_TALK', $method);
+        self::assertStringContainsString('str_starts_with($path, \'mail://\')', $method);
+        self::assertStringContainsString('str_starts_with($path, \'talk://\')', $method);
+        self::assertStringContainsString('if (!$isSyntheticSource && !$this->fileAccess->fileAccessible(', $method);
+    }
+
     public function testFrontendLoadsChunksInBoundedPages(): void {
         $view = (string)file_get_contents(__DIR__ . '/../src/views/DocumentsView.vue');
         self::assertStringContainsString("documentChunks', { id, limit: 200, offset: 0 })", $view);
