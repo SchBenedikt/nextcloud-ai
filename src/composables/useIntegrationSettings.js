@@ -182,10 +182,14 @@ export function useIntegrationSettings({ setMessage }) {
 			const result = await api('POST', 'connectors/test', { id })
 			if (result?.result && typeof result.result === 'object') connectorDiagnostics.value = { ...connectorDiagnostics.value, [id]: result.result }
 			const status = Number(result?.result?.data?.status || result?.result?.status || 0)
+			const authenticationRejected = result?.result?.category === 'authentication' || status === 401 || status === 403
 			const detail = status === 401
 				? 'Authentication is required. Configure the connector secret; for Immich, use an API key with the x-api-key header.'
 				: status === 403 ? 'The connector rejected the credentials or permission.' : ''
-			setMessage(result?.ok ? 'success' : 'error', t('Connector responded with HTTP {status}.', { status: status || t('unknown') }) + (detail ? ' ' + t(detail) : ''))
+			const message = authenticationRejected
+				? `${t('Authentication rejected')} (HTTP ${status || t('unknown')}).`
+				: t('Connector responded with HTTP {status}.', { status: status || t('unknown') })
+			setMessage(result?.ok && !authenticationRejected ? 'success' : 'error', message + (detail ? ' ' + t(detail) : ''))
 		} catch (error) { setMessage('error', t('Connector test failed: {error}', { error: errMsg(error) })) } finally { connectorsBusy.value = false }
 	}
 	return { connectors, connectorEndpointQuery, plugins, pluginsSaving, pluginsLoading, pluginLoadError, connectorsLoading, connectorLoadError, connectorsBusy, connectorDiagnostics, apiKeys, apiKeysLoading, apiKeysBusy, apiKeyError, createdApiKey, apiKeyDraft, apiKeyScopeOptions, apiDocsUrl, connectorToRemove, connectorRemovalError, connectorDraft, applyConnectorExample, loadConnectors, loadApiKeys, createApiKey, revokeApiKey, copyApiKey, loadPlugins, setPluginEnabled, saveConnector, removeConnector, closeConnectorRemoval, confirmRemoveConnector, editConnector, connectorCredentialLabel, connectorCredentialClass, pluginRiskLabel, pluginSurfacesLabel, filteredConnectorEndpoints, discoverConnector, testConnector }
