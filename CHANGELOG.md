@@ -2,6 +2,11 @@
 
 ## [Unreleased]
 
+### Trace dense SQL retrieval pages (1.20.47)
+
+- Add a content-free Nextcloud timing span around each keyset page used by SQL dense retrieval.
+- Keep per-page timings separate from end-to-end retrieval duration; database/lock coverage and OTLP export remain open.
+
 ### Add native Nextcloud chat and retrieval timing spans (1.20.46)
 
 - Emit fixed-name chat, retrieval and query-embedding events through Nextcloud's diagnostics logger when it is enabled.

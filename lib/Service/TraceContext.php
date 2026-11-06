@@ -8,7 +8,7 @@ use OCP\Diagnostics\IEventLogger;
 
 /** Short-lived correlation context for one chat execution. */
 final class TraceContext {
-    private const NATIVE_SPANS = ['chat.request', 'chat.stream', 'retrieval', 'retrieval.embedding'];
+    private const NATIVE_SPANS = ['chat.request', 'chat.stream', 'retrieval', 'retrieval.embedding', 'database.sql_dense_page'];
 
     private ?string $traceId = null;
     private ?string $spanId = null;

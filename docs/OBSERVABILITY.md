@@ -139,6 +139,10 @@ generation embedding request now receives that child `traceparent`, matching
 the propagation already used by the legacy model and optional vector clients.
 Diagnostics failures are ignored so they cannot affect chat or retrieval.
 
+The keyset SQL pages used by dense retrieval are separately timed as
+`database.sql_dense_page` events. The span covers execution and row fetching,
+and records no query text, tenant ID, vector or row contents.
+
 These native timing events improve local request attribution but are not an
 OpenTelemetry SDK/exporter. Database and lock spans, OTLP export, and
 representative end-to-end trace evidence remain open. The PDF's representative
