@@ -4,11 +4,14 @@ declare(strict_types=1);
 
 namespace OCA\EvaAi\Db;
 
+use OCA\EvaAi\Service\TraceContext;
 use OCP\AppFramework\Db\QBMapper;
 use OCP\DB\QueryBuilder\IQueryBuilder;
 use OCP\IDBConnection;
 
 class ChunkMapper extends QBMapper {
+    private ?TraceContext $traceContext;
+
     /** Bounded keyset export of one tenant's exact retrieval snapshot. */
     public function benchmarkRowsAfter(string $userId, int $afterId, int $limit = 250): array {
         $qb = $this->db->getQueryBuilder();
@@ -27,9 +30,10 @@ class ChunkMapper extends QBMapper {
 
     private VectorSourceDeletion $sourceDeletion;
 
-    public function __construct(IDBConnection $db, ?VectorSourceDeletion $sourceDeletion = null) {
+    public function __construct(IDBConnection $db, ?VectorSourceDeletion $sourceDeletion = null, ?TraceContext $traceContext = null) {
         parent::__construct($db, 'eva_ai_chunks');
         $this->sourceDeletion = $sourceDeletion ?? new VectorSourceDeletion($db, new VectorOutboxRepository($db));
+        $this->traceContext = $traceContext;
     }
 
     public function insert(\OCP\AppFramework\Db\Entity $entity): \OCP\AppFramework\Db\Entity {
@@ -173,9 +177,14 @@ class ChunkMapper extends QBMapper {
             ->orderBy('c.id', 'ASC')
             ->setMaxResults(max(1, min(5000, $limit)));
         $this->filterGeneration($qb, $generationId, $generationState);
-        $result = $qb->executeQuery();
-        try { return $result->fetchAll(); }
-        finally { $result->closeCursor(); }
+        $fetchPage = static function () use ($qb): array {
+            $result = $qb->executeQuery();
+            try { return $result->fetchAll(); }
+            finally { $result->closeCursor(); }
+        };
+        return $this->traceContext === null
+            ? $fetchPage()
+            : $this->traceContext->span('database.sql_dense_page', $fetchPage);
     }
 
     /**
