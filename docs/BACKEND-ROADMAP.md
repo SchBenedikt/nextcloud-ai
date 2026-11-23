@@ -416,7 +416,10 @@ behavior. Saved prompt template APIs now live in `ChatTemplateController`.
 Chat scope and prompt settings are shared through `ChatContextResolver`; chat
 regeneration now lives in `ChatGenerationController` with synchronous chat
 generation. `ApiController` still contains unrelated integration and data
-export operations that remain candidates for incremental extraction.
+and provider-configuration operations that remain candidates for incremental
+extraction. Briefing history and manual queue admission now live in
+`BriefingController`; export/restore and confirmed tool execution use their own
+owner-scoped controllers.
 
 ### Stage 14 portability slice: Activity and Mail SQL (1.18.60)
 

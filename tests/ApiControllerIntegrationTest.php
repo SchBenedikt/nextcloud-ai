@@ -188,10 +188,7 @@ final class ApiControllerIntegrationTest extends TestCase {
 
 		$dependencies = compact('request', 'ncConfig', 'chatLearner', 'documentMapper', 'ollama', 'config', 'rag', 'executor', 'indexer', 'jobList', 'lockingProvider', 'chatStore', 'appManager', 'knowledgeInitializer', 'providerCredentials', 'settingsPersistence', 'modelSelectionValidator', 'lockGuard', 'cacheFactory', 'logger', 'backgroundChatQueue');
 		return new ApiController(
-			'eva_ai', $request, $userId, $config, $rag, $ollama,
-			$jobList,
-			$indexScheduler, $usageMetrics,
-			$logger, $systemController,
+			'eva_ai', $request, $userId, $config, $ollama, $rag, $systemController,
 		);
 	}
 
