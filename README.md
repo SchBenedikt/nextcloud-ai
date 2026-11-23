@@ -57,9 +57,9 @@ EVA is not an external chatbot next to Nextcloud — it is woven into it:
   directly in the Assistant sidebar, use EVA for text work (translate, summarize,
   proofread, formalize, reformulate, headlines, topics, emoji), audio
   (transcription, subtitles, text-to-speech, audio chat) and images (OCR, image
-  analysis, text-to-image). Scheduled tasks ("Geplante Aufgaben") can trigger
-  EVA, and the Assistant can propose file, calendar, mail and task actions that
-  you confirm before anything runs.
+  analysis, text-to-image and stickers). Scheduled tasks ("Geplante Aufgaben")
+  can trigger EVA, and the Assistant can propose file, calendar, mail and task
+  actions that you confirm before anything runs.
 - **Files**: open with EVA from the file menu for a focused file conversation,
   index documents, mails and Talk conversations, and let EVA create, move,
   rename, share or comment on files.
