@@ -86,6 +86,8 @@ class Application extends App implements IBootstrap {
             [\OCP\TaskProcessing\TaskTypes\ImageToTextOpticalCharacterRecognition::class, \OCA\EvaAi\TaskProcessing\EvaOcrProvider::class],
             [\OCP\TaskProcessing\TaskTypes\AnalyzeImages::class, \OCA\EvaAi\TaskProcessing\EvaAnalyzeImagesProvider::class],
             [\OCP\TaskProcessing\TaskTypes\TextToImage::class, \OCA\EvaAi\TaskProcessing\EvaTextToImageProvider::class],
+            // Image editing is a native TaskProcessing type introduced in Nextcloud 36.
+            [\OCP\TaskProcessing\TaskTypes\ImageToImage::class, \OCA\EvaAi\TaskProcessing\EvaImageToImageProvider::class],
             [\OCP\TaskProcessing\TaskTypes\AudioToText::class, \OCA\EvaAi\TaskProcessing\EvaAudioToTextProvider::class],
             [\OCP\TaskProcessing\TaskTypes\AudioToTextSubtitles::class, \OCA\EvaAi\TaskProcessing\EvaAudioSubtitlesProvider::class],
             [\OCP\TaskProcessing\TaskTypes\TextToSpeech::class, \OCA\EvaAi\TaskProcessing\EvaTextToSpeechProvider::class],

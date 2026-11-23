@@ -89,6 +89,13 @@ Additional providers exist for chat with shared tools and for multi-step agent
 interactions. Provider execution requires a running Nextcloud TaskProcessing
 worker.
 
+On Nextcloud 36, EVA also registers the native `core:image2image`
+provider. It accepts up to four PNG, JPEG, or WebP images from the current
+user's Files, sends
+them only to the selected OpenAI-compatible image-edit endpoint, and stores the
+edited result in that user's `EVA` folder. Ollama and Groq do not expose this
+image-edit endpoint through EVA.
+
 Tool definitions or system instructions passed by the caller do not widen
 permissions. EVA uses its own central tool policy. Write actions are only
 executed in the dedicated confirmed Assistant step. When the caller asks for a

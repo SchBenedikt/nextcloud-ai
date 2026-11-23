@@ -162,7 +162,7 @@ jobs:
       matrix:
         # Exercise the oldest supported release, the current stable line, and
         # the newest supported line on every pull request.
-        nc: ['stable30', 'stable33', 'stable35']
+        nc: ['stable30', 'stable33', 'stable36']
     steps:
       - uses: actions/checkout@v7
       - name: Install and exercise the app in Nextcloud ${{ matrix.nc }}
@@ -239,7 +239,7 @@ jobs:
       - uses: actions/checkout@v7
       - name: Install and exercise the app in Nextcloud with ${{ matrix.label }}
         env:
-          NC: stable35
+          NC: stable36
           DB: ${{ matrix.database }}
           DB_PORT: ${{ matrix.port }}
         run: |

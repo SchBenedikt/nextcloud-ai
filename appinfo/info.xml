@@ -13,7 +13,7 @@ EVA adds a capable AI assistant to your Nextcloud. It is deeply integrated into 
 
 ## Deep Nextcloud integration
 
-EVA is not an external chatbot — it is a native Nextcloud app. It registers TaskProcessing providers, so it powers the official Nextcloud Assistant app across the whole instance: chat with your indexed files in the Assistant sidebar, use text, audio and image tools, and run scheduled tasks ("Geplante Aufgaben") that trigger EVA. In Files you can open any document with EVA for a focused file conversation. EVA can also join Nextcloud Talk as a bot and read or post messages in rooms (off by default).
+EVA is not an external chatbot — it is a native Nextcloud app. It registers TaskProcessing providers, so it powers the official Nextcloud Assistant app across the whole instance: chat with your indexed files in the Assistant sidebar, use text and audio tools, generate images, and edit images directly in Nextcloud 36. Scheduled tasks ("Geplante Aufgaben") can trigger EVA. In Files you can open any document with EVA for a focused file conversation. EVA can also join Nextcloud Talk as a bot and read or post messages in rooms (off by default).
 
 ## More than 80 actions
 
@@ -38,7 +38,7 @@ EVA extracts text, PDF, Office, OpenDocument and many other formats, then combin
 
 ## Requirements
 
-- Nextcloud 30–35
+- Nextcloud 30–36
 - PHP 8.2+
 - Ollama reachable from the Nextcloud server (default: http://127.0.0.1:11434), or a hosted provider key
 
@@ -61,7 +61,7 @@ Licensed under AGPL-3.0-or-later.
     <category>tools</category>
     <bugs>https://github.com/SchBenedikt/nextcloud-ai/issues</bugs>
     <dependencies>
-        <nextcloud min-version="30" max-version="35"/>
+        <nextcloud min-version="30" max-version="36"/>
         <php min-version="8.2"/>
     </dependencies>
     <optional-apps>

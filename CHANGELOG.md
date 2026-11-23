@@ -2,6 +2,11 @@
 
 ## [Unreleased]
 
+### Add native Nextcloud image editing
+
+- Add a Nextcloud 36 TaskProcessing provider for `core:image2image`, with ownership-checked Files inputs, bounded uploads, and private EVA-folder output.
+- Reuse one image-storage service for generated and edited images and expand declared compatibility through Nextcloud 36.
+
 ### Make background chat request IDs idempotent
 
 - Return the original queue identifier for exact retries, reject identifier reuse for different request content, and preserve distinct requests with separate IDs. Request fingerprints use the instance secret and are not returned by the API.

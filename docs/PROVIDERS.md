@@ -75,9 +75,11 @@ profiles without `auth` keep API-key authentication.
 ## Images and audio
 
 Optional `image_model`, `audio_model`, `tts_model` and `tts_voice` fields select
-the existing image-generation, transcription and speech endpoints. Configure
-them only when the provider implements those contracts. Chat compatibility
-alone does not establish image or audio compatibility.
+the existing image-generation, image-editing, transcription and speech
+endpoints. On Nextcloud 36, EVA uses `/images/edits` for the native image edit
+TaskProcessing type. Configure these fields only when the provider implements
+the corresponding contract. Chat compatibility alone does not establish image
+or audio compatibility.
 
 ## Data and keys
 
@@ -94,7 +96,7 @@ changing providers.
 
 ## Endpoint redirects and network access
 
-OpenAI-compatible model discovery, chat completions, image generation,
+OpenAI-compatible model discovery, chat completions, image generation/editing,
 transcription/translation and speech requests do not follow HTTP redirects.
 A 3xx response is handled as a provider error. Configure the final API base URL
 in the profile rather than relying on an HTTP-to-HTTPS or host redirect. This

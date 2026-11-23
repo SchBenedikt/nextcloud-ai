@@ -92,33 +92,95 @@ class OpenAICompatible {
             ]);
             $status = $response->getStatusCode();
             if ($status < 200 || $status >= 300) throw new ProviderException('Image provider returned HTTP ' . $status . '. Check the configured model and API key.');
-            $data = json_decode((string)$response->getBody(), true, 512, JSON_THROW_ON_ERROR);
-            $out = [];
-            foreach (($data['data'] ?? []) as $item) {
-                if (!is_array($item)) continue;
-                $bytes = null;
-                $mime = 'image/png';
-                if (is_string($item['b64_json'] ?? null)) {
-                    $bytes = base64_decode($item['b64_json'], true);
-                } elseif (is_string($item['url'] ?? null)) {
-                    $url = $item['url'];
-                    if (!preg_match('~^https://~i', $url)) throw new ProviderException('Image provider returned an unsafe image URL.');
-                    $download = $this->client()->get($url, ['timeout' => 60, 'http_errors' => false, 'allow_redirects' => false]);
-                    if ($download->getStatusCode() < 200 || $download->getStatusCode() >= 300) throw new ProviderException('Generated image could not be downloaded from the provider.');
-                    $bytes = (string)$download->getBody();
-                    $mime = (string)($download->getHeader('content-type') ?: 'image/png');
-                }
-                if (!is_string($bytes) || $bytes === '' || strlen($bytes) > 15_000_000) continue;
-                if (function_exists('getimagesizefromstring') && @getimagesizefromstring($bytes) === false) continue;
-                $out[] = ['bytes' => $bytes, 'mime' => str_contains($mime, '/') ? $mime : 'image/png'];
-            }
-            if ($out === []) throw new ProviderException('Image provider returned no usable images.');
-            return $out;
+            return $this->decodeImageResponse((string)$response->getBody());
         } catch (ProviderException $e) {
             throw $e;
         } catch (\Throwable $e) {
             throw new ProviderException('Image provider connection or response failed. Check endpoint, key and model.');
         }
+    }
+
+    /**
+     * Edit one or more bounded images through an OpenAI-compatible image API.
+     * The caller must verify Nextcloud ownership before passing file bytes.
+     *
+     * @param list<array{bytes:string,mime:string}> $images
+     * @return list<array{bytes:string,mime:string}>
+     */
+    public function editImages(array $images, string $prompt, int $timeout = 180): array {
+        $provider = $this->provider();
+        if ($provider === 'ollama' || $provider === 'groq') {
+            throw new ProviderException('The selected provider does not expose an image-editing endpoint. Configure an OpenAI-compatible image provider first.');
+        }
+        if ($images === [] || count($images) > 4) throw new ProviderException('Image editing accepts one to four input images.');
+        $prompt = trim($prompt);
+        if ($prompt === '' || mb_strlen($prompt) > 32000) throw new ProviderException('The image-editing prompt must contain 1-32000 characters.');
+        $profile = $this->profile();
+        $model = trim((string)($profile['image_model'] ?? $this->model()));
+        if ($model === '') throw new ProviderException('No image model configured for the selected provider.');
+
+        $multipart = [
+            ['name' => 'model', 'contents' => $model],
+            ['name' => 'prompt', 'contents' => $prompt],
+        ];
+        $totalBytes = 0;
+        foreach ($images as $index => $image) {
+            $bytes = $image['bytes'] ?? '';
+            $mime = strtolower((string)($image['mime'] ?? ''));
+            if (!is_string($bytes) || $bytes === '' || strlen($bytes) > 6_000_000
+                || $totalBytes + strlen($bytes) > 12_000_000
+                || !in_array($mime, ['image/png', 'image/jpeg', 'image/webp'], true)) {
+                throw new ProviderException('An input image is invalid or exceeds the safe size limit.');
+            }
+            $totalBytes += strlen($bytes);
+            $extension = match ($mime) {
+                'image/jpeg' => 'jpg',
+                'image/webp' => 'webp',
+                default => 'png',
+            };
+            $multipart[] = ['name' => 'image[]', 'contents' => $bytes, 'filename' => 'eva-input-' . ($index + 1) . '.' . $extension];
+        }
+
+        try {
+            $response = $this->client()->post($this->baseUrl() . '/images/edits', [
+                'headers' => $this->headers() + $this->traceHeaders(),
+                'multipart' => $multipart,
+                'timeout' => max(1, min(300, $timeout)), 'allow_redirects' => false, 'http_errors' => false,
+            ]);
+            $status = $response->getStatusCode();
+            if ($status < 200 || $status >= 300) throw new ProviderException('Image provider returned HTTP ' . $status . '. Check that the selected model supports image editing.');
+            return $this->decodeImageResponse((string)$response->getBody());
+        } catch (ProviderException $e) {
+            throw $e;
+        } catch (\Throwable $e) {
+            throw new ProviderException('Image provider connection or response failed. Check endpoint, key and model.');
+        }
+    }
+
+    /** @return list<array{bytes:string,mime:string}> */
+    private function decodeImageResponse(string $body): array {
+        $data = json_decode($body, true, 512, JSON_THROW_ON_ERROR);
+        $out = [];
+        foreach (($data['data'] ?? []) as $item) {
+            if (!is_array($item)) continue;
+            $bytes = null;
+            $mime = 'image/png';
+            if (is_string($item['b64_json'] ?? null)) {
+                $bytes = base64_decode($item['b64_json'], true);
+            } elseif (is_string($item['url'] ?? null)) {
+                $url = $item['url'];
+                if (!preg_match('~^https://~i', $url)) throw new ProviderException('Image provider returned an unsafe image URL.');
+                $download = $this->client()->get($url, ['timeout' => 60, 'http_errors' => false, 'allow_redirects' => false]);
+                if ($download->getStatusCode() < 200 || $download->getStatusCode() >= 300) throw new ProviderException('Generated image could not be downloaded from the provider.');
+                $bytes = (string)$download->getBody();
+                $mime = (string)($download->getHeader('content-type') ?: 'image/png');
+            }
+            if (!is_string($bytes) || $bytes === '' || strlen($bytes) > 15_000_000) continue;
+            if (function_exists('getimagesizefromstring') && @getimagesizefromstring($bytes) === false) continue;
+            $out[] = ['bytes' => $bytes, 'mime' => str_contains($mime, '/') ? $mime : 'image/png'];
+        }
+        if ($out === []) throw new ProviderException('Image provider returned no usable images.');
+        return $out;
     }
 
     /** Transcribe or translate one bounded audio/video payload. */
