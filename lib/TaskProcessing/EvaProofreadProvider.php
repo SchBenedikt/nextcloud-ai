@@ -79,7 +79,7 @@ class EvaProofreadProvider implements ISynchronousProvider {
 			throw new RuntimeException('Empty input');
 		}
 
-		$reportProgress(0.1);
+		TaskProcessingProgress::report($reportProgress, 0.1);
 
 		$messages = [
 			['role' => 'system', 'content' => 'You are an experienced editor and proofreader. '
@@ -90,17 +90,17 @@ class EvaProofreadProvider implements ISynchronousProvider {
 			['role' => 'user', 'content' => 'Correct the following text:\n\n' . $prompt],
 		];
 
-		$reportProgress(0.3);
+		TaskProcessingProgress::report($reportProgress, 0.3);
 
 		$result = $this->ollama->chat($messages, [], null, static function (float $p) use ($reportProgress): void {
-			$reportProgress(0.3 + min(0.6, max(0.0, $p)) * 0.6);
+			TaskProcessingProgress::report($reportProgress, 0.3 + min(0.6, max(0.0, $p)) * 0.6);
 		}, $this->appConfig->get('summary_model'));
 
 		if (isset($result['error'])) {
 			throw new RuntimeException((string)$result['error']);
 		}
 
-		$reportProgress(0.9);
+		TaskProcessingProgress::report($reportProgress, 0.9);
 
 		$answer = (string)($result['answer'] ?? '');
 

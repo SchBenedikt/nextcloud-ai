@@ -146,9 +146,7 @@ class AgentInteractionProvider implements ISynchronousProvider {
 	public function process(?string $userId, array $input, callable $reportProgress): array {
 		// Set tool policy surface to TaskProcessing (per request, at execution time)
 		$this->executor->setSurface(ToolPolicy::SURFACE_TASKPROCESSING);
-		if ($reportProgress(0.05) === false) {
-			throw new RuntimeException('Task cancelled');
-		}
+		TaskProcessingProgress::report($reportProgress, 0.05);
 
 		if ($userId === null) {
 			throw new RuntimeException('No user context');
@@ -201,9 +199,7 @@ class AgentInteractionProvider implements ISynchronousProvider {
 			if ($lastUserPrompt !== '' && hash_equals($lastUserPrompt, $prompt)) {
 				$output = $this->l->t('I will not perform the proposed actions.');
 				$history[] = ['role' => 'assistant', 'content' => $output];
-				if ($reportProgress(0.9) === false) {
-					throw new RuntimeException('Task cancelled');
-				}
+				TaskProcessingProgress::report($reportProgress, 0.9);
 				$this->store->save($userId, $token, $history, []);
 				return ['output' => $output, 'conversation_token' => $token, 'actions' => ''];
 			}
@@ -260,13 +256,13 @@ class AgentInteractionProvider implements ISynchronousProvider {
 		$tools = $this->executor->toolsForSurface(ToolPolicy::SURFACE_TASKPROCESSING);
 		$ragSources = [];
 		if ($ragEnabled && $prompt !== '') {
-			if ($reportProgress(0.15) === false) throw new RuntimeException('Task cancelled');
+			TaskProcessingProgress::report($reportProgress, 0.15);
 			$ragSources = $this->injectRagContext($messages, $userId, $prompt);
 		}
 
 		if ($confirmation === 1) {
-			if ($reportProgress(0.2) === false) throw new RuntimeException('Task cancelled');
-			return $this->runConfirmed($userId, $messages, $token, $history, $pending, $ragSources);
+			TaskProcessingProgress::report($reportProgress, 0.2);
+			return $this->runConfirmed($userId, $messages, $token, $history, $pending, $ragSources, $reportProgress);
 		}
 
 		// Proposal phase: the LLM may freely call read-only information tools
@@ -294,9 +290,7 @@ class AgentInteractionProvider implements ISynchronousProvider {
 			$historyToSave[] = ['role' => 'user', 'content' => $prompt];
 		}
 		$this->store->save($userId, $token, $historyToSave, $pendingNext);
-		if ($reportProgress(0.9) === false) {
-			throw new RuntimeException('Task cancelled');
-		}
+		TaskProcessingProgress::report($reportProgress, 0.9);
 
 		// Proposal: the 'actions' output carries the proposed actions for the
 		// confirmation dialog. The Nextcloud assistant frontend expects
@@ -383,7 +377,7 @@ class AgentInteractionProvider implements ISynchronousProvider {
 			if ($deadline > 0 && microtime(true) >= $deadline) {
 				break;
 			}
-			if ($reportProgress !== null) $reportProgress(0.3 + $round * 0.2);
+			if ($reportProgress !== null) TaskProcessingProgress::report($reportProgress, 0.3 + $round * 0.2);
 			$chat = $this->ollama->chat($messages, $tools);
 			if (isset($chat['error'])) {
 				throw new RuntimeException((string)$chat['error']);
@@ -447,7 +441,7 @@ class AgentInteractionProvider implements ISynchronousProvider {
 	 * "answer is simply regenerated" bug. Executing the stored $pending calls
 	 * directly guarantees the user-confirmed actions really happen.
 	 */
-	private function runConfirmed(string $userId, array $messages, string $token, array $history, array $pending, array $sources): array {
+	private function runConfirmed(string $userId, array $messages, string $token, array $history, array $pending, array $sources, callable $reportProgress): array {
 		// The user explicitly confirmed the proposed actions in the native
 		// Assistant UI. Use a dedicated confirmed TaskProcessing surface rather
 		// than WEB: a background worker must never inherit web-only privileges.
@@ -475,10 +469,25 @@ class AgentInteractionProvider implements ISynchronousProvider {
 		}
 
 		$executed = [];
-		foreach ($pending as $tc) {
+		foreach ($pending as $index => $tc) {
 			$name = (string)($tc['name'] ?? '');
 			if ($name === '') {
 				continue;
+			}
+			try {
+				TaskProcessingProgress::report(
+					$reportProgress,
+					min(0.85, 0.25 + ($index / max(1, count($pending))) * 0.55),
+				);
+			} catch (TaskCancelledException $e) {
+				$fallback = $executed === []
+					? 'Execution was cancelled before any confirmed actions were run.'
+					: 'Execution was cancelled after some confirmed actions. Results: '
+						. json_encode($executed, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+				$this->store->complete($userId, $token, $claim['claim'], array_merge($history, [
+					['role' => 'assistant', 'content' => $fallback],
+				]), $executed, $fallback);
+				throw $e;
 			}
 			$args = is_array($tc['args'] ?? null) ? $tc['args'] : [];
 			if ($args === [] && is_array($tc['arguments'] ?? null)) {

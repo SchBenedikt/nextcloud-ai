@@ -42,19 +42,18 @@ final class EvaTextToImageProvider implements ISynchronousProvider {
 		if ($prompt === '') throw new RuntimeException('Empty image prompt');
 		$count = is_numeric($input['numberOfImages'] ?? null) ? (int)$input['numberOfImages'] : 1;
 		$count = max(1, min(4, $count));
-		$reportProgress(0.1);
+		TaskProcessingProgress::report($reportProgress, 0.1);
 		try {
 			$generated = $this->images->generateImages('Interpret the prompt in the same language as the user and create the requested image: ' . $prompt, $count, 180);
 		} catch (\Throwable $e) {
 			throw new RuntimeException($e->getMessage(), 0, $e);
 		}
+		TaskProcessingProgress::report($reportProgress, 0.95);
 		$ids = [];
-		foreach ($generated as $index => $image) {
+		foreach ($generated as $image) {
 			$ids[] = $this->imageStorage->store($userId, $image, 'generated');
-			$reportProgress(min(0.95, 0.35 + (($index + 1) / count($generated)) * 0.55));
 		}
 		if ($ids === []) throw new RuntimeException('The image provider returned no files.');
-		$reportProgress(1.0);
 		return ['images' => $ids];
 	}
 

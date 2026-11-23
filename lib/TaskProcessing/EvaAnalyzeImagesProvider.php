@@ -71,7 +71,7 @@ final class EvaAnalyzeImagesProvider implements ISynchronousProvider {
 		$totalBytes = 0;
 		$errors = [];
 		foreach ($ids as $index => $id) {
-			$reportProgress(min(0.35, 0.08 + ($index / max(1, count($ids))) * 0.25));
+			TaskProcessingProgress::report($reportProgress, min(0.35, 0.08 + ($index / max(1, count($ids))) * 0.25));
 			$node = $home->getById($id)[0] ?? null;
 			if (!$node instanceof File) {
 				$errors[] = 'Image ' . $id . ' is not available';
@@ -100,12 +100,12 @@ final class EvaAnalyzeImagesProvider implements ISynchronousProvider {
 			throw new RuntimeException(implode('; ', $errors) ?: 'No readable images');
 		}
 
-		$reportProgress(0.4);
+		TaskProcessingProgress::report($reportProgress, 0.4);
 		$result = $this->ollama->chat([
 			['role' => 'system', 'content' => 'You are EVA vision. Answer the question using only what is visible in the supplied images. Do not invent identities or details. Answer in the same language as the question.'],
 			['role' => 'user', 'content' => $question, 'images' => $images, 'image_mimes' => $mimes],
 		], [], 120, static function (float $progress) use ($reportProgress): void {
-			$reportProgress(0.4 + min(0.5, max(0.0, $progress)) * 0.9);
+			TaskProcessingProgress::report($reportProgress, 0.4 + min(0.5, max(0.0, $progress)) * 0.9);
 		});
 		if (isset($result['error'])) {
 			throw new RuntimeException((string)$result['error']);
@@ -114,7 +114,7 @@ final class EvaAnalyzeImagesProvider implements ISynchronousProvider {
 		if ($answer === '') {
 			throw new RuntimeException('The vision model returned no answer. Check that the selected model supports image analysis.');
 		}
-		$reportProgress(1.0);
+		TaskProcessingProgress::report($reportProgress, 1.0);
 		return ['output' => $answer];
 	}
 }

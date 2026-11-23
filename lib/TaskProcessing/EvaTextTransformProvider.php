@@ -55,12 +55,12 @@ abstract class EvaTextTransformProvider implements ISynchronousProvider {
 			throw new RuntimeException('Empty input');
 		}
 
-		$reportProgress(0.1);
+		TaskProcessingProgress::report($reportProgress, 0.1);
 		$result = $this->ollama->chat([
 			['role' => 'system', 'content' => $this->instruction() . ' Answer in the same language as the input and return only the transformed text, without commentary.'],
 			['role' => 'user', 'content' => $text],
 		], [], null, static function (float $progress) use ($reportProgress): void {
-			$reportProgress(0.3 + min(0.6, max(0.0, $progress)) * 0.6);
+			TaskProcessingProgress::report($reportProgress, 0.3 + min(0.6, max(0.0, $progress)) * 0.6);
 		}, $this->appConfig->get('summary_model'));
 
 		if (isset($result['error'])) {
@@ -70,7 +70,7 @@ abstract class EvaTextTransformProvider implements ISynchronousProvider {
 		if ($answer === '') {
 			throw new RuntimeException('Leere Antwort vom Modell');
 		}
-		$reportProgress(0.9);
+		TaskProcessingProgress::report($reportProgress, 0.9);
 		return ['output' => $answer];
 	}
 }

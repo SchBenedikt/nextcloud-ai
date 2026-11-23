@@ -30,14 +30,14 @@ final class EvaTextToSpeechProvider implements ISynchronousProvider {
 		$this->appConfig->setUserId($userId);
 		$text = trim((string)($input['input'] ?? ''));
 		if ($text === '') throw new RuntimeException('Empty speech input');
-		$reportProgress(0.15);
+		TaskProcessingProgress::report($reportProgress, 0.15);
 		$audio = $this->audio->synthesizeSpeech($text, 180);
 		$home = $this->rootFolder->getUserFolder($userId);
 		$folder = $home->nodeExists('EVA') ? $home->get('EVA') : $home->newFolder('EVA');
 		if (!$folder instanceof Folder) throw new RuntimeException('The EVA folder exists but is not a folder.');
 		$name = 'eva-speech-' . gmdate('Ymd-His') . '-' . bin2hex(random_bytes(3)) . '.mp3';
+		TaskProcessingProgress::report($reportProgress, 0.95);
 		$id = (int)$folder->newFile($name, $audio['bytes'])->getId();
-		$reportProgress(1.0);
 		return ['speech' => $id];
 	}
 }

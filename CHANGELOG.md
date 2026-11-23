@@ -2,6 +2,11 @@
 
 ## [Unreleased]
 
+### Honor TaskProcessing cancellation across providers
+
+- Treat Nextcloud's `reportProgress() === false` signal as cancellation across text, image, OCR, translation, speech, and chat-with-tools providers.
+- Check cancellation before storing generated speech and image files, and record partial confirmed-action results if a task is cancelled between actions.
+
 ### Honor TaskProcessing cancellation in audio providers
 
 - Stop audio transcription, translation, subtitle, audio chat and ContextAgent pipelines when Nextcloud reports cancellation between processing stages.
