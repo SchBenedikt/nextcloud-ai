@@ -53,7 +53,7 @@ final class EvaAnalyzeImagesProvider implements ISynchronousProvider {
 		$this->appConfig->setUserId($userId);
 		$question = trim((string)($input['input'] ?? ''));
 		if ($question === '') {
-			$question = 'Beschreibe die Bilder und nenne die wichtigsten erkennbaren Details.';
+			$question = 'Describe the images and identify the most important visible details.';
 		}
 		$rawImages = $input['images'] ?? [];
 		if (!is_array($rawImages)) $rawImages = [$rawImages];

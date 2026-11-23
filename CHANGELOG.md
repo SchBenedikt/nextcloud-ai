@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Keep image analysis language consistent
+
+- Use an English default question when the native Assistant submits image analysis without a prompt.
+
 ### Return native TaskProcessing media data
 
 - Return generated image, edited image, speech, audio chat/translation, and subtitle bytes in their task outputs instead of returning EVA file IDs as file content.
