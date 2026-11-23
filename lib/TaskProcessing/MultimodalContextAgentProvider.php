@@ -13,7 +13,6 @@ final class MultimodalContextAgentProvider extends AgentInteractionProvider {
 	public function process(?string $userId, array $input, callable $reportProgress): array {
 		$result = parent::process($userId, $input, $reportProgress);
 		$result['output_attachments'] = [];
-		$result['sources'] = [];
 		return $result;
 	}
 }

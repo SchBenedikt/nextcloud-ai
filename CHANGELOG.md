@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Preserve multimodal Assistant sources
+
+- Keep RAG source names in multimodal ContextAgent results so the official Assistant can show file citations alongside image-aware answers.
+
 ### Respect rejected Assistant agent actions
 
 - Detect the official Assistant's rejection request from its `confirmation=0` signal and matching last user message.
