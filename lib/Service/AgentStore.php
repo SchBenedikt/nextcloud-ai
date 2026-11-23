@@ -5,11 +5,12 @@ declare(strict_types=1);
 namespace OCA\EvaAi\Service;
 
 use OCP\IDBConnection;
+use OCP\Security\ICrypto;
 use Psr\Log\LoggerInterface;
 
 /**
  * Persists per-conversation agent state (LLM history + pending actions)
- * in a dedicated DB table, keyed by the conversation token.
+ * encrypted in a dedicated DB table, keyed by the conversation token.
  *
  * IMPORTANT: In the CLI (taskprocessing:worker, occ) the QueryBuilder's
  * executeQuery()/executeStatement() with named parameters can block
@@ -18,10 +19,12 @@ use Psr\Log\LoggerInterface;
  * both web and CLI context.
  */
 class AgentStore {
+	private const PREFIX = "EVA-AGENT-1\n";
 
 	public function __construct(
 		private IDBConnection $db,
 		private LoggerInterface $logger,
+		private ICrypto $crypto,
 	) {
 	}
 
@@ -39,8 +42,21 @@ class AgentStore {
 			if ($row === false || $row === null) {
 				return ['history' => [], 'pending' => []];
 			}
-			$history = json_decode((string)($row['history'] ?? ''), true);
-			$pending = json_decode((string)($row['pending'] ?? ''), true);
+			$storedHistory = (string)($row['history'] ?? '');
+			$storedPending = (string)($row['pending'] ?? '');
+			$history = $this->decode($storedHistory);
+			$pending = $this->decode($storedPending);
+			// Upgrade legacy plaintext rows on read without racing a concurrent
+			// proposal or claim. Do not pass stored plaintext back into the model
+			// unless this migration succeeds or another worker already sealed it.
+			if (!$this->isSealed($storedHistory) || !$this->isSealed($storedPending)) {
+				if (!$this->compareAndSwap($userId, $token, $storedPending, $storedHistory, $history, $pending)) {
+					$latest = $this->row($userId, $token);
+					if ($latest !== null && (!$this->isSealed((string)$latest['history']) || !$this->isSealed((string)$latest['pending']))) {
+						throw new \RuntimeException('Legacy agent state could not be encrypted safely.');
+					}
+				}
+			}
 			return [
 				'history' => is_array($history) ? $history : [],
 				'pending' => is_array($pending) && array_is_list($pending) ? $pending : [],
@@ -90,22 +106,23 @@ class AgentStore {
 			return null;
 		}
 		$row = $this->row($userId, $token);
-		if ($row === null || json_decode((string)$row['pending'], true, 512, JSON_THROW_ON_ERROR) !== $pending) {
+		if ($row === null || $this->decode((string)$row['pending']) !== $pending) {
 			return null;
 		}
+		$history = $this->decode((string)$row['history']);
 		$receipt = [
 			'claim' => bin2hex(random_bytes(16)), 'status' => 'in_progress',
 			'started_at' => time(), 'results' => [],
 			'output' => 'Execution was claimed. Its outcome has not been recorded; do not retry these actions automatically.',
 		];
-		return $this->compareAndSwap($userId, $token, (string)$row['pending'], (string)$row['history'], $receipt)
+		return $this->compareAndSwap($userId, $token, (string)$row['pending'], (string)$row['history'], $history, $receipt)
 			? $receipt : null;
 	}
 
 	/** Record a receipt without overwriting a newer proposal or another claim. */
 	public function complete(string $userId, string $token, string $claim, array $history, array $results, string $output): void {
 		$row = $this->row($userId, $token);
-		$current = $row === null ? null : json_decode((string)$row['pending'], true, 512, JSON_THROW_ON_ERROR);
+		$current = $row === null ? null : $this->decode((string)$row['pending']);
 		if (!is_array($current) || ($current['claim'] ?? '') !== $claim) {
 			throw new \RuntimeException('Agent execution state changed; receipt was not overwritten');
 		}
@@ -113,7 +130,7 @@ class AgentStore {
 		$current['completed_at'] = time();
 		$current['results'] = $results;
 		$current['output'] = $output;
-		if (!$this->compareAndSwap($userId, $token, (string)$row['pending'], $this->encode(array_slice($history, -24)), $current)) {
+		if (!$this->compareAndSwap($userId, $token, (string)$row['pending'], (string)$row['history'], array_slice($history, -24), $current)) {
 			throw new \RuntimeException('Agent execution receipt could not be saved');
 		}
 	}
@@ -122,18 +139,18 @@ class AgentStore {
 		if (!preg_match('/^[a-zA-Z0-9_-]{1,128}$/', $token)) {
 			throw new \InvalidArgumentException('Invalid agent conversation token');
 		}
-		$historyStr = $this->encode(array_slice(array_values($history), -24));
+		$history = array_slice(array_values($history), -24);
 		$row = $this->row($userId, $token);
 		if ($row === null) {
 			$stmt = $this->db->prepare('INSERT INTO *PREFIX*eva_ai_agent_state (user_id, token, history, pending, updated_at) VALUES (?, ?, ?, ?, ?)');
-			$stmt->execute([$userId, $token, $historyStr, $this->encode($pending), time()]);
+			$stmt->execute([$userId, $token, $this->seal($history), $this->seal($pending), time()]);
 			return;
 		}
-		$current = json_decode((string)$row['pending'], true, 512, JSON_THROW_ON_ERROR);
+		$current = $this->decode((string)$row['pending']);
 		if (is_array($current) && isset($current['claim']) && ($current['status'] ?? '') !== 'completed') {
 			throw new \RuntimeException('Previous actions have an unrecorded outcome; use a new conversation after checking their effects');
 		}
-		if (!$this->compareAndSwap($userId, $token, (string)$row['pending'], $historyStr, $pending)) {
+		if (!$this->compareAndSwap($userId, $token, (string)$row['pending'], (string)$row['history'], $history, $pending)) {
 			throw new \RuntimeException('Agent conversation changed concurrently; proposal was not saved');
 		}
 	}
@@ -145,13 +162,29 @@ class AgentStore {
 		return is_array($row) ? $row : null;
 	}
 
-	private function compareAndSwap(string $userId, string $token, string $previous, string $history, array $pending): bool {
-		$stmt = $this->db->prepare('UPDATE *PREFIX*eva_ai_agent_state SET history = ?, pending = ?, updated_at = ? WHERE user_id = ? AND token = ? AND pending = ?');
-		$stmt->execute([$history, $this->encode($pending), time(), $userId, $token, $previous]);
+	private function compareAndSwap(string $userId, string $token, string $previousPending, string $previousHistory, array $history, array $pending): bool {
+		$stmt = $this->db->prepare('UPDATE *PREFIX*eva_ai_agent_state SET history = ?, pending = ?, updated_at = ? WHERE user_id = ? AND token = ? AND pending = ? AND history = ?');
+		$stmt->execute([$this->seal($history), $this->seal($pending), time(), $userId, $token, $previousPending, $previousHistory]);
 		return $stmt->rowCount() === 1;
 	}
 
-	private function encode(array $value): string {
-		return json_encode($value, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR);
+	private function seal(array $value): string {
+		$json = json_encode($value, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR);
+		return self::PREFIX . $this->crypto->encrypt($json);
+	}
+
+	private function decode(string $value): array {
+		$json = $this->isSealed($value)
+			? $this->crypto->decrypt(substr($value, strlen(self::PREFIX)))
+			: $value; // Read legacy plaintext rows once, then rewrite them encrypted.
+		$decoded = json_decode($json, true, 512, JSON_THROW_ON_ERROR);
+		if (!is_array($decoded)) {
+			throw new \UnexpectedValueException('Stored agent state must be a JSON array or object.');
+		}
+		return $decoded;
+	}
+
+	private function isSealed(string $value): bool {
+		return str_starts_with($value, self::PREFIX);
 	}
 }
