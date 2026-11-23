@@ -395,8 +395,7 @@ Version 1.20.38 moves chat listing, keyset/offset paging, creation, detail
 reads and deletion into `ChatHistoryController` without changing route paths
 or response behavior. Version 1.20.39 moves personal settings reads, updates,
 validation and credential persistence into `SettingsController`; it also
-replaces missing controller dependencies with explicit services. Chat
-streaming and regeneration still need separate generation-domain extractions.
+replaces missing controller dependencies with explicit services.
 The current unreleased slices move chat title, organizational metadata and
 folder endpoints to `ChatOrganizationController`, move non-streaming chat
 generation to `ChatGenerationController`, and move NDJSON streaming to
@@ -405,7 +404,9 @@ in `ChatHistoryController`, alongside owner-scoped history reads and lifecycle
 operations. These slices preserve existing OCS paths and owner-scoped
 behavior. Saved prompt template APIs now live in `ChatTemplateController`.
 Chat scope and prompt settings are shared through `ChatContextResolver`; chat
-regeneration remains in `ApiController`.
+regeneration now lives in `ChatGenerationController` with synchronous chat
+generation. `ApiController` still contains unrelated integration and data
+export operations that remain candidates for incremental extraction.
 
 ### Stage 14 portability slice: Activity and Mail SQL (1.18.60)
 

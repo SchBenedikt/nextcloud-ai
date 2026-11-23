@@ -83,7 +83,7 @@ return [
         ['name' => 'chatTemplate#useTemplate', 'url' => '/api/templates/{id}/use', 'verb' => 'POST'],
         ['name' => 'chatOrganization#chatTitle', 'url' => '/api/chats/{id}/title', 'verb' => 'POST'],
         ['name' => 'chatOrganization#chatMeta', 'url' => '/api/chats/{id}/meta', 'verb' => 'POST'],
-        ['name' => 'api#chatRegenerate', 'url' => '/api/chats/{id}/regenerate', 'verb' => 'POST'],
+        ['name' => 'chatGeneration#chatRegenerate', 'url' => '/api/chats/{id}/regenerate', 'verb' => 'POST'],
         ['name' => 'chatOrganization#folders', 'url' => '/api/folders', 'verb' => 'GET'],
         ['name' => 'chatOrganization#createFolder', 'url' => '/api/folders', 'verb' => 'POST'],
         ['name' => 'chatOrganization#renameFolder', 'url' => '/api/folders/rename', 'verb' => 'POST'],

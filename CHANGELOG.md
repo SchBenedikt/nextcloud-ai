@@ -2,6 +2,11 @@
 
 ## [Unreleased]
 
+### Move chat regeneration into the generation controller
+
+- Route edited and regenerated chat replies through `ChatGenerationController`, keeping the NDJSON stream, conflict token, and existing endpoint path intact.
+- Remove model generation and stream response handling from `ApiController`.
+
 ### Move saved prompt templates into a dedicated controller
 
 - Route template listing, CRUD, import/export, and use operations through an owner-scoped `ChatTemplateController` while preserving the existing API paths and response shapes.

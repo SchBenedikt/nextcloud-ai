@@ -5,7 +5,6 @@ declare(strict_types=1);
 namespace OCA\EvaAi\Controller;
 
 use OCA\EvaAi\Controller\Traits\ReadsRequestParameters;
-use OCA\EvaAi\Controller\Traits\ChatRequestCoordination;
 use OCA\EvaAi\Service\AppConfig;
 use OCA\EvaAi\Service\ActionExecutor;
 use OCA\EvaAi\Service\ChatStore;
@@ -13,12 +12,10 @@ use OCA\EvaAi\Service\Ollama;
 use OCA\EvaAi\Service\OllamaUrlValidator;
 use OCA\EvaAi\Service\RagService;
 use OCA\EvaAi\Dto\ChatImportRequest;
-use OCA\EvaAi\Dto\ChatRegenerateRequest;
 use OCA\EvaAi\Dto\ConfirmToolRequest;
 use OCP\AppFramework\OCSController;
 use OCP\AppFramework\Http\Attribute\NoAdminRequired;
 use OCA\EvaAi\Http\ErrorDataResponse;
-use OCA\EvaAi\Http\StreamTraversableResponse;
 use OCP\AppFramework\Http\DataResponse;
 use OCP\BackgroundJob\IJobList;
 use OCP\IRequest;
@@ -26,7 +23,6 @@ use Psr\Log\LoggerInterface;
 
 class ApiController extends OCSController {
     use ReadsRequestParameters;
-    use ChatRequestCoordination;
 
     public function __construct(
         string $appName,
@@ -46,11 +42,6 @@ class ApiController extends OCSController {
     ) {
         parent::__construct($appName, $request);
         $this->config->setUserId($this->userId);
-    }
-
-    /** Release the PHP session lock before a long model/tool request starts. */
-    private function releaseSessionLock(): void {
-        $this->releasePhpSessionLock();
     }
 
     private function requireUser(): ?string {
@@ -188,93 +179,6 @@ class ApiController extends OCSController {
             $this->logger->warning('eva_ai: could not queue a manual briefing', ['user' => $user, 'briefing' => $id, 'exception' => $e]);
             return new ErrorDataResponse(['error' => 'The briefing could not be queued.'], 503);
         }
-    }
-
-    /**
-     * Truncate a chat after a given message index and re-run the assistant.
-     * Used for regenerate (truncate after user msg, re-ask) and edit
-     * (truncate after edited user msg, re-ask).
-     *
-     * POST /api/chats/{id}/regenerate
-     * Body: { messageIndex: int, message?: string }
-     *
-     * If messageIndex points to a user message and `message` is provided,
-     * the user message text is replaced before re-running.
-     */
-    #[NoAdminRequired]
-    public function chatRegenerate(string $id): StreamTraversableResponse {
-        $headers = [
-            'Content-Type' => 'application/x-ndjson',
-            'Cache-Control' => 'no-cache, no-store, must-revalidate',
-            'X-Accel-Buffering' => 'no',
-        ];
-        $user = $this->requireUser();
-        if ($user === null) {
-            $body = json_encode(['type' => 'error', 'message' => 'Not logged in']) . "\n";
-            return new StreamTraversableResponse(new \ArrayIterator([$body]), 401, $headers);
-        }
-        try {
-            $request = ChatRegenerateRequest::fromArray([
-                'messageIndex' => $this->requestParam('messageIndex', -1),
-                'message' => $this->requestParam('message'),
-                'rev' => $this->requestParam('rev'),
-            ]);
-        } catch (\InvalidArgumentException $e) {
-            $body = json_encode(['type' => 'error', 'message' => $e->getMessage()]) . "\n";
-            return new StreamTraversableResponse(new \ArrayIterator([$body]), 400, $headers);
-        }
-
-        $this->releaseSessionLock();
-        $result = $this->chatStore->beginRegenerate($user, $id, $request->messageIndex, $request->message, $request->revision);
-        if (!($result['ok'] ?? false)) {
-            $error = (string)($result['error'] ?? 'invalid');
-            if ($error === 'conflict') {
-                // Streamed with HTTP 200 like the normal error events so the
-                // chat UI can show the message inline instead of a network error.
-                $body = json_encode(['type' => 'error', 'message' => 'This chat was modified in another tab - reload to continue']) . "\n";
-                return new StreamTraversableResponse(new \ArrayIterator([$body]), 200, $headers);
-            }
-            if ($error === 'not_found') {
-                $body = json_encode(['type' => 'error', 'message' => 'Chat not found']) . "\n";
-                return new StreamTraversableResponse(new \ArrayIterator([$body]), 404, $headers);
-            }
-            $body = json_encode(['type' => 'error', 'message' => 'A valid user message index and non-empty message are required']) . "\n";
-            return new StreamTraversableResponse(new \ArrayIterator([$body]), 400, $headers);
-        }
-
-        // Nothing has been truncated yet: the pending regeneration is committed
-        // by append() only when the new answer is persisted (Issue #182), so a
-        // failed model call leaves the stored history fully intact.
-        $chat = $this->chatStore->getChat($user, $id);
-        $messages = $chat['messages'] ?? [];
-
-        // Build history from the messages before the target (unchanged state).
-        $history = [];
-        for ($i = 0; $i < $result['messageIndex']; $i++) {
-            $m = $messages[$i];
-            $history[] = ['role' => $m['role'] ?? 'user', 'content' => $m['text'] ?? ''];
-        }
-
-        // Re-apply the chat's custom instructions and persona on regenerate
-        // (Issue #90), resolved from the stored metadata.
-        // Keep the legacy call form for older RagService integrations; the
-        // service accepts it and normalizes it to ChatRequest internally.
-        $gen = $this->ragService->askStream(
-            $user,
-            $result['targetText'],
-            $history,
-            trim((string)($chat['scopePath'] ?? '')),
-            trim((string)($chat['instructions'] ?? '')),
-            trim((string)($chat['persona'] ?? ''))
-        );
-        // The leading regenerate event hands the client the revision that the
-        // persisted answer must carry to commit the truncation atomically.
-        $rev = (int)$result['rev'];
-        $stream = (function () use ($gen, $rev): \Generator {
-            yield json_encode(['type' => 'regenerate', 'rev' => $rev]) . "\n";
-            yield from $gen;
-        })();
-        return new StreamTraversableResponse($stream, 200, $headers);
     }
 
     #[NoAdminRequired]

@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace OCA\EvaAi\Tests;
 
-use OCA\EvaAi\Controller\ApiController;
+use OCA\EvaAi\Controller\ChatGenerationController;
 use OCA\EvaAi\Service\ChatStore;
 use OCA\EvaAi\Service\RagService;
 use OCP\IRequest;
@@ -19,7 +19,7 @@ final class ChatRegenerateTest extends TestCase {
     }
 
     private function controller(?string $user, array $params, ?array $chat): array {
-        $reflection = new \ReflectionClass(ApiController::class);
+        $reflection = new \ReflectionClass(ChatGenerationController::class);
         $controller = $reflection->newInstanceWithoutConstructor();
         $store = $this->createMock(ChatStore::class);
         $rag = $this->createMock(RagService::class);
