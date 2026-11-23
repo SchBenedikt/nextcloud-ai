@@ -1179,6 +1179,7 @@ OC.L10N.register("eva_ai", {
   "Eva · Tools": "Eva · Tools",
   "Eva (image provider)": "Eva (image provider)",
   "Eva (sticker generator)": "Eva (sticker generator)",
+  "Eva · Image editing": "Eva · Image editing",
   "Eva · Multimodal Agent": "Eva · Multimodal Agent",
   "Eva (subtitles)": "Eva (subtitles)",
   "Eva (audio transcription)": "Eva (audio transcription)",

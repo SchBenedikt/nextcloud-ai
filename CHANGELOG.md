@@ -22,6 +22,7 @@
 
 - Add a Nextcloud 36 TaskProcessing provider for `core:image2image`, with ownership-checked Files inputs, bounded uploads, and private EVA-folder output.
 - Reuse one image-storage service for generated and edited images and expand declared compatibility through Nextcloud 36.
+- Add English and German translation entries for the image-editing provider label.
 
 ### Make background chat request IDs idempotent
 
