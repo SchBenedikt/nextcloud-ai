@@ -21,6 +21,15 @@ final class ContextAgentAudioProvider extends EvaAudioTranscriptionProvider {
 	public function getId(): string { return 'eva_ai:contextagent:audio-interaction'; }
 	public function getName(): string { return $this->l->t('Eva · Agent audio'); }
 	public function getTaskTypeId(): string { return ContextAgentAudioInteraction::ID; }
+	public function getOptionalOutputShape(): array {
+		return [
+			'sources' => new ShapeDescriptor(
+				$this->l->t('Sources'),
+				$this->l->t('Names of the EVA knowledge sources used to answer the chat message.'),
+				EShapeType::ListOfTexts,
+			),
+		];
+	}
 	public function getOptionalInputShape(): array {
 		return [
 			'memories' => new ShapeDescriptor(
@@ -56,6 +65,7 @@ final class ContextAgentAudioProvider extends EvaAudioTranscriptionProvider {
 			'output_transcript' => $answer,
 			'conversation_token' => (string)($agentResult['conversation_token'] ?? ''),
 			'actions' => (string)($agentResult['actions'] ?? ''),
+			'sources' => is_array($agentResult['sources'] ?? null) ? $agentResult['sources'] : [],
 		];
 	}
 }

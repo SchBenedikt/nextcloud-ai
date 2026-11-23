@@ -95,8 +95,8 @@ system prompt; they do not change authorization or action-confirmation rules.
 EVA also accepts the Assistant's opted-in remembered conversation summaries as
 untrusted personalization context. Assistant history is normalized to user
 and assistant roles, with unrecognized roles and oversized entries discarded.
-When RAG context contributes sources, standard chat plus text and multimodal
-ContextAgent tasks return up to eight distinct source names through
+When RAG context contributes sources, standard chat plus text, multimodal, and
+audio ContextAgent tasks return up to eight distinct source names through
 TaskProcessing's optional `sources` output. The official Assistant then
 displays them in the message's information-source panel with an `EVA:` prefix.
 These providers use the configured local or OpenAI-compatible backends;
