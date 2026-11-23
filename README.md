@@ -1,11 +1,14 @@
-# EVA — Your AI workspace in Nextcloud
+# EVA — AI that works inside Nextcloud
 
-Ask questions, find information in your files and work through everyday tasks
-without leaving Nextcloud. EVA brings conversations, cited document answers and
-Nextcloud tools into one workspace. It is built deeply into Nextcloud: it runs
-as a native app, powers the Nextcloud Assistant across the whole instance, and
-talks to Files, Mail, Calendar, Contacts, Tasks, Shares and Talk through their
-real APIs — with more than 80 built-in actions.
+**Find answers in your Nextcloud, check their sources and get everyday work
+done without switching apps.** EVA brings AI chat and cited file search into
+your Nextcloud, plus actions you approve before they run. It also powers
+the native Nextcloud Assistant and works with Files, Mail, Calendar, Contacts,
+Tasks, Shares and Talk through their real APIs.
+
+Choose local Ollama models, a hosted provider, or a mix of both. Start with
+chat and add document search or integrations when you need them. The built-in
+SQL search index works on its own; a separate vector database is optional.
 
 [![Tests](https://github.com/SchBenedikt/nextcloud-ai/actions/workflows/tests.yml/badge.svg?branch=main)](https://github.com/SchBenedikt/nextcloud-ai/actions/workflows/tests.yml)
 [![License: AGPL v3](https://img.shields.io/badge/License-AGPL%20v3-blue.svg)](LICENSE)
@@ -16,6 +19,16 @@ real APIs — with more than 80 built-in actions.
 [Report a problem](https://github.com/SchBenedikt/nextcloud-ai/issues)
 
 ## Start with a conversation
+
+EVA is for people and teams who already work in Nextcloud and want AI close to
+their files, conversations and daily tasks. Ask a general question, find a fact
+in a document, or prepare a change for review. Answers about indexed files
+include sources, and changes to Nextcloud data require confirmation.
+
+**Try EVA in one short session:** connect a model, ask for help planning a task,
+then index a small Files folder and ask a question you can verify in the source.
+This shows the core workflow before you enable Mail, Talk, web search or write
+actions.
 
 Home gives you a message input and recent conversations. The chat header stays
 compact; exports, reusable prompts and conversation settings live in the native
