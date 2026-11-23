@@ -49,3 +49,17 @@ search. These integrations have different permissions and data flows. Scheduled
 briefings are configured under **Automation**.
 
 For failures, follow [Troubleshooting](TROUBLESHOOTING.md).
+
+## Connect EVA to the Nextcloud Assistant
+
+EVA makes its supported task providers available to Nextcloud, but installing
+EVA does not replace the provider already selected for each task type. As an
+administrator, open **Administration settings → AI → Unified task processing**.
+For every feature you want to route through EVA, enable that task type if it is
+disabled and choose the matching **Eva · ...** provider. The exact task types
+depend on the installed Nextcloud version and the providers configured on the
+server. Save the settings, then try the feature in the Assistant app.
+
+TaskProcessing also needs a running Nextcloud background worker. If EVA is not
+listed for a task type, check that the type exists in your Nextcloud version
+and that EVA is enabled; see [Troubleshooting](TROUBLESHOOTING.md).
