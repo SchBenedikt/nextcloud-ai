@@ -1,6 +1,11 @@
 const { test, expect } = require('@playwright/test')
 const { openWorkspace } = require('./workspace-harness.cjs')
 
+async function openAiModelSettings(page) {
+	await page.getByRole('button', { name: /AI models/ }).click()
+	await expect(page.getByRole('heading', { name: 'AI models', exact: true })).toBeVisible()
+}
+
 test('home shares the chat list and sends its first prompt without loading diagnostics', async ({ page }) => {
 	const { calls, errors } = await openWorkspace(page, { backgroundItems: [{ id: 'old-run', chatId: 'new-chat', status: 'completed' }] })
 	// Nextcloud core gives section and button elements an explicit display.
@@ -20,6 +25,7 @@ test('home shares the chat list and sends its first prompt without loading diagn
 
 test('settings load optional resources on demand and save a provider without JSON editing', async ({ page }) => {
 	const { calls, errors } = await openWorkspace(page, { view: 'settings' })
+	await openAiModelSettings(page)
 	await expect(page.getByRole('button', { name: 'Add AI provider', exact: true })).toBeEnabled()
 	expect(calls.some(call => ['health', 'connectors', 'plugins', 'apiKeys'].includes(call.endpoint))).toBe(false)
 	await page.getByRole('button', { name: 'Add AI provider', exact: true }).click()
@@ -71,6 +77,7 @@ test('document progress uses the lightweight endpoint and filters start collapse
 
 test('local provider template can be saved without sending an API key', async ({ page }) => {
 	const { calls } = await openWorkspace(page, { view: 'settings' })
+	await openAiModelSettings(page)
 	await page.getByRole('button', { name: 'Add AI provider', exact: true }).click()
 	const dialog = page.getByRole('dialog')
 	await dialog.getByRole('combobox').fill('LM Studio')
@@ -142,6 +149,7 @@ test('a delayed briefing response preserves newer edits in another settings sect
 
 test('a delayed provider refresh preserves newer unsaved edits', async ({ page }) => {
 	const { calls, errors, settings } = await openWorkspace(page, { view: 'settings' })
+	await openAiModelSettings(page)
 	await expect(page.getByRole('button', { name: 'Add AI provider', exact: true })).toBeEnabled()
 	let release
 	let started
