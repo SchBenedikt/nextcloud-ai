@@ -208,6 +208,57 @@ class VectorOutboxRepository {
         try { return $result->fetchAll(); } finally { $result->closeCursor(); }
     }
 
+    /**
+     * Prune a bounded batch of old terminal point events. Generation-erasure
+     * events and dead letters are deliberately retained as safety/recovery
+     * records; only delivered or superseded point operations are eligible.
+     */
+    public function pruneTerminalPointEvents(int $deliveredBefore, int $supersededBefore, int $limit = 500): int {
+        if ($deliveredBefore < 0 || $supersededBefore < 0 || $limit < 1 || $limit > 1000) {
+            throw new \InvalidArgumentException('Invalid vector journal retention bounds.');
+        }
+        $qb = $this->db->getQueryBuilder();
+        $qb->select('id', 'state')->from('eva_ai_vec_outbox')
+            ->where($qb->expr()->in('operation', $qb->createNamedParameter(['upsert', 'delete_chunk'], IQueryBuilder::PARAM_STR_ARRAY)))
+            ->andWhere($qb->expr()->orX(
+                $qb->expr()->andX(
+                    $qb->expr()->eq('state', $qb->createNamedParameter('delivered')),
+                    $qb->expr()->isNotNull('delivered_at'),
+                    $qb->expr()->lte('delivered_at', $qb->createNamedParameter($deliveredBefore, IQueryBuilder::PARAM_INT)),
+                ),
+                $qb->expr()->andX(
+                    $qb->expr()->eq('state', $qb->createNamedParameter('superseded')),
+                    $qb->expr()->lte('created_at', $qb->createNamedParameter($supersededBefore, IQueryBuilder::PARAM_INT)),
+                ),
+            ))->orderBy('id', 'ASC')->setMaxResults($limit);
+        $result = $qb->executeQuery();
+        try { $rows = $result->fetchAll(); } finally { $result->closeCursor(); }
+        if ($rows === []) return 0;
+
+        $idsByState = ['delivered' => [], 'superseded' => []];
+        foreach ($rows as $row) {
+            $state = (string)$row['state'];
+            if (isset($idsByState[$state])) $idsByState[$state][] = (int)$row['id'];
+        }
+        $deleted = 0;
+        foreach ($idsByState as $state => $ids) {
+            if ($ids === []) continue;
+            $delete = $this->db->getQueryBuilder();
+            $delete->delete('eva_ai_vec_outbox')
+                ->where($delete->expr()->in('id', $delete->createNamedParameter($ids, IQueryBuilder::PARAM_INT_ARRAY)))
+                ->andWhere($delete->expr()->eq('state', $delete->createNamedParameter($state)))
+                ->andWhere($delete->expr()->in('operation', $delete->createNamedParameter(['upsert', 'delete_chunk'], IQueryBuilder::PARAM_STR_ARRAY)));
+            if ($state === 'delivered') {
+                $delete->andWhere($delete->expr()->isNotNull('delivered_at'))
+                    ->andWhere($delete->expr()->lte('delivered_at', $delete->createNamedParameter($deliveredBefore, IQueryBuilder::PARAM_INT)));
+            } else {
+                $delete->andWhere($delete->expr()->lte('created_at', $delete->createNamedParameter($supersededBefore, IQueryBuilder::PARAM_INT)));
+            }
+            $deleted += $delete->executeStatement();
+        }
+        return $deleted;
+    }
+
     /** Read control flags without IConfig's process-local cache. */
     public function workerEnabled(): bool {
         $qb = $this->db->getQueryBuilder();

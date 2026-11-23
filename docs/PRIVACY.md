@@ -19,7 +19,7 @@ you can remove it.
 | First-run knowledge marker | Per-user Nextcloud user configuration | Until the app is reset/uninstalled or the user changes it |
 | Agent conversation state | Nextcloud database (`eva_ai_agent_store`) | Per conversation token; deleted on reset |
 | App configuration | Nextcloud database (`oc_appconfig`) | Persistent until manually changed |
-| Optional vector generation metadata and durable synchronization intent | Nextcloud database (`eva_ai_vec_generations`, `eva_ai_vec_outbox`) | Pending/failed erasure intent must survive until cleanup is confirmed; automatic journal pruning is not implemented yet |
+| Optional vector generation metadata and durable synchronization intent | Nextcloud database (`eva_ai_vec_generations`, `eva_ai_vec_outbox`) | Pending/failed erasure intent and generation-erasure receipts are retained for recovery and fencing. Delivered/superseded point-operation records are pruned in bounded batches after 30 days. |
 | Incomplete account-erasure retry | Nextcloud database (`eva_ai_account_cleanup`) | Contains a purpose-separated owner hash and Nextcloud-encrypted account ID; deleted after all local cleanup steps succeed |
 | Optional storage targets and encrypted credentials | Nextcloud database (`eva_ai_vec_targets`) | Instance infrastructure configuration; retained destinations can be needed for outstanding cleanup and are not removed with one user's account |
 | Vector ownership fence (purpose-separated owner hash, state, revision, timestamp) | Nextcloud database (`eva_ai_vec_owners`) | Open state while in use; blocked fingerprint intentionally retained after account erasure to prevent stale recreation; no automatic expiry/unblock exists yet |

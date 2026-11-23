@@ -589,7 +589,9 @@ successful replacement deletion through the canonical source-deletion
 transaction. SQL generation rows are removed with their source; Qdrant tombstones
 are durably enqueued without remote calls on the index/chat path. Generation
 upserts from normal indexing, reset/rename integration, remote revision/lease
-hardening and target retention/pruning remain pending. Durable local account
+hardening and target-registry retention/pruning remain pending. A bounded 30-day
+retention job now removes only delivered/superseded point events; generation
+erasure events and dead letters remain durable. Durable local account
 cleanup retries are implemented; remote generation deletion remains on its
 separate outbox. VECTOR-OUTBOX.md distinguishes these implementation gaps from
 the queue primitives. No delivery/crash/concurrency or live migration gate is

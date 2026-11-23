@@ -16,6 +16,7 @@ final class JobRegistry {
         BackgroundChatJob::class,
         VectorErasureJob::class,
         VectorPointJob::class,
+        VectorOutboxRetentionJob::class,
         GenerationBuildJob::class,
         GenerationVerificationJob::class,
         AccountCleanupJob::class,
