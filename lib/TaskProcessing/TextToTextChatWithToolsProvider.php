@@ -178,7 +178,14 @@ class TextToTextChatWithToolsProvider implements ISynchronousProvider {
 
 		foreach ($this->ollama->chatStream($messages, $tools, 120) as $event) {
 			$type = (string)($event['type'] ?? '');
-			if ($type === 'content') {
+			if ($type === 'progress') {
+				$now = microtime(true);
+				if ($now - $lastProgressAt >= 2.0) {
+					$elapsed = $now - $streamStartedAt;
+					TaskProcessingProgress::report($reportProgress, min(0.9, 0.1 + ($elapsed / 120.0) * 0.8));
+					$lastProgressAt = $now;
+				}
+			} elseif ($type === 'content') {
 				$answer .= (string)($event['delta'] ?? '');
 
 				$answerLength = strlen($answer);

@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.23.5 - 2026-11-23
+
+### Stream Assistant replies from compatible providers
+
+- Add server-sent event streaming for OpenAI-compatible chat providers when the Assistant requests intermediate output.
+- Buffer and validate tool-call arguments until a complete stream arrives; reject truncated, oversized, or invalid responses.
+
 ## 1.23.4 - 2026-11-23
 
 ### Bound Assistant streaming progress updates

@@ -71,6 +71,151 @@ class OpenAICompatible {
     }
 
     /**
+     * Stream OpenAI-compatible chat-completions SSE events while keeping
+     * function arguments buffered until the provider confirms completion.
+     * @return \Generator<array{type:string,delta?:string,tool_calls?:array,raw?:array,model?:string}>
+     */
+    public function chatStream(array $messages, array $tools = [], int $timeout = 120): \Generator {
+        $provider = $this->provider();
+        $model = $this->model();
+        $startedAt = microtime(true);
+        $body = null;
+        $answer = '';
+        $usage = [];
+        $calls = [];
+        $complete = false;
+        $lastProgressAt = $startedAt;
+        try {
+            $payload = [
+                'model' => $model,
+                'messages' => $this->normalizeMessages($messages),
+                'temperature' => max(0.0, min(2.0, (float)$this->config->get('temperature'))),
+                'stream' => true,
+            ];
+            if ($tools !== []) $payload['tools'] = $tools;
+            $response = $this->client()->post($this->endpoint(), [
+                'headers' => $this->headers() + ['Content-Type' => 'application/json', 'Accept' => 'text/event-stream'] + $this->traceHeaders(),
+                'json' => $payload,
+                'timeout' => max(1, min(300, $timeout)),
+                'read_timeout' => 5,
+                'stream' => true,
+                'allow_redirects' => false,
+                'http_errors' => false,
+            ]);
+            $status = $response->getStatusCode();
+            if ($status < 200 || $status >= 300) {
+                yield ['type' => 'error', 'delta' => 'Provider request failed (HTTP ' . $status . ').'];
+                return;
+            }
+
+            $body = $response->getBody();
+            $buffer = '';
+            $streamBytes = 0;
+            while (is_resource($body) ? !feof($body) : !$body->eof()) {
+                if (function_exists('connection_aborted') && connection_aborted() > 0) return;
+                $chunk = is_resource($body) ? fread($body, 8192) : $body->read(8192);
+                if ($chunk === '') {
+                    usleep(10000);
+                    continue;
+                }
+                $streamBytes += strlen($chunk);
+                if ($streamBytes > 16_777_216) throw new ProviderException('Provider stream exceeded the response size limit.');
+                $buffer .= $chunk;
+                if (strlen($buffer) > 2_097_152 && !str_contains($buffer, "\n")) {
+                    throw new ProviderException('Provider stream event exceeded the size limit.');
+                }
+
+                while (($newline = strpos($buffer, "\n")) !== false) {
+                    $line = trim(substr($buffer, 0, $newline));
+                    $buffer = substr($buffer, $newline + 1);
+                    if (strlen($line) > 2_097_152) throw new ProviderException('Provider stream event exceeded the size limit.');
+                    if (!str_starts_with($line, 'data:')) continue;
+                    $data = trim(substr($line, 5));
+                    if ($data === '[DONE]') {
+                        $complete = true;
+                        break 2;
+                    }
+                    if ($data === '') continue;
+                    $event = json_decode($data, true, 512, JSON_THROW_ON_ERROR);
+                    if (isset($event['error'])) throw new ProviderException('Provider stream reported an error.');
+                    if (is_array($event['usage'] ?? null)) $usage = $event['usage'];
+
+                    $choice = $event['choices'][0] ?? [];
+                    $finishReason = (string)($choice['finish_reason'] ?? '');
+                    if (in_array($finishReason, ['length', 'content_filter'], true)) {
+                        throw new ProviderException('Provider could not complete the response; no tool calls were released.');
+                    }
+                    if (in_array($finishReason, ['stop', 'tool_calls', 'function_call'], true)) $complete = true;
+
+                    $delta = $choice['delta'] ?? [];
+                    $content = $delta['content'] ?? '';
+                    if (is_string($content) && $content !== '') {
+                        $answer .= $content;
+                        if (strlen($answer) > 16_777_216) throw new ProviderException('Provider response exceeded the size limit.');
+                        yield ['type' => 'content', 'delta' => $content];
+                    }
+                    foreach ($delta['tool_calls'] ?? [] as $call) {
+                        $index = (int)($call['index'] ?? 0);
+                        if ($index < 0 || $index > 31) throw new ProviderException('Provider returned too many tool calls.');
+                        $calls[$index] ??= ['id' => '', 'type' => 'function', 'function' => ['name' => '', 'arguments' => '']];
+                        if (isset($call['id']) && $call['id'] !== '') $calls[$index]['id'] = (string)$call['id'];
+                        if (isset($call['type']) && $call['type'] !== '') $calls[$index]['type'] = (string)$call['type'];
+                        $function = $call['function'] ?? [];
+                        if (isset($function['name']) && $function['name'] !== '') $calls[$index]['function']['name'] .= (string)$function['name'];
+                        if (isset($function['arguments']) && $function['arguments'] !== '') {
+                            $calls[$index]['function']['arguments'] .= (string)$function['arguments'];
+                            if (strlen($calls[$index]['function']['arguments']) > 2_097_152) throw new ProviderException('Provider tool arguments exceed the size limit.');
+                        }
+                    }
+                }
+                if (microtime(true) - $lastProgressAt >= 2.0) {
+                    $lastProgressAt = microtime(true);
+                    yield ['type' => 'progress'];
+                }
+            }
+
+            if (!$complete) throw new ProviderException('Provider stream ended before completion; no tool calls were released.');
+            ksort($calls);
+            $rawToolCalls = array_values($calls);
+            $normalized = [];
+            foreach ($rawToolCalls as &$call) {
+                if (trim($call['id']) === '') $call['id'] = 'call_' . bin2hex(random_bytes(8));
+                if (trim($call['function']['name']) === '') throw new ProviderException('Provider returned an incomplete tool call.');
+                $arguments = json_decode($call['function']['arguments'] ?: '{}', true, 512, JSON_THROW_ON_ERROR);
+                if (!is_array($arguments)) throw new ProviderException('Provider returned invalid tool-call arguments.');
+                $normalized[] = ['name' => $call['function']['name'], 'arguments' => $arguments];
+            }
+            unset($call);
+
+            $this->usage?->recordChat(
+                $this->config->userId(),
+                $provider,
+                $model,
+                $messages,
+                $answer,
+                isset($usage['prompt_tokens']) ? (int)$usage['prompt_tokens'] : null,
+                isset($usage['completion_tokens']) ? (int)$usage['completion_tokens'] : null,
+                (int)round((microtime(true) - $startedAt) * 1000),
+            );
+            if ($rawToolCalls !== []) {
+                yield ['type' => 'tool_calls', 'tool_calls' => $normalized, 'raw' => $rawToolCalls, 'model' => $model];
+            } else {
+                yield ['type' => 'finished', 'model' => $model];
+            }
+        } catch (\Throwable $e) {
+            $this->logger?->warning('eva_ai: OpenAI-compatible streaming chat failed', [
+                'provider' => $provider,
+                'model' => $model,
+                'exception' => $e->getMessage(),
+            ]);
+            yield ['type' => 'error', 'delta' => $e instanceof ProviderException ? $e->getMessage() : 'Provider connection or response failed. Check endpoint, key and model.'];
+        } finally {
+            if (is_resource($body)) fclose($body);
+            elseif (is_object($body) && method_exists($body, 'close')) $body->close();
+        }
+    }
+
+    /**
      * Request images from an OpenAI-compatible /images/generations endpoint.
      * Returns decoded bytes so callers can keep the result inside Nextcloud.
      *

@@ -96,8 +96,9 @@ changing providers.
 
 ## Endpoint redirects and network access
 
-OpenAI-compatible model discovery, chat completions, image generation/editing,
-transcription/translation and speech requests do not follow HTTP redirects.
+OpenAI-compatible model discovery, chat completions (including server-sent event
+streaming when requested), image generation/editing, transcription/translation
+and speech requests do not follow HTTP redirects.
 A 3xx response is handled as a provider error. Configure the final API base URL
 in the profile rather than relying on an HTTP-to-HTTPS or host redirect. This
 also prevents a 307/308 from forwarding a request body to another destination.
