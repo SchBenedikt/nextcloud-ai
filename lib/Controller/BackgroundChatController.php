@@ -80,15 +80,25 @@ final class BackgroundChatController extends OCSController {
         $this->releaseSessionLock();
         $chat = $this->chatStore->get($user, $chatId);
         if ($chat === null) return new ErrorDataResponse(['error' => 'Chat not found'], 404);
+        try {
+            $queued = $this->backgroundChatQueue->enqueueRequest($user, $chatId, $message, $history, is_string($requestId) ? $requestId : null);
+        } catch (\DomainException $e) {
+            return new ErrorDataResponse(['error' => $e->getMessage()], 409);
+        }
+        if ($queued === null) return new ErrorDataResponse(['error' => 'Background queue is full or the message is too large'], 429);
+        $id = $queued['id'];
         // pagehide may fire before the normal user-message persistence call;
         // append it only when it is not already the final stored user message.
         $stored = $chat['messages'] ?? [];
         $last = $stored !== [] ? $stored[count($stored) - 1] : null;
-        if (($last['role'] ?? '') !== 'user' || trim((string)($last['text'] ?? '')) !== $message) {
-            $this->chatStore->append($user, $chatId, 'user', $message);
+        if (!$queued['duplicate'] && (($last['role'] ?? '') !== 'user' || trim((string)($last['text'] ?? '')) !== $message)) {
+            try {
+                $this->chatStore->append($user, $chatId, 'user', $message);
+            } catch (\Throwable $e) {
+                $this->backgroundChatQueue->cancel($user, $id);
+                throw $e;
+            }
         }
-        $id = $this->backgroundChatQueue->enqueue($user, $chatId, $message, $history, is_string($requestId) ? $requestId : null);
-        if ($id === null) return new ErrorDataResponse(['error' => 'Background queue is full or the message is too large'], 429);
         // Wake the timed worker on the next cron tick instead of waiting for
         // its previous 30-second interval (or a stale 1970 last-run entry).
         try { $this->jobList->scheduleAfter(BackgroundChatJob::class, time() + 1); } catch (\Throwable) { /* cron remains the fallback */ }

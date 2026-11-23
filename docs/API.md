@@ -315,6 +315,16 @@ three typed lists: positive integer IDs in `indexed` and `missing`, and
 accessible `files` entries containing `fileId`, `name`, and `path`. Files the
 current user cannot access are not included in `files` and remain unindexed.
 
+## Background chat requests
+
+`POST /api/backgroundChat` accepts `chatId`, `message`, `history`, and an
+optional stable `requestId`. Repeating the same request ID with the same chat,
+message, and history is idempotent and returns the original queue ID. Reusing
+that ID for different content returns HTTP 409. Requests with different IDs
+remain distinct even when their prompt text is identical. The UI's page-close
+cancellation should use the returned queue ID (or the original request ID when
+the response is unavailable).
+
 ## Scheduled briefings
 
 Briefing definitions are configured through the signed-in user's settings.

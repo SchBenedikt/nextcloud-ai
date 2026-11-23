@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Make background chat request IDs idempotent
+
+- Return the original queue identifier for exact retries, reject identifier reuse for different request content, and preserve distinct requests with separate IDs. Request fingerprints use the instance secret and are not returned by the API.
+
 ### Honor textual RAG flags in Assistant tasks
 
 - Parse the optional TaskProcessing `rag_enabled` text input explicitly so `false` disables retrieval instead of being treated as truthy.
