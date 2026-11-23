@@ -23,4 +23,15 @@ final class ChatImportRequestTest extends TestCase {
 			}
 		}
 	}
+
+	public function testRejectsArchivesWithMoreThanTenMegabytesOfChatText(): void {
+		try {
+			ChatImportRequest::fromArray(['chats' => [[
+				'messages' => [['role' => 'user', 'text' => str_repeat('x', 10_000_001)]],
+			]]]);
+			self::fail('Expected oversized chat text to be rejected.');
+		} catch (\InvalidArgumentException $error) {
+			self::assertSame('The combined chat text may not exceed 10 MB.', $error->getMessage());
+		}
+	}
 }
