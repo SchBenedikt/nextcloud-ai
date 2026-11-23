@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.24.5 - 2026-11-23
+
+- Show disabled Assistant task types where the Nextcloud API exposes them and
+  label unknown availability accurately on older versions or unassigned types.
+
 ## 1.24.4 - 2026-11-23
 
 - Improve the native Assistant integration status with a concise readiness summary,

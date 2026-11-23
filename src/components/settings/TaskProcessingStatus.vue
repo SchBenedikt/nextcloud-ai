@@ -26,7 +26,7 @@
 			<div class="metrics" aria-label="Assistant integration summary">
 				<div class="metric"><strong>{{ selectedCount }}</strong><span>{{ $t('Routed through EVA') }}</span></div>
 				<div class="metric"><strong>{{ availableCount }}</strong><span>{{ $t('Enabled task types') }}</span></div>
-				<div class="metric"><strong>{{ taskTypes.length }}</strong><span>{{ $t('EVA providers detected') }}</span></div>
+				<div class="metric"><strong>{{ unknownCount }}</strong><span>{{ $t('Availability unknown') }}</span></div>
 			</div>
 
 			<div class="setup-hint">
@@ -83,29 +83,35 @@ export default {
 		const error = ref(false)
 		const settingsUrl = generateUrl('/settings/admin/ai')
 		const selectedCount = computed(() => taskTypes.value.filter(item => item.enabled && item.assignmentKnown && item.evaPreferred).length)
-		const availableCount = computed(() => taskTypes.value.filter(item => item.enabled).length)
-		const needsAttentionCount = computed(() => taskTypes.value.filter(item => item.enabled && (!item.assignmentKnown || !item.evaPreferred)).length)
+		const availableCount = computed(() => taskTypes.value.filter(item => item.enabledKnown && item.enabled).length)
+		const unknownCount = computed(() => taskTypes.value.filter(item => !item.enabledKnown || !item.assignmentKnown).length)
+		const needsAttentionCount = computed(() => taskTypes.value.filter(item => !item.enabledKnown || !item.assignmentKnown || (item.enabled && !item.evaPreferred)).length)
 		const summaryClass = computed(() => selectedCount.value === 0 ? 'summary-neutral' : needsAttentionCount.value === 0 ? 'summary-ready' : 'summary-partial')
 		const summaryTitle = computed(() => selectedCount.value === 0
-			? t('EVA is available but not selected yet')
+			? unknownCount.value > 0
+				? t('Some task type availability is unknown')
+				: availableCount.value === 0 ? t('No Assistant task types are enabled') : t('EVA is available but not selected yet')
 			: needsAttentionCount.value === 0
 				? t('All available EVA providers are selected')
 				: t('EVA is handling some Assistant tasks'))
 		const summaryDescription = computed(() => selectedCount.value === 0
-			? t('Choose EVA in Nextcloud AI settings to start using it for Assistant tasks.')
+			? unknownCount.value > 0
+				? t('Nextcloud could not confirm availability for every task type. Check the provider assignment and Nextcloud version.')
+				: availableCount.value === 0 ? t('Enable a task type in Nextcloud AI settings before choosing its provider.') : t('Choose EVA in Nextcloud AI settings to start using it for Assistant tasks.')
 			: needsAttentionCount.value === 0
 				? t('Every detected and enabled task type currently uses EVA.')
 				: t('Review the routing list below to enable or route more task types through EVA.'))
 
 		function stateLabel(item) {
+			if (!item.enabledKnown || !item.assignmentKnown) return t('Availability could not be determined')
 			if (!item.enabled) return t('Disabled in Nextcloud')
-			if (!item.assignmentKnown) return t('Could not determine provider')
 			if (item.evaPreferred) return t('Routed through EVA')
 			return t('Another provider selected')
 		}
 
 		function stateClass(item) {
-			if (!item.enabled || !item.assignmentKnown) return 'state-warning'
+			if (!item.enabledKnown || !item.assignmentKnown) return 'state-warning'
+			if (!item.enabled) return 'state-muted'
 			return item.evaPreferred ? 'state-ready' : 'state-pending'
 		}
 
@@ -119,6 +125,7 @@ export default {
 					|| typeof item?.providerId !== 'string'
 					|| typeof item?.providerName !== 'string'
 					|| typeof item?.enabled !== 'boolean'
+					|| typeof item?.enabledKnown !== 'boolean'
 					|| typeof item?.assignmentKnown !== 'boolean'
 					|| typeof item?.evaPreferred !== 'boolean')) {
 					throw new Error('Invalid TaskProcessing status')
@@ -132,7 +139,7 @@ export default {
 		}
 
 		load()
-		return { taskTypes, loading, error, settingsUrl, load, selectedCount, availableCount, summaryClass, summaryTitle, summaryDescription, stateLabel, stateClass }
+		return { taskTypes, loading, error, settingsUrl, load, selectedCount, availableCount, unknownCount, summaryClass, summaryTitle, summaryDescription, stateLabel, stateClass }
 	},
 }
 </script>
@@ -162,6 +169,7 @@ export default {
 .state-ready { color: var(--color-success); background: var(--color-success-hover); }
 .state-pending { color: var(--color-primary-element); background: var(--color-background-hover); }
 .state-warning { color: var(--color-warning); background: var(--color-background-hover); }
+.state-muted { color: var(--color-text-maxcontrast); background: var(--color-background-hover); }
 .current-provider { display: block; margin-top: 4px; font-size: .85rem; }
 .updated { margin: -6px 0 0; font-size: .85rem; }
 @media (max-width: 700px) {

@@ -79,8 +79,11 @@ as inactive. The endpoint does not change provider preferences. Administrators
 manage assignments in Nextcloud's **Administration settings → AI → Unified
 task processing** page. The settings view summarizes how many enabled task types
 use EVA, distinguishes disabled types from types assigned to another provider,
-and links directly to the Nextcloud routing page. Summary counts describe the
-current configuration only; they do not probe whether an AI backend is reachable.
+and links directly to the Nextcloud routing page. `enabledKnown=false` means
+the Nextcloud version or current provider assignment does not expose enough
+information to distinguish a disabled task type from an unavailable one. Summary
+counts describe the current configuration only; they do not probe whether an AI
+backend is reachable.
 
 Metadata/database failures return HTTP 503 with `available=false` (plus the common
 error envelope), never zeroed healthy counters or raw database errors. Non-admins

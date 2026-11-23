@@ -23,9 +23,16 @@ final class TaskProcessingAdminController extends OCSController {
 
 	#[AdminRequired]
 	public function status(): DataResponse {
-		// The no-argument form is available since Nextcloud 30 and returns the
-		// enabled types for the current admin session.
+		// Nextcloud 31 added the showDisabled argument. On newer cores, query
+		// both views so a disabled type with an assigned provider is visible and
+		// can be distinguished from a type with no usable assignment. Keep the
+		// Nextcloud 30 call compatible with its zero-argument API.
+		$taskTypesMethod = new \ReflectionMethod($this->taskProcessingManager, 'getAvailableTaskTypes');
+		$canShowDisabled = $taskTypesMethod->getNumberOfParameters() > 0;
 		$definitions = $this->taskProcessingManager->getAvailableTaskTypes();
+		$allDefinitions = $canShowDisabled
+			? $this->taskProcessingManager->getAvailableTaskTypes(true)
+			: $definitions;
 		$enabledTypes = array_fill_keys(array_keys($definitions), true);
 		$rows = [];
 
@@ -36,7 +43,7 @@ final class TaskProcessingAdminController extends OCSController {
 			}
 
 			$taskTypeId = $provider->getTaskTypeId();
-			$definition = $definitions[$taskTypeId] ?? null;
+			$definition = $allDefinitions[$taskTypeId] ?? $definitions[$taskTypeId] ?? null;
 			$assignmentKnown = false;
 			$preferredProviderId = null;
 			$preferredProviderName = null;
@@ -55,6 +62,7 @@ final class TaskProcessingAdminController extends OCSController {
 				'providerId' => $providerId,
 				'providerName' => $provider->getName(),
 				'enabled' => isset($enabledTypes[$taskTypeId]),
+				'enabledKnown' => isset($allDefinitions[$taskTypeId]) || isset($enabledTypes[$taskTypeId]),
 				'assignmentKnown' => $assignmentKnown,
 				'evaPreferred' => $assignmentKnown && $preferredProviderId === $providerId,
 				'preferredProviderName' => $preferredProviderName,
