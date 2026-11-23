@@ -1,6 +1,6 @@
 # Changelog
 
-## [Unreleased]
+## 1.21.0 - 2026-11-23
 
 ### Bound terminal vector journal retention
 
