@@ -108,7 +108,9 @@ providers run through Ollama models or the optional local Tesseract integration,
 the common Assistant tasks work without a hosted provider or API key.
 Additional providers exist for chat with shared tools and for multi-step agent
 interactions. Provider execution requires a running Nextcloud TaskProcessing
-worker.
+worker. In the official Assistant, rejecting a pending agent proposal clears
+that proposal and returns a cancellation response without calling the model or
+executing any action; a new user message still starts a fresh proposal.
 
 Registering a provider makes it available to Nextcloud; it does not
 automatically make EVA the active provider. Administrators choose providers per
