@@ -58,7 +58,7 @@ final class EvaOcrProvider implements ISynchronousProvider {
 		$texts = [];
 		$errors = [];
 		foreach ($ids as $index => $id) {
-			$reportProgress(min(0.85, 0.1 + ($index / max(1, count($ids))) * 0.7));
+			TaskProcessingProgress::report($reportProgress, min(0.85, 0.1 + ($index / max(1, count($ids))) * 0.7));
 			$nodes = $home->getById($id);
 			$node = $nodes[0] ?? null;
 			if (!$node instanceof File) {
@@ -76,7 +76,7 @@ final class EvaOcrProvider implements ISynchronousProvider {
 				$errors[] = $node->getName() . ': ' . mb_substr($e->getMessage(), 0, 180);
 			}
 		}
-		$reportProgress(0.95);
+		TaskProcessingProgress::report($reportProgress, 0.95);
 		if ($texts === []) {
 			throw new RuntimeException(implode('; ', $errors) ?: 'OCR returned no text');
 		}

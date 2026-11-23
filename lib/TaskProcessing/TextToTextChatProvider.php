@@ -108,7 +108,7 @@ class TextToTextChatProvider implements ISynchronousProvider {
 		if (trim($prompt) === '') {
 			throw new ProcessingException('Empty input');
 		}
-		$reportProgress(0.1);
+		TaskProcessingProgress::report($reportProgress, 0.1);
 
 		$history = TaskProcessingHistory::parse($input['history'] ?? []);
 
@@ -135,7 +135,7 @@ class TextToTextChatProvider implements ISynchronousProvider {
 			instructions: $instructions,
 			memories: $memories,
 		));
-		$reportProgress(0.9);
+		TaskProcessingProgress::report($reportProgress, 0.9);
 
 		if (!empty($result['error'])) {
 			throw new ProcessingException((string)$result['error']);

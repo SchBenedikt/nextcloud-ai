@@ -62,7 +62,7 @@ final class EvaImageToImageProvider implements ISynchronousProvider {
 		$images = [];
 		$totalBytes = 0;
 		foreach ($ids as $index => $id) {
-			$reportProgress(min(0.25, 0.05 + ($index / count($ids)) * 0.2));
+			TaskProcessingProgress::report($reportProgress, min(0.25, 0.05 + ($index / count($ids)) * 0.2));
 			$node = $home->getById($id)[0] ?? null;
 			if (!$node instanceof File) throw new RuntimeException('An input image is not available in your Nextcloud Files.');
 			$mime = strtolower((string)$node->getMimeType());
@@ -82,16 +82,15 @@ final class EvaImageToImageProvider implements ISynchronousProvider {
 			$totalBytes += strlen($bytes);
 		}
 
-		$reportProgress(0.3);
+		TaskProcessingProgress::report($reportProgress, 0.3);
 		try {
 			$imagePrompt = 'Make the requested image edit. Any new text in the image must use the same language as the user prompt unless the user asks for another language. User instructions: ' . $prompt;
 			$edited = $this->images->editImages($images, $imagePrompt, 240);
 		} catch (\Throwable $e) {
 			throw new RuntimeException($e->getMessage(), 0, $e);
 		}
-		$reportProgress(0.9);
+		TaskProcessingProgress::report($reportProgress, 0.95);
 		$fileId = $this->imageStorage->store($userId, $edited[0], 'edited');
-		$reportProgress(1.0);
 		return ['output' => $fileId];
 	}
 }

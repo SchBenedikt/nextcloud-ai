@@ -105,6 +105,10 @@ inputs are bounded to 25 MB and remain scoped to the authenticated user's files.
 Audio TaskProcessing providers stop between transcription, model, synthesis,
 and file-write stages when Nextcloud reports that a task was cancelled; the
 audio ContextAgent forwards cancellation into its confirmation-aware agent.
+Other EVA synchronous TaskProcessing providers also stop when Nextcloud reports
+cancellation, including during streamed model progress. Confirmed agent
+workflows check between actions and keep a durable receipt if cancelled after
+some actions have already completed.
 The confirmation-gated `create_sticker` tool creates a single bounded sticker
 image in the same folder when an image provider is configured. Text and vision
 providers run through Ollama models or the optional local Tesseract integration, so

@@ -85,6 +85,7 @@ class TextToTextChatWithToolsProvider implements ISynchronousProvider {
 	}
 
 	public function process(?string $userId, array $input, callable $reportProgress): array {
+		TaskProcessingProgress::report($reportProgress, 0.05);
 		// Set tool policy surface to TaskProcessing (per request, at execution time)
 		$this->executor->setSurface(ToolPolicy::SURFACE_TASKPROCESSING);
 
@@ -127,6 +128,7 @@ class TextToTextChatWithToolsProvider implements ISynchronousProvider {
 		if (isset($chat['error'])) {
 			throw new RuntimeException((string)$chat['error']);
 		}
+		TaskProcessingProgress::report($reportProgress, 0.95);
 
 		$allowedToolNames = [];
 		foreach ($tools as $tool) {

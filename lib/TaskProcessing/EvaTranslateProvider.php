@@ -111,7 +111,7 @@ class EvaTranslateProvider implements ISynchronousProvider {
 		$originLanguage = (string)($input['origin_language'] ?? 'detect_language');
 		$targetLanguage = (string)($input['target_language'] ?? 'en');
 
-		$reportProgress(0.1);
+		TaskProcessingProgress::report($reportProgress, 0.1);
 
 		// Language names for the prompt are English: the prompt is an instruction
 		// to the model, not a label for the user (the picker above keeps each
@@ -153,17 +153,17 @@ class EvaTranslateProvider implements ISynchronousProvider {
 			['role' => 'user', 'content' => $prompt],
 		];
 
-		$reportProgress(0.3);
+		TaskProcessingProgress::report($reportProgress, 0.3);
 
 		$result = $this->ollama->chat($messages, [], null, static function (float $p) use ($reportProgress): void {
-			$reportProgress(0.3 + min(0.6, max(0.0, $p)) * 0.6);
+			TaskProcessingProgress::report($reportProgress, 0.3 + min(0.6, max(0.0, $p)) * 0.6);
 		}, $this->appConfig->get('summary_model'));
 
 		if (isset($result['error'])) {
 			throw new RuntimeException((string)$result['error']);
 		}
 
-		$reportProgress(0.9);
+		TaskProcessingProgress::report($reportProgress, 0.9);
 
 		$answer = (string)($result['answer'] ?? '');
 

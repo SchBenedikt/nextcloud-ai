@@ -42,7 +42,7 @@ final class EvaTextToStickerProvider implements ISynchronousProvider {
 			throw new RuntimeException('Enter a sticker prompt of 1 to 8000 characters.');
 		}
 
-		$reportProgress(0.1);
+		TaskProcessingProgress::report($reportProgress, 0.1);
 		try {
 			$images = $this->images->generateImages(
 				'Create one expressive sticker illustration on a neutral background based on this description. Any lettering in the image must use the same language as the user prompt: ' . $prompt,
@@ -56,7 +56,7 @@ final class EvaTextToStickerProvider implements ISynchronousProvider {
 		if (!is_string($image) || $image === '') {
 			throw new RuntimeException('The image provider returned no usable sticker.');
 		}
-		$reportProgress(1.0);
+		TaskProcessingProgress::report($reportProgress, 1.0);
 		return ['image' => $image];
 	}
 }

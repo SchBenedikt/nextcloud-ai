@@ -40,9 +40,7 @@ abstract class EvaAudioTranscriptionProvider implements ISynchronousProvider {
 
 	/** Stop provider work when Nextcloud reports that the task was cancelled. */
 	protected function reportProgress(callable $reportProgress, float $progress): void {
-		if ($reportProgress($progress) === false) {
-			throw new RuntimeException('Task cancelled');
-		}
+		TaskProcessingProgress::report($reportProgress, $progress);
 	}
 
 	/** @return array{node:File,bytes:string,filename:string,mime:string} */
