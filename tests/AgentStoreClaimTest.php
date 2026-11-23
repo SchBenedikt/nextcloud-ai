@@ -7,6 +7,7 @@ use OCA\EvaAi\Service\AgentStore;
 use OCP\DB\IPreparedStatement;
 use OCP\DB\IResult;
 use OCP\IDBConnection;
+use OCP\Security\ICrypto;
 use PHPUnit\Framework\TestCase;
 use Psr\Log\NullLogger;
 
@@ -40,7 +41,10 @@ final class AgentStoreClaimTest extends TestCase {
             $stmt->method('rowCount')->willReturnCallback(static fn() => $native->rowCount());
             return $stmt;
         });
-        return new AgentStore($db, new NullLogger());
+        $crypto = $this->createMock(ICrypto::class);
+        $crypto->method('encrypt')->willReturnCallback(static fn(string $value): string => base64_encode($value));
+        $crypto->method('decrypt')->willReturnCallback(static fn(string $value): string => (string)base64_decode($value, true));
+        return new AgentStore($db, new NullLogger(), $crypto);
     }
 
     public function testClaimSurvivesWorkerExitAndBlocksReplayAndNewProposal(): void {

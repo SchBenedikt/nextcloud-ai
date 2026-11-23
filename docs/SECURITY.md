@@ -80,12 +80,16 @@ application-owned policy prompt, obtains definitions from `ActionExecutor`, and
 filters returned calls against the TaskProcessing surface. Caller text can
 provide task context, but it cannot add a tool or change its allowed surface.
 
-Agent conversation state is stored per user and token. Rows that have not been
-updated for 30 days are removed by the existing periodic background job, limiting
-retention of abandoned prompts and pending actions. Multimodal conversation
-history may also keep references to the four newest images; each follow-up
-resolves those IDs inside the same user's Nextcloud home and applies the normal
-image size limits. The database stores references, not image bytes.
+Agent conversation history, pending actions, and execution receipts are
+encrypted with Nextcloud's `ICrypto` service before entering SQL. Legacy
+plaintext rows are upgraded on access, and the provider stops if it cannot
+complete that upgrade safely. The owner ID and conversation token remain SQL
+lookup metadata. Rows that have not been updated for 30 days are removed by the
+existing periodic background job, limiting retention of abandoned prompts and
+pending actions. Multimodal conversation history may also keep references to the
+four newest images; each follow-up resolves those IDs inside the same user's
+Nextcloud home and applies the normal image size limits. The database stores
+encrypted references, not image bytes.
 
 ### Enforcement point
 

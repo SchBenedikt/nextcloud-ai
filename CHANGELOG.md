@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.23.9 - 2026-11-23
+
+### Encrypt native Assistant agent state at rest
+
+- Encrypt agent history, proposed actions, and execution receipts with Nextcloud `ICrypto` before SQL writes.
+- Transparently upgrade legacy plaintext rows when accessed and fail closed if they cannot be sealed safely.
+- Correct the privacy inventory's agent-state table name and describe its lookup metadata.
+
 ## 1.23.8 - 2026-11-23
 
 ### Require an explicit Assistant action confirmation
