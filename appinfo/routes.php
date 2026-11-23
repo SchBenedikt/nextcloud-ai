@@ -94,7 +94,7 @@ return [
         ['name' => 'api#calendars', 'url' => '/api/calendars', 'verb' => 'GET'],
         ['name' => 'api#check', 'url' => '/api/check', 'verb' => 'POST'],
         ['name' => 'api#exportData', 'url' => '/api/export', 'verb' => 'GET'],
-        ['name' => 'api#streamChat', 'url' => '/api/streamChat', 'verb' => 'POST'],
+        ['name' => 'chatStream#streamChat', 'url' => '/api/streamChat', 'verb' => 'POST'],
         ['name' => 'api#confirmTool', 'url' => '/api/confirmTool', 'verb' => 'POST'],
         ['name' => 'fileContext#fileContextChat', 'url' => '/api/fileContextChat', 'verb' => 'POST'],
         ['name' => 'fileContext#fileContextStatus', 'url' => '/api/fileContextStatus', 'verb' => 'POST'],

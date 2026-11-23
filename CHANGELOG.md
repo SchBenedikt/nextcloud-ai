@@ -2,6 +2,11 @@
 
 ## [Unreleased]
 
+### Isolate streamed chat transport
+
+- Move the NDJSON stream endpoint, request admission, disconnect handling, producer cleanup and completion notification into ChatStreamController.
+- Keep the existing stream URL and terminal-event ordering while removing streaming-only dependencies from ApiController.
+
 ### Isolate synchronous chat generation
 
 - Move the authenticated non-streaming chat endpoint into a dedicated OCS controller while preserving its API path, validation, rate limit, per-user request lock, and RAG behavior.

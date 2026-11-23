@@ -399,10 +399,11 @@ validation and credential persistence into `SettingsController`; it also
 replaces missing controller dependencies with explicit services. Chat
 streaming and regeneration still need separate generation-domain extractions.
 The current unreleased slices move chat title, organizational metadata and
-folder endpoints to `ChatOrganizationController`, and move non-streaming chat
-generation to `ChatGenerationController`. They preserve existing OCS paths and
-owner-scoped behavior. Chat scope and prompt settings are shared with streaming
-through `ChatContextResolver`.
+folder endpoints to `ChatOrganizationController`, move non-streaming chat
+generation to `ChatGenerationController`, and move NDJSON streaming to
+`ChatStreamController`. They preserve existing OCS paths and owner-scoped
+behavior. Chat scope and prompt settings are shared through
+`ChatContextResolver`; chat regeneration remains in `ApiController`.
 
 ### Stage 14 portability slice: Activity and Mail SQL (1.18.60)
 
