@@ -8,6 +8,7 @@ use OCA\EvaAi\BackgroundJob\IndexRequestJob;
 use OCA\EvaAi\Controller\ApiController;
 use OCA\EvaAi\Controller\BackgroundChatController;
 use OCA\EvaAi\Controller\ChatGenerationController;
+use OCA\EvaAi\Controller\ChatHistoryController;
 use OCA\EvaAi\Controller\ChatStreamController;
 use OCA\EvaAi\Controller\DocumentController;
 use OCA\EvaAi\Controller\IndexController;
@@ -51,25 +52,25 @@ final class ApiControllerIntegrationTest extends TestCase {
     public function testCompletedTurnsAreValidatedAndBoundToTheLoggedInOwner(): void {
         $input = ['requestId'=>'turn_1234567890123456','expectedRev'=>1,'question'=>'Question','answer'=>['text'=>'Answer']];
         $stored = []; $dependencies = [];
-        $controller = $this->controller('alice', $input, $dependencies, $stored);
+        $controller = $this->chatHistoryController('alice', $input, $dependencies, $stored);
         $dependencies['chatStore']->expects(self::once())->method('appendTurn')
             ->with('alice','c1',self::callback(static fn($turn) => $turn->question->text === 'Question' && $turn->answer->text === 'Answer'))
             ->willReturn(['ok'=>true,'rev'=>3]);
         self::assertSame(['ok'=>true,'rev'=>3], $controller->chatTurn('c1')->getData());
-        $controller = $this->controller(null, $input, $dependencies, $stored);
+        $controller = $this->chatHistoryController(null, $input, $dependencies, $stored);
         $dependencies['chatStore']->expects(self::never())->method('appendTurn');
         self::assertSame(401, $controller->chatTurn('c1')->getStatus());
-        $controller = $this->controller('alice', array_replace($input,['answer'=>['text'=>'']]), $dependencies, $stored);
+        $controller = $this->chatHistoryController('alice', array_replace($input,['answer'=>['text'=>'']]), $dependencies, $stored);
         $dependencies['chatStore']->expects(self::never())->method('appendTurn');
         self::assertSame(400, $controller->chatTurn('c1')->getStatus());
     }
 
     public function testCompletedTurnConflictsAreExplicitAndKeepCsrfProtection(): void {
         $stored = []; $dependencies = [];
-        $controller = $this->controller('alice', ['requestId'=>'turn_1234567890123456','expectedRev'=>1,'question'=>'Question','answer'=>['text'=>'Answer']], $dependencies, $stored);
+        $controller = $this->chatHistoryController('alice', ['requestId'=>'turn_1234567890123456','expectedRev'=>1,'question'=>'Question','answer'=>['text'=>'Answer']], $dependencies, $stored);
         $dependencies['chatStore']->method('appendTurn')->willReturn(['error'=>'conflict']);
         self::assertSame(409, $controller->chatTurn('c1')->getStatus());
-        $method = new \ReflectionMethod(ApiController::class,'chatTurn');
+        $method = new \ReflectionMethod(ChatHistoryController::class,'chatTurn');
         self::assertCount(0, $method->getAttributes(\OCP\AppFramework\Http\Attribute\NoCSRFRequired::class));
     }
 
@@ -186,12 +187,21 @@ final class ApiControllerIntegrationTest extends TestCase {
 			$cacheFactory, $backgroundChatQueue, $logger,
 		);
 
-		$dependencies = compact('request', 'documentMapper', 'ollama', 'config', 'rag', 'executor', 'indexer', 'jobList', 'lockingProvider', 'chatStore', 'appManager', 'knowledgeInitializer', 'providerCredentials', 'settingsPersistence', 'modelSelectionValidator', 'lockGuard', 'cacheFactory', 'logger', 'backgroundChatQueue');
+		$dependencies = compact('request', 'ncConfig', 'chatLearner', 'documentMapper', 'ollama', 'config', 'rag', 'executor', 'indexer', 'jobList', 'lockingProvider', 'chatStore', 'appManager', 'knowledgeInitializer', 'providerCredentials', 'settingsPersistence', 'modelSelectionValidator', 'lockGuard', 'cacheFactory', 'logger', 'backgroundChatQueue');
 		return new ApiController(
 			'eva_ai', $request, $userId, $config, $rag, $executor, $ollama,
 			$jobList, $chatStore,
-			$userDataService, $chatLearner, $indexScheduler, $usageMetrics,
+			$userDataService, $indexScheduler, $usageMetrics,
 			$logger, $systemController,
+		);
+	}
+
+	/** @param array<string,mixed> $params @param array<string,mixed> $dependencies @param array<string,mixed> $storedValues */
+	private function chatHistoryController(?string $userId, array $params, array &$dependencies, array &$storedValues): ChatHistoryController {
+		$this->controller($userId, $params, $dependencies, $storedValues);
+		return new ChatHistoryController(
+			'eva_ai', $dependencies['request'], $userId, $dependencies['chatStore'],
+			$dependencies['ncConfig'], $dependencies['config'], $dependencies['chatLearner'],
 		);
 	}
 

@@ -16,8 +16,6 @@ use OCA\EvaAi\Dto\ChatImportRequest;
 use OCA\EvaAi\Dto\ChatRegenerateRequest;
 use OCA\EvaAi\Dto\ConfirmToolRequest;
 use OCA\EvaAi\Dto\ChatTemplateImportRequest;
-use OCA\EvaAi\Dto\ChatAppendRequest;
-use OCA\EvaAi\Dto\ChatAppendResponse;
 use OCP\AppFramework\OCSController;
 use OCP\AppFramework\Http\Attribute\NoAdminRequired;
 use OCA\EvaAi\Http\ErrorDataResponse;
@@ -42,7 +40,6 @@ class ApiController extends OCSController {
         private IJobList $jobList,
         private ChatStore $chatStore,
         private \OCA\EvaAi\Service\UserDataService $userDataService,
-        private \OCA\EvaAi\Service\ChatLearner $chatLearner,
         private \OCA\EvaAi\Service\IndexScheduler $indexScheduler,
         private \OCA\EvaAi\Service\UsageMetrics $usageMetrics,
         private LoggerInterface $logger,
@@ -163,78 +160,6 @@ class ApiController extends OCSController {
         // the consumed confirmation as a completed failure instead of offering
         // a retry that the idempotency guard must reject.
         return new ErrorDataResponse($result);
-    }
-
-    #[NoAdminRequired]
-    public function chatTurn(string $id): DataResponse {
-        $user = $this->requireUser();
-        if ($user === null) return new ErrorDataResponse(['error' => 'Not logged in'], 401);
-        try {
-            $turn = \OCA\EvaAi\Dto\ChatTurnRequest::fromArray([
-                'requestId' => $this->requestParam('requestId'),
-                'expectedRev' => $this->requestParam('expectedRev'),
-                'question' => $this->requestParam('question'),
-                'answer' => $this->requestParam('answer'),
-            ]);
-            $result = $this->chatStore->appendTurn($user, $id, $turn);
-            if (($result['error'] ?? '') === 'not_found') return new ErrorDataResponse(['error' => 'Requested resource was not found.'], 404);
-            if (($result['error'] ?? '') === 'conflict') return new ErrorDataResponse(['error' => 'conflict', 'message' => 'Chat history changed. Reload before saving another turn.'], 409);
-            $this->learnSavedChat($user, $id);
-            return new ErrorDataResponse($result);
-        } catch (\InvalidArgumentException $e) {
-            return new ErrorDataResponse(['error' => $e->getMessage()], 400);
-        } catch (\Throwable $e) { return $this->chatErrorResponse($e); }
-    }
-
-    #[NoAdminRequired]
-    public function chatAppend(string $id): DataResponse {
-        $user = $this->requireUser();
-        if ($user === null) {
-            return new ErrorDataResponse(['error' => 'Not logged in'], 401);
-        }
-        try {
-            $chat = $this->chatStore->get($user, $id);
-            if ($chat === null) {
-                return new ErrorDataResponse(['error' => 'Requested resource was not found.'], 404);
-            }
-            try {
-                $request = ChatAppendRequest::fromArray([
-                    'role' => $this->requestParam('role'),
-                    'text' => $this->requestParam('text'),
-                    'followups' => $this->requestParam('followups'),
-                    'regenerateRev' => $this->requestParam('regenerateRev'),
-                    'confirmation' => $this->requestParam('confirmation'),
-                    'tools' => $this->requestParam('tools'),
-                    'model' => $this->requestParam('model'),
-                ]);
-            } catch (\InvalidArgumentException $e) {
-                return new ErrorDataResponse(['error' => $e->getMessage()], 400);
-            }
-            // Store validates and redacts the nested confirmation and tool trace.
-            $this->chatStore->append($user, $id, $request->role, $request->text, $request->followups, $request->regenerateRev, $request->confirmation, $request->tools, $request->model);
-            // Return the bumped revision so the client can validate later
-            // regenerate/edit requests against the current state (Issue #182).
-            $appended = $this->chatStore->getChat($user, $id);
-            $rev = $appended !== null ? (int)($appended['rev'] ?? 0) : 0;
-
-            // After an assistant message is saved, learn from the full chat.
-            if ($request->role === 'assistant') $this->learnSavedChat($user, $id);
-
-            $response = ChatAppendResponse::fromArray(['ok' => true, 'rev' => $rev]);
-            return new ErrorDataResponse($response->toArray());
-        } catch (\Throwable $e) {
-            return $this->chatErrorResponse($e);
-        }
-    }
-
-    private function learnSavedChat(string $user, string $id): void {
-        try {
-            $this->config->setUserId($user);
-            $fullChat = $this->chatStore->getChat($user, $id);
-            if ($fullChat !== null && count($fullChat['messages']) >= 4 && $this->config->get('learning_enabled') === '1') {
-                $this->chatLearner->learnFromChat($user, $fullChat['messages']);
-            }
-        } catch (\Throwable) { /* Learning failure must never break persistence. */ }
     }
 
     #[NoAdminRequired]
