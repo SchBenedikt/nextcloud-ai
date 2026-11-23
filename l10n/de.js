@@ -1178,6 +1178,7 @@ OC.L10N.register("eva_ai", {
   "Eva (audio chat)": "Eva (Audio-Chat)",
   "Eva · Tools": "Eva · Werkzeuge",
   "Eva (image provider)": "Eva (Bildanbieter)",
+  "Eva (sticker generator)": "Eva (Sticker-Generator)",
   "Eva · Multimodal Agent": "Eva · Multimodaler Agent",
   "Eva (subtitles)": "Eva (Untertitel)",
   "Eva (audio transcription)": "Eva (Audiotranskription)",

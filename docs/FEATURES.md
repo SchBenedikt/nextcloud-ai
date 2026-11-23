@@ -83,7 +83,9 @@ emoji generation, image analysis, image generation, audio transcription,
 subtitles, speech generation, audio translation, audio chat, multimodal tool
 chat, ContextAgent audio, multimodal ContextAgent, OCR, tone adjustment, and
 context-aware writing. When the official Assistant app is enabled, EVA also
-supplies its `assistant:text2sticker` task using the configured image provider.
+supplies its `assistant:text2sticker` task using the configured OpenAI-compatible
+image provider. Ollama and Groq do not expose the image-generation endpoint EVA
+uses for this task.
 These providers use the configured local or OpenAI-compatible backends;
 generated images and subtitles are stored in the user's `EVA` folder. Audio
 inputs are bounded to 25 MB and remain scoped to the authenticated user's files.
