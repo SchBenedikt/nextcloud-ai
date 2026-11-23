@@ -41,11 +41,14 @@ execute** carries out the action; **Cancel** changes nothing.
 ### Native administration settings
 
 Administrators get a native **Eva AI** section in Nextcloud administration.
-Built-in SQL is the default and needs no service setup. Optional vector-storage
-and generation controls appear only after opening their disclosure. The old
-`/apps/eva_ai/admin` route redirects to this section. Admin APIs remain
-administrator-only and expose generation metadata without file names, paths or
-content.
+Built-in SQL is the default and needs no service setup. A TaskProcessing status
+panel shows which EVA providers are registered, whether each task type is
+enabled, and which provider Nextcloud currently prefers. Provider assignment
+stays under Nextcloud's **Administration settings → AI → Unified task
+processing** page. Optional vector-storage and generation controls appear only
+after opening their disclosure. The old `/apps/eva_ai/admin` route redirects to
+this section. Admin APIs remain administrator-only and expose generation
+metadata without file names, paths or content.
 
 ### Nextcloud Files
 

@@ -52,6 +52,17 @@ not prove remote erasure. SQL-only source deletion does not create vector operat
 generation legacy index. It does not assert delivery, verification or readiness.
 Both native admin surfaces display it; count failures make the snapshot unavailable.
 
+## Native Assistant provider status
+
+`GET /api/admin/task-processing` is a read-only administrator endpoint used by
+the native Eva AI settings page. It lists EVA's registered TaskProcessing
+providers, their task type, whether that task type is enabled, and whether EVA
+is the preferred provider. `assignmentKnown=false` means Nextcloud could not
+confirm a preferred provider; the status is kept unknown rather than reported
+as inactive. The endpoint does not change provider preferences. Administrators
+manage assignments in Nextcloud's **Administration settings → AI → Unified
+task processing** page.
+
 Metadata/database failures return HTTP 503 with `available=false` (plus the common
 error envelope), never zeroed healthy counters or raw database errors. Non-admins
 are rejected by `AdminRequired`. No target URL, keys, owner identities, generation

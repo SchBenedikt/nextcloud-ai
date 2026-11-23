@@ -1685,5 +1685,21 @@ OC.L10N.register("eva_ai", {
   "Create Qdrant generation": "Create Qdrant generation",
   "The Qdrant collection preparation could not be confirmed.": "The Qdrant collection preparation could not be confirmed.",
   "Remote servers require HTTPS. Private and local servers need an exact origin in the allowlist above and must also pass Nextcloud network policy; saving does not test connectivity.": "Remote servers require HTTPS. Private and local servers need an exact origin in the allowlist above and must also pass Nextcloud network policy; saving does not test connectivity.",
-  "SQL remains the default and rollback path. Configure and enable the optional Qdrant connection first; a new generation starts empty and does not change search.": "SQL remains the default and rollback path. Configure and enable the optional Qdrant connection first; a new generation starts empty and does not change search."
+  "SQL remains the default and rollback path. Configure and enable the optional Qdrant connection first; a new generation starts empty and does not change search.": "SQL remains the default and rollback path. Configure and enable the optional Qdrant connection first; a new generation starts empty and does not change search.",
+  "Nextcloud Assistant integration": "Nextcloud Assistant integration",
+  "Check which native Assistant task types are enabled and routed to EVA.": "Check which native Assistant task types are enabled and routed to EVA.",
+  "Refresh status": "Refresh status",
+  "Loading Assistant provider status": "Loading Assistant provider status",
+  "Assistant provider status could not be loaded.": "Assistant provider status could not be loaded.",
+  "EVA has no TaskProcessing providers available on this Nextcloud version.": "EVA has no TaskProcessing providers available on this Nextcloud version.",
+  "Provider selection is managed by Nextcloud. To route a feature through EVA, choose its Eva provider in Administration settings → AI → Unified task processing.": "Provider selection is managed by Nextcloud. To route a feature through EVA, choose its Eva provider in Administration settings → AI → Unified task processing.",
+  "Open Nextcloud AI settings": "Open Nextcloud AI settings",
+  "Assistant feature": "Assistant feature",
+  "EVA provider": "EVA provider",
+  "Nextcloud status": "Nextcloud status",
+  "Task type disabled": "Task type disabled",
+  "Provider assignment unknown": "Provider assignment unknown",
+  "Selected for this task type": "Selected for this task type",
+  "Using {provider}": "Using {provider}",
+  "another provider": "another provider"
 }, "nplurals=2; plural=(n != 1);");
