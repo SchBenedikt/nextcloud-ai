@@ -56,7 +56,13 @@ class TextToTextChatProvider implements ISynchronousProvider {
 
 	#[\Override]
 	public function getOptionalOutputShape(): array {
-		return [];
+		return [
+			'sources' => new ShapeDescriptor(
+				$this->l->t('Sources'),
+				$this->l->t('Names of the EVA knowledge sources used to answer the chat message.'),
+				EShapeType::ListOfTexts,
+			),
+		];
 	}
 
 	#[\Override]
@@ -134,6 +140,24 @@ class TextToTextChatProvider implements ISynchronousProvider {
 		if (!empty($result['error'])) {
 			throw new ProcessingException((string)$result['error']);
 		}
-		return ['output' => (string)($result['answer'] ?? '')];
+		$sources = [];
+		foreach (array_slice((array)($result['sources'] ?? []), 0, 8) as $source) {
+			if (!is_array($source)) {
+				continue;
+			}
+			$name = trim((string)($source['name'] ?? $source['path'] ?? ''));
+			if ($name === '') {
+				continue;
+			}
+			$label = 'EVA: ' . mb_substr($name, 0, 180);
+			if (!in_array($label, $sources, true)) {
+				$sources[] = $label;
+			}
+		}
+
+		return [
+			'output' => (string)($result['answer'] ?? ''),
+			'sources' => $sources,
+		];
 	}
 }
