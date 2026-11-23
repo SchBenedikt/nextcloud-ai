@@ -5,9 +5,7 @@ declare(strict_types=1);
 namespace OCA\EvaAi\Controller;
 
 use OCA\EvaAi\Controller\Traits\ReadsRequestParameters;
-use OCA\EvaAi\Controller\Traits\RequestLimits;
 use OCA\EvaAi\Controller\Traits\ChatRequestCoordination;
-use OCA\EvaAi\Controller\Traits\ChatContextResolver;
 use OCA\EvaAi\Service\AppConfig;
 use OCA\EvaAi\Service\ActionExecutor;
 use OCA\EvaAi\Service\ChatStore;
@@ -16,28 +14,21 @@ use OCA\EvaAi\Service\OllamaUrlValidator;
 use OCA\EvaAi\Service\RagService;
 use OCA\EvaAi\Dto\ChatImportRequest;
 use OCA\EvaAi\Dto\ChatRegenerateRequest;
-use OCA\EvaAi\Dto\ChatCompletionRequest;
 use OCA\EvaAi\Dto\ConfirmToolRequest;
 use OCA\EvaAi\Dto\ChatTemplateImportRequest;
 use OCA\EvaAi\Dto\ChatAppendRequest;
 use OCA\EvaAi\Dto\ChatAppendResponse;
 use OCP\AppFramework\OCSController;
 use OCP\AppFramework\Http\Attribute\NoAdminRequired;
-use OCA\EvaAi\Http\StreamTraversableResponse;
 use OCA\EvaAi\Http\ErrorDataResponse;
 use OCP\AppFramework\Http\DataResponse;
 use OCP\BackgroundJob\IJobList;
-use OCP\ICacheFactory;
-use OCP\App\IAppManager;
 use OCP\IRequest;
-use OCP\Lock\ILockingProvider;
 use Psr\Log\LoggerInterface;
 
 class ApiController extends OCSController {
     use ReadsRequestParameters;
-    use RequestLimits;
     use ChatRequestCoordination;
-    use ChatContextResolver;
 
     public function __construct(
         string $appName,
@@ -48,17 +39,13 @@ class ApiController extends OCSController {
         private ActionExecutor $executor,
         private Ollama $ollama,
         private IJobList $jobList,
-        private ILockingProvider $lockingProvider,
         private ChatStore $chatStore,
-        private IAppManager $appManager,
         private \OCA\EvaAi\Service\UserDataService $userDataService,
         private \OCA\EvaAi\Service\ChatLearner $chatLearner,
-        private ICacheFactory $cacheFactory,
         private \OCA\EvaAi\Service\IndexScheduler $indexScheduler,
         private \OCA\EvaAi\Service\UsageMetrics $usageMetrics,
         private LoggerInterface $logger,
         private SystemController $systemController,
-        private ?\OCA\EvaAi\Service\RequestRateLimiter $requestRateLimiter = null
     ) {
         parent::__construct($appName, $request);
         $this->config->setUserId($this->userId);
@@ -67,21 +54,6 @@ class ApiController extends OCSController {
     /** Release the PHP session lock before a long model/tool request starts. */
     private function releaseSessionLock(): void {
         $this->releasePhpSessionLock();
-    }
-
-    /** Enforce a bounded per-user budget with a SQL fallback if shared cache is down. */
-    private function rateLimitResponse(string $user, string $bucket, int $max): ?DataResponse {
-        return $this->consumeRequestLimit($user, $bucket, $max, $this->requestRateLimiter, $this->cacheFactory, $this->logger);
-    }
-
-    private function acquireChatSlot(string $user): ?string {
-        // Keep this separate from ChatStore's lock. LockGuard owns the bounded
-        // path so indexing can yield to the same active per-user chat claim.
-        return $this->acquireChatRequestSlot($user, $this->lockingProvider, $this->logger);
-    }
-
-    private function releaseChatSlot(?string $path): void {
-        $this->releaseChatRequestSlot($path, $this->lockingProvider, $this->logger);
     }
 
     private function requireUser(): ?string {
@@ -190,126 +162,6 @@ class ApiController extends OCSController {
         // the consumed confirmation as a completed failure instead of offering
         // a retry that the idempotency guard must reject.
         return new ErrorDataResponse($result);
-    }
-
-    #[NoAdminRequired]
-    public function streamChat(): StreamTraversableResponse {
-        $user = $this->requireUser();
-        $input = fopen('php://input', 'rb');
-        $rawBody = $input !== false ? stream_get_contents($input, 12 * 1024 * 1024 + 1) : false;
-        if (is_resource($input)) fclose($input);
-        if (is_string($rawBody) && strlen($rawBody) > 12 * 1024 * 1024) {
-            return new StreamTraversableResponse(new \ArrayIterator([json_encode(['type' => 'error', 'message' => 'Chat request exceeds the 12 MB limit.']) . "\n"]), 413, ['Content-Type' => 'application/x-ndjson', 'Cache-Control' => 'no-cache, no-store, must-revalidate']);
-        }
-        $body = is_string($rawBody) ? json_decode($rawBody, true) : null;
-        $request = null;
-        if ($user !== null) {
-            try {
-                $request = ChatCompletionRequest::fromArray(is_array($body) ? $body : []);
-            } catch (\InvalidArgumentException $e) {
-                return new StreamTraversableResponse(new \ArrayIterator([json_encode(['type' => 'error', 'message' => $e->getMessage()]) . "\n"]), 400, ['Content-Type' => 'application/x-ndjson', 'Cache-Control' => 'no-cache, no-store, must-revalidate']);
-            }
-        }
-        if ($user !== null && ($limited = $this->rateLimitResponse($user, 'stream', $this->config->getInt('rate_limit_stream_per_minute', 10))) !== null) {
-            return new StreamTraversableResponse(new \ArrayIterator([json_encode(['type' => 'error', 'message' => 'Too many requests. Please retry shortly.']) . "\n"]), 429, ['Content-Type' => 'application/x-ndjson', 'Retry-After' => '60', 'Cache-Control' => 'no-cache, no-store, must-revalidate']);
-        }
-        // Resolve potentially failing storage reads before acquiring the slot.
-        $scopePath = $this->scopePathFor($user, $request?->chatId);
-        $custom = $this->customFor($user, $request?->chatId);
-        try { $chatSlot = $user !== null ? $this->acquireChatSlot($user) : null; }
-        catch (\Throwable) {
-            return new StreamTraversableResponse(new \ArrayIterator([json_encode(['type' => 'error', 'message' => 'Chat is temporarily unavailable. Please retry shortly.']) . "\n"]), 503, ['Content-Type' => 'application/x-ndjson']);
-        }
-        if ($user !== null && $chatSlot === null) {
-            return new StreamTraversableResponse(new \ArrayIterator([json_encode(['type' => 'error', 'message' => 'Another chat request is already running. Please retry shortly.']) . "\n"]), 429, ['Content-Type' => 'application/x-ndjson', 'Retry-After' => '5']);
-        }
-        $message = $request?->message ?? '';
-        $history = $request?->history ?? [];
-        $images = $request?->images ?? [];
-        $model = $request?->model;
-        if ($user !== null && $message !== '') {
-            $this->releaseSessionLock();
-        }
-        $generator = $this->streamEvents($user, $message, $history, $images, $model, $scopePath, $custom, $chatSlot);
-
-        return new StreamTraversableResponse($generator, 200, [
-            'Content-Type' => 'application/x-ndjson',
-            'Cache-Control' => 'no-cache, no-store, must-revalidate',
-            'X-Accel-Buffering' => 'no',
-        ]);
-    }
-
-
-    private function streamEvents(?string $user, string $message, array $history, array $images, ?string $model, string $scopePath, array $custom, ?string $chatSlot): \Generator {
-        // Flush each frame in web requests; preserve CLI test-runner buffers.
-        $gen = null;
-        $terminal = null;
-        try {
-            if (!in_array(PHP_SAPI, ['cli', 'phpdbg'], true)) while (ob_get_level() > 0) @ob_end_flush();
-            if ($user === null) {
-                yield json_encode(['type' => 'error', 'message' => 'Not logged in']) . "\n";
-                return;
-            }
-            if ($this->clientDisconnected()) return;
-            $gen = $this->ragService->askStream(new \OCA\EvaAi\Dto\ChatRequest(
-                userId: $user,
-                message: $message,
-                history: $history,
-                scopePath: $scopePath,
-                instructions: $custom['instructions'],
-                persona: $custom['persona'],
-                images: $images,
-                model: $model,
-            ));
-            foreach ($gen as $line) {
-                if ($this->clientDisconnected()) {
-                    return;
-                }
-                $ev = json_decode((string)$line, true);
-                if (is_array($ev) && in_array($ev['type'] ?? '', ['done', 'confirmation', 'error'], true)) {
-                    if (($ev['type'] ?? '') === 'done') {
-                        $answer = (string)($ev['answer'] ?? '');
-                        if ($answer !== '' && $this->config->get('notify_on_complete') === '1') $this->sendAnswerNotification($user, $answer);
-                    }
-                    // Close the producer and release coordination BEFORE the
-                    // browser sees a terminal event and can send again.
-                    $terminal = $line;
-                    break;
-                }
-                yield $line;
-                if ($this->clientDisconnected()) return;
-            }
-        } finally {
-            // Dropping the generator reference closes nested stream
-            // resources on every supported PHP version.
-            $gen = null;
-            $this->releaseChatSlot($chatSlot);
-        }
-        if ($terminal !== null && !$this->clientDisconnected()) yield $terminal;
-    }
-
-    private function clientDisconnected(): bool {
-        return function_exists('connection_aborted') && connection_aborted() > 0;
-    }
-
-    private function sendAnswerNotification(string $user, string $text): void {
-        try {
-            $manager = \OCP\Server::get(\OCP\Notification\IManager::class);
-            if (!$this->appManager->isInstalled('notifications')) {
-                return;
-            }
-            $url = \OCP\Server::get(\OCP\IURLGenerator::class)->linkToRouteAbsolute('eva_ai.page.app');
-            $notification = $manager->createNotification();
-            $notification->setApp('eva_ai')
-                ->setUser($user)
-                ->setObject('chat', 'answer')
-                ->setSubject('answer_ready', ['text' => mb_strimwidth($text, 0, 400, '…')])
-                ->setLink($url)
-                ->setDateTime(new \DateTime());
-            $manager->notify($notification);
-        } catch (\Throwable $e) {
-            // Notifications must never break the chat stream.
-        }
     }
 
     #[NoAdminRequired]

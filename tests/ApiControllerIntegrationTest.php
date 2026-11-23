@@ -8,6 +8,7 @@ use OCA\EvaAi\BackgroundJob\IndexRequestJob;
 use OCA\EvaAi\Controller\ApiController;
 use OCA\EvaAi\Controller\BackgroundChatController;
 use OCA\EvaAi\Controller\ChatGenerationController;
+use OCA\EvaAi\Controller\ChatStreamController;
 use OCA\EvaAi\Controller\DocumentController;
 use OCA\EvaAi\Controller\IndexController;
 use OCA\EvaAi\Controller\SettingsController;
@@ -75,7 +76,7 @@ final class ApiControllerIntegrationTest extends TestCase {
     public function testStreamReleasesProducerAndSlotBeforeEveryTerminalEvent(): void {
         foreach (['done', 'confirmation', 'error'] as $type) {
             $stored = []; $dependencies = [];
-            $controller = $this->controller('alice', [], $dependencies, $stored);
+            $controller = $this->chatStreamController('alice', [], $dependencies, $stored);
             $held = true; $closed = false;
             $dependencies['lockingProvider']->expects(self::once())->method('releaseLock')
                 ->willReturnCallback(static function () use (&$held): void { $held = false; });
@@ -83,7 +84,7 @@ final class ApiControllerIntegrationTest extends TestCase {
                 try { yield json_encode(['type' => $type, 'answer' => 'Finished']) . "\n"; }
                 finally { $closed = true; }
             });
-            $factory = new \ReflectionMethod(ApiController::class, 'streamEvents');
+            $factory = new \ReflectionMethod(ChatStreamController::class, 'streamEvents');
             $events = [];
             foreach ($factory->invoke($controller, 'alice', 'Hello', [], [], null, '', ['instructions' => '', 'persona' => ''], 'test-slot') as $line) {
                 self::assertFalse($held, 'The next request must be allowed before a terminal event reaches the browser.');
@@ -96,7 +97,7 @@ final class ApiControllerIntegrationTest extends TestCase {
 
     public function testOutputFailureReleasesStreamSlotBeforeReportingFailure(): void {
         $stored = []; $dependencies = [];
-        $controller = $this->controller('alice', [], $dependencies, $stored);
+        $controller = $this->chatStreamController('alice', [], $dependencies, $stored);
         $held = true;
         $dependencies['lockingProvider']->expects(self::once())->method('releaseLock')
             ->willReturnCallback(static function () use (&$held): void { $held = false; });
@@ -104,7 +105,7 @@ final class ApiControllerIntegrationTest extends TestCase {
             yield "{\"type\":\"content\",\"delta\":\"partial\"}\n";
             yield "{\"type\":\"done\",\"answer\":\"Finished\"}\n";
         });
-        $factory = new \ReflectionMethod(ApiController::class, 'streamEvents');
+        $factory = new \ReflectionMethod(ChatStreamController::class, 'streamEvents');
         $response = new StreamTraversableResponse($factory->invoke($controller, 'alice', 'Hello', [], [], null, '', ['instructions' => '', 'persona' => ''], 'test-slot'));
         $calls = 0;
         $output = $this->createMock(IOutput::class);
@@ -185,11 +186,11 @@ final class ApiControllerIntegrationTest extends TestCase {
 			$cacheFactory, $backgroundChatQueue, $logger,
 		);
 
-		$dependencies = compact('request', 'documentMapper', 'ollama', 'config', 'rag', 'executor', 'indexer', 'jobList', 'lockingProvider', 'chatStore', 'knowledgeInitializer', 'providerCredentials', 'settingsPersistence', 'modelSelectionValidator', 'lockGuard', 'cacheFactory', 'logger', 'backgroundChatQueue');
+		$dependencies = compact('request', 'documentMapper', 'ollama', 'config', 'rag', 'executor', 'indexer', 'jobList', 'lockingProvider', 'chatStore', 'appManager', 'knowledgeInitializer', 'providerCredentials', 'settingsPersistence', 'modelSelectionValidator', 'lockGuard', 'cacheFactory', 'logger', 'backgroundChatQueue');
 		return new ApiController(
 			'eva_ai', $request, $userId, $config, $rag, $executor, $ollama,
-			$jobList, $lockingProvider, $chatStore, $appManager,
-			$userDataService, $chatLearner, $cacheFactory, $indexScheduler, $usageMetrics,
+			$jobList, $chatStore,
+			$userDataService, $chatLearner, $indexScheduler, $usageMetrics,
 			$logger, $systemController,
 		);
 	}
@@ -229,6 +230,16 @@ final class ApiControllerIntegrationTest extends TestCase {
 		return new ChatGenerationController(
 			'eva_ai', $dependencies['request'], $userId, $dependencies['config'], $dependencies['rag'],
 			$dependencies['chatStore'], $dependencies['lockingProvider'], $dependencies['cacheFactory'], $dependencies['logger'],
+		);
+	}
+
+	/** @param array<string,mixed> $params @param array<string,mixed> $dependencies @param array<string,mixed> $storedValues */
+	private function chatStreamController(?string $userId, array $params, array &$dependencies, array &$storedValues): ChatStreamController {
+		$this->controller($userId, $params, $dependencies, $storedValues);
+		return new ChatStreamController(
+			'eva_ai', $dependencies['request'], $userId, $dependencies['config'], $dependencies['rag'],
+			$dependencies['chatStore'], $dependencies['appManager'], $dependencies['lockingProvider'],
+			$dependencies['cacheFactory'], $dependencies['logger'],
 		);
 	}
 
