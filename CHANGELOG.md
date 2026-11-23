@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Preserve audio Assistant sources
+
+- Return the audio ContextAgent's RAG source names through TaskProcessing so the official Assistant can display citations for voice conversations too.
+
 ### Preserve multimodal Assistant sources
 
 - Keep RAG source names in multimodal ContextAgent results so the official Assistant can show file citations alongside image-aware answers.

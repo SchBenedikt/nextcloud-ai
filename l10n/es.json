@@ -553,6 +553,7 @@
         "Something went wrong": "Algo salió mal",
         "Sort": "Ordenar",
         "Sources": "Fuentes",
+        "Names of the EVA knowledge sources used to answer the chat message.": "Nombres de las fuentes de conocimiento de EVA usadas para responder al mensaje.",
         "Sources per answer": "Fuentes por respuesta",
         "Sources:": "Fuentes:",
         "Start": "Iniciar",
