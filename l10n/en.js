@@ -640,6 +640,7 @@ OC.L10N.register("eva_ai", {
   "Optionally use a separate, usually larger model for summaries, translations and proofreading. Leave empty to reuse the chat model.": "Optionally use a separate, usually larger model for summaries, translations and proofreading. Leave empty to reuse the chat model.",
   "Organisation": "Organisation",
   "Overview": "Overview",
+  "Review the sections below to configure your EVA experience.": "Review the sections below to configure your EVA experience.",
   "Try EVA": "Try EVA",
   "Make your next step effortless": "Make your next step effortless",
   "Start with a focused request — EVA can search, understand and act across your Nextcloud.": "Start with a focused request — EVA can search, understand and act across your Nextcloud.",

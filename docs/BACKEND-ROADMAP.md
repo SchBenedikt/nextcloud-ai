@@ -202,6 +202,11 @@ using native Nextcloud components and the existing compact page widths. Do not
 expose dormant backend flags as working user features or add chat-header controls
 for infrastructure concerns.
 
+The settings workspace now opens on a translated overview of its six main
+categories, with keyboard-accessible section cards and preserved direct section
+links. This gives new users a guided entry point without hiding the existing
+advanced controls.
+
 | Backend stage | Matching interface deliverable |
 | --- | --- |
 | 07–08 | Shared offline storage status in EVA administration and Nextcloud administration settings: actual search mode, connection configuration, cleanup state and actionable queue counts. Errors remain unknown, never a healthy zero. No automatic external probes. |

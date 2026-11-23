@@ -2,6 +2,11 @@
 
 ## [Unreleased]
 
+### Add a guided settings overview
+
+- Open the settings workspace on a category overview with clear, keyboard-accessible cards for each native settings section.
+- Keep direct section links and deep links working, and provide English and German copy for the new entry point.
+
 ### Move chat regeneration into the generation controller
 
 - Route edited and regenerated chat replies through `ChatGenerationController`, keeping the NDJSON stream, conflict token, and existing endpoint path intact.

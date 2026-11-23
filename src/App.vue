@@ -172,7 +172,7 @@ export default {
 	setup() {
 
 		const view = ref('home')
-		const settingsSection = ref('general')
+		const settingsSection = ref('overview')
 		const fileContextIds = ref([])
 		// The navigation composable reads the dashboard query parameter via
 		// params.get('chat') and preserves the existing deep-link contract.
@@ -184,7 +184,7 @@ export default {
 		const currentChatData = ref(null)
 		const { initialChatParam, navigate } = useNavigation({ currentChat, view, fileContextIds, settingsSection })
 		const settingsMounted = ref(view.value === 'settings')
-		function openSettings(section = 'general') {
+		function openSettings(section = 'overview') {
 			settingsMounted.value = true
 			navigate('settings', section)
 		}

@@ -39,6 +39,7 @@
 				</div>
 				<NcButton variant="secondary" :loading="stopping" :disabled="status?.indexStopping" @click="stopIndex">{{ $t('Stop indexing') }}</NcButton>
 			</div>
+			<SettingsOverview v-if="active && group === 'overview'" :sections="settingsOverviewSections" @navigate="$emit('navigate', $event)" />
 			<fieldset v-if="active" class="settings-fieldset" :disabled="group === 'automation' ? briefingsLocked : formLocked">
 				<GeneralSettings v-if="group === 'general'" />
 				<KnowledgeSettings v-if="group === 'knowledge'" />
@@ -69,6 +70,7 @@
 import { computed, defineAsyncComponent, onBeforeUnmount, provide, toRef, watch } from 'vue'
 import { NcButton, NcModal, NcNoteCard } from '@nextcloud/vue'
 import SettingsDiagnostics from '../components/settings/SettingsDiagnostics.vue'
+import SettingsOverview from '../components/settings/SettingsOverview.vue'
 import { settingsSections } from '../lib/settings-sections'
 import { useEvaSettings } from '../composables/useEvaSettings'
 const GeneralSettings = defineAsyncComponent(() => import('../components/settings/GeneralSettings.vue'))
@@ -80,12 +82,13 @@ const AdvancedSettings = defineAsyncComponent(() => import('../components/settin
 
 export default {
 	name: 'SettingsView',
-	components: { SettingsDiagnostics, NcButton, NcModal, NcNoteCard, GeneralSettings, KnowledgeSettings, ToolsSettings, AutomationSettings, PersonalSettings, AdvancedSettings },
+	components: { SettingsDiagnostics, SettingsOverview, NcButton, NcModal, NcNoteCard, GeneralSettings, KnowledgeSettings, ToolsSettings, AutomationSettings, PersonalSettings, AdvancedSettings },
 	props: { section: { type: String, default: 'general' }, active: { type: Boolean, default: true } },
 	emits: ['navigate'],
 	setup(props) {
 		const state = useEvaSettings({ section: toRef(props, 'section'), active: toRef(props, 'active') })
 		const currentSection = computed(() => settingsSections.find(item => item.id === props.section) || settingsSections[0])
+		const settingsOverviewSections = settingsSections.filter(section => section.id !== 'overview')
 		provide('eva-settings', state)
 		let unloadGuardInstalled = false
 		const warnBeforeUnload = event => {
@@ -109,7 +112,7 @@ export default {
 		onBeforeUnmount(() => {
 			if (unloadGuardInstalled) window.removeEventListener('beforeunload', warnBeforeUnload)
 		})
-		return { ...state, currentSection }
+		return { ...state, currentSection, settingsOverviewSections }
 	},
 }
 </script>
