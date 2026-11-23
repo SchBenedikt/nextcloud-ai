@@ -21,6 +21,7 @@ use OCA\EvaAi\Dto\ChatAppendResponse;
 use OCP\AppFramework\OCSController;
 use OCP\AppFramework\Http\Attribute\NoAdminRequired;
 use OCA\EvaAi\Http\ErrorDataResponse;
+use OCA\EvaAi\Http\StreamTraversableResponse;
 use OCP\AppFramework\Http\DataResponse;
 use OCP\BackgroundJob\IJobList;
 use OCP\IRequest;
