@@ -382,8 +382,7 @@ replaced by a successful build or an adapter unit test.
   production data migration has occurred. Validation and production rollout
   remain separately recorded. Version 1.20.9 starts the controller split by
   moving user-scoped document inspection to a focused OCS controller with the
-  same URLs and permission checks; the remaining API controller domains still
-need incremental extraction. Version 1.20.10 moves connector and plugin API
+  same URLs and permission checks. Version 1.20.10 moves connector and plugin API
   operations into `IntegrationController`; chat and file-context domains still
   now use `FileContextController`. Version 1.20.11 moves queued-chat
   admission and lifecycle endpoints behind `BackgroundChatController`, sharing
@@ -404,8 +403,9 @@ generation to `ChatGenerationController`, and move NDJSON streaming to
 `ChatStreamController`. Completed-turn and message append writes now also live
 in `ChatHistoryController`, alongside owner-scoped history reads and lifecycle
 operations. These slices preserve existing OCS paths and owner-scoped
-behavior. Chat scope and prompt settings are shared through
-`ChatContextResolver`; chat regeneration remains in `ApiController`.
+behavior. Saved prompt template APIs now live in `ChatTemplateController`.
+Chat scope and prompt settings are shared through `ChatContextResolver`; chat
+regeneration remains in `ApiController`.
 
 ### Stage 14 portability slice: Activity and Mail SQL (1.18.60)
 

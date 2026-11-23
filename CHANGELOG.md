@@ -2,6 +2,11 @@
 
 ## [Unreleased]
 
+### Move saved prompt templates into a dedicated controller
+
+- Route template listing, CRUD, import/export, and use operations through an owner-scoped `ChatTemplateController` while preserving the existing API paths and response shapes.
+- Remove prompt-template storage responsibilities from `ApiController`.
+
 ### Move chat history writes into the history controller
 
 - Move completed-turn and message append endpoints into the owner-scoped ChatHistoryController while keeping their API paths, validation, revision conflicts, and learning behavior.
