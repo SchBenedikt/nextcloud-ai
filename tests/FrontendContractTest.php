@@ -248,13 +248,15 @@ final class FrontendContractTest extends TestCase {
         self::assertStringContainsString('public function renameFolder(string $user, string $from, string $to): bool', (string)file_get_contents(__DIR__ . '/../lib/Service/ChatStore.php'));
         self::assertStringContainsString('public function deleteFolder(string $user, string $name): bool', (string)file_get_contents(__DIR__ . '/../lib/Service/ChatStore.php'));
         self::assertStringContainsString('public function listFolders(string $user): array', (string)file_get_contents(__DIR__ . '/../lib/Service/ChatStore.php'));
-        self::assertStringContainsString('api#chatMeta', (string)file_get_contents(__DIR__ . '/../appinfo/routes.php'));
-        self::assertStringContainsString('api#folders', (string)file_get_contents(__DIR__ . '/../appinfo/routes.php'));
-        self::assertStringContainsString('public function chatMeta(string $id): DataResponse', (string)file_get_contents(__DIR__ . '/../lib/Controller/ApiController.php'));
-        self::assertStringContainsString('public function folders(): DataResponse', (string)file_get_contents(__DIR__ . '/../lib/Controller/ApiController.php'));
-        self::assertStringContainsString('public function createFolder(): DataResponse', (string)file_get_contents(__DIR__ . '/../lib/Controller/ApiController.php'));
-        self::assertStringContainsString('public function renameFolder(): DataResponse', (string)file_get_contents(__DIR__ . '/../lib/Controller/ApiController.php'));
-        self::assertStringContainsString('public function deleteFolder(): DataResponse', (string)file_get_contents(__DIR__ . '/../lib/Controller/ApiController.php'));
+        $routes = (string)file_get_contents(__DIR__ . '/../appinfo/routes.php');
+        $organizationController = (string)file_get_contents(__DIR__ . '/../lib/Controller/ChatOrganizationController.php');
+        self::assertStringContainsString('chatOrganization#chatMeta', $routes);
+        self::assertStringContainsString('chatOrganization#folders', $routes);
+        self::assertStringContainsString('public function chatMeta(string $id): DataResponse', $organizationController);
+        self::assertStringContainsString('public function folders(): DataResponse', $organizationController);
+        self::assertStringContainsString('public function createFolder(): DataResponse', $organizationController);
+        self::assertStringContainsString('public function renameFolder(): DataResponse', $organizationController);
+        self::assertStringContainsString('public function deleteFolder(): DataResponse', $organizationController);
 
         $documents = (string)file_get_contents(__DIR__ . '/../src/views/DocumentsView.vue');
         self::assertStringContainsString('width: min(100%, 1080px);', (string)file_get_contents(__DIR__ . '/../src/styles/settings.scss'));
