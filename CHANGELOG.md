@@ -2,6 +2,11 @@
 
 ## [Unreleased]
 
+### Isolate scheduled briefing operations
+
+- Move briefing history and manual queue admission into an owner-scoped `BriefingController` while keeping both API paths and all scheduling checks.
+- Remove stale chat-storage error handling and unused scheduler/metrics/job dependencies from `ApiController`.
+
 ### Isolate confirmed tool execution
 
 - Move the web confirmation endpoint into `ToolExecutionController` and keep its owner check, policy reset, idempotency claim and structured execution result.
