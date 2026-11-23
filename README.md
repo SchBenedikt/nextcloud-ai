@@ -1,189 +1,159 @@
-# EVA — Your AI assistant for Nextcloud
+# EVA — AI that works inside Nextcloud
 
-**Ask questions about your files. Get answers with sources. Take action across
-Nextcloud when you approve it.** EVA brings AI into the workspace you already
-use, including the official Nextcloud Assistant, Files, Mail, Calendar,
-Contacts, Tasks, Shares and Talk.
+**Find answers in your files. Get help with everyday work. Keep every change
+under your control.** EVA brings AI into the Nextcloud workspace you already
+use, with cited document answers, native Assistant integration and tools for
+Files, Mail, Calendar, Contacts, Tasks and Talk.
 
-Keep document search on Nextcloud's built-in SQL index, connect local or hosted
-models, and enable only the integrations you need. A separate vector database
-is optional.
+Start with Nextcloud's built-in SQL search index. Choose local or hosted AI
+models. Turn on only the integrations you need. No separate vector database is
+required.
 
 [![Tests](https://github.com/SchBenedikt/nextcloud-ai/actions/workflows/tests.yml/badge.svg?branch=main)](https://github.com/SchBenedikt/nextcloud-ai/actions/workflows/tests.yml)
 [![License: AGPL v3](https://img.shields.io/badge/License-AGPL%20v3-blue.svg)](LICENSE)
 [![Nextcloud](https://img.shields.io/badge/Nextcloud-30--36-blue)](appinfo/info.xml)
 
 [Install EVA](https://apps.nextcloud.com/apps/eva_ai) ·
-[Try the quick start](docs/QUICKSTART.md) · [Documentation](docs/README.md) ·
-[Report a problem](https://github.com/SchBenedikt/nextcloud-ai/issues)
+[Quick start](docs/QUICKSTART.md) · [Documentation](docs/README.md) ·
+[Ask a question or report a problem](https://github.com/SchBenedikt/nextcloud-ai/issues)
 
-## Get useful answers from your own Nextcloud
+## A more useful Nextcloud workspace
 
-EVA helps people and teams find information and get routine work done without
-copying content into a separate chatbot. Ask a general question, find a fact in
-an indexed document, or prepare a change to review. File answers include the
-sources EVA used. AI-proposed changes to Nextcloud data require your confirmation
-before they run.
+EVA is for people who want AI help with the information and services they
+already manage in Nextcloud—and for administrators who want to choose where AI
+runs and what it can access.
 
-### Start in three steps
-
-1. **Install EVA** from the Nextcloud App Store and enable it.
-2. **Choose a chat model** in **EVA → Settings → Models**. The default is
-   `gemma4:cloud` through Ollama Cloud. To keep chat inference on your own
-   infrastructure, choose a model installed on your local Ollama server.
-3. **Ask a question**, then index a small Files folder and ask something you
-   can verify in the cited source. Add Mail, Talk, web search or write actions
-   only when you need them.
-
-### Work where your files and conversations already are
-
-- Ask questions about indexed Files, Mail and opted-in Talk conversations; open
-  a file directly with EVA for a focused answer.
-- Use the official Nextcloud Assistant with EVA's native task providers for
-  chat, writing, translation, audio and image tasks.
-- Search and work with Calendar, Contacts, Tasks, Shares and Talk through
-  Nextcloud services.
-- Review AI-proposed changes and confirm them before EVA carries them out.
-
-The home screen keeps recent chats close by. Settings are grouped into Models,
-Documents, Tools & permissions, Automation, Personal & data, and Advanced.
-Optional integrations load when you open their section.
-
-Ask EVA **“What can you do?”** to see which actions are available in your
-Nextcloud setup.
-
-![EVA answering "What can you do?" with its files, calendar, tasks, contacts and mail actions](screenshots/eva-capabilities.png)
+- **Find information you can verify.** Ask questions about indexed documents
+  and follow source references back to the files EVA used.
+- **Get work ready for your review.** Draft or update supported Nextcloud data
+  with an explicit confirmation before changes are applied.
+- **Work in context.** Open a file with EVA, use EVA in the official Nextcloud
+  Assistant, or add it to a Talk conversation.
+- **Choose your AI setup.** Use Ollama, Groq or a compatible hosted or
+  self-hosted model. Keep document search in Nextcloud's built-in SQL database;
+  connect Qdrant only if you need its optional vector search.
+- **Enable capabilities deliberately.** Mail, Talk, web search, image search,
+  connectors and write tools have separate settings and data flows.
 
 ![EVA home with a direct message input and recent conversations](screenshots/eva-home.png)
 
-![A conversation with the compact header](screenshots/eva-chat.png)
+## Get started in three steps
 
-## Deep Nextcloud integration and the Nextcloud Assistant
+1. **Install EVA** from the [Nextcloud App Store](https://apps.nextcloud.com/apps/eva_ai)
+   and enable it in Nextcloud.
+2. **Choose a chat model** in **EVA → Settings → Models**. The default
+   `gemma4:cloud` model uses Ollama Cloud. To keep chat inference on your own
+   infrastructure, choose a model installed on your local Ollama server.
+3. **Ask a question**, then index a small Files folder and try a question you
+   can check against a cited source. Add other integrations when you need them.
 
-EVA is not an external chatbot next to Nextcloud — it is woven into it:
+See the [quick start](docs/QUICKSTART.md) for provider setup, document
+indexing, background jobs and troubleshooting.
 
-- **Nextcloud Assistant**: EVA registers native TaskProcessing providers for
-  the official Assistant app. An administrator selects **Eva · ...** as the
-  preferred provider for each desired task type in **Administration → AI →
-  Unified task processing**. Once selected, users can chat with indexed files
-  directly in the Assistant sidebar. On Nextcloud 35 and newer, EVA streams
-  Context Agent, core RAG, and text or multimodal chat-with-tools replies into
-  the Assistant as they are generated, including post-confirmation summaries.
-  Ollama, Groq and OpenAI-compatible profiles stream live text when their
-  endpoint supports streaming. Tool calls stay buffered until complete and
-  continue to follow EVA's permission policy. Older supported versions keep
-  the synchronous provider contract. Remembered
-  conversations personalize replies, and the Assistant's chat-specific
-  instructions, personal skills and administrator-provided global skills apply
-  to EVA's native chat and agent conversations. EVA reads personal skills
-  through its normal user-scoped file tool and loads global skills through a
-  bounded read-only tool, while action permissions and confirmation rules
-  remain in force. Use EVA for
-  text work (translate, summarize, proofread, formalize, reformulate, headlines, topics,
-  emoji), audio
-  (transcription, subtitles, text-to-speech, audio chat) and images (OCR, image
-  analysis, text-to-image and stickers). Scheduled tasks
-  can trigger EVA, and the Assistant can propose file, calendar, mail and task
-  actions that you confirm before anything runs.
-- **Files**: open with EVA from the file menu for a focused file conversation,
-  index documents, mails and Talk conversations, and let EVA create, move,
-  rename, share or comment on files.
-- **Talk**: add EVA as a bot to a Talk conversation, or let EVA read and post
-  messages in rooms on your behalf (off by default, enabled per user).
-- **Search**: EVA appears in the unified Nextcloud search for your indexed
-  content.
-- **Admin**: native settings show which Assistant task types are enabled and
-  routed to EVA, alongside OpenMetrics exporters and OCC commands for standard
-  Nextcloud operations.
+## What you can do
 
-![EVA powering the official Nextcloud Assistant with chat and scheduled tasks](screenshots/eva-nextcloud-assistant.png)
+### Ask questions about your Nextcloud files
+
+EVA extracts supported text, PDF, Office and OpenDocument files, then combines
+semantic and keyword retrieval. Answers can include references to the source
+files. Inspect indexed content, search the index, and open a file directly with
+EVA for a focused conversation. Some file formats need optional extraction
+utilities; see [supported features](docs/FEATURES.md).
+
+![EVA answering a question with references to indexed files](screenshots/eva-chat.png)
+
+### Use the official Nextcloud Assistant
+
+EVA provides native TaskProcessing providers for supported Nextcloud Assistant
+tasks. An administrator selects which task types use EVA in **Administration
+→ AI → Unified task processing**. The available tasks depend on the Nextcloud
+version and configured providers; they include chat, writing, translation,
+audio and image tasks. On Nextcloud 35 and newer, supported chat and agent
+replies can stream as they are generated. When the official Assistant app is
+enabled and configured, its chat instructions and personal or
+administrator-provided skills are available in EVA's native chat and agent
+conversations.
+
+Assistant actions still follow EVA's permission policy. Read-only tools stay
+read-only, and supported changes require explicit confirmation. EVA's admin
+settings show which supported task types are enabled and currently routed to
+EVA. See [Assistant setup](docs/QUICKSTART.md) and the
+[feature guide](docs/FEATURES.md).
+
+![EVA powering the official Nextcloud Assistant](screenshots/eva-nextcloud-assistant.png)
+
+### Work with Nextcloud services
+
+Depending on enabled tools and your permissions, EVA can help you:
+
+- Find, read, create, rename, move, copy and delete files; create Markdown
+  notes; and manage shares, comments, tags and file versions.
+- Search calendars and events, prepare changes, and find free time.
+- Search and summarize Mail, and create or manage contacts and tasks.
+- Read and post in Talk rooms you choose.
+- Search the web for current information and display linked image results.
+- Run scheduled briefings, connect external services, or extend EVA with
+  plugins and scoped API keys.
+
+In interactive chat and confirmed Assistant workflows, supported write actions
+require your confirmation before EVA applies them. Talk and unconfirmed
+Assistant suggestions remain read-only. Optional integrations have separate
+controls; review them before enabling. Ask EVA
+**“What can you do?”** to see the capabilities available in your setup.
+
+![EVA showing available Nextcloud actions](screenshots/eva-capabilities.png)
 
 ## Choose where AI runs
 
-Use EVA's built-in Ollama and Groq integrations, or add compatible profiles for
-OpenAI, Google Gemini, Mistral, DeepSeek, OpenRouter, Together AI, xAI, LM
-Studio, vLLM and other servers implementing Chat Completions. Configure each
-profile with a name, API address, model and encrypted key. No JSON editing is
-needed.
+Use the built-in Ollama and Groq integrations, or configure compatible
+profiles for OpenAI, Google Gemini, Mistral, DeepSeek, OpenRouter, Together AI,
+xAI, LM Studio, vLLM and other Chat Completions services. Each profile has its
+own endpoint, model and encrypted key. Models and supported features vary by
+provider.
 
-Profiles have separate keys and support multiple configurations of the same
-service. Local servers can explicitly disable key authentication. Available
-models, tool support and image/audio capabilities depend on the provider.
-See the [provider guide](docs/PROVIDERS.md).
-
-Chat and document embeddings are configured separately. The default chat model
-is `gemma4:cloud`, which sends chat requests to Ollama Cloud. The default
-embedding endpoint is the configured Ollama server; indexing sends extracted
-file text there. You can choose a local chat model and keep embeddings on the
-local Ollama server, or explicitly route either workload to a compatible
-hosted profile. Review both destinations before indexing sensitive content.
+Chat and document embeddings use separate provider settings. The default chat
+model sends requests to Ollama Cloud; the default embedding destination is the
+configured Ollama server. You can select local models or explicitly route
+either workload to a compatible hosted profile. Review both destinations
+before indexing sensitive content. See the [provider guide](docs/PROVIDERS.md).
 
 ![EVA provider profile form](screenshots/eva-provider-profiles.png)
 
-Previews show the workspace components with synthetic conversation data in a
-test shell using Nextcloud core styles. They do not contain private account data.
+## Privacy and control
 
-Automatic file-search generations use the embedding destination independently
-of the chat provider. A compatible profile can optionally configure its own
-embedding model and dimensions; selecting it sends indexed file text to that
-endpoint. See [generation embeddings](docs/GENERATION-EMBEDDINGS.md).
+- The default document index uses Nextcloud's SQL database. An external vector
+  database is optional.
+- Indexing sends extracted document text to the configured embedding provider.
+- Chat sends prompts, relevant excerpts, conversation context and tool results
+  to the selected chat provider. The default chat model is hosted by Ollama
+  Cloud; choose a local model for local chat inference.
+- Web search, image search, Mail, Talk and external connectors have separate
+  data flows and remain off until enabled.
+- API keys are encrypted separately per user. EVA adds no third-party analytics.
 
-## Ask about your documents
+Optional Qdrant BM25 stores chunk text remotely; read the
+[Qdrant privacy and setup notes](docs/QDRANT.md) before enabling it. Download
+your EVA data archive from **Personal & data**. Imported chat archives receive
+new IDs and do not overwrite existing chats. AI can make mistakes: verify
+answers against the cited sources and review proposed changes before approving
+them.
 
-EVA extracts supported text, PDF, Office, OpenDocument and other file formats,
-then combines semantic and keyword retrieval. File answers can link to their
-sources so you can verify the response. Optional extraction utilities are
-needed for some formats; see [Features](docs/FEATURES.md).
+Read the full [privacy guide](docs/PRIVACY.md),
+[security model](docs/SECURITY.md) and [configuration reference](docs/CONFIGURATION.md).
 
-Use Documents to inspect the index and extracted text — with search, filters and
-the extracted text per file — or choose **Open with EVA** from Files for a
-focused file conversation. Background indexing continues when you leave the
-page.
+## Requirements and installation
 
-![The EVA documents view listing indexed files, types, sizes, chunks and status](screenshots/eva-documents-index.png)
+- Nextcloud 30–36
+- PHP 8.2 or newer
+- Ollama reachable from the Nextcloud server, or a configured hosted provider
 
-## Everyday Nextcloud work, with your approval
+The [app manifest](appinfo/info.xml) defines the supported versions. Install
+EVA from the [Nextcloud App Store](https://apps.nextcloud.com/apps/eva_ai), then
+follow the [quick start](docs/QUICKSTART.md). Configure Nextcloud background
+jobs for indexing, scheduled work and queued Assistant tasks.
 
-EVA works with the real Nextcloud services through their APIs. Every write
-action asks for your confirmation before it runs. Highlights:
-
-- **Files & knowledge**: search, read, create, rename, move, copy, checksum and
-delete files, create Markdown notes, keep a KNOWLEDGE.md memory, manage shares
-(public links or users), comments, system tags and file versions.
-- **Calendar**: list calendars and events, create, update and delete events, and
-find free slots for a meeting.
-- **Mail**: search, list and read mails, count unread messages and summarize your
-inbox (mails are also indexable for semantic search).
-- **Tasks & Contacts**: create, update, complete and delete tasks; search,
-create, update and delete contacts, and manage your own profile.
-- **Talk**: list rooms, read chats and post messages into Nextcloud Talk.
-- **Web search & images**: search the web for current information and show
-images from the internet directly in the chat, with the source page always
-cited.
-- **Briefings & scheduling**: scheduled briefings and Nextcloud Assistant
-scheduled tasks, plus recent activity and weather on request.
-- **Extensibility**: terminal commands, generic Nextcloud App API calls and
-external connectors for services beyond Nextcloud.
-
-Web search, image search and external connectors have separate data flows —
-review permissions and privacy switches before enabling them.
-
-![EVA showing images fetched from the web in the chat, with sources](screenshots/eva-image-search.png)
-
-Scheduled briefings, usage metrics, background runs, extensions and scoped API
-keys remain available through the relevant settings sections. Export chats as
-Markdown, text, HTML or DOCX, print to PDF, or create a batch archive. A compatible
-provider can also generate and edit images in your EVA folder in Files. On
-Nextcloud 36, image editing is available through TaskProcessing when the active
-OpenAI-compatible provider supports image edits.
-
-## Install and configure
-
-Install from the [Nextcloud App Store](https://apps.nextcloud.com/apps/eva_ai),
-then follow the [quick start](docs/QUICKSTART.md). EVA supports Nextcloud 30–36
-and PHP 8.2 or newer; the [app manifest](appinfo/info.xml) is authoritative.
-
-For a source installation, use Node.js from [.nvmrc](.nvmrc), PHP 8.2+ and Composer:
+For a source installation, use the Node.js version in [.nvmrc](.nvmrc), PHP
+8.2+ and Composer:
 
 ```bash
 composer install --no-dev --prefer-dist
@@ -191,54 +161,19 @@ npm ci
 npm run build
 ```
 
-Enable the app in Nextcloud and configure working cron before background jobs.
-Deploy the complete built `js/` directory: lazy sections need their chunks too.
-
-## Data and privacy
-
-The index is stored on the Nextcloud server. Indexing sends extracted content
-to the configured embedding endpoint. Chat sends prompts, relevant excerpts,
-conversation context and tool results to the selected provider. The default
-chat model is hosted by Ollama Cloud; select a locally installed Ollama model
-for local chat inference. Embeddings use the configured Ollama server by
-default, but a compatible hosted profile can be selected separately. Web
-search, image search and external connectors can send information outside your
-server.
-Built-in SQL is the default search index. Optional Qdrant dense search keeps
-chunk text in SQL; native Qdrant BM25 is a separate per-generation opt-in that
-stores chunk text remotely and sends search queries to that Qdrant service. See
-the [Qdrant privacy and setup notes](docs/QDRANT.md) before enabling it.
-An optional, loopback-only Docker Compose deployment is included for
-self-hosted Qdrant; installing EVA alone still uses SQL.
-
-API keys are encrypted separately per user and are never returned by the
-profile form. Download an EVA data archive from **Personal & data** and restore
-up to 500 chats later; restored conversations receive new IDs and never replace
-existing chats. Restore imports chat text only, not the archive's knowledge,
-index metadata, vector generations or provider configuration. Answers can
-contain mistakes; check sources and review actions.
-Read [Privacy](docs/PRIVACY.md), [Security](docs/SECURITY.md) and
-[Configuration](docs/CONFIGURATION.md) before enabling integrations.
+Deploy the complete built `js/` directory, including lazy-loaded chunks.
 
 ## Documentation and development
 
-- [User guide](docs/USER-GUIDE.md) and [workspace settings](docs/WORKSPACE.md).
-- [Provider setup](docs/PROVIDERS.md) and [troubleshooting](docs/TROUBLESHOOTING.md).
-- [Architecture](docs/ARCHITECTURE.md), [performance](docs/PERFORMANCE.md) and
-  [workspace migration](docs/WORKSPACE-MIGRATION.md).
-- [Encrypted chat storage migration](docs/CHAT-STORAGE-MIGRATION.md): resumable SQL import and recovery; AppData remains authoritative until the later cutover.
-- [API reference](docs/API.md), [plugins](docs/PLUGIN_API.md) and [connectors](docs/CONNECTORS.md).
-- [Generation embeddings](docs/GENERATION-EMBEDDINGS.md): Ollama default, explicit compatible-profile opt-in, native administrator model/space checks; SQL remains the installation default.
-- [Background generation builds](docs/GENERATION-BUILDS.md): explicit source processing, progress and pause/resume; search activation still requires full verification.
-- [Contributing](CONTRIBUTING.md), [development](docs/DEVELOPMENT.md) and [CI](docs/CI.md).
-
-```bash
-composer test
-npm test
-npm run lint
-npm run test:browser
-npm run build
-```
+- [User guide](docs/USER-GUIDE.md), [workspace settings](docs/WORKSPACE.md)
+  and [troubleshooting](docs/TROUBLESHOOTING.md).
+- [Feature guide](docs/FEATURES.md), [provider setup](docs/PROVIDERS.md),
+  [privacy](docs/PRIVACY.md) and [security](docs/SECURITY.md).
+- [Architecture](docs/ARCHITECTURE.md), [performance](docs/PERFORMANCE.md),
+  [API reference](docs/API.md), [plugins](docs/PLUGIN_API.md) and
+  [connectors](docs/CONNECTORS.md).
+- [Contributing](CONTRIBUTING.md), [development](docs/DEVELOPMENT.md) and
+  [CI](docs/CI.md).
 
 Frontend changes must include regenerated `js/` output. Submit changes through
 pull requests. The standalone chat remains a compatibility and test surface;
