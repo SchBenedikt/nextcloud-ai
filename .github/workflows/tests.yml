@@ -160,9 +160,11 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # Exercise the oldest supported release, the current stable line, and
-        # the newest supported line on every pull request.
-        nc: ['stable30', 'stable33', 'stable36']
+        # Exercise the oldest supported release, a middle line, and the newest
+        # published release on every pull request. Nextcloud 36 is not yet
+        # published at download.nextcloud.com, so its future task type remains
+        # version-guarded until that release is available.
+        nc: ['stable30', 'stable33', 'stable35']
     steps:
       - uses: actions/checkout@v7
       - name: Install and exercise the app in Nextcloud ${{ matrix.nc }}
@@ -239,7 +241,7 @@ jobs:
       - uses: actions/checkout@v7
       - name: Install and exercise the app in Nextcloud with ${{ matrix.label }}
         env:
-          NC: stable36
+          NC: stable35
           DB: ${{ matrix.database }}
           DB_PORT: ${{ matrix.port }}
         run: |

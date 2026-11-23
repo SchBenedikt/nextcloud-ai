@@ -45,7 +45,7 @@ final class EvaTextToStickerProvider implements ISynchronousProvider {
 		$reportProgress(0.1);
 		try {
 			$images = $this->images->generateImages(
-				'Create one expressive sticker illustration on a neutral background based on this description: ' . $prompt,
+				'Create one expressive sticker illustration on a neutral background based on this description. Any lettering in the image must use the same language as the user prompt: ' . $prompt,
 				1,
 				180,
 			);

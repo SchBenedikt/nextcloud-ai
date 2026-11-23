@@ -84,7 +84,8 @@ final class EvaImageToImageProvider implements ISynchronousProvider {
 
 		$reportProgress(0.3);
 		try {
-			$edited = $this->images->editImages($images, $prompt, 240);
+			$imagePrompt = 'Make the requested image edit. Any new text in the image must use the same language as the user prompt unless the user asks for another language. User instructions: ' . $prompt;
+			$edited = $this->images->editImages($images, $imagePrompt, 240);
 		} catch (\Throwable $e) {
 			throw new RuntimeException($e->getMessage(), 0, $e);
 		}
