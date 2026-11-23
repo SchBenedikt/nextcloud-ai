@@ -79,9 +79,14 @@ permissions.
 
 EVA registers providers for chat, summarisation, headline, topics, translation,
 rephrasing, correction, formatting, improvement, simplification, formalization,
-emoji generation, image analysis, image generation, audio transcription, subtitles, speech generation, audio translation, audio chat, multimodal tool chat, ContextAgent audio, multimodal ContextAgent, OCR, tone adjustment, and context-aware writing. These
-providers use the configured local or OpenAI-compatible backends; generated images and subtitles are stored in the user's
-`EVA` folder. Audio inputs are bounded to 25 MB and remain scoped to the authenticated user's files.
+emoji generation, image analysis, image generation, audio transcription,
+subtitles, speech generation, audio translation, audio chat, multimodal tool
+chat, ContextAgent audio, multimodal ContextAgent, OCR, tone adjustment, and
+context-aware writing. When the official Assistant app is enabled, EVA also
+supplies its `assistant:text2sticker` task using the configured image provider.
+These providers use the configured local or OpenAI-compatible backends;
+generated images and subtitles are stored in the user's `EVA` folder. Audio
+inputs are bounded to 25 MB and remain scoped to the authenticated user's files.
 The confirmation-gated `create_sticker` tool creates a single bounded sticker image in the same folder when an image provider is configured.
 providers run through Ollama vision/text models or the optional local Tesseract integration, so
 the common Assistant tasks work without a hosted provider or API key.

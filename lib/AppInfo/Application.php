@@ -96,6 +96,8 @@ class Application extends App implements IBootstrap {
             [\OCP\TaskProcessing\TaskTypes\MultimodalChatWithTools::class, \OCA\EvaAi\TaskProcessing\MultimodalChatWithToolsProvider::class],
             [\OCP\TaskProcessing\TaskTypes\ContextAgentAudioInteraction::class, \OCA\EvaAi\TaskProcessing\ContextAgentAudioProvider::class],
             [\OCP\TaskProcessing\TaskTypes\MultimodalContextAgentInteraction::class, \OCA\EvaAi\TaskProcessing\MultimodalContextAgentProvider::class],
+            // Nextcloud Assistant registers this app-specific task type when enabled.
+            [\OCA\Assistant\TaskProcessing\TextToStickerTaskType::class, \OCA\EvaAi\TaskProcessing\EvaTextToStickerProvider::class],
         ];
         foreach ($taskProcessingProviders as [$taskType, $provider]) {
             $this->registerTaskProcessingProviderIfSupported($context, $taskType, $provider);

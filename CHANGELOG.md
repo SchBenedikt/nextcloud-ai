@@ -2,6 +2,11 @@
 
 ## [Unreleased]
 
+### Complete official Assistant sticker integration
+
+- Register EVA as the provider for the official Assistant app's optional `assistant:text2sticker` task, when that app is installed and enabled.
+- Generate one sticker through the configured OpenAI-compatible image provider and return the image in the shape expected by Nextcloud Assistant.
+
 ### Add native Nextcloud image editing
 
 - Add a Nextcloud 36 TaskProcessing provider for `core:image2image`, with ownership-checked Files inputs, bounded uploads, and private EVA-folder output.
