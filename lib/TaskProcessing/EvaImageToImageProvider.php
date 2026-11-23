@@ -46,25 +46,24 @@ final class EvaImageToImageProvider implements ISynchronousProvider {
 		$this->appConfig->setUserId($userId);
 		$prompt = trim((string)($input['prompt'] ?? ''));
 		if ($prompt === '') throw new RuntimeException('An image-editing prompt is required.');
-		$rawIds = $input['input'] ?? [];
-		if (!is_array($rawIds)) $rawIds = [$rawIds];
-		$ids = [];
-		foreach ($rawIds as $rawId) {
-			$id = is_numeric($rawId) ? (int)$rawId : 0;
-			if ($id <= 0) throw new RuntimeException('Every input image must be a valid Nextcloud file.');
-			if (!in_array($id, $ids, true)) $ids[] = $id;
+		$rawImages = $input['input'] ?? [];
+		if (!is_array($rawImages)) $rawImages = [$rawImages];
+		$home = $this->rootFolder->getUserFolder($userId);
+		$nodes = [];
+		foreach ($rawImages as $value) {
+			$node = TaskProcessingFileInput::resolve($home, $value);
+			if (!$node instanceof File) throw new RuntimeException('Every input image must be a valid Nextcloud file.');
+			$nodes[(int)$node->getId()] = $node;
 		}
-		if ($ids === [] || count($ids) > self::MAX_IMAGES) {
+		$nodes = array_values($nodes);
+		if ($nodes === [] || count($nodes) > self::MAX_IMAGES) {
 			throw new RuntimeException('Choose between one and four input images.');
 		}
 
-		$home = $this->rootFolder->getUserFolder($userId);
 		$images = [];
 		$totalBytes = 0;
-		foreach ($ids as $index => $id) {
-			TaskProcessingProgress::report($reportProgress, min(0.25, 0.05 + ($index / count($ids)) * 0.2));
-			$node = $home->getById($id)[0] ?? null;
-			if (!$node instanceof File) throw new RuntimeException('An input image is not available in your Nextcloud Files.');
+		foreach ($nodes as $index => $node) {
+			TaskProcessingProgress::report($reportProgress, min(0.25, 0.05 + ($index / count($nodes)) * 0.2));
 			$mime = strtolower((string)$node->getMimeType());
 			if (!in_array($mime, ['image/png', 'image/jpeg', 'image/webp'], true)) {
 				throw new RuntimeException('Input images must use PNG, JPEG, or WebP format.');
