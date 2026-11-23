@@ -124,7 +124,7 @@
 			<DocumentsView v-else-if="view === 'docs'" />
 			<MetricsView v-else-if="view === 'metrics'" />
 			<AgentRunsView v-else-if="view === 'runs'" />
-			<SettingsView v-if="settingsMounted" v-show="view === 'settings'" :active="view === 'settings'" :section="settingsSection" @navigate="navigate" />
+			<SettingsView v-if="settingsMounted" v-show="view === 'settings'" :active="view === 'settings'" :section="settingsSection" @navigate="openSettings" />
 		</NcAppContent>
 		<NcModal v-if="chatDialog" size="small" :name="chatDialog.mode === 'rename' ? $t('Rename chat') : $t('Delete chat')" @close="closeChatDialog">
 			<form class="chat-dialog" @submit.prevent="confirmChatDialog">

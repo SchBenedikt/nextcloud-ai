@@ -813,4 +813,7 @@ OC.L10N.register("eva_ai", {
   "Username (optional)": "Nombre de usuario (opcional)",
   "Username and password": "Nombre de usuario y contraseña",
   "EVA indexed files": "Archivos indexados por EVA",
+  "User instructions": "Instrucciones del usuario",
+  "Additional instructions from the Nextcloud Assistant chat settings.": "Instrucciones adicionales de la configuración del chat de Nextcloud Assistant.",
+  "The memories to be injected into the chat session.": "Los recuerdos que se incluirán en la sesión de chat."
 }, "nplurals=2; plural=(n != 1);");
