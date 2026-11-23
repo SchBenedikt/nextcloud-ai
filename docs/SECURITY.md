@@ -19,6 +19,11 @@ are:
 The design goal is: **every tool execution must be safe, least-privileged and —
 when it changes data — explicitly confirmed by the user.**
 
+The native Assistant agent treats its confirmation input as a strict two-value
+contract (`0` for a proposal or rejection, `1` for approval). EVA rejects
+coercible values such as `true`, `1.0`, or `1extra`; only an explicit `1` can
+enter the confirmed-action path.
+
 ## 2. Tool policy (`lib/Service/ToolPolicy.php`)
 
 Every tool is registered centrally with three properties:

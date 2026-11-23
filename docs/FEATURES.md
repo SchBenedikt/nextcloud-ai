@@ -145,6 +145,8 @@ when a TaskProcessing caller requests streaming. In the
 official Assistant, rejecting a pending agent proposal clears
 that proposal and returns a cancellation response without calling the model or
 executing any action; a new user message still starts a fresh proposal.
+The agent accepts only explicit TaskProcessing confirmation values `0` and `1`
+as integers or exact strings; malformed or truthy values are rejected.
 
 Registering a provider makes it available to Nextcloud; it does not
 automatically make EVA the active provider. Administrators choose providers per
