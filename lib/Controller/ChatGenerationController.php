@@ -9,8 +9,10 @@ use OCA\EvaAi\Controller\Traits\ChatRequestCoordination;
 use OCA\EvaAi\Controller\Traits\ReadsRequestParameters;
 use OCA\EvaAi\Controller\Traits\RequestLimits;
 use OCA\EvaAi\Dto\ChatCompletionRequest;
+use OCA\EvaAi\Dto\ChatRegenerateRequest;
 use OCA\EvaAi\Dto\ChatRequest;
 use OCA\EvaAi\Http\ErrorDataResponse;
+use OCA\EvaAi\Http\StreamTraversableResponse;
 use OCA\EvaAi\Service\AppConfig;
 use OCA\EvaAi\Service\ChatStore;
 use OCA\EvaAi\Service\RagService;
@@ -108,5 +110,68 @@ final class ChatGenerationController extends OCSController {
 		} finally {
 			$this->releaseChatSlot($chatSlot);
 		}
+	}
+
+	/** Stream an edited or regenerated answer while preserving stored history until save. */
+	#[NoAdminRequired]
+	public function chatRegenerate(string $id): StreamTraversableResponse {
+		$headers = [
+			'Content-Type' => 'application/x-ndjson',
+			'Cache-Control' => 'no-cache, no-store, must-revalidate',
+			'X-Accel-Buffering' => 'no',
+		];
+		$user = $this->requireUser();
+		if ($user === null) {
+			$body = json_encode(['type' => 'error', 'message' => 'Not logged in']) . "\n";
+			return new StreamTraversableResponse(new \ArrayIterator([$body]), 401, $headers);
+		}
+		try {
+			$request = ChatRegenerateRequest::fromArray([
+				'messageIndex' => $this->requestParam('messageIndex', -1),
+				'message' => $this->requestParam('message'),
+				'rev' => $this->requestParam('rev'),
+			]);
+		} catch (\InvalidArgumentException $error) {
+			$body = json_encode(['type' => 'error', 'message' => $error->getMessage()]) . "\n";
+			return new StreamTraversableResponse(new \ArrayIterator([$body]), 400, $headers);
+		}
+
+		$this->releasePhpSessionLock();
+		$result = $this->chatStore->beginRegenerate($user, $id, $request->messageIndex, $request->message, $request->revision);
+		if (!($result['ok'] ?? false)) {
+			$error = (string)($result['error'] ?? 'invalid');
+			if ($error === 'conflict') {
+				$body = json_encode(['type' => 'error', 'message' => 'This chat was modified in another tab - reload to continue']) . "\n";
+				return new StreamTraversableResponse(new \ArrayIterator([$body]), 200, $headers);
+			}
+			if ($error === 'not_found') {
+				$body = json_encode(['type' => 'error', 'message' => 'Chat not found']) . "\n";
+				return new StreamTraversableResponse(new \ArrayIterator([$body]), 404, $headers);
+			}
+			$body = json_encode(['type' => 'error', 'message' => 'A valid user message index and non-empty message are required']) . "\n";
+			return new StreamTraversableResponse(new \ArrayIterator([$body]), 400, $headers);
+		}
+
+		$chat = $this->chatStore->getChat($user, $id);
+		$messages = $chat['messages'] ?? [];
+		$history = [];
+		for ($index = 0; $index < $result['messageIndex']; $index++) {
+			$message = $messages[$index];
+			$history[] = ['role' => $message['role'] ?? 'user', 'content' => $message['text'] ?? ''];
+		}
+		$generation = $this->ragService->askStream(
+			$user,
+			$result['targetText'],
+			$history,
+			trim((string)($chat['scopePath'] ?? '')),
+			trim((string)($chat['instructions'] ?? '')),
+			trim((string)($chat['persona'] ?? '')),
+		);
+		$revision = (int)$result['rev'];
+		$stream = (static function () use ($generation, $revision): \Generator {
+			yield json_encode(['type' => 'regenerate', 'rev' => $revision]) . "\n";
+			yield from $generation;
+		})();
+		return new StreamTraversableResponse($stream, 200, $headers);
 	}
 }
