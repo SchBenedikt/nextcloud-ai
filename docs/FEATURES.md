@@ -101,10 +101,11 @@ TaskProcessing's optional `sources` output. The official Assistant then
 displays them in the message's information-source panel with an `EVA:` prefix.
 These providers use the configured local or OpenAI-compatible backends.
 TaskProcessing resolves uploaded file IDs to Nextcloud `File` objects before
-calling a synchronous provider; EVA reads those objects directly and keeps the
-audio inputs scoped to the authenticated user's files. Audio inputs are
-bounded to 25 MB. Generated images and subtitles are stored in the user's
-`EVA` folder.
+calling a synchronous provider; EVA reads those objects directly across audio,
+OCR, image, and multimodal chat tasks. Inputs remain scoped to the authenticated
+user's files. Audio inputs are bounded to 25 MB; image analysis and editing
+keep their existing per-file and aggregate size limits. Generated images and
+subtitles are stored in the user's `EVA` folder.
 Audio TaskProcessing providers stop between transcription, model, synthesis,
 and file-write stages when Nextcloud reports that a task was cancelled; the
 audio ContextAgent forwards cancellation into its confirmation-aware agent.

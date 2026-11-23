@@ -339,10 +339,9 @@ class AgentInteractionProvider implements ISynchronousProvider {
 		$images = [];
 		$mimes = [];
 		$total = 0;
+		$home = $this->rootFolder->getUserFolder($userId);
 		foreach (array_slice($raw, 0, 4) as $value) {
-			$id = is_numeric($value) ? (int)$value : 0;
-			if ($id <= 0) continue;
-			$node = $this->rootFolder->getUserFolder($userId)->getById($id)[0] ?? null;
+			$node = TaskProcessingFileInput::resolve($home, $value);
 			if (!$node instanceof \OCP\Files\File) continue;
 			$mime = strtolower((string)$node->getMimeType());
 			$size = (int)$node->getSize();

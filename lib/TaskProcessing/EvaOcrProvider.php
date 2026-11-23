@@ -41,30 +41,29 @@ final class EvaOcrProvider implements ISynchronousProvider {
 			throw new RuntimeException('No user context');
 		}
 		$this->appConfig->setUserId($userId);
-		$ids = $input['input'] ?? [];
-		if (!is_array($ids)) {
-			$ids = [$ids];
+		$rawFiles = $input['input'] ?? [];
+		if (!is_array($rawFiles)) {
+			$rawFiles = [$rawFiles];
 		}
-		$ids = array_values(array_unique(array_filter(array_map('intval', array_slice($ids, 0, 10)), static fn(int $id): bool => $id > 0)));
-		if ($ids === []) {
+		$home = $this->rootFolder->getUserFolder($userId);
+		$nodes = [];
+		foreach (array_slice($rawFiles, 0, 10) as $value) {
+			$node = TaskProcessingFileInput::resolve($home, $value);
+			if ($node instanceof File) $nodes[(int)$node->getId()] = $node;
+		}
+		$nodes = array_values($nodes);
+		if ($nodes === []) {
 			throw new RuntimeException('No input files');
 		}
 
-		$home = $this->rootFolder->getUserFolder($userId);
 		$language = trim((string)$this->appConfig->get('ocr_language'));
 		if ($language === '') {
 			$language = 'eng';
 		}
 		$texts = [];
 		$errors = [];
-		foreach ($ids as $index => $id) {
-			TaskProcessingProgress::report($reportProgress, min(0.85, 0.1 + ($index / max(1, count($ids))) * 0.7));
-			$nodes = $home->getById($id);
-			$node = $nodes[0] ?? null;
-			if (!$node instanceof File) {
-				$errors[] = 'File ' . $id . ' is not available';
-				continue;
-			}
+		foreach ($nodes as $index => $node) {
+			TaskProcessingProgress::report($reportProgress, min(0.85, 0.1 + ($index / max(1, count($nodes))) * 0.7));
 			try {
 				$text = trim($this->ocr->extract((string)$node->getContent(), (string)$node->getMimeType(), $language));
 				if ($text !== '') {

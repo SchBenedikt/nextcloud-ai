@@ -47,16 +47,8 @@ abstract class EvaAudioTranscriptionProvider implements ISynchronousProvider {
 	protected function inputFile(?string $userId, array $input): array {
 		if ($userId === null || $userId === '') throw new RuntimeException('No user context');
 		$value = $input['input'] ?? null;
-		// TaskProcessing::prepareInputData() resolves file-shaped IDs to File
-		// objects before invoking synchronous providers (Nextcloud 30+).
-		// Retain ID resolution for callers that invoke the provider directly.
-		if ($value instanceof File) {
-			$node = $value;
-		} else {
-			$id = is_numeric($value) ? (int)$value : 0;
-			if ($id <= 0) throw new RuntimeException('No input audio file');
-			$node = $this->rootFolder->getUserFolder($userId)->getById($id)[0] ?? null;
-		}
+		$node = TaskProcessingFileInput::resolve($this->rootFolder->getUserFolder($userId), $value);
+		if ($value === null || (!($value instanceof File) && !is_numeric($value))) throw new RuntimeException('No input audio file');
 		if (!$node instanceof File) throw new RuntimeException('The input audio file is not available.');
 		$mime = strtolower((string)$node->getMimeType());
 		if (!str_starts_with($mime, 'audio/') && !str_starts_with($mime, 'video/')) throw new RuntimeException('The input file is not audio or video.');

@@ -55,28 +55,25 @@ final class EvaAnalyzeImagesProvider implements ISynchronousProvider {
 		if ($question === '') {
 			$question = 'Beschreibe die Bilder und nenne die wichtigsten erkennbaren Details.';
 		}
-		$rawIds = $input['images'] ?? [];
-		if (!is_array($rawIds)) $rawIds = [$rawIds];
-		$ids = array_values(array_unique(array_filter(
-			array_map(static fn($id): int => is_numeric($id) ? (int)$id : 0, array_slice($rawIds, 0, self::MAX_IMAGES)),
-			static fn(int $id): bool => $id > 0,
-		)));
-		if ($ids === []) {
+		$rawImages = $input['images'] ?? [];
+		if (!is_array($rawImages)) $rawImages = [$rawImages];
+		$home = $this->rootFolder->getUserFolder($userId);
+		$nodes = [];
+		foreach (array_slice($rawImages, 0, self::MAX_IMAGES) as $value) {
+			$node = TaskProcessingFileInput::resolve($home, $value);
+			if ($node instanceof File) $nodes[(int)$node->getId()] = $node;
+		}
+		$nodes = array_values($nodes);
+		if ($nodes === []) {
 			throw new RuntimeException('No input images');
 		}
 
-		$home = $this->rootFolder->getUserFolder($userId);
 		$images = [];
 		$mimes = [];
 		$totalBytes = 0;
 		$errors = [];
-		foreach ($ids as $index => $id) {
-			TaskProcessingProgress::report($reportProgress, min(0.35, 0.08 + ($index / max(1, count($ids))) * 0.25));
-			$node = $home->getById($id)[0] ?? null;
-			if (!$node instanceof File) {
-				$errors[] = 'Image ' . $id . ' is not available';
-				continue;
-			}
+		foreach ($nodes as $index => $node) {
+			TaskProcessingProgress::report($reportProgress, min(0.35, 0.08 + ($index / max(1, count($nodes))) * 0.25));
 			$mime = strtolower((string)$node->getMimeType());
 			if (!str_starts_with($mime, 'image/')) {
 				$errors[] = $node->getName() . ' is not an image';

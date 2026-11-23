@@ -2,9 +2,9 @@
 
 ## [Unreleased]
 
-### Fix audio TaskProcessing file inputs
+### Fix TaskProcessing file inputs
 
-- Consume the Nextcloud `File` objects supplied to synchronous providers, while retaining ID resolution for direct provider callers.
+- Consume Nextcloud `File` objects across audio, OCR, image, and multimodal Assistant providers, while retaining ID resolution for direct provider callers.
 - Document the native TaskProcessing file handoff and authenticated-user scope.
 
 ### Honor TaskProcessing cancellation across providers
