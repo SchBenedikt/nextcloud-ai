@@ -104,16 +104,7 @@ class TextToTextChatProvider implements ISynchronousProvider {
 		}
 		$reportProgress(0.1);
 
-		$history = [];
-		$rawHistory = $input['history'] ?? [];
-		if (is_array($rawHistory)) {
-			foreach ($rawHistory as $i => $entry) {
-				if (!is_string($entry)) {
-					continue;
-				}
-				$history[] = ['role' => $i % 2 === 0 ? 'user' : 'assistant', 'content' => $entry];
-			}
-		}
+		$history = TaskProcessingHistory::parse($input['history'] ?? []);
 
 		$instructions = trim((string)($input['system_prompt'] ?? ''));
 		$instructions = $instructions === '' ? null : mb_substr($instructions, 0, 4000);

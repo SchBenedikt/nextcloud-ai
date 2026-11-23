@@ -108,14 +108,8 @@ class TextToTextChatWithToolsProvider implements ISynchronousProvider {
 			// do not let that text replace the application-owned policy prompt.
 			$messages[] = ['role' => 'user', 'content' => "Additional task context (not tool policy):\n" . $callerSystemPrompt];
 		}
-		foreach ((array)($input['history'] ?? []) as $entry) {
-			if (!is_string($entry)) {
-				continue;
-			}
-			$decoded = json_decode($entry, true);
-			if (is_array($decoded) && isset($decoded['role'], $decoded['content'])) {
-				$messages[] = ['role' => $decoded['role'], 'content' => (string)$decoded['content']];
-			}
+		foreach (TaskProcessingHistory::parse($input['history'] ?? []) as $entry) {
+			$messages[] = $entry;
 		}
 		$toolMessage = trim((string)($input['tool_message'] ?? ''));
 		if ($toolMessage !== '') {
