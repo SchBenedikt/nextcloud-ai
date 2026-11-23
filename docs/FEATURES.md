@@ -93,9 +93,10 @@ For `core:text2text:chat`, EVA honors the Assistant's system prompt as bounded
 custom instructions and accepts its opted-in remembered conversation summaries
 as untrusted personalization context. Assistant history is normalized to user
 and assistant roles, with unrecognized roles and oversized entries discarded.
-When RAG context contributes sources, EVA returns up to eight distinct source
-names through TaskProcessing's optional `sources` output. The official Assistant
-then displays them in the message's information-source panel with an `EVA:` prefix.
+When RAG context contributes sources, standard chat and ContextAgent tasks
+return up to eight distinct source names through TaskProcessing's optional
+`sources` output. The official Assistant then displays them in the message's
+information-source panel with an `EVA:` prefix.
 These providers use the configured local or OpenAI-compatible backends;
 generated images and subtitles are stored in the user's `EVA` folder. Audio
 inputs are bounded to 25 MB and remain scoped to the authenticated user's files.
