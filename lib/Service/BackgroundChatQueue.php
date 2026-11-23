@@ -23,6 +23,13 @@ final class BackgroundChatQueue {
     public function __construct(private IConfig $config, private ILockingProvider $locks, private LoggerInterface $logger) {}
 
     public function enqueue(string $user, string $chatId, string $message, array $history, ?string $requestedId = null): ?string {
+        return $this->enqueueRequest($user, $chatId, $message, $history, $requestedId)['id'] ?? null;
+    }
+
+    /**
+     * @return array{id:string,duplicate:bool}|null
+     */
+    public function enqueueRequest(string $user, string $chatId, string $message, array $history, ?string $requestedId = null): ?array {
         $message = trim($message);
         if ($user === '' || $chatId === '' || $message === '' || mb_strlen($message) > self::MAX_MESSAGE_CHARS) return null;
         $cleanHistory = [];
@@ -33,25 +40,64 @@ final class BackgroundChatQueue {
             if (!in_array($role, ['user', 'assistant'], true) || trim($content) === '') continue;
             $cleanHistory[] = ['role' => $role, 'content' => mb_substr($content, 0, 20000)];
         }
-        return $this->withLock($user, function () use ($user, $chatId, $message, $cleanHistory, $requestedId): ?string {
+        return $this->withLock($user, function () use ($user, $chatId, $message, $cleanHistory, $requestedId): ?array {
             $items = $this->read($user);
+            $history = $this->readHistory($user);
             // Keep terminal failures long enough for the UI/API to show them,
             // but garbage-collect old records so they cannot fill the queue.
             $cutoff = time() - 86400;
             $items = array_values(array_filter($items, static fn(array $item): bool =>
                 (($item['status'] ?? '') !== 'failed' || (int)($item['finishedAt'] ?? 0) > $cutoff)
                 && (($item['status'] ?? '') !== 'cancelled' || (int)($item['finishedAt'] ?? 0) > $cutoff)));
-            foreach ($items as $item) {
-                if (($item['chatId'] ?? '') === $chatId && ($item['message'] ?? '') === $message && in_array(($item['status'] ?? ''), ['pending', 'running', 'paused'], true)) return (string)$item['id'];
+
+            $validRequestedId = is_string($requestedId) && preg_match('/^[A-Za-z0-9_-]{8,80}$/D', $requestedId) === 1;
+            $requestHash = $this->requestFingerprint($chatId, $message, $cleanHistory);
+            if ($validRequestedId) {
+                $requestIdFound = false;
+                foreach (array_merge($items, $history) as $existing) {
+                    if (($existing['id'] ?? null) !== $requestedId) continue;
+                    $requestIdFound = true;
+                    $existingHash = (string)($existing['requestHash'] ?? '');
+                    // Older queue entries did not store a fingerprint. Their full
+                    // message/history are still available, while completion history
+                    // may contain only a shortened display message.
+                    if ($existingHash === '' && isset($existing['history']) && is_array($existing['history'])) {
+                        $existingHash = $this->requestFingerprint(
+                            (string)($existing['chatId'] ?? ''),
+                            (string)($existing['message'] ?? ''),
+                            $existing['history'],
+                        );
+                    }
+                    if ($existingHash !== '' && hash_equals($existingHash, $requestHash)) {
+                        continue;
+                    }
+                    // An identifier is scoped to one immutable request. Do not
+                    // replace a different active or recently completed request.
+                    throw new \DomainException('This background request ID was already used for a different request.');
+                }
+                if ($requestIdFound) return ['id' => $requestedId, 'duplicate' => true];
+            }
+
+            // Preserve legacy deduplication for clients without a stable request
+            // ID. With an ID, the ID itself is the idempotency key; equal prompts
+            // from separate user actions remain separate requests.
+            if (!$validRequestedId) {
+                foreach ($items as $item) {
+                    if (($item['chatId'] ?? '') === $chatId && ($item['message'] ?? '') === $message && in_array(($item['status'] ?? ''), ['pending', 'running', 'paused'], true)) return ['id' => (string)$item['id'], 'duplicate' => true];
+                }
             }
             $active = count(array_filter($items, static fn(array $item): bool => in_array(($item['status'] ?? ''), ['pending', 'running', 'paused'], true)));
             if ($active >= self::MAX_ITEMS) return null;
-            $id = is_string($requestedId) && preg_match('/^[A-Za-z0-9_-]{8,80}$/D', $requestedId) === 1
-                ? $requestedId : 'bg_' . date('YmdHis') . '_' . bin2hex(random_bytes(5));
-            $items[] = ['id' => $id, 'traceId' => bin2hex(random_bytes(16)), 'chatId' => $chatId, 'message' => $message, 'history' => $cleanHistory, 'status' => 'pending', 'attempts' => 0, 'steps' => 0, 'created' => time(), 'deadline' => time() + self::MAX_RUNTIME_SECONDS, 'availableAt' => time() + 15];
+            $id = $validRequestedId ? $requestedId : 'bg_' . date('YmdHis') . '_' . bin2hex(random_bytes(5));
+            if (!$validRequestedId) {
+                while ($this->requestIdExists($id, $items, $history)) {
+                    $id = 'bg_' . date('YmdHis') . '_' . bin2hex(random_bytes(5));
+                }
+            }
+            $items[] = ['id' => $id, 'requestHash' => $requestHash, 'traceId' => bin2hex(random_bytes(16)), 'chatId' => $chatId, 'message' => $message, 'history' => $cleanHistory, 'status' => 'pending', 'attempts' => 0, 'steps' => 0, 'created' => time(), 'deadline' => time() + self::MAX_RUNTIME_SECONDS, 'availableAt' => time() + 15];
             $this->write($user, $items);
             $this->rememberUser($user);
-            return $id;
+            return ['id' => $id, 'duplicate' => false];
         });
     }
 
@@ -94,6 +140,7 @@ final class BackgroundChatQueue {
                 $history = $this->readHistory($user);
                 $history[] = [
                     'id' => (string)$id, 'chatId' => (string)($completed['chatId'] ?? ''),
+                    'requestHash' => (string)($completed['requestHash'] ?? ''),
                     'message' => mb_strimwidth((string)($completed['message'] ?? ''), 0, 240, '…'),
                     'answer' => mb_strimwidth((string)($answer ?? ''), 0, 1000, '…'),
                     'status' => 'completed', 'created' => (int)($completed['created'] ?? time()), 'finishedAt' => time(),
@@ -372,6 +419,20 @@ final class BackgroundChatQueue {
 
     private function read(string $user): array { $raw = $this->config->getUserValue($user, AppConfig::APP, self::KEY, '[]'); $data = json_decode($raw, true); return is_array($data) ? array_values(array_filter($data, 'is_array')) : []; }
     private function readHistory(string $user): array { $raw = $this->config->getUserValue($user, AppConfig::APP, self::HISTORY_KEY, '[]'); $data = json_decode($raw, true); return is_array($data) ? array_values(array_filter($data, 'is_array')) : []; }
+
+    private function requestFingerprint(string $chatId, string $message, array $history): string {
+        $payload = json_encode([$chatId, $message, $history], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_INVALID_UTF8_SUBSTITUTE);
+        $instanceSecret = (string)$this->config->getSystemValue('secret', '');
+        return hash_hmac('sha256', $payload === false ? '' : $payload, $instanceSecret);
+    }
+
+    private function requestIdExists(string $id, array $items, array $history): bool {
+        foreach (array_merge($items, $history) as $item) {
+            if (($item['id'] ?? null) === $id) return true;
+        }
+        return false;
+    }
+
     private function writeHistory(string $user, array $items): void { if ($items === []) { $this->config->deleteUserValue($user, AppConfig::APP, self::HISTORY_KEY); return; } $this->config->setUserValue($user, AppConfig::APP, self::HISTORY_KEY, json_encode(array_values($items), JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) ?: '[]'); }
     private function write(string $user, array $items): void { if ($items === []) { $this->config->deleteUserValue($user, AppConfig::APP, self::KEY); return; } $this->config->setUserValue($user, AppConfig::APP, self::KEY, json_encode(array_values($items), JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) ?: '[]'); }
     private function mutate(string $user, callable $fn): void { $this->withLock($user, function () use ($user, $fn): void { $this->write($user, $fn($this->read($user))); }); }
