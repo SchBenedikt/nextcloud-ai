@@ -28,9 +28,9 @@ certificate checks, DNS pinning and proxy restrictions apply to every target.
 Old origins may need to remain approved until their cleanup completes.
 
 Target records are instance infrastructure secrets, never personal settings or
-public API responses. No prune command exists yet: dropping a target referenced
-by a generation or journal event would strand deletion work. Retention/pruning
-must consider both references. An unchanged URL is not proof that a server was
+public API responses. No target-prune command exists yet: dropping a target
+referenced by a generation or journal event would strand deletion work. Target
+retention/pruning must consider both references. An unchanged URL is not proof that a server was
 not replaced; restore/backfill verification remains necessary after infrastructure
 replacement or volume loss.
 
@@ -68,8 +68,13 @@ Acknowledgement/failure must match the current token and processing state, so a
 stale claimant cannot acknowledge its successor's work. Retry uses exponential
 backoff plus small jitter; after twelve claims the event remains
 as a dead letter. Dead letters are not discarded or silently expired. Administrative
-requeue is explicit. These are durable queue primitives, not evidence of a tested
-crash-recovery or distributed-write protocol.
+requeue is explicit. A daily retention job deletes delivered or superseded
+`upsert` and `delete_chunk` records after 30 days, in batches of at most 500 rows.
+It never removes pending or processing work, dead letters, or any
+`delete_generation` event; generation-erasure receipts continue to fence stale
+point writes. This bounds terminal journal growth without changing the
+auto-increment revision sequence. These are durable queue primitives, not
+evidence of a tested crash-recovery or distributed-write protocol.
 
 A lease alone is **not** a remote write-ordering guarantee: an expired worker may
 still have an HTTP request in flight. Before consuming chunk events, the adapter

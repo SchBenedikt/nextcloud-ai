@@ -2,6 +2,11 @@
 
 ## [Unreleased]
 
+### Bound terminal vector journal retention
+
+- Prune delivered or superseded point events after 30 days in bounded daily batches, while preserving all generation-erasure events, dead letters, and in-flight work.
+- Add portable timestamp indexes for the retention scans and document the separate target-registry lifecycle.
+
 ### Keep image analysis language consistent
 
 - Use an English default question when the native Assistant submits image analysis without a prompt.
