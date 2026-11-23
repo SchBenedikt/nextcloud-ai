@@ -138,17 +138,9 @@ class CalendarService {
             $allDay = true;
             return \DateTimeImmutable::createFromFormat('!d.m.Y', $val) ?: null;
         }
-        // ISO mit T und optional Z/Offset: DateTime versteht das direkt (UTC!)
+        // Explicit ISO offsets describe absolute instants; Z always means UTC.
         if (preg_match('/^\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}(:\d{2})?(Z|[+-]\d{2}:?\d{2})?$/', $val)) {
             $hasOffset = (bool)preg_match('/(Z|[+-]\d{2}:?\d{2})$/', $val);
-            // Modelle senden lokale Uhrzeiten gern mit "Z" (irrtümlich als UTC).
-            // Fuer Nicht-UTC-Nutzer: Z-Suffix als lokale Zeit interpretieren.
-            if (substr($val, -1) === 'Z' && $tz->getName() !== 'UTC') {
-                $d = \DateTimeImmutable::createFromFormat('!Y-m-d\TH:i:s', str_replace(' ', 'T', substr($val, 0, -1)), $tz);
-                if ($d !== false) {
-                    return $d;
-                }
-            }
             if (!$hasOffset) {
                 $d = new \DateTimeImmutable(str_replace(' ', 'T', $val), $tz);
                 return $d ?? null;

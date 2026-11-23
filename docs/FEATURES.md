@@ -253,7 +253,9 @@ and return formats are documented in [`TOOLS.md`](../TOOLS.md).
   are emitted correctly as UTC.
 - Create, update, or delete events with location, description, categories,
   duration, and reminders. Local times are interpreted in the user's timezone;
-  date-only values produce all-day events.
+  date-only values produce all-day events. Explicit ISO 8601 offsets, including
+  `Z`, are preserved as absolute instants; only timestamps without an offset
+  are interpreted in the user's timezone.
 - Search for free time slots. EVA queries the CalDAV server with the relevant
   time range directly and does not load the entire calendar.
 - List, create, update, complete, and delete VTODO tasks; supported fields

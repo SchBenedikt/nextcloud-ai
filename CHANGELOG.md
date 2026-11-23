@@ -2,6 +2,15 @@
 
 ## [Unreleased]
 
+## 1.20.49 - 2026-11-23
+
+### Keep explicit calendar timestamps at their stated instant
+
+- Honor ISO 8601 `Z` and numeric offsets as absolute instants for every user timezone.
+- Interpret timestamps without an offset in the user's timezone and document the distinction.
+- Improve the README's first-use guidance and explain that built-in SQL search works without optional vector services.
+- Update Symfony YAML and the affected transitive npm packages to patched releases.
+
 ### Report connector authentication rejection as a connection error (1.20.48)
 
 - Treat HTTP 401/403 diagnostics as authentication failures instead of successful connector tests.
