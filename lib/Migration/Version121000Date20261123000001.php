@@ -10,7 +10,7 @@ use OCP\Migration\IOutput;
 use OCP\Migration\SimpleMigrationStep;
 
 /** Index terminal outbox timestamps for bounded retention scans. */
-final class Version120051Date20261123000001 extends SimpleMigrationStep {
+final class Version121000Date20261123000001 extends SimpleMigrationStep {
 	public function changeSchema(IOutput $output, Closure $schemaClosure, array $options): ?ISchemaWrapper {
 		$schema = $schemaClosure();
 		if ($schema->hasTable('eva_ai_vec_outbox')) {
