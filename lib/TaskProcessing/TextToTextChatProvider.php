@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace OCA\EvaAi\TaskProcessing;
 
 use OCA\EvaAi\Service\RagService;
+use OCA\EvaAi\Service\AssistantSkillsContext;
 use OCA\EvaAi\Service\ToolPolicy;
 use OCA\EvaAi\Dto\ChatRequest;
 use OCP\IL10N;
@@ -21,6 +22,7 @@ class TextToTextChatProvider implements ISynchronousProvider {
 	public function __construct(
 		private RagService $ragService,
 		private IL10N $l,
+		private AssistantSkillsContext $assistantSkills,
 	) {
 	}
 
@@ -151,6 +153,7 @@ class TextToTextChatProvider implements ISynchronousProvider {
 			$history,
 			instructions: $instructions,
 			memories: $memories,
+			assistantSkillsContext: $this->assistantSkills->forUser($userId),
 		);
 		if ($preferStreaming && $reportIntermediateOutput !== null) {
 			$result = $this->askStreaming($request, $reportProgress, $reportIntermediateOutput);

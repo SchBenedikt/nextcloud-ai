@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.24.3 - 2026-11-23
+
+### Share Assistant skills with the standard EVA chat provider
+
+- Include the bounded official Assistant skill catalog in `core:text2text:chat` requests when EVA's read-only tools are available.
+- Preserve the same personal-over-global precedence and keep skill guidance untrusted.
+
 ## 1.24.2 - 2026-11-23
 
 ### Enforce personal Assistant skill precedence

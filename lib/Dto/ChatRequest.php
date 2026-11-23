@@ -23,6 +23,7 @@ final class ChatRequest {
         public readonly ?string $model = null,
         public readonly ?string $traceId = null,
         public readonly array $memories = [],
+        public readonly string $assistantSkillsContext = '',
     ) {
         $this->shouldStop = $shouldStop !== null ? \Closure::fromCallable($shouldStop) : null;
         $this->onProgress = $onProgress !== null ? \Closure::fromCallable($onProgress) : null;
