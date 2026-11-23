@@ -173,17 +173,23 @@ class TextToTextChatWithToolsProvider implements ISynchronousProvider {
 		$rawToolCalls = [];
 		$lastReportedLength = 0;
 		$lastReportedAt = microtime(true);
-		$chunks = 0;
+		$streamStartedAt = microtime(true);
+		$lastProgressAt = $streamStartedAt;
 
 		foreach ($this->ollama->chatStream($messages, $tools, 120) as $event) {
 			$type = (string)($event['type'] ?? '');
 			if ($type === 'content') {
 				$answer .= (string)($event['delta'] ?? '');
-				$chunks++;
-				TaskProcessingProgress::report($reportProgress, min(0.9, 0.1 + $chunks * 0.01));
 
 				$answerLength = strlen($answer);
 				$now = microtime(true);
+				if ($now - $lastProgressAt >= 2.0) {
+					// Progress writes update the TaskProcessing row directly. Keep
+					// those writes bounded while still giving long generations feedback.
+					$elapsed = $now - $streamStartedAt;
+					TaskProcessingProgress::report($reportProgress, min(0.9, 0.1 + ($elapsed / 120.0) * 0.8));
+					$lastProgressAt = $now;
+				}
 				if ($answerLength > $lastReportedLength
 					&& ($answerLength - $lastReportedLength >= 512 || $now - $lastReportedAt >= 0.25)
 				) {

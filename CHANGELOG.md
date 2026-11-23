@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.23.4 - 2026-11-23
+
+### Bound Assistant streaming progress updates
+
+- Limit chat-with-tools progress writes to one update every two seconds so long generations do not repeatedly write task state for each model chunk.
+- Refresh the README's Assistant overview with text and multimodal chat-with-tools streaming.
+
 ## 1.23.3 - 2026-11-23
 
 ### Stream native Assistant chat-with-tools tasks

@@ -67,9 +67,11 @@ EVA is not an external chatbot next to Nextcloud — it is woven into it:
   preferred provider for each desired task type in **Administration → AI →
   Unified task processing**. Once selected, users can chat with indexed files
   directly in the Assistant sidebar. On Nextcloud 35 and newer, EVA streams
-  Context Agent and core RAG chat replies, including post-confirmation
-  summaries, into the Assistant as they are generated; older supported
-  versions keep the synchronous provider contract. Remembered
+  Context Agent, core RAG, and text or multimodal chat-with-tools replies into
+  the Assistant as they are generated, including post-confirmation summaries;
+  tool calls stay buffered until complete and continue to follow EVA's
+  permission policy. Older supported versions keep the synchronous provider
+  contract. Remembered
   conversations personalize replies, and the Assistant's chat-specific
   instructions apply to EVA agent conversations. Use EVA for text work
   (translate, summarize, proofread, formalize, reformulate, headlines, topics,
