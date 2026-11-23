@@ -92,6 +92,12 @@ uses for this task.
 For `core:text2text:chat` and ContextAgent interactions, EVA honors the
 Assistant's session instructions as bounded preferences appended to EVA's own
 system prompt; they do not change authorization or action-confirmation rules.
+When the official Assistant app is enabled, EVA also lists the signed-in user's
+skills from the Assistant's configured `Context Agent/Skills` folder. EVA loads
+only bounded names and descriptions initially; for a relevant request, the agent
+can read the exact `SKILL.md` through its normal user-scoped file tool. Skill
+content is treated as untrusted task guidance and cannot change tool permissions
+or confirmation requirements.
 EVA also accepts the Assistant's opted-in remembered conversation summaries as
 untrusted personalization context. Assistant history is normalized to user
 and assistant roles, with unrecognized roles and oversized entries discarded.

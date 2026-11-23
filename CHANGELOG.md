@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.24.0 - 2026-11-23
+
+### Bring official Assistant skills into EVA agent chats
+
+- Discover skill metadata from the user's configured Nextcloud Assistant skills folder without creating or changing files.
+- Let the Context Agent load relevant skill files on demand through its existing user-scoped read tool.
+- Keep skill content untrusted and bounded so it cannot override action permissions or confirmations.
+
 ## 1.23.9 - 2026-11-23
 
 ### Encrypt native Assistant agent state at rest

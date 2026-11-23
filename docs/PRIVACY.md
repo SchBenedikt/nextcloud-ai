@@ -35,6 +35,9 @@ you can remove it.
   configured model provider. Ollama can run local models or cloud models; the
   default `gemma4:cloud` chat model is a cloud model even when the Ollama endpoint
   is localhost. Groq and OpenAI-compatible providers can also process data remotely.
+  When the official Assistant app is enabled, EVA also includes bounded skill
+  names/descriptions in agent requests; the selected `SKILL.md` content is sent
+  only if the agent reads that skill for the current task.
   Embeddings currently use the configured Ollama embedding model/endpoint. Choose
   and verify local models if inference must remain on your infrastructure.
 - **Integrations**: web search, connectors and other external tools contact their
