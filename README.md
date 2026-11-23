@@ -74,9 +74,10 @@ EVA is not an external chatbot next to Nextcloud — it is woven into it:
   continue to follow EVA's permission policy. Older supported versions keep
   the synchronous provider contract. Remembered
   conversations personalize replies, and the Assistant's chat-specific
-  instructions and user-owned Assistant skills apply to EVA agent conversations.
-  EVA reads each relevant skill through its normal user-scoped file tool, while
-  the action permissions and confirmation rules remain in force. Use EVA for
+  instructions, personal skills and administrator-provided global skills apply
+  to EVA agent conversations. EVA reads personal skills through its normal
+  user-scoped file tool and loads global skills through a bounded read-only
+  tool, while the action permissions and confirmation rules remain in force. Use EVA for
   text work (translate, summarize, proofread, formalize, reformulate, headlines, topics,
   emoji), audio
   (transcription, subtitles, text-to-speech, audio chat) and images (OCR, image

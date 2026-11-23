@@ -54,6 +54,12 @@ class ToolPolicy {
             'requiresConfirmation' => false,
             'description' => 'Read file content',
         ],
+        'read_assistant_skill' => [
+            'risk' => self::RISK_READONLY,
+            'surfaces' => [self::SURFACE_TASKPROCESSING],
+            'requiresConfirmation' => false,
+            'description' => 'Read a bounded page of an official Nextcloud Assistant skill',
+        ],
         'read_files' => [
             'risk' => self::RISK_READONLY,
             'surfaces' => [self::SURFACE_WEB, self::SURFACE_TALK, self::SURFACE_TASKPROCESSING, self::SURFACE_TASKPROCESSING_CONFIRMED, self::SURFACE_RAG],

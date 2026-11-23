@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.24.1 - 2026-11-23
+
+### Include admin-provided Assistant skills
+
+- Add globally configured Assistant skills to the bounded context catalog, with personal skills taking precedence on name collisions.
+- Add a read-only, paginated skill reader that resolves global skills only from the official Assistant admin configuration.
+- Keep loaded skill bodies explicitly marked as untrusted guidance.
+
 ## 1.24.0 - 2026-11-23
 
 ### Bring official Assistant skills into EVA agent chats

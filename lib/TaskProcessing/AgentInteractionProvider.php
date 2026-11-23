@@ -46,7 +46,7 @@ class AgentInteractionProvider implements ISynchronousProvider {
 	private const MAX_TALK_RECALL_PASSAGES = 4;
 
 	private const READ_ONLY_TOOLS = [
-		'list_files', 'read_file', 'search_files',
+		'list_files', 'read_file', 'read_assistant_skill', 'search_files',
 		'list_contacts', 'find_contact', 'read_profile',
 		'list_calendars', 'list_calendar_events', 'find_free_slots',
 		'search_mails', 'list_mails', 'read_mail', 'unread_mail_count',
