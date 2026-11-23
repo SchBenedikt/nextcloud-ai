@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.24.4 - 2026-11-23
+
+- Improve the native Assistant integration status with a concise readiness summary,
+  routing counts, clearer per-feature states, and a direct link to Nextcloud AI settings.
+
 ## 1.24.3 - 2026-11-23
 
 ### Share Assistant skills with the standard EVA chat provider
