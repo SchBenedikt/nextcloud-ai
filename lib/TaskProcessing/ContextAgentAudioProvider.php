@@ -61,10 +61,10 @@ final class ContextAgentAudioProvider extends EvaAudioTranscriptionProvider {
 		$this->reportProgress($reportProgress, 0.8);
 		$audio = $this->audio->synthesizeSpeech($answer, 180);
 		$this->reportProgress($reportProgress, 0.95);
-		$id = $this->outputFile($userId, $audio['bytes'], 'mp3', 'eva-agent-audio');
+		$output = $this->outputFile($userId, $audio['bytes'], 'mp3', 'eva-agent-audio');
 		return [
 			'input_transcript' => $text,
-			'output' => $id,
+			'output' => $output,
 			'output_transcript' => $answer,
 			'conversation_token' => (string)($agentResult['conversation_token'] ?? ''),
 			'actions' => (string)($agentResult['actions'] ?? ''),

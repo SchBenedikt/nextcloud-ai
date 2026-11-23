@@ -2,6 +2,11 @@
 
 ## [Unreleased]
 
+### Return native TaskProcessing media data
+
+- Return generated image, edited image, speech, audio chat/translation, and subtitle bytes in their task outputs instead of returning EVA file IDs as file content.
+- Include media extensions through `FileShaped` on Nextcloud 35+ and retain the raw-byte contract on older supported cores; keep user-visible copies in the EVA folder.
+
 ### Fix TaskProcessing file inputs
 
 - Consume Nextcloud `File` objects across audio, OCR, image, and multimodal Assistant providers, while retaining ID resolution for direct provider callers.

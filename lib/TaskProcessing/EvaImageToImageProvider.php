@@ -10,6 +10,7 @@ use OCA\EvaAi\Service\OpenAICompatible;
 use OCP\Files\File;
 use OCP\Files\IRootFolder;
 use OCP\IL10N;
+use OCP\TaskProcessing\EShapeType;
 use OCP\TaskProcessing\ISynchronousProvider;
 use RuntimeException;
 
@@ -89,7 +90,15 @@ final class EvaImageToImageProvider implements ISynchronousProvider {
 			throw new RuntimeException($e->getMessage(), 0, $e);
 		}
 		TaskProcessingProgress::report($reportProgress, 0.95);
-		$fileId = $this->imageStorage->store($userId, $edited[0], 'edited');
-		return ['output' => $fileId];
+		$this->imageStorage->store($userId, $edited[0], 'edited');
+		$extension = match (strtolower((string)($edited[0]['mime'] ?? ''))) {
+			'image/jpeg', 'image/jpg' => 'jpg',
+			'image/webp' => 'webp',
+			'image/gif' => 'gif',
+			'image/avif' => 'avif',
+			'image/bmp' => 'bmp',
+			default => 'png',
+		};
+		return ['output' => TaskProcessingFileOutput::shape(EShapeType::Image, (string)$edited[0]['bytes'], $extension)];
 	}
 }

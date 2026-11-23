@@ -27,7 +27,7 @@ final class EvaAudioChatProvider extends EvaAudioTranscriptionProvider {
 		$this->reportProgress($reportProgress, 0.65);
 		$audio = $this->audio->synthesizeSpeech(trim((string)$answer['answer']), 180);
 		$this->reportProgress($reportProgress, 0.95);
-		$id = $this->outputFile($userId, $audio['bytes'], 'mp3', 'eva-audio-chat');
-		return ['input_transcript' => $text, 'output' => $id, 'output_transcript' => trim((string)$answer['answer'])];
+		$output = $this->outputFile($userId, $audio['bytes'], 'mp3', 'eva-audio-chat');
+		return ['input_transcript' => $text, 'output' => $output, 'output_transcript' => trim((string)$answer['answer'])];
 	}
 }

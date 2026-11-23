@@ -26,7 +26,7 @@ final class EvaAudioTranslateProvider extends EvaAudioTranscriptionProvider {
 		$this->reportProgress($reportProgress, 0.65);
 		$audio = $this->audio->synthesizeSpeech(trim((string)$translated['answer']), 180);
 		$this->reportProgress($reportProgress, 0.95);
-		$id = $this->outputFile($userId, $audio['bytes'], 'mp3', 'eva-audio-translation');
-		return ['audio_output' => $id];
+		$output = $this->outputFile($userId, $audio['bytes'], 'mp3', 'eva-audio-translation');
+		return ['audio_output' => $output];
 	}
 }

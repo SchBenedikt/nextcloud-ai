@@ -19,7 +19,7 @@ final class EvaAudioSubtitlesProvider extends EvaAudioTranscriptionProvider {
 		$vtt = $this->audio->transcribeAudio($file['bytes'], $file['filename'], $file['mime'], false, true, 180);
 		if (!str_starts_with($vtt, 'WEBVTT')) $vtt = "WEBVTT\n\n" . $vtt;
 		$this->reportProgress($reportProgress, 0.95);
-		$id = $this->outputFile($userId, $vtt . "\n", 'vtt');
-		return ['output' => $id];
+		$output = $this->outputFile($userId, $vtt . "\n", 'vtt', 'eva-subtitles', \OCP\TaskProcessing\EShapeType::File);
+		return ['output' => $output];
 	}
 }
