@@ -17,7 +17,7 @@ you can remove it.
 | AI-created file markers (tracking files EVA created) | Nextcloud app-data (`ai-marks/`) | Until the file is deleted or manually cleaned |
 | Knowledge base entries (`KNOWLEDGE.md`), including the optional first-run identity section | User's Nextcloud home folder | Until the user edits/deletes the section or file |
 | First-run knowledge marker | Per-user Nextcloud user configuration | Until the app is reset/uninstalled or the user changes it |
-| Agent conversation state | Nextcloud database (`eva_ai_agent_store`) | Per conversation token; deleted on reset |
+| Agent conversation state | Nextcloud database (`eva_ai_agent_store`) | Per conversation token; inactive rows are removed after 30 days and data is deleted on reset or account deletion. Multimodal conversations may retain references to the four newest Nextcloud images for follow-up context; image bytes are not stored here. |
 | App configuration | Nextcloud database (`oc_appconfig`) | Persistent until manually changed |
 | Optional vector generation metadata and durable synchronization intent | Nextcloud database (`eva_ai_vec_generations`, `eva_ai_vec_outbox`) | Pending/failed erasure intent and generation-erasure receipts are retained for recovery and fencing. Delivered/superseded point-operation records are pruned in bounded batches after 30 days. |
 | Incomplete account-erasure retry | Nextcloud database (`eva_ai_account_cleanup`) | Contains a purpose-separated owner hash and Nextcloud-encrypted account ID; deleted after all local cleanup steps succeed |

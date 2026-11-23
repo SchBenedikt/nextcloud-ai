@@ -26,7 +26,7 @@ class AgentStore {
 	}
 
 	/**
-	 * @return array{history: array<int,array{role:string,content:string}>, pending: array<int,array{name:string,arguments:array}>}
+	 * @return array{history: array<int,array{role:string,content:string,attachments?:list<int>}>, pending: array<int,array{name:string,arguments:array}>}
 	 */
 	public function load(string $userId, string $token): array {
 		if ($token === '' || $token === '{}' || !preg_match('/^[a-zA-Z0-9_-]{1,128}$/', $token)) {

@@ -9,6 +9,7 @@ class MultimodalContextAgentProvider extends AgentInteractionProvider {
 	public function getId(): string { return 'eva_ai:contextagent:multimodal-interaction'; }
 	public function getName(): string { return $this->l->t('Eva · Multimodal Agent'); }
 	public function getTaskTypeId(): string { return MultimodalContextAgentInteraction::ID; }
+	protected function supportsImageHistory(): bool { return true; }
 
 	public function process(?string $userId, array $input, callable $reportProgress): array {
 		return $this->processWithIntermediateOutput($userId, $input, $reportProgress);

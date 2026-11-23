@@ -9,6 +9,7 @@ class MultimodalChatWithToolsProvider extends TextToTextChatWithToolsProvider {
 	public function getId(): string { return 'eva_ai:multimodal-chatwithtools'; }
 	public function getName(): string { return $this->l->t('Eva · Multimodal Tools'); }
 	public function getTaskTypeId(): string { return MultimodalChatWithTools::ID; }
+	protected function supportsHistoryAttachments(): bool { return true; }
 
 	public function process(?string $userId, array $input, callable $reportProgress): array {
 		return $this->processWithIntermediateOutput($userId, $input, $reportProgress);

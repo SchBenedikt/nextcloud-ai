@@ -99,6 +99,11 @@ When RAG context contributes sources, standard chat plus text, multimodal, and
 audio ContextAgent tasks return up to eight distinct source names through
 TaskProcessing's optional `sources` output. The official Assistant then
 displays them in the message's information-source panel with an `EVA:` prefix.
+Multimodal ContextAgent conversations retain at most the four newest image
+file IDs in per-user agent state and re-resolve them from that user's Nextcloud
+home for follow-up questions. Multimodal chat-with-tools also restores the file
+parts supplied in Nextcloud Assistant history. Image bytes are sent to the
+configured model when needed; they are not copied into the agent-state database.
 These providers use the configured local or OpenAI-compatible backends.
 On Nextcloud 35+, EVA streams intermediate text for the official Assistant's
 `core:text2text:chatwithtools` and `core:multimodalchatwithtools` tasks when the
