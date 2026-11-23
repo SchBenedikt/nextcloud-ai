@@ -14,11 +14,11 @@ superseded in-progress runs.
 - **migration-regression** — `tests/MigrationRegressionTest.php`,
   `tests/TaskProcessingContractTest.php`, `tests/AppConfigUserSettingsTest.php`.
 - **nextcloud-app** — installs the app into real Nextcloud `stable30`/`stable33`/
-  `stable35` in the official Nextcloud PHP CI container: fresh SQLite instance →
+  `stable36` in the official Nextcloud PHP CI container: fresh SQLite instance →
   `occ app:enable eva_ai` → `occ app:list` → `tests/ApiControllerIntegrationTest.php`
   inside the install → `composer test`. This catches metadata, bootstrap, route,
   dependency, and runtime-API breakage across the oldest/middle/newest lines.
-- **nextcloud-app-database** — the same lifecycle on the current `stable35` line,
+- **nextcloud-app-database** — the same lifecycle on the current `stable36` line,
   but against a real PostgreSQL 17 and a real MariaDB 11.4 instead of SQLite
   (GitHub service containers published on the runner and reached through the
   docker host gateway): fresh `occ maintenance:install` on that engine →
@@ -39,7 +39,7 @@ superseded in-progress runs.
 
 ## Nightly (`nightly.yml`)
 
-- **compat** — scheduled across `stable30`–`stable35` and `latest`: a fresh SQLite
+- **compat** — scheduled across `stable30`–`stable36` and `latest`: a fresh SQLite
   Nextcloud install, `occ app:enable eva_ai`, `occ app:list`, then `composer test`.
 
 ## Local equivalents

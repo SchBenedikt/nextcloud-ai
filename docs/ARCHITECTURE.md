@@ -44,7 +44,7 @@ lib/
   Migration/        Database migrations (schema + repair)
   Notification/     Notifier — "AI answer ready" bell notifications
   Service/          Core services (see below)
-  TaskProcessing/   28 providers for the Assistant app
+  TaskProcessing/   28 compatible providers and a version-guarded Nextcloud 36 image editor
 ```
 
 ## Core services (`lib/Service/`)

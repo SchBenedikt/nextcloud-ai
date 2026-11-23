@@ -5,9 +5,8 @@ declare(strict_types=1);
 namespace OCA\EvaAi\TaskProcessing;
 
 use OCA\EvaAi\Service\AppConfig;
+use OCA\EvaAi\Service\GeneratedImageStorage;
 use OCA\EvaAi\Service\OpenAICompatible;
-use OCP\Files\Folder;
-use OCP\Files\IRootFolder;
 use OCP\IL10N;
 use OCP\TaskProcessing\ISynchronousProvider;
 use OCP\TaskProcessing\TaskTypes\TextToImage;
@@ -18,7 +17,7 @@ final class EvaTextToImageProvider implements ISynchronousProvider {
 	public function __construct(
 		private AppConfig $appConfig,
 		private OpenAICompatible $images,
-		private IRootFolder $rootFolder,
+		private GeneratedImageStorage $imageStorage,
 		private IL10N $l,
 	) {
 	}
@@ -49,14 +48,9 @@ final class EvaTextToImageProvider implements ISynchronousProvider {
 		} catch (\Throwable $e) {
 			throw new RuntimeException($e->getMessage(), 0, $e);
 		}
-		$home = $this->rootFolder->getUserFolder($userId);
-		$folder = $this->ensureFolder($home);
 		$ids = [];
 		foreach ($generated as $index => $image) {
-			$extension = str_contains(strtolower($image['mime']), 'jpeg') ? 'jpg' : 'png';
-			$name = 'eva-generated-' . gmdate('Ymd-His') . '-' . ($index + 1) . '-' . bin2hex(random_bytes(3)) . '.' . $extension;
-			$file = $folder->newFile($name, $image['bytes']);
-			$ids[] = (int)$file->getId();
+			$ids[] = $this->imageStorage->store($userId, $image, 'generated');
 			$reportProgress(min(0.95, 0.35 + (($index + 1) / count($generated)) * 0.55));
 		}
 		if ($ids === []) throw new RuntimeException('The image provider returned no files.');
@@ -64,12 +58,4 @@ final class EvaTextToImageProvider implements ISynchronousProvider {
 		return ['images' => $ids];
 	}
 
-	private function ensureFolder(Folder $home): Folder {
-		if ($home->nodeExists('EVA')) {
-			$node = $home->get('EVA');
-			if (!$node instanceof Folder) throw new RuntimeException('The EVA folder exists but is not a folder.');
-			return $node;
-		}
-		return $home->newFolder('EVA');
-	}
 }

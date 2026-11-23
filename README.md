@@ -12,7 +12,7 @@ SQL search index works on its own; a separate vector database is optional.
 
 [![Tests](https://github.com/SchBenedikt/nextcloud-ai/actions/workflows/tests.yml/badge.svg?branch=main)](https://github.com/SchBenedikt/nextcloud-ai/actions/workflows/tests.yml)
 [![License: AGPL v3](https://img.shields.io/badge/License-AGPL%20v3-blue.svg)](LICENSE)
-[![Nextcloud](https://img.shields.io/badge/Nextcloud-30--35-blue)](appinfo/info.xml)
+[![Nextcloud](https://img.shields.io/badge/Nextcloud-30--36-blue)](appinfo/info.xml)
 
 [Install EVA](https://apps.nextcloud.com/apps/eva_ai) ·
 [Get started](docs/QUICKSTART.md) · [Documentation](docs/README.md) ·
@@ -141,7 +141,9 @@ review permissions and privacy switches before enabling them.
 Scheduled briefings, usage metrics, background runs, extensions and scoped API
 keys remain available through the relevant settings sections. Export chats as
 Markdown, text, HTML or DOCX, print to PDF, or create a batch archive. A compatible
-provider can also generate images into your EVA folder in Files.
+provider can also generate and edit images in your EVA folder in Files. On
+Nextcloud 36, image editing is available through TaskProcessing when the active
+OpenAI-compatible provider supports image edits.
 
 ## Install and configure
 

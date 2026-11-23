@@ -13,7 +13,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        nc: ['stable30', 'stable31', 'stable32', 'stable33', 'stable34', 'stable35', 'latest']
+        nc: ['stable30', 'stable31', 'stable32', 'stable33', 'stable34', 'stable35', 'stable36', 'latest']
     steps:
       - uses: actions/checkout@v7
 
