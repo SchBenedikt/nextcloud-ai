@@ -139,14 +139,9 @@ class CalendarService {
             return \DateTimeImmutable::createFromFormat('!d.m.Y', $val) ?: null;
         }
         // Explicit ISO offsets describe absolute instants; Z always means UTC.
-        if (preg_match('/^\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}(:\d{2})?(Z|[+-]\d{2}:?\d{2})?$/', $val)) {
-            $hasOffset = (bool)preg_match('/(Z|[+-]\d{2}:?\d{2})$/', $val);
-            if (!$hasOffset) {
-                $d = new \DateTimeImmutable(str_replace(' ', 'T', $val), $tz);
-                return $d ?? null;
-            }
-            $d = new \DateTimeImmutable($val);
-            return $d ?? null;
+        $isoDateTime = CalendarTimeParser::parseIsoDateTime($val, $tz);
+        if ($isoDateTime !== null) {
+            return $isoDateTime;
         }
         // Datum mit Uhrzeit: deutsche + ISO-Schreibweisen
         $formats = [

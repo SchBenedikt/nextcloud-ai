@@ -2,6 +2,13 @@
 
 ## [Unreleased]
 
+## 1.20.50 - 2026-11-23
+
+### Keep calendar regression tests independent of Nextcloud internals
+
+- Extract ISO date-time parsing into a small pure helper and test it without mocking Nextcloud interfaces.
+- Preserve UTC and explicit-offset semantics while keeping offset-free timestamps in the user timezone.
+
 ## 1.20.49 - 2026-11-23
 
 ### Keep explicit calendar timestamps at their stated instant
