@@ -2,6 +2,11 @@
 
 ## [Unreleased]
 
+### Honor Nextcloud Assistant chat context
+
+- Accept opted-in Assistant conversation memories and pass them to EVA as bounded, explicitly untrusted personalization context.
+- Preserve the Assistant's system prompt as capped custom instructions inside EVA's existing safety and citation rules.
+
 ### Complete official Assistant sticker integration
 
 - Register EVA as the provider for the official Assistant app's optional `assistant:text2sticker` task, when that app is installed and enabled.

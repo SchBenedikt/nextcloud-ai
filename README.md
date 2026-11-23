@@ -54,7 +54,8 @@ EVA is not an external chatbot next to Nextcloud — it is woven into it:
 
 - **Nextcloud Assistant**: EVA registers native TaskProcessing providers, so it
   powers the official Nextcloud Assistant app. Chat with your indexed files
-  directly in the Assistant sidebar, use EVA for text work (translate, summarize,
+  directly in the Assistant sidebar, let remembered conversations personalize
+  replies, use EVA for text work (translate, summarize,
   proofread, formalize, reformulate, headlines, topics, emoji), audio
   (transcription, subtitles, text-to-speech, audio chat) and images (OCR, image
   analysis, text-to-image and stickers). Scheduled tasks ("Geplante Aufgaben")
