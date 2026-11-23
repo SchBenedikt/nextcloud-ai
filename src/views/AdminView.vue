@@ -1,5 +1,6 @@
 <template>
 	<div class="admin-tools">
+		<TaskProcessingStatus />
 		<VectorStorageStatus />
 		<details @toggle="onGenerationToggle">
 			<summary>{{ $t('Advanced index administration') }}</summary>
@@ -20,12 +21,13 @@ import { NcLoadingIcon, NcNoteCard } from '@nextcloud/vue'
 import { api as requestApi } from '../lib/api'
 import VectorStorageStatus from '../components/settings/VectorStorageStatus.vue'
 import GenerationEmbeddingSettings from '../components/settings/GenerationEmbeddingSettings.vue'
+import TaskProcessingStatus from '../components/settings/TaskProcessingStatus.vue'
 
 const apiGet = (path) => requestApi('GET', path)
 
 export default {
 	name: 'AdminView',
-	components: { NcLoadingIcon, NcNoteCard, VectorStorageStatus, GenerationEmbeddingSettings },
+	components: { NcLoadingIcon, NcNoteCard, TaskProcessingStatus, VectorStorageStatus, GenerationEmbeddingSettings },
 	setup() {
 		const generationUsers = ref([])
 		const usersLoading = ref(false)
