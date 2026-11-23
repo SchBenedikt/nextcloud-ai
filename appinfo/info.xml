@@ -3,21 +3,21 @@
       xsi:noNamespaceSchemaLocation="https://apps.nextcloud.com/schema/apps/info.xsd">
     <id>eva_ai</id>
     <name>Eva</name>
-    <summary>AI assistant for Nextcloud with cited file search and local or hosted models</summary>
+    <summary>AI assistant for Nextcloud with cited file search, confirmed actions and local or hosted models</summary>
     <!-- IMPORTANT: keep the description flush-left. CommonMark (which the App
           Store uses to render this field) turns any line indented by four or
           more spaces into a code block, so indenting the copy makes the whole
           store listing render as source code. See docs/VERSIONING.md. -->
     <description>
-EVA adds a capable AI assistant to your Nextcloud. It is deeply integrated into Nextcloud itself: it powers the official Nextcloud Assistant, works inside Files, Talk, Mail, Calendar, Contacts and Tasks, and answers with cited sources from your own documents.
+EVA brings AI into the Nextcloud workspace you already use. Ask questions about your files, get answers with source references, and prepare actions across Nextcloud for your review. Use local or hosted models and keep document search in Nextcloud's built-in SQL database.
 
-## Deep Nextcloud integration
+## Work across Nextcloud
 
-EVA is not an external chatbot — it is a native Nextcloud app. It registers TaskProcessing providers, so it powers the official Nextcloud Assistant app across the whole instance: chat with your indexed files in the Assistant sidebar, use text and audio tools, generate images, and edit images directly in Nextcloud 36. Scheduled tasks ("Geplante Aufgaben") can trigger EVA. In Files you can open any document with EVA for a focused file conversation. EVA can also join Nextcloud Talk as a bot and read or post messages in rooms (off by default).
+EVA is a native Nextcloud app with providers for the official Nextcloud Assistant. An administrator chooses which supported task types use EVA in **Administration → AI → Unified task processing**. Depending on your Nextcloud version and provider setup, use EVA for writing, translation, audio transcription and speech, image analysis and generation, and stickers. Scheduled tasks can also use EVA. In Files, open a document with EVA for a focused conversation. EVA can join Nextcloud Talk as an optional bot.
 
-## More than 80 actions
+## Useful tools with review before changes
 
-EVA works through the real Nextcloud APIs, and every write action asks for your confirmation first:
+Use Nextcloud APIs to work with files, calendars, tasks, mail, contacts and Talk. In chat, review and confirm proposed changes before EVA applies them:
 
 - **Files &amp; knowledge**: search, read, create, rename, move, copy and delete files, write Markdown notes, keep a personal knowledge memory, manage shares, comments, system tags and file versions.
 - **Calendar &amp; tasks**: list, create, update and delete events, find free slots, and create, complete and delete your to-dos.
@@ -28,13 +28,17 @@ EVA works through the real Nextcloud APIs, and every write action asks for your 
 
 EVA can search the current web for up-to-date answers and show images from the internet directly in the chat. Answers list the pages that were actually retrieved, and image results always link back to their source page.
 
-## Your models, your choice
+## Choose where AI runs
 
-Use native Ollama or Groq, or add compatible profiles for OpenAI, Google Gemini, Mistral, DeepSeek, OpenRouter and other Chat Completions servers. The search index stays on your Nextcloud server; you decide where inference happens.
+Use Ollama or Groq, or configure compatible services such as OpenAI, Google Gemini, Mistral, DeepSeek and OpenRouter. The default chat model, `gemma4:cloud`, uses Ollama Cloud. Choose a locally installed model when you want chat inference to stay on your own infrastructure. The default document index uses Nextcloud SQL; an external vector database is optional.
 
 ## Cited answers from your files
 
-EVA extracts text, PDF, Office, OpenDocument and many other formats, then combines semantic and keyword retrieval. Every file answer links back to its sources so you can verify it.
+EVA extracts supported text, PDF, Office and OpenDocument files, then combines semantic and keyword retrieval. File answers include source references so you can verify them.
+
+## Optional web search
+
+Enable web and image search when you need current information. EVA shows the pages used for an answer and links image results to their source.
 
 ## Requirements
 
