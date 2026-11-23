@@ -75,6 +75,9 @@ class Application extends App implements IBootstrap {
         $multimodalAgentProvider = $supportsIntermediateOutput
             ? \OCA\EvaAi\TaskProcessing\StreamingMultimodalContextAgentProvider::class
             : \OCA\EvaAi\TaskProcessing\MultimodalContextAgentProvider::class;
+        $audioTranslationProvider = $supportsIntermediateOutput
+            ? \OCA\EvaAi\TaskProcessing\StreamingEvaAudioTranslateProvider::class
+            : \OCA\EvaAi\TaskProcessing\EvaAudioTranslateProvider::class;
         $taskProcessingProviders = [
             [\OCP\TaskProcessing\TaskTypes\TextToTextChat::class, $textChatProvider],
             [\OCP\TaskProcessing\TaskTypes\ContextAgentInteraction::class, $agentInteractionProvider],
@@ -101,7 +104,7 @@ class Application extends App implements IBootstrap {
             [\OCP\TaskProcessing\TaskTypes\AudioToText::class, \OCA\EvaAi\TaskProcessing\EvaAudioToTextProvider::class],
             [\OCP\TaskProcessing\TaskTypes\AudioToTextSubtitles::class, \OCA\EvaAi\TaskProcessing\EvaAudioSubtitlesProvider::class],
             [\OCP\TaskProcessing\TaskTypes\TextToSpeech::class, \OCA\EvaAi\TaskProcessing\EvaTextToSpeechProvider::class],
-            [\OCP\TaskProcessing\TaskTypes\AudioToAudioTranslate::class, \OCA\EvaAi\TaskProcessing\EvaAudioTranslateProvider::class],
+            [\OCP\TaskProcessing\TaskTypes\AudioToAudioTranslate::class, $audioTranslationProvider],
             [\OCP\TaskProcessing\TaskTypes\AudioToAudioChat::class, \OCA\EvaAi\TaskProcessing\EvaAudioChatProvider::class],
             [\OCP\TaskProcessing\TaskTypes\MultimodalChatWithTools::class, \OCA\EvaAi\TaskProcessing\MultimodalChatWithToolsProvider::class],
             [\OCP\TaskProcessing\TaskTypes\ContextAgentAudioInteraction::class, \OCA\EvaAi\TaskProcessing\ContextAgentAudioProvider::class],

@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.23.1 - 2026-11-23
+
+### Complete native audio translation language options
+
+- Provide source and target language choices for Nextcloud's audio translation task.
+- Honor the selected source language in translation prompts and reject unsupported language values.
+- Stream transcript and translated text on Nextcloud 35+, and honor the native watermark option.
+- Keep PHPUnit and Symfony YAML compatible with the app's PHP 8.2 minimum.
+
 ## 1.23.0 - 2026-11-23
 
 ### Stream native RAG TaskProcessing chat
