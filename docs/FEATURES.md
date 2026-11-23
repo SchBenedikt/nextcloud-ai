@@ -124,7 +124,9 @@ worker. On Nextcloud 35 and newer, EVA's text and multimodal ContextAgent
 providers implement the native options-aware synchronous contract and report
 intermediate replies while generation continues, including the summary after
 confirmed actions finish. Older supported core versions use the same providers
-through the compatible synchronous interface. In the
+through the compatible synchronous interface. EVA's `core:text2text:chat` RAG
+provider also streams intermediate answers and preserves structured sources
+when a TaskProcessing caller requests streaming. In the
 official Assistant, rejecting a pending agent proposal clears
 that proposal and returns a cancellation response without calling the model or
 executing any action; a new user message still starts a fresh proposal.

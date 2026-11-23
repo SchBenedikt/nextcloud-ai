@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.23.0 - 2026-11-23
+
+### Stream native RAG TaskProcessing chat
+
+- Add a Nextcloud 35+ options-aware provider for `core:text2text:chat` that streams intermediate answers while preserving source outputs and cancellation handling.
+- Keep the existing synchronous contract on older supported core versions.
+
 ## 1.22.1 - 2026-11-23
 
 ### Stream post-confirmation Assistant summaries

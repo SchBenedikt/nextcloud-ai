@@ -6,6 +6,7 @@ namespace OCA\EvaAi\TaskProcessing;
 
 use OCA\EvaAi\Service\RagService;
 use OCA\EvaAi\Service\ToolPolicy;
+use OCA\EvaAi\Dto\ChatRequest;
 use OCP\IL10N;
 use OCP\TaskProcessing\EShapeType;
 use OCP\TaskProcessing\Exception\ProcessingException;
@@ -97,6 +98,22 @@ class TextToTextChatProvider implements ISynchronousProvider {
 
 	#[\Override]
 	public function process(?string $userId, array $input, callable $reportProgress): array {
+		return $this->processWithIntermediateOutput($userId, $input, $reportProgress);
+	}
+
+	/**
+	 * Shared implementation for the compatible synchronous and newer streaming
+	 * provider contracts.
+	 *
+	 * @param null|callable(array{output:string}):bool $reportIntermediateOutput
+	 */
+	public function processWithIntermediateOutput(
+		?string $userId,
+		array $input,
+		callable $reportProgress,
+		?callable $reportIntermediateOutput = null,
+		bool $preferStreaming = false,
+	): array {
 		// Assistant tasks must never expose or execute mutating web tools.
 		// Read-only tools remain available through the RAG service.
 		$this->ragService->setSurface(ToolPolicy::SURFACE_TASKPROCESSING);
@@ -128,20 +145,84 @@ class TextToTextChatProvider implements ISynchronousProvider {
 			$totalMemoryChars += mb_strlen($memory);
 		}
 
-		$result = $this->ragService->ask(new \OCA\EvaAi\Dto\ChatRequest(
+		$request = new ChatRequest(
 			$userId,
 			$prompt,
 			$history,
 			instructions: $instructions,
 			memories: $memories,
-		));
+		);
+		if ($preferStreaming && $reportIntermediateOutput !== null) {
+			$result = $this->askStreaming($request, $reportProgress, $reportIntermediateOutput);
+		} else {
+			$result = $this->ragService->ask($request);
+		}
 		TaskProcessingProgress::report($reportProgress, 0.9);
 
 		if (!empty($result['error'])) {
 			throw new ProcessingException((string)$result['error']);
 		}
+		return [
+			'output' => (string)($result['answer'] ?? ''),
+			'sources' => $this->normalizeSources($result['sources'] ?? []),
+		];
+	}
+
+	/** Stream final chat text into TaskProcessing and preserve structured citations. */
+	private function askStreaming(ChatRequest $request, callable $reportProgress, callable $reportIntermediateOutput): array {
+		$answer = '';
+		$result = null;
+		$lastReportedAt = microtime(true);
+		foreach ($this->ragService->askStream($request) as $line) {
+			$event = json_decode(trim($line), true);
+			if (!is_array($event)) {
+				continue;
+			}
+			$type = $event['type'] ?? '';
+			if ($type === 'content') {
+				$answer .= (string)($event['delta'] ?? '');
+				if (microtime(true) - $lastReportedAt >= 0.25) {
+					TaskProcessingProgress::report($reportProgress, 0.6);
+					if ($reportIntermediateOutput(['output' => $answer]) === false) {
+						throw new TaskCancelledException('Task cancelled while streaming');
+					}
+					$lastReportedAt = microtime(true);
+				}
+			} elseif ($type === 'done') {
+				$result = [
+					'answer' => (string)($event['answer'] ?? $answer),
+					'sources' => is_array($event['sources'] ?? null) ? $event['sources'] : [],
+					'error' => null,
+				];
+			} elseif ($type === 'confirmation') {
+				$result = [
+					'answer' => 'I need your confirmation before I can perform that action.',
+					'sources' => [],
+					'error' => null,
+				];
+				break;
+			} elseif ($type === 'error') {
+				throw new ProcessingException((string)($event['message'] ?? $event['delta'] ?? 'The model could not complete the request.'));
+			}
+		}
+
+		if ($result === null) {
+			throw new ProcessingException('The model did not complete the response.');
+		}
+		$finalAnswer = (string)$result['answer'];
+		if ($finalAnswer !== '') {
+			TaskProcessingProgress::report($reportProgress, 0.8);
+			if ($reportIntermediateOutput(['output' => $finalAnswer]) === false) {
+				throw new TaskCancelledException('Task cancelled while streaming');
+			}
+		}
+		return $result;
+	}
+
+	/** @return list<string> */
+	private function normalizeSources(mixed $rawSources): array {
 		$sources = [];
-		foreach (array_slice((array)($result['sources'] ?? []), 0, 8) as $source) {
+		foreach (array_slice((array)$rawSources, 0, 8) as $source) {
 			if (!is_array($source)) {
 				continue;
 			}
@@ -155,9 +236,6 @@ class TextToTextChatProvider implements ISynchronousProvider {
 			}
 		}
 
-		return [
-			'output' => (string)($result['answer'] ?? ''),
-			'sources' => $sources,
-		];
+		return $sources;
 	}
 }

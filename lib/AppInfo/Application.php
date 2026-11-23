@@ -66,6 +66,9 @@ class Application extends App implements IBootstrap {
         // requires one entry and cannot accidentally skip the compatibility
         // guard for older Nextcloud cores (Issue #323).
         $supportsIntermediateOutput = interface_exists(\OCP\TaskProcessing\ISynchronousOptionsAwareProvider::class);
+        $textChatProvider = $supportsIntermediateOutput
+            ? \OCA\EvaAi\TaskProcessing\StreamingTextToTextChatProvider::class
+            : \OCA\EvaAi\TaskProcessing\TextToTextChatProvider::class;
         $agentInteractionProvider = $supportsIntermediateOutput
             ? \OCA\EvaAi\TaskProcessing\StreamingAgentInteractionProvider::class
             : \OCA\EvaAi\TaskProcessing\AgentInteractionProvider::class;
@@ -73,7 +76,7 @@ class Application extends App implements IBootstrap {
             ? \OCA\EvaAi\TaskProcessing\StreamingMultimodalContextAgentProvider::class
             : \OCA\EvaAi\TaskProcessing\MultimodalContextAgentProvider::class;
         $taskProcessingProviders = [
-            [\OCP\TaskProcessing\TaskTypes\TextToTextChat::class, \OCA\EvaAi\TaskProcessing\TextToTextChatProvider::class],
+            [\OCP\TaskProcessing\TaskTypes\TextToTextChat::class, $textChatProvider],
             [\OCP\TaskProcessing\TaskTypes\ContextAgentInteraction::class, $agentInteractionProvider],
             [\OCP\TaskProcessing\TaskTypes\TextToTextChatWithTools::class, \OCA\EvaAi\TaskProcessing\TextToTextChatWithToolsProvider::class],
             [\OCP\TaskProcessing\TaskTypes\TextToText::class, \OCA\EvaAi\TaskProcessing\EvaTextToTextProvider::class],
