@@ -455,6 +455,8 @@ corpus, latency claim or completed shadow/soak gate. Automated tests remain defe
 
 ### Stage 04 first slice: redirect boundary
 
+This records the initial change and is superseded by the destination-policy
+implementation below.
 All OpenAI-compatible request paths now explicitly reject redirects, including
 models, chat, image generation and audio. Returned-image downloads already did so.
 Inspected Nextcloud 35's Client implementation: EVA retains default certificate,

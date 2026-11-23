@@ -109,9 +109,11 @@ proxy and remote-host validation. EVA does not set `allow_local_address` to bypa
 those checks. On the inspected Nextcloud 35 installation, system-wide
 `allow_local_remote_servers` can permit local destinations; this is broader than
 an EVA-specific endpoint allowlist. Redirect rejection alone is not a complete
-SSRF policy or DNS-rebinding defense. The dedicated admin-owned endpoint policy,
-metadata/link-local restrictions and adversarial validation remain pending in the
-[backend migration ledger](BACKEND-ROADMAP.md).
+SSRF policy or DNS-rebinding defense. EVA's own provider endpoint policy adds
+exact administrator-approved private origins, reserved and metadata address
+rejection, bounded DNS resolution and transfer-time DNS pinning, as described
+below. Adversarial and live transport verification of that policy remains
+pending; see the [backend migration ledger](BACKEND-ROADMAP.md).
 
 ## EVA-owned destination policy
 
