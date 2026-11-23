@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.22.1 - 2026-11-23
+
+### Stream post-confirmation Assistant summaries
+
+- Stream the final agent response after confirmed actions complete on Nextcloud 35+, while keeping the durable execution receipt as the fallback.
+
 ## 1.22.0 - 2026-11-23
 
 ### Stream native Assistant agent replies
