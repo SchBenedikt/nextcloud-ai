@@ -105,7 +105,7 @@ class AgentInteractionProvider implements ISynchronousProvider {
 			),
 			'rag_enabled' => new ShapeDescriptor(
 				$this->l->t('RAG enabled'),
-				$this->l->t('Whether to perform vector retrieval from indexed files for knowledge augmentation.'),
+				$this->l->t('Whether to perform retrieval from indexed files for knowledge augmentation. Use true or false.'),
 				EShapeType::Text
 			),
 		];
@@ -153,7 +153,7 @@ class AgentInteractionProvider implements ISynchronousProvider {
 		)), 0, 20) : [];
 		$memories = array_map(static fn(string $memory): string => mb_substr($memory, 0, 2000), $memories);
 		$talkRoomIds = is_array($input['talk_room_ids'] ?? null) ? $input['talk_room_ids'] : [];
-		$ragEnabled = (bool)($input['rag_enabled'] ?? true);
+		$ragEnabled = $this->parseBooleanInput($input['rag_enabled'] ?? true, 'rag_enabled');
 		if ($token === '' || $token === '{}' || !preg_match('/^[a-zA-Z0-9_-]{1,128}$/', $token)) {
 			$token = 'eva-' . bin2hex(random_bytes(16));
 		}
@@ -277,6 +277,26 @@ class AgentInteractionProvider implements ISynchronousProvider {
 			$result['actions'] = '';
 		}
 		return $result;
+	}
+
+	/**
+	 * TaskProcessing represents optional flags as Text, so a PHP cast would
+	 * interpret the string "false" as true. Parse the textual contract strictly.
+	 */
+	private function parseBooleanInput(mixed $value, string $name): bool {
+		if (is_bool($value)) {
+			return $value;
+		}
+		if (is_int($value) && ($value === 0 || $value === 1)) {
+			return $value === 1;
+		}
+		if (is_string($value)) {
+			$parsed = filter_var(trim($value), FILTER_VALIDATE_BOOLEAN, FILTER_NULL_ON_FAILURE);
+			if ($parsed !== null) {
+				return $parsed;
+			}
+		}
+		throw new RuntimeException($name . ' must be true or false');
 	}
 
 	/** Attach bounded, permission-checked images for multimodal ContextAgent tasks. */

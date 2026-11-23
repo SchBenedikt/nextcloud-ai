@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Honor textual RAG flags in Assistant tasks
+
+- Parse the optional TaskProcessing `rag_enabled` text input explicitly so `false` disables retrieval instead of being treated as truthy.
+
 ### Repair authenticated Nextcloud Assistant assignment integration
 
 - Use the official Assistant's current OCS assignment routes and response shapes.

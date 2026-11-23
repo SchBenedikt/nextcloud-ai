@@ -96,6 +96,10 @@ Talk conversation as context, each room id is verified against Talk's
 participant list before a single message reaches the model, and the indexed
 older history of those rooms supplements the recent messages.
 
+The `rag_enabled` TaskProcessing input is a text field in Nextcloud's public
+task shape. Send `true` or `false` as text to control indexed-file retrieval;
+EVA parses that value explicitly so the string `false` disables retrieval.
+
 ### Nextcloud Talk
 
 Optionally EVA can be registered as a Talk bot and enabled per conversation. The
