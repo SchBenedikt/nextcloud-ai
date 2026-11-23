@@ -122,8 +122,9 @@ Additional providers exist for chat with shared tools and for multi-step agent
 interactions. Provider execution requires a running Nextcloud TaskProcessing
 worker. On Nextcloud 35 and newer, EVA's text and multimodal ContextAgent
 providers implement the native options-aware synchronous contract and report
-intermediate replies while generation continues. Older supported core versions
-use the same providers through the compatible synchronous interface. In the
+intermediate replies while generation continues, including the summary after
+confirmed actions finish. Older supported core versions use the same providers
+through the compatible synchronous interface. In the
 official Assistant, rejecting a pending agent proposal clears
 that proposal and returns a cancellation response without calling the model or
 executing any action; a new user message still starts a fresh proposal.

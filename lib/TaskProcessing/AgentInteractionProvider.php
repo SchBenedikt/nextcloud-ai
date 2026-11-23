@@ -278,7 +278,17 @@ class AgentInteractionProvider implements ISynchronousProvider {
 
 		if ($confirmation === 1) {
 			TaskProcessingProgress::report($reportProgress, 0.2);
-			return $this->runConfirmed($userId, $messages, $token, $history, $pending, $ragSources, $reportProgress);
+			return $this->runConfirmed(
+				$userId,
+				$messages,
+				$token,
+				$history,
+				$pending,
+				$ragSources,
+				$reportProgress,
+				$reportIntermediateOutput,
+				$preferStreaming,
+			);
 		}
 
 		// Proposal phase: the LLM may freely call read-only information tools
@@ -410,7 +420,13 @@ class AgentInteractionProvider implements ISynchronousProvider {
 			}
 			if ($reportProgress !== null) TaskProcessingProgress::report($reportProgress, 0.3 + $round * 0.2);
 			if ($preferStreaming && $reportIntermediateOutput !== null) {
-				$chat = $this->streamProposal($messages, $tools, $reportProgress, $reportIntermediateOutput, $round);
+				$chat = $this->streamChatOutput(
+					$messages,
+					$tools,
+					$reportProgress,
+					$reportIntermediateOutput,
+					min(0.85, 0.35 + $round * 0.2),
+				);
 			} else {
 				$chat = $this->ollama->chat($messages, $tools);
 			}
@@ -468,20 +484,20 @@ class AgentInteractionProvider implements ISynchronousProvider {
 	}
 
 	/**
-	 * Stream a proposal's visible text to TaskProcessing while retaining tool
-	 * calls until the model has completed the round. Actions are still only
-	 * executed by the existing explicit-confirmation path.
+	 * Stream visible text to TaskProcessing while retaining tool calls until
+	 * the model has completed the round. Proposal actions still use the existing
+	 * explicit-confirmation path.
 	 *
 	 * @param callable(float):bool|null $reportProgress
 	 * @param callable(array{output:string}):bool $reportIntermediateOutput
 	 * @return array{answer:string,raw_tool_calls:array,tool_calls:array}
 	 */
-	private function streamProposal(
+	private function streamChatOutput(
 		array $messages,
 		array $tools,
 		?callable $reportProgress,
 		callable $reportIntermediateOutput,
-		int $round,
+		float $progress,
 	): array {
 		$answer = '';
 		$rawToolCalls = [];
@@ -496,11 +512,11 @@ class AgentInteractionProvider implements ISynchronousProvider {
 			&$lastProgressAt,
 			$reportProgress,
 			$reportIntermediateOutput,
-			$round,
+			$progress,
 		): void {
 			$now = microtime(true);
 			if ($reportProgress !== null && ($force || $now - $lastProgressAt >= 0.25)) {
-				TaskProcessingProgress::report($reportProgress, min(0.85, 0.35 + $round * 0.2));
+				TaskProcessingProgress::report($reportProgress, $progress);
 				$lastProgressAt = $now;
 			}
 			if ($answer === $lastReportedOutput || (!$force && $now - $lastReportedAt < 0.25)) {
@@ -544,7 +560,17 @@ class AgentInteractionProvider implements ISynchronousProvider {
 	 * "answer is simply regenerated" bug. Executing the stored $pending calls
 	 * directly guarantees the user-confirmed actions really happen.
 	 */
-	private function runConfirmed(string $userId, array $messages, string $token, array $history, array $pending, array $sources, callable $reportProgress): array {
+	private function runConfirmed(
+		string $userId,
+		array $messages,
+		string $token,
+		array $history,
+		array $pending,
+		array $sources,
+		callable $reportProgress,
+		?callable $reportIntermediateOutput = null,
+		bool $preferStreaming = false,
+	): array {
 		// The user explicitly confirmed the proposed actions in the native
 		// Assistant UI. Use a dedicated confirmed TaskProcessing surface rather
 		// than WEB: a background worker must never inherit web-only privileges.
@@ -648,7 +674,11 @@ class AgentInteractionProvider implements ISynchronousProvider {
 		]), $executed, $fallback);
 		$answer = $fallback;
 		try {
-			$chat = $this->ollama->chat($finalMessages, []);
+			if ($preferStreaming && $reportIntermediateOutput !== null) {
+				$chat = $this->streamChatOutput($finalMessages, [], $reportProgress, $reportIntermediateOutput, 0.88);
+			} else {
+				$chat = $this->ollama->chat($finalMessages, []);
+			}
 			if (!isset($chat['error']) && trim((string)($chat['answer'] ?? '')) !== '') {
 				$answer = (string)$chat['answer'];
 			}
