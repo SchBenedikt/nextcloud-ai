@@ -13,11 +13,11 @@ final class EvaAudioToTextProvider extends EvaAudioTranscriptionProvider {
 	public function process(?string $userId, array $input, callable $reportProgress): array {
 		if ($userId === null || $userId === '') throw new RuntimeException('No user context');
 		$this->appConfig->setUserId($userId);
-		$reportProgress(0.1);
+		$this->reportProgress($reportProgress, 0.1);
 		$file = $this->inputFile($userId, $input);
-		$reportProgress(0.25);
+		$this->reportProgress($reportProgress, 0.25);
 		$text = $this->audio->transcribeAudio($file['bytes'], $file['filename'], $file['mime'], false, false, 180);
-		$reportProgress(1.0);
+		$this->reportProgress($reportProgress, 1.0);
 		return ['output' => $text];
 	}
 }

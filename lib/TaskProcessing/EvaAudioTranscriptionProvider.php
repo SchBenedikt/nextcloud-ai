@@ -38,6 +38,13 @@ abstract class EvaAudioTranscriptionProvider implements ISynchronousProvider {
 	public function getOptionalOutputShape(): array { return []; }
 	public function getOptionalOutputShapeEnumValues(): array { return []; }
 
+	/** Stop provider work when Nextcloud reports that the task was cancelled. */
+	protected function reportProgress(callable $reportProgress, float $progress): void {
+		if ($reportProgress($progress) === false) {
+			throw new RuntimeException('Task cancelled');
+		}
+	}
+
 	/** @return array{node:File,bytes:string,filename:string,mime:string} */
 	protected function inputFile(?string $userId, array $input): array {
 		if ($userId === null || $userId === '') throw new RuntimeException('No user context');
