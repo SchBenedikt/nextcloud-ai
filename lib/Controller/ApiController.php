@@ -15,7 +15,6 @@ use OCA\EvaAi\Service\RagService;
 use OCA\EvaAi\Dto\ChatImportRequest;
 use OCA\EvaAi\Dto\ChatRegenerateRequest;
 use OCA\EvaAi\Dto\ConfirmToolRequest;
-use OCA\EvaAi\Dto\ChatTemplateImportRequest;
 use OCP\AppFramework\OCSController;
 use OCP\AppFramework\Http\Attribute\NoAdminRequired;
 use OCA\EvaAi\Http\ErrorDataResponse;
@@ -189,64 +188,6 @@ class ApiController extends OCSController {
             $this->logger->warning('eva_ai: could not queue a manual briefing', ['user' => $user, 'briefing' => $id, 'exception' => $e]);
             return new ErrorDataResponse(['error' => 'The briefing could not be queued.'], 503);
         }
-    }
-
-    #[NoAdminRequired]
-    public function templates(): DataResponse {
-        $user = $this->requireUser();
-        if ($user === null) return new ErrorDataResponse(['error' => 'Not logged in'], 401);
-        try { return new ErrorDataResponse($this->chatStore->listTemplates($user)); }
-        catch (\Throwable $e) { return $this->chatErrorResponse($e); }
-    }
-
-    #[NoAdminRequired]
-    public function saveTemplate(): DataResponse {
-        $user = $this->requireUser();
-        if ($user === null) return new ErrorDataResponse(['error' => 'Not logged in'], 401);
-        try { return new ErrorDataResponse($this->chatStore->saveTemplate($user, $this->requestBody())); }
-        catch (\InvalidArgumentException $e) { return new ErrorDataResponse(['error' => $e->getMessage()], 400); }
-        catch (\Throwable $e) { return $this->chatErrorResponse($e); }
-    }
-
-    #[NoAdminRequired]
-    public function deleteTemplate(string $id): DataResponse {
-        $user = $this->requireUser();
-        if ($user === null) return new ErrorDataResponse(['error' => 'Not logged in'], 401);
-        try {
-            if (!$this->chatStore->deleteTemplate($user, $id)) return new ErrorDataResponse(['error' => 'Requested template was not found.'], 404);
-            return new ErrorDataResponse(['ok' => true]);
-        } catch (\Throwable $e) { return $this->chatErrorResponse($e); }
-    }
-
-    #[NoAdminRequired]
-    public function exportTemplates(): DataResponse {
-        return $this->templates();
-    }
-
-    #[NoAdminRequired]
-    public function importTemplates(): DataResponse {
-        $user = $this->requireUser();
-        if ($user === null) return new ErrorDataResponse(['error' => 'Not logged in'], 401);
-        try {
-            $request = ChatTemplateImportRequest::fromArray(['templates' => $this->requestParam('templates')]);
-            return new ErrorDataResponse(['imported' => $this->chatStore->importTemplates($user, $request->templates)]);
-        } catch (\InvalidArgumentException $e) {
-            return new ErrorDataResponse(['error' => $e->getMessage()], 400);
-        } catch (\Throwable $e) {
-            return $this->chatErrorResponse($e);
-        }
-    }
-
-    #[NoAdminRequired]
-    public function useTemplate(string $id): DataResponse {
-        $user = $this->requireUser();
-        if ($user === null) return new ErrorDataResponse(['error' => 'Not logged in'], 401);
-        try {
-            $template = $this->chatStore->useTemplate($user, $id);
-            return $template === null
-                ? new ErrorDataResponse(['error' => 'Requested template was not found.'], 404)
-                : new ErrorDataResponse($template);
-        } catch (\Throwable $e) { return $this->chatErrorResponse($e); }
     }
 
     /**
