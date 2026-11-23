@@ -11,7 +11,6 @@ use OCA\EvaAi\Service\ChatStore;
 use OCA\EvaAi\Service\Ollama;
 use OCA\EvaAi\Service\OllamaUrlValidator;
 use OCA\EvaAi\Service\RagService;
-use OCA\EvaAi\Dto\ChatImportRequest;
 use OCA\EvaAi\Dto\ConfirmToolRequest;
 use OCP\AppFramework\OCSController;
 use OCP\AppFramework\Http\Attribute\NoAdminRequired;
@@ -34,7 +33,6 @@ class ApiController extends OCSController {
         private Ollama $ollama,
         private IJobList $jobList,
         private ChatStore $chatStore,
-        private \OCA\EvaAi\Service\UserDataService $userDataService,
         private \OCA\EvaAi\Service\IndexScheduler $indexScheduler,
         private \OCA\EvaAi\Service\UsageMetrics $usageMetrics,
         private LoggerInterface $logger,
@@ -235,35 +233,6 @@ class ApiController extends OCSController {
         if ($this->config->get('chat_provider') === 'groq') return new ErrorDataResponse(['provider' => 'groq', 'groq' => $this->ollama->checkGroq()]);
         if ($this->config->get('chat_provider') !== 'ollama') return new ErrorDataResponse(['provider' => $this->config->get('chat_provider'), 'custom' => $this->ollama->checkCustomProvider()]);
         return new ErrorDataResponse($this->ollama->testAll());
-    }
-
-    /**
-     * GDPR data export (Issue #83): the user downloads their chats, personal
-     * knowledge and index metadata as one JSON file. Read-only, no admin needed.
-     */
-    #[NoAdminRequired]
-    public function exportData(): DataResponse {
-        $user = $this->requireUser();
-        if ($user === null) {
-            return new ErrorDataResponse(['error' => 'Not logged in'], 401);
-        }
-        $payload = $this->userDataService->export($user);
-        $response = new ErrorDataResponse($payload);
-        $response->addHeader('Content-Disposition', 'attachment; filename="eva_ai_export_' . $user . '.json"');
-        return $response;
-    }
-
-    #[NoAdminRequired]
-    public function importData(): DataResponse {
-        $user = $this->requireUser();
-        if ($user === null) return new ErrorDataResponse(['error' => 'Not logged in'], 401);
-        try {
-            $request = ChatImportRequest::fromArray($this->requestBody());
-        } catch (\InvalidArgumentException $e) {
-            return new ErrorDataResponse(['error' => $e->getMessage()], 400);
-        }
-        $count = $this->chatStore->importAll($user, $request->chats);
-        return new ErrorDataResponse(['ok' => true, 'imported' => $count]);
     }
 
 }
