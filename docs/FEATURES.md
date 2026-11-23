@@ -99,6 +99,12 @@ Additional providers exist for chat with shared tools and for multi-step agent
 interactions. Provider execution requires a running Nextcloud TaskProcessing
 worker.
 
+Registering a provider makes it available to Nextcloud; it does not
+automatically make EVA the active provider. Administrators choose providers per
+task type under **Administration settings → AI → Unified task processing** and
+can disable task types there. The available list depends on the Nextcloud
+version and installed provider apps. See [Get started](QUICKSTART.md#connect-eva-to-the-nextcloud-assistant).
+
 On Nextcloud 36, EVA also registers the native `core:image2image`
 provider. It accepts up to four PNG, JPEG, or WebP images from the current
 user's Files, sends
