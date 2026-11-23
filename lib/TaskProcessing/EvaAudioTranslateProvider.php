@@ -96,7 +96,7 @@ class EvaAudioTranslateProvider extends EvaAudioTranscriptionProvider {
 		);
 		$this->reportProgress($reportProgress, 0.35);
 		$translated = $this->audio->chat([
-			['role' => 'system', 'content' => $sourceInstruction . ' into ' . $target . '. Return only the translation, preserving names and meaning.'],
+			['role' => 'system', 'content' => $sourceInstruction . ' into ' . $target . '. Use the same language as the selected target language. Return only the translation, preserving names and meaning.'],
 			['role' => 'user', 'content' => $text],
 		], [], 120);
 		if (isset($translated['error']) || trim((string)($translated['answer'] ?? '')) === '') throw new RuntimeException((string)($translated['error'] ?? 'Translation returned no text.'));

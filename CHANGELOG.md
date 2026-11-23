@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.23.2 - 2026-11-23
+
+### Complete audio translation language and localization contracts
+
+- State the selected output-language rule explicitly in translation prompts.
+- Add English and German catalog entries for native audio translation labels and watermarks.
+
 ## 1.23.1 - 2026-11-23
 
 ### Complete native audio translation language options

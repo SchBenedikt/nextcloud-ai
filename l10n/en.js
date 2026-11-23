@@ -1727,5 +1727,10 @@ OC.L10N.register("eva_ai", {
   "Provider assignment unknown": "Provider assignment unknown",
   "Selected for this task type": "Selected for this task type",
   "Using {provider}": "Using {provider}",
-  "another provider": "another provider"
+  "another provider": "another provider",
+  "Audio transcription": "Audio transcription",
+  "The transcribed audio input": "The transcribed audio input",
+  "Text output": "Text output",
+  "The text translation": "The text translation",
+  "This was generated using Artificial Intelligence.": "This was generated using Artificial Intelligence."
 }, "nplurals=2; plural=(n != 1);");
