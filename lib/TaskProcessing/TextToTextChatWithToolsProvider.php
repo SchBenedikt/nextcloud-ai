@@ -85,6 +85,22 @@ class TextToTextChatWithToolsProvider implements ISynchronousProvider {
 	}
 
 	public function process(?string $userId, array $input, callable $reportProgress): array {
+		return $this->processWithIntermediateOutput($userId, $input, $reportProgress);
+	}
+
+	/**
+	 * Run a single policy-constrained chat round and optionally report its text
+	 * while generation continues. Tool calls are returned only after the model
+	 * stream is complete.
+	 * @return array<string, mixed>
+	 */
+	public function processWithIntermediateOutput(
+		?string $userId,
+		array $input,
+		callable $reportProgress,
+		?callable $reportIntermediateOutput = null,
+		bool $preferStreaming = false,
+	): array {
 		TaskProcessingProgress::report($reportProgress, 0.05);
 		// Set tool policy surface to TaskProcessing (per request, at execution time)
 		$this->executor->setSurface(ToolPolicy::SURFACE_TASKPROCESSING);
@@ -124,7 +140,9 @@ class TextToTextChatWithToolsProvider implements ISynchronousProvider {
 		$this->executor->setUserId($userId);
 		$tools = $this->executor->tools();
 
-		$chat = $this->ollama->chat($messages, $tools);
+		$chat = $preferStreaming && $reportIntermediateOutput !== null
+			? $this->streamChat($messages, $tools, $reportProgress, $reportIntermediateOutput)
+			: $this->ollama->chat($messages, $tools);
 		if (isset($chat['error'])) {
 			throw new RuntimeException((string)$chat['error']);
 		}
@@ -146,6 +164,53 @@ class TextToTextChatWithToolsProvider implements ISynchronousProvider {
 			'output' => (string)($chat['answer'] ?? ''),
 			'tool_calls' => $toolCalls === false ? '[]' : $toolCalls,
 		];
+	}
+
+	/** @return array{answer:string,tool_calls:array,raw_tool_calls:array} */
+	private function streamChat(array $messages, array $tools, callable $reportProgress, callable $reportIntermediateOutput): array {
+		$answer = '';
+		$toolCalls = [];
+		$rawToolCalls = [];
+		$lastReportedLength = 0;
+		$lastReportedAt = microtime(true);
+		$chunks = 0;
+
+		foreach ($this->ollama->chatStream($messages, $tools, 120) as $event) {
+			$type = (string)($event['type'] ?? '');
+			if ($type === 'content') {
+				$answer .= (string)($event['delta'] ?? '');
+				$chunks++;
+				TaskProcessingProgress::report($reportProgress, min(0.9, 0.1 + $chunks * 0.01));
+
+				$answerLength = strlen($answer);
+				$now = microtime(true);
+				if ($answerLength > $lastReportedLength
+					&& ($answerLength - $lastReportedLength >= 512 || $now - $lastReportedAt >= 0.25)
+				) {
+					if ($reportIntermediateOutput(['output' => $answer]) === false) {
+						throw new TaskCancelledException('Chat with tools task cancelled.');
+					}
+					$lastReportedLength = $answerLength;
+					$lastReportedAt = $now;
+				}
+			} elseif ($type === 'tool_calls') {
+				$toolCalls = is_array($event['tool_calls'] ?? null) ? $event['tool_calls'] : [];
+				$rawToolCalls = is_array($event['raw'] ?? null) ? $event['raw'] : [];
+			} elseif ($type === 'error') {
+				throw new RuntimeException((string)($event['delta'] ?? 'The model request failed.'));
+			}
+		}
+
+		if ($answer !== '' && strlen($answer) > $lastReportedLength
+			&& $reportIntermediateOutput(['output' => $answer]) === false
+		) {
+			throw new TaskCancelledException('Chat with tools task cancelled.');
+		}
+		if (trim($answer) === '' && $toolCalls === []) {
+			throw new RuntimeException('Ollama: empty answer');
+		}
+
+		return ['answer' => $answer, 'tool_calls' => $toolCalls, 'raw_tool_calls' => $rawToolCalls];
 	}
 
 	/** Attach only bounded image bytes; non-images remain explicit filename context. */
