@@ -57,7 +57,7 @@ The search index is stored on your Nextcloud server. Chat prompts, retrieved exc
 
 Licensed under AGPL-3.0-or-later.
     </description>
-    <version>1.23.7</version>
+    <version>1.23.8</version>
     <licence>agpl</licence>
     <author>Benedikt Schächner</author>
     <namespace>EvaAi</namespace>

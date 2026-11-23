@@ -169,10 +169,7 @@ class AgentInteractionProvider implements ISynchronousProvider {
 		}
 		$this->appConfig->setUserId($userId);
 		$prompt = trim((string)($input['input'] ?? ''));
-		$confirmation = (int)($input['confirmation'] ?? 0);
-		if (!in_array($confirmation, [0, 1], true)) {
-			throw new RuntimeException('Invalid confirmation');
-		}
+		$confirmation = $this->parseConfirmationInput($input['confirmation'] ?? 0);
 		$token = (string)($input['conversation_token'] ?? '');
 		$memories = is_array($input['memories'] ?? null) ? array_slice(array_values(array_filter(
 			$input['memories'], static fn($memory): bool => is_string($memory) && trim($memory) !== ''
@@ -382,6 +379,17 @@ class AgentInteractionProvider implements ISynchronousProvider {
 			}
 		}
 		throw new RuntimeException($name . ' must be true or false');
+	}
+
+	/** Accept only explicit TaskProcessing confirmation values; never coerce truthy input. */
+	private function parseConfirmationInput(mixed $value): int {
+		if ($value === 0 || $value === '0') {
+			return 0;
+		}
+		if ($value === 1 || $value === '1') {
+			return 1;
+		}
+		throw new RuntimeException('Invalid confirmation');
 	}
 
 	/** Keep historical image references only on multimodal ContextAgent conversations. */

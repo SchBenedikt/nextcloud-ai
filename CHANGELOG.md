@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.23.8 - 2026-11-23
+
+### Require an explicit Assistant action confirmation
+
+- Reject malformed confirmation values instead of coercing arbitrary truthy input into approval.
+- Match the native TaskProcessing contract with exact integer or string values `0` and `1`.
+
 ## 1.23.7 - 2026-11-23
 
 ### Match DNS pins to the outgoing provider hostname
