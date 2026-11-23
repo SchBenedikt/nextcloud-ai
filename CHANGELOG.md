@@ -2,6 +2,11 @@
 
 ## [Unreleased]
 
+### Preserve Nextcloud Assistant session instructions
+
+- Accept the official Assistant's optional `user_instructions` input for text, multimodal, and audio ContextAgent tasks, with an 8,000-character bound.
+- Append those instructions as preferences to EVA's system prompt while keeping action confirmation and authorization safeguards in force.
+
 ### Isolate scheduled briefing operations
 
 - Move briefing history and manual queue admission into an owner-scoped `BriefingController` while keeping both API paths and all scheduling checks.
