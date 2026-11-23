@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.22.0 - 2026-11-23
+
+### Stream native Assistant agent replies
+
+- Implement Nextcloud 35+ options-aware TaskProcessing providers for text and multimodal ContextAgent chats.
+- Send bounded intermediate reply updates while preserving the existing synchronous provider contract on older Nextcloud versions.
+- Keep action proposals buffered until complete and retain the explicit confirmation path for all writes.
+
 ## 1.21.0 - 2026-11-23
 
 ### Bound terminal vector journal retention
