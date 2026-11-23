@@ -2,6 +2,11 @@
 
 ## [Unreleased]
 
+### Isolate confirmed tool execution
+
+- Move the web confirmation endpoint into `ToolExecutionController` and keep its owner check, policy reset, idempotency claim and structured execution result.
+- Reject partial idempotency metadata so a chat ID cannot accidentally bypass its confirmation-token claim; legacy tokenless calls remain compatible.
+
 ### Restore chats from an EVA data export
 
 - Expose the existing additive chat restore handler through a signed-in API route and add a file-based restore action under Privacy & data.

@@ -25,6 +25,12 @@ overwrites existing chats. The restore endpoint accepts at most 500 chats and
 assistant text messages. It does not restore personal
 knowledge, indexed files, vector generations or provider settings.
 
+`POST /api/confirmTool` is a signed-in, CSRF-protected web-chat action. When
+`chatId` and `confirmationToken` are supplied, they must be supplied together;
+the token is claimed before the policy-constrained tool executes, preventing a
+duplicate approval from repeating the mutation. Older tokenless callers remain
+supported for compatibility.
+
 ## Administrator storage snapshot
 
 The native administration section starts with the built-in SQL default and

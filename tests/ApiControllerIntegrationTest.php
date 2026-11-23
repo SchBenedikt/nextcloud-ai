@@ -10,6 +10,7 @@ use OCA\EvaAi\Controller\BackgroundChatController;
 use OCA\EvaAi\Controller\ChatGenerationController;
 use OCA\EvaAi\Controller\ChatHistoryController;
 use OCA\EvaAi\Controller\ChatStreamController;
+use OCA\EvaAi\Controller\ToolExecutionController;
 use OCA\EvaAi\Controller\DocumentController;
 use OCA\EvaAi\Controller\IndexController;
 use OCA\EvaAi\Controller\SettingsController;
@@ -187,11 +188,17 @@ final class ApiControllerIntegrationTest extends TestCase {
 
 		$dependencies = compact('request', 'ncConfig', 'chatLearner', 'documentMapper', 'ollama', 'config', 'rag', 'executor', 'indexer', 'jobList', 'lockingProvider', 'chatStore', 'appManager', 'knowledgeInitializer', 'providerCredentials', 'settingsPersistence', 'modelSelectionValidator', 'lockGuard', 'cacheFactory', 'logger', 'backgroundChatQueue');
 		return new ApiController(
-			'eva_ai', $request, $userId, $config, $rag, $executor, $ollama,
-			$jobList, $chatStore,
+			'eva_ai', $request, $userId, $config, $rag, $ollama,
+			$jobList,
 			$indexScheduler, $usageMetrics,
 			$logger, $systemController,
 		);
+	}
+
+	/** @param array<string,mixed> $params @param array<string,mixed> $dependencies @param array<string,mixed> $storedValues */
+	private function toolExecutionController(?string $userId, array $params, array &$dependencies, array &$storedValues): ToolExecutionController {
+		$this->controller($userId, $params, $dependencies, $storedValues);
+		return new ToolExecutionController('eva_ai', $dependencies['request'], $userId, $dependencies['chatStore'], $dependencies['executor']);
 	}
 
 	/** @param array<string,mixed> $params @param array<string,mixed> $dependencies @param array<string,mixed> $storedValues */
@@ -255,7 +262,7 @@ final class ApiControllerIntegrationTest extends TestCase {
 		$stored = [];
 		$dependencies = [];
         $chatController = $this->chatGenerationController(null, [], $dependencies, $stored);
-        $controller = $this->controller(null, [], $dependencies, $stored);
+        $controller = $this->toolExecutionController(null, [], $dependencies, $stored);
 
         $chat = $chatController->chat();
 		$confirmation = $controller->confirmTool();
@@ -425,7 +432,7 @@ final class ApiControllerIntegrationTest extends TestCase {
 	public function testDuplicateToolConfirmationReturnsConflictWithoutExecutingAgain(): void {
 		$stored = [];
 		$dependencies = [];
-		$controller = $this->controller('alice', [
+		$controller = $this->toolExecutionController('alice', [
 			'name' => 'create_file',
 			'arguments' => ['path' => 'Notes/example.txt', 'content' => 'new'],
 			'chatId' => 'chat-1',

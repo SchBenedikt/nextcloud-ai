@@ -38,6 +38,9 @@ final class ConfirmToolRequest {
 
 		$chatId = self::optionalString($input['chatId'] ?? null, 'chatId');
 		$confirmationToken = self::optionalString($input['confirmationToken'] ?? null, 'confirmationToken');
+		if (($chatId === null) !== ($confirmationToken === null)) {
+			throw new InvalidArgumentException('chatId and confirmationToken must be provided together.');
+		}
 		return new self(trim($name), $arguments, $chatId, $confirmationToken);
 	}
 

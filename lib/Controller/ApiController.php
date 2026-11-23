@@ -6,12 +6,9 @@ namespace OCA\EvaAi\Controller;
 
 use OCA\EvaAi\Controller\Traits\ReadsRequestParameters;
 use OCA\EvaAi\Service\AppConfig;
-use OCA\EvaAi\Service\ActionExecutor;
-use OCA\EvaAi\Service\ChatStore;
 use OCA\EvaAi\Service\Ollama;
 use OCA\EvaAi\Service\OllamaUrlValidator;
 use OCA\EvaAi\Service\RagService;
-use OCA\EvaAi\Dto\ConfirmToolRequest;
 use OCP\AppFramework\OCSController;
 use OCP\AppFramework\Http\Attribute\NoAdminRequired;
 use OCA\EvaAi\Http\ErrorDataResponse;
@@ -29,10 +26,8 @@ class ApiController extends OCSController {
         private ?string $userId,
         private AppConfig $config,
         private RagService $ragService,
-        private ActionExecutor $executor,
         private Ollama $ollama,
         private IJobList $jobList,
-        private ChatStore $chatStore,
         private \OCA\EvaAi\Service\IndexScheduler $indexScheduler,
         private \OCA\EvaAi\Service\UsageMetrics $usageMetrics,
         private LoggerInterface $logger,
@@ -100,54 +95,6 @@ class ApiController extends OCSController {
     #[NoAdminRequired]
     public function greeting(): DataResponse {
         return $this->systemController->greeting();
-    }
-
-    /**
-     * Execute one model-proposed mutating action after an explicit click in
-     * the authenticated web chat. The tool policy is reset to WEB here so a
-     * previous Talk/worker request cannot influence this request's surface.
-     */
-    #[NoAdminRequired]
-    public function confirmTool(): DataResponse {
-        $user = $this->requireUser();
-        if ($user === null) {
-            return new ErrorDataResponse(['error' => 'Not logged in'], 401);
-        }
-        try {
-            $request = ConfirmToolRequest::fromArray([
-                'name' => $this->requestParam('name'),
-                'arguments' => $this->requestParam('arguments'),
-                'args' => $this->requestParam('args', []),
-                'chatId' => $this->requestParam('chatId'),
-                'confirmationToken' => $this->requestParam('confirmationToken'),
-            ]);
-        } catch (\InvalidArgumentException $e) {
-            return new ErrorDataResponse(['error' => $e->getMessage()], 400);
-        }
-
-        // Idempotency guard (Issue #185): a persisted pending confirmation
-        // carries a token; approving the same token twice (e.g. after a reload)
-        // must not run a mutating action again.
-        $chatId = $request->chatId ?? '';
-        $confirmationToken = $request->confirmationToken ?? '';
-        if ($chatId !== '' && $confirmationToken !== '') {
-            $claim = $this->chatStore->claimConfirmation($user, $chatId, $confirmationToken);
-            if ($claim === 'already') {
-                return new ErrorDataResponse([
-                    'ok' => false,
-                    'alreadyProcessed' => true,
-                    'error' => 'This action was already processed - reload the chat to see its result.',
-                ], 409);
-            }
-        }
-
-        $this->executor->setSurface(\OCA\EvaAi\Service\ToolPolicy::SURFACE_WEB);
-        $result = $this->executor->runConfirmed($user, $request->name, $request->arguments);
-        // The confirmation token is claimed before execution. Return tool
-        // failures as structured data over HTTP 200 so the client can persist
-        // the consumed confirmation as a completed failure instead of offering
-        // a retry that the idempotency guard must reject.
-        return new ErrorDataResponse($result);
     }
 
     #[NoAdminRequired]

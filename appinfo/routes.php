@@ -96,7 +96,7 @@ return [
         ['name' => 'dataPortability#exportData', 'url' => '/api/export', 'verb' => 'GET'],
         ['name' => 'dataPortability#importData', 'url' => '/api/import', 'verb' => 'POST'],
         ['name' => 'chatStream#streamChat', 'url' => '/api/streamChat', 'verb' => 'POST'],
-        ['name' => 'api#confirmTool', 'url' => '/api/confirmTool', 'verb' => 'POST'],
+        ['name' => 'toolExecution#confirmTool', 'url' => '/api/confirmTool', 'verb' => 'POST'],
         ['name' => 'fileContext#fileContextChat', 'url' => '/api/fileContextChat', 'verb' => 'POST'],
         ['name' => 'fileContext#fileContextStatus', 'url' => '/api/fileContextStatus', 'verb' => 'POST'],
         ['name' => 'knowledge#knowledge', 'url' => '/api/knowledge', 'verb' => 'GET'],
