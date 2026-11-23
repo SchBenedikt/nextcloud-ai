@@ -186,6 +186,29 @@ class AgentInteractionProvider implements ISynchronousProvider {
 			return ['output' => (string)$state['execution']['output'], 'conversation_token' => $token, 'actions' => ''];
 		}
 
+		// The official Assistant represents both a fresh request and an explicit
+		// rejection with confirmation=0. Its rejection request reuses the last
+		// user message, so a matching prompt plus a pending proposal is the
+		// reliable signal to clear the proposal without calling the model again.
+		if ($confirmation === 0 && $pending !== []) {
+			$lastUserPrompt = '';
+			foreach (array_reverse($history) as $entry) {
+				if (($entry['role'] ?? '') === 'user' && is_string($entry['content'] ?? null)) {
+					$lastUserPrompt = trim($entry['content']);
+					break;
+				}
+			}
+			if ($lastUserPrompt !== '' && hash_equals($lastUserPrompt, $prompt)) {
+				$output = $this->l->t('I will not perform the proposed actions.');
+				$history[] = ['role' => 'assistant', 'content' => $output];
+				if ($reportProgress(0.9) === false) {
+					throw new RuntimeException('Task cancelled');
+				}
+				$this->store->save($userId, $token, $history, []);
+				return ['output' => $output, 'conversation_token' => $token, 'actions' => ''];
+			}
+		}
+
 		if ($confirmation === 1 && $prompt === '') {
 			// Letzten bekannten User-Prompt aus der History wiederverwenden,
 			// damit die Bestaetigungs-Task den Kontext behaelt.

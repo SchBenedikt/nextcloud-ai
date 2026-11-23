@@ -1214,6 +1214,7 @@ OC.L10N.register("eva_ai", {
   "List of Nextcloud Talk room IDs whose chat history should be included as context.": "List of Nextcloud Talk room IDs whose chat history should be included as context.",
   "User instructions": "User instructions",
   "Additional instructions from the Nextcloud Assistant chat settings.": "Additional instructions from the Nextcloud Assistant chat settings.",
+  "I will not perform the proposed actions.": "I will not perform the proposed actions.",
   "RAG enabled": "RAG enabled",
   "Whether to perform retrieval from indexed files for knowledge augmentation. Use true or false.": "Whether to perform retrieval from indexed files for knowledge augmentation. Use true or false.",
   "Whether to perform vector retrieval from indexed files for knowledge augmentation.": "Whether to perform vector retrieval from indexed files for knowledge augmentation.",

@@ -2,6 +2,11 @@
 
 ## [Unreleased]
 
+### Respect rejected Assistant agent actions
+
+- Detect the official Assistant's rejection request from its `confirmation=0` signal and matching last user message.
+- Clear the pending proposal and return a translated cancellation response without regenerating or executing actions.
+
 ### Fix settings overview navigation
 
 - Route overview-card selection through the settings navigator so category links update the active section instead of opening an invalid app view.
