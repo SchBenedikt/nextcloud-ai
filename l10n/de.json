@@ -641,6 +641,7 @@
     "Optionally use a separate, usually larger model for summaries, translations and proofreading. Leave empty to reuse the chat model.": "Optional ein separates, meist größeres Modell für Zusammenfassungen, Übersetzungen und Korrekturlesen. Leer lassen, um das Chat-Modell wiederzuverwenden.",
     "Organisation": "Organisation",
     "Overview": "Übersicht",
+    "Review the sections below to configure your EVA experience.": "Hier findest du die Bereiche, in denen du EVA an deine Bedürfnisse anpassen kannst.",
     "Try EVA": "EVA ausprobieren",
     "Make your next step effortless": "Mach deinen nächsten Schritt mühelos",
     "Start with a focused request — EVA can search, understand and act across your Nextcloud.": "Starte mit einer konkreten Anfrage – EVA kann deine Nextcloud durchsuchen, verstehen und für dich handeln.",

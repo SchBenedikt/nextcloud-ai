@@ -20,7 +20,7 @@ const resolveRoute = (location) => {
 }
 
 /** Centralizes browser URL state and navigation for the main EVA shell. */
-export function useNavigation({ currentChat, view, fileContextIds, onChatsCleared, onFileContext, settingsSection = ref('general') }) {
+export function useNavigation({ currentChat, view, fileContextIds, onChatsCleared, onFileContext, settingsSection = ref('overview') }) {
 	const initialRoute = resolveRoute(window.location)
 	const initialChatParam = new URLSearchParams(window.location.search).get('chat')
 	view.value = initialRoute.view

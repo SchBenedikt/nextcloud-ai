@@ -1,7 +1,8 @@
-import { mdiRobotOutline, mdiFileDocumentOutline, mdiShieldCheckOutline, mdiCalendarClockOutline, mdiAccountOutline, mdiPuzzleOutline } from '@mdi/js'
+import { mdiViewDashboardOutline, mdiRobotOutline, mdiFileDocumentOutline, mdiShieldCheckOutline, mdiCalendarClockOutline, mdiAccountOutline, mdiPuzzleOutline } from '@mdi/js'
 import { translate as t } from './i18n'
 
 export const settingsSections = [
+	{ id: 'overview', label: t('Overview'), description: t('Review the sections below to configure your EVA experience.'), icon: mdiViewDashboardOutline },
 	{ id: 'general', label: t('AI models'), description: t('Choose the AI services EVA uses for conversations and documents.'), icon: mdiRobotOutline },
 	{ id: 'knowledge', label: t('Documents'), description: t('Choose what EVA can search and how your files are indexed.'), icon: mdiFileDocumentOutline },
 	{ id: 'tools', label: t('Tools & permissions'), description: t('Choose which actions and connected Nextcloud apps EVA can use.'), icon: mdiShieldCheckOutline },
@@ -10,4 +11,4 @@ export const settingsSections = [
 	{ id: 'advanced', label: t('Advanced'), description: t('Manage external services, API access and diagnostics.'), icon: mdiPuzzleOutline },
 ]
 
-export const resolveSettingsSection = value => settingsSections.some(section => section.id === value) ? value : 'general'
+export const resolveSettingsSection = value => settingsSections.some(section => section.id === value) ? value : 'overview'

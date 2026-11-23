@@ -96,6 +96,8 @@ test('file-context replies render safe Markdown with an accessible composer', as
 
 test('all native settings sections render on mobile and retain browser navigation', async ({ page }) => {
 	const { errors } = await openWorkspace(page, { view: 'settings', width: 390 })
+	await expect(page.getByRole('heading', { name: 'Overview', exact: true })).toBeVisible()
+	await expect(page.getByRole('button', { name: /AI models/ })).toBeVisible()
 	for (const [id, label] of [['knowledge', 'Documents'], ['tools', 'Tools & permissions'], ['automation', 'Automation'], ['personal', 'Personal & data'], ['advanced', 'Advanced']]) {
 		const openNavigation = page.getByRole('button', { name: 'Open navigation', exact: true })
 		if (await openNavigation.isVisible()) await openNavigation.click()
