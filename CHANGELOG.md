@@ -2,6 +2,12 @@
 
 ## [Unreleased]
 
+### Repair authenticated Nextcloud Assistant assignment integration
+
+- Use the official Assistant's current OCS assignment routes and response shapes.
+- Bind requests to the active Nextcloud user session, prevent redirects from forwarding session credentials, and report API failures instead of returning an empty schedule.
+- Send the required assignment title and default dates to the user's Nextcloud timezone.
+
 ## 1.20.50 - 2026-11-23
 
 ### Keep calendar regression tests independent of Nextcloud internals

@@ -262,6 +262,16 @@ and return formats are documented in [`TOOLS.md`](../TOOLS.md).
   include due date, description, categories, status, and priority.
 - Read-only calendars are rejected before any change is attempted.
 
+### Nextcloud Assistant scheduled tasks
+
+When the official Nextcloud Assistant app is enabled, EVA can list, create,
+update, and delete the signed-in user's scheduled assignments. Requests use the
+Assistant's current OCS API route and the active Nextcloud session; EVA does not
+store credentials or send them to a configurable host. API and authentication
+failures are reported instead of being presented as an empty schedule. New
+tasks include a title (generated from the prompt's first line when omitted) and
+run through the AI providers configured for Nextcloud Assistant.
+
 ### Email
 
 When the Nextcloud Mail app and its API are available, EVA can list recent or

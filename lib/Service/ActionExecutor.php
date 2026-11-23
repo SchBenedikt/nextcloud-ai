@@ -776,13 +776,14 @@ class ActionExecutor {
             ]],
             ['type' => 'function', 'function' => [
                 'name' => 'list_scheduled_assignments',
-                'description' => 'List all Nextcloud Assistant "Geplante Aufgaben" (scheduled assignments) for the user. These are recurring AI tasks that run automatically on a schedule.',
+                'description' => 'List the signed-in user\'s recurring tasks from the official Nextcloud Assistant. Requires the Assistant app and an authenticated Nextcloud session.',
                 'parameters' => ['type' => 'object', 'properties' => new \stdClass()],
             ]],
             ['type' => 'function', 'function' => [
                 'name' => 'create_scheduled_assignment',
-                'description' => 'Create a new Nextcloud Assistant "Geplante Aufgabe" (scheduled assignment). This creates a recurring AI task that runs automatically on a schedule. Use natural language for recurrence like "täglich", "wöchentlich", "alle 2 Tage", "jeden Montag".',
+                'description' => 'Create a recurring task in the official Nextcloud Assistant. It runs using the Assistant\'s configured AI providers. Use natural language for recurrence like "täglich", "wöchentlich", "alle 2 Tage", "jeden Montag".',
                 'parameters' => ['type' => 'object', 'properties' => [
+                    'title' => ['type' => 'string', 'description' => 'Optional title shown in the Assistant. Defaults to the first line of the prompt.'],
                     'prompt' => ['type' => 'string', 'description' => 'The prompt/instruction for the AI to execute on schedule.'],
                     'recurrence' => ['type' => 'string', 'description' => 'When to run: "täglich", "wöchentlich", "monatlich", "alle N Tage/Wochen", "jeden Montag", etc.'],
                     'starts_at' => ['type' => 'string', 'description' => 'Optional start time in ISO format or relative like "morgen 09:00". Defaults to now.'],

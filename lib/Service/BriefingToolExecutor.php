@@ -29,10 +29,10 @@ final class BriefingToolExecutor implements DomainToolExecutor {
             'create_scheduled_briefing' => $this->createScheduledBriefing($args),
             'update_scheduled_briefing' => $this->updateScheduledBriefing($args),
             'delete_scheduled_briefing' => $this->deleteScheduledBriefing($args),
-            'list_scheduled_assignments' => $this->listScheduledAssignments(),
-            'create_scheduled_assignment' => $this->createScheduledAssignment($args),
-            'update_scheduled_assignment' => $this->updateScheduledAssignment($args),
-            'delete_scheduled_assignment' => $this->deleteScheduledAssignment($args),
+            'list_scheduled_assignments' => $this->listScheduledAssignments($userId),
+            'create_scheduled_assignment' => $this->createScheduledAssignment($userId, $args),
+            'update_scheduled_assignment' => $this->updateScheduledAssignment($userId, $args),
+            'delete_scheduled_assignment' => $this->deleteScheduledAssignment($userId, $args),
             default => ['ok' => false, 'error' => 'Unsupported briefing tool: ' . $tool],
         };
     }
@@ -106,11 +106,10 @@ final class BriefingToolExecutor implements DomainToolExecutor {
         return ['ok' => true, 'result' => ['briefing_id' => $id, 'deleted' => true]];
     }
 
-    private function listScheduledAssignments(): array {
+    private function listScheduledAssignments(string $userId): array {
         if ($this->scheduledAssignments === null) {
             return ['ok' => false, 'error' => 'Scheduled assignments service is not available.'];
         }
-        $userId = $this->config->userId() ?? '';
         if ($userId === '') return ['ok' => false, 'error' => 'No user logged in.'];
         try {
             $assignments = $this->scheduledAssignments->listAssignments($userId);
@@ -120,50 +119,66 @@ final class BriefingToolExecutor implements DomainToolExecutor {
         }
     }
 
-    private function createScheduledAssignment(array $args): array {
+    private function createScheduledAssignment(string $userId, array $args): array {
         if ($this->scheduledAssignments === null) {
             return ['ok' => false, 'error' => 'Scheduled assignments service is not available.'];
         }
-        $userId = $this->config->userId() ?? '';
         if ($userId === '') return ['ok' => false, 'error' => 'No user logged in.'];
         $prompt = trim((string)($args['prompt'] ?? ''));
         if ($prompt === '') return ['ok' => false, 'error' => 'prompt is required.'];
+        $title = mb_substr(trim((string)($args['title'] ?? '')), 0, 100);
+        if ($title === '') {
+            $firstLine = preg_split('/\R/u', $prompt, 2)[0] ?? '';
+            $title = trim(mb_substr($firstLine, 0, 100)) ?: 'Scheduled task';
+        }
         $recurrence = trim((string)($args['recurrence'] ?? ''));
         if ($recurrence === '') return ['ok' => false, 'error' => 'recurrence is required (e.g. "täglich", "wöchentlich", "alle 2 Tage").'];
         // Parse human-readable recurrence to RFC 5545
         $rrule = $this->scheduledAssignments->parseRecurrence($recurrence);
+        try {
+            $timezone = trim((string)($args['timezone'] ?? '')) ?: $this->scheduledAssignments->userTimeZone($userId)->getName();
+            $timezone = (new \DateTimeZone($timezone))->getName();
+        } catch (\Throwable) {
+            return ['ok' => false, 'error' => 'Invalid timezone.'];
+        }
         // Parse start time
         $startsAt = time(); // Default: now
         $startsAtStr = trim((string)($args['starts_at'] ?? ''));
         if ($startsAtStr !== '') {
             try {
-                $dt = new \DateTime($startsAtStr, new \DateTimeZone($args['timezone'] ?? 'Europe/Berlin'));
+                $dt = new \DateTimeImmutable($startsAtStr, new \DateTimeZone($timezone));
                 $startsAt = $dt->getTimestamp();
             } catch (\Throwable $e) {
                 return ['ok' => false, 'error' => 'Invalid starts_at format: ' . $e->getMessage()];
             }
         }
-        $timezone = trim((string)($args['timezone'] ?? '')) ?: 'Europe/Berlin';
         try {
-            $result = $this->scheduledAssignments->createAssignment($userId, $prompt, $rrule, $startsAt, $timezone);
-            if ($result === null) {
-                return ['ok' => false, 'error' => 'Failed to create scheduled assignment.'];
-            }
+            $result = $this->scheduledAssignments->createAssignment($userId, $title, $prompt, $rrule, $startsAt, $timezone);
             return ['ok' => true, 'result' => ['assignment' => $result]];
         } catch (\Throwable $e) {
             return ['ok' => false, 'error' => 'Failed to create scheduled assignment: ' . $e->getMessage()];
         }
     }
 
-    private function updateScheduledAssignment(array $args): array {
+    private function updateScheduledAssignment(string $userId, array $args): array {
         if ($this->scheduledAssignments === null) {
             return ['ok' => false, 'error' => 'Scheduled assignments service is not available.'];
         }
-        $userId = $this->config->userId() ?? '';
         if ($userId === '') return ['ok' => false, 'error' => 'No user logged in.'];
         $assignmentId = (int)($args['assignment_id'] ?? 0);
         if ($assignmentId <= 0) return ['ok' => false, 'error' => 'assignment_id is required.'];
         $updates = [];
+        $timezone = '';
+        $requestedTimezone = trim((string)($args['timezone'] ?? ''));
+        $startsAtChanged = false;
+        if ($requestedTimezone !== '' || array_key_exists('starts_at', $args)) {
+            try {
+                $timezone = $requestedTimezone ?: $this->scheduledAssignments->userTimeZone($userId)->getName();
+                $timezone = (new \DateTimeZone($timezone))->getName();
+            } catch (\Throwable) {
+                return ['ok' => false, 'error' => 'Invalid timezone.'];
+            }
+        }
         if (array_key_exists('prompt', $args)) $updates['prompt'] = trim((string)$args['prompt']);
         if (array_key_exists('recurrence', $args)) {
             $recurrence = trim((string)$args['recurrence']);
@@ -173,31 +188,28 @@ final class BriefingToolExecutor implements DomainToolExecutor {
             $startsAtStr = trim((string)$args['starts_at']);
             if ($startsAtStr !== '') {
                 try {
-                    $dt = new \DateTime($startsAtStr, new \DateTimeZone($args['timezone'] ?? 'Europe/Berlin'));
+                    $dt = new \DateTimeImmutable($startsAtStr, new \DateTimeZone($timezone));
                     $updates['startsAt'] = $dt->getTimestamp();
+                    $startsAtChanged = true;
                 } catch (\Throwable $e) {
                     return ['ok' => false, 'error' => 'Invalid starts_at format: ' . $e->getMessage()];
                 }
             }
         }
-        if (array_key_exists('timezone', $args)) $updates['timezone'] = trim((string)$args['timezone']);
+        if ($requestedTimezone !== '' || $startsAtChanged) $updates['timezone'] = $timezone;
         if (empty($updates)) return ['ok' => false, 'error' => 'No fields to update.'];
         try {
             $result = $this->scheduledAssignments->updateAssignment($userId, $assignmentId, $updates);
-            if ($result === null) {
-                return ['ok' => false, 'error' => 'Failed to update scheduled assignment.'];
-            }
             return ['ok' => true, 'result' => ['assignment' => $result]];
         } catch (\Throwable $e) {
             return ['ok' => false, 'error' => 'Failed to update scheduled assignment: ' . $e->getMessage()];
         }
     }
 
-    private function deleteScheduledAssignment(array $args): array {
+    private function deleteScheduledAssignment(string $userId, array $args): array {
         if ($this->scheduledAssignments === null) {
             return ['ok' => false, 'error' => 'Scheduled assignments service is not available.'];
         }
-        $userId = $this->config->userId() ?? '';
         if ($userId === '') return ['ok' => false, 'error' => 'No user logged in.'];
         $assignmentId = (int)($args['assignment_id'] ?? 0);
         if ($assignmentId <= 0) return ['ok' => false, 'error' => 'assignment_id is required.'];

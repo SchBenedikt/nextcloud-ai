@@ -207,6 +207,49 @@ Finds free time slots in the user's calendar within the next N days, respecting 
 
 ---
 
+## Nextcloud Assistant scheduled tasks
+
+These tools manage assignments in the official Nextcloud Assistant app. The
+Assistant must be enabled, and the request must have the same signed-in
+Nextcloud user context. Tasks run through the AI providers configured for the
+Assistant.
+
+### list_scheduled_assignments
+Lists the current user's scheduled assignments. No parameters.
+
+### create_scheduled_assignment
+Creates a recurring Assistant task. `title` is optional and defaults to the
+first line of `prompt`.
+
+| Parameter | Type | Required | Description |
+|---|---|---|---|
+| `title` | string | no | Title shown in the Assistant. |
+| `prompt` | string | yes | Instruction to run on each scheduled occurrence. |
+| `recurrence` | string | yes | Recurrence such as `täglich`, `wöchentlich`, `alle 2 Tage`, or `jeden Montag`. |
+| `starts_at` | string | no | Start time in ISO format or natural language; defaults to now. |
+| `timezone` | string | no | Timezone name. Defaults to the user's Nextcloud timezone. |
+
+### update_scheduled_assignment
+Updates an existing assignment using its id from `list_scheduled_assignments`.
+Only supplied fields change. Supported fields are `prompt`, `recurrence`,
+`starts_at`, and `timezone`.
+
+| Parameter | Type | Required | Description |
+|---|---|---|---|
+| `assignment_id` | string | yes | Id from `list_scheduled_assignments`. |
+| `prompt` | string | no | New instruction. |
+| `recurrence` | string | no | New recurrence in natural language. |
+| `starts_at` | string | no | New start time in ISO format or natural language. |
+| `timezone` | string | no | New timezone. Defaults to the user's Nextcloud timezone when changing the start time. |
+
+### delete_scheduled_assignment
+Deletes an assignment owned by the signed-in user. Requires
+`assignment_id` from `list_scheduled_assignments`.
+
+| Parameter | Type | Required | Description |
+|---|---|---|---|
+| `assignment_id` | string | yes | Id from `list_scheduled_assignments`. |
+
 ## Mail
 
 Requires the Nextcloud **Mail** app (and the Mail API / background index) to be enabled.
