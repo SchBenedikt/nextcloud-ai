@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Keep Assistant source translations compatible with legacy catalogs
+
+- Synchronize the new TaskProcessing source description across modern and legacy English and German catalogs.
+
 ### Extract chat organization APIs from the shared controller
 
 - Move chat title, metadata, and folder endpoints into a dedicated owner-scoped OCS controller.

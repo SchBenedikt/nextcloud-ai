@@ -769,6 +769,7 @@ OC.L10N.register("eva_ai", {
   "Something went wrong": "Etwas ist schiefgelaufen",
   "Sort": "Sortierung",
   "Sources": "Quellen",
+  "Names of the EVA knowledge sources used to answer the chat message.": "Namen der EVA-Wissensquellen, die zur Beantwortung der Chatnachricht verwendet wurden.",
   "Sources per answer": "Quellen pro Antwort",
   "Sources:": "Quellen:",
   "Start": "Beginn",
