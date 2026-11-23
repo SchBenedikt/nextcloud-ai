@@ -124,7 +124,13 @@ class AgentInteractionProvider implements ISynchronousProvider {
 	}
 
 	public function getOptionalOutputShape(): array {
-		return [];
+		return [
+			'sources' => new ShapeDescriptor(
+				$this->l->t('Sources'),
+				$this->l->t('Names of the EVA knowledge sources used to answer the chat message.'),
+				EShapeType::ListOfTexts,
+			),
+		];
 	}
 
 	public function getOptionalOutputShapeEnumValues(): array {
@@ -220,14 +226,15 @@ class AgentInteractionProvider implements ISynchronousProvider {
 		// this phase; proposalPhase executes only its explicit readonly allowlist.
 		$this->executor->setUserId($userId);
 		$tools = $this->executor->toolsForSurface(ToolPolicy::SURFACE_TASKPROCESSING);
+		$ragSources = [];
 		if ($ragEnabled && $prompt !== '') {
 			if ($reportProgress(0.15) === false) throw new RuntimeException('Task cancelled');
-			$this->injectRagContext($messages, $userId, $prompt);
+			$ragSources = $this->injectRagContext($messages, $userId, $prompt);
 		}
 
 		if ($confirmation === 1) {
 			if ($reportProgress(0.2) === false) throw new RuntimeException('Task cancelled');
-			return $this->runConfirmed($userId, $messages, $token, $history, $pending);
+			return $this->runConfirmed($userId, $messages, $token, $history, $pending, $ragSources);
 		}
 
 		// Proposal phase: the LLM may freely call read-only information tools
@@ -265,6 +272,7 @@ class AgentInteractionProvider implements ISynchronousProvider {
 		$result = [
 			'output' => $output,
 			'conversation_token' => $token,
+			'sources' => $ragSources,
 		];
 		if ($pendingNext !== []) {
 			$result['actions'] = $actions === false ? '' : $actions;
@@ -407,7 +415,7 @@ class AgentInteractionProvider implements ISynchronousProvider {
 	 * "answer is simply regenerated" bug. Executing the stored $pending calls
 	 * directly guarantees the user-confirmed actions really happen.
 	 */
-	private function runConfirmed(string $userId, array $messages, string $token, array $history, array $pending): array {
+	private function runConfirmed(string $userId, array $messages, string $token, array $history, array $pending, array $sources): array {
 		// The user explicitly confirmed the proposed actions in the native
 		// Assistant UI. Use a dedicated confirmed TaskProcessing surface rather
 		// than WEB: a background worker must never inherit web-only privileges.
@@ -421,7 +429,7 @@ class AgentInteractionProvider implements ISynchronousProvider {
 					break;
 				}
 			}
-			return ['output' => $previous, 'conversation_token' => $token, 'actions' => ''];
+			return ['output' => $previous, 'conversation_token' => $token, 'actions' => '', 'sources' => $sources];
 		}
 		// The durable claim is committed before the first side effect. A crash
 		// leaves an explicit unknown outcome, never an automatically replayable proposal.
@@ -430,7 +438,7 @@ class AgentInteractionProvider implements ISynchronousProvider {
 			$state = $this->store->load($userId, $token);
 			return [
 				'output' => (string)($state['execution']['output'] ?? 'The proposal changed or was already claimed; no action was executed by this request.'),
-				'conversation_token' => $token, 'actions' => '',
+				'conversation_token' => $token, 'actions' => '', 'sources' => $sources,
 			];
 		}
 
@@ -520,6 +528,7 @@ class AgentInteractionProvider implements ISynchronousProvider {
 			'output' => $answer,
 			'conversation_token' => $token,
 			'actions' => '',
+			'sources' => $sources,
 		];
 	}
 
@@ -595,8 +604,9 @@ class AgentInteractionProvider implements ISynchronousProvider {
 	 * @param array $messages Referenz auf die Nachrichtenliste
 	 * @param string $userId
 	 * @param string $message Die aktuelle Nutzer-Nachricht
+	 * @return list<string> Bounded names forwarded to the native Assistant source panel
 	 */
-	private function injectRagContext(array &$messages, string $userId, string $message): void {
+	private function injectRagContext(array &$messages, string $userId, string $message): array {
 		try {
 			// Only skip the search when the user really has no indexed document.
 			// The previous guard read the run-status key `last_index_total`, which a
@@ -604,23 +614,28 @@ class AgentInteractionProvider implements ISynchronousProvider {
 			// the Assistant then answered without any file context while the web chat
 			// used the same index.
 			if ($this->documentMapper->countForUser($userId) === 0) {
-				return; // nothing indexed, nothing to search
+				return []; // nothing indexed, nothing to search
 			}
 
 			$topK = min($this->appConfig->getInt('top_k', 6), (int)AppConfig::LIMITS['top_k'][1]);
 			$results = $this->searcher->search($userId, $message, $topK);
 
 			if (empty($results)) {
-				return;
+				return [];
 			}
 
 			// Kontext aus Ergebnissen bauen
 			$context = '';
 			$sourceRefs = [];
+			$sourceLabels = [];
 			foreach ($results as $i => $r) {
 				$idx = $i + 1;
 				$context .= "[{$idx}] (Source: {$r['docPath']})\n{$r['content']}\n\n";
-				$sourceRefs[] = (string)($r['docName'] ?? $r['docPath'] ?? 'Source ' . $idx);
+				$name = trim((string)($r['docName'] ?? $r['docPath'] ?? ''));
+				if ($name !== '') {
+					$sourceRefs[] = $name;
+					$sourceLabels[] = 'EVA: ' . mb_substr($name, 0, 180);
+				}
 			}
 
 			// Ersetze die letzte User-Nachricht durch eine erweiterte Version
@@ -632,12 +647,15 @@ class AgentInteractionProvider implements ISynchronousProvider {
 					. $context
 					. "\n\nUser question: " . $messages[$lastIndex]['content']
 					. $sourceFooter;
+				return array_slice(array_values(array_unique($sourceLabels)), 0, 8);
 			}
+			return [];
 		} catch (\Throwable $e) {
 			$this->logger->warning('eva_ai: agent RAG context unavailable', [
 				'user' => $userId,
 				'exception' => $e->getMessage(),
 			]);
+			return [];
 		}
 	}
 

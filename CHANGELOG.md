@@ -9,7 +9,7 @@
 
 ### Show EVA knowledge sources in Assistant chat
 
-- Return up to eight distinct source names as optional TaskProcessing chat output so the official Assistant can show them in its information-source panel.
+- Return up to eight distinct source names from standard and agent chat as optional TaskProcessing output so the official Assistant can show them in its information-source panel.
 - Document the native Assistant attribution behavior and add the output-shape description to the English catalog.
 
 ### Honor Nextcloud Assistant chat context
