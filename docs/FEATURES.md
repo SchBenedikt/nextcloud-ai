@@ -107,6 +107,11 @@ user's files. Audio inputs are bounded to 25 MB; image analysis and editing
 keep their existing per-file and aggregate size limits. Generated images and
 audio/subtitle outputs are returned as native TaskProcessing file data (with
 extensions on Nextcloud 35+) and copies are stored in the user's `EVA` folder.
+The audio-translation provider supplies native source and target language
+choices, defaults the source to automatic detection and the target to English,
+and uses both selected languages when preparing the translation. On Nextcloud
+35+, it streams transcript and translated text as they become available and
+honors the Assistant's watermark option; older cores keep the synchronous path.
 Audio TaskProcessing providers stop between transcription, model, synthesis,
 and file-write stages when Nextcloud reports that a task was cancelled; the
 audio ContextAgent forwards cancellation into its confirmation-aware agent.

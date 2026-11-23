@@ -184,7 +184,7 @@ class OpenAICompatible {
     }
 
     /** Transcribe or translate one bounded audio/video payload. */
-    public function transcribeAudio(string $bytes, string $filename, string $mime, bool $translate = false, bool $subtitles = false, int $timeout = 180): string {
+    public function transcribeAudio(string $bytes, string $filename, string $mime, bool $translate = false, bool $subtitles = false, int $timeout = 180, ?string $language = null): string {
         $provider = $this->provider();
         if ($provider === 'ollama' || $provider === 'groq') {
             throw new ProviderException('The selected provider does not expose an audio transcription endpoint. Configure an OpenAI-compatible audio provider first.');
@@ -194,14 +194,18 @@ class OpenAICompatible {
         if ($model === '') throw new ProviderException('No audio model configured for the selected provider.');
         try {
             $responseFormat = $subtitles ? 'vtt' : 'json';
+            $multipart = [
+                ['name' => 'file', 'contents' => $bytes, 'filename' => $filename],
+                ['name' => 'model', 'contents' => $model],
+                ['name' => 'response_format', 'contents' => $responseFormat],
+                ['name' => 'prompt', 'contents' => 'Transcribe faithfully in the same language as the audio. Preserve names and timestamps where available.'],
+            ];
+            if (is_string($language) && preg_match('/^[a-z]{2}$/', $language) === 1) {
+                $multipart[] = ['name' => 'language', 'contents' => $language];
+            }
             $response = $this->client()->post($this->baseUrl() . '/audio/' . ($translate ? 'translations' : 'transcriptions'), [
                 'headers' => $this->headers() + $this->traceHeaders(),
-                'multipart' => [
-                    ['name' => 'file', 'contents' => $bytes, 'filename' => $filename],
-                    ['name' => 'model', 'contents' => $model],
-                    ['name' => 'response_format', 'contents' => $responseFormat],
-                    ['name' => 'prompt', 'contents' => 'Transcribe faithfully in the same language as the audio. Preserve names and timestamps where available.'],
-                ],
+                'multipart' => $multipart,
                 'timeout' => max(1, min(300, $timeout)), 'allow_redirects' => false, 'http_errors' => false,
             ]);
             $status = $response->getStatusCode();
