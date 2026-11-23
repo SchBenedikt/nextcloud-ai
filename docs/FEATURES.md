@@ -102,6 +102,9 @@ displays them in the message's information-source panel with an `EVA:` prefix.
 These providers use the configured local or OpenAI-compatible backends;
 generated images and subtitles are stored in the user's `EVA` folder. Audio
 inputs are bounded to 25 MB and remain scoped to the authenticated user's files.
+Audio TaskProcessing providers stop between transcription, model, synthesis,
+and file-write stages when Nextcloud reports that a task was cancelled; the
+audio ContextAgent forwards cancellation into its confirmation-aware agent.
 The confirmation-gated `create_sticker` tool creates a single bounded sticker
 image in the same folder when an image provider is configured. Text and vision
 providers run through Ollama models or the optional local Tesseract integration, so

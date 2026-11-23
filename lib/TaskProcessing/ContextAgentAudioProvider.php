@@ -47,18 +47,21 @@ final class ContextAgentAudioProvider extends EvaAudioTranscriptionProvider {
 	public function process(?string $userId, array $input, callable $reportProgress): array {
 		if ($userId === null || $userId === '') throw new RuntimeException('No user context');
 		$this->appConfig->setUserId($userId);
-		$reportProgress(0.1);
+		$this->reportProgress($reportProgress, 0.1);
 		$file = $this->inputFile($userId, $input);
 		$text = $this->audio->transcribeAudio($file['bytes'], $file['filename'], $file['mime'], false, false, 180);
+		$this->reportProgress($reportProgress, 0.2);
 		$agentInput = $input;
 		$agentInput['input'] = $text;
-		$agentResult = $this->agent->process($userId, $agentInput, static function (float $progress): void {});
+		$agentResult = $this->agent->process($userId, $agentInput, function (float $progress) use ($reportProgress): bool {
+			return $reportProgress(0.2 + min(1.0, max(0.0, $progress)) * 0.55) !== false;
+		});
 		$answer = trim((string)($agentResult['output'] ?? ''));
 		if ($answer === '') throw new RuntimeException('ContextAgent returned no answer.');
-		$reportProgress(0.65);
+		$this->reportProgress($reportProgress, 0.8);
 		$audio = $this->audio->synthesizeSpeech($answer, 180);
+		$this->reportProgress($reportProgress, 0.95);
 		$id = $this->outputFile($userId, $audio['bytes'], 'mp3', 'eva-agent-audio');
-		$reportProgress(1.0);
 		return [
 			'input_transcript' => $text,
 			'output' => $id,

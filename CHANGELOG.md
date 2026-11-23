@@ -2,6 +2,11 @@
 
 ## [Unreleased]
 
+### Honor TaskProcessing cancellation in audio providers
+
+- Stop audio transcription, translation, subtitle, audio chat and ContextAgent pipelines when Nextcloud reports cancellation between processing stages.
+- Forward cancellation requests into the confirmation-aware ContextAgent so cancelled voice tasks do not continue into action processing.
+
 ### Preserve audio Assistant sources
 
 - Return the audio ContextAgent's RAG source names through TaskProcessing so the official Assistant can display citations for voice conversations too.
