@@ -1209,6 +1209,7 @@ OC.L10N.register("eva_ai", {
   "Eva · Agent": "Eva · Agent",
   "Memories": "Memories",
   "The memories to be injected into the chat prompt.": "The memories to be injected into the chat prompt.",
+  "The memories to be injected into the chat session.": "The memories to be injected into the chat session.",
   "Talk room IDs": "Talk room IDs",
   "List of Nextcloud Talk room IDs whose chat history should be included as context.": "List of Nextcloud Talk room IDs whose chat history should be included as context.",
   "User instructions": "User instructions",

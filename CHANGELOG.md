@@ -2,6 +2,11 @@
 
 ## [Unreleased]
 
+### Fix settings overview navigation
+
+- Route overview-card selection through the settings navigator so category links update the active section instead of opening an invalid app view.
+- Complete the provider-description translation catalogs for English, German, and Spanish.
+
 ### Preserve Nextcloud Assistant session instructions
 
 - Accept the official Assistant's optional `user_instructions` input for text, multimodal, and audio ContextAgent tasks, with an 8,000-character bound.
