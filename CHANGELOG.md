@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.24.2 - 2026-11-23
+
+### Enforce personal Assistant skill precedence
+
+- Refuse direct global-skill reads when a readable personal skill with the same name exists.
+
 ## 1.24.1 - 2026-11-23
 
 ### Include admin-provided Assistant skills
