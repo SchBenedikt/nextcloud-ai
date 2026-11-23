@@ -2,6 +2,11 @@
 
 ## [Unreleased]
 
+### Fix audio TaskProcessing file inputs
+
+- Consume the Nextcloud `File` objects supplied to synchronous providers, while retaining ID resolution for direct provider callers.
+- Document the native TaskProcessing file handoff and authenticated-user scope.
+
 ### Honor TaskProcessing cancellation across providers
 
 - Treat Nextcloud's `reportProgress() === false` signal as cancellation across text, image, OCR, translation, speech, and chat-with-tools providers.
