@@ -2,6 +2,11 @@
 
 ## [Unreleased]
 
+### Isolate synchronous chat generation
+
+- Move the authenticated non-streaming chat endpoint into a dedicated OCS controller while preserving its API path, validation, rate limit, per-user request lock, and RAG behavior.
+- Share chat scope and per-conversation prompt resolution with the streaming endpoint.
+
 ### Keep Assistant source translations compatible with legacy catalogs
 
 - Synchronize the new TaskProcessing source description across modern and legacy English and German catalogs.
