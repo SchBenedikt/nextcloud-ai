@@ -2,6 +2,11 @@
 
 ## [Unreleased]
 
+### Move chat history writes into the history controller
+
+- Move completed-turn and message append endpoints into the owner-scoped ChatHistoryController while keeping their API paths, validation, revision conflicts, and learning behavior.
+- Remove chat persistence responsibilities from ApiController.
+
 ### Isolate streamed chat transport
 
 - Move the NDJSON stream endpoint, request admission, disconnect handling, producer cleanup and completion notification into ChatStreamController.

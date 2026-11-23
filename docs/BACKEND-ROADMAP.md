@@ -401,7 +401,9 @@ streaming and regeneration still need separate generation-domain extractions.
 The current unreleased slices move chat title, organizational metadata and
 folder endpoints to `ChatOrganizationController`, move non-streaming chat
 generation to `ChatGenerationController`, and move NDJSON streaming to
-`ChatStreamController`. They preserve existing OCS paths and owner-scoped
+`ChatStreamController`. Completed-turn and message append writes now also live
+in `ChatHistoryController`, alongside owner-scoped history reads and lifecycle
+operations. These slices preserve existing OCS paths and owner-scoped
 behavior. Chat scope and prompt settings are shared through
 `ChatContextResolver`; chat regeneration remains in `ApiController`.
 

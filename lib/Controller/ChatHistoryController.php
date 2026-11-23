@@ -8,6 +8,9 @@ use OCA\EvaAi\Controller\Traits\ReadsRequestParameters;
 use OCA\EvaAi\Dto\ChatListQuery;
 use OCA\EvaAi\Dto\ChatListResponse;
 use OCA\EvaAi\Dto\ChatTitleRequest;
+use OCA\EvaAi\Dto\ChatAppendRequest;
+use OCA\EvaAi\Dto\ChatAppendResponse;
+use OCA\EvaAi\Dto\ChatTurnRequest;
 use OCA\EvaAi\Http\ErrorDataResponse;
 use OCA\EvaAi\Service\AppConfig;
 use OCA\EvaAi\Service\ChatStore;
@@ -27,6 +30,8 @@ final class ChatHistoryController extends OCSController {
 		private ?string $userId,
 		private ChatStore $chatStore,
 		private IConfig $systemConfig,
+		private AppConfig $config,
+		private \OCA\EvaAi\Service\ChatLearner $chatLearner,
 	) {
 		parent::__construct($appName, $request);
 	}
@@ -51,6 +56,69 @@ final class ChatHistoryController extends OCSController {
 			], 500);
 		}
 		return new ErrorDataResponse(['error' => 'Unable to persist chat data'], 500);
+	}
+
+	/** Learn from persisted assistant replies without affecting chat persistence. */
+	private function learnSavedChat(string $user, string $id): void {
+		try {
+			$this->config->setUserId($user);
+			$fullChat = $this->chatStore->getChat($user, $id);
+			if ($fullChat !== null && count($fullChat['messages']) >= 4 && $this->config->get('learning_enabled') === '1') {
+				$this->chatLearner->learnFromChat($user, $fullChat['messages']);
+			}
+		} catch (\Throwable) { /* Learning failure must never break persistence. */ }
+	}
+
+	#[NoAdminRequired]
+	public function chatTurn(string $id): DataResponse {
+		$user = $this->requireUser();
+		if ($user === null) return new ErrorDataResponse(['error' => 'Not logged in'], 401);
+		try {
+			$turn = ChatTurnRequest::fromArray([
+				'requestId' => $this->requestParam('requestId'),
+				'expectedRev' => $this->requestParam('expectedRev'),
+				'question' => $this->requestParam('question'),
+				'answer' => $this->requestParam('answer'),
+			]);
+			$result = $this->chatStore->appendTurn($user, $id, $turn);
+			if (($result['error'] ?? '') === 'not_found') return new ErrorDataResponse(['error' => 'Requested resource was not found.'], 404);
+			if (($result['error'] ?? '') === 'conflict') return new ErrorDataResponse(['error' => 'conflict', 'message' => 'Chat history changed. Reload before saving another turn.'], 409);
+			$this->learnSavedChat($user, $id);
+			return new ErrorDataResponse($result);
+		} catch (\InvalidArgumentException $error) {
+			return new ErrorDataResponse(['error' => $error->getMessage()], 400);
+		} catch (\Throwable $error) { return $this->chatErrorResponse($error); }
+	}
+
+	#[NoAdminRequired]
+	public function chatAppend(string $id): DataResponse {
+		$user = $this->requireUser();
+		if ($user === null) return new ErrorDataResponse(['error' => 'Not logged in'], 401);
+		try {
+			$chat = $this->chatStore->get($user, $id);
+			if ($chat === null) return new ErrorDataResponse(['error' => 'Requested resource was not found.'], 404);
+			try {
+				$request = ChatAppendRequest::fromArray([
+					'role' => $this->requestParam('role'),
+					'text' => $this->requestParam('text'),
+					'followups' => $this->requestParam('followups'),
+					'regenerateRev' => $this->requestParam('regenerateRev'),
+					'confirmation' => $this->requestParam('confirmation'),
+					'tools' => $this->requestParam('tools'),
+					'model' => $this->requestParam('model'),
+				]);
+			} catch (\InvalidArgumentException $error) {
+				return new ErrorDataResponse(['error' => $error->getMessage()], 400);
+			}
+			$this->chatStore->append($user, $id, $request->role, $request->text, $request->followups, $request->regenerateRev, $request->confirmation, $request->tools, $request->model);
+			$appended = $this->chatStore->getChat($user, $id);
+			$rev = $appended !== null ? (int)($appended['rev'] ?? 0) : 0;
+			if ($request->role === 'assistant') $this->learnSavedChat($user, $id);
+			$response = ChatAppendResponse::fromArray(['ok' => true, 'rev' => $rev]);
+			return new ErrorDataResponse($response->toArray());
+		} catch (\Throwable $error) {
+			return $this->chatErrorResponse($error);
+		}
 	}
 
 	#[NoAdminRequired]
