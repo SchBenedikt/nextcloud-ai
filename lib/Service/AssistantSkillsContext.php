@@ -91,6 +91,9 @@ final class AssistantSkillsContext {
 			if ($user === null || !$this->appManager->isEnabledForUser(self::ASSISTANT_APP_ID, $user)) {
 				return ['ok' => false, 'error' => 'The Nextcloud Assistant app is not enabled for this user.'];
 			}
+			if ($source === 'global' && $this->hasReadableSkill($this->findSkillsFolder($userId), $name)) {
+				return ['ok' => false, 'error' => 'A personal skill with this name takes precedence over the global skill.'];
+			}
 			$folder = match ($source) {
 				'personal' => $this->findSkillsFolder($userId),
 				'global' => $this->findGlobalSkillsFolder(),
@@ -139,6 +142,18 @@ final class AssistantSkillsContext {
 			$this->logger->debug('eva_ai: could not read a Nextcloud Assistant skill', ['exception' => $e]);
 			return ['ok' => false, 'error' => 'Assistant skill could not be read.'];
 		}
+	}
+
+	private function hasReadableSkill(?Folder $folder, string $name): bool {
+		if ($folder === null || !$folder->nodeExists($name)) {
+			return false;
+		}
+		$skill = $folder->get($name);
+		if (!$skill instanceof Folder || !$skill->nodeExists('SKILL.md')) {
+			return false;
+		}
+		$file = $skill->get('SKILL.md');
+		return $file instanceof File && $file->getSize() > 0 && $file->getSize() <= self::MAX_SKILL_FILE_BYTES;
 	}
 
 	/** @return list<array{name:string,source:string,description:string,path?:string}> */
