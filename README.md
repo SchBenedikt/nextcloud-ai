@@ -70,8 +70,9 @@ EVA is not an external chatbot next to Nextcloud — it is woven into it:
   messages in rooms on your behalf (off by default, enabled per user).
 - **Search**: EVA appears in the unified Nextcloud search for your indexed
   content.
-- **Admin**: native admin settings, OpenMetrics exporters and OCC commands fit
-  into standard Nextcloud operations.
+- **Admin**: native settings show which Assistant task types are enabled and
+  routed to EVA, alongside OpenMetrics exporters and OCC commands for standard
+  Nextcloud operations.
 
 ![EVA powering the official Nextcloud Assistant with chat and scheduled tasks](screenshots/eva-nextcloud-assistant.png)
 
