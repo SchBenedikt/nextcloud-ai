@@ -42,6 +42,8 @@ final class ConfirmToolRequestTest extends TestCase {
 			['name' => 'create_task', 'arguments' => '[]'],
 			['name' => 'create_task', 'arguments' => ['title'], 'chatId' => []],
 			['name' => 'create_task', 'arguments' => [], 'confirmationToken' => []],
+			['name' => 'create_task', 'arguments' => [], 'chatId' => 'chat-123'],
+			['name' => 'create_task', 'arguments' => [], 'confirmationToken' => 'token-456'],
 		];
 
 		foreach ($invalidInputs as $input) {

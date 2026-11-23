@@ -343,11 +343,11 @@ final class FrontendContractTest extends TestCase {
         self::assertStringContainsString('SURFACE_TALK', $policy);
         self::assertStringContainsString('SURFACE_TASKPROCESSING_CONFIRMED', (string)file_get_contents(__DIR__ . '/../lib/TaskProcessing/AgentInteractionProvider.php'));
 
-        $controller = (string)file_get_contents(__DIR__ . '/../lib/Controller/ApiController.php');
+        $controller = (string)file_get_contents(__DIR__ . '/../lib/Controller/ToolExecutionController.php');
         self::assertStringContainsString('public function confirmTool', $controller);
         self::assertStringContainsString('ConfirmToolRequest::fromArray', $controller);
         self::assertStringContainsString('runConfirmed($user, $request->name, $request->arguments)', $controller);
-        self::assertStringContainsString('api#confirmTool', (string)file_get_contents(__DIR__ . '/../appinfo/routes.php'));
+        self::assertStringContainsString('toolExecution#confirmTool', (string)file_get_contents(__DIR__ . '/../appinfo/routes.php'));
 
         $rag = (string)file_get_contents(__DIR__ . '/../lib/Service/RagService.php');
         $vanilla = (string)file_get_contents(__DIR__ . '/../src/lib/vanilla.js');

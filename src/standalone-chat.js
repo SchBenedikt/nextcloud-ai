@@ -698,7 +698,7 @@ function buildCalendarForm(args, tr) {
 					return api('POST', '/confirmTool', {
 						name: m.confirmation.name,
 						arguments: approvedArguments,
-						chatId: chatId,
+						chatId: m.confirmation.token ? chatId : '',
 						confirmationToken: m.confirmation.token || '',
 					})
 				}).then(function (result) {

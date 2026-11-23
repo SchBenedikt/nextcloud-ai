@@ -549,7 +549,7 @@ export function mountChat(root, opts = {}) {
 					return api('POST', '/confirmTool', {
 						name: m.confirmation.name,
 						arguments: approvalArguments,
-						chatId,
+						chatId: m.confirmation.token ? chatId : '',
 						confirmationToken: m.confirmation.token || '',
 					})
 				}).then((result) => {
