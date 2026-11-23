@@ -86,6 +86,9 @@ context-aware writing. When the official Assistant app is enabled, EVA also
 supplies its `assistant:text2sticker` task using the configured OpenAI-compatible
 image provider. Ollama and Groq do not expose the image-generation endpoint EVA
 uses for this task.
+For `core:text2text:chat`, EVA honors the Assistant's system prompt as bounded
+custom instructions and accepts its opted-in remembered conversation summaries
+as untrusted personalization context.
 These providers use the configured local or OpenAI-compatible backends;
 generated images and subtitles are stored in the user's `EVA` folder. Audio
 inputs are bounded to 25 MB and remain scoped to the authenticated user's files.

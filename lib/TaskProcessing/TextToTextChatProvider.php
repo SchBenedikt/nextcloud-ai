@@ -6,8 +6,11 @@ namespace OCA\EvaAi\TaskProcessing;
 
 use OCA\EvaAi\Service\RagService;
 use OCA\EvaAi\Service\ToolPolicy;
+use OCP\IL10N;
+use OCP\TaskProcessing\EShapeType;
 use OCP\TaskProcessing\Exception\ProcessingException;
 use OCP\TaskProcessing\ISynchronousProvider;
+use OCP\TaskProcessing\ShapeDescriptor;
 use OCP\TaskProcessing\TaskTypes\TextToTextChat;
 
 /**
@@ -16,6 +19,7 @@ use OCP\TaskProcessing\TaskTypes\TextToTextChat;
 class TextToTextChatProvider implements ISynchronousProvider {
 	public function __construct(
 		private RagService $ragService,
+		private IL10N $l,
 	) {
 	}
 
@@ -41,7 +45,13 @@ class TextToTextChatProvider implements ISynchronousProvider {
 
 	#[\Override]
 	public function getOptionalInputShape(): array {
-		return [];
+		return [
+			'memories' => new ShapeDescriptor(
+				$this->l->t('Memories'),
+				$this->l->t('The memories to be injected into the chat prompt.'),
+				EShapeType::ListOfTexts,
+			),
+		];
 	}
 
 	#[\Override]
@@ -105,7 +115,29 @@ class TextToTextChatProvider implements ISynchronousProvider {
 			}
 		}
 
-		$result = $this->ragService->ask(new \OCA\EvaAi\Dto\ChatRequest($userId, $prompt, $history));
+		$instructions = trim((string)($input['system_prompt'] ?? ''));
+		$instructions = $instructions === '' ? null : mb_substr($instructions, 0, 4000);
+		$memories = [];
+		$totalMemoryChars = 0;
+		foreach (array_slice((array)($input['memories'] ?? []), 0, 10) as $memory) {
+			if (!is_string($memory) || trim($memory) === '') {
+				continue;
+			}
+			$memory = mb_substr(trim($memory), 0, 2000);
+			if ($totalMemoryChars + mb_strlen($memory) > 12000) {
+				break;
+			}
+			$memories[] = $memory;
+			$totalMemoryChars += mb_strlen($memory);
+		}
+
+		$result = $this->ragService->ask(new \OCA\EvaAi\Dto\ChatRequest(
+			$userId,
+			$prompt,
+			$history,
+			instructions: $instructions,
+			memories: $memories,
+		));
 		$reportProgress(0.9);
 
 		if (!empty($result['error'])) {
