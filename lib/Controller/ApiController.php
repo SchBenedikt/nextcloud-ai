@@ -7,6 +7,7 @@ namespace OCA\EvaAi\Controller;
 use OCA\EvaAi\Controller\Traits\ReadsRequestParameters;
 use OCA\EvaAi\Controller\Traits\RequestLimits;
 use OCA\EvaAi\Controller\Traits\ChatRequestCoordination;
+use OCA\EvaAi\Controller\Traits\ChatContextResolver;
 use OCA\EvaAi\Service\AppConfig;
 use OCA\EvaAi\Service\ActionExecutor;
 use OCA\EvaAi\Service\ChatStore;
@@ -36,8 +37,8 @@ class ApiController extends OCSController {
     use ReadsRequestParameters;
     use RequestLimits;
     use ChatRequestCoordination;
+    use ChatContextResolver;
 
-    private const MAX_MESSAGE_LENGTH = 50000;
     public function __construct(
         string $appName,
         IRequest $request,
@@ -66,10 +67,6 @@ class ApiController extends OCSController {
     /** Release the PHP session lock before a long model/tool request starts. */
     private function releaseSessionLock(): void {
         $this->releasePhpSessionLock();
-    }
-
-    private function messageTooLong(string $message): bool {
-        return mb_strlen($message) > self::MAX_MESSAGE_LENGTH;
     }
 
     /** Enforce a bounded per-user budget with a SQL fallback if shared cache is down. */
@@ -145,78 +142,6 @@ class ApiController extends OCSController {
     #[NoAdminRequired]
     public function greeting(): DataResponse {
         return $this->systemController->greeting();
-    }
-
-    #[NoAdminRequired]
-    public function chat(): DataResponse {
-        $user = $this->requireUser();
-        if ($user === null) {
-            return new ErrorDataResponse(['error' => 'Not logged in'], 401);
-        }
-        try {
-            $request = ChatCompletionRequest::fromArray([
-                'message' => $this->requestParam('message'),
-                'history' => $this->requestParam('history', []),
-                'chatId' => $this->requestParam('chatId'),
-                'images' => $this->requestParam('images', []),
-                'model' => $this->requestParam('model'),
-            ]);
-        } catch (\InvalidArgumentException $e) {
-            return new ErrorDataResponse(['error' => $e->getMessage()], 400);
-        }
-        if (($limited = $this->rateLimitResponse($user, 'chat', $this->config->getInt('rate_limit_chat_per_minute', 30))) !== null) return $limited;
-        try { $chatSlot = $this->acquireChatSlot($user); }
-        catch (\Throwable) { return new ErrorDataResponse(['error' => 'chat_unavailable', 'message' => 'Chat is temporarily unavailable. Please retry shortly.'], 503); }
-        if ($chatSlot === null) return new ErrorDataResponse(['error' => 'busy', 'message' => 'Another chat request is already running. Please retry shortly.'], 429, ['Retry-After' => '5']);
-        try {
-            $this->releaseSessionLock();
-            $custom = $this->customFor($user, $request->chatId);
-            return new ErrorDataResponse($this->ragService->ask(new \OCA\EvaAi\Dto\ChatRequest(
-                userId: $user,
-                message: $request->message,
-                history: $request->history,
-                scopePath: $this->scopePathFor($user, $request->chatId),
-                images: $request->images,
-                model: $request->model,
-                instructions: $custom['instructions'],
-                persona: $custom['persona'],
-            )));
-        } finally {
-            $this->releaseChatSlot($chatSlot);
-        }
-    }
-
-    /**
-     * Resolve the folder scope stored on a chat (Issue #88). Empty string
-     * when the chat is unknown, missing or not scoped — the caller then
-     * falls back to the user's global index.
-     */
-    private function scopePathFor(?string $user, mixed $chatId): string {
-        if ($user === null || !is_string($chatId) || trim($chatId) === '') {
-            return '';
-        }
-        $chat = $this->chatStore->get($user, trim($chatId));
-        return $chat !== null ? trim((string)($chat['scopePath'] ?? '')) : '';
-    }
-
-    /**
-     * Resolve the custom instructions + persona stored on a chat (Issue #90).
-     * Empty strings when the chat is unknown or not customised — the caller
-     * then builds the default prompt.
-     * @return array{instructions:string,persona:string}
-     */
-    private function customFor(?string $user, mixed $chatId): array {
-        if ($user === null || !is_string($chatId) || trim($chatId) === '') {
-            return ['instructions' => '', 'persona' => ''];
-        }
-        $chat = $this->chatStore->get($user, trim($chatId));
-        if ($chat === null) {
-            return ['instructions' => '', 'persona' => ''];
-        }
-        return [
-            'instructions' => trim((string)($chat['instructions'] ?? '')),
-            'persona' => trim((string)($chat['persona'] ?? '')),
-        ];
     }
 
     /**

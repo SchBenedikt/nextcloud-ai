@@ -7,6 +7,7 @@ namespace OCA\EvaAi\Tests;
 use OCA\EvaAi\BackgroundJob\IndexRequestJob;
 use OCA\EvaAi\Controller\ApiController;
 use OCA\EvaAi\Controller\BackgroundChatController;
+use OCA\EvaAi\Controller\ChatGenerationController;
 use OCA\EvaAi\Controller\DocumentController;
 use OCA\EvaAi\Controller\IndexController;
 use OCA\EvaAi\Controller\SettingsController;
@@ -222,12 +223,22 @@ final class ApiControllerIntegrationTest extends TestCase {
 		);
 	}
 
+	/** @param array<string,mixed> $params @param array<string,mixed> $dependencies @param array<string,mixed> $storedValues */
+	private function chatGenerationController(?string $userId, array $params, array &$dependencies, array &$storedValues): ChatGenerationController {
+		$this->controller($userId, $params, $dependencies, $storedValues);
+		return new ChatGenerationController(
+			'eva_ai', $dependencies['request'], $userId, $dependencies['config'], $dependencies['rag'],
+			$dependencies['chatStore'], $dependencies['lockingProvider'], $dependencies['cacheFactory'], $dependencies['logger'],
+		);
+	}
+
 	public function testAnonymousChatAndToolConfirmationReturn401Responses(): void {
 		$stored = [];
 		$dependencies = [];
-		$controller = $this->controller(null, [], $dependencies, $stored);
+        $chatController = $this->chatGenerationController(null, [], $dependencies, $stored);
+        $controller = $this->controller(null, [], $dependencies, $stored);
 
-		$chat = $controller->chat();
+        $chat = $chatController->chat();
 		$confirmation = $controller->confirmTool();
 
 		self::assertSame(401, $chat->getStatus());
@@ -240,7 +251,7 @@ final class ApiControllerIntegrationTest extends TestCase {
 		foreach (['', str_repeat('x', 50001)] as $message) {
 			$stored = [];
 			$dependencies = [];
-			$controller = $this->controller('alice', ['message' => $message], $dependencies, $stored);
+            $controller = $this->chatGenerationController('alice', ['message' => $message], $dependencies, $stored);
 			$dependencies['cacheFactory']->expects(self::never())->method('createLocking');
 			$dependencies['lockingProvider']->expects(self::never())->method('acquireLock');
 			$dependencies['rag']->expects(self::never())->method('ask');
@@ -267,7 +278,7 @@ final class ApiControllerIntegrationTest extends TestCase {
 	public function testValidChatRequestCallsRagAndReturnsItsResponse(): void {
 		$stored = [];
 		$dependencies = [];
-		$controller = $this->controller('alice', ['message' => 'Summarize my notes', 'model' => 'gemma4:cloud'], $dependencies, $stored);
+        $controller = $this->chatGenerationController('alice', ['message' => 'Summarize my notes', 'model' => 'gemma4:cloud'], $dependencies, $stored);
 		$cache = $this->createMock(IMemcache::class);
 		$cache->method('inc')->willReturn(1);
 		$dependencies['cacheFactory']->method('createLocking')->with('eva_ai_rate')->willReturn($cache);

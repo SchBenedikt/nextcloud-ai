@@ -41,7 +41,7 @@ return [
         ['name' => 'index#resetIndexSnake', 'url' => '/api/index/reset', 'verb' => 'POST'],
         ['name' => 'document#documents', 'url' => '/api/documents', 'verb' => 'GET'],
         ['name' => 'document#documentChunks', 'url' => '/api/documentChunks', 'verb' => 'POST'],
-        ['name' => 'api#chat', 'url' => '/api/chat', 'verb' => 'POST'],
+        ['name' => 'chatGeneration#chat', 'url' => '/api/chat', 'verb' => 'POST'],
         ['name' => 'backgroundChat#backgroundChat', 'url' => '/api/backgroundChat', 'verb' => 'POST'],
         ['name' => 'backgroundChat#backgroundChatStatus', 'url' => '/api/backgroundChat', 'verb' => 'GET'],
         ['name' => 'integration#externalConnectors', 'url' => '/api/connectors', 'verb' => 'GET'],
