@@ -2,6 +2,11 @@
 
 ## [Unreleased]
 
+### Show EVA knowledge sources in Assistant chat
+
+- Return up to eight distinct source names as optional TaskProcessing chat output so the official Assistant can show them in its information-source panel.
+- Document the native Assistant attribution behavior and add the output-shape description to the English catalog.
+
 ### Honor Nextcloud Assistant chat context
 
 - Accept opted-in Assistant conversation memories and pass them to EVA as bounded, explicitly untrusted personalization context.
