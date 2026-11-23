@@ -700,6 +700,7 @@ export function useEvaSettings({ section = ref('general'), active = ref(true) } 
 	}
 
 	const exporting = ref(false)
+	const importing = ref(false)
 	const { knowledgeContent, knowledgeOriginal, savingKnowledge, knowledgeSaved, knowledgeLoading, knowledgeLoadError, knowledgeReady, loadKnowledge, saveKnowledgeContent } = useKnowledgeSettings({ setMessage })
 	async function downloadExport() {
 		if (exporting.value) return
@@ -721,6 +722,33 @@ export function useEvaSettings({ section = ref('general'), active = ref(true) } 
 			setMessage('error', t('The data export could not be created: {error}', { error: errMsg(error) }))
 		} finally {
 			exporting.value = false
+		}
+	}
+	async function importChatsFromFile(file) {
+		if (importing.value) return
+		if (!file || file.size > 10 * 1024 * 1024) {
+			setMessage('error', t('Choose an EVA JSON export smaller than 10 MB.'))
+			return
+		}
+		importing.value = true
+		setMessage('info', t('Checking the chat archive…'))
+		try {
+			const archive = JSON.parse(await file.text())
+			if (!archive || typeof archive !== 'object' || !Array.isArray(archive.chats) || archive.chats.length > 500) {
+				throw new Error(t('Choose an EVA JSON export with up to 500 chats.'))
+			}
+			const result = await api('POST', 'import', { chats: archive.chats })
+			const imported = Number(result?.imported)
+			if (!result?.ok || !Number.isInteger(imported) || imported < 0) throw new Error(t('The server did not confirm the chat import.'))
+			setMessage(imported > 0 ? 'success' : 'info', imported > 0
+				? t('Added {count} chats. Existing conversations were kept.', { count: formatNumber(imported) })
+				: t('No valid chats were found in this archive.'))
+			if (imported > 0) window.dispatchEvent(new CustomEvent('eva-ai:chats-imported'))
+			await loadStatus()
+		} catch (error) {
+			setMessage('error', t('The chat archive could not be imported: {error}', { error: errMsg(error) }))
+		} finally {
+			importing.value = false
 		}
 	}
 
@@ -768,7 +796,7 @@ export function useEvaSettings({ section = ref('general'), active = ref(true) } 
 		connectors, connectorsLoading, connectorsBusy, connectorDiagnostics, connectorDraft, connectorToRemove, connectorRemovalError, connectorEndpointQuery, filteredConnectorEndpoints, applyConnectorExample, saveConnector, editConnector, connectorCredentialLabel, connectorCredentialClass, removeConnector, closeConnectorRemoval, confirmRemoveConnector, discoverConnector, testConnector, loadConnectors, connectorLoadError, plugins, pluginsLoading, pluginsSaving, setPluginEnabled, loadPlugins, pluginLoadError, pluginRiskLabel, pluginSurfacesLabel,
 		apiKeys, apiKeysLoading, apiKeysBusy, apiKeyError, createdApiKey, apiKeyDraft, apiKeyScopeOptions, apiDocsUrl, loadApiKeys, createApiKey, revokeApiKey, copyApiKey,
 		proactiveEnabled, proactiveBriefings, briefingDraft, briefingFormError, editingBriefingId, briefingHistory, briefingTypeOptions, weekdays, dayName, briefingTypeName, channelName, formatDateTime, failureSummary, saveBriefing, editBriefing, cancelEditBriefing, removeBriefing, toggleBriefing, toggleBriefingActions, runBriefingNow,
-		exporting, downloadExport, savePatch, saveNow,
+		exporting, importing, downloadExport, importChatsFromFile, savePatch, saveNow,
 		knowledgeContent, knowledgeOriginal, savingKnowledge, knowledgeSaved, knowledgeLoading, knowledgeLoadError, knowledgeReady, loadKnowledge, saveKnowledgeContent,
 		formatNumber, loadStatus, loadIndexStatus, loadHealth, healthError, save, checkOllama, addExclude, removeExclude, startIndex, startMailIndex, startTalkIndex, stopIndex, resetIndex, deleteAllChats,
 	}

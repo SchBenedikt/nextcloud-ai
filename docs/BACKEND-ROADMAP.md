@@ -207,6 +207,11 @@ categories, with keyboard-accessible section cards and preserved direct section
 links. This gives new users a guided entry point without hiding the existing
 advanced controls.
 
+Personal data settings now expose additive chat restore from an EVA export.
+Existing conversations are retained, imports receive fresh IDs, and the UI
+reports the number the server accepted. The archive's knowledge file, indexed
+files and infrastructure metadata are not restored by this operation.
+
 | Backend stage | Matching interface deliverable |
 | --- | --- |
 | 07–08 | Shared offline storage status in EVA administration and Nextcloud administration settings: actual search mode, connection configuration, cleanup state and actionable queue counts. Errors remain unknown, never a healthy zero. No automatic external probes. |

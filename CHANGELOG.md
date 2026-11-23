@@ -2,6 +2,12 @@
 
 ## [Unreleased]
 
+### Restore chats from an EVA data export
+
+- Expose the existing additive chat restore handler through a signed-in API route and add a file-based restore action under Privacy & data.
+- Validate the archive size and chat count in the UI, report the server-confirmed import count, and keep existing chats untouched.
+- Move personal data export and chat restore into a dedicated owner-scoped controller.
+
 ### Add a guided settings overview
 
 - Open the settings workspace on a category overview with clear, keyboard-accessible cards for each native settings section.

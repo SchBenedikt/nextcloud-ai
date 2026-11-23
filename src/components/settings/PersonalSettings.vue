@@ -63,17 +63,39 @@
 					</div>
 					<NcButton variant="secondary" :disabled="exporting" :loading="exporting" @click="downloadExport">{{ $t('Download') }}</NcButton>
 				</div>
+				<div class="index-actions">
+					<div>
+						<strong>{{ $t('Restore chats') }}</strong>
+						<p>{{ $t('Add up to 500 chats from an EVA JSON export. Existing conversations are never overwritten.') }}</p>
+					</div>
+					<input ref="importInput" class="chat-import-input" type="file" accept=".json,application/json" :disabled="importing" @change="onImportChange">
+					<NcButton variant="secondary" :disabled="importing" :loading="importing" @click="onImportClick">{{ $t('Choose archive') }}</NcButton>
+				</div>
 			</NcSettingsSection>
 </div>
 </template>
 
 <script>
-import { inject } from 'vue'
+import { inject, ref } from 'vue'
 import { NcSettingsSection, NcButton, NcSelect, NcTextArea } from '@nextcloud/vue'
 
 export default {
  name: 'PersonalSettings',
  components: { NcSettingsSection, NcButton, NcSelect, NcTextArea },
- setup() { return inject('eva-settings') },
+ setup() {
+	const settings = inject('eva-settings')
+	const importInput = ref(null)
+	const onImportClick = () => importInput.value?.click()
+	const onImportChange = async event => {
+		const file = event.target.files?.[0]
+		if (file) await settings.importChatsFromFile(file)
+		event.target.value = ''
+	}
+	return { ...settings, importInput, onImportClick, onImportChange }
+ },
 }
 </script>
+
+<style scoped>
+.chat-import-input { display: none; }
+</style>

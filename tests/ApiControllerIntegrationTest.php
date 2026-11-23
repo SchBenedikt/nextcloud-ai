@@ -33,7 +33,6 @@ use OCA\EvaAi\Service\ProviderCredentials;
 use OCA\EvaAi\Service\RagService;
 use OCA\EvaAi\Service\SettingsPersistence;
 use OCA\EvaAi\Service\UsageMetrics;
-use OCA\EvaAi\Service\UserDataService;
 use OCP\App\IAppManager;
 use OCP\BackgroundJob\IJobList;
 use OCP\ICacheFactory;
@@ -174,7 +173,6 @@ final class ApiControllerIntegrationTest extends TestCase {
 		$settingsPersistence = new SettingsPersistence($config);
 		$modelSelectionValidator = new ModelSelectionValidator($config, $ollama);
 		$lockGuard = $this->createMock(LockGuard::class);
-		$userDataService = $this->createMock(UserDataService::class);
 		$chatLearner = $this->createMock(ChatLearner::class);
 		$cacheFactory = $this->createMock(ICacheFactory::class);
 		$indexScheduler = $this->createMock(IndexScheduler::class);
@@ -191,7 +189,7 @@ final class ApiControllerIntegrationTest extends TestCase {
 		return new ApiController(
 			'eva_ai', $request, $userId, $config, $rag, $executor, $ollama,
 			$jobList, $chatStore,
-			$userDataService, $indexScheduler, $usageMetrics,
+			$indexScheduler, $usageMetrics,
 			$logger, $systemController,
 		);
 	}

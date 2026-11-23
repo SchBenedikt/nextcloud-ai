@@ -19,6 +19,7 @@ final class ApiRouteCompatibilityTest extends TestCase {
             '/api/folders/delete POST', '/api/folders DELETE',
             '/api/templates GET', '/api/templates POST', '/api/templates/export GET',
             '/api/templates/import POST', '/api/templates/{id} DELETE', '/api/templates/{id}/use POST',
+            '/api/export GET', '/api/import POST',
             '/api/briefings/history GET', '/api/briefings/{id}/run POST',
         ] as $signature) {
             self::assertContains($signature, $signatures);
@@ -26,7 +27,7 @@ final class ApiRouteCompatibilityTest extends TestCase {
         // URL and verb are the compatibility contract; domain controllers own
         // their handler names after extraction.
         $routeNames = array_column($all, 'name');
-        foreach (['index#startMailIndexSnake', 'index#startTalkIndexSnake', 'index#stopIndexSnake', 'index#resetIndexSnake', 'chatOrganization#deleteFolderRest', 'chatTemplate#templates', 'chatTemplate#saveTemplate', 'chatTemplate#exportTemplates', 'chatTemplate#importTemplates', 'chatTemplate#deleteTemplate', 'chatTemplate#useTemplate', 'chatGeneration#chatRegenerate', 'api#briefingHistory', 'api#runBriefingNow'] as $routeName) {
+        foreach (['index#startMailIndexSnake', 'index#startTalkIndexSnake', 'index#stopIndexSnake', 'index#resetIndexSnake', 'chatOrganization#deleteFolderRest', 'chatTemplate#templates', 'chatTemplate#saveTemplate', 'chatTemplate#exportTemplates', 'chatTemplate#importTemplates', 'chatTemplate#deleteTemplate', 'chatTemplate#useTemplate', 'chatGeneration#chatRegenerate', 'dataPortability#exportData', 'dataPortability#importData', 'api#briefingHistory', 'api#runBriefingNow'] as $routeName) {
             self::assertContains($routeName, $routeNames, 'Missing route handler ' . $routeName);
         }
     }

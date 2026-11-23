@@ -440,6 +440,7 @@ export default {
 			currentChat.value = null
 			loadChats()
 		}
+		const onChatsImported = () => loadChats()
 
 		onMounted(() => {
 			loadChats().then(() => {
@@ -454,12 +455,14 @@ export default {
 			})
 			if (typeof window !== 'undefined' && window.addEventListener) {
 				window.addEventListener('eva-ai:chats-cleared', onChatsCleared)
+				window.addEventListener('eva-ai:chats-imported', onChatsImported)
 			}
 		})
 
 		onBeforeUnmount(() => {
 			if (searchTimer !== null) window.clearTimeout(searchTimer)
 			window.removeEventListener('eva-ai:chats-cleared', onChatsCleared)
+			window.removeEventListener('eva-ai:chats-imported', onChatsImported)
 		})
 
 		return {

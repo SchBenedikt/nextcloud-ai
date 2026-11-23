@@ -15,6 +15,15 @@ workspace; it is separate from the OCS endpoints that list and control runs.
 The legacy `/admin` page route redirects to Nextcloud's native
 **Administration → Eva AI** settings section and requires an administrator.
 
+## Personal data export and chat restore
+
+`GET /api/export` downloads the signed-in user's EVA archive, including chats,
+personal knowledge and metadata. `POST /api/import` accepts the archive's
+`chats` array and adds valid conversations with newly generated IDs; it never
+overwrites existing chats. The restore endpoint accepts at most 500 chats and
+imports only user and assistant text messages. It does not restore personal
+knowledge, indexed files, vector generations or provider settings.
+
 ## Administrator storage snapshot
 
 The native administration section starts with the built-in SQL default and
