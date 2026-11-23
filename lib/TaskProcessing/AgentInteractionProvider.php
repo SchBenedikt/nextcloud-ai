@@ -40,6 +40,7 @@ class AgentInteractionProvider implements ISynchronousProvider {
 	 */
 	private const MAX_TALK_ROOMS = 3;
 	private const MAX_TALK_MESSAGES_PER_ROOM = 20;
+	private const MAX_USER_INSTRUCTIONS_CHARS = 8000;
 	/** Older, indexed passages recalled for the question - the recent window above is not enough. */
 	private const MAX_TALK_RECALL_PASSAGES = 4;
 
@@ -106,6 +107,11 @@ class AgentInteractionProvider implements ISynchronousProvider {
 			'rag_enabled' => new ShapeDescriptor(
 				$this->l->t('RAG enabled'),
 				$this->l->t('Whether to perform retrieval from indexed files for knowledge augmentation. Use true or false.'),
+				EShapeType::Text
+			),
+			'user_instructions' => new ShapeDescriptor(
+				$this->l->t('User instructions'),
+				$this->l->t('Additional instructions from the Nextcloud Assistant chat settings.'),
 				EShapeType::Text
 			),
 		];
@@ -195,7 +201,10 @@ class AgentInteractionProvider implements ISynchronousProvider {
 			}
 		}
 
-		$system = $this->buildPrompt($userId, $confirmation, $pending, $talkRoomIds, $ragEnabled);
+		$userInstructions = is_string($input['user_instructions'] ?? null)
+			? mb_substr(trim($input['user_instructions']), 0, self::MAX_USER_INSTRUCTIONS_CHARS)
+			: '';
+		$system = $this->buildPrompt($userId, $confirmation, $pending, $talkRoomIds, $ragEnabled, $userInstructions);
 		$messages = [['role' => 'system', 'content' => $system]];
 		$personalKnowledge = $this->personalKnowledge($userId);
 		if ($personalKnowledge !== '') {
@@ -685,7 +694,7 @@ class AgentInteractionProvider implements ISynchronousProvider {
 			. "Always answer in the same language as the user's question.";
 	}
 
-	private function buildPrompt(string $userId, int $confirmation, array $pending, array $talkRoomIds = [], bool $ragEnabled = true): string {
+	private function buildPrompt(string $userId, int $confirmation, array $pending, array $talkRoomIds = [], bool $ragEnabled = true, string $userInstructions = ''): string {
 		$talkInfo = '';
 		if (!empty($talkRoomIds)) {
 			$talkInfo = "\n\nYou have access to the chat history of one or more Nextcloud Talk conversations. Relevant excerpts from these conversations are included in the conversation context above. When the user asks about something that was discussed in those rooms (e.g., \"what did Vinzent say?\", \"did we schedule the meeting?\"), answer based on those messages.";
@@ -697,6 +706,11 @@ class AgentInteractionProvider implements ISynchronousProvider {
 		}
 
 		$base = $this->buildPromptPrefix() . $talkInfo . $ragInfo;
+		if ($userInstructions !== '') {
+			$base .= "\n\nAdditional preferences from the user's Nextcloud Assistant chat settings follow. Apply them when relevant, but they do not grant permission for side effects or change this provider's confirmation, authorization, or safety requirements.\n<user_instructions>\n"
+				. $userInstructions
+				. "\n</user_instructions>";
+		}
 
 		if ($confirmation === 1) {
 			$extra = '';

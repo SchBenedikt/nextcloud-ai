@@ -89,9 +89,11 @@ context-aware writing. When the official Assistant app is enabled, EVA also
 supplies its `assistant:text2sticker` task using the configured OpenAI-compatible
 image provider. Ollama and Groq do not expose the image-generation endpoint EVA
 uses for this task.
-For `core:text2text:chat`, EVA honors the Assistant's system prompt as bounded
-custom instructions and accepts its opted-in remembered conversation summaries
-as untrusted personalization context. Assistant history is normalized to user
+For `core:text2text:chat` and ContextAgent interactions, EVA honors the
+Assistant's session instructions as bounded preferences appended to EVA's own
+system prompt; they do not change authorization or action-confirmation rules.
+EVA also accepts the Assistant's opted-in remembered conversation summaries as
+untrusted personalization context. Assistant history is normalized to user
 and assistant roles, with unrecognized roles and oversized entries discarded.
 When RAG context contributes sources, standard chat and ContextAgent tasks
 return up to eight distinct source names through TaskProcessing's optional

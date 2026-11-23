@@ -1211,6 +1211,8 @@ OC.L10N.register("eva_ai", {
   "The memories to be injected into the chat prompt.": "Die Erinnerungen, die in den Chat-Prompt eingefügt werden.",
   "Talk room IDs": "Talk-Raum-IDs",
   "List of Nextcloud Talk room IDs whose chat history should be included as context.": "Liste der Nextcloud-Talk-Raum-IDs, deren Chatverlauf als Kontext einbezogen werden soll.",
+  "User instructions": "Nutzeranweisungen",
+  "Additional instructions from the Nextcloud Assistant chat settings.": "Zusätzliche Anweisungen aus den Chat-Einstellungen des Nextcloud Assistant.",
   "RAG enabled": "RAG aktiviert",
   "Whether to perform retrieval from indexed files for knowledge augmentation. Use true or false.": "Legt fest, ob indexierte Dateien zur Wissenserweiterung durchsucht werden. Verwende true oder false.",
   "Whether to perform vector retrieval from indexed files for knowledge augmentation.": "Legt fest, ob Vektorsuche in indexierten Dateien zur Wissenserweiterung ausgeführt wird.",

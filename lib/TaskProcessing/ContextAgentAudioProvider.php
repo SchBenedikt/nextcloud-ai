@@ -2,6 +2,8 @@
 declare(strict_types=1);
 namespace OCA\EvaAi\TaskProcessing;
 use OCA\EvaAi\TaskProcessing\AgentInteractionProvider;
+use OCP\TaskProcessing\EShapeType;
+use OCP\TaskProcessing\ShapeDescriptor;
 use OCP\TaskProcessing\TaskTypes\ContextAgentAudioInteraction;
 use RuntimeException;
 
@@ -19,6 +21,20 @@ final class ContextAgentAudioProvider extends EvaAudioTranscriptionProvider {
 	public function getId(): string { return 'eva_ai:contextagent:audio-interaction'; }
 	public function getName(): string { return $this->l->t('Eva · Agent audio'); }
 	public function getTaskTypeId(): string { return ContextAgentAudioInteraction::ID; }
+	public function getOptionalInputShape(): array {
+		return [
+			'memories' => new ShapeDescriptor(
+				$this->l->t('Memories'),
+				$this->l->t('The memories to be injected into the chat session.'),
+				EShapeType::ListOfTexts,
+			),
+			'user_instructions' => new ShapeDescriptor(
+				$this->l->t('User instructions'),
+				$this->l->t('Additional instructions from the Nextcloud Assistant chat settings.'),
+				EShapeType::Text,
+			),
+		];
+	}
 	public function process(?string $userId, array $input, callable $reportProgress): array {
 		if ($userId === null || $userId === '') throw new RuntimeException('No user context');
 		$this->appConfig->setUserId($userId);

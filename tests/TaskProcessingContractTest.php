@@ -187,6 +187,18 @@ class TaskProcessingContractTest extends TestCase {
         }
     }
 
+    public function testContextAgentAcceptsOfficialAssistantUserInstructions(): void {
+        foreach ([
+            \OCA\EvaAi\TaskProcessing\AgentInteractionProvider::class,
+            \OCA\EvaAi\TaskProcessing\ContextAgentAudioProvider::class,
+        ] as $class) {
+            $provider = $this->createMockProvider($class);
+            $shape = $provider->getOptionalInputShape();
+            self::assertArrayHasKey('user_instructions', $shape, "$class must accept the official Assistant user instructions input");
+            self::assertSame(\OCP\TaskProcessing\EShapeType::Text, $shape['user_instructions']->getShapeType());
+        }
+    }
+
     public function testOutputShapesAreArrays(): void {
         foreach ($this->providerClasses() as $class) {
             $ref = new \ReflectionClass($class);
