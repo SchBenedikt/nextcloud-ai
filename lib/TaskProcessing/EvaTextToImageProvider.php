@@ -8,6 +8,7 @@ use OCA\EvaAi\Service\AppConfig;
 use OCA\EvaAi\Service\GeneratedImageStorage;
 use OCA\EvaAi\Service\OpenAICompatible;
 use OCP\IL10N;
+use OCP\TaskProcessing\EShapeType;
 use OCP\TaskProcessing\ISynchronousProvider;
 use OCP\TaskProcessing\TaskTypes\TextToImage;
 use RuntimeException;
@@ -49,12 +50,21 @@ final class EvaTextToImageProvider implements ISynchronousProvider {
 			throw new RuntimeException($e->getMessage(), 0, $e);
 		}
 		TaskProcessingProgress::report($reportProgress, 0.95);
-		$ids = [];
+		$outputs = [];
 		foreach ($generated as $image) {
-			$ids[] = $this->imageStorage->store($userId, $image, 'generated');
+			$this->imageStorage->store($userId, $image, 'generated');
+			$extension = match (strtolower((string)($image['mime'] ?? ''))) {
+				'image/jpeg', 'image/jpg' => 'jpg',
+				'image/webp' => 'webp',
+				'image/gif' => 'gif',
+				'image/avif' => 'avif',
+				'image/bmp' => 'bmp',
+				default => 'png',
+			};
+			$outputs[] = TaskProcessingFileOutput::shape(EShapeType::Image, (string)$image['bytes'], $extension);
 		}
-		if ($ids === []) throw new RuntimeException('The image provider returned no files.');
-		return ['images' => $ids];
+		if ($outputs === []) throw new RuntimeException('The image provider returned no files.');
+		return ['images' => $outputs];
 	}
 
 }

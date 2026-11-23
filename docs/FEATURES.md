@@ -105,7 +105,8 @@ calling a synchronous provider; EVA reads those objects directly across audio,
 OCR, image, and multimodal chat tasks. Inputs remain scoped to the authenticated
 user's files. Audio inputs are bounded to 25 MB; image analysis and editing
 keep their existing per-file and aggregate size limits. Generated images and
-subtitles are stored in the user's `EVA` folder.
+audio/subtitle outputs are returned as native TaskProcessing file data (with
+extensions on Nextcloud 35+) and copies are stored in the user's `EVA` folder.
 Audio TaskProcessing providers stop between transcription, model, synthesis,
 and file-write stages when Nextcloud reports that a task was cancelled; the
 audio ContextAgent forwards cancellation into its confirmation-aware agent.

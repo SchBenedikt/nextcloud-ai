@@ -10,6 +10,7 @@ use OCP\Files\File;
 use OCP\Files\Folder;
 use OCP\Files\IRootFolder;
 use OCP\IL10N;
+use OCP\TaskProcessing\EShapeType;
 use OCP\TaskProcessing\ISynchronousProvider;
 use RuntimeException;
 
@@ -59,7 +60,7 @@ abstract class EvaAudioTranscriptionProvider implements ISynchronousProvider {
 		return ['node' => $node, 'bytes' => $bytes, 'filename' => $node->getName(), 'mime' => $mime];
 	}
 
-	protected function outputFile(string $userId, string $content, string $extension, string $prefix = 'eva-subtitles'): int {
+	protected function outputFile(string $userId, string $content, string $extension, string $prefix = 'eva-audio-output', EShapeType $shapeType = EShapeType::Audio): mixed {
 		$home = $this->rootFolder->getUserFolder($userId);
 		if ($home->nodeExists('EVA')) {
 			$node = $home->get('EVA');
@@ -69,6 +70,7 @@ abstract class EvaAudioTranscriptionProvider implements ISynchronousProvider {
 			$folder = $home->newFolder('EVA');
 		}
 		$name = $prefix . '-' . gmdate('Ymd-His') . '-' . bin2hex(random_bytes(3)) . '.' . $extension;
-		return (int)$folder->newFile($name, $content)->getId();
+		$folder->newFile($name, $content);
+		return TaskProcessingFileOutput::shape($shapeType, $content, $extension);
 	}
 }

@@ -6,6 +6,7 @@ use OCA\EvaAi\Service\OpenAICompatible;
 use OCP\Files\Folder;
 use OCP\Files\IRootFolder;
 use OCP\IL10N;
+use OCP\TaskProcessing\EShapeType;
 use OCP\TaskProcessing\ISynchronousProvider;
 use OCP\TaskProcessing\TaskTypes\TextToSpeech;
 use RuntimeException;
@@ -38,6 +39,6 @@ final class EvaTextToSpeechProvider implements ISynchronousProvider {
 		$name = 'eva-speech-' . gmdate('Ymd-His') . '-' . bin2hex(random_bytes(3)) . '.mp3';
 		TaskProcessingProgress::report($reportProgress, 0.95);
 		$id = (int)$folder->newFile($name, $audio['bytes'])->getId();
-		return ['speech' => $id];
+		return ['speech' => TaskProcessingFileOutput::shape(EShapeType::Audio, $audio['bytes'], 'mp3')];
 	}
 }
