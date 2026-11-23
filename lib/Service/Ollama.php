@@ -1145,11 +1145,7 @@ class Ollama implements EmbeddingProvider {
             return;
         }
         if ($provider !== 'ollama') {
-            $result = $this->openAiCompatible()->chat($messages, $tools, $timeout ?? self::CHAT_TIMEOUT);
-            if (isset($result['error'])) yield ['type' => 'error', 'delta' => $result['error']];
-            elseif (($result['tool_calls'] ?? []) !== []) yield ['type' => 'tool_calls', 'tool_calls' => $result['tool_calls'], 'raw' => $result['raw_tool_calls'] ?? [], 'model' => $result['model'] ?? ''];
-            else yield ['type' => 'content', 'delta' => $result['answer'] ?? ''];
-            yield ['type' => 'finished', 'model' => $result['model'] ?? ''];
+            yield from $this->openAiCompatible()->chatStream($messages, $tools, $timeout ?? self::CHAT_TIMEOUT);
             return;
         }
         $model = $this->resolveChatModel($preferredModel);
