@@ -14,6 +14,7 @@ namespace OCA\EvaAi\TaskProcessing;
  */
 final class TaskProcessingHistory {
 	private const MAX_MESSAGES = 24;
+	private const MAX_HISTORY_ENTRY_BYTES = 20000;
 	private const MAX_MESSAGE_CHARS = 4000;
 	private const MAX_TOTAL_CHARS = 16000;
 
@@ -22,16 +23,17 @@ final class TaskProcessingHistory {
 		if (!is_array($rawHistory)) {
 			return [];
 		}
-		$rawHistory = array_values($rawHistory);
-
-		$start = max(0, count($rawHistory) - self::MAX_MESSAGES);
+		$count = count($rawHistory);
+		$start = max(0, $count - self::MAX_MESSAGES);
+		// Avoid copying an unbounded caller array just to keep its newest entries.
+		$rawHistory = array_values(array_slice($rawHistory, -self::MAX_MESSAGES));
 		$messages = [];
 		$totalChars = 0;
 
 		// Prefer recent context when the caller exceeds the bounded history.
-		for ($i = count($rawHistory) - 1; $i >= $start; $i--) {
+		for ($i = count($rawHistory) - 1; $i >= 0; $i--) {
 			$entry = $rawHistory[$i];
-			if (!is_string($entry)) {
+			if (!is_string($entry) || strlen($entry) > self::MAX_HISTORY_ENTRY_BYTES) {
 				continue;
 			}
 
@@ -49,7 +51,7 @@ final class TaskProcessingHistory {
 			}
 			} else {
 				// Compatibility with callers that supplied plain alternating text.
-				$role = ($i % 2 === 0) ? 'user' : 'assistant';
+				$role = (($start + $i) % 2 === 0) ? 'user' : 'assistant';
 				$content = $entry;
 			}
 

@@ -91,12 +91,14 @@ image provider. Ollama and Groq do not expose the image-generation endpoint EVA
 uses for this task.
 For `core:text2text:chat`, EVA honors the Assistant's system prompt as bounded
 custom instructions and accepts its opted-in remembered conversation summaries
-as untrusted personalization context.
+as untrusted personalization context. Assistant history is normalized to user
+and assistant roles, with unrecognized roles and oversized entries discarded.
 These providers use the configured local or OpenAI-compatible backends;
 generated images and subtitles are stored in the user's `EVA` folder. Audio
 inputs are bounded to 25 MB and remain scoped to the authenticated user's files.
-The confirmation-gated `create_sticker` tool creates a single bounded sticker image in the same folder when an image provider is configured.
-providers run through Ollama vision/text models or the optional local Tesseract integration, so
+The confirmation-gated `create_sticker` tool creates a single bounded sticker
+image in the same folder when an image provider is configured. Text and vision
+providers run through Ollama models or the optional local Tesseract integration, so
 the common Assistant tasks work without a hosted provider or API key.
 Additional providers exist for chat with shared tools and for multi-step agent
 interactions. Provider execution requires a running Nextcloud TaskProcessing
