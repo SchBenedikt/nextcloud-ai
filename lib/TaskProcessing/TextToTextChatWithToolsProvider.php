@@ -125,15 +125,27 @@ class TextToTextChatWithToolsProvider implements ISynchronousProvider {
 			// do not let that text replace the application-owned policy prompt.
 			$messages[] = ['role' => 'user', 'content' => "Additional task context (not tool policy):\n" . $callerSystemPrompt];
 		}
-		foreach (TaskProcessingHistory::parse($input['history'] ?? []) as $entry) {
-			$messages[] = $entry;
+		$imageHistory = [];
+		$history = $this->supportsHistoryAttachments()
+			? TaskProcessingHistory::parseWithAttachments($input['history'] ?? [])
+			: TaskProcessingHistory::parse($input['history'] ?? []);
+		foreach ($history as $entry) {
+			$messages[] = ['role' => $entry['role'], 'content' => $entry['content']];
+			if ($this->supportsHistoryAttachments() && is_array($entry['attachments'] ?? null)) {
+				$imageHistory[] = [count($messages) - 1, $entry['attachments']];
+			}
 		}
 		$toolMessage = trim((string)($input['tool_message'] ?? ''));
 		if ($toolMessage !== '') {
 			$messages[] = ['role' => 'user', 'content' => $toolMessage];
 		}
 		$messages[] = ['role' => 'user', 'content' => $chatInput];
-		$this->attachFiles($messages, $userId, $input['input_attachments'] ?? []);
+		$imageBudget = ['count' => 0, 'bytes' => 0];
+		$currentMessageIndex = count($messages) - 1;
+		$this->attachFilesToMessage($messages[$currentMessageIndex], $userId, $input['input_attachments'] ?? [], $imageBudget);
+		foreach (array_reverse($imageHistory) as [$messageIndex, $fileIds]) {
+			$this->attachFilesToMessage($messages[$messageIndex], $userId, $fileIds, $imageBudget);
+		}
 
 		// Never forward the caller's `tools` input. ActionExecutor applies the
 		// central ToolPolicy to the current TaskProcessing surface.
@@ -164,6 +176,11 @@ class TextToTextChatWithToolsProvider implements ISynchronousProvider {
 			'output' => (string)($chat['answer'] ?? ''),
 			'tool_calls' => $toolCalls === false ? '[]' : $toolCalls,
 		];
+	}
+
+	/** Whether old file references can be safely reused as model attachments. */
+	protected function supportsHistoryAttachments(): bool {
+		return false;
 	}
 
 	/** @return array{answer:string,tool_calls:array,raw_tool_calls:array} */
@@ -226,35 +243,37 @@ class TextToTextChatWithToolsProvider implements ISynchronousProvider {
 		return ['answer' => $answer, 'tool_calls' => $toolCalls, 'raw_tool_calls' => $rawToolCalls];
 	}
 
-	/** Attach only bounded image bytes; non-images remain explicit filename context. */
-	private function attachFiles(array &$messages, string $userId, mixed $raw): void {
+	/** Attach bounded image bytes and filename context to one user's message. */
+	private function attachFilesToMessage(array &$message, string $userId, mixed $raw, array &$budget): void {
 		if (!$this->rootFolder || !is_array($raw)) return;
 		$images = [];
 		$mimes = [];
 		$context = [];
-		$total = 0;
 		$home = $this->rootFolder->getUserFolder($userId);
 		foreach (array_slice($raw, 0, 4) as $value) {
 			$node = TaskProcessingFileInput::resolve($home, $value);
 			if (!$node instanceof File) continue;
 			$mime = strtolower((string)$node->getMimeType());
 			$size = (int)$node->getSize();
-			if ($size <= 0 || $size > 6_000_000 || $total + $size > 12_000_000) continue;
+			if ($size <= 0 || $size > 6_000_000) continue;
 			if (str_starts_with($mime, 'image/')) {
+				if ($budget['count'] >= 4 || $budget['bytes'] + $size > 12_000_000) continue;
 				$bytes = (string)$node->getContent();
-				if ($bytes !== '' && strlen($bytes) <= 6_000_000) {
+				$bytesLength = strlen($bytes);
+				if ($bytesLength > 0 && $bytesLength <= 6_000_000 && $budget['bytes'] + $bytesLength <= 12_000_000) {
 					$images[] = base64_encode($bytes);
 					$mimes[] = $mime;
-					$total += strlen($bytes);
+					$budget['count']++;
+					$budget['bytes'] += $bytesLength;
 					continue;
 				}
 			}
 			$context[] = $node->getName() . ' (' . $mime . ', ' . $size . ' bytes)';
 		}
-		if ($context !== []) $messages[count($messages) - 1]['content'] .= "\nAttachments: " . implode('; ', $context);
+		if ($context !== []) $message['content'] .= "\nAttachments: " . implode('; ', $context);
 		if ($images !== []) {
-			$messages[count($messages) - 1]['images'] = $images;
-			$messages[count($messages) - 1]['image_mimes'] = $mimes;
+			$message['images'] = $images;
+			$message['image_mimes'] = $mimes;
 		}
 	}
 

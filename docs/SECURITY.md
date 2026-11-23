@@ -77,7 +77,10 @@ provide task context, but it cannot add a tool or change its allowed surface.
 
 Agent conversation state is stored per user and token. Rows that have not been
 updated for 30 days are removed by the existing periodic background job, limiting
-retention of abandoned prompts and pending actions.
+retention of abandoned prompts and pending actions. Multimodal conversation
+history may also keep references to the four newest images; each follow-up
+resolves those IDs inside the same user's Nextcloud home and applies the normal
+image size limits. The database stores references, not image bytes.
 
 ### Enforcement point
 

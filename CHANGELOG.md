@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.23.6 - 2026-11-23
+
+### Preserve image context across Assistant turns
+
+- Reattach recent images from the same user's Nextcloud home in multimodal ContextAgent follow-ups, retaining at most four file references per conversation.
+- Restore file attachments from the official Assistant's multimodal chat history for chat-with-tools tasks.
+- Keep image bytes out of the agent-state database and reapply existing per-file and aggregate size limits.
+
 ## 1.23.5 - 2026-11-23
 
 ### Stream Assistant replies from compatible providers

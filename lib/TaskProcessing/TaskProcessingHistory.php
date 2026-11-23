@@ -20,6 +20,19 @@ final class TaskProcessingHistory {
 
 	/** @return list<array{role: 'user'|'assistant', content: string}> */
 	public static function parse(mixed $rawHistory): array {
+		return array_map(static fn(array $entry): array => [
+			'role' => $entry['role'],
+			'content' => $entry['content'],
+		], self::parseEntries($rawHistory));
+	}
+
+	/** @return list<array{role: 'user'|'assistant', content: string, attachments:list<int>}> */
+	public static function parseWithAttachments(mixed $rawHistory): array {
+		return self::parseEntries($rawHistory);
+	}
+
+	/** @return list<array{role: 'user'|'assistant', content: string, attachments:list<int>}> */
+	private static function parseEntries(mixed $rawHistory): array {
 		if (!is_array($rawHistory)) {
 			return [];
 		}
@@ -38,9 +51,12 @@ final class TaskProcessingHistory {
 			}
 
 			$decoded = json_decode($entry, true);
+			$attachments = [];
 			if (is_array($decoded)) {
 				$role = $decoded['role'] ?? null;
-				$content = self::textContent($decoded['content'] ?? null);
+				$rawContent = $decoded['content'] ?? null;
+				$content = self::textContent($rawContent);
+				$attachments = self::fileIds($rawContent);
 				// Nextcloud Assistant persists the human side as "human"; map it
 				// to the standard role expected by EVA's model adapters.
 				if ($role === 'human') {
@@ -62,7 +78,7 @@ final class TaskProcessingHistory {
 			$remaining = self::MAX_TOTAL_CHARS - $totalChars;
 			$content = mb_substr($content, 0, min(self::MAX_MESSAGE_CHARS, $remaining));
 			$totalChars += mb_strlen($content);
-			$messages[] = ['role' => $role, 'content' => $content];
+			$messages[] = ['role' => $role, 'content' => $content, 'attachments' => $attachments];
 		}
 
 		return array_reverse($messages);
@@ -85,5 +101,19 @@ final class TaskProcessingHistory {
 			}
 		}
 		return implode("\n", $text);
+	}
+
+	/** @return list<int> */
+	private static function fileIds(mixed $content): array {
+		if (!is_array($content)) return [];
+		$ids = [];
+		foreach ($content as $part) {
+			if (!is_array($part) || ($part['type'] ?? '') !== 'file') continue;
+			$fileId = $part['file_id'] ?? null;
+			if ((!is_int($fileId) && !(is_string($fileId) && ctype_digit($fileId))) || (int)$fileId < 1) continue;
+			$ids[] = (int)$fileId;
+			if (count($ids) >= 4) break;
+		}
+		return array_values(array_unique($ids));
 	}
 }

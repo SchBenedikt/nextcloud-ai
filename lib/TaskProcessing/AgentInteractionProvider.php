@@ -256,13 +256,22 @@ class AgentInteractionProvider implements ISynchronousProvider {
 				$messages[] = $h;
 			}
 		}
+		$imageHistory = [];
 		foreach (array_slice($history, -12) as $h) {
 			if (isset($h['role'], $h['content'])) {
-				$messages[] = $h;
+				$messages[] = ['role' => $h['role'], 'content' => $h['content']];
+				if ($this->supportsImageHistory() && is_array($h['attachments'] ?? null)) {
+					$imageHistory[] = [count($messages) - 1, $h['attachments']];
+				}
 			}
 		}
 		$messages[] = ['role' => 'user', 'content' => $prompt];
-		$this->attachInputImages($messages, $userId, $input['input_attachments'] ?? []);
+		$imageBudget = ['count' => 0, 'bytes' => 0];
+		$currentMessageIndex = count($messages) - 1;
+		$this->attachImagesToMessage($messages[$currentMessageIndex], $userId, $input['input_attachments'] ?? [], $imageBudget);
+		foreach (array_reverse($imageHistory) as [$messageIndex, $fileIds]) {
+			$this->attachImagesToMessage($messages[$messageIndex], $userId, $fileIds, $imageBudget);
+		}
 
 		// RAG: Vektor-Suche in indexierten Dateien - Kontext injizieren
 		// Proposal calls are intentionally visible to the model so the native
@@ -321,7 +330,15 @@ class AgentInteractionProvider implements ISynchronousProvider {
 		$actions = json_encode($pendingNext, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
 		$historyToSave = $history;
 		if ($prompt !== '') {
-			$historyToSave[] = ['role' => 'user', 'content' => $prompt];
+			$userEntry = ['role' => 'user', 'content' => $prompt];
+			if ($this->supportsImageHistory()) {
+				$imageIds = $this->imageAttachmentIds($userId, $input['input_attachments'] ?? []);
+				if ($imageIds !== []) $userEntry['attachments'] = $imageIds;
+			}
+			$historyToSave[] = $userEntry;
+		}
+		if ($this->supportsImageHistory()) {
+			$historyToSave = $this->limitImageHistory($historyToSave);
 		}
 		$this->store->save($userId, $token, $historyToSave, $pendingNext);
 		TaskProcessingProgress::report($reportProgress, 0.9);
@@ -367,29 +384,83 @@ class AgentInteractionProvider implements ISynchronousProvider {
 		throw new RuntimeException($name . ' must be true or false');
 	}
 
-	/** Attach bounded, permission-checked images for multimodal ContextAgent tasks. */
-	private function attachInputImages(array &$messages, string $userId, mixed $raw): void {
-		if (!is_array($raw)) return;
+	/** Keep historical image references only on multimodal ContextAgent conversations. */
+	protected function supportsImageHistory(): bool {
+		return false;
+	}
+
+	/** Attach bounded, permission-checked images to one conversation message. */
+	private function attachImagesToMessage(array &$message, string $userId, mixed $raw, array &$budget): void {
+		if (!is_array($raw) || $budget['count'] >= 4 || $budget['bytes'] >= 12_000_000) return;
 		$images = [];
 		$mimes = [];
-		$total = 0;
 		$home = $this->rootFolder->getUserFolder($userId);
 		foreach (array_slice($raw, 0, 4) as $value) {
+			if ($budget['count'] >= 4 || $budget['bytes'] >= 12_000_000) break;
 			$node = TaskProcessingFileInput::resolve($home, $value);
 			if (!$node instanceof \OCP\Files\File) continue;
 			$mime = strtolower((string)$node->getMimeType());
 			$size = (int)$node->getSize();
-			if (!str_starts_with($mime, 'image/') || $size <= 0 || $size > 6_000_000 || $total + $size > 12_000_000) continue;
+			if (!str_starts_with($mime, 'image/') || $size <= 0 || $size > 6_000_000 || $budget['bytes'] + $size > 12_000_000) continue;
 			$bytes = (string)$node->getContent();
-			if ($bytes === '' || strlen($bytes) > 6_000_000) continue;
+			$bytesLength = strlen($bytes);
+			if ($bytesLength === 0 || $bytesLength > 6_000_000 || $budget['bytes'] + $bytesLength > 12_000_000) continue;
 			$images[] = base64_encode($bytes);
 			$mimes[] = $mime;
-			$total += strlen($bytes);
+			$budget['count']++;
+			$budget['bytes'] += $bytesLength;
 		}
 		if ($images !== []) {
-			$messages[count($messages) - 1]['images'] = $images;
-			$messages[count($messages) - 1]['image_mimes'] = $mimes;
+			$message['images'] = $images;
+			$message['image_mimes'] = $mimes;
 		}
+	}
+
+	/** @return list<int> */
+	private function imageAttachmentIds(string $userId, mixed $raw): array {
+		if (!is_array($raw)) return [];
+		$home = $this->rootFolder->getUserFolder($userId);
+		$ids = [];
+		$total = 0;
+		foreach (array_slice($raw, 0, 4) as $value) {
+			$file = TaskProcessingFileInput::resolve($home, $value);
+			if (!$file instanceof \OCP\Files\File || !str_starts_with(strtolower((string)$file->getMimeType()), 'image/')) continue;
+			$size = (int)$file->getSize();
+			if ($size <= 0 || $size > 6_000_000 || $total + $size > 12_000_000) continue;
+			$id = (int)$file->getId();
+			if ($id > 0) {
+				$ids[] = $id;
+				$total += $size;
+			}
+		}
+		return array_values(array_unique($ids));
+	}
+
+	/** Keep only the four newest, unique image references in the agent state. */
+	private function limitImageHistory(array $history): array {
+		$remaining = 4;
+		$seen = [];
+		for ($index = count($history) - 1; $index >= 0; $index--) {
+			$attachments = $history[$index]['attachments'] ?? null;
+			if (!is_array($attachments)) continue;
+			$kept = [];
+			foreach ($attachments as $fileId) {
+				if (!is_int($fileId) || $fileId < 1 || isset($seen[$fileId])) continue;
+				$seen[$fileId] = true;
+				$kept[] = $fileId;
+				if (--$remaining <= 0) break;
+			}
+			if ($kept === []) {
+				unset($history[$index]['attachments']);
+			} else {
+				$history[$index]['attachments'] = $kept;
+			}
+			if ($remaining <= 0) {
+				for ($older = 0; $older < $index; $older++) unset($history[$older]['attachments']);
+				break;
+			}
+		}
+		return array_values($history);
 	}
 
 	/** @return array{0: array<int,array{name:string,args:array}>, 1: string} */
