@@ -125,6 +125,8 @@ work, and replaces the cURL DNS mapping immediately before transfer with the
 validated addresses. Credentials in URLs, fragments, encoded/noncanonical hosts,
 link-local, metadata, multicast and reserved targets are rejected. Public
 connections require HTTPS. IPv4-mapped IPv6 addresses receive IPv4 classification.
+The DNS pin uses the exact hostname from the outgoing request URI so cURL applies
+the validated address set when a URL uses a case variant or a trailing dot.
 
 Private/loopback endpoints require an exact administrator-owned origin, including
 scheme and effective port, in the app configuration `provider_private_origins`:

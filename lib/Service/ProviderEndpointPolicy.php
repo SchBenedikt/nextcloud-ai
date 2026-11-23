@@ -28,7 +28,11 @@ class ProviderEndpointPolicy {
             $options['allow_redirects'] = false;
             $options['proxy'] = ''; // Also disable implicit environment proxies.
             $options['curl'][CURLOPT_PROXY] = '';
-            $options['curl'][CURLOPT_RESOLVE] = filter_var($target['host'], FILTER_VALIDATE_IP) !== false ? [] : [$target['host'] . ':' . $target['port'] . ':' . implode(',', array_map(
+            // CURLOPT_RESOLVE matches the request URL hostname as a string.
+            // Use the actual transfer URI host (including case/trailing dot),
+            // not the normalized host used for policy and DNS validation.
+            $requestHost = (string)$request->getUri()->getHost();
+            $options['curl'][CURLOPT_RESOLVE] = filter_var($requestHost, FILTER_VALIDATE_IP) !== false ? [] : [$requestHost . ':' . $target['port'] . ':' . implode(',', array_map(
                 static fn(string $ip): string => str_contains($ip, ':') ? '[' . $ip . ']' : $ip,
                 $target['addresses']
             ))];

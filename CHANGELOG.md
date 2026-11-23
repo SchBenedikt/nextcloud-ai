@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.23.7 - 2026-11-23
+
+### Match DNS pins to the outgoing provider hostname
+
+- Use the exact request URI hostname in cURL's DNS override while validating its normalized hostname and resolved addresses.
+- Keep case and trailing-dot URL forms bound to the validated address set.
+
 ## 1.23.6 - 2026-11-23
 
 ### Preserve image context across Assistant turns
