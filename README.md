@@ -37,7 +37,8 @@ navigation.
 
 Settings are grouped into Models, Documents, Tools & permissions, Automation,
 Personal & data, and Advanced. Optional integrations load when you open their
-section, keeping the everyday path focused.
+section, keeping the everyday path focused. The settings start page gives new
+users a short overview with direct links to each category.
 
 EVA can also tell you what it can do: ask "What can you do?" and it lists its
 file, calendar, task, contact, mail and communication actions for your setup.
@@ -180,7 +181,11 @@ An optional, loopback-only Docker Compose deployment is included for
 self-hosted Qdrant; installing EVA alone still uses SQL.
 
 API keys are encrypted separately per user and are never returned by the
-profile form. Answers can contain mistakes; check sources and review actions.
+profile form. Download an EVA data archive from **Personal & data** and restore
+up to 500 chats later; restored conversations receive new IDs and never replace
+existing chats. Restore imports chat text only, not the archive's knowledge,
+index metadata, vector generations or provider configuration. Answers can
+contain mistakes; check sources and review actions.
 Read [Privacy](docs/PRIVACY.md), [Security](docs/SECURITY.md) and
 [Configuration](docs/CONFIGURATION.md) before enabling integrations.
 
