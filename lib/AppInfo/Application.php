@@ -65,9 +65,16 @@ class Application extends App implements IBootstrap {
         // Keep the TaskProcessing surface data-driven so adding a provider
         // requires one entry and cannot accidentally skip the compatibility
         // guard for older Nextcloud cores (Issue #323).
+        $supportsIntermediateOutput = interface_exists(\OCP\TaskProcessing\ISynchronousOptionsAwareProvider::class);
+        $agentInteractionProvider = $supportsIntermediateOutput
+            ? \OCA\EvaAi\TaskProcessing\StreamingAgentInteractionProvider::class
+            : \OCA\EvaAi\TaskProcessing\AgentInteractionProvider::class;
+        $multimodalAgentProvider = $supportsIntermediateOutput
+            ? \OCA\EvaAi\TaskProcessing\StreamingMultimodalContextAgentProvider::class
+            : \OCA\EvaAi\TaskProcessing\MultimodalContextAgentProvider::class;
         $taskProcessingProviders = [
             [\OCP\TaskProcessing\TaskTypes\TextToTextChat::class, \OCA\EvaAi\TaskProcessing\TextToTextChatProvider::class],
-            [\OCP\TaskProcessing\TaskTypes\ContextAgentInteraction::class, \OCA\EvaAi\TaskProcessing\AgentInteractionProvider::class],
+            [\OCP\TaskProcessing\TaskTypes\ContextAgentInteraction::class, $agentInteractionProvider],
             [\OCP\TaskProcessing\TaskTypes\TextToTextChatWithTools::class, \OCA\EvaAi\TaskProcessing\TextToTextChatWithToolsProvider::class],
             [\OCP\TaskProcessing\TaskTypes\TextToText::class, \OCA\EvaAi\TaskProcessing\EvaTextToTextProvider::class],
             [\OCP\TaskProcessing\TaskTypes\TextToTextSummary::class, \OCA\EvaAi\TaskProcessing\EvaSummaryProvider::class],
@@ -95,7 +102,7 @@ class Application extends App implements IBootstrap {
             [\OCP\TaskProcessing\TaskTypes\AudioToAudioChat::class, \OCA\EvaAi\TaskProcessing\EvaAudioChatProvider::class],
             [\OCP\TaskProcessing\TaskTypes\MultimodalChatWithTools::class, \OCA\EvaAi\TaskProcessing\MultimodalChatWithToolsProvider::class],
             [\OCP\TaskProcessing\TaskTypes\ContextAgentAudioInteraction::class, \OCA\EvaAi\TaskProcessing\ContextAgentAudioProvider::class],
-            [\OCP\TaskProcessing\TaskTypes\MultimodalContextAgentInteraction::class, \OCA\EvaAi\TaskProcessing\MultimodalContextAgentProvider::class],
+            [\OCP\TaskProcessing\TaskTypes\MultimodalContextAgentInteraction::class, $multimodalAgentProvider],
             // Nextcloud Assistant registers this app-specific task type when enabled.
             [\OCA\Assistant\TaskProcessing\TextToStickerTaskType::class, \OCA\EvaAi\TaskProcessing\EvaTextToStickerProvider::class],
         ];

@@ -144,6 +144,22 @@ class AgentInteractionProvider implements ISynchronousProvider {
 	}
 
 	public function process(?string $userId, array $input, callable $reportProgress): array {
+		return $this->processWithIntermediateOutput($userId, $input, $reportProgress);
+	}
+
+	/**
+	 * Shared implementation for Nextcloud's synchronous and streaming provider
+	 * contracts. Streaming is enabled only by the Nextcloud 35+ adapter.
+	 *
+	 * @param null|callable(array{output:string}):bool $reportIntermediateOutput
+	 */
+	public function processWithIntermediateOutput(
+		?string $userId,
+		array $input,
+		callable $reportProgress,
+		?callable $reportIntermediateOutput = null,
+		bool $preferStreaming = false,
+	): array {
 		// Set tool policy surface to TaskProcessing (per request, at execution time)
 		$this->executor->setSurface(ToolPolicy::SURFACE_TASKPROCESSING);
 		TaskProcessingProgress::report($reportProgress, 0.05);
@@ -272,7 +288,15 @@ class AgentInteractionProvider implements ISynchronousProvider {
 		// gather facts (current_time, find_free_slots, ...) and then propose
 		// the complete chain of actions.
 		$requestDeadline = microtime(true) + 180; // 3 minute deadline
-		[$pendingNext, $answer] = $this->proposalPhase($userId, $messages, $tools, $reportProgress, $requestDeadline);
+		[$pendingNext, $answer] = $this->proposalPhase(
+			$userId,
+			$messages,
+			$tools,
+			$reportProgress,
+			$requestDeadline,
+			$preferStreaming,
+			$reportIntermediateOutput,
+		);
 
 		$output = $answer;
 		if ($pendingNext !== []) {
@@ -359,7 +383,15 @@ class AgentInteractionProvider implements ISynchronousProvider {
 	}
 
 	/** @return array{0: array<int,array{name:string,args:array}>, 1: string} */
-	private function proposalPhase(string $userId, array $messages, array $tools, ?callable $reportProgress = null, float $deadline = 0.0): array {
+	private function proposalPhase(
+		string $userId,
+		array $messages,
+		array $tools,
+		?callable $reportProgress = null,
+		float $deadline = 0.0,
+		bool $preferStreaming = false,
+		?callable $reportIntermediateOutput = null,
+	): array {
 		$pending = [];
 		$seen = [];
 		$answer = '';
@@ -377,7 +409,11 @@ class AgentInteractionProvider implements ISynchronousProvider {
 				break;
 			}
 			if ($reportProgress !== null) TaskProcessingProgress::report($reportProgress, 0.3 + $round * 0.2);
-			$chat = $this->ollama->chat($messages, $tools);
+			if ($preferStreaming && $reportIntermediateOutput !== null) {
+				$chat = $this->streamProposal($messages, $tools, $reportProgress, $reportIntermediateOutput, $round);
+			} else {
+				$chat = $this->ollama->chat($messages, $tools);
+			}
 			if (isset($chat['error'])) {
 				throw new RuntimeException((string)$chat['error']);
 			}
@@ -429,6 +465,74 @@ class AgentInteractionProvider implements ISynchronousProvider {
 			}
 		}
 		return [$pending, $answer];
+	}
+
+	/**
+	 * Stream a proposal's visible text to TaskProcessing while retaining tool
+	 * calls until the model has completed the round. Actions are still only
+	 * executed by the existing explicit-confirmation path.
+	 *
+	 * @param callable(float):bool|null $reportProgress
+	 * @param callable(array{output:string}):bool $reportIntermediateOutput
+	 * @return array{answer:string,raw_tool_calls:array,tool_calls:array}
+	 */
+	private function streamProposal(
+		array $messages,
+		array $tools,
+		?callable $reportProgress,
+		callable $reportIntermediateOutput,
+		int $round,
+	): array {
+		$answer = '';
+		$rawToolCalls = [];
+		$toolCalls = [];
+		$lastReportedAt = microtime(true);
+		$lastReportedOutput = '';
+		$lastProgressAt = microtime(true);
+		$report = static function (bool $force = false) use (
+			&$answer,
+			&$lastReportedAt,
+			&$lastReportedOutput,
+			&$lastProgressAt,
+			$reportProgress,
+			$reportIntermediateOutput,
+			$round,
+		): void {
+			$now = microtime(true);
+			if ($reportProgress !== null && ($force || $now - $lastProgressAt >= 0.25)) {
+				TaskProcessingProgress::report($reportProgress, min(0.85, 0.35 + $round * 0.2));
+				$lastProgressAt = $now;
+			}
+			if ($answer === $lastReportedOutput || (!$force && $now - $lastReportedAt < 0.25)) {
+				return;
+			}
+			if ($reportIntermediateOutput(['output' => $answer]) === false) {
+				throw new TaskCancelledException('Task cancelled while streaming');
+			}
+			$lastReportedOutput = $answer;
+			$lastReportedAt = microtime(true);
+		};
+
+		foreach ($this->ollama->chatStream($messages, $tools) as $event) {
+			$type = $event['type'] ?? '';
+			if ($type === 'error') {
+				throw new RuntimeException((string)($event['delta'] ?? 'The model could not complete the request.'));
+			}
+			if ($type === 'content') {
+				$answer .= (string)($event['delta'] ?? '');
+				$report();
+			} elseif ($type === 'tool_calls') {
+				$toolCalls = is_array($event['tool_calls'] ?? null) ? $event['tool_calls'] : [];
+				$rawToolCalls = is_array($event['raw'] ?? null) ? $event['raw'] : [];
+			}
+		}
+		$report(true);
+
+		return [
+			'answer' => $answer,
+			'raw_tool_calls' => $rawToolCalls,
+			'tool_calls' => $toolCalls,
+		];
 	}
 
 	/**
