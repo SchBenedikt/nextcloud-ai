@@ -100,6 +100,11 @@ audio ContextAgent tasks return up to eight distinct source names through
 TaskProcessing's optional `sources` output. The official Assistant then
 displays them in the message's information-source panel with an `EVA:` prefix.
 These providers use the configured local or OpenAI-compatible backends.
+On Nextcloud 35+, EVA streams intermediate text for the official Assistant's
+`core:text2text:chatwithtools` and `core:multimodalchatwithtools` tasks when the
+Assistant requests streaming. Tool calls remain buffered until model generation
+finishes and are filtered against EVA's TaskProcessing tool policy before they
+are returned. Older supported cores continue to use the synchronous provider.
 TaskProcessing resolves uploaded file IDs to Nextcloud `File` objects before
 calling a synchronous provider; EVA reads those objects directly across audio,
 OCR, image, and multimodal chat tasks. Inputs remain scoped to the authenticated

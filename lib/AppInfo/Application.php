@@ -78,10 +78,16 @@ class Application extends App implements IBootstrap {
         $audioTranslationProvider = $supportsIntermediateOutput
             ? \OCA\EvaAi\TaskProcessing\StreamingEvaAudioTranslateProvider::class
             : \OCA\EvaAi\TaskProcessing\EvaAudioTranslateProvider::class;
+        $chatWithToolsProvider = $supportsIntermediateOutput
+            ? \OCA\EvaAi\TaskProcessing\StreamingTextToTextChatWithToolsProvider::class
+            : \OCA\EvaAi\TaskProcessing\TextToTextChatWithToolsProvider::class;
+        $multimodalChatWithToolsProvider = $supportsIntermediateOutput
+            ? \OCA\EvaAi\TaskProcessing\StreamingMultimodalChatWithToolsProvider::class
+            : \OCA\EvaAi\TaskProcessing\MultimodalChatWithToolsProvider::class;
         $taskProcessingProviders = [
             [\OCP\TaskProcessing\TaskTypes\TextToTextChat::class, $textChatProvider],
             [\OCP\TaskProcessing\TaskTypes\ContextAgentInteraction::class, $agentInteractionProvider],
-            [\OCP\TaskProcessing\TaskTypes\TextToTextChatWithTools::class, \OCA\EvaAi\TaskProcessing\TextToTextChatWithToolsProvider::class],
+            [\OCP\TaskProcessing\TaskTypes\TextToTextChatWithTools::class, $chatWithToolsProvider],
             [\OCP\TaskProcessing\TaskTypes\TextToText::class, \OCA\EvaAi\TaskProcessing\EvaTextToTextProvider::class],
             [\OCP\TaskProcessing\TaskTypes\TextToTextSummary::class, \OCA\EvaAi\TaskProcessing\EvaSummaryProvider::class],
             [\OCP\TaskProcessing\TaskTypes\TextToTextHeadline::class, \OCA\EvaAi\TaskProcessing\EvaHeadlineProvider::class],
@@ -106,7 +112,7 @@ class Application extends App implements IBootstrap {
             [\OCP\TaskProcessing\TaskTypes\TextToSpeech::class, \OCA\EvaAi\TaskProcessing\EvaTextToSpeechProvider::class],
             [\OCP\TaskProcessing\TaskTypes\AudioToAudioTranslate::class, $audioTranslationProvider],
             [\OCP\TaskProcessing\TaskTypes\AudioToAudioChat::class, \OCA\EvaAi\TaskProcessing\EvaAudioChatProvider::class],
-            [\OCP\TaskProcessing\TaskTypes\MultimodalChatWithTools::class, \OCA\EvaAi\TaskProcessing\MultimodalChatWithToolsProvider::class],
+            [\OCP\TaskProcessing\TaskTypes\MultimodalChatWithTools::class, $multimodalChatWithToolsProvider],
             [\OCP\TaskProcessing\TaskTypes\ContextAgentAudioInteraction::class, \OCA\EvaAi\TaskProcessing\ContextAgentAudioProvider::class],
             [\OCP\TaskProcessing\TaskTypes\MultimodalContextAgentInteraction::class, $multimodalAgentProvider],
             // Nextcloud Assistant registers this app-specific task type when enabled.

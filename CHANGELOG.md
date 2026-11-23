@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.23.3 - 2026-11-23
+
+### Stream native Assistant chat-with-tools tasks
+
+- Honor Nextcloud Assistant's `preferStreaming` option for text and multimodal chat-with-tools tasks on Nextcloud 35+.
+- Keep tool calls buffered until generation completes and retain the TaskProcessing tool-policy filter.
+- Preserve the synchronous provider path on older supported Nextcloud versions.
+
 ## 1.23.2 - 2026-11-23
 
 ### Complete audio translation language and localization contracts
