@@ -1,47 +1,56 @@
-# EVA — AI that works inside Nextcloud
+# EVA — Your AI assistant for Nextcloud
 
-**Find answers in your Nextcloud, check their sources and get everyday work
-done without switching apps.** EVA brings AI chat and cited file search into
-your Nextcloud, plus actions you approve before they run. It also powers
-the native Nextcloud Assistant and works with Files, Mail, Calendar, Contacts,
-Tasks, Shares and Talk through their real APIs.
+**Ask questions about your files. Get answers with sources. Take action across
+Nextcloud when you approve it.** EVA brings AI into the workspace you already
+use, including the official Nextcloud Assistant, Files, Mail, Calendar,
+Contacts, Tasks, Shares and Talk.
 
-Choose local Ollama models, a hosted provider, or a mix of both. Start with
-chat and add document search or integrations when you need them. The built-in
-SQL search index works on its own; a separate vector database is optional.
+Keep document search on Nextcloud's built-in SQL index, connect local or hosted
+models, and enable only the integrations you need. A separate vector database
+is optional.
 
 [![Tests](https://github.com/SchBenedikt/nextcloud-ai/actions/workflows/tests.yml/badge.svg?branch=main)](https://github.com/SchBenedikt/nextcloud-ai/actions/workflows/tests.yml)
 [![License: AGPL v3](https://img.shields.io/badge/License-AGPL%20v3-blue.svg)](LICENSE)
 [![Nextcloud](https://img.shields.io/badge/Nextcloud-30--36-blue)](appinfo/info.xml)
 
 [Install EVA](https://apps.nextcloud.com/apps/eva_ai) ·
-[Get started](docs/QUICKSTART.md) · [Documentation](docs/README.md) ·
+[Try the quick start](docs/QUICKSTART.md) · [Documentation](docs/README.md) ·
 [Report a problem](https://github.com/SchBenedikt/nextcloud-ai/issues)
 
-## Start with a conversation
+## Get useful answers from your own Nextcloud
 
-EVA is for people and teams who already work in Nextcloud and want AI close to
-their files, conversations and daily tasks. Ask a general question, find a fact
-in a document, or prepare a change for review. Answers about indexed files
-include sources, and changes to Nextcloud data require confirmation.
+EVA helps people and teams find information and get routine work done without
+copying content into a separate chatbot. Ask a general question, find a fact in
+an indexed document, or prepare a change to review. File answers include the
+sources EVA used. AI-proposed changes to Nextcloud data require your confirmation
+before they run.
 
-**Try EVA in one short session:** connect a model, ask for help planning a task,
-then index a small Files folder and ask a question you can verify in the source.
-This shows the core workflow before you enable Mail, Talk, web search or write
-actions.
+### Start in three steps
 
-Home gives you a message input and recent conversations. The chat header stays
-compact; exports, reusable prompts and conversation settings live in the native
-Nextcloud action menu. Documents and settings each have a clear place in the
-navigation.
+1. **Install EVA** from the Nextcloud App Store and enable it.
+2. **Choose a chat model** in **EVA → Settings → Models**. The default is
+   `gemma4:cloud` through Ollama Cloud. To keep chat inference on your own
+   infrastructure, choose a model installed on your local Ollama server.
+3. **Ask a question**, then index a small Files folder and ask something you
+   can verify in the cited source. Add Mail, Talk, web search or write actions
+   only when you need them.
 
-Settings are grouped into Models, Documents, Tools & permissions, Automation,
-Personal & data, and Advanced. Optional integrations load when you open their
-section, keeping the everyday path focused. The settings start page gives new
-users a short overview with direct links to each category.
+### Work where your files and conversations already are
 
-EVA can also tell you what it can do: ask "What can you do?" and it lists its
-file, calendar, task, contact, mail and communication actions for your setup.
+- Ask questions about indexed Files, Mail and opted-in Talk conversations; open
+  a file directly with EVA for a focused answer.
+- Use the official Nextcloud Assistant with EVA's native task providers for
+  chat, writing, translation, audio and image tasks.
+- Search and work with Calendar, Contacts, Tasks, Shares and Talk through
+  Nextcloud services.
+- Review AI-proposed changes and confirm them before EVA carries them out.
+
+The home screen keeps recent chats close by. Settings are grouped into Models,
+Documents, Tools & permissions, Automation, Personal & data, and Advanced.
+Optional integrations load when you open their section.
+
+Ask EVA **“What can you do?”** to see which actions are available in your
+Nextcloud setup.
 
 ![EVA answering "What can you do?" with its files, calendar, tasks, contacts and mail actions](screenshots/eva-capabilities.png)
 
@@ -78,28 +87,35 @@ EVA is not an external chatbot next to Nextcloud — it is woven into it:
 
 ![EVA powering the official Nextcloud Assistant with chat and scheduled tasks](screenshots/eva-nextcloud-assistant.png)
 
-## Choose your AI provider
+## Choose where AI runs
 
-Use native Ollama or Groq, or add compatible profiles for OpenAI, Google Gemini,
-Mistral, DeepSeek, OpenRouter, Together AI, xAI, LM Studio, vLLM and other servers
-implementing Chat Completions. Configure profiles in a form with a name, API
-address, model and encrypted key. No JSON editing is needed.
+Use EVA's built-in Ollama and Groq integrations, or add compatible profiles for
+OpenAI, Google Gemini, Mistral, DeepSeek, OpenRouter, Together AI, xAI, LM
+Studio, vLLM and other servers implementing Chat Completions. Configure each
+profile with a name, API address, model and encrypted key. No JSON editing is
+needed.
 
 Profiles have separate keys and support multiple configurations of the same
 service. Local servers can explicitly disable key authentication. Available
 models, tool support and image/audio capabilities depend on the provider.
 See the [provider guide](docs/PROVIDERS.md).
 
+Chat and document embeddings are configured separately. The default chat model
+is `gemma4:cloud`, which sends chat requests to Ollama Cloud. The default
+embedding endpoint is the configured Ollama server; indexing sends extracted
+file text there. You can choose a local chat model and keep embeddings on the
+local Ollama server, or explicitly route either workload to a compatible
+hosted profile. Review both destinations before indexing sensitive content.
+
 ![EVA provider profile form](screenshots/eva-provider-profiles.png)
 
 Previews show the workspace components with synthetic conversation data in a
 test shell using Nextcloud core styles. They do not contain private account data.
 
-Automatic file-search generations use Ollama by default, independently of the
-chat provider. A compatible profile can optionally configure its own embedding
-model and dimensions; selecting it sends indexed file text to that endpoint.
-Review the provider and model before assuming inference stays on your own
-infrastructure. See [generation embeddings](docs/GENERATION-EMBEDDINGS.md).
+Automatic file-search generations use the embedding destination independently
+of the chat provider. A compatible profile can optionally configure its own
+embedding model and dimensions; selecting it sends indexed file text to that
+endpoint. See [generation embeddings](docs/GENERATION-EMBEDDINGS.md).
 
 ## Ask about your documents
 
@@ -109,14 +125,13 @@ sources so you can verify the response. Optional extraction utilities are
 needed for some formats; see [Features](docs/FEATURES.md).
 
 Use Documents to inspect the index and extracted text — with search, filters and
-the extracted chunk text per file — or choose **Open with EVA** from Files for a
+the extracted text per file — or choose **Open with EVA** from Files for a
 focused file conversation. Background indexing continues when you leave the
-page. Progress checks use a lightweight endpoint without model discovery or
-system diagnostics.
+page.
 
 ![The EVA documents view listing indexed files, types, sizes, chunks and status](screenshots/eva-documents-index.png)
 
-## More than 80 actions across Nextcloud
+## Everyday Nextcloud work, with your approval
 
 EVA works with the real Nextcloud services through their APIs. Every write
 action asks for your confirmation before it runs. Highlights:
@@ -154,8 +169,8 @@ OpenAI-compatible provider supports image edits.
 ## Install and configure
 
 Install from the [Nextcloud App Store](https://apps.nextcloud.com/apps/eva_ai),
-then follow the [quick start](docs/QUICKSTART.md). Supported Nextcloud versions
-are declared in [appinfo/info.xml](appinfo/info.xml).
+then follow the [quick start](docs/QUICKSTART.md). EVA supports Nextcloud 30–36
+and PHP 8.2 or newer; the [app manifest](appinfo/info.xml) is authoritative.
 
 For a source installation, use Node.js from [.nvmrc](.nvmrc), PHP 8.2+ and Composer:
 
@@ -172,8 +187,12 @@ Deploy the complete built `js/` directory: lazy sections need their chunks too.
 
 The index is stored on the Nextcloud server. Indexing sends extracted content
 to the configured embedding endpoint. Chat sends prompts, relevant excerpts,
-conversation context and tool results to the selected provider. Cloud services,
-web search and connectors can send information outside your server.
+conversation context and tool results to the selected provider. The default
+chat model is hosted by Ollama Cloud; select a locally installed Ollama model
+for local chat inference. Embeddings use the configured Ollama server by
+default, but a compatible hosted profile can be selected separately. Web
+search, image search and external connectors can send information outside your
+server.
 Built-in SQL is the default search index. Optional Qdrant dense search keeps
 chunk text in SQL; native Qdrant BM25 is a separate per-generation opt-in that
 stores chunk text remotely and sends search queries to that Qdrant service. See
@@ -215,10 +234,3 @@ pull requests. The standalone chat remains a compatibility and test surface;
 the Nextcloud workspace is the primary interface.
 
 Licensed under [AGPL-3.0-or-later](LICENSE).
-
-### A native Nextcloud workspace
-
-The home screen stays focused on a large message field and recent chats using
-Nextcloud's own list components. Settings use native sections and sidebar navigation, with
-AI providers, document search and advanced integrations kept in separate areas.
-See [Workspace settings](docs/WORKSPACE.md) for navigation and saving behavior.
