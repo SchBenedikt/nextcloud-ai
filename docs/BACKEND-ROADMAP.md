@@ -397,8 +397,10 @@ reads and deletion into `ChatHistoryController` without changing route paths
 or response behavior. Version 1.20.39 moves personal settings reads, updates,
 validation and credential persistence into `SettingsController`; it also
 replaces missing controller dependencies with explicit services. Chat
-generation/streaming and remaining chat mutations still need separate domain
-extractions.
+generation/streaming still need a separate domain extraction. The current
+unreleased slice moves chat title, organizational metadata and folder endpoints
+to `ChatOrganizationController`; it preserves their OCS paths and keeps all
+operations owner-scoped.
 
 ### Stage 14 portability slice: Activity and Mail SQL (1.18.60)
 

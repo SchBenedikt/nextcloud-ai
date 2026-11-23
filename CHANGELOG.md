@@ -2,6 +2,11 @@
 
 ## [Unreleased]
 
+### Extract chat organization APIs from the shared controller
+
+- Move chat title, metadata, and folder endpoints into a dedicated owner-scoped OCS controller.
+- Keep existing API URLs, request validation, response behavior, and user-level access unchanged.
+
 ### Show EVA knowledge sources in Assistant chat
 
 - Return up to eight distinct source names as optional TaskProcessing chat output so the official Assistant can show them in its information-source panel.
