@@ -88,6 +88,17 @@ frontend, installs production-only Composer dependencies, and publishes
 production YAML parser, but excludes tests, Node modules and Composer's
 development binaries. This is the archive to upload to the Nextcloud App
 Store; a plain GitHub source archive is not sufficient for production.
+
+The workflow can also publish the signed archive to the App Store, but this is
+an explicit opt-in. Configure a protected GitHub Environment named `release`
+with `APPSTORE_TOKEN` and `APP_PRIVATE_KEY` as environment secrets, add required
+release approvers, then set the repository Actions variable
+`APPSTORE_PUBLISH_ENABLED` to `true`. Until then the Store job is skipped and
+GitHub releases continue to work normally. Never commit signing keys or put
+them in workflow logs, repository files, or unprotected variables. Review
+maintainer and environment access before enabling this after a repository
+ownership change.
+
 - [ ] The App Store description in `info.xml` is **flush-left**. CommonMark
       renders lines indented by four or more spaces as a code block, which makes
       the whole store listing appear as source code. Never re-indent it to match

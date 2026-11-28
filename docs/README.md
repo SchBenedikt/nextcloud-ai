@@ -16,6 +16,8 @@ reference pages describe the complete configuration and API surface.
 ## Operate and extend EVA
 
 - [Configuration](CONFIGURATION.md), [FAQ](FAQ.md) and [features](FEATURES.md).
+- [Maintainer handover](MAINTAINER-HANDOVER.md): ownership, release automation,
+  App Store secrets and Nextcloud Assistant outreach.
 - [Performance](PERFORMANCE.md): request costs, polling and resource ownership.
 - [Observability](OBSERVABILITY.md): native aggregate OpenMetrics exported by EVA.
 - [Account erasure](ACCOUNT-ERASURE.md): durable retry behavior and retained deletion fences.
