@@ -85,11 +85,15 @@ class ToolPolicySecurityTest extends TestCase {
 
     // ---- Surface Isolation ----
 
-    public function testWebSurfaceAllowsAllTools(): void {
+    public function testWebSurfaceExcludesTaskProcessingOnlyAssistantSkillReader(): void {
         $this->policy->setSurface(ToolPolicy::SURFACE_WEB);
         foreach ($this->policy->allToolNames() as $tool) {
-            $result = $this->policy->check($tool);
-            $this->assertTrue($result['allowed'], "Tool '$tool' should be allowed on web surface");
+            $expected = $tool !== 'read_assistant_skill';
+            $this->assertSame(
+                $expected,
+                $this->policy->check($tool)['allowed'],
+                "Tool '$tool' has an unexpected web-surface policy"
+            );
         }
     }
 

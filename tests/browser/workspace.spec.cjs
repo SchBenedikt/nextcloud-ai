@@ -82,7 +82,7 @@ test('local provider template can be saved without sending an API key', async ({
 	const dialog = page.getByRole('dialog')
 	await dialog.getByRole('combobox').fill('LM Studio')
 	await page.getByRole('option', { name: 'LM Studio', exact: true }).click()
-	await expect(dialog.getByRole('checkbox', { name: 'Authenticate with an API key' })).not.toBeChecked()
+	await expect(dialog.getByRole('switch', { name: 'Authenticate with an API key' })).not.toBeChecked()
 	await dialog.getByRole('textbox', { name: 'Chat model', exact: true }).fill('local-model')
 	await dialog.getByRole('button', { name: 'Save & use provider' }).click()
 	await expect(page.getByText('Provider saved and selected.')).toBeVisible()
@@ -133,7 +133,7 @@ test('a delayed briefing response preserves newer edits in another settings sect
 	})
 	await page.getByRole('link', { name: 'Automation', exact: true }).click()
 	await page.getByText('Enable scheduled briefings', { exact: true }).click()
-	await expect(page.getByRole('checkbox', { name: 'Enable scheduled briefings', exact: true })).toBeChecked()
+	await expect(page.getByRole('switch', { name: 'Enable scheduled briefings', exact: true })).toBeChecked()
 	await page.getByRole('textbox', { name: 'What should EVA do?', exact: true }).fill('Summarize my calendar')
 	await page.getByRole('button', { name: 'Add briefing', exact: true }).click()
 	await pending

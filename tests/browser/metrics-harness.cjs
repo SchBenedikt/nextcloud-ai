@@ -11,7 +11,7 @@ async function openMetrics(page, width = 1280) {
 		if (pathname === '/metrics') {
 			await route.fulfill({
 				contentType: 'text/html',
-				body: `<!doctype html><html lang="en"><head><meta name="requesttoken" content="test-token"></head><body><main id="metrics-root"></main><script>window.OC={requestToken:'test-token',generateUrl:(path)=>path,L10N:{translate:(_app,text)=>text,register:()=>{}}}</script></body></html>`,
+				body: `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="requesttoken" content="test-token"></head><body><main id="metrics-root"></main><script>window.OC={requestToken:'test-token',generateUrl:(path)=>path,L10N:{translate:(_app,text)=>text,register:()=>{}}}</script></body></html>`,
 			})
 			return
 		}

@@ -10,7 +10,7 @@ async function openStorage(page, { failSave = false } = {}) {
   await page.route('http://127.0.0.1:4173/**', async route => {
     const url = new URL(route.request().url())
     if (url.pathname === '/') {
-      return route.fulfill({ contentType: 'text/html', body: '<!doctype html><html lang="en"><head><meta name="requesttoken" content="test-token"></head><body><div id="vector-status-root"></div></body></html>' })
+      return route.fulfill({ contentType: 'text/html', body: '<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="requesttoken" content="test-token"></head><body><div id="vector-status-root"></div></body></html>' })
     }
     if (url.pathname.endsWith('.js')) {
       return route.fulfill({ contentType: 'text/javascript', body: await fs.readFile(path.join(__dirname, '../../node_modules/.cache/eva-ai-browser', path.basename(url.pathname))) })

@@ -6,6 +6,7 @@ const bundlePath = path.join(root, 'node_modules/.cache/eva-ai-browser/chatview.
 
 function html() {
   return `<!doctype html><html lang="en"><head>
+    <meta charset="utf-8">
     <meta name="eva-ai-api" content="/apps/eva_ai/api">
     <meta name="eva-ai-stream" content="/apps/eva_ai/api/streamChat">
     <meta name="requesttoken" content="test-token">
