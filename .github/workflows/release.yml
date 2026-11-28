@@ -71,3 +71,22 @@ jobs:
         with:
           generate_release_notes: true
           files: eva_ai-*.tar.gz
+
+  appstore:
+    name: Publish to Nextcloud App Store
+    needs: package
+    # Keep Store publishing disabled until protected environment secrets and
+    # approval rules have been configured by the repository maintainers.
+    if: ${{ vars.APPSTORE_PUBLISH_ENABLED == 'true' }}
+    runs-on: ubuntu-latest
+    environment: release
+    permissions:
+      contents: read
+    steps:
+      - name: Publish signed archive to Nextcloud App Store
+        uses: R0Wi/nextcloud-appstore-push-action@a011fe619bcf6e77ddebc96f9908e1af4071b9c1
+        with:
+          app_name: eva_ai
+          appstore_token: ${{ secrets.APPSTORE_TOKEN }}
+          download_url: https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/eva_ai-${{ github.ref_name }}.tar.gz
+          app_private_key: ${{ secrets.APP_PRIVATE_KEY }}
